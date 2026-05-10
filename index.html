@@ -1114,6 +1114,517 @@
 
       .standards-badges { gap: 1.5rem; }
     }
+    /* ─── Interactive Demo Components ─── */
+    .demo-dashboard {
+      background: #0f1520;
+      border-radius: 12px;
+      overflow: hidden;
+      font-family: var(--sans);
+    }
+
+    .demo-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.65rem 1rem;
+      background: rgba(20, 26, 38, 0.9);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .demo-toolbar-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .demo-toolbar-dots span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .demo-toolbar-dots span:nth-child(1) { background: #ff5f57; }
+    .demo-toolbar-dots span:nth-child(2) { background: #febc2e; }
+    .demo-toolbar-dots span:nth-child(3) { background: #28c840; }
+
+    .demo-toolbar-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--slate-400);
+      letter-spacing: 0.02em;
+      flex: 1;
+    }
+
+    .demo-toolbar-badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #28c840;
+      padding: 0.2rem 0.6rem;
+      border: 1px solid rgba(40, 200, 64, 0.3);
+      border-radius: 100px;
+    }
+
+    .demo-body {
+      padding: 1.25rem;
+      display: flex;
+      gap: 1rem;
+    }
+
+    /* ─── Hero Demo: Generator ─── */
+    .demo-form-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .demo-label {
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--slate-500);
+      margin-bottom: 0.15rem;
+      display: block;
+    }
+
+    .demo-select,
+    .demo-input {
+      width: 100%;
+      padding: 0.45rem 0.65rem;
+      background: rgba(30, 39, 54, 0.8);
+      border: 1px solid var(--slate-700);
+      border-radius: 6px;
+      color: var(--slate-200);
+      font-family: var(--sans);
+      font-size: 0.8rem;
+      outline: none;
+      appearance: none;
+    }
+
+    .demo-select {
+      background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.6rem center;
+      padding-right: 2rem;
+      cursor: pointer;
+    }
+
+    .demo-select option {
+      background: var(--slate-900);
+      color: var(--slate-200);
+    }
+
+    .demo-unit {
+      font-size: 0.65rem;
+      color: var(--slate-500);
+      margin-top: 0.1rem;
+      display: block;
+    }
+
+    .demo-form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem;
+    }
+
+    .demo-generate-btn {
+      margin-top: 0.4rem;
+      padding: 0.55rem 1rem;
+      background: var(--amber-500);
+      color: var(--slate-950);
+      border: none;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.8rem;
+      font-family: var(--sans);
+      cursor: pointer;
+      transition: background 0.2s, transform 0.15s;
+    }
+
+    .demo-generate-btn:hover {
+      background: var(--amber-400);
+      transform: translateY(-1px);
+    }
+
+    .demo-results-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .demo-result-header {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--amber-500);
+      margin-bottom: 0.25rem;
+    }
+
+    .demo-trip-row {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr 1fr;
+      gap: 0.5rem;
+      padding: 0.3rem 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      align-items: center;
+    }
+
+    .demo-trip-period {
+      font-size: 0.75rem;
+      color: var(--slate-300);
+      font-weight: 500;
+    }
+
+    .demo-trip-in,
+    .demo-trip-out,
+    .demo-trip-total {
+      font-size: 0.8rem;
+      font-family: 'Courier New', monospace;
+      text-align: right;
+      color: var(--slate-400);
+      transition: color 0.4s;
+    }
+
+    .demo-trip-total { color: var(--slate-200); font-weight: 600; }
+    .demo-trip-in.filled, .demo-trip-out.filled { color: var(--slate-300); }
+    .demo-trip-total.filled { color: var(--amber-400); }
+
+    .demo-trip-labels {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr 1fr;
+      gap: 0.5rem;
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--slate-600);
+      text-align: right;
+      padding-top: 0.1rem;
+    }
+
+    .demo-los-bar {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+
+    .demo-los-bar.visible { opacity: 1; }
+
+    .demo-los-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.72rem;
+      color: var(--slate-400);
+      padding: 0.15rem 0;
+    }
+
+    .demo-los-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .demo-los-grade {
+      margin-left: auto;
+      font-weight: 700;
+      font-size: 0.7rem;
+    }
+
+    .los-a { background: #22c55e; }
+    .los-b { background: #84cc16; }
+    .los-c { background: #eab308; }
+    .los-d { background: #f97316; }
+    .los-e { background: #ef4444; }
+    .los-f { background: #dc2626; }
+
+    .demo-progress {
+      height: 3px;
+      background: var(--slate-800);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+
+    .demo-progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--amber-500);
+      border-radius: 2px;
+      transition: width 0.1s linear;
+    }
+
+    .demo-status {
+      font-size: 0.65rem;
+      color: var(--slate-500);
+      text-align: center;
+      margin-top: 0.15rem;
+    }
+
+    /* ─── Features Demo: Capacity Table ─── */
+    .demo-toggle-group {
+      display: flex;
+      gap: 0;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--slate-700);
+    }
+
+    .demo-toggle {
+      padding: 0.25rem 0.7rem;
+      font-size: 0.65rem;
+      font-weight: 600;
+      font-family: var(--sans);
+      color: var(--slate-400);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .demo-toggle.active {
+      background: var(--amber-500);
+      color: var(--slate-950);
+    }
+
+    .demo-toggle:hover:not(.active) {
+      color: var(--slate-200);
+    }
+
+    .demo-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+
+    .demo-table th {
+      text-align: left;
+      padding: 0.65rem 0.85rem;
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--slate-500);
+      background: rgba(20, 26, 38, 0.6);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .demo-table td {
+      padding: 0.55rem 0.85rem;
+      color: var(--slate-300);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      transition: background 0.2s;
+    }
+
+    .demo-table tr:hover td {
+      background: rgba(212, 168, 83, 0.04);
+    }
+
+    .demo-table td:nth-child(2),
+    .demo-table td:nth-child(3),
+    .demo-table th:nth-child(2),
+    .demo-table th:nth-child(3) {
+      text-align: right;
+      font-family: 'Courier New', monospace;
+    }
+
+    .demo-table td:last-child,
+    .demo-table th:last-child {
+      text-align: center;
+    }
+
+    .demo-los-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.75rem;
+      color: #fff;
+      transition: background 0.4s, transform 0.3s;
+    }
+
+    .los-badge-a { background: #22c55e; }
+    .los-badge-b { background: #84cc16; }
+    .los-badge-c { background: #eab308; color: #000; }
+    .los-badge-d { background: #f97316; }
+    .los-badge-e { background: #ef4444; }
+    .los-badge-f { background: #dc2626; }
+
+    .demo-table-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.6rem 0.85rem;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .demo-table-note {
+      font-size: 0.65rem;
+      color: var(--slate-600);
+      font-style: italic;
+    }
+
+    .demo-los-legend {
+      display: flex;
+      gap: 0.65rem;
+      font-size: 0.65rem;
+      color: var(--slate-500);
+    }
+
+    .demo-los-legend > span {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .demo-legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    /* ─── Report Demo: Map ─── */
+    .demo-map-container {
+      position: relative;
+      background: #0a0e16;
+      min-height: 300px;
+    }
+
+    .demo-map-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .demo-street {
+      stroke: rgba(100, 116, 139, 0.15);
+      stroke-width: 2;
+    }
+
+    .demo-street.minor {
+      stroke: rgba(100, 116, 139, 0.07);
+      stroke-width: 1;
+      stroke-dasharray: 4, 4;
+    }
+
+    .demo-street-label {
+      font-size: 8px;
+      fill: var(--slate-600);
+      text-anchor: middle;
+      font-family: var(--sans);
+    }
+
+    .demo-project-site {
+      fill: rgba(212, 168, 83, 0.08);
+      stroke: var(--amber-500);
+      stroke-width: 1.5;
+      stroke-dasharray: 5, 3;
+    }
+
+    .demo-project-label {
+      fill: var(--amber-500);
+      font-size: 8px;
+      font-weight: 700;
+      text-anchor: middle;
+      font-family: var(--sans);
+      letter-spacing: 0.08em;
+    }
+
+    .demo-int-dot {
+      fill: #84cc16;
+      cursor: pointer;
+      transition: r 0.2s, filter 0.2s;
+      filter: drop-shadow(0 0 4px rgba(132, 204, 22, 0.3));
+    }
+
+    .demo-int-dot:hover {
+      r: 15;
+      filter: drop-shadow(0 0 8px rgba(132, 204, 22, 0.5));
+    }
+
+    .demo-int-label {
+      fill: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      text-anchor: middle;
+      font-family: var(--sans);
+      pointer-events: none;
+    }
+
+    .demo-map-tooltip {
+      position: absolute;
+      background: rgba(20, 26, 38, 0.95);
+      border: 1px solid rgba(212, 168, 83, 0.2);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.75rem;
+      color: var(--slate-300);
+      pointer-events: none;
+      z-index: 10;
+      min-width: 160px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      transition: opacity 0.15s;
+    }
+
+    .demo-map-tooltip strong {
+      color: var(--slate-100);
+      font-size: 0.8rem;
+      display: block;
+      margin-bottom: 0.35rem;
+    }
+
+    .demo-tooltip-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.1rem 0;
+    }
+
+    .demo-tooltip-los {
+      font-weight: 700;
+    }
+
+    .demo-map-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 0.85rem;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    /* Demo responsive adjustments */
+    @media (max-width: 900px) {
+      .demo-body {
+        flex-direction: column;
+      }
+      .demo-map-container {
+        min-height: 240px;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .demo-form-row {
+        grid-template-columns: 1fr;
+      }
+      .demo-trip-row,
+      .demo-trip-labels {
+        grid-template-columns: 1.2fr 1fr 1fr 1fr;
+        font-size: 0.7rem;
+      }
+    }
+
   </style>
 </head>
 <body>
@@ -1152,8 +1663,84 @@
         </div>
       </div>
       <div class="hero-image-wrap">
-        <div class="hero-image">
-          <img src="/images/full-top.jpg" alt="Atlanta TIS application showing traffic impact study generation interface" width="600" height="400" loading="eager">
+        <div class="hero-image" id="demo-generator">
+          <div class="demo-dashboard">
+            <div class="demo-toolbar">
+              <div class="demo-toolbar-dots"><span></span><span></span><span></span></div>
+              <span class="demo-toolbar-title">Atlanta TIS Generator</span>
+              <span class="demo-toolbar-badge">Live</span>
+            </div>
+            <div class="demo-body">
+              <div class="demo-form-panel">
+                <label class="demo-label">Land Use</label>
+                <select class="demo-select" id="demoLandUse">
+                  <option value="mid-rise-apt">Mid-Rise Apartment (ITE 221)</option>
+                  <option value="office">General Office (ITE 710)</option>
+                  <option value="retail">Shopping Center (ITE 820)</option>
+                  <option value="restaurant">High-Turnover Restaurant (ITE 932)</option>
+                  <option value="hotel">Hotel (ITE 310)</option>
+                  <option value="subdivision">Residential Subdivision (ITE 210)</option>
+                </select>
+                <div class="demo-form-row">
+                  <div>
+                    <label class="demo-label">Size</label>
+                    <input type="text" class="demo-input" id="demoSize" value="220" readonly>
+                    <span class="demo-unit" id="demoUnit">units</span>
+                  </div>
+                  <div>
+                    <label class="demo-label">Opening Year</label>
+                    <input type="text" class="demo-input" value="2027" readonly>
+                  </div>
+                </div>
+                <div class="demo-form-row">
+                  <div>
+                    <label class="demo-label">Study Radius</label>
+                    <input type="text" class="demo-input" value="0.5 mi" readonly>
+                  </div>
+                  <div>
+                    <label class="demo-label">Growth Rate</label>
+                    <input type="text" class="demo-input" value="1.5%" readonly>
+                  </div>
+                </div>
+                <button class="demo-generate-btn" id="demoGenBtn">Generate Screening TIS</button>
+              </div>
+              <div class="demo-results-panel" id="demoResults">
+                <div class="demo-result-header">Trip Generation Summary</div>
+                <div class="demo-trip-row">
+                  <span class="demo-trip-period">AM Peak</span>
+                  <span class="demo-trip-in" id="tripAmIn">—</span>
+                  <span class="demo-trip-out" id="tripAmOut">—</span>
+                  <span class="demo-trip-total" id="tripAmTotal">—</span>
+                </div>
+                <div class="demo-trip-row">
+                  <span class="demo-trip-period">PM Peak</span>
+                  <span class="demo-trip-in" id="tripPmIn">—</span>
+                  <span class="demo-trip-out" id="tripPmOut">—</span>
+                  <span class="demo-trip-total" id="tripPmTotal">—</span>
+                </div>
+                <div class="demo-trip-row">
+                  <span class="demo-trip-period">Daily</span>
+                  <span class="demo-trip-in" id="tripDayIn">—</span>
+                  <span class="demo-trip-out" id="tripDayOut">—</span>
+                  <span class="demo-trip-total" id="tripDayTotal">—</span>
+                </div>
+                <div class="demo-trip-labels">
+                  <span></span><span>In</span><span>Out</span><span>Total</span>
+                </div>
+                <div class="demo-los-bar" id="demoLosBar">
+                  <div class="demo-result-header" style="margin-top: 0.75rem;">Affected Intersections</div>
+                  <div class="demo-los-row"><span class="demo-los-dot los-a"></span><span>Peachtree & 10th</span><span class="demo-los-grade">A</span></div>
+                  <div class="demo-los-row"><span class="demo-los-dot los-b"></span><span>Piedmont & Monroe</span><span class="demo-los-grade">B</span></div>
+                  <div class="demo-los-row"><span class="demo-los-dot los-c"></span><span>W Peachtree & 14th</span><span class="demo-los-grade">C</span></div>
+                  <div class="demo-los-row"><span class="demo-los-dot los-d"></span><span>Spring & 10th</span><span class="demo-los-grade">D</span></div>
+                </div>
+                <div class="demo-progress" id="demoProgress">
+                  <div class="demo-progress-bar"></div>
+                </div>
+                <div class="demo-status" id="demoStatus">Click "Generate" to preview</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1215,8 +1802,49 @@
       <p class="section-subtitle">Built so a senior reviewer can mark it up in Bluebeam, sign, and ship. No rework, no missing citations.</p>
     </div>
     <div class="features-grid">
-      <div class="features-image fade-in">
-        <img src="/images/after-optimization.jpg" alt="TIS report showing capacity analysis results with Level of Service grades" width="600" height="420" loading="lazy">
+      <div class="features-image fade-in" id="demo-capacity">
+        <div class="demo-dashboard">
+          <div class="demo-toolbar">
+            <div class="demo-toolbar-dots"><span></span><span></span><span></span></div>
+            <span class="demo-toolbar-title">HCM Capacity Analysis</span>
+            <div class="demo-toggle-group">
+              <button class="demo-toggle active" data-view="existing">Existing</button>
+              <button class="demo-toggle" data-view="post-build">Post-Build</button>
+            </div>
+          </div>
+          <div class="demo-body" style="padding: 0;">
+            <table class="demo-table">
+              <thead>
+                <tr>
+                  <th>Intersection</th>
+                  <th>v/c</th>
+                  <th>Delay (s)</th>
+                  <th>LOS</th>
+                </tr>
+              </thead>
+              <tbody id="capacityTableBody">
+                <tr><td>Peachtree & 10th St NW</td><td>0.52</td><td>18.4</td><td><span class="demo-los-badge los-badge-b">B</span></td></tr>
+                <tr><td>Piedmont & Monroe Dr</td><td>0.44</td><td>14.1</td><td><span class="demo-los-badge los-badge-b">B</span></td></tr>
+                <tr><td>W Peachtree & 14th St</td><td>0.71</td><td>32.6</td><td><span class="demo-los-badge los-badge-c">C</span></td></tr>
+                <tr><td>Spring St & 10th St</td><td>0.83</td><td>45.2</td><td><span class="demo-los-badge los-badge-d">D</span></td></tr>
+                <tr><td>Juniper & 12th St</td><td>0.38</td><td>11.9</td><td><span class="demo-los-badge los-badge-b">B</span></td></tr>
+                <tr><td>Techwood & North Ave</td><td>0.65</td><td>28.3</td><td><span class="demo-los-badge los-badge-c">C</span></td></tr>
+                <tr><td>Peachtree & 14th St</td><td>0.59</td><td>22.7</td><td><span class="demo-los-badge los-badge-c">C</span></td></tr>
+              </tbody>
+            </table>
+            <div class="demo-table-footer">
+              <span class="demo-table-note">Per HCM 6th Ed. Eq. 19-50</span>
+              <div class="demo-los-legend">
+                <span><span class="demo-legend-dot los-a"></span>A</span>
+                <span><span class="demo-legend-dot los-b"></span>B</span>
+                <span><span class="demo-legend-dot los-c"></span>C</span>
+                <span><span class="demo-legend-dot los-d"></span>D</span>
+                <span><span class="demo-legend-dot los-e"></span>E</span>
+                <span><span class="demo-legend-dot los-f"></span>F</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="features-list">
         <div class="feature-item fade-in">
@@ -1269,8 +1897,77 @@
           <li>Appendix B: Limitations and assumptions disclosure</li>
         </ul>
       </div>
-      <div class="report-image fade-in">
-        <img src="/images/improvement-map.jpg" alt="Affected intersection map showing post-build Level of Service results" width="600" height="460" loading="lazy">
+      <div class="report-image fade-in" id="demo-map">
+        <div class="demo-dashboard">
+          <div class="demo-toolbar">
+            <div class="demo-toolbar-dots"><span></span><span></span><span></span></div>
+            <span class="demo-toolbar-title">Affected Intersection Map</span>
+            <span class="demo-toolbar-badge">Post-Build LOS</span>
+          </div>
+          <div class="demo-body" style="padding: 0; position: relative;">
+            <div class="demo-map-container">
+              <svg viewBox="0 0 480 380" class="demo-map-svg" aria-label="Interactive intersection map showing Level of Service grades for Atlanta intersections">
+                <!-- Street grid -->
+                <line x1="120" y1="0" x2="120" y2="380" class="demo-street" />
+                <line x1="240" y1="0" x2="240" y2="380" class="demo-street" />
+                <line x1="360" y1="0" x2="360" y2="380" class="demo-street" />
+                <line x1="180" y1="0" x2="180" y2="380" class="demo-street minor" />
+                <line x1="300" y1="0" x2="300" y2="380" class="demo-street minor" />
+                <line x1="0" y1="80" x2="480" y2="80" class="demo-street" />
+                <line x1="0" y1="190" x2="480" y2="190" class="demo-street" />
+                <line x1="0" y1="300" x2="480" y2="300" class="demo-street" />
+                <line x1="0" y1="140" x2="480" y2="140" class="demo-street minor" />
+                <line x1="0" y1="240" x2="480" y2="240" class="demo-street minor" />
+                <!-- Street labels -->
+                <text x="120" y="15" class="demo-street-label">Peachtree St</text>
+                <text x="240" y="15" class="demo-street-label">W Peachtree</text>
+                <text x="360" y="15" class="demo-street-label">Spring St</text>
+                <text x="15" y="77" class="demo-street-label" text-anchor="start">10th St</text>
+                <text x="15" y="187" class="demo-street-label" text-anchor="start">14th St</text>
+                <text x="15" y="297" class="demo-street-label" text-anchor="start">North Ave</text>
+                <!-- Project site -->
+                <rect x="144" y="100" width="72" height="70" rx="4" class="demo-project-site" />
+                <text x="180" y="140" class="demo-project-label">PROJECT</text>
+                <text x="180" y="152" class="demo-project-label" style="font-size: 7px;">SITE</text>
+                <!-- Intersection dots -->
+                <circle cx="120" cy="80" r="12" class="demo-int-dot" data-int="0" />
+                <circle cx="240" cy="80" r="12" class="demo-int-dot" data-int="1" />
+                <circle cx="120" cy="190" r="12" class="demo-int-dot" data-int="2" />
+                <circle cx="240" cy="190" r="12" class="demo-int-dot" data-int="3" />
+                <circle cx="360" cy="80" r="12" class="demo-int-dot" data-int="4" />
+                <circle cx="360" cy="190" r="12" class="demo-int-dot" data-int="5" />
+                <circle cx="120" cy="300" r="12" class="demo-int-dot" data-int="6" />
+                <circle cx="180" cy="140" r="0" />
+                <!-- LOS labels on dots -->
+                <text x="120" y="84" class="demo-int-label" data-int-label="0">B</text>
+                <text x="240" y="84" class="demo-int-label" data-int-label="1">C</text>
+                <text x="120" y="194" class="demo-int-label" data-int-label="2">B</text>
+                <text x="240" y="194" class="demo-int-label" data-int-label="3">D</text>
+                <text x="360" y="84" class="demo-int-label" data-int-label="4">C</text>
+                <text x="360" y="194" class="demo-int-label" data-int-label="5">C</text>
+                <text x="120" y="304" class="demo-int-label" data-int-label="6">B</text>
+              </svg>
+              <div class="demo-map-tooltip" id="mapTooltip" style="display:none;">
+                <strong id="tooltipName"></strong>
+                <div class="demo-tooltip-row"><span>LOS:</span> <span id="tooltipLos" class="demo-tooltip-los"></span></div>
+                <div class="demo-tooltip-row"><span>Delay:</span> <span id="tooltipDelay"></span></div>
+                <div class="demo-tooltip-row"><span>v/c:</span> <span id="tooltipVc"></span></div>
+                <div class="demo-tooltip-row"><span>Delay &Delta;:</span> <span id="tooltipDelta"></span></div>
+              </div>
+            </div>
+            <div class="demo-map-footer">
+              <div class="demo-los-legend">
+                <span><span class="demo-legend-dot los-a"></span>A</span>
+                <span><span class="demo-legend-dot los-b"></span>B</span>
+                <span><span class="demo-legend-dot los-c"></span>C</span>
+                <span><span class="demo-legend-dot los-d"></span>D</span>
+                <span><span class="demo-legend-dot los-e"></span>E</span>
+                <span><span class="demo-legend-dot los-f"></span>F</span>
+              </div>
+              <span class="demo-table-note">Hover intersections for details</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -1607,6 +2304,174 @@
           btn.textContent = 'Request Trial Access';
           btn.disabled = false;
         }
+      });
+    }
+    // ─── Interactive Demo: Hero Generator ───
+    const tripData = {
+      'mid-rise-apt': { unit: 'units', am: [23, 93, 116], pm: [91, 52, 143], day: [412, 388, 800] },
+      'office':       { unit: 'KSF', am: [152, 21, 173], pm: [30, 148, 178], day: [560, 540, 1100] },
+      'retail':       { unit: 'KSF', am: [28, 17, 45], pm: [175, 190, 365], day: [1920, 2080, 4000] },
+      'restaurant':   { unit: 'KSF', am: [52, 42, 94], pm: [68, 46, 114], day: [492, 508, 1000] },
+      'hotel':        { unit: 'rooms', am: [34, 28, 62], pm: [36, 30, 66], day: [268, 232, 500] },
+      'subdivision':  { unit: 'lots', am: [18, 72, 90], pm: [68, 38, 106], day: [480, 520, 1000] }
+    };
+
+    const demoLandUse = document.getElementById('demoLandUse');
+    const demoSize = document.getElementById('demoSize');
+    const demoUnit = document.getElementById('demoUnit');
+    const demoGenBtn = document.getElementById('demoGenBtn');
+
+    demoLandUse.addEventListener('change', function() {
+      const d = tripData[this.value];
+      demoUnit.textContent = d.unit;
+      if (d.unit === 'KSF') demoSize.value = '45';
+      else if (d.unit === 'rooms') demoSize.value = '150';
+      else if (d.unit === 'lots') demoSize.value = '180';
+      else demoSize.value = '220';
+    });
+
+    demoGenBtn.addEventListener('click', function() {
+      const data = tripData[demoLandUse.value];
+      const progress = document.querySelector('.demo-progress-bar');
+      const status = document.getElementById('demoStatus');
+      const losBar = document.getElementById('demoLosBar');
+
+      demoGenBtn.disabled = true;
+      demoGenBtn.textContent = 'Generating…';
+
+      const ids = ['tripAmIn','tripAmOut','tripAmTotal','tripPmIn','tripPmOut','tripPmTotal','tripDayIn','tripDayOut','tripDayTotal'];
+      ids.forEach(id => { document.getElementById(id).textContent = '—'; document.getElementById(id).classList.remove('filled'); });
+      losBar.classList.remove('visible');
+
+      let pct = 0;
+      const steps = [
+        { pct: 15, status: 'Pulling ITE 11th Ed. rates…' },
+        { pct: 35, status: 'Computing trip generation…', action: () => {
+          animateNum('tripAmIn', data.am[0]); animateNum('tripAmOut', data.am[1]); animateNum('tripAmTotal', data.am[2]);
+        }},
+        { pct: 55, status: 'Running HCM capacity analysis…', action: () => {
+          animateNum('tripPmIn', data.pm[0]); animateNum('tripPmOut', data.pm[1]); animateNum('tripPmTotal', data.pm[2]);
+        }},
+        { pct: 75, status: 'Monte-Carlo sensitivity (100 iterations)…', action: () => {
+          animateNum('tripDayIn', data.day[0]); animateNum('tripDayOut', data.day[1]); animateNum('tripDayTotal', data.day[2]);
+        }},
+        { pct: 90, status: 'Grading intersection LOS…', action: () => { losBar.classList.add('visible'); }},
+        { pct: 100, status: 'Report ready — download PDF', action: () => {
+          demoGenBtn.textContent = 'Generate Screening TIS';
+          demoGenBtn.disabled = false;
+        }}
+      ];
+
+      let i = 0;
+      function nextStep() {
+        if (i >= steps.length) return;
+        const step = steps[i];
+        progress.style.width = step.pct + '%';
+        status.textContent = step.status;
+        if (step.action) step.action();
+        i++;
+        if (i < steps.length) setTimeout(nextStep, 500 + Math.random() * 400);
+      }
+      nextStep();
+    });
+
+    function animateNum(id, target) {
+      const el = document.getElementById(id);
+      let current = 0;
+      const step = Math.max(1, Math.floor(target / 12));
+      el.classList.add('filled');
+      const iv = setInterval(() => {
+        current += step;
+        if (current >= target) { current = target; clearInterval(iv); }
+        el.textContent = current.toLocaleString();
+      }, 40);
+    }
+
+    // ─── Interactive Demo: Capacity Table Toggle ───
+    const existingData = [
+      { name: 'Peachtree & 10th St NW', vc: '0.52', delay: '18.4', los: 'B' },
+      { name: 'Piedmont & Monroe Dr', vc: '0.44', delay: '14.1', los: 'B' },
+      { name: 'W Peachtree & 14th St', vc: '0.71', delay: '32.6', los: 'C' },
+      { name: 'Spring St & 10th St', vc: '0.83', delay: '45.2', los: 'D' },
+      { name: 'Juniper & 12th St', vc: '0.38', delay: '11.9', los: 'B' },
+      { name: 'Techwood & North Ave', vc: '0.65', delay: '28.3', los: 'C' },
+      { name: 'Peachtree & 14th St', vc: '0.59', delay: '22.7', los: 'C' }
+    ];
+
+    const postBuildData = [
+      { name: 'Peachtree & 10th St NW', vc: '0.68', delay: '26.1', los: 'C' },
+      { name: 'Piedmont & Monroe Dr', vc: '0.56', delay: '19.8', los: 'B' },
+      { name: 'W Peachtree & 14th St', vc: '0.84', delay: '47.3', los: 'D' },
+      { name: 'Spring St & 10th St', vc: '0.91', delay: '58.6', los: 'E' },
+      { name: 'Juniper & 12th St', vc: '0.49', delay: '16.2', los: 'B' },
+      { name: 'Techwood & North Ave', vc: '0.78', delay: '38.9', los: 'D' },
+      { name: 'Peachtree & 14th St', vc: '0.72', delay: '33.1', los: 'C' }
+    ];
+
+    function renderCapacityTable(data) {
+      const tbody = document.getElementById('capacityTableBody');
+      tbody.innerHTML = data.map(row =>
+        `<tr><td>${row.name}</td><td>${row.vc}</td><td>${row.delay}</td><td><span class="demo-los-badge los-badge-${row.los.toLowerCase()}">${row.los}</span></td></tr>`
+      ).join('');
+    }
+
+    document.querySelectorAll('.demo-toggle').forEach(btn => {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.demo-toggle').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        renderCapacityTable(this.dataset.view === 'existing' ? existingData : postBuildData);
+      });
+    });
+
+    // ─── Interactive Demo: Map Tooltips ───
+    const intersections = [
+      { name: 'Peachtree & 10th St', los: 'B', delay: '26.1s', vc: '0.68', delta: '+7.7s', color: '#84cc16' },
+      { name: 'W Peachtree & 10th St', los: 'C', delay: '32.6s', vc: '0.71', delta: '+4.8s', color: '#eab308' },
+      { name: 'Peachtree & 14th St', los: 'B', delay: '19.8s', vc: '0.56', delta: '+5.7s', color: '#84cc16' },
+      { name: 'W Peachtree & 14th St', los: 'D', delay: '47.3s', vc: '0.84', delta: '+14.7s', color: '#f97316' },
+      { name: 'Spring St & 10th St', los: 'C', delay: '33.1s', vc: '0.72', delta: '+10.4s', color: '#eab308' },
+      { name: 'Spring St & 14th St', los: 'C', delay: '38.9s', vc: '0.78', delta: '+10.6s', color: '#eab308' },
+      { name: 'Peachtree & North Ave', los: 'B', delay: '16.2s', vc: '0.49', delta: '+4.3s', color: '#84cc16' }
+    ];
+
+    const losColors = { A: '#22c55e', B: '#84cc16', C: '#eab308', D: '#f97316', E: '#ef4444', F: '#dc2626' };
+
+    // Color the dots
+    document.querySelectorAll('.demo-int-dot').forEach(dot => {
+      const idx = parseInt(dot.dataset.int);
+      if (intersections[idx]) {
+        dot.style.fill = intersections[idx].color;
+        dot.style.filter = `drop-shadow(0 0 4px ${intersections[idx].color}50)`;
+      }
+    });
+
+    // Map hover tooltips
+    const mapContainer = document.querySelector('.demo-map-container');
+    const tooltip = document.getElementById('mapTooltip');
+
+    if (mapContainer) {
+      document.querySelectorAll('.demo-int-dot').forEach(dot => {
+        dot.addEventListener('mouseenter', function(e) {
+          const idx = parseInt(this.dataset.int);
+          const data = intersections[idx];
+          if (!data) return;
+          document.getElementById('tooltipName').textContent = data.name;
+          document.getElementById('tooltipLos').textContent = data.los;
+          document.getElementById('tooltipLos').style.color = losColors[data.los];
+          document.getElementById('tooltipDelay').textContent = data.delay;
+          document.getElementById('tooltipVc').textContent = data.vc;
+          document.getElementById('tooltipDelta').textContent = data.delta;
+
+          const rect = mapContainer.getBoundingClientRect();
+          const dotRect = this.getBoundingClientRect();
+          tooltip.style.display = 'block';
+          tooltip.style.left = (dotRect.left - rect.left + dotRect.width / 2 + 10) + 'px';
+          tooltip.style.top = (dotRect.top - rect.top - 10) + 'px';
+        });
+
+        dot.addEventListener('mouseleave', function() {
+          tooltip.style.display = 'none';
+        });
       });
     }
   </script>
