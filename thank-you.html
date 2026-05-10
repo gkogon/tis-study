@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thank You — Atlanta TIS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --slate-950: #0c1018;
+      --slate-900: #141a26;
+      --slate-800: #1e2736;
+      --slate-400: #94a3b8;
+      --slate-200: #e2e8f0;
+      --slate-100: #f1f5f9;
+      --slate-50: #f8fafc;
+      --amber-500: #d4a853;
+      --amber-400: #e4be6a;
+      --serif: 'Instrument Serif', Georgia, serif;
+      --sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+    }
+    body {
+      font-family: var(--sans);
+      background: var(--slate-950);
+      color: var(--slate-400);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+    }
+    .wrap { max-width: 520px; }
+    .check-circle {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: rgba(212, 168, 83, 0.1);
+      border: 2px solid rgba(212, 168, 83, 0.3);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 2rem;
+    }
+    .check-circle svg { width: 28px; height: 28px; stroke: var(--amber-500); fill: none; stroke-width: 2.5; }
+    h1 {
+      font-family: var(--serif);
+      font-size: 2.5rem;
+      color: var(--slate-50);
+      margin-bottom: 1rem;
+      font-weight: 400;
+    }
+    p { font-size: 1.1rem; line-height: 1.7; margin-bottom: 2rem; }
+    a {
+      display: inline-block;
+      background: var(--amber-500);
+      color: var(--slate-950);
+      padding: 0.8rem 2rem;
+      border-radius: 8px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    a:hover { background: var(--amber-400); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="check-circle">
+      <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <h1>Request received.</h1>
+    <p>A practice lead will reach out within one business day to get your trial configured, your firm's logo loaded, and your first study set up.</p>
+    <a href="/">Back to Atlanta TIS</a>
+  </div>
+</body>
+</html>
