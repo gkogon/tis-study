@@ -1,0 +1,1614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atlanta TIS — Traffic Impact Studies in 60 Seconds</title>
+  <meta name="description" content="Generate defensible, PE-ready Traffic Impact Studies for the Atlanta metro area. HCM, ITE, and MUTCD citations built in. White-labeled for your firm.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --slate-950: #0c1018;
+      --slate-900: #141a26;
+      --slate-800: #1e2736;
+      --slate-700: #2d3a4e;
+      --slate-600: #475569;
+      --slate-500: #64748b;
+      --slate-400: #94a3b8;
+      --slate-300: #cbd5e1;
+      --slate-200: #e2e8f0;
+      --slate-100: #f1f5f9;
+      --slate-50: #f8fafc;
+      --amber-500: #d4a853;
+      --amber-400: #e4be6a;
+      --amber-300: #f0d48a;
+      --amber-600: #b8923e;
+      --amber-900: #3d2e10;
+      --serif: 'Instrument Serif', Georgia, serif;
+      --sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+      --max-w: 1200px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--slate-950);
+      color: var(--slate-300);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ─── Background texture ─── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(212, 168, 83, 0.06), transparent),
+        radial-gradient(ellipse 60% 40% at 80% 80%, rgba(212, 168, 83, 0.03), transparent);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .noise-overlay {
+      position: fixed;
+      inset: 0;
+      opacity: 0.025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    section, header, footer { position: relative; z-index: 1; }
+
+    /* ─── Utility ─── */
+    .container { max-width: var(--max-w); margin: 0 auto; padding: 0 2rem; }
+
+    /* ─── Navigation ─── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 1.25rem 2rem;
+      backdrop-filter: blur(20px);
+      background: rgba(12, 16, 24, 0.8);
+      border-bottom: 1px solid rgba(212, 168, 83, 0.08);
+      transition: background 0.3s;
+    }
+
+    nav .nav-inner {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      font-family: var(--serif);
+      font-size: 1.5rem;
+      color: var(--slate-100);
+      text-decoration: none;
+      letter-spacing: -0.01em;
+    }
+
+    .logo span { color: var(--amber-500); }
+
+    nav ul {
+      list-style: none;
+      display: flex;
+      gap: 2.5rem;
+      align-items: center;
+    }
+
+    nav a {
+      color: var(--slate-400);
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: color 0.2s;
+      letter-spacing: 0.01em;
+    }
+
+    nav a:hover { color: var(--slate-100); }
+
+    .nav-cta {
+      background: var(--amber-500);
+      color: var(--slate-950) !important;
+      padding: 0.6rem 1.5rem;
+      border-radius: 6px;
+      font-weight: 600;
+      transition: background 0.2s, transform 0.15s;
+    }
+
+    .nav-cta:hover {
+      background: var(--amber-400);
+      transform: translateY(-1px);
+    }
+
+    /* ─── Hero ─── */
+    .hero {
+      padding: 10rem 2rem 6rem;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+    }
+
+    .hero-grid {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+    }
+
+    .hero-label {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--amber-500);
+      margin-bottom: 1.5rem;
+      padding: 0.4rem 1rem;
+      border: 1px solid rgba(212, 168, 83, 0.3);
+      border-radius: 100px;
+    }
+
+    .hero h1 {
+      font-family: var(--serif);
+      font-size: clamp(2.8rem, 5vw, 4.2rem);
+      line-height: 1.1;
+      color: var(--slate-50);
+      margin-bottom: 1.5rem;
+      font-weight: 400;
+    }
+
+    .hero h1 em {
+      font-style: italic;
+      color: var(--amber-400);
+    }
+
+    .hero p {
+      font-size: 1.125rem;
+      color: var(--slate-400);
+      max-width: 500px;
+      margin-bottom: 2.5rem;
+      line-height: 1.7;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--amber-500);
+      color: var(--slate-950);
+      padding: 0.9rem 2rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+      box-shadow: 0 0 30px rgba(212, 168, 83, 0.15);
+    }
+
+    .btn-primary:hover {
+      background: var(--amber-400);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 40px rgba(212, 168, 83, 0.25);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--slate-300);
+      padding: 0.9rem 2rem;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 0.95rem;
+      text-decoration: none;
+      border: 1px solid var(--slate-700);
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--slate-500);
+      color: var(--slate-100);
+    }
+
+    .hero-image {
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(212, 168, 83, 0.12);
+      box-shadow:
+        0 25px 80px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+    }
+
+    .hero-image img {
+      width: 100%;
+      display: block;
+    }
+
+    .hero-image::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(212, 168, 83, 0.05), transparent 50%);
+      pointer-events: none;
+    }
+
+    /* ─── Stats bar ─── */
+    .stats-bar {
+      padding: 3rem 2rem;
+      border-top: 1px solid var(--slate-800);
+      border-bottom: 1px solid var(--slate-800);
+    }
+
+    .stats-grid {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 2rem;
+      text-align: center;
+    }
+
+    .stat-number {
+      font-family: var(--serif);
+      font-size: 2.5rem;
+      color: var(--amber-400);
+      display: block;
+      line-height: 1.2;
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-top: 0.25rem;
+    }
+
+    /* ─── Section headers ─── */
+    .section-tag {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--amber-500);
+      margin-bottom: 1rem;
+    }
+
+    .section-title {
+      font-family: var(--serif);
+      font-size: clamp(2rem, 3.5vw, 3rem);
+      color: var(--slate-50);
+      line-height: 1.15;
+      margin-bottom: 1.25rem;
+      font-weight: 400;
+    }
+
+    .section-subtitle {
+      font-size: 1.1rem;
+      color: var(--slate-400);
+      max-width: 600px;
+      line-height: 1.7;
+    }
+
+    /* ─── How it works ─── */
+    .how-it-works {
+      padding: 7rem 2rem;
+    }
+
+    .how-header {
+      text-align: center;
+      margin-bottom: 5rem;
+    }
+
+    .how-header .section-subtitle { margin: 0 auto; }
+
+    .steps-grid {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem;
+    }
+
+    .step-card {
+      padding: 2.5rem;
+      border-radius: 12px;
+      background: rgba(30, 39, 54, 0.5);
+      border: 1px solid var(--slate-800);
+      transition: border-color 0.3s, transform 0.3s;
+    }
+
+    .step-card:hover {
+      border-color: rgba(212, 168, 83, 0.2);
+      transform: translateY(-4px);
+    }
+
+    .step-number {
+      font-family: var(--serif);
+      font-size: 3rem;
+      color: rgba(212, 168, 83, 0.2);
+      line-height: 1;
+      margin-bottom: 1.5rem;
+    }
+
+    .step-card h3 {
+      font-size: 1.15rem;
+      color: var(--slate-100);
+      margin-bottom: 0.75rem;
+      font-weight: 600;
+    }
+
+    .step-card p {
+      font-size: 0.925rem;
+      color: var(--slate-400);
+      line-height: 1.7;
+    }
+
+    /* ─── Features ─── */
+    .features {
+      padding: 7rem 2rem;
+      background: linear-gradient(to bottom, transparent, rgba(30, 39, 54, 0.3), transparent);
+    }
+
+    .features-header {
+      max-width: var(--max-w);
+      margin: 0 auto 5rem;
+    }
+
+    .features-grid {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 3rem;
+      align-items: start;
+    }
+
+    .features-image {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(212, 168, 83, 0.1);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    }
+
+    .features-image img {
+      width: 100%;
+      display: block;
+    }
+
+    .features-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .feature-item {
+      padding: 1.75rem;
+      border-radius: 10px;
+      border: 1px solid var(--slate-800);
+      background: rgba(20, 26, 38, 0.6);
+      transition: border-color 0.3s;
+    }
+
+    .feature-item:hover {
+      border-color: rgba(212, 168, 83, 0.2);
+    }
+
+    .feature-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: rgba(212, 168, 83, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1rem;
+    }
+
+    .feature-icon svg {
+      width: 18px;
+      height: 18px;
+      stroke: var(--amber-500);
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .feature-item h3 {
+      font-size: 1rem;
+      color: var(--slate-100);
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+    }
+
+    .feature-item p {
+      font-size: 0.875rem;
+      color: var(--slate-400);
+      line-height: 1.65;
+    }
+
+    /* ─── Report section ─── */
+    .report-section {
+      padding: 7rem 2rem;
+    }
+
+    .report-grid {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 4rem;
+      align-items: center;
+    }
+
+    .report-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
+    .report-list li {
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+      font-size: 0.925rem;
+      color: var(--slate-300);
+    }
+
+    .report-list li::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--amber-500);
+      flex-shrink: 0;
+      margin-top: 0.55rem;
+    }
+
+    .report-image {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(212, 168, 83, 0.1);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    }
+
+    .report-image img {
+      width: 100%;
+      display: block;
+    }
+
+    /* ─── Standards ─── */
+    .standards {
+      padding: 5rem 2rem;
+      border-top: 1px solid var(--slate-800);
+      border-bottom: 1px solid var(--slate-800);
+    }
+
+    .standards-inner {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .standards-inner .section-subtitle { margin: 0 auto 3rem; }
+
+    .standards-badges {
+      display: flex;
+      justify-content: center;
+      gap: 3rem;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .badge-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 12px;
+      background: rgba(212, 168, 83, 0.08);
+      border: 1px solid rgba(212, 168, 83, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--serif);
+      font-size: 0.95rem;
+      color: var(--amber-400);
+      line-height: 1.1;
+      text-align: center;
+    }
+
+    .badge-label {
+      font-size: 0.75rem;
+      color: var(--slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      max-width: 120px;
+      text-align: center;
+    }
+
+    /* ─── Pricing ─── */
+    .pricing {
+      padding: 7rem 2rem;
+    }
+
+    .pricing-header {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+
+    .pricing-header .section-subtitle { margin: 0 auto; }
+
+    .pricing-grid {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    .price-card {
+      border-radius: 14px;
+      padding: 2.5rem;
+      background: rgba(30, 39, 54, 0.4);
+      border: 1px solid var(--slate-800);
+      transition: border-color 0.3s, transform 0.3s;
+    }
+
+    .price-card:hover {
+      transform: translateY(-4px);
+    }
+
+    .price-card.featured {
+      background: rgba(212, 168, 83, 0.04);
+      border-color: rgba(212, 168, 83, 0.25);
+      position: relative;
+    }
+
+    .price-card.featured::before {
+      content: 'Most Popular';
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--amber-500);
+      color: var(--slate-950);
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.3rem 1rem;
+      border-radius: 100px;
+    }
+
+    .price-tier {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--slate-500);
+      margin-bottom: 0.75rem;
+    }
+
+    .price-amount {
+      font-family: var(--serif);
+      font-size: 3rem;
+      color: var(--slate-100);
+      line-height: 1.1;
+    }
+
+    .price-amount span {
+      font-family: var(--sans);
+      font-size: 0.95rem;
+      color: var(--slate-500);
+      font-weight: 400;
+    }
+
+    .price-desc {
+      font-size: 0.875rem;
+      color: var(--slate-400);
+      margin: 0.75rem 0 2rem;
+      line-height: 1.6;
+    }
+
+    .price-features {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .price-features li {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      font-size: 0.875rem;
+      color: var(--slate-300);
+    }
+
+    .check-icon {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: rgba(212, 168, 83, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .check-icon svg {
+      width: 10px;
+      height: 10px;
+      stroke: var(--amber-500);
+      fill: none;
+      stroke-width: 2.5;
+    }
+
+    .price-btn {
+      display: block;
+      text-align: center;
+      padding: 0.85rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-decoration: none;
+      transition: all 0.2s;
+      width: 100%;
+    }
+
+    .price-btn-primary {
+      background: var(--amber-500);
+      color: var(--slate-950);
+    }
+
+    .price-btn-primary:hover {
+      background: var(--amber-400);
+      transform: translateY(-1px);
+    }
+
+    .price-btn-outline {
+      border: 1px solid var(--slate-700);
+      color: var(--slate-300);
+    }
+
+    .price-btn-outline:hover {
+      border-color: var(--slate-500);
+      color: var(--slate-100);
+    }
+
+    /* ─── Trial form ─── */
+    .trial {
+      padding: 7rem 2rem;
+      background: linear-gradient(to bottom, transparent, rgba(30, 39, 54, 0.3), transparent);
+    }
+
+    .trial-grid {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1.1fr;
+      gap: 4rem;
+      align-items: start;
+    }
+
+    .trial-form {
+      background: rgba(20, 26, 38, 0.7);
+      border: 1px solid var(--slate-800);
+      border-radius: 14px;
+      padding: 2.5rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--slate-400);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.5rem;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: var(--slate-900);
+      border: 1px solid var(--slate-700);
+      border-radius: 8px;
+      color: var(--slate-200);
+      font-family: var(--sans);
+      font-size: 0.925rem;
+      transition: border-color 0.2s;
+      outline: none;
+    }
+
+    .form-group input::placeholder,
+    .form-group textarea::placeholder {
+      color: var(--slate-600);
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      border-color: var(--amber-500);
+    }
+
+    .form-group select {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 1rem center;
+      padding-right: 2.5rem;
+    }
+
+    .form-group select option {
+      background: var(--slate-900);
+      color: var(--slate-200);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 0.9rem;
+      background: var(--amber-500);
+      color: var(--slate-950);
+      border: none;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      font-family: var(--sans);
+      cursor: pointer;
+      transition: background 0.2s, transform 0.15s;
+      margin-top: 0.5rem;
+    }
+
+    .submit-btn:hover {
+      background: var(--amber-400);
+      transform: translateY(-1px);
+    }
+
+    .form-note {
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--slate-500);
+      margin-top: 1rem;
+    }
+
+    .trial-benefits {
+      list-style: none;
+      margin-top: 2.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .trial-benefits li {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+    }
+
+    .benefit-marker {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: rgba(212, 168, 83, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 0.1rem;
+    }
+
+    .benefit-marker svg {
+      width: 14px;
+      height: 14px;
+      stroke: var(--amber-500);
+      fill: none;
+      stroke-width: 2;
+    }
+
+    .benefit-text strong {
+      display: block;
+      color: var(--slate-100);
+      font-size: 0.95rem;
+      margin-bottom: 0.15rem;
+    }
+
+    .benefit-text span {
+      font-size: 0.85rem;
+      color: var(--slate-400);
+    }
+
+    /* ─── Form state ─── */
+    .form-success {
+      display: none;
+      text-align: center;
+      padding: 3rem 2rem;
+    }
+
+    .form-success.active {
+      display: block;
+    }
+
+    .form-success h3 {
+      font-family: var(--serif);
+      font-size: 1.75rem;
+      color: var(--slate-100);
+      margin-bottom: 0.75rem;
+    }
+
+    .form-success p {
+      color: var(--slate-400);
+      font-size: 0.95rem;
+    }
+
+    .form-fields.hidden { display: none; }
+
+    /* ─── FAQ ─── */
+    .faq {
+      padding: 7rem 2rem;
+    }
+
+    .faq-header {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+
+    .faq-grid {
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .faq-item {
+      border: 1px solid var(--slate-800);
+      border-radius: 10px;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+
+    .faq-item:hover {
+      border-color: rgba(212, 168, 83, 0.15);
+    }
+
+    .faq-question {
+      width: 100%;
+      padding: 1.25rem 1.5rem;
+      background: rgba(30, 39, 54, 0.3);
+      border: none;
+      color: var(--slate-200);
+      font-family: var(--sans);
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background 0.2s;
+    }
+
+    .faq-question:hover {
+      background: rgba(30, 39, 54, 0.5);
+    }
+
+    .faq-chevron {
+      width: 20px;
+      height: 20px;
+      stroke: var(--slate-500);
+      fill: none;
+      stroke-width: 2;
+      transition: transform 0.3s;
+      flex-shrink: 0;
+    }
+
+    .faq-item.open .faq-chevron {
+      transform: rotate(180deg);
+    }
+
+    .faq-answer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s ease;
+    }
+
+    .faq-answer-inner {
+      padding: 0 1.5rem 1.25rem;
+      font-size: 0.9rem;
+      color: var(--slate-400);
+      line-height: 1.7;
+    }
+
+    /* ─── Footer ─── */
+    footer {
+      padding: 4rem 2rem;
+      border-top: 1px solid var(--slate-800);
+    }
+
+    .footer-inner {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-logo {
+      font-family: var(--serif);
+      font-size: 1.25rem;
+      color: var(--slate-300);
+    }
+
+    .footer-logo span { color: var(--amber-500); }
+
+    .footer-links {
+      list-style: none;
+      display: flex;
+      gap: 2rem;
+    }
+
+    .footer-links a {
+      color: var(--slate-500);
+      text-decoration: none;
+      font-size: 0.85rem;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover { color: var(--slate-300); }
+
+    .footer-copy {
+      font-size: 0.8rem;
+      color: var(--slate-600);
+    }
+
+    /* ─── Animations ─── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .fade-in {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+
+    .fade-in.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .hero-content > * {
+      animation: fadeUp 0.8s ease forwards;
+    }
+
+    .hero-content > :nth-child(2) { animation-delay: 0.1s; }
+    .hero-content > :nth-child(3) { animation-delay: 0.2s; }
+    .hero-content > :nth-child(4) { animation-delay: 0.3s; }
+
+    .hero-image-wrap {
+      animation: fadeUp 0.9s ease 0.2s forwards;
+      opacity: 0;
+    }
+
+    /* ─── Mobile nav ─── */
+    .nav-toggle {
+      display: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0.5rem;
+    }
+
+    .nav-toggle span {
+      display: block;
+      width: 22px;
+      height: 2px;
+      background: var(--slate-300);
+      margin: 5px 0;
+      transition: transform 0.3s, opacity 0.3s;
+    }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 900px) {
+      .hero-grid,
+      .features-grid,
+      .report-grid,
+      .trial-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .pricing-grid {
+        grid-template-columns: 1fr;
+        max-width: 420px;
+      }
+
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .steps-grid {
+        grid-template-columns: 1fr;
+        max-width: 500px;
+        margin: 0 auto;
+      }
+
+      .hero { padding-top: 7rem; min-height: auto; }
+
+      .hero-image-wrap { order: -1; }
+
+      .footer-inner {
+        flex-direction: column;
+        gap: 1.5rem;
+        text-align: center;
+      }
+
+      .form-row { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 640px) {
+      nav ul.nav-links {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: rgba(12, 16, 24, 0.97);
+        backdrop-filter: blur(20px);
+        flex-direction: column;
+        padding: 1.5rem 2rem;
+        gap: 1.25rem;
+        border-bottom: 1px solid var(--slate-800);
+      }
+
+      nav ul.nav-links.open { display: flex; }
+
+      .nav-toggle { display: block; }
+
+      .standards-badges { gap: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="noise-overlay" aria-hidden="true"></div>
+
+  <!-- Navigation -->
+  <nav>
+    <div class="nav-inner">
+      <a href="#" class="logo">Atlanta <span>TIS</span></a>
+      <button class="nav-toggle" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+      <ul class="nav-links">
+        <li><a href="#how-it-works">How It Works</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#pricing">Pricing</a></li>
+        <li><a href="#faq">FAQ</a></li>
+        <li><a href="#trial" class="nav-cta">Start Free Trial</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-grid">
+      <div class="hero-content">
+        <div class="hero-label">For Engineering Firms</div>
+        <h1>Defensible Traffic Impact Studies in <em>60 seconds.</em></h1>
+        <p>Screening-level TIS reports for the Atlanta MSA, white-labeled with your firm's branding and footnoted to HCM 6th Ed., ITE Trip Generation 11th Ed., and the MUTCD.</p>
+        <div class="hero-actions">
+          <a href="#trial" class="btn-primary">
+            Start 14-Day Trial
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+          <a href="#pricing" class="btn-secondary">View Pricing</a>
+        </div>
+      </div>
+      <div class="hero-image-wrap">
+        <div class="hero-image">
+          <img src="/images/full-top.jpg" alt="Atlanta TIS application showing traffic impact study generation interface" width="600" height="400" loading="eager">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats -->
+  <section class="stats-bar">
+    <div class="stats-grid">
+      <div class="fade-in">
+        <span class="stat-number">60s</span>
+        <span class="stat-label">Generation Time</span>
+      </div>
+      <div class="fade-in">
+        <span class="stat-number">8+</span>
+        <span class="stat-label">Land-Use Categories</span>
+      </div>
+      <div class="fade-in">
+        <span class="stat-number">100</span>
+        <span class="stat-label">Monte-Carlo Iterations</span>
+      </div>
+      <div class="fade-in">
+        <span class="stat-number">PE</span>
+        <span class="stat-label">Ready Deliverables</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="how-it-works" id="how-it-works">
+    <div class="how-header fade-in">
+      <div class="section-tag">How It Works</div>
+      <h2 class="section-title">What used to take a week<br>now takes one form.</h2>
+      <p class="section-subtitle">Fill in your project parameters, select intersections, and get a PE-defensible screening TIS with full methodology appendices.</p>
+    </div>
+    <div class="steps-grid">
+      <div class="step-card fade-in">
+        <div class="step-number">01</div>
+        <h3>Enter project details</h3>
+        <p>Land use type, square footage or units, opening year, and background growth rate. Choose from 8 pre-configured templates or define custom parameters.</p>
+      </div>
+      <div class="step-card fade-in">
+        <h3>Select study intersections</h3>
+        <div class="step-number">02</div>
+        <p>Pick the signalized intersections in your study radius. The system pulls approach volumes, signal timing, and geometry for HCM capacity analysis.</p>
+      </div>
+      <div class="step-card fade-in">
+        <div class="step-number">03</div>
+        <h3>Download your white-labeled report</h3>
+        <p>A complete screening TIS with your firm's branding, PE stamp block, affected intersection map, capacity tables, and full HCM/ITE methodology appendix.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features" id="features">
+    <div class="features-header fade-in">
+      <div class="section-tag">Capabilities</div>
+      <h2 class="section-title">Every figure footnoted.<br>Every appendix included.</h2>
+      <p class="section-subtitle">Built so a senior reviewer can mark it up in Bluebeam, sign, and ship. No rework, no missing citations.</p>
+    </div>
+    <div class="features-grid">
+      <div class="features-image fade-in">
+        <img src="/images/after-optimization.jpg" alt="TIS report showing capacity analysis results with Level of Service grades" width="600" height="420" loading="lazy">
+      </div>
+      <div class="features-list">
+        <div class="feature-item fade-in">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+          </div>
+          <h3>ITE 11th Edition Trip Generation</h3>
+          <p>Rates for 8+ land-use categories with directional splits across AM peak, PM peak, Saturday midday, and daily periods. Pass-by and internal capture credits built in.</p>
+        </div>
+        <div class="feature-item fade-in">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M12 6v6l4 2"/></svg>
+          </div>
+          <h3>HCM 6th Edition Capacity Analysis</h3>
+          <p>Signalized intersection analysis with v/c ratio, control delay, Level of Service A&ndash;F, and 95th-percentile queue per HCM Equation 19-50.</p>
+        </div>
+        <div class="feature-item fade-in">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>
+          </div>
+          <h3>White-Labeled PDF Reports</h3>
+          <p>Your firm's logo on the cover page, PE stamp signature block, project number, client name. Methodology and limitations appendices included.</p>
+        </div>
+        <div class="feature-item fade-in">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+          </div>
+          <h3>Monte-Carlo Sensitivity Analysis</h3>
+          <p>Optional 100-iteration probabilistic analysis with P10/P50/P90 reporting. Confidence intervals on every delay-delta projection.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- What's in every report -->
+  <section class="report-section">
+    <div class="report-grid">
+      <div class="fade-in">
+        <div class="section-tag">Deliverables</div>
+        <h2 class="section-title">What's in every report</h2>
+        <p class="section-subtitle">A complete screening-level Traffic Impact Study ready for senior review and PE signature.</p>
+        <ul class="report-list">
+          <li>Cover page with firm logo, project number, client, opening year, PE stamp block</li>
+          <li>ITE Trip Generation summary — daily, AM peak, PM peak with directional splits</li>
+          <li>Off-site impact summary with affected intersections, LOS changes, and delay deltas</li>
+          <li>Affected-intersection map color-coded by post-build Level of Service</li>
+          <li>Sortable capacity table for all signals in the study radius</li>
+          <li>Recommended mitigations sized to projected delay impact</li>
+          <li>Appendix A: Full methodology with formulas, tables, and HCM/ITE/MUTCD references</li>
+          <li>Appendix B: Limitations and assumptions disclosure</li>
+        </ul>
+      </div>
+      <div class="report-image fade-in">
+        <img src="/images/improvement-map.jpg" alt="Affected intersection map showing post-build Level of Service results" width="600" height="460" loading="lazy">
+      </div>
+    </div>
+  </section>
+
+  <!-- Standards -->
+  <section class="standards fade-in">
+    <div class="standards-inner">
+      <div class="section-tag">Engineering Standards</div>
+      <h2 class="section-title">Cited on every page</h2>
+      <p class="section-subtitle">Every key figure is footnoted inline so the reviewing PE can sign with confidence.</p>
+      <div class="standards-badges">
+        <div class="badge">
+          <div class="badge-icon">HCM<br>6th</div>
+          <span class="badge-label">Highway Capacity Manual</span>
+        </div>
+        <div class="badge">
+          <div class="badge-icon">ITE<br>11th</div>
+          <span class="badge-label">Trip Generation Manual</span>
+        </div>
+        <div class="badge">
+          <div class="badge-icon">MUTCD</div>
+          <span class="badge-label">Signal Warrants & Control</span>
+        </div>
+        <div class="badge">
+          <div class="badge-icon">AASHTO</div>
+          <span class="badge-label">Green Book Geometric Design</span>
+        </div>
+        <div class="badge">
+          <div class="badge-icon">GDOT<br>RPM</div>
+          <span class="badge-label">Right-of-Way Approval</span>
+        </div>
+        <div class="badge">
+          <div class="badge-icon">NCHRP<br>765</div>
+          <span class="badge-label">Trip Distribution</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="pricing" id="pricing">
+    <div class="pricing-header fade-in">
+      <div class="section-tag">Pricing</div>
+      <h2 class="section-title">Straightforward plans,<br>no per-report fees.</h2>
+      <p class="section-subtitle">Every plan includes a 14-day full-feature trial. No credit card required.</p>
+    </div>
+    <div class="pricing-grid">
+      <!-- Solo -->
+      <div class="price-card fade-in">
+        <div class="price-tier">Solo</div>
+        <div class="price-amount">$199 <span>/ month</span></div>
+        <p class="price-desc">For individual practitioners and small consultancies getting started with automated TIS.</p>
+        <ul class="price-features">
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> Unlimited screening TIS reports</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> White-labeled PDF output</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> All 8 land-use templates</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> HCM/ITE/MUTCD citations</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> Monte-Carlo sensitivity</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> Single seat</li>
+        </ul>
+        <a href="#trial" class="price-btn price-btn-outline">Start Free Trial</a>
+      </div>
+      <!-- Practice -->
+      <div class="price-card featured fade-in">
+        <div class="price-tier">Practice</div>
+        <div class="price-amount">$1,500 <span>/ month</span></div>
+        <p class="price-desc">Built for firms that ship dozens of studies per month. Multi-seat workspaces with project folders.</p>
+        <ul class="price-features">
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> Everything in Solo</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> Multi-seat workspace</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> Project &amp; client folders</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> Audit log</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> Priority support</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> Onboarding call</li>
+        </ul>
+        <a href="#trial" class="price-btn price-btn-primary">Start Free Trial</a>
+      </div>
+      <!-- Enterprise -->
+      <div class="price-card fade-in">
+        <div class="price-tier">Enterprise</div>
+        <div class="price-amount">Custom</div>
+        <p class="price-desc">For large firms with SSO requirements, dedicated support, and custom integration needs.</p>
+        <ul class="price-features">
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> Everything in Practice</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> SSO / SAML</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> Dedicated onboarding</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> Custom integrations</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> SLA &amp; uptime guarantee</li>
+          <li><span class="check-icon"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="currentColor"/></svg></span> Volume discounts</li>
+        </ul>
+        <a href="#trial" class="price-btn price-btn-outline">Contact Sales</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Trial Form -->
+  <section class="trial" id="trial">
+    <div class="trial-grid">
+      <div class="fade-in">
+        <div class="section-tag">Get Started</div>
+        <h2 class="section-title">Start your 14-day trial today.</h2>
+        <p class="section-subtitle">Full access to every feature. No credit card required. Your firm's logo loaded on day one.</p>
+        <ul class="trial-benefits">
+          <li>
+            <span class="benefit-marker"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>
+            <div class="benefit-text">
+              <strong>14 days, full features</strong>
+              <span>Every plan feature unlocked from the start, including Monte-Carlo analysis and white-labeled PDFs.</span>
+            </div>
+          </li>
+          <li>
+            <span class="benefit-marker"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>
+            <div class="benefit-text">
+              <strong>No credit card required</strong>
+              <span>Sign up with just your name and email. No payment info needed until you decide to continue.</span>
+            </div>
+          </li>
+          <li>
+            <span class="benefit-marker"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>
+            <div class="benefit-text">
+              <strong>Onboarding call with a practice lead</strong>
+              <span>Walk through your first study with someone who understands traffic engineering workflows.</span>
+            </div>
+          </li>
+          <li>
+            <span class="benefit-marker"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>
+            <div class="benefit-text">
+              <strong>One business day response time</strong>
+              <span>Reach a real person, not a ticket queue. Support from people who know HCM from ITE.</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+      <div class="trial-form fade-in">
+        <div class="form-fields" id="trialFormFields">
+          <form name="trial-request" method="POST" data-netlify="true" netlify-honeypot="bot-field" id="trialForm" action="/thank-you">
+            <input type="hidden" name="form-name" value="trial-request">
+            <p style="display:none"><label>Leave blank: <input name="bot-field"></label></p>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="name">Full Name</label>
+                <input type="text" id="name" name="name" placeholder="Sarah Chen" required>
+              </div>
+              <div class="form-group">
+                <label for="email">Work Email</label>
+                <input type="email" id="email" name="email" placeholder="sarah@firma.com" required>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="firm">Firm Name</label>
+                <input type="text" id="firm" name="firm" placeholder="Kimley-Horn" required>
+              </div>
+              <div class="form-group">
+                <label for="city">Primary Market</label>
+                <input type="text" id="city" name="city" placeholder="Atlanta, GA">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="role">Your Role</label>
+                <input type="text" id="role" name="role" placeholder="Project Manager">
+              </div>
+              <div class="form-group">
+                <label for="volume">Studies per Month</label>
+                <select id="volume" name="volume">
+                  <option value="">Select range</option>
+                  <option value="1-5">1 &ndash; 5</option>
+                  <option value="6-15">6 &ndash; 15</option>
+                  <option value="16-30">16 &ndash; 30</option>
+                  <option value="30+">30+</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="plan">Plan Interest</label>
+              <select id="plan" name="plan">
+                <option value="">Which plan fits best?</option>
+                <option value="solo">Solo &mdash; $199/mo</option>
+                <option value="practice">Practice &mdash; $1,500/mo</option>
+                <option value="enterprise">Enterprise &mdash; Custom</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="notes">Anything else?</label>
+              <textarea id="notes" name="notes" rows="3" placeholder="Tell us about your typical projects or any questions you have."></textarea>
+            </div>
+            <button type="submit" class="submit-btn">Request Trial Access</button>
+            <p class="form-note">No credit card required. You'll hear back within one business day.</p>
+          </form>
+        </div>
+        <div class="form-success" id="trialSuccess">
+          <h3>Request received.</h3>
+          <p>A practice lead will reach out within one business day to get your trial set up and your firm's branding loaded.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="faq" id="faq">
+    <div class="faq-header fade-in">
+      <div class="section-tag">Questions</div>
+      <h2 class="section-title">Frequently asked</h2>
+    </div>
+    <div class="faq-grid">
+      <div class="faq-item fade-in">
+        <button class="faq-question">
+          Is this a final TIS or a screening-level study?
+          <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="faq-answer"><div class="faq-answer-inner">This generates a screening-level TIS designed to get your project through early review. Signal volumes are deterministically generated &mdash; for final design, replace them with measured turning-movement counts. Trip distribution uses distance-decay modeling; for a final TIS, you'd substitute an O-D matrix. The built-in limitations appendix makes this disclosure explicit so there's no ambiguity about scope.</div></div>
+      </div>
+      <div class="faq-item fade-in">
+        <button class="faq-question">
+          Which engineering standards are supported?
+          <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="faq-answer"><div class="faq-answer-inner">Every report cites HCM 6th Edition for capacity and delay analysis, ITE Trip Generation 11th Edition for trip rates, MUTCD for signal warrants, AASHTO Green Book for geometric design, GDOT RPM for right-of-way approval procedures, and NCHRP 765 for screening-level trip distribution. All citations are inline so the reviewing PE can verify each figure.</div></div>
+      </div>
+      <div class="faq-item fade-in">
+        <button class="faq-question">
+          What land-use types are available?
+          <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="faq-answer"><div class="faq-answer-inner">The system includes 8+ pre-configured templates covering mid-rise apartments, suburban subdivisions, general office, medical office, retail shopping centers, restaurants, fast-casual dining, and hotels. Each template comes with ITE rates, default pass-by credits, and internal capture percentages that you can override for your specific project.</div></div>
+      </div>
+      <div class="faq-item fade-in">
+        <button class="faq-question">
+          How does the Monte-Carlo analysis work?
+          <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="faq-answer"><div class="faq-answer-inner">The optional sensitivity analysis runs 100 iterations with &plusmn;10% perturbation on trip generation rates and &plusmn;15% on existing intersection volumes. Results are reported at the P10, P50, and P90 levels, giving you a confidence band of &plusmn;15% on all delay-delta projections at an 80% confidence level. This strengthens the defensibility of your screening conclusions.</div></div>
+      </div>
+      <div class="faq-item fade-in">
+        <button class="faq-question">
+          Can I cancel or change plans at any time?
+          <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="faq-answer"><div class="faq-answer-inner">All plans are month-to-month with no long-term commitment. You can upgrade, downgrade, or cancel at any time from your account settings. If you cancel during your trial period, you won't be charged. All reports generated during your subscription remain accessible.</div></div>
+      </div>
+      <div class="faq-item fade-in">
+        <button class="faq-question">
+          Does the report include mitigations?
+          <svg class="faq-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="faq-answer"><div class="faq-answer-inner">Yes. Every report includes recommended mitigations sized to the projected delay impact at each affected intersection. Recommendations range from signal re-timing for minor impacts to dedicated turn lanes, signal warrants, and geometric modifications for more significant ones. These are screening-level recommendations &mdash; final mitigation design requires detailed engineering analysis.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-logo">Atlanta <span>TIS</span></div>
+      <ul class="footer-links">
+        <li><a href="#how-it-works">How It Works</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#pricing">Pricing</a></li>
+        <li><a href="#trial">Start Trial</a></li>
+      </ul>
+      <span class="footer-copy">&copy; 2026 Atlanta TIS. All rights reserved.</span>
+    </div>
+  </footer>
+
+  <script>
+    // Scroll-triggered fade-in
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+    // FAQ accordion
+    document.querySelectorAll('.faq-question').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = btn.parentElement;
+        const answer = item.querySelector('.faq-answer');
+        const isOpen = item.classList.contains('open');
+
+        document.querySelectorAll('.faq-item.open').forEach(openItem => {
+          openItem.classList.remove('open');
+          openItem.querySelector('.faq-answer').style.maxHeight = '0';
+        });
+
+        if (!isOpen) {
+          item.classList.add('open');
+          answer.style.maxHeight = answer.scrollHeight + 'px';
+        }
+      });
+    });
+
+    // Mobile nav toggle
+    document.querySelector('.nav-toggle').addEventListener('click', () => {
+      document.querySelector('.nav-links').classList.toggle('open');
+    });
+
+    // Close mobile nav on link click
+    document.querySelectorAll('.nav-links a').forEach(link => {
+      link.addEventListener('click', () => {
+        document.querySelector('.nav-links').classList.remove('open');
+      });
+    });
+
+    // Form AJAX submission
+    const form = document.getElementById('trialForm');
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = form.querySelector('.submit-btn');
+        btn.textContent = 'Submitting…';
+        btn.disabled = true;
+
+        try {
+          const resp = await fetch('/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(new FormData(form)).toString()
+          });
+
+          if (resp.ok) {
+            document.getElementById('trialFormFields').classList.add('hidden');
+            document.getElementById('trialSuccess').classList.add('active');
+          } else {
+            btn.textContent = 'Request Trial Access';
+            btn.disabled = false;
+          }
+        } catch {
+          btn.textContent = 'Request Trial Access';
+          btn.disabled = false;
+        }
+      });
+    }
+  </script>
+</body>
+</html>
