@@ -1,0 +1,31 @@
+kind = "data-app"
+previewPath = "/_analyzer/"
+title = "Atlanta Traffic Inefficiency Analyzer (internal)"
+version = "1.0.0"
+id = "artifacts/atlanta-traffic"
+router = "path"
+
+[[integratedSkills]]
+name = "data-visualization"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/_analyzer/" ]
+localPort = 24593
+
+[services.development]
+run = "pnpm --filter @workspace/atlanta-traffic run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/atlanta-traffic", "run", "build" ]
+publicDir = "artifacts/atlanta-traffic/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24593"
+BASE_PATH = "/_analyzer/"

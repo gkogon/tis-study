@@ -1,0 +1,13 @@
+{
+  "leads": [
+    {
+      "name": "Smoke",
+      "email": "s@e.co",
+      "organization": "Acme",
+      "city": "Atlanta",
+      "source": "trial_request",
+      "id": "lead_mow7ssy7_a83f",
+      "createdAt": "2026-05-08T01:06:45.007Z"
+    }
+  ]
+}

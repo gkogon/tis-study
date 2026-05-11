@@ -1,0 +1,31 @@
+kind = "api"
+previewPath = "/tis-api"
+title = "TIS API Server"
+version = "1.0.0"
+id = "tis-api-server"
+
+[[services]]
+localPort = 8090
+name = "TIS API Server"
+paths = ["/tis-api"]
+
+[services.development]
+run = "pnpm --filter @workspace/tis-api-server run dev"
+
+[services.production]
+
+[services.production.build]
+args = ["pnpm", "--filter", "@workspace/tis-api-server", "run", "build"]
+
+[services.production.build.env]
+NODE_ENV = "production"
+
+[services.production.run]
+args = ["node", "--enable-source-maps", "artifacts/tis-api-server/dist/index.mjs"]
+
+[services.production.run.env]
+PORT = "8090"
+NODE_ENV = "production"
+
+[services.production.health.startup]
+path = "/tis-api/healthz"

@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compileOnSave": false,
+  "files": [],
+  "references": [
+    {
+      "path": "./lib/db"
+    },
+    {
+      "path": "./lib/api-client-react"
+    },
+    {
+      "path": "./lib/api-zod"
+    },
+    {
+      "path": "./lib/tis-api-client-react"
+    },
+    {
+      "path": "./lib/tis-api-zod"
+    },
+    {
+      "path": "./lib/replit-auth-web"
+    }
+  ]
+}
