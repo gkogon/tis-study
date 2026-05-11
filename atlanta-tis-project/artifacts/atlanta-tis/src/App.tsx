@@ -21,6 +21,9 @@ import SightDistanceStudyPage from "@/pages/studies-sight";
 import QueuingStudyPage from "@/pages/studies-queuing";
 import RoadDietStudyPage from "@/pages/studies-road-diet";
 import MonitoringPage from "@/pages/monitoring";
+import LegalTermsPage from "@/pages/legal-terms";
+import LegalPrivacyPage from "@/pages/legal-privacy";
+import LegalDisclaimerPage from "@/pages/legal-disclaimer";
 import { DevAuthWidget } from "@/components/dev-auth-widget";
 
 const queryClient = new QueryClient();
@@ -39,6 +42,9 @@ function Router() {
       <Route path="/studies/queuing" component={QueuingStudyPage} />
       <Route path="/studies/road-diet" component={RoadDietStudyPage} />
       <Route path="/monitoring" component={MonitoringPage} />
+      <Route path="/legal/terms" component={LegalTermsPage} />
+      <Route path="/legal/privacy" component={LegalPrivacyPage} />
+      <Route path="/legal/disclaimer" component={LegalDisclaimerPage} />
       <Route path="/tis" component={TisPage} />
       <Route path="/projects" component={ProjectsPage} />
       <Route path="/projects/:id" component={ProjectDetailPage} />

@@ -9,7 +9,7 @@ import { Building2 } from "lucide-react";
 export function SiteFooter() {
   return (
     <footer className="border-t border-border mt-24">
-      <div className="max-w-6xl mx-auto px-4 py-12 grid grid-cols-2 md:grid-cols-4 gap-8 text-sm">
+      <div className="max-w-6xl mx-auto px-4 py-12 grid grid-cols-2 md:grid-cols-5 gap-8 text-sm">
         <div className="col-span-2 md:col-span-1 space-y-2">
           <div className="inline-flex items-center gap-1.5 text-sm font-semibold">
             <Building2 className="w-4 h-4 text-blue-600" />
@@ -36,6 +36,11 @@ export function SiteFooter() {
         <FooterCol heading="Account">
           <FooterLink href="/settings/billing">Billing</FooterLink>
           <FooterLink href="/projects">My projects</FooterLink>
+        </FooterCol>
+        <FooterCol heading="Legal">
+          <FooterLink href="/legal/terms">Terms of Service</FooterLink>
+          <FooterLink href="/legal/privacy">Privacy Policy</FooterLink>
+          <FooterLink href="/legal/disclaimer">Engineering Disclaimer</FooterLink>
         </FooterCol>
       </div>
       <div className="border-t border-border">

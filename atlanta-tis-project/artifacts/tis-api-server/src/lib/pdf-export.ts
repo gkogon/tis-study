@@ -45,6 +45,10 @@ export async function renderStudyPdf(
   const doc = new PDFDocument({
     size: "LETTER",
     margins: { top: PAGE_MARGIN, bottom: PAGE_MARGIN, left: PAGE_MARGIN, right: PAGE_MARGIN },
+    // bufferPages lets us iterate every page once at the end to stamp
+    // the screening-disclaimer footer without firing pageAdded
+    // recursively during the draw passes.
+    bufferPages: true,
     info: {
       Title: `${studyLabel(project.studyType)} — ${project.projectName}`,
       Author: firm.name,
@@ -65,8 +69,33 @@ export async function renderStudyPdf(
   drawBody(doc, project);
   drawCitationsFooter(doc, project);
 
+  // Iterate every buffered page and stamp the screening footer.
+  const range = doc.bufferedPageRange();
+  for (let i = range.start; i < range.start + range.count; i++) {
+    doc.switchToPage(i);
+    drawPageFooter(doc);
+  }
+  doc.flushPages();
   doc.end();
   return done;
+}
+
+/**
+ * Per-page screening-only disclaimer + page number. Keeps engineers
+ * from accidentally submitting an Atlanta TIS PDF to a jurisdiction
+ * unchanged.
+ */
+function drawPageFooter(doc: PDFKit.PDFDocument) {
+  const y = doc.page.height - 32;
+  const w = doc.page.width - PAGE_MARGIN * 2;
+  doc.save();
+  // `lineBreak: false` is critical: without it the footer text can
+  // auto-paginate, which re-fires `pageAdded` and infinitely recurses.
+  doc.fontSize(7).fillColor("#9ca3af").text(
+    "Screening estimate — not for design submittal without independent verification by a licensed PE.   |   See /legal/disclaimer.",
+    PAGE_MARGIN, y, { width: w, align: "center", lineBreak: false },
+  );
+  doc.restore();
 }
 
 function drawCover(doc: PDFKit.PDFDocument, project: StoredProject, firm: FirmStamp) {
