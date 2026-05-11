@@ -12,7 +12,13 @@ import { and, desc, eq } from "drizzle-orm";
 import { db, tisProjectsTable, type TisProject } from "@workspace/db";
 import { logger } from "./logger";
 
-export type StudyType = "tis" | "parking" | "warrants" | "sight_distance";
+export type StudyType =
+  | "tis"
+  | "parking"
+  | "warrants"
+  | "sight_distance"
+  | "queuing"
+  | "road_diet";
 
 export type SaveProjectArgs = {
   userId: string;

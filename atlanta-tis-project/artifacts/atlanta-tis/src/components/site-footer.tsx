@@ -24,6 +24,7 @@ export function SiteFooter() {
           <FooterLink href="/studies">Studies hub</FooterLink>
           <FooterLink href="/tis">TIS generator</FooterLink>
           <FooterLink href="/studies/parking">Parking Demand</FooterLink>
+          <FooterLink href="/monitoring">Post-build monitoring</FooterLink>
           <FooterLink href="/projects">Project history</FooterLink>
           <FooterLink href="/pricing">Pricing</FooterLink>
         </FooterCol>

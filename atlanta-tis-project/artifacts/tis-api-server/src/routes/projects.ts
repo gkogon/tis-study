@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { listProjects, getProject } from "../lib/tis-projects";
 import { getOrCreateFirmForUser } from "../lib/firms";
+import { renderStudyPdf } from "../lib/pdf-export";
 
 const router: IRouter = Router();
 
@@ -63,6 +64,40 @@ router.get("/projects/:id", async (req, res): Promise<void> => {
   } catch (err) {
     req.log.error({ err }, "tis-projects.get_failed");
     res.status(500).json({ error: "Failed to load project." });
+  }
+});
+
+router.get("/projects/:id/pdf", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Sign in to download projects." });
+    return;
+  }
+  const id = String(req.params.id);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+    res.status(404).json({ error: "Project not found." });
+    return;
+  }
+  try {
+    const user = req.user!;
+    const { firm } = await getOrCreateFirmForUser(user.id, {
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    });
+    const project = await getProject(firm.id, id);
+    if (!project) {
+      res.status(404).json({ error: "Project not found." });
+      return;
+    }
+    const buffer = await renderStudyPdf(project, { name: firm.name, logoUrl: firm.logoUrl });
+    const slug = project.projectName.replace(/[^a-z0-9-_]+/gi, "_").slice(0, 80) || "study";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${slug}.pdf"`);
+    res.setHeader("Content-Length", String(buffer.length));
+    res.send(buffer);
+  } catch (err) {
+    req.log.error({ err }, "tis-projects.pdf_failed");
+    res.status(500).json({ error: "Failed to render PDF." });
   }
 });
 

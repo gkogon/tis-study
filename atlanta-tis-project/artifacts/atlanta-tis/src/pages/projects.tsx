@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@workspace/replit-auth-web";
 import {
-  FileText, MapPin, ArrowLeft, Loader2, MapIcon, ParkingCircle, ChevronRight, Eye,
+  FileText, MapPin, ArrowLeft, Loader2, MapIcon, ParkingCircle, ChevronRight, Eye, Activity,
 } from "lucide-react";
 
 interface ProjectListItem {
@@ -24,13 +24,15 @@ interface ProjectListItem {
   createdAt: string;
 }
 
-type Filter = "all" | "tis" | "parking" | "warrants" | "sight_distance";
+type Filter = "all" | "tis" | "parking" | "warrants" | "sight_distance" | "queuing" | "road_diet";
 
 const STUDY_META: Record<string, { label: string; icon: typeof FileText; tint: string }> = {
   tis: { label: "TIS", icon: MapIcon, tint: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
   parking: { label: "Parking", icon: ParkingCircle, tint: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300" },
   warrants: { label: "Warrants", icon: ChevronRight, tint: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" },
   sight_distance: { label: "Sight", icon: Eye, tint: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
+  queuing: { label: "Queuing", icon: Activity, tint: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300" },
+  road_diet: { label: "Road Diet", icon: ChevronRight, tint: "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300" },
 };
 
 export default function ProjectsPage() {
@@ -62,7 +64,7 @@ export default function ProjectsPage() {
   }, [isAuthenticated]);
 
   const counts = useMemo(() => {
-    const c = { all: 0, tis: 0, parking: 0, warrants: 0, sight_distance: 0 };
+    const c = { all: 0, tis: 0, parking: 0, warrants: 0, sight_distance: 0, queuing: 0, road_diet: 0 };
     for (const p of items ?? []) {
       c.all++;
       const t = (p.studyType ?? "tis") as Filter;
@@ -133,6 +135,12 @@ export default function ProjectsPage() {
         </Chip>
         <Chip active={filter === "sight_distance"} onClick={() => setFilter("sight_distance")}>
           Sight <span className="text-muted-foreground">({counts.sight_distance})</span>
+        </Chip>
+        <Chip active={filter === "queuing"} onClick={() => setFilter("queuing")}>
+          Queuing <span className="text-muted-foreground">({counts.queuing})</span>
+        </Chip>
+        <Chip active={filter === "road_diet"} onClick={() => setFilter("road_diet")}>
+          Road Diet <span className="text-muted-foreground">({counts.road_diet})</span>
         </Chip>
       </div>
 

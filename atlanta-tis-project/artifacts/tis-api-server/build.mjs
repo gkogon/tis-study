@@ -38,6 +38,11 @@ async function buildAll() {
     external: [
       "*.node",
       "sharp",
+      // pdfkit + fontkit drag in legacy decorator helpers that don't bundle
+      // cleanly with our pinned @swc/helpers. Loading them at runtime lets
+      // node resolve their own transitive deps from node_modules.
+      "pdfkit",
+      "fontkit",
       "better-sqlite3",
       "sqlite3",
       "canvas",

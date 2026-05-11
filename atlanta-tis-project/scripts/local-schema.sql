@@ -95,6 +95,36 @@ CREATE INDEX IF NOT EXISTS "IDX_tis_projects_firm_created"  ON tis_projects (fir
 -- Adds study_type to a pre-existing tis_projects table (no-op if column already exists).
 ALTER TABLE tis_projects ADD COLUMN IF NOT EXISTS study_type VARCHAR(32) NOT NULL DEFAULT 'tis';
 
+-- =============== monitoring_enrollments / monitoring_reports ===============
+CREATE TABLE IF NOT EXISTS monitoring_enrollments (
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  firm_id                UUID NOT NULL REFERENCES firms(id) ON DELETE CASCADE,
+  project_id             UUID REFERENCES tis_projects(id) ON DELETE SET NULL,
+  label                  TEXT NOT NULL,
+  site_lat               TEXT NOT NULL,
+  site_lon               TEXT NOT NULL,
+  forecast_snapshot      JSONB NOT NULL,
+  status                 VARCHAR(16) NOT NULL DEFAULT 'active',
+  enrolled_by_user_id    VARCHAR NOT NULL,
+  enrolled_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expected_open_date     TIMESTAMPTZ,
+  last_report_at         TIMESTAMPTZ,
+  notes                  TEXT
+);
+CREATE INDEX IF NOT EXISTS "IDX_monitoring_firm" ON monitoring_enrollments (firm_id);
+CREATE INDEX IF NOT EXISTS "IDX_monitoring_project" ON monitoring_enrollments (project_id);
+
+CREATE TABLE IF NOT EXISTS monitoring_reports (
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  enrollment_id          UUID NOT NULL REFERENCES monitoring_enrollments(id) ON DELETE CASCADE,
+  period_start           TIMESTAMPTZ NOT NULL,
+  period_end             TIMESTAMPTZ NOT NULL,
+  payload                JSONB NOT NULL,
+  generated_by_user_id   VARCHAR REFERENCES users(id) ON DELETE SET NULL,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS "IDX_monitoring_reports_enrollment" ON monitoring_reports (enrollment_id, created_at);
+
 -- =============== traffic_snapshots (existing) ===============
 CREATE TABLE IF NOT EXISTS traffic_snapshots (
   id                          SERIAL PRIMARY KEY,

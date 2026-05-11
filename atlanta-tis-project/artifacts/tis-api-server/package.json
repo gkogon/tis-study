@@ -22,10 +22,16 @@
     "openid-client": "^6.8.4",
     "pino": "^9",
     "pino-http": "^10",
-    "stripe": "^17.5.0"
+    "stripe": "^17.5.0",
+    "pdfkit": "^0.15.0",
+    "resend": "^4.0.0",
+    "multer": "^1.4.5-lts.1",
+    "@swc/helpers": "^0.5.13"
   },
   "devDependencies": {
     "@types/compression": "^1.8.1",
+    "@types/multer": "^1.4.12",
+    "@types/pdfkit": "^0.13.4",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",

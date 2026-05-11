@@ -9,11 +9,13 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "wouter";
 import { useAuth } from "@workspace/replit-auth-web";
-import { ArrowLeft, Download, Loader2, MapPin } from "lucide-react";
+import { ArrowLeft, Download, FileText, Loader2, MapPin } from "lucide-react";
 import type { TisReport, TisAffectedIntersection } from "@workspace/tis-api-client-react";
 import { ParkingReport, type ParkingReportT } from "../components/parking-report";
 import { WarrantsReport, type WarrantsReportT } from "../components/warrants-report";
 import { SightDistanceReport, type SightDistanceReportT } from "../components/sight-distance-report";
+import { QueuingReport, type QueuingReportT } from "../components/queuing-report";
+import { RoadDietReport, type RoadDietReportT } from "../components/road-diet-report";
 
 interface ProjectDetail {
   id: string;
@@ -133,14 +135,23 @@ export default function ProjectDetailPage() {
             <span>Generated {new Date(project.createdAt).toLocaleString()}</span>
           </div>
         </div>
-        <a
-          href={downloadHref}
-          download={downloadName}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border hover:bg-muted"
-          data-testid="link-download-json"
-        >
-          <Download className="w-4 h-4" /> Download JSON
-        </a>
+        <div className="flex items-center gap-2 flex-wrap">
+          <a
+            href={`/tis-api/projects/${encodeURIComponent(project.id)}/pdf`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700"
+            data-testid="link-download-pdf"
+          >
+            <FileText className="w-4 h-4" /> Download PDF
+          </a>
+          <a
+            href={downloadHref}
+            download={downloadName}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border hover:bg-muted"
+            data-testid="link-download-json"
+          >
+            <Download className="w-4 h-4" /> JSON
+          </a>
+        </div>
       </div>
 
       <ResultRenderer project={project} />
@@ -161,6 +172,10 @@ function ResultRenderer({ project }: { project: ProjectDetail }) {
       return <WarrantsReport report={project.result as WarrantsReportT} />;
     case "sight_distance":
       return <SightDistanceReport report={project.result as SightDistanceReportT} />;
+    case "queuing":
+      return <QueuingReport report={project.result as QueuingReportT} />;
+    case "road_diet":
+      return <RoadDietReport report={project.result as RoadDietReportT} />;
     case "tis":
       return <TisDetailSummary result={project.result as TisReport} />;
     default:
@@ -180,6 +195,8 @@ function StudyTypeBadge({ type }: { type: string }) {
     parking: { label: "Parking", tint: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300" },
     warrants: { label: "Warrants", tint: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" },
     sight_distance: { label: "Sight", tint: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
+    queuing: { label: "Queuing", tint: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300" },
+    road_diet: { label: "Road Diet", tint: "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300" },
   };
   const m = map[type] ?? { label: type.toUpperCase(), tint: "bg-muted text-muted-foreground" };
   return (

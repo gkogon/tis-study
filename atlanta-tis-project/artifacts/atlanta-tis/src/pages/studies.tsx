@@ -62,23 +62,23 @@ const STUDIES: Study[] = [
   },
   {
     id: "queuing",
-    href: "#",
+    href: "/studies/queuing",
     title: "Queuing Analysis",
     blurb:
-      "95th-percentile queue length at signalized approaches; auxiliary lane length recommendation.",
+      "HCM Ch. 31 — 95th-percentile back-of-queue against the auxiliary-lane storage you have today.",
     icon: ChevronRight,
-    status: "coming-soon",
-    citation: "HCM Chapter 31",
+    status: "live",
+    citation: "HCM 6th Ed. · Ch. 31",
   },
   {
     id: "road-diet",
-    href: "#",
+    href: "/studies/road-diet",
     title: "Road-Diet Feasibility",
     blurb:
-      "Screen a 4-lane → 3-lane conversion candidate: capacity check, safety delta, bicycle LOS.",
+      "Screen a 4-to-3 or 5-to-3 lane conversion candidate against the FHWA 25,000 ADT threshold; safety + capacity + multimodal.",
     icon: ChevronRight,
-    status: "coming-soon",
-    citation: "FHWA Road Diet Informational Guide",
+    status: "live",
+    citation: "FHWA-SA-14-028",
   },
 ];
 
@@ -108,12 +108,13 @@ export default function StudiesPage() {
         </section>
 
         <section className="border rounded-xl p-6 bg-muted/30 space-y-2">
-          <h2 className="text-lg font-semibold">More study types coming</h2>
+          <h2 className="text-lg font-semibold">Six studies, one firm account</h2>
           <p className="text-sm text-muted-foreground">
-            Signal Warrants, Sight Distance, Queuing, and Road-Diet screening
-            are shipping next. Same firm account, same project history,
-            same pricing — adding a study type is an upgrade in value, not
-            a separate subscription.
+            Every study above is live. They share your firm account, the
+            same project history, and the same monthly study limit — adding
+            a study type is an upgrade in value per dollar, not a separate
+            subscription. PDF export and post-build verification are
+            shipping next.
           </p>
           <Link
             href="/for-firms"

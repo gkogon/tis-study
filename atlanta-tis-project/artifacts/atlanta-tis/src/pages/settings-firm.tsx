@@ -12,7 +12,7 @@ import { Link } from "wouter";
 import { useAuth } from "@workspace/replit-auth-web";
 import {
   ArrowLeft, Building2, Users, Mail, Copy, Trash2, Loader2,
-  CheckCircle2, AlertCircle, Image as ImageIcon,
+  CheckCircle2, AlertCircle, Image as ImageIcon, Upload,
 } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 
@@ -49,6 +49,7 @@ export default function SettingsFirmPage() {
   const [role, setRole] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [savingDetails, setSavingDetails] = useState(false);
   const [detailsName, setDetailsName] = useState("");
   const [detailsLogo, setDetailsLogo] = useState("");
@@ -82,6 +83,34 @@ export default function SettingsFirmPage() {
 
   const canEdit = role === "owner" || role === "admin";
   const isOwner = role === "owner";
+
+  async function uploadLogoFile(file: File) {
+    setError(null);
+    setInfo(null);
+    setUploadingLogo(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch("/tis-api/firms/logo", {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
+      setFirm(data.firm);
+      setDetailsLogo(data.firm?.logoUrl ?? "");
+      setInfo(
+        data.backend === "replit_object_storage"
+          ? "Logo uploaded to Replit Object Storage."
+          : "Logo stored locally (object storage not configured).",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploadingLogo(false);
+    }
+  }
 
   async function saveDetails(e: React.FormEvent) {
     e.preventDefault();
@@ -232,7 +261,28 @@ export default function SettingsFirmPage() {
               </p>
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Logo URL</label>
+              <label className="text-sm font-medium">Logo</label>
+              {detailsLogo && (
+                <div className="border rounded-md p-3 bg-muted/20 inline-flex items-center gap-3">
+                  <img src={detailsLogo} alt="Firm logo preview" className="h-12 w-auto max-w-[160px] object-contain" />
+                  <span className="text-xs text-muted-foreground truncate max-w-[200px]">{detailsLogo.startsWith("data:") ? "Stored locally (data URL)" : detailsLogo}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className={"inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border " + (canEdit ? "hover:bg-accent cursor-pointer" : "opacity-50 cursor-not-allowed")}>
+                  <Upload className="w-3.5 h-3.5" />
+                  {uploadingLogo ? "Uploading…" : "Upload logo"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                    disabled={!canEdit || uploadingLogo}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadLogoFile(f); e.currentTarget.value = ""; }}
+                    className="hidden"
+                    data-testid="input-firm-logo-file"
+                  />
+                </label>
+                <span className="text-xs text-muted-foreground">or paste a public URL:</span>
+              </div>
               <input
                 type="url"
                 value={detailsLogo}
@@ -240,11 +290,11 @@ export default function SettingsFirmPage() {
                 disabled={!canEdit}
                 placeholder="https://your-firm.com/logo.png"
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 disabled:opacity-60"
-                maxLength={1024}
+                maxLength={2048}
                 data-testid="input-firm-logo"
               />
               <p className="text-xs text-muted-foreground">
-                Public https URL for now. (Direct upload coming next.)
+                PNG, JPG, SVG, or WEBP — up to 2 MB. Appears on the cover page of every white-labeled PDF.
               </p>
             </div>
             <button

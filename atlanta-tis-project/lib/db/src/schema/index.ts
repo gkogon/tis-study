@@ -2,5 +2,6 @@ export * from "./auth";
 export * from "./firms";
 export * from "./tis-billing";
 export * from "./tis-projects";
+export * from "./monitoring";
 export * from "./intersection-calibration";
 export * from "./traffic-snapshots";

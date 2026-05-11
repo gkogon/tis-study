@@ -18,6 +18,9 @@ import StudiesPage from "@/pages/studies";
 import ParkingStudyPage from "@/pages/studies-parking";
 import WarrantsStudyPage from "@/pages/studies-warrants";
 import SightDistanceStudyPage from "@/pages/studies-sight";
+import QueuingStudyPage from "@/pages/studies-queuing";
+import RoadDietStudyPage from "@/pages/studies-road-diet";
+import MonitoringPage from "@/pages/monitoring";
 import { DevAuthWidget } from "@/components/dev-auth-widget";
 
 const queryClient = new QueryClient();
@@ -33,6 +36,9 @@ function Router() {
       <Route path="/studies/parking" component={ParkingStudyPage} />
       <Route path="/studies/warrants" component={WarrantsStudyPage} />
       <Route path="/studies/sight-distance" component={SightDistanceStudyPage} />
+      <Route path="/studies/queuing" component={QueuingStudyPage} />
+      <Route path="/studies/road-diet" component={RoadDietStudyPage} />
+      <Route path="/monitoring" component={MonitoringPage} />
       <Route path="/tis" component={TisPage} />
       <Route path="/projects" component={ProjectsPage} />
       <Route path="/projects/:id" component={ProjectDetailPage} />

@@ -12,6 +12,7 @@
  */
 import crypto from "node:crypto";
 import { Router, type IRouter } from "express";
+import multer from "multer";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   db,
@@ -28,9 +29,23 @@ import {
   TRIAL_SEAT_LIMIT,
   TRIAL_STUDY_LIMIT,
 } from "../lib/firms";
+import { sendInviteEmail } from "../lib/email";
+import { getPublicAppOrigin } from "../lib/stripe";
+import {
+  uploadFirmLogo,
+  LogoTooLargeError,
+  LogoInvalidTypeError,
+} from "../lib/logo-storage";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+
+// In-memory multer storage — handler reads the buffer and forwards to
+// object storage; we never touch disk in the API tier.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+});
 
 // ---------- helpers ----------
 
@@ -165,6 +180,53 @@ router.patch("/firms", async (req, res): Promise<void> => {
     .returning();
   res.json({ firm: updated });
 });
+
+router.post(
+  "/firms/logo",
+  upload.single("file"),
+  async (req, res): Promise<void> => {
+    if (!req.isAuthenticated()) {
+      res.status(401).json({ error: "Sign in to upload a logo." });
+      return;
+    }
+    const user = req.user!;
+    const { firm, role } = await getOrCreateFirmForUser(user.id, {
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    });
+    if (!requireRole(role, ["owner", "admin"])) {
+      res.status(403).json({ error: "Only owners or admins can change firm branding." });
+      return;
+    }
+    const file = (req as unknown as { file?: Express.Multer.File }).file;
+    if (!file) {
+      res.status(400).json({ error: "No file uploaded. Use multipart/form-data with field 'file'." });
+      return;
+    }
+    try {
+      const result = await uploadFirmLogo({
+        firmId: firm.id,
+        buffer: file.buffer,
+        mimeType: file.mimetype,
+        originalName: file.originalname,
+      });
+      const [updated] = await db
+        .update(firmsTable)
+        .set({ logoUrl: result.url })
+        .where(eq(firmsTable.id, firm.id))
+        .returning();
+      res.json({ firm: updated, backend: result.backend });
+    } catch (err) {
+      if (err instanceof LogoTooLargeError || err instanceof LogoInvalidTypeError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      req.log.error({ err }, "firms.logo_upload_failed");
+      res.status(500).json({ error: "Logo upload failed." });
+    }
+  },
+);
 
 router.get("/firms/members", async (req, res): Promise<void> => {
   if (!req.isAuthenticated()) {
@@ -319,7 +381,22 @@ router.post("/firms/invites", async (req, res): Promise<void> => {
       expiresAt,
     })
     .returning();
-  res.status(201).json({ invite });
+
+  // Best-effort email delivery. If Resend isn't configured the admin can
+  // still copy the link from the firm-settings UI.
+  const origin = getPublicAppOrigin();
+  const acceptUrl = `${origin}/invites/accept?token=${encodeURIComponent(token)}`;
+  const inviterName =
+    [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email || null;
+  const { delivered } = await sendInviteEmail({
+    to: email,
+    firmName: firm.name,
+    inviterName,
+    acceptUrl,
+    expiresAt,
+  });
+
+  res.status(201).json({ invite, emailDelivered: delivered });
 });
 
 router.post("/firms/invites/accept", async (req, res): Promise<void> => {
