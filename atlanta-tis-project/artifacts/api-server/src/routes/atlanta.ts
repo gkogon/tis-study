@@ -50,6 +50,7 @@ import { getLiveTrafficFlow, getLiveHotspotFixes, getPredictedTrafficFlow } from
 import { getArchiveSummary, getArchiveSeries } from "../lib/atlanta-traffic-archive";
 import { getDmsSpeedReadings } from "../lib/atlanta-dms";
 import { getGdotAlerts } from "../lib/atlanta-alerts";
+import { getGdotCameras } from "../lib/atlanta-cameras";
 import {
   recordSnapshot,
   getAccuracySummary,
@@ -216,6 +217,21 @@ router.get("/atlanta/alerts", async (req, res): Promise<void> => {
     req.log.error({ err: e }, "gdot-alerts fetch failed");
     res.status(502).json({
       error: "Failed to fetch alerts from GDOT 511 API",
+      detail: e instanceof Error ? e.message : String(e),
+    });
+  }
+});
+
+// ---------- Live Atlanta-metro cameras (GDOT 511 v2 API) ----------
+
+router.get("/atlanta/cameras", async (req, res): Promise<void> => {
+  try {
+    const bundle = await getGdotCameras();
+    res.json(bundle);
+  } catch (e) {
+    req.log.error({ err: e }, "gdot-cameras fetch failed");
+    res.status(502).json({
+      error: "Failed to fetch cameras from GDOT 511 API",
       detail: e instanceof Error ? e.message : String(e),
     });
   }

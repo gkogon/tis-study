@@ -14,6 +14,11 @@ import SignupPage from "@/pages/signup";
 import SettingsBillingPage from "@/pages/settings-billing";
 import SettingsFirmPage from "@/pages/settings-firm";
 import InviteAcceptPage from "@/pages/invite-accept";
+import StudiesPage from "@/pages/studies";
+import ParkingStudyPage from "@/pages/studies-parking";
+import WarrantsStudyPage from "@/pages/studies-warrants";
+import SightDistanceStudyPage from "@/pages/studies-sight";
+import { DevAuthWidget } from "@/components/dev-auth-widget";
 
 const queryClient = new QueryClient();
 
@@ -24,6 +29,10 @@ function Router() {
       <Route path="/for-firms" component={ForFirmsPage} />
       <Route path="/pricing" component={PricingPage} />
       <Route path="/signup" component={SignupPage} />
+      <Route path="/studies" component={StudiesPage} />
+      <Route path="/studies/parking" component={ParkingStudyPage} />
+      <Route path="/studies/warrants" component={WarrantsStudyPage} />
+      <Route path="/studies/sight-distance" component={SightDistanceStudyPage} />
       <Route path="/tis" component={TisPage} />
       <Route path="/projects" component={ProjectsPage} />
       <Route path="/projects/:id" component={ProjectDetailPage} />
@@ -42,6 +51,7 @@ function App() {
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
+          <DevAuthWidget />
         </WouterRouter>
         <Toaster />
       </TooltipProvider>

@@ -1,18 +1,23 @@
 /**
- * Read-only TIS project detail. Loads the stored TisReport JSON for a saved
- * project and renders an at-a-glance summary plus a list of affected
- * intersections. Re-rendering the full TisPage report layout would mean
- * untangling that 1.4k-line page; for now this is a faithful summary the
- * engineer can use to verify a past run, plus a JSON download for archival.
+ * Read-only project detail. Dispatches the rendering by `studyType`:
+ *   - tis      → original TIS summary (affected-intersection table + LOS stats)
+ *   - parking  → <ParkingReport> from the generator
+ *   - warrants → <WarrantsReport> from the generator
+ *
+ * Falls back to a JSON dump for unknown types so we never lose data.
  */
 import { useEffect, useState } from "react";
 import { Link, useParams } from "wouter";
 import { useAuth } from "@workspace/replit-auth-web";
 import { ArrowLeft, Download, Loader2, MapPin } from "lucide-react";
 import type { TisReport, TisAffectedIntersection } from "@workspace/tis-api-client-react";
+import { ParkingReport, type ParkingReportT } from "../components/parking-report";
+import { WarrantsReport, type WarrantsReportT } from "../components/warrants-report";
+import { SightDistanceReport, type SightDistanceReportT } from "../components/sight-distance-report";
 
 interface ProjectDetail {
   id: string;
+  studyType: string;
   projectName: string;
   landUseCode: string;
   siteLat: string | null;
@@ -20,7 +25,7 @@ interface ProjectDetail {
   version: number;
   createdAt: string;
   request: unknown;
-  result: TisReport;
+  result: unknown;
 }
 
 const LOS_COLOR: Record<string, string> = {
@@ -99,16 +104,10 @@ export default function ProjectDetailPage() {
     );
   }
 
-  const r = project.result;
   const downloadHref =
     "data:application/json;charset=utf-8," +
     encodeURIComponent(JSON.stringify(project, null, 2));
   const downloadName = `${project.projectName.replace(/[^a-z0-9-_]+/gi, "_")}.json`;
-
-  const losDrop = r.intersectionsWithLosDrop ?? 0;
-  const losEf = r.intersectionsAtLosEf ?? 0;
-  const worstDelta = r.worstDelayDeltaSec ?? 0;
-  const studied = r.intersectionsStudied ?? r.affectedIntersections.length;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 space-y-6">
@@ -117,9 +116,14 @@ export default function ProjectDetailPage() {
           <Link href="/projects" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-2">
             <ArrowLeft className="w-3.5 h-3.5" /> Back to projects
           </Link>
-          <h1 className="text-2xl font-semibold">{project.projectName}</h1>
-          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
-            <span>ITE {project.landUseCode}</span>
+          <div className="flex items-center gap-2 mb-1">
+            <StudyTypeBadge type={project.studyType} />
+            <h1 className="text-2xl font-semibold">{project.projectName}</h1>
+          </div>
+          <div className="text-xs text-muted-foreground flex items-center gap-3 flex-wrap">
+            <span>
+              {project.studyType === "warrants" ? "Lane config" : "ITE"} {project.landUseCode}
+            </span>
             {project.siteLat && project.siteLon && (
               <span className="inline-flex items-center gap-1">
                 <MapPin className="w-3 h-3" />
@@ -139,6 +143,59 @@ export default function ProjectDetailPage() {
         </a>
       </div>
 
+      <ResultRenderer project={project} />
+
+      <div className="text-xs text-muted-foreground">
+        This is a read-only summary of the stored report. To re-print or modify
+        inputs, open the generator and re-run with the same parameters.
+      </div>
+    </div>
+  );
+}
+
+function ResultRenderer({ project }: { project: ProjectDetail }) {
+  switch (project.studyType) {
+    case "parking":
+      return <ParkingReport report={project.result as ParkingReportT} />;
+    case "warrants":
+      return <WarrantsReport report={project.result as WarrantsReportT} />;
+    case "sight_distance":
+      return <SightDistanceReport report={project.result as SightDistanceReportT} />;
+    case "tis":
+      return <TisDetailSummary result={project.result as TisReport} />;
+    default:
+      // Unknown study type — dump the raw JSON so the engineer doesn't
+      // lose information even if the UI doesn't know how to render.
+      return (
+        <pre className="text-xs bg-muted/20 border rounded-lg p-4 overflow-x-auto">
+          {JSON.stringify(project.result, null, 2)}
+        </pre>
+      );
+  }
+}
+
+function StudyTypeBadge({ type }: { type: string }) {
+  const map: Record<string, { label: string; tint: string }> = {
+    tis: { label: "TIS", tint: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
+    parking: { label: "Parking", tint: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300" },
+    warrants: { label: "Warrants", tint: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" },
+    sight_distance: { label: "Sight", tint: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
+  };
+  const m = map[type] ?? { label: type.toUpperCase(), tint: "bg-muted text-muted-foreground" };
+  return (
+    <span className={"text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full " + m.tint}>
+      {m.label}
+    </span>
+  );
+}
+
+function TisDetailSummary({ result: r }: { result: TisReport }) {
+  const losDrop = r.intersectionsWithLosDrop ?? 0;
+  const losEf = r.intersectionsAtLosEf ?? 0;
+  const worstDelta = r.worstDelayDeltaSec ?? 0;
+  const studied = r.intersectionsStudied ?? r.affectedIntersections.length;
+  return (
+    <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="Intersections studied" value={studied.toString()} />
         <Stat label="LOS drops" value={losDrop.toString()} tone={losDrop > 0 ? "warn" : "ok"} />
@@ -211,12 +268,7 @@ export default function ProjectDetailPage() {
           </table>
         )}
       </div>
-
-      <div className="text-xs text-muted-foreground">
-        This is a read-only summary of the stored report. To re-print or modify
-        inputs, open the generator and re-run with the same parameters.
-      </div>
-    </div>
+    </>
   );
 }
 

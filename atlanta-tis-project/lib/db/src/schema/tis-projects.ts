@@ -37,6 +37,12 @@ export const tisProjectsTable = pgTable(
     firmId: uuid("firm_id").references(() => firmsTable.id, {
       onDelete: "cascade",
     }),
+    // Which engine produced this row. 'tis' for the original Traffic
+    // Impact Study; 'parking' for ITE-Parking-Generation demand studies;
+    // future: 'warrants', 'sight_distance', 'queuing', etc. The table
+    // name stays `tis_projects` for now to avoid a destructive rename;
+    // it's really a generic study-history table.
+    studyType: varchar("study_type", { length: 32 }).notNull().default("tis"),
     projectName: text("project_name").notNull(),
     landUseCode: varchar("land_use_code", { length: 16 }).notNull(),
     landUseSize: text("land_use_size"), // serialized number; nullable so we don't lose a row to bad data

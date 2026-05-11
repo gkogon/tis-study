@@ -1,17 +1,21 @@
 /**
- * Per-firm project history page. Lists every TIS the signed-in user has
- * generated (most recent first); clicking opens the report in a new tab.
+ * Per-firm project history. Lists every study (any type) the firm has
+ * generated, most recent first. Filter chips narrow by study type;
+ * each row links to the study-type-aware detail view.
  *
- * This is the switching-cost moat: once a firm has accumulated 50+ projects
- * here, leaving the platform means losing the audit trail.
+ * Switching-cost moat: once a firm has 50+ studies under one account,
+ * leaving the platform means losing the audit trail.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@workspace/replit-auth-web";
-import { FileText, MapPin, ArrowLeft, Loader2 } from "lucide-react";
+import {
+  FileText, MapPin, ArrowLeft, Loader2, MapIcon, ParkingCircle, ChevronRight, Eye,
+} from "lucide-react";
 
 interface ProjectListItem {
   id: string;
+  studyType: string;
   projectName: string;
   landUseCode: string;
   siteLat: string | null;
@@ -20,10 +24,20 @@ interface ProjectListItem {
   createdAt: string;
 }
 
+type Filter = "all" | "tis" | "parking" | "warrants" | "sight_distance";
+
+const STUDY_META: Record<string, { label: string; icon: typeof FileText; tint: string }> = {
+  tis: { label: "TIS", icon: MapIcon, tint: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
+  parking: { label: "Parking", icon: ParkingCircle, tint: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300" },
+  warrants: { label: "Warrants", icon: ChevronRight, tint: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  sight_distance: { label: "Sight", icon: Eye, tint: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
+};
+
 export default function ProjectsPage() {
   const { isAuthenticated, isLoading: authLoading, login } = useAuth();
   const [items, setItems] = useState<ProjectListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -47,6 +61,22 @@ export default function ProjectsPage() {
     };
   }, [isAuthenticated]);
 
+  const counts = useMemo(() => {
+    const c = { all: 0, tis: 0, parking: 0, warrants: 0, sight_distance: 0 };
+    for (const p of items ?? []) {
+      c.all++;
+      const t = (p.studyType ?? "tis") as Filter;
+      if (t in c) (c as Record<Filter, number>)[t]++;
+    }
+    return c;
+  }, [items]);
+
+  const filtered = useMemo(() => {
+    if (!items) return null;
+    if (filter === "all") return items;
+    return items.filter((p) => (p.studyType ?? "tis") === filter);
+  }, [items, filter]);
+
   if (authLoading) return null;
 
   if (!isAuthenticated) {
@@ -54,8 +84,8 @@ export default function ProjectsPage() {
       <div className="max-w-3xl mx-auto px-4 py-16 text-center space-y-5">
         <h1 className="text-3xl font-semibold">Project history</h1>
         <p className="text-muted-foreground">
-          Sign in to see every TIS you've generated. Past reports stay tied
-          to your account so you can reopen them at any time.
+          Sign in to see every study your firm has generated. Past reports stay
+          tied to your firm so any engineer can reopen them at any time.
         </p>
         <button
           type="button"
@@ -74,18 +104,36 @@ export default function ProjectsPage() {
       <div className="flex items-center justify-between">
         <div>
           <Link
-            href="/tis"
+            href="/studies"
             className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-2"
-            data-testid="link-back-to-tis"
+            data-testid="link-back-to-studies"
           >
-            <ArrowLeft className="w-3.5 h-3.5" /> Back to generator
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to studies
           </Link>
           <h1 className="text-3xl font-semibold">Project history</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Every TIS your account has generated. Reopen to view, re-print, or
+            Every study your firm has generated. Reopen to view, re-print, or
             duplicate inputs into a new study.
           </p>
         </div>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <Chip active={filter === "all"} onClick={() => setFilter("all")}>
+          All <span className="text-muted-foreground">({counts.all})</span>
+        </Chip>
+        <Chip active={filter === "tis"} onClick={() => setFilter("tis")}>
+          TIS <span className="text-muted-foreground">({counts.tis})</span>
+        </Chip>
+        <Chip active={filter === "parking"} onClick={() => setFilter("parking")}>
+          Parking <span className="text-muted-foreground">({counts.parking})</span>
+        </Chip>
+        <Chip active={filter === "warrants"} onClick={() => setFilter("warrants")}>
+          Warrants <span className="text-muted-foreground">({counts.warrants})</span>
+        </Chip>
+        <Chip active={filter === "sight_distance"} onClick={() => setFilter("sight_distance")}>
+          Sight <span className="text-muted-foreground">({counts.sight_distance})</span>
+        </Chip>
       </div>
 
       {error && (
@@ -101,51 +149,83 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {items && items.length === 0 && (
+      {filtered && filtered.length === 0 && (
         <div className="rounded-lg border border-dashed border-border p-12 text-center space-y-3">
           <FileText className="w-8 h-8 text-muted-foreground mx-auto" />
-          <div className="text-base font-medium">No projects yet</div>
+          <div className="text-base font-medium">
+            {filter === "all" ? "No projects yet" : `No ${filter} studies yet`}
+          </div>
           <div className="text-sm text-muted-foreground">
-            Generate your first TIS and it will be saved here automatically.
+            {filter === "all"
+              ? "Generate your first study and it will be saved here automatically."
+              : "Run one and it'll show up here."}
           </div>
           <Link
-            href="/tis"
+            href="/studies"
             className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700"
             data-testid="link-generate-first"
           >
-            Open generator
+            Pick a study to run
           </Link>
         </div>
       )}
 
-      {items && items.length > 0 && (
+      {filtered && filtered.length > 0 && (
         <div className="rounded-lg border border-border divide-y divide-border">
-          {items.map((p) => (
-            <Link
-              key={p.id}
-              href={`/projects/${p.id}`}
-              className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-muted/40"
-              data-testid={`row-project-${p.id}`}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="font-medium truncate">{p.projectName}</div>
-                <div className="text-xs text-muted-foreground flex items-center gap-3 mt-0.5">
-                  <span>ITE {p.landUseCode}</span>
-                  {p.siteLat && p.siteLon && (
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="w-3 h-3" />
-                      {Number(p.siteLat).toFixed(4)}, {Number(p.siteLon).toFixed(4)}
-                    </span>
-                  )}
+          {filtered.map((p) => {
+            const meta = STUDY_META[p.studyType ?? "tis"] ?? STUDY_META.tis;
+            const Icon = meta.icon;
+            return (
+              <Link
+                key={p.id}
+                href={`/projects/${p.id}`}
+                className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-muted/40"
+                data-testid={`row-project-${p.id}`}
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <span className={"shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider " + meta.tint}>
+                    <Icon className="w-3 h-3" /> {meta.label}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{p.projectName}</div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-3 mt-0.5">
+                      <span>{p.studyType === "warrants" ? `Lane config ${p.landUseCode}` : `ITE ${p.landUseCode}`}</span>
+                      {p.siteLat && p.siteLon && (
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />
+                          {Number(p.siteLat).toFixed(4)}, {Number(p.siteLon).toFixed(4)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="text-xs text-muted-foreground shrink-0">
-                {new Date(p.createdAt).toLocaleString()}
-              </div>
-            </Link>
-          ))}
+                <div className="text-xs text-muted-foreground shrink-0">
+                  {new Date(p.createdAt).toLocaleString()}
+                </div>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
+  );
+}
+
+function Chip({
+  active, onClick, children,
+}: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        "text-xs font-semibold px-3 py-1.5 rounded-full transition-colors " +
+        (active
+          ? "bg-blue-600 text-white"
+          : "border border-border hover:bg-accent")
+      }
+    >
+      {children}
+    </button>
   );
 }

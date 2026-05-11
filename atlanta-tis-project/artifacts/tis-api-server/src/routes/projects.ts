@@ -50,6 +50,7 @@ router.get("/projects/:id", async (req, res): Promise<void> => {
     }
     res.json({
       id: project.id,
+      studyType: project.studyType,
       projectName: project.projectName,
       landUseCode: project.landUseCode,
       siteLat: project.siteLat,

@@ -1,4 +1,6 @@
 import * as oidc from "openid-client";
+import crypto from "node:crypto";
+import { eq } from "drizzle-orm";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, usersTable } from "@workspace/db";
 import {
@@ -12,6 +14,14 @@ import {
 } from "../lib/auth";
 
 const OIDC_COOKIE_TTL = 10 * 60 * 1000;
+
+// Local-dev sign-in bypass — only available when `DEV_AUTH_ENABLED=true`.
+// Production deployments leave this unset; Replit OIDC remains the only
+// path to authentication. The flag is checked at request time so a flag
+// flip doesn't require a redeploy.
+function devAuthEnabled(): boolean {
+  return process.env.DEV_AUTH_ENABLED === "true";
+}
 
 const router: IRouter = Router();
 
@@ -70,6 +80,85 @@ async function upsertUser(claims: Record<string, unknown>) {
 
 router.get("/auth/user", (req: Request, res: Response) => {
   res.json({ user: req.isAuthenticated() ? req.user : null });
+});
+
+// Lets the frontend feature-flag a Dev Sign-In widget in the UI without
+// shipping it to production.
+router.get("/auth/config", (_req: Request, res: Response) => {
+  res.json({ devAuthEnabled: devAuthEnabled() });
+});
+
+router.post("/dev-login", async (req: Request, res: Response): Promise<void> => {
+  if (!devAuthEnabled()) {
+    res.status(404).json({ error: "Not available." });
+    return;
+  }
+  const body = (req.body ?? {}) as {
+    email?: unknown;
+    firstName?: unknown;
+    lastName?: unknown;
+  };
+  const email = String(body.email ?? "engineer@firm.test").trim().toLowerCase();
+  const firstName = body.firstName ? String(body.firstName).trim() : "Test";
+  const lastName = body.lastName ? String(body.lastName).trim() : "Engineer";
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    res.status(400).json({ error: "Valid email required." });
+    return;
+  }
+
+  // Stable id derived from email so re-running dev-login keeps the same
+  // user (and their firm, their projects, etc.). Hash, not raw, so the
+  // id stays opaque if it ever leaks to logs.
+  const idSeed = `dev:${email}`;
+  const userId = "dev-" + crypto.createHash("sha256").update(idSeed).digest("hex").slice(0, 24);
+
+  const [existing] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+
+  let user;
+  if (existing) {
+    [user] = await db
+      .update(usersTable)
+      .set({ email, firstName, lastName, updatedAt: new Date() })
+      .where(eq(usersTable.id, userId))
+      .returning();
+  } else {
+    [user] = await db
+      .insert(usersTable)
+      .values({ id: userId, email, firstName, lastName })
+      .returning();
+  }
+  if (!user) {
+    res.status(500).json({ error: "Failed to upsert dev user." });
+    return;
+  }
+
+  const sessionData: SessionData = {
+    user: {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      profileImageUrl: user.profileImageUrl,
+    },
+    // Placeholder tokens — never used because the auth middleware only
+    // calls the OIDC refresh path when `expires_at` is in the past.
+    access_token: "dev-noop",
+    refresh_token: undefined,
+    expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30,
+  };
+  const sid = await createSession(sessionData);
+  setSessionCookie(res, sid);
+  res.json({ user: sessionData.user });
+});
+
+router.post("/dev-logout", async (req: Request, res: Response): Promise<void> => {
+  if (!devAuthEnabled()) {
+    res.status(404).json({ error: "Not available." });
+    return;
+  }
+  const sid = getSessionId(req);
+  await clearSession(res, sid);
+  res.json({ ok: true });
 });
 
 router.get("/login", async (req: Request, res: Response) => {

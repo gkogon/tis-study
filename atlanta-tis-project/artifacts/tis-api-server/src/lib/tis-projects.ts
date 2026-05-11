@@ -12,14 +12,17 @@ import { and, desc, eq } from "drizzle-orm";
 import { db, tisProjectsTable, type TisProject } from "@workspace/db";
 import { logger } from "./logger";
 
+export type StudyType = "tis" | "parking" | "warrants" | "sight_distance";
+
 export type SaveProjectArgs = {
   userId: string;
   firmId: string;
+  studyType: StudyType;
   projectName: string;
   landUseCode: string;
   landUseSize: number;
-  siteLat: number;
-  siteLon: number;
+  siteLat: number | null;
+  siteLon: number | null;
   request: unknown;
   result: unknown;
 };
@@ -31,11 +34,12 @@ export async function saveProject(args: SaveProjectArgs): Promise<TisProject | n
       .values({
         userId: args.userId,
         firmId: args.firmId,
+        studyType: args.studyType,
         projectName: args.projectName.slice(0, 200),
         landUseCode: args.landUseCode,
         landUseSize: String(args.landUseSize),
-        siteLat: String(args.siteLat),
-        siteLon: String(args.siteLon),
+        siteLat: args.siteLat !== null ? String(args.siteLat) : null,
+        siteLon: args.siteLon !== null ? String(args.siteLon) : null,
         requestPayload: args.request as object,
         resultPayload: args.result as object,
         version: 1,
@@ -45,7 +49,7 @@ export async function saveProject(args: SaveProjectArgs): Promise<TisProject | n
   } catch (err) {
     // Persistence failure must not break the user's response.
     logger.error(
-      { err, userId: args.userId, firmId: args.firmId },
+      { err, userId: args.userId, firmId: args.firmId, studyType: args.studyType },
       "tis-projects.save_failed",
     );
     return null;
@@ -54,6 +58,7 @@ export async function saveProject(args: SaveProjectArgs): Promise<TisProject | n
 
 export type ProjectListItem = {
   id: string;
+  studyType: string;
   projectName: string;
   landUseCode: string;
   siteLat: string | null;
@@ -66,6 +71,7 @@ export async function listProjects(firmId: string): Promise<ProjectListItem[]> {
   const rows = await db
     .select({
       id: tisProjectsTable.id,
+      studyType: tisProjectsTable.studyType,
       projectName: tisProjectsTable.projectName,
       landUseCode: tisProjectsTable.landUseCode,
       siteLat: tisProjectsTable.siteLat,
@@ -80,6 +86,7 @@ export async function listProjects(firmId: string): Promise<ProjectListItem[]> {
 
   return rows.map((r) => ({
     id: r.id,
+    studyType: r.studyType,
     projectName: r.projectName,
     landUseCode: r.landUseCode,
     siteLat: r.siteLat,

@@ -29,7 +29,8 @@ const TIERS: Tier[] = [
     cta: { label: "Start free trial", href: "/signup?plan=starter" },
     features: [
       "3 seats",
-      "10 studies / month",
+      "10 studies / month — any type",
+      "Traffic Impact + Parking Demand studies",
       "White-labeled PDFs",
       "Full HCM / ITE / MUTCD citations",
       "Project history & re-print",
@@ -39,14 +40,15 @@ const TIERS: Tier[] = [
   {
     id: "growth",
     name: "Growth",
-    blurb: "The default for traffic engineering firms shipping TIS every week.",
+    blurb: "The default for traffic engineering firms shipping studies every week.",
     priceLabel: "$1,299",
     cadence: "/month",
     cta: { label: "Start free trial", href: "/signup?plan=growth" },
     highlight: true,
     features: [
       "10 seats",
-      "30 studies / month",
+      "30 studies / month — any type",
+      "Traffic Impact + Parking + Signal Warrants (soon)",
       "Everything in Starter",
       "Firm-wide project library",
       "Member roles & invites",

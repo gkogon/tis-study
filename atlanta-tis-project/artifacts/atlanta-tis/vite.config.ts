@@ -66,6 +66,23 @@ export default defineConfig({
     fs: {
       strict: true,
     },
+    // Local-dev proxy: forward /tis-api/* to the local API server, and
+    // /api/* (legacy "analyzer" server: live GDOT incidents, cameras,
+    // alerts, intersection inventory) to the analyzer on a sibling port.
+    // In production both services are reverse-proxied at the same
+    // origin so these stanzas are ignored.
+    proxy: {
+      "/tis-api": {
+        target: process.env.VITE_API_PROXY ?? "http://localhost:8080",
+        changeOrigin: true,
+        secure: false,
+      },
+      "/api": {
+        target: process.env.VITE_ANALYZER_PROXY ?? "http://localhost:8081",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   preview: {
     port,

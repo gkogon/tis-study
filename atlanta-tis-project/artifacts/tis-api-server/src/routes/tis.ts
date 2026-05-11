@@ -75,6 +75,7 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
     saveProject({
       userId: user.id,
       firmId: firm.id,
+      studyType: "tis",
       projectName,
       landUseCode: parsed.data.landUseCode,
       landUseSize: parsed.data.size,

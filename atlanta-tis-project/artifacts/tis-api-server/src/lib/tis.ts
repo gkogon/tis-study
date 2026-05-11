@@ -16,44 +16,12 @@
 
 import { logger } from "./logger";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
+// Canonical land-use registry (ITE 11th Ed.) lives in one place so the
+// Parking engine and TIS engine stay in sync. Re-exported below for any
+// downstream callers that imported `LAND_USES` from this module.
+import { LAND_USES, type LandUse } from "./land-uses";
 
-// ---------- ITE Trip Generation table ----------
-
-export type LandUse = {
-  code: string;
-  name: string;
-  unit: string;
-  unitShort: string;
-  dailyRate: number;
-  amRate: number;
-  pmRate: number;
-  directionalSplitPm: { in: number; out: number };
-  amDirectionalIn: number;
-  // Saturday-midday rate as a fraction of the PM peak rate (industry rules of thumb;
-  // retail/restaurant near 1.0+, office/industrial near 0.1).
-  satMultiplier: number;
-  // Default pass-by % at the PM peak (ITE Pass-By Trip Generation Manual, 3rd Ed.).
-  passByPctPm: number;
-  // Default internal-capture % at the PM peak (mixed-use; mostly 0 for single-use).
-  internalCapturePctPm: number;
-};
-
-export const LAND_USES: LandUse[] = [
-  { code: "210", name: "Single-Family Detached Housing", unit: "Dwelling Units", unitShort: "DU", dailyRate: 9.43, amRate: 0.70, pmRate: 0.94, directionalSplitPm: { in: 0.63, out: 0.37 }, amDirectionalIn: 0.25, satMultiplier: 0.70, passByPctPm: 0, internalCapturePctPm: 0 },
-  { code: "220", name: "Multifamily Housing (Low-Rise)", unit: "Dwelling Units", unitShort: "DU", dailyRate: 6.74, amRate: 0.40, pmRate: 0.51, directionalSplitPm: { in: 0.61, out: 0.39 }, amDirectionalIn: 0.24, satMultiplier: 0.65, passByPctPm: 0, internalCapturePctPm: 0 },
-  { code: "221", name: "Multifamily Housing (Mid-Rise)", unit: "Dwelling Units", unitShort: "DU", dailyRate: 4.54, amRate: 0.30, pmRate: 0.36, directionalSplitPm: { in: 0.61, out: 0.39 }, amDirectionalIn: 0.24, satMultiplier: 0.65, passByPctPm: 0, internalCapturePctPm: 0 },
-  { code: "310", name: "Hotel", unit: "Rooms", unitShort: "rooms", dailyRate: 7.99, amRate: 0.47, pmRate: 0.60, directionalSplitPm: { in: 0.51, out: 0.49 }, amDirectionalIn: 0.59, satMultiplier: 0.95, passByPctPm: 0, internalCapturePctPm: 0 },
-  { code: "710", name: "General Office", unit: "1,000 sqft GFA", unitShort: "ksf", dailyRate: 10.84, amRate: 1.43, pmRate: 1.44, directionalSplitPm: { in: 0.16, out: 0.84 }, amDirectionalIn: 0.86, satMultiplier: 0.10, passByPctPm: 0, internalCapturePctPm: 0 },
-  { code: "720", name: "Medical / Dental Office", unit: "1,000 sqft GFA", unitShort: "ksf", dailyRate: 36.00, amRate: 2.78, pmRate: 3.46, directionalSplitPm: { in: 0.28, out: 0.72 }, amDirectionalIn: 0.79, satMultiplier: 0.20, passByPctPm: 0, internalCapturePctPm: 0 },
-  { code: "820", name: "Shopping Center (≤100 ksf)", unit: "1,000 sqft GLA", unitShort: "ksf", dailyRate: 37.75, amRate: 0.94, pmRate: 3.40, directionalSplitPm: { in: 0.48, out: 0.52 }, amDirectionalIn: 0.61, satMultiplier: 1.10, passByPctPm: 25, internalCapturePctPm: 0 },
-  { code: "912", name: "Drive-In Bank", unit: "1,000 sqft GFA", unitShort: "ksf", dailyRate: 100.35, amRate: 12.13, pmRate: 20.45, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.55, satMultiplier: 0.40, passByPctPm: 35, internalCapturePctPm: 0 },
-  { code: "932", name: "High-Turnover (Sit-Down) Restaurant", unit: "1,000 sqft GFA", unitShort: "ksf", dailyRate: 107.20, amRate: 9.94, pmRate: 9.05, directionalSplitPm: { in: 0.61, out: 0.39 }, amDirectionalIn: 0.55, satMultiplier: 1.15, passByPctPm: 35, internalCapturePctPm: 0 },
-  { code: "934", name: "Fast-Food Restaurant w/ Drive-Through", unit: "1,000 sqft GFA", unitShort: "ksf", dailyRate: 467.48, amRate: 44.61, pmRate: 33.03, directionalSplitPm: { in: 0.51, out: 0.49 }, amDirectionalIn: 0.51, satMultiplier: 0.85, passByPctPm: 40, internalCapturePctPm: 0 },
-  { code: "945", name: "Gas Station / Convenience Store", unit: "Vehicle Fueling Positions", unitShort: "VFP", dailyRate: 205.36, amRate: 13.99, pmRate: 14.03, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.51, satMultiplier: 1.05, passByPctPm: 50, internalCapturePctPm: 0 },
-  { code: "150", name: "Warehousing", unit: "1,000 sqft GFA", unitShort: "ksf", dailyRate: 1.71, amRate: 0.17, pmRate: 0.18, directionalSplitPm: { in: 0.27, out: 0.73 }, amDirectionalIn: 0.78, satMultiplier: 0.15, passByPctPm: 0, internalCapturePctPm: 0 },
-  { code: "110", name: "Light Industrial", unit: "1,000 sqft GFA", unitShort: "ksf", dailyRate: 4.96, amRate: 0.70, pmRate: 0.65, directionalSplitPm: { in: 0.21, out: 0.79 }, amDirectionalIn: 0.81, satMultiplier: 0.15, passByPctPm: 0, internalCapturePctPm: 0 },
-  { code: "520", name: "Public Elementary School", unit: "Students", unitShort: "students", dailyRate: 2.27, amRate: 0.78, pmRate: 0.31, directionalSplitPm: { in: 0.45, out: 0.55 }, amDirectionalIn: 0.51, satMultiplier: 0.05, passByPctPm: 0, internalCapturePctPm: 0 },
-];
+export { LAND_USES, type LandUse };
 
 export function getLandUse(code: string): LandUse | undefined {
   return LAND_USES.find((l) => l.code === code);

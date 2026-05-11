@@ -8,11 +8,19 @@ function parseAllowedOrigins(): string[] {
     .map((s) => s.trim())
     .filter(Boolean)
     .flatMap((host) => [`https://${host}`, `http://${host}`]);
-  const local = ["http://localhost:80", "http://localhost:5000", "http://localhost:8090"];
+  // Common local-dev ports: 80 / 5000 / 5173 (Vite default) / 8090.
+  const local = [
+    "http://localhost:80",
+    "http://localhost:5000",
+    "http://localhost:5173",
+    "http://localhost:8090",
+  ];
   return [...new Set([...fromEnv, ...local])];
 }
 
 const ALLOWED_ORIGINS = parseAllowedOrigins();
+
+const IS_DEV = process.env.NODE_ENV !== "production";
 
 export const corsOptions: CorsOptions = {
   origin(origin, cb) {
@@ -20,6 +28,11 @@ export const corsOptions: CorsOptions = {
     // allowed. Browsers always send Origin for cross-origin XHR/fetch.
     if (!origin) return cb(null, true);
     if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    // In development, permit any localhost / 127.0.0.1 origin so engineers
+    // don't have to grow the allowlist for every port they spin up.
+    if (IS_DEV && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      return cb(null, true);
+    }
     cb(new Error(`CORS blocked: ${origin}`));
   },
   credentials: true,

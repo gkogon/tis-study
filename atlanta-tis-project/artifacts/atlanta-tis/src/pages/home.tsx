@@ -15,6 +15,7 @@ import {
   MapPin, BookOpen, Check,
 } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
+import { AtlantaLiveStatus } from "../components/atlanta-live-status";
 
 export default function HomePage() {
   return (
@@ -45,11 +46,11 @@ export default function HomePage() {
               <ArrowRight className="w-4 h-4" />
             </Link>
             <Link
-              href="/tis"
+              href="/studies"
               className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md border border-border hover:bg-accent"
-              data-testid="link-launch-tis"
+              data-testid="link-studies-hub"
             >
-              Try the live generator
+              Browse all studies
             </Link>
             <Link
               href="/pricing"
@@ -63,6 +64,8 @@ export default function HomePage() {
             14-day trial • No credit card • Cancel anytime
           </div>
         </section>
+
+        <AtlantaLiveStatus />
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Pillar icon={Clock} title="20–60 hours → 60 seconds">
