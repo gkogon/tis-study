@@ -38,6 +38,7 @@ export default function SignupPage() {
   const plan = useMemo(readPlanFromUrl, []);
 
   const [firmName, setFirmName] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [existingFirm, setExistingFirm] = useState<{ id: string; name: string } | null>(null);
@@ -87,6 +88,10 @@ export default function SignupPage() {
     const name = firmName.trim();
     if (!name) {
       setError("Firm name is required.");
+      return;
+    }
+    if (!acceptedTerms) {
+      setError("Please review and accept the Terms, Privacy Policy, and Engineering Disclaimer.");
       return;
     }
     setSubmitting(true);
@@ -156,6 +161,8 @@ export default function SignupPage() {
               user={user}
               firmName={firmName}
               setFirmName={setFirmName}
+              acceptedTerms={acceptedTerms}
+              setAcceptedTerms={setAcceptedTerms}
               onSubmit={handleCreateFirm}
               submitting={submitting}
               plan={plan}
@@ -208,11 +215,13 @@ function SignInStep({ onSignIn }: { onSignIn: () => void }) {
 }
 
 function CreateFirmStep({
-  user, firmName, setFirmName, onSubmit, submitting, plan,
+  user, firmName, setFirmName, acceptedTerms, setAcceptedTerms, onSubmit, submitting, plan,
 }: {
   user: { firstName: string | null; lastName: string | null; email: string | null } | null;
   firmName: string;
   setFirmName: (v: string) => void;
+  acceptedTerms: boolean;
+  setAcceptedTerms: (v: boolean) => void;
   onSubmit: (e: React.FormEvent) => void;
   submitting: boolean;
   plan: Plan;
@@ -246,9 +255,26 @@ function CreateFirmStep({
           This is what shows on your white-labeled PDFs. You can change it later.
         </p>
       </div>
+      <label className="flex items-start gap-2 text-sm cursor-pointer">
+        <input
+          type="checkbox"
+          checked={acceptedTerms}
+          onChange={(e) => setAcceptedTerms(e.target.checked)}
+          required
+          className="mt-1"
+          data-testid="check-accept-legal"
+        />
+        <span className="text-muted-foreground leading-relaxed">
+          I have read and agree to the{" "}
+          <Link href="/legal/terms" className="text-blue-600 hover:underline">Terms of Service</Link>,{" "}
+          <Link href="/legal/privacy" className="text-blue-600 hover:underline">Privacy Policy</Link>, and{" "}
+          <Link href="/legal/disclaimer" className="text-blue-600 hover:underline">Engineering Disclaimer</Link>.
+          I confirm I'm a credentialed engineering professional or am acting on behalf of a licensed engineering firm.
+        </span>
+      </label>
       <button
         type="submit"
-        disabled={submitting}
+        disabled={submitting || !acceptedTerms}
         className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
         data-testid="button-create-firm"
       >
