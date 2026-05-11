@@ -1,0 +1,641 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: TIS (Traffic Impact Study) API specification — engineering-firm product surface.
+servers:
+  - url: /tis-api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: tis
+    description: Traffic Impact Study generation
+  - name: leads
+    description: Demo / trial-request lead capture
+  - name: auth
+    description: Browser authentication endpoints
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /generate:
+    post:
+      operationId: generateTis
+      tags: [tis]
+      summary: Generate a screening-level Traffic Impact Study (TIS) for a candidate site
+      description: |
+        Given a candidate development site (lat/lon + ITE land-use code + size),
+        estimates trip generation using ITE Trip Generation Manual 11th-Edition
+        rates, finds affected signalized intersections within the study radius,
+        runs a Webster-style capacity analysis combining each signal's existing
+        peak-hour stress with the assigned new trips, and recommends mitigations
+        sized to the projected LOS impact.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TisRequest"
+      responses:
+        "200":
+          description: TIS report bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TisReport"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /land-uses:
+    get:
+      operationId: listTisLandUses
+      tags: [tis]
+      summary: ITE land-use catalog supported by the TIS generator
+      responses:
+        "200":
+          description: Available ITE land uses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TisLandUse"
+  /auth/user:
+    get:
+      operationId: getCurrentAuthUser
+      tags: [auth]
+      summary: Get the currently authenticated user
+      responses:
+        "200":
+          description: Auth state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUserEnvelope"
+  /login:
+    get:
+      operationId: beginBrowserLogin
+      tags: [auth]
+      summary: Start the browser OIDC login flow
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to the OIDC authorization endpoint
+  /callback:
+    get:
+      operationId: handleBrowserLoginCallback
+      tags: [auth]
+      summary: OIDC callback
+      responses:
+        "302":
+          description: Redirect after login
+  /logout:
+    get:
+      operationId: logoutBrowserSession
+      tags: [auth]
+      summary: Clear session and end OIDC login
+      responses:
+        "302":
+          description: Redirect to OIDC end-session endpoint
+  /leads/list:
+    get:
+      operationId: listLeadsAdmin
+      tags: [leads]
+      summary: List captured leads (admin allow-list only)
+      responses:
+        "200":
+          description: Leads
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeadRecord"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not an admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects:
+    get:
+      operationId: listTisProjects
+      tags: [tis]
+      summary: List the authenticated user's saved TIS projects (most recent first)
+      responses:
+        "200":
+          description: Project list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TisProjectSummary"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{id}:
+    get:
+      operationId: getTisProject
+      tags: [tis]
+      summary: Fetch a single saved TIS project (full request + report)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Project detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TisProjectDetail"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /leads:
+    post:
+      operationId: createLead
+      tags: [leads]
+      summary: Capture a "Request a demo" / trial-request lead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadInput"
+      responses:
+        "201":
+          description: Lead captured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadCreated"
+        "400":
+          description: Invalid lead payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok]
+      required: [status]
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    AuthUser:
+      type: object
+      required: [id, email, firstName, lastName, profileImageUrl]
+      properties:
+        id:
+          type: string
+        email:
+          type: [string, "null"]
+        firstName:
+          type: [string, "null"]
+        lastName:
+          type: [string, "null"]
+        profileImageUrl:
+          type: [string, "null"]
+    AuthUserEnvelope:
+      type: object
+      required: [user]
+      properties:
+        user:
+          oneOf:
+            - $ref: "#/components/schemas/AuthUser"
+            - type: "null"
+    LeadRecord:
+      type: object
+      required: [id, name, email, organization, city, source, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        organization:
+          type: string
+        city:
+          type: string
+        role:
+          type: [string, "null"]
+        message:
+          type: [string, "null"]
+        productInterest:
+          type: [string, "null"]
+        source:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    LeadInput:
+      type: object
+      properties:
+        website:
+          type: string
+          maxLength: 200
+          description: Honeypot — must be empty.
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        email:
+          type: string
+          format: email
+          minLength: 3
+          maxLength: 320
+        organization:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: City, agency, firm, or company name.
+        city:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: City the lead represents (often equals organization for municipal leads).
+        role:
+          type: string
+          maxLength: 200
+        message:
+          type: string
+          maxLength: 4000
+        productInterest:
+          type: string
+          maxLength: 80
+          description: Free-form tag — typically a tier name or "tis".
+        source:
+          type: string
+          enum: [pricing_page, for_firms_page, trial_request, other]
+      required: [name, email, organization, city]
+    LeadCreated:
+      type: object
+      properties:
+        id:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, createdAt]
+    TisAnalysisPeriod:
+      type: string
+      enum: [am_peak, pm_peak, saturday_midday, daily]
+    TisWeather:
+      type: string
+      enum: [clear, light_rain, heavy_rain, light_snow, heavy_snow]
+    TisDirection:
+      type: string
+      enum: [NB, SB, EB, WB]
+    TisLandUse:
+      type: object
+      description: One ITE land-use entry supported by the TIS generator.
+      properties:
+        code: { type: string }
+        name: { type: string }
+        unit: { type: string }
+        unitShort: { type: string }
+        dailyRate: { type: number }
+        amRate: { type: number }
+        pmRate: { type: number }
+        amDirectionalIn: { type: number }
+        satMultiplier: { type: number }
+        passByPctPm: { type: number }
+        internalCapturePctPm: { type: number }
+      required: [code, name, unit, unitShort, dailyRate, amRate, pmRate]
+    TisRequest:
+      type: object
+      properties:
+        projectName: { type: string, minLength: 1 }
+        address: { type: string }
+        latitude: { type: number, minimum: 33.4, maximum: 34.2 }
+        longitude: { type: number, minimum: -84.9, maximum: -83.9 }
+        landUseCode: { type: string, minLength: 2 }
+        size: { type: number, minimum: 0.01 }
+        openingYear: { type: integer, minimum: 2024, maximum: 2050 }
+        studyRadiusMi: { type: number, minimum: 0.1, maximum: 2 }
+        analysisPeriods:
+          type: array
+          items: { $ref: "#/components/schemas/TisAnalysisPeriod" }
+          description: Defaults to all four periods if omitted.
+        growthRatePct:
+          type: number
+          minimum: 0
+          maximum: 6
+          description: Annual background growth rate applied to existing volumes (default 1.5%/yr).
+        weather:
+          $ref: "#/components/schemas/TisWeather"
+        passByPct:
+          type: number
+          minimum: 0
+          maximum: 70
+          description: Override the land-use default pass-by % at the PM peak.
+        internalCapturePct:
+          type: number
+          minimum: 0
+          maximum: 50
+          description: Override the land-use default internal-capture % at the PM peak.
+        runSensitivity:
+          type: boolean
+          description: If true, runs a 100-iteration Monte-Carlo sensitivity analysis.
+      required: [projectName, address, latitude, longitude, landUseCode, size, openingYear]
+    TisTripGeneration:
+      type: object
+      properties:
+        landUseCode: { type: string }
+        landUseName: { type: string }
+        size: { type: number }
+        unit: { type: string }
+        dailyTrips: { type: integer }
+        amPeakTrips: { type: integer }
+        pmPeakTrips: { type: integer }
+        pmIn: { type: integer }
+        pmOut: { type: integer }
+      required: [landUseCode, landUseName, size, unit, dailyTrips, amPeakTrips, pmPeakTrips, pmIn, pmOut]
+    TisApproachImpact:
+      type: object
+      properties:
+        direction: { $ref: "#/components/schemas/TisDirection" }
+        existingVolumeVph: { type: number }
+        addedTripsPeak: { type: integer }
+        futureVolumeVph: { type: number }
+        existingVc: { type: number }
+        futureVc: { type: number }
+        existingDelaySec: { type: number }
+        futureDelaySec: { type: number }
+        existingLos: { type: string, enum: [A, B, C, D, E, F] }
+        futureLos: { type: string, enum: [A, B, C, D, E, F] }
+        queue95thFt: { type: number }
+      required:
+        - direction
+        - existingVolumeVph
+        - addedTripsPeak
+        - futureVolumeVph
+        - existingVc
+        - futureVc
+        - existingDelaySec
+        - futureDelaySec
+        - existingLos
+        - futureLos
+        - queue95thFt
+    TisAffectedIntersection:
+      type: object
+      properties:
+        signalId: { type: string }
+        name: { type: string }
+        zone: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+        distanceMi: { type: number }
+        existingVc: { type: number }
+        addedTripsPmPeak: { type: integer }
+        futureVc: { type: number }
+        existingDelaySec: { type: number }
+        futureDelaySec: { type: number }
+        existingLos:
+          type: string
+          enum: [A, B, C, D, E, F]
+        futureLos:
+          type: string
+          enum: [A, B, C, D, E, F]
+        losChanged: { type: boolean }
+        mitigation: { type: string }
+        mitigationSeverity:
+          type: string
+          enum: [none, minor, moderate, major]
+        approaches:
+          type: array
+          items: { $ref: "#/components/schemas/TisApproachImpact" }
+        queue95thFt: { type: number }
+        calibration:
+          $ref: "#/components/schemas/TisIntersectionCalibration"
+      required:
+        - signalId
+        - name
+        - zone
+        - latitude
+        - longitude
+        - distanceMi
+        - existingVc
+        - addedTripsPmPeak
+        - futureVc
+        - existingDelaySec
+        - futureDelaySec
+        - existingLos
+        - futureLos
+        - losChanged
+        - mitigation
+        - mitigationSeverity
+        - approaches
+        - queue95thFt
+    TisIntersectionCalibration:
+      type: object
+      description: Per-intersection calibration metadata when ground-truth observations exist for this signal.
+      properties:
+        sampleCount: { type: integer }
+        delayMultiplier: { type: number }
+        lastObservedDelaySec:
+          type: number
+          nullable: true
+      required:
+        - sampleCount
+        - delayMultiplier
+    TisProjectSummary:
+      type: object
+      description: Lightweight summary row used by the projects list page.
+      properties:
+        id: { type: string, format: uuid }
+        projectName: { type: string }
+        landUseCode: { type: string }
+        siteLat: { type: string, nullable: true }
+        siteLon: { type: string, nullable: true }
+        version: { type: integer }
+        createdAt: { type: string, format: date-time }
+      required: [id, projectName, landUseCode, version, createdAt]
+    TisProjectDetail:
+      type: object
+      description: Full saved project — summary fields plus the original request body and the rendered TisReport result payload.
+      properties:
+        id: { type: string, format: uuid }
+        projectName: { type: string }
+        landUseCode: { type: string }
+        siteLat: { type: string, nullable: true }
+        siteLon: { type: string, nullable: true }
+        version: { type: integer }
+        createdAt: { type: string, format: date-time }
+        request:
+          description: The TisRequest payload that produced this report.
+          oneOf:
+            - $ref: "#/components/schemas/TisRequest"
+            - type: object
+              additionalProperties: true
+        result:
+          $ref: "#/components/schemas/TisReport"
+      required: [id, projectName, landUseCode, version, createdAt, request, result]
+    TisPeriodTripGen:
+      type: object
+      properties:
+        period: { $ref: "#/components/schemas/TisAnalysisPeriod" }
+        periodLabel: { type: string }
+        rawTrips: { type: integer }
+        passByCredit: { type: integer }
+        internalCaptureCredit: { type: integer }
+        externalTrips: { type: integer }
+        inTrips: { type: integer }
+        outTrips: { type: integer }
+      required:
+        - period
+        - periodLabel
+        - rawTrips
+        - passByCredit
+        - internalCaptureCredit
+        - externalTrips
+        - inTrips
+        - outTrips
+    TisPeriodReport:
+      type: object
+      properties:
+        period: { $ref: "#/components/schemas/TisAnalysisPeriod" }
+        periodLabel: { type: string }
+        tripGeneration: { $ref: "#/components/schemas/TisPeriodTripGen" }
+        affectedIntersections:
+          type: array
+          items: { $ref: "#/components/schemas/TisAffectedIntersection" }
+        intersectionsWithLosDrop: { type: integer }
+        intersectionsAtLosEf: { type: integer }
+        worstDelayDeltaSec: { type: number }
+      required:
+        - period
+        - periodLabel
+        - tripGeneration
+        - affectedIntersections
+        - intersectionsWithLosDrop
+        - intersectionsAtLosEf
+        - worstDelayDeltaSec
+    TisSensitivityResult:
+      type: object
+      properties:
+        iterations: { type: integer }
+        worstDelayDeltaMean: { type: number }
+        worstDelayDeltaP10: { type: number }
+        worstDelayDeltaP50: { type: number }
+        worstDelayDeltaP90: { type: number }
+        probAnyLosDrop: { type: number }
+        probAnyLosEf: { type: number }
+        expectedLosDrops: { type: number }
+      required:
+        - iterations
+        - worstDelayDeltaMean
+        - worstDelayDeltaP10
+        - worstDelayDeltaP50
+        - worstDelayDeltaP90
+        - probAnyLosDrop
+        - probAnyLosEf
+        - expectedLosDrops
+    TisReport:
+      type: object
+      properties:
+        generatedAt: { type: string }
+        request:
+          $ref: "#/components/schemas/TisRequest"
+        studyRadiusMi: { type: number }
+        tripGeneration:
+          $ref: "#/components/schemas/TisTripGeneration"
+        affectedIntersections:
+          type: array
+          items:
+            $ref: "#/components/schemas/TisAffectedIntersection"
+        intersectionsStudied: { type: integer }
+        intersectionsWithLosDrop: { type: integer }
+        intersectionsAtLosEf: { type: integer }
+        worstDelayDeltaSec: { type: number }
+        mitigationSummary:
+          type: array
+          items: { type: string }
+        findings:
+          type: array
+          items: { type: string }
+        methodology:
+          type: array
+          items: { type: string }
+        periodReports:
+          type: array
+          items: { $ref: "#/components/schemas/TisPeriodReport" }
+        growthAppliedPct: { type: number }
+        growthYears: { type: integer }
+        weather: { $ref: "#/components/schemas/TisWeather" }
+        weatherCapacityFactor: { type: number }
+        passByPctApplied: { type: number }
+        internalCapturePctApplied: { type: number }
+        sensitivity: { $ref: "#/components/schemas/TisSensitivityResult" }
+      required:
+        - generatedAt
+        - request
+        - studyRadiusMi
+        - tripGeneration
+        - affectedIntersections
+        - intersectionsStudied
+        - intersectionsWithLosDrop
+        - intersectionsAtLosEf
+        - worstDelayDeltaSec
+        - mitigationSummary
+        - findings
+        - methodology
+        - periodReports
+        - growthAppliedPct
+        - growthYears
+        - weather
+        - weatherCapacityFactor
+        - passByPctApplied
+        - internalCapturePctApplied

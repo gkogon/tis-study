@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""
+atlanta_traffic_simulation.py
+
+Single-file framework to import traffic signal data (if available),
+simulate traffic, analyze left-turn inefficiencies, and output simple reports.
+
+Notes:
+- The script will attempt to fetch from public APIs if reachable; no credentials are required for the simulated fallbacks.
+- For production use, replace API endpoints/processing with the exact data format your provider returns.
+- This is a research/simulation framework — NOT certified for live traffic control.
+"""
+
+import json
+import math
+import random
+import sqlite3
+from dataclasses import dataclass, asdict
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+
+# Optional dependencies for visualization (install if desired)
+try:
+    import folium
+except Exception:
+    folium = None
+
+try:
+    import requests
+except Exception:
+    requests = None
+
+
+# ---------- Data classes ----------
+@dataclass
+class IntersectionRecord:
+    id: str
+    name: str
+    latitude: float
+    longitude: float
+    signal_timing: Dict[str, int]        # e.g., {'ns_green': 60, 'ew_green': 40, 'protected_left': 20, 'all_red': 4}
+    traffic_volume: Dict[str, int]       # vehicles per hour by approach: {'north': 800, 'south': 750, 'east': 400, 'west': 420}
+    left_turn_demand: Dict[str, int]     # left-turn vehicles per hour, e.g., {'n_to_w': 120, ...}
+    last_updated: Optional[datetime] = None
+    data_source: Optional[str] = None
+
+
+# ---------- Importer ----------
+class AtlantaDataImporter:
+    """
+    Attempts to import real traffic signal data from known endpoints.
+    Falls back to a simulated dataset if external access isn't available or requests fail.
+    """
+
+    def __init__(self, bounds: Dict[str, float] = None, db_path: str = "atlanta_traffic.db"):
+        # bounding box for metro Atlanta (can be adjusted)
+        self.bounds = bounds or {'north': 34.05, 'south': 33.50, 'east': -84.10, 'west': -85.00}
+        self.db_path = db_path
+
+    def fetch_city_open_data(self, rows: int = 1000) -> List[IntersectionRecord]:
+        """
+        Try to fetch City of Atlanta open-data 'traffic signals' dataset.
+        If requests isn't available or fetch fails, return simulated set.
+        """
+        if requests is None:
+            print("requests library not available — using simulated data.")
+            return self._simulated_intersections()
+
+        # Example City of Atlanta open data API (Socrata) - adjust dataset identifiers as needed
+        api_url = "https://opendata.atlantaga.gov/resource/traffic_signals.json"
+        params = {"$limit": rows}
+        try:
+            r = requests.get(api_url, params=params, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            return self._process_open_data_records(data)
+        except Exception as e:
+            print(f"Failed to fetch Atlanta open data ({e}) — using simulated data.")
+            return self._simulated_intersections()
+
+    def fetch_gdot_data(self) -> List[IntersectionRecord]:
+        """
+        Example placeholder for GDOT/511 API. The actual endpoint and auth will likely differ.
+        This function primarily exists to be replaced with real provider code.
+        """
+        # Example endpoint placeholder
+        if requests is None:
+            print("requests library not available — using simulated data.")
+            return self._simulated_intersections()
+        api_url = "https://511ga.org/api/traffic-signals"  # placeholder
+        try:
+            r = requests.get(api_url, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            return self._process_open_data_records(data)
+        except Exception as e:
+            print(f"Failed to fetch GDOT data ({e}) — using simulated data.")
+            return self._simulated_intersections()
+
+    def _process_open_data_records(self, raw_records: List[dict]) -> List[IntersectionRecord]:
+        """
+        Convert open data records to IntersectionRecord objects.
+        This routine expects generic fields; you will likely need to map fields to your dataset.
+        """
+        records: List[IntersectionRecord] = []
+        for rec in raw_records:
+            try:
+                # Attempt to read common fields; adapt to your dataset field names.
+                name = rec.get("intersection_name") or rec.get("name") or rec.get("signal_id") or "unknown"
+                lat = float(rec.get("latitude") or rec.get("lat") or rec.get("y") or 0.0)
+                lon = float(rec.get("longitude") or rec.get("lon") or rec.get("x") or 0.0)
+                id_ = str(rec.get("id") or rec.get("signal_id") or f"{name}_{lat}_{lon}")
+
+                # Default / placeholder timing and counts
+                timings = {
+                    "ns_green": int(rec.get("ns_green", 60)),
+                    "ew_green": int(rec.get("ew_green", 40)),
+                    "protected_left": int(rec.get("protected_left", 15)),
+                    "all_red": int(rec.get("all_red", 4))
+                }
+                traffic_volume = {
+                    "north": int(rec.get("north_vph", 0)),
+                    "south": int(rec.get("south_vph", 0)),
+                    "east": int(rec.get("east_vph", 0)),
+                    "west": int(rec.get("west_vph", 0))
+                }
+                left_turns = {
+                    "n_to_w": int(rec.get("n_to_w", 0)),
+                    "s_to_e": int(rec.get("s_to_e", 0)),
+                    "e_to_s": int(rec.get("e_to_s", 0)),
+                    "w_to_n": int(rec.get("w_to_n", 0))
+                }
+
+                records.append(IntersectionRecord(
+                    id=id_, name=name, latitude=lat, longitude=lon,
+                    signal_timing=timings, traffic_volume=traffic_volume,
+                    left_turn_demand=left_turns, last_updated=datetime.utcnow(),
+                    data_source="city_open_data"
+                ))
+            except Exception:
+                continue
+        if not records:
+            return self._simulated_intersections()
+        return records
+
+    def _simulated_intersections(self) -> List[IntersectionRecord]:
+        """Return a curated set of simulated Atlanta intersections with realistic volumes."""
+        now = datetime.utcnow()
+        sims = [
+            IntersectionRecord(
+                id="ATL_001",
+                name="Peachtree St & 14th St (Midtown)",
+                latitude=33.7849, longitude=-84.3837,
+                signal_timing={"ns_green": 80, "ew_green": 40, "protected_left": 20, "all_red": 4},
+                traffic_volume={"north": 1450, "south": 1520, "east": 680, "west": 620},
+                left_turn_demand={"n_to_w": 220, "s_to_e": 195, "e_to_s": 125, "w_to_n": 115},
+                last_updated=now, data_source="simulated"
+            ),
+            IntersectionRecord(
+                id="ATL_002",
+                name="Piedmont Ave & 10th St",
+                latitude=33.7796, longitude=-84.3750,
+                signal_timing={"ns_green": 55, "ew_green": 65, "protected_left": 15, "all_red": 4},
+                traffic_volume={"north": 720, "south": 680, "east": 890, "west": 920},
+                left_turn_demand={"n_to_w": 125, "s_to_e": 115, "e_to_s": 140, "w_to_n": 150},
+                last_updated=now, data_source="simulated"
+            ),
+            IntersectionRecord(
+                id="ATL_003",
+                name="North Ave & Spring

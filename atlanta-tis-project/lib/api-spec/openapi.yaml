@@ -1,0 +1,2380 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: atlanta
+    description: Atlanta traffic intersection analysis
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /atlanta/intersections:
+    get:
+      operationId: listIntersections
+      tags: [atlanta]
+      summary: List all Atlanta intersections (summary form)
+      description: Returns slim summary records for every analyzed Atlanta metro signalized intersection. Use the detail endpoint for the full intersection model.
+      responses:
+        "200":
+          description: List of intersection summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntersectionSummary"
+  /atlanta/intersections/{id}:
+    get:
+      operationId: getIntersection
+      tags: [atlanta]
+      summary: Get a single intersection by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Intersection detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntersectionDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /atlanta/summary:
+    get:
+      operationId: getTrafficSummary
+      tags: [atlanta]
+      summary: Top-level traffic KPIs
+      responses:
+        "200":
+          description: Summary KPIs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrafficSummary"
+  /atlanta/rankings:
+    get:
+      operationId: getInefficiencyRankings
+      tags: [atlanta]
+      summary: Intersections ranked by inefficiency score
+      responses:
+        "200":
+          description: Ranked list of intersections
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InefficiencyRanking"
+  /atlanta/zone-breakdown:
+    get:
+      operationId: getZoneBreakdown
+      tags: [atlanta]
+      summary: Aggregated metrics grouped by Atlanta zone
+      responses:
+        "200":
+          description: Per-zone aggregated metrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ZoneStat"
+  /atlanta/turn-distribution:
+    get:
+      operationId: getTurnDistribution
+      tags: [atlanta]
+      summary: Aggregated traffic by movement type (through / left / right)
+      responses:
+        "200":
+          description: Aggregate movement-type demand
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MovementTypeStat"
+  /atlanta/signal-timing:
+    get:
+      operationId: getSignalTimingDistribution
+      tags: [atlanta]
+      summary: Signal timing distribution across intersections
+      responses:
+        "200":
+          description: Per-intersection signal timing breakdown
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SignalTimingPoint"
+  /atlanta/peak-hour-load:
+    get:
+      operationId: getPeakHourLoad
+      tags: [atlanta]
+      summary: Simulated hourly load profile aggregated across intersections
+      responses:
+        "200":
+          description: Hourly traffic load profile
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HourlyLoadPoint"
+  /atlanta/roads:
+    get:
+      operationId: getRoadNetwork
+      tags: [atlanta]
+      summary: Major road network for the Atlanta metro
+      description: Returns a slim polyline network of all motorway, trunk, primary, and secondary roads in metro Atlanta sourced from OpenStreetMap. Used to render the road overlay on the map.
+      responses:
+        "200":
+          description: Road network
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoadNetwork"
+  /atlanta/recommendations:
+    get:
+      operationId: getRecommendations
+      tags: [atlanta]
+      summary: Suggested signal-timing changes for the worst intersections
+      responses:
+        "200":
+          description: Recommendations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Recommendation"
+  /atlanta/optimized-scenario:
+    get:
+      operationId: getOptimizedScenario
+      tags: [atlanta]
+      summary: Network-wide re-scoring with all signals retimed to their suggestion
+      responses:
+        "200":
+          description: Optimized scenario bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptimizedScenario"
+  /atlanta/accident-risk:
+    get:
+      operationId: getAccidentRisk
+      tags: [atlanta]
+      summary: Per-signal historical accident risk + global timing distributions
+      description: Returns 2019-2023 ARC crash counts snapped to nearby signals, plus the NHTSA-FARS-derived hour-of-day, day-of-week, and month-of-year crash distributions used by the prediction model.
+      responses:
+        "200":
+          description: Accident risk bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccidentRiskBundle"
+  /atlanta/predict-day:
+    post:
+      operationId: predictDay
+      tags: [atlanta]
+      summary: Predict next-day traffic conditions across all metro signals
+      description: Forecasts a 24-hour traffic-stress profile for every signal by combining the historical demand baseline with day-of-week, hour-of-day, weather, special-event, and accident-risk multipliers.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PredictDayRequest"
+      responses:
+        "200":
+          description: Predicted day bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PredictedDay"
+  /atlanta/live-incidents:
+    get:
+      operationId: getLiveIncidents
+      tags: [atlanta]
+      summary: Live Atlanta-metro traffic incidents from GDOT NaviGAtor 511
+      description: Pulls the public 511ga.org map data feeds (no API key — same JSON the public website uses), filters to the Atlanta metro bbox, and snaps each incident to its nearest signalized intersection within 500m. Cached server-side for 90s.
+      responses:
+        "200":
+          description: Live incidents bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveIncidentsBundle"
+  /atlanta/traffic-flow/history:
+    get:
+      operationId: getTrafficFlowHistory
+      tags: [atlanta]
+      summary: GDOT 511 incident archive (rolling time-series)
+      description: |
+        Public read-only summary + per-snapshot series for the background
+        archive worker that polls GDOT 511 every 10 minutes and persists an
+        incident snapshot. Data accumulates from server boot forward.
+      parameters:
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 2000
+            default: 500
+      responses:
+        "200":
+          description: Archive bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrafficFlowHistory"
+  /atlanta/accuracy:
+    get:
+      operationId: getPredictionAccuracy
+      tags: [atlanta]
+      summary: Today's predicted-vs-actual accuracy + 7-day rolling history
+      description: Computes today's prediction with a default scenario, compares the top-N predicted-worst signals against the signals that actually saw a live incident today, persists the snapshot, and returns the rolling accuracy history used to refine future forecasts.
+      parameters:
+        - in: query
+          name: topN
+          schema:
+            type: integer
+            default: 200
+            minimum: 10
+            maximum: 1000
+      responses:
+        "200":
+          description: Prediction accuracy report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccuracyReport"
+  /atlanta/live-weather:
+    get:
+      operationId: getLiveWeather
+      summary: Current Atlanta weather conditions (Open-Meteo, no API key required)
+      description: |
+        Returns the current Atlanta-metro weather plus a 24-hour outlook,
+        classified into one of {clear, light_rain, heavy_rain, snow} so it can
+        be plugged directly into the prediction model.
+      responses:
+        "200":
+          description: Live weather snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveWeather"
+  /atlanta/live-hotspot-fixes:
+    get:
+      operationId: getLiveHotspotFixes
+      tags: [atlanta]
+      summary: Suggested signal-timing fixes for crash-prone hotspots that are congested right now
+      description: |
+        Returns the top accident-prone intersections that are operating in
+        heavy or worse congestion at this very moment, each with a concrete
+        signal-timing recommendation (target phase, current vs suggested
+        green seconds, cycle change, expected delay reduction). Combines the
+        live per-signal stress model with the historical-crash risk tier so
+        operators can prioritize fixes where both crash exposure and current
+        delay are highest. Cached server-side for 60 seconds.
+      responses:
+        "200":
+          description: Live hotspot fixes bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveHotspotFixesBundle"
+  /atlanta/dms-speeds:
+    get:
+      operationId: getDmsSpeeds
+      summary: Real-time DMS speed readings from GDOT 511 boards
+      description: |
+        Fetches the GDOT 511 v2 MessageSigns API, filters to the Atlanta
+        metro bounding box, and parses speed values from DMS board messages
+        (e.g. "I-85 AVG SPEED 60-65 MPH"). Returns only signs that have a
+        parseable speed reading. Requires the GDOT_511_API_KEY secret.
+        Cached server-side for 90 seconds.
+      responses:
+        "200":
+          description: DMS speed readings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DmsSpeedBundle"
+  /atlanta/alerts:
+    get:
+      operationId: getGdotAlerts
+      summary: GDOT metro-wide alerts (weekend closures, special events)
+      description: |
+        Fetches the GDOT 511 v2 Alerts API which returns high-level
+        metro-wide notices (weekend closure summaries, major event
+        advisories). Requires the GDOT_511_API_KEY secret.
+        Cached server-side for 5 minutes.
+      responses:
+        "200":
+          description: Current GDOT alerts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GdotAlertsBundle"
+  /atlanta/live-traffic-flow:
+    get:
+      operationId: getLiveTrafficFlow
+      summary: Apple-Maps-style live road colors for Atlanta
+      description: |
+        Produces a live, Apple-Maps-style colored road map of metro Atlanta.
+        When the GDOT_511_API_KEY is configured, highway segments near DMS
+        boards blend real measured speeds (60% weight) with the per-signal
+        stress model (40% weight). Segments away from DMS boards and all
+        non-highway roads remain model-estimated. Without the key, all
+        colors are estimated from the model + public incident feed.
+        Cached for 60 seconds.
+      parameters:
+        - in: query
+          name: classes
+          description: Comma-separated OSM road class indices to include (0=motorway, 1=trunk, 2=primary, 3=secondary). Default `0,1,2`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Live colored road network
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveTrafficFlow"
+  /atlanta/predicted-traffic-flow:
+    get:
+      operationId: getPredictedTrafficFlow
+      tags: [atlanta]
+      summary: Predicted hour-by-hour road-network congestion map
+      description: |
+        Produces an Apple-Maps-style colored road map for a future date and hour,
+        using the same per-signal stress model as the live map but without live
+        incidents or DMS data. Useful for visualizing tomorrow's predicted
+        congestion hour by hour.
+      parameters:
+        - in: query
+          name: date
+          required: true
+          description: "Date in YYYY-MM-DD format"
+          schema:
+            type: string
+        - in: query
+          name: hour
+          required: true
+          description: "Hour of day 0-23"
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 23
+        - in: query
+          name: weather
+          schema:
+            type: string
+            enum: [clear, light_rain, heavy_rain, snow]
+        - in: query
+          name: schoolDay
+          schema:
+            type: boolean
+        - in: query
+          name: falconsHome
+          schema:
+            type: boolean
+        - in: query
+          name: hawksHome
+          schema:
+            type: boolean
+        - in: query
+          name: bravesHome
+          schema:
+            type: boolean
+        - in: query
+          name: gtFootball
+          schema:
+            type: boolean
+        - in: query
+          name: holiday
+          schema:
+            type: boolean
+        - in: query
+          name: classes
+          description: Comma-separated OSM road class indices (0=motorway, 1=trunk, 2=primary, 3=secondary). Default `0,1,2`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Predicted colored road network for the given date and hour
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PredictedTrafficFlow"
+  /atlanta/backtest-report:
+    get:
+      operationId: getBacktestReport
+      tags: [atlanta]
+      summary: Audit-grade backtest credibility report
+      description: |
+        Aggregates the full prediction-history.json into a single, audit-friendly
+        report intended to be the data source for a printable "sales sheet"
+        showing exactly how the deployed model performed day over day.
+        Includes pooled hit-rate with a Wilson 95% CI, lift versus the random-
+        shortlist baseline, per-day series, day-of-week breakdown, best/worst
+        day, and the methodology paragraphs.
+      responses:
+        "200":
+          description: Backtest credibility report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacktestReport"
+  /atlanta/parking/summary:
+    get:
+      operationId: getParkingSummary
+      tags: [atlanta]
+      summary: Metro-wide parking pressure KPIs (modeled)
+      parameters:
+        - in: query
+          name: forceSurge
+          description: If true, force every venue's event-surge window on (demo mode).
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Parking summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParkingSummary"
+  /atlanta/parking/lots:
+    get:
+      operationId: listParkingLots
+      tags: [atlanta]
+      summary: Every known metro-Atlanta parking lot with current modeled fill
+      parameters:
+        - in: query
+          name: forceSurge
+          schema:
+            type: boolean
+            default: false
+        - in: query
+          name: minCapacity
+          description: Filter out lots smaller than this estimated capacity.
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: maxFillPct
+          description: Filter out lots already above this fill percentage.
+          schema:
+            type: number
+        - in: query
+          name: archetype
+          schema:
+            type: string
+            enum: [commercial, office, event, park_and_ride, university, airport, mixed]
+      responses:
+        "200":
+          description: Lot list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ParkingLot"
+  /atlanta/parking/lots/{id}:
+    get:
+      operationId: getParkingLot
+      tags: [atlanta]
+      summary: Single parking lot detail with 12-hour fill forecast
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lot detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParkingLotDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /atlanta/today-accident-predictions:
+    get:
+      operationId: getTodayAccidentPredictions
+      summary: Top-N predicted accident hotspots for today (signal × hour)
+      description: |
+        Combines today's prediction (auto-using live weather and the recent-
+        activity feedback loop) with the per-signal historical crash risk and
+        the FARS hour-of-day distribution to rank the most accident-likely
+        (intersection, hour) pairs for the rest of today.
+      parameters:
+        - in: query
+          name: topN
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - in: query
+          name: includePastHours
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Today's predicted accident hotspots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TodayAccidentPredictions"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    TrafficFlowHistorySnapshot:
+      type: object
+      properties:
+        capturedAt: { type: string, format: date-time }
+        incidentCount: { type: integer }
+        snappedCount: { type: integer }
+        weatherCondition: { type: string, nullable: true }
+      required: [capturedAt, incidentCount, snappedCount]
+    TrafficFlowHistorySummary:
+      type: object
+      properties:
+        totalSnapshots: { type: integer }
+        earliestCapturedAt: { type: string, format: date-time, nullable: true }
+        latestCapturedAt: { type: string, format: date-time, nullable: true }
+        windowSnapshots: { type: integer }
+        windowAvgIncidents: { type: number }
+        windowMaxIncidents: { type: integer }
+      required: [totalSnapshots, windowSnapshots, windowAvgIncidents, windowMaxIncidents]
+    TrafficFlowHistory:
+      type: object
+      properties:
+        summary: { $ref: "#/components/schemas/TrafficFlowHistorySummary" }
+        series:
+          type: array
+          items: { $ref: "#/components/schemas/TrafficFlowHistorySnapshot" }
+      required: [summary, series]
+    SignalTiming:
+      type: object
+      properties:
+        nsGreen:
+          type: integer
+        ewGreen:
+          type: integer
+        protectedLeft:
+          type: integer
+        allRed:
+          type: integer
+        cycleLength:
+          type: integer
+      required: [nsGreen, ewGreen, protectedLeft, allRed, cycleLength]
+    TrafficVolume:
+      type: object
+      properties:
+        north:
+          type: integer
+        south:
+          type: integer
+        east:
+          type: integer
+        west:
+          type: integer
+        total:
+          type: integer
+      required: [north, south, east, west, total]
+    ApproachMovements:
+      type: object
+      description: Three turning movements from a single approach (incoming direction).
+      properties:
+        thru:
+          type: integer
+        left:
+          type: integer
+        right:
+          type: integer
+      required: [thru, left, right]
+    MovementBreakdown:
+      type: object
+      description: Full 12-movement breakdown (4 approaches × thru/left/right) with totals.
+      properties:
+        northbound:
+          $ref: "#/components/schemas/ApproachMovements"
+        southbound:
+          $ref: "#/components/schemas/ApproachMovements"
+        eastbound:
+          $ref: "#/components/schemas/ApproachMovements"
+        westbound:
+          $ref: "#/components/schemas/ApproachMovements"
+        totalThrough:
+          type: integer
+        totalLeft:
+          type: integer
+        totalRight:
+          type: integer
+        totalTurning:
+          type: integer
+          description: Left + right turns combined.
+        total:
+          type: integer
+      required: [northbound, southbound, eastbound, westbound, totalThrough, totalLeft, totalRight, totalTurning, total]
+    WorstMovement:
+      type: object
+      properties:
+        label:
+          type: string
+        phase:
+          type: string
+          enum: [Protected Left, N/S Green, E/W Green]
+        vcRatio:
+          type: number
+      required: [label, phase, vcRatio]
+    RoadNetwork:
+      type: object
+      properties:
+        classes:
+          type: array
+          items:
+            type: string
+        ways:
+          type: array
+          items: {}
+      required: [classes, ways]
+    IntersectionSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        zone:
+          type: string
+        roadClass:
+          type: string
+          enum: [motorway, trunk, primary, secondary, other]
+        latitude:
+          type: number
+        longitude:
+          type: number
+        totalVolume:
+          type: integer
+        turningVolume:
+          type: integer
+          description: Total turning movements (left + right) per hour at this intersection.
+        inefficiencyScore:
+          type: number
+        avgDelaySeconds:
+          type: number
+        severity:
+          type: string
+          enum: [low, moderate, high, critical]
+      required:
+        - id
+        - name
+        - zone
+        - roadClass
+        - latitude
+        - longitude
+        - totalVolume
+        - turningVolume
+        - inefficiencyScore
+        - avgDelaySeconds
+        - severity
+    Intersection:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        zone:
+          type: string
+        roadClass:
+          type: string
+          enum: [motorway, trunk, primary, secondary, other]
+        latitude:
+          type: number
+        longitude:
+          type: number
+        totalVolume:
+          type: integer
+        turningVolume:
+          type: integer
+        signalTiming:
+          $ref: "#/components/schemas/SignalTiming"
+        trafficVolume:
+          $ref: "#/components/schemas/TrafficVolume"
+        movementBreakdown:
+          $ref: "#/components/schemas/MovementBreakdown"
+        worstMovement:
+          $ref: "#/components/schemas/WorstMovement"
+        inefficiencyScore:
+          type: number
+        avgDelaySeconds:
+          type: number
+        severity:
+          type: string
+          enum: [low, moderate, high, critical]
+      required:
+        - id
+        - name
+        - zone
+        - roadClass
+        - latitude
+        - longitude
+        - totalVolume
+        - turningVolume
+        - signalTiming
+        - trafficVolume
+        - movementBreakdown
+        - worstMovement
+        - inefficiencyScore
+        - avgDelaySeconds
+        - severity
+    IntersectionDetail:
+      type: object
+      properties:
+        intersection:
+          $ref: "#/components/schemas/Intersection"
+        hourlyLoad:
+          type: array
+          items:
+            $ref: "#/components/schemas/HourlyLoadPoint"
+        recommendation:
+          $ref: "#/components/schemas/Recommendation"
+      required:
+        - intersection
+        - hourlyLoad
+        - recommendation
+    TrafficSummary:
+      type: object
+      properties:
+        intersectionCount:
+          type: integer
+        totalDailyVehicles:
+          type: integer
+        totalTurningMovementsPerHour:
+          type: integer
+          description: Sum of left + right turning movements per hour across all intersections.
+        totalThroughMovementsPerHour:
+          type: integer
+        averageInefficiency:
+          type: number
+        averageDelaySeconds:
+          type: number
+        criticalCount:
+          type: integer
+        highCount:
+          type: integer
+        moderateCount:
+          type: integer
+        lowCount:
+          type: integer
+        worstIntersectionId:
+          type: string
+        worstIntersectionName:
+          type: string
+        worstIntersectionScore:
+          type: number
+      required:
+        - intersectionCount
+        - totalDailyVehicles
+        - totalTurningMovementsPerHour
+        - totalThroughMovementsPerHour
+        - averageInefficiency
+        - averageDelaySeconds
+        - criticalCount
+        - highCount
+        - moderateCount
+        - lowCount
+        - worstIntersectionId
+        - worstIntersectionName
+        - worstIntersectionScore
+    InefficiencyRanking:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        zone:
+          type: string
+        inefficiencyScore:
+          type: number
+        avgDelaySeconds:
+          type: number
+        turningVolume:
+          type: integer
+        worstMovement:
+          type: string
+        protectedLeftSeconds:
+          type: integer
+        severity:
+          type: string
+          enum: [low, moderate, high, critical]
+      required:
+        - id
+        - name
+        - zone
+        - inefficiencyScore
+        - avgDelaySeconds
+        - turningVolume
+        - worstMovement
+        - protectedLeftSeconds
+        - severity
+    ZoneStat:
+      type: object
+      properties:
+        zone:
+          type: string
+        intersectionCount:
+          type: integer
+        avgInefficiency:
+          type: number
+        totalTurningMovements:
+          type: integer
+        totalVolume:
+          type: integer
+        avgDelaySeconds:
+          type: number
+      required:
+        - zone
+        - intersectionCount
+        - avgInefficiency
+        - totalTurningMovements
+        - totalVolume
+        - avgDelaySeconds
+    MovementTypeStat:
+      type: object
+      properties:
+        movement:
+          type: string
+          enum: [through, left, right]
+        label:
+          type: string
+        totalVehicles:
+          type: integer
+        avgPerIntersection:
+          type: number
+      required:
+        - movement
+        - label
+        - totalVehicles
+        - avgPerIntersection
+    SignalTimingPoint:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        nsGreen:
+          type: integer
+        ewGreen:
+          type: integer
+        protectedLeft:
+          type: integer
+        allRed:
+          type: integer
+        cycleLength:
+          type: integer
+      required: [id, name, nsGreen, ewGreen, protectedLeft, allRed, cycleLength]
+    HourlyLoadPoint:
+      type: object
+      properties:
+        hour:
+          type: integer
+        label:
+          type: string
+        throughVehicles:
+          type: integer
+        turningVehicles:
+          type: integer
+          description: Combined left + right turning vehicles for the hour.
+        congestionIndex:
+          type: number
+      required:
+        - hour
+        - label
+        - throughVehicles
+        - turningVehicles
+        - congestionIndex
+    Recommendation:
+      type: object
+      properties:
+        intersectionId:
+          type: string
+        intersectionName:
+          type: string
+        targetPhase:
+          type: string
+          enum: [Protected Left, N/S Green, E/W Green]
+        targetMovement:
+          type: string
+          description: Human-readable label for the bottleneck movement (e.g. "N/S Through").
+        currentPhaseSeconds:
+          type: integer
+        suggestedPhaseSeconds:
+          type: integer
+        currentCycleLength:
+          type: integer
+        suggestedCycleLength:
+          type: integer
+        estimatedDelayReductionSeconds:
+          type: number
+        rationale:
+          type: string
+      required:
+        - intersectionId
+        - intersectionName
+        - targetPhase
+        - targetMovement
+        - currentPhaseSeconds
+        - suggestedPhaseSeconds
+        - currentCycleLength
+        - suggestedCycleLength
+        - estimatedDelayReductionSeconds
+        - rationale
+    BeforeAfterComparison:
+      type: object
+      description: Side-by-side before/after metrics for the optimization scenario.
+      properties:
+        avgInefficiencyBefore:
+          type: number
+        avgInefficiencyAfter:
+          type: number
+        avgDelayBefore:
+          type: number
+        avgDelayAfter:
+          type: number
+        criticalBefore:
+          type: integer
+        criticalAfter:
+          type: integer
+        highBefore:
+          type: integer
+        highAfter:
+          type: integer
+        moderateBefore:
+          type: integer
+        moderateAfter:
+          type: integer
+        lowBefore:
+          type: integer
+        lowAfter:
+          type: integer
+        worstScoreBefore:
+          type: number
+        worstScoreAfter:
+          type: number
+        bottlenecksEliminated:
+          type: integer
+          description: Count of signals that moved out of the high or critical severity bands.
+        avgWorstVcReductionPct:
+          type: number
+          description: Average percent reduction in the worst-movement v/c ratio across all signals.
+      required:
+        - avgInefficiencyBefore
+        - avgInefficiencyAfter
+        - avgDelayBefore
+        - avgDelayAfter
+        - criticalBefore
+        - criticalAfter
+        - highBefore
+        - highAfter
+        - moderateBefore
+        - moderateAfter
+        - lowBefore
+        - lowAfter
+        - worstScoreBefore
+        - worstScoreAfter
+        - bottlenecksEliminated
+        - avgWorstVcReductionPct
+    IntersectionChange:
+      type: object
+      description: Per-signal before/after diff used to render the optimization map.
+      properties:
+        id:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        totalVolume:
+          type: integer
+          description: Used for marker sizing.
+        severityBefore:
+          type: string
+          enum: [low, moderate, high, critical]
+        severityAfter:
+          type: string
+          enum: [low, moderate, high, critical]
+        scoreBefore:
+          type: number
+        scoreAfter:
+          type: number
+        worstVcBefore:
+          type: number
+        worstVcAfter:
+          type: number
+        worstMovementBefore:
+          type: string
+        worstMovementAfter:
+          type: string
+        nsGreenBefore:
+          type: integer
+        nsGreenAfter:
+          type: integer
+        ewGreenBefore:
+          type: integer
+        ewGreenAfter:
+          type: integer
+        protectedLeftBefore:
+          type: integer
+        protectedLeftAfter:
+          type: integer
+        cycleLengthBefore:
+          type: integer
+        cycleLengthAfter:
+          type: integer
+      required:
+        - id
+        - latitude
+        - longitude
+        - totalVolume
+        - severityBefore
+        - severityAfter
+        - scoreBefore
+        - scoreAfter
+        - worstVcBefore
+        - worstVcAfter
+        - worstMovementBefore
+        - worstMovementAfter
+        - nsGreenBefore
+        - nsGreenAfter
+        - ewGreenBefore
+        - ewGreenAfter
+        - protectedLeftBefore
+        - protectedLeftAfter
+        - cycleLengthBefore
+        - cycleLengthAfter
+    OptimizedScenario:
+      type: object
+      description: Full dashboard bundle re-computed with all signals retimed to their algorithmic suggestion.
+      properties:
+        summary:
+          $ref: "#/components/schemas/TrafficSummary"
+        intersections:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntersectionSummary"
+        signalChanges:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntersectionChange"
+        rankings:
+          type: array
+          items:
+            $ref: "#/components/schemas/InefficiencyRanking"
+        turnDistribution:
+          type: array
+          items:
+            $ref: "#/components/schemas/MovementTypeStat"
+        zoneBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/ZoneStat"
+        signalTiming:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignalTimingPoint"
+        peakHourLoad:
+          type: array
+          items:
+            $ref: "#/components/schemas/HourlyLoadPoint"
+        comparison:
+          $ref: "#/components/schemas/BeforeAfterComparison"
+      required:
+        - summary
+        - intersections
+        - signalChanges
+        - rankings
+        - turnDistribution
+        - zoneBreakdown
+        - signalTiming
+        - peakHourLoad
+        - comparison
+    AccidentRiskMeta:
+      type: object
+      description: Provenance for the accident dataset baked into the API.
+      properties:
+        sourceCollisions:
+          type: string
+        sourceFARS:
+          type: string
+        dateRange:
+          type: string
+        totalCrashes:
+          type: integer
+          description: Total raw crash records in the source dataset.
+        snappedCrashes:
+          type: integer
+          description: Crashes successfully snapped to a signalized intersection within the snap radius.
+        snappedPct:
+          type: number
+        signalsWithData:
+          type: integer
+        snapRadiusMeters:
+          type: integer
+        farsRecords:
+          type: integer
+      required:
+        - sourceCollisions
+        - sourceFARS
+        - dateRange
+        - totalCrashes
+        - snappedCrashes
+        - snappedPct
+        - signalsWithData
+        - snapRadiusMeters
+        - farsRecords
+    SignalAccidentRisk:
+      type: object
+      description: Historical crash aggregate snapped to a single signalized intersection.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        crashes:
+          type: integer
+          description: Total reported crashes 2019-2023 within the snap radius.
+        fatal:
+          type: integer
+        seriousInjuries:
+          type: integer
+        severityScore:
+          type: number
+          description: Sum of ARC severity scores (higher = worse).
+        riskTier:
+          type: string
+          enum: [none, low, moderate, high, severe]
+      required:
+        - id
+        - name
+        - latitude
+        - longitude
+        - crashes
+        - fatal
+        - seriousInjuries
+        - severityScore
+        - riskTier
+    AccidentRiskBundle:
+      type: object
+      properties:
+        meta:
+          $ref: "#/components/schemas/AccidentRiskMeta"
+        perSignal:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignalAccidentRisk"
+        hourly:
+          type: array
+          description: 24-element hour-of-day distribution (share of crashes by hour).
+          items:
+            type: number
+        dow:
+          type: array
+          description: 7-element day-of-week distribution (Sun..Sat).
+          items:
+            type: number
+        monthly:
+          type: array
+          description: 12-element month-of-year distribution (Jan..Dec).
+          items:
+            type: number
+      required:
+        - meta
+        - perSignal
+        - hourly
+        - dow
+        - monthly
+    EventFlags:
+      type: object
+      description: Optional special-event toggles that bias the prediction near specific corridors.
+      properties:
+        falconsHome:
+          type: boolean
+          description: Falcons home game at Mercedes-Benz Stadium — boosts I-75/I-85 connector + Northside/Marietta corridors.
+        hawksHome:
+          type: boolean
+          description: Hawks home game at State Farm Arena — same downtown corridor footprint as Falcons.
+        bravesHome:
+          type: boolean
+          description: Braves home game at Truist Park (Cobb) — boosts I-285 NW + Cumberland.
+        gtFootball:
+          type: boolean
+          description: Georgia Tech football — boosts North Avenue + 10th/14th midtown corridor.
+        holiday:
+          type: boolean
+          description: Federal holiday — flattens commute peaks, shifts to leisure pattern.
+        schoolDay:
+          type: boolean
+          description: Public-school day in session — adds AM 7-8a + PM 2:30-3:30p school zones.
+      required: []
+    PredictDayRequest:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Target date in YYYY-MM-DD form (interpreted in America/New_York).
+        weather:
+          type: string
+          enum: [clear, light_rain, heavy_rain, snow]
+          default: clear
+        events:
+          $ref: "#/components/schemas/EventFlags"
+      required:
+        - date
+    PredictedSignal:
+      type: object
+      description: Forecast for a single signal across the chosen day.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        roadClass:
+          type: string
+        baselineScore:
+          type: number
+          description: Inefficiency score under nominal peak conditions (the existing dashboard's value).
+        predictedPeakScore:
+          type: number
+          description: Worst hourly score expected on the target day.
+        predictedPeakHour:
+          type: integer
+          description: Hour 0-23 at which the worst score occurs.
+        predictedAvgScore:
+          type: number
+        predictedSeverity:
+          type: string
+          enum: [low, moderate, high, critical]
+        deltaVsBaseline:
+          type: number
+          description: predictedPeakScore - baselineScore.
+        crashRiskTier:
+          type: string
+          enum: [none, low, moderate, high, severe]
+        crashSurgePct:
+          type: number
+          description: Extra delay/score multiplier (as a percentage) applied for accident-prone signals.
+        hourly:
+          type: array
+          description: 24 predicted scores, one per hour 0..23.
+          items:
+            type: number
+      required:
+        - id
+        - name
+        - latitude
+        - longitude
+        - roadClass
+        - baselineScore
+        - predictedPeakScore
+        - predictedPeakHour
+        - predictedAvgScore
+        - predictedSeverity
+        - deltaVsBaseline
+        - crashRiskTier
+        - crashSurgePct
+        - hourly
+    PredictedDayMeta:
+      type: object
+      properties:
+        date:
+          type: string
+        dayOfWeek:
+          type: string
+        weather:
+          type: string
+        events:
+          $ref: "#/components/schemas/EventFlags"
+        dowMultiplier:
+          type: number
+        weatherMultiplier:
+          type: number
+        eventMultiplier:
+          type: number
+        criticalCount:
+          type: integer
+        highCount:
+          type: integer
+        moderateCount:
+          type: integer
+        lowCount:
+          type: integer
+        avgPredictedScore:
+          type: number
+        peakHourGlobal:
+          type: integer
+          description: The hour with the highest network-wide aggregate predicted score.
+      required:
+        - date
+        - dayOfWeek
+        - weather
+        - dowMultiplier
+        - weatherMultiplier
+        - eventMultiplier
+        - criticalCount
+        - highCount
+        - moderateCount
+        - lowCount
+        - avgPredictedScore
+        - peakHourGlobal
+    HourlyAggregatePoint:
+      type: object
+      properties:
+        hour:
+          type: integer
+        label:
+          type: string
+        avgPredictedScore:
+          type: number
+        criticalCount:
+          type: integer
+        highCount:
+          type: integer
+        weatherFactor:
+          type: number
+        crashLikelihoodFactor:
+          type: number
+          description: Hour-of-day crash likelihood factor (FARS-derived).
+      required:
+        - hour
+        - label
+        - avgPredictedScore
+        - criticalCount
+        - highCount
+        - weatherFactor
+        - crashLikelihoodFactor
+    PreemptiveRecommendation:
+      type: object
+      properties:
+        intersectionId:
+          type: string
+        intersectionName:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        predictedPeakHour:
+          type: integer
+        predictedPeakScore:
+          type: number
+        action:
+          type: string
+          description: Plain-English suggested operator action for the predicted peak window.
+        rationale:
+          type: string
+      required:
+        - intersectionId
+        - intersectionName
+        - latitude
+        - longitude
+        - predictedPeakHour
+        - predictedPeakScore
+        - action
+        - rationale
+    PredictedDay:
+      type: object
+      properties:
+        meta:
+          $ref: "#/components/schemas/PredictedDayMeta"
+        hourly:
+          type: array
+          items:
+            $ref: "#/components/schemas/HourlyAggregatePoint"
+        signals:
+          type: array
+          description: Lean per-signal forecast for every signal in the network (used for the predicted heatmap).
+          items:
+            $ref: "#/components/schemas/PredictedSignal"
+        topWorst:
+          type: array
+          description: Top-30 predicted-worst signals sorted by predictedPeakScore.
+          items:
+            $ref: "#/components/schemas/PredictedSignal"
+        recommendations:
+          type: array
+          description: Pre-emptive operator recommendations for the worst predicted bottlenecks.
+          items:
+            $ref: "#/components/schemas/PreemptiveRecommendation"
+      required:
+        - meta
+        - hourly
+        - signals
+        - topWorst
+        - recommendations
+    LiveIncident:
+      type: object
+      description: A single active incident pulled from GDOT 511 and snapped to the nearest signal within 500m (signalId is null if no signal is close enough).
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+        description:
+          type: string
+        roadway:
+          type: string
+        eventType:
+          type: string
+        eventSubType:
+          type: string
+        severity:
+          type: string
+        isFullClosure:
+          type: boolean
+        laneDescription:
+          type: string
+        startDate:
+          type: string
+          nullable: true
+        endDate:
+          type: string
+          nullable: true
+        lastUpdated:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+        longitude:
+          type: number
+        signalId:
+          type: string
+          nullable: true
+        signalName:
+          type: string
+          nullable: true
+        signalDistanceM:
+          type: integer
+          nullable: true
+        category:
+          type: string
+          enum: [Incidents, IncidentClosures]
+      required:
+        - id
+        - source
+        - description
+        - roadway
+        - eventType
+        - eventSubType
+        - severity
+        - isFullClosure
+        - laneDescription
+        - startDate
+        - endDate
+        - lastUpdated
+        - latitude
+        - longitude
+        - signalId
+        - signalName
+        - signalDistanceM
+        - category
+    LiveIncidentsBundle:
+      type: object
+      properties:
+        fetchedAt:
+          type: string
+        source:
+          type: string
+        cached:
+          type: boolean
+        cacheAgeSeconds:
+          type: integer
+        totalFetched:
+          type: integer
+          description: Total icons fetched across all categories before bbox/dedupe filtering.
+        inMetro:
+          type: integer
+          description: Unique incidents inside the Atlanta metro bbox after dedupe.
+        snappedToSignal:
+          type: integer
+          description: How many of those incidents fell within 500m of a known signal.
+        incidents:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveIncident"
+      required:
+        - fetchedAt
+        - source
+        - cached
+        - cacheAgeSeconds
+        - totalFetched
+        - inMetro
+        - snappedToSignal
+        - incidents
+    DaySnapshot:
+      type: object
+      description: One day's predicted-vs-actual record persisted in the rolling history file.
+      properties:
+        date:
+          type: string
+          description: YYYY-MM-DD in America/New_York.
+        observedAt:
+          type: string
+        predictedTopRiskOsmIds:
+          type: array
+          items:
+            type: integer
+        topNUsed:
+          type: integer
+        actualIncidentSignalCounts:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Map of OSM signal id (as string) to the number of incidents observed on that signal today.
+        actualIncidentTotal:
+          type: integer
+        hits:
+          type: integer
+          description: How many actually-incident signals appeared in the predicted top-N.
+        hitRatePct:
+          type: number
+          description: hits divided by # of signals that actually had incidents.
+        precisionPct:
+          type: number
+          description: hits divided by topN — how concentrated the model's top-N actually was.
+      required:
+        - date
+        - observedAt
+        - predictedTopRiskOsmIds
+        - topNUsed
+        - actualIncidentSignalCounts
+        - actualIncidentTotal
+        - hits
+        - hitRatePct
+        - precisionPct
+    AccuracyReport:
+      type: object
+      properties:
+        today:
+          allOf:
+            - $ref: "#/components/schemas/DaySnapshot"
+          nullable: true
+        recentDays:
+          type: array
+          description: Up to 7 most recent prior days' snapshots (newest first).
+          items:
+            $ref: "#/components/schemas/DaySnapshot"
+        rollingHitRatePct:
+          type: number
+        rollingPrecisionPct:
+          type: number
+        liveIncidentsTotal:
+          type: integer
+        liveIncidentsSnapped:
+          type: integer
+        recentActivitySignalCount:
+          type: integer
+          description: Number of distinct signals with a recent-activity multiplier currently being applied to future predictions.
+        upstreamDegraded:
+          type: boolean
+          description: True when the public 511ga.org feed returned zero items (treated as an outage); today's snapshot was NOT persisted in this case.
+      required:
+        - recentDays
+        - rollingHitRatePct
+        - rollingPrecisionPct
+        - liveIncidentsTotal
+        - liveIncidentsSnapped
+        - recentActivitySignalCount
+        - upstreamDegraded
+    BacktestDayRow:
+      type: object
+      description: One day of the backtest series.
+      properties:
+        date: { type: string }
+        dow: { type: integer, minimum: 0, maximum: 6 }
+        topN: { type: integer }
+        actualSnappedSignals: { type: integer }
+        actualIncidentTotal: { type: integer }
+        hits: { type: integer }
+        hitRatePct: { type: number }
+        precisionPct: { type: number }
+      required:
+        - date
+        - dow
+        - topN
+        - actualSnappedSignals
+        - actualIncidentTotal
+        - hits
+        - hitRatePct
+        - precisionPct
+    DowBreakdownRow:
+      type: object
+      properties:
+        dow: { type: integer, minimum: 0, maximum: 6 }
+        dayName: { type: string }
+        daysObserved: { type: integer }
+        meanHitRatePct: { type: number }
+        meanPrecisionPct: { type: number }
+      required: [dow, dayName, daysObserved, meanHitRatePct, meanPrecisionPct]
+    BacktestReport:
+      type: object
+      description: Aggregated multi-day backtest report (model accuracy sales sheet).
+      properties:
+        generatedAt: { type: string }
+        windowDays: { type: integer }
+        totalSignalsInModel: { type: integer }
+        daysObserved: { type: integer }
+        totalPredictedSlots: { type: integer }
+        totalObservedIncidentSignals: { type: integer }
+        totalIncidentReports: { type: integer }
+        totalHits: { type: integer }
+        overallHitRatePct: { type: number }
+        overallPrecisionPct: { type: number }
+        meanHitRatePct: { type: number }
+        medianHitRatePct: { type: number }
+        hitRateCi95LowPct: { type: number }
+        hitRateCi95HighPct: { type: number }
+        meanTopN: { type: integer }
+        randomBaselinePct: { type: number }
+        liftMultiplier: { type: number }
+        bestDay:
+          allOf:
+            - $ref: "#/components/schemas/BacktestDayRow"
+          nullable: true
+        worstDay:
+          allOf:
+            - $ref: "#/components/schemas/BacktestDayRow"
+          nullable: true
+        perDay:
+          type: array
+          items:
+            $ref: "#/components/schemas/BacktestDayRow"
+        byDayOfWeek:
+          type: array
+          items:
+            $ref: "#/components/schemas/DowBreakdownRow"
+        methodology:
+          type: array
+          items: { type: string }
+      required:
+        - generatedAt
+        - windowDays
+        - totalSignalsInModel
+        - daysObserved
+        - totalPredictedSlots
+        - totalObservedIncidentSignals
+        - totalIncidentReports
+        - totalHits
+        - overallHitRatePct
+        - overallPrecisionPct
+        - meanHitRatePct
+        - medianHitRatePct
+        - hitRateCi95LowPct
+        - hitRateCi95HighPct
+        - meanTopN
+        - randomBaselinePct
+        - liftMultiplier
+        - perDay
+        - byDayOfWeek
+        - methodology
+    LiveWeatherHourly:
+      type: object
+      properties:
+        hour:
+          type: integer
+          minimum: 0
+          maximum: 23
+        condition:
+          type: string
+          enum: [clear, light_rain, heavy_rain, snow]
+        summary:
+          type: string
+        precipitationInPerHr:
+          type: number
+        weatherCode:
+          type: integer
+      required:
+        - hour
+        - condition
+        - summary
+        - precipitationInPerHr
+        - weatherCode
+    LiveWeather:
+      type: object
+      properties:
+        fetchedAt:
+          type: string
+        source:
+          type: string
+        cached:
+          type: boolean
+        cacheAgeSeconds:
+          type: integer
+        condition:
+          type: string
+          enum: [clear, light_rain, heavy_rain, snow]
+        summary:
+          type: string
+        temperatureF:
+          type: number
+          nullable: true
+        precipitationInPerHr:
+          type: number
+          nullable: true
+        windMph:
+          type: number
+          nullable: true
+        weatherCode:
+          type: integer
+          nullable: true
+        hourly:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveWeatherHourly"
+      required:
+        - fetchedAt
+        - source
+        - cached
+        - cacheAgeSeconds
+        - condition
+        - summary
+        - hourly
+    AccidentHotspot:
+      type: object
+      properties:
+        rank:
+          type: integer
+        intersectionId:
+          type: string
+        intersectionName:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        hour:
+          type: integer
+        hourLabel:
+          type: string
+        likelihood:
+          type: number
+          description: Display-normalized 0..100 score, 100 = strongest candidate in this run.
+        predictedScore:
+          type: number
+        crashRiskTier:
+          type: string
+          enum: [none, low, moderate, high, severe]
+        historicalCrashes:
+          type: integer
+        isPast:
+          type: boolean
+        rationale:
+          type: string
+      required:
+        - rank
+        - intersectionId
+        - intersectionName
+        - latitude
+        - longitude
+        - hour
+        - hourLabel
+        - likelihood
+        - predictedScore
+        - crashRiskTier
+        - historicalCrashes
+        - isPast
+        - rationale
+    TodayAccidentPredictions:
+      type: object
+      properties:
+        date:
+          type: string
+        generatedAt:
+          type: string
+        weather:
+          type: string
+          enum: [clear, light_rain, heavy_rain, snow]
+        weatherSummary:
+          type: string
+        currentHourLocal:
+          type: integer
+        includesPastHours:
+          type: boolean
+        topN:
+          type: integer
+        hotspots:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccidentHotspot"
+      required:
+        - date
+        - generatedAt
+        - weather
+        - weatherSummary
+        - currentHourLocal
+        - includesPastHours
+        - topN
+        - hotspots
+    LiveTrafficSegment:
+      type: object
+      properties:
+        rc:
+          type: integer
+          description: OSM road class index (0=motorway, 1=trunk, 2=primary, 3=secondary).
+        name:
+          type: string
+          nullable: true
+        level:
+          type: string
+          enum: [free, light, heavy, severe, closed]
+        score:
+          type: number
+          description: Estimated congestion score 0..100.
+        polyline:
+          type: array
+          description: Flat lat/lon pairs [lat0, lon0, lat1, lon1, ...].
+          items:
+            type: number
+      required:
+        - rc
+        - name
+        - level
+        - score
+        - polyline
+    LiveTrafficFlow:
+      type: object
+      properties:
+        fetchedAt:
+          type: string
+        source:
+          type: string
+        cached:
+          type: boolean
+        cacheAgeSeconds:
+          type: integer
+        currentHourLocal:
+          type: integer
+        hourLabel:
+          type: string
+        dayOfWeek:
+          type: string
+        weather:
+          type: string
+          enum: [clear, light_rain, heavy_rain, snow]
+        weatherSummary:
+          type: string
+        activeIncidents:
+          type: integer
+        fullClosures:
+          type: integer
+        counts:
+          type: object
+          properties:
+            free:
+              type: integer
+            light:
+              type: integer
+            heavy:
+              type: integer
+            severe:
+              type: integer
+            closed:
+              type: integer
+          required: [free, light, heavy, severe, closed]
+        avgCongestion:
+          type: number
+        classesIncluded:
+          type: array
+          items:
+            type: integer
+        segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveTrafficSegment"
+        incidents:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveIncident"
+        dmsSpeedCount:
+          type: integer
+          description: Number of DMS boards with parsed speed readings blended into the scores (0 if no API key).
+        sourceNote:
+          type: string
+      required:
+        - fetchedAt
+        - source
+        - cached
+        - cacheAgeSeconds
+        - currentHourLocal
+        - hourLabel
+        - dayOfWeek
+        - weather
+        - weatherSummary
+        - activeIncidents
+        - fullClosures
+        - counts
+        - avgCongestion
+        - classesIncluded
+        - segments
+        - incidents
+        - dmsSpeedCount
+        - sourceNote
+    DmsSpeedReading:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        roadway:
+          type: string
+        direction:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        speedMph:
+          type: number
+        rawMessage:
+          type: string
+        lastUpdated:
+          type: string
+          nullable: true
+      required:
+        - id
+        - name
+        - roadway
+        - direction
+        - latitude
+        - longitude
+        - speedMph
+        - rawMessage
+        - lastUpdated
+    DmsSpeedBundle:
+      type: object
+      properties:
+        fetchedAt:
+          type: string
+        cached:
+          type: boolean
+        cacheAgeSeconds:
+          type: integer
+        totalSigns:
+          type: integer
+        metroSigns:
+          type: integer
+        speedReadings:
+          type: array
+          items:
+            $ref: "#/components/schemas/DmsSpeedReading"
+      required:
+        - fetchedAt
+        - cached
+        - cacheAgeSeconds
+        - totalSigns
+        - metroSigns
+        - speedReadings
+    GdotAlert:
+      type: object
+      properties:
+        id:
+          type: integer
+        message:
+          type: string
+        notes:
+          type: string
+        startTime:
+          type: string
+          nullable: true
+        endTime:
+          type: string
+          nullable: true
+        lastUpdated:
+          type: string
+          nullable: true
+        highImportance:
+          type: boolean
+      required:
+        - id
+        - message
+        - notes
+        - highImportance
+    GdotAlertsBundle:
+      type: object
+      properties:
+        fetchedAt:
+          type: string
+        cached:
+          type: boolean
+        cacheAgeSeconds:
+          type: integer
+        alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/GdotAlert"
+      required:
+        - fetchedAt
+        - cached
+        - cacheAgeSeconds
+        - alerts
+    LiveHotspotFix:
+      type: object
+      description: A crash-prone intersection currently in heavy or worse congestion, with a concrete signal-timing recommendation derived from the same Webster's-delay engine the dashboard uses.
+      properties:
+        intersectionId:
+          type: string
+        intersectionName:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        currentScore:
+          type: number
+          description: Current-hour predicted stress (0..100).
+        currentLevel:
+          type: string
+          enum: [free, light, heavy, severe, closed]
+        hasNearbyIncident:
+          type: boolean
+          description: True iff an active GDOT incident sits within ~600m of the intersection.
+        nearestIncidentMeters:
+          type: number
+          nullable: true
+        crashes:
+          type: integer
+        fatal:
+          type: integer
+        seriousInjuries:
+          type: integer
+        riskTier:
+          type: string
+          enum: [none, low, moderate, high, severe]
+        targetPhase:
+          type: string
+          enum: [Protected Left, N/S Green, E/W Green]
+        targetMovement:
+          type: string
+        currentPhaseSeconds:
+          type: integer
+        suggestedPhaseSeconds:
+          type: integer
+        currentCycleLength:
+          type: integer
+        suggestedCycleLength:
+          type: integer
+        estimatedDelayReductionSeconds:
+          type: number
+        rationale:
+          type: string
+        hotspotScore:
+          type: number
+          description: Combined sort key (0..100) blending current stress, crash count, fatality bonus, and live-incident proximity.
+      required:
+        - intersectionId
+        - intersectionName
+        - latitude
+        - longitude
+        - currentScore
+        - currentLevel
+        - hasNearbyIncident
+        - nearestIncidentMeters
+        - crashes
+        - fatal
+        - seriousInjuries
+        - riskTier
+        - targetPhase
+        - targetMovement
+        - currentPhaseSeconds
+        - suggestedPhaseSeconds
+        - currentCycleLength
+        - suggestedCycleLength
+        - estimatedDelayReductionSeconds
+        - rationale
+        - hotspotScore
+    LiveHotspotFixesBundle:
+      type: object
+      properties:
+        fetchedAt:
+          type: string
+        currentHourLocal:
+          type: integer
+        hourLabel:
+          type: string
+        totalCandidates:
+          type: integer
+          description: How many signals matched the (heavy+ congestion AND high+ crash tier) filter before the top-N cap.
+        fixes:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveHotspotFix"
+        note:
+          type: string
+      required:
+        - fetchedAt
+        - currentHourLocal
+        - hourLabel
+        - totalCandidates
+        - fixes
+        - note
+    PredictedTrafficFlow:
+      type: object
+      properties:
+        date:
+          type: string
+        hour:
+          type: integer
+        hourLabel:
+          type: string
+        dayOfWeek:
+          type: string
+        weather:
+          type: string
+          enum: [clear, light_rain, heavy_rain, snow]
+        counts:
+          type: object
+          properties:
+            free:
+              type: integer
+            light:
+              type: integer
+            heavy:
+              type: integer
+            severe:
+              type: integer
+            closed:
+              type: integer
+          required: [free, light, heavy, severe, closed]
+        avgCongestion:
+          type: number
+        segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/LiveTrafficSegment"
+        criticalSignals:
+          type: array
+          items:
+            $ref: "#/components/schemas/PredictedCriticalSignal"
+        allHours:
+          type: array
+          items:
+            $ref: "#/components/schemas/PredictedHourAggregate"
+        sourceNote:
+          type: string
+      required:
+        - date
+        - hour
+        - hourLabel
+        - dayOfWeek
+        - weather
+        - counts
+        - avgCongestion
+        - segments
+        - criticalSignals
+        - allHours
+        - sourceNote
+    PredictedCriticalSignal:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        lat:
+          type: number
+        lon:
+          type: number
+        score:
+          type: number
+        severity:
+          type: string
+        roadClass:
+          type: string
+        crashRiskTier:
+          type: string
+        crashSurgePct:
+          type: number
+      required: [id, name, lat, lon, score, severity, roadClass, crashRiskTier, crashSurgePct]
+    PredictedHourAggregate:
+      type: object
+      properties:
+        hour:
+          type: integer
+        label:
+          type: string
+        avgScore:
+          type: number
+        criticalCount:
+          type: integer
+        highCount:
+          type: integer
+      required: [hour, label, avgScore, criticalCount, highCount]
+    ParkingLot:
+      type: object
+      properties:
+        id: { type: string }
+        lat: { type: number }
+        lon: { type: number }
+        name: { type: string, nullable: true }
+        kind: { type: string, enum: [surface, garage, multi-storey, underground, street, other] }
+        fee: { type: string, enum: [free, paid, unknown] }
+        access: { type: string, enum: [public, customers, permit, private, unknown] }
+        capacity: { type: integer }
+        fillPct: { type: number }
+        spacesFree: { type: integer }
+        etaMinutes: { type: integer, nullable: true, description: "Minutes until lot reaches 95% fill, or null if not within next 12h" }
+        archetype: { type: string }
+        surgeFromVenue: { type: string, nullable: true }
+      required: [id, lat, lon, name, kind, fee, access, capacity, fillPct, spacesFree, etaMinutes, archetype, surgeFromVenue]
+    ParkingForecastHour:
+      type: object
+      properties:
+        hour: { type: integer }
+        label: { type: string }
+        fillPct: { type: number }
+        spacesFree: { type: integer }
+      required: [hour, label, fillPct, spacesFree]
+    ParkingLotDetail:
+      type: object
+      properties:
+        id: { type: string }
+        lat: { type: number }
+        lon: { type: number }
+        name: { type: string, nullable: true }
+        kind: { type: string }
+        fee: { type: string }
+        access: { type: string }
+        capacity: { type: integer }
+        fillPct: { type: number }
+        spacesFree: { type: integer }
+        etaMinutes: { type: integer, nullable: true }
+        archetype: { type: string }
+        surgeFromVenue: { type: string, nullable: true }
+        hourly:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParkingForecastHour"
+        drivers:
+          type: array
+          items: { type: string }
+        nearestVenue:
+          type: object
+          nullable: true
+          properties:
+            name: { type: string }
+            distanceKm: { type: number }
+          required: [name, distanceKm]
+      required: [id, lat, lon, name, kind, fee, access, capacity, fillPct, spacesFree, etaMinutes, archetype, surgeFromVenue, hourly, drivers, nearestVenue]
+    ParkingSurgeEvent:
+      type: object
+      properties:
+        venue: { type: string }
+        lat: { type: number }
+        lon: { type: number }
+        affectedLots: { type: integer }
+        affectedCapacity: { type: integer }
+        fillPct: { type: number }
+      required: [venue, lat, lon, affectedLots, affectedCapacity, fillPct]
+    ParkingArchetypeBreakdown:
+      type: object
+      properties:
+        lots: { type: integer }
+        capacity: { type: integer }
+        fillPct: { type: number }
+      required: [lots, capacity, fillPct]
+    ParkingSummary:
+      type: object
+      properties:
+        asOf: { type: string }
+        totalLots: { type: integer }
+        totalCapacity: { type: integer }
+        occupiedSpaces: { type: integer }
+        fillPct: { type: number }
+        fullLots: { type: integer }
+        nearFullLots: { type: integer }
+        surgeEvents:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParkingSurgeEvent"
+        byArchetype:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ParkingArchetypeBreakdown"
+        sourceNote: { type: string }
+      required: [asOf, totalLots, totalCapacity, occupiedSpaces, fillPct, fullLots, nearFullLots, surgeEvents, byArchetype, sourceNote]

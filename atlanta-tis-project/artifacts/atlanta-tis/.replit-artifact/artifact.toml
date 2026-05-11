@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Atlanta TIS — Traffic Impact Studies for Engineering Firms"
+version = "1.0.0"
+id = "artifacts/atlanta-tis"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22264
+
+[services.development]
+run = "pnpm --filter @workspace/atlanta-tis run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/atlanta-tis", "run", "build" ]
+publicDir = "artifacts/atlanta-tis/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22264"
+BASE_PATH = "/"
