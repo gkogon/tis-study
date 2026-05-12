@@ -1,0 +1,36 @@
+# Railway / nixpacks build config for the tis-api-server service.
+#
+# We pin Node 22 explicitly because Railway's auto-detection has been
+# inconsistent for pnpm workspaces under a custom Root Directory.
+# corepack ships with Node 22, which is how we get pnpm without an
+# extra install step.
+#
+# The build chain:
+#   1. `pnpm install` resolves all workspace deps.
+#   2. The frontend builds first (writes dist/public for Vite).
+#   3. The API server bundles next; its build step copies the frontend
+#      dist into its own dist/public so Express can serve everything.
+#
+# Start command runs the bundled API server, which serves /tis-api,
+# proxies /api to the analyzer, and serves the React app for all
+# other routes.
+
+providers = ["node"]
+
+[phases.setup]
+nixPkgs = ["nodejs_22"]
+
+[phases.install]
+cmds = [
+  "corepack enable",
+  "pnpm install --frozen-lockfile",
+]
+
+[phases.build]
+cmds = [
+  "pnpm --filter @workspace/atlanta-tis run build",
+  "pnpm --filter @workspace/tis-api-server run build",
+]
+
+[start]
+cmd = "pnpm --filter @workspace/tis-api-server run start"
