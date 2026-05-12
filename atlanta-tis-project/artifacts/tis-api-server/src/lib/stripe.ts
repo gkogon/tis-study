@@ -79,11 +79,8 @@ export function getWebhookSecret(): string | null {
 }
 
 export function getPublicAppOrigin(): string {
-  // App origin for success/cancel return URLs. Falls back to a sensible
-  // default so dev environments don't break.
-  return (
-    process.env.PUBLIC_APP_ORIGIN ??
-    process.env.REPLIT_DEV_DOMAIN ??
-    "http://localhost:5173"
-  ).replace(/\/+$/, "");
+  // App origin for success/cancel return URLs and outbound email
+  // links. Set `PUBLIC_APP_ORIGIN` in production (Railway / wherever)
+  // to your real domain. Falls back to localhost for dev.
+  return (process.env.PUBLIC_APP_ORIGIN ?? "http://localhost:5173").replace(/\/+$/, "");
 }

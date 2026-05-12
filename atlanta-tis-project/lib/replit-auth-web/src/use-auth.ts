@@ -1,3 +1,13 @@
+/**
+ * Auth hook for the web UI.
+ *
+ * History: this lib was originally named `replit-auth-web` because it
+ * proxied Replit OIDC. As of Phase 13 the OIDC backend was replaced
+ * with email + password, and this hook now redirects `login()` to the
+ * /login page (where the email/password form lives) and POSTs to
+ * /auth/logout. The package name is unchanged to avoid a workspace-wide
+ * rename; treat it as the generic "web auth hook" for the app.
+ */
 import { useState, useEffect, useCallback } from "react";
 
 declare global {
@@ -18,7 +28,9 @@ interface AuthState {
   user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  /** Navigates to /login so the user can enter their email + password. */
   login: () => void;
+  /** Clears the session server-side and reloads to the home page. */
   logout: () => void;
 }
 
@@ -53,12 +65,19 @@ export function useAuth(): AuthState {
   }, []);
 
   const login = useCallback(() => {
-    const base = import.meta.env.BASE_URL.replace(/\/+$/, "") || "/";
-    window.location.href = `${AUTH_BASE}/login?returnTo=${encodeURIComponent(base + "/")}`;
+    const base = import.meta.env.BASE_URL.replace(/\/+$/, "") || "";
+    const returnTo = encodeURIComponent(window.location.pathname || "/");
+    window.location.href = `${base}/login?returnTo=${returnTo}`;
   }, []);
 
   const logout = useCallback(() => {
-    window.location.href = `${AUTH_BASE}/logout`;
+    void fetch(`${AUTH_BASE}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    }).finally(() => {
+      const base = import.meta.env.BASE_URL.replace(/\/+$/, "") || "";
+      window.location.href = `${base}/`;
+    });
   }, []);
 
   return {
