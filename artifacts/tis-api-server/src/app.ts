@@ -74,6 +74,34 @@ if (analyzerUrl) {
 // ship one container with one domain. The bundle is copied to
 // `dist/public/` by the build step.
 const FRONTEND_DIST = path.resolve(import.meta.dirname ?? __dirname, "public");
+
+// Diagnostic endpoint — temporary. Reports what the deployed container
+// actually sees so we can debug production-serve mismatches without
+// shell access to the Railway container.
+app.get("/__static_debug", (_req, res) => {
+  const info: Record<string, unknown> = {
+    cwd: process.cwd(),
+    frontendDist: FRONTEND_DIST,
+    exists: fs.existsSync(FRONTEND_DIST),
+  };
+  if (info.exists) {
+    try {
+      info.contents = fs.readdirSync(FRONTEND_DIST).slice(0, 50);
+      const assetsDir = path.join(FRONTEND_DIST, "assets");
+      if (fs.existsSync(assetsDir)) {
+        info.assetsContents = fs.readdirSync(assetsDir).slice(0, 50);
+      }
+    } catch (err) {
+      info.error = err instanceof Error ? err.message : String(err);
+    }
+  }
+  // Also surface what __dirname / import.meta.dirname resolve to in
+  // the bundled runtime so we can verify the path-resolution chain.
+  info.importMetaDirname = (import.meta as { dirname?: string }).dirname ?? null;
+  info.__dirname = typeof __dirname !== "undefined" ? __dirname : null;
+  res.json(info);
+});
+
 if (fs.existsSync(FRONTEND_DIST)) {
   // Hashed asset files are immutable — long-cache them. The HTML
   // entry has to revalidate every load.
