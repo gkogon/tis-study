@@ -32,6 +32,53 @@ export type SendInviteEmailArgs = {
   expiresAt: Date;
 };
 
+export type SendPasswordResetArgs = {
+  to: string;
+  resetUrl: string;
+  expiresAt: Date;
+};
+
+export async function sendPasswordResetEmail(
+  args: SendPasswordResetArgs,
+): Promise<{ delivered: boolean }> {
+  const c = client();
+  const subject = "Reset your Atlanta TIS password";
+  const html = `<!doctype html>
+<html><body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;max-width:560px;margin:24px auto;padding:0 16px;color:#1a1a1a;">
+  <h2 style="color:#2563eb;margin:0 0 8px;">Reset your password</h2>
+  <p style="margin:0 0 16px;">Someone (hopefully you) requested a password reset for this email on Atlanta TIS. Click the button below to set a new password. The link expires on ${args.expiresAt.toLocaleString()}.</p>
+  <p style="margin:0 0 24px;">
+    <a href="${args.resetUrl}" style="display:inline-block;background:#2563eb;color:white;font-weight:600;padding:12px 18px;border-radius:6px;text-decoration:none;">Reset password</a>
+  </p>
+  <p style="margin:0 0 16px;font-size:13px;color:#555;">If you didn't request this, ignore the email — your account is unchanged.</p>
+  <p style="margin:24px 0 0;font-size:12px;color:#888;">Or copy this link: ${args.resetUrl}</p>
+</body></html>`;
+  const text = `Reset your Atlanta TIS password by visiting: ${args.resetUrl}\n\nThe link expires on ${args.expiresAt.toLocaleString()}.\n\nIf you didn't request this, ignore the email.`;
+
+  if (!c) {
+    logger.info({ to: args.to, resetUrl: args.resetUrl }, "email.password_reset_skipped_no_key");
+    return { delivered: false };
+  }
+  try {
+    const { error } = await c.emails.send({
+      from: fromAddress(),
+      to: args.to,
+      subject,
+      html,
+      text,
+    });
+    if (error) {
+      logger.warn({ err: error, to: args.to }, "email.password_reset_failed");
+      return { delivered: false };
+    }
+    logger.info({ to: args.to }, "email.password_reset_sent");
+    return { delivered: true };
+  } catch (err) {
+    logger.error({ err, to: args.to }, "email.password_reset_throw");
+    return { delivered: false };
+  }
+}
+
 export async function sendInviteEmail(args: SendInviteEmailArgs): Promise<{ delivered: boolean }> {
   const c = client();
   const subject = `${args.inviterName ?? "Your colleague"} invited you to ${args.firmName} on Atlanta TIS`;

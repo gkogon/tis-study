@@ -1,4 +1,9 @@
-import * as client from "openid-client";
+/**
+ * Session primitives shared across all auth flows (email+password,
+ * dev-auth, and any future SSO). No OIDC / Replit dependencies live
+ * here anymore — they were removed in the Phase-13 migration off
+ * Replit.
+ */
 import crypto from "crypto";
 import { type Request, type Response } from "express";
 import { db, sessionsTable } from "@workspace/db";
@@ -12,27 +17,17 @@ export interface AuthUser {
   profileImageUrl: string | null;
 }
 
-export const ISSUER_URL = process.env.ISSUER_URL ?? "https://replit.com/oidc";
 export const SESSION_COOKIE = "tis_sid";
 export const SESSION_TTL = 7 * 24 * 60 * 60 * 1000;
 
 export interface SessionData {
   user: AuthUser;
+  // Legacy fields preserved so middleware doesn't have to change
+  // shape; future SSO flows can put real tokens here, email+password
+  // leaves them as no-op placeholders.
   access_token: string;
   refresh_token?: string;
   expires_at?: number;
-}
-
-let oidcConfig: client.Configuration | null = null;
-
-export async function getOidcConfig(): Promise<client.Configuration> {
-  if (!oidcConfig) {
-    if (!process.env.REPL_ID) {
-      throw new Error("REPL_ID is required for Replit Auth");
-    }
-    oidcConfig = await client.discovery(new URL(ISSUER_URL), process.env.REPL_ID);
-  }
-  return oidcConfig;
 }
 
 export async function createSession(data: SessionData): Promise<string> {

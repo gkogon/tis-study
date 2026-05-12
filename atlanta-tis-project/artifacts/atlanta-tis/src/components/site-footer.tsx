@@ -34,6 +34,8 @@ export function SiteFooter() {
           <FooterLink href="/settings/firm">Firm settings</FooterLink>
         </FooterCol>
         <FooterCol heading="Account">
+          <FooterLink href="/login">Sign in</FooterLink>
+          <FooterLink href="/signup">Start trial</FooterLink>
           <FooterLink href="/settings/billing">Billing</FooterLink>
           <FooterLink href="/projects">My projects</FooterLink>
         </FooterCol>

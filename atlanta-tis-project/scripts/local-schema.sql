@@ -13,14 +13,21 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON sessions (expire);
 
 CREATE TABLE IF NOT EXISTS users (
-  id                 VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-  email              VARCHAR UNIQUE,
-  first_name         VARCHAR,
-  last_name          VARCHAR,
-  profile_image_url  VARCHAR,
-  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+  id                          VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+  email                       VARCHAR UNIQUE,
+  first_name                  VARCHAR,
+  last_name                   VARCHAR,
+  profile_image_url           VARCHAR,
+  password_hash               VARCHAR,
+  password_reset_token        VARCHAR,
+  password_reset_expires_at   TIMESTAMPTZ,
+  created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Phase-13 migration ALTER for an existing users table.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash             VARCHAR;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token      VARCHAR;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ;
 
 -- =============== firms ===============
 CREATE TABLE IF NOT EXISTS firms (

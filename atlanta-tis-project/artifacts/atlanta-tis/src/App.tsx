@@ -24,6 +24,9 @@ import MonitoringPage from "@/pages/monitoring";
 import LegalTermsPage from "@/pages/legal-terms";
 import LegalPrivacyPage from "@/pages/legal-privacy";
 import LegalDisclaimerPage from "@/pages/legal-disclaimer";
+import LoginPage from "@/pages/login";
+import ForgotPasswordPage from "@/pages/auth-forgot";
+import ResetPasswordPage from "@/pages/auth-reset";
 import { DevAuthWidget } from "@/components/dev-auth-widget";
 
 const queryClient = new QueryClient();
@@ -35,6 +38,9 @@ function Router() {
       <Route path="/for-firms" component={ForFirmsPage} />
       <Route path="/pricing" component={PricingPage} />
       <Route path="/signup" component={SignupPage} />
+      <Route path="/login" component={LoginPage} />
+      <Route path="/auth/forgot" component={ForgotPasswordPage} />
+      <Route path="/auth/reset" component={ResetPasswordPage} />
       <Route path="/studies" component={StudiesPage} />
       <Route path="/studies/parking" component={ParkingStudyPage} />
       <Route path="/studies/warrants" component={WarrantsStudyPage} />

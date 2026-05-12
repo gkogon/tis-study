@@ -9,6 +9,7 @@ import roadDietRouter from "./road-diet";
 import monitoringRouter from "./monitoring";
 import leadsRouter from "./leads";
 import authRouter from "./auth";
+import emailAuthRouter from "./email-auth";
 import projectsRouter from "./projects";
 import firmsRouter from "./firms";
 import billingRouter from "./billing";
@@ -17,6 +18,7 @@ const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
+router.use(emailAuthRouter);
 router.use(tisRouter);
 router.use(parkingRouter);
 router.use(warrantsRouter);
