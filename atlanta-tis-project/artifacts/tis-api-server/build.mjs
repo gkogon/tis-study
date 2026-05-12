@@ -22,6 +22,21 @@ async function buildAll() {
     // src/data is optional; fall through if it doesn't exist.
   });
 
+  // Copy the built React frontend into dist/public so Express can
+  // serve it as static files in production. The frontend's own build
+  // step (`pnpm --filter @workspace/atlanta-tis run build`) writes to
+  // its own dist/public; we just mirror that into the API server's
+  // dist so one container ships everything.
+  const frontendDist = path.resolve(
+    artifactDir, "..", "atlanta-tis", "dist", "public",
+  );
+  const publicDest = path.resolve(distDir, "public");
+  await cp(frontendDist, publicDest, { recursive: true }).catch((err) => {
+    console.warn(
+      `(build) frontend dist not found at ${frontendDist} — Express will run without static files. Build the frontend first: pnpm --filter @workspace/atlanta-tis run build. err=${err?.code ?? err}`,
+    );
+  });
+
   await esbuild({
     entryPoints: [path.resolve(artifactDir, "src/index.ts")],
     platform: "node",

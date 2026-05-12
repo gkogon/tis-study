@@ -26,7 +26,8 @@
     "resend": "^4.0.0",
     "multer": "^1.4.5-lts.1",
     "@swc/helpers": "^0.5.13",
-    "bcryptjs": "^2.4.3"
+    "bcryptjs": "^2.4.3",
+    "http-proxy-middleware": "^3.0.3"
   },
   "devDependencies": {
     "@types/compression": "^1.8.1",
