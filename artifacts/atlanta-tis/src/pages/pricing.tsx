@@ -130,6 +130,21 @@ export default function PricingPage() {
           </div>
         </section>
 
+        <section className="space-y-4">
+          <h2 className="text-2xl font-bold text-center">Common questions</h2>
+          <div className="space-y-2 max-w-2xl mx-auto">
+            {FAQ.map((f) => (
+              <details key={f.q} className="border rounded-lg p-4 group">
+                <summary className="cursor-pointer font-semibold list-none flex items-center justify-between">
+                  <span>{f.q}</span>
+                  <span className="text-muted-foreground text-lg group-open:rotate-45 transition-transform">+</span>
+                </summary>
+                <div className="text-sm text-muted-foreground leading-relaxed mt-3">{f.a}</div>
+              </details>
+            ))}
+          </div>
+        </section>
+
         <section className="text-center space-y-4">
           <h2 className="text-2xl font-bold">Not sure which tier?</h2>
           <p className="text-muted-foreground">
@@ -149,6 +164,37 @@ export default function PricingPage() {
     </div>
   );
 }
+
+const FAQ: { q: string; a: React.ReactNode }[] = [
+  {
+    q: "Is this a substitute for a stamped engineering deliverable?",
+    a: <>No. Outputs are screening-grade and meant to support — not replace — a licensed PE's analytical workflow. See the <a href="/legal/disclaimer" className="text-blue-600 hover:underline">Engineering Disclaimer</a> for the full scope.</>,
+  },
+  {
+    q: "Can multiple engineers in my firm use one account?",
+    a: "Yes — that's the firm-account model. Starter includes 3 seats, Growth includes 10. Each seat is a separate sign-in for one of your engineers; all projects roll up to the firm.",
+  },
+  {
+    q: "What citations are included in every report?",
+    a: "HCM 6th Ed., ITE Trip Generation 11th Ed., ITE Parking Generation 5th Ed., MUTCD 2009/2024, AASHTO Green Book 7th Ed., FHWA. Every figure on every page is footnoted to the specific table or equation it derives from.",
+  },
+  {
+    q: "What happens if we run out of studies in a billing period?",
+    a: "Generation is blocked until the next period or you upgrade. No surprise overage fees. We show a soft warning before your last study and a hard block after.",
+  },
+  {
+    q: "Can we cancel anytime?",
+    a: "Yes. From Settings → Billing you can cancel at any time. You keep access until the end of the billing period you've already paid for; then the account drops back to trial mode.",
+  },
+  {
+    q: "Do you offer SSO?",
+    a: "Enterprise tier only. Okta and Azure AD via OIDC.",
+  },
+  {
+    q: "What about data privacy?",
+    a: <>Project inputs and outputs stay private to your firm. We don't share them with third parties or use them to train external models. See the <a href="/legal/privacy" className="text-blue-600 hover:underline">Privacy Policy</a>.</>,
+  },
+];
 
 function TierCard({ tier }: { tier: Tier }) {
   return (

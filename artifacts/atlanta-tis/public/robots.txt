@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+# Sensitive auth + settings pages — discouraged but not blocked
+Disallow: /settings/
+Disallow: /admin
+Disallow: /invites/accept
+Disallow: /auth/
+
+Sitemap: https://simpleimpactstudies.com/sitemap.xml

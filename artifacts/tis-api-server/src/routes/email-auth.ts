@@ -268,4 +268,100 @@ router.get("/auth/password-policy", (_req, res): void => {
   });
 });
 
+// Authenticated profile self-service.
+router.patch("/auth/me", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Sign in required." });
+    return;
+  }
+  const body = req.body as {
+    firstName?: unknown;
+    lastName?: unknown;
+    email?: unknown;
+  };
+  const updates: Partial<typeof usersTable.$inferInsert> = {};
+  if (body.firstName !== undefined) {
+    updates.firstName = body.firstName === null ? null : String(body.firstName).trim().slice(0, 80);
+  }
+  if (body.lastName !== undefined) {
+    updates.lastName = body.lastName === null ? null : String(body.lastName).trim().slice(0, 80);
+  }
+  if (body.email !== undefined) {
+    const next = String(body.email).trim().toLowerCase();
+    if (!isValidEmail(next)) {
+      res.status(400).json({ error: "Valid email required." });
+      return;
+    }
+    if (next !== req.user!.email) {
+      const [taken] = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.email, next))
+        .limit(1);
+      if (taken && taken.id !== req.user!.id) {
+        res.status(409).json({ error: "That email is already in use." });
+        return;
+      }
+    }
+    updates.email = next;
+  }
+  if (Object.keys(updates).length === 0) {
+    res.json({ user: req.user });
+    return;
+  }
+  const [updated] = await db
+    .update(usersTable)
+    .set(updates)
+    .where(eq(usersTable.id, req.user!.id))
+    .returning();
+  res.json({
+    user: {
+      id: updated.id,
+      email: updated.email,
+      firstName: updated.firstName,
+      lastName: updated.lastName,
+      profileImageUrl: updated.profileImageUrl,
+    },
+  });
+});
+
+router.post("/auth/change-password", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Sign in required." });
+    return;
+  }
+  const body = req.body as { currentPassword?: unknown; newPassword?: unknown };
+  const currentPassword = String(body.currentPassword ?? "");
+  const newPassword = String(body.newPassword ?? "");
+  const strength = validatePasswordStrength(newPassword);
+  if (!strength.ok) {
+    res.status(400).json({ error: strength.reason });
+    return;
+  }
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, req.user!.id))
+    .limit(1);
+  if (!user) {
+    res.status(404).json({ error: "User not found." });
+    return;
+  }
+  // Users created via OIDC or dev-auth may not have a password set;
+  // for them, "current password" check is skipped — they just set one.
+  if (user.passwordHash) {
+    const ok = await verifyPassword(currentPassword, user.passwordHash);
+    if (!ok) {
+      res.status(401).json({ error: "Current password is incorrect." });
+      return;
+    }
+  }
+  const passwordHash = await hashPassword(newPassword);
+  await db
+    .update(usersTable)
+    .set({ passwordHash, passwordResetToken: null, passwordResetExpiresAt: null })
+    .where(eq(usersTable.id, user.id));
+  res.json({ ok: true });
+});
+
 export default router;

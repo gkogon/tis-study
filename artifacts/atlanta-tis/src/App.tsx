@@ -28,6 +28,10 @@ import LoginPage from "@/pages/login";
 import ForgotPasswordPage from "@/pages/auth-forgot";
 import ResetPasswordPage from "@/pages/auth-reset";
 import { DevAuthWidget } from "@/components/dev-auth-widget";
+import { SiteNav } from "@/components/site-nav";
+import { CookieBanner } from "@/components/cookie-banner";
+import ProfileSettingsPage from "@/pages/settings-profile";
+import AboutPage from "@/pages/about";
 
 const queryClient = new QueryClient();
 
@@ -56,6 +60,8 @@ function Router() {
       <Route path="/projects/:id" component={ProjectDetailPage} />
       <Route path="/settings/billing" component={SettingsBillingPage} />
       <Route path="/settings/firm" component={SettingsFirmPage} />
+      <Route path="/settings/profile" component={ProfileSettingsPage} />
+      <Route path="/about" component={AboutPage} />
       <Route path="/invites/accept" component={InviteAcceptPage} />
       <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />
@@ -68,7 +74,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <SiteNav />
           <Router />
+          <CookieBanner />
           <DevAuthWidget />
         </WouterRouter>
         <Toaster />
