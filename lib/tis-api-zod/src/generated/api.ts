@@ -40,7 +40,7 @@ export const generateTisBodyOpeningYearMin = 2024;
 export const generateTisBodyOpeningYearMax = 2050;
 
 export const generateTisBodyStudyRadiusMiMin = 0.1;
-export const generateTisBodyStudyRadiusMiMax = 2;
+export const generateTisBodyStudyRadiusMiMax = 6.5;
 
 export const generateTisBodyGrowthRatePctMin = 0;
 export const generateTisBodyGrowthRatePctMax = 6;
@@ -124,7 +124,7 @@ export const generateTisResponseRequestOpeningYearMin = 2024;
 export const generateTisResponseRequestOpeningYearMax = 2050;
 
 export const generateTisResponseRequestStudyRadiusMiMin = 0.1;
-export const generateTisResponseRequestStudyRadiusMiMax = 2;
+export const generateTisResponseRequestStudyRadiusMiMax = 6.5;
 
 export const generateTisResponseRequestGrowthRatePctMin = 0;
 export const generateTisResponseRequestGrowthRatePctMax = 6;
@@ -448,7 +448,7 @@ export const getTisProjectResponseRequestOneOpeningYearMin = 2024;
 export const getTisProjectResponseRequestOneOpeningYearMax = 2050;
 
 export const getTisProjectResponseRequestOneStudyRadiusMiMin = 0.1;
-export const getTisProjectResponseRequestOneStudyRadiusMiMax = 2;
+export const getTisProjectResponseRequestOneStudyRadiusMiMax = 6.5;
 
 export const getTisProjectResponseRequestOneGrowthRatePctMin = 0;
 export const getTisProjectResponseRequestOneGrowthRatePctMax = 6;
@@ -473,7 +473,7 @@ export const getTisProjectResponseResultRequestOpeningYearMin = 2024;
 export const getTisProjectResponseResultRequestOpeningYearMax = 2050;
 
 export const getTisProjectResponseResultRequestStudyRadiusMiMin = 0.1;
-export const getTisProjectResponseResultRequestStudyRadiusMiMax = 2;
+export const getTisProjectResponseResultRequestStudyRadiusMiMax = 6.5;
 
 export const getTisProjectResponseResultRequestGrowthRatePctMin = 0;
 export const getTisProjectResponseResultRequestGrowthRatePctMax = 6;

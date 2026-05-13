@@ -364,7 +364,7 @@ components:
         landUseCode: { type: string, minLength: 2 }
         size: { type: number, minimum: 0.01 }
         openingYear: { type: integer, minimum: 2024, maximum: 2050 }
-        studyRadiusMi: { type: number, minimum: 0.1, maximum: 2 }
+        studyRadiusMi: { type: number, minimum: 0.1, maximum: 6.5 }
         analysisPeriods:
           type: array
           items: { $ref: "#/components/schemas/TisAnalysisPeriod" }

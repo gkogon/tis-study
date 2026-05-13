@@ -340,7 +340,7 @@ function TisFormSection({
           <label className="space-y-1">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Study radius (mi)</span>
             <input
-              type="number" step="0.05" required min={0.1} max={2}
+              type="number" step="0.05" required min={0.1} max={6.5}
               className="w-full px-3 py-2 rounded-md border bg-background text-sm"
               value={form.studyRadiusMi ?? 0.5}
               onChange={(e) => setForm({ ...form, studyRadiusMi: Number(e.target.value) })}

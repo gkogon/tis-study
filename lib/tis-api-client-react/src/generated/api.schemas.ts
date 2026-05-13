@@ -178,7 +178,7 @@ export interface TisRequest {
   openingYear: number;
   /**
    * @minimum 0.1
-   * @maximum 2
+   * @maximum 6.5
    */
   studyRadiusMi?: number;
   /** Defaults to all four periods if omitted. */
