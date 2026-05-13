@@ -8,7 +8,8 @@
     "fetch-parking": "tsx ./src/fetch-atlanta-parking.ts",
     "fetch-roads": "tsx ./src/fetch-atlanta-roads.ts",
     "backfill-firm-id": "tsx ./src/backfill-firm-id.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test-pdf": "tsx ./src/test-pdf.ts"
   },
   "devDependencies": {
     "@types/node": "catalog:",
