@@ -9,8 +9,8 @@ export default function LegalTermsPage() {
     <LegalLayout title="Terms of Service" lastUpdated="May 11, 2026">
       <p>
         These Terms of Service ("Terms") govern access to and use of the
-        Atlanta TIS web application (the "Service") operated by Atlanta TIS
-        ("Atlanta TIS," "we," "us"). By creating an account or using the
+        Simple Impact Studies web application (the "Service") operated by Simple Impact Studies
+        ("Simple Impact Studies," "we," "us"). By creating an account or using the
         Service you agree to these Terms.
       </p>
 
@@ -97,7 +97,7 @@ export default function LegalTermsPage() {
 
       <h2>8. Limitation of Liability</h2>
       <p>
-        To the maximum extent permitted by law, in no event will Atlanta TIS,
+        To the maximum extent permitted by law, in no event will Simple Impact Studies,
         its officers, employees, contractors, or affiliates be liable for
         any indirect, incidental, consequential, special, exemplary, or
         punitive damages arising from or related to your use of the
@@ -112,7 +112,7 @@ export default function LegalTermsPage() {
 
       <h2>9. Indemnification</h2>
       <p>
-        You will defend, indemnify, and hold harmless Atlanta TIS from any
+        You will defend, indemnify, and hold harmless Simple Impact Studies from any
         third-party claim, loss, or expense (including reasonable
         attorneys' fees) arising from (a) your or your Firm's use of the
         Service, (b) reliance on Service outputs without independent

@@ -7,8 +7,8 @@ export default function LegalPrivacyPage() {
   return (
     <LegalLayout title="Privacy Policy" lastUpdated="May 11, 2026">
       <p>
-        This Privacy Policy describes how Atlanta TIS ("we," "us") collects,
-        uses, and discloses information when you use the Atlanta TIS web
+        This Privacy Policy describes how Simple Impact Studies ("we," "us") collects,
+        uses, and discloses information when you use the Simple Impact Studies web
         application (the "Service"). By using the Service you agree to the
         collection and use of information in accordance with this policy.
       </p>

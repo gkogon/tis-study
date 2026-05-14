@@ -9,7 +9,7 @@ export default function LegalDisclaimerPage() {
   return (
     <LegalLayout title="Engineering Disclaimer" lastUpdated="May 11, 2026">
       <p>
-        Atlanta TIS provides screening-level traffic-engineering analyses
+        Simple Impact Studies provides screening-level traffic-engineering analyses
         intended to support — not replace — the professional engineering
         judgment of a licensed Professional Engineer (PE). This page sets
         out the scope of what the Service provides and, importantly, what
@@ -97,7 +97,7 @@ export default function LegalDisclaimerPage() {
       <h2>No professional client relationship</h2>
       <p>
         Use of the Service does not create a client / professional-engineer
-        relationship between you and Atlanta TIS. Atlanta TIS does not
+        relationship between you and Simple Impact Studies. Simple Impact Studies does not
         provide engineering services, does not stamp deliverables, and is
         not licensed to practice professional engineering in any
         jurisdiction.
