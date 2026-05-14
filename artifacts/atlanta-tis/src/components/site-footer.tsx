@@ -31,10 +31,12 @@ export function SiteFooter() {
           <FooterLink href="/projects">Project history</FooterLink>
           <FooterLink href="/pricing">Pricing</FooterLink>
         </FooterCol>
-        <FooterCol heading="Firms">
+        <FooterCol heading="Company">
           <FooterLink href="/for-firms">For firms</FooterLink>
-          <FooterLink href="/signup">Start a trial</FooterLink>
-          <FooterLink href="/settings/firm">Firm settings</FooterLink>
+          <FooterLink href="/compare">Compare</FooterLink>
+          <FooterLink href="/about">About</FooterLink>
+          <FooterLink href="/contact">Contact</FooterLink>
+          <FooterLink href="/security">Security</FooterLink>
         </FooterCol>
         <FooterCol heading="Account">
           <FooterLink href="/login">Sign in</FooterLink>

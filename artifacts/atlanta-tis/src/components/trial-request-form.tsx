@@ -8,7 +8,7 @@ import { useCreateLead } from "@workspace/tis-api-client-react";
 import { CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
 interface Props {
-  defaultTier?: "solo" | "practice" | "enterprise";
+  defaultTier?: "trial" | "starter" | "growth" | "enterprise";
   source: "pricing_page" | "for_firms_page" | "trial_request";
   heading?: string;
   subheading?: string;
@@ -16,13 +16,14 @@ interface Props {
 }
 
 const TIER_LABELS: Record<string, string> = {
-  solo: "Solo / Trial — $199/mo",
-  practice: "Practice — $1,500/mo",
-  enterprise: "Enterprise — Contact for pricing",
+  trial: "Free trial — 10 studies",
+  starter: "Starter — $599/mo",
+  growth: "Growth — $2,499/mo",
+  enterprise: "Enterprise — usage-based ($75/study)",
 };
 
 export function TrialRequestForm({
-  defaultTier = "practice",
+  defaultTier = "growth",
   source,
   heading = "Start a 14-day trial",
   subheading = "Tell us about your firm and we'll reply within one business day with a trial link.",

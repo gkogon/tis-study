@@ -9,6 +9,9 @@ import TisPage from "@/pages/tis";
 import AdminPage from "@/pages/admin";
 import AdminUsagePage from "@/pages/admin-usage";
 import UnsubscribePage from "@/pages/unsubscribe";
+import ContactPage from "@/pages/contact";
+import ComparePage from "@/pages/compare";
+import SecurityPage from "@/pages/security";
 import ProjectsPage from "@/pages/projects";
 import ProjectDetailPage from "@/pages/project-detail";
 import PricingPage from "@/pages/pricing";
@@ -69,6 +72,9 @@ function Router() {
       <Route path="/admin" component={AdminPage} />
       <Route path="/admin/usage" component={AdminUsagePage} />
       <Route path="/unsubscribe" component={UnsubscribePage} />
+      <Route path="/contact" component={ContactPage} />
+      <Route path="/compare" component={ComparePage} />
+      <Route path="/security" component={SecurityPage} />
       <Route component={NotFound} />
     </Switch>
   );

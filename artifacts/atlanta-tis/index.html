@@ -27,6 +27,74 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Structured data — helps Google understand the org + the
+         SoftwareApplication so we surface in rich results for queries
+         like "screening traffic impact study software Atlanta". -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://simpleimpactstudies.com/#org",
+            "name": "Simple Impact Studies",
+            "url": "https://simpleimpactstudies.com",
+            "logo": "https://simpleimpactstudies.com/favicon.svg",
+            "description": "Screening-level Traffic Impact Studies and adjacent engineering studies for the Atlanta MSA. Built for engineering firms.",
+            "founder": { "@type": "Person", "name": "Gerald Kogon" },
+            "areaServed": { "@type": "Place", "name": "Atlanta MSA" },
+            "email": "gkogon@simpleimpactstudies.com"
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "Simple Impact Studies",
+            "operatingSystem": "Web",
+            "applicationCategory": "BusinessApplication",
+            "applicationSubCategory": "Traffic Engineering",
+            "offers": [
+              {
+                "@type": "Offer",
+                "name": "Starter",
+                "price": "599",
+                "priceCurrency": "USD",
+                "billingDuration": "P1M",
+                "url": "https://simpleimpactstudies.com/pricing"
+              },
+              {
+                "@type": "Offer",
+                "name": "Growth",
+                "price": "2499",
+                "priceCurrency": "USD",
+                "billingDuration": "P1M",
+                "url": "https://simpleimpactstudies.com/pricing"
+              },
+              {
+                "@type": "Offer",
+                "name": "Enterprise",
+                "priceCurrency": "USD",
+                "priceSpecification": {
+                  "@type": "UnitPriceSpecification",
+                  "price": "75",
+                  "priceCurrency": "USD",
+                  "unitText": "study"
+                },
+                "url": "https://simpleimpactstudies.com/pricing"
+              }
+            ],
+            "featureList": [
+              "Traffic Impact Study (HCM 6th Ed., ITE 11th Ed.)",
+              "Parking Demand Study (ITE Parking Generation 5th Ed.)",
+              "Signal Warrant Analysis (MUTCD Chapter 4C)",
+              "Sight Distance Analysis (AASHTO Green Book)",
+              "Queuing Analysis (HCM Chapter 31)",
+              "Road-Diet Feasibility Screening (FHWA)"
+            ],
+            "publisher": { "@id": "https://simpleimpactstudies.com/#org" }
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

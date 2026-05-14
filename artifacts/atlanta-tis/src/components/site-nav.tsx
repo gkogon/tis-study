@@ -22,6 +22,7 @@ const PUBLIC_NAV: Item[] = [
   { href: "/studies", label: "Studies" },
   { href: "/for-firms", label: "For firms" },
   { href: "/pricing", label: "Pricing" },
+  { href: "/compare", label: "Compare" },
   { href: "/about", label: "About" },
 ];
 
