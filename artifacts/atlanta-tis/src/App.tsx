@@ -32,6 +32,7 @@ import ResetPasswordPage from "@/pages/auth-reset";
 import { DevAuthWidget } from "@/components/dev-auth-widget";
 import { SiteNav } from "@/components/site-nav";
 import { CookieBanner } from "@/components/cookie-banner";
+import { ErrorBoundary } from "@/components/error-boundary";
 import ProfileSettingsPage from "@/pages/settings-profile";
 import AboutPage from "@/pages/about";
 
@@ -75,17 +76,19 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <SiteNav />
-          <Router />
-          <CookieBanner />
-          <DevAuthWidget />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <SiteNav />
+            <Router />
+            <CookieBanner />
+            <DevAuthWidget />
+          </WouterRouter>
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 
