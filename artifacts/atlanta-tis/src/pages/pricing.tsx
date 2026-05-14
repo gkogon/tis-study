@@ -73,8 +73,8 @@ const TIERS: Tier[] = [
     name: "Growth",
     blurb: "The default for traffic engineering firms shipping studies every week.",
     prices: {
-      monthly: { primary: "$1,499", cadence: "/month" },
-      annual:  { primary: "$14,990", cadence: "/year", subtitle: "Save $2,998 — 2 months free" },
+      monthly: { primary: "$2,499", cadence: "/month" },
+      annual:  { primary: "$24,990", cadence: "/year", subtitle: "Save $4,998 — 2 months free" },
     },
     cta: (c) => ({ label: "Start 14-day trial", href: `/signup?plan=growth&cadence=${c}` }),
     highlight: true,
@@ -225,7 +225,7 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What's the difference between Enterprise and Growth?",
-    a: "Growth is a flat $1,499/mo with a 30-study cap. Enterprise removes the cap entirely and bills $75 per study (with an annual commitment option for finance teams that need a predictable budget number). If you're regularly running more than 30 screenings/month, Enterprise is the move — for sub-30 firms Growth is cheaper.",
+    a: "Growth is a flat $2,499/mo with a 30-study cap. Enterprise removes the cap entirely and bills $75 per study (with an annual commitment option for finance teams that need a predictable budget number). If you're regularly running more than 30 screenings/month, Enterprise is the move — for sub-30 firms Growth is cheaper.",
   },
   {
     q: "What citations are included in every report?",

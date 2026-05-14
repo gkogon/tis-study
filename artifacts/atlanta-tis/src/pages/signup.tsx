@@ -17,7 +17,7 @@ type Cadence = "monthly" | "annual";
 
 const PLAN_LABEL: Record<Plan, string> = {
   starter: "Starter — $599/mo",
-  growth: "Growth — $1,499/mo",
+  growth: "Growth — $2,499/mo",
   trial: "Free trial",
 };
 

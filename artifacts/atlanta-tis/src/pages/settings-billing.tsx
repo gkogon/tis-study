@@ -265,7 +265,7 @@ export default function SettingsBillingPage() {
               />
               <UpgradeCard
                 plan="growth"
-                title={cadence === "annual" ? "Growth — $14,990/yr" : "Growth — $1,499/mo"}
+                title={cadence === "annual" ? "Growth — $24,990/yr" : "Growth — $2,499/mo"}
                 body="Unlimited seats · 30 studies / month"
                 primary
                 onClick={() => startCheckout("growth", cadence)}
