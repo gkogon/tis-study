@@ -1,9 +1,11 @@
 /**
  * Authenticated billing endpoints.
  *
- *   POST /billing/checkout-session  body: { plan: "starter" | "growth" }
+ *   POST /billing/checkout-session
+ *     body: { plan: "starter" | "growth", cadence?: "monthly" | "annual" }
  *     Resolves the user's firm, creates a Stripe Checkout Session for
- *     the chosen plan, returns the redirect URL.
+ *     the chosen plan + cadence, returns the redirect URL. Defaults to
+ *     monthly when cadence is omitted (back-compat for older callers).
  *
  *   POST /billing/portal-session
  *     Opens the Stripe Customer Portal so the firm can manage cards,
@@ -21,12 +23,16 @@ import {
   createPortalSession,
   BillingDisabledError,
 } from "../lib/billing";
-import { PLANS, type PaidPlanId } from "../lib/stripe";
+import { PLANS, type PaidPlanId, type BillingCadence } from "../lib/stripe";
 
 const router: IRouter = Router();
 
 function isPaidPlanId(v: unknown): v is PaidPlanId {
   return typeof v === "string" && v in PLANS;
+}
+
+function isBillingCadence(v: unknown): v is BillingCadence {
+  return v === "monthly" || v === "annual";
 }
 
 router.post("/billing/checkout-session", async (req, res): Promise<void> => {
@@ -35,11 +41,13 @@ router.post("/billing/checkout-session", async (req, res): Promise<void> => {
     return;
   }
   const user = req.user!;
-  const plan = (req.body as { plan?: unknown })?.plan;
+  const body = (req.body as { plan?: unknown; cadence?: unknown }) ?? {};
+  const plan = body.plan;
   if (!isPaidPlanId(plan)) {
     res.status(400).json({ error: "Unknown plan." });
     return;
   }
+  const cadence: BillingCadence = isBillingCadence(body.cadence) ? body.cadence : "monthly";
   try {
     const { firm, role } = await getOrCreateFirmForUser(user.id, {
       email: user.email,
@@ -50,7 +58,7 @@ router.post("/billing/checkout-session", async (req, res): Promise<void> => {
       res.status(403).json({ error: "Only firm owners or admins can manage billing." });
       return;
     }
-    const session = await createCheckoutSession({ firm, email: user.email, plan });
+    const session = await createCheckoutSession({ firm, email: user.email, plan, cadence });
     res.json(session);
   } catch (err) {
     if (err instanceof BillingDisabledError) {

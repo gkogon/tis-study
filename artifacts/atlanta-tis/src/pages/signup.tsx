@@ -13,24 +13,27 @@ import {
 import { SiteFooter } from "../components/site-footer";
 
 type Plan = "starter" | "growth" | "trial";
+type Cadence = "monthly" | "annual";
 
 const PLAN_LABEL: Record<Plan, string> = {
-  starter: "Starter — $499/mo",
-  growth: "Growth — $1,299/mo",
+  starter: "Starter — $599/mo",
+  growth: "Growth — $1,499/mo",
   trial: "Free trial",
 };
 
-function readPlanFromUrl(): Plan {
+function readPlanFromUrl(): { plan: Plan; cadence: Cadence } {
   const sp = new URLSearchParams(window.location.search);
-  const raw = sp.get("plan");
-  if (raw === "starter" || raw === "growth") return raw;
-  return "trial";
+  const rawPlan = sp.get("plan");
+  const rawCadence = sp.get("cadence");
+  const plan: Plan = rawPlan === "starter" || rawPlan === "growth" ? rawPlan : "trial";
+  const cadence: Cadence = rawCadence === "annual" ? "annual" : "monthly";
+  return { plan, cadence };
 }
 
 export default function SignupPage() {
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const [, navigate] = useLocation();
-  const plan = useMemo(readPlanFromUrl, []);
+  const { plan, cadence } = useMemo(readPlanFromUrl, []);
 
   // Account fields
   const [email, setEmail] = useState("");
@@ -81,7 +84,7 @@ export default function SignupPage() {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan }),
+      body: JSON.stringify({ plan, cadence }),
     });
     const data = await r.json();
     if (!r.ok || !data?.url) {

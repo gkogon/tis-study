@@ -15,6 +15,7 @@ import {
   resolvePriceId,
   getPublicAppOrigin,
   type PaidPlanId,
+  type BillingCadence,
 } from "./stripe";
 import { logger } from "./logger";
 
@@ -62,12 +63,14 @@ export async function createCheckoutSession(args: {
   firm: Firm;
   email: string | null;
   plan: PaidPlanId;
+  cadence?: BillingCadence;
 }): Promise<CheckoutSessionResult> {
   const s = requireStripe();
-  const priceId = resolvePriceId(args.plan);
+  const cadence: BillingCadence = args.cadence ?? "monthly";
+  const priceId = resolvePriceId(args.plan, cadence);
   if (!priceId) {
     throw new Error(
-      `Plan "${args.plan}" is not provisioned — set its Stripe Price ID env var.`,
+      `Plan "${args.plan}" (${cadence}) is not provisioned — set its Stripe Price ID env var.`,
     );
   }
 
@@ -84,9 +87,9 @@ export async function createCheckoutSession(args: {
     // 14-day free trial — matches the marketing copy on /pricing.
     subscription_data: {
       trial_period_days: 14,
-      metadata: { firmId: args.firm.id, plan: args.plan },
+      metadata: { firmId: args.firm.id, plan: args.plan, cadence },
     },
-    metadata: { firmId: args.firm.id, plan: args.plan },
+    metadata: { firmId: args.firm.id, plan: args.plan, cadence },
     success_url: `${origin}/settings/billing?checkout=success`,
     cancel_url: `${origin}/pricing?checkout=cancelled`,
   });

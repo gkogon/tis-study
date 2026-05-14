@@ -1,38 +1,69 @@
 /**
- * Public pricing page. Three tiers — Starter, Growth, Enterprise —
- * targeted at Atlanta engineering firms. CTAs route to /signup with the
- * plan preselected; the signup page hands off to Stripe Checkout once
- * the firm record exists.
+ * Public pricing page. Four tiers — Free Trial, Starter, Growth,
+ * Enterprise — targeted at Atlanta engineering firms. CTAs route to
+ * /signup with the plan + cadence preselected; the signup page hands
+ * off to Stripe Checkout once the firm record exists.
+ *
+ * Monthly/annual toggle drives both the displayed prices and the
+ * cadence query param attached to the upgrade CTAs. Annual is priced
+ * at "2 months free" (~16.7% off) to lock in ARR.
+ *
+ * Enterprise is metered ($75/study) and not yet wired through Stripe
+ * Checkout — its CTA is a mailto: to sales. The full metered-billing
+ * implementation is tracked separately.
  */
+import { useState } from "react";
 import { Link } from "wouter";
 import { ArrowLeft, Check, Building2 } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 
+type TierId = "trial" | "starter" | "growth" | "enterprise";
+type Cadence = "monthly" | "annual";
+
+type PriceLabel = { primary: string; cadence: string; subtitle?: string };
+
 type Tier = {
-  id: "starter" | "growth" | "enterprise";
+  id: TierId;
   name: string;
   blurb: string;
-  priceLabel: string;
-  cadence: string;
-  cta: { label: string; href: string };
+  prices: Record<Cadence, PriceLabel>;
+  cta: (c: Cadence) => { label: string; href: string };
   highlight?: boolean;
   features: string[];
 };
 
 const TIERS: Tier[] = [
   {
+    id: "trial",
+    name: "Free trial",
+    blurb: "Run three studies on the house — no credit card.",
+    prices: {
+      monthly: { primary: "$0", cadence: "" },
+      annual:  { primary: "$0", cadence: "" },
+    },
+    cta: () => ({ label: "Start free", href: "/signup?plan=trial" }),
+    features: [
+      "3 studies, total",
+      "1 seat",
+      "All 6 study types",
+      "Full HCM / ITE / MUTCD citations",
+      "White-labeled PDF",
+    ],
+  },
+  {
     id: "starter",
     name: "Starter",
     blurb: "For solo PEs and small firms running occasional screening TIS.",
-    priceLabel: "$499",
-    cadence: "/month",
-    cta: { label: "Start free trial", href: "/signup?plan=starter" },
+    prices: {
+      monthly: { primary: "$599", cadence: "/month" },
+      annual:  { primary: "$5,990", cadence: "/year", subtitle: "Save $1,198 — 2 months free" },
+    },
+    cta: (c) => ({ label: "Start 14-day trial", href: `/signup?plan=starter&cadence=${c}` }),
     features: [
       "3 seats",
-      "10 studies / month — any type",
-      "Traffic Impact + Parking Demand studies",
-      "White-labeled PDFs",
-      "Full HCM / ITE / MUTCD citations",
+      "10 studies / month",
+      "All 6 study types",
+      "White-labeled PDFs + firm logo",
       "Project history & re-print",
       "Email support",
     ],
@@ -41,15 +72,17 @@ const TIERS: Tier[] = [
     id: "growth",
     name: "Growth",
     blurb: "The default for traffic engineering firms shipping studies every week.",
-    priceLabel: "$1,299",
-    cadence: "/month",
-    cta: { label: "Start free trial", href: "/signup?plan=growth" },
+    prices: {
+      monthly: { primary: "$1,499", cadence: "/month" },
+      annual:  { primary: "$14,990", cadence: "/year", subtitle: "Save $2,998 — 2 months free" },
+    },
+    cta: (c) => ({ label: "Start 14-day trial", href: `/signup?plan=growth&cadence=${c}` }),
     highlight: true,
     features: [
-      "10 seats",
-      "30 studies / month — any type",
-      "Traffic Impact + Parking + Signal Warrants (soon)",
+      "Unlimited seats",
+      "30 studies / month",
       "Everything in Starter",
+      "Post-build Verification (Monitoring) included",
       "Firm-wide project library",
       "Member roles & invites",
       "Priority email support",
@@ -58,22 +91,28 @@ const TIERS: Tier[] = [
   {
     id: "enterprise",
     name: "Enterprise",
-    blurb: "For large firms with multi-office practices, SSO, and volume needs.",
-    priceLabel: "Custom",
-    cadence: "",
-    cta: { label: "Talk to us", href: "/for-firms#contact" },
+    blurb: "For multi-state firms and DOTs with high screening volume.",
+    prices: {
+      monthly: { primary: "$75", cadence: "/study", subtitle: "≈ $13K/mo at 170 studies" },
+      annual:  { primary: "$10K", cadence: "/yr commit", subtitle: "+ $75/study overage" },
+    },
+    cta: () => ({ label: "Contact sales", href: "mailto:sales@simpleimpactstudies.com?subject=Enterprise%20plan%20inquiry" }),
     features: [
       "Unlimited seats",
-      "Custom study volume & overage",
+      "Unlimited studies — metered $75/study",
+      "Annual commit option (volume discount)",
       "SSO (Okta, Azure AD)",
       "DPA & MSA on request",
-      "Onboarding for each office",
+      "Custom API / data integrations",
+      "Quarterly business review",
       "Named technical contact",
     ],
   },
 ];
 
 export default function PricingPage() {
+  const [cadence, setCadence] = useState<Cadence>("monthly");
+
   return (
     <div>
       <div className="max-w-6xl mx-auto px-4 py-8 space-y-12">
@@ -98,14 +137,18 @@ export default function PricingPage() {
             <span className="text-blue-600">Every engineer included.</span>
           </h1>
           <p className="text-lg text-muted-foreground">
-            14-day trial on Starter & Growth. No credit card to start. Cancel anytime —
-            you keep access until the end of your billing period.
+            14-day trial on Starter & Growth. No credit card to start.
+            Cancel anytime — you keep access until the end of your billing
+            period. Annual billing saves about <strong>17%</strong>.
           </p>
+          <div className="flex justify-center pt-2">
+            <CadenceToggle value={cadence} onChange={setCadence} />
+          </div>
         </section>
 
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
           {TIERS.map((t) => (
-            <TierCard key={t.id} tier={t} />
+            <TierCard key={t.id} tier={t} cadence={cadence} />
           ))}
         </section>
 
@@ -113,7 +156,8 @@ export default function PricingPage() {
           <div>
             <h2 className="text-2xl font-bold mb-2">What counts as a study?</h2>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Every successful run of the TIS generator counts as one study —
+              Every successful run of any generator (TIS, Parking, Warrants,
+              Sight Distance, Queuing, Road-Diet) counts as one study —
               regardless of how many times you re-open or re-print the PDF.
               Re-prints are free. If a generation errors out (bad coordinate,
               upstream timeout), it doesn't count.
@@ -122,10 +166,11 @@ export default function PricingPage() {
           <div>
             <h2 className="text-2xl font-bold mb-2">What if we hit our cap?</h2>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              You'll see a soft block before your last study, and a hard block
-              if you try to run another. Upgrade to the next tier from
+              Generation is blocked until the next billing period or you
+              upgrade. We show a warning before your last study and a clear
+              block message after. Upgrade to the next tier from
               Settings → Billing and the new cap takes effect immediately.
-              No overage fees, no surprise invoices.
+              No surprise overage fees on Starter or Growth.
             </p>
           </div>
         </section>
@@ -152,7 +197,7 @@ export default function PricingPage() {
             You can downgrade before the trial ends if it's more than you need.
           </p>
           <Link
-            href="/signup?plan=growth"
+            href={`/signup?plan=growth&cadence=${cadence}`}
             className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700"
             data-testid="link-default-trial"
           >
@@ -172,7 +217,15 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "Can multiple engineers in my firm use one account?",
-    a: "Yes — that's the firm-account model. Starter includes 3 seats, Growth includes 10. Each seat is a separate sign-in for one of your engineers; all projects roll up to the firm.",
+    a: "Yes — that's the firm-account model. Starter includes 3 seats; Growth and Enterprise both include unlimited seats. Each seat is a separate sign-in for one of your engineers; all projects roll up to the firm.",
+  },
+  {
+    q: "How does annual billing work?",
+    a: "Same plan, billed once per year instead of monthly. The annual price is about 17% lower than 12 × the monthly price — that's roughly two free months. You can switch between monthly and annual at renewal time from Settings → Billing.",
+  },
+  {
+    q: "What's the difference between Enterprise and Growth?",
+    a: "Growth is a flat $1,499/mo with a 30-study cap. Enterprise removes the cap entirely and bills $75 per study (with an annual commitment option for finance teams that need a predictable budget number). If you're regularly running more than 30 screenings/month, Enterprise is the move — for sub-30 firms Growth is cheaper.",
   },
   {
     q: "What citations are included in every report?",
@@ -180,7 +233,7 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What happens if we run out of studies in a billing period?",
-    a: "Generation is blocked until the next period or you upgrade. No surprise overage fees. We show a soft warning before your last study and a hard block after.",
+    a: "On Starter and Growth, generation is blocked until the next period or you upgrade — no surprise overage fees. On Enterprise, there's no cap; you just keep generating and the next invoice reflects the count.",
   },
   {
     q: "Can we cancel anytime?",
@@ -196,7 +249,42 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
   },
 ];
 
-function TierCard({ tier }: { tier: Tier }) {
+function CadenceToggle({
+  value, onChange,
+}: { value: Cadence; onChange: (v: Cadence) => void }) {
+  return (
+    <div className="inline-flex rounded-lg border bg-background p-1 text-sm">
+      <button
+        type="button"
+        onClick={() => onChange("monthly")}
+        className={
+          "px-4 py-1.5 rounded-md transition-colors font-medium " +
+          (value === "monthly" ? "bg-blue-600 text-white" : "text-muted-foreground hover:text-foreground")
+        }
+      >
+        Monthly
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("annual")}
+        className={
+          "px-4 py-1.5 rounded-md transition-colors font-medium " +
+          (value === "annual" ? "bg-blue-600 text-white" : "text-muted-foreground hover:text-foreground")
+        }
+      >
+        Annual <span className="opacity-80 font-normal">· save 17%</span>
+      </button>
+    </div>
+  );
+}
+
+function TierCard({ tier, cadence }: { tier: Tier; cadence: Cadence }) {
+  const price = tier.prices[cadence];
+  const cta = tier.cta(cadence);
+  const isMailto = cta.href.startsWith("mailto:");
+  const CtaTag: any = isMailto ? "a" : Link;
+  const ctaProps: any = isMailto ? { href: cta.href } : { href: cta.href };
+
   return (
     <div
       className={
@@ -216,12 +304,17 @@ function TierCard({ tier }: { tier: Tier }) {
             </span>
           )}
         </div>
-        <p className="text-sm text-muted-foreground leading-relaxed">{tier.blurb}</p>
+        <p className="text-sm text-muted-foreground leading-relaxed min-h-[40px]">{tier.blurb}</p>
       </div>
-      <div className="flex items-baseline gap-1">
-        <span className="text-4xl font-bold">{tier.priceLabel}</span>
-        {tier.cadence && (
-          <span className="text-muted-foreground text-sm">{tier.cadence}</span>
+      <div>
+        <div className="flex items-baseline gap-1">
+          <span className="text-4xl font-bold">{price.primary}</span>
+          {price.cadence && (
+            <span className="text-muted-foreground text-sm">{price.cadence}</span>
+          )}
+        </div>
+        {price.subtitle && (
+          <div className="text-xs text-blue-600 font-medium mt-1">{price.subtitle}</div>
         )}
       </div>
       <ul className="space-y-2 text-sm flex-1">
@@ -232,8 +325,8 @@ function TierCard({ tier }: { tier: Tier }) {
           </li>
         ))}
       </ul>
-      <Link
-        href={tier.cta.href}
+      <CtaTag
+        {...ctaProps}
         className={
           "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-semibold rounded-md transition-colors " +
           (tier.highlight
@@ -242,8 +335,8 @@ function TierCard({ tier }: { tier: Tier }) {
         }
         data-testid={`link-cta-${tier.id}`}
       >
-        {tier.cta.label}
-      </Link>
+        {cta.label}
+      </CtaTag>
     </div>
   );
 }

@@ -46,6 +46,7 @@ export default function SettingsBillingPage() {
   const [error, setError] = useState<string | null>(null);
   const [actioning, setActioning] = useState<"checkout" | "portal" | null>(null);
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
+  const [cadence, setCadence] = useState<"monthly" | "annual">("monthly");
 
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
@@ -63,7 +64,10 @@ export default function SettingsBillingPage() {
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, [isAuthenticated]);
 
-  async function startCheckout(plan: "starter" | "growth") {
+  async function startCheckout(
+    plan: "starter" | "growth",
+    cadence: "monthly" | "annual" = "monthly",
+  ) {
     setError(null);
     setActioning("checkout");
     try {
@@ -71,7 +75,7 @@ export default function SettingsBillingPage() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, cadence }),
       });
       const data = await r.json();
       if (!r.ok || !data?.url) throw new Error(data?.error ?? `HTTP ${r.status}`);
@@ -241,29 +245,45 @@ export default function SettingsBillingPage() {
 
         {firm.planTier === "trial" && (
           <section className="border rounded-xl p-6 space-y-4 bg-muted/30">
-            <h2 className="text-xl font-bold">Upgrade to a paid plan</h2>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <h2 className="text-xl font-bold">Upgrade to a paid plan</h2>
+              <CadenceToggle value={cadence} onChange={setCadence} />
+            </div>
             <p className="text-sm text-muted-foreground">
               You're on the trial. Pick a plan below — a 14-day free trial
               continues on the paid tier with no charge until day 15.
+              {cadence === "annual" && " Annual billing saves ~17% (2 months free)."}
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <UpgradeCard
                 plan="starter"
-                title="Starter — $499/mo"
+                title={cadence === "annual" ? "Starter — $5,990/yr" : "Starter — $599/mo"}
                 body="3 seats · 10 studies / month"
-                onClick={() => startCheckout("starter")}
+                onClick={() => startCheckout("starter", cadence)}
                 disabled={!canManage || actioning !== null}
                 actioning={actioning === "checkout"}
               />
               <UpgradeCard
                 plan="growth"
-                title="Growth — $1,299/mo"
-                body="10 seats · 30 studies / month"
+                title={cadence === "annual" ? "Growth — $14,990/yr" : "Growth — $1,499/mo"}
+                body="Unlimited seats · 30 studies / month"
                 primary
-                onClick={() => startCheckout("growth")}
+                onClick={() => startCheckout("growth", cadence)}
                 disabled={!canManage || actioning !== null}
                 actioning={actioning === "checkout"}
               />
+            </div>
+            <div className="rounded-lg border border-dashed p-4 flex items-center justify-between flex-wrap gap-3 bg-background">
+              <div>
+                <div className="font-semibold text-sm">Enterprise — usage-based, custom</div>
+                <div className="text-xs text-muted-foreground">$75/study or $10K/yr commit + overage. Unlimited everything.</div>
+              </div>
+              <a
+                href="mailto:sales@simpleimpactstudies.com?subject=Enterprise%20plan%20inquiry"
+                className="text-sm font-medium text-blue-600 hover:underline"
+              >
+                Contact sales →
+              </a>
             </div>
             {!canManage && (
               <p className="text-xs text-muted-foreground">
@@ -322,6 +342,35 @@ function UpgradeCard({
         {body}
       </div>
     </button>
+  );
+}
+
+function CadenceToggle({
+  value, onChange,
+}: { value: "monthly" | "annual"; onChange: (v: "monthly" | "annual") => void }) {
+  return (
+    <div className="inline-flex rounded-md border bg-background p-0.5 text-xs">
+      <button
+        type="button"
+        onClick={() => onChange("monthly")}
+        className={
+          "px-2.5 py-1 rounded transition-colors " +
+          (value === "monthly" ? "bg-blue-600 text-white" : "text-muted-foreground hover:text-foreground")
+        }
+      >
+        Monthly
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("annual")}
+        className={
+          "px-2.5 py-1 rounded transition-colors " +
+          (value === "annual" ? "bg-blue-600 text-white" : "text-muted-foreground hover:text-foreground")
+        }
+      >
+        Annual <span className="opacity-80">· save 17%</span>
+      </button>
+    </div>
   );
 }
 
