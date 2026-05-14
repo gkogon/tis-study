@@ -84,7 +84,7 @@ export default function RoadDietStudyPage() {
         </div>
 
         <header className="space-y-2">
-          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-600">
+          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-700">
             <ChevronRight className="w-3.5 h-3.5" /> Road-Diet Feasibility
           </div>
           <h1 className="text-3xl font-bold">FHWA screening: 4→3 / 5→3 lane conversion</h1>
@@ -158,7 +158,7 @@ export default function RoadDietStudyPage() {
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
-              <button type="submit" disabled={running || !isAuthenticated} className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50" data-testid="button-run-road-diet">
+              <button type="submit" disabled={running || !isAuthenticated} className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-foreground text-background hover:bg-foreground/90 disabled:opacity-50" data-testid="button-run-road-diet">
                 {running && <Loader2 className="w-4 h-4 animate-spin" />}
                 Run feasibility screening
               </button>

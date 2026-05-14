@@ -80,7 +80,7 @@ export default function QueuingStudyPage() {
         </div>
 
         <header className="space-y-2">
-          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-600">
+          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-700">
             <Activity className="w-3.5 h-3.5" /> Queuing Analysis
           </div>
           <h1 className="text-3xl font-bold">HCM Ch. 31 — 95th-percentile back-of-queue</h1>
@@ -150,7 +150,7 @@ export default function QueuingStudyPage() {
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
-              <button type="submit" disabled={running || !isAuthenticated} className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50" data-testid="button-run-queuing">
+              <button type="submit" disabled={running || !isAuthenticated} className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-foreground text-background hover:bg-foreground/90 disabled:opacity-50" data-testid="button-run-queuing">
                 {running && <Loader2 className="w-4 h-4 animate-spin" />}
                 Run queuing analysis
               </button>

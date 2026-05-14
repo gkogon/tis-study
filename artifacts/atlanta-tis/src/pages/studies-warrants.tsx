@@ -130,7 +130,7 @@ export default function WarrantsStudyPage() {
         </div>
 
         <header className="space-y-2">
-          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-600">
+          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-700">
             <ChevronRight className="w-3.5 h-3.5" />
             Signal Warrant Analysis
           </div>
@@ -270,7 +270,7 @@ export default function WarrantsStudyPage() {
               <button
                 type="submit"
                 disabled={running || !isAuthenticated}
-                className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-foreground text-background hover:bg-foreground/90 disabled:opacity-50"
                 data-testid="button-run-warrants"
               >
                 {running && <Loader2 className="w-4 h-4 animate-spin" />}
