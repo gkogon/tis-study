@@ -13,6 +13,7 @@ import emailAuthRouter from "./email-auth";
 import projectsRouter from "./projects";
 import firmsRouter from "./firms";
 import billingRouter from "./billing";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(projectsRouter);
 router.use(leadsRouter);
 router.use(firmsRouter);
 router.use(billingRouter);
+router.use(adminRouter);
 
 export default router;

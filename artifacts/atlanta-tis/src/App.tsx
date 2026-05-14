@@ -7,6 +7,7 @@ import HomePage from "@/pages/home";
 import ForFirmsPage from "@/pages/for-firms";
 import TisPage from "@/pages/tis";
 import AdminPage from "@/pages/admin";
+import AdminUsagePage from "@/pages/admin-usage";
 import ProjectsPage from "@/pages/projects";
 import ProjectDetailPage from "@/pages/project-detail";
 import PricingPage from "@/pages/pricing";
@@ -64,6 +65,7 @@ function Router() {
       <Route path="/about" component={AboutPage} />
       <Route path="/invites/accept" component={InviteAcceptPage} />
       <Route path="/admin" component={AdminPage} />
+      <Route path="/admin/usage" component={AdminUsagePage} />
       <Route component={NotFound} />
     </Switch>
   );
