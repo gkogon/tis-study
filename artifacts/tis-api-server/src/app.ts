@@ -9,6 +9,7 @@ import pinoHttp from "pino-http";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import router from "./routes";
 import stripeWebhookRouter from "./routes/stripe-webhook";
+import unsubscribeRouter from "./routes/unsubscribe";
 import { logger } from "./lib/logger";
 import { authMiddleware } from "./middlewares/authMiddleware";
 import { corsOptions } from "./lib/security";
@@ -45,6 +46,11 @@ app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(authMiddleware);
 
 app.use("/tis-api", router);
+
+// Public unsubscribe routes — mounted under /api (not /tis-api) so
+// cold-email footer links stay short. Registered BEFORE the /api
+// analyzer proxy so the unsubscribe paths don't fall through to it.
+app.use(unsubscribeRouter);
 
 // ---------- /api/* → analyzer ----------
 //

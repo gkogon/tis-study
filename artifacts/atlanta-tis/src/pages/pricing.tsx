@@ -36,14 +36,14 @@ const TIERS: Tier[] = [
   {
     id: "trial",
     name: "Free trial",
-    blurb: "Run three studies on the house — no credit card.",
+    blurb: "Run ten studies on the house — no credit card.",
     prices: {
       monthly: { primary: "$0", cadence: "" },
       annual:  { primary: "$0", cadence: "" },
     },
     cta: () => ({ label: "Start free", href: "/signup?plan=trial" }),
     features: [
-      "3 studies, total",
+      "10 studies, total",
       "1 seat",
       "All 6 study types",
       "Full HCM / ITE / MUTCD citations",

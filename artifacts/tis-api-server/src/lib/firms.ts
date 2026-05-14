@@ -22,11 +22,14 @@ export type FirmWithRole = {
 
 /**
  * Trial defaults — applied to any firm with no active subscription.
- * 3 seats and 3 studies is enough for a single PE to evaluate the product
+ * 3 studies wasn't enough for a PE to actually feel the workflow
+ * change (induced-demand argument: power users run 40-80 studies/mo
+ * once they internalize the tool). 10 lets a trial firm run a few
+ * iterations on multiple sites — strong enough signal for conversion
  * without giving away production-volume usage.
  */
 export const TRIAL_SEAT_LIMIT = 3;
-export const TRIAL_STUDY_LIMIT = 3;
+export const TRIAL_STUDY_LIMIT = 10;
 
 function slugifyFirmName(name: string): string {
   const base = name
