@@ -273,17 +273,22 @@ export default function SettingsBillingPage() {
                 actioning={actioning === "checkout"}
               />
             </div>
-            <div className="rounded-lg border border-dashed p-4 flex items-center justify-between flex-wrap gap-3 bg-background">
-              <div>
-                <div className="font-semibold text-sm">Enterprise — usage-based, custom</div>
-                <div className="text-xs text-muted-foreground">$75/study or $10K/yr commit + overage. Unlimited everything.</div>
+            <div className="rounded-lg border border-dashed p-4 space-y-3 bg-background">
+              <div className="flex items-start justify-between flex-wrap gap-3">
+                <div>
+                  <div className="font-semibold text-sm">Enterprise — usage-based, custom</div>
+                  <div className="text-xs text-muted-foreground">$75/study or $10K/yr commit + overage. Unlimited everything.</div>
+                </div>
+                <a
+                  href="mailto:gkogon@simpleimpactstudies.com?subject=Enterprise%20plan%20inquiry"
+                  className="text-sm font-medium text-blue-600 hover:underline"
+                >
+                  Email us →
+                </a>
               </div>
-              <a
-                href="mailto:gkogon@simpleimpactstudies.com?subject=Enterprise%20plan%20inquiry"
-                className="text-sm font-medium text-blue-600 hover:underline"
-              >
-                Contact sales →
-              </a>
+              <div className="text-xs text-muted-foreground font-mono">
+                gkogon@simpleimpactstudies.com
+              </div>
             </div>
             {!canManage && (
               <p className="text-xs text-muted-foreground">

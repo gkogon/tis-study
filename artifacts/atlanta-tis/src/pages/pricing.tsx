@@ -14,8 +14,10 @@
  */
 import { useState } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, Check, Building2 } from "lucide-react";
+import { ArrowLeft, Check, Building2, Copy, Check as CheckIcon } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
+
+const ENTERPRISE_EMAIL = "gkogon@simpleimpactstudies.com";
 
 type TierId = "trial" | "starter" | "growth" | "enterprise";
 type Cadence = "monthly" | "annual";
@@ -337,6 +339,51 @@ function TierCard({ tier, cadence }: { tier: Tier; cadence: Cadence }) {
       >
         {cta.label}
       </CtaTag>
+      {tier.id === "enterprise" && <EnterpriseEmailFallback />}
+    </div>
+  );
+}
+
+/**
+ * Visible copyable email under the Enterprise CTA. The plain mailto:
+ * link silently fails on desktop browsers without a registered mail
+ * handler (very common on Chrome/Edge where the user uses Gmail in
+ * the browser instead of Outlook/Mail). Surfacing the address as
+ * text + a copy button guarantees the prospect can always reach us,
+ * regardless of OS / browser / mail-client config.
+ */
+function EnterpriseEmailFallback() {
+  const [copied, setCopied] = useState(false);
+  async function copyEmail() {
+    try {
+      await navigator.clipboard.writeText(ENTERPRISE_EMAIL);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for older browsers without clipboard API: select a
+      // hidden input. Cheap enough to inline.
+      const input = document.createElement("input");
+      input.value = ENTERPRISE_EMAIL;
+      document.body.appendChild(input);
+      input.select();
+      try { document.execCommand("copy"); } catch { /* swallow */ }
+      document.body.removeChild(input);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+  return (
+    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground border-t pt-3 mt-1">
+      <span className="font-mono truncate">{ENTERPRISE_EMAIL}</span>
+      <button
+        type="button"
+        onClick={copyEmail}
+        className="inline-flex items-center gap-1 px-2 py-1 rounded border text-xs hover:bg-accent shrink-0"
+        aria-label="Copy email address"
+      >
+        {copied ? <CheckIcon className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+        {copied ? "Copied" : "Copy"}
+      </button>
     </div>
   );
 }
