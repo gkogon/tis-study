@@ -16,6 +16,7 @@
 
 import { logger } from "./logger";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
+import { getActiveRegion } from "./regions";
 // Canonical land-use registry (ITE 11th Ed.) lives in one place so the
 // Parking engine and TIS engine stay in sync. Re-exported below for any
 // downstream callers that imported `LAND_USES` from this module.
@@ -615,7 +616,7 @@ function plainFindings(
     `${rows.length} signalized intersection${rows.length === 1 ? "" : "s"} fall within the study area; ${dropped} are projected to drop at least one LOS grade after build-out.`,
   );
   if (ef > 0) {
-    out.push(`${ef} intersection${ef === 1 ? " is" : "s are"} projected to operate at LOS E or F under the build condition and require formal mitigation per City of Atlanta DOT TIS guidance.`);
+    out.push(`${ef} intersection${ef === 1 ? " is" : "s are"} projected to operate at LOS E or F under the build condition and require formal mitigation per ${getActiveRegion().jurisdiction.dotName} TIS guidance.`);
   } else {
     out.push("All studied intersections are projected to remain at LOS D or better with build traffic; no formal mitigation is required.");
   }
@@ -939,7 +940,7 @@ function buildSummaryMitigations(rows: AffectedIntersection[]): string[] {
   const none = rows.filter((r) => r.mitigationSeverity === "none");
   const out: string[] = [];
   if (major.length) {
-    out.push(`Major mitigation required at ${major.length} intersection${major.length === 1 ? "" : "s"}: add critical-approach turn lane(s) and retime the signal; coordinate with City of Atlanta Office of Mobility Planning.`);
+    out.push(`Major mitigation required at ${major.length} intersection${major.length === 1 ? "" : "s"}: add critical-approach turn lane(s) and retime the signal; coordinate with ${getActiveRegion().jurisdiction.planningOfficeName}.`);
   }
   if (moderate.length) {
     out.push(`Moderate mitigation at ${moderate.length} intersection${moderate.length === 1 ? "" : "s"}: extend critical-phase green and add protected-only left-turn phasing as needed.`);

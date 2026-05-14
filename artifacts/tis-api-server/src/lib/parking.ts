@@ -18,6 +18,7 @@ import {
   type GenerateParkingBodyT,
   type GenerateParkingResponseT,
 } from "@workspace/tis-api-zod";
+import { getActiveRegion } from "./regions";
 import { PARKING_LAND_USES } from "./land-uses";
 
 // Re-export so existing callers (route handlers) keep importing from
@@ -129,7 +130,7 @@ export function generateParkingReport(
     hourlyProfileSaturday,
     citations: [
       "ITE Parking Generation Manual, 5th Ed. — peak parking demand rates by land-use code.",
-      "City of Atlanta Zoning Ordinance, Article 10 — Off-Street Parking and Loading.",
+      getActiveRegion().jurisdiction.parkingCodeCitation,
       ...(sharedUseReductionPct > 0
         ? ["ULI Shared Parking, 3rd Ed. — adjustment factors for mixed-use developments."]
         : []),
