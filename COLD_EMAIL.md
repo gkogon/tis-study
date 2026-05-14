@@ -11,20 +11,22 @@ This doc captures the one-time setup. Most of it is DNS + signup steps
 the user owns; the unsubscribe endpoint + page are already in the
 codebase.
 
-## 1. Domain email (1 hour, $6/mo)
+## 1. Domain email (current: Microsoft 365)
 
-Don't send cold email from a personal Gmail. Get a domain mailbox:
+Current setup: `gkogon@simpleimpactstudies.com` runs on Microsoft 365.
+All customer-facing mailto links on the site point here directly —
+no aliases, just the real address.
 
-| Provider | Cost | Notes |
-|---|---|---|
-| **Google Workspace** | $6/user/mo | Best deliverability, familiar UI, easy DNS. **Recommended.** |
-| Zoho Mail | $1/user/mo | Cheaper, weaker deliverability reputation. OK if Workspace is too pricey. |
-| Fastmail | $5/user/mo | Excellent privacy + deliverability. Less common in B2B context. |
+If you want to grow into separate addresses later (sales@, support@,
+hi@), Microsoft 365 supports free aliases on the same mailbox via
+admin.microsoft.com → Users → your user → Manage username and email
+aliases. Replies from an alias work in Outlook on the Web (Settings
+→ Mail → Sync email → "From" dropdown).
 
-Recommended addresses to create:
-- `gerald@simpleimpactstudies.com` — for personal sales outreach
-- `sales@simpleimpactstudies.com` — already referenced in the Enterprise CTA mailto
-- `noreply@simpleimpactstudies.com` — for transactional emails when Resend gets wired
+Alternative providers if you ever migrate off M365:
+- Google Workspace ($6/user/mo) — best deliverability reputation
+- Zoho Mail ($1/user/mo) — cheap, weaker reputation
+- Fastmail ($5/user/mo) — privacy-focused, less common in B2B
 
 ## 2. SPF / DKIM / DMARC DNS records (30 min, free)
 
@@ -32,15 +34,24 @@ Without these, your messages land in spam folders. Add to Cloudflare
 (which manages your DNS for `simpleimpactstudies.com`):
 
 ### SPF (TXT record on `@`)
+For Microsoft 365:
 ```
-v=spf1 include:_spf.google.com include:amazonses.com ~all
+v=spf1 include:spf.protection.outlook.com -all
 ```
-Replace `_spf.google.com` with your provider's include host. Add the
-Resend / Amazon SES include too if/when you wire transactional email.
+For Google Workspace (if you migrate later):
+```
+v=spf1 include:_spf.google.com ~all
+```
+Add the Resend / Amazon SES include alongside if/when you wire
+transactional email — they coexist in a single SPF record.
 
-### DKIM (TXT record, key from your email provider)
-Google Workspace generates a long key value during setup — copy it
-verbatim into a TXT record on the `google._domainkey` subdomain.
+### DKIM (CNAME records, keys from your email provider)
+Microsoft 365 generates two CNAME records during DKIM setup at
+admin.microsoft.com → Settings → Domains → DKIM. Copy them verbatim
+into Cloudflare DNS, then flip DKIM "Enabled" in M365.
+
+For Google Workspace (alternate): generates a long TXT key during
+setup — paste into a TXT record on `google._domainkey`.
 
 ### DMARC (TXT record on `_dmarc.simpleimpactstudies.com`)
 Start permissive while you tune:
