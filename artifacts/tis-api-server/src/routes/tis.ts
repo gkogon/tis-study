@@ -69,10 +69,11 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
     const projectName =
       (parsed.data as { projectName?: string }).projectName?.trim()
       || `${validated.tripGeneration.landUseName} @ ${parsed.data.latitude.toFixed(4)}, ${parsed.data.longitude.toFixed(4)}`;
-    // Persist + bump quota. Both are best-effort: the response goes out
-    // before either resolves so persistence/quota failure never blocks
-    // the user's deliverable.
-    saveProject({
+    // Persist FIRST, then charge quota. Honors the pricing-page promise
+    // that "if a generation errors out, it doesn't count" — a silent
+    // save failure used to bump quota without leaving a row in
+    // /projects, so users retried and burned through their trial early.
+    const saved = await saveProject({
       userId: user.id,
       firmId: firm.id,
       studyType: "tis",
@@ -83,8 +84,14 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
       siteLon: parsed.data.longitude,
       request: parsed.data,
       result: validated,
-    }).catch(() => {});
-    incrementStudyUsage(firm.id).catch(() => {});
+    });
+    if (!saved) {
+      res.status(500).json({
+        error: "Generated the study but couldn't save it to your history. Please retry — this attempt didn't count toward your quota.",
+      });
+      return;
+    }
+    await incrementStudyUsage(firm.id);
     res.json(validated);
   } catch (e) {
     req.log.error({ err: e }, "tis-generate failed");

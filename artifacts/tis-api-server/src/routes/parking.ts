@@ -67,7 +67,8 @@ router.post("/parking/generate", generateRateLimiter, async (req, res): Promise<
       parsed.data.projectName?.trim()
       || `${validated.landUse.name} — ${parsed.data.size} ${validated.landUse.unit}`;
 
-    saveProject({
+    // Persist FIRST, then charge quota — see TIS route note.
+    const saved = await saveProject({
       userId: user.id,
       firmId: firm.id,
       studyType: "parking",
@@ -78,8 +79,14 @@ router.post("/parking/generate", generateRateLimiter, async (req, res): Promise<
       siteLon: parsed.data.longitude ?? null,
       request: parsed.data,
       result: validated,
-    }).catch(() => {});
-    incrementStudyUsage(firm.id).catch(() => {});
+    });
+    if (!saved) {
+      res.status(500).json({
+        error: "Generated the study but couldn't save it to your history. Please retry — this attempt didn't count toward your quota.",
+      });
+      return;
+    }
+    await incrementStudyUsage(firm.id);
     res.json(validated);
   } catch (e) {
     req.log.error({ err: e }, "parking-generate failed");
