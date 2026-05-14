@@ -6,6 +6,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -56,7 +57,15 @@ export const firmsTable = pgTable("firms", {
     .notNull()
     .default(sql`now()`)
     .$onUpdate(() => new Date()),
-});
+}, (table) => [
+  // Stripe webhook handlers look up firms by stripeCustomerId on every
+  // event — index it so the lookup stays cheap as we grow past the
+  // dozens-of-firms mark. Partial: nullable column, only ~25% of rows
+  // (paid customers) will appear in the index.
+  index("IDX_firms_stripe_customer_id")
+    .on(table.stripeCustomerId)
+    .where(sql`${table.stripeCustomerId} IS NOT NULL`),
+]);
 
 export type Firm = typeof firmsTable.$inferSelect;
 export type InsertFirm = typeof firmsTable.$inferInsert;
