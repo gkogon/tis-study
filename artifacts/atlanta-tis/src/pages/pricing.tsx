@@ -96,7 +96,7 @@ const TIERS: Tier[] = [
       monthly: { primary: "$75", cadence: "/study", subtitle: "≈ $13K/mo at 170 studies" },
       annual:  { primary: "$10K", cadence: "/yr commit", subtitle: "+ $75/study overage" },
     },
-    cta: () => ({ label: "Contact sales", href: "mailto:sales@simpleimpactstudies.com?subject=Enterprise%20plan%20inquiry" }),
+    cta: () => ({ label: "Contact sales", href: "mailto:gkogon@simpleimpactstudies.com?subject=Enterprise%20plan%20inquiry" }),
     features: [
       "Unlimited seats",
       "Unlimited studies — metered $75/study",
