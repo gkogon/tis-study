@@ -15,7 +15,7 @@ import { Link } from "wouter";
 import {
   ArrowRight, FileCheck2, ShieldCheck, Clock, Layers,
   MapPin, BookOpen, Check, Sparkles, Building2, FileText, ChevronRight,
-  TrendingUp, DollarSign, Hourglass,
+  TrendingUp, DollarSign, Hourglass, Zap,
 } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 import { AtlantaLiveStatus } from "../components/atlanta-live-status";
@@ -38,6 +38,7 @@ export default function HomePage() {
 
       <StatsBand />
       <RoiSection />
+      <CapacitySection />
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 space-y-24">
         <AtlantaLiveStatus />
@@ -415,6 +416,171 @@ function RoiTile({
       </div>
       <div className="text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-slate-100">
         {value}
+      </div>
+      <div className="text-xs font-medium leading-snug">{label}</div>
+      <div className="text-[11px] text-muted-foreground leading-snug">{sub}</div>
+    </div>
+  );
+}
+
+/**
+ * Capacity-uplift framing. The ROI section above sells cost savings;
+ * this one sells revenue uplift — "you can now bid 4-6× more
+ * projects than you could before." For a capacity-bottlenecked
+ * engineering firm that's the bigger lever; cost savings show up on
+ * the P&L, but throughput uplift shows up in the win-rate column.
+ *
+ * Numbers are conservative-but-defensible: pre-tool throughput
+ * assumes a junior PE clears 1-2 screenings/month while juggling
+ * other billable work (consistent with the 20-60 hour-per-study
+ * range already on the page). Post-tool throughput is capped by the
+ * Growth tier itself (30 studies/mo), so the multiple is honest.
+ */
+function CapacitySection() {
+  return (
+    <section className="max-w-6xl mx-auto px-4 sm:px-6 pb-20 sm:pb-24">
+      <div className="rounded-3xl border border-border bg-slate-50 dark:bg-slate-950/40 overflow-hidden">
+        <div className="px-6 sm:px-12 py-10 sm:py-14 space-y-10">
+          <div className="text-center max-w-2xl mx-auto space-y-3">
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
+              <Zap className="w-3.5 h-3.5" />
+              Capacity unlocked
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+              Bid every project,
+              <br />
+              <span className="text-blue-700">not just the ones you can staff.</span>
+            </h2>
+            <p className="text-muted-foreground text-lg leading-relaxed pt-1">
+              Engineering firms aren't demand-bottlenecked — they're
+              capacity-bottlenecked. Every screening that takes a junior PE
+              a week is a screening they can't bid. Cut that to 60 seconds
+              and your firm is suddenly able to credibly chase work it had
+              to politely decline before.
+            </p>
+          </div>
+
+          <div className="grid lg:grid-cols-12 gap-6 items-stretch">
+            <div className="lg:col-span-5">
+              <CapacityCard
+                tone="before"
+                eyebrow="Without the tool"
+                metric="4–8"
+                unit="screenings / mo"
+                detail="Per firm, junior-PE-time-bottlenecked. Each screening eats 20–60 hrs that compete with all other billable work."
+              />
+            </div>
+            <div className="lg:col-span-2 flex items-center justify-center">
+              <div className="text-3xl text-slate-400 dark:text-slate-600 hidden lg:block">
+                →
+              </div>
+              <div className="text-2xl text-slate-400 dark:text-slate-600 lg:hidden rotate-90 py-2">
+                →
+              </div>
+            </div>
+            <div className="lg:col-span-5">
+              <CapacityCard
+                tone="after"
+                eyebrow="With Simple Impact Studies"
+                metric="30+"
+                unit="screenings / mo"
+                detail="Per firm. Same engineer headcount. The bottleneck moves from internal capacity to inbound demand."
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+            <UpliftTile
+              icon={TrendingUp}
+              metric="4–6×"
+              label="More projects you can credibly bid"
+              sub="At constant engineer headcount"
+            />
+            <UpliftTile
+              icon={Hourglass}
+              metric="14,400 hrs"
+              label="Engineer time freed per year"
+              sub="At Growth cap of 30 studies/mo"
+            />
+            <UpliftTile
+              icon={DollarSign}
+              metric="$1.8M /yr"
+              label="In billable hours redirected"
+              sub="To real engineering work, not screenings"
+            />
+          </div>
+
+          <p className="text-[11px] text-center text-muted-foreground leading-relaxed pt-2 max-w-3xl mx-auto">
+            "Without the tool" baseline assumes 5 active engineers at the
+            firm and each junior PE clears one screening every 1–2 weeks
+            while handling other project work (consistent with the
+            published 20–60 hr-per-study range). "More projects bid"
+            multiple assumes win-rate stays constant — for most firms it
+            actually rises, because faster screenings let you respond to
+            developer RFPs ahead of slower competitors.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CapacityCard({
+  tone, eyebrow, metric, unit, detail,
+}: {
+  tone: "before" | "after";
+  eyebrow: string;
+  metric: string;
+  unit: string;
+  detail: string;
+}) {
+  const isAfter = tone === "after";
+  return (
+    <div
+      className={
+        "h-full rounded-2xl p-6 sm:p-7 space-y-3 transition-all " +
+        (isAfter
+          ? "border-2 border-blue-700 bg-background shadow-md relative overflow-hidden"
+          : "border border-border bg-background/60")
+      }
+    >
+      {isAfter && (
+        <div
+          aria-hidden
+          className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-blue-600/10 blur-2xl pointer-events-none"
+        />
+      )}
+      <div className={`text-[11px] font-semibold uppercase tracking-widest ${isAfter ? "text-blue-700" : "text-muted-foreground"}`}>
+        {eyebrow}
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span
+          className={
+            "text-5xl sm:text-6xl font-bold tabular-nums tracking-tight " +
+            (isAfter
+              ? "bg-gradient-to-br from-blue-700 to-indigo-600 bg-clip-text text-transparent"
+              : "text-slate-700 dark:text-slate-400")
+          }
+        >
+          {metric}
+        </span>
+        <span className="text-sm text-muted-foreground font-medium">{unit}</span>
+      </div>
+      <p className="text-sm text-muted-foreground leading-relaxed">{detail}</p>
+    </div>
+  );
+}
+
+function UpliftTile({
+  icon: Icon, metric, label, sub,
+}: { icon: typeof Hourglass; metric: string; label: string; sub: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-4 space-y-2">
+      <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
+        <Icon className="w-4 h-4" />
+      </div>
+      <div className="text-2xl font-bold tabular-nums tracking-tight bg-gradient-to-br from-blue-700 to-blue-600 bg-clip-text text-transparent">
+        {metric}
       </div>
       <div className="text-xs font-medium leading-snug">{label}</div>
       <div className="text-[11px] text-muted-foreground leading-snug">{sub}</div>
