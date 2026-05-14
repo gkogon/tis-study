@@ -279,7 +279,7 @@ export default function SettingsBillingPage() {
                 <div className="text-xs text-muted-foreground">$75/study or $10K/yr commit + overage. Unlimited everything.</div>
               </div>
               <a
-                href="mailto:support@simpleimpactstudies.com?subject=Enterprise%20plan%20inquiry"
+                href="mailto:gkogon@simpleimpactstudies.com?subject=Enterprise%20plan%20inquiry"
                 className="text-sm font-medium text-blue-600 hover:underline"
               >
                 Contact sales →

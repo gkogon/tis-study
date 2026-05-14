@@ -55,10 +55,10 @@ export class ErrorBoundary extends Component<Props, State> {
               Sorry — reloading the page usually clears it. If it keeps
               happening, drop us a note at{" "}
               <a
-                href="mailto:support@simpleimpactstudies.com"
+                href="mailto:gkogon@simpleimpactstudies.com"
                 className="text-blue-600 hover:underline"
               >
-                support@simpleimpactstudies.com
+                gkogon@simpleimpactstudies.com
               </a>
               .
             </p>

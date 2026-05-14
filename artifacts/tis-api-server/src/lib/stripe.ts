@@ -146,5 +146,5 @@ export function getPublicAppOrigin(): string {
  * later without a code push.
  */
 export function getEnterpriseContactEmail(): string {
-  return process.env.ENTERPRISE_CONTACT_EMAIL ?? "support@simpleimpactstudies.com";
+  return process.env.ENTERPRISE_CONTACT_EMAIL ?? "gkogon@simpleimpactstudies.com";
 }
