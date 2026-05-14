@@ -129,14 +129,14 @@ export default function PricingPage() {
         </div>
 
         <section className="text-center max-w-3xl mx-auto space-y-4">
-          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-600">
+          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-700">
             <Building2 className="w-3.5 h-3.5" />
             Pricing
           </div>
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold leading-tight">
             One subscription per firm.
             <br />
-            <span className="text-blue-600">Every engineer included.</span>
+            <span className="text-blue-700">Every engineer included.</span>
           </h1>
           <p className="text-base sm:text-lg text-muted-foreground">
             14-day trial on Starter & Growth. No credit card to start.
@@ -200,7 +200,7 @@ export default function PricingPage() {
           </p>
           <Link
             href={`/signup?plan=growth&cadence=${cadence}`}
-            className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700"
+            className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
             data-testid="link-default-trial"
           >
             Start 14-day Growth trial
@@ -215,7 +215,7 @@ export default function PricingPage() {
 const FAQ: { q: string; a: React.ReactNode }[] = [
   {
     q: "Is this a substitute for a stamped engineering deliverable?",
-    a: <>No. Outputs are screening-grade and meant to support — not replace — a licensed PE's analytical workflow. See the <a href="/legal/disclaimer" className="text-blue-600 hover:underline">Engineering Disclaimer</a> for the full scope.</>,
+    a: <>No. Outputs are screening-grade and meant to support — not replace — a licensed PE's analytical workflow. See the <a href="/legal/disclaimer" className="text-blue-700 hover:underline">Engineering Disclaimer</a> for the full scope.</>,
   },
   {
     q: "Can multiple engineers in my firm use one account?",
@@ -247,7 +247,7 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What about data privacy?",
-    a: <>Project inputs and outputs stay private to your firm. We don't share them with third parties or use them to train external models. See the <a href="/legal/privacy" className="text-blue-600 hover:underline">Privacy Policy</a>.</>,
+    a: <>Project inputs and outputs stay private to your firm. We don't share them with third parties or use them to train external models. See the <a href="/legal/privacy" className="text-blue-700 hover:underline">Privacy Policy</a>.</>,
   },
 ];
 
@@ -261,7 +261,7 @@ function CadenceToggle({
         onClick={() => onChange("monthly")}
         className={
           "px-4 py-1.5 rounded-md transition-colors font-medium " +
-          (value === "monthly" ? "bg-blue-600 text-white" : "text-muted-foreground hover:text-foreground")
+          (value === "monthly" ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "text-muted-foreground hover:text-foreground")
         }
       >
         Monthly
@@ -271,7 +271,7 @@ function CadenceToggle({
         onClick={() => onChange("annual")}
         className={
           "px-4 py-1.5 rounded-md transition-colors font-medium " +
-          (value === "annual" ? "bg-blue-600 text-white" : "text-muted-foreground hover:text-foreground")
+          (value === "annual" ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "text-muted-foreground hover:text-foreground")
         }
       >
         Annual <span className="opacity-80 font-normal">· save 17%</span>
@@ -292,7 +292,7 @@ function TierCard({ tier, cadence }: { tier: Tier; cadence: Cadence }) {
       className={
         "rounded-xl p-6 flex flex-col space-y-4 " +
         (tier.highlight
-          ? "border-2 border-blue-600 bg-blue-50/40 dark:bg-blue-950/20 shadow-md"
+          ? "border-2 border-slate-900 dark:border-slate-100 shadow-md"
           : "border border-border bg-background")
       }
       data-testid={`tier-card-${tier.id}`}
@@ -301,7 +301,7 @@ function TierCard({ tier, cadence }: { tier: Tier; cadence: Cadence }) {
         <div className="flex items-center justify-between">
           <h3 className="text-xl font-bold">{tier.name}</h3>
           {tier.highlight && (
-            <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-600 text-white">
+            <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
               Most popular
             </span>
           )}
@@ -316,13 +316,13 @@ function TierCard({ tier, cadence }: { tier: Tier; cadence: Cadence }) {
           )}
         </div>
         {price.subtitle && (
-          <div className="text-xs text-blue-600 font-medium mt-1">{price.subtitle}</div>
+          <div className="text-xs text-blue-700 font-medium mt-1">{price.subtitle}</div>
         )}
       </div>
       <ul className="space-y-2 text-sm flex-1">
         {tier.features.map((f) => (
           <li key={f} className="flex gap-2 items-start">
-            <Check className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+            <Check className="w-4 h-4 text-blue-700 mt-0.5 shrink-0" />
             <span>{f}</span>
           </li>
         ))}
@@ -332,7 +332,7 @@ function TierCard({ tier, cadence }: { tier: Tier; cadence: Cadence }) {
         className={
           "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-semibold rounded-md transition-colors " +
           (tier.highlight
-            ? "bg-blue-600 text-white hover:bg-blue-700"
+            ? "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
             : "border border-border hover:bg-accent")
         }
         data-testid={`link-cta-${tier.id}`}

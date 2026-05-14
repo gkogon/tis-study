@@ -15,6 +15,7 @@ import { Link } from "wouter";
 import {
   ArrowRight, FileCheck2, ShieldCheck, Clock, Layers,
   MapPin, BookOpen, Check, Sparkles, Building2, FileText, ChevronRight,
+  TrendingUp, DollarSign, Hourglass,
 } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 import { AtlantaLiveStatus } from "../components/atlanta-live-status";
@@ -22,12 +23,13 @@ import { AtlantaLiveStatus } from "../components/atlanta-live-status";
 export default function HomePage() {
   return (
     <div className="overflow-x-hidden">
-      {/* Background gradient — subtle blue glow behind the hero so the
-          page doesn't feel flat. Only renders behind the first viewport. */}
+      {/* Background — a subtle slate wash behind the hero so the page
+          doesn't feel flat. Cool neutral, not the default-blue glow that
+          reads as "another startup landing page." */}
       <div className="relative">
         <div
           aria-hidden
-          className="absolute inset-x-0 top-0 -z-10 h-[600px] bg-gradient-to-b from-blue-50/60 via-background to-background dark:from-blue-950/20"
+          className="absolute inset-x-0 top-0 -z-10 h-[600px] bg-gradient-to-b from-slate-100/80 via-background to-background dark:from-slate-900/30"
         />
         <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-20">
           <HeroSection />
@@ -35,6 +37,7 @@ export default function HomePage() {
       </div>
 
       <StatsBand />
+      <RoiSection />
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 space-y-24">
         <AtlantaLiveStatus />
@@ -54,16 +57,16 @@ function HeroSection() {
   return (
     <section className="grid lg:grid-cols-12 gap-10 lg:gap-12 items-center">
       <div className="lg:col-span-7 space-y-7">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 text-xs font-medium text-blue-700 dark:text-blue-300">
-          <Sparkles className="w-3.5 h-3.5" />
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 dark:bg-slate-100 border border-slate-900 dark:border-slate-100 text-xs font-medium text-white dark:text-slate-900">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 dark:bg-emerald-600 animate-pulse" />
           Live GDOT data · 2,589 cameras · 49 metro signals
         </div>
-        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-[64px] font-bold leading-[1.05] tracking-tight">
+        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-[64px] font-bold leading-[1.05] tracking-tight text-slate-900 dark:text-slate-50">
           Defensible Traffic
           <br />
           Impact Studies
           <br />
-          <span className="bg-gradient-to-r from-blue-600 to-blue-500 bg-clip-text text-transparent">
+          <span className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
             in 60 seconds.
           </span>
         </h1>
@@ -91,13 +94,13 @@ function HeroSection() {
         </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-2 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
-            <Check className="w-3.5 h-3.5 text-blue-600" /> No credit card
+            <Check className="w-3.5 h-3.5 text-blue-700" /> No credit card
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <Check className="w-3.5 h-3.5 text-blue-600" /> 10 free studies
+            <Check className="w-3.5 h-3.5 text-blue-700" /> 10 free studies
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <Check className="w-3.5 h-3.5 text-blue-600" /> Cancel anytime
+            <Check className="w-3.5 h-3.5 text-blue-700" /> Cancel anytime
           </span>
         </div>
       </div>
@@ -128,7 +131,7 @@ function ProductPreview() {
         {/* Card header — looks like a project chrome */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/30">
           <div className="flex items-center gap-2 text-xs">
-            <FileText className="w-4 h-4 text-blue-600" />
+            <FileText className="w-4 h-4 text-blue-700" />
             <span className="font-mono text-muted-foreground">TIS-2026-0429</span>
           </div>
           <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -139,7 +142,7 @@ function ProductPreview() {
 
         {/* Project header */}
         <div className="px-5 py-4 border-b border-border space-y-1">
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-blue-600">
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-blue-700">
             Traffic Impact Study
           </div>
           <div className="text-lg font-bold">Peachtree Multifamily — 240 DU</div>
@@ -230,27 +233,191 @@ function IntersectionRow({
 
 function StatsBand() {
   return (
-    <section className="border-y border-border bg-muted/30">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
+    <section className="border-y border-border bg-slate-50 dark:bg-slate-950/40">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14 grid grid-cols-2 md:grid-cols-4 gap-8">
+        <BigStat value="40 hrs" label="Saved per screening study" accent />
+        <BigStat value="$5,000" label="In junior-engineer wages, per study" accent />
         <BigStat value="60s" label="Average study turnaround" />
-        <BigStat value="6" label="Study types shipped" />
-        <BigStat value="80" label="ITE land-use codes" />
-        <BigStat value="4" label="Standards referenced" sub="HCM · ITE · MUTCD · AASHTO" />
+        <BigStat value="6" label="Study engines" sub="TIS · Parking · Warrants · SD · Queuing · Road-Diet" />
       </div>
     </section>
   );
 }
 
 function BigStat({
-  value, label, sub,
-}: { value: string; label: string; sub?: string }) {
+  value, label, sub, accent,
+}: { value: string; label: string; sub?: string; accent?: boolean }) {
   return (
-    <div className="space-y-1">
-      <div className="text-4xl sm:text-5xl font-bold tabular-nums tracking-tight">
+    <div className="space-y-1.5">
+      <div className={`text-4xl sm:text-5xl font-bold tabular-nums tracking-tight ${accent ? "bg-gradient-to-br from-blue-700 to-blue-600 bg-clip-text text-transparent" : "text-slate-900 dark:text-slate-100"}`}>
         {value}
       </div>
-      <div className="text-sm text-muted-foreground">{label}</div>
-      {sub && <div className="text-xs text-muted-foreground/80 font-mono">{sub}</div>}
+      <div className="text-sm text-muted-foreground leading-snug">{label}</div>
+      {sub && <div className="text-xs text-muted-foreground/80 font-mono leading-snug">{sub}</div>}
+    </div>
+  );
+}
+
+/**
+ * Concrete ROI math the buyer can mentally re-do. Three columns of
+ * monthly volume → wage savings, with the subscription cost baked in
+ * so the multiple is obvious. Methodology footnote makes the
+ * assumptions explicit so a skeptical PE can challenge them.
+ */
+function RoiSection() {
+  return (
+    <section className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-24">
+      <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-start">
+        <div className="lg:col-span-5 space-y-5">
+          <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
+            <TrendingUp className="w-3.5 h-3.5" />
+            The math
+          </div>
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+            Pays for itself on
+            <br />
+            <span className="text-blue-700">day one.</span>
+          </h2>
+          <p className="text-muted-foreground text-lg leading-relaxed">
+            A junior PE bills 20–60 hours per screening TIS. At a $125/hr
+            blended billable rate, that's <strong className="text-foreground">$5,000 of engineer time</strong> per
+            study — billable to other projects the moment we hand the
+            deliverable back.
+          </p>
+          <div className="text-sm text-muted-foreground leading-relaxed pt-1 border-l-2 border-slate-300 dark:border-slate-700 pl-3">
+            Most firms charge clients for screening work either as a line
+            item in the proposal or as hours against the project budget.
+            Either way — when the screening completes in 60 seconds instead
+            of a week, that line item becomes margin.
+          </div>
+        </div>
+        <div className="lg:col-span-7">
+          <div className="rounded-2xl border border-border bg-background overflow-hidden shadow-sm">
+            <div className="px-6 py-4 border-b border-border bg-slate-50 dark:bg-slate-900/40 flex items-center justify-between flex-wrap gap-2">
+              <div className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Wage savings, by plan
+              </div>
+              <div className="text-[10px] font-mono text-muted-foreground">
+                40 hrs/study × $125/hr blended
+              </div>
+            </div>
+            <div className="divide-y divide-border">
+              <RoiRow
+                plan="Starter"
+                volume="10 studies / mo"
+                subscription="$599 / mo"
+                savings="$50,000"
+                multiple="83×"
+              />
+              <RoiRow
+                plan="Growth"
+                volume="30 studies / mo"
+                subscription="$2,499 / mo"
+                savings="$150,000"
+                multiple="60×"
+                highlight
+              />
+              <RoiRow
+                plan="Enterprise"
+                volume="170 studies / mo"
+                subscription="$12,750 / mo"
+                savings="$850,000"
+                multiple="67×"
+              />
+            </div>
+            <div className="px-6 py-4 border-t border-border bg-slate-50 dark:bg-slate-900/40 text-[11px] text-muted-foreground leading-relaxed">
+              Methodology: 40 hours saved per screening at $125/hr is the
+              midpoint of the ITE-typical 20–60 hr range and the 2026 Atlanta
+              metro junior-PE billable rate. Savings shown are gross labor
+              cost recovered — opportunity cost and proposal-win uplift not
+              included. Enterprise meter at $75/study, sized to the typical
+              high-volume firm's expected monthly run-rate.
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-3 mt-5">
+            <RoiTile
+              icon={Hourglass}
+              value="1,200 hrs"
+              label="Engineer time freed / month"
+              sub="At 30 studies/mo on Growth"
+            />
+            <RoiTile
+              icon={DollarSign}
+              value="$1.8M / yr"
+              label="Wage savings at Growth cap"
+              sub="Vs. $30K annual subscription"
+            />
+            <RoiTile
+              icon={TrendingUp}
+              value="20–80×"
+              label="ROI range across plans"
+              sub="Subscription vs. recovered wages"
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RoiRow({
+  plan, volume, subscription, savings, multiple, highlight,
+}: {
+  plan: string;
+  volume: string;
+  subscription: string;
+  savings: string;
+  multiple: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={
+        "px-6 py-4 grid grid-cols-12 gap-3 items-center text-sm " +
+        (highlight ? "bg-blue-50/60 dark:bg-blue-950/20" : "")
+      }
+    >
+      <div className="col-span-3">
+        <div className={`font-semibold tracking-tight ${highlight ? "text-blue-700" : "text-slate-900 dark:text-slate-100"}`}>
+          {plan}
+        </div>
+        <div className="text-xs text-muted-foreground">{volume}</div>
+      </div>
+      <div className="col-span-3 text-xs text-muted-foreground tabular-nums">
+        {subscription}
+      </div>
+      <div className="col-span-4 text-right">
+        <div className="font-bold tabular-nums text-slate-900 dark:text-slate-100">{savings}</div>
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          Monthly wage savings
+        </div>
+      </div>
+      <div className="col-span-2 text-right">
+        <div className="text-2xl font-bold tabular-nums bg-gradient-to-br from-blue-700 to-blue-600 bg-clip-text text-transparent">
+          {multiple}
+        </div>
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          ROI
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoiTile({
+  icon: Icon, value, label, sub,
+}: { icon: typeof Hourglass; value: string; label: string; sub: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-4 space-y-2">
+      <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
+        <Icon className="w-4 h-4" />
+      </div>
+      <div className="text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-slate-100">
+        {value}
+      </div>
+      <div className="text-xs font-medium leading-snug">{label}</div>
+      <div className="text-[11px] text-muted-foreground leading-snug">{sub}</div>
     </div>
   );
 }
@@ -259,7 +426,7 @@ function PillarsSection() {
   return (
     <section className="space-y-12">
       <div className="text-center space-y-3 max-w-2xl mx-auto">
-        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-600">
+        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
           Why firms switch
         </div>
         <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
@@ -295,7 +462,7 @@ function WorkflowSection() {
   return (
     <section className="space-y-12">
       <div className="text-center space-y-3 max-w-2xl mx-auto">
-        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-600">
+        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
           The workflow
         </div>
         <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
@@ -334,7 +501,7 @@ function MethodologySection() {
   return (
     <section className="grid lg:grid-cols-12 gap-10 items-center">
       <div className="lg:col-span-5 space-y-5">
-        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-600">
+        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
           The receipts
         </div>
         <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
@@ -389,37 +556,43 @@ function MethodologySection() {
 
 function SubstituteCostSection() {
   return (
-    <section className="rounded-3xl border border-border bg-gradient-to-br from-blue-600 to-blue-700 text-white px-6 sm:px-12 py-12 sm:py-16 overflow-hidden relative">
+    <section className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white px-6 sm:px-12 py-12 sm:py-16 overflow-hidden relative">
       {/* Subtle grid overlay for texture */}
       <div
         aria-hidden
-        className="absolute inset-0 opacity-[0.07] pointer-events-none"
+        className="absolute inset-0 opacity-[0.08] pointer-events-none"
         style={{
           backgroundImage:
             "linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)",
           backgroundSize: "40px 40px",
         }}
       />
+      {/* Blue accent corner glow — replaces the all-blue gradient with
+          a subtle blue highlight on dark slate, more enterprise-grade. */}
+      <div
+        aria-hidden
+        className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-blue-600/20 blur-3xl pointer-events-none"
+      />
       <div className="relative grid lg:grid-cols-12 gap-8 items-center">
         <div className="lg:col-span-7 space-y-4">
-          <div className="text-xs font-semibold uppercase tracking-widest text-blue-200">
+          <div className="text-xs font-semibold uppercase tracking-widest text-blue-300">
             The economics
           </div>
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
             One outsourced screening costs more than a year of access.
           </h2>
-          <p className="text-blue-50/90 text-lg leading-relaxed max-w-xl">
+          <p className="text-slate-300 text-lg leading-relaxed max-w-xl">
             A consultant-run screening TIS bills $3,000–9,000 in labor before
             a single intersection is modeled. A firm that runs 20 screenings a
             year on us recovers their subscription before lunch on day one.
           </p>
         </div>
         <div className="lg:col-span-5">
-          <div className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 p-6 space-y-4">
+          <div className="rounded-xl bg-white/5 backdrop-blur-sm border border-white/10 p-6 space-y-4">
             <CostRow label="Outsourced screening TIS" value="$3K – $9K" sub="per study, labor only" />
             <CostRow label="Synchro Studio license" value="$3,298" sub="per seat, annual" />
             <CostRow label="PTV Vistro / Visum" value="$8K – $15K" sub="per seat, annual" />
-            <div className="border-t border-white/20 pt-4 mt-2">
+            <div className="border-t border-white/15 pt-4 mt-2">
               <CostRow label="Simple Impact Studies — Growth" value="$2,499" sub="firm, monthly · unlimited seats" highlight />
             </div>
           </div>
@@ -435,10 +608,10 @@ function CostRow({
   return (
     <div className="flex items-baseline justify-between gap-3">
       <div className="min-w-0">
-        <div className={`text-sm ${highlight ? "font-semibold" : ""}`}>{label}</div>
-        <div className="text-xs text-blue-100/70">{sub}</div>
+        <div className={`text-sm ${highlight ? "font-semibold text-white" : "text-slate-200"}`}>{label}</div>
+        <div className="text-xs text-slate-400">{sub}</div>
       </div>
-      <div className={`text-lg sm:text-xl font-bold tabular-nums whitespace-nowrap ${highlight ? "text-white" : "text-blue-100"}`}>
+      <div className={`text-lg sm:text-xl font-bold tabular-nums whitespace-nowrap ${highlight ? "text-blue-300" : "text-slate-100"}`}>
         {value}
       </div>
     </div>
@@ -482,7 +655,7 @@ function Pillar({
 }: { icon: typeof Clock; title: string; body: string }) {
   return (
     <div className="group relative rounded-2xl border border-border bg-background p-6 space-y-3 transition-all hover:border-foreground/20 hover:shadow-sm">
-      <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/40 transition-colors">
+      <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/40 transition-colors">
         <Icon className="w-5 h-5" />
       </div>
       <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
@@ -500,7 +673,7 @@ function Step({
         <span className="w-7 h-7 rounded-full bg-foreground text-background text-xs font-bold flex items-center justify-center">
           {n}
         </span>
-        <Icon className="w-5 h-5 text-blue-600" />
+        <Icon className="w-5 h-5 text-blue-700" />
       </div>
       <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
       <p className="text-sm text-muted-foreground leading-relaxed">{body}</p>
@@ -511,7 +684,7 @@ function Step({
 function Bullet({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex gap-2.5 items-start">
-      <Check className="w-4 h-4 text-blue-600 mt-1 shrink-0" />
+      <Check className="w-4 h-4 text-blue-700 mt-1 shrink-0" />
       <span>{children}</span>
     </li>
   );

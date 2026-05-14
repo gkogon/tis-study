@@ -18,18 +18,18 @@ export default function ForFirmsPage() {
       <div className="relative">
         <div
           aria-hidden
-          className="absolute inset-x-0 top-0 -z-10 h-[400px] bg-gradient-to-b from-blue-50/60 via-background to-background dark:from-blue-950/20"
+          className="absolute inset-x-0 top-0 -z-10 h-[400px] bg-gradient-to-b from-slate-100/80 via-background to-background dark:from-slate-900/30"
         />
         <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-12">
           <section className="text-center max-w-3xl mx-auto space-y-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 text-xs font-medium text-blue-700 dark:text-blue-300">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 dark:bg-slate-100 border border-slate-900 dark:border-slate-100 text-xs font-medium text-white dark:text-slate-900">
               <Building2 className="w-3.5 h-3.5" />
               For engineering firms
             </div>
-            <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.05] tracking-tight">
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.05] tracking-tight text-slate-900 dark:text-slate-50">
               Generate a defensible TIS
               <br />
-              <span className="bg-gradient-to-r from-blue-600 to-blue-500 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
                 in 60 seconds.
               </span>
             </h1>
@@ -80,7 +80,7 @@ export default function ForFirmsPage() {
 
         <section className="grid lg:grid-cols-12 gap-10 items-center">
           <div className="lg:col-span-7 space-y-5">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-600">
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
               The deliverable
             </div>
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
@@ -167,7 +167,7 @@ export default function ForFirmsPage() {
 
         <section className="grid lg:grid-cols-12 gap-10 items-start">
           <div className="lg:col-span-6 space-y-5">
-            <BookOpen className="w-10 h-10 text-blue-600" />
+            <BookOpen className="w-10 h-10 text-blue-700" />
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
               Try it on a real project this week.
             </h2>
@@ -186,7 +186,7 @@ export default function ForFirmsPage() {
             <div className="pt-2">
               <Link
                 href="/signup"
-                className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700"
+                className="inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:text-blue-700"
               >
                 <Sparkles className="w-4 h-4" />
                 Or jump in instantly with self-serve signup
@@ -263,7 +263,7 @@ function Pillar({
 }: { icon: typeof Clock; title: string; body: string }) {
   return (
     <div className="group rounded-2xl border border-border bg-background p-6 space-y-3 transition-all hover:border-foreground/20 hover:shadow-sm">
-      <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/40 transition-colors">
+      <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/40 transition-colors">
         <Icon className="w-5 h-5" />
       </div>
       <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
@@ -275,7 +275,7 @@ function Pillar({
 function FeatureLine({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex gap-3">
-      <Check className="w-4 h-4 text-blue-600 mt-1 shrink-0" />
+      <Check className="w-4 h-4 text-blue-700 mt-1 shrink-0" />
       <span className="leading-relaxed">{children}</span>
     </li>
   );
@@ -284,7 +284,7 @@ function FeatureLine({ children }: { children: React.ReactNode }) {
 function Bullet({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex gap-2.5 items-start">
-      <Check className="w-4 h-4 text-blue-600 mt-1 shrink-0" />
+      <Check className="w-4 h-4 text-blue-700 mt-1 shrink-0" />
       <span>{children}</span>
     </li>
   );

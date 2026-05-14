@@ -13,17 +13,17 @@ export default function AboutPage() {
       <div className="relative">
         <div
           aria-hidden
-          className="absolute inset-x-0 top-0 -z-10 h-[400px] bg-gradient-to-b from-blue-50/60 via-background to-background dark:from-blue-950/20"
+          className="absolute inset-x-0 top-0 -z-10 h-[400px] bg-gradient-to-b from-slate-100/80 via-background to-background dark:from-slate-900/30"
         />
         <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-12 space-y-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 text-xs font-medium text-blue-700 dark:text-blue-300">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 dark:bg-slate-100 border border-slate-900 dark:border-slate-100 text-xs font-medium text-white dark:text-slate-900">
             <Building2 className="w-3.5 h-3.5" />
             About
           </div>
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.05] tracking-tight">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.05] tracking-tight text-slate-900 dark:text-slate-50">
             Built for the engineers
             <br />
-            <span className="bg-gradient-to-r from-blue-600 to-blue-500 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
               doing the work.
             </span>
           </h1>
@@ -55,7 +55,7 @@ export default function AboutPage() {
 
         <section className="space-y-5">
           <div className="space-y-2">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-600">
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
               The shipping list
             </div>
             <h2 className="text-3xl font-bold tracking-tight">What we ship</h2>
@@ -113,7 +113,7 @@ export default function AboutPage() {
           </p>
           <p className="text-muted-foreground leading-relaxed text-sm pt-1">
             See the{" "}
-            <Link href="/legal/disclaimer" className="text-blue-600 hover:underline">
+            <Link href="/legal/disclaimer" className="text-blue-700 hover:underline">
               Engineering Disclaimer
             </Link>{" "}
             for the full scope of what the Service does and does not provide.
@@ -121,7 +121,7 @@ export default function AboutPage() {
         </section>
 
         <section className="text-center space-y-5 pt-4">
-          <Sparkles className="w-10 h-10 text-blue-600 mx-auto" />
+          <Sparkles className="w-10 h-10 text-blue-700 mx-auto" />
           <h2 className="text-3xl font-bold tracking-tight">
             Try it on a real project.
           </h2>
@@ -158,7 +158,7 @@ function Tile({
 }: { icon: typeof Target; title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-2xl border border-border bg-background p-5 space-y-3 transition-all hover:border-foreground/20 hover:shadow-sm">
-      <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600">
+      <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700">
         <Icon className="w-4.5 h-4.5" />
       </div>
       <div className="font-semibold tracking-tight">{title}</div>
