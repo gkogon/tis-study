@@ -23,6 +23,7 @@ import {
   CloudRain, TrendingUp, Sliders, Sparkles, BarChart3,
 } from "lucide-react";
 import { CitationRef } from "@/components/citation-ref";
+import { QuotaBanner } from "@/components/quota-banner";
 import { FirmSettingsModal } from "@/components/firm-settings-modal";
 import { AuthBar } from "@/components/auth-bar";
 import { TisCoverPage } from "@/components/tis-cover-page";
@@ -1280,6 +1281,9 @@ export default function TisPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6 print:py-0 print:max-w-none print:px-0">
+      <div className="print:hidden">
+        <QuotaBanner />
+      </div>
       <div className="flex items-center justify-between print:hidden">
         <Link
           href="/"

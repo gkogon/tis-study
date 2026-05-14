@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@workspace/replit-auth-web";
-import { ArrowLeft, Loader2, Mail, RefreshCw } from "lucide-react";
+import { ArrowLeft, Loader2, Mail, RefreshCw, Search } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 
 type UsageRow = {
@@ -75,11 +75,51 @@ function relTime(iso: string | null): string {
   return `${mo}mo ago`;
 }
 
+type SortKey =
+  | "lifetime_user_desc"
+  | "lifetime_firm_desc"
+  | "period_desc"
+  | "joined_desc"
+  | "last_study_desc";
+
+const SORT_LABEL: Record<SortKey, string> = {
+  lifetime_user_desc: "Lifetime (user) ↓",
+  lifetime_firm_desc: "Lifetime (firm) ↓",
+  period_desc: "This period ↓",
+  joined_desc: "Newest ↓",
+  last_study_desc: "Most recent activity ↓",
+};
+
+function sortRows(rows: UsageRow[], key: SortKey): UsageRow[] {
+  const ts = (s: string | null) => (s ? new Date(s).getTime() : 0);
+  const copy = [...rows];
+  switch (key) {
+    case "lifetime_user_desc":
+      copy.sort((a, b) => b.userLifetimeStudyCount - a.userLifetimeStudyCount);
+      break;
+    case "lifetime_firm_desc":
+      copy.sort((a, b) => (b.firm?.firmLifetimeStudyCount ?? 0) - (a.firm?.firmLifetimeStudyCount ?? 0));
+      break;
+    case "period_desc":
+      copy.sort((a, b) => (b.firm?.studiesUsedThisPeriod ?? 0) - (a.firm?.studiesUsedThisPeriod ?? 0));
+      break;
+    case "joined_desc":
+      copy.sort((a, b) => ts(b.userCreatedAt) - ts(a.userCreatedAt));
+      break;
+    case "last_study_desc":
+      copy.sort((a, b) => ts(b.userLastStudyAt) - ts(a.userLastStudyAt));
+      break;
+  }
+  return copy;
+}
+
 export default function AdminUsagePage() {
   const { isAuthenticated, isLoading: authLoading, login } = useAuth();
   const [data, setData] = useState<UsageResp | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("lifetime_user_desc");
 
   async function fetchUsage() {
     setLoading(true);
@@ -151,8 +191,29 @@ export default function AdminUsagePage() {
 
         {data && (
           <>
-            <div className="text-xs text-muted-foreground">
-              {data.userCount} user{data.userCount === 1 ? "" : "s"} · generated {fmtDate(data.generatedAt)}
+            <div className="flex flex-wrap gap-3 items-center">
+              <div className="relative flex-1 min-w-[200px] max-w-md">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="search"
+                  placeholder="Search by email or firm…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 text-sm rounded-md border bg-background"
+                />
+              </div>
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                className="text-sm rounded-md border bg-background px-2 py-1.5"
+              >
+                {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
+                  <option key={k} value={k}>{SORT_LABEL[k]}</option>
+                ))}
+              </select>
+              <div className="text-xs text-muted-foreground ml-auto">
+                {data.userCount} user{data.userCount === 1 ? "" : "s"} · generated {fmtDate(data.generatedAt)}
+              </div>
             </div>
 
             <div className="overflow-x-auto border rounded-lg">
@@ -170,12 +231,26 @@ export default function AdminUsagePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.rows.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="text-center py-8 text-muted-foreground">No users yet.</td>
-                    </tr>
-                  )}
-                  {data.rows.map((r) => {
+                  {(() => {
+                    const q = query.trim().toLowerCase();
+                    const filtered = q
+                      ? data.rows.filter((r) =>
+                          (r.email ?? "").toLowerCase().includes(q) ||
+                          (r.firm?.name ?? "").toLowerCase().includes(q) ||
+                          [r.firstName, r.lastName].filter(Boolean).join(" ").toLowerCase().includes(q),
+                        )
+                      : data.rows;
+                    const visible = sortRows(filtered, sortKey);
+                    if (visible.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={8} className="text-center py-8 text-muted-foreground">
+                            {q ? `No users matching "${q}".` : "No users yet."}
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return visible.map((r) => {
                     const fullName = [r.firstName, r.lastName].filter(Boolean).join(" ").trim();
                     const tier = (r.firm?.planTier ?? "trial").toLowerCase();
                     const used = r.firm?.studiesUsedThisPeriod ?? 0;
@@ -227,7 +302,8 @@ export default function AdminUsagePage() {
                         </td>
                       </tr>
                     );
-                  })}
+                  });
+                  })()}
                 </tbody>
               </table>
             </div>

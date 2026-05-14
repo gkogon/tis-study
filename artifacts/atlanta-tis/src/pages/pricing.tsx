@@ -131,12 +131,12 @@ export default function PricingPage() {
             <Building2 className="w-3.5 h-3.5" />
             Pricing
           </div>
-          <h1 className="text-5xl font-bold leading-tight">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold leading-tight">
             One subscription per firm.
             <br />
             <span className="text-blue-600">Every engineer included.</span>
           </h1>
-          <p className="text-lg text-muted-foreground">
+          <p className="text-base sm:text-lg text-muted-foreground">
             14-day trial on Starter & Growth. No credit card to start.
             Cancel anytime — you keep access until the end of your billing
             period. Annual billing saves about <strong>17%</strong>.

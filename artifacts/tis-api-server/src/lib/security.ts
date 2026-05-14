@@ -59,3 +59,50 @@ export const generateRateLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many TIS generations. Please slow down." },
 });
+
+// Per-IP brute-force protection for /auth/login. A real attacker
+// distributes across IPs, so this is defense-in-depth — pair with
+// bcrypt cost on the password side and consider a per-email lockout
+// at the application layer when you have a Sentry/alerts pipeline.
+export const loginRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many sign-in attempts. Try again in 15 minutes." },
+});
+
+// Per-IP rate limit on signups. Prevents bulk account creation from
+// scripts probing the system. Lower-volume than logins because each
+// signup is a "first-time" event for a real human.
+export const signupRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many signup attempts. Try again later." },
+});
+
+// Per-IP rate limit on password-reset request. Prevents an attacker
+// from spamming reset-email sends to a victim's mailbox. The reset
+// flow itself is idempotent and reveals nothing (200 either way), so
+// the abuse vector is mailbox-flooding, not info disclosure.
+export const passwordResetRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many password reset requests. Try again later." },
+});
+
+// Per-IP rate limit on the public unsubscribe endpoint. Honest users
+// hit it once; bots probing or DOSing the DB hit it constantly. 20
+// per 10 min is generous for a legitimate human and tight enough to
+// shut down a bored scanner.
+export const unsubscribeRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many requests. Try again in a few minutes." },
+});

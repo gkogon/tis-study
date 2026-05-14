@@ -1,10 +1,19 @@
 User-agent: *
 Allow: /
 
-# Sensitive auth + settings pages — discouraged but not blocked
+# Auth + settings: signed-in surfaces, nothing useful to index
 Disallow: /settings/
 Disallow: /admin
+Disallow: /admin/
 Disallow: /invites/accept
 Disallow: /auth/
+
+# Public unsubscribe page — operational tool, not a marketing surface;
+# indexing leaks the link pattern and serves no SEO value.
+Disallow: /unsubscribe
+
+# Backend API surfaces — never useful to crawl.
+Disallow: /api/
+Disallow: /tis-api/
 
 Sitemap: https://simpleimpactstudies.com/sitemap.xml

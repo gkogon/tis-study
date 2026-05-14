@@ -18,12 +18,13 @@
  */
 import { Router, type IRouter } from "express";
 import { optOutEmail, isOptedOut } from "../lib/email-optouts";
+import { unsubscribeRateLimiter } from "../lib/security";
 
 const router: IRouter = Router();
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-router.get("/api/unsubscribe", async (req, res): Promise<void> => {
+router.get("/api/unsubscribe", unsubscribeRateLimiter, async (req, res): Promise<void> => {
   const email = String(req.query.email ?? "").trim();
   if (!EMAIL_RE.test(email) || email.length > 254) {
     res.status(400).json({ error: "Provide a valid email address." });
@@ -38,7 +39,7 @@ router.get("/api/unsubscribe", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/api/unsubscribe", async (req, res): Promise<void> => {
+router.post("/api/unsubscribe", unsubscribeRateLimiter, async (req, res): Promise<void> => {
   const body = (req.body as { email?: unknown; reason?: unknown; source?: unknown }) ?? {};
   const email = String(body.email ?? "").trim();
   if (!EMAIL_RE.test(email) || email.length > 254) {

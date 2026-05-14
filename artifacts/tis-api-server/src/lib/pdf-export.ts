@@ -57,6 +57,48 @@ const FONT_BOLD = path.join(FONT_DIR, "DejaVuSans-Bold.ttf");
 const FONT_MONO = path.join(FONT_DIR, "DejaVuSansMono.ttf");
 
 /**
+ * Resolve a firm logo URL to image bytes that PDFKit can render.
+ * Accepts a `data:` URL or an `https?:` URL; returns null (with a
+ * warning logged by the caller) for anything else, fetch failures,
+ * or oversized payloads. Bounded at 2 MB to match the upload cap +
+ * a 5-second timeout so a flaky logo host can't hang the PDF.
+ */
+const LOGO_FETCH_TIMEOUT_MS = 5_000;
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+
+async function fetchLogoBuffer(logoUrl: string | null): Promise<Buffer | null> {
+  if (!logoUrl) return null;
+  try {
+    if (logoUrl.startsWith("data:")) {
+      const comma = logoUrl.indexOf(",");
+      if (comma < 0) return null;
+      const meta = logoUrl.slice(5, comma);
+      if (!meta.includes("base64")) return null;
+      const buf = Buffer.from(logoUrl.slice(comma + 1), "base64");
+      return buf.length <= LOGO_MAX_BYTES ? buf : null;
+    }
+    if (/^https?:\/\//.test(logoUrl)) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), LOGO_FETCH_TIMEOUT_MS);
+      try {
+        const r = await fetch(logoUrl, { signal: ctrl.signal });
+        if (!r.ok) return null;
+        const ct = r.headers.get("content-type") ?? "";
+        if (!/^image\//.test(ct)) return null;
+        const ab = await r.arrayBuffer();
+        if (ab.byteLength > LOGO_MAX_BYTES) return null;
+        return Buffer.from(ab);
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Returns a Buffer holding the rendered PDF. Streams internally for
  * memory efficiency but resolves a single Buffer for handler simplicity.
  */
@@ -64,6 +106,11 @@ export async function renderStudyPdf(
   project: StoredProject,
   firm: FirmStamp,
 ): Promise<Buffer> {
+  // Resolve the firm logo to bytes up front — the cover and header
+  // both want to draw it, and fetching twice would be wasteful (and
+  // could double the timeout window if the host is slow).
+  const logoBuf = await fetchLogoBuffer(firm.logoUrl);
+
   const doc = new PDFDocument({
     size: "LETTER",
     margins: { top: PAGE_MARGIN, bottom: PAGE_MARGIN, left: PAGE_MARGIN, right: PAGE_MARGIN },
@@ -91,7 +138,7 @@ export async function renderStudyPdf(
     doc.on("error", reject);
   });
 
-  drawCover(doc, project, firm);
+  drawCover(doc, project, firm, logoBuf);
   doc.addPage();
   drawHeader(doc, project, firm);
   drawBody(doc, project);
@@ -126,13 +173,43 @@ function drawPageFooter(doc: PDFKit.PDFDocument) {
   doc.restore();
 }
 
-function drawCover(doc: PDFKit.PDFDocument, project: StoredProject, firm: FirmStamp) {
+function drawCover(
+  doc: PDFKit.PDFDocument,
+  project: StoredProject,
+  firm: FirmStamp,
+  logoBuf: Buffer | null,
+) {
   // Top brand band
   doc.rect(0, 0, doc.page.width, 12).fill(BRAND_BLUE);
   doc.fillColor("black");
 
   doc.moveDown(2);
-  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(firm.name.toUpperCase(), { align: "right" });
+  // Firm logo (if uploaded), top-right corner. PDFKit's image()
+  // preserves aspect ratio when given just a width; we cap at 120pt
+  // wide / 50pt tall so a square logo doesn't push the page banner
+  // off the cover. Fall back to the firm name in text if no logo is
+  // available or the fetch failed.
+  if (logoBuf) {
+    try {
+      const logoMaxW = 120;
+      const logoMaxH = 50;
+      const logoX = doc.page.width - PAGE_MARGIN - logoMaxW;
+      const logoY = doc.y;
+      doc.image(logoBuf, logoX, logoY, {
+        fit: [logoMaxW, logoMaxH],
+        align: "right",
+      });
+      // Advance the cursor past the logo block so subsequent moveDown
+      // calls don't draw over it.
+      doc.y = logoY + logoMaxH + 4;
+    } catch {
+      // PDFKit throws on unsupported image formats (it accepts JPEG +
+      // PNG only). Silently fall back to the name banner.
+      doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(firm.name.toUpperCase(), { align: "right" });
+    }
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(firm.name.toUpperCase(), { align: "right" });
+  }
   doc.fillColor("black");
 
   doc.moveDown(4);

@@ -8,6 +8,7 @@ import {
   ArrowRight, MapPin, ParkingCircle, ChevronRight, Lock, Building2,
 } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
+import { QuotaBanner } from "../components/quota-banner";
 
 type Study = {
   id: string;
@@ -86,6 +87,7 @@ export default function StudiesPage() {
   return (
     <div>
       <div className="max-w-6xl mx-auto px-4 py-12 space-y-10">
+        <QuotaBanner />
         <header className="space-y-2">
           <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-600">
             <Building2 className="w-3.5 h-3.5" />

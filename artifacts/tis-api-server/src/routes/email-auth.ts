@@ -33,6 +33,11 @@ import {
 import { sendPasswordResetEmail } from "../lib/email";
 import { getPublicAppOrigin } from "../lib/stripe";
 import { logger } from "../lib/logger";
+import {
+  loginRateLimiter,
+  signupRateLimiter,
+  passwordResetRateLimiter,
+} from "../lib/security";
 
 const router: IRouter = Router();
 
@@ -64,7 +69,7 @@ function sessionFromUser(user: typeof usersTable.$inferSelect): SessionData {
   };
 }
 
-router.post("/auth/signup", async (req, res): Promise<void> => {
+router.post("/auth/signup", signupRateLimiter, async (req, res): Promise<void> => {
   const body = req.body as {
     email?: unknown;
     password?: unknown;
@@ -136,7 +141,7 @@ router.post("/auth/signup", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/auth/login", async (req, res): Promise<void> => {
+router.post("/auth/login", loginRateLimiter, async (req, res): Promise<void> => {
   const body = req.body as { email?: unknown; password?: unknown };
   const email = String(body.email ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
@@ -175,7 +180,7 @@ router.post("/auth/logout", async (req, res): Promise<void> => {
   res.json({ ok: true });
 });
 
-router.post("/auth/password-reset", async (req, res): Promise<void> => {
+router.post("/auth/password-reset", passwordResetRateLimiter, async (req, res): Promise<void> => {
   const body = req.body as { email?: unknown };
   const email = String(body.email ?? "").trim().toLowerCase();
   // Always 200 — don't reveal whether the email is registered. The
@@ -208,7 +213,7 @@ router.post("/auth/password-reset", async (req, res): Promise<void> => {
   res.json({ ok: true });
 });
 
-router.post("/auth/password-confirm", async (req, res): Promise<void> => {
+router.post("/auth/password-confirm", passwordResetRateLimiter, async (req, res): Promise<void> => {
   const body = req.body as { token?: unknown; password?: unknown };
   const token = String(body.token ?? "");
   const password = String(body.password ?? "");
