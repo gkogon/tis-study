@@ -89,7 +89,7 @@ export default function StudiesPage() {
       <div className="max-w-6xl mx-auto px-4 py-12 space-y-10">
         <QuotaBanner />
         <header className="space-y-2">
-          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-600">
+          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-700">
             <Building2 className="w-3.5 h-3.5" />
             Studies
           </div>
@@ -120,7 +120,7 @@ export default function StudiesPage() {
           </p>
           <Link
             href="/for-firms"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:underline"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-700 hover:underline"
           >
             See the roadmap for engineering firms <ArrowRight className="w-3.5 h-3.5" />
           </Link>
@@ -137,15 +137,15 @@ function StudyCard({ study }: { study: Study }) {
   const inner = (
     <div
       className={
-        "h-full border rounded-xl p-5 space-y-3 transition-colors " +
+        "h-full border rounded-2xl p-5 space-y-3 transition-all " +
         (live
-          ? "border-border bg-background hover:bg-accent/40 hover:border-blue-300"
+          ? "border-border bg-background hover:bg-accent/40 hover:border-foreground/30 hover:shadow-sm"
           : "border-dashed border-border bg-muted/20 opacity-70 cursor-not-allowed")
       }
       data-testid={`card-study-${study.id}`}
     >
       <div className="flex items-center justify-between">
-        <Icon className="w-6 h-6 text-blue-600" />
+        <Icon className="w-6 h-6 text-blue-700" />
         {!live && (
           <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-muted-foreground/10">
             <Lock className="w-2.5 h-2.5 inline -mt-0.5 mr-1" />
@@ -157,7 +157,7 @@ function StudyCard({ study }: { study: Study }) {
       <p className="text-sm text-muted-foreground leading-relaxed">{study.blurb}</p>
       <div className="pt-1 text-xs text-muted-foreground">{study.citation}</div>
       {live && (
-        <div className="pt-1 inline-flex items-center gap-1 text-sm font-medium text-blue-600">
+        <div className="pt-1 inline-flex items-center gap-1 text-sm font-medium text-blue-700">
           Run a study <ArrowRight className="w-3.5 h-3.5" />
         </div>
       )}

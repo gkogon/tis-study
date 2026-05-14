@@ -58,12 +58,12 @@ export default function LoginPage() {
         </div>
 
         <header className="space-y-2 text-center">
-          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-600">
+          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-700">
             <Building2 className="w-3.5 h-3.5" /> Sign in
           </div>
           <h1 className="text-3xl font-bold">Welcome back</h1>
           <p className="text-sm text-muted-foreground">
-            Don't have an account yet? <Link href="/signup" className="text-blue-600 hover:underline">Start a firm trial</Link>
+            Don't have an account yet? <Link href="/signup" className="text-blue-700 hover:underline">Start a firm trial</Link>
           </p>
         </header>
 
@@ -96,7 +96,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full inline-flex items-center justify-center gap-1.5 px-5 py-2.5 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+              className="w-full inline-flex items-center justify-center gap-1.5 px-5 py-2.5 text-sm font-semibold rounded-md bg-foreground text-background hover:bg-foreground/90 disabled:opacity-50"
               data-testid="button-login-submit"
             >
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -109,7 +109,7 @@ export default function LoginPage() {
             )}
           </form>
           <div className="pt-2 border-t text-sm flex items-center justify-between">
-            <Link href="/auth/forgot" className="text-blue-600 hover:underline">
+            <Link href="/auth/forgot" className="text-blue-700 hover:underline">
               Forgot password?
             </Link>
           </div>

@@ -159,13 +159,13 @@ export default function SignupPage() {
         </div>
 
         <section className="text-center space-y-3">
-          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-600">
+          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-700">
             <Building2 className="w-3.5 h-3.5" /> Start your firm trial
           </div>
           <h1 className="text-4xl font-bold leading-tight">Set up your firm account</h1>
           <p className="text-muted-foreground">
             Selected plan: <strong>{PLAN_LABEL[plan]}</strong>{" "}
-            <Link href="/pricing" className="text-blue-600 hover:underline ml-1">change</Link>
+            <Link href="/pricing" className="text-blue-700 hover:underline ml-1">change</Link>
           </p>
         </section>
 
@@ -280,7 +280,7 @@ function NewAccountForm({
       <button
         type="submit"
         disabled={submitting || !acceptedTerms}
-        className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-foreground text-background hover:bg-foreground/90 disabled:opacity-50"
         data-testid="button-signup-submit"
       >
         {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -288,7 +288,7 @@ function NewAccountForm({
         <ArrowRight className="w-4 h-4" />
       </button>
       <p className="text-xs text-muted-foreground">
-        Already have an account? <Link href="/login" className="text-blue-600 hover:underline">Sign in</Link>
+        Already have an account? <Link href="/login" className="text-blue-700 hover:underline">Sign in</Link>
       </p>
 
       <style>{`.input { width: 100%; border-radius: 0.375rem; border: 1px solid hsl(var(--input)); background: var(--background); padding: 0.5rem 0.75rem; font-size: 0.875rem; }
@@ -326,7 +326,7 @@ function FirmOnlyForm({
       <button
         type="submit"
         disabled={submitting || !acceptedTerms}
-        className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-foreground text-background hover:bg-foreground/90 disabled:opacity-50"
         data-testid="button-create-firm"
       >
         {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -366,7 +366,7 @@ function AlreadyHaveFirm({
         <p className="text-muted-foreground text-sm">
           Firm <strong>{firmName}</strong>. Head to the generator to run your first study.
         </p>
-        <Link href="/tis" className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700">
+        <Link href="/tis" className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-foreground text-background hover:bg-foreground/90">
           Go to TIS generator <ArrowRight className="w-4 h-4" />
         </Link>
       </div>
@@ -380,7 +380,7 @@ function AlreadyHaveFirm({
       </p>
       <button
         type="button" onClick={go} disabled={submitting}
-        className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-foreground text-background hover:bg-foreground/90 disabled:opacity-50"
       >
         {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
         Continue to checkout <ArrowRight className="w-4 h-4" />
@@ -412,9 +412,9 @@ function TermsCheckbox({
       />
       <span className="text-muted-foreground leading-relaxed">
         I have read and agree to the{" "}
-        <Link href="/legal/terms" className="text-blue-600 hover:underline">Terms of Service</Link>,{" "}
-        <Link href="/legal/privacy" className="text-blue-600 hover:underline">Privacy Policy</Link>, and{" "}
-        <Link href="/legal/disclaimer" className="text-blue-600 hover:underline">Engineering Disclaimer</Link>.
+        <Link href="/legal/terms" className="text-blue-700 hover:underline">Terms of Service</Link>,{" "}
+        <Link href="/legal/privacy" className="text-blue-700 hover:underline">Privacy Policy</Link>, and{" "}
+        <Link href="/legal/disclaimer" className="text-blue-700 hover:underline">Engineering Disclaimer</Link>.
         I confirm I'm a credentialed engineering professional or am acting on behalf of a licensed engineering firm.
       </span>
     </label>
@@ -426,7 +426,7 @@ function Reassurance({
 }: { icon: typeof ShieldCheck; title: string; children: React.ReactNode }) {
   return (
     <div className="border rounded-lg p-4">
-      <Icon className="w-4 h-4 text-blue-600 mb-1.5" />
+      <Icon className="w-4 h-4 text-blue-700 mb-1.5" />
       <div className="text-sm font-semibold text-foreground">{title}</div>
       <div className="text-xs">{children}</div>
     </div>

@@ -12,6 +12,7 @@ import UnsubscribePage from "@/pages/unsubscribe";
 import ContactPage from "@/pages/contact";
 import ComparePage from "@/pages/compare";
 import SecurityPage from "@/pages/security";
+import HelpPage from "@/pages/help";
 import ProjectsPage from "@/pages/projects";
 import ProjectDetailPage from "@/pages/project-detail";
 import PricingPage from "@/pages/pricing";
@@ -75,6 +76,7 @@ function Router() {
       <Route path="/contact" component={ContactPage} />
       <Route path="/compare" component={ComparePage} />
       <Route path="/security" component={SecurityPage} />
+      <Route path="/help" component={HelpPage} />
       <Route component={NotFound} />
     </Switch>
   );

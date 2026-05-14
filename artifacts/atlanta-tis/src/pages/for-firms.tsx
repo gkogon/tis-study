@@ -48,12 +48,14 @@ export default function ForFirmsPage() {
                 Try the live generator
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </Link>
-              <Link
-                href="/pricing"
+              <a
+                href="/sample-tis-report.pdf"
+                target="_blank"
+                rel="noopener"
                 className="inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg border border-border hover:bg-accent transition-colors"
               >
-                See pricing
-              </Link>
+                See a sample report
+              </a>
             </div>
           </section>
         </div>

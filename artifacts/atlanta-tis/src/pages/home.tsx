@@ -85,13 +85,16 @@ function HeroSection() {
             Start 14-day trial
             <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
           </Link>
-          <Link
-            href="/studies"
+          <a
+            href="/sample-tis-report.pdf"
+            target="_blank"
+            rel="noopener"
             className="inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg border border-border hover:border-foreground/30 hover:bg-accent transition-colors"
-            data-testid="link-studies-hub"
+            data-testid="link-sample-pdf"
           >
-            Browse all studies
-          </Link>
+            <FileText className="w-4 h-4" />
+            See a sample report
+          </a>
         </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-2 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>OG preview — Simple Impact Studies</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 1200px;
+      height: 630px;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    body {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0f172a 100%);
+      color: white;
+      position: relative;
+      padding: 64px 72px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    /* Subtle grid texture, same as the marketing dark callouts */
+    .grid-overlay {
+      position: absolute;
+      inset: 0;
+      opacity: 0.08;
+      pointer-events: none;
+      background-image:
+        linear-gradient(white 1px, transparent 1px),
+        linear-gradient(90deg, white 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+    /* Blue corner glow */
+    .glow {
+      position: absolute;
+      top: -120px;
+      right: -120px;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(37,99,235,0.30) 0%, rgba(37,99,235,0) 70%);
+      pointer-events: none;
+    }
+    .top {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      position: relative;
+      z-index: 2;
+    }
+    .brand-mark {
+      width: 56px;
+      height: 56px;
+      border-radius: 12px;
+      background: #2563eb;
+      position: relative;
+      flex-shrink: 0;
+    }
+    .brand-mark::before {
+      content: "";
+      position: absolute;
+      inset: 12px;
+      top: 50%; transform: translateY(-50%);
+      height: 4px;
+      background: rgba(255,255,255,0.92);
+    }
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      inset: 12px;
+      left: 50%; transform: translateX(-50%);
+      width: 4px;
+      background: rgba(255,255,255,0.92);
+    }
+    .brand-text {
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .live-pill {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 18px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.16);
+      font-size: 16px;
+      font-weight: 500;
+      color: #cbd5e1;
+    }
+    .live-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 12px #10b981;
+    }
+    .middle {
+      position: relative;
+      z-index: 2;
+      max-width: 920px;
+    }
+    h1 {
+      font-size: 86px;
+      font-weight: 800;
+      line-height: 1.02;
+      letter-spacing: -0.035em;
+      margin-bottom: 28px;
+    }
+    h1 .accent {
+      background: linear-gradient(135deg, #60a5fa 0%, #6366f1 60%, #818cf8 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .sub {
+      font-size: 26px;
+      color: #cbd5e1;
+      line-height: 1.45;
+      max-width: 880px;
+    }
+    .bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      z-index: 2;
+      padding-top: 24px;
+      border-top: 1px solid rgba(255,255,255,0.10);
+    }
+    .stats {
+      display: flex;
+      gap: 64px;
+    }
+    .stat-val {
+      font-size: 38px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-val.accent {
+      background: linear-gradient(135deg, #60a5fa 0%, #6366f1 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .stat-lbl {
+      font-size: 14px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-top: 4px;
+    }
+    .url {
+      font-size: 20px;
+      color: #94a3b8;
+      letter-spacing: 0.01em;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="grid-overlay"></div>
+  <div class="glow"></div>
+
+  <div class="top">
+    <div class="brand-mark"></div>
+    <div class="brand-text">Simple Impact Studies</div>
+    <div class="live-pill">
+      <span class="live-dot"></span>
+      Live GDOT data · 49 metro signals
+    </div>
+  </div>
+
+  <div class="middle">
+    <h1>
+      Defensible Traffic Impact Studies
+      <br />
+      <span class="accent">in 60 seconds.</span>
+    </h1>
+    <p class="sub">
+      Screening-level TIS, parking, signal warrants, sight distance, queuing,
+      and road-diet studies — footnoted to HCM, ITE, MUTCD, and AASHTO.
+    </p>
+  </div>
+
+  <div class="bottom">
+    <div class="stats">
+      <div>
+        <div class="stat-val accent">40 hrs</div>
+        <div class="stat-lbl">Saved per study</div>
+      </div>
+      <div>
+        <div class="stat-val accent">$5,000</div>
+        <div class="stat-lbl">In wages per study</div>
+      </div>
+      <div>
+        <div class="stat-val">6</div>
+        <div class="stat-lbl">Study engines</div>
+      </div>
+    </div>
+    <div class="url">simpleimpactstudies.com</div>
+  </div>
+</body>
+</html>

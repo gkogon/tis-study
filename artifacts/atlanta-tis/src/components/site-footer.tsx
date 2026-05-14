@@ -37,6 +37,7 @@ export function SiteFooter() {
           <FooterLink href="/about">About</FooterLink>
           <FooterLink href="/contact">Contact</FooterLink>
           <FooterLink href="/security">Security</FooterLink>
+          <FooterLink href="/help">Help & docs</FooterLink>
         </FooterCol>
         <FooterCol heading="Account">
           <FooterLink href="/login">Sign in</FooterLink>
