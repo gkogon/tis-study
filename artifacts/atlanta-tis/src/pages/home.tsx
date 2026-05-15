@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 import { AtlantaLiveStatus } from "../components/atlanta-live-status";
+import { CalibrationActivity } from "../components/calibration-activity";
 
 export default function HomePage() {
   return (
@@ -754,6 +755,13 @@ function SpeedExplainerSection() {
           MUTCD tables a senior reviewer would reach for. What's different
           is the work between you and the answer.
         </p>
+      </div>
+
+      {/* Live proof — the calibration engine recalibrates itself hourly
+          against GDOT incident data. Renders nothing until the endpoint
+          has real numbers, so it never shows a broken/empty widget. */}
+      <div className="flex justify-center">
+        <CalibrationActivity />
       </div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MechanicCard

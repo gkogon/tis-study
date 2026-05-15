@@ -4,5 +4,6 @@ export * from "./tis-billing";
 export * from "./tis-projects";
 export * from "./monitoring";
 export * from "./intersection-calibration";
+export * from "./calibration-changes";
 export * from "./traffic-snapshots";
 export * from "./marketing";

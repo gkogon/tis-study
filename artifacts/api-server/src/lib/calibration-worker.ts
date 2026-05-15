@@ -28,7 +28,12 @@
  * blend density with measured predicted-vs-observed error. The
  * bounded clamp stays until that validation exists.
  */
-import { db, intersectionCalibrationTable, trafficSnapshotsTable } from "@workspace/db";
+import {
+  db,
+  intersectionCalibrationTable,
+  calibrationChangesTable,
+  trafficSnapshotsTable,
+} from "@workspace/db";
 import { gte, sql } from "drizzle-orm";
 import { logger } from "./logger";
 
@@ -40,6 +45,10 @@ const CALIBRATION_INTERVAL_MS = 60 * 60 * 1000; // hourly
 // Stagger past the traffic-archive worker's 30s startup so a restart
 // loop doesn't fire both jobs simultaneously.
 const STARTUP_DELAY_MS = 120 * 1000;
+// A multiplier shift below this is window-slide noise, not a real
+// recalibration — don't log it as a change. 0.01 = a 1-percentage-
+// point move in the delay adjustment, a genuinely meaningful shift.
+const CHANGE_EPSILON = 0.01;
 
 const SEVERITY_WEIGHT: Record<string, number> = {
   minor: 1.0,
@@ -74,6 +83,10 @@ export type CalibrationUpdateResult = {
   signalsSeen: number;
   rowsEligible: number;
   rowsWritten: number;
+  // Count of intersections whose multiplier moved ≥CHANGE_EPSILON
+  // (or were calibrated for the first time) — i.e. real recalibration
+  // events, logged to calibration_changes.
+  changesLogged: number;
   multiplierMin: number | null;
   multiplierMax: number | null;
   topSignals: Array<{ intersectionId: string; multiplier: number; pressure: number; name: string | null }>;
@@ -102,6 +115,7 @@ export async function runCalibrationUpdate(
     signalsSeen: 0,
     rowsEligible: 0,
     rowsWritten: 0,
+    changesLogged: 0,
     multiplierMin: null,
     multiplierMax: null,
     topSignals: [],
@@ -109,6 +123,19 @@ export async function runCalibrationUpdate(
 
   if (snapshots.length < MIN_SNAPSHOTS) {
     return empty;
+  }
+
+  // Snapshot the current multipliers so we can diff old-vs-new and
+  // log only meaningful movement to calibration_changes.
+  const existing = await db
+    .select({
+      id: intersectionCalibrationTable.intersectionId,
+      multiplier: intersectionCalibrationTable.delayMultiplier,
+    })
+    .from(intersectionCalibrationTable);
+  const priorMultiplier = new Map<string, number>();
+  for (const row of existing) {
+    priorMultiplier.set(row.id, Number(row.multiplier));
   }
 
   type Agg = { weightedSum: number; snapshotsWith: number; lastSeenName: string | null };
@@ -152,6 +179,7 @@ export async function runCalibrationUpdate(
     signalsSeen: perSignal.size,
     rowsEligible: updates.length,
     rowsWritten: 0,
+    changesLogged: 0,
     multiplierMin: updates.length ? Math.min(...updates.map((u) => u.multiplier)) : null,
     multiplierMax: updates.length ? Math.max(...updates.map((u) => u.multiplier)) : null,
     topSignals: updates.slice(0, 10).map((u) => ({
@@ -185,6 +213,23 @@ export async function runCalibrationUpdate(
         },
       });
     result.rowsWritten++;
+
+    // Log to the audit trail only when the multiplier meaningfully
+    // moved (or this intersection was never calibrated before).
+    // Window-slide micro-drift below CHANGE_EPSILON is not a "change".
+    const prior = priorMultiplier.get(u.intersectionId);
+    const isFirstCalibration = prior === undefined;
+    const movedMeaningfully =
+      prior !== undefined && Math.abs(u.multiplier - prior) >= CHANGE_EPSILON;
+    if (isFirstCalibration || movedMeaningfully) {
+      await db.insert(calibrationChangesTable).values({
+        intersectionId: u.intersectionId,
+        oldMultiplier: prior ?? null,
+        newMultiplier: u.multiplier,
+        pressure: u.pressure,
+      });
+      result.changesLogged++;
+    }
   }
 
   return result;
@@ -203,6 +248,7 @@ async function tick(): Promise<void> {
         snapshots: r.snapshotsInWindow,
         signalsSeen: r.signalsSeen,
         rowsWritten: r.rowsWritten,
+        changesLogged: r.changesLogged,
         multiplierMax: r.multiplierMax,
       },
       "calibration.updated",
