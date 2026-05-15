@@ -27,17 +27,18 @@ export default function ForFirmsPage() {
               For engineering firms
             </div>
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.05] tracking-tight text-slate-900 dark:text-slate-50">
-              Generate a defensible TIS
+              Defensible screening TIS.
               <br />
               <span className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                in 60 seconds.
+                Without the week of engineer time.
               </span>
             </h1>
             <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
-              A screening-level Traffic Impact Study your team can take to a
+              The screening-level Traffic Impact Study your team can take to a
               project kickoff — white-labeled with your firm's branding,
               footnoted on every page to HCM 6th Ed., ITE 11th Ed., and the
-              MUTCD.
+              MUTCD. Same math your senior reviewers expect. Without the 40
+              hours of junior-PE labor per site.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
               <Link

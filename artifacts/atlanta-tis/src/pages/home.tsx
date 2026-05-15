@@ -45,6 +45,7 @@ export default function HomePage() {
         <PillarsSection />
         <WorkflowSection />
         <MethodologySection />
+        <SpeedExplainerSection />
         <SubstituteCostSection />
         <FinalCta />
       </div>
@@ -63,18 +64,16 @@ function HeroSection() {
           Live GDOT data · 2,589 cameras · 49 metro signals
         </div>
         <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-[64px] font-bold leading-[1.05] tracking-tight text-slate-900 dark:text-slate-50">
-          Defensible Traffic
-          <br />
-          Impact Studies
+          Defensible Traffic Impact Studies.
           <br />
           <span className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
-            in 60 seconds.
+            Without the week of engineer time.
           </span>
         </h1>
         <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-xl">
           Screening-level TIS, parking, signal warrants, sight distance, queuing,
-          and road-diet studies — footnoted to HCM, ITE, MUTCD, and AASHTO. Built
-          for engineering firms that ship.
+          and road-diet studies — footnoted to HCM, ITE, MUTCD, and AASHTO. The math
+          a senior reviewer expects, without the 40 hours of junior-PE grunt work.
         </p>
         <div className="flex flex-wrap items-center gap-3 pt-1">
           <Link
@@ -728,6 +727,82 @@ function MethodologySection() {
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * "How can this possibly be fast?" objection-killer. Senior PEs
+ * default-distrust quick tools — if we don't explain the mechanics,
+ * they conclude we must be skipping rigor. This section breaks down
+ * the actual engineering choices that make 30–60s generation
+ * possible without compromising the math. Goal: a PE who reads this
+ * leaves thinking "ah, that's just competent software", not "this
+ * is sketchy."
+ */
+function SpeedExplainerSection() {
+  return (
+    <section className="rounded-3xl border border-border bg-slate-50 dark:bg-slate-950/40 px-6 sm:px-12 py-12 sm:py-16 space-y-10">
+      <div className="text-center max-w-2xl mx-auto space-y-3">
+        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
+          Behind the curtain
+        </div>
+        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+          The math hasn't changed. The waiting has.
+        </h2>
+        <p className="text-muted-foreground text-lg leading-relaxed">
+          Every figure in the deliverable comes from the same HCM, ITE, and
+          MUTCD tables a senior reviewer would reach for. What's different
+          is the work between you and the answer.
+        </p>
+      </div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MechanicCard
+          label="Step 1"
+          title="GDOT data pre-indexed"
+          body="Signal counts, intersection inventory, and live incident feeds stay loaded in-process. Synchro asks you to import counts manually. We did that work once, for all 49 metro signals."
+        />
+        <MechanicCard
+          label="Step 2"
+          title="HCM equations in parallel"
+          body="Eq. 19-13 (control delay) and Eq. 19-50 (95th-percentile queue) run concurrently across every intersection in the study radius. Desktop tools evaluate one signal at a time."
+        />
+        <MechanicCard
+          label="Step 3"
+          title="ITE rates from one table"
+          body="80 land-use codes loaded as a typed lookup, not flipped page-by-page. Pass-by and internal-capture defaults applied automatically per the published ITE TGM Appendix B."
+        />
+        <MechanicCard
+          label="Step 4"
+          title="No GUI overhead"
+          body="No model setup, no scenario manager, no project file to debug. The form is the model. Generation streams to a structured report, not a windowed UI you have to navigate."
+        />
+      </div>
+      <div className="rounded-xl border border-border bg-background p-5 sm:p-6 max-w-3xl mx-auto">
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          <strong className="text-foreground">The numbers come out the same.</strong>{" "}
+          Calibrated against ground-truth observations at signals where we
+          have them — the report flags which intersections are calibrated
+          and against how many samples — and otherwise uses HCM defaults a
+          reviewer can independently verify. Run a study against a site
+          you've already analyzed in Synchro; compare line-by-line. That's
+          the test we built for.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function MechanicCard({
+  label, title, body,
+}: { label: string; title: string; body: string }) {
+  return (
+    <div className="rounded-2xl border border-border bg-background p-5 space-y-2">
+      <div className="text-[10px] font-semibold uppercase tracking-widest text-blue-700">
+        {label}
+      </div>
+      <div className="font-semibold tracking-tight">{title}</div>
+      <p className="text-xs text-muted-foreground leading-relaxed">{body}</p>
+    </div>
   );
 }
 
