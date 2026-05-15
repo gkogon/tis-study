@@ -32,8 +32,14 @@ export default function HomePage() {
           aria-hidden
           className="absolute inset-x-0 top-0 -z-10 h-[600px] bg-gradient-to-b from-slate-100/80 via-background to-background dark:from-slate-900/30"
         />
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-10">
           <HeroSection />
+        </div>
+        {/* Live calibration counter — placed right under the hero so
+            every visitor sees the algorithm working without scrolling.
+            Renders nothing until the endpoint returns real data. */}
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-14 flex justify-center">
+          <CalibrationActivity />
         </div>
       </div>
 
@@ -757,12 +763,6 @@ function SpeedExplainerSection() {
         </p>
       </div>
 
-      {/* Live proof — the calibration engine recalibrates itself hourly
-          against GDOT incident data. Renders nothing until the endpoint
-          has real numbers, so it never shows a broken/empty widget. */}
-      <div className="flex justify-center">
-        <CalibrationActivity />
-      </div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MechanicCard
           label="Step 1"
