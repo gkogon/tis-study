@@ -10,7 +10,8 @@
     "backfill-firm-id": "tsx ./src/backfill-firm-id.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test-pdf": "tsx ./src/test-pdf.ts",
-    "generate-sample-pdf": "tsx ./src/generate-sample-pdf.ts"
+    "generate-sample-pdf": "tsx ./src/generate-sample-pdf.ts",
+    "update-calibration": "tsx ./src/update-calibration.ts"
   },
   "devDependencies": {
     "@types/node": "catalog:",
