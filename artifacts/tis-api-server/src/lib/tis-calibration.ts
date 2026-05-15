@@ -4,8 +4,12 @@
  * "calibrated against N samples" badge on the report so reviewers can see the
  * adjustment.
  *
- * Process-lifetime cache. Calibration data updates infrequently (manual / batch
- * job after observation runs) so a restart picking up new rows is fine.
+ * TTL cache (15 min). The analyzer service runs an hourly calibration
+ * worker that rewrites `intersection_calibration` from the live GDOT
+ * snapshot archive. A 15-minute TTL means the engine picks up each
+ * hourly update within at most 15 minutes — no service restart
+ * needed. The query is one cheap SELECT of ~100-300 rows, so a
+ * quarter-hourly refresh costs nothing.
  */
 import { db, intersectionCalibrationTable } from "@workspace/db";
 import { logger } from "./logger";
@@ -16,11 +20,15 @@ export type CalibrationEntry = {
   lastObservedDelaySec: number | null;
 };
 
+const CACHE_TTL_MS = 15 * 60 * 1000;
+
 let cache: Map<string, CalibrationEntry> | null = null;
+let cacheLoadedAt = 0;
 let loadingPromise: Promise<Map<string, CalibrationEntry>> | null = null;
 
 export async function loadCalibrationMap(): Promise<Map<string, CalibrationEntry>> {
-  if (cache) return cache;
+  const fresh = cache && Date.now() - cacheLoadedAt < CACHE_TTL_MS;
+  if (fresh) return cache!;
   if (loadingPromise) return loadingPromise;
   loadingPromise = (async () => {
     try {
@@ -35,12 +43,17 @@ export async function loadCalibrationMap(): Promise<Map<string, CalibrationEntry
         });
       }
       cache = m;
+      cacheLoadedAt = Date.now();
       logger.info({ count: m.size }, "tis.calibration_loaded");
       return m;
     } catch (err) {
       logger.warn({ err }, "tis.calibration_load_failed");
-      // Don't fail the request — fall back to empty map (no calibration applied).
+      // Don't fail the request. If we have a stale cache, keep serving
+      // it (better than dropping all calibration); otherwise fall back
+      // to an empty map (pure HCM, no calibration applied).
+      if (cache) return cache;
       cache = new Map();
+      cacheLoadedAt = Date.now();
       return cache;
     } finally {
       loadingPromise = null;

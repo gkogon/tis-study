@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startTrafficArchive } from "./lib/atlanta-traffic-archive";
+import { startCalibrationWorker } from "./lib/calibration-worker";
 
 const rawPort = process.env["PORT"];
 
@@ -29,5 +30,13 @@ app.listen(port, (err) => {
     startTrafficArchive();
   } catch (e) {
     logger.warn({ err: e }, "traffic-archive.start_failed");
+  }
+  // Hourly calibration worker — turns the snapshot archive into live
+  // per-intersection delay multipliers. Same fail-safe contract: any
+  // failure is logged, never crashes the process.
+  try {
+    startCalibrationWorker();
+  } catch (e) {
+    logger.warn({ err: e }, "calibration.start_failed");
   }
 });
