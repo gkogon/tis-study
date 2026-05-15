@@ -54,10 +54,32 @@ export function CalibrationActivity({ variant = "strip" }: { variant?: "strip" |
   // Render nothing until we have real data, or if the table is empty.
   if (!data || data.totalCalibrated <= 0) return null;
 
-  const recalibrated =
-    data.changesLastHour > 0
-      ? `${data.changesLastHour} recalibrated in the past hour`
-      : `${data.changesLast24h} recalibrated in the past 24h`;
+  // Activity phrase, in priority order:
+  //   1. Movement this hour → the live number the visitor wants
+  //   2. No movement this hour but history exists → last-update time
+  //   3. No history yet (audit log just started) → describe the cadence
+  let activity: { node: React.ReactNode; muted: boolean };
+  if (data.changesLastHour > 0) {
+    activity = {
+      muted: false,
+      node: (
+        <>
+          <strong className="tabular-nums">{data.changesLastHour}</strong>{" "}
+          <span className="text-muted-foreground">recalibrated this hour</span>
+        </>
+      ),
+    };
+  } else if (data.lastChangeAt) {
+    activity = {
+      muted: true,
+      node: <span className="text-muted-foreground">last recalibration {relTime(data.lastChangeAt)}</span>,
+    };
+  } else {
+    activity = {
+      muted: true,
+      node: <span className="text-muted-foreground">recalibrating hourly from live GDOT data</span>,
+    };
+  }
 
   if (variant === "inline") {
     return (
@@ -66,7 +88,7 @@ export function CalibrationActivity({ variant = "strip" }: { variant?: "strip" |
           <span className="absolute inline-flex w-full h-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
           <span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-500" />
         </span>
-        {data.totalCalibrated} signals calibrated · {recalibrated}
+        {data.totalCalibrated} Atlanta signals under live calibration
       </span>
     );
   }
@@ -89,20 +111,9 @@ export function CalibrationActivity({ variant = "strip" }: { variant?: "strip" |
       </span>
       <span className="hidden sm:inline text-border">·</span>
       <span className="text-sm inline-flex items-center gap-1.5">
-        <Activity className="w-3.5 h-3.5 text-blue-700" />
-        <strong className="tabular-nums">{data.changesLastHour > 0 ? data.changesLastHour : data.changesLast24h}</strong>{" "}
-        <span className="text-muted-foreground">
-          {data.changesLastHour > 0 ? "recalibrated this hour" : "recalibrated in 24h"}
-        </span>
+        <Activity className={`w-3.5 h-3.5 ${activity.muted ? "text-muted-foreground" : "text-blue-700"}`} />
+        {activity.node}
       </span>
-      {data.lastChangeAt && (
-        <>
-          <span className="hidden sm:inline text-border">·</span>
-          <span className="text-xs text-muted-foreground">
-            last update {relTime(data.lastChangeAt)}
-          </span>
-        </>
-      )}
     </div>
   );
 }
