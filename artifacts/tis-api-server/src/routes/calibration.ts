@@ -6,6 +6,7 @@
  *   GET /tis-api/calibration/activity
  *     {
  *       totalCalibrated:   how many Atlanta signals have a calibration row
+ *       totalSnapshots:    GDOT snapshots archived (grows every 10 min)
  *       changesLastHour:   meaningful multiplier moves in the last 60 min
  *       changesLast24h:    ditto, last 24 hours
  *       lastChangeAt:      ISO timestamp of the most recent change
@@ -17,17 +18,25 @@
  */
 import { Router, type IRouter } from "express";
 import { sql } from "drizzle-orm";
-import { db, intersectionCalibrationTable, calibrationChangesTable } from "@workspace/db";
+import {
+  db,
+  intersectionCalibrationTable,
+  calibrationChangesTable,
+  trafficSnapshotsTable,
+} from "@workspace/db";
 import { unsubscribeRateLimiter } from "../lib/security";
 
 const router: IRouter = Router();
 
 router.get("/calibration/activity", unsubscribeRateLimiter, async (req, res): Promise<void> => {
   try {
-    const [[totalRow], [hourRow], [dayRow], [lastRow]] = await Promise.all([
+    const [[totalRow], [snapRow], [hourRow], [dayRow], [lastRow]] = await Promise.all([
       db
         .select({ n: sql<number>`count(*)::int` })
         .from(intersectionCalibrationTable),
+      db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(trafficSnapshotsTable),
       db
         .select({ n: sql<number>`count(*)::int` })
         .from(calibrationChangesTable)
@@ -43,6 +52,7 @@ router.get("/calibration/activity", unsubscribeRateLimiter, async (req, res): Pr
 
     res.json({
       totalCalibrated: totalRow?.n ?? 0,
+      totalSnapshots: snapRow?.n ?? 0,
       changesLastHour: hourRow?.n ?? 0,
       changesLast24h: dayRow?.n ?? 0,
       lastChangeAt: lastRow?.at ? new Date(lastRow.at).toISOString() : null,

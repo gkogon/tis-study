@@ -15,21 +15,11 @@ import { Activity } from "lucide-react";
 
 type ActivityData = {
   totalCalibrated: number;
+  totalSnapshots: number;
   changesLastHour: number;
   changesLast24h: number;
   lastChangeAt: string | null;
 };
-
-function relTime(iso: string | null): string {
-  if (!iso) return "—";
-  const ms = Date.now() - new Date(iso).getTime();
-  const min = Math.floor(ms / 60_000);
-  if (min < 1) return "moments ago";
-  if (min < 60) return `${min} min ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  return `${Math.floor(hr / 24)}d ago`;
-}
 
 export function CalibrationActivity({ variant = "strip" }: { variant?: "strip" | "inline" }) {
   const [data, setData] = useState<ActivityData | null>(null);
@@ -53,33 +43,6 @@ export function CalibrationActivity({ variant = "strip" }: { variant?: "strip" |
 
   // Render nothing until we have real data, or if the table is empty.
   if (!data || data.totalCalibrated <= 0) return null;
-
-  // Activity phrase, in priority order:
-  //   1. Movement this hour → the live number the visitor wants
-  //   2. No movement this hour but history exists → last-update time
-  //   3. No history yet (audit log just started) → describe the cadence
-  let activity: { node: React.ReactNode; muted: boolean };
-  if (data.changesLastHour > 0) {
-    activity = {
-      muted: false,
-      node: (
-        <>
-          <strong className="tabular-nums">{data.changesLastHour}</strong>{" "}
-          <span className="text-muted-foreground">recalibrated this hour</span>
-        </>
-      ),
-    };
-  } else if (data.lastChangeAt) {
-    activity = {
-      muted: true,
-      node: <span className="text-muted-foreground">last recalibration {relTime(data.lastChangeAt)}</span>,
-    };
-  } else {
-    activity = {
-      muted: true,
-      node: <span className="text-muted-foreground">recalibrating hourly from live GDOT data</span>,
-    };
-  }
 
   if (variant === "inline") {
     return (
@@ -107,13 +70,25 @@ export function CalibrationActivity({ variant = "strip" }: { variant?: "strip" |
       <span className="hidden sm:inline text-border">·</span>
       <span className="text-sm">
         <strong className="tabular-nums">{data.totalCalibrated}</strong>{" "}
-        <span className="text-muted-foreground">Atlanta intersections under live calibration</span>
+        <span className="text-muted-foreground">intersections recalibrated hourly</span>
       </span>
       <span className="hidden sm:inline text-border">·</span>
+      {/* The always-growing number: GDOT snapshots archived. Ticks up
+          every 10 min — visible proof of the irreproducible data moat. */}
       <span className="text-sm inline-flex items-center gap-1.5">
-        <Activity className={`w-3.5 h-3.5 ${activity.muted ? "text-muted-foreground" : "text-blue-700"}`} />
-        {activity.node}
+        <Activity className="w-3.5 h-3.5 text-blue-700" />
+        <strong className="tabular-nums">{data.totalSnapshots.toLocaleString()}</strong>{" "}
+        <span className="text-muted-foreground">GDOT snapshots archived</span>
       </span>
+      {data.changesLastHour > 0 && (
+        <>
+          <span className="hidden sm:inline text-border">·</span>
+          <span className="text-sm">
+            <strong className="tabular-nums text-blue-700">{data.changesLastHour}</strong>{" "}
+            <span className="text-muted-foreground">recalibrated this hour</span>
+          </span>
+        </>
+      )}
     </div>
   );
 }
