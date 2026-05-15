@@ -24,6 +24,7 @@ import {
   BillingDisabledError,
 } from "../lib/billing";
 import { PLANS, type PaidPlanId, type BillingCadence } from "../lib/stripe";
+import { logEvent } from "../lib/events";
 
 const router: IRouter = Router();
 
@@ -59,6 +60,11 @@ router.post("/billing/checkout-session", async (req, res): Promise<void> => {
       return;
     }
     const session = await createCheckoutSession({ firm, email: user.email, plan, cadence });
+    logEvent("checkout_started", {
+      firmId: firm.id,
+      userId: user.id,
+      metadata: { plan, cadence },
+    });
     res.json(session);
   } catch (err) {
     if (err instanceof BillingDisabledError) {

@@ -20,6 +20,7 @@
 import { Router, type IRouter } from "express";
 import { generateTisReport } from "../lib/tis";
 import { demoRateLimiter } from "../lib/security";
+import { logEvent } from "../lib/events";
 
 const router: IRouter = Router();
 
@@ -127,6 +128,9 @@ router.post("/demo/generate", demoRateLimiter, async (req, res): Promise<void> =
       { presetId: body.presetId, intersectionCount: report.intersectionsStudied },
       "demo.completed",
     );
+    logEvent("demo_run", {
+      metadata: { presetId: body.presetId, intersections: report.intersectionsStudied },
+    });
     res.json({
       presetId: body.presetId,
       presetLabel: preset.label,

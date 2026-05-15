@@ -19,6 +19,7 @@ import {
   canGenerateStudy,
   incrementStudyUsage,
 } from "../lib/firms";
+import { logEvent } from "../lib/events";
 
 const router: IRouter = Router();
 
@@ -83,6 +84,11 @@ router.post(
         return;
       }
       await incrementStudyUsage(firm.id);
+      logEvent("study_generated", {
+        firmId: firm.id,
+        userId: user.id,
+        metadata: { studyType: "warrants" },
+      });
       res.json(validated);
     } catch (e) {
       req.log.error({ err: e }, "warrants-generate failed");

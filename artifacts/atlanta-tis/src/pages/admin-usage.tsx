@@ -8,7 +8,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@workspace/replit-auth-web";
-import { ArrowLeft, Loader2, Mail, RefreshCw, Search } from "lucide-react";
+import {
+  ArrowLeft, Loader2, Mail, RefreshCw, Search,
+  Sparkles, UserPlus, FileCheck2, CreditCard, AlertTriangle, ChevronRight,
+} from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 
 type UsageRow = {
@@ -189,6 +192,8 @@ export default function AdminUsagePage() {
           </div>
         )}
 
+        <FunnelPanel />
+
         {data && (
           <>
             <div className="flex flex-wrap gap-3 items-center">
@@ -323,5 +328,117 @@ export default function AdminUsagePage() {
       </main>
       <SiteFooter />
     </div>
+  );
+}
+
+// ---------- Acquisition funnel ----------
+
+type FunnelRow = {
+  eventType: string;
+  last24h: number;
+  last7d: number;
+  last30d: number;
+};
+
+type FunnelResp = { generatedAt: string; funnel: FunnelRow[] };
+
+const STAGE_META: Record<string, { label: string; icon: typeof Sparkles }> = {
+  demo_run: { label: "Demo run", icon: Sparkles },
+  signup: { label: "Signup", icon: UserPlus },
+  study_generated: { label: "Study generated", icon: FileCheck2 },
+  checkout_started: { label: "Checkout started", icon: CreditCard },
+};
+
+/** Conversion % between two funnel stages (7-day window). */
+function conv(numerator: number, denominator: number): string {
+  if (denominator <= 0) return "—";
+  return `${Math.round((numerator / denominator) * 100)}%`;
+}
+
+function FunnelPanel() {
+  const [data, setData] = useState<FunnelResp | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/tis-api/admin/funnel", { credentials: "include" })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((d: FunnelResp) => { if (!cancelled) setData(d); })
+      .catch((e) => { if (!cancelled) setErr(e instanceof Error ? e.message : String(e)); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (err) return null; // soft-fail — usage table still renders
+  if (!data) {
+    return (
+      <div className="rounded-lg border border-border bg-background p-5 text-sm text-muted-foreground inline-flex items-center gap-2">
+        <Loader2 className="w-4 h-4 animate-spin" /> Loading funnel…
+      </div>
+    );
+  }
+
+  const byType: Record<string, FunnelRow> = {};
+  for (const r of data.funnel) byType[r.eventType] = r;
+  const stages = ["demo_run", "signup", "study_generated", "checkout_started"];
+  const quota = byType["quota_hit"];
+
+  return (
+    <section className="rounded-xl border border-border bg-background p-5 space-y-4">
+      <div className="flex items-baseline justify-between flex-wrap gap-2">
+        <h2 className="text-lg font-semibold">Acquisition funnel</h2>
+        <span className="text-xs text-muted-foreground">
+          big number = last 7 days · small = 24h / 30d
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-stretch gap-2">
+        {stages.map((ev, i) => {
+          const row = byType[ev] ?? { eventType: ev, last24h: 0, last7d: 0, last30d: 0 };
+          const meta = STAGE_META[ev];
+          const Icon = meta.icon;
+          return (
+            <div key={ev} className="flex items-stretch gap-2">
+              <div className="rounded-lg border border-border bg-gray-50 dark:bg-slate-900/40 px-4 py-3 min-w-[150px]">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  <Icon className="w-3.5 h-3.5 text-blue-700" />
+                  {meta.label}
+                </div>
+                <div className="text-3xl font-bold tabular-nums mt-1">{row.last7d}</div>
+                <div className="text-[11px] text-muted-foreground tabular-nums">
+                  24h {row.last24h} · 30d {row.last30d}
+                </div>
+              </div>
+              {i < stages.length - 1 && (
+                <div className="flex flex-col items-center justify-center px-1">
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-[10px] font-semibold text-blue-700 tabular-nums">
+                    {conv(byType[stages[i + 1]]?.last7d ?? 0, row.last7d)}
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {quota && quota.last7d > 0 && (
+        <div className="flex items-center gap-2 text-sm rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900 px-3 py-2">
+          <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+          <span>
+            <strong className="tabular-nums">{quota.last7d}</strong> quota hit{quota.last7d === 1 ? "" : "s"} in the last 7 days —
+            firms bumping their cap. Upgrade pressure: good outreach targets.
+          </span>
+        </div>
+      )}
+
+      <p className="text-xs text-muted-foreground">
+        Read top-to-bottom: a demo run that converts to signup, then to a
+        real study, then to a Stripe checkout. % between cards is the
+        7-day stage-to-stage conversion. Empty until events accrue.
+      </p>
+    </section>
   );
 }

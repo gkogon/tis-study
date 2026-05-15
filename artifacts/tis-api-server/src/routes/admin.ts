@@ -7,6 +7,9 @@
  *                       /admin/usage panel — lifetime study count,
  *                       current-period usage vs. limit, plan tier, last
  *                       activity.
+ *   GET /admin/funnel   Acquisition-funnel event counts (demo_run →
+ *                       signup → study_generated → checkout_started)
+ *                       over today / 7d / 30d windows.
  *
  * Designed to be cheap on small datasets (single-digit firm count). If
  * we ever scale past a few hundred firms this should grow filtering /
@@ -20,6 +23,7 @@ import {
   firmMembersTable,
   tisProjectsTable,
   usersTable,
+  eventsTable,
 } from "@workspace/db";
 import { isAdminEmail } from "../lib/auth";
 
@@ -139,6 +143,64 @@ router.get("/admin/usage", requireAdmin, async (_req, res): Promise<void> => {
     userCount: new Set(out.map((u) => u.userId)).size,
     rows: out,
   });
+});
+
+/**
+ * Acquisition-funnel counts. For each tracked event type, returns the
+ * count in the last 24h / 7d / 30d. The funnel is meant to be read
+ * top-to-bottom: demo_run → signup → study_generated → checkout_started.
+ * quota_hit is a side-signal (firms hitting their cap = upgrade
+ * pressure).
+ */
+const FUNNEL_EVENTS = [
+  "demo_run",
+  "signup",
+  "study_generated",
+  "checkout_started",
+  "quota_hit",
+] as const;
+
+router.get("/admin/funnel", requireAdmin, async (req, res): Promise<void> => {
+  // One grouped query per window. Each returns rows of {event_type, n}.
+  const windowQuery = (interval: string) =>
+    db
+      .select({
+        eventType: eventsTable.eventType,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(eventsTable)
+      .where(sql`${eventsTable.createdAt} > now() - ${sql.raw(`interval '${interval}'`)}`)
+      .groupBy(eventsTable.eventType);
+
+  try {
+    const [day, week, month] = await Promise.all([
+      windowQuery("24 hours"),
+      windowQuery("7 days"),
+      windowQuery("30 days"),
+    ]);
+
+    const toMap = (rows: Array<{ eventType: string; n: number }>) => {
+      const m: Record<string, number> = {};
+      for (const r of rows) m[r.eventType] = r.n;
+      return m;
+    };
+    const dayMap = toMap(day);
+    const weekMap = toMap(week);
+    const monthMap = toMap(month);
+
+    res.json({
+      generatedAt: new Date().toISOString(),
+      funnel: FUNNEL_EVENTS.map((ev) => ({
+        eventType: ev,
+        last24h: dayMap[ev] ?? 0,
+        last7d: weekMap[ev] ?? 0,
+        last30d: monthMap[ev] ?? 0,
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "admin.funnel_failed");
+    res.status(500).json({ error: "Failed to load funnel." });
+  }
 });
 
 export default router;

@@ -38,6 +38,7 @@ import {
   signupRateLimiter,
   passwordResetRateLimiter,
 } from "../lib/security";
+import { logEvent } from "../lib/events";
 
 const router: IRouter = Router();
 
@@ -132,6 +133,10 @@ router.post("/auth/signup", signupRateLimiter, async (req, res): Promise<void> =
     const sid = await createSession(sessionFromUser(user));
     setSessionCookie(res, sid);
     logger.info({ userId: user.id, email }, "email-auth.signup");
+    logEvent("signup", {
+      userId: user.id,
+      metadata: { promotedFromExisting: !!existing },
+    });
     res.status(201).json({
       user: sessionFromUser(user).user,
     });

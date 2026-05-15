@@ -12,6 +12,7 @@ import {
   canGenerateStudy,
   incrementStudyUsage,
 } from "../lib/firms";
+import { logEvent } from "../lib/events";
 
 const router: IRouter = Router();
 
@@ -60,6 +61,11 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
       { firmId: firm.id, limit: quota.limit, planTier: firm.planTier },
       "tis-generate.quota_exceeded",
     );
+    logEvent("quota_hit", {
+      firmId: firm.id,
+      userId: user.id,
+      metadata: { studyType: "tis", limit: quota.limit, planTier: firm.planTier },
+    });
     return;
   }
 
@@ -92,6 +98,11 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
       return;
     }
     await incrementStudyUsage(firm.id);
+    logEvent("study_generated", {
+      firmId: firm.id,
+      userId: user.id,
+      metadata: { studyType: "tis", landUseCode: parsed.data.landUseCode },
+    });
     res.json(validated);
   } catch (e) {
     req.log.error({ err: e }, "tis-generate failed");

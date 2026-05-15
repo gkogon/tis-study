@@ -7,3 +7,4 @@ export * from "./intersection-calibration";
 export * from "./calibration-changes";
 export * from "./traffic-snapshots";
 export * from "./marketing";
+export * from "./events";
