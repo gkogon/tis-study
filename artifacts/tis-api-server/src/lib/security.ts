@@ -106,3 +106,18 @@ export const unsubscribeRateLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many requests. Try again in a few minutes." },
 });
+
+// Per-IP rate limit on the public /demo/generate endpoint. The demo
+// runs the full TIS engine (hits the analyzer, pulls GDOT data) so
+// each call is a real backend operation — we want to expose it to
+// cold prospects for evaluation but not let scrapers grind through
+// hundreds of presets. 3/day per IP is enough for an honest
+// prospect to try a couple of presets and lock in on signup, but
+// not enough for a bot to hammer GDOT through our pipe.
+export const demoRateLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 3,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "You've used your free demo runs for today. Sign up free to keep generating." },
+});

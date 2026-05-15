@@ -78,22 +78,30 @@ function HeroSection() {
         </p>
         <div className="flex flex-wrap items-center gap-3 pt-1">
           <Link
-            href="/signup?plan=growth"
+            href="/demo"
             className="group inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all shadow-sm hover:shadow"
+            data-testid="link-demo"
+          >
+            <Sparkles className="w-4 h-4" />
+            Try a live demo
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+          </Link>
+          <Link
+            href="/signup?plan=growth"
+            className="inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg border border-border hover:border-foreground/30 hover:bg-accent transition-colors"
             data-testid="link-start-trial"
           >
             Start 14-day trial
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
           </Link>
           <a
             href="/sample-tis-report.pdf"
             target="_blank"
             rel="noopener"
-            className="inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg border border-border hover:border-foreground/30 hover:bg-accent transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             data-testid="link-sample-pdf"
           >
             <FileText className="w-4 h-4" />
-            See a sample report
+            Or download a sample PDF
           </a>
         </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-2 text-xs text-muted-foreground">

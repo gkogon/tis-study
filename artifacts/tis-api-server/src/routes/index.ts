@@ -14,6 +14,7 @@ import projectsRouter from "./projects";
 import firmsRouter from "./firms";
 import billingRouter from "./billing";
 import adminRouter from "./admin";
+import demoRouter from "./demo";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(leadsRouter);
 router.use(firmsRouter);
 router.use(billingRouter);
 router.use(adminRouter);
+router.use(demoRouter);
 
 export default router;

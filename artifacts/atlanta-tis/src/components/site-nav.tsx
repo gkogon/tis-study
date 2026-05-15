@@ -19,7 +19,7 @@ import {
 type Item = { href: string; label: string };
 
 const PUBLIC_NAV: Item[] = [
-  { href: "/studies", label: "Studies" },
+  { href: "/demo", label: "Demo" },
   { href: "/for-firms", label: "For firms" },
   { href: "/pricing", label: "Pricing" },
   { href: "/compare", label: "Compare" },

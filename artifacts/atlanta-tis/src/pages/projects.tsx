@@ -158,23 +158,51 @@ export default function ProjectsPage() {
       )}
 
       {filtered && filtered.length === 0 && (
-        <div className="rounded-lg border border-dashed border-border p-12 text-center space-y-3">
-          <FileText className="w-8 h-8 text-muted-foreground mx-auto" />
-          <div className="text-base font-medium">
-            {filter === "all" ? "No projects yet" : `No ${filter} studies yet`}
+        <div className="rounded-2xl border-2 border-dashed border-border p-10 sm:p-12 text-center space-y-6 bg-gradient-to-b from-slate-50 to-background dark:from-slate-950/40">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 mx-auto">
+            <FileText className="w-6 h-6" />
           </div>
-          <div className="text-sm text-muted-foreground">
-            {filter === "all"
-              ? "Generate your first study and it will be saved here automatically."
-              : "Run one and it'll show up here."}
+          <div className="space-y-2 max-w-md mx-auto">
+            <div className="text-xl font-bold tracking-tight">
+              {filter === "all" ? "Your project library is empty" : `No ${filter} studies yet`}
+            </div>
+            <div className="text-sm text-muted-foreground leading-relaxed">
+              {filter === "all"
+                ? "Every successful generation is saved here — the firm-wide audit trail your senior reviewers will reference. Run your first one now and it'll appear right here within seconds."
+                : "Switch to a different study type or run one — it'll show up here automatically."}
+            </div>
           </div>
-          <Link
-            href="/studies"
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700"
-            data-testid="link-generate-first"
-          >
-            Pick a study to run
-          </Link>
+          {filter === "all" && (
+            <div className="grid sm:grid-cols-2 gap-3 max-w-md mx-auto pt-2">
+              <Link
+                href="/tis"
+                className="group inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all shadow-sm"
+                data-testid="link-generate-first"
+              >
+                Run a TIS
+                <span className="opacity-70 group-hover:translate-x-0.5 transition-transform">→</span>
+              </Link>
+              <Link
+                href="/studies"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg border border-border hover:bg-accent transition-colors"
+              >
+                Browse all studies
+              </Link>
+            </div>
+          )}
+          {filter === "all" && (
+            <div className="text-xs text-muted-foreground pt-3">
+              Want to see what an actual deliverable looks like first?{" "}
+              <a
+                href="/sample-tis-report.pdf"
+                target="_blank"
+                rel="noopener"
+                className="text-blue-700 hover:underline font-medium"
+              >
+                Download a sample TIS report →
+              </a>
+            </div>
+          )}
         </div>
       )}
 

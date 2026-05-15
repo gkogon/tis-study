@@ -258,7 +258,38 @@ function TisFormSection({
           intersection within the study radius.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        {/* Quick-start band: surface preset projects at the TOP of the
+            form so a first-time user can one-click prefill and feel
+            value in under 60 seconds. Templates are the difference
+            between "blank form → bounce" and "click → see a real
+            study". */}
+        <div className="rounded-lg border bg-gradient-to-br from-slate-50 to-background dark:from-slate-950/40 px-4 py-3 space-y-2">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <div className="text-sm font-semibold">First time here?</div>
+              <div className="text-xs text-muted-foreground">Click any template to prefill the form with a realistic Atlanta site.</div>
+            </div>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-blue-700">
+              Quick start
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2 pt-1">
+            {PROJECT_TEMPLATES.slice(0, 4).map((t) => (
+              <button
+                key={t.request.projectName}
+                type="button"
+                onClick={() => loadSample(t.request)}
+                className="text-xs px-2.5 py-1.5 rounded-md border bg-background hover:bg-accent hover:border-foreground/30 transition-colors text-left max-w-[260px]"
+                title={t.description}
+                data-testid={`button-quickstart-${t.request.landUseCode}`}
+              >
+                <div className="font-medium">{t.request.projectName}</div>
+                <div className="text-[10px] text-muted-foreground line-clamp-1">{t.description}</div>
+              </button>
+            ))}
+          </div>
+        </div>
         <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label className="space-y-1">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Project name</span>
