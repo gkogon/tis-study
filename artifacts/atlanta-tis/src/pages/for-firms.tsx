@@ -27,17 +27,17 @@ export default function ForFirmsPage() {
               For engineering firms
             </div>
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.04] text-slate-900 dark:text-slate-50">
-              Defensible screening TIS —{" "}
+              Your engineers have{" "}
               <span className="bg-amber-300 dark:bg-amber-400/90 dark:text-slate-900 box-decoration-clone px-1.5 -mx-0.5">
-                without the week of engineer time.
-              </span>
+                better things to do
+              </span>{" "}
+              than screening TIS.
             </h1>
             <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
-              The screening-level Traffic Impact Study your team can take to a
-              project kickoff — white-labeled with your firm's branding,
-              footnoted on every page to HCM 6th Ed., ITE 11th Ed., and the
-              MUTCD. Same math your senior reviewers expect. Without the 40
-              hours of junior-PE labor per site.
+              A screening TIS your team can take to a project kickoff.
+              White-labeled with your firm's branding. Every page footnoted
+              to HCM, ITE, and the MUTCD. Same math your senior reviewers
+              expect. The 40 hours of junior-PE labor per site, gone.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
               <Link

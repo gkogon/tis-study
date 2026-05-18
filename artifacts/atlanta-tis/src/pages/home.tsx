@@ -76,18 +76,18 @@ function HeroSection() {
           <div className="h-px w-full bg-border" />
         </div>
         <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-[60px] font-bold leading-[1.04] text-slate-900 dark:text-slate-50">
-          Defensible Traffic Impact Studies —{" "}
-          {/* Highlighter swipe, the way an engineer marks the line that
+          A screening TIS shouldn't take{" "}
+          {/* Highlighter swipe — the way an engineer marks the line that
               matters on a plan sheet. box-decoration-clone keeps the
-              highlight intact across the line wrap. */}
+              highlight intact across a line wrap. */}
           <span className="bg-amber-300 dark:bg-amber-400/90 dark:text-slate-900 box-decoration-clone px-1.5 -mx-0.5">
-            without the week of engineer time.
+            a week.
           </span>
         </h1>
         <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-xl">
-          Screening-level TIS, parking, signal warrants, sight distance, queuing,
-          and road-diet studies — footnoted to HCM, ITE, MUTCD, and AASHTO. The math
-          a senior reviewer expects, without the 40 hours of junior-PE grunt work.
+          TIS, parking, signal warrants, sight distance, queuing, road diet.
+          Every figure footnoted to HCM, ITE, MUTCD, or AASHTO. A junior PE
+          spends 20 to 40 hours on a screening pass. Here it runs in about a minute.
         </p>
         <div className="flex flex-wrap items-center gap-3 pt-1">
           <Link
@@ -329,16 +329,17 @@ function RoiSection() {
             <span className="text-blue-700">day one.</span>
           </h2>
           <p className="text-muted-foreground text-lg leading-relaxed">
-            A junior PE bills 20–60 hours per screening TIS. At a $125/hr
-            blended billable rate, that's <strong className="text-foreground">$5,000 of engineer time</strong> per
-            study — billable to other projects the moment we hand the
-            deliverable back.
+            A junior PE bills 20 to 60 hours on a screening TIS. At a
+            $125/hr blended rate that's{" "}
+            <strong className="text-foreground">$5,000 of engineer time</strong>{" "}
+            per study. When the screening takes a minute, those hours go
+            back on the billable board.
           </p>
           <div className="text-sm text-muted-foreground leading-relaxed pt-1 border-l-2 border-slate-300 dark:border-slate-700 pl-3">
-            Most firms charge clients for screening work either as a line
-            item in the proposal or as hours against the project budget.
-            Either way — when the screening completes in 60 seconds instead
-            of a week, that line item becomes margin.
+            You already bill clients for screening work. As a proposal
+            line item, or as hours against the project. When that work
+            takes a minute instead of a week, the hours stop being cost.
+            They become margin.
           </div>
         </div>
         <div className="lg:col-span-7">
@@ -496,16 +497,14 @@ function CapacitySection() {
               Capacity unlocked
             </div>
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-              Bid every project,
-              <br />
-              <span className="text-blue-700">not just the ones you can staff.</span>
+              Bid the work you{" "}
+              <span className="text-blue-700">currently turn down.</span>
             </h2>
             <p className="text-muted-foreground text-lg leading-relaxed pt-1">
-              Engineering firms aren't demand-bottlenecked — they're
-              capacity-bottlenecked. Every screening that takes a junior PE
-              a week is a screening they can't bid. Cut that to 60 seconds
-              and your firm is suddenly able to credibly chase work it had
-              to politely decline before.
+              Engineering firms don't run out of demand. They run out of
+              engineer-hours. Every screening that eats a junior PE's week
+              is a project the firm can't take on. Cut that screening to a
+              minute and the firm can chase work it used to turn away.
             </p>
           </div>
 
@@ -645,11 +644,11 @@ function PillarsSection() {
           Why firms switch
         </div>
         <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-          A junior engineer's week, in a coffee break.
+          What you get on day one.
         </h2>
         <p className="text-muted-foreground text-lg">
-          Three things every firm gets the day they sign up — no integration work,
-          no consultant hours.
+          Three things, the day you sign up. No integration work. No
+          consultant hours. No setup call.
         </p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -681,7 +680,7 @@ function WorkflowSection() {
           The workflow
         </div>
         <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-          Three inputs. One deliverable.
+          Three inputs. One report.
         </h2>
         <p className="text-muted-foreground text-lg">
           No CAD files, no manual data scraping, no Synchro session — the
@@ -786,12 +785,12 @@ function SpeedExplainerSection() {
           Behind the curtain
         </div>
         <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-          The math hasn't changed. The waiting has.
+          Why it runs in a minute.
         </h2>
         <p className="text-muted-foreground text-lg leading-relaxed">
-          Every figure in the deliverable comes from the same HCM, ITE, and
-          MUTCD tables a senior reviewer would reach for. What's different
-          is the work between you and the answer.
+          Every figure comes from the same HCM, ITE, and MUTCD tables a
+          senior reviewer would reach for. The math is identical. We just
+          took the slow parts out.
         </p>
       </div>
 

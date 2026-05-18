@@ -24,17 +24,17 @@ export default function AboutPage() {
             <div className="h-px w-full bg-border" />
           </div>
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.04] text-slate-900 dark:text-slate-50">
-            Built for the engineers{" "}
+            Screening studies eat too much engineering time.{" "}
             <span className="bg-amber-300 dark:bg-amber-400/90 dark:text-slate-900 box-decoration-clone px-1.5 -mx-0.5">
-              doing the work.
+              So we built this.
             </span>
           </h1>
           <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
-            Simple Impact Studies is a screening-tier traffic engineering
-            toolset for the firms shipping work in the Atlanta MSA. Studies
-            that used to take 20–60 hours of junior-engineer time now take
-            60 seconds — and come out the other side footnoted to HCM, ITE,
-            MUTCD, and AASHTO so a PE can sign with confidence.
+            Simple Impact Studies runs screening-level traffic studies for
+            engineering firms in metro Atlanta. The screening pass that used
+            to cost a junior engineer 20 to 60 hours now takes about a
+            minute. Every figure still traces to HCM, ITE, MUTCD, and
+            AASHTO. A PE can sign it.
           </p>
         </div>
       </div>
