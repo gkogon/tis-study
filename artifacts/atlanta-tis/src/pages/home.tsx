@@ -66,15 +66,22 @@ function HeroSection() {
   return (
     <section className="grid lg:grid-cols-12 gap-10 lg:gap-12 items-center">
       <div className="lg:col-span-7 space-y-7">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 dark:bg-slate-100 border border-slate-900 dark:border-slate-100 text-xs font-medium text-white dark:text-slate-900">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 dark:bg-emerald-600 animate-pulse" />
-          Live GDOT data · 2,589 cameras · 49 metro signals
+        {/* Monospace eyebrow over a hairline rule — reads like the title
+            block of a drawing set, not a marketing pill. */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Live GDOT data · 49 metro signals indexed
+          </div>
+          <div className="h-px w-full bg-border" />
         </div>
-        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-[64px] font-bold leading-[1.05] tracking-tight text-slate-900 dark:text-slate-50">
-          Defensible Traffic Impact Studies.
-          <br />
-          <span className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
-            Without the week of engineer time.
+        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-[60px] font-bold leading-[1.04] text-slate-900 dark:text-slate-50">
+          Defensible Traffic Impact Studies —{" "}
+          {/* Highlighter swipe, the way an engineer marks the line that
+              matters on a plan sheet. box-decoration-clone keeps the
+              highlight intact across the line wrap. */}
+          <span className="bg-amber-300 dark:bg-amber-400/90 dark:text-slate-900 box-decoration-clone px-1.5 -mx-0.5">
+            without the week of engineer time.
           </span>
         </h1>
         <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-xl">
@@ -249,12 +256,37 @@ function IntersectionRow({
   );
 }
 
+/**
+ * The LOS A–F color scale, rendered as a thin strip. This is the
+ * traffic-engineer's native color language (HCM Exhibit 19-8) — using
+ * it as a recurring brand motif is something no generic SaaS template
+ * does, and every PE reads it instantly.
+ */
+function LosScaleStrip() {
+  const grades: Array<{ g: string; c: string }> = [
+    { g: "A", c: "bg-green-500" },
+    { g: "B", c: "bg-green-500" },
+    { g: "C", c: "bg-amber-400" },
+    { g: "D", c: "bg-amber-500" },
+    { g: "E", c: "bg-red-500" },
+    { g: "F", c: "bg-red-600" },
+  ];
+  return (
+    <div className="flex items-stretch h-1.5 w-full" aria-hidden>
+      {grades.map((x, i) => (
+        <div key={i} className={`flex-1 ${x.c}`} />
+      ))}
+    </div>
+  );
+}
+
 function StatsBand() {
   return (
     <section className="border-y border-border bg-slate-50 dark:bg-slate-950/40">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14 grid grid-cols-2 md:grid-cols-4 gap-8">
-        <BigStat value="40 hrs" label="Saved per screening study" accent />
-        <BigStat value="$5,000" label="In junior-engineer wages, per study" accent />
+      <LosScaleStrip />
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14 grid grid-cols-2 md:grid-cols-4 gap-px bg-border">
+        <BigStat value="40 hrs" label="Saved per screening study" />
+        <BigStat value="$5,000" label="In junior-engineer wages, per study" />
         <BigStat value="60s" label="Average study turnaround" />
         <BigStat value="6" label="Study engines" sub="TIS · Parking · Warrants · SD · Queuing · Road-Diet" />
       </div>
@@ -263,11 +295,11 @@ function StatsBand() {
 }
 
 function BigStat({
-  value, label, sub, accent,
-}: { value: string; label: string; sub?: string; accent?: boolean }) {
+  value, label, sub,
+}: { value: string; label: string; sub?: string }) {
   return (
-    <div className="space-y-1.5">
-      <div className={`text-4xl sm:text-5xl font-bold tabular-nums tracking-tight ${accent ? "bg-gradient-to-br from-blue-700 to-blue-600 bg-clip-text text-transparent" : "text-slate-900 dark:text-slate-100"}`}>
+    <div className="bg-slate-50 dark:bg-slate-950/40 px-3 py-2 space-y-1.5">
+      <div className="font-mono text-4xl sm:text-5xl font-semibold tabular-nums tracking-tight text-slate-900 dark:text-slate-50">
         {value}
       </div>
       <div className="text-sm text-muted-foreground leading-snug">{label}</div>
@@ -412,7 +444,7 @@ function RoiRow({
         </div>
       </div>
       <div className="col-span-2 text-right">
-        <div className="text-2xl font-bold tabular-nums bg-gradient-to-br from-blue-700 to-blue-600 bg-clip-text text-transparent">
+        <div className="text-2xl font-bold tabular-nums text-blue-700">
           {multiple}
         </div>
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -575,7 +607,7 @@ function CapacityCard({
           className={
             "text-5xl sm:text-6xl font-bold tabular-nums tracking-tight " +
             (isAfter
-              ? "bg-gradient-to-br from-blue-700 to-indigo-600 bg-clip-text text-transparent"
+              ? "text-blue-700"
               : "text-slate-700 dark:text-slate-400")
           }
         >
@@ -596,7 +628,7 @@ function UpliftTile({
       <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
         <Icon className="w-4 h-4" />
       </div>
-      <div className="text-2xl font-bold tabular-nums tracking-tight bg-gradient-to-br from-blue-700 to-blue-600 bg-clip-text text-transparent">
+      <div className="text-2xl font-bold tabular-nums tracking-tight text-blue-700">
         {metric}
       </div>
       <div className="text-xs font-medium leading-snug">{label}</div>
