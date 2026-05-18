@@ -14,7 +14,7 @@ import { Marker } from "../components/section-marker";
 const STEPS: Array<[string, string]> = [
   ["Sign up & name your firm", "Email + password, then a single firm name. Your team can join later under the same firm — every study they run rolls up to your shared project history."],
   ["Drop a pin on your site", "Anywhere in the Atlanta MSA. The generator pulls live GDOT counts and signal data for every intersection in your study radius (up to 6.5 mi)."],
-  ["Pick a land use + size", "Any of 80 ITE 11th-Ed. land-use codes — multifamily, office, retail, fuel station, drive-through. Enter unit count or square footage; pass-by capture is computed automatically."],
+  ["Pick a land use + size", "Any of 66 ITE 11th-Ed. land-use codes — multifamily, office, retail, fuel station, drive-through. Enter unit count or square footage; pass-by capture is computed automatically."],
   ["Download the report", "Cover page, executive summary, intersection table, mitigations, methodology and limitations appendices. White-labeled with your firm's logo if you've uploaded one."],
 ];
 
@@ -94,7 +94,7 @@ export default function HelpPage() {
               <p>Three required fields:</p>
               <ul className="list-disc pl-5 space-y-1 mt-2">
                 <li><strong>Site coordinates</strong> — drop a pin on the map or paste a lat/lon. Must fall inside the Atlanta MSA box (lat 33.4–34.2, lon −84.9 to −83.9).</li>
-                <li><strong>ITE land-use code</strong> — picked from a dropdown of 80 codes. Each code carries its own daily/AM-peak/PM-peak rates from the ITE Trip Generation Manual 11th Edition.</li>
+                <li><strong>ITE land-use code</strong> — picked from a dropdown of 66 codes. Each code carries its own daily/AM-peak/PM-peak rates from the ITE Trip Generation Manual 11th Edition.</li>
                 <li><strong>Project size</strong> — usually dwelling units (multifamily), 1,000-sqft GFA (office/retail), or fueling positions (gas stations). The unit auto-updates based on the chosen land use.</li>
               </ul>
               <p className="mt-2">Optional fields for more precise screening: opening year (default 2027), study radius (default 0.5 mi), background growth rate, weather scenario, pass-by override, and Monte-Carlo sensitivity toggle.</p>

@@ -63,7 +63,7 @@ export default function LegalDisclaimerPage() {
 
       <h2>Land-use rate uncertainty</h2>
       <p>
-        The Service ships with approximately 80 ITE land-use rate entries
+        The Service ships with approximately 66 ITE land-use rate entries
         spanning residential, lodging, recreational, institutional, office,
         retail, services, and industrial categories. For commonly studied
         codes (e.g., 210, 220, 710, 820, 932, 934) the rates are
