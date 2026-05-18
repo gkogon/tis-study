@@ -52,7 +52,7 @@ export function BrandMark({ size = "sm" }: { size?: "sm" | "lg" }) {
         <span className="absolute inset-y-1 left-1/2 -translate-x-1/2 w-[2px] bg-white/90" />
         <span className="absolute w-1 h-1 rounded-full bg-white" />
       </span>
-      <span className={wordmarkClass}>
+      <span className={`font-display ${wordmarkClass}`}>
         Simple Impact Studies
       </span>
     </span>

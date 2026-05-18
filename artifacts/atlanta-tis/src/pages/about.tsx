@@ -16,14 +16,16 @@ export default function AboutPage() {
           className="absolute inset-x-0 top-0 -z-10 h-[400px] bg-gradient-to-b from-slate-100/80 via-background to-background dark:from-slate-900/30"
         />
         <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-12 space-y-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 dark:bg-slate-100 border border-slate-900 dark:border-slate-100 text-xs font-medium text-white dark:text-slate-900">
-            <Building2 className="w-3.5 h-3.5" />
-            About
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              <Building2 className="w-3.5 h-3.5" />
+              About
+            </div>
+            <div className="h-px w-full bg-border" />
           </div>
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.05] tracking-tight text-slate-900 dark:text-slate-50">
-            Built for the engineers
-            <br />
-            <span className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.04] text-slate-900 dark:text-slate-50">
+            Built for the engineers{" "}
+            <span className="bg-amber-300 dark:bg-amber-400/90 dark:text-slate-900 box-decoration-clone px-1.5 -mx-0.5">
               doing the work.
             </span>
           </h1>

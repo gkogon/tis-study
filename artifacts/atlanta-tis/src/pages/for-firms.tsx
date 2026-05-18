@@ -22,15 +22,14 @@ export default function ForFirmsPage() {
         />
         <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-12">
           <section className="text-center max-w-3xl mx-auto space-y-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 dark:bg-slate-100 border border-slate-900 dark:border-slate-100 text-xs font-medium text-white dark:text-slate-900">
+            <div className="flex items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
               <Building2 className="w-3.5 h-3.5" />
               For engineering firms
             </div>
-            <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.05] tracking-tight text-slate-900 dark:text-slate-50">
-              Defensible screening TIS.
-              <br />
-              <span className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                Without the week of engineer time.
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.04] text-slate-900 dark:text-slate-50">
+              Defensible screening TIS —{" "}
+              <span className="bg-amber-300 dark:bg-amber-400/90 dark:text-slate-900 box-decoration-clone px-1.5 -mx-0.5">
+                without the week of engineer time.
               </span>
             </h1>
             <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
