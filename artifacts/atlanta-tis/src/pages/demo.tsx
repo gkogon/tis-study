@@ -1,14 +1,13 @@
 /**
- * Public /demo page. Lets a non-signed-in prospect pick from 4
- * curated Atlanta presets (Multifamily / Office / Retail / Drive-
- * Thru), run a REAL screening-level TIS against live GDOT data, and
- * see the deliverable inline — all in ~30 seconds without giving us
- * their email.
+ * Public /demo page. Lets a non-signed-in prospect pick from a set of
+ * curated Atlanta presets, run a REAL screening-level TIS against live
+ * GDOT data, and see the FULL deliverable inline — every intersection,
+ * approach-level v/c + queues, all periods, mitigations, methodology,
+ * and Monte-Carlo sensitivity — without giving us their email.
  *
- * The conversion goal isn't "complete the demo and leave" — it's
- * "feel the workflow, then sign up because the friction to keep
- * going is lower than the friction to leave." The post-run UI
- * leans heavily into the signup CTA.
+ * The demo intentionally shows the complete analysis (not a teaser):
+ * the conversion lever is "run it on YOUR project, save it, and
+ * white-label the PDF," not "see the rest behind a signup wall."
  *
  * Backed by POST /tis-api/demo/generate with the demoRateLimiter
  * (3/day/IP).
@@ -16,18 +15,92 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import {
-  Sparkles, Building2, Briefcase, ShoppingBag, Coffee,
+  Sparkles, Building2, Briefcase, ShoppingBag, Coffee, Home, Hotel,
+  Stethoscope, ShoppingCart, UtensilsCrossed,
   Loader2, ArrowRight, AlertCircle, MapPin, FileCheck2, ChevronRight,
-  Hourglass, ShieldCheck,
+  ChevronDown, Hourglass, ShieldCheck,
 } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 
-type Preset = { id: string; label: string };
+type Preset = { id: string; label: string; blurb?: string };
+
+type Los = "A" | "B" | "C" | "D" | "E" | "F";
+
+type ApproachImpact = {
+  direction: string;
+  existingVolumeVph: number;
+  addedTripsPeak: number;
+  futureVolumeVph: number;
+  existingVc: number;
+  futureVc: number;
+  existingDelaySec: number;
+  futureDelaySec: number;
+  existingLos: Los;
+  futureLos: Los;
+  queue95thFt: number;
+};
+
+type AffectedIntersection = {
+  signalId: string;
+  name: string;
+  zone: string;
+  distanceMi: number;
+  existingVc: number;
+  addedTripsPmPeak: number;
+  futureVc: number;
+  existingDelaySec: number;
+  futureDelaySec: number;
+  existingLos: Los;
+  futureLos: Los;
+  losChanged: boolean;
+  mitigation: string;
+  mitigationSeverity: "none" | "minor" | "moderate" | "major";
+  approaches: ApproachImpact[];
+  queue95thFt: number;
+  calibration?: {
+    sampleCount: number;
+    delayMultiplier: number;
+    lastObservedDelaySec: number | null;
+  };
+};
+
+type PeriodTripGen = {
+  period: string;
+  periodLabel: string;
+  rawTrips: number;
+  passByCredit: number;
+  internalCaptureCredit: number;
+  externalTrips: number;
+  inTrips: number;
+  outTrips: number;
+};
+
+type PeriodReport = {
+  period: string;
+  periodLabel: string;
+  tripGeneration: PeriodTripGen;
+  affectedIntersections: AffectedIntersection[];
+  intersectionsWithLosDrop: number;
+  intersectionsAtLosEf: number;
+  worstDelayDeltaSec: number;
+};
+
+type SensitivityResult = {
+  iterations: number;
+  worstDelayDeltaMean: number;
+  worstDelayDeltaP10: number;
+  worstDelayDeltaP50: number;
+  worstDelayDeltaP90: number;
+  probAnyLosDrop: number;
+  probAnyLosEf: number;
+  expectedLosDrops: number;
+};
 
 type DemoReport = {
   generatedAt: string;
   studyRadiusMi: number;
   tripGeneration: {
+    landUseCode: string;
     landUseName: string;
     size: number;
     unit: string;
@@ -41,26 +114,18 @@ type DemoReport = {
   intersectionsWithLosDrop: number;
   intersectionsAtLosEf: number;
   worstDelayDeltaSec: number;
+  mitigationSummary: string[];
   findings: string[];
   methodology: string[];
-  affectedIntersections: Array<{
-    name: string;
-    distanceMi: number;
-    addedTripsPmPeak: number;
-    existingLos: string;
-    futureLos: string;
-    existingDelaySec: number;
-    futureDelaySec: number;
-    losChanged: boolean;
-    mitigation: string;
-    mitigationSeverity: string;
-  }>;
-  sensitivity?: {
-    iterations: number;
-    worstDelayDeltaMean: number;
-    probAnyLosDrop: number;
-    probAnyLosEf: number;
-  };
+  affectedIntersections: AffectedIntersection[];
+  periodReports: PeriodReport[];
+  growthAppliedPct: number;
+  growthYears: number;
+  weather: string;
+  weatherCapacityFactor: number;
+  passByPctApplied: number;
+  internalCapturePctApplied: number;
+  sensitivity?: SensitivityResult;
 };
 
 type DemoResponse = {
@@ -74,6 +139,11 @@ const ICONS: Record<string, typeof Building2> = {
   office: Briefcase,
   retail: ShoppingBag,
   drivethrough: Coffee,
+  subdivision: Home,
+  hotel: Hotel,
+  medical: Stethoscope,
+  supermarket: ShoppingCart,
+  restaurant: UtensilsCrossed,
 };
 
 const LOS_CHIP: Record<string, string> = {
@@ -84,6 +154,25 @@ const LOS_CHIP: Record<string, string> = {
   E: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
   F: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
 };
+
+const SEVERITY_CHIP: Record<string, string> = {
+  major: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
+  moderate: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+  minor: "bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300",
+  none: "bg-slate-100 text-slate-600 dark:bg-slate-800/40 dark:text-slate-400",
+};
+
+function losChip(los: string) {
+  return (
+    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${LOS_CHIP[los] ?? ""}`}>
+      {los}
+    </span>
+  );
+}
+
+function humanizeWeather(w: string) {
+  return w.replace(/_/g, " ");
+}
 
 export default function DemoPage() {
   const [presets, setPresets] = useState<Preset[] | null>(null);
@@ -149,9 +238,10 @@ export default function DemoPage() {
               </span>
             </h1>
             <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-2xl mx-auto">
-              Pick a curated Atlanta project below. We'll generate a full TIS
-              against live GDOT data — same engine, same methodology, same
-              output a paying customer gets. No email required.
+              Pick a curated Atlanta project below. We'll generate the full
+              TIS against live GDOT data — every intersection, approach-level
+              v/c and queues, all peak periods, mitigations, methodology, and
+              Monte-Carlo sensitivity. Nothing held back. No email required.
             </p>
           </div>
         </div>
@@ -187,9 +277,9 @@ function PresetGrid({
 }: { presets: Preset[] | null; onPick: (id: string) => void }) {
   if (!presets) {
     return (
-      <div className="grid sm:grid-cols-2 gap-4">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="rounded-2xl border border-border bg-background p-6 h-32 animate-pulse" />
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="rounded-2xl border border-border bg-background p-6 h-36 animate-pulse" />
         ))}
       </div>
     );
@@ -211,8 +301,12 @@ function PresetGrid({
         <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
           Pick a project type.
         </h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          {presets.length} curated Atlanta projects across the land uses we
+          see most in screening work.
+        </p>
       </div>
-      <div className="grid sm:grid-cols-2 gap-4">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {presets.map((p) => {
           const Icon = ICONS[p.id] ?? Building2;
           return (
@@ -230,9 +324,9 @@ function PresetGrid({
                   Run demo <ChevronRight className="w-3.5 h-3.5" />
                 </span>
               </div>
-              <div className="font-semibold text-base tracking-tight">{p.label}</div>
+              <div className="font-semibold text-base tracking-tight leading-snug">{p.label}</div>
               <div className="text-xs text-muted-foreground">
-                Real Atlanta site · live GDOT data · ~30s
+                {p.blurb ?? "Real Atlanta site · live GDOT data"}
               </div>
             </button>
           );
@@ -333,11 +427,25 @@ function ErrorState({ message, onReset }: { message: string; onReset: () => void
   );
 }
 
+function SectionHead({ step, title, note }: { step: string; title: string; note?: string }) {
+  return (
+    <div className="space-y-1">
+      <div className="text-xs font-semibold uppercase tracking-widest text-blue-700">
+        {step}
+      </div>
+      <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+        {title}
+      </h2>
+      {note && <p className="text-sm text-muted-foreground">{note}</p>}
+    </div>
+  );
+}
+
 function ResultView({ response, onReset }: { response: DemoResponse; onReset: () => void }) {
   const r = response.report;
   const tg = r.tripGeneration;
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       <div className="space-y-2">
         <button
           type="button"
@@ -347,7 +455,7 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
           ← Run a different preset
         </button>
         <div className="text-xs font-semibold uppercase tracking-widest text-blue-700">
-          Your demo result
+          Your demo result · full analysis
         </div>
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
           {response.presetLabel}
@@ -357,6 +465,7 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
         </p>
       </div>
 
+      {/* Headline metrics */}
       <div className="rounded-2xl border border-border bg-background overflow-hidden shadow-sm">
         <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-border">
           <BigMetric value={String(r.intersectionsStudied)} label="Intersections" />
@@ -366,91 +475,88 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border bg-background p-6 sm:p-8 space-y-3">
-        <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          PM Peak Trip Generation
-        </div>
-        <div className="grid sm:grid-cols-3 gap-4">
-          <Stat label="Daily trips" value={tg.dailyTrips.toLocaleString()} />
-          <Stat label="AM peak" value={String(tg.amPeakTrips)} />
-          <Stat label={`PM peak (${tg.pmIn} in / ${tg.pmOut} out)`} value={String(tg.pmPeakTrips)} />
-        </div>
-        <div className="text-xs text-muted-foreground pt-1">
-          {tg.landUseName} · {tg.size} {tg.unit}
-        </div>
-      </div>
+      <AssumptionsStrip r={r} />
 
+      {/* Trip generation across all periods */}
+      <section className="space-y-4">
+        <SectionHead
+          step="Trip generation"
+          title="Trips by analysis period"
+          note={`${tg.landUseName} (ITE ${tg.landUseCode}) · ${tg.size.toLocaleString()} ${tg.unit}`}
+        />
+        <PeriodTripGenTable periods={r.periodReports} dailyTrips={tg.dailyTrips} />
+      </section>
+
+      {/* Affected intersections — full list, expandable approach detail */}
       {r.affectedIntersections.length > 0 && (
-        <div className="rounded-2xl border border-border bg-background overflow-hidden">
-          <div className="px-6 py-4 border-b border-border bg-slate-50 dark:bg-slate-950/40 flex items-center justify-between flex-wrap gap-2">
-            <div className="font-semibold tracking-tight">
-              Affected intersections ({r.affectedIntersections.length})
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Sorted by distance from site
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[600px]">
-              <thead className="bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="text-left px-4 py-2 font-medium">Signal</th>
-                  <th className="text-right px-4 py-2 font-medium">Dist (mi)</th>
-                  <th className="text-right px-4 py-2 font-medium">+ Trips</th>
-                  <th className="text-center px-4 py-2 font-medium">Existing</th>
-                  <th className="text-center px-4 py-2 font-medium">Future</th>
-                  <th className="text-right px-4 py-2 font-medium">Δ delay</th>
-                </tr>
-              </thead>
-              <tbody>
-                {r.affectedIntersections.slice(0, 12).map((it, idx) => {
-                  const delta = it.futureDelaySec - it.existingDelaySec;
-                  return (
-                    <tr key={idx} className="border-t border-border">
-                      <td className="px-4 py-2 font-medium">{it.name}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{it.distanceMi.toFixed(2)}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{Math.round(it.addedTripsPmPeak)}</td>
-                      <td className="px-4 py-2 text-center">
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${LOS_CHIP[it.existingLos] ?? ""}`}>
-                          {it.existingLos}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-center">
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${LOS_CHIP[it.futureLos] ?? ""}`}>
-                          {it.losChanged ? "▲ " : ""}{it.futureLos}
-                        </span>
-                      </td>
-                      <td className={`px-4 py-2 text-right tabular-nums ${delta > 5 ? "text-red-700 font-medium" : "text-muted-foreground"}`}>
-                        +{delta.toFixed(1)}s
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {r.affectedIntersections.length > 12 && (
-            <div className="px-4 py-2 text-xs text-muted-foreground text-center border-t border-border bg-muted/20">
-              Showing first 12 of {r.affectedIntersections.length}. Full report (with approach-level v/c, queues, and mitigations) ships in the signed-in version.
-            </div>
-          )}
-        </div>
+        <section className="space-y-4">
+          <SectionHead
+            step="Capacity analysis"
+            title={`Affected intersections (${r.affectedIntersections.length})`}
+            note="PM peak governing period. Click any row for approach-level v/c, delay, queues, and the recommended mitigation."
+          />
+          <IntersectionTable rows={r.affectedIntersections} />
+        </section>
       )}
 
-      {r.findings.length > 0 && (
-        <div className="rounded-2xl border border-border bg-background p-6 sm:p-8 space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            Key findings
+      {/* Mitigation summary */}
+      {r.mitigationSummary.length > 0 && (
+        <section className="space-y-4">
+          <SectionHead step="Mitigations" title="Recommended mitigations" />
+          <div className="rounded-2xl border border-border bg-background p-6 sm:p-8">
+            <ul className="space-y-2.5 text-sm leading-relaxed">
+              {r.mitigationSummary.map((m, i) => (
+                <li key={i} className="flex gap-2.5">
+                  <span className="text-blue-700 mt-1">•</span>
+                  <span>{m}</span>
+                </li>
+              ))}
+            </ul>
           </div>
-          <ul className="space-y-2 text-sm leading-relaxed">
-            {r.findings.slice(0, 4).map((f, i) => (
-              <li key={i} className="flex gap-2.5">
-                <span className="text-blue-700 mt-1">•</span>
-                <span>{f}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        </section>
+      )}
+
+      {/* Sensitivity */}
+      {r.sensitivity && (
+        <section className="space-y-4">
+          <SectionHead
+            step="Sensitivity"
+            title="Monte-Carlo sensitivity"
+            note={`${r.sensitivity.iterations.toLocaleString()} iterations · trip rate and existing volume perturbed within published variance.`}
+          />
+          <SensitivityPanel s={r.sensitivity} />
+        </section>
+      )}
+
+      {/* Findings */}
+      {r.findings.length > 0 && (
+        <section className="space-y-4">
+          <SectionHead step="Findings" title="Key findings" />
+          <div className="rounded-2xl border border-border bg-background p-6 sm:p-8">
+            <ul className="space-y-2.5 text-sm leading-relaxed">
+              {r.findings.map((f, i) => (
+                <li key={i} className="flex gap-2.5">
+                  <span className="text-blue-700 mt-1">•</span>
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+
+      {/* Methodology */}
+      {r.methodology.length > 0 && (
+        <section className="space-y-4">
+          <SectionHead step="Methodology" title="How this study was produced" />
+          <div className="rounded-2xl border border-border bg-background p-6 sm:p-8">
+            <ol className="space-y-2.5 text-sm leading-relaxed list-decimal pl-5 marker:text-muted-foreground">
+              {r.methodology.map((m, i) => (
+                <li key={i} className="pl-1">{m}</li>
+              ))}
+            </ol>
+          </div>
+        </section>
       )}
 
       {/* Conversion section — strong CTA to sign up */}
@@ -461,18 +567,20 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
         />
         <div className="relative space-y-5">
           <div className="text-xs font-semibold uppercase tracking-widest text-blue-300">
-            You just ran a real screening study
+            That was the full analysis — nothing held back
           </div>
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight max-w-2xl">
-            Save it, white-label it, run more.
+            Now run it on your project.
             <br />
             <span className="text-blue-300">10 free studies on signup.</span>
           </h2>
           <p className="text-slate-300 leading-relaxed max-w-2xl">
-            Sign up free and the full deliverable — cover page with your firm
-            logo, methodology + limitations appendices, PE stamp box,
-            approach-level v/c + queues, mitigation recommendations sized to
-            the impact — is yours to download as a PDF. No credit card.
+            This demo used a fixed Atlanta preset. Sign up free and point the
+            same engine at your own site — any address, any of 80 ITE land
+            uses — then download the deliverable as a white-labeled PDF: your
+            firm logo on the cover, methodology and limitations appendices, a
+            PE stamp box. Save and manage studies across all six engines. No
+            credit card.
           </p>
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <Link
@@ -491,6 +599,231 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
             </a>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AssumptionsStrip({ r }: { r: DemoReport }) {
+  const items: Array<{ label: string; value: string }> = [
+    { label: "Study radius", value: `${r.studyRadiusMi.toFixed(2)} mi` },
+    { label: "Background growth", value: `${r.growthAppliedPct.toFixed(1)}%/yr · ${r.growthYears} yr` },
+    { label: "Weather", value: humanizeWeather(r.weather) },
+    { label: "Pass-by credit", value: `${r.passByPctApplied.toFixed(0)}%` },
+    { label: "Internal capture", value: `${r.internalCapturePctApplied.toFixed(0)}%` },
+  ];
+  return (
+    <div className="rounded-2xl border border-border bg-background overflow-hidden">
+      <div className="px-6 py-3 border-b border-border bg-slate-50 dark:bg-slate-950/40 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+        Study assumptions
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 divide-x divide-y sm:divide-y-0 divide-border">
+        {items.map((it) => (
+          <div key={it.label} className="px-4 py-4">
+            <div className="text-sm font-semibold tracking-tight">{it.value}</div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">
+              {it.label}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PeriodTripGenTable({
+  periods, dailyTrips,
+}: { periods: PeriodReport[]; dailyTrips: number }) {
+  return (
+    <div className="rounded-2xl border border-border bg-background overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[640px]">
+          <thead className="bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="text-left px-4 py-2 font-medium">Period</th>
+              <th className="text-right px-4 py-2 font-medium">Raw trips</th>
+              <th className="text-right px-4 py-2 font-medium">Pass-by</th>
+              <th className="text-right px-4 py-2 font-medium">Internal capture</th>
+              <th className="text-right px-4 py-2 font-medium">External trips</th>
+              <th className="text-right px-4 py-2 font-medium">In / Out</th>
+            </tr>
+          </thead>
+          <tbody>
+            {periods.map((p) => {
+              const t = p.tripGeneration;
+              return (
+                <tr key={p.period} className="border-t border-border">
+                  <td className="px-4 py-2 font-medium">{p.periodLabel}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{Math.round(t.rawTrips).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">−{Math.round(t.passByCredit).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">−{Math.round(t.internalCaptureCredit).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-semibold">{Math.round(t.externalTrips).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
+                    {Math.round(t.inTrips).toLocaleString()} / {Math.round(t.outTrips).toLocaleString()}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="px-4 py-2 text-xs text-muted-foreground border-t border-border bg-muted/20">
+        Daily two-way trips: {Math.round(dailyTrips).toLocaleString()}. External trips are
+        what gets assigned to off-site intersections after ITE pass-by and ULI
+        internal-capture credits.
+      </div>
+    </div>
+  );
+}
+
+function IntersectionTable({ rows }: { rows: AffectedIntersection[] }) {
+  return (
+    <div className="rounded-2xl border border-border bg-background overflow-hidden">
+      <div className="px-6 py-3 border-b border-border bg-slate-50 dark:bg-slate-950/40 text-xs text-muted-foreground">
+        Sorted by distance from site
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[640px]">
+          <thead className="bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="text-left px-4 py-2 font-medium">Signal</th>
+              <th className="text-right px-4 py-2 font-medium">Dist (mi)</th>
+              <th className="text-right px-4 py-2 font-medium">+ Trips</th>
+              <th className="text-center px-4 py-2 font-medium">Existing</th>
+              <th className="text-center px-4 py-2 font-medium">Future</th>
+              <th className="text-right px-4 py-2 font-medium">Δ delay</th>
+              <th className="px-2 py-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((it, idx) => (
+              <IntersectionRow key={it.signalId ?? idx} it={it} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function IntersectionRow({ it }: { it: AffectedIntersection }) {
+  const [open, setOpen] = useState(false);
+  const delta = it.futureDelaySec - it.existingDelaySec;
+  return (
+    <>
+      <tr
+        className="border-t border-border cursor-pointer hover:bg-accent/40 transition-colors"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <td className="px-4 py-2 font-medium">{it.name}</td>
+        <td className="px-4 py-2 text-right tabular-nums">{it.distanceMi.toFixed(2)}</td>
+        <td className="px-4 py-2 text-right tabular-nums">{Math.round(it.addedTripsPmPeak)}</td>
+        <td className="px-4 py-2 text-center">{losChip(it.existingLos)}</td>
+        <td className="px-4 py-2 text-center">
+          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${LOS_CHIP[it.futureLos] ?? ""}`}>
+            {it.losChanged ? "▲ " : ""}{it.futureLos}
+          </span>
+        </td>
+        <td className={`px-4 py-2 text-right tabular-nums ${delta > 5 ? "text-red-700 font-medium" : "text-muted-foreground"}`}>
+          +{delta.toFixed(1)}s
+        </td>
+        <td className="px-2 py-2 text-muted-foreground">
+          <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} />
+        </td>
+      </tr>
+      {open && (
+        <tr className="border-t border-border bg-muted/20">
+          <td colSpan={7} className="px-4 py-4">
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <MiniStat label="Existing v/c" value={it.existingVc.toFixed(2)} />
+                <MiniStat label="Future v/c" value={it.futureVc.toFixed(2)} />
+                <MiniStat label="95th queue" value={`${Math.round(it.queue95thFt)} ft`} />
+                <MiniStat label="Zone" value={it.zone || "—"} />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${SEVERITY_CHIP[it.mitigationSeverity] ?? ""}`}>
+                  {it.mitigationSeverity}
+                </span>
+                <span className="text-muted-foreground">{it.mitigation}</span>
+              </div>
+
+              {it.calibration && (
+                <div className="text-xs text-muted-foreground">
+                  Calibrated against {it.calibration.sampleCount.toLocaleString()} live
+                  observation{it.calibration.sampleCount === 1 ? "" : "s"} ·
+                  delay multiplier ×{it.calibration.delayMultiplier.toFixed(2)}
+                </div>
+              )}
+
+              {it.approaches.length > 0 && (
+                <div className="overflow-x-auto rounded-lg border border-border">
+                  <table className="w-full text-xs min-w-[560px]">
+                    <thead className="bg-muted/40 uppercase tracking-wide text-muted-foreground">
+                      <tr>
+                        <th className="text-left px-3 py-1.5 font-medium">Approach</th>
+                        <th className="text-right px-3 py-1.5 font-medium">Exist v/c</th>
+                        <th className="text-right px-3 py-1.5 font-medium">Future v/c</th>
+                        <th className="text-center px-3 py-1.5 font-medium">Exist LOS</th>
+                        <th className="text-center px-3 py-1.5 font-medium">Future LOS</th>
+                        <th className="text-right px-3 py-1.5 font-medium">Future delay</th>
+                        <th className="text-right px-3 py-1.5 font-medium">95th queue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {it.approaches.map((a) => (
+                        <tr key={a.direction} className="border-t border-border">
+                          <td className="px-3 py-1.5 font-medium">{a.direction}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{a.existingVc.toFixed(2)}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{a.futureVc.toFixed(2)}</td>
+                          <td className="px-3 py-1.5 text-center">{losChip(a.existingLos)}</td>
+                          <td className="px-3 py-1.5 text-center">{losChip(a.futureLos)}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{a.futureDelaySec.toFixed(1)}s</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{Math.round(a.queue95thFt)} ft</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-background px-3 py-2">
+      <div className="text-sm font-semibold tabular-nums tracking-tight">{value}</div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function SensitivityPanel({ s }: { s: SensitivityResult }) {
+  return (
+    <div className="rounded-2xl border border-border bg-background p-6 sm:p-8 space-y-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <Stat label="Worst Δ delay — P10" value={`+${s.worstDelayDeltaP10.toFixed(1)}s`} />
+        <Stat label="Median (P50)" value={`+${s.worstDelayDeltaP50.toFixed(1)}s`} />
+        <Stat label="P90" value={`+${s.worstDelayDeltaP90.toFixed(1)}s`} />
+        <Stat label="Mean" value={`+${s.worstDelayDeltaMean.toFixed(1)}s`} />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Stat label="P(any LOS drop)" value={`${(s.probAnyLosDrop * 100).toFixed(0)}%`} />
+        <Stat label="P(any LOS E/F)" value={`${(s.probAnyLosEf * 100).toFixed(0)}%`} />
+        <Stat label="Expected LOS drops" value={s.expectedLosDrops.toFixed(1)} />
+      </div>
+      <div className="text-xs text-muted-foreground">
+        Probabilities are the share of {s.iterations.toLocaleString()} Monte-Carlo
+        iterations meeting each condition — a measure of how robust the screening
+        conclusion is to input uncertainty.
       </div>
     </div>
   );
@@ -535,12 +868,12 @@ function FooterTrust() {
         <TrustTile
           icon={Hourglass}
           label="~30 seconds"
-          body="From button click to results, end-to-end."
+          body="From button click to a complete deliverable, end-to-end."
         />
         <TrustTile
           icon={MapPin}
           label="Live GDOT data"
-          body="49 indexed metro signals, 2,589 cameras."
+          body="Indexed metro signals and live 511 incident feed."
         />
         <TrustTile
           icon={ShieldCheck}
@@ -549,8 +882,8 @@ function FooterTrust() {
         />
       </div>
       <div className="text-xs text-muted-foreground text-center pt-2">
-        Demo is rate-limited to 3 runs/day per IP. Sign up for the full
-        deliverable + unlimited runs on Growth.
+        Demo is rate-limited to 3 runs/day per IP. Sign up to run the engine on
+        your own projects + unlimited runs on Growth.
       </div>
     </div>
   );

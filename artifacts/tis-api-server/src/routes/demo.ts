@@ -32,6 +32,7 @@ const router: IRouter = Router();
 const PRESETS = {
   multifamily: {
     label: "Multifamily — 240-unit mid-rise (Midtown)",
+    blurb: "ITE 221 · 240 dwelling units · Monte-Carlo sensitivity",
     request: {
       projectName: "Demo: Midtown Multifamily — 240 DU",
       address: "1100 Peachtree St NE, Atlanta GA 30309",
@@ -48,6 +49,7 @@ const PRESETS = {
   },
   office: {
     label: "Office — 50,000 sqft Class A (Buckhead)",
+    blurb: "ITE 710 · 50,000 sqft GFA · Monte-Carlo sensitivity",
     request: {
       projectName: "Demo: Buckhead Office — 50 ksf",
       address: "3060 Peachtree Rd NW, Atlanta GA 30305",
@@ -64,6 +66,7 @@ const PRESETS = {
   },
   retail: {
     label: "Retail — 75,000 sqft shopping center",
+    blurb: "ITE 820 · 75,000 sqft GLA · pass-by credit applied",
     request: {
       projectName: "Demo: West Midtown Retail — 75 ksf",
       address: "1100 Howell Mill Rd NW, Atlanta GA 30318",
@@ -79,7 +82,8 @@ const PRESETS = {
     },
   },
   drivethrough: {
-    label: "Drive-through restaurant",
+    label: "Drive-Through Restaurant — 4,000 sqft (Cumberland)",
+    blurb: "ITE 934 · 4,000 sqft GFA · high pass-by land use",
     request: {
       projectName: "Demo: Drive-Thru Restaurant",
       address: "2700 Cumberland Pkwy SE, Atlanta GA 30339",
@@ -91,7 +95,92 @@ const PRESETS = {
       studyRadiusMi: 0.75,
       growthRatePct: 1.5,
       weather: "clear" as const,
-      runSensitivity: false,
+      runSensitivity: true,
+    },
+  },
+  subdivision: {
+    label: "Single-Family Subdivision — 160 lots (Buckhead)",
+    blurb: "ITE 210 · 160 dwelling units · Monte-Carlo sensitivity",
+    request: {
+      projectName: "Demo: Buckhead Subdivision — 160 lots",
+      address: "2500 Piedmont Rd NE, Atlanta GA 30324",
+      latitude: 33.8095,
+      longitude: -84.3712,
+      landUseCode: "210",
+      size: 160,
+      openingYear: 2027,
+      studyRadiusMi: 0.75,
+      growthRatePct: 1.5,
+      weather: "clear" as const,
+      runSensitivity: true,
+    },
+  },
+  hotel: {
+    label: "Hotel — 220-room full-service (Downtown)",
+    blurb: "ITE 310 · 220 rooms · Monte-Carlo sensitivity",
+    request: {
+      projectName: "Demo: Downtown Hotel — 220 rooms",
+      address: "210 Peachtree St NW, Atlanta GA 30303",
+      latitude: 33.7596,
+      longitude: -84.3873,
+      landUseCode: "310",
+      size: 220,
+      openingYear: 2027,
+      studyRadiusMi: 0.75,
+      growthRatePct: 1.5,
+      weather: "clear" as const,
+      runSensitivity: true,
+    },
+  },
+  medical: {
+    label: "Medical Office — 65,000 sqft (Midtown)",
+    blurb: "ITE 720 · 65,000 sqft GFA · Monte-Carlo sensitivity",
+    request: {
+      projectName: "Demo: Midtown Medical Office — 65 ksf",
+      address: "550 Peachtree St NE, Atlanta GA 30308",
+      latitude: 33.7825,
+      longitude: -84.3855,
+      landUseCode: "720",
+      size: 65,
+      openingYear: 2027,
+      studyRadiusMi: 0.75,
+      growthRatePct: 1.5,
+      weather: "clear" as const,
+      runSensitivity: true,
+    },
+  },
+  supermarket: {
+    label: "Supermarket — 58,000 sqft grocery anchor (West Midtown)",
+    blurb: "ITE 850 · 58,000 sqft GFA · high trip generator",
+    request: {
+      projectName: "Demo: West Midtown Supermarket — 58 ksf",
+      address: "1380 Howell Mill Rd NW, Atlanta GA 30318",
+      latitude: 33.7948,
+      longitude: -84.4108,
+      landUseCode: "850",
+      size: 58,
+      openingYear: 2027,
+      studyRadiusMi: 0.75,
+      growthRatePct: 1.5,
+      weather: "clear" as const,
+      runSensitivity: true,
+    },
+  },
+  restaurant: {
+    label: "Sit-Down Restaurant — 11,000 sqft (Buckhead)",
+    blurb: "ITE 932 · 11,000 sqft GFA · Monte-Carlo sensitivity",
+    request: {
+      projectName: "Demo: Buckhead Restaurant — 11 ksf",
+      address: "3370 Peachtree Rd NE, Atlanta GA 30326",
+      latitude: 33.8422,
+      longitude: -84.3698,
+      landUseCode: "932",
+      size: 11,
+      openingYear: 2027,
+      studyRadiusMi: 0.75,
+      growthRatePct: 1.5,
+      weather: "clear" as const,
+      runSensitivity: true,
     },
   },
 } as const;
@@ -109,6 +198,7 @@ router.get("/demo/presets", (_req, res) => {
   const out = (Object.keys(PRESETS) as PresetId[]).map((id) => ({
     id,
     label: PRESETS[id].label,
+    blurb: PRESETS[id].blurb,
   }));
   res.json({ presets: out });
 });
