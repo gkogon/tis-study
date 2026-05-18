@@ -9,13 +9,13 @@
  * at "2 months free" (~16.7% off) to lock in ARR.
  *
  * Enterprise is metered ($75/study) and not yet wired through Stripe
- * Checkout — its CTA is a mailto: to sales. The full metered-billing
- * implementation is tracked separately.
+ * Checkout — its CTA is a mailto: to sales.
  */
 import { useState } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, Check, Building2, Copy, Check as CheckIcon } from "lucide-react";
+import { Check, Copy, Check as CheckIcon } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
+import { Marker } from "../components/section-marker";
 
 const ENTERPRISE_EMAIL = "gkogon@simpleimpactstudies.com";
 
@@ -116,75 +116,74 @@ export default function PricingPage() {
   const [cadence, setCadence] = useState<Cadence>("monthly");
 
   return (
-    <div>
-      <div className="max-w-6xl mx-auto px-4 py-8 space-y-12">
-        <div>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to home
-          </Link>
-        </div>
-
-        <section className="text-center max-w-3xl mx-auto space-y-4">
-          <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-700">
-            <Building2 className="w-3.5 h-3.5" />
-            Pricing
-          </div>
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold leading-tight">
-            One subscription per firm.
-            <br />
-            <span className="text-blue-700">Every engineer included.</span>
-          </h1>
-          <p className="text-base sm:text-lg text-muted-foreground">
-            14-day trial on Starter & Growth. No credit card to start.
-            Cancel anytime — you keep access until the end of your billing
-            period. Annual billing saves about <strong>17%</strong>.
-          </p>
-          <div className="flex justify-center pt-2">
+    <div className="overflow-x-hidden">
+      <div className="relative">
+        <div
+          aria-hidden
+          className="absolute inset-x-0 top-0 -z-10 h-[360px] bg-gradient-to-b from-slate-100/80 via-background to-background dark:from-slate-900/30"
+        />
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-10">
+          <section className="max-w-3xl space-y-6">
+            <div className="space-y-2">
+              <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                Pricing
+              </div>
+              <div className="h-px w-full bg-border" />
+            </div>
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.04] text-slate-900 dark:text-slate-50">
+              One subscription per firm. Every engineer included.
+            </h1>
+            <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
+              14-day trial on Starter and Growth. No credit card to start.
+              Cancel anytime — you keep access until the end of your billing
+              period. Annual billing saves about 17%.
+            </p>
             <CadenceToggle value={cadence} onChange={setCadence} />
-          </div>
-        </section>
+          </section>
+        </div>
+      </div>
 
-        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-20 space-y-20">
+        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-border border border-border items-stretch">
           {TIERS.map((t) => (
             <TierCard key={t.id} tier={t} cadence={cadence} />
           ))}
         </section>
 
-        <section className="border rounded-xl p-8 grid md:grid-cols-2 gap-6 bg-muted/30">
-          <div>
-            <h2 className="text-2xl font-bold mb-2">What counts as a study?</h2>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Every successful run of any generator (TIS, Parking, Warrants,
-              Sight Distance, Queuing, Road-Diet) counts as one study —
-              regardless of how many times you re-open or re-print the PDF.
-              Re-prints are free. If a generation errors out (bad coordinate,
-              upstream timeout), it doesn't count.
-            </p>
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold mb-2">What if we hit our cap?</h2>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Generation is blocked until the next billing period or you
-              upgrade. We show a warning before your last study and a clear
-              block message after. Upgrade to the next tier from
-              Settings → Billing and the new cap takes effect immediately.
-              No surprise overage fees on Starter or Growth.
-            </p>
+        <section>
+          <Marker n="01" label="Fair use" />
+          <div className="grid sm:grid-cols-2 gap-px bg-border border border-border">
+            <div className="bg-background p-6 space-y-2">
+              <h2 className="text-lg font-bold tracking-tight">What counts as a study?</h2>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Every successful run of any generator (TIS, Parking,
+                Warrants, Sight Distance, Queuing, Road-Diet) counts as one
+                study — regardless of how many times you re-open or re-print
+                the PDF. Re-prints are free. If a generation errors out (bad
+                coordinate, upstream timeout), it doesn't count.
+              </p>
+            </div>
+            <div className="bg-background p-6 space-y-2">
+              <h2 className="text-lg font-bold tracking-tight">What if we hit our cap?</h2>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Generation is blocked until the next billing period or you
+                upgrade. We show a warning before your last study and a clear
+                block message after. Upgrade from Settings → Billing and the
+                new cap takes effect immediately. No surprise overage fees on
+                Starter or Growth.
+              </p>
+            </div>
           </div>
         </section>
 
-        <section className="space-y-4">
-          <h2 className="text-2xl font-bold text-center">Common questions</h2>
-          <div className="space-y-2 max-w-2xl mx-auto">
+        <section>
+          <Marker n="02" label="Common questions" />
+          <div className="divide-y divide-border border-y border-border">
             {FAQ.map((f) => (
-              <details key={f.q} className="border rounded-lg p-4 group">
-                <summary className="cursor-pointer font-semibold list-none flex items-center justify-between">
+              <details key={f.q} className="group py-4">
+                <summary className="cursor-pointer font-semibold list-none flex items-center justify-between gap-4">
                   <span>{f.q}</span>
-                  <span className="text-muted-foreground text-lg group-open:rotate-45 transition-transform">+</span>
+                  <span className="text-muted-foreground text-lg group-open:rotate-45 transition-transform shrink-0">+</span>
                 </summary>
                 <div className="text-sm text-muted-foreground leading-relaxed mt-3">{f.a}</div>
               </details>
@@ -192,15 +191,15 @@ export default function PricingPage() {
           </div>
         </section>
 
-        <section className="text-center space-y-4">
-          <h2 className="text-2xl font-bold">Not sure which tier?</h2>
-          <p className="text-muted-foreground">
+        <section className="border border-border bg-slate-50 dark:bg-slate-950/40 px-6 sm:px-10 py-10 space-y-4">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Not sure which tier?</h2>
+          <p className="text-muted-foreground leading-relaxed max-w-xl">
             Start the Growth trial — it's our default for engineering firms.
             You can downgrade before the trial ends if it's more than you need.
           </p>
           <Link
             href={`/signup?plan=growth&cadence=${cadence}`}
-            className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-md bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+            className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
             data-testid="link-default-trial"
           >
             Start 14-day Growth trial
@@ -255,13 +254,13 @@ function CadenceToggle({
   value, onChange,
 }: { value: Cadence; onChange: (v: Cadence) => void }) {
   return (
-    <div className="inline-flex rounded-lg border bg-background p-1 text-sm">
+    <div className="inline-flex border border-border bg-background p-1 text-sm">
       <button
         type="button"
         onClick={() => onChange("monthly")}
         className={
-          "px-4 py-1.5 rounded-md transition-colors font-medium " +
-          (value === "monthly" ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "text-muted-foreground hover:text-foreground")
+          "px-4 py-1.5 transition-colors font-medium " +
+          (value === "monthly" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")
         }
       >
         Monthly
@@ -270,8 +269,8 @@ function CadenceToggle({
         type="button"
         onClick={() => onChange("annual")}
         className={
-          "px-4 py-1.5 rounded-md transition-colors font-medium " +
-          (value === "annual" ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "text-muted-foreground hover:text-foreground")
+          "px-4 py-1.5 transition-colors font-medium " +
+          (value === "annual" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")
         }
       >
         Annual <span className="opacity-80 font-normal">· save 17%</span>
@@ -285,23 +284,22 @@ function TierCard({ tier, cadence }: { tier: Tier; cadence: Cadence }) {
   const cta = tier.cta(cadence);
   const isMailto = cta.href.startsWith("mailto:");
   const CtaTag: any = isMailto ? "a" : Link;
-  const ctaProps: any = isMailto ? { href: cta.href } : { href: cta.href };
 
   return (
     <div
       className={
-        "rounded-xl p-6 flex flex-col space-y-4 " +
+        "p-6 flex flex-col space-y-4 " +
         (tier.highlight
-          ? "border-2 border-slate-900 dark:border-slate-100 shadow-md"
-          : "border border-border bg-background")
+          ? "bg-blue-50/50 dark:bg-blue-950/20 ring-1 ring-inset ring-blue-700"
+          : "bg-background")
       }
       data-testid={`tier-card-${tier.id}`}
     >
       <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xl font-bold">{tier.name}</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-xl font-bold tracking-tight">{tier.name}</h3>
           {tier.highlight && (
-            <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700">
               Most popular
             </span>
           )}
@@ -310,9 +308,9 @@ function TierCard({ tier, cadence }: { tier: Tier; cadence: Cadence }) {
       </div>
       <div>
         <div className="flex items-baseline gap-1">
-          <span className="text-4xl font-bold">{price.primary}</span>
+          <span className="font-mono text-4xl font-bold tabular-nums tracking-tight">{price.primary}</span>
           {price.cadence && (
-            <span className="text-muted-foreground text-sm">{price.cadence}</span>
+            <span className="text-muted-foreground text-sm font-mono">{price.cadence}</span>
           )}
         </div>
         {price.subtitle && (
@@ -328,11 +326,11 @@ function TierCard({ tier, cadence }: { tier: Tier; cadence: Cadence }) {
         ))}
       </ul>
       <CtaTag
-        {...ctaProps}
+        href={cta.href}
         className={
-          "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-semibold rounded-md transition-colors " +
+          "inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-semibold rounded-lg transition-colors " +
           (tier.highlight
-            ? "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+            ? "bg-foreground text-background hover:bg-foreground/90"
             : "border border-border hover:bg-accent")
         }
         data-testid={`link-cta-${tier.id}`}
@@ -347,10 +345,8 @@ function TierCard({ tier, cadence }: { tier: Tier; cadence: Cadence }) {
 /**
  * Visible copyable email under the Enterprise CTA. The plain mailto:
  * link silently fails on desktop browsers without a registered mail
- * handler (very common on Chrome/Edge where the user uses Gmail in
- * the browser instead of Outlook/Mail). Surfacing the address as
- * text + a copy button guarantees the prospect can always reach us,
- * regardless of OS / browser / mail-client config.
+ * handler (common on Chrome/Edge). Surfacing the address as text + a
+ * copy button guarantees the prospect can always reach us.
  */
 function EnterpriseEmailFallback() {
   const [copied, setCopied] = useState(false);
@@ -360,8 +356,6 @@ function EnterpriseEmailFallback() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback for older browsers without clipboard API: select a
-      // hidden input. Cheap enough to inline.
       const input = document.createElement("input");
       input.value = ENTERPRISE_EMAIL;
       document.body.appendChild(input);
@@ -373,12 +367,12 @@ function EnterpriseEmailFallback() {
     }
   }
   return (
-    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground border-t pt-3 mt-1">
+    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground border-t border-border pt-3 mt-1">
       <span className="font-mono truncate">{ENTERPRISE_EMAIL}</span>
       <button
         type="button"
         onClick={copyEmail}
-        className="inline-flex items-center gap-1 px-2 py-1 rounded border text-xs hover:bg-accent shrink-0"
+        className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border text-xs hover:bg-accent shrink-0"
         aria-label="Copy email address"
       >
         {copied ? <CheckIcon className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}

@@ -1,11 +1,28 @@
 /**
  * /about — company / mission / methodology overview.
+ *
+ * Visual language matches home.tsx: numbered report sections, hairline
+ * rules, instrument cells, no decorative icon-card grids.
  */
 import { Link } from "wouter";
-import {
-  Building2, Target, BookOpen, ShieldCheck, ArrowRight, Check, Sparkles,
-} from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
+import { Marker } from "../components/section-marker";
+
+const PRINCIPLES: Array<[string, string]> = [
+  ["Mission", "Cut the screening tax. Free PE hours for the work where engineering judgment actually matters."],
+  ["Methodology", "Every figure cited inline. ITE 11th Ed., HCM 6th Ed., MUTCD, AASHTO Green Book, FHWA."],
+  ["Defensibility", "Screening-grade outputs ship with explicit limitations and assumption appendices on every report."],
+];
+
+const ENGINES: Array<{ title: string; tag: string; body: string }> = [
+  { title: "Traffic Impact Study", tag: "ITE · HCM", body: "Trip generation, capacity, recommended mitigations." },
+  { title: "Parking Demand", tag: "ITE PG", body: "Code-min vs. ITE-adjusted demand vs. proposed supply." },
+  { title: "Signal Warrants", tag: "MUTCD Ch. 4C", body: "Warrants 1A, 1B, 3, 7 against your 24-hr volume profile." },
+  { title: "Sight Distance", tag: "AASHTO", body: "Stopping + intersection sight distance per Green Book." },
+  { title: "Queuing", tag: "HCM Ch. 31", body: "95th-percentile back-of-queue, storage adequacy check." },
+  { title: "Road-Diet", tag: "FHWA", body: "Capacity + safety feasibility for road-diet conversions." },
+];
 
 export default function AboutPage() {
   return (
@@ -17,8 +34,7 @@ export default function AboutPage() {
         />
         <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-12 space-y-6">
           <div className="space-y-2">
-            <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              <Building2 className="w-3.5 h-3.5" />
+            <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
               About
             </div>
             <div className="h-px w-full bg-border" />
@@ -39,103 +55,83 @@ export default function AboutPage() {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-20 space-y-20">
-        <section className="grid md:grid-cols-3 gap-4">
-          <Tile icon={Target} title="Mission">
-            Cut the screening tax. Free PE hours for the work where
-            engineering judgment actually matters.
-          </Tile>
-          <Tile icon={BookOpen} title="Methodology">
-            Every figure cited inline. ITE 11th Ed., HCM 6th Ed., MUTCD,
-            AASHTO Green Book, FHWA.
-          </Tile>
-          <Tile icon={ShieldCheck} title="Defensibility">
-            Screening-grade outputs come with explicit limitations and
-            assumption appendices on every report.
-          </Tile>
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-20 space-y-20">
+        <section>
+          <Marker n="01" label="What we stand on" />
+          <div className="grid sm:grid-cols-3 gap-px bg-border border border-border">
+            {PRINCIPLES.map(([title, body]) => (
+              <div key={title} className="bg-background p-5 space-y-2">
+                <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-blue-700">
+                  {title}
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">{body}</p>
+              </div>
+            ))}
+          </div>
         </section>
 
-        <section className="space-y-5">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
-              The shipping list
-            </div>
-            <h2 className="text-3xl font-bold tracking-tight">What we ship</h2>
-            <p className="text-muted-foreground text-lg leading-relaxed">
-              Six screening engines that engineers actually use day-to-day:
-            </p>
+        <section>
+          <Marker n="02" label="What we ship" />
+          <h2 className="text-3xl font-bold tracking-tight">
+            Six screening engines.
+          </h2>
+          <p className="text-muted-foreground text-lg leading-relaxed mt-2">
+            The studies engineers actually run day-to-day:
+          </p>
+          <div className="grid sm:grid-cols-2 gap-px bg-border border border-border mt-7">
+            {ENGINES.map((e) => (
+              <div key={e.title} className="bg-background p-5 space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-semibold text-sm">{e.title}</div>
+                  <div className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                    {e.tag}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">{e.body}</p>
+              </div>
+            ))}
           </div>
-          <ul className="grid sm:grid-cols-2 gap-3 pt-2">
-            <EngineCard
-              title="Traffic Impact Study"
-              tag="ITE · HCM"
-              body="Trip generation, capacity, recommended mitigations."
-            />
-            <EngineCard
-              title="Parking Demand"
-              tag="ITE PG"
-              body="Code-min vs. ITE-adjusted demand vs. proposed supply."
-            />
-            <EngineCard
-              title="Signal Warrants"
-              tag="MUTCD Ch. 4C"
-              body="Warrants 1A, 1B, 3, 7 against your 24-hr volume profile."
-            />
-            <EngineCard
-              title="Sight Distance"
-              tag="AASHTO"
-              body="Stopping + intersection sight distance per Green Book."
-            />
-            <EngineCard
-              title="Queuing"
-              tag="HCM Ch. 31"
-              body="95th-percentile back-of-queue, storage adequacy check."
-            />
-            <EngineCard
-              title="Road-Diet"
-              tag="FHWA"
-              body="Capacity + safety feasibility for road-diet conversions."
-            />
-          </ul>
-          <p className="text-muted-foreground leading-relaxed pt-3">
-            Plus a <strong className="text-foreground">post-build verification SKU</strong>{" "}
+          <p className="text-muted-foreground leading-relaxed mt-5">
+            Plus a{" "}
+            <strong className="text-foreground">post-build verification SKU</strong>{" "}
             that tracks observed traffic against your original forecast using
             live GDOT 511 data — months after the development opens.
           </p>
         </section>
 
-        <section className="rounded-2xl border border-border bg-muted/30 p-8 space-y-3">
-          <h2 className="text-2xl font-bold tracking-tight">What we won't do</h2>
-          <p className="text-muted-foreground leading-relaxed">
-            We won't pretend a screening tool is a substitute for a licensed
-            PE running full-rigor analytical software. Every deliverable
-            carries a "not for design submittal without independent
-            verification" footer. The product is built to free up PE hours,
-            not to replace PE judgment.
-          </p>
-          <p className="text-muted-foreground leading-relaxed text-sm pt-1">
-            See the{" "}
-            <Link href="/legal/disclaimer" className="text-blue-700 hover:underline">
-              Engineering Disclaimer
-            </Link>{" "}
-            for the full scope of what the Service does and does not provide.
-          </p>
+        <section>
+          <Marker n="03" label="What we won't do" />
+          <div className="border-l-2 border-blue-600 pl-5 space-y-3">
+            <p className="text-muted-foreground leading-relaxed">
+              We won't pretend a screening tool is a substitute for a
+              licensed PE running full-rigor analytical software. Every
+              deliverable carries a "not for design submittal without
+              independent verification" footer. The product is built to free
+              up PE hours, not to replace PE judgment.
+            </p>
+            <p className="text-muted-foreground leading-relaxed text-sm">
+              See the{" "}
+              <Link href="/legal/disclaimer" className="text-blue-700 hover:underline">
+                Engineering Disclaimer
+              </Link>{" "}
+              for the full scope of what the Service does and does not provide.
+            </p>
+          </div>
         </section>
 
-        <section className="text-center space-y-5 pt-4">
-          <Sparkles className="w-10 h-10 text-blue-700 mx-auto" />
-          <h2 className="text-3xl font-bold tracking-tight">
+        <section className="border border-border bg-slate-50 dark:bg-slate-950/40 px-6 sm:px-10 py-10 space-y-4">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
             Try it on a real project.
           </h2>
-          <p className="text-muted-foreground text-lg leading-relaxed">
+          <p className="text-muted-foreground leading-relaxed">
             10 free studies on signup, no credit card. Run them on actual
             upcoming sites alongside your own analysis — tell us where the
             numbers diverge.
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+          <div className="flex flex-wrap items-center gap-3 pt-1">
             <Link
               href="/signup?plan=growth"
-              className="group inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all shadow-sm"
+              className="group inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
             >
               Start trial
               <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
@@ -152,35 +148,5 @@ export default function AboutPage() {
 
       <SiteFooter />
     </div>
-  );
-}
-
-function Tile({
-  icon: Icon, title, children,
-}: { icon: typeof Target; title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-border bg-background p-5 space-y-3 transition-all hover:border-foreground/20 hover:shadow-sm">
-      <div className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700">
-        <Icon className="w-4.5 h-4.5" />
-      </div>
-      <div className="font-semibold tracking-tight">{title}</div>
-      <p className="text-sm text-muted-foreground leading-relaxed">{children}</p>
-    </div>
-  );
-}
-
-function EngineCard({
-  title, tag, body,
-}: { title: string; tag: string; body: string }) {
-  return (
-    <li className="rounded-xl border border-border bg-background p-4 space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <div className="font-semibold text-sm">{title}</div>
-        <div className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-          {tag}
-        </div>
-      </div>
-      <p className="text-xs text-muted-foreground leading-relaxed">{body}</p>
-    </li>
   );
 }

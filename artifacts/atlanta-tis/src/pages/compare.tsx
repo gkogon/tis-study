@@ -1,24 +1,19 @@
 /**
  * Public /compare page. Direct competitive positioning against the
- * three real substitutes:
- *
- *   1. Outsourced consultants — "we'll hire a sub to do screening"
- *   2. Synchro Studio (Cubic Trafficware) — desktop incumbent
- *   3. PTV Vistro / Visum — premium desktop incumbent
- *
- * Goal: a prospect who's quoting Synchro, considering outsourcing,
- * or weighing a Vistro license should leave this page with the
- * substitute-cost argument firmly in mind.
+ * three real substitutes: outsourced consultants, Synchro Studio, and
+ * PTV Vistro / Visum.
  *
  * Honest framing: we're a screening tool, not a Synchro replacement.
  * The page makes that explicit so a senior PE doesn't read it as
  * overreach.
+ *
+ * Visual language matches home.tsx: numbered report sections, hairline
+ * rules, plain-bordered tables.
  */
 import { Link } from "wouter";
-import {
-  ArrowRight, Check, X, Minus, Scale, Sparkles,
-} from "lucide-react";
+import { ArrowRight, Check, X, Minus } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
+import { Marker } from "../components/section-marker";
 
 type Verdict = "yes" | "no" | "partial";
 
@@ -120,180 +115,172 @@ const PRICE_COMPARE = [
   { who: "Simple Impact Studies — Growth", cost: "$2,499", unit: "firm-wide, monthly · 30 studies · unlimited seats", highlight: true },
 ];
 
+const PIPELINE: Array<{ label: string; highlight?: boolean }> = [
+  { label: "Site comes in — RFP or kickoff" },
+  { label: "Run Simple Impact Studies screening", highlight: true },
+  { label: "Decide: kill, escalate, or design" },
+  { label: "If design: Synchro / Vistro full model" },
+];
+
 export default function ComparePage() {
   return (
     <div className="overflow-x-hidden">
       <div className="relative">
         <div
           aria-hidden
-          className="absolute inset-x-0 top-0 -z-10 h-[400px] bg-gradient-to-b from-slate-100/80 via-background to-background dark:from-slate-900/30"
+          className="absolute inset-x-0 top-0 -z-10 h-[360px] bg-gradient-to-b from-slate-100/80 via-background to-background dark:from-slate-900/30"
         />
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-12 space-y-6 text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 dark:bg-slate-100 border border-slate-900 dark:border-slate-100 text-xs font-medium text-white dark:text-slate-900">
-            <Scale className="w-3.5 h-3.5" />
-            How we compare
-          </div>
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.05] tracking-tight text-slate-900 dark:text-slate-50 max-w-3xl mx-auto">
-            For screening,
-            <br />
-            <span className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              we beat the alternatives.
-            </span>
-          </h1>
-          <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-3xl mx-auto">
-            We're not a Synchro or Vistro replacement for design submittals.
-            We're the screening tool you use before those tools — the one
-            that picks which sites are worth modeling in the first place.
-          </p>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-10">
+          <section className="max-w-3xl space-y-6">
+            <div className="space-y-2">
+              <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                How we compare
+              </div>
+              <div className="h-px w-full bg-border" />
+            </div>
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.04] text-slate-900 dark:text-slate-50">
+              For screening, we beat the alternatives.
+            </h1>
+            <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
+              We're not a Synchro or Vistro replacement for design
+              submittals. We're the screening tool you use before those
+              tools — the one that picks which sites are worth modeling in
+              the first place.
+            </p>
+          </section>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16 space-y-20">
-
-        <section className="space-y-6">
-          <div className="text-center max-w-2xl mx-auto space-y-2">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
-              Feature comparison
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-              Feature-by-feature, head to head.
-            </h2>
-          </div>
-
-          <div className="rounded-2xl border border-border overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[640px]">
-                <thead className="bg-slate-50 dark:bg-slate-950/40 border-b border-border">
-                  <tr>
-                    <th className="text-left px-4 py-3 font-semibold w-[36%]">Feature</th>
-                    <th className="text-center px-4 py-3 font-semibold bg-blue-50 dark:bg-blue-950/30 border-x border-blue-200 dark:border-blue-900 w-[16%]">
-                      Simple Impact Studies
-                    </th>
-                    <th className="text-center px-4 py-3 font-semibold text-muted-foreground w-[16%]">Synchro</th>
-                    <th className="text-center px-4 py-3 font-semibold text-muted-foreground w-[16%]">PTV Vistro</th>
-                    <th className="text-center px-4 py-3 font-semibold text-muted-foreground w-[16%]">Outsourced sub</th>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-20 space-y-20">
+        <section>
+          <Marker n="01" label="Feature comparison" />
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50 mb-6">
+            Feature-by-feature, head to head.
+          </h2>
+          <div className="border border-border overflow-x-auto">
+            <table className="w-full text-sm min-w-[640px]">
+              <thead className="bg-slate-50 dark:bg-slate-950/40 border-b border-border">
+                <tr>
+                  <th className="text-left px-4 py-3 font-semibold w-[36%]">Feature</th>
+                  <th className="text-center px-4 py-3 font-semibold bg-blue-50 dark:bg-blue-950/30 border-x border-border w-[16%]">
+                    Simple Impact Studies
+                  </th>
+                  <th className="text-center px-4 py-3 font-semibold text-muted-foreground w-[16%]">Synchro</th>
+                  <th className="text-center px-4 py-3 font-semibold text-muted-foreground w-[16%]">PTV Vistro</th>
+                  <th className="text-center px-4 py-3 font-semibold text-muted-foreground w-[16%]">Outsourced sub</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ROWS.map((row) => (
+                  <tr key={row.feature} className="border-b border-border last:border-0">
+                    <td className="px-4 py-3 font-medium align-top">{row.feature}</td>
+                    <Cell entry={row.us} highlight />
+                    <Cell entry={row.synchro} />
+                    <Cell entry={row.vistro} />
+                    <Cell entry={row.outsourced} />
                   </tr>
-                </thead>
-                <tbody>
-                  {ROWS.map((row) => (
-                    <tr key={row.feature} className="border-b border-border last:border-0">
-                      <td className="px-4 py-3 font-medium align-top">{row.feature}</td>
-                      <Cell entry={row.us} highlight />
-                      <Cell entry={row.synchro} />
-                      <Cell entry={row.vistro} />
-                      <Cell entry={row.outsourced} />
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
-
-          <p className="text-xs text-muted-foreground text-center max-w-2xl mx-auto leading-relaxed">
+          <p className="text-xs text-muted-foreground leading-relaxed mt-3 max-w-2xl">
             Verdict reflects the marketed scope of the off-the-shelf product
-            at standard tier — not what a power user can custom-build.
-            We've intentionally checked "no" against ourselves on
-            design-grade modeling so this comparison doesn't oversell.
+            at standard tier — not what a power user can custom-build. We've
+            intentionally checked "no" against ourselves on design-grade
+            modeling so this comparison doesn't oversell.
           </p>
         </section>
 
-        <section className="space-y-6">
-          <div className="text-center max-w-2xl mx-auto space-y-2">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
-              Price comparison
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-              Cost of one alternative, per year of us.
-            </h2>
-            <p className="text-muted-foreground text-lg pt-1">
-              Real published prices where the vendor lists them; midpoint
-              range where they only quote.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-border overflow-hidden">
-            <ul className="divide-y divide-border">
-              {PRICE_COMPARE.map((row) => (
-                <li
-                  key={row.who}
-                  className={
-                    "px-6 py-4 flex flex-wrap items-center justify-between gap-3 " +
-                    (row.highlight ? "bg-blue-50/60 dark:bg-blue-950/20" : "")
-                  }
-                >
-                  <div>
-                    <div className={`font-semibold ${row.highlight ? "text-blue-700" : "text-slate-900 dark:text-slate-100"}`}>
-                      {row.who}
-                    </div>
-                    <div className="text-xs text-muted-foreground">{row.unit}</div>
+        <section>
+          <Marker n="02" label="Price comparison" />
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50 mb-2">
+            Cost of one alternative, per year of us.
+          </h2>
+          <p className="text-muted-foreground text-lg mb-6 max-w-2xl">
+            Real published prices where the vendor lists them; midpoint
+            range where they only quote.
+          </p>
+          <ul className="border border-border divide-y divide-border">
+            {PRICE_COMPARE.map((row) => (
+              <li
+                key={row.who}
+                className={
+                  "px-5 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3 " +
+                  (row.highlight ? "bg-blue-50/60 dark:bg-blue-950/20" : "")
+                }
+              >
+                <div>
+                  <div className={`font-semibold ${row.highlight ? "text-blue-700" : "text-slate-900 dark:text-slate-100"}`}>
+                    {row.who}
                   </div>
-                  <div className={`text-xl font-bold tabular-nums whitespace-nowrap ${row.highlight ? "text-blue-700" : "text-slate-900 dark:text-slate-100"}`}>
-                    {row.cost}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <p className="text-xs text-muted-foreground text-center max-w-2xl mx-auto leading-relaxed">
-            Sources: published vendor price sheets (Caliper, McTrans),
-            leaked enterprise quotes (PDF4PRO), and consultant rate
-            benchmarks from the Atlanta civil-engineering market (eng-tips,
-            Salary.com 2025).
+                  <div className="text-xs text-muted-foreground font-mono">{row.unit}</div>
+                </div>
+                <div className={`font-mono text-xl font-bold tabular-nums whitespace-nowrap ${row.highlight ? "text-blue-700" : "text-slate-900 dark:text-slate-100"}`}>
+                  {row.cost}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-muted-foreground leading-relaxed mt-3 max-w-2xl">
+            Sources: published vendor price sheets (Caliper, McTrans), leaked
+            enterprise quotes (PDF4PRO), and consultant rate benchmarks from
+            the Atlanta civil-engineering market (eng-tips, Salary.com 2025).
           </p>
         </section>
 
-        <section className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white px-6 sm:px-12 py-12 sm:py-16 overflow-hidden relative">
-          <div
-            aria-hidden
-            className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-blue-600/20 blur-3xl pointer-events-none"
-          />
-          <div className="relative grid lg:grid-cols-12 gap-8 items-center">
-            <div className="lg:col-span-7 space-y-4">
-              <div className="text-xs font-semibold uppercase tracking-widest text-blue-300">
-                Honest about scope
-              </div>
-              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+        <section>
+          <Marker n="03" label="Where we fit" />
+          <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-start">
+            <div className="lg:col-span-6 space-y-4">
+              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
                 Use us first. Use them when the project demands it.
               </h2>
-              <p className="text-slate-300 text-lg leading-relaxed">
+              <p className="text-muted-foreground text-lg leading-relaxed">
                 Most firms screen 20 sites for every 1 they take to
-                full-fidelity Synchro or Vistro modeling. The screening
-                step is where you spend a junior PE's week deciding "is
-                this even worth modeling?" — that's the work we take to
-                60 seconds.
+                full-fidelity Synchro or Vistro modeling. The screening step
+                is where you spend a junior PE's week deciding "is this even
+                worth modeling?" — that's the work we take to 60 seconds.
               </p>
-              <p className="text-slate-400 text-sm leading-relaxed">
-                When a site clears screening and you need a full signal
-                timing optimization, microsimulation, or a design-grade
-                submittal — that's where Synchro / Vistro / SimTraffic
-                earn their cost. We complement those tools; we don't
-                replace them.
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                When a site clears screening and you need full signal-timing
+                optimization, microsimulation, or a design-grade submittal —
+                that's where Synchro / Vistro / SimTraffic earn their cost.
+                We complement those tools; we don't replace them.
               </p>
             </div>
-            <div className="lg:col-span-5 space-y-3">
-              <FlowStep n={1} label="Site comes in (RFP / kickoff)" />
-              <FlowStep n={2} label="Run Simple Impact Studies screening" highlight />
-              <FlowStep n={3} label="Decide: kill, escalate, or design?" />
-              <FlowStep n={4} label="If design: Synchro / Vistro full model" />
+            <div className="lg:col-span-6">
+              <div className="border-y border-border divide-y divide-border">
+                {PIPELINE.map((step, i) => (
+                  <div
+                    key={i}
+                    className={"flex items-center gap-4 py-4 " + (step.highlight ? "bg-blue-50/60 dark:bg-blue-950/20 -mx-4 px-4" : "")}
+                  >
+                    <span className={`font-mono text-sm tabular-nums font-semibold ${step.highlight ? "text-blue-700" : "text-muted-foreground"}`}>
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <span className={`text-sm ${step.highlight ? "font-semibold text-slate-900 dark:text-slate-100" : "text-muted-foreground"}`}>
+                      {step.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </section>
 
-        <section className="text-center max-w-3xl mx-auto space-y-6">
-          <Sparkles className="w-10 h-10 text-blue-700 mx-auto" />
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+        <section className="border border-border bg-slate-50 dark:bg-slate-950/40 px-6 sm:px-10 py-10 space-y-4">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             Try it on a real project this week.
           </h2>
-          <p className="text-muted-foreground text-lg leading-relaxed">
+          <p className="text-muted-foreground leading-relaxed max-w-xl">
             Ten free studies on signup, no credit card. Run them alongside
             your current screening workflow — tell us where the numbers
             diverge.
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+          <div className="flex flex-wrap items-center gap-3 pt-1">
             <Link
               href="/signup?plan=growth"
-              className="group inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all shadow-sm"
+              className="group inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
             >
               Start 14-day trial
               <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
@@ -325,7 +312,7 @@ function Cell({
     entry.v === "no" ? "text-red-600 dark:text-red-400" :
     "text-amber-600 dark:text-amber-400";
   return (
-    <td className={`px-4 py-3 text-center align-top ${highlight ? "bg-blue-50/60 dark:bg-blue-950/15 border-x border-blue-200 dark:border-blue-900" : ""}`}>
+    <td className={`px-4 py-3 text-center align-top ${highlight ? "bg-blue-50/60 dark:bg-blue-950/15 border-x border-border" : ""}`}>
       <div className="flex flex-col items-center gap-1">
         <Icon className={`w-5 h-5 ${color}`} />
         {entry.note && (
@@ -335,27 +322,5 @@ function Cell({
         )}
       </div>
     </td>
-  );
-}
-
-function FlowStep({
-  n, label, highlight,
-}: { n: number; label: string; highlight?: boolean }) {
-  return (
-    <div
-      className={
-        "flex items-center gap-3 rounded-lg p-3 " +
-        (highlight
-          ? "bg-blue-600/20 border border-blue-400/30"
-          : "bg-white/5 border border-white/10")
-      }
-    >
-      <span className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center shrink-0 ${highlight ? "bg-blue-300 text-slate-900" : "bg-white/15 text-white"}`}>
-        {n}
-      </span>
-      <span className={`text-sm ${highlight ? "font-semibold text-white" : "text-slate-300"}`}>
-        {label}
-      </span>
-    </div>
   );
 }

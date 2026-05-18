@@ -2,31 +2,22 @@
  * Public landing page. Pitches Simple Impact Studies to engineering
  * firms (the customer) and PEs at those firms (the user).
  *
- * Three layers of CTAs route into the same funnel:
- *   - Hero primary  → /signup (14-day trial)
- *   - Hero secondary→ /studies (browse without signup)
- *   - Final CTA     → /signup (mirror of hero, reinforces)
- *
- * Visual language: Stripe / Linear inspired — strong typography,
- * generous whitespace, a product preview that shows what the
- * deliverable actually looks like instead of describing it.
+ * Visual language: a drawing set / instrument panel, not a SaaS
+ * template. Sections are numbered like a report (§01–§06), separated
+ * by hairline rules. Floating decorative cards are reserved for the
+ * two things that ARE documents — the deliverable preview and the
+ * sample footnote — everything else is hairline-divided cells.
  */
 import { Link } from "wouter";
-import {
-  ArrowRight, FileCheck2, ShieldCheck, Clock, Layers,
-  MapPin, BookOpen, Check, Sparkles, Building2, FileText, ChevronRight,
-  TrendingUp, DollarSign, Hourglass, Zap,
-} from "lucide-react";
+import { ArrowRight, Check, FileText, BookOpen } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 import { AtlantaLiveStatus } from "../components/atlanta-live-status";
 import { CalibrationActivity } from "../components/calibration-activity";
+import { Marker, LosScaleStrip } from "../components/section-marker";
 
 export default function HomePage() {
   return (
     <div className="overflow-x-hidden">
-      {/* Background — a subtle slate wash behind the hero so the page
-          doesn't feel flat. Cool neutral, not the default-blue glow that
-          reads as "another startup landing page." */}
       <div className="relative">
         <div
           aria-hidden
@@ -35,25 +26,26 @@ export default function HomePage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-10">
           <HeroSection />
         </div>
-        {/* Live calibration counter — placed right under the hero so
-            every visitor sees the algorithm working without scrolling.
-            Renders nothing until the endpoint returns real data. */}
         <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-14 flex justify-center">
           <CalibrationActivity />
         </div>
       </div>
 
       <StatsBand />
-      <RoiSection />
-      <CapacitySection />
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 space-y-24">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20 space-y-20">
+        <EconomicsSection />
+        <CapacitySection />
         <AtlantaLiveStatus />
-        <PillarsSection />
+        <DeliverableSection />
         <WorkflowSection />
         <MethodologySection />
-        <SpeedExplainerSection />
-        <SubstituteCostSection />
+        <SpeedSection />
+      </div>
+
+      <SubstituteCostBand />
+
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20">
         <FinalCta />
       </div>
 
@@ -66,8 +58,6 @@ function HeroSection() {
   return (
     <section className="grid lg:grid-cols-12 gap-10 lg:gap-12 items-center">
       <div className="lg:col-span-7 space-y-7">
-        {/* Monospace eyebrow over a hairline rule — reads like the title
-            block of a drawing set, not a marketing pill. */}
         <div className="space-y-2">
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -77,9 +67,6 @@ function HeroSection() {
         </div>
         <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-[60px] font-bold leading-[1.04] text-slate-900 dark:text-slate-50">
           A screening TIS shouldn't take{" "}
-          {/* Highlighter swipe — the way an engineer marks the line that
-              matters on a plan sheet. box-decoration-clone keeps the
-              highlight intact across a line wrap. */}
           <span className="bg-amber-300 dark:bg-amber-400/90 dark:text-slate-900 box-decoration-clone px-1.5 -mx-0.5">
             a week.
           </span>
@@ -92,10 +79,9 @@ function HeroSection() {
         <div className="flex flex-wrap items-center gap-3 pt-1">
           <Link
             href="/demo"
-            className="group inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all shadow-sm hover:shadow"
+            className="group inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
             data-testid="link-demo"
           >
-            <Sparkles className="w-4 h-4" />
             Try a live demo
             <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
           </Link>
@@ -138,70 +124,55 @@ function HeroSection() {
 }
 
 /**
- * Faux deliverable preview — what an engineer actually receives.
- * Pure CSS / HTML so we don't need an image asset and it scales
- * cleanly. The numbers + intersection rows are realistic-but-fake
- * (drawn from a generic Atlanta multifamily site so they pass
- * sniff tests from a real PE).
+ * Faux deliverable preview — what an engineer actually receives. One of
+ * the two earned "cards" on the page: it depicts a document.
  */
 function ProductPreview() {
   return (
-    <div className="relative">
-      {/* Decorative glow behind the card */}
-      <div
-        aria-hidden
-        className="absolute -inset-4 bg-gradient-to-br from-blue-500/15 to-transparent blur-2xl -z-10"
-      />
-      <div className="rounded-2xl border border-border bg-background shadow-2xl overflow-hidden">
-        {/* Card header — looks like a project chrome */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/30">
-          <div className="flex items-center gap-2 text-xs">
-            <FileText className="w-4 h-4 text-blue-700" />
-            <span className="font-mono text-muted-foreground">TIS-2026-0429</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-            Live preview
-          </div>
+    <div className="rounded-lg border border-border bg-background shadow-lg overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/40">
+        <div className="flex items-center gap-2 text-xs">
+          <FileText className="w-4 h-4 text-blue-700" />
+          <span className="font-mono text-muted-foreground">TIS-2026-0429</span>
         </div>
+        <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+          Live preview
+        </div>
+      </div>
 
-        {/* Project header */}
-        <div className="px-5 py-4 border-b border-border space-y-1">
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-blue-700">
-            Traffic Impact Study
-          </div>
-          <div className="text-lg font-bold">Peachtree Multifamily — 240 DU</div>
-          <div className="text-xs text-muted-foreground">
-            ITE 221 · Atlanta MSA · Opening year 2027
-          </div>
+      <div className="px-5 py-4 border-b border-border space-y-1">
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-blue-700">
+          Traffic Impact Study
         </div>
+        <div className="text-lg font-bold">Peachtree Multifamily — 240 DU</div>
+        <div className="text-xs text-muted-foreground font-mono">
+          ITE 221 · Atlanta MSA · Opening year 2027
+        </div>
+      </div>
 
-        {/* Metric tiles */}
-        <div className="grid grid-cols-4 divide-x divide-border border-b border-border">
-          <MetricTile value="49" label="Intersections" />
-          <MetricTile value="9" label="LOS E/F" tone="warn" />
-          <MetricTile value="0" label="LOS drops" tone="good" />
-          <MetricTile value="0.6s" label="Δ delay" />
-        </div>
+      <div className="grid grid-cols-4 divide-x divide-border border-b border-border">
+        <MetricTile value="49" label="Intersections" />
+        <MetricTile value="9" label="LOS E/F" tone="warn" />
+        <MetricTile value="0" label="LOS drops" tone="good" />
+        <MetricTile value="0.6s" label="Δ delay" />
+      </div>
 
-        {/* Mini intersections table */}
-        <div className="px-5 py-4 space-y-2">
-          <div className="grid grid-cols-12 gap-2 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-            <div className="col-span-6">Signal</div>
-            <div className="col-span-2 text-center">Existing</div>
-            <div className="col-span-2 text-center">Future</div>
-            <div className="col-span-2 text-right">Δ delay</div>
-          </div>
-          <IntersectionRow name="Peachtree & 5th" existing="C" future="C" delta="6.8s" />
-          <IntersectionRow name="Spring & North Ave" existing="D" future="E" delta="23.4s" alert />
-          <IntersectionRow name="W Peachtree & 14th" existing="F" future="F" delta="11.8s" />
-          <IntersectionRow name="Crescent & 8th" existing="B" future="C" delta="4.1s" />
+      <div className="px-5 py-4 space-y-2">
+        <div className="grid grid-cols-12 gap-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          <div className="col-span-6">Signal</div>
+          <div className="col-span-2 text-center">Existing</div>
+          <div className="col-span-2 text-center">Future</div>
+          <div className="col-span-2 text-right">Δ delay</div>
         </div>
+        <IntersectionRow name="Peachtree & 5th" existing="C" future="C" delta="6.8s" />
+        <IntersectionRow name="Spring & North Ave" existing="D" future="E" delta="23.4s" alert />
+        <IntersectionRow name="W Peachtree & 14th" existing="F" future="F" delta="11.8s" />
+        <IntersectionRow name="Crescent & 8th" existing="B" future="C" delta="4.1s" />
+      </div>
 
-        {/* Footnote */}
-        <div className="px-5 py-3 border-t border-border bg-muted/30 text-[10px] text-muted-foreground font-mono leading-relaxed">
-          Per HCM 6th Ed. Ch.19 Exhibit 19-8: A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F &gt;80s
-        </div>
+      <div className="px-5 py-3 border-t border-border bg-muted/40 text-[10px] text-muted-foreground font-mono leading-relaxed">
+        Per HCM 6th Ed. Ch.19 Exhibit 19-8: A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F &gt;80s
       </div>
     </div>
   );
@@ -216,7 +187,7 @@ function MetricTile({
     "text-foreground";
   return (
     <div className="px-3 py-3 text-center">
-      <div className={`text-xl font-bold tabular-nums ${valueColor}`}>{value}</div>
+      <div className={`font-mono text-xl font-bold tabular-nums ${valueColor}`}>{value}</div>
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">
         {label}
       </div>
@@ -256,30 +227,6 @@ function IntersectionRow({
   );
 }
 
-/**
- * The LOS A–F color scale, rendered as a thin strip. This is the
- * traffic-engineer's native color language (HCM Exhibit 19-8) — using
- * it as a recurring brand motif is something no generic SaaS template
- * does, and every PE reads it instantly.
- */
-function LosScaleStrip() {
-  const grades: Array<{ g: string; c: string }> = [
-    { g: "A", c: "bg-green-500" },
-    { g: "B", c: "bg-green-500" },
-    { g: "C", c: "bg-amber-400" },
-    { g: "D", c: "bg-amber-500" },
-    { g: "E", c: "bg-red-500" },
-    { g: "F", c: "bg-red-600" },
-  ];
-  return (
-    <div className="flex items-stretch h-1.5 w-full" aria-hidden>
-      {grades.map((x, i) => (
-        <div key={i} className={`flex-1 ${x.c}`} />
-      ))}
-    </div>
-  );
-}
-
 function StatsBand() {
   return (
     <section className="border-y border-border bg-slate-50 dark:bg-slate-950/40">
@@ -294,9 +241,7 @@ function StatsBand() {
   );
 }
 
-function BigStat({
-  value, label, sub,
-}: { value: string; label: string; sub?: string }) {
+function BigStat({ value, label, sub }: { value: string; label: string; sub?: string }) {
   return (
     <div className="bg-slate-50 dark:bg-slate-950/40 px-3 py-2 space-y-1.5">
       <div className="font-mono text-4xl sm:text-5xl font-semibold tabular-nums tracking-tight text-slate-900 dark:text-slate-50">
@@ -308,25 +253,15 @@ function BigStat({
   );
 }
 
-/**
- * Concrete ROI math the buyer can mentally re-do. Three columns of
- * monthly volume → wage savings, with the subscription cost baked in
- * so the multiple is obvious. Methodology footnote makes the
- * assumptions explicit so a skeptical PE can challenge them.
- */
-function RoiSection() {
+/* ----- §01 — The economics --------------------------------------------- */
+function EconomicsSection() {
   return (
-    <section className="max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-24">
+    <section>
+      <Marker n="01" label="The economics" />
       <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-start">
         <div className="lg:col-span-5 space-y-5">
-          <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
-            <TrendingUp className="w-3.5 h-3.5" />
-            The math
-          </div>
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-            Pays for itself on
-            <br />
-            <span className="text-blue-700">day one.</span>
+            It pays for itself on the first study.
           </h2>
           <p className="text-muted-foreground text-lg leading-relaxed">
             A junior PE bills 20 to 60 hours on a screening TIS. At a
@@ -335,77 +270,37 @@ function RoiSection() {
             per study. When the screening takes a minute, those hours go
             back on the billable board.
           </p>
-          <div className="text-sm text-muted-foreground leading-relaxed pt-1 border-l-2 border-slate-300 dark:border-slate-700 pl-3">
-            You already bill clients for screening work. As a proposal
+          <p className="text-sm text-muted-foreground leading-relaxed border-l-2 border-blue-600 pl-4">
+            You already bill clients for screening work — as a proposal
             line item, or as hours against the project. When that work
             takes a minute instead of a week, the hours stop being cost.
             They become margin.
-          </div>
+          </p>
         </div>
-        <div className="lg:col-span-7">
-          <div className="rounded-2xl border border-border bg-background overflow-hidden shadow-sm">
-            <div className="px-6 py-4 border-b border-border bg-slate-50 dark:bg-slate-900/40 flex items-center justify-between flex-wrap gap-2">
-              <div className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+
+        <div className="lg:col-span-7 space-y-4">
+          <div className="border border-border overflow-hidden">
+            <div className="px-5 py-3 border-b border-border bg-slate-50 dark:bg-slate-900/40 flex items-center justify-between flex-wrap gap-2">
+              <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                 Wage savings, by plan
-              </div>
-              <div className="text-[10px] font-mono text-muted-foreground">
-                40 hrs/study × $125/hr blended
-              </div>
+              </span>
+              <span className="font-mono text-[10px] text-muted-foreground">
+                40 hrs/study × $125/hr
+              </span>
             </div>
             <div className="divide-y divide-border">
-              <RoiRow
-                plan="Starter"
-                volume="10 studies / mo"
-                subscription="$599 / mo"
-                savings="$50,000"
-                multiple="83×"
-              />
-              <RoiRow
-                plan="Growth"
-                volume="30 studies / mo"
-                subscription="$2,499 / mo"
-                savings="$150,000"
-                multiple="60×"
-                highlight
-              />
-              <RoiRow
-                plan="Enterprise"
-                volume="170 studies / mo"
-                subscription="$12,750 / mo"
-                savings="$850,000"
-                multiple="67×"
-              />
-            </div>
-            <div className="px-6 py-4 border-t border-border bg-slate-50 dark:bg-slate-900/40 text-[11px] text-muted-foreground leading-relaxed">
-              Methodology: 40 hours saved per screening at $125/hr is the
-              midpoint of the ITE-typical 20–60 hr range and the 2026 Atlanta
-              metro junior-PE billable rate. Savings shown are gross labor
-              cost recovered — opportunity cost and proposal-win uplift not
-              included. Enterprise meter at $75/study, sized to the typical
-              high-volume firm's expected monthly run-rate.
+              <RoiRow plan="Starter" volume="10 studies / mo" subscription="$599 / mo" savings="$50,000" multiple="83×" />
+              <RoiRow plan="Growth" volume="30 studies / mo" subscription="$2,499 / mo" savings="$150,000" multiple="60×" highlight />
+              <RoiRow plan="Enterprise" volume="170 studies / mo" subscription="$12,750 / mo" savings="$850,000" multiple="67×" />
             </div>
           </div>
-
-          <div className="grid sm:grid-cols-3 gap-3 mt-5">
-            <RoiTile
-              icon={Hourglass}
-              value="1,200 hrs"
-              label="Engineer time freed / month"
-              sub="At 30 studies/mo on Growth"
-            />
-            <RoiTile
-              icon={DollarSign}
-              value="$1.8M / yr"
-              label="Wage savings at Growth cap"
-              sub="Vs. $30K annual subscription"
-            />
-            <RoiTile
-              icon={TrendingUp}
-              value="20–80×"
-              label="ROI range across plans"
-              sub="Subscription vs. recovered wages"
-            />
-          </div>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            Methodology: 40 hours saved per screening at $125/hr is the
+            midpoint of the ITE-typical 20–60 hr range and the 2026 Atlanta
+            metro junior-PE billable rate. Savings shown are gross labor
+            cost recovered — opportunity cost and proposal-win uplift not
+            included. Enterprise meter at $75/study.
+          </p>
         </div>
       </div>
     </section>
@@ -415,477 +310,324 @@ function RoiSection() {
 function RoiRow({
   plan, volume, subscription, savings, multiple, highlight,
 }: {
-  plan: string;
-  volume: string;
-  subscription: string;
-  savings: string;
-  multiple: string;
-  highlight?: boolean;
+  plan: string; volume: string; subscription: string;
+  savings: string; multiple: string; highlight?: boolean;
 }) {
   return (
-    <div
-      className={
-        "px-6 py-4 grid grid-cols-12 gap-3 items-center text-sm " +
-        (highlight ? "bg-blue-50/60 dark:bg-blue-950/20" : "")
-      }
-    >
-      <div className="col-span-3">
+    <div className={"px-5 py-4 grid grid-cols-12 gap-3 items-center text-sm " + (highlight ? "bg-blue-50/60 dark:bg-blue-950/20" : "")}>
+      <div className="col-span-4 sm:col-span-3">
         <div className={`font-semibold tracking-tight ${highlight ? "text-blue-700" : "text-slate-900 dark:text-slate-100"}`}>
           {plan}
         </div>
         <div className="text-xs text-muted-foreground">{volume}</div>
       </div>
-      <div className="col-span-3 text-xs text-muted-foreground tabular-nums">
+      <div className="col-span-3 hidden sm:block font-mono text-xs text-muted-foreground tabular-nums">
         {subscription}
       </div>
-      <div className="col-span-4 text-right">
-        <div className="font-bold tabular-nums text-slate-900 dark:text-slate-100">{savings}</div>
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Monthly wage savings
-        </div>
+      <div className="col-span-5 sm:col-span-4 text-right">
+        <div className="font-mono font-bold tabular-nums text-slate-900 dark:text-slate-100">{savings}</div>
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Monthly wage savings</div>
       </div>
-      <div className="col-span-2 text-right">
-        <div className="text-2xl font-bold tabular-nums text-blue-700">
-          {multiple}
-        </div>
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          ROI
-        </div>
+      <div className="col-span-3 sm:col-span-2 text-right">
+        <div className="font-mono text-2xl font-bold tabular-nums text-blue-700">{multiple}</div>
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">ROI</div>
       </div>
     </div>
   );
 }
 
-function RoiTile({
-  icon: Icon, value, label, sub,
-}: { icon: typeof Hourglass; value: string; label: string; sub: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-background p-4 space-y-2">
-      <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
-        <Icon className="w-4 h-4" />
-      </div>
-      <div className="text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-slate-100">
-        {value}
-      </div>
-      <div className="text-xs font-medium leading-snug">{label}</div>
-      <div className="text-[11px] text-muted-foreground leading-snug">{sub}</div>
-    </div>
-  );
-}
-
-/**
- * Capacity-uplift framing. The ROI section above sells cost savings;
- * this one sells revenue uplift — "you can now bid 4-6× more
- * projects than you could before." For a capacity-bottlenecked
- * engineering firm that's the bigger lever; cost savings show up on
- * the P&L, but throughput uplift shows up in the win-rate column.
- *
- * Numbers are conservative-but-defensible: pre-tool throughput
- * assumes a junior PE clears 1-2 screenings/month while juggling
- * other billable work (consistent with the 20-60 hour-per-study
- * range already on the page). Post-tool throughput is capped by the
- * Growth tier itself (30 studies/mo), so the multiple is honest.
- */
+/* ----- §02 — Capacity -------------------------------------------------- */
 function CapacitySection() {
   return (
-    <section className="max-w-6xl mx-auto px-4 sm:px-6 pb-20 sm:pb-24">
-      <div className="rounded-3xl border border-border bg-slate-50 dark:bg-slate-950/40 overflow-hidden">
-        <div className="px-6 sm:px-12 py-10 sm:py-14 space-y-10">
-          <div className="text-center max-w-2xl mx-auto space-y-3">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
-              <Zap className="w-3.5 h-3.5" />
-              Capacity unlocked
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-              Bid the work you{" "}
-              <span className="text-blue-700">currently turn down.</span>
-            </h2>
-            <p className="text-muted-foreground text-lg leading-relaxed pt-1">
-              Engineering firms don't run out of demand. They run out of
-              engineer-hours. Every screening that eats a junior PE's week
-              is a project the firm can't take on. Cut that screening to a
-              minute and the firm can chase work it used to turn away.
-            </p>
-          </div>
-
-          <div className="grid lg:grid-cols-12 gap-6 items-stretch">
-            <div className="lg:col-span-5">
-              <CapacityCard
-                tone="before"
-                eyebrow="Without the tool"
-                metric="4–8"
-                unit="screenings / mo"
-                detail="Per firm, junior-PE-time-bottlenecked. Each screening eats 20–60 hrs that compete with all other billable work."
-              />
-            </div>
-            <div className="lg:col-span-2 flex items-center justify-center">
-              <div className="text-3xl text-slate-400 dark:text-slate-600 hidden lg:block">
-                →
-              </div>
-              <div className="text-2xl text-slate-400 dark:text-slate-600 lg:hidden rotate-90 py-2">
-                →
-              </div>
-            </div>
-            <div className="lg:col-span-5">
-              <CapacityCard
-                tone="after"
-                eyebrow="With Simple Impact Studies"
-                metric="30+"
-                unit="screenings / mo"
-                detail="Per firm. Same engineer headcount. The bottleneck moves from internal capacity to inbound demand."
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-            <UpliftTile
-              icon={TrendingUp}
-              metric="4–6×"
-              label="More projects you can credibly bid"
-              sub="At constant engineer headcount"
-            />
-            <UpliftTile
-              icon={Hourglass}
-              metric="14,400 hrs"
-              label="Engineer time freed per year"
-              sub="At Growth cap of 30 studies/mo"
-            />
-            <UpliftTile
-              icon={DollarSign}
-              metric="$1.8M /yr"
-              label="In billable hours redirected"
-              sub="To real engineering work, not screenings"
-            />
-          </div>
-
-          <p className="text-[11px] text-center text-muted-foreground leading-relaxed pt-2 max-w-3xl mx-auto">
-            "Without the tool" baseline assumes 5 active engineers at the
-            firm and each junior PE clears one screening every 1–2 weeks
-            while handling other project work (consistent with the
-            published 20–60 hr-per-study range). "More projects bid"
-            multiple assumes win-rate stays constant — for most firms it
-            actually rises, because faster screenings let you respond to
-            developer RFPs ahead of slower competitors.
+    <section>
+      <Marker n="02" label="Capacity" />
+      <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-start">
+        <div className="lg:col-span-5 space-y-5">
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+            Bid the work you currently turn down.
+          </h2>
+          <p className="text-muted-foreground text-lg leading-relaxed">
+            Engineering firms don't run out of demand. They run out of
+            engineer-hours. Every screening that eats a junior PE's week
+            is a project the firm can't take on. Cut the screening to a
+            minute and the firm can chase work it used to turn away.
+          </p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            Baseline assumes 5 active engineers and each junior PE clears
+            one screening every 1–2 weeks alongside other project work.
+            "More projects bid" holds win-rate constant — for most firms
+            it rises, because faster screenings beat slower competitors to
+            the developer's RFP.
           </p>
         </div>
+
+        <div className="lg:col-span-7 space-y-5">
+          <div className="grid sm:grid-cols-[1fr_auto_1fr] gap-4 items-stretch">
+            <CapacityCell tone="before" eyebrow="Without the tool" metric="4–8" unit="screenings / mo" />
+            <div className="flex sm:flex-col items-center justify-center text-2xl text-slate-300 dark:text-slate-600 font-mono">
+              →
+            </div>
+            <CapacityCell tone="after" eyebrow="With Simple Impact Studies" metric="30+" unit="screenings / mo" />
+          </div>
+          <div className="grid grid-cols-3 gap-px bg-border border border-border">
+            <UpliftCell metric="4–6×" label="More projects you can bid" />
+            <UpliftCell metric="14,400" label="Engineer hrs freed / yr" />
+            <UpliftCell metric="$1.8M" label="Billable hours redirected / yr" />
+          </div>
+        </div>
       </div>
     </section>
   );
 }
 
-function CapacityCard({
-  tone, eyebrow, metric, unit, detail,
-}: {
-  tone: "before" | "after";
-  eyebrow: string;
-  metric: string;
-  unit: string;
-  detail: string;
-}) {
+function CapacityCell({
+  tone, eyebrow, metric, unit,
+}: { tone: "before" | "after"; eyebrow: string; metric: string; unit: string }) {
   const isAfter = tone === "after";
   return (
-    <div
-      className={
-        "h-full rounded-2xl p-6 sm:p-7 space-y-3 transition-all " +
-        (isAfter
-          ? "border-2 border-blue-700 bg-background shadow-md relative overflow-hidden"
-          : "border border-border bg-background/60")
-      }
-    >
-      {isAfter && (
-        <div
-          aria-hidden
-          className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-blue-600/10 blur-2xl pointer-events-none"
-        />
-      )}
-      <div className={`text-[11px] font-semibold uppercase tracking-widest ${isAfter ? "text-blue-700" : "text-muted-foreground"}`}>
+    <div className={"p-6 border " + (isAfter ? "border-blue-700 bg-blue-50/40 dark:bg-blue-950/20" : "border-border bg-background")}>
+      <div className={`font-mono text-[10px] uppercase tracking-[0.16em] ${isAfter ? "text-blue-700" : "text-muted-foreground"}`}>
         {eyebrow}
       </div>
-      <div className="flex items-baseline gap-2">
-        <span
-          className={
-            "text-5xl sm:text-6xl font-bold tabular-nums tracking-tight " +
-            (isAfter
-              ? "text-blue-700"
-              : "text-slate-700 dark:text-slate-400")
-          }
-        >
+      <div className="flex items-baseline gap-2 mt-3">
+        <span className={`font-mono text-5xl font-bold tabular-nums tracking-tight ${isAfter ? "text-blue-700" : "text-slate-700 dark:text-slate-400"}`}>
           {metric}
         </span>
-        <span className="text-sm text-muted-foreground font-medium">{unit}</span>
+        <span className="text-sm text-muted-foreground">{unit}</span>
       </div>
-      <p className="text-sm text-muted-foreground leading-relaxed">{detail}</p>
     </div>
   );
 }
 
-function UpliftTile({
-  icon: Icon, metric, label, sub,
-}: { icon: typeof Hourglass; metric: string; label: string; sub: string }) {
+function UpliftCell({ metric, label }: { metric: string; label: string }) {
   return (
-    <div className="rounded-xl border border-border bg-background p-4 space-y-2">
-      <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
-        <Icon className="w-4 h-4" />
-      </div>
-      <div className="text-2xl font-bold tabular-nums tracking-tight text-blue-700">
-        {metric}
-      </div>
-      <div className="text-xs font-medium leading-snug">{label}</div>
-      <div className="text-[11px] text-muted-foreground leading-snug">{sub}</div>
+    <div className="bg-background px-4 py-5 space-y-1">
+      <div className="font-mono text-2xl font-bold tabular-nums tracking-tight text-blue-700">{metric}</div>
+      <div className="text-xs text-muted-foreground leading-snug">{label}</div>
     </div>
   );
 }
 
-function PillarsSection() {
+/* ----- §03 — What you get on day one ----------------------------------- */
+const DELIVERABLES = [
+  {
+    title: "A week of work, in a minute",
+    body: "Sourcing trip-generation rates, modeling capacity, drafting the report — what used to take a junior engineer a week is one form submission.",
+  },
+  {
+    title: "PE-defensible by design",
+    body: "Every figure footnoted to HCM, ITE, and the MUTCD. Methodology and limitations appendices on every PDF. PE stamp box on the cover page.",
+  },
+  {
+    title: "White-labeled deliverable",
+    body: "Your firm's logo on every cover page. Your PE name and license number in the signature block. Branded once, applied to every report.",
+  },
+];
+
+function DeliverableSection() {
   return (
-    <section className="space-y-12">
-      <div className="text-center space-y-3 max-w-2xl mx-auto">
-        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
-          Why firms switch
-        </div>
-        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-          What you get on day one.
-        </h2>
-        <p className="text-muted-foreground text-lg">
-          Three things, the day you sign up. No integration work. No
-          consultant hours. No setup call.
-        </p>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <Pillar
-          icon={Clock}
-          title="20–60 hours → 60 seconds"
-          body="What used to take a junior engineer a week — sourcing trip-generation rates, modeling capacity, drafting the report — is now one form submission."
-        />
-        <Pillar
-          icon={ShieldCheck}
-          title="PE-defensible by design"
-          body="Every figure footnoted to HCM, ITE, and the MUTCD. Methodology + limitations appendices on every PDF. PE stamp box on the cover page."
-        />
-        <Pillar
-          icon={FileCheck2}
-          title="White-labeled deliverable"
-          body="Your firm's logo on every cover page. Your PE name and license number in the signature block. Branded once, applied to every report."
-        />
+    <section>
+      <Marker n="03" label="What you get on day one" />
+      <h2 className="text-3xl sm:text-4xl font-bold tracking-tight max-w-2xl mb-2">
+        No integration. No consultant hours. No setup call.
+      </h2>
+      <div className="divide-y divide-border border-y border-border mt-7">
+        {DELIVERABLES.map((d, i) => (
+          <div key={i} className="grid md:grid-cols-12 gap-x-6 gap-y-2 py-7">
+            <div className="md:col-span-4 flex items-baseline gap-3">
+              <span className="font-mono text-sm tabular-nums text-blue-700 font-semibold">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <h3 className="text-lg font-semibold tracking-tight">{d.title}</h3>
+            </div>
+            <p className="md:col-span-8 text-muted-foreground leading-relaxed">{d.body}</p>
+          </div>
+        ))}
       </div>
     </section>
   );
 }
+
+/* ----- §04 — The workflow ---------------------------------------------- */
+const STEPS = [
+  {
+    title: "Drop a pin",
+    body: "Site coordinates anywhere in the Atlanta MSA. The generator pulls GDOT counts and signal data for every intersection in the study radius — up to 6.5 mi.",
+  },
+  {
+    title: "Pick a land use",
+    body: "ITE 11th Ed. codes for 80 use types — multifamily, office, retail, fuel station, drive-through. Enter the size; trip generation and pass-by capture are computed for you.",
+  },
+  {
+    title: "Download the PDF",
+    body: "Cover page, executive summary, intersection table, mitigations, methodology and limitations appendices. Ready for PE review.",
+  },
+];
 
 function WorkflowSection() {
   return (
-    <section className="space-y-12">
-      <div className="text-center space-y-3 max-w-2xl mx-auto">
-        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
-          The workflow
-        </div>
-        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-          Three inputs. One report.
-        </h2>
-        <p className="text-muted-foreground text-lg">
-          No CAD files, no manual data scraping, no Synchro session — the
-          engine pulls live GDOT counts for every signal in your study radius.
-        </p>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <Step
-          n={1}
-          icon={MapPin}
-          title="Drop a pin"
-          body="Site coordinates anywhere in the Atlanta MSA. The generator pulls GDOT counts and signal data for every intersection in the study radius (up to 6.5 mi)."
-        />
-        <Step
-          n={2}
-          icon={Building2}
-          title="Pick a land use"
-          body="ITE 11th Ed. codes for 80 use types — multifamily, office, retail, fuel station, drive-through… Enter the size; trip generation and pass-by capture are computed for you."
-        />
-        <Step
-          n={3}
-          icon={FileCheck2}
-          title="Download the PDF"
-          body="Cover page, executive summary, intersection table, mitigations, methodology + limitations appendices. Ready for PE review."
-        />
+    <section>
+      <Marker n="04" label="The workflow" />
+      <h2 className="text-3xl sm:text-4xl font-bold tracking-tight max-w-2xl mb-2">
+        Three inputs. One report.
+      </h2>
+      <p className="text-muted-foreground text-lg max-w-2xl mb-7">
+        No CAD files, no manual data scraping, no Synchro session.
+      </p>
+      <div className="grid sm:grid-cols-3 gap-px bg-border border border-border">
+        {STEPS.map((s, i) => (
+          <div key={i} className="bg-background p-6 sm:p-7 space-y-3">
+            <div className="font-mono text-3xl font-bold tabular-nums text-slate-200 dark:text-slate-700">
+              {String(i + 1).padStart(2, "0")}
+            </div>
+            <h3 className="text-lg font-semibold tracking-tight">{s.title}</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">{s.body}</p>
+          </div>
+        ))}
       </div>
     </section>
   );
 }
 
+/* ----- §05 — The receipts ---------------------------------------------- */
 function MethodologySection() {
   return (
-    <section className="grid lg:grid-cols-12 gap-10 items-center">
-      <div className="lg:col-span-5 space-y-5">
-        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
-          The receipts
-        </div>
-        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-          Every figure cited inline.
-        </h2>
-        <p className="text-muted-foreground text-lg leading-relaxed">
-          The deliverable that lands on a senior reviewer's desk has the same
-          reference column engineers expect in a real TIS. No "trust the
-          model" footnotes — every number traces to a published table.
-        </p>
-        <ul className="space-y-2.5 text-sm pt-1">
-          <Bullet>HCM 6th Edition for capacity & LOS</Bullet>
-          <Bullet>ITE Trip Generation 11th Edition for rates & K/D factors</Bullet>
-          <Bullet>MUTCD 2009/2024 for warrants & signage</Bullet>
-          <Bullet>AASHTO Green Book for geometric guidance</Bullet>
-        </ul>
-      </div>
-      <div className="lg:col-span-7">
-        <div className="rounded-2xl border border-border bg-background shadow-sm overflow-hidden">
-          <div className="px-5 py-3 border-b border-border bg-muted/30 flex items-center justify-between">
-            <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Sample footnote
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <BookOpen className="w-3.5 h-3.5" />
-              Methodology appendix · p.7
-            </div>
-          </div>
-          <div className="p-6 space-y-4">
-            <div className="font-mono text-xs leading-relaxed border-l-4 border-blue-600 pl-4 py-3 bg-muted/40 rounded-r">
-              PM peak trip generation derived from ITE TGM 11th Ed., land use
-              220 (Multifamily Housing — Low-Rise), fitted curve T = 0.51(X) +
-              9.78 where X = dwelling units (n=42, R² = 0.93). 17% pass-by
-              capture applied per ITE TGM Appendix B for sites within 0.25 mi
-              of an arterial.
-            </div>
-            <div className="font-mono text-xs leading-relaxed border-l-4 border-blue-600 pl-4 py-3 bg-muted/40 rounded-r">
-              Intersection control delay per HCM Ch. 19 Eq. 19-13. Cycle 90s,
-              g/C 0.45, saturation flow 1,800 vphpl × weather factor. 15-min
-              peak analysis period (T = 0.25 hr), incremental delay k = 0.5
-              (pretimed).
-            </div>
-            <div className="text-xs text-muted-foreground pt-1">
-              Every figure on every page is cited at this level of specificity.
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/**
- * "How can this possibly be fast?" objection-killer. Senior PEs
- * default-distrust quick tools — if we don't explain the mechanics,
- * they conclude we must be skipping rigor. This section breaks down
- * the actual engineering choices that make 30–60s generation
- * possible without compromising the math. Goal: a PE who reads this
- * leaves thinking "ah, that's just competent software", not "this
- * is sketchy."
- */
-function SpeedExplainerSection() {
-  return (
-    <section className="rounded-3xl border border-border bg-slate-50 dark:bg-slate-950/40 px-6 sm:px-12 py-12 sm:py-16 space-y-10">
-      <div className="text-center max-w-2xl mx-auto space-y-3">
-        <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
-          Behind the curtain
-        </div>
-        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-          Why it runs in a minute.
-        </h2>
-        <p className="text-muted-foreground text-lg leading-relaxed">
-          Every figure comes from the same HCM, ITE, and MUTCD tables a
-          senior reviewer would reach for. The math is identical. We just
-          took the slow parts out.
-        </p>
-      </div>
-
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MechanicCard
-          label="Step 1"
-          title="GDOT data pre-indexed"
-          body="Signal counts, intersection inventory, and live incident feeds stay loaded in-process. Synchro asks you to import counts manually. We did that work once, for all 49 metro signals."
-        />
-        <MechanicCard
-          label="Step 2"
-          title="HCM equations in parallel"
-          body="Eq. 19-13 (control delay) and Eq. 19-50 (95th-percentile queue) run concurrently across every intersection in the study radius. Desktop tools evaluate one signal at a time."
-        />
-        <MechanicCard
-          label="Step 3"
-          title="ITE rates from one table"
-          body="80 land-use codes loaded as a typed lookup, not flipped page-by-page. Pass-by and internal-capture defaults applied automatically per the published ITE TGM Appendix B."
-        />
-        <MechanicCard
-          label="Step 4"
-          title="No GUI overhead"
-          body="No model setup, no scenario manager, no project file to debug. The form is the model. Generation streams to a structured report, not a windowed UI you have to navigate."
-        />
-      </div>
-      <div className="rounded-xl border border-border bg-background p-5 sm:p-6 max-w-3xl mx-auto">
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          <strong className="text-foreground">The numbers come out the same.</strong>{" "}
-          Calibrated against ground-truth observations at signals where we
-          have them — the report flags which intersections are calibrated
-          and against how many samples — and otherwise uses HCM defaults a
-          reviewer can independently verify. Run a study against a site
-          you've already analyzed in Synchro; compare line-by-line. That's
-          the test we built for.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-function MechanicCard({
-  label, title, body,
-}: { label: string; title: string; body: string }) {
-  return (
-    <div className="rounded-2xl border border-border bg-background p-5 space-y-2">
-      <div className="text-[10px] font-semibold uppercase tracking-widest text-blue-700">
-        {label}
-      </div>
-      <div className="font-semibold tracking-tight">{title}</div>
-      <p className="text-xs text-muted-foreground leading-relaxed">{body}</p>
-    </div>
-  );
-}
-
-function SubstituteCostSection() {
-  return (
-    <section className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white px-6 sm:px-12 py-12 sm:py-16 overflow-hidden relative">
-      {/* Subtle grid overlay for texture */}
-      <div
-        aria-hidden
-        className="absolute inset-0 opacity-[0.08] pointer-events-none"
-        style={{
-          backgroundImage:
-            "linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)",
-          backgroundSize: "40px 40px",
-        }}
-      />
-      {/* Blue accent corner glow — replaces the all-blue gradient with
-          a subtle blue highlight on dark slate, more enterprise-grade. */}
-      <div
-        aria-hidden
-        className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-blue-600/20 blur-3xl pointer-events-none"
-      />
-      <div className="relative grid lg:grid-cols-12 gap-8 items-center">
-        <div className="lg:col-span-7 space-y-4">
-          <div className="text-xs font-semibold uppercase tracking-widest text-blue-300">
-            The economics
-          </div>
+    <section>
+      <Marker n="05" label="The receipts" />
+      <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-start">
+        <div className="lg:col-span-5 space-y-5">
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-            One outsourced screening costs more than a year of access.
+            Every figure cited inline.
+          </h2>
+          <p className="text-muted-foreground text-lg leading-relaxed">
+            The deliverable that lands on a senior reviewer's desk has the
+            same reference column engineers expect in a real TIS. No
+            "trust the model" footnotes — every number traces to a
+            published table.
+          </p>
+          <ul className="space-y-2.5 text-sm">
+            <Bullet>HCM 6th Edition for capacity &amp; LOS</Bullet>
+            <Bullet>ITE Trip Generation 11th Edition for rates &amp; K/D factors</Bullet>
+            <Bullet>MUTCD 2009/2024 for warrants &amp; signage</Bullet>
+            <Bullet>AASHTO Green Book for geometric guidance</Bullet>
+          </ul>
+        </div>
+        <div className="lg:col-span-7">
+          <div className="border border-border overflow-hidden">
+            <div className="px-5 py-3 border-b border-border bg-muted/40 flex items-center justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                Sample footnote
+              </span>
+              <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <BookOpen className="w-3.5 h-3.5" />
+                Methodology appendix · p.7
+              </span>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="font-mono text-xs leading-relaxed border-l-2 border-blue-600 pl-4 py-1 text-muted-foreground">
+                PM peak trip generation derived from ITE TGM 11th Ed., land
+                use 220 (Multifamily Housing — Low-Rise), fitted curve T =
+                0.51(X) + 9.78 where X = dwelling units (n=42, R² = 0.93).
+                17% pass-by capture applied per ITE TGM Appendix B.
+              </p>
+              <p className="font-mono text-xs leading-relaxed border-l-2 border-blue-600 pl-4 py-1 text-muted-foreground">
+                Intersection control delay per HCM Ch. 19 Eq. 19-13. Cycle
+                90s, g/C 0.45, saturation flow 1,800 vphpl × weather factor.
+                15-min peak analysis period, incremental delay k = 0.5.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Every figure on every page is cited at this level of specificity.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ----- §06 — Why it runs in a minute ----------------------------------- */
+const MECHANICS = [
+  {
+    title: "GDOT data pre-indexed",
+    body: "Signal counts, intersection inventory, and live incident feeds stay loaded in-process. Synchro asks you to import counts manually. We did that work once, for all 49 metro signals.",
+  },
+  {
+    title: "HCM equations in parallel",
+    body: "Eq. 19-13 (control delay) and Eq. 19-50 (95th-percentile queue) run concurrently across every intersection in the study radius. Desktop tools evaluate one signal at a time.",
+  },
+  {
+    title: "ITE rates from one table",
+    body: "80 land-use codes loaded as a typed lookup, not flipped page-by-page. Pass-by and internal-capture defaults applied automatically per ITE TGM Appendix B.",
+  },
+  {
+    title: "No GUI overhead",
+    body: "No model setup, no scenario manager, no project file to debug. The form is the model. Generation streams to a structured report, not a windowed UI.",
+  },
+];
+
+function SpeedSection() {
+  return (
+    <section>
+      <Marker n="06" label="Why it runs in a minute" />
+      <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-start">
+        <div className="lg:col-span-4 space-y-5 lg:sticky lg:top-24">
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+            Same math. We took the slow parts out.
+          </h2>
+          <p className="text-muted-foreground leading-relaxed">
+            Every figure comes from the same HCM, ITE, and MUTCD tables a
+            senior reviewer would reach for. Run a study against a site
+            you've already analyzed in Synchro and compare line-by-line —
+            that's the test we built for.
+          </p>
+        </div>
+        <div className="lg:col-span-8">
+          <div className="divide-y divide-border border-y border-border">
+            {MECHANICS.map((m, i) => (
+              <div key={i} className="flex gap-5 py-6">
+                <span className="font-mono text-sm tabular-nums text-blue-700 font-semibold pt-0.5">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <div className="space-y-1.5">
+                  <h3 className="font-semibold tracking-tight">{m.title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{m.body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ----- Substitute-cost band (the one dark interlude) ------------------- */
+function SubstituteCostBand() {
+  return (
+    <section className="bg-slate-950 text-white">
+      <LosScaleStrip />
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20 grid lg:grid-cols-12 gap-10 items-center">
+        <div className="lg:col-span-7 space-y-4">
+          <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-blue-300">
+            One outsourced screening
+          </div>
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">
+            …costs more than a year of access.
           </h2>
           <p className="text-slate-300 text-lg leading-relaxed max-w-xl">
-            A consultant-run screening TIS bills $3,000–9,000 in labor before
-            a single intersection is modeled. A firm that runs 20 screenings a
-            year on us recovers their subscription before lunch on day one.
+            A consultant-run screening TIS bills $3,000–9,000 in labor
+            before a single intersection is modeled. A firm that runs 20
+            screenings a year recovers its subscription before lunch on
+            day one.
           </p>
         </div>
         <div className="lg:col-span-5">
-          <div className="rounded-xl bg-white/5 backdrop-blur-sm border border-white/10 p-6 space-y-4">
+          <div className="border border-white/15 divide-y divide-white/10">
             <CostRow label="Outsourced screening TIS" value="$3K – $9K" sub="per study, labor only" />
             <CostRow label="Synchro Studio license" value="$3,298" sub="per seat, annual" />
             <CostRow label="PTV Vistro / Visum" value="$8K – $15K" sub="per seat, annual" />
-            <div className="border-t border-white/15 pt-4 mt-2">
-              <CostRow label="Simple Impact Studies — Growth" value="$2,499" sub="firm, monthly · unlimited seats" highlight />
-            </div>
+            <CostRow label="Simple Impact Studies — Growth" value="$2,499" sub="firm, monthly · unlimited seats" highlight />
           </div>
         </div>
       </div>
@@ -897,12 +639,12 @@ function CostRow({
   label, value, sub, highlight,
 }: { label: string; value: string; sub: string; highlight?: boolean }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
+    <div className={"flex items-baseline justify-between gap-3 px-5 py-4 " + (highlight ? "bg-white/[0.06]" : "")}>
       <div className="min-w-0">
         <div className={`text-sm ${highlight ? "font-semibold text-white" : "text-slate-200"}`}>{label}</div>
-        <div className="text-xs text-slate-400">{sub}</div>
+        <div className="text-xs text-slate-400 font-mono">{sub}</div>
       </div>
-      <div className={`text-lg sm:text-xl font-bold tabular-nums whitespace-nowrap ${highlight ? "text-blue-300" : "text-slate-100"}`}>
+      <div className={`font-mono text-lg sm:text-xl font-bold tabular-nums whitespace-nowrap ${highlight ? "text-blue-300" : "text-slate-100"}`}>
         {value}
       </div>
     </div>
@@ -911,79 +653,45 @@ function CostRow({
 
 function FinalCta() {
   return (
-    <section className="text-center max-w-3xl mx-auto space-y-6">
-      <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-        Try it on a real project this week.
-      </h2>
-      <p className="text-muted-foreground text-lg leading-relaxed">
-        Ten free studies on signup. Run them on actual upcoming sites. If
-        it doesn't save your engineers at least four hours per study, we'll
-        part as friends.
-      </p>
-      <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-        <Link
-          href="/signup?plan=growth"
-          className="group inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all shadow-sm"
-          data-testid="link-cta-trial-bottom"
-        >
-          Start 14-day trial
-          <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-        </Link>
-        <Link
-          href="/for-firms"
-          className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-lg border border-border hover:bg-accent transition-colors"
-          data-testid="link-for-firms-bottom"
-        >
-          For engineering firms <ChevronRight className="w-4 h-4" />
-        </Link>
+    <section className="border border-border bg-slate-50 dark:bg-slate-950/40 px-6 sm:px-10 py-12 sm:py-14">
+      <div className="grid lg:grid-cols-12 gap-8 items-center">
+        <div className="lg:col-span-8 space-y-3">
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+            Try it on a real project this week.
+          </h2>
+          <p className="text-muted-foreground text-lg leading-relaxed max-w-xl">
+            Ten free studies on signup. Run them on actual upcoming sites.
+            If it doesn't save your engineers at least four hours per
+            study, we'll part as friends.
+          </p>
+        </div>
+        <div className="lg:col-span-4 flex flex-col sm:flex-row lg:flex-col gap-3">
+          <Link
+            href="/signup?plan=growth"
+            className="group inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
+            data-testid="link-cta-trial-bottom"
+          >
+            Start 14-day trial
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+          </Link>
+          <Link
+            href="/for-firms"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold rounded-lg border border-border hover:bg-accent transition-colors"
+            data-testid="link-for-firms-bottom"
+          >
+            For engineering firms
+          </Link>
+        </div>
       </div>
     </section>
-  );
-}
-
-function Pillar({
-  icon: Icon, title, body,
-}: { icon: typeof Clock; title: string; body: string }) {
-  return (
-    <div className="group relative rounded-2xl border border-border bg-background p-6 space-y-3 transition-all hover:border-foreground/20 hover:shadow-sm">
-      <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/40 transition-colors">
-        <Icon className="w-5 h-5" />
-      </div>
-      <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
-      <p className="text-sm text-muted-foreground leading-relaxed">{body}</p>
-    </div>
-  );
-}
-
-function Step({
-  n, icon: Icon, title, body,
-}: { n: number; icon: typeof Clock; title: string; body: string }) {
-  return (
-    <div className="rounded-2xl border border-border bg-background p-6 space-y-3">
-      <div className="flex items-center gap-3">
-        <span className="w-7 h-7 rounded-full bg-foreground text-background text-xs font-bold flex items-center justify-center">
-          {n}
-        </span>
-        <Icon className="w-5 h-5 text-blue-700" />
-      </div>
-      <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
-      <p className="text-sm text-muted-foreground leading-relaxed">{body}</p>
-    </div>
   );
 }
 
 function Bullet({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex gap-2.5 items-start">
-      <Check className="w-4 h-4 text-blue-700 mt-1 shrink-0" />
+      <Check className="w-4 h-4 text-blue-700 mt-0.5 shrink-0" />
       <span>{children}</span>
     </li>
   );
 }
-
-/**
- * Layers + Sparkles + ChevronRight icons referenced — kept here so the
- * type-checker is happy with the imports above and so the file's
- * dependencies are explicit at a glance.
- */
-void Layers;

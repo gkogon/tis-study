@@ -1,16 +1,50 @@
 /**
  * Marketing landing page targeted at engineering firms (Kimley-Horn,
  * Stantec, Croy, Wolverton, Pond & Co, etc.). Deeper pitch than the
- * home page — assumes the visitor has decided they're interested and
- * wants the full feature breakdown + a trial-request form.
+ * home page — full feature breakdown + a trial-request form.
+ *
+ * Visual language matches home.tsx: numbered report sections, hairline
+ * rules, instrument cells. Cards reserved for document depictions.
  */
 import { Link } from "wouter";
-import {
-  Clock, FileCheck2, ShieldCheck, Building2, Layers, BookOpen,
-  ArrowRight, Check, Sparkles,
-} from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 import { TrialRequestForm } from "../components/trial-request-form";
+import { Marker } from "../components/section-marker";
+
+const PILLARS = [
+  {
+    title: "A week of work, in a minute",
+    body: "Sourcing trip-generation rates, modeling capacity, drafting the report — what used to take a junior engineer a week is now one form submission.",
+  },
+  {
+    title: "PE-defensible by design",
+    body: "Every figure footnoted. Methodology appendix and limitations & assumptions appendix on every PDF. Signature block and PE stamp box on the cover page.",
+  },
+  {
+    title: "White-labeled deliverable",
+    body: "Your firm's logo on every cover page. Your PE name and license number in the signature block. Branded once, applied to every report your team prints.",
+  },
+];
+
+const FIRM_FEATURES = [
+  "Firm-wide project history",
+  "Member roles & invites",
+  "White-labeled PDFs with logo + PE block",
+  "API access (Enterprise)",
+  "SSO via Okta / Azure AD (Enterprise)",
+  "DPA + MSA available on request",
+];
+
+const REPORT_CONTENTS: Array<[string, string]> = [
+  ["Cover page", "Your firm's logo, project number, client, opening year, and a PE stamp / signature block."],
+  ["ITE Trip Generation", "Proposed land-use code with daily, AM peak, and PM peak trip counts and directional split."],
+  ["Off-site impact summary", "Affected intersections, LOS drops, worst delay delta, with confidence intervals."],
+  ["Affected-intersection map", "Color-coded by post-build LOS, plus a sortable capacity table for every signal in the radius."],
+  ["Recommended mitigations", "Sized to projected delay impact — re-time, dedicated turn lane, warrants analysis, geometric."],
+  ["Appendix A — Methodology", "Full formulas, tables, and numbered references to HCM 6th Ed., ITE 11th Ed., MUTCD, AASHTO."],
+  ["Appendix B — Limitations", "Assumptions and the conditions under which the report is no longer valid."],
+];
 
 export default function ForFirmsPage() {
   return (
@@ -21,10 +55,12 @@ export default function ForFirmsPage() {
           className="absolute inset-x-0 top-0 -z-10 h-[400px] bg-gradient-to-b from-slate-100/80 via-background to-background dark:from-slate-900/30"
         />
         <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-12">
-          <section className="text-center max-w-3xl mx-auto space-y-6">
-            <div className="flex items-center justify-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              <Building2 className="w-3.5 h-3.5" />
-              For engineering firms
+          <section className="max-w-3xl space-y-6">
+            <div className="space-y-2">
+              <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                For engineering firms
+              </div>
+              <div className="h-px w-full bg-border" />
             </div>
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.04] text-slate-900 dark:text-slate-50">
               Your engineers have{" "}
@@ -39,10 +75,10 @@ export default function ForFirmsPage() {
               to HCM, ITE, and the MUTCD. Same math your senior reviewers
               expect. The 40 hours of junior-PE labor per site, gone.
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <div className="flex flex-wrap items-center gap-3 pt-2">
               <Link
                 href="/tis"
-                className="group inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all shadow-sm"
+                className="group inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
                 data-testid="link-tis-demo"
               >
                 Try the live generator
@@ -61,148 +97,105 @@ export default function ForFirmsPage() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 space-y-24">
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          <Pillar
-            icon={Clock}
-            title="20–60 hours → 60 seconds"
-            body="What used to take a junior engineer a week — sourcing trip-generation rates, modeling capacity, drafting the report — is now one form submission."
-          />
-          <Pillar
-            icon={ShieldCheck}
-            title="PE-defensible by design"
-            body="Every figure footnoted. Methodology appendix + limitations & assumptions appendix on every PDF. Signature block + PE stamp box on the cover page."
-          />
-          <Pillar
-            icon={FileCheck2}
-            title="White-labeled deliverable"
-            body="Your firm's logo on every cover page. Your PE name + license number in the signature block. Branded once, applied to every report your team prints."
-          />
-        </section>
-
-        <section className="grid lg:grid-cols-12 gap-10 items-center">
-          <div className="lg:col-span-7 space-y-5">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
-              The deliverable
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-              What's in every report.
-            </h2>
-            <ul className="space-y-3 text-sm pt-1">
-              <FeatureLine>
-                <strong>Cover page</strong> with your firm's logo, project
-                number, client, opening year, and a PE stamp / signature block.
-              </FeatureLine>
-              <FeatureLine>
-                <strong>ITE Trip Generation</strong> for the proposed land-use
-                code with daily, AM peak, and PM peak trip counts and
-                directional split.
-              </FeatureLine>
-              <FeatureLine>
-                <strong>Off-site impact summary</strong> — affected
-                intersections, LOS drops, worst delay delta, with confidence
-                intervals.
-              </FeatureLine>
-              <FeatureLine>
-                <strong>Affected-intersection map</strong> color-coded by
-                post-build LOS, plus a sortable capacity table for every
-                signal in the study radius.
-              </FeatureLine>
-              <FeatureLine>
-                <strong>Recommended mitigations</strong> sized to the projected
-                delay impact (re-time, dedicated turn lane, signal warrants
-                analysis, geometric).
-              </FeatureLine>
-              <FeatureLine>
-                <strong>Appendix A</strong> — full methodology with formulas,
-                tables, and numbered references to HCM 6th Ed., ITE 11th Ed.,
-                MUTCD, AASHTO Green Book.
-              </FeatureLine>
-              <FeatureLine>
-                <strong>Appendix B</strong> — limitations & assumptions,
-                including conditions under which the report is no longer valid.
-              </FeatureLine>
-            </ul>
-          </div>
-          <div className="lg:col-span-5">
-            <CoverPagePreview />
-          </div>
-        </section>
-
-        <section className="rounded-3xl border border-border bg-gradient-to-br from-slate-900 to-slate-800 dark:from-slate-950 dark:to-slate-900 text-white px-6 sm:px-12 py-12 sm:py-16 overflow-hidden relative">
-          <div
-            aria-hidden
-            className="absolute inset-0 opacity-[0.08] pointer-events-none"
-            style={{
-              backgroundImage:
-                "linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)",
-              backgroundSize: "40px 40px",
-            }}
-          />
-          <div className="relative max-w-3xl space-y-4">
-            <Layers className="w-10 h-10 text-blue-300" />
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-              Built for firms shipping dozens of TIS per month.
-            </h2>
-            <p className="text-slate-200 text-lg leading-relaxed">
-              Project & client folders. Multi-seat workspaces. Audit log. SSO
-              on Enterprise. The deliverable a senior reviewer can mark up in
-              Bluebeam, sign, and ship.
-            </p>
-            <div className="grid sm:grid-cols-2 gap-3 pt-4">
-              {[
-                "Firm-wide project history",
-                "Member roles & invites",
-                "White-labeled PDFs with logo + PE block",
-                "API access (Enterprise)",
-                "SSO via Okta / Azure AD (Enterprise)",
-                "DPA + MSA available on request",
-              ].map((f) => (
-                <div key={f} className="flex items-center gap-2 text-sm">
-                  <Check className="w-4 h-4 text-blue-300 shrink-0" />
-                  <span>{f}</span>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20 space-y-20">
+        <section>
+          <Marker n="01" label="Why firms switch" />
+          <div className="divide-y divide-border border-y border-border">
+            {PILLARS.map((p, i) => (
+              <div key={i} className="grid md:grid-cols-12 gap-x-6 gap-y-2 py-7">
+                <div className="md:col-span-4 flex items-baseline gap-3">
+                  <span className="font-mono text-sm tabular-nums text-blue-700 font-semibold">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <h3 className="text-lg font-semibold tracking-tight">{p.title}</h3>
                 </div>
-              ))}
+                <p className="md:col-span-8 text-muted-foreground leading-relaxed">{p.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <Marker n="02" label="The deliverable" />
+          <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-start">
+            <div className="lg:col-span-7 space-y-5">
+              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+                What's in every report.
+              </h2>
+              <div className="divide-y divide-border border-y border-border">
+                {REPORT_CONTENTS.map(([title, body]) => (
+                  <div key={title} className="py-4">
+                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      {title}
+                    </div>
+                    <p className="text-sm text-muted-foreground leading-relaxed mt-0.5">
+                      {body}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="lg:col-span-5 lg:sticky lg:top-24">
+              <CoverPagePreview />
             </div>
           </div>
         </section>
 
-        <section className="grid lg:grid-cols-12 gap-10 items-start">
-          <div className="lg:col-span-6 space-y-5">
-            <BookOpen className="w-10 h-10 text-blue-700" />
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-              Try it on a real project this week.
-            </h2>
-            <p className="text-muted-foreground text-lg leading-relaxed">
-              Pick three live projects. We'll set up a 14-day trial, run the
-              generator on each, and walk your team through the output. If
-              the deliverable doesn't save your junior engineers at least 4
-              hours per study, we'll part as friends.
-            </p>
-            <ul className="space-y-2 text-sm pt-1">
-              <Bullet>14-day full-feature trial</Bullet>
-              <Bullet>Onboarding call with your practice lead</Bullet>
-              <Bullet>Your firm's logo loaded on day one</Bullet>
-              <Bullet>No credit card to start</Bullet>
-            </ul>
-            <div className="pt-2">
+        <section>
+          <Marker n="03" label="Built for volume" />
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight max-w-2xl">
+            Built for firms shipping dozens of TIS per month.
+          </h2>
+          <p className="text-muted-foreground text-lg leading-relaxed max-w-2xl mt-3">
+            Project and client folders. Multi-seat workspaces. Audit log.
+            SSO on Enterprise. The deliverable a senior reviewer can mark up
+            in Bluebeam, sign, and ship.
+          </p>
+          <div className="grid sm:grid-cols-2 gap-px bg-border border border-border mt-7">
+            {FIRM_FEATURES.map((f) => (
+              <div key={f} className="bg-background px-5 py-4 flex items-center gap-2.5 text-sm">
+                <Check className="w-4 h-4 text-blue-700 shrink-0" />
+                <span>{f}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <Marker n="04" label="Get started" />
+          <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-start">
+            <div className="lg:col-span-6 space-y-5">
+              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+                Try it on a real project this week.
+              </h2>
+              <p className="text-muted-foreground text-lg leading-relaxed">
+                Pick three live projects. We'll set up a 14-day trial, run
+                the generator on each, and walk your team through the
+                output. If the deliverable doesn't save your junior
+                engineers at least 4 hours per study, we'll part as friends.
+              </p>
+              <ul className="space-y-2 text-sm">
+                <Bullet>14-day full-feature trial</Bullet>
+                <Bullet>Onboarding call with your practice lead</Bullet>
+                <Bullet>Your firm's logo loaded on day one</Bullet>
+                <Bullet>No credit card to start</Bullet>
+              </ul>
               <Link
                 href="/signup"
-                className="inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:text-blue-700"
+                className="inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:underline"
               >
-                <Sparkles className="w-4 h-4" />
                 Or jump in instantly with self-serve signup
                 <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
-          </div>
-          <div className="lg:col-span-6">
-            <TrialRequestForm
-              source="for_firms_page"
-              heading="Request a 14-day trial"
-              subheading="One business day response. We'll send a trial link and schedule a 30-min onboarding call."
-              ctaLabel="Request trial"
-            />
+            <div className="lg:col-span-6">
+              <TrialRequestForm
+                source="for_firms_page"
+                heading="Request a 14-day trial"
+                subheading="One business day response. We'll send a trial link and schedule a 30-min onboarding call."
+                ctaLabel="Request trial"
+              />
+            </div>
           </div>
         </section>
       </div>
@@ -212,81 +205,55 @@ export default function ForFirmsPage() {
   );
 }
 
+/**
+ * Faux cover-page preview — an earned "card": it depicts a document.
+ */
 function CoverPagePreview() {
   return (
-    <div className="relative">
-      <div
-        aria-hidden
-        className="absolute -inset-4 bg-gradient-to-br from-blue-500/15 to-transparent blur-2xl -z-10"
-      />
-      <div className="aspect-[8.5/11] border border-border rounded-xl shadow-2xl bg-white dark:bg-slate-900 p-5 text-[9px] flex flex-col gap-2 overflow-hidden">
-        <div className="border-b-4 border-blue-600 pb-2 flex justify-between items-start">
-          <div className="font-bold text-blue-700">[ Your firm logo ]</div>
-          <div className="text-right">
-            <div className="font-bold text-slate-900 dark:text-slate-100">Your Firm Name</div>
-            <div className="text-slate-500">123 Main St, Atlanta, GA</div>
+    <div className="aspect-[8.5/11] border border-border shadow-lg bg-white dark:bg-slate-900 p-5 text-[9px] flex flex-col gap-2 overflow-hidden">
+      <div className="border-b-4 border-blue-600 pb-2 flex justify-between items-start">
+        <div className="font-bold text-blue-700">[ Your firm logo ]</div>
+        <div className="text-right">
+          <div className="font-bold text-slate-900 dark:text-slate-100">Your Firm Name</div>
+          <div className="text-slate-500">123 Main St, Atlanta, GA</div>
+        </div>
+      </div>
+      <div className="text-center font-mono text-[8px] uppercase tracking-[0.2em] text-blue-700 mt-4 font-semibold">
+        Traffic Impact Study
+      </div>
+      <div className="text-center font-bold text-lg mt-1 text-slate-900 dark:text-slate-100">
+        Midtown Multifamily
+      </div>
+      <div className="text-center text-slate-500 text-[8px]">
+        1100 Peachtree St NE, Atlanta GA
+      </div>
+      <div className="grid grid-cols-2 gap-x-5 gap-y-1.5 mt-4 text-[8px]">
+        {["Project No.", "Client", "Prepared By", "Reviewer", "Date", "Opening Year"].map((l) => (
+          <div key={l} className="border-b border-slate-300 pb-1">
+            <div className="text-slate-500 uppercase tracking-wider text-[7px]">{l}</div>
+            <div className="font-semibold text-slate-900 dark:text-slate-200">—</div>
           </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-3 mt-auto">
+        <div className="border-2 border-slate-400 rounded p-1.5 h-12 text-[7px] text-slate-500 flex items-center justify-center">
+          PE Seal
         </div>
-        <div className="text-center text-[8px] uppercase tracking-[0.2em] text-blue-700 mt-4 font-semibold">
-          Traffic Impact Study
-        </div>
-        <div className="text-center font-bold text-lg mt-1 text-slate-900 dark:text-slate-100">
-          Midtown Multifamily
-        </div>
-        <div className="text-center text-slate-500 text-[8px]">
-          1100 Peachtree St NE, Atlanta GA
-        </div>
-        <div className="grid grid-cols-2 gap-x-5 gap-y-1.5 mt-4 text-[8px]">
-          {["Project No.", "Client", "Prepared By", "Reviewer", "Date", "Opening Year"].map((l) => (
-            <div key={l} className="border-b border-slate-300 pb-1">
-              <div className="text-slate-500 uppercase tracking-wider text-[7px]">{l}</div>
-              <div className="font-semibold text-slate-900 dark:text-slate-200">—</div>
-            </div>
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-3 mt-auto">
-          <div className="border-2 border-slate-400 rounded p-1.5 h-12 text-[7px] text-slate-500 flex items-center justify-center">
-            PE Seal
-          </div>
-          <div className="text-[7px] text-slate-500 flex flex-col justify-end">
-            <div className="border-b border-slate-800 dark:border-slate-300 h-3.5" />
-            <div className="uppercase tracking-wider mt-0.5">Signature</div>
-            <div className="border-b border-slate-800 dark:border-slate-300 h-3.5 mt-1.5" />
-            <div className="uppercase tracking-wider mt-0.5">Date</div>
-          </div>
+        <div className="text-[7px] text-slate-500 flex flex-col justify-end">
+          <div className="border-b border-slate-800 dark:border-slate-300 h-3.5" />
+          <div className="uppercase tracking-wider mt-0.5">Signature</div>
+          <div className="border-b border-slate-800 dark:border-slate-300 h-3.5 mt-1.5" />
+          <div className="uppercase tracking-wider mt-0.5">Date</div>
         </div>
       </div>
     </div>
-  );
-}
-
-function Pillar({
-  icon: Icon, title, body,
-}: { icon: typeof Clock; title: string; body: string }) {
-  return (
-    <div className="group rounded-2xl border border-border bg-background p-6 space-y-3 transition-all hover:border-foreground/20 hover:shadow-sm">
-      <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/40 transition-colors">
-        <Icon className="w-5 h-5" />
-      </div>
-      <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
-      <p className="text-sm text-muted-foreground leading-relaxed">{body}</p>
-    </div>
-  );
-}
-
-function FeatureLine({ children }: { children: React.ReactNode }) {
-  return (
-    <li className="flex gap-3">
-      <Check className="w-4 h-4 text-blue-700 mt-1 shrink-0" />
-      <span className="leading-relaxed">{children}</span>
-    </li>
   );
 }
 
 function Bullet({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex gap-2.5 items-start">
-      <Check className="w-4 h-4 text-blue-700 mt-1 shrink-0" />
+      <Check className="w-4 h-4 text-blue-700 mt-0.5 shrink-0" />
       <span>{children}</span>
     </li>
   );

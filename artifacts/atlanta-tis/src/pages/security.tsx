@@ -1,21 +1,24 @@
 /**
- * Public /security page. Enterprise prospects always ask. Without
- * something on this surface they have to email procurement, which
- * delays the deal by weeks. The page makes the current posture
- * explicit and honest: we ship strong fundamentals today, SOC 2 /
- * SSO are on the Enterprise roadmap with timelines.
+ * Public /security page. Enterprise prospects always ask. The page
+ * makes the current posture explicit and honest: strong fundamentals
+ * today, SOC 2 / SSO on the Enterprise roadmap with timelines.
  *
  * Honest framing matters: don't claim certifications we don't hold.
- * A prospect's security reviewer will catch any overclaim and we'll
- * lose the deal — exactly the wrong outcome for a page meant to
- * unblock procurement.
+ *
+ * Visual language matches home.tsx: numbered report sections, hairline
+ * rules, instrument cells.
  */
 import { Link } from "wouter";
-import {
-  ShieldCheck, Lock, Database, Server, KeyRound, Mail, ArrowRight,
-  Check, Clock, FileText,
-} from "lucide-react";
+import { ArrowRight, Check, Clock, Mail, FileText } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
+import { Marker } from "../components/section-marker";
+
+const FUNDAMENTALS: Array<[string, React.ReactNode]> = [
+  ["Encrypted in transit", "All traffic between your browser, our servers, and our analyzer service uses TLS 1.3 (HSTS enabled, max-age 1 year)."],
+  ["Encrypted at rest", "Postgres is hosted on Railway with disk-level encryption. Backups inherit the same."],
+  ["No model training on your data", <>Project inputs and outputs aren't used to train external models. We don't sell, share, or aggregate anonymized project data with third parties. See the <Link href="/legal/privacy" className="text-blue-700 hover:underline">Privacy Policy</Link>.</>],
+  ["Single-region deployment", "Production runs on Railway in us-east. Postgres, analyzer, and web service are co-located so project data doesn't traverse the public internet between tiers."],
+];
 
 export default function SecurityPage() {
   return (
@@ -23,21 +26,19 @@ export default function SecurityPage() {
       <div className="relative">
         <div
           aria-hidden
-          className="absolute inset-x-0 top-0 -z-10 h-[400px] bg-gradient-to-b from-slate-100/80 via-background to-background dark:from-slate-900/30"
+          className="absolute inset-x-0 top-0 -z-10 h-[360px] bg-gradient-to-b from-slate-100/80 via-background to-background dark:from-slate-900/30"
         />
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-12 space-y-6 text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 dark:bg-slate-100 border border-slate-900 dark:border-slate-100 text-xs font-medium text-white dark:text-slate-900">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Security
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-10 space-y-6">
+          <div className="space-y-2">
+            <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              Security
+            </div>
+            <div className="h-px w-full bg-border" />
           </div>
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.05] tracking-tight text-slate-900 dark:text-slate-50">
-            Engineering data,
-            <br />
-            <span className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              treated like it matters.
-            </span>
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.04] tracking-tight text-slate-900 dark:text-slate-50">
+            Engineering data, treated like it matters.
           </h1>
-          <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-2xl mx-auto">
+          <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
             Project inputs, intersection data, and PDF deliverables stay
             private to your firm. We don't train models on your data, we
             don't share it with third parties, and we publish our current
@@ -46,40 +47,26 @@ export default function SecurityPage() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-16 space-y-16">
-        <section className="grid sm:grid-cols-2 gap-4">
-          <Card icon={Lock} title="Encrypted in transit">
-            All traffic between your browser, our servers, and our analyzer
-            service uses TLS 1.3 (HSTS enabled, max-age 1 year).
-          </Card>
-          <Card icon={Database} title="Encrypted at rest">
-            Postgres is hosted on Railway with disk-level encryption. Backups
-            inherit the same.
-          </Card>
-          <Card icon={KeyRound} title="No model training on your data">
-            Project inputs and outputs aren't used to train external models.
-            We don't sell, share, or aggregate anonymized project data with
-            third parties. See the{" "}
-            <Link href="/legal/privacy" className="text-blue-700 hover:underline">
-              Privacy Policy
-            </Link>.
-          </Card>
-          <Card icon={Server} title="Single-region deployment">
-            Production runs on Railway in us-east. Postgres + analyzer +
-            web service co-located so project data doesn't traverse the
-            public internet between tiers.
-          </Card>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-20 space-y-16">
+        <section>
+          <Marker n="01" label="Fundamentals" />
+          <div className="grid sm:grid-cols-2 gap-px bg-border border border-border">
+            {FUNDAMENTALS.map(([title, body]) => (
+              <div key={title} className="bg-background p-5 space-y-2">
+                <div className="font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+                  {title}
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">{body}</p>
+              </div>
+            ))}
+          </div>
         </section>
 
-        <section className="space-y-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
-              Application security
-            </div>
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-              How sign-in and sessions work.
-            </h2>
-          </div>
+        <section>
+          <Marker n="02" label="Application security" />
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 mb-5">
+            How sign-in and sessions work.
+          </h2>
           <ul className="space-y-3 text-sm">
             <Bullet>
               <strong>bcrypt password hashing</strong> with a per-user salt.
@@ -115,71 +102,60 @@ export default function SecurityPage() {
           </ul>
         </section>
 
-        <section className="space-y-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
-              Data handling
-            </div>
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-              What we collect and what we don't.
-            </h2>
-          </div>
-          <div className="rounded-2xl border border-border overflow-hidden">
-            <ul className="divide-y divide-border">
-              <DataRow
-                what="Account info (email, name, password hash)"
-                why="Required to authenticate you and route your projects to the right firm."
-              />
-              <DataRow
-                what="Firm info (name, logo, billing address)"
-                why="Required to white-label the PDFs and process subscription billing."
-              />
-              <DataRow
-                what="Project inputs (coordinates, land use, size, address)"
-                why="Required to compute the study. Stored so you can re-open and re-print."
-              />
-              <DataRow
-                what="Project outputs (TIS reports, intersection tables)"
-                why="Stored so the firm has a permanent audit trail of every study run."
-              />
-              <DataRow
-                what="Stripe customer/subscription IDs"
-                why="Required to bill. Card numbers themselves never touch our servers — they live in Stripe."
-              />
-              <DataRow
-                what="Pino structured logs (request paths, statuses, errors)"
-                why="Operational debugging. Retained 30 days. Never includes user inputs or PII."
-                negative={false}
-              />
-              <DataRow
-                what="Analytics / behavioral tracking"
-                why="None today. No GA, no Mixpanel, no session-replay tools. If we add product analytics later it'll be first-party and disclosed here."
-                negative={true}
-              />
-              <DataRow
-                what="Third-party data sharing"
-                why="None. Project data isn't sold, shared, or aggregated with any external party. Stripe sees billing info only; that's it."
-                negative={true}
-              />
-            </ul>
-          </div>
+        <section>
+          <Marker n="03" label="Data handling" />
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 mb-5">
+            What we collect and what we don't.
+          </h2>
+          <ul className="border border-border divide-y divide-border">
+            <DataRow
+              what="Account info (email, name, password hash)"
+              why="Required to authenticate you and route your projects to the right firm."
+            />
+            <DataRow
+              what="Firm info (name, logo, billing address)"
+              why="Required to white-label the PDFs and process subscription billing."
+            />
+            <DataRow
+              what="Project inputs (coordinates, land use, size, address)"
+              why="Required to compute the study. Stored so you can re-open and re-print."
+            />
+            <DataRow
+              what="Project outputs (TIS reports, intersection tables)"
+              why="Stored so the firm has a permanent audit trail of every study run."
+            />
+            <DataRow
+              what="Stripe customer/subscription IDs"
+              why="Required to bill. Card numbers themselves never touch our servers — they live in Stripe."
+            />
+            <DataRow
+              what="Pino structured logs (request paths, statuses, errors)"
+              why="Operational debugging. Retained 30 days. Never includes user inputs or PII."
+            />
+            <DataRow
+              what="Analytics / behavioral tracking"
+              why="None today. No GA, no Mixpanel, no session-replay tools. If we add product analytics later it'll be first-party and disclosed here."
+              negative
+            />
+            <DataRow
+              what="Third-party data sharing"
+              why="None. Project data isn't sold, shared, or aggregated with any external party. Stripe sees billing info only; that's it."
+              negative
+            />
+          </ul>
         </section>
 
-        <section className="rounded-3xl border border-border bg-slate-50 dark:bg-slate-950/40 px-6 sm:px-10 py-10 space-y-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-blue-700">
-              On the roadmap
-            </div>
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-              Compliance milestones in flight.
-            </h2>
-            <p className="text-muted-foreground">
-              We're transparent about what we ship today vs. what's coming.
-              No false claims — your security reviewer can verify everything
-              on this page.
-            </p>
-          </div>
-          <ul className="space-y-3">
+        <section>
+          <Marker n="04" label="On the roadmap" />
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50 mb-2">
+            Compliance milestones in flight.
+          </h2>
+          <p className="text-muted-foreground mb-6">
+            We're transparent about what we ship today vs. what's coming.
+            No false claims — your security reviewer can verify everything
+            on this page.
+          </p>
+          <ul className="border-y border-border divide-y divide-border">
             <Milestone
               status="now"
               title="Encryption + sessions + rate limits"
@@ -208,7 +184,7 @@ export default function SecurityPage() {
           </ul>
         </section>
 
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900 px-6 py-6 space-y-3">
+        <section className="border-l-2 border-amber-500 bg-amber-50 dark:bg-amber-950/20 pl-5 pr-6 py-5 space-y-3">
           <div className="flex items-center gap-2">
             <Mail className="w-5 h-5 text-amber-700 dark:text-amber-300" />
             <h3 className="font-semibold tracking-tight">Report a security issue</h3>
@@ -226,25 +202,26 @@ export default function SecurityPage() {
           </p>
         </section>
 
-        <section className="text-center max-w-2xl mx-auto space-y-4">
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+        <section className="border border-border bg-slate-50 dark:bg-slate-950/40 px-6 sm:px-10 py-10 space-y-4">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             Need more detail for procurement?
           </h2>
-          <p className="text-muted-foreground">
-            We're happy to fill out vendor questionnaires (SIG, CAIQ, custom)
-            and walk your security team through architecture. Most reviews
-            close in 1–2 calls.
+          <p className="text-muted-foreground leading-relaxed max-w-xl">
+            We're happy to fill out vendor questionnaires (SIG, CAIQ,
+            custom) and walk your security team through architecture. Most
+            reviews close in 1–2 calls.
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+          <div className="flex flex-wrap items-center gap-3 pt-1">
             <Link
               href="/contact"
-              className="inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all shadow-sm"
+              className="group inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
             >
-              Contact us <ArrowRight className="w-4 h-4" />
+              Contact us
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </Link>
             <Link
               href="/legal/privacy"
-              className="inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg border hover:bg-accent transition-colors"
+              className="inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg border border-border hover:bg-accent transition-colors"
             >
               <FileText className="w-4 h-4" /> Privacy Policy
             </Link>
@@ -257,24 +234,10 @@ export default function SecurityPage() {
   );
 }
 
-function Card({
-  icon: Icon, title, children,
-}: { icon: typeof Lock; title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-border bg-background p-5 space-y-3">
-      <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
-        <Icon className="w-5 h-5" />
-      </div>
-      <div className="font-semibold tracking-tight">{title}</div>
-      <p className="text-sm text-muted-foreground leading-relaxed">{children}</p>
-    </div>
-  );
-}
-
 function Bullet({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex gap-3 items-start">
-      <Check className="w-4 h-4 text-blue-700 mt-1 shrink-0" />
+      <Check className="w-4 h-4 text-blue-700 mt-0.5 shrink-0" />
       <span className="leading-relaxed text-sm">{children}</span>
     </li>
   );
@@ -311,7 +274,7 @@ function Milestone({
         : { label: "Planned", color: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300", icon: Clock };
   const BadgeIcon = badge.icon;
   return (
-    <li className="flex items-start gap-3">
+    <li className="flex items-start gap-3 py-4">
       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold mt-0.5 shrink-0 ${badge.color}`}>
         <BadgeIcon className="w-3 h-3" />
         {badge.label}
