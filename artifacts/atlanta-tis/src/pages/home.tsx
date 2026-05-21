@@ -254,7 +254,7 @@ const MATH_STATS: Array<{ value: string; unit?: string; label: string; sub: stri
     sub: "±10% trip rate, ±15% existing volume, every study",
   },
   {
-    value: "66",
+    value: "80",
     label: "ITE trip-generation curves",
     sub: "Daily / AM / PM peak rates, per land use",
   },
@@ -268,7 +268,7 @@ const MATH_STATS: Array<{ value: string; unit?: string; label: string; sub: stri
 const MECHANICS: Array<[string, string]> = [
   ["GDOT data pre-indexed", "Signal counts, intersection inventory, and live incident feeds stay loaded in-process. We did the import once, for all 49 metro signals."],
   ["HCM equations in parallel", "Eq. 19-13 (control delay) and Eq. 19-50 (95th-percentile queue) run concurrently across every intersection in the radius."],
-  ["ITE rates from one table", "66 land-use codes as a typed lookup, not flipped page-by-page. Pass-by and internal capture applied per ITE TGM Appendix B."],
+  ["ITE rates from one table", "80 land-use codes as a typed lookup, not flipped page-by-page. Pass-by and internal capture applied per ITE TGM Appendix B."],
   ["No GUI overhead", "No model setup, no scenario manager, no project file. The form is the model; generation streams straight to a structured report."],
 ];
 
@@ -467,7 +467,7 @@ function RoiRow({
 /* ----- §03 — From inputs to report ------------------------------------- */
 const STEPS: Array<[string, string]> = [
   ["Drop a pin", "Site coordinates anywhere in the Atlanta MSA. The generator pulls GDOT counts and signal data for every intersection in the radius — up to 6.5 mi."],
-  ["Pick a land use", "ITE 11th Ed. codes for 66 use types. Enter the size; trip generation and pass-by capture are computed for you."],
+  ["Pick a land use", "ITE 11th Ed. codes for 80 use types. Enter the size; trip generation and pass-by capture are computed for you."],
   ["Download the PDF", "Cover page, executive summary, intersection table, mitigations, methodology and limitations appendices. Ready for PE review."],
 ];
 

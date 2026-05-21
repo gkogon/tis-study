@@ -49,7 +49,7 @@ const ROWS: CompareRow[] = [
   },
   {
     feature: "ITE 11th Ed. trip generation",
-    us: { v: "yes", note: "66 land-use codes shipped" },
+    us: { v: "yes", note: "80 land-use codes shipped" },
     synchro: { v: "partial", note: "TripGen add-on $649" },
     vistro: { v: "yes" },
     outsourced: { v: "yes" },
