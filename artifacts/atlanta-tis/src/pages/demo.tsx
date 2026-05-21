@@ -1,7 +1,7 @@
 /**
- * Public /demo page. Lets a non-signed-in prospect pick from a set of
- * curated Atlanta presets, run a REAL screening-level TIS against live
- * GDOT data, and see the FULL deliverable inline — every intersection,
+ * Public /demo page. Lets a non-signed-in prospect run a REAL screening-
+ * level TIS against live GDOT data on ARBITRARY coordinates inside the
+ * Atlanta MSA, and see the FULL deliverable inline — every intersection,
  * approach-level v/c + queues, all periods, mitigations, methodology,
  * and Monte-Carlo sensitivity — without giving us their email.
  *
@@ -10,7 +10,7 @@
  * white-label the PDF," not "see the rest behind a signup wall."
  *
  * Backed by POST /tis-api/demo/generate with the demoRateLimiter
- * (3/day/IP).
+ * (3/day/IP). Curated presets are surfaced as one-click form prefills.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
@@ -22,7 +22,29 @@ import {
 } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 
-type Preset = { id: string; label: string; blurb?: string };
+type Preset = {
+  id: string;
+  label: string;
+  blurb?: string;
+  prefill: {
+    projectName: string;
+    latitude: number;
+    longitude: number;
+    landUseCode: string;
+    size: number;
+  };
+};
+
+type LandUse = { code: string; name: string; unit: string; unitShort: string };
+
+type StudyForm = {
+  projectName: string;
+  latitude: number;
+  longitude: number;
+  landUseCode: string;
+  size: number;
+  openingYear: number;
+};
 
 type Los = "A" | "B" | "C" | "D" | "E" | "F";
 
@@ -129,8 +151,15 @@ type DemoReport = {
 };
 
 type DemoResponse = {
-  presetId: string;
-  presetLabel: string;
+  projectName: string;
+  latitude: number;
+  longitude: number;
+  landUseCode: string;
+  landUseName: string;
+  landUseUnitShort: string;
+  size: number;
+  openingYear: number;
+  studyRadiusMi: number;
   report: DemoReport;
 };
 
@@ -176,30 +205,38 @@ function humanizeWeather(w: string) {
 
 export default function DemoPage() {
   const [presets, setPresets] = useState<Preset[] | null>(null);
-  const [activePreset, setActivePreset] = useState<string | null>(null);
+  const [landUses, setLandUses] = useState<LandUse[] | null>(null);
+  const [activeName, setActiveName] = useState<string | null>(null);
   const [response, setResponse] = useState<DemoResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/tis-api/demo/presets")
-      .then((r) => r.json())
-      .then((data) => { if (!cancelled) setPresets(data.presets ?? []); })
-      .catch(() => { if (!cancelled) setPresets([]); });
+    Promise.all([
+      fetch("/tis-api/demo/presets").then((r) => r.json()).catch(() => ({ presets: [] })),
+      fetch("/tis-api/demo/landuses").then((r) => r.json()).catch(() => ({ landUses: [] })),
+    ]).then(([p, l]) => {
+      if (cancelled) return;
+      setPresets((p?.presets as Preset[] | undefined) ?? []);
+      setLandUses((l?.landUses as LandUse[] | undefined) ?? []);
+    });
     return () => { cancelled = true; };
   }, []);
 
-  async function run(presetId: string) {
+  async function run(form: StudyForm) {
     setLoading(true);
     setError(null);
-    setActivePreset(presetId);
+    setActiveName(
+      form.projectName ||
+        `${form.latitude.toFixed(4)}, ${form.longitude.toFixed(4)}`,
+    );
     setResponse(null);
     try {
       const r = await fetch("/tis-api/demo/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ presetId }),
+        body: JSON.stringify(form),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
@@ -213,7 +250,7 @@ export default function DemoPage() {
 
   function reset() {
     setResponse(null);
-    setActivePreset(null);
+    setActiveName(null);
     setError(null);
   }
 
@@ -238,10 +275,11 @@ export default function DemoPage() {
               </span>
             </h1>
             <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-2xl mx-auto">
-              Pick a curated Atlanta project below. We'll generate the full
-              TIS against live GDOT data — every intersection, approach-level
-              v/c and queues, all peak periods, mitigations, methodology, and
-              Monte-Carlo sensitivity. Nothing held back. No email required.
+              Drop a pin anywhere in the Atlanta MSA. We'll generate a full
+              screening TIS against live GDOT data: every intersection,
+              approach-level v/c and queues, all peak periods, mitigations,
+              methodology, and Monte-Carlo sensitivity. Nothing held back. No
+              email required.
             </p>
           </div>
         </div>
@@ -249,10 +287,10 @@ export default function DemoPage() {
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
         {!response && !loading && (
-          <PresetGrid presets={presets} onPick={run} />
+          <DemoForm presets={presets} landUses={landUses} onRun={run} />
         )}
 
-        {loading && <LoadingState presetId={activePreset} />}
+        {loading && <LoadingState projectName={activeName} />}
 
         {error && !loading && (
           <ErrorState message={error} onReset={reset} />
@@ -272,71 +310,281 @@ export default function DemoPage() {
   );
 }
 
-function PresetGrid({
-  presets, onPick,
-}: { presets: Preset[] | null; onPick: (id: string) => void }) {
-  if (!presets) {
-    return (
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="rounded-2xl border border-border bg-background p-6 h-36 animate-pulse" />
-        ))}
-      </div>
-    );
+/**
+ * Coordinate-driven study form. The user enters lat / lon / land use /
+ * size — same fields a real authenticated study takes — and the demo
+ * runs against live GDOT data inside the Atlanta MSA. Quick-fill
+ * preset buttons sit above the form for one-click examples.
+ *
+ * Bounds (mirrored on the server in routes/demo.ts):
+ *   - lat in [33.4, 34.2]   (Atlanta MSA box)
+ *   - lon in [-84.9, -83.9]
+ *   - size in (0, 10000]
+ *   - landUseCode must match a published ITE 11th Ed. row
+ */
+const ATL_BOUNDS = { latMin: 33.4, latMax: 34.2, lonMin: -84.9, lonMax: -83.9 };
+
+function DemoForm({
+  presets, landUses, onRun,
+}: {
+  presets: Preset[] | null;
+  landUses: LandUse[] | null;
+  onRun: (form: StudyForm) => void;
+}) {
+  const currentYear = new Date().getFullYear();
+  const [projectName, setProjectName] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
+  const [landUseCode, setLandUseCode] = useState("221");
+  const [size, setSize] = useState("");
+  const [openingYear, setOpeningYear] = useState(String(currentYear + 1));
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const activeLandUse = useMemo(
+    () => landUses?.find((lu) => lu.code === landUseCode) ?? null,
+    [landUses, landUseCode],
+  );
+
+  function applyPreset(p: Preset) {
+    setProjectName(p.prefill.projectName);
+    setLatitude(String(p.prefill.latitude));
+    setLongitude(String(p.prefill.longitude));
+    setLandUseCode(p.prefill.landUseCode);
+    setSize(String(p.prefill.size));
+    setFormError(null);
   }
-  if (presets.length === 0) {
-    return (
-      <div className="rounded-2xl border border-border p-8 text-center text-sm text-muted-foreground">
-        Demo presets are temporarily unavailable.{" "}
-        <Link href="/signup" className="text-blue-700 hover:underline">Sign up free</Link> and run a real study instead.
-      </div>
-    );
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+
+    const lat = Number(latitude);
+    const lon = Number(longitude);
+    const sz = Number(size);
+    const yr = Number(openingYear);
+
+    if (!Number.isFinite(lat) || lat < ATL_BOUNDS.latMin || lat > ATL_BOUNDS.latMax) {
+      setFormError(`Latitude must be between ${ATL_BOUNDS.latMin} and ${ATL_BOUNDS.latMax} (Atlanta MSA).`);
+      return;
+    }
+    if (!Number.isFinite(lon) || lon < ATL_BOUNDS.lonMin || lon > ATL_BOUNDS.lonMax) {
+      setFormError(`Longitude must be between ${ATL_BOUNDS.lonMin} and ${ATL_BOUNDS.lonMax} (Atlanta MSA).`);
+      return;
+    }
+    if (!landUseCode || !landUses?.some((lu) => lu.code === landUseCode)) {
+      setFormError("Pick an ITE land use.");
+      return;
+    }
+    if (!Number.isFinite(sz) || sz <= 0 || sz > 10000) {
+      setFormError("Size must be between 0 and 10,000.");
+      return;
+    }
+    if (!Number.isFinite(yr) || yr < currentYear - 1 || yr > currentYear + 30) {
+      setFormError(`Opening year must be between ${currentYear - 1} and ${currentYear + 30}.`);
+      return;
+    }
+
+    onRun({
+      projectName: projectName.trim(),
+      latitude: lat,
+      longitude: lon,
+      landUseCode,
+      size: sz,
+      openingYear: Math.trunc(yr),
+    });
   }
+
+  const inputCls =
+    "w-full px-3 py-2 text-sm rounded-md border border-border bg-background " +
+    "focus:outline-none focus:ring-2 focus:ring-blue-700/30 focus:border-blue-700 " +
+    "font-mono tabular-nums";
+  const labelCls = "block text-[11px] uppercase tracking-[0.16em] font-mono text-muted-foreground mb-1.5";
+
   return (
-    <div className="space-y-4">
-      <div className="text-center max-w-xl mx-auto">
-        <div className="text-xs font-semibold uppercase tracking-widest text-blue-700 mb-2">
-          Step 1
+    <form onSubmit={submit} className="space-y-6">
+      {/* Quick-fill examples — collapsible, click to prefill the form */}
+      {presets && presets.length > 0 && (
+        <div className="rounded-xl border border-border bg-slate-50 dark:bg-slate-950/40 p-5 space-y-3">
+          <div className="flex items-baseline justify-between gap-4 flex-wrap">
+            <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+              Quick examples — click to fill the form
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              {presets.length} starting points
+            </div>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {presets.map((p) => {
+              const Icon = ICONS[p.id] ?? Building2;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  className="text-left rounded-md border border-border bg-background px-3 py-2.5 hover:border-foreground/40 hover:shadow-sm transition-all flex items-center gap-3"
+                >
+                  <Icon className="w-4 h-4 text-blue-700 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold tracking-tight truncate">{p.label}</div>
+                    {p.blurb && (
+                      <div className="text-[10px] font-mono text-muted-foreground truncate">{p.blurb}</div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-          Pick a project type.
-        </h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          {presets.length} curated Atlanta projects across the land uses we
-          see most in screening work.
-        </p>
-      </div>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {presets.map((p) => {
-          const Icon = ICONS[p.id] ?? Building2;
-          return (
+      )}
+
+      {/* The form itself — instrument-panel layout, hairline cells */}
+      <div className="border border-border bg-background">
+        <div className="px-5 py-3 border-b border-border bg-slate-50 dark:bg-slate-950/40 flex items-baseline justify-between gap-4 flex-wrap">
+          <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+            Demo study inputs
+          </span>
+          <span className="font-mono text-[10px] text-muted-foreground">
+            Atlanta MSA · lat 33.4–34.2 · lon -84.9 to -83.9
+          </span>
+        </div>
+
+        <div className="p-5 sm:p-6 space-y-5">
+          {/* Project name */}
+          <div>
+            <label htmlFor="demo-name" className={labelCls}>
+              Project name <span className="text-muted-foreground/60 normal-case">(optional)</span>
+            </label>
+            <input
+              id="demo-name"
+              type="text"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="Peachtree multifamily, etc."
+              className={inputCls + " font-sans"}
+              data-testid="input-project-name"
+            />
+          </div>
+
+          {/* Coords */}
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="demo-lat" className={labelCls}>Latitude</label>
+              <input
+                id="demo-lat"
+                type="number"
+                step="0.0001"
+                min={ATL_BOUNDS.latMin}
+                max={ATL_BOUNDS.latMax}
+                value={latitude}
+                onChange={(e) => setLatitude(e.target.value)}
+                placeholder="33.7858"
+                className={inputCls}
+                required
+                data-testid="input-latitude"
+              />
+            </div>
+            <div>
+              <label htmlFor="demo-lon" className={labelCls}>Longitude</label>
+              <input
+                id="demo-lon"
+                type="number"
+                step="0.0001"
+                min={ATL_BOUNDS.lonMin}
+                max={ATL_BOUNDS.lonMax}
+                value={longitude}
+                onChange={(e) => setLongitude(e.target.value)}
+                placeholder="-84.3848"
+                className={inputCls}
+                required
+                data-testid="input-longitude"
+              />
+            </div>
+          </div>
+
+          {/* Land use + size + year */}
+          <div className="grid sm:grid-cols-12 gap-4">
+            <div className="sm:col-span-6">
+              <label htmlFor="demo-landuse" className={labelCls}>
+                ITE land use {landUses === null && <span className="text-muted-foreground/60">(loading…)</span>}
+              </label>
+              <select
+                id="demo-landuse"
+                value={landUseCode}
+                onChange={(e) => setLandUseCode(e.target.value)}
+                disabled={!landUses || landUses.length === 0}
+                className={inputCls + " font-sans"}
+                data-testid="input-landuse"
+              >
+                {(landUses ?? []).map((lu) => (
+                  <option key={lu.code} value={lu.code}>
+                    {lu.code} · {lu.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-3">
+              <label htmlFor="demo-size" className={labelCls}>
+                Size {activeLandUse && <span className="text-muted-foreground/60 normal-case">({activeLandUse.unitShort})</span>}
+              </label>
+              <input
+                id="demo-size"
+                type="number"
+                step="any"
+                min={0.1}
+                max={10000}
+                value={size}
+                onChange={(e) => setSize(e.target.value)}
+                placeholder="240"
+                className={inputCls}
+                required
+                data-testid="input-size"
+              />
+            </div>
+            <div className="sm:col-span-3">
+              <label htmlFor="demo-year" className={labelCls}>Opening year</label>
+              <input
+                id="demo-year"
+                type="number"
+                step="1"
+                min={currentYear - 1}
+                max={currentYear + 30}
+                value={openingYear}
+                onChange={(e) => setOpeningYear(e.target.value)}
+                className={inputCls}
+                required
+                data-testid="input-year"
+              />
+            </div>
+          </div>
+
+          {formError && (
+            <div className="text-sm text-red-700 dark:text-red-300 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{formError}</span>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3 pt-2">
             <button
-              key={p.id}
-              type="button"
-              onClick={() => onPick(p.id)}
-              className="group text-left rounded-2xl border border-border bg-background p-6 space-y-3 hover:border-foreground/30 hover:shadow-md transition-all"
+              type="submit"
+              className="group inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
+              data-testid="button-run-demo"
             >
-              <div className="flex items-center justify-between">
-                <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
-                  <Icon className="w-5 h-5" />
-                </div>
-                <span className="text-xs text-muted-foreground inline-flex items-center gap-1 group-hover:text-blue-700 transition-colors">
-                  Run demo <ChevronRight className="w-3.5 h-3.5" />
-                </span>
-              </div>
-              <div className="font-semibold text-base tracking-tight leading-snug">{p.label}</div>
-              <div className="text-xs text-muted-foreground">
-                {p.blurb ?? "Real Atlanta site · live GDOT data"}
-              </div>
+              Run study
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </button>
-          );
-        })}
+            <span className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5" />
+              Coordinates must fall inside the Atlanta MSA box.
+            </span>
+          </div>
+        </div>
       </div>
-    </div>
+    </form>
   );
 }
 
-function LoadingState({ presetId }: { presetId: string | null }) {
+function LoadingState({ projectName }: { projectName: string | null }) {
   const stages = useMemo(
     () => [
       "Pulling live GDOT signal data",
@@ -393,9 +641,11 @@ function LoadingState({ presetId }: { presetId: string | null }) {
           </li>
         ))}
       </ol>
-      <div className="text-[11px] text-muted-foreground pt-2 font-mono">
-        Preset: {presetId}
-      </div>
+      {projectName && (
+        <div className="text-[11px] text-muted-foreground pt-2 font-mono truncate max-w-md mx-auto">
+          {projectName}
+        </div>
+      )}
     </div>
   );
 }
@@ -414,7 +664,7 @@ function ErrorState({ message, onReset }: { message: string; onReset: () => void
           onClick={onReset}
           className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-md border hover:bg-accent transition-colors"
         >
-          Try another preset
+          Try again
         </button>
         <Link
           href="/signup?plan=trial"
@@ -452,14 +702,19 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
           onClick={onReset}
           className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
         >
-          ← Run a different preset
+          ← Run a different study
         </button>
         <div className="text-xs font-semibold uppercase tracking-widest text-blue-700">
           Your demo result · full analysis
         </div>
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-          {response.presetLabel}
+          {response.projectName}
         </h1>
+        <p className="text-sm text-muted-foreground font-mono">
+          {response.latitude.toFixed(4)}, {response.longitude.toFixed(4)} ·{" "}
+          {response.landUseName} (ITE {response.landUseCode}) ·{" "}
+          {response.size.toLocaleString()} {response.landUseUnitShort}
+        </p>
         <p className="text-sm text-muted-foreground">
           Generated against live GDOT data · ITE 11th Ed. · HCM 6th Ed. · MUTCD
         </p>
@@ -575,12 +830,12 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
             <span className="text-blue-300">10 free studies on signup.</span>
           </h2>
           <p className="text-slate-300 leading-relaxed max-w-2xl">
-            This demo used a fixed Atlanta preset. Sign up free and point the
-            same engine at your own site — any address, any of 80 ITE land
-            uses — then download the deliverable as a white-labeled PDF: your
-            firm logo on the cover, methodology and limitations appendices, a
-            PE stamp box. Save and manage studies across all six engines. No
-            credit card.
+            The screening you just ran is what a paying customer gets, with
+            none of it held back. Sign up free and point the same engine at
+            your own sites unlimited times, save deliverables as white-labeled
+            PDFs (your firm logo on the cover, methodology and limitations
+            appendices, a PE stamp box), and manage studies across all six
+            engines. No credit card.
           </p>
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <Link
