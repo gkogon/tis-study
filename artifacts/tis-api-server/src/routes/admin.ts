@@ -154,6 +154,7 @@ router.get("/admin/usage", requireAdmin, async (_req, res): Promise<void> => {
  */
 const FUNNEL_EVENTS = [
   "demo_run",
+  "demo_pdf_download",
   "signup",
   "study_generated",
   "checkout_started",

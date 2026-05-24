@@ -10,6 +10,7 @@ import { logger } from "./logger";
 
 export type EventType =
   | "demo_run"
+  | "demo_pdf_download"
   | "signup"
   | "study_generated"
   | "checkout_started"

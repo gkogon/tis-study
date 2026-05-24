@@ -32,6 +32,7 @@ import { generateTisReport, type TisRequest } from "../lib/tis";
 import { LAND_USES } from "../lib/land-uses";
 import { demoRateLimiter } from "../lib/security";
 import { logEvent } from "../lib/events";
+import { renderStudyPdf } from "../lib/pdf-export";
 
 const router: IRouter = Router();
 
@@ -173,10 +174,18 @@ router.get("/demo/presets", (_req, res) => {
   res.json({ presets: out });
 });
 
-router.post("/demo/generate", demoRateLimiter, async (req, res): Promise<void> => {
-  const body = (req.body ?? {}) as Record<string, unknown>;
+/**
+ * Validate + coerce a demo request body. Returns either a fully-formed
+ * TisRequest (with derived projectName/address + the resolved land-use
+ * metadata) or a {status,error} tuple ready for the route to send back.
+ * Shared between /demo/generate (JSON result) and /demo/pdf (PDF
+ * download) so both endpoints enforce identical bounds and don't drift.
+ */
+type DemoRequestParse =
+  | { ok: true; request: TisRequest; landUse: typeof LAND_USES[number]; projectName: string }
+  | { ok: false; status: number; error: string };
 
-  // ---------- parse + coerce ----------
+function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
   const latitude = Number(body.latitude);
   const longitude = Number(body.longitude);
   const landUseCode = typeof body.landUseCode === "string" ? body.landUseCode.trim() : "";
@@ -191,56 +200,56 @@ router.post("/demo/generate", demoRateLimiter, async (req, res): Promise<void> =
   const projectNameRaw = typeof body.projectName === "string" ? body.projectName.trim() : "";
   const addressRaw = typeof body.address === "string" ? body.address.trim() : "";
 
-  // ---------- validate ----------
   if (!Number.isFinite(latitude) || latitude < ATL_LAT_MIN || latitude > ATL_LAT_MAX) {
-    res.status(400).json({
-      error: `Latitude must be between ${ATL_LAT_MIN} and ${ATL_LAT_MAX} (Atlanta MSA).`,
-    });
-    return;
+    return { ok: false, status: 400, error: `Latitude must be between ${ATL_LAT_MIN} and ${ATL_LAT_MAX} (Atlanta MSA).` };
   }
   if (!Number.isFinite(longitude) || longitude < ATL_LON_MIN || longitude > ATL_LON_MAX) {
-    res.status(400).json({
-      error: `Longitude must be between ${ATL_LON_MIN} and ${ATL_LON_MAX} (Atlanta MSA).`,
-    });
-    return;
+    return { ok: false, status: 400, error: `Longitude must be between ${ATL_LON_MIN} and ${ATL_LON_MAX} (Atlanta MSA).` };
   }
   const landUse = LAND_USES.find((lu) => lu.code === landUseCode);
   if (!landUse) {
-    res.status(400).json({ error: `Unknown ITE land-use code: "${landUseCode}".` });
-    return;
+    return { ok: false, status: 400, error: `Unknown ITE land-use code: "${landUseCode}".` };
   }
   if (!Number.isFinite(size) || size <= 0 || size > SIZE_MAX) {
-    res.status(400).json({
-      error: `Project size must be between 0 and ${SIZE_MAX} ${landUse.unitShort}.`,
-    });
-    return;
+    return { ok: false, status: 400, error: `Project size must be between 0 and ${SIZE_MAX} ${landUse.unitShort}.` };
   }
   if (openingYear < currentYear - 1 || openingYear > currentYear + 30) {
-    res.status(400).json({
-      error: `Opening year must be between ${currentYear - 1} and ${currentYear + 30}.`,
-    });
-    return;
+    return { ok: false, status: 400, error: `Opening year must be between ${currentYear - 1} and ${currentYear + 30}.` };
   }
 
-  // ---------- build request ----------
   const projectName =
     projectNameRaw ||
     `Demo: ${landUse.name} @ ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
   const address = addressRaw || `Custom site (${latitude.toFixed(4)}, ${longitude.toFixed(4)}), Atlanta MSA`;
 
-  const request: TisRequest = {
+  return {
+    ok: true,
+    landUse,
     projectName,
-    address,
-    latitude,
-    longitude,
-    landUseCode,
-    size,
-    openingYear,
-    studyRadiusMi,
-    growthRatePct: 1.5,
-    weather: "clear",
-    runSensitivity: true,
+    request: {
+      projectName,
+      address,
+      latitude,
+      longitude,
+      landUseCode,
+      size,
+      openingYear,
+      studyRadiusMi,
+      growthRatePct: 1.5,
+      weather: "clear",
+      runSensitivity: true,
+    },
   };
+}
+
+router.post("/demo/generate", demoRateLimiter, async (req, res): Promise<void> => {
+  const parsed = parseDemoRequest((req.body ?? {}) as Record<string, unknown>);
+  if (!parsed.ok) {
+    res.status(parsed.status).json({ error: parsed.error });
+    return;
+  }
+  const { request, landUse, projectName } = parsed;
+  const { latitude, longitude, landUseCode, size, openingYear, studyRadiusMi } = request;
 
   try {
     const report = await generateTisReport(request);
@@ -278,6 +287,83 @@ router.post("/demo/generate", demoRateLimiter, async (req, res): Promise<void> =
       error: isUpstream
         ? "Live data feed is briefly slow. Try again in 30 seconds or sign up to be notified."
         : "Demo generation failed. Check your inputs or sign up to run on a custom site.",
+    });
+  }
+});
+
+/**
+ * POST /tis-api/demo/pdf
+ *
+ * Re-runs the same screening (taking the same body shape as
+ * /demo/generate) and returns the PDF as a stream-built Buffer.
+ * Engineers respond strongly to artifacts they can save; this is what
+ * lets a prospect grab the report they just looked at without signing
+ * up. Shares the demoRateLimiter so the PDF path can't be used to
+ * bypass the 3/day per-IP cap on engine runs.
+ *
+ * Important: re-runs the engine server-side rather than trusting any
+ * client-supplied report payload. A malicious client could otherwise
+ * feed bogus numbers into a "screening preview" PDF.
+ */
+router.post("/demo/pdf", demoRateLimiter, async (req, res): Promise<void> => {
+  const parsed = parseDemoRequest((req.body ?? {}) as Record<string, unknown>);
+  if (!parsed.ok) {
+    res.status(parsed.status).json({ error: parsed.error });
+    return;
+  }
+  const { request, landUse, projectName } = parsed;
+
+  try {
+    const report = await generateTisReport(request);
+    logEvent("demo_pdf_download", {
+      metadata: {
+        landUseCode: landUse.code,
+        lat: request.latitude.toFixed(4),
+        lon: request.longitude.toFixed(4),
+        size: request.size,
+        intersections: report.intersectionsStudied,
+      },
+    });
+
+    // Render via the existing per-study pipeline by synthesizing a
+    // StoredProject-shaped object. No DB write: this is purely an
+    // ephemeral render.
+    const pdf = await renderStudyPdf(
+      {
+        id: `demo-${Date.now()}`,
+        studyType: "tis",
+        projectName,
+        landUseCode: landUse.code,
+        siteLat: String(request.latitude),
+        siteLon: String(request.longitude),
+        version: 1,
+        createdAt: new Date(),
+        requestPayload: request,
+        resultPayload: report,
+      },
+      {
+        // No firm branding — make the screening-only nature of the
+        // deliverable unmistakable so an engineer doesn't accidentally
+        // pass this off as a stamped consultant TIS.
+        name: "Simple Impact Studies — Demo Preview",
+        logoUrl: null,
+      },
+    );
+
+    // Make the filename project-derived but filesystem-safe.
+    const safeName = projectName.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}.pdf"`);
+    res.setHeader("Cache-Control", "no-store");
+    res.send(pdf);
+  } catch (err) {
+    req.log.error({ err, landUseCode: landUse.code }, "demo.pdf.failed");
+    const msg = err instanceof Error ? err.message : String(err);
+    const isUpstream = /analyzer/i.test(msg);
+    res.status(isUpstream ? 503 : 500).json({
+      error: isUpstream
+        ? "Live data feed is briefly slow. Try again in 30 seconds."
+        : "PDF generation failed. Try the demo preview on the page, or sign up to download from your dashboard.",
     });
   }
 });

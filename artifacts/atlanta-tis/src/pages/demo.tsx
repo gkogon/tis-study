@@ -18,7 +18,7 @@ import {
   Sparkles, Building2, Briefcase, ShoppingBag, Coffee, Home, Hotel,
   Stethoscope, ShoppingCart, UtensilsCrossed,
   Loader2, ArrowRight, AlertCircle, MapPin, FileCheck2, ChevronRight,
-  ChevronDown, Hourglass, ShieldCheck,
+  ChevronDown, Hourglass, ShieldCheck, Download,
 } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 
@@ -694,17 +694,87 @@ function SectionHead({ step, title, note }: { step: string; title: string; note?
 function ResultView({ response, onReset }: { response: DemoResponse; onReset: () => void }) {
   const r = response.report;
   const tg = r.tripGeneration;
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  async function downloadPdf() {
+    setPdfLoading(true);
+    setPdfError(null);
+    try {
+      const res = await fetch("/tis-api/demo/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectName: response.projectName,
+          latitude: response.latitude,
+          longitude: response.longitude,
+          landUseCode: response.landUseCode,
+          size: response.size,
+          openingYear: response.openingYear,
+          studyRadiusMi: response.studyRadiusMi,
+        }),
+      });
+      if (!res.ok) {
+        // Server returns JSON for errors; binary for success.
+        const ct = res.headers.get("content-type") ?? "";
+        const msg = ct.includes("application/json")
+          ? ((await res.json())?.error ?? `HTTP ${res.status}`)
+          : `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const safe = response.projectName.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80);
+      a.download = `${safe || "tis-demo"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setPdfError(e instanceof Error ? e.message : "PDF download failed.");
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-10">
-      <div className="space-y-2">
-        <button
-          type="button"
-          onClick={onReset}
-          className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-        >
-          ← Run a different study
-        </button>
-        <div className="text-xs font-semibold uppercase tracking-widest text-blue-700">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={onReset}
+            className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+          >
+            ← Run a different study
+          </button>
+          <button
+            type="button"
+            onClick={downloadPdf}
+            disabled={pdfLoading}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+          >
+            {pdfLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Generating PDF…
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" />
+                Download this report as PDF
+              </>
+            )}
+          </button>
+        </div>
+        {pdfError && (
+          <div className="text-xs text-red-700 dark:text-red-400 inline-flex items-center gap-1.5">
+            <AlertCircle className="w-3.5 h-3.5" /> {pdfError}
+          </div>
+        )}
+        <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground pt-2">
           Your demo result · full analysis
         </div>
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
@@ -814,47 +884,38 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
         </section>
       )}
 
-      {/* Conversion section — strong CTA to sign up */}
-      <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white px-6 sm:px-12 py-10 sm:py-14 overflow-hidden relative">
-        <div
-          aria-hidden
-          className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-blue-600/20 blur-3xl pointer-events-none"
-        />
-        <div className="relative space-y-5">
-          <div className="text-xs font-semibold uppercase tracking-widest text-blue-300">
-            That was the full analysis — nothing held back
+      {/* Conversion CTA — same hairline-panel treatment as the home FinalCta */}
+      <section className="border border-border bg-slate-50 dark:bg-slate-950/40 px-6 sm:px-10 py-10 sm:py-12">
+        <div className="grid lg:grid-cols-12 gap-8 items-center">
+          <div className="lg:col-span-8 space-y-3">
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+              Save it, brand it, send it.
+            </h2>
+            <p className="text-muted-foreground text-lg leading-relaxed max-w-xl">
+              This screening ran once and isn't saved anywhere. A free
+              account lets you keep studies, point the same engine at as
+              many sites as you want, and download white-labeled PDFs with
+              your firm's logo and PE stamp block on the cover. No credit
+              card.
+            </p>
           </div>
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight max-w-2xl">
-            Now run it on your project.
-            <br />
-            <span className="text-blue-300">10 free studies on signup.</span>
-          </h2>
-          <p className="text-slate-300 leading-relaxed max-w-2xl">
-            The screening you just ran is what a paying customer gets, with
-            none of it held back. Sign up free and point the same engine at
-            your own sites unlimited times, save deliverables as white-labeled
-            PDFs (your firm logo on the cover, methodology and limitations
-            appendices, a PE stamp box), and manage studies across all six
-            engines. No credit card.
-          </p>
-          <div className="flex flex-wrap items-center gap-3 pt-2">
+          <div className="lg:col-span-4 flex flex-col sm:flex-row lg:flex-col gap-3">
             <Link
               href="/signup?plan=trial"
-              className="group inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg bg-white text-slate-900 hover:bg-slate-100 transition-all shadow-sm"
+              className="group inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
             >
-              Sign up free <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              Sign up free
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </Link>
-            <a
-              href="/sample-tis-report.pdf"
-              target="_blank"
-              rel="noopener"
-              className="inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg border border-white/20 hover:bg-white/10 transition-colors"
+            <Link
+              href="/pricing"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold rounded-lg border border-border hover:bg-accent transition-colors"
             >
-              <FileCheck2 className="w-4 h-4" /> Download a sample PDF
-            </a>
+              See plans
+            </Link>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
