@@ -1,39 +1,93 @@
 /**
- * §04 Coverage — the per-metro index strip.
+ * §04 Coverage — per-state dropdown index.
  *
  * Visual language continues the rest of the marketing site: numbered
  * report section header (§04), hairline rules between rows, mono numerals
  * for the big counts, no rounded cards / no glow / no gradients. Reads
  * like the front matter of a TIS report, not a SaaS landing page.
  *
- * Tier A (≥ 75% measured-AADT coverage, plus Atlanta as the flagship)
- * gets the full row treatment with the live-source badge. Tier B is
- * collapsed into a quieter "Also indexed" strip below — they're
- * fully-modeled in the engine but missing the calibrated AADT layer,
- * so it would be misleading to lead with them at the same volume.
+ * Layout: 50 state rows, alphabetical (Alabama → Wyoming + DC). Each is a
+ * collapsible row showing state name, metro count, total signals, and a
+ * caret. Click to expand → indented metro rows for that state with the
+ * same signal/AADT/live columns as the old Tier-A grid.
+ *
+ * Initial state: all collapsed — gives a scannable 50-row index. "Expand
+ * all" toggle in the header.
  */
 
+import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { Marker } from "./section-marker";
 import {
   METROS,
-  TIER_A_METROS,
-  TIER_B_METROS,
   TOTAL_METROS,
   TOTAL_SIGNALS,
   STATES_COVERED,
   STATE_NAMES,
-  compareByStateThenAadt,
+  TIER_A_AADT_CUTOFF,
   type MetroCoverage,
 } from "../data/metro-coverage";
 
+type StateGroup = {
+  code: MetroCoverage["state"];
+  name: string;
+  metros: MetroCoverage[];
+  signalsTotal: number;
+  tierACount: number;
+  liveCount: number;
+};
+
+function buildGroups(): StateGroup[] {
+  const byState = new Map<MetroCoverage["state"], MetroCoverage[]>();
+  for (const m of METROS) {
+    const arr = byState.get(m.state) ?? [];
+    arr.push(m);
+    byState.set(m.state, arr);
+  }
+  const groups: StateGroup[] = [];
+  for (const [code, metros] of byState.entries()) {
+    // Within-state order: Tier-A first (AADT desc), then Tier-B alphabetical
+    metros.sort((a, b) => {
+      const aTierA = a.aadtPct >= TIER_A_AADT_CUTOFF || a.code === "atlanta_metro";
+      const bTierA = b.aadtPct >= TIER_A_AADT_CUTOFF || b.code === "atlanta_metro";
+      if (aTierA !== bTierA) return aTierA ? -1 : 1;
+      if (aTierA) return b.aadtPct - a.aadtPct;
+      return a.shortName.localeCompare(b.shortName);
+    });
+    groups.push({
+      code,
+      name: STATE_NAMES[code],
+      metros,
+      signalsTotal: metros.reduce((s, m) => s + m.signals, 0),
+      tierACount: metros.filter((m) => m.aadtPct >= TIER_A_AADT_CUTOFF || m.code === "atlanta_metro").length,
+      liveCount: metros.filter((m) => m.liveSource != null).length,
+    });
+  }
+  // Alphabetical by full state name
+  groups.sort((a, b) => a.name.localeCompare(b.name));
+  return groups;
+}
+
 export function CoverageGrid() {
-  // Both tiers sort by full state name alphabetically, then by AADT% desc
-  // within state. Atlanta still gets its flagship badge but sits under
-  // Georgia rather than commanding row #1 — keeps the list scannable
-  // by state, which is how customers actually look for their metro.
-  const tierA = [...TIER_A_METROS].sort(compareByStateThenAadt);
-  const tierB = [...TIER_B_METROS].sort(compareByStateThenAadt);
+  const groups = useMemo(buildGroups, []);
+  const [openStates, setOpenStates] = useState<Set<string>>(new Set());
+
+  const toggleState = (code: string): void => {
+    setOpenStates((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  };
+
+  const expandAll = (): void => {
+    setOpenStates(new Set(groups.map((g) => g.code)));
+  };
+  const collapseAll = (): void => {
+    setOpenStates(new Set());
+  };
+  const allOpen = openStates.size === groups.length;
 
   return (
     <section className="space-y-10" data-testid="coverage-grid">
@@ -47,10 +101,9 @@ export function CoverageGrid() {
             indexed across <span className="font-mono">{STATES_COVERED}</span> states.
           </h2>
           <p className="text-base sm:text-lg text-muted-foreground leading-relaxed max-w-xl">
-            Every signalized intersection in every Southeast metro we cover is
-            indexed against the same engine — same HCM 6th, same ITE 11th
-            rates, same MUTCD warrants. The numbers below are real, not
-            illustrative.
+            Every signalized intersection in every metro we cover is indexed
+            against the same engine — same HCM 6th, same ITE 11th rates, same
+            MUTCD warrants. Pick a state below to see what's wired.
           </p>
         </div>
 
@@ -63,64 +116,37 @@ export function CoverageGrid() {
         </div>
       </header>
 
-      {/* Tier A: featured rows with full coverage stats + live source */}
-      <div className="border-t border-border">
-        <div className="grid grid-cols-12 gap-3 sm:gap-4 py-3 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground border-b border-border">
-          <div className="col-span-4 sm:col-span-4">Metro</div>
-          <div className="col-span-1 hidden sm:block">State</div>
-          <div className="col-span-3 sm:col-span-2 text-right">Signals</div>
-          <div className="col-span-3 sm:col-span-2 text-right">AADT match</div>
-          <div className="col-span-2 sm:col-span-3 text-right">Live source</div>
+      <div className="flex items-baseline justify-between border-t border-border pt-3">
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+          §A · By state
         </div>
-
-        {tierA.map((m) => (
-          <MetroRow key={m.code} m={m} highlight />
-        ))}
+        <button
+          type="button"
+          onClick={allOpen ? collapseAll : expandAll}
+          className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground underline decoration-dotted underline-offset-[6px] hover:no-underline"
+          data-testid="toggle-expand-all"
+        >
+          {allOpen ? "Collapse all" : "Expand all"}
+        </button>
       </div>
 
-      {/* Tier B: compact "also indexed" strip */}
-      {tierB.length > 0 && (
-        <div className="space-y-3 pt-6">
-          <div className="flex items-baseline justify-between">
-            <h3 className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              Also indexed
-            </h3>
-            <span className="font-mono text-[11px] text-muted-foreground">
-              {tierB.length} metros · synthetic AADT pending state-DOT data
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-border pt-3">
-            {tierB.map((m) => (
-              <span
-                key={m.code}
-                className="font-mono text-sm text-foreground/80"
-                data-testid={`tier-b-${m.code}`}
-              >
-                {m.shortName}{" "}
-                <span className="text-muted-foreground">
-                  · {m.state} · {m.signals.toLocaleString()}
-                </span>
-                {m.liveSource && (
-                  <span
-                    className="ml-1.5 inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400"
-                    title={`Live: ${m.liveSource}`}
-                  >
-                    <span className="w-1 h-1 rounded-full bg-emerald-500" />
-                    <span className="text-[10px] uppercase tracking-[0.12em]">live</span>
-                  </span>
-                )}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="-mt-6">
+        {groups.map((g) => (
+          <StateRow
+            key={g.code}
+            group={g}
+            open={openStates.has(g.code)}
+            onToggle={() => toggleState(g.code)}
+          />
+        ))}
+      </div>
 
       <div className="flex flex-wrap items-baseline justify-between gap-4 pt-4 border-t border-border/60">
         <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
           AADT match = share of indexed signals snapped to a measured state-DOT
           traffic count within 100–1000 m. The remainder runs on a calibrated
-          road-class baseline (motorway 2,500 vph → tertiary 700 vph). Full
-          methodology and data provenance per metro on the cities page.
+          road-class baseline. Full methodology and data provenance per metro
+          on the cities page.
         </p>
         <Link
           href="/cities"
@@ -134,37 +160,110 @@ export function CoverageGrid() {
   );
 }
 
-function MetroRow({ m, highlight }: { m: MetroCoverage; highlight?: boolean }) {
+function StateRow({
+  group,
+  open,
+  onToggle,
+}: {
+  group: StateGroup;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="border-b border-border" data-testid={`state-${group.code}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="w-full grid grid-cols-12 gap-3 sm:gap-4 py-3 items-baseline text-left hover:bg-accent/40 transition-colors cursor-pointer"
+        data-testid={`state-toggle-${group.code}`}
+      >
+        <div className="col-span-6 sm:col-span-5 flex items-baseline gap-3">
+          <span
+            aria-hidden
+            className="font-mono text-[10px] text-muted-foreground inline-block w-3"
+          >
+            {open ? "−" : "+"}
+          </span>
+          <span className="font-semibold text-base sm:text-lg text-foreground">
+            {group.name}
+          </span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+            {group.code}
+          </span>
+        </div>
+        <div className="col-span-2 sm:col-span-2 text-right font-mono text-xs sm:text-sm text-muted-foreground tabular-nums">
+          {group.metros.length}{" "}
+          <span className="hidden sm:inline">{group.metros.length === 1 ? "metro" : "metros"}</span>
+        </div>
+        <div className="col-span-2 sm:col-span-2 text-right font-mono text-xs sm:text-sm text-foreground tabular-nums">
+          {group.signalsTotal.toLocaleString()}
+        </div>
+        <div className="col-span-1 sm:col-span-1 text-right font-mono text-[10px] sm:text-xs text-muted-foreground tabular-nums">
+          {group.tierACount > 0 ? (
+            <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
+              {group.tierACount}A
+            </span>
+          ) : (
+            <span className="opacity-60">—</span>
+          )}
+        </div>
+        <div className="col-span-1 sm:col-span-2 text-right font-mono text-[10px] sm:text-xs text-muted-foreground">
+          {group.liveCount > 0 ? (
+            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+              <span className="w-1 h-1 rounded-full bg-emerald-500" />
+              {group.liveCount} <span className="hidden sm:inline">live</span>
+            </span>
+          ) : (
+            <span className="opacity-60">—</span>
+          )}
+        </div>
+      </button>
+
+      {open && (
+        <div className="pb-3" data-testid={`state-body-${group.code}`}>
+          <div className="grid grid-cols-12 gap-3 sm:gap-4 py-2 pl-7 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground border-t border-border/40">
+            <div className="col-span-5">Metro</div>
+            <div className="col-span-2 text-right">Signals</div>
+            <div className="col-span-2 text-right">AADT match</div>
+            <div className="col-span-3 text-right">Live source</div>
+          </div>
+          {group.metros.map((m) => (
+            <MetroRow key={m.code} m={m} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MetroRow({ m }: { m: MetroCoverage }) {
+  const tierA = m.aadtPct >= TIER_A_AADT_CUTOFF || m.code === "atlanta_metro";
   return (
     <Link
       href={`/cities/${m.slug}`}
-      className="block grid grid-cols-12 gap-3 sm:gap-4 py-3 border-b border-border/70 items-baseline hover:bg-accent/40 transition-colors cursor-pointer"
+      className="block grid grid-cols-12 gap-3 sm:gap-4 py-2 pl-7 border-t border-border/30 items-baseline hover:bg-accent/40 transition-colors cursor-pointer"
       data-testid={`metro-row-${m.code}`}
     >
-      <div className="col-span-4 sm:col-span-4">
-        <div className="font-semibold text-sm sm:text-base text-foreground group-hover:underline">
-          {m.shortName}
-          {m.code === "atlanta_metro" && (
-            <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.15em] text-emerald-700 dark:text-emerald-400">
-              Flagship
-            </span>
-          )}
-        </div>
+      <div className="col-span-5">
+        <span className="text-sm text-foreground">{m.shortName}</span>
+        {m.code === "atlanta_metro" && (
+          <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.15em] text-emerald-700 dark:text-emerald-400">
+            Flagship
+          </span>
+        )}
       </div>
-      <div className="col-span-1 hidden sm:block font-mono text-xs text-muted-foreground self-center">
-        {m.state}
-      </div>
-      <div className="col-span-3 sm:col-span-2 text-right font-mono text-sm sm:text-base text-foreground tabular-nums">
+      <div className="col-span-2 text-right font-mono text-sm text-foreground tabular-nums">
         {m.signals.toLocaleString()}
       </div>
-      <div className="col-span-3 sm:col-span-2 text-right font-mono text-sm sm:text-base tabular-nums">
-        <AadtPct pct={m.aadtPct} highlight={highlight} />
+      <div className="col-span-2 text-right font-mono text-sm tabular-nums">
+        <AadtPct pct={m.aadtPct} tierA={tierA} />
       </div>
-      <div className="col-span-2 sm:col-span-3 text-right font-mono text-[11px] sm:text-xs text-muted-foreground self-center">
+      <div className="col-span-3 text-right font-mono text-[11px] sm:text-xs text-muted-foreground self-center">
         {m.liveSource ? (
           <span className="inline-flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            {m.liveSource}
+            <span className="truncate">{m.liveSource}</span>
           </span>
         ) : (
           <span className="opacity-60">—</span>
@@ -174,9 +273,9 @@ function MetroRow({ m, highlight }: { m: MetroCoverage; highlight?: boolean }) {
   );
 }
 
-function AadtPct({ pct, highlight }: { pct: number; highlight?: boolean }) {
-  if (pct >= 95) return <span className={highlight ? "text-emerald-700 dark:text-emerald-400 font-semibold" : ""}>{pct.toFixed(1)}%</span>;
-  if (pct >= 75) return <span className={highlight ? "text-foreground font-semibold" : ""}>{pct.toFixed(1)}%</span>;
+function AadtPct({ pct, tierA }: { pct: number; tierA: boolean }) {
+  if (pct >= 95) return <span className="text-emerald-700 dark:text-emerald-400 font-semibold">{pct.toFixed(1)}%</span>;
+  if (tierA) return <span className="text-foreground font-semibold">{pct.toFixed(1)}%</span>;
   if (pct > 0) return <span className="text-muted-foreground">{pct.toFixed(1)}%</span>;
   return <span className="text-muted-foreground/60">—</span>;
 }
