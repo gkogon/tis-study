@@ -1156,6 +1156,17 @@ const REGIONS: RegionConfig[] = [
     return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "Alberta Transportation LoS 2021 (WAADT)", polylineConfig: { url: "https://services3.arcgis.com/mSGO1HzZze9kkZcj/arcgis/rest/services/Level_of_Service_2021/FeatureServer/0", aadtField: "WAADT_VOLUME", yearExtractor: { kind: "field_int", field: "TRAFFIC_YEAR" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
   })),
 
+  // MTO Ontario — Toronto/Ottawa/Hamilton, polyline (Historical AADT, AADT19 = 2019 latest).
+  // Provincial-highway-only (1,844 segments statewide); expect low urban-core coverage.
+  ...(["toronto", "ottawa", "hamilton"].flatMap((slug) => {
+    const bboxes: Record<string, RegionConfig["bbox"]> = {
+      "toronto": { latMin: 43.5, latMax: 44.0, lonMin: -79.7, lonMax: -79.0 },
+      "ottawa": { latMin: 45.2, latMax: 45.5, lonMin: -76.0, lonMax: -75.4 },
+      "hamilton": { latMin: 43.1, latMax: 43.4, lonMin: -80.0, lonMax: -79.7 },
+    };
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "MTO Historical AADT (2019)", polylineConfig: { url: "https://services.arcgis.com/6iGx1Dq91oKtcE7x/arcgis/rest/services/Historical_AADT/FeatureServer/0", aadtField: "AADT19", yearExtractor: { kind: "static", year: 2019 }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+  })),
+
   // Manitoba Infrastructure (via UManitoba MHTIS) — Winnipeg, polyline. 2019 stale.
   {
     slug: "winnipeg",
