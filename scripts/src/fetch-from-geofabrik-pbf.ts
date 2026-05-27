@@ -85,6 +85,15 @@ const STATES: Record<string, RegionCode[]> = {
   wyoming: ["cheyenne_metro"],
   alaska: ["anchorage_metro"],
   hawaii: ["honolulu_metro"],
+  // ── Tier-8: Canada (Geofabrik publishes per-province under north-america/canada/) ──
+  // Path uses canadian state name only; the prefix `canada/` is added by the
+  // download URL constructor when state has no US equivalent (see script).
+  ontario: ["toronto_metro", "ottawa_metro", "hamilton_metro"],
+  quebec: ["montreal_metro", "quebec_city_metro"],
+  "british-columbia": ["vancouver_metro"],
+  alberta: ["calgary_metro", "edmonton_metro"],
+  manitoba: ["winnipeg_metro"],
+  "nova-scotia": ["halifax_metro"],
 };
 
 const ROAD_HIGHWAYS = [

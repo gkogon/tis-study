@@ -124,6 +124,17 @@ export type RegionCode =
   | "cheyenne_metro"
   | "anchorage_metro"
   | "honolulu_metro"
+  // Tier-8 (Canada — 10 metros across 7 provinces).
+  | "toronto_metro"
+  | "montreal_metro"
+  | "vancouver_metro"
+  | "calgary_metro"
+  | "ottawa_metro"
+  | "edmonton_metro"
+  | "winnipeg_metro"
+  | "quebec_city_metro"
+  | "hamilton_metro"
+  | "halifax_metro"
   // Tier-7 (50+ secondary metros in already-wired states — depth push).
   | "rochester_ny_metro" | "buffalo_metro" | "syracuse_metro" | "albany_metro"
   | "toledo_metro" | "akron_metro" | "dayton_metro" | "youngstown_metro"
@@ -169,7 +180,10 @@ export type Region = {
     | "IN" | "MO" | "WI" | "TX"
     | "CA" | "OR" | "WA" | "NV" | "AZ" | "CO" | "UT" | "NM"
     | "CT" | "RI" | "NH" | "VT" | "ME" | "NJ" | "WV" | "MS" | "AR" | "OK"
-    | "IA" | "NE" | "KS" | "ND" | "SD" | "ID" | "MT" | "WY" | "AK" | "HI";
+    | "IA" | "NE" | "KS" | "ND" | "SD" | "ID" | "MT" | "WY" | "AK" | "HI"
+    | "ON" | "QC" | "BC" | "AB" | "MB" | "NS";  // Canadian provinces (Tier-8)
+  /** Country — defaults to "US" when omitted (back-compat for all pre-Tier-8 regions). */
+  country?: "US" | "CA";
   /** Jurisdictional copy that gets substituted into methodology/findings strings. */
   jurisdiction: {
     /** "City of Atlanta DOT" — used in TIS-mitigation findings. */
@@ -186,7 +200,8 @@ export type Region = {
     | "caltrans" | "odot_or" | "wsdot" | "nvdot" | "adot" | "cdot_co" | "udot" | "nmdot"
     | "ctdot" | "ridot" | "nhdot" | "vtrans" | "medot" | "njdot" | "wvdot" | "mdot_ms"
     | "ardot" | "odot_ok" | "iadot" | "ndor" | "ksdot" | "nddot" | "sddot"
-    | "itd" | "mdt" | "wydot" | "akdot" | "hidot";
+    | "itd" | "mdt" | "wydot" | "akdot" | "hidot"
+    | "mto" | "mtq" | "moti_bc" | "ab_transportation" | "mb_infrastructure" | "ns_public_works";
   /** Whether this region is currently shipping (false = reserved/planned only). */
   active: boolean;
 };
@@ -1432,6 +1447,151 @@ export const REGIONS: Record<RegionCode, Region> = {
       parkingCodeCitation: "Honolulu Land Use Ordinance, Chapter 21, Article 6 — Off-Street Parking and Loading.",
     },
     dataSourceId: "hidot",
+    active: true,
+  },
+
+  // ── Tier-8: Canada (10 metros across 7 provinces) ──
+  // Bounds tightened to CMA cores (Census Metropolitan Areas). Jurisdiction
+  // copy references municipal transportation services + by-laws (not
+  // "ordinances") + TAC-aligned parking standards.
+  toronto_metro: {
+    code: "toronto_metro",
+    displayName: "Toronto CMA",
+    bounds: { latMin: 43.5, latMax: 44.0, lonMin: -79.7, lonMax: -79.0 },
+    stateCode: "ON",
+    country: "CA",
+    jurisdiction: {
+      dotName: "City of Toronto Transportation Services",
+      planningOfficeName: "City Planning Division",
+      parkingCodeCitation: "Toronto Zoning By-law 569-2013, Chapter 200 — Parking Space Regulations.",
+    },
+    dataSourceId: "mto",
+    active: true,
+  },
+  montreal_metro: {
+    code: "montreal_metro",
+    displayName: "Montréal CMM",
+    bounds: { latMin: 45.4, latMax: 45.7, lonMin: -73.8, lonMax: -73.4 },
+    stateCode: "QC",
+    country: "CA",
+    jurisdiction: {
+      dotName: "Service de l'urbanisme et de la mobilité (Montréal)",
+      planningOfficeName: "Service de l'urbanisme et de la mobilité",
+      parkingCodeCitation: "Règlement d'urbanisme de la Ville de Montréal (RV 01-282), Section IV — Stationnement.",
+    },
+    dataSourceId: "mtq",
+    active: true,
+  },
+  vancouver_metro: {
+    code: "vancouver_metro",
+    displayName: "Metro Vancouver Regional District",
+    bounds: { latMin: 49.1, latMax: 49.4, lonMin: -123.3, lonMax: -122.5 },
+    stateCode: "BC",
+    country: "CA",
+    jurisdiction: {
+      dotName: "City of Vancouver Engineering — Transportation Division",
+      planningOfficeName: "City of Vancouver Planning, Urban Design and Sustainability",
+      parkingCodeCitation: "Vancouver Parking By-law No. 6059, Sections 4-6 — Off-Street Parking.",
+    },
+    dataSourceId: "moti_bc",
+    active: true,
+  },
+  calgary_metro: {
+    code: "calgary_metro",
+    displayName: "Calgary CMA",
+    bounds: { latMin: 50.8, latMax: 51.2, lonMin: -114.3, lonMax: -113.8 },
+    stateCode: "AB",
+    country: "CA",
+    jurisdiction: {
+      dotName: "City of Calgary Transportation Department",
+      planningOfficeName: "Calgary Planning and Development Services",
+      parkingCodeCitation: "Calgary Land Use Bylaw 1P2007, Part 4, Division 5 — Motor Vehicle Parking.",
+    },
+    dataSourceId: "ab_transportation",
+    active: true,
+  },
+  ottawa_metro: {
+    code: "ottawa_metro",
+    displayName: "Ottawa CMA",
+    bounds: { latMin: 45.2, latMax: 45.5, lonMin: -76.0, lonMax: -75.4 },
+    stateCode: "ON",
+    country: "CA",
+    jurisdiction: {
+      dotName: "City of Ottawa Transportation Services Department",
+      planningOfficeName: "Planning, Real Estate and Economic Development (PRED)",
+      parkingCodeCitation: "Ottawa Zoning By-law 2008-250, Section 100 — Parking Space Rates.",
+    },
+    dataSourceId: "mto",
+    active: true,
+  },
+  edmonton_metro: {
+    code: "edmonton_metro",
+    displayName: "Edmonton CMA",
+    bounds: { latMin: 53.4, latMax: 53.7, lonMin: -113.7, lonMax: -113.3 },
+    stateCode: "AB",
+    country: "CA",
+    jurisdiction: {
+      dotName: "City of Edmonton Integrated Infrastructure Services — Transportation",
+      planningOfficeName: "Edmonton Urban Planning and Economy",
+      parkingCodeCitation: "Edmonton Zoning Bylaw 20001, Section 6.60 — Motor Vehicle Parking.",
+    },
+    dataSourceId: "ab_transportation",
+    active: true,
+  },
+  winnipeg_metro: {
+    code: "winnipeg_metro",
+    displayName: "Winnipeg CMA",
+    bounds: { latMin: 49.7, latMax: 50.0, lonMin: -97.3, lonMax: -96.9 },
+    stateCode: "MB",
+    country: "CA",
+    jurisdiction: {
+      dotName: "City of Winnipeg Public Works — Transportation Division",
+      planningOfficeName: "Winnipeg Planning, Property and Development Department",
+      parkingCodeCitation: "Winnipeg Zoning By-law 200/2006, Part 5 — Off-Street Parking and Loading.",
+    },
+    dataSourceId: "mb_infrastructure",
+    active: true,
+  },
+  quebec_city_metro: {
+    code: "quebec_city_metro",
+    displayName: "Québec CMA",
+    bounds: { latMin: 46.7, latMax: 47.0, lonMin: -71.4, lonMax: -71.1 },
+    stateCode: "QC",
+    country: "CA",
+    jurisdiction: {
+      dotName: "Service du transport et de la mobilité intelligente (Ville de Québec)",
+      planningOfficeName: "Service de la planification de l'aménagement et de l'environnement",
+      parkingCodeCitation: "Règlement de l'arrondissement de Québec sur l'urbanisme R.V.Q. 1400, Chapitre IV — Stationnement.",
+    },
+    dataSourceId: "mtq",
+    active: true,
+  },
+  hamilton_metro: {
+    code: "hamilton_metro",
+    displayName: "Hamilton CMA",
+    bounds: { latMin: 43.1, latMax: 43.4, lonMin: -80.0, lonMax: -79.7 },
+    stateCode: "ON",
+    country: "CA",
+    jurisdiction: {
+      dotName: "City of Hamilton Public Works — Transportation Planning and Parking",
+      planningOfficeName: "Hamilton Planning and Economic Development",
+      parkingCodeCitation: "Hamilton Zoning By-law 05-200, Section 5 — Parking and Loading.",
+    },
+    dataSourceId: "mto",
+    active: true,
+  },
+  halifax_metro: {
+    code: "halifax_metro",
+    displayName: "Halifax CMA",
+    bounds: { latMin: 44.5, latMax: 44.8, lonMin: -63.8, lonMax: -63.4 },
+    stateCode: "NS",
+    country: "CA",
+    jurisdiction: {
+      dotName: "Halifax Regional Municipality Transportation and Public Works",
+      planningOfficeName: "HRM Planning and Development",
+      parkingCodeCitation: "Halifax Regional Municipality Land Use By-law (Centre Plan), Part 8 — Off-Street Parking.",
+    },
+    dataSourceId: "ns_public_works",
     active: true,
   },
 

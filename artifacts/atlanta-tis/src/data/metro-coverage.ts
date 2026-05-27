@@ -18,7 +18,8 @@
 export type LiveSource = "GDOT 511" | "NCDOT TIMS" | "FDOT DIVAS" | "KYTC closures"
   | "NYSDOT" | "IDOT" | "MDOT" | "MnDOT" | "WisDOT"
   | "TxDOT DriveTexas" | "ADOT Traffic Events" | "NMDOT Public Incidents"
-  | "ODOT-OR TripCheck" | "MD CHART" | "MoDOT WZDx";
+  | "ODOT-OR TripCheck" | "MD CHART" | "MoDOT WZDx"
+  | "511 Ontario" | "Québec 511" | "DriveBC" | "511 Alberta" | "Manitoba 511" | "511 NS";
 
 export type MetroCoverage = {
   /** Region code matching tis-api-server/src/lib/regions.ts. */
@@ -34,7 +35,10 @@ export type MetroCoverage = {
     | "IN" | "MO" | "WI" | "TX"
     | "CA" | "OR" | "WA" | "NV" | "AZ" | "CO" | "UT" | "NM"
     | "CT" | "RI" | "NH" | "VT" | "ME" | "NJ" | "WV" | "MS" | "AR" | "OK"
-    | "IA" | "NE" | "KS" | "ND" | "SD" | "ID" | "MT" | "WY" | "AK" | "HI";
+    | "IA" | "NE" | "KS" | "ND" | "SD" | "ID" | "MT" | "WY" | "AK" | "HI"
+    | "ON" | "QC" | "BC" | "AB" | "MB" | "NS";  // Canadian provinces (Tier-8)
+  /** Country defaults to US when omitted (back-compat for all pre-Tier-8 rows). */
+  country?: "US" | "CA";
   signals: number;
   /** % of signals named via OSM roads or city dataset (vs "Signal #<id>" stub). */
   namedPct: number;
@@ -485,6 +489,18 @@ export const METROS: MetroCoverage[] = [
   { code: "columbia_mo_metro", slug: "columbia-mo", shortName: "Columbia (MO)", longName: "Columbia (MO) MSA", state: "MO", signals: 175, namedPct: 97.7, aadtPct: 38.9, liveSource: "MoDOT WZDx", aadtSource: "MoDOT Directional AADT (state highways)", dotName: "Columbia Public Works Department", planningOfficeName: "Columbia Community Development Department", parkingCodeCitation: "Columbia Code of Ordinances, Section 29-32 — Off-Street Parking." },
   // IA (1)
   { code: "cedar_rapids_metro", slug: "cedar-rapids", shortName: "Cedar Rapids", longName: "Cedar Rapids MSA", state: "IA", signals: 363, namedPct: 97.2, aadtPct: 100.0, liveSource: null, aadtSource: "Iowa DOT RAMS AADT", dotName: "Cedar Rapids Public Works Department", planningOfficeName: "Cedar Rapids Community Development Department", parkingCodeCitation: "Cedar Rapids Municipal Code, Chapter 32 — Zoning, Article 5 — Off-Street Parking." },
+
+  // ── Tier-8: Canada (10 metros, 7 provinces — signal counts pending extraction) ──
+  { code: "toronto_metro", slug: "toronto", shortName: "Toronto", longName: "Toronto CMA", state: "ON", country: "CA", signals: 8427, namedPct: 99.3, aadtPct: 0, liveSource: null, dotName: "City of Toronto Transportation Services", planningOfficeName: "City Planning Division", parkingCodeCitation: "Toronto Zoning By-law 569-2013, Chapter 200 — Parking Space Regulations." },
+  { code: "ottawa_metro", slug: "ottawa", shortName: "Ottawa", longName: "Ottawa CMA", state: "ON", country: "CA", signals: 2594, namedPct: 99.7, aadtPct: 0, liveSource: null, dotName: "City of Ottawa Transportation Services Department", planningOfficeName: "Planning, Real Estate and Economic Development (PRED)", parkingCodeCitation: "Ottawa Zoning By-law 2008-250, Section 100 — Parking Space Rates." },
+  { code: "hamilton_metro", slug: "hamilton", shortName: "Hamilton", longName: "Hamilton CMA", state: "ON", country: "CA", signals: 1358, namedPct: 99.8, aadtPct: 0, liveSource: null, dotName: "City of Hamilton Public Works — Transportation Planning and Parking", planningOfficeName: "Hamilton Planning and Economic Development", parkingCodeCitation: "Hamilton Zoning By-law 05-200, Section 5 — Parking and Loading." },
+  { code: "montreal_metro", slug: "montreal", shortName: "Montréal", longName: "Montréal CMM", state: "QC", country: "CA", signals: 23432, namedPct: 98.6, aadtPct: 0, liveSource: null, dotName: "Service de l'urbanisme et de la mobilité (Montréal)", planningOfficeName: "Service de l'urbanisme et de la mobilité", parkingCodeCitation: "Règlement d'urbanisme de la Ville de Montréal (RV 01-282), Section IV — Stationnement." },
+  { code: "quebec_city_metro", slug: "quebec-city", shortName: "Québec City", longName: "Québec CMA", state: "QC", country: "CA", signals: 1969, namedPct: 98.6, aadtPct: 0, liveSource: null, dotName: "Service du transport et de la mobilité intelligente (Ville de Québec)", planningOfficeName: "Service de la planification de l'aménagement et de l'environnement", parkingCodeCitation: "Règlement de l'arrondissement de Québec sur l'urbanisme R.V.Q. 1400, Chapitre IV — Stationnement." },
+  { code: "vancouver_metro", slug: "vancouver", shortName: "Vancouver", longName: "Metro Vancouver Regional District", state: "BC", country: "CA", signals: 8764, namedPct: 99.8, aadtPct: 0, liveSource: null, dotName: "City of Vancouver Engineering — Transportation Division", planningOfficeName: "City of Vancouver Planning, Urban Design and Sustainability", parkingCodeCitation: "Vancouver Parking By-law No. 6059, Sections 4-6 — Off-Street Parking." },
+  { code: "calgary_metro", slug: "calgary", shortName: "Calgary", longName: "Calgary CMA", state: "AB", country: "CA", signals: 3804, namedPct: 99.3, aadtPct: 3.2, liveSource: null, aadtSource: "Alberta Transportation LoS 2021 (provincial highways)", dotName: "City of Calgary Transportation Department", planningOfficeName: "Calgary Planning and Development Services", parkingCodeCitation: "Calgary Land Use Bylaw 1P2007, Part 4, Division 5 — Motor Vehicle Parking." },
+  { code: "edmonton_metro", slug: "edmonton", shortName: "Edmonton", longName: "Edmonton CMA", state: "AB", country: "CA", signals: 2630, namedPct: 99.8, aadtPct: 1.9, liveSource: null, aadtSource: "Alberta Transportation LoS 2021 (provincial highways)", dotName: "City of Edmonton Integrated Infrastructure Services — Transportation", planningOfficeName: "Edmonton Urban Planning and Economy", parkingCodeCitation: "Edmonton Zoning Bylaw 20001, Section 6.60 — Motor Vehicle Parking." },
+  { code: "winnipeg_metro", slug: "winnipeg", shortName: "Winnipeg", longName: "Winnipeg CMA", state: "MB", country: "CA", signals: 1657, namedPct: 99.8, aadtPct: 0.0, liveSource: null, aadtSource: "MHTIS 2019 (provincial highways only — sparse in Winnipeg)", dotName: "City of Winnipeg Public Works — Transportation Division", planningOfficeName: "Winnipeg Planning, Property and Development Department", parkingCodeCitation: "Winnipeg Zoning By-law 200/2006, Part 5 — Off-Street Parking and Loading." },
+  { code: "halifax_metro", slug: "halifax", shortName: "Halifax", longName: "Halifax CMA", state: "NS", country: "CA", signals: 666, namedPct: 99.1, aadtPct: 0, liveSource: null, dotName: "Halifax Regional Municipality Transportation and Public Works", planningOfficeName: "HRM Planning and Development", parkingCodeCitation: "Halifax Regional Municipality Land Use By-law (Centre Plan), Part 8 — Off-Street Parking." },
 ];
 
 /** Look up by slug — used by the dynamic /cities/:slug route. */
@@ -522,6 +538,9 @@ export const STATE_NAMES: Record<MetroCoverage["state"], string> = {
   MS: "Mississippi", AR: "Arkansas", OK: "Oklahoma", IA: "Iowa", NE: "Nebraska",
   KS: "Kansas", ND: "North Dakota", SD: "South Dakota", ID: "Idaho",
   MT: "Montana", WY: "Wyoming", AK: "Alaska", HI: "Hawaii",
+  // Canadian provinces (Tier-8)
+  ON: "Ontario", QC: "Québec", BC: "British Columbia", AB: "Alberta",
+  MB: "Manitoba", NS: "Nova Scotia",
 };
 
 /** Comparator: sort metros by full state name alphabetically, then by AADT%

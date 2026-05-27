@@ -71,6 +71,13 @@ const STATE_NAMES: Record<MetroCoverage["state"], string> = {
   WY: "Wyoming",
   AK: "Alaska",
   HI: "Hawaii",
+  // Canadian provinces (Tier-8)
+  ON: "Ontario",
+  QC: "Québec",
+  BC: "British Columbia",
+  AB: "Alberta",
+  MB: "Manitoba",
+  NS: "Nova Scotia",
 };
 
 // Alphabetical by full state name. DC sorts under "D" (District of Columbia).

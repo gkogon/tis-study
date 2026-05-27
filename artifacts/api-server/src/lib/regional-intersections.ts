@@ -222,6 +222,17 @@ const REGION_INFO: Record<string, RegionBoundsInfo> = {
   cheyenne_metro: { displayName: "Cheyenne MSA", bounds: { latMin: 41.0, latMax: 41.3, lonMin: -104.9, lonMax: -104.7 } },
   anchorage_metro: { displayName: "Anchorage Municipality", bounds: { latMin: 61.1, latMax: 61.3, lonMin: -150.0, lonMax: -149.5 } },
   honolulu_metro: { displayName: "Urban Honolulu MSA", bounds: { latMin: 21.2, latMax: 21.5, lonMin: -158.0, lonMax: -157.7 } },
+  // ── Tier-8: Canada (10 metros) ──
+  toronto_metro: { displayName: "Toronto CMA", bounds: { latMin: 43.5, latMax: 44.0, lonMin: -79.7, lonMax: -79.0 } },
+  montreal_metro: { displayName: "Montréal CMM", bounds: { latMin: 45.4, latMax: 45.7, lonMin: -73.8, lonMax: -73.4 } },
+  vancouver_metro: { displayName: "Metro Vancouver Regional District", bounds: { latMin: 49.1, latMax: 49.4, lonMin: -123.3, lonMax: -122.5 } },
+  calgary_metro: { displayName: "Calgary CMA", bounds: { latMin: 50.8, latMax: 51.2, lonMin: -114.3, lonMax: -113.8 } },
+  ottawa_metro: { displayName: "Ottawa CMA", bounds: { latMin: 45.2, latMax: 45.5, lonMin: -76.0, lonMax: -75.4 } },
+  edmonton_metro: { displayName: "Edmonton CMA", bounds: { latMin: 53.4, latMax: 53.7, lonMin: -113.7, lonMax: -113.3 } },
+  winnipeg_metro: { displayName: "Winnipeg CMA", bounds: { latMin: 49.7, latMax: 50.0, lonMin: -97.3, lonMax: -96.9 } },
+  quebec_city_metro: { displayName: "Québec CMA", bounds: { latMin: 46.7, latMax: 47.0, lonMin: -71.4, lonMax: -71.1 } },
+  hamilton_metro: { displayName: "Hamilton CMA", bounds: { latMin: 43.1, latMax: 43.4, lonMin: -80.0, lonMax: -79.7 } },
+  halifax_metro: { displayName: "Halifax CMA", bounds: { latMin: 44.5, latMax: 44.8, lonMin: -63.8, lonMax: -63.4 } },
   // ── Tier-7: depth push (55 secondary metros) ──
   rochester_ny_metro: { displayName: "Rochester (NY) MSA", bounds: { latMin: 43.0, latMax: 43.3, lonMin: -78.0, lonMax: -77.4 } },
   buffalo_metro: { displayName: "Buffalo-Cheektowaga-Niagara Falls MSA", bounds: { latMin: 42.7, latMax: 43.1, lonMin: -79.0, lonMax: -78.5 } },

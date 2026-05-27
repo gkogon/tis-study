@@ -190,6 +190,17 @@ const PROBES: Probe[] = [
   { regionCode: "springfield_mo_metro", lat: 37.2090, lon: -93.2923, expectDotIncludes: "Springfield" },
   { regionCode: "columbia_mo_metro", lat: 38.9517, lon: -92.3341, expectDotIncludes: "Columbia" },
   { regionCode: "cedar_rapids_metro", lat: 41.9779, lon: -91.6656, expectDotIncludes: "Cedar Rapids" },
+  // Tier-8: Canada (10 metros across 7 provinces)
+  { regionCode: "toronto_metro", lat: 43.6532, lon: -79.3832, expectDotIncludes: "Toronto" },
+  { regionCode: "montreal_metro", lat: 45.5017, lon: -73.5673, expectDotIncludes: "Montréal" },
+  { regionCode: "vancouver_metro", lat: 49.2827, lon: -123.1207, expectDotIncludes: "Vancouver" },
+  { regionCode: "calgary_metro", lat: 51.0447, lon: -114.0719, expectDotIncludes: "Calgary" },
+  { regionCode: "ottawa_metro", lat: 45.4215, lon: -75.6972, expectDotIncludes: "Ottawa" },
+  { regionCode: "edmonton_metro", lat: 53.5461, lon: -113.4938, expectDotIncludes: "Edmonton" },
+  { regionCode: "winnipeg_metro", lat: 49.8951, lon: -97.1384, expectDotIncludes: "Winnipeg" },
+  { regionCode: "quebec_city_metro", lat: 46.8139, lon: -71.2080, expectDotIncludes: "Québec" },
+  { regionCode: "hamilton_metro", lat: 43.2557, lon: -79.8711, expectDotIncludes: "Hamilton" },
+  { regionCode: "halifax_metro", lat: 44.6488, lon: -63.5752, expectDotIncludes: "Halifax" },
 ];
 
 type Result = { name: string; ok: boolean; got?: string; want?: string };

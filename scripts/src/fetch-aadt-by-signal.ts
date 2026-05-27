@@ -1144,6 +1144,34 @@ const REGIONS: RegionConfig[] = [
     },
   },
 
+  // ── Tier-8 Canada AADT (where available) ──
+
+  // Alberta Transportation — Calgary + Edmonton, polyline (Level of Service 2021,
+  // WAADT_VOLUME field — Weighted AADT). Provincial-highway-only, expect ~30-50%.
+  ...(["calgary", "edmonton"].flatMap((slug) => {
+    const bboxes: Record<string, RegionConfig["bbox"]> = {
+      "calgary": { latMin: 50.8, latMax: 51.2, lonMin: -114.3, lonMax: -113.8 },
+      "edmonton": { latMin: 53.4, latMax: 53.7, lonMin: -113.7, lonMax: -113.3 },
+    };
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "Alberta Transportation LoS 2021 (WAADT)", polylineConfig: { url: "https://services3.arcgis.com/mSGO1HzZze9kkZcj/arcgis/rest/services/Level_of_Service_2021/FeatureServer/0", aadtField: "WAADT_VOLUME", yearExtractor: { kind: "field_int", field: "TRAFFIC_YEAR" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+  })),
+
+  // Manitoba Infrastructure (via UManitoba MHTIS) — Winnipeg, polyline. 2019 stale.
+  {
+    slug: "winnipeg",
+    source: "polyline_bbox",
+    counties: [],
+    bbox: { latMin: 49.7, latMax: 50.0, lonMin: -97.3, lonMax: -96.9 },
+    sourceLabel: "MHTIS Traffic Flow 2019 (provincial highways)",
+    polylineConfig: {
+      url: "https://services6.arcgis.com/HQUud09zgy3Asw9X/arcgis/rest/services/MHTIS_Traffic_Flow_2019/FeatureServer/0",
+      aadtField: "AADT",
+      yearExtractor: { kind: "static", year: 2019 },
+      snapM: 200,
+      sourceTag: "fdot",
+    },
+  },
+
   // WYDOT — Cheyenne, polyline (ITSM_Data_Layers/MapServer/37, 53k segments, eff_year 2022).
   {
     slug: "cheyenne",
