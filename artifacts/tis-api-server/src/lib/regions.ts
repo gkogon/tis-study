@@ -135,6 +135,25 @@ export type RegionCode =
   | "quebec_city_metro"
   | "hamilton_metro"
   | "halifax_metro"
+  // Tier-9 (Mexico — 10 metros across 10 estados).
+  | "mexico_city_metro"
+  | "guadalajara_metro"
+  | "monterrey_metro"
+  | "puebla_metro"
+  | "tijuana_metro"
+  | "toluca_metro"
+  | "leon_metro"
+  | "juarez_metro"
+  | "queretaro_metro"
+  | "merida_metro"
+  // Tier-9 (United Kingdom — 7 metros across England + Scotland).
+  | "london_metro"
+  | "manchester_uk_metro"
+  | "birmingham_uk_metro"
+  | "glasgow_metro"
+  | "edinburgh_metro"
+  | "leeds_metro"
+  | "bristol_metro"
   // Tier-7 (50+ secondary metros in already-wired states — depth push).
   | "rochester_ny_metro" | "buffalo_metro" | "syracuse_metro" | "albany_metro"
   | "toledo_metro" | "akron_metro" | "dayton_metro" | "youngstown_metro"
@@ -181,9 +200,11 @@ export type Region = {
     | "CA" | "OR" | "WA" | "NV" | "AZ" | "CO" | "UT" | "NM"
     | "CT" | "RI" | "NH" | "VT" | "ME" | "NJ" | "WV" | "MS" | "AR" | "OK"
     | "IA" | "NE" | "KS" | "ND" | "SD" | "ID" | "MT" | "WY" | "AK" | "HI"
-    | "ON" | "QC" | "BC" | "AB" | "MB" | "NS";  // Canadian provinces (Tier-8)
+    | "ON" | "QC" | "BC" | "AB" | "MB" | "NS"  // Canadian provinces (Tier-8)
+    | "CMX" | "JAL" | "NLE" | "PUE" | "BCN" | "MEX" | "GUA" | "CHH" | "QUE" | "YUC"  // Mexican estados (Tier-9)
+    | "ENG" | "SCT";  // UK countries (Tier-9). SCT used instead of SC to avoid SC=South Carolina clash.
   /** Country — defaults to "US" when omitted (back-compat for all pre-Tier-8 regions). */
-  country?: "US" | "CA";
+  country?: "US" | "CA" | "MX" | "UK";
   /** Jurisdictional copy that gets substituted into methodology/findings strings. */
   jurisdiction: {
     /** "City of Atlanta DOT" — used in TIS-mitigation findings. */
@@ -201,7 +222,8 @@ export type Region = {
     | "ctdot" | "ridot" | "nhdot" | "vtrans" | "medot" | "njdot" | "wvdot" | "mdot_ms"
     | "ardot" | "odot_ok" | "iadot" | "ndor" | "ksdot" | "nddot" | "sddot"
     | "itd" | "mdt" | "wydot" | "akdot" | "hidot"
-    | "mto" | "mtq" | "moti_bc" | "ab_transportation" | "mb_infrastructure" | "ns_public_works";
+    | "mto" | "mtq" | "moti_bc" | "ab_transportation" | "mb_infrastructure" | "ns_public_works"
+    | "sict" | "dft";  // Tier-9: SICT Mexico federal, DfT UK national
   /** Whether this region is currently shipping (false = reserved/planned only). */
   active: boolean;
 };
@@ -1008,7 +1030,8 @@ export const REGIONS: Record<RegionCode, Region> = {
   san_diego_metro: {
     code: "san_diego_metro",
     displayName: "San Diego-Chula Vista-Carlsbad MSA",
-    bounds: { latMin: 32.5, latMax: 33.5, lonMin: -117.6, lonMax: -116.6 },
+    // South edge clipped at 32.54 to avoid US-Mexico border overlap with Tijuana.
+    bounds: { latMin: 32.54, latMax: 33.5, lonMin: -117.6, lonMax: -116.6 },
     stateCode: "CA",
     jurisdiction: {
       dotName: "City of San Diego Transportation Department",
@@ -1595,6 +1618,258 @@ export const REGIONS: Record<RegionCode, Region> = {
     active: true,
   },
 
+  // ── Tier-9: Mexico (10 metros across 10 estados) ──
+  // Parking citations reference the relevant Reglamento de Construcciones or
+  // Reglamento de Tránsito at the municipal / state level. Jurisdictional
+  // names kept in Spanish where the entity has no canonical English form.
+  mexico_city_metro: {
+    code: "mexico_city_metro",
+    displayName: "Ciudad de México (ZMVM)",
+    bounds: { latMin: 19.2, latMax: 19.6, lonMin: -99.3, lonMax: -98.9 },
+    stateCode: "CMX",
+    country: "MX",
+    jurisdiction: {
+      dotName: "Secretaría de Movilidad (SEMOVI) — Ciudad de México",
+      planningOfficeName: "Secretaría de Desarrollo Urbano y Vivienda (SEDUVI)",
+      parkingCodeCitation: "Reglamento de Construcciones para el Distrito Federal, Título Sexto, Capítulo III — Estacionamientos.",
+    },
+    dataSourceId: "sict",
+    active: true,
+  },
+  guadalajara_metro: {
+    code: "guadalajara_metro",
+    displayName: "Guadalajara ZM",
+    bounds: { latMin: 20.5, latMax: 20.8, lonMin: -103.5, lonMax: -103.2 },
+    stateCode: "JAL",
+    country: "MX",
+    jurisdiction: {
+      dotName: "Secretaría de Transporte del Gobierno de Jalisco / Servicios Públicos Municipales",
+      planningOfficeName: "Instituto Metropolitano de Planeación del AMG (IMEPLAN)",
+      parkingCodeCitation: "Reglamento Estatal de Zonificación del Estado de Jalisco, Título III — Estacionamientos.",
+    },
+    dataSourceId: "sict",
+    active: true,
+  },
+  monterrey_metro: {
+    code: "monterrey_metro",
+    displayName: "Monterrey ZM",
+    bounds: { latMin: 25.5, latMax: 25.9, lonMin: -100.5, lonMax: -100.1 },
+    stateCode: "NLE",
+    country: "MX",
+    jurisdiction: {
+      dotName: "Secretaría de Movilidad y Planeación Urbana de Nuevo León",
+      planningOfficeName: "Consejo Estatal de Transporte y Vialidad",
+      parkingCodeCitation: "Ley de Asentamientos Humanos del Estado de Nuevo León, Capítulo VI — Estacionamientos.",
+    },
+    dataSourceId: "sict",
+    active: true,
+  },
+  puebla_metro: {
+    code: "puebla_metro",
+    displayName: "Puebla-Tlaxcala ZM",
+    bounds: { latMin: 18.9, latMax: 19.2, lonMin: -98.3, lonMax: -98.0 },
+    stateCode: "PUE",
+    country: "MX",
+    jurisdiction: {
+      dotName: "Secretaría de Movilidad y Transporte del Estado de Puebla",
+      planningOfficeName: "Secretaría de Desarrollo Urbano del Municipio de Puebla",
+      parkingCodeCitation: "Reglamento de Tránsito, Movilidad y Seguridad Vial para el Municipio de Puebla, Título Sexto.",
+    },
+    dataSourceId: "sict",
+    active: true,
+  },
+  tijuana_metro: {
+    code: "tijuana_metro",
+    displayName: "Tijuana ZM",
+    // North edge clipped at 32.53 — the US-Mexico border south of San Diego.
+    // Tijuana sits south of the border line; San Diego covers everything north.
+    bounds: { latMin: 32.4, latMax: 32.53, lonMin: -117.1, lonMax: -116.8 },
+    stateCode: "BCN",
+    country: "MX",
+    jurisdiction: {
+      dotName: "Secretaría de Movilidad Sustentable y Planeación Urbana de Baja California",
+      planningOfficeName: "Instituto Metropolitano de Planeación de Tijuana (IMPLAN)",
+      parkingCodeCitation: "Reglamento de Vialidad y Tránsito Municipal para el Municipio de Tijuana, Capítulo IX.",
+    },
+    dataSourceId: "sict",
+    active: true,
+  },
+  toluca_metro: {
+    code: "toluca_metro",
+    displayName: "Toluca ZM",
+    bounds: { latMin: 19.2, latMax: 19.4, lonMin: -99.8, lonMax: -99.5 },
+    stateCode: "MEX",
+    country: "MX",
+    jurisdiction: {
+      dotName: "Secretaría de Movilidad del Estado de México (SEMOV)",
+      planningOfficeName: "Secretaría de Desarrollo Urbano y Obra del Estado de México",
+      parkingCodeCitation: "Código Administrativo del Estado de México, Libro Quinto — Ordenamiento Territorial.",
+    },
+    dataSourceId: "sict",
+    active: true,
+  },
+  leon_metro: {
+    code: "leon_metro",
+    displayName: "León ZM",
+    bounds: { latMin: 21.0, latMax: 21.2, lonMin: -101.8, lonMax: -101.5 },
+    stateCode: "GUA",
+    country: "MX",
+    jurisdiction: {
+      dotName: "Dirección General de Movilidad del Municipio de León",
+      planningOfficeName: "Instituto Municipal de Planeación de León (IMPLAN León)",
+      parkingCodeCitation: "Reglamento de los Servicios de Vialidad, Tránsito y Transporte del Municipio de León, Título IV.",
+    },
+    dataSourceId: "sict",
+    active: true,
+  },
+  juarez_metro: {
+    code: "juarez_metro",
+    displayName: "Ciudad Juárez ZM",
+    // North edge clipped at 31.75 — the Rio Grande forms the US-Mexico
+    // border south of El Paso. Juárez sits south of the river, El Paso north.
+    bounds: { latMin: 31.5, latMax: 31.75, lonMin: -106.6, lonMax: -106.3 },
+    stateCode: "CHH",
+    country: "MX",
+    jurisdiction: {
+      dotName: "Dirección General de Tránsito Municipal de Juárez",
+      planningOfficeName: "Instituto Municipal de Investigación y Planeación (IMIP Juárez)",
+      parkingCodeCitation: "Reglamento de Vialidad y Tránsito del Municipio de Juárez, Capítulo XII.",
+    },
+    dataSourceId: "sict",
+    active: true,
+  },
+  queretaro_metro: {
+    code: "queretaro_metro",
+    displayName: "Querétaro ZM",
+    bounds: { latMin: 20.5, latMax: 20.7, lonMin: -100.5, lonMax: -100.3 },
+    stateCode: "QUE",
+    country: "MX",
+    jurisdiction: {
+      dotName: "Secretaría de Movilidad del Estado de Querétaro",
+      planningOfficeName: "Instituto Municipal de Planeación de Querétaro (IMPLAN)",
+      parkingCodeCitation: "Código Urbano del Estado de Querétaro, Título Sexto — Estacionamientos.",
+    },
+    dataSourceId: "sict",
+    active: true,
+  },
+  merida_metro: {
+    code: "merida_metro",
+    displayName: "Mérida ZM",
+    bounds: { latMin: 20.9, latMax: 21.1, lonMin: -89.7, lonMax: -89.5 },
+    stateCode: "YUC",
+    country: "MX",
+    jurisdiction: {
+      dotName: "Agencia de Transporte del Estado de Yucatán (ATY)",
+      planningOfficeName: "Instituto Municipal de Planeación de Mérida (IMPLAN Mérida)",
+      parkingCodeCitation: "Reglamento de Construcciones del Municipio de Mérida, Título Tercero — Estacionamientos.",
+    },
+    dataSourceId: "sict",
+    active: true,
+  },
+
+  // ── Tier-9: United Kingdom (7 metros across England + Scotland) ──
+  // Parking citations reference local planning policy (Local Plans + national
+  // PPG13/NPPF). Engineering would actually use DMRB (Design Manual for
+  // Roads and Bridges) — tracked as a follow-up engine citation fork.
+  london_metro: {
+    code: "london_metro",
+    displayName: "Greater London",
+    bounds: { latMin: 51.28, latMax: 51.69, lonMin: -0.51, lonMax: 0.33 },
+    stateCode: "ENG",
+    country: "UK",
+    jurisdiction: {
+      dotName: "Transport for London (TfL) — Streets",
+      planningOfficeName: "Greater London Authority (GLA) — London Plan",
+      parkingCodeCitation: "London Plan 2021, Policy T6 — Car parking. Plus each LPA's local plan (e.g. Westminster City Plan).",
+    },
+    dataSourceId: "dft",
+    active: true,
+  },
+  manchester_uk_metro: {
+    code: "manchester_uk_metro",
+    displayName: "Greater Manchester",
+    bounds: { latMin: 53.35, latMax: 53.60, lonMin: -2.42, lonMax: -2.05 },
+    stateCode: "ENG",
+    country: "UK",
+    jurisdiction: {
+      dotName: "Transport for Greater Manchester (TfGM)",
+      planningOfficeName: "Greater Manchester Combined Authority — Places for Everyone",
+      parkingCodeCitation: "Manchester Core Strategy DM3 — Parking Standards (and equivalents across the 10 GM boroughs).",
+    },
+    dataSourceId: "dft",
+    active: true,
+  },
+  birmingham_uk_metro: {
+    code: "birmingham_uk_metro",
+    displayName: "West Midlands (Birmingham)",
+    bounds: { latMin: 52.40, latMax: 52.58, lonMin: -2.02, lonMax: -1.70 },
+    stateCode: "ENG",
+    country: "UK",
+    jurisdiction: {
+      dotName: "Transport for West Midlands (TfWM)",
+      planningOfficeName: "West Midlands Combined Authority — Strategic Transport Plan",
+      parkingCodeCitation: "Birmingham Development Plan 2031, TP44 — Car Parking Standards.",
+    },
+    dataSourceId: "dft",
+    active: true,
+  },
+  glasgow_metro: {
+    code: "glasgow_metro",
+    displayName: "Glasgow City Region",
+    bounds: { latMin: 55.78, latMax: 55.95, lonMin: -4.42, lonMax: -4.10 },
+    stateCode: "SCT",
+    country: "UK",
+    jurisdiction: {
+      dotName: "Strathclyde Partnership for Transport (SPT)",
+      planningOfficeName: "Glasgow City Council Planning Authority",
+      parkingCodeCitation: "Glasgow City Development Plan IPG 8 — Car Parking Standards.",
+    },
+    dataSourceId: "dft",
+    active: true,
+  },
+  edinburgh_metro: {
+    code: "edinburgh_metro",
+    displayName: "Edinburgh + Lothians",
+    bounds: { latMin: 55.88, latMax: 56.00, lonMin: -3.40, lonMax: -3.00 },
+    stateCode: "SCT",
+    country: "UK",
+    jurisdiction: {
+      dotName: "Edinburgh Council Place Directorate — Transport and Environment",
+      planningOfficeName: "City of Edinburgh Council Planning Service",
+      parkingCodeCitation: "Edinburgh City Plan 2030 Policy Tra 7 — Car parking standards.",
+    },
+    dataSourceId: "dft",
+    active: true,
+  },
+  leeds_metro: {
+    code: "leeds_metro",
+    displayName: "West Yorkshire (Leeds-Bradford)",
+    bounds: { latMin: 53.70, latMax: 53.90, lonMin: -1.72, lonMax: -1.40 },
+    stateCode: "ENG",
+    country: "UK",
+    jurisdiction: {
+      dotName: "West Yorkshire Combined Authority — Transport",
+      planningOfficeName: "Leeds City Council Local Plans Team",
+      parkingCodeCitation: "Leeds Core Strategy Policy T2 — Parking and Highways Standards.",
+    },
+    dataSourceId: "dft",
+    active: true,
+  },
+  bristol_metro: {
+    code: "bristol_metro",
+    displayName: "Bristol (West of England)",
+    bounds: { latMin: 51.40, latMax: 51.55, lonMin: -2.70, lonMax: -2.40 },
+    stateCode: "ENG",
+    country: "UK",
+    jurisdiction: {
+      dotName: "West of England Combined Authority — Transport",
+      planningOfficeName: "Bristol City Council Strategic City Planning",
+      parkingCodeCitation: "Bristol Local Plan Policy BCS10 — Transport and Access Improvements.",
+    },
+    dataSourceId: "dft",
+    active: true,
+  },
+
   // ── Tier-7: depth push (55 secondary metros in already-wired states) ──
   // NY (4) — all NYSDOT
   rochester_ny_metro: { code: "rochester_ny_metro", displayName: "Rochester (NY) MSA", bounds: { latMin: 43.0, latMax: 43.3, lonMin: -78.0, lonMax: -77.4 }, stateCode: "NY", jurisdiction: { dotName: "Rochester Department of Environmental Services", planningOfficeName: "Rochester Bureau of Planning and Zoning", parkingCodeCitation: "Rochester City Code, Chapter 120, Article XII — Off-Street Parking." }, dataSourceId: "nysdot", active: true },
@@ -1635,7 +1910,7 @@ export const REGIONS: Record<RegionCode, Region> = {
   peoria_metro: { code: "peoria_metro", displayName: "Peoria MSA", bounds: { latMin: 40.5, latMax: 40.9, lonMin: -89.8, lonMax: -89.3 }, stateCode: "IL", jurisdiction: { dotName: "Peoria Public Works Department", planningOfficeName: "Peoria Community Development Department", parkingCodeCitation: "Peoria Code of Ordinances, Appendix B, Section 6.5 — Off-Street Parking." }, dataSourceId: "idot", active: true },
   champaign_metro: { code: "champaign_metro", displayName: "Champaign-Urbana MSA", bounds: { latMin: 40.0, latMax: 40.2, lonMin: -88.4, lonMax: -88.1 }, stateCode: "IL", jurisdiction: { dotName: "Champaign Public Works Department", planningOfficeName: "Champaign Planning and Development Department", parkingCodeCitation: "Champaign Zoning Ordinance, Article VII — Off-Street Parking." }, dataSourceId: "idot", active: true },
   // TX (4) — TxDOT
-  el_paso_metro: { code: "el_paso_metro", displayName: "El Paso MSA", bounds: { latMin: 31.6, latMax: 31.9, lonMin: -106.6, lonMax: -106.2 }, stateCode: "TX", jurisdiction: { dotName: "El Paso Streets and Maintenance Department", planningOfficeName: "El Paso Planning and Inspections Department", parkingCodeCitation: "El Paso City Code, Chapter 20.18 — Off-Street Parking." }, dataSourceId: "txdot", active: true },
+  el_paso_metro: { code: "el_paso_metro", displayName: "El Paso MSA", bounds: { latMin: 31.75, latMax: 31.95, lonMin: -106.6, lonMax: -106.2 }, stateCode: "TX", jurisdiction: { dotName: "El Paso Streets and Maintenance Department", planningOfficeName: "El Paso Planning and Inspections Department", parkingCodeCitation: "El Paso City Code, Chapter 20.18 — Off-Street Parking." }, dataSourceId: "txdot", active: true },
   corpus_christi_metro: { code: "corpus_christi_metro", displayName: "Corpus Christi MSA", bounds: { latMin: 27.6, latMax: 28.0, lonMin: -97.6, lonMax: -97.2 }, stateCode: "TX", jurisdiction: { dotName: "Corpus Christi Engineering Services Department", planningOfficeName: "Corpus Christi Development Services Department", parkingCodeCitation: "Corpus Christi Unified Development Code, Article 7 — Parking." }, dataSourceId: "txdot", active: true },
   lubbock_metro: { code: "lubbock_metro", displayName: "Lubbock MSA", bounds: { latMin: 33.4, latMax: 33.7, lonMin: -102.0, lonMax: -101.7 }, stateCode: "TX", jurisdiction: { dotName: "Lubbock Public Works Department", planningOfficeName: "Lubbock Planning Department", parkingCodeCitation: "Lubbock Code of Ordinances, Chapter 40 — Off-Street Parking." }, dataSourceId: "txdot", active: true },
   mcallen_metro: { code: "mcallen_metro", displayName: "McAllen-Edinburg-Mission MSA", bounds: { latMin: 26.0, latMax: 26.4, lonMin: -98.4, lonMax: -97.9 }, stateCode: "TX", jurisdiction: { dotName: "McAllen Public Works Department", planningOfficeName: "McAllen Planning Department", parkingCodeCitation: "McAllen Code of Ordinances, Chapter 138 — Off-Street Parking." }, dataSourceId: "txdot", active: true },

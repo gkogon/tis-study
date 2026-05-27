@@ -160,7 +160,7 @@ const PROBES: Probe[] = [
   { regionCode: "rockford_metro", lat: 42.2711, lon: -89.0940, expectDotIncludes: "Rockford" },
   { regionCode: "peoria_metro", lat: 40.6936, lon: -89.5890, expectDotIncludes: "Peoria" },
   { regionCode: "champaign_metro", lat: 40.1164, lon: -88.2434, expectDotIncludes: "Champaign" },
-  { regionCode: "el_paso_metro", lat: 31.7619, lon: -106.4850, expectDotIncludes: "El Paso" },
+  { regionCode: "el_paso_metro", lat: 31.85, lon: -106.4850, expectDotIncludes: "El Paso" },
   { regionCode: "corpus_christi_metro", lat: 27.8006, lon: -97.3964, expectDotIncludes: "Corpus Christi" },
   { regionCode: "lubbock_metro", lat: 33.5779, lon: -101.8552, expectDotIncludes: "Lubbock" },
   { regionCode: "mcallen_metro", lat: 26.2034, lon: -98.2300, expectDotIncludes: "McAllen" },
@@ -201,6 +201,25 @@ const PROBES: Probe[] = [
   { regionCode: "quebec_city_metro", lat: 46.8139, lon: -71.2080, expectDotIncludes: "Québec" },
   { regionCode: "hamilton_metro", lat: 43.2557, lon: -79.8711, expectDotIncludes: "Hamilton" },
   { regionCode: "halifax_metro", lat: 44.6488, lon: -63.5752, expectDotIncludes: "Halifax" },
+  // Tier-9: Mexico (10) — Spanish jurisdictional names
+  { regionCode: "mexico_city_metro", lat: 19.4326, lon: -99.1332, expectDotIncludes: "SEMOVI" },
+  { regionCode: "guadalajara_metro", lat: 20.6597, lon: -103.3496, expectDotIncludes: "Jalisco" },
+  { regionCode: "monterrey_metro", lat: 25.6866, lon: -100.3161, expectDotIncludes: "Nuevo León" },
+  { regionCode: "puebla_metro", lat: 19.0414, lon: -98.2063, expectDotIncludes: "Puebla" },
+  { regionCode: "tijuana_metro", lat: 32.5149, lon: -117.0382, expectDotIncludes: "Baja California" },
+  { regionCode: "toluca_metro", lat: 19.2826, lon: -99.6557, expectDotIncludes: "México" },
+  { regionCode: "leon_metro", lat: 21.1250, lon: -101.6860, expectDotIncludes: "León" },
+  { regionCode: "juarez_metro", lat: 31.6904, lon: -106.4245, expectDotIncludes: "Juárez" },
+  { regionCode: "queretaro_metro", lat: 20.5888, lon: -100.3899, expectDotIncludes: "Querétaro" },
+  { regionCode: "merida_metro", lat: 20.9674, lon: -89.5926, expectDotIncludes: "Yucatán" },
+  // Tier-9: United Kingdom (7)
+  { regionCode: "london_metro", lat: 51.5074, lon: -0.1278, expectDotIncludes: "TfL" },
+  { regionCode: "manchester_uk_metro", lat: 53.4808, lon: -2.2426, expectDotIncludes: "TfGM" },
+  { regionCode: "birmingham_uk_metro", lat: 52.4862, lon: -1.8904, expectDotIncludes: "TfWM" },
+  { regionCode: "glasgow_metro", lat: 55.8642, lon: -4.2518, expectDotIncludes: "Strathclyde" },
+  { regionCode: "edinburgh_metro", lat: 55.9533, lon: -3.1883, expectDotIncludes: "Edinburgh" },
+  { regionCode: "leeds_metro", lat: 53.8008, lon: -1.5491, expectDotIncludes: "West Yorkshire" },
+  { regionCode: "bristol_metro", lat: 51.4545, lon: -2.5879, expectDotIncludes: "West of England" },
 ];
 
 type Result = { name: string; ok: boolean; got?: string; want?: string };

@@ -78,6 +78,20 @@ const STATE_NAMES: Record<MetroCoverage["state"], string> = {
   AB: "Alberta",
   MB: "Manitoba",
   NS: "Nova Scotia",
+  // Mexican estados (Tier-9)
+  CMX: "Ciudad de México",
+  JAL: "Jalisco",
+  NLE: "Nuevo León",
+  PUE: "Puebla",
+  BCN: "Baja California",
+  MEX: "Estado de México",
+  GUA: "Guanajuato",
+  CHH: "Chihuahua",
+  QUE: "Querétaro",
+  YUC: "Yucatán",
+  // UK constituent countries (Tier-9)
+  ENG: "England",
+  SCT: "Scotland",
 };
 
 // Alphabetical by full state name. DC sorts under "D" (District of Columbia).

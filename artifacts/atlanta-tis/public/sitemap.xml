@@ -195,4 +195,25 @@
   <url><loc>https://simpleimpactstudies.com/cities/quebec-city</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
   <url><loc>https://simpleimpactstudies.com/cities/hamilton</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
   <url><loc>https://simpleimpactstudies.com/cities/halifax</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+
+  <!-- Tier-9: Mexico (10) — Tier-B until SICT AADT lands -->
+  <url><loc>https://simpleimpactstudies.com/cities/mexico-city</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/guadalajara</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/monterrey</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/puebla</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/tijuana</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/toluca</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/leon</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/juarez</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/queretaro</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/merida</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+
+  <!-- Tier-9: United Kingdom (7) — DfT AADT wiring pending -->
+  <url><loc>https://simpleimpactstudies.com/cities/london</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/manchester-uk</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/birmingham-uk</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/glasgow</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/edinburgh</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/leeds</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/bristol</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
 </urlset>

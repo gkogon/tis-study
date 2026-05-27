@@ -1,0 +1,232 @@
+/**
+ * Generic OSM road-network fetcher, keyed off a region in the registry.
+ *
+ * For a given region code, queries OpenStreetMap (Overpass API) for every
+ * named highway way (motorway through tertiary, plus _link subtypes) inside
+ * the region's bounding box. Output mirrors atlanta-roads.json:
+ *
+ *   {
+ *     "classes": ["motorway","trunk","primary","secondary","tertiary"],
+ *     "ways": [
+ *       [classCode, "Way Name", [[lat,lon], ...]],   // named
+ *     ]
+ *   }
+ *
+ * The roads file backs cross-street naming (e.g. "Roswell Rd & Mt Vernon Hwy")
+ * for signals in that region. Without it, signals show as "Signal #<osmId>".
+ *
+ * Run:
+ *   pnpm --filter @workspace/scripts exec tsx src/fetch-osm-roads.ts charlotte_metro
+ *   pnpm --filter @workspace/scripts exec tsx src/fetch-osm-roads.ts --all
+ */
+
+import { writeFileSync, mkdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  REGIONS,
+  type Region,
+  type RegionCode,
+} from "../../artifacts/tis-api-server/src/lib/regions";
+
+const CLASSES = [
+  "motorway",
+  "trunk",
+  "primary",
+  "secondary",
+  "tertiary",
+  "residential",
+  "unclassified",
+] as const;
+const CLASS_CODE = new Map(CLASSES.map((c, i) => [c, i] as const));
+
+const ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+];
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+type OverpassWay = {
+  type: "way";
+  id: number;
+  tags?: { highway?: string; name?: string };
+  geometry?: Array<{ lat: number; lon: number }>;
+};
+type OverpassResp = { elements: OverpassWay[] };
+
+/** Build N latitude strips of ~0.14° each — keeps Overpass replies under mirror limits. */
+function bboxStrips(region: Region, stripDegLat = 0.14): string[] {
+  const { latMin, latMax, lonMin, lonMax } = region.bounds;
+  const out: string[] = [];
+  let s = latMin;
+  while (s < latMax) {
+    const e = Math.min(s + stripDegLat, latMax);
+    out.push(`${s.toFixed(2)},${lonMin.toFixed(2)},${e.toFixed(2)},${lonMax.toFixed(2)}`);
+    s = e;
+  }
+  return out;
+}
+
+/** Avoid regex (~"=~) — the main Overpass mirror sometimes 406s on it.
+ *  Literal equality filters for each class+link are slower-looking but
+ *  actually faster in practice and work everywhere. */
+function buildQuery(bbox: string): string {
+  const queries: string[] = [];
+  for (const c of CLASSES) {
+    queries.push(`way["highway"="${c}"]["name"](${bbox});`);
+    queries.push(`way["highway"="${c}_link"]["name"](${bbox});`);
+  }
+  return `
+[out:json][timeout:180];
+(
+${queries.join("\n")}
+);
+out tags geom;
+`.trim();
+}
+
+async function fetchOneStrip(bbox: string, regionCode: string): Promise<OverpassResp> {
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    for (const url of ENDPOINTS) {
+      try {
+        console.log(`[${regionCode}] bbox=${bbox} attempt=${attempt + 1} via ${url}`);
+        const res = await fetch(url, {
+          method: "POST",
+          body: `data=${encodeURIComponent(buildQuery(bbox))}`,
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "tis-study/1.0 (roads-fetch)",
+            Accept: "application/json",
+          },
+          signal: AbortSignal.timeout(200_000),
+        });
+        if (res.status === 429 || res.status === 504) {
+          const wait = 12_000 + attempt * 10_000;
+          console.warn(`  ↳ ${res.status}, backing off ${wait / 1000}s`);
+          await sleep(wait);
+          continue;
+        }
+        if (!res.ok) {
+          console.warn(`  ↳ ${res.status} ${res.statusText}`);
+          continue;
+        }
+        const json = (await res.json()) as OverpassResp;
+        console.log(`  → ${json.elements.length} ways`);
+        return json;
+      } catch (err) {
+        console.warn(`  ↳ failed: ${(err as Error).message}`);
+        lastErr = err;
+      }
+    }
+    if (attempt < 3) {
+      const wait = 20_000 + attempt * 10_000;
+      console.log(`  … all endpoints exhausted on attempt ${attempt + 1}, waiting ${wait / 1000}s`);
+      await sleep(wait);
+    }
+  }
+  throw new Error(`bbox ${bbox} failed: ${(lastErr as Error)?.message ?? "exhausted"}`);
+}
+
+function regionSlug(code: RegionCode): string {
+  return code.replace(/_metro$/, "").replace(/_/g, "-");
+}
+
+async function fetchOneRegion(regionCode: RegionCode): Promise<{
+  region: Region;
+  outPath: string;
+  kept: number;
+  byClass: Record<string, number>;
+}> {
+  const region = REGIONS[regionCode];
+  if (!region) throw new Error(`Unknown region: ${regionCode}`);
+  if (region.bounds.latMin === 0 && region.bounds.latMax === 0) {
+    throw new Error(`Region ${regionCode} has placeholder bounds; fill in regions.ts first`);
+  }
+
+  const strips = bboxStrips(region);
+  console.log(`\n=== ${regionCode} (${region.displayName}) — ${strips.length} strips ===`);
+
+  const seenIds = new Set<number>();
+  const ways: unknown[] = [];
+  let dupes = 0;
+  let skippedClass = 0;
+  let skippedGeom = 0;
+  const byClass: Record<string, number> = {};
+
+  for (const bbox of strips) {
+    const resp = await fetchOneStrip(bbox, regionCode);
+    for (const el of resp.elements) {
+      if (seenIds.has(el.id)) { dupes++; continue; }
+      seenIds.add(el.id);
+
+      const hw = el.tags?.highway;
+      const name = el.tags?.name;
+      if (!hw || !name) { skippedClass++; continue; }
+      const baseClass = hw.endsWith("_link") ? hw.slice(0, -5) : hw;
+      const code = CLASS_CODE.get(baseClass as (typeof CLASSES)[number]);
+      if (code === undefined) { skippedClass++; continue; }
+
+      const geom = el.geometry;
+      if (!geom || geom.length < 2) { skippedGeom++; continue; }
+
+      // 5-decimal rounding (~1.1m precision) — ~30% bundle reduction
+      // with no visible effect on naming distance computations.
+      const polyline = geom.map((p) => [
+        Math.round(p.lat * 1e5) / 1e5,
+        Math.round(p.lon * 1e5) / 1e5,
+      ]);
+      ways.push([code, name, polyline]);
+      byClass[baseClass] = (byClass[baseClass] ?? 0) + 1;
+    }
+    await sleep(5_000);
+  }
+
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const slug = regionSlug(regionCode);
+  const dataDir = path.resolve(__dirname, "../../artifacts/api-server/src/data");
+  mkdirSync(dataDir, { recursive: true });
+  const outPath = path.resolve(dataDir, `${slug}-roads.json`);
+  writeFileSync(outPath, JSON.stringify({ classes: [...CLASSES], ways }));
+
+  console.log(`✔ ${regionCode}: ${ways.length} ways (${JSON.stringify(byClass)}) [dupes=${dupes} skipped_class=${skippedClass} skipped_geom=${skippedGeom}] → ${outPath}`);
+  return { region, outPath, kept: ways.length, byClass };
+}
+
+async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  const wantAll = args.includes("--all");
+  const codes: RegionCode[] = wantAll
+    ? (Object.keys(REGIONS) as RegionCode[]).filter((c) => REGIONS[c].active && c !== "atlanta_metro")
+    : (args.filter((a) => !a.startsWith("--")) as RegionCode[]);
+
+  if (codes.length === 0) {
+    console.error("Usage: tsx src/fetch-osm-roads.ts <region_code> [<region_code>...]");
+    console.error("       tsx src/fetch-osm-roads.ts --all");
+    console.error(`Active regions: ${Object.keys(REGIONS).filter((c) => REGIONS[c as RegionCode].active).join(", ")}`);
+    process.exit(2);
+  }
+
+  const summary: Array<{ code: string; kept: number }> = [];
+  for (const code of codes) {
+    try {
+      const { kept } = await fetchOneRegion(code);
+      summary.push({ code, kept });
+    } catch (err) {
+      console.error(`✗ ${code}: ${(err as Error).message}`);
+      summary.push({ code, kept: -1 });
+    }
+  }
+
+  console.log(`\n=== Summary ===`);
+  for (const s of summary) {
+    console.log(`  ${s.code}: ${s.kept >= 0 ? `${s.kept} ways` : "FAILED"}`);
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

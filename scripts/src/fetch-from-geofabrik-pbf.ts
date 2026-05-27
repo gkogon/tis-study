@@ -94,6 +94,9 @@ const STATES: Record<string, RegionCode[]> = {
   alberta: ["calgary_metro", "edmonton_metro"],
   manitoba: ["winnipeg_metro"],
   "nova-scotia": ["halifax_metro"],
+  // ── Tier-9: Mexico + UK ──
+  mexico: ["mexico_city_metro", "guadalajara_metro", "monterrey_metro", "puebla_metro", "tijuana_metro", "toluca_metro", "leon_metro", "juarez_metro", "queretaro_metro", "merida_metro"],
+  "great-britain": ["london_metro", "manchester_uk_metro", "birmingham_uk_metro", "glasgow_metro", "edinburgh_metro", "leeds_metro", "bristol_metro"],
 };
 
 const ROAD_HIGHWAYS = [
