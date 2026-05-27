@@ -16,7 +16,9 @@
  */
 
 export type LiveSource = "GDOT 511" | "NCDOT TIMS" | "FDOT DIVAS" | "KYTC closures"
-  | "NYSDOT" | "IDOT" | "MDOT" | "MnDOT" | "WisDOT";
+  | "NYSDOT" | "IDOT" | "MDOT" | "MnDOT" | "WisDOT"
+  | "TxDOT DriveTexas" | "ADOT Traffic Events" | "NMDOT Public Incidents"
+  | "ODOT-OR TripCheck" | "MD CHART" | "MoDOT WZDx";
 
 export type MetroCoverage = {
   /** Region code matching tis-api-server/src/lib/regions.ts. */
@@ -185,7 +187,7 @@ export const METROS: MetroCoverage[] = [
     dotName: "District Department of Transportation (DDOT)", planningOfficeName: "DC Office of Planning",
     parkingCodeCitation: "DC Zoning Regulations, Subtitle C, Chapter 7 — Off-Street Parking." },
   // MD
-  { code: "baltimore_metro", slug: "baltimore", shortName: "Baltimore", longName: "Baltimore-Columbia-Towson MSA", state: "MD", signals: 4770, namedPct: 99.7, aadtPct: 92.7, liveSource: null, aadtSource: "MDOT-SHA 2023 AADT segments",
+  { code: "baltimore_metro", slug: "baltimore", shortName: "Baltimore", longName: "Baltimore-Columbia-Towson MSA", state: "MD", signals: 4770, namedPct: 99.7, aadtPct: 92.7, liveSource: "MD CHART", aadtSource: "MDOT-SHA 2023 AADT segments",
     dotName: "Baltimore City DOT", planningOfficeName: "Baltimore Department of Planning",
     parkingCodeCitation: "Baltimore City Zoning Code, Title 16 — Parking and Loading." },
   // PA
@@ -234,10 +236,10 @@ export const METROS: MetroCoverage[] = [
     dotName: "Indianapolis Department of Public Works", planningOfficeName: "Indianapolis Department of Metropolitan Development",
     parkingCodeCitation: "Indianapolis-Marion County Code, Chapter 743 — Off-Street Parking." },
   // MO
-  { code: "st_louis_metro", slug: "st-louis", shortName: "St. Louis", longName: "St. Louis MSA", state: "MO", signals: 3581, namedPct: 97.6, aadtPct: 22.6, liveSource: null, aadtSource: "MoDOT Directional AADT (state highways)",
+  { code: "st_louis_metro", slug: "st-louis", shortName: "St. Louis", longName: "St. Louis MSA", state: "MO", signals: 3581, namedPct: 97.6, aadtPct: 22.6, liveSource: "MoDOT WZDx", aadtSource: "MoDOT Directional AADT (state highways)",
     dotName: "St. Louis Streets Department", planningOfficeName: "St. Louis Planning and Urban Design Agency",
     parkingCodeCitation: "St. Louis Revised Code, Title 26, Chapter 26.68 — Off-Street Parking." },
-  { code: "kansas_city_metro", slug: "kansas-city", shortName: "Kansas City", longName: "Kansas City MSA", state: "MO", signals: 2086, namedPct: 94.4, aadtPct: 26.4, liveSource: null, aadtSource: "MoDOT Directional AADT (state highways)",
+  { code: "kansas_city_metro", slug: "kansas-city", shortName: "Kansas City", longName: "Kansas City MSA", state: "MO", signals: 2086, namedPct: 94.4, aadtPct: 26.4, liveSource: "MoDOT WZDx", aadtSource: "MoDOT Directional AADT (state highways)",
     dotName: "Kansas City Public Works Department", planningOfficeName: "Kansas City Department of City Planning & Development",
     parkingCodeCitation: "Kansas City Code of Ordinances, Chapter 88-420 — Off-Street Parking." },
   // WI
@@ -246,16 +248,16 @@ export const METROS: MetroCoverage[] = [
     parkingCodeCitation: "Milwaukee Code of Ordinances, Chapter 295-403 — Off-Street Parking and Loading.",
     aadtSource: "WisDOT Traffic Counts" },
   // TX
-  { code: "houston_metro", slug: "houston", shortName: "Houston", longName: "Houston-The Woodlands-Sugar Land MSA", state: "TX", signals: 14498, namedPct: 99.4, aadtPct: 99.4, liveSource: null, aadtSource: "TxDOT current AADT",
+  { code: "houston_metro", slug: "houston", shortName: "Houston", longName: "Houston-The Woodlands-Sugar Land MSA", state: "TX", signals: 14498, namedPct: 99.4, aadtPct: 99.4, liveSource: "TxDOT DriveTexas", aadtSource: "TxDOT current AADT",
     dotName: "Houston Public Works (Traffic Operations)", planningOfficeName: "Houston Planning & Development Department",
     parkingCodeCitation: "Houston Code of Ordinances, Chapter 26, Article VIII — Off-Street Parking." },
-  { code: "dallas_fort_worth_metro", slug: "dallas-fort-worth", shortName: "Dallas-Fort Worth", longName: "Dallas-Fort Worth-Arlington MSA", state: "TX", signals: 15796, namedPct: 99.9, aadtPct: 99.6, liveSource: null, aadtSource: "TxDOT current AADT",
+  { code: "dallas_fort_worth_metro", slug: "dallas-fort-worth", shortName: "Dallas-Fort Worth", longName: "Dallas-Fort Worth-Arlington MSA", state: "TX", signals: 15796, namedPct: 99.9, aadtPct: 99.6, liveSource: "TxDOT DriveTexas", aadtSource: "TxDOT current AADT",
     dotName: "Dallas DOT / Fort Worth Transportation & Public Works", planningOfficeName: "North Central Texas Council of Governments (NCTCOG)",
     parkingCodeCitation: "Dallas Development Code, Article VIII, Division 51A-4.300 — Off-Street Parking." },
-  { code: "austin_metro", slug: "austin", shortName: "Austin", longName: "Austin-Round Rock-Georgetown MSA", state: "TX", signals: 2932, namedPct: 98.8, aadtPct: 99.3, liveSource: null, aadtSource: "TxDOT current AADT",
+  { code: "austin_metro", slug: "austin", shortName: "Austin", longName: "Austin-Round Rock-Georgetown MSA", state: "TX", signals: 2932, namedPct: 98.8, aadtPct: 99.3, liveSource: "TxDOT DriveTexas", aadtSource: "TxDOT current AADT",
     dotName: "Austin Transportation and Public Works (TPW)", planningOfficeName: "Austin Planning Department",
     parkingCodeCitation: "Austin Land Development Code, Chapter 25-6 — Transportation, Subchapter D — Parking." },
-  { code: "san_antonio_metro", slug: "san-antonio", shortName: "San Antonio", longName: "San Antonio-New Braunfels MSA", state: "TX", signals: 3374, namedPct: 99.7, aadtPct: 99.4, liveSource: null, aadtSource: "TxDOT current AADT",
+  { code: "san_antonio_metro", slug: "san-antonio", shortName: "San Antonio", longName: "San Antonio-New Braunfels MSA", state: "TX", signals: 3374, namedPct: 99.7, aadtPct: 99.4, liveSource: "TxDOT DriveTexas", aadtSource: "TxDOT current AADT",
     dotName: "San Antonio Public Works Department", planningOfficeName: "San Antonio Planning Department",
     parkingCodeCitation: "San Antonio Unified Development Code, Article V, Section 35-526 — Off-Street Parking." },
 
@@ -286,7 +288,7 @@ export const METROS: MetroCoverage[] = [
     parkingCodeCitation: "Fresno Municipal Code, Article 14 — Off-Street Parking and Loading.",
     aadtSource: "Caltrans Traffic Census" },
   // OR
-  { code: "portland_metro", slug: "portland", shortName: "Portland", longName: "Portland-Vancouver-Hillsboro MSA", state: "OR", signals: 3333, namedPct: 99.1, aadtPct: 44.1, liveSource: null, aadtSource: "ODOT-OR 2024 Traffic Flow (state highways)",
+  { code: "portland_metro", slug: "portland", shortName: "Portland", longName: "Portland-Vancouver-Hillsboro MSA", state: "OR", signals: 3333, namedPct: 99.1, aadtPct: 44.1, liveSource: "ODOT-OR TripCheck", aadtSource: "ODOT-OR 2024 Traffic Flow (state highways)",
     dotName: "Portland Bureau of Transportation (PBOT)", planningOfficeName: "Portland Bureau of Planning and Sustainability",
     parkingCodeCitation: "Portland Zoning Code, Chapter 33.266 — Parking and Loading." },
   // WA
@@ -298,10 +300,10 @@ export const METROS: MetroCoverage[] = [
     dotName: "City of Las Vegas Department of Public Works", planningOfficeName: "City of Las Vegas Department of Planning",
     parkingCodeCitation: "Las Vegas Municipal Code, Title 19.08 — Off-Street Parking and Loading." },
   // AZ
-  { code: "phoenix_metro", slug: "phoenix", shortName: "Phoenix", longName: "Phoenix-Mesa-Chandler MSA", state: "AZ", signals: 7977, namedPct: 99.8, aadtPct: 98.1, liveSource: null, aadtSource: "ADOT 2024 AADT",
+  { code: "phoenix_metro", slug: "phoenix", shortName: "Phoenix", longName: "Phoenix-Mesa-Chandler MSA", state: "AZ", signals: 7977, namedPct: 99.8, aadtPct: 98.1, liveSource: "ADOT Traffic Events", aadtSource: "ADOT 2024 AADT",
     dotName: "City of Phoenix Street Transportation Department", planningOfficeName: "City of Phoenix Planning and Development Department",
     parkingCodeCitation: "Phoenix Zoning Ordinance, Section 702 — Off-Street Parking Requirements." },
-  { code: "tucson_metro", slug: "tucson", shortName: "Tucson", longName: "Tucson MSA", state: "AZ", signals: 1950, namedPct: 100.0, aadtPct: 99.0, liveSource: null, aadtSource: "ADOT 2024 AADT",
+  { code: "tucson_metro", slug: "tucson", shortName: "Tucson", longName: "Tucson MSA", state: "AZ", signals: 1950, namedPct: 100.0, aadtPct: 99.0, liveSource: "ADOT Traffic Events", aadtSource: "ADOT 2024 AADT",
     dotName: "City of Tucson Department of Transportation and Mobility", planningOfficeName: "Tucson Planning and Development Services Department",
     parkingCodeCitation: "Tucson Unified Development Code, Section 7.4.4 — Vehicle Parking and Loading." },
   // CO
@@ -313,7 +315,7 @@ export const METROS: MetroCoverage[] = [
     dotName: "Salt Lake City Transportation Division", planningOfficeName: "Salt Lake City Planning Division",
     parkingCodeCitation: "Salt Lake City Zoning Ordinance, Section 21A.44 — Off-Street Parking, Mobility, and Loading." },
   // NM
-  { code: "albuquerque_metro", slug: "albuquerque", shortName: "Albuquerque", longName: "Albuquerque MSA", state: "NM", signals: 1939, namedPct: 99.7, aadtPct: 97.8, liveSource: null, aadtSource: "NMDOT 2024 HPMS",
+  { code: "albuquerque_metro", slug: "albuquerque", shortName: "Albuquerque", longName: "Albuquerque MSA", state: "NM", signals: 1939, namedPct: 99.7, aadtPct: 97.8, liveSource: "NMDOT Public Incidents", aadtSource: "NMDOT 2024 HPMS",
     dotName: "Albuquerque Department of Municipal Development", planningOfficeName: "Albuquerque Planning Department",
     parkingCodeCitation: "Albuquerque Integrated Development Ordinance (IDO), Section 14-16-5-5 — Parking and Loading." },
 
@@ -442,10 +444,10 @@ export const METROS: MetroCoverage[] = [
   { code: "peoria_metro", slug: "peoria", shortName: "Peoria", longName: "Peoria MSA", state: "IL", signals: 571, namedPct: 100.0, aadtPct: 100.0, liveSource: null, aadtSource: "IDOT 2025 AADT", dotName: "Peoria Public Works Department", planningOfficeName: "Peoria Community Development Department", parkingCodeCitation: "Peoria Code of Ordinances, Appendix B, Section 6.5 — Off-Street Parking." },
   { code: "champaign_metro", slug: "champaign", shortName: "Champaign-Urbana", longName: "Champaign-Urbana MSA", state: "IL", signals: 354, namedPct: 100.0, aadtPct: 100.0, liveSource: null, aadtSource: "IDOT 2025 AADT", dotName: "Champaign Public Works Department", planningOfficeName: "Champaign Planning and Development Department", parkingCodeCitation: "Champaign Zoning Ordinance, Article VII — Off-Street Parking." },
   // TX (4)
-  { code: "el_paso_metro", slug: "el-paso", shortName: "El Paso", longName: "El Paso MSA", state: "TX", signals: 1549, namedPct: 99.9, aadtPct: 95.5, liveSource: null, aadtSource: "TxDOT current AADT", dotName: "El Paso Streets and Maintenance Department", planningOfficeName: "El Paso Planning and Inspections Department", parkingCodeCitation: "El Paso City Code, Chapter 20.18 — Off-Street Parking." },
-  { code: "corpus_christi_metro", slug: "corpus-christi", shortName: "Corpus Christi", longName: "Corpus Christi MSA", state: "TX", signals: 454, namedPct: 98.7, aadtPct: 100.0, liveSource: null, aadtSource: "TxDOT current AADT", dotName: "Corpus Christi Engineering Services Department", planningOfficeName: "Corpus Christi Development Services Department", parkingCodeCitation: "Corpus Christi Unified Development Code, Article 7 — Parking." },
-  { code: "lubbock_metro", slug: "lubbock", shortName: "Lubbock", longName: "Lubbock MSA", state: "TX", signals: 382, namedPct: 98.7, aadtPct: 100.0, liveSource: null, aadtSource: "TxDOT current AADT", dotName: "Lubbock Public Works Department", planningOfficeName: "Lubbock Planning Department", parkingCodeCitation: "Lubbock Code of Ordinances, Chapter 40 — Off-Street Parking." },
-  { code: "mcallen_metro", slug: "mcallen", shortName: "McAllen", longName: "McAllen-Edinburg-Mission MSA", state: "TX", signals: 755, namedPct: 99.5, aadtPct: 99.5, liveSource: null, aadtSource: "TxDOT current AADT", dotName: "McAllen Public Works Department", planningOfficeName: "McAllen Planning Department", parkingCodeCitation: "McAllen Code of Ordinances, Chapter 138 — Off-Street Parking." },
+  { code: "el_paso_metro", slug: "el-paso", shortName: "El Paso", longName: "El Paso MSA", state: "TX", signals: 1549, namedPct: 99.9, aadtPct: 95.5, liveSource: "TxDOT DriveTexas", aadtSource: "TxDOT current AADT", dotName: "El Paso Streets and Maintenance Department", planningOfficeName: "El Paso Planning and Inspections Department", parkingCodeCitation: "El Paso City Code, Chapter 20.18 — Off-Street Parking." },
+  { code: "corpus_christi_metro", slug: "corpus-christi", shortName: "Corpus Christi", longName: "Corpus Christi MSA", state: "TX", signals: 454, namedPct: 98.7, aadtPct: 100.0, liveSource: "TxDOT DriveTexas", aadtSource: "TxDOT current AADT", dotName: "Corpus Christi Engineering Services Department", planningOfficeName: "Corpus Christi Development Services Department", parkingCodeCitation: "Corpus Christi Unified Development Code, Article 7 — Parking." },
+  { code: "lubbock_metro", slug: "lubbock", shortName: "Lubbock", longName: "Lubbock MSA", state: "TX", signals: 382, namedPct: 98.7, aadtPct: 100.0, liveSource: "TxDOT DriveTexas", aadtSource: "TxDOT current AADT", dotName: "Lubbock Public Works Department", planningOfficeName: "Lubbock Planning Department", parkingCodeCitation: "Lubbock Code of Ordinances, Chapter 40 — Off-Street Parking." },
+  { code: "mcallen_metro", slug: "mcallen", shortName: "McAllen", longName: "McAllen-Edinburg-Mission MSA", state: "TX", signals: 755, namedPct: 99.5, aadtPct: 99.5, liveSource: "TxDOT DriveTexas", aadtSource: "TxDOT current AADT", dotName: "McAllen Public Works Department", planningOfficeName: "McAllen Planning Department", parkingCodeCitation: "McAllen Code of Ordinances, Chapter 138 — Off-Street Parking." },
   // CA (4)
   { code: "bakersfield_metro", slug: "bakersfield", shortName: "Bakersfield", longName: "Bakersfield MSA", state: "CA", signals: 1229, namedPct: 100.0, aadtPct: 16.9, liveSource: null, aadtSource: "Caltrans 2023 Traffic Census (state highways)", dotName: "Bakersfield Public Works Department", planningOfficeName: "Bakersfield Development Services Department", parkingCodeCitation: "Bakersfield Municipal Code, Chapter 17.58 — Off-Street Parking." },
   { code: "stockton_metro", slug: "stockton", shortName: "Stockton", longName: "Stockton-Lodi MSA", state: "CA", signals: 1017, namedPct: 99.4, aadtPct: 21.0, liveSource: null, aadtSource: "Caltrans 2023 Traffic Census (state highways)", dotName: "Stockton Public Works Department", planningOfficeName: "Stockton Community Development Department", parkingCodeCitation: "Stockton Municipal Code, Title 16, Chapter 16.64 — Parking." },
@@ -460,8 +462,8 @@ export const METROS: MetroCoverage[] = [
   { code: "spokane_metro", slug: "spokane", shortName: "Spokane", longName: "Spokane-Spokane Valley MSA", state: "WA", signals: 584, namedPct: 99.7, aadtPct: 36.3, liveSource: null, aadtSource: "WSDOT 2024 Traffic Sections (state highways)", dotName: "Spokane Streets Department", planningOfficeName: "Spokane Planning Services Department", parkingCodeCitation: "Spokane Municipal Code, Chapter 17C.230 — Parking and Loading." },
   { code: "tacoma_metro", slug: "tacoma", shortName: "Tacoma", longName: "Tacoma-Pierce County", state: "WA", signals: 1351, namedPct: 97.5, aadtPct: 36.5, liveSource: null, aadtSource: "WSDOT 2024 Traffic Sections (state highways)", dotName: "Tacoma Public Works Department", planningOfficeName: "Tacoma Planning and Development Services", parkingCodeCitation: "Tacoma Municipal Code, Chapter 13.06.510 — Off-Street Parking." },
   // OR (2)
-  { code: "eugene_metro", slug: "eugene", shortName: "Eugene", longName: "Eugene-Springfield MSA", state: "OR", signals: 399, namedPct: 100.0, aadtPct: 27.6, liveSource: null, aadtSource: "ODOT-OR 2024 Traffic Flow (state highways)", dotName: "Eugene Public Works Department", planningOfficeName: "Eugene Planning Division", parkingCodeCitation: "Eugene Code, Chapter 9.6400 — Parking and Loading Standards." },
-  { code: "salem_or_metro", slug: "salem-or", shortName: "Salem (OR)", longName: "Salem (OR) MSA", state: "OR", signals: 298, namedPct: 100.0, aadtPct: 37.9, liveSource: null, aadtSource: "ODOT-OR 2024 Traffic Flow (state highways)", dotName: "Salem Public Works Department", planningOfficeName: "Salem Community Planning and Development Department", parkingCodeCitation: "Salem Revised Code, Title 12, Chapter 806 — Off-Street Parking." },
+  { code: "eugene_metro", slug: "eugene", shortName: "Eugene", longName: "Eugene-Springfield MSA", state: "OR", signals: 399, namedPct: 100.0, aadtPct: 27.6, liveSource: "ODOT-OR TripCheck", aadtSource: "ODOT-OR 2024 Traffic Flow (state highways)", dotName: "Eugene Public Works Department", planningOfficeName: "Eugene Planning Division", parkingCodeCitation: "Eugene Code, Chapter 9.6400 — Parking and Loading Standards." },
+  { code: "salem_or_metro", slug: "salem-or", shortName: "Salem (OR)", longName: "Salem (OR) MSA", state: "OR", signals: 298, namedPct: 100.0, aadtPct: 37.9, liveSource: "ODOT-OR TripCheck", aadtSource: "ODOT-OR 2024 Traffic Flow (state highways)", dotName: "Salem Public Works Department", planningOfficeName: "Salem Community Planning and Development Department", parkingCodeCitation: "Salem Revised Code, Title 12, Chapter 806 — Off-Street Parking." },
   // UT (2)
   { code: "provo_metro", slug: "provo", shortName: "Provo", longName: "Provo-Orem MSA", state: "UT", signals: 591, namedPct: 99.0, aadtPct: 96.8, liveSource: null, aadtSource: "UDOT 2024 AADT", dotName: "Provo Public Works Department", planningOfficeName: "Provo Community Development Department", parkingCodeCitation: "Provo City Code, Title 14, Chapter 37 — Parking and Loading." },
   { code: "ogden_metro", slug: "ogden", shortName: "Ogden", longName: "Ogden-Clearfield MSA", state: "UT", signals: 306, namedPct: 99.0, aadtPct: 90.8, liveSource: null, aadtSource: "UDOT 2024 AADT", dotName: "Ogden Public Services Department", planningOfficeName: "Ogden Community and Economic Development Department", parkingCodeCitation: "Ogden Municipal Code, Title 15, Chapter 27 — Off-Street Parking." },
@@ -469,18 +471,18 @@ export const METROS: MetroCoverage[] = [
   { code: "rochester_mn_metro", slug: "rochester-mn", shortName: "Rochester (MN)", longName: "Rochester (MN) MSA", state: "MN", signals: 332, namedPct: 99.7, aadtPct: 99.7, liveSource: null, aadtSource: "MnDOT current AADT segments", dotName: "Rochester Department of Public Works", planningOfficeName: "Rochester-Olmsted Planning Department", parkingCodeCitation: "Rochester Code of Ordinances, Section 63.290 — Off-Street Parking." },
   { code: "duluth_metro", slug: "duluth", shortName: "Duluth", longName: "Duluth MSA", state: "MN", signals: 189, namedPct: 99.5, aadtPct: 99.5, liveSource: null, aadtSource: "MnDOT current AADT segments", dotName: "Duluth Engineering Division", planningOfficeName: "Duluth Planning and Construction Services Division", parkingCodeCitation: "Duluth City Code, Chapter 50, Article VII — Off-Street Parking." },
   // FL (6)
-  { code: "fort_lauderdale_metro", slug: "fort-lauderdale", shortName: "Fort Lauderdale", longName: "Fort Lauderdale (Broward County)", state: "FL", signals: 3692, namedPct: 99.9, aadtPct: 97.3, liveSource: null, aadtSource: "FDOT AADT TDA", dotName: "Fort Lauderdale Transportation and Mobility Department", planningOfficeName: "Broward County Planning Council", parkingCodeCitation: "Fort Lauderdale Unified Land Development Regulations, Section 47-20 — Parking." },
-  { code: "west_palm_beach_metro", slug: "west-palm-beach", shortName: "West Palm Beach", longName: "West Palm Beach (Palm Beach County)", state: "FL", signals: 2174, namedPct: 98.9, aadtPct: 93.3, liveSource: null, aadtSource: "FDOT AADT TDA", dotName: "West Palm Beach Engineering Services Department", planningOfficeName: "Palm Beach County Planning, Zoning and Building Department", parkingCodeCitation: "West Palm Beach Code of Ordinances, Chapter 94 — Zoning, Article XII — Off-Street Parking." },
-  { code: "daytona_beach_metro", slug: "daytona-beach", shortName: "Daytona Beach", longName: "Deltona-Daytona Beach-Ormond Beach MSA", state: "FL", signals: 550, namedPct: 99.5, aadtPct: 93.6, liveSource: null, aadtSource: "FDOT AADT TDA", dotName: "Daytona Beach Public Works Department", planningOfficeName: "Volusia County Growth and Resource Management", parkingCodeCitation: "Daytona Beach Land Development Code, Article 8 — Off-Street Parking." },
-  { code: "lakeland_metro", slug: "lakeland", shortName: "Lakeland", longName: "Lakeland-Winter Haven MSA", state: "FL", signals: 718, namedPct: 98.6, aadtPct: 90.0, liveSource: null, aadtSource: "FDOT AADT TDA", dotName: "Lakeland Public Works Department", planningOfficeName: "Polk County Land Development Division", parkingCodeCitation: "Lakeland Land Development Code, Article 7 — Off-Street Parking." },
-  { code: "tallahassee_metro", slug: "tallahassee", shortName: "Tallahassee", longName: "Tallahassee MSA", state: "FL", signals: 722, namedPct: 99.7, aadtPct: 96.3, liveSource: null, aadtSource: "FDOT AADT TDA", dotName: "Tallahassee Underground Utilities and Public Infrastructure", planningOfficeName: "Tallahassee-Leon County Planning Department", parkingCodeCitation: "Tallahassee Land Development Code, Chapter 10, Section 10-256 — Parking." },
-  { code: "fort_myers_metro", slug: "fort-myers", shortName: "Fort Myers", longName: "Cape Coral-Fort Myers MSA", state: "FL", signals: 1096, namedPct: 99.1, aadtPct: 83.9, liveSource: null, aadtSource: "FDOT AADT TDA", dotName: "Fort Myers Public Works Department", planningOfficeName: "Lee County Department of Community Development", parkingCodeCitation: "Fort Myers Land Development Code, Section 86-191 — Off-Street Parking." },
+  { code: "fort_lauderdale_metro", slug: "fort-lauderdale", shortName: "Fort Lauderdale", longName: "Fort Lauderdale (Broward County)", state: "FL", signals: 3692, namedPct: 99.9, aadtPct: 97.3, liveSource: "FDOT DIVAS", aadtSource: "FDOT AADT TDA", dotName: "Fort Lauderdale Transportation and Mobility Department", planningOfficeName: "Broward County Planning Council", parkingCodeCitation: "Fort Lauderdale Unified Land Development Regulations, Section 47-20 — Parking." },
+  { code: "west_palm_beach_metro", slug: "west-palm-beach", shortName: "West Palm Beach", longName: "West Palm Beach (Palm Beach County)", state: "FL", signals: 2174, namedPct: 98.9, aadtPct: 93.3, liveSource: "FDOT DIVAS", aadtSource: "FDOT AADT TDA", dotName: "West Palm Beach Engineering Services Department", planningOfficeName: "Palm Beach County Planning, Zoning and Building Department", parkingCodeCitation: "West Palm Beach Code of Ordinances, Chapter 94 — Zoning, Article XII — Off-Street Parking." },
+  { code: "daytona_beach_metro", slug: "daytona-beach", shortName: "Daytona Beach", longName: "Deltona-Daytona Beach-Ormond Beach MSA", state: "FL", signals: 550, namedPct: 99.5, aadtPct: 93.6, liveSource: "FDOT DIVAS", aadtSource: "FDOT AADT TDA", dotName: "Daytona Beach Public Works Department", planningOfficeName: "Volusia County Growth and Resource Management", parkingCodeCitation: "Daytona Beach Land Development Code, Article 8 — Off-Street Parking." },
+  { code: "lakeland_metro", slug: "lakeland", shortName: "Lakeland", longName: "Lakeland-Winter Haven MSA", state: "FL", signals: 718, namedPct: 98.6, aadtPct: 90.0, liveSource: "FDOT DIVAS", aadtSource: "FDOT AADT TDA", dotName: "Lakeland Public Works Department", planningOfficeName: "Polk County Land Development Division", parkingCodeCitation: "Lakeland Land Development Code, Article 7 — Off-Street Parking." },
+  { code: "tallahassee_metro", slug: "tallahassee", shortName: "Tallahassee", longName: "Tallahassee MSA", state: "FL", signals: 722, namedPct: 99.7, aadtPct: 96.3, liveSource: "FDOT DIVAS", aadtSource: "FDOT AADT TDA", dotName: "Tallahassee Underground Utilities and Public Infrastructure", planningOfficeName: "Tallahassee-Leon County Planning Department", parkingCodeCitation: "Tallahassee Land Development Code, Chapter 10, Section 10-256 — Parking." },
+  { code: "fort_myers_metro", slug: "fort-myers", shortName: "Fort Myers", longName: "Cape Coral-Fort Myers MSA", state: "FL", signals: 1096, namedPct: 99.1, aadtPct: 83.9, liveSource: "FDOT DIVAS", aadtSource: "FDOT AADT TDA", dotName: "Fort Myers Public Works Department", planningOfficeName: "Lee County Department of Community Development", parkingCodeCitation: "Fort Myers Land Development Code, Section 86-191 — Off-Street Parking." },
   // VA (2)
   { code: "roanoke_metro", slug: "roanoke", shortName: "Roanoke", longName: "Roanoke MSA", state: "VA", signals: 482, namedPct: 100.0, aadtPct: 99.6, liveSource: null, aadtSource: "VDOT 2024 Traffic Volume", dotName: "Roanoke Transportation Division", planningOfficeName: "Roanoke Planning, Building, and Development Department", parkingCodeCitation: "Roanoke Zoning Ordinance, Section 36.2-652 — Parking." },
   { code: "charlottesville_metro", slug: "charlottesville", shortName: "Charlottesville", longName: "Charlottesville MSA", state: "VA", signals: 297, namedPct: 98.0, aadtPct: 95.3, liveSource: null, aadtSource: "VDOT 2024 Traffic Volume", dotName: "Charlottesville Public Works Department", planningOfficeName: "Charlottesville Department of Neighborhood Development Services", parkingCodeCitation: "Charlottesville Zoning Ordinance, Article 8 — Parking and Loading." },
   // MO (2)
-  { code: "springfield_mo_metro", slug: "springfield-mo", shortName: "Springfield (MO)", longName: "Springfield (MO) MSA", state: "MO", signals: 525, namedPct: 97.7, aadtPct: 28.8, liveSource: null, aadtSource: "MoDOT Directional AADT (state highways)", dotName: "Springfield Public Works Department", planningOfficeName: "Springfield-Greene County Planning Department", parkingCodeCitation: "Springfield Land Development Code, Article VI — Off-Street Parking." },
-  { code: "columbia_mo_metro", slug: "columbia-mo", shortName: "Columbia (MO)", longName: "Columbia (MO) MSA", state: "MO", signals: 175, namedPct: 97.7, aadtPct: 38.9, liveSource: null, aadtSource: "MoDOT Directional AADT (state highways)", dotName: "Columbia Public Works Department", planningOfficeName: "Columbia Community Development Department", parkingCodeCitation: "Columbia Code of Ordinances, Section 29-32 — Off-Street Parking." },
+  { code: "springfield_mo_metro", slug: "springfield-mo", shortName: "Springfield (MO)", longName: "Springfield (MO) MSA", state: "MO", signals: 525, namedPct: 97.7, aadtPct: 28.8, liveSource: "MoDOT WZDx", aadtSource: "MoDOT Directional AADT (state highways)", dotName: "Springfield Public Works Department", planningOfficeName: "Springfield-Greene County Planning Department", parkingCodeCitation: "Springfield Land Development Code, Article VI — Off-Street Parking." },
+  { code: "columbia_mo_metro", slug: "columbia-mo", shortName: "Columbia (MO)", longName: "Columbia (MO) MSA", state: "MO", signals: 175, namedPct: 97.7, aadtPct: 38.9, liveSource: "MoDOT WZDx", aadtSource: "MoDOT Directional AADT (state highways)", dotName: "Columbia Public Works Department", planningOfficeName: "Columbia Community Development Department", parkingCodeCitation: "Columbia Code of Ordinances, Section 29-32 — Off-Street Parking." },
   // IA (1)
   { code: "cedar_rapids_metro", slug: "cedar-rapids", shortName: "Cedar Rapids", longName: "Cedar Rapids MSA", state: "IA", signals: 363, namedPct: 97.2, aadtPct: 100.0, liveSource: null, aadtSource: "Iowa DOT RAMS AADT", dotName: "Cedar Rapids Public Works Department", planningOfficeName: "Cedar Rapids Community Development Department", parkingCodeCitation: "Cedar Rapids Municipal Code, Chapter 32 — Zoning, Article 5 — Off-Street Parking." },
 ];
@@ -504,3 +506,28 @@ export const TIER_B_METROS = METROS.filter((m) => m.aadtPct < TIER_A_AADT_CUTOFF
 export const TOTAL_SIGNALS = METROS.reduce((sum, m) => sum + m.signals, 0);
 export const TOTAL_METROS = METROS.length;
 export const STATES_COVERED = new Set(METROS.map((m) => m.state)).size;
+
+/** Canonical state-code → full-name map. Single source of truth used by /cities,
+ *  /cities/<slug>, the home page coverage grid — anywhere a state is rendered. */
+export const STATE_NAMES: Record<MetroCoverage["state"], string> = {
+  GA: "Georgia", NC: "North Carolina", TN: "Tennessee", FL: "Florida",
+  AL: "Alabama", SC: "South Carolina", VA: "Virginia", KY: "Kentucky",
+  LA: "Louisiana", DC: "District of Columbia", MD: "Maryland",
+  PA: "Pennsylvania", NY: "New York", MA: "Massachusetts", IL: "Illinois",
+  MI: "Michigan", MN: "Minnesota", OH: "Ohio", IN: "Indiana", MO: "Missouri",
+  WI: "Wisconsin", TX: "Texas", CA: "California", OR: "Oregon",
+  WA: "Washington", NV: "Nevada", AZ: "Arizona", CO: "Colorado", UT: "Utah",
+  NM: "New Mexico", CT: "Connecticut", RI: "Rhode Island", NH: "New Hampshire",
+  VT: "Vermont", ME: "Maine", NJ: "New Jersey", WV: "West Virginia",
+  MS: "Mississippi", AR: "Arkansas", OK: "Oklahoma", IA: "Iowa", NE: "Nebraska",
+  KS: "Kansas", ND: "North Dakota", SD: "South Dakota", ID: "Idaho",
+  MT: "Montana", WY: "Wyoming", AK: "Alaska", HI: "Hawaii",
+};
+
+/** Comparator: sort metros by full state name alphabetically, then by AADT%
+ *  desc within state (so Tier-A leads its state). */
+export function compareByStateThenAadt(a: MetroCoverage, b: MetroCoverage): number {
+  const cmp = STATE_NAMES[a.state].localeCompare(STATE_NAMES[b.state]);
+  if (cmp !== 0) return cmp;
+  return b.aadtPct - a.aadtPct;
+}

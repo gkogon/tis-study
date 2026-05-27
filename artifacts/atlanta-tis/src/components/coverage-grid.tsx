@@ -22,20 +22,18 @@ import {
   TOTAL_METROS,
   TOTAL_SIGNALS,
   STATES_COVERED,
+  STATE_NAMES,
+  compareByStateThenAadt,
   type MetroCoverage,
 } from "../data/metro-coverage";
 
 export function CoverageGrid() {
-  // Sort Tier A by AADT% desc, Atlanta first (flagship).
-  const tierA = [...TIER_A_METROS].sort((a, b) => {
-    if (a.code === "atlanta_metro") return -1;
-    if (b.code === "atlanta_metro") return 1;
-    return b.aadtPct - a.aadtPct;
-  });
-  // Tier B alphabetical by state then shortName.
-  const tierB = [...TIER_B_METROS].sort((a, b) =>
-    a.state === b.state ? a.shortName.localeCompare(b.shortName) : a.state.localeCompare(b.state),
-  );
+  // Both tiers sort by full state name alphabetically, then by AADT% desc
+  // within state. Atlanta still gets its flagship badge but sits under
+  // Georgia rather than commanding row #1 — keeps the list scannable
+  // by state, which is how customers actually look for their metro.
+  const tierA = [...TIER_A_METROS].sort(compareByStateThenAadt);
+  const tierB = [...TIER_B_METROS].sort(compareByStateThenAadt);
 
   return (
     <section className="space-y-10" data-testid="coverage-grid">
@@ -102,6 +100,15 @@ export function CoverageGrid() {
                 <span className="text-muted-foreground">
                   · {m.state} · {m.signals.toLocaleString()}
                 </span>
+                {m.liveSource && (
+                  <span
+                    className="ml-1.5 inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400"
+                    title={`Live: ${m.liveSource}`}
+                  >
+                    <span className="w-1 h-1 rounded-full bg-emerald-500" />
+                    <span className="text-[10px] uppercase tracking-[0.12em]">live</span>
+                  </span>
+                )}
               </span>
             ))}
           </div>

@@ -47,6 +47,18 @@ import { loadRegionalIntersections } from "../lib/regional-intersections";
 import { getIncidentsForRegion as getNcdotIncidentsForRegion } from "../lib/ncdot-live";
 import { getIncidentsForRegion as getFdotIncidentsForRegion } from "../lib/fdot-live";
 import { getIncidentsForRegion as getKytcIncidentsForRegion } from "../lib/kytc-live";
+import {
+  getIncidentsForRegion as getRegionalIncidents,
+  isRegionalLiveRegion,
+} from "../lib/regional-live";
+import {
+  getIncidentsForRegion as getMdChartIncidents,
+  isMdChartRegion,
+} from "../lib/md-chart-live";
+import {
+  getIncidentsForRegion as getModotIncidents,
+  isModotLiveRegion,
+} from "../lib/modot-live";
 import { getLiveIncidents } from "../lib/atlanta-live";
 import { getLiveWeather } from "../lib/atlanta-weather";
 import { computeHourlyWeatherMultipliers } from "../lib/atlanta-weather-detail";
@@ -109,6 +121,24 @@ router.get("/live-incidents", async (req, res): Promise<void> => {
     }
     if (regionCode === "louisville_metro") {
       const incidents = await getKytcIncidentsForRegion(regionCode);
+      res.json(incidents);
+      return;
+    }
+    // Generic ArcGIS-style fetchers (TxDOT/ADOT/NMDOT/ODOT-OR — all public, no auth).
+    if (isRegionalLiveRegion(regionCode)) {
+      const incidents = await getRegionalIncidents(regionCode);
+      res.json(incidents);
+      return;
+    }
+    // MD CHART (Baltimore) — public JSON feed.
+    if (isMdChartRegion(regionCode)) {
+      const incidents = await getMdChartIncidents(regionCode);
+      res.json(incidents);
+      return;
+    }
+    // MoDOT WZDx (St Louis/KC/Springfield-MO/Columbia-MO) — public JSON, CC0.
+    if (isModotLiveRegion(regionCode)) {
+      const incidents = await getModotIncidents(regionCode);
       res.json(incidents);
       return;
     }
