@@ -72,12 +72,13 @@ export const loginRateLimiter = rateLimit({
   message: { error: "Too many sign-in attempts. Try again in 15 minutes." },
 });
 
-// Per-IP rate limit on signups. Prevents bulk account creation from
-// scripts probing the system. Lower-volume than logins because each
-// signup is a "first-time" event for a real human.
+// Per-IP rate limit on signups. Tightened from 5/hr to 3/hr in the
+// signup-defense layering pass. The other layers (honeypot, form-load
+// time, disposable-email blocklist, global ceiling) live in
+// lib/signup-defense.ts and apply on top of this.
 export const signupRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: 5,
+  limit: 3,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many signup attempts. Try again later." },

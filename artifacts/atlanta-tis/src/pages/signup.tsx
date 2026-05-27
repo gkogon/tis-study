@@ -4,7 +4,7 @@
  * user and a firm in a single submit; after that we either redirect to
  * Stripe Checkout (paid plan) or to /tis (free trial).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@workspace/replit-auth-web";
 import {
@@ -48,6 +48,11 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [existingFirm, setExistingFirm] = useState<{ id: string; name: string } | null>(null);
   const [checkingFirm, setCheckingFirm] = useState(false);
+
+  // Bot-defense fields (see lib/signup-defense.ts on the server). Refs
+  // because the values don't drive UI and we only read them at submit.
+  const honeypotRef = useRef<string>("");
+  const formLoadedAtRef = useRef<number>(Date.now());
 
   // If already signed in, check whether a firm already exists for the
   // user so we can skip the create form and route them to checkout / app.
@@ -116,6 +121,9 @@ export default function SignupPage() {
           password,
           firstName: firstName.trim() || null,
           lastName: lastName.trim() || null,
+          // Bot-defense fields. Server checks these in lib/signup-defense.ts.
+          website: honeypotRef.current,
+          formLoadedAt: formLoadedAtRef.current,
         }),
       });
       const data = await r.json();
@@ -205,6 +213,7 @@ export default function SignupPage() {
               onSubmit={handleNewAccountSubmit}
               submitting={submitting}
               plan={plan}
+              honeypotRef={honeypotRef}
             />
           )}
 
@@ -238,7 +247,7 @@ function NewAccountForm({
   email, setEmail, password, setPassword,
   firstName, setFirstName, lastName, setLastName,
   firmName, setFirmName, acceptedTerms, setAcceptedTerms,
-  onSubmit, submitting, plan,
+  onSubmit, submitting, plan, honeypotRef,
 }: {
   email: string; setEmail: (v: string) => void;
   password: string; setPassword: (v: string) => void;
@@ -249,9 +258,27 @@ function NewAccountForm({
   onSubmit: (e: React.FormEvent) => void;
   submitting: boolean;
   plan: Plan;
+  honeypotRef: React.MutableRefObject<string>;
 }) {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
+      {/* Honeypot — invisible to real users, autofilled by naïve bots.
+          Positioned off-screen instead of display:none because some bots
+          skip hidden elements. aria-hidden + tabIndex=-1 keep it out of
+          assistive-tech and tab-order. Name is deliberately a believable
+          field that a bot scraping for "website" / "url" autofills. */}
+      <div aria-hidden="true" style={{ position: "absolute", left: "-9999px", top: 0, width: 1, height: 1, opacity: 0, overflow: "hidden" }}>
+        <label htmlFor="signup-website-field">Website (leave blank)</label>
+        <input
+          id="signup-website-field"
+          type="text"
+          name="website"
+          tabIndex={-1}
+          autoComplete="off"
+          defaultValue=""
+          onChange={(e) => { honeypotRef.current = e.target.value; }}
+        />
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Field label="First name">
           <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} autoComplete="given-name" className="input" data-testid="input-signup-first" />

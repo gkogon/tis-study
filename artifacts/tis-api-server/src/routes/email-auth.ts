@@ -38,6 +38,13 @@ import {
   signupRateLimiter,
   passwordResetRateLimiter,
 } from "../lib/security";
+import {
+  isDisposableEmail,
+  validateAntiBotFields,
+  checkGlobalSignupCeiling,
+  recordSuccessfulSignup,
+  verifyTurnstileToken,
+} from "../lib/signup-defense";
 import { logEvent } from "../lib/events";
 
 const router: IRouter = Router();
@@ -71,12 +78,7 @@ function sessionFromUser(user: typeof usersTable.$inferSelect): SessionData {
 }
 
 router.post("/auth/signup", signupRateLimiter, async (req, res): Promise<void> => {
-  const body = req.body as {
-    email?: unknown;
-    password?: unknown;
-    firstName?: unknown;
-    lastName?: unknown;
-  };
+  const body = (req.body ?? {}) as Record<string, unknown>;
   const email = String(body.email ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
   const firstName = body.firstName ? String(body.firstName).trim().slice(0, 80) : null;
@@ -91,6 +93,44 @@ router.post("/auth/signup", signupRateLimiter, async (req, res): Promise<void> =
     res.status(400).json({ error: strength.reason });
     return;
   }
+
+  // ----- Bot-detection layers (see lib/signup-defense.ts) -----
+  //
+  // Order matters: cheapest checks first, then network-calling
+  // checks (Turnstile) only if the cheap ones pass. Every failure
+  // logs the precise reason server-side but returns a generic
+  // message to the client so a scanner can't iterate.
+
+  const antiBot = validateAntiBotFields(body);
+  if (!antiBot.ok) {
+    logger.warn({ email, reason: antiBot.reason }, "signup.rejected.bot_check");
+    res.status(400).json({ error: "Signup could not be completed. Please reload the page and try again." });
+    return;
+  }
+
+  if (isDisposableEmail(email)) {
+    // Surfaced explicitly because legitimate users sometimes try a
+    // throwaway by mistake — telling them the actual reason is more
+    // useful than a generic failure.
+    logger.warn({ email }, "signup.rejected.disposable_email");
+    res.status(400).json({ error: "Please use a permanent email address (disposable mailbox providers aren't accepted)." });
+    return;
+  }
+
+  const turnstile = await verifyTurnstileToken(body.turnstileToken, req.ip);
+  if (!turnstile.ok) {
+    logger.warn({ email, reason: turnstile.reason }, "signup.rejected.turnstile");
+    res.status(400).json({ error: "Signup could not be completed. Please reload the page and try again." });
+    return;
+  }
+
+  const ceiling = checkGlobalSignupCeiling();
+  if (!ceiling.ok) {
+    logger.warn({ email, reason: ceiling.reason }, "signup.rejected.global_ceiling");
+    res.status(429).json({ error: "Signups are temporarily paused. Please try again in an hour." });
+    return;
+  }
+  // ----- end bot-detection layers -----
 
   try {
     const [existing] = await db
@@ -133,6 +173,7 @@ router.post("/auth/signup", signupRateLimiter, async (req, res): Promise<void> =
     const sid = await createSession(sessionFromUser(user));
     setSessionCookie(res, sid);
     logger.info({ userId: user.id, email }, "email-auth.signup");
+    recordSuccessfulSignup();
     logEvent("signup", {
       userId: user.id,
       metadata: { promotedFromExisting: !!existing },
