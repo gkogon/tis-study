@@ -50,6 +50,15 @@ export const firmsTable = pgTable("firms", {
   currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
 
+  // Primary metro the firm serves. Drives jurisdictional copy in
+  // generated PDFs and which state-DOT data source the analyzer queries.
+  // See artifacts/tis-api-server/src/lib/regions.ts for the registry.
+  // Defaulted to 'atlanta_metro' for back-compat with rows created
+  // before multi-region support shipped.
+  regionCode: varchar("region_code", { length: 32 })
+    .notNull()
+    .default("atlanta_metro"),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .default(sql`now()`),

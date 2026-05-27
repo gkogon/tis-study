@@ -44,9 +44,12 @@ CREATE TABLE IF NOT EXISTS firms (
   studies_used_this_period    INTEGER NOT NULL DEFAULT 0,
   current_period_start        TIMESTAMPTZ,
   current_period_end          TIMESTAMPTZ,
+  region_code                 VARCHAR(32) NOT NULL DEFAULT 'atlanta_metro',
   created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Multi-region rollout: backfill column on a pre-existing firms table.
+ALTER TABLE firms ADD COLUMN IF NOT EXISTS region_code VARCHAR(32) NOT NULL DEFAULT 'atlanta_metro';
 
 CREATE TABLE IF NOT EXISTS firm_members (
   firm_id              UUID NOT NULL REFERENCES firms(id) ON DELETE CASCADE,
@@ -92,6 +95,7 @@ CREATE TABLE IF NOT EXISTS tis_projects (
   land_use_size       TEXT,
   site_lat            TEXT,
   site_lon            TEXT,
+  region_code         VARCHAR(32) NOT NULL DEFAULT 'atlanta_metro',
   request_payload     JSONB NOT NULL,
   result_payload      JSONB NOT NULL,
   version             INTEGER NOT NULL DEFAULT 1,
@@ -101,6 +105,8 @@ CREATE INDEX IF NOT EXISTS "IDX_tis_projects_user_created"  ON tis_projects (use
 CREATE INDEX IF NOT EXISTS "IDX_tis_projects_firm_created"  ON tis_projects (firm_id, created_at);
 -- Adds study_type to a pre-existing tis_projects table (no-op if column already exists).
 ALTER TABLE tis_projects ADD COLUMN IF NOT EXISTS study_type VARCHAR(32) NOT NULL DEFAULT 'tis';
+-- Multi-region rollout: backfill column on a pre-existing tis_projects table.
+ALTER TABLE tis_projects ADD COLUMN IF NOT EXISTS region_code VARCHAR(32) NOT NULL DEFAULT 'atlanta_metro';
 
 -- =============== monitoring_enrollments / monitoring_reports ===============
 CREATE TABLE IF NOT EXISTS monitoring_enrollments (

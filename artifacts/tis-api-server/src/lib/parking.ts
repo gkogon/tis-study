@@ -18,7 +18,7 @@ import {
   type GenerateParkingBodyT,
   type GenerateParkingResponseT,
 } from "@workspace/tis-api-zod";
-import { getActiveRegion } from "./regions";
+import { ATLANTA_METRO, regionForCoordinate } from "./regions";
 import { PARKING_LAND_USES } from "./land-uses";
 
 // Re-export so existing callers (route handlers) keep importing from
@@ -130,7 +130,13 @@ export function generateParkingReport(
     hourlyProfileSaturday,
     citations: [
       "ITE Parking Generation Manual, 5th Ed. — peak parking demand rates by land-use code.",
-      getActiveRegion().jurisdiction.parkingCodeCitation,
+      // Resolve region from the body's coordinate (if supplied) so the
+      // parking-code citation matches the project's jurisdiction. Falls
+      // back to Atlanta when no coord or the coord is outside every
+      // active region.
+      ((body.latitude !== undefined && body.longitude !== undefined
+        ? regionForCoordinate(body.latitude, body.longitude)
+        : null) ?? ATLANTA_METRO).jurisdiction.parkingCodeCitation,
       ...(sharedUseReductionPct > 0
         ? ["ULI Shared Parking, 3rd Ed. — adjustment factors for mixed-use developments."]
         : []),

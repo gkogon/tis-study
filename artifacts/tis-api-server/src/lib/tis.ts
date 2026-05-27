@@ -16,7 +16,7 @@
 
 import { logger } from "./logger";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
-import { getActiveRegion } from "./regions";
+import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
 // Canonical land-use registry (ITE 11th Ed.) lives in one place so the
 // Parking engine and TIS engine stay in sync. Re-exported below for any
 // downstream callers that imported `LAND_USES` from this module.
@@ -225,15 +225,26 @@ type AnalyzerIntersection = {
 
 const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8080";
 
-let intersectionCache: AnalyzerIntersection[] | null = null;
-let inFlight: Promise<AnalyzerIntersection[]> | null = null;
+// Per-region caches. The Atlanta cache hydrates from the legacy
+// /atlanta/intersections endpoint for back-compat; other regions hydrate
+// from the new region-aware /intersections?regionCode=... endpoint.
+const intersectionCache = new Map<string, AnalyzerIntersection[]>();
+const inFlightByRegion = new Map<string, Promise<AnalyzerIntersection[]>>();
 const ANALYZER_FETCH_TIMEOUT_MS = 5000;
 
-async function fetchIntersections(): Promise<AnalyzerIntersection[]> {
-  if (intersectionCache) return intersectionCache;
-  if (inFlight) return inFlight;
-  const url = `${ANALYZER_BASE_URL}/api/atlanta/intersections`;
-  inFlight = (async (): Promise<AnalyzerIntersection[]> => {
+async function fetchIntersections(regionCode: string = "atlanta_metro"): Promise<AnalyzerIntersection[]> {
+  const cached = intersectionCache.get(regionCode);
+  if (cached) return cached;
+  const existing = inFlightByRegion.get(regionCode);
+  if (existing) return existing;
+
+  // Atlanta keeps its legacy URL (rich enrichment); other regions use the
+  // region-aware route that serves OSM-synthesized stubs.
+  const url = regionCode === "atlanta_metro"
+    ? `${ANALYZER_BASE_URL}/api/atlanta/intersections`
+    : `${ANALYZER_BASE_URL}/api/intersections?regionCode=${encodeURIComponent(regionCode)}`;
+
+  const promise = (async (): Promise<AnalyzerIntersection[]> => {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), ANALYZER_FETCH_TIMEOUT_MS);
     try {
@@ -247,9 +258,10 @@ async function fetchIntersections(): Promise<AnalyzerIntersection[]> {
       if (!Array.isArray(json)) {
         throw new Error(`Analyzer intersection response was not an array (got ${typeof json}).`);
       }
-      intersectionCache = json as AnalyzerIntersection[];
-      logger.info({ count: intersectionCache.length, url }, "tis.intersections_loaded");
-      return intersectionCache;
+      const inventory = json as AnalyzerIntersection[];
+      intersectionCache.set(regionCode, inventory);
+      logger.info({ regionCode, count: inventory.length, url }, "tis.intersections_loaded");
+      return inventory;
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         throw new Error(
@@ -261,10 +273,11 @@ async function fetchIntersections(): Promise<AnalyzerIntersection[]> {
       clearTimeout(timer);
     }
   })();
+  inFlightByRegion.set(regionCode, promise);
   try {
-    return await inFlight;
+    return await promise;
   } finally {
-    inFlight = null;
+    inFlightByRegion.delete(regionCode);
   }
 }
 
@@ -405,10 +418,10 @@ export type TisReport = {
 const CURRENT_YEAR = new Date().getUTCFullYear();
 
 async function findAffectedIntersections(
-  lat: number, lon: number, radiusMi: number,
+  lat: number, lon: number, radiusMi: number, regionCode: string,
 ): Promise<Array<{ sig: AnalyzerIntersection; distanceMi: number }>> {
   const radiusM = radiusMi * M_PER_MI;
-  const inventory = await fetchIntersections();
+  const inventory = await fetchIntersections(regionCode);
   const out: Array<{ sig: AnalyzerIntersection; distanceMi: number }> = [];
   for (const s of inventory) {
     const dM = haversineM({ lat, lon }, { lat: s.latitude, lon: s.longitude });
@@ -585,6 +598,7 @@ function plainFindings(
   passByPct: number,
   internalCapPct: number,
   sens: SensitivityResult | undefined,
+  region: Region,
 ): string[] {
   const out: string[] = [];
   out.push(
@@ -616,7 +630,7 @@ function plainFindings(
     `${rows.length} signalized intersection${rows.length === 1 ? "" : "s"} fall within the study area; ${dropped} are projected to drop at least one LOS grade after build-out.`,
   );
   if (ef > 0) {
-    out.push(`${ef} intersection${ef === 1 ? " is" : "s are"} projected to operate at LOS E or F under the build condition and require formal mitigation per ${getActiveRegion().jurisdiction.dotName} TIS guidance.`);
+    out.push(`${ef} intersection${ef === 1 ? " is" : "s are"} projected to operate at LOS E or F under the build condition and require formal mitigation per ${region.jurisdiction.dotName} TIS guidance.`);
   } else {
     out.push("All studied intersections are projected to remain at LOS D or better with build traffic; no formal mitigation is required.");
   }
@@ -753,7 +767,13 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const passByPct = clamp(req.passByPct ?? lu.passByPctPm, 0, 70);
   const internalCapturePct = clamp(req.internalCapturePct ?? lu.internalCapturePctPm, 0, 50);
 
-  const candidates = await findAffectedIntersections(req.latitude, req.longitude, radiusMi);
+  // Resolve region once from the project coordinate. Region-scoped cache
+  // means a Charlotte project won't accidentally see Atlanta signals.
+  // Fall back to Atlanta if outside every active region (belt-and-braces;
+  // OpenAPI bounds + per-region check should have caught it upstream).
+  const region = regionForCoordinate(req.latitude, req.longitude) ?? ATLANTA_METRO;
+
+  const candidates = await findAffectedIntersections(req.latitude, req.longitude, radiusMi, region.code);
   const weights = assignmentWeights(candidates);
   const project = { lat: req.latitude, lon: req.longitude };
   const calibrationMap = await loadCalibrationMap();
@@ -852,6 +872,9 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       )
     : undefined;
 
+  // `region` is already resolved earlier (before findAffectedIntersections)
+  // — reuse it for the findings/mitigation language so the report is
+  // self-consistent.
   const findings = plainFindings(
     tripGeneration,
     pmReport.affectedIntersections,
@@ -862,9 +885,10 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     passByPct,
     internalCapturePct,
     sens,
+    region,
   );
 
-  const mitigationSummary = buildSummaryMitigations(pmReport.affectedIntersections);
+  const mitigationSummary = buildSummaryMitigations(pmReport.affectedIntersections, region);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -932,7 +956,7 @@ async function synthesizePmReport(
   };
 }
 
-function buildSummaryMitigations(rows: AffectedIntersection[]): string[] {
+function buildSummaryMitigations(rows: AffectedIntersection[], region: Region): string[] {
   if (rows.length === 0) return ["No off-site mitigations required."];
   const major = rows.filter((r) => r.mitigationSeverity === "major");
   const moderate = rows.filter((r) => r.mitigationSeverity === "moderate");
@@ -940,7 +964,7 @@ function buildSummaryMitigations(rows: AffectedIntersection[]): string[] {
   const none = rows.filter((r) => r.mitigationSeverity === "none");
   const out: string[] = [];
   if (major.length) {
-    out.push(`Major mitigation required at ${major.length} intersection${major.length === 1 ? "" : "s"}: add critical-approach turn lane(s) and retime the signal; coordinate with ${getActiveRegion().jurisdiction.planningOfficeName}.`);
+    out.push(`Major mitigation required at ${major.length} intersection${major.length === 1 ? "" : "s"}: add critical-approach turn lane(s) and retime the signal; coordinate with ${region.jurisdiction.planningOfficeName}.`);
   }
   if (moderate.length) {
     out.push(`Moderate mitigation at ${moderate.length} intersection${moderate.length === 1 ? "" : "s"}: extend critical-phase green and add protected-only left-turn phasing as needed.`);

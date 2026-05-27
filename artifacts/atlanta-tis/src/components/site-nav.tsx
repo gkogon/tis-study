@@ -21,6 +21,7 @@ type Item = { href: string; label: string };
 const PUBLIC_NAV: Item[] = [
   { href: "/demo", label: "Demo" },
   { href: "/for-firms", label: "For firms" },
+  { href: "/cities", label: "Cities" },
   { href: "/pricing", label: "Pricing" },
   { href: "/compare", label: "Compare" },
   { href: "/about", label: "About" },

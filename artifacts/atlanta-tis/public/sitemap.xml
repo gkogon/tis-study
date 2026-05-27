@@ -21,4 +21,164 @@
   <url><loc>https://simpleimpactstudies.com/legal/terms</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>https://simpleimpactstudies.com/legal/privacy</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>https://simpleimpactstudies.com/legal/disclaimer</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
+
+  <!-- Coverage appendix + per-metro detail pages (140 metros across all 50 states + DC).
+       Per-metro priorities scale with measured-AADT tier: Tier-A (≥75%) at 0.85,
+       Tier-B (synth baseline) at 0.6. The Atlanta flagship sits at 0.9. -->
+  <url><loc>https://simpleimpactstudies.com/cities</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/atlanta</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/charlotte</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/raleigh-durham</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/triad</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/asheville</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/wilmington</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/jacksonville</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/tampa</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/miami-dade</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/pensacola</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/hampton-roads</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/richmond</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/columbia-sc</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/orlando</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/fayetteville</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/greenville-nc</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/charleston-sc</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/chattanooga</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/knoxville</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/memphis</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/nashville</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/savannah</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/augusta</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/macon</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/birmingham</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/huntsville</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/mobile</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/lexington</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/louisville</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/new-orleans</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+
+  <!-- Tier-4: Coast + Midwest + Westward (added 2026-05-27). Tier-B until per-state AADT
+       overlays land; promote to 0.85 once aadtPct ≥ 75. -->
+  <url><loc>https://simpleimpactstudies.com/cities/washington-dc</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/baltimore</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/philadelphia</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/pittsburgh</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/new-york</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/boston</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/chicago</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/detroit</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/twin-cities</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/cleveland</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/columbus-oh</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/cincinnati</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/indianapolis</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/st-louis</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/kansas-city</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/milwaukee</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/houston</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/dallas-fort-worth</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/austin</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/san-antonio</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+
+  <!-- Tier-5: West Coast + Mountain West (added 2026-05-27). Tier-B until per-state AADT
+       overlays land; promote to 0.85 once aadtPct ≥ 75. -->
+  <url><loc>https://simpleimpactstudies.com/cities/los-angeles</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/sf-bay</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/san-diego</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/sacramento</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/inland-empire</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/fresno</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/portland</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/seattle</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/las-vegas</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/phoenix</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/tucson</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/denver</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/salt-lake-city</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/albuquerque</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+
+  <!-- Tier-6: 50-state coverage push (added 2026-05-27). Tier-B until per-state AADT
+       overlays land; promote to 0.85 once aadtPct ≥ 75. -->
+  <url><loc>https://simpleimpactstudies.com/cities/hartford</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/providence</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/manchester</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/burlington-vt</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/portland-me</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/trenton</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/charleston-wv</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/jackson-ms</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/little-rock</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/oklahoma-city</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/tulsa</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/des-moines</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/omaha</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/wichita</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/fargo</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/sioux-falls</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/boise</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/billings</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/cheyenne</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/anchorage</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/honolulu</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+
+  <!-- Tier-7: depth push (55 secondary metros, added 2026-05-27). Tier-A unless noted. -->
+  <url><loc>https://simpleimpactstudies.com/cities/rochester-ny</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/buffalo</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/syracuse</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/albany</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/toledo</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/akron</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/dayton</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/youngstown</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/grand-rapids</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/lansing</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/ann-arbor</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/flint</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/allentown</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/harrisburg</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/scranton</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/erie</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/worcester</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/springfield-ma</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/new-haven</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/bridgeport</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/fort-wayne</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/south-bend</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/evansville</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/madison</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/green-bay</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/springfield-il</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/rockford</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/peoria</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/champaign</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/el-paso</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/corpus-christi</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/lubbock</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/mcallen</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/bakersfield</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/stockton</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/modesto</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/oxnard</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/colorado-springs</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/fort-collins</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/reno</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/spokane</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/tacoma</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/eugene</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/salem-or</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/provo</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/ogden</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/rochester-mn</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/duluth</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/fort-lauderdale</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/west-palm-beach</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/daytona-beach</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/lakeland</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/tallahassee</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/fort-myers</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/roanoke</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/charlottesville</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/springfield-mo</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/columbia-mo</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://simpleimpactstudies.com/cities/cedar-rapids</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
 </urlset>

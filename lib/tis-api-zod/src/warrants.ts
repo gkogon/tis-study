@@ -20,8 +20,9 @@ const HourlyVolumes = zod.array(zod.number().min(0).max(20000)).length(24);
 export const GenerateWarrantsBody = zod.object({
   projectName: zod.string().min(1).max(200),
   intersectionName: zod.string().max(200).optional(),
-  latitude: zod.number().min(33.4).max(34.2).optional(),
-  longitude: zod.number().min(-84.9).max(-83.9).optional(),
+  // Continental-US bounds; per-region enforced at runtime.
+  latitude: zod.number().min(24).max(49).optional(),
+  longitude: zod.number().min(-125).max(-66).optional(),
 
   majorStreet: zod.object({
     name: zod.string().max(120),

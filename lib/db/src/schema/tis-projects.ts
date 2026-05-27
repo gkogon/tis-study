@@ -48,6 +48,13 @@ export const tisProjectsTable = pgTable(
     landUseSize: text("land_use_size"), // serialized number; nullable so we don't lose a row to bad data
     siteLat: text("site_lat"),
     siteLon: text("site_lon"),
+    // Resolved region at the time of generation. Snapshotted onto the
+    // row so a future region remapping (e.g. expanding Miami-Dade to
+    // full South Florida) doesn't retroactively rewrite history.
+    // Defaulted to 'atlanta_metro' for back-compat with legacy rows.
+    regionCode: varchar("region_code", { length: 32 })
+      .notNull()
+      .default("atlanta_metro"),
     requestPayload: jsonb("request_payload").notNull(),
     resultPayload: jsonb("result_payload").notNull(),
     // Sequential per-user version counter so engineers can talk about

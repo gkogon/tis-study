@@ -43,6 +43,10 @@ import {
   predictTodayAccidents,
 } from "../lib/atlanta-analysis";
 import { loadRoadNetwork } from "../lib/atlanta-data";
+import { loadRegionalIntersections } from "../lib/regional-intersections";
+import { getIncidentsForRegion as getNcdotIncidentsForRegion } from "../lib/ncdot-live";
+import { getIncidentsForRegion as getFdotIncidentsForRegion } from "../lib/fdot-live";
+import { getIncidentsForRegion as getKytcIncidentsForRegion } from "../lib/kytc-live";
 import { getLiveIncidents } from "../lib/atlanta-live";
 import { getLiveWeather } from "../lib/atlanta-weather";
 import { computeHourlyWeatherMultipliers } from "../lib/atlanta-weather-detail";
@@ -69,6 +73,90 @@ const router: IRouter = Router();
 
 router.get("/atlanta/intersections", (_req, res): void => {
   res.json(ListIntersectionsResponse.parse(getIntersectionSummaries()));
+});
+
+/**
+ * Region-aware live incidents.
+ *   GET /live-incidents?regionCode=charlotte_metro
+ *
+ * Dispatches to the right state DOT live-data fetcher per region:
+ *   - atlanta_metro          → GDOT 511 (existing /atlanta/live-incidents route)
+ *   - charlotte_metro        → NCDOT TIMS API
+ *   - raleigh_durham_metro   → NCDOT TIMS API
+ *   - tampa/orlando/miami    → not yet wired (FDOT TIM fetcher pending)
+ *
+ * Returns: `IncidentListItem[]` with normalized shape (id, road, county,
+ * condition, lat/lon, lanes, severity). Empty array when no live source
+ * is wired for that region yet.
+ */
+router.get("/live-incidents", async (req, res): Promise<void> => {
+  const regionCode = (req.query["regionCode"] as string | undefined) ?? "atlanta_metro";
+  try {
+    if (regionCode === "charlotte_metro" || regionCode === "raleigh_durham_metro") {
+      const incidents = await getNcdotIncidentsForRegion(regionCode);
+      res.json(incidents);
+      return;
+    }
+    if (
+      regionCode === "tampa_metro" ||
+      regionCode === "orlando_metro" ||
+      regionCode === "miami_dade_metro" ||
+      regionCode === "jacksonville_metro"
+    ) {
+      const incidents = await getFdotIncidentsForRegion(regionCode);
+      res.json(incidents);
+      return;
+    }
+    if (regionCode === "louisville_metro") {
+      const incidents = await getKytcIncidentsForRegion(regionCode);
+      res.json(incidents);
+      return;
+    }
+    // Other metros — Nashville (TDOT no API), Birmingham (ALDOT OAuth-gated),
+    // Hampton Roads/Richmond (VDOT has AADT but no public incident feed),
+    // Charleston/Columbia (SCDOT 511 needs scrape), New Orleans (LADOTD has
+    // no public ArcGIS), Tier-1 NC/TN/GA metros (covered by their state
+    // DOT fetchers via the matching dispatcher branches above) — fall
+    // through to empty until those state DOTs publish open APIs.
+    res.json([]);
+  } catch (e) {
+    req.log?.error?.({ regionCode, err: e }, "live incidents fetch failed");
+    res.status(502).json({
+      error: `Failed to fetch live incidents for region ${regionCode}`,
+      detail: (e as Error).message,
+    });
+  }
+});
+
+/**
+ * Region-aware intersection list.
+ *   GET /intersections?regionCode=charlotte_metro
+ *
+ * - atlanta_metro (default): returns the fully-enriched summaries from
+ *   getIntersectionSummaries() (volumes/accidents/severity/etc).
+ * - Any other region: returns synthesized stubs from the bundled OSM signal
+ *   inventory (see lib/regional-intersections.ts). Fields the TIS engine
+ *   doesn't consume (severity, inefficiency) are placeholder zeros.
+ *
+ * Unknown / inactive regions return 400 — fail loud rather than silently
+ * fall back to Atlanta and produce wrong-metro reports.
+ */
+router.get("/intersections", (req, res): void => {
+  const regionCode = (req.query["regionCode"] as string | undefined) ?? "atlanta_metro";
+  if (regionCode === "atlanta_metro") {
+    res.json(ListIntersectionsResponse.parse(getIntersectionSummaries()));
+    return;
+  }
+  try {
+    const summaries = loadRegionalIntersections(regionCode);
+    res.json(ListIntersectionsResponse.parse(summaries));
+  } catch (e) {
+    req.log?.warn?.({ regionCode, err: e }, "regional intersections load failed");
+    res.status(400).json({
+      error: `Unknown or unloaded region: ${regionCode}`,
+      detail: (e as Error).message,
+    });
+  }
 });
 
 router.get("/atlanta/summary", (_req, res): void => {

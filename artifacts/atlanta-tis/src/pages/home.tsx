@@ -11,9 +11,18 @@ import { ArrowRight, Check, FileText, BookOpen } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 import { AtlantaLiveStatus } from "../components/atlanta-live-status";
 import { CalibrationActivity } from "../components/calibration-activity";
+import { CoverageGrid } from "../components/coverage-grid";
 import { Marker, LosScaleStrip } from "../components/section-marker";
+import { usePageMeta } from "../hooks/use-page-meta";
+import { TOTAL_METROS, TOTAL_SIGNALS } from "../data/metro-coverage";
 
 export default function HomePage() {
+  usePageMeta({
+    title: "Simple Impact Studies — Defensible TIS without the week of engineer time",
+    description: `Screening-level Traffic Impact Studies for engineering firms across ${TOTAL_METROS} Southeast metros (${TOTAL_SIGNALS.toLocaleString()} signals indexed). HCM 6th, ITE 11th, MUTCD, AASHTO — the math your reviewer expects, in about a minute.`,
+    canonical: "https://simpleimpactstudies.com/",
+  });
+
   return (
     <div className="overflow-x-hidden">
       <div className="relative">
@@ -34,6 +43,7 @@ export default function HomePage() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20 space-y-20">
         <MathSection />
         <AtlantaLiveStatus />
+        <CoverageGrid />
         <EconomicsSection />
         <WorkflowSection />
         <FinalCta />
@@ -51,7 +61,7 @@ function HeroSection() {
         <div className="space-y-2">
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Live GDOT data · 49 metro signals indexed
+            Live state-DOT data · {TOTAL_METROS} metros · {TOTAL_SIGNALS.toLocaleString()} signals indexed
           </div>
           <div className="h-px w-full bg-border" />
         </div>
@@ -266,7 +276,7 @@ const MATH_STATS: Array<{ value: string; unit?: string; label: string; sub: stri
 ];
 
 const MECHANICS: Array<[string, string]> = [
-  ["GDOT data pre-indexed", "Signal counts, intersection inventory, and live incident feeds stay loaded in-process. We did the import once, for all 49 metro signals."],
+  ["State-DOT data pre-indexed", `Signal counts, intersection inventory, and live incident feeds stay loaded in-process. We did the import once, for all ${TOTAL_SIGNALS.toLocaleString()} signals across ${TOTAL_METROS} metros.`],
   ["HCM equations in parallel", "Eq. 19-13 (control delay) and Eq. 19-50 (95th-percentile queue) run concurrently across every intersection in the radius."],
   ["ITE rates from one table", "80 land-use codes as a typed lookup, not flipped page-by-page. Pass-by and internal capture applied per ITE TGM Appendix B."],
   ["No GUI overhead", "No model setup, no scenario manager, no project file. The form is the model; generation streams straight to a structured report."],

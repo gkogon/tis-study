@@ -40,6 +40,8 @@ import { CookieBanner } from "@/components/cookie-banner";
 import { ErrorBoundary } from "@/components/error-boundary";
 import ProfileSettingsPage from "@/pages/settings-profile";
 import AboutPage from "@/pages/about";
+import CitiesPage from "@/pages/cities";
+import CityDetailPage from "@/pages/city-detail";
 
 const queryClient = new QueryClient();
 
@@ -70,6 +72,8 @@ function Router() {
       <Route path="/settings/firm" component={SettingsFirmPage} />
       <Route path="/settings/profile" component={ProfileSettingsPage} />
       <Route path="/about" component={AboutPage} />
+      <Route path="/cities" component={CitiesPage} />
+      <Route path="/cities/:slug" component={CityDetailPage} />
       <Route path="/invites/accept" component={InviteAcceptPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/admin/usage" component={AdminUsagePage} />
