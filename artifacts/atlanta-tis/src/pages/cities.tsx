@@ -73,20 +73,9 @@ const STATE_NAMES: Record<MetroCoverage["state"], string> = {
   HI: "Hawaii",
 };
 
-const STATE_ORDER: MetroCoverage["state"][] = [
-  // SE (original coverage)
-  "GA", "NC", "TN", "FL", "AL", "SC", "VA", "KY", "LA", "MS", "AR",
-  // Mid-Atlantic + Northeast
-  "DC", "MD", "PA", "NJ", "NY", "CT", "RI", "MA", "VT", "NH", "ME", "WV",
-  // Midwest
-  "OH", "MI", "IN", "IL", "WI", "MN", "MO", "IA", "NE", "KS", "ND", "SD", "OK",
-  // Texas
-  "TX",
-  // West Coast + Mountain West
-  "CA", "OR", "WA", "NV", "AZ", "CO", "UT", "NM", "ID", "MT", "WY",
-  // Pacific / Outliers
-  "AK", "HI",
-];
+// Alphabetical by full state name. DC sorts under "D" (District of Columbia).
+const STATE_ORDER: MetroCoverage["state"][] = (Object.keys(STATE_NAMES) as MetroCoverage["state"][])
+  .sort((a, b) => STATE_NAMES[a].localeCompare(STATE_NAMES[b]));
 
 export default function CitiesPage() {
   const tierACount = METROS.filter((m) => m.aadtPct >= TIER_A_AADT_CUTOFF || m.code === "atlanta_metro").length;
