@@ -2261,3 +2261,36 @@ export function regionForCoordinate(
   }
   return null;
 }
+
+/**
+ * Find the active region whose bounding-box centroid is closest to
+ * (lat, lon). Returns null only if there are zero active regions.
+ *
+ * Used by /demo/presets to localize the demo to the visitor's nearest
+ * covered metro when IP geolocation lands them outside any specific
+ * region bbox (e.g. visitor in a small French city near Paris but not
+ * inside Paris's bbox).
+ *
+ * Distance is computed in equirectangular projection — accurate enough
+ * for "which metro is closer" decisions at any latitude, way cheaper
+ * than haversine, and consistent with how the engine handles short-
+ * range bbox math elsewhere.
+ */
+export function nearestRegionForCoordinate(lat: number, lon: number): Region | null {
+  let best: { region: Region; d2: number } | null = null;
+  for (const region of Object.values(REGIONS)) {
+    if (!region.active) continue;
+    const b = region.bounds;
+    const cLat = (b.latMin + b.latMax) / 2;
+    const cLon = (b.lonMin + b.lonMax) / 2;
+    const dLat = lat - cLat;
+    // Compress longitude difference by cos(lat) so a degree east-west
+    // is comparable to a degree north-south. Using the centroid lat
+    // is good enough for ranking — we're not measuring absolute
+    // distance, just picking the closest centroid.
+    const dLon = (lon - cLon) * Math.cos((cLat * Math.PI) / 180);
+    const d2 = dLat * dLat + dLon * dLon;
+    if (best === null || d2 < best.d2) best = { region, d2 };
+  }
+  return best?.region ?? null;
+}

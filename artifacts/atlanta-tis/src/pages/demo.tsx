@@ -208,8 +208,16 @@ function humanizeWeather(w: string) {
   return w.replace(/_/g, " ");
 }
 
+type ResolvedRegion = {
+  code: string;
+  displayName: string;
+  country?: string;
+  city?: string;
+};
+
 export default function DemoPage() {
   const [presets, setPresets] = useState<Preset[] | null>(null);
+  const [resolvedRegion, setResolvedRegion] = useState<ResolvedRegion | null>(null);
   const [landUses, setLandUses] = useState<LandUse[] | null>(null);
   const [activeName, setActiveName] = useState<string | null>(null);
   const [response, setResponse] = useState<DemoResponse | null>(null);
@@ -219,11 +227,12 @@ export default function DemoPage() {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      fetch("/tis-api/demo/presets").then((r) => r.json()).catch(() => ({ presets: [] })),
+      fetch("/tis-api/demo/presets").then((r) => r.json()).catch(() => ({ presets: [], resolvedRegion: null })),
       fetch("/tis-api/demo/landuses").then((r) => r.json()).catch(() => ({ landUses: [] })),
     ]).then(([p, l]) => {
       if (cancelled) return;
       setPresets((p?.presets as Preset[] | undefined) ?? []);
+      setResolvedRegion((p?.resolvedRegion as ResolvedRegion | null) ?? null);
       setLandUses((l?.landUses as LandUse[] | undefined) ?? []);
     });
     return () => { cancelled = true; };
@@ -292,7 +301,7 @@ export default function DemoPage() {
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
         {!response && !loading && (
-          <DemoForm presets={presets} landUses={landUses} onRun={run} />
+          <DemoForm presets={presets} landUses={landUses} onRun={run} resolvedRegion={resolvedRegion} />
         )}
 
         {loading && <LoadingState projectName={activeName} />}
@@ -331,11 +340,12 @@ export default function DemoPage() {
  */
 
 function DemoForm({
-  presets, landUses, onRun,
+  presets, landUses, onRun, resolvedRegion,
 }: {
   presets: Preset[] | null;
   landUses: LandUse[] | null;
   onRun: (form: StudyForm) => void;
+  resolvedRegion: ResolvedRegion | null;
 }) {
   const currentYear = new Date().getFullYear();
   const [projectName, setProjectName] = useState("");
@@ -408,6 +418,21 @@ function DemoForm({
 
   return (
     <form onSubmit={submit} className="space-y-6">
+      {resolvedRegion && (
+        <div className="rounded-md border border-blue-700/30 bg-blue-50 dark:bg-blue-950/30 px-4 py-3 flex items-start gap-3">
+          <MapPin className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
+          <div className="text-xs leading-relaxed">
+            <div className="font-semibold text-foreground">
+              Looks like you're near {resolvedRegion.displayName}
+              {resolvedRegion.city ? ` (${resolvedRegion.city})` : ""}.
+            </div>
+            <div className="text-muted-foreground mt-0.5">
+              Localized examples for your metro are shown first below — click any to fill the form, or enter your own site coordinates.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Quick-fill examples — collapsible, click to prefill the form */}
       {presets && presets.length > 0 && (
         <div className="rounded-xl border border-border bg-slate-50 dark:bg-slate-950/40 p-5 space-y-3">
@@ -421,7 +446,13 @@ function DemoForm({
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {presets.map((p) => {
-              const Icon = ICONS[p.id] ?? Building2;
+              // Localized presets carry IDs like local_<region>_<verb>;
+              // strip the prefix so the verb resolves to the right icon
+              // ("multifamily"→Building2, "office"→Briefcase, etc.).
+              const iconKey = p.id.startsWith("local_")
+                ? p.id.split("_").slice(-1)[0] ?? p.id
+                : p.id;
+              const Icon = ICONS[iconKey] ?? Building2;
               return (
                 <button
                   key={p.id}

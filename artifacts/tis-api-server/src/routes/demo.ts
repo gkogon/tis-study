@@ -33,7 +33,8 @@ import { LAND_USES } from "../lib/land-uses";
 import { demoRateLimiter } from "../lib/security";
 import { logEvent } from "../lib/events";
 import { renderStudyPdf } from "../lib/pdf-export";
-import { regionForCoordinate } from "../lib/regions";
+import { regionForCoordinate, nearestRegionForCoordinate, type Region } from "../lib/regions";
+import { clientIpFromRequest, geolocateIp } from "../lib/ip-geolocate";
 
 const router: IRouter = Router();
 
@@ -204,14 +205,93 @@ router.get("/demo/landuses", (_req, res) => {
   });
 });
 
-router.get("/demo/presets", (_req, res) => {
-  const out = (Object.keys(PRESETS) as Array<keyof typeof PRESETS>).map((id) => ({
+// Quick-fill demo land uses (ITE codes) for the localized presets.
+// Picked to span the four most-pitched site types in cold-outreach
+// conversations: residential density, office, retail, hospitality.
+const LOCALIZED_LAND_USES: Array<{ code: string; sizeUnitsLabel: string; size: number; verb: string; icon: string }> = [
+  { code: "221", sizeUnitsLabel: "DU", size: 200, verb: "Multifamily", icon: "multifamily" },
+  { code: "710", sizeUnitsLabel: "ksf", size: 50, verb: "Office", icon: "office" },
+  { code: "820", sizeUnitsLabel: "ksf", size: 75, verb: "Retail", icon: "retail" },
+  { code: "310", sizeUnitsLabel: "rooms", size: 200, verb: "Hotel", icon: "hotel" },
+];
+
+function regionCentroid(region: Region): { lat: number; lon: number } {
+  return {
+    lat: (region.bounds.latMin + region.bounds.latMax) / 2,
+    lon: (region.bounds.lonMin + region.bounds.lonMax) / 2,
+  };
+}
+
+function buildLocalizedPresets(region: Region): Array<{ id: string; label: string; blurb: string; prefill: { projectName: string; latitude: number; longitude: number; landUseCode: string; size: number } }> {
+  const c = regionCentroid(region);
+  // Stagger each preset slightly off the centroid so multiple submissions
+  // don't all hit the exact same intersection. Δ ~0.005° ≈ 500m at most
+  // latitudes — keeps the site inside the metro bbox but produces a
+  // realistically distinct study site per land use.
+  const offsets = [
+    { dLat: 0, dLon: 0 },
+    { dLat: 0.003, dLon: 0.004 },
+    { dLat: -0.004, dLon: 0.003 },
+    { dLat: 0.002, dLon: -0.005 },
+  ];
+  return LOCALIZED_LAND_USES.map((lu, i) => {
+    const o = offsets[i] ?? { dLat: 0, dLon: 0 };
+    return {
+      id: `local_${region.code}_${lu.icon}`,
+      label: `${lu.verb} — ${lu.size.toLocaleString()} ${lu.sizeUnitsLabel} in ${region.displayName}`,
+      blurb: `ITE ${lu.code} · ${lu.size} ${lu.sizeUnitsLabel} · resolved from your IP`,
+      prefill: {
+        projectName: `Demo: ${region.displayName} ${lu.verb} — ${lu.size} ${lu.sizeUnitsLabel}`,
+        latitude: Math.round((c.lat + o.dLat) * 10000) / 10000,
+        longitude: Math.round((c.lon + o.dLon) * 10000) / 10000,
+        landUseCode: lu.code,
+        size: lu.size,
+      },
+    };
+  });
+}
+
+router.get("/demo/presets", async (req, res) => {
+  const staticPresets = (Object.keys(PRESETS) as Array<keyof typeof PRESETS>).map((id) => ({
     id,
     label: PRESETS[id].label,
     blurb: PRESETS[id].blurb,
     prefill: PRESETS[id].prefill,
   }));
-  res.json({ presets: out });
+
+  // Best-effort IP geolocation. Any failure (timeout, rate limit, private
+  // IP, no geo data) → falls through to static presets only.
+  const ip = clientIpFromRequest(req.headers as Record<string, string | string[] | undefined>, req.ip);
+  const loc = await geolocateIp(ip);
+  if (!loc) {
+    res.json({ presets: staticPresets, resolvedRegion: null });
+    return;
+  }
+  // Prefer an exact bbox hit (visitor sitting inside a covered metro);
+  // fall back to nearest centroid when they're in an uncovered area
+  // close to a metro (e.g. visitor in Versailles is closest to Paris).
+  const region =
+    regionForCoordinate(loc.lat, loc.lon) ?? nearestRegionForCoordinate(loc.lat, loc.lon);
+  if (!region) {
+    res.json({ presets: staticPresets, resolvedRegion: null });
+    return;
+  }
+  const localized = buildLocalizedPresets(region);
+
+  req.log.info(
+    { ip, country: loc.country, city: loc.city, regionCode: region.code },
+    "demo.presets.localized",
+  );
+
+  res.json({
+    presets: [...localized, ...staticPresets],
+    resolvedRegion: {
+      code: region.code,
+      displayName: region.displayName,
+      country: loc.country,
+      city: loc.city,
+    },
+  });
 });
 
 /**
