@@ -545,6 +545,29 @@ export const TIER_A_METROS = METROS.filter((m) => m.aadtPct >= TIER_A_AADT_CUTOF
 export const TIER_B_METROS = METROS.filter((m) => m.aadtPct < TIER_A_AADT_CUTOFF && m.code !== "atlanta_metro");
 export const TOTAL_SIGNALS = METROS.reduce((sum, m) => sum + m.signals, 0);
 export const TOTAL_METROS = METROS.length;
+
+/** Country → continent for the geographic rollup tiles. Add new entries here
+ *  when expanding to new countries. */
+const COUNTRY_CONTINENT: Record<string, "North America" | "Europe"> = {
+  US: "North America", CA: "North America", MX: "North America", UK: "Europe",
+};
+const metroCountry = (m: MetroCoverage): string => m.country ?? "US";
+
+/** Distinct US states + DC actually covered (US-country metros only). */
+export const US_STATES_COVERED = new Set(
+  METROS.filter((m) => metroCountry(m) === "US").map((m) => m.state),
+).size;
+/** Distinct countries covered. */
+export const COUNTRIES_COVERED = new Set(METROS.map(metroCountry)).size;
+/** Distinct continents covered. */
+export const CONTINENTS_COVERED = new Set(
+  METROS.map((m) => COUNTRY_CONTINENT[metroCountry(m)] ?? "North America"),
+).size;
+
+/** Legacy alias — counts every state-level subdivision across all countries
+ *  (US states + CA provinces + MX estados + UK constituents). Misleading on
+ *  its own ("68 states" is not a thing); prefer US_STATES_COVERED / COUNTRIES_COVERED
+ *  for new code. Kept so unmigrated call sites don't break. */
 export const STATES_COVERED = new Set(METROS.map((m) => m.state)).size;
 
 /** Canonical state-code → full-name map. Single source of truth used by /cities,

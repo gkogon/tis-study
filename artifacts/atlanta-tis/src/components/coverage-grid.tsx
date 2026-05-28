@@ -18,11 +18,14 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { Marker } from "./section-marker";
+import { MetroSearch } from "./metro-search";
 import {
   METROS,
   TOTAL_METROS,
   TOTAL_SIGNALS,
-  STATES_COVERED,
+  US_STATES_COVERED,
+  COUNTRIES_COVERED,
+  CONTINENTS_COVERED,
   STATE_NAMES,
   TIER_A_AADT_CUTOFF,
   type MetroCoverage,
@@ -98,7 +101,7 @@ export function CoverageGrid() {
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight leading-tight text-slate-900 dark:text-slate-50">
             One engine.{" "}
             <span className="font-mono text-foreground/90">{TOTAL_METROS}</span> metros
-            indexed across <span className="font-mono">{STATES_COVERED}</span> states.
+            across <span className="font-mono">{COUNTRIES_COVERED}</span> countries.
           </h2>
           <p className="text-base sm:text-lg text-muted-foreground leading-relaxed max-w-xl">
             Every signalized intersection in every metro we cover is indexed
@@ -108,26 +111,33 @@ export function CoverageGrid() {
         </div>
 
         <div className="lg:col-span-5">
-          <div className="grid grid-cols-3 gap-4 sm:gap-6 border-t border-border pt-5">
-            <Stat label="Signals indexed" value={TOTAL_SIGNALS.toLocaleString()} />
-            <Stat label="Metros live" value={String(TOTAL_METROS)} />
-            <Stat label="States" value={String(STATES_COVERED)} />
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5 sm:gap-x-6 border-t border-border pt-5">
+            <Stat label="Metros" value={String(TOTAL_METROS)} sub={`${TOTAL_SIGNALS.toLocaleString()} signals indexed`} />
+            <Stat label="Countries" value={String(COUNTRIES_COVERED)} sub={`Across ${CONTINENTS_COVERED} continents`} />
+            <Stat label="US states + DC" value={String(US_STATES_COVERED)} sub="50 states + Washington DC" />
+            <Stat label="Tier-A AADT" value={String(METROS.filter((m) => m.aadtPct >= TIER_A_AADT_CUTOFF || m.code === "atlanta_metro").length)} sub="Measured state-DOT counts" />
           </div>
         </div>
       </header>
 
-      <div className="flex items-baseline justify-between border-t border-border pt-3">
-        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-          §A · By state
+      <div className="space-y-3">
+        <MetroSearch
+          placeholder="Jump to a metro — try 'Phoenix', 'CA', 'Toronto', 'London'…"
+          testid="metro-search-home"
+        />
+        <div className="flex items-baseline justify-between border-t border-border pt-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+            §A · By state
+          </div>
+          <button
+            type="button"
+            onClick={allOpen ? collapseAll : expandAll}
+            className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground underline decoration-dotted underline-offset-[6px] hover:no-underline"
+            data-testid="toggle-expand-all"
+          >
+            {allOpen ? "Collapse all" : "Expand all"}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={allOpen ? collapseAll : expandAll}
-          className="font-mono text-[10px] uppercase tracking-[0.16em] text-foreground underline decoration-dotted underline-offset-[6px] hover:no-underline"
-          data-testid="toggle-expand-all"
-        >
-          {allOpen ? "Collapse all" : "Expand all"}
-        </button>
       </div>
 
       <div className="-mt-6">
@@ -280,7 +290,7 @@ function AadtPct({ pct, tierA }: { pct: number; tierA: boolean }) {
   return <span className="text-muted-foreground/60">—</span>;
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div>
       <div className="font-mono text-2xl sm:text-3xl font-bold tabular-nums text-foreground">
@@ -289,6 +299,11 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
         {label}
       </div>
+      {sub && (
+        <div className="mt-0.5 text-[10px] text-muted-foreground/70 leading-tight">
+          {sub}
+        </div>
+      )}
     </div>
   );
 }

@@ -10,13 +10,16 @@
 import { Link } from "wouter";
 import { SiteFooter } from "../components/site-footer";
 import { Marker } from "../components/section-marker";
+import { MetroSearch } from "../components/metro-search";
 import { usePageMeta } from "../hooks/use-page-meta";
 import {
   METROS,
   TIER_A_AADT_CUTOFF,
   TOTAL_METROS,
   TOTAL_SIGNALS,
-  STATES_COVERED,
+  US_STATES_COVERED,
+  COUNTRIES_COVERED,
+  CONTINENTS_COVERED,
   type MetroCoverage,
 } from "../data/metro-coverage";
 
@@ -103,7 +106,7 @@ export default function CitiesPage() {
 
   usePageMeta({
     title: `Cities we cover — ${TOTAL_METROS} metros, ${TOTAL_SIGNALS.toLocaleString()} signals indexed`,
-    description: `Simple Impact Studies indexes every signalized intersection in ${TOTAL_METROS} Southeast US metros across ${STATES_COVERED} states. HCM 6th, ITE 11th, MUTCD. ${tierACount} metros have measured state-DOT AADT calibration.`,
+    description: `Simple Impact Studies indexes every signalized intersection in ${TOTAL_METROS} metros across ${COUNTRIES_COVERED} countries (${US_STATES_COVERED} US states + DC, plus Canada / Mexico / UK). HCM 6th, ITE 11th, MUTCD. ${tierACount} metros have measured state-DOT AADT calibration.`,
     canonical: "https://simpleimpactstudies.com/cities",
   });
 
@@ -123,12 +126,16 @@ export default function CitiesPage() {
             Same TIS engine, same HCM / ITE / MUTCD math, every region below.
             Click any metro to jump to its detail row.
           </p>
+          <div className="pt-2 max-w-xl">
+            <MetroSearch />
+          </div>
         </header>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 border-t border-b border-border py-6">
-          <Stat label="Metros indexed" value={String(TOTAL_METROS)} />
-          <Stat label="Signals indexed" value={TOTAL_SIGNALS.toLocaleString()} />
-          <Stat label="States" value={String(STATES_COVERED)} />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6 border-t border-b border-border py-6">
+          <Stat label="Metros" value={String(TOTAL_METROS)} sublabel={`${TOTAL_SIGNALS.toLocaleString()} signals`} />
+          <Stat label="Countries" value={String(COUNTRIES_COVERED)} sublabel={`Across ${CONTINENTS_COVERED} continents`} />
+          <Stat label="US states + DC" value={String(US_STATES_COVERED)} sublabel="All 50 + Washington DC" />
+          <Stat label="Other regions" value={String(TOTAL_METROS - METROS.filter((m) => !m.country || m.country === "US").length)} sublabel="CA / MX / UK metros" />
           <Stat
             label="With measured AADT"
             value={String(tierACount)}
