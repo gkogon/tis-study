@@ -79,13 +79,19 @@ const VOLUME_BY_CLASS: Record<number, number> = {
 };
 const DEFAULT_VOLUME = 1000;
 
-/** OSM class code → human label for the roadClass field. */
+/** OSM class code → human label for the roadClass field.
+ *  Note: the OpenAPI IntersectionSummary.roadClass enum is constrained to
+ *  motorway/trunk/primary/secondary/other (no "tertiary"). Class 4 maps to
+ *  "other" rather than "tertiary" so the response passes Zod validation
+ *  for dense urban grids where signals frequently sit on tertiary OSM
+ *  ways (most of the Tier-10 metros). The engine indexes by the numeric
+ *  classCode in VOLUME_BY_CLASS, so the relabel doesn't change vph math. */
 const CLASS_NAME: Record<number, string> = {
   0: "motorway",
   1: "trunk",
   2: "primary",
   3: "secondary",
-  4: "tertiary",
+  4: "other",
 };
 const DEFAULT_CLASS_NAME = "primary";
 
