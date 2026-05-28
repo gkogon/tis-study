@@ -1,7 +1,7 @@
 /**
  * Lightweight metro-name search box with keyboard-navigable autocomplete.
  *
- * Used on /cities and on the home coverage grid. Filters the 171-metro
+ * Used on /cities and on the home coverage grid. Filters the 300-metro
  * registry by case-insensitive substring match on metro shortName, longName,
  * or state name. Picking a result navigates to /cities/<slug>.
  *

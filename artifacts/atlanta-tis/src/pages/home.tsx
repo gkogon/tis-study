@@ -14,12 +14,12 @@ import { CalibrationActivity } from "../components/calibration-activity";
 import { CoverageGrid } from "../components/coverage-grid";
 import { Marker, LosScaleStrip } from "../components/section-marker";
 import { usePageMeta } from "../hooks/use-page-meta";
-import { TOTAL_METROS, TOTAL_SIGNALS } from "../data/metro-coverage";
+import { TOTAL_METROS, TOTAL_SIGNALS, COUNTRIES_COVERED, CONTINENTS_COVERED } from "../data/metro-coverage";
 
 export default function HomePage() {
   usePageMeta({
     title: "Simple Impact Studies — Defensible TIS without the week of engineer time",
-    description: `Screening-level Traffic Impact Studies for engineering firms across ${TOTAL_METROS} metros in the US, Canada, Mexico and UK (${TOTAL_SIGNALS.toLocaleString()} signals indexed). HCM 6th, ITE 11th, MUTCD, AASHTO — the math your reviewer expects, in about a minute.`,
+    description: `Screening-level Traffic Impact Studies for engineering firms across ${TOTAL_METROS} cities in ${COUNTRIES_COVERED} countries on ${CONTINENTS_COVERED} continents (${TOTAL_SIGNALS.toLocaleString()} signals indexed). HCM 6th, ITE 11th, MUTCD, AASHTO — the math your reviewer expects, in about a minute.`,
     canonical: "https://simpleimpactstudies.com/",
   });
 

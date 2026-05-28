@@ -14,6 +14,7 @@ import { MetroSearch } from "../components/metro-search";
 import { usePageMeta } from "../hooks/use-page-meta";
 import {
   METROS,
+  STATE_NAMES,
   TIER_A_AADT_CUTOFF,
   TOTAL_METROS,
   TOTAL_SIGNALS,
@@ -22,80 +23,6 @@ import {
   CONTINENTS_COVERED,
   type MetroCoverage,
 } from "../data/metro-coverage";
-
-const STATE_NAMES: Record<MetroCoverage["state"], string> = {
-  GA: "Georgia",
-  NC: "North Carolina",
-  TN: "Tennessee",
-  FL: "Florida",
-  AL: "Alabama",
-  SC: "South Carolina",
-  VA: "Virginia",
-  KY: "Kentucky",
-  LA: "Louisiana",
-  DC: "District of Columbia",
-  MD: "Maryland",
-  PA: "Pennsylvania",
-  NY: "New York",
-  MA: "Massachusetts",
-  IL: "Illinois",
-  MI: "Michigan",
-  MN: "Minnesota",
-  OH: "Ohio",
-  IN: "Indiana",
-  MO: "Missouri",
-  WI: "Wisconsin",
-  TX: "Texas",
-  CA: "California",
-  OR: "Oregon",
-  WA: "Washington",
-  NV: "Nevada",
-  AZ: "Arizona",
-  CO: "Colorado",
-  UT: "Utah",
-  NM: "New Mexico",
-  CT: "Connecticut",
-  RI: "Rhode Island",
-  NH: "New Hampshire",
-  VT: "Vermont",
-  ME: "Maine",
-  NJ: "New Jersey",
-  WV: "West Virginia",
-  MS: "Mississippi",
-  AR: "Arkansas",
-  OK: "Oklahoma",
-  IA: "Iowa",
-  NE: "Nebraska",
-  KS: "Kansas",
-  ND: "North Dakota",
-  SD: "South Dakota",
-  ID: "Idaho",
-  MT: "Montana",
-  WY: "Wyoming",
-  AK: "Alaska",
-  HI: "Hawaii",
-  // Canadian provinces (Tier-8)
-  ON: "Ontario",
-  QC: "Québec",
-  BC: "British Columbia",
-  AB: "Alberta",
-  MB: "Manitoba",
-  NS: "Nova Scotia",
-  // Mexican estados (Tier-9)
-  CMX: "Ciudad de México",
-  JAL: "Jalisco",
-  NLE: "Nuevo León",
-  PUE: "Puebla",
-  BCN: "Baja California",
-  MEX: "Estado de México",
-  GUA: "Guanajuato",
-  CHH: "Chihuahua",
-  QUE: "Querétaro",
-  YUC: "Yucatán",
-  // UK constituent countries (Tier-9)
-  ENG: "England",
-  SCT: "Scotland",
-};
 
 // Alphabetical by full state name. DC sorts under "D" (District of Columbia).
 const STATE_ORDER: MetroCoverage["state"][] = (Object.keys(STATE_NAMES) as MetroCoverage["state"][])
@@ -106,7 +33,7 @@ export default function CitiesPage() {
 
   usePageMeta({
     title: `Cities we cover — ${TOTAL_METROS} metros, ${TOTAL_SIGNALS.toLocaleString()} signals indexed`,
-    description: `Simple Impact Studies indexes every signalized intersection in ${TOTAL_METROS} metros across ${COUNTRIES_COVERED} countries (${US_STATES_COVERED} US states + DC, plus Canada / Mexico / UK). HCM 6th, ITE 11th, MUTCD. ${tierACount} metros have measured state-DOT AADT calibration.`,
+    description: `Simple Impact Studies indexes every signalized intersection in ${TOTAL_METROS} metros across ${COUNTRIES_COVERED} countries on ${CONTINENTS_COVERED} continents. HCM 6th, ITE 11th, MUTCD. ${tierACount} metros have measured state-DOT AADT calibration.`,
     canonical: "https://simpleimpactstudies.com/cities",
   });
 
