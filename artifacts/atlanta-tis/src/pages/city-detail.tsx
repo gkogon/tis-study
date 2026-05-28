@@ -24,27 +24,34 @@ import NotFound from "./not-found";
 
 export default function CityDetailPage() {
   const [match, params] = useRoute<{ slug: string }>("/cities/:slug");
-  if (!match || !params) return <NotFound />;
-  const m = metroBySlug(params.slug);
-  if (!m) return <NotFound />;
+  const m = match && params ? metroBySlug(params.slug) : undefined;
+
+  // SEO: every metro gets its own indexable title + description so a
+  // search for "traffic impact study charlotte" hits this page directly
+  // rather than the generic /cities appendix. Call usePageMeta unconditionally
+  // before any early return — wouter can re-render this component briefly
+  // for a non-matching URL during back-nav, and conditional hooks violate
+  // React's rules-of-hooks and throw "Rendered fewer hooks than expected."
+  const aadtPhrase = m
+    ? m.aadtPct >= TIER_A_AADT_CUTOFF
+      ? ` ${m.aadtPct.toFixed(0)}% of intersections calibrated to measured ${m.aadtSource ?? "state-DOT"} traffic counts.`
+      : m.aadtPct > 0
+        ? ` ${m.aadtPct.toFixed(0)}% calibrated to state-DOT counts.`
+        : ""
+    : "";
+  usePageMeta({
+    title: m ? `Traffic impact studies in ${m.shortName}, ${m.state}` : "Cities",
+    description: m
+      ? `Defensible screening-level TIS, parking, signal-warrant, sight-distance, queuing and road-diet studies for ${m.longName}. ${m.signals.toLocaleString()} signalized intersections indexed.${aadtPhrase} HCM 6th, ITE 11th, MUTCD.`
+      : undefined,
+    canonical: m ? `https://simpleimpactstudies.com/cities/${m.slug}` : undefined,
+  });
+
+  if (!match || !params || !m) return <NotFound />;
 
   const isFlagship = m.code === "atlanta_metro";
   const isTierA = m.aadtPct >= TIER_A_AADT_CUTOFF || isFlagship;
   const siblings = siblingMetros(m);
-
-  // SEO: every metro gets its own indexable title + description so a
-  // search for "traffic impact study charlotte" hits this page directly
-  // rather than the generic /cities appendix.
-  const aadtPhrase = m.aadtPct >= TIER_A_AADT_CUTOFF
-    ? ` ${m.aadtPct.toFixed(0)}% of intersections calibrated to measured ${m.aadtSource ?? "state-DOT"} traffic counts.`
-    : m.aadtPct > 0
-      ? ` ${m.aadtPct.toFixed(0)}% calibrated to state-DOT counts.`
-      : "";
-  usePageMeta({
-    title: `Traffic impact studies in ${m.shortName}, ${m.state}`,
-    description: `Defensible screening-level TIS, parking, signal-warrant, sight-distance, queuing and road-diet studies for ${m.longName}. ${m.signals.toLocaleString()} signalized intersections indexed.${aadtPhrase} HCM 6th, ITE 11th, MUTCD.`,
-    canonical: `https://simpleimpactstudies.com/cities/${m.slug}`,
-  });
 
   return (
     <div className="overflow-x-hidden">
