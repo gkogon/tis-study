@@ -1156,6 +1156,25 @@ const REGIONS: RegionConfig[] = [
     return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "Alberta Transportation LoS 2021 (WAADT)", polylineConfig: { url: "https://services3.arcgis.com/mSGO1HzZze9kkZcj/arcgis/rest/services/Level_of_Service_2021/FeatureServer/0", aadtField: "WAADT_VOLUME", yearExtractor: { kind: "field_int", field: "TRAFFIC_YEAR" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
   })),
 
+  // SICT Mexico (via Jacobs Engineering AGOL mirror) — all 10 MX metros.
+  // 576 polyline segments national-scale; federal-highway-only so urban-core
+  // coverage will be very low. TDPA2022 stale but only public ArcGIS option.
+  ...(["mexico-city", "guadalajara", "monterrey", "puebla", "tijuana", "toluca", "leon", "juarez", "queretaro", "merida"].flatMap((slug) => {
+    const bboxes: Record<string, RegionConfig["bbox"]> = {
+      "mexico-city": { latMin: 19.2, latMax: 19.6, lonMin: -99.3, lonMax: -98.9 },
+      "guadalajara": { latMin: 20.5, latMax: 20.8, lonMin: -103.5, lonMax: -103.2 },
+      "monterrey": { latMin: 25.5, latMax: 25.9, lonMin: -100.5, lonMax: -100.1 },
+      "puebla": { latMin: 18.9, latMax: 19.2, lonMin: -98.3, lonMax: -98.0 },
+      "tijuana": { latMin: 32.4, latMax: 32.53, lonMin: -117.1, lonMax: -116.8 },
+      "toluca": { latMin: 19.2, latMax: 19.4, lonMin: -99.8, lonMax: -99.5 },
+      "leon": { latMin: 21.0, latMax: 21.2, lonMin: -101.8, lonMax: -101.5 },
+      "juarez": { latMin: 31.5, latMax: 31.75, lonMin: -106.6, lonMax: -106.3 },
+      "queretaro": { latMin: 20.5, latMax: 20.7, lonMin: -100.5, lonMax: -100.3 },
+      "merida": { latMin: 20.9, latMax: 21.1, lonMin: -89.7, lonMax: -89.5 },
+    };
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "SICT TDPA 2022 (federal highways, via Jacobs mirror)", polylineConfig: { url: "https://services9.arcgis.com/eNX73FDxjlKFtCtH/arcgis/rest/services/Mexico_Traffic_Data/FeatureServer/1", aadtField: "TDPA2022", yearExtractor: { kind: "static", year: 2022 }, snapM: 300, sourceTag: "fdot" } } as RegionConfig];
+  })),
+
   // MTO Ontario — Toronto/Ottawa/Hamilton, polyline (Historical AADT, AADT19 = 2019 latest).
   // Provincial-highway-only (1,844 segments statewide); expect low urban-core coverage.
   ...(["toronto", "ottawa", "hamilton"].flatMap((slug) => {

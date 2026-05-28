@@ -19,7 +19,7 @@ import { TOTAL_METROS, TOTAL_SIGNALS } from "../data/metro-coverage";
 export default function HomePage() {
   usePageMeta({
     title: "Simple Impact Studies — Defensible TIS without the week of engineer time",
-    description: `Screening-level Traffic Impact Studies for engineering firms across ${TOTAL_METROS} Southeast metros (${TOTAL_SIGNALS.toLocaleString()} signals indexed). HCM 6th, ITE 11th, MUTCD, AASHTO — the math your reviewer expects, in about a minute.`,
+    description: `Screening-level Traffic Impact Studies for engineering firms across ${TOTAL_METROS} metros in the US, Canada, Mexico and UK (${TOTAL_SIGNALS.toLocaleString()} signals indexed). HCM 6th, ITE 11th, MUTCD, AASHTO — the math your reviewer expects, in about a minute.`,
     canonical: "https://simpleimpactstudies.com/",
   });
 
@@ -33,17 +33,14 @@ export default function HomePage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-10">
           <HeroSection />
         </div>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-14 flex justify-center">
-          <CalibrationActivity />
-        </div>
       </div>
 
       <StatsBand />
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20 space-y-20">
         <MathSection />
-        <AtlantaLiveStatus />
         <CoverageGrid />
+        <FlagshipSection />
         <EconomicsSection />
         <WorkflowSection />
         <FinalCta />
@@ -144,7 +141,7 @@ function ProductPreview() {
         </div>
         <div className="text-lg font-bold">Peachtree Multifamily — 240 DU</div>
         <div className="text-xs text-muted-foreground font-mono">
-          ITE 221 · Atlanta MSA · Opening year 2027
+          ITE 221 · Sample (Atlanta MSA) · Opening year 2027
         </div>
       </div>
 
@@ -373,6 +370,40 @@ function MathSection() {
   );
 }
 
+/* ----- Flagship section — Atlanta as the fully-wired reference ----------- */
+function FlagshipSection() {
+  return (
+    <section className="space-y-8">
+      <Marker n="A" label="Flagship reference" />
+      <div className="grid lg:grid-cols-12 gap-8 items-start">
+        <div className="lg:col-span-5 space-y-3">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+            Atlanta is the proof.
+          </h2>
+          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+            Every metro on the platform runs the same engine. Atlanta is
+            our flagship — the only metro with the full live calibration
+            stack (GDOT 511 incidents, hourly traffic-flow archives,
+            crash history, weather sensors). The widgets below are real,
+            live data from Atlanta right now — they prove the depth the
+            engine can carry where the data exists.
+          </p>
+          <p className="text-xs text-muted-foreground/80 leading-relaxed font-mono">
+            The other 170 metros run the same HCM/ITE/MUTCD math against
+            the OSM signal graph + measured AADT from each state DOT (where
+            published). See the per-metro coverage table above for what's
+            wired where.
+          </p>
+        </div>
+        <div className="lg:col-span-7 space-y-6">
+          <CalibrationActivity />
+          <AtlantaLiveStatus />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ----- §02 — The economics --------------------------------------------- */
 function EconomicsSection() {
   return (
@@ -421,9 +452,9 @@ function EconomicsSection() {
           </div>
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             Methodology: 40 hours saved per screening at $125/hr is the
-            midpoint of the ITE-typical 20–60 hr range and the 2026 Atlanta
-            metro junior-PE billable rate. Savings shown are gross labor
-            cost recovered. Enterprise meter at $75/study.
+            midpoint of the ITE-typical 20–60 hr range and the 2026 US
+            junior-PE billable rate. Savings shown are gross labor cost
+            recovered. Enterprise meter at $75/study.
           </p>
         </div>
       </div>
@@ -476,7 +507,7 @@ function RoiRow({
 
 /* ----- §03 — From inputs to report ------------------------------------- */
 const STEPS: Array<[string, string]> = [
-  ["Drop a pin", "Site coordinates anywhere in the Atlanta MSA. The generator pulls GDOT counts and signal data for every intersection in the radius — up to 6.5 mi."],
+  ["Drop a pin", `Site coordinates anywhere in any of our ${TOTAL_METROS} covered metros. The generator pulls state-DOT counts and signal data for every intersection in the radius — up to 6.5 mi.`],
   ["Pick a land use", "ITE 11th Ed. codes for 80 use types. Enter the size; trip generation and pass-by capture are computed for you."],
   ["Download the PDF", "Cover page, executive summary, intersection table, mitigations, methodology and limitations appendices. Ready for PE review."],
 ];
