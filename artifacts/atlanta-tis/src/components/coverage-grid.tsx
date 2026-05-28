@@ -51,8 +51,10 @@ function buildGroups(): StateGroup[] {
   for (const [code, metros] of byState.entries()) {
     // Within-state order: Tier-A first (AADT desc), then Tier-B alphabetical
     metros.sort((a, b) => {
-      const aTierA = a.aadtPct >= TIER_A_AADT_CUTOFF || a.code === "atlanta_metro";
-      const bTierA = b.aadtPct >= TIER_A_AADT_CUTOFF || b.code === "atlanta_metro";
+      const aMeas = (a.aadtQuality ?? "measured") === "measured";
+      const bMeas = (b.aadtQuality ?? "measured") === "measured";
+      const aTierA = (a.aadtPct >= TIER_A_AADT_CUTOFF && aMeas) || a.code === "atlanta_metro";
+      const bTierA = (b.aadtPct >= TIER_A_AADT_CUTOFF && bMeas) || b.code === "atlanta_metro";
       if (aTierA !== bTierA) return aTierA ? -1 : 1;
       if (aTierA) return b.aadtPct - a.aadtPct;
       return a.shortName.localeCompare(b.shortName);
@@ -62,7 +64,7 @@ function buildGroups(): StateGroup[] {
       name: STATE_NAMES[code],
       metros,
       signalsTotal: metros.reduce((s, m) => s + m.signals, 0),
-      tierACount: metros.filter((m) => m.aadtPct >= TIER_A_AADT_CUTOFF || m.code === "atlanta_metro").length,
+      tierACount: metros.filter((m) => (m.aadtPct >= TIER_A_AADT_CUTOFF && (m.aadtQuality ?? "measured") === "measured") || m.code === "atlanta_metro").length,
       liveCount: metros.filter((m) => m.liveSource != null).length,
     });
   }
@@ -115,7 +117,7 @@ export function CoverageGrid() {
             <Stat label="Metros" value={String(TOTAL_METROS)} sub={`${TOTAL_SIGNALS.toLocaleString()} signals indexed`} />
             <Stat label="Countries" value={String(COUNTRIES_COVERED)} sub={`Across ${CONTINENTS_COVERED} continents`} />
             <Stat label="US states + DC" value={String(US_STATES_COVERED)} sub="50 states + Washington DC" />
-            <Stat label="Tier-A AADT" value={String(METROS.filter((m) => m.aadtPct >= TIER_A_AADT_CUTOFF || m.code === "atlanta_metro").length)} sub="Measured state-DOT counts" />
+            <Stat label="Tier-A AADT" value={String(METROS.filter((m) => (m.aadtPct >= TIER_A_AADT_CUTOFF && (m.aadtQuality ?? "measured") === "measured") || m.code === "atlanta_metro").length)} sub="Measured state-DOT counts" />
           </div>
         </div>
       </header>
@@ -248,7 +250,9 @@ function StateRow({
 }
 
 function MetroRow({ m }: { m: MetroCoverage }) {
-  const tierA = m.aadtPct >= TIER_A_AADT_CUTOFF || m.code === "atlanta_metro";
+  const isMeasuredAadt = (m.aadtQuality ?? "measured") === "measured";
+  const tierA = (m.aadtPct >= TIER_A_AADT_CUTOFF && isMeasuredAadt) || m.code === "atlanta_metro";
+  const isSynthetic = m.aadtQuality === "synthetic" && m.aadtPct > 0;
   return (
     <Link
       href={`/cities/${m.slug}`}
@@ -267,7 +271,7 @@ function MetroRow({ m }: { m: MetroCoverage }) {
         {m.signals.toLocaleString()}
       </div>
       <div className="col-span-2 text-right font-mono text-sm tabular-nums">
-        <AadtPct pct={m.aadtPct} tierA={tierA} />
+        <AadtPct pct={m.aadtPct} tierA={tierA} synthetic={isSynthetic} />
       </div>
       <div className="col-span-3 text-right font-mono text-[11px] sm:text-xs text-muted-foreground self-center">
         {m.liveSource ? (
@@ -283,7 +287,17 @@ function MetroRow({ m }: { m: MetroCoverage }) {
   );
 }
 
-function AadtPct({ pct, tierA }: { pct: number; tierA: boolean }) {
+function AadtPct({ pct, tierA, synthetic }: { pct: number; tierA: boolean; synthetic?: boolean }) {
+  if (synthetic) {
+    return (
+      <span
+        className="text-muted-foreground/70 italic"
+        title="Synthesized — not a measured count"
+      >
+        {pct.toFixed(1)}%<span className="text-[10px] not-italic"> †</span>
+      </span>
+    );
+  }
   if (pct >= 95) return <span className="text-emerald-700 dark:text-emerald-400 font-semibold">{pct.toFixed(1)}%</span>;
   if (tierA) return <span className="text-foreground font-semibold">{pct.toFixed(1)}%</span>;
   if (pct > 0) return <span className="text-muted-foreground">{pct.toFixed(1)}%</span>;

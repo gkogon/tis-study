@@ -29,7 +29,7 @@ const STATE_ORDER: MetroCoverage["state"][] = (Object.keys(STATE_NAMES) as Metro
   .sort((a, b) => STATE_NAMES[a].localeCompare(STATE_NAMES[b]));
 
 export default function CitiesPage() {
-  const tierACount = METROS.filter((m) => m.aadtPct >= TIER_A_AADT_CUTOFF || m.code === "atlanta_metro").length;
+  const tierACount = METROS.filter((m) => (m.aadtPct >= TIER_A_AADT_CUTOFF && (m.aadtQuality ?? "measured") === "measured") || m.code === "atlanta_metro").length;
 
   usePageMeta({
     title: `Cities we cover — ${TOTAL_METROS} metros, ${TOTAL_SIGNALS.toLocaleString()} signals indexed`,
@@ -152,7 +152,9 @@ export default function CitiesPage() {
 
 function CityRow({ m }: { m: MetroCoverage }) {
   const isFlagship = m.code === "atlanta_metro";
-  const isTierA = m.aadtPct >= TIER_A_AADT_CUTOFF || isFlagship;
+  const isMeasuredAadt = (m.aadtQuality ?? "measured") === "measured";
+  const isTierA = (m.aadtPct >= TIER_A_AADT_CUTOFF && isMeasuredAadt) || isFlagship;
+  const isSyntheticAadt = m.aadtQuality === "synthetic" && m.aadtPct > 0;
   return (
     <Link
       href={`/cities/${m.slug}`}
@@ -188,8 +190,17 @@ function CityRow({ m }: { m: MetroCoverage }) {
       </div>
       <div className="col-span-2 text-right font-mono text-sm tabular-nums">
         {m.aadtPct > 0 ? (
-          <span className={isTierA ? "text-foreground font-semibold" : "text-muted-foreground"}>
-            {m.aadtPct.toFixed(1)}%
+          <span
+            className={
+              isTierA
+                ? "text-foreground font-semibold"
+                : isSyntheticAadt
+                  ? "text-muted-foreground/70 italic"
+                  : "text-muted-foreground"
+            }
+            title={isSyntheticAadt ? "Synthesized — not a measured count" : undefined}
+          >
+            {m.aadtPct.toFixed(1)}%{isSyntheticAadt && <span className="text-[10px] not-italic"> †</span>}
           </span>
         ) : (
           <span className="text-muted-foreground/60">—</span>

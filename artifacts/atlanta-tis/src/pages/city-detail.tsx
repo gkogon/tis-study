@@ -32,12 +32,15 @@ export default function CityDetailPage() {
   // before any early return — wouter can re-render this component briefly
   // for a non-matching URL during back-nav, and conditional hooks violate
   // React's rules-of-hooks and throw "Rendered fewer hooks than expected."
+  const aadtIsMeasured = m ? (m.aadtQuality ?? "measured") === "measured" : false;
   const aadtPhrase = m
-    ? m.aadtPct >= TIER_A_AADT_CUTOFF
+    ? aadtIsMeasured && m.aadtPct >= TIER_A_AADT_CUTOFF
       ? ` ${m.aadtPct.toFixed(0)}% of intersections calibrated to measured ${m.aadtSource ?? "state-DOT"} traffic counts.`
-      : m.aadtPct > 0
+      : aadtIsMeasured && m.aadtPct > 0
         ? ` ${m.aadtPct.toFixed(0)}% calibrated to state-DOT counts.`
-        : ""
+        : m.aadtPct > 0
+          ? ` ${m.aadtPct.toFixed(0)}% synthesized via OSM road-class geometry (HCM baseline).`
+          : ""
     : "";
   usePageMeta({
     title: m ? `Traffic impact studies in ${m.shortName}, ${m.state}` : "Cities",
@@ -50,7 +53,9 @@ export default function CityDetailPage() {
   if (!match || !params || !m) return <NotFound />;
 
   const isFlagship = m.code === "atlanta_metro";
-  const isTierA = m.aadtPct >= TIER_A_AADT_CUTOFF || isFlagship;
+  const isMeasuredAadt = (m.aadtQuality ?? "measured") === "measured";
+  const isTierA = (m.aadtPct >= TIER_A_AADT_CUTOFF && isMeasuredAadt) || isFlagship;
+  const isSyntheticAadt = m.aadtQuality === "synthetic" && m.aadtPct > 0;
   const siblings = siblingMetros(m);
 
   return (
@@ -78,6 +83,9 @@ export default function CityDetailPage() {
             {!isFlagship && isTierA && (
               <span className="text-foreground/70">· Tier-A coverage</span>
             )}
+            {!isFlagship && !isTierA && isSyntheticAadt && (
+              <span className="text-foreground/60">· Modeled coverage</span>
+            )}
           </div>
           <div className="h-px w-full bg-border" />
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight leading-[1.05] text-slate-900 dark:text-slate-50">
@@ -95,9 +103,19 @@ export default function CityDetailPage() {
             <BigStat label="Signals indexed" value={m.signals.toLocaleString()} />
             <BigStat label="Named cross-streets" value={`${m.namedPct.toFixed(1)}%`} />
             <BigStat
-              label="Measured AADT"
+              label={isSyntheticAadt ? "AADT (synthetic)" : "Measured AADT"}
               value={m.aadtPct > 0 ? `${m.aadtPct.toFixed(1)}%` : "—"}
-              tone={m.aadtPct >= 95 ? "good" : m.aadtPct >= 75 ? "ok" : m.aadtPct > 0 ? "weak" : "none"}
+              tone={
+                isSyntheticAadt
+                  ? "weak"
+                  : m.aadtPct >= 95
+                    ? "good"
+                    : m.aadtPct >= 75
+                      ? "ok"
+                      : m.aadtPct > 0
+                        ? "weak"
+                        : "none"
+              }
             />
             <BigStat
               label="Live data feed"
@@ -130,7 +148,16 @@ export default function CityDetailPage() {
               a real "Street A & Street B" label.
             </Row>
             <Row label="AADT (vehicle volumes)">
-              {m.aadtPct > 0 ? (
+              {isSyntheticAadt ? (
+                <>
+                  <span className="text-foreground">{m.aadtSource}</span>
+                  {" — "}{m.aadtPct.toFixed(1)}% of signals carry a synthesized vph
+                  baseline derived from the OSM highway class of the nearest road
+                  (motorway 60k AADT → tertiary 4k AADT, FHWA K-factor 9%). Not a
+                  measured count — no national DOT AADT layer is wired for this
+                  region yet. The remainder use the engine's per-class default.
+                </>
+              ) : m.aadtPct > 0 ? (
                 <>
                   <span className="text-foreground">{m.aadtSource}</span>
                   {" — "}snapped to{" "}
