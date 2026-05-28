@@ -181,10 +181,11 @@ export type RegionCode =
   // Europe continental (50)
   | "berlin_metro" | "hamburg_metro" | "munich_metro" | "cologne_metro" | "frankfurt_metro"
   | "stuttgart_metro" | "dusseldorf_metro" | "leipzig_metro" | "dortmund_metro" | "bremen_metro"
+  | "hannover_metro"
   | "paris_metro" | "marseille_metro" | "lyon_metro" | "toulouse_metro" | "nice_metro"
-  | "nantes_metro" | "bordeaux_metro"
+  | "nantes_metro" | "bordeaux_metro" | "strasbourg_metro"
   | "rome_metro" | "milan_metro" | "naples_metro" | "turin_metro" | "palermo_metro"
-  | "bologna_metro"
+  | "bologna_metro" | "florence_metro" | "genoa_metro"
   | "madrid_metro" | "barcelona_metro" | "valencia_metro" | "seville_metro" | "zaragoza_metro"
   | "malaga_metro"
   | "amsterdam_metro" | "rotterdam_metro" | "the_hague_metro"
@@ -193,7 +194,7 @@ export type RegionCode =
   | "vienna_metro"
   | "lisbon_metro" | "porto_metro"
   | "dublin_metro"
-  | "warsaw_metro" | "krakow_metro"
+  | "warsaw_metro" | "krakow_metro" | "lodz_metro"
   | "prague_metro"
   | "budapest_metro"
   | "bucharest_metro"
@@ -202,13 +203,13 @@ export type RegionCode =
   | "copenhagen_metro"
   | "helsinki_metro"
   | "athens_metro"
-  // Asia (35)
+  // Asia (35) — China replaced by other Asian/EU markets due to OSM GCJ-02 coordinate
+  // shifting (~500m offset) making snap-to-road unreliable for TIS use.
   | "tokyo_metro" | "osaka_metro" | "yokohama_metro" | "nagoya_metro" | "sapporo_metro"
   | "fukuoka_metro"
   | "seoul_metro" | "busan_metro" | "incheon_metro"
   | "mumbai_metro" | "delhi_metro" | "bangalore_metro" | "hyderabad_metro" | "chennai_metro"
   | "kolkata_metro" | "pune_metro" | "ahmedabad_metro"
-  | "beijing_metro" | "shanghai_metro" | "guangzhou_metro" | "shenzhen_metro" | "chengdu_metro"
   | "hong_kong_metro"
   | "singapore_metro"
   | "taipei_metro" | "kaohsiung_metro"
@@ -218,6 +219,7 @@ export type RegionCode =
   | "jakarta_metro" | "surabaya_metro"
   | "kuala_lumpur_metro" | "penang_metro"
   | "karachi_metro"
+  | "tashkent_metro"
   // Middle East (8)
   | "dubai_metro" | "abu_dhabi_metro"
   | "riyadh_metro"
@@ -225,6 +227,7 @@ export type RegionCode =
   | "istanbul_metro" | "ankara_metro"
   | "doha_metro"
   | "amman_metro"
+  | "beirut_metro"
   // South America (15)
   | "sao_paulo_metro" | "rio_de_janeiro_metro" | "brasilia_metro" | "salvador_br_metro"
   | "fortaleza_metro" | "belo_horizonte_metro"
@@ -243,9 +246,8 @@ export type RegionCode =
   | "accra_metro"
   // Oceania (6)
   | "sydney_metro" | "melbourne_metro" | "brisbane_metro" | "perth_metro" | "adelaide_metro"
-  | "auckland_metro"
-  // Russia / Eastern Europe (4)
-  | "moscow_metro" | "st_petersburg_metro" | "novosibirsk_metro"
+  | "auckland_metro" | "wellington_metro"
+  // Eastern Europe (1) — Russia removed (censorship + non-trivial customer-go-to-market risk).
   | "kyiv_metro"
   // Central America / Caribbean (3)
   | "panama_city_metro" | "san_jose_cr_metro" | "havana_metro"
@@ -279,26 +281,26 @@ export type Region = {
     // with a US-state two-letter code: COL/IDN/ISR/IND/MAR/PAN).
     | "DE" | "FR" | "IT" | "ES" | "NL" | "BE" | "CH" | "AT" | "PT" | "IE"
     | "PL" | "CZ" | "HU" | "RO" | "SE" | "NO" | "DK" | "FI" | "GR"
-    | "JP" | "KR" | "IND" | "CN" | "HK" | "SG" | "TW" | "TH" | "VN" | "PH"
-    | "IDN" | "MY" | "PK"
-    | "AE" | "SA" | "ISR" | "TR" | "QA" | "JO"
+    | "JP" | "KR" | "IND" | "HK" | "SG" | "TW" | "TH" | "VN" | "PH"
+    | "IDN" | "MY" | "PK" | "UZ"
+    | "AE" | "SA" | "ISR" | "TR" | "QA" | "JO" | "LB"
     | "BR" | "ARG" | "CL" | "COL" | "PE" | "UY" | "EC"
     | "ZA" | "EG" | "NG" | "KE" | "MAR" | "GH"
     | "AU" | "NZ"
-    | "RU" | "UA"
+    | "UA"
     | "PAN" | "CR" | "CU";
   /** Country — defaults to "US" when omitted (back-compat for all pre-Tier-8 regions). */
   country?: "US" | "CA" | "MX" | "UK"
     // Tier-10 global countries (ISO 3166-1 alpha-2)
     | "DE" | "FR" | "IT" | "ES" | "NL" | "BE" | "CH" | "AT" | "PT" | "IE"
     | "PL" | "CZ" | "HU" | "RO" | "SE" | "NO" | "DK" | "FI" | "GR"
-    | "JP" | "KR" | "IN" | "CN" | "HK" | "SG" | "TW" | "TH" | "VN" | "PH"
-    | "ID" | "MY" | "PK"
-    | "AE" | "SA" | "IL" | "TR" | "QA" | "JO"
+    | "JP" | "KR" | "IN" | "HK" | "SG" | "TW" | "TH" | "VN" | "PH"
+    | "ID" | "MY" | "PK" | "UZ"
+    | "AE" | "SA" | "IL" | "TR" | "QA" | "JO" | "LB"
     | "BR" | "AR" | "CL" | "CO" | "PE" | "UY" | "EC"
     | "ZA" | "EG" | "NG" | "KE" | "MA" | "GH"
     | "AU" | "NZ"
-    | "RU" | "UA"
+    | "UA"
     | "PA" | "CR" | "CU";
   /** Jurisdictional copy that gets substituted into methodology/findings strings. */
   jurisdiction: {
@@ -2076,6 +2078,7 @@ export const REGIONS: Record<RegionCode, Region> = {
   leipzig_metro: { code: "leipzig_metro", displayName: "Leipzig", bounds: { latMin: 51.27, latMax: 51.42, lonMin: 12.28, lonMax: 12.50 }, stateCode: "DE", country: "DE", jurisdiction: { dotName: "Verkehrs- und Tiefbauamt Leipzig", planningOfficeName: "Stadtplanungsamt Leipzig", parkingCodeCitation: "Sächsische Bauordnung (SächsBO) § 49 — Stellplätze." }, dataSourceId: "osm_only", active: true },
   dortmund_metro: { code: "dortmund_metro", displayName: "Dortmund", bounds: { latMin: 51.44, latMax: 51.60, lonMin: 7.32, lonMax: 7.62 }, stateCode: "DE", country: "DE", jurisdiction: { dotName: "Tiefbauamt Stadt Dortmund", planningOfficeName: "Stadtplanungs- und Bauordnungsamt Dortmund", parkingCodeCitation: "Landesbauordnung NRW (BauO NRW) § 48 — Stellplätze." }, dataSourceId: "osm_only", active: true },
   bremen_metro: { code: "bremen_metro", displayName: "Bremen", bounds: { latMin: 53.00, latMax: 53.21, lonMin: 8.66, lonMax: 8.98 }, stateCode: "DE", country: "DE", jurisdiction: { dotName: "Senator für Klimaschutz, Umwelt, Mobilität, Stadtentwicklung und Wohnungsbau", planningOfficeName: "Stadtplanungsamt Bremen", parkingCodeCitation: "Bremische Landesbauordnung (BremLBO) § 49 — Stellplätze." }, dataSourceId: "osm_only", active: true },
+  hannover_metro: { code: "hannover_metro", displayName: "Hannover", bounds: { latMin: 52.30, latMax: 52.45, lonMin: 9.65, lonMax: 9.85 }, stateCode: "DE", country: "DE", jurisdiction: { dotName: "Fachbereich Tiefbau — Landeshauptstadt Hannover", planningOfficeName: "Stadtplanungsamt Hannover", parkingCodeCitation: "Niedersächsische Bauordnung (NBauO) § 47 — Einstellplätze." }, dataSourceId: "osm_only", active: true },
   paris_metro: { code: "paris_metro", displayName: "Paris (Île-de-France)", bounds: { latMin: 48.78, latMax: 48.95, lonMin: 2.20, lonMax: 2.50 }, stateCode: "FR", country: "FR", jurisdiction: { dotName: "Direction de la Voirie et des Déplacements — Ville de Paris", planningOfficeName: "Direction de l'Urbanisme — Ville de Paris", parkingCodeCitation: "Plan Local d'Urbanisme (PLU) de Paris — Stationnement." }, dataSourceId: "osm_only", active: true },
   marseille_metro: { code: "marseille_metro", displayName: "Marseille", bounds: { latMin: 43.20, latMax: 43.40, lonMin: 5.30, lonMax: 5.55 }, stateCode: "FR", country: "FR", jurisdiction: { dotName: "Direction des Mobilités — Ville de Marseille", planningOfficeName: "Direction de l'Urbanisme — Métropole Aix-Marseille-Provence", parkingCodeCitation: "Plan Local d'Urbanisme intercommunal (PLUi) — Stationnement." }, dataSourceId: "osm_only", active: true },
   lyon_metro: { code: "lyon_metro", displayName: "Lyon", bounds: { latMin: 45.66, latMax: 45.83, lonMin: 4.74, lonMax: 4.95 }, stateCode: "FR", country: "FR", jurisdiction: { dotName: "Direction de la Voirie — Métropole de Lyon", planningOfficeName: "Direction de l'Aménagement Urbain — Métropole de Lyon", parkingCodeCitation: "Plan Local d'Urbanisme et de l'Habitat (PLU-H) — Métropole de Lyon." }, dataSourceId: "osm_only", active: true },
@@ -2083,12 +2086,15 @@ export const REGIONS: Record<RegionCode, Region> = {
   nice_metro: { code: "nice_metro", displayName: "Nice", bounds: { latMin: 43.65, latMax: 43.78, lonMin: 7.18, lonMax: 7.34 }, stateCode: "FR", country: "FR", jurisdiction: { dotName: "Direction Mobilité Déplacements — Métropole Nice Côte d'Azur", planningOfficeName: "Direction Aménagement Urbanisme — Métropole Nice Côte d'Azur", parkingCodeCitation: "Plan Local d'Urbanisme métropolitain (PLUm) — Stationnement." }, dataSourceId: "osm_only", active: true },
   nantes_metro: { code: "nantes_metro", displayName: "Nantes", bounds: { latMin: 47.16, latMax: 47.31, lonMin: -1.65, lonMax: -1.45 }, stateCode: "FR", country: "FR", jurisdiction: { dotName: "Direction Mobilités — Nantes Métropole", planningOfficeName: "Direction Générale au Développement Urbain — Nantes Métropole", parkingCodeCitation: "Plan Local d'Urbanisme métropolitain (PLUm) — Stationnement." }, dataSourceId: "osm_only", active: true },
   bordeaux_metro: { code: "bordeaux_metro", displayName: "Bordeaux", bounds: { latMin: 44.78, latMax: 44.93, lonMin: -0.66, lonMax: -0.51 }, stateCode: "FR", country: "FR", jurisdiction: { dotName: "Direction Mobilité — Bordeaux Métropole", planningOfficeName: "Direction Générale de l'Aménagement — Bordeaux Métropole", parkingCodeCitation: "Plan Local d'Urbanisme intercommunal (PLU 3.1) — Bordeaux Métropole." }, dataSourceId: "osm_only", active: true },
+  strasbourg_metro: { code: "strasbourg_metro", displayName: "Strasbourg", bounds: { latMin: 48.50, latMax: 48.65, lonMin: 7.66, lonMax: 7.83 }, stateCode: "FR", country: "FR", jurisdiction: { dotName: "Direction de la Mobilité, Espaces publics et naturels — Eurométropole de Strasbourg", planningOfficeName: "Direction de l'Urbanisme et des Territoires — Eurométropole de Strasbourg", parkingCodeCitation: "Plan Local d'Urbanisme intercommunal (PLUi) — Eurométropole de Strasbourg." }, dataSourceId: "osm_only", active: true },
   rome_metro: { code: "rome_metro", displayName: "Roma (Rome)", bounds: { latMin: 41.78, latMax: 42.00, lonMin: 12.36, lonMax: 12.62 }, stateCode: "IT", country: "IT", jurisdiction: { dotName: "Dipartimento Mobilità e Trasporti — Roma Capitale", planningOfficeName: "Dipartimento Programmazione e Attuazione Urbanistica — Roma Capitale", parkingCodeCitation: "Regolamento Edilizio del Comune di Roma — Standards parcheggio." }, dataSourceId: "osm_only", active: true },
   milan_metro: { code: "milan_metro", displayName: "Milano (Milan)", bounds: { latMin: 45.39, latMax: 45.55, lonMin: 9.07, lonMax: 9.30 }, stateCode: "IT", country: "IT", jurisdiction: { dotName: "Area Pianificazione e Programmazione Mobilità — Comune di Milano", planningOfficeName: "Direzione Urbanistica — Comune di Milano", parkingCodeCitation: "Piano di Governo del Territorio (PGT) — Norme tecniche di attuazione." }, dataSourceId: "osm_only", active: true },
   naples_metro: { code: "naples_metro", displayName: "Napoli (Naples)", bounds: { latMin: 40.78, latMax: 40.92, lonMin: 14.14, lonMax: 14.32 }, stateCode: "IT", country: "IT", jurisdiction: { dotName: "Servizio Mobilità Sostenibile — Comune di Napoli", planningOfficeName: "Dipartimento Pianificazione Urbanistica — Comune di Napoli", parkingCodeCitation: "Regolamento Urbanistico Edilizio Comunale (RUEC) di Napoli." }, dataSourceId: "osm_only", active: true },
   turin_metro: { code: "turin_metro", displayName: "Torino (Turin)", bounds: { latMin: 45.00, latMax: 45.13, lonMin: 7.59, lonMax: 7.74 }, stateCode: "IT", country: "IT", jurisdiction: { dotName: "Divisione Mobilità e Trasporti — Città di Torino", planningOfficeName: "Divisione Urbanistica — Città di Torino", parkingCodeCitation: "Piano Regolatore Generale (PRG) di Torino — Standard parcheggi." }, dataSourceId: "osm_only", active: true },
   palermo_metro: { code: "palermo_metro", displayName: "Palermo", bounds: { latMin: 38.07, latMax: 38.21, lonMin: 13.27, lonMax: 13.46 }, stateCode: "IT", country: "IT", jurisdiction: { dotName: "Settore Mobilità Urbana — Comune di Palermo", planningOfficeName: "Settore Pianificazione Urbanistica — Comune di Palermo", parkingCodeCitation: "Piano Regolatore Generale di Palermo — Standard parcheggi." }, dataSourceId: "osm_only", active: true },
   bologna_metro: { code: "bologna_metro", displayName: "Bologna", bounds: { latMin: 44.42, latMax: 44.55, lonMin: 11.27, lonMax: 11.42 }, stateCode: "IT", country: "IT", jurisdiction: { dotName: "Settore Mobilità Sostenibile — Comune di Bologna", planningOfficeName: "Settore Piani e Progetti Urbanistici — Comune di Bologna", parkingCodeCitation: "Piano Urbanistico Generale (PUG) di Bologna — Disciplina parcheggi." }, dataSourceId: "osm_only", active: true },
+  florence_metro: { code: "florence_metro", displayName: "Firenze (Florence)", bounds: { latMin: 43.74, latMax: 43.84, lonMin: 11.17, lonMax: 11.32 }, stateCode: "IT", country: "IT", jurisdiction: { dotName: "Direzione Nuove Infrastrutture e Mobilità — Comune di Firenze", planningOfficeName: "Direzione Urbanistica — Comune di Firenze", parkingCodeCitation: "Piano Strutturale e Regolamento Urbanistico di Firenze — Standard parcheggi." }, dataSourceId: "osm_only", active: true },
+  genoa_metro: { code: "genoa_metro", displayName: "Genova (Genoa)", bounds: { latMin: 44.36, latMax: 44.48, lonMin: 8.83, lonMax: 9.04 }, stateCode: "IT", country: "IT", jurisdiction: { dotName: "Direzione Mobilità — Comune di Genova", planningOfficeName: "Direzione Urbanistica — Comune di Genova", parkingCodeCitation: "Piano Urbanistico Comunale (PUC) di Genova — Standard parcheggi." }, dataSourceId: "osm_only", active: true },
   madrid_metro: { code: "madrid_metro", displayName: "Madrid", bounds: { latMin: 40.32, latMax: 40.55, lonMin: -3.85, lonMax: -3.55 }, stateCode: "ES", country: "ES", jurisdiction: { dotName: "Área de Gobierno de Obras y Equipamientos — Ayuntamiento de Madrid", planningOfficeName: "Área de Gobierno de Urbanismo, Medio Ambiente y Movilidad — Ayuntamiento de Madrid", parkingCodeCitation: "Plan General de Ordenación Urbana (PGOU) de Madrid — Normas zonales." }, dataSourceId: "osm_only", active: true },
   barcelona_metro: { code: "barcelona_metro", displayName: "Barcelona", bounds: { latMin: 41.32, latMax: 41.46, lonMin: 2.06, lonMax: 2.25 }, stateCode: "ES", country: "ES", jurisdiction: { dotName: "Gerència de Mobilitat i Infraestructures — Ajuntament de Barcelona", planningOfficeName: "Gerència d'Urbanisme — Ajuntament de Barcelona", parkingCodeCitation: "Pla General Metropolità (PGM) — Normes urbanístiques d'aparcament." }, dataSourceId: "osm_only", active: true },
   valencia_metro: { code: "valencia_metro", displayName: "València (Valencia)", bounds: { latMin: 39.40, latMax: 39.55, lonMin: -0.47, lonMax: -0.30 }, stateCode: "ES", country: "ES", jurisdiction: { dotName: "Regidoria de Mobilitat Sostenible — Ajuntament de València", planningOfficeName: "Àrea d'Urbanisme — Ajuntament de València", parkingCodeCitation: "Pla General d'Ordenació Urbana de València — Normes d'aparcament." }, dataSourceId: "osm_only", active: true },
@@ -2108,6 +2114,7 @@ export const REGIONS: Record<RegionCode, Region> = {
   dublin_metro: { code: "dublin_metro", displayName: "Dublin", bounds: { latMin: 53.27, latMax: 53.42, lonMin: -6.40, lonMax: -6.10 }, stateCode: "IE", country: "IE", jurisdiction: { dotName: "Active Travel and Transportation — Dublin City Council", planningOfficeName: "Planning and Property Development Department — Dublin City Council", parkingCodeCitation: "Dublin City Development Plan 2022–2028 — Chapter 15 Standards: Car Parking." }, dataSourceId: "osm_only", active: true },
   warsaw_metro: { code: "warsaw_metro", displayName: "Warszawa (Warsaw)", bounds: { latMin: 52.13, latMax: 52.35, lonMin: 20.85, lonMax: 21.18 }, stateCode: "PL", country: "PL", jurisdiction: { dotName: "Zarząd Dróg Miejskich w Warszawie (ZDM)", planningOfficeName: "Biuro Architektury i Planowania Przestrzennego — m.st. Warszawa", parkingCodeCitation: "Studium uwarunkowań i kierunków zagospodarowania przestrzennego m.st. Warszawy — wskaźniki miejsc postojowych." }, dataSourceId: "osm_only", active: true },
   krakow_metro: { code: "krakow_metro", displayName: "Kraków", bounds: { latMin: 50.00, latMax: 50.13, lonMin: 19.83, lonMax: 20.05 }, stateCode: "PL", country: "PL", jurisdiction: { dotName: "Zarząd Dróg Miasta Krakowa (ZDMK)", planningOfficeName: "Biuro Planowania Przestrzennego Urzędu Miasta Krakowa", parkingCodeCitation: "Studium uwarunkowań i kierunków zagospodarowania przestrzennego Krakowa — standardy miejsc postojowych." }, dataSourceId: "osm_only", active: true },
+  lodz_metro: { code: "lodz_metro", displayName: "Łódź", bounds: { latMin: 51.70, latMax: 51.83, lonMin: 19.35, lonMax: 19.55 }, stateCode: "PL", country: "PL", jurisdiction: { dotName: "Zarząd Dróg i Transportu w Łodzi (ZDiT)", planningOfficeName: "Miejska Pracownia Urbanistyczna w Łodzi", parkingCodeCitation: "Studium uwarunkowań i kierunków zagospodarowania przestrzennego miasta Łodzi — wskaźniki parkingowe." }, dataSourceId: "osm_only", active: true },
   prague_metro: { code: "prague_metro", displayName: "Praha (Prague)", bounds: { latMin: 49.97, latMax: 50.16, lonMin: 14.30, lonMax: 14.62 }, stateCode: "CZ", country: "CZ", jurisdiction: { dotName: "Technická správa komunikací hl. m. Prahy (TSK)", planningOfficeName: "Institut plánování a rozvoje hl. m. Prahy (IPR)", parkingCodeCitation: "Pražské stavební předpisy (PSP) — § 32 Stání pro vozidla." }, dataSourceId: "osm_only", active: true },
   budapest_metro: { code: "budapest_metro", displayName: "Budapest", bounds: { latMin: 47.40, latMax: 47.58, lonMin: 18.95, lonMax: 19.22 }, stateCode: "HU", country: "HU", jurisdiction: { dotName: "Budapest Közút Zrt. — Budapesti Közlekedési Központ (BKK)", planningOfficeName: "Főpolgármesteri Hivatal Várostervezési Főosztály — Budapest", parkingCodeCitation: "Budapesti Településszerkezeti Terv és Fővárosi Rendezési Szabályzat — parkolási normák." }, dataSourceId: "osm_only", active: true },
   bucharest_metro: { code: "bucharest_metro", displayName: "București (Bucharest)", bounds: { latMin: 44.36, latMax: 44.55, lonMin: 25.97, lonMax: 26.20 }, stateCode: "RO", country: "RO", jurisdiction: { dotName: "Administrația Străzilor București (ASB)", planningOfficeName: "Direcția Urbanism — Primăria Municipiului București", parkingCodeCitation: "Planul Urbanistic General (PUG) al Municipiului București — Norme parcaje." }, dataSourceId: "osm_only", active: true },
@@ -2135,11 +2142,6 @@ export const REGIONS: Record<RegionCode, Region> = {
   kolkata_metro: { code: "kolkata_metro", displayName: "Kolkata", bounds: { latMin: 22.45, latMax: 22.70, lonMin: 88.27, lonMax: 88.45 }, stateCode: "IND", country: "IN", jurisdiction: { dotName: "Kolkata Municipal Corporation (KMC) — Traffic Department", planningOfficeName: "Kolkata Metropolitan Development Authority (KMDA)", parkingCodeCitation: "KMC Building Rules 2009 — Parking Schedule." }, dataSourceId: "osm_only", active: true },
   pune_metro: { code: "pune_metro", displayName: "Pune", bounds: { latMin: 18.40, latMax: 18.62, lonMin: 73.72, lonMax: 74.00 }, stateCode: "IND", country: "IN", jurisdiction: { dotName: "Pune Municipal Corporation (PMC) — Road Department", planningOfficeName: "Pune Metropolitan Region Development Authority (PMRDA)", parkingCodeCitation: "PMC Development Plan — Parking Regulations." }, dataSourceId: "osm_only", active: true },
   ahmedabad_metro: { code: "ahmedabad_metro", displayName: "Ahmedabad", bounds: { latMin: 22.95, latMax: 23.13, lonMin: 72.45, lonMax: 72.70 }, stateCode: "IND", country: "IN", jurisdiction: { dotName: "Ahmedabad Municipal Corporation (AMC) — Roads & Buildings Department", planningOfficeName: "Ahmedabad Urban Development Authority (AUDA)", parkingCodeCitation: "Comprehensive General Development Control Regulations (CGDCR) — Parking." }, dataSourceId: "osm_only", active: true },
-  beijing_metro: { code: "beijing_metro", displayName: "Beijing (北京)", bounds: { latMin: 39.75, latMax: 40.05, lonMin: 116.20, lonMax: 116.62 }, stateCode: "CN", country: "CN", jurisdiction: { dotName: "Beijing Municipal Commission of Transport (北京市交通委员会)", planningOfficeName: "Beijing Municipal Planning and Natural Resources Commission (北京市规划和自然资源委员会)", parkingCodeCitation: "Beijing Parking Management Regulations (北京市机动车停车条例)." }, dataSourceId: "osm_only", active: true },
-  shanghai_metro: { code: "shanghai_metro", displayName: "Shanghai (上海)", bounds: { latMin: 31.05, latMax: 31.40, lonMin: 121.30, lonMax: 121.62 }, stateCode: "CN", country: "CN", jurisdiction: { dotName: "Shanghai Municipal Transportation Commission (上海市交通委员会)", planningOfficeName: "Shanghai Municipal Bureau of Planning and Natural Resources (上海市规划和自然资源局)", parkingCodeCitation: "Shanghai Municipal Parking Facility Regulations (上海市停车场(库)管理办法)." }, dataSourceId: "osm_only", active: true },
-  guangzhou_metro: { code: "guangzhou_metro", displayName: "Guangzhou (广州)", bounds: { latMin: 22.97, latMax: 23.27, lonMin: 113.13, lonMax: 113.50 }, stateCode: "CN", country: "CN", jurisdiction: { dotName: "Guangzhou Municipal Transportation Bureau (广州市交通运输局)", planningOfficeName: "Guangzhou Municipal Planning and Natural Resources Bureau (广州市规划和自然资源局)", parkingCodeCitation: "Guangzhou Parking Place Construction and Management Regulations (广州市停车场建设和管理规定)." }, dataSourceId: "osm_only", active: true },
-  shenzhen_metro: { code: "shenzhen_metro", displayName: "Shenzhen (深圳)", bounds: { latMin: 22.45, latMax: 22.78, lonMin: 113.83, lonMax: 114.32 }, stateCode: "CN", country: "CN", jurisdiction: { dotName: "Shenzhen Municipal Transportation Bureau (深圳市交通运输局)", planningOfficeName: "Shenzhen Municipal Planning and Natural Resources Bureau (深圳市规划和自然资源局)", parkingCodeCitation: "Shenzhen Parking Management Regulations (深圳市机动车停放管理规定)." }, dataSourceId: "osm_only", active: true },
-  chengdu_metro: { code: "chengdu_metro", displayName: "Chengdu (成都)", bounds: { latMin: 30.55, latMax: 30.78, lonMin: 103.95, lonMax: 104.20 }, stateCode: "CN", country: "CN", jurisdiction: { dotName: "Chengdu Municipal Transportation Bureau (成都市交通运输局)", planningOfficeName: "Chengdu Municipal Planning and Natural Resources Bureau (成都市规划和自然资源局)", parkingCodeCitation: "Chengdu Parking Management Regulations (成都市机动车停车场管理办法)." }, dataSourceId: "osm_only", active: true },
   hong_kong_metro: { code: "hong_kong_metro", displayName: "Hong Kong", bounds: { latMin: 22.18, latMax: 22.40, lonMin: 113.95, lonMax: 114.32 }, stateCode: "HK", country: "HK", jurisdiction: { dotName: "Transport Department — HKSAR Government", planningOfficeName: "Planning Department — HKSAR Government", parkingCodeCitation: "Hong Kong Planning Standards and Guidelines (HKPSG) — Chapter 8 Internal Transport Facilities." }, dataSourceId: "osm_only", active: true },
   singapore_metro: { code: "singapore_metro", displayName: "Singapore", bounds: { latMin: 1.22, latMax: 1.48, lonMin: 103.60, lonMax: 104.05 }, stateCode: "SG", country: "SG", jurisdiction: { dotName: "Land Transport Authority (LTA) — Singapore", planningOfficeName: "Urban Redevelopment Authority (URA) — Singapore", parkingCodeCitation: "Code of Practice on Vehicle Parking Provision in Development Proposals (LTA)." }, dataSourceId: "osm_only", active: true },
   taipei_metro: { code: "taipei_metro", displayName: "Taipei (台北)", bounds: { latMin: 24.95, latMax: 25.18, lonMin: 121.42, lonMax: 121.65 }, stateCode: "TW", country: "TW", jurisdiction: { dotName: "Taipei City Department of Transportation (臺北市政府交通局)", planningOfficeName: "Taipei City Department of Urban Development (臺北市政府都市發展局)", parkingCodeCitation: "Taipei City Parking Lot Self-Government Ordinance (臺北市停車場管理自治條例)." }, dataSourceId: "osm_only", active: true },
@@ -2153,6 +2155,7 @@ export const REGIONS: Record<RegionCode, Region> = {
   kuala_lumpur_metro: { code: "kuala_lumpur_metro", displayName: "Kuala Lumpur", bounds: { latMin: 3.05, latMax: 3.27, lonMin: 101.55, lonMax: 101.82 }, stateCode: "MY", country: "MY", jurisdiction: { dotName: "Dewan Bandaraya Kuala Lumpur (DBKL) — Department of Urban Transport", planningOfficeName: "DBKL — Department of Planning", parkingCodeCitation: "Kuala Lumpur City Plan 2040 — Parking Standards." }, dataSourceId: "osm_only", active: true },
   penang_metro: { code: "penang_metro", displayName: "Penang (George Town)", bounds: { latMin: 5.27, latMax: 5.50, lonMin: 100.18, lonMax: 100.40 }, stateCode: "MY", country: "MY", jurisdiction: { dotName: "Majlis Bandaraya Pulau Pinang (MBPP)", planningOfficeName: "Penang Island City Council — Planning Department", parkingCodeCitation: "MBPP Local Plan — Parking Standards." }, dataSourceId: "osm_only", active: true },
   karachi_metro: { code: "karachi_metro", displayName: "Karachi", bounds: { latMin: 24.78, latMax: 25.20, lonMin: 66.90, lonMax: 67.30 }, stateCode: "PK", country: "PK", jurisdiction: { dotName: "Karachi Metropolitan Corporation (KMC) — Transport & Communications Department", planningOfficeName: "Karachi Development Authority (KDA)", parkingCodeCitation: "Karachi Building & Town Planning Regulations 2002 — Parking Provisions." }, dataSourceId: "osm_only", active: true },
+  tashkent_metro: { code: "tashkent_metro", displayName: "Toshkent (Tashkent)", bounds: { latMin: 41.20, latMax: 41.40, lonMin: 69.18, lonMax: 69.42 }, stateCode: "UZ", country: "UZ", jurisdiction: { dotName: "Toshkent shahar hokimiyati — Transport boshqarmasi (Tashkent City Transport Department)", planningOfficeName: "Toshkent shahar bosh me'morchiligi (Chief Architecture Office of Tashkent)", parkingCodeCitation: "O'zbekiston Respublikasi shaharsozlik me'yorlari (Uzbek Urban Planning Norms) — avtoturargoh standartlari." }, dataSourceId: "osm_only", active: true },
 
   // Middle East (8)
   dubai_metro: { code: "dubai_metro", displayName: "Dubai", bounds: { latMin: 25.05, latMax: 25.30, lonMin: 55.10, lonMax: 55.50 }, stateCode: "AE", country: "AE", jurisdiction: { dotName: "Roads and Transport Authority (RTA) — Dubai", planningOfficeName: "Dubai Municipality — Planning Department", parkingCodeCitation: "Dubai Municipality — Parking Standards for Buildings (Administrative Decision 5 of 2018)." }, dataSourceId: "osm_only", active: true },
@@ -2163,6 +2166,7 @@ export const REGIONS: Record<RegionCode, Region> = {
   ankara_metro: { code: "ankara_metro", displayName: "Ankara", bounds: { latMin: 39.83, latMax: 40.05, lonMin: 32.62, lonMax: 32.92 }, stateCode: "TR", country: "TR", jurisdiction: { dotName: "Ankara Büyükşehir Belediyesi — Ulaşım Daire Başkanlığı", planningOfficeName: "Ankara Büyükşehir Belediyesi — İmar ve Şehircilik Daire Başkanlığı", parkingCodeCitation: "Otopark Yönetmeliği (Türkiye) — Bakanlık standartları." }, dataSourceId: "osm_only", active: true },
   doha_metro: { code: "doha_metro", displayName: "Doha (الدوحة)", bounds: { latMin: 25.20, latMax: 25.40, lonMin: 51.45, lonMax: 51.65 }, stateCode: "QA", country: "QA", jurisdiction: { dotName: "Ministry of Transport — Qatar", planningOfficeName: "Ministry of Municipality — Urban Planning Department", parkingCodeCitation: "Qatar Construction Specifications (QCS) — Parking Requirements." }, dataSourceId: "osm_only", active: true },
   amman_metro: { code: "amman_metro", displayName: "Amman (عمّان)", bounds: { latMin: 31.83, latMax: 32.05, lonMin: 35.78, lonMax: 36.05 }, stateCode: "JO", country: "JO", jurisdiction: { dotName: "Greater Amman Municipality (GAM) — Transportation Department", planningOfficeName: "Greater Amman Municipality — Urban Planning Department", parkingCodeCitation: "Jordan Building Regulations — Parking Provisions." }, dataSourceId: "osm_only", active: true },
+  beirut_metro: { code: "beirut_metro", displayName: "Beirut (بيروت)", bounds: { latMin: 33.85, latMax: 33.93, lonMin: 35.45, lonMax: 35.58 }, stateCode: "LB", country: "LB", jurisdiction: { dotName: "Ministry of Public Works and Transport (وزارة الأشغال العامة والنقل) — Lebanon", planningOfficeName: "Directorate General of Urban Planning (المديرية العامة للتنظيم المدني)", parkingCodeCitation: "Lebanese Building Code — Parking provisions (المرسوم 14969/2005)." }, dataSourceId: "osm_only", active: true },
 
   // South America (15)
   sao_paulo_metro: { code: "sao_paulo_metro", displayName: "São Paulo", bounds: { latMin: -23.78, latMax: -23.40, lonMin: -46.85, lonMax: -46.35 }, stateCode: "BR", country: "BR", jurisdiction: { dotName: "Companhia de Engenharia de Tráfego (CET) — Prefeitura de São Paulo", planningOfficeName: "Secretaria Municipal de Urbanismo e Licenciamento — Prefeitura de São Paulo", parkingCodeCitation: "Lei de Parcelamento, Uso e Ocupação do Solo — São Paulo (Lei 16.402/2016)." }, dataSourceId: "osm_only", active: true },
@@ -2198,11 +2202,9 @@ export const REGIONS: Record<RegionCode, Region> = {
   perth_metro: { code: "perth_metro", displayName: "Perth", bounds: { latMin: -32.10, latMax: -31.78, lonMin: 115.70, lonMax: 116.05 }, stateCode: "AU", country: "AU", jurisdiction: { dotName: "Main Roads Western Australia", planningOfficeName: "Department of Planning, Lands and Heritage — Western Australia", parkingCodeCitation: "State Planning Policy 4.2 (Activity Centres) and local planning schemes — Parking standards." }, dataSourceId: "osm_only", active: true },
   adelaide_metro: { code: "adelaide_metro", displayName: "Adelaide", bounds: { latMin: -35.05, latMax: -34.80, lonMin: 138.45, lonMax: 138.78 }, stateCode: "AU", country: "AU", jurisdiction: { dotName: "Department for Infrastructure and Transport — South Australia", planningOfficeName: "Department for Trade and Investment — Planning and Land Use Services (SA)", parkingCodeCitation: "Planning and Design Code (SA) — Off-Street Car Parking Requirements." }, dataSourceId: "osm_only", active: true },
   auckland_metro: { code: "auckland_metro", displayName: "Auckland", bounds: { latMin: -37.05, latMax: -36.70, lonMin: 174.55, lonMax: 174.95 }, stateCode: "NZ", country: "NZ", jurisdiction: { dotName: "Auckland Transport (AT)", planningOfficeName: "Auckland Council — Plans and Places", parkingCodeCitation: "Auckland Unitary Plan — Chapter E27 Transport (Parking and Loading)." }, dataSourceId: "osm_only", active: true },
+  wellington_metro: { code: "wellington_metro", displayName: "Wellington", bounds: { latMin: -41.35, latMax: -41.18, lonMin: 174.72, lonMax: 174.92 }, stateCode: "NZ", country: "NZ", jurisdiction: { dotName: "Waka Kotahi NZ Transport Agency — Wellington region", planningOfficeName: "Wellington City Council — City Design and District Plan", parkingCodeCitation: "Wellington City District Plan — Transport rules: Parking, loading and access." }, dataSourceId: "osm_only", active: true },
 
-  // Russia / Eastern Europe (4)
-  moscow_metro: { code: "moscow_metro", displayName: "Moscow (Москва)", bounds: { latMin: 55.55, latMax: 55.92, lonMin: 37.32, lonMax: 37.85 }, stateCode: "RU", country: "RU", jurisdiction: { dotName: "Moscow Department of Transport (Департамент транспорта Москвы)", planningOfficeName: "Moscow Committee for Architecture and Urban Planning (Москомархитектура)", parkingCodeCitation: "Moscow Government Resolution No. 289-PP — Parking Standards (нормативы парковочных мест)." }, dataSourceId: "osm_only", active: true },
-  st_petersburg_metro: { code: "st_petersburg_metro", displayName: "Saint Petersburg (Санкт-Петербург)", bounds: { latMin: 59.83, latMax: 60.05, lonMin: 30.13, lonMax: 30.60 }, stateCode: "RU", country: "RU", jurisdiction: { dotName: "Saint Petersburg Committee for Transport (Комитет по транспорту Санкт-Петербурга)", planningOfficeName: "Saint Petersburg Committee for Urban Planning and Architecture (КГА)", parkingCodeCitation: "Saint Petersburg Town Planning Regulations — Parking Standards." }, dataSourceId: "osm_only", active: true },
-  novosibirsk_metro: { code: "novosibirsk_metro", displayName: "Novosibirsk (Новосибирск)", bounds: { latMin: 54.92, latMax: 55.13, lonMin: 82.78, lonMax: 83.05 }, stateCode: "RU", country: "RU", jurisdiction: { dotName: "Novosibirsk Department of Transport and Road Improvement (Департамент транспорта и дорожно-благоустроительного комплекса)", planningOfficeName: "Novosibirsk Department of Construction and Architecture", parkingCodeCitation: "Novosibirsk Town Planning Regulations — Parking Provisions." }, dataSourceId: "osm_only", active: true },
+  // Eastern Europe (1) — Russia removed.
   kyiv_metro: { code: "kyiv_metro", displayName: "Kyiv (Київ)", bounds: { latMin: 50.30, latMax: 50.55, lonMin: 30.30, lonMax: 30.78 }, stateCode: "UA", country: "UA", jurisdiction: { dotName: "Kyiv City State Administration — Department of Transport Infrastructure (Департамент транспортної інфраструктури КМДА)", planningOfficeName: "Kyiv City State Administration — Department of Urban Planning and Architecture", parkingCodeCitation: "DBN B.2.3-5:2018 — Streets and Roads of Settlements (Ukrainian Building Norms) — Parking Standards." }, dataSourceId: "osm_only", active: true },
 
   // Central America / Caribbean (3)

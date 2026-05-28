@@ -43,26 +43,26 @@ export type MetroCoverage = {
     // Tier-10 global (ISO 3166-1 alpha-2, alpha-3 used when alpha-2 collides with a US state).
     | "DE" | "FR" | "IT" | "ES" | "NL" | "BE" | "CH" | "AT" | "PT" | "IE"
     | "PL" | "CZ" | "HU" | "RO" | "SE" | "NO" | "DK" | "FI" | "GR"
-    | "JP" | "KR" | "IND" | "CN" | "HK" | "SG" | "TW" | "TH" | "VN" | "PH"
-    | "IDN" | "MY" | "PK"
-    | "AE" | "SA" | "ISR" | "TR" | "QA" | "JO"
+    | "JP" | "KR" | "IND" | "HK" | "SG" | "TW" | "TH" | "VN" | "PH"
+    | "IDN" | "MY" | "PK" | "UZ"
+    | "AE" | "SA" | "ISR" | "TR" | "QA" | "JO" | "LB"
     | "BR" | "ARG" | "CL" | "COL" | "PE" | "UY" | "EC"
     | "ZA" | "EG" | "NG" | "KE" | "MAR" | "GH"
     | "AU" | "NZ"
-    | "RU" | "UA"
+    | "UA"
     | "PAN" | "CR" | "CU";
   /** Country defaults to US when omitted (back-compat for all pre-Tier-8 rows). */
   country?: "US" | "CA" | "MX" | "UK"
     // Tier-10 global countries (ISO 3166-1 alpha-2)
     | "DE" | "FR" | "IT" | "ES" | "NL" | "BE" | "CH" | "AT" | "PT" | "IE"
     | "PL" | "CZ" | "HU" | "RO" | "SE" | "NO" | "DK" | "FI" | "GR"
-    | "JP" | "KR" | "IN" | "CN" | "HK" | "SG" | "TW" | "TH" | "VN" | "PH"
-    | "ID" | "MY" | "PK"
-    | "AE" | "SA" | "IL" | "TR" | "QA" | "JO"
+    | "JP" | "KR" | "IN" | "HK" | "SG" | "TW" | "TH" | "VN" | "PH"
+    | "ID" | "MY" | "PK" | "UZ"
+    | "AE" | "SA" | "IL" | "TR" | "QA" | "JO" | "LB"
     | "BR" | "AR" | "CL" | "CO" | "PE" | "UY" | "EC"
     | "ZA" | "EG" | "NG" | "KE" | "MA" | "GH"
     | "AU" | "NZ"
-    | "RU" | "UA"
+    | "UA"
     | "PA" | "CR" | "CU";
   signals: number;
   /** % of signals named via OSM roads or city dataset (vs "Signal #<id>" stub). */
@@ -563,6 +563,7 @@ export const METROS: MetroCoverage[] = [
   { code: "leipzig_metro", slug: "leipzig", shortName: "Leipzig", longName: "Leipzig", state: "DE", country: "DE", signals: 1273, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Verkehrs- und Tiefbauamt Leipzig", planningOfficeName: "Stadtplanungsamt Leipzig", parkingCodeCitation: "Sächsische Bauordnung (SächsBO) § 49 — Stellplätze." },
   { code: "dortmund_metro", slug: "dortmund", shortName: "Dortmund", longName: "Dortmund", state: "DE", country: "DE", signals: 1934, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Tiefbauamt Stadt Dortmund", planningOfficeName: "Stadtplanungs- und Bauordnungsamt Dortmund", parkingCodeCitation: "Landesbauordnung NRW (BauO NRW) § 48 — Stellplätze." },
   { code: "bremen_metro", slug: "bremen", shortName: "Bremen", longName: "Bremen", state: "DE", country: "DE", signals: 1311, namedPct: 0.1, aadtPct: 0, liveSource: null, dotName: "Senator für Klimaschutz, Umwelt, Mobilität, Stadtentwicklung und Wohnungsbau", planningOfficeName: "Stadtplanungsamt Bremen", parkingCodeCitation: "Bremische Landesbauordnung (BremLBO) § 49 — Stellplätze." },
+  { code: "hannover_metro", slug: "hannover", shortName: "Hannover", longName: "Hannover", state: "DE", country: "DE", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Fachbereich Tiefbau — Landeshauptstadt Hannover", planningOfficeName: "Stadtplanungsamt Hannover", parkingCodeCitation: "Niedersächsische Bauordnung (NBauO) § 47 — Einstellplätze." },
   { code: "paris_metro", slug: "paris", shortName: "Paris", longName: "Paris (Île-de-France)", state: "FR", country: "FR", signals: 11276, namedPct: 0.2, aadtPct: 0, liveSource: null, dotName: "Direction de la Voirie et des Déplacements — Ville de Paris", planningOfficeName: "Direction de l'Urbanisme — Ville de Paris", parkingCodeCitation: "Plan Local d'Urbanisme (PLU) de Paris — Stationnement." },
   { code: "marseille_metro", slug: "marseille", shortName: "Marseille", longName: "Marseille", state: "FR", country: "FR", signals: 2364, namedPct: 0.1, aadtPct: 0, liveSource: null, dotName: "Direction des Mobilités — Ville de Marseille", planningOfficeName: "Direction de l'Urbanisme — Métropole Aix-Marseille-Provence", parkingCodeCitation: "Plan Local d'Urbanisme intercommunal (PLUi) — Stationnement." },
   { code: "lyon_metro", slug: "lyon", shortName: "Lyon", longName: "Lyon", state: "FR", country: "FR", signals: 4441, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Direction de la Voirie — Métropole de Lyon", planningOfficeName: "Direction de l'Aménagement Urbain — Métropole de Lyon", parkingCodeCitation: "Plan Local d'Urbanisme et de l'Habitat (PLU-H) — Métropole de Lyon." },
@@ -570,12 +571,15 @@ export const METROS: MetroCoverage[] = [
   { code: "nice_metro", slug: "nice", shortName: "Nice", longName: "Nice", state: "FR", country: "FR", signals: 1383, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Direction Mobilité Déplacements — Métropole Nice Côte d'Azur", planningOfficeName: "Direction Aménagement Urbanisme — Métropole Nice Côte d'Azur", parkingCodeCitation: "Plan Local d'Urbanisme métropolitain (PLUm) — Stationnement." },
   { code: "nantes_metro", slug: "nantes", shortName: "Nantes", longName: "Nantes", state: "FR", country: "FR", signals: 753, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Direction Mobilités — Nantes Métropole", planningOfficeName: "Direction Générale au Développement Urbain — Nantes Métropole", parkingCodeCitation: "Plan Local d'Urbanisme métropolitain (PLUm) — Stationnement." },
   { code: "bordeaux_metro", slug: "bordeaux", shortName: "Bordeaux", longName: "Bordeaux", state: "FR", country: "FR", signals: 1870, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Direction Mobilité — Bordeaux Métropole", planningOfficeName: "Direction Générale de l'Aménagement — Bordeaux Métropole", parkingCodeCitation: "Plan Local d'Urbanisme intercommunal (PLU 3.1) — Bordeaux Métropole." },
+  { code: "strasbourg_metro", slug: "strasbourg", shortName: "Strasbourg", longName: "Strasbourg", state: "FR", country: "FR", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Direction de la Mobilité, Espaces publics et naturels — Eurométropole de Strasbourg", planningOfficeName: "Direction de l'Urbanisme et des Territoires — Eurométropole de Strasbourg", parkingCodeCitation: "Plan Local d'Urbanisme intercommunal (PLUi) — Eurométropole de Strasbourg." },
   { code: "rome_metro", slug: "rome", shortName: "Rome", longName: "Roma (Rome)", state: "IT", country: "IT", signals: 2141, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Dipartimento Mobilità e Trasporti — Roma Capitale", planningOfficeName: "Dipartimento Programmazione e Attuazione Urbanistica — Roma Capitale", parkingCodeCitation: "Regolamento Edilizio del Comune di Roma — Standards parcheggio." },
   { code: "milan_metro", slug: "milan", shortName: "Milan", longName: "Milano (Milan)", state: "IT", country: "IT", signals: 3657, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Area Pianificazione e Programmazione Mobilità — Comune di Milano", planningOfficeName: "Direzione Urbanistica — Comune di Milano", parkingCodeCitation: "Piano di Governo del Territorio (PGT) — Norme tecniche di attuazione." },
   { code: "naples_metro", slug: "naples", shortName: "Naples", longName: "Napoli (Naples)", state: "IT", country: "IT", signals: 240, namedPct: 2.5, aadtPct: 0, liveSource: null, dotName: "Servizio Mobilità Sostenibile — Comune di Napoli", planningOfficeName: "Dipartimento Pianificazione Urbanistica — Comune di Napoli", parkingCodeCitation: "Regolamento Urbanistico Edilizio Comunale (RUEC) di Napoli." },
   { code: "turin_metro", slug: "turin", shortName: "Turin", longName: "Torino (Turin)", state: "IT", country: "IT", signals: 3775, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Divisione Mobilità e Trasporti — Città di Torino", planningOfficeName: "Divisione Urbanistica — Città di Torino", parkingCodeCitation: "Piano Regolatore Generale (PRG) di Torino — Standard parcheggi." },
   { code: "palermo_metro", slug: "palermo", shortName: "Palermo", longName: "Palermo", state: "IT", country: "IT", signals: 299, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Settore Mobilità Urbana — Comune di Palermo", planningOfficeName: "Settore Pianificazione Urbanistica — Comune di Palermo", parkingCodeCitation: "Piano Regolatore Generale di Palermo — Standard parcheggi." },
   { code: "bologna_metro", slug: "bologna", shortName: "Bologna", longName: "Bologna", state: "IT", country: "IT", signals: 1032, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Settore Mobilità Sostenibile — Comune di Bologna", planningOfficeName: "Settore Piani e Progetti Urbanistici — Comune di Bologna", parkingCodeCitation: "Piano Urbanistico Generale (PUG) di Bologna — Disciplina parcheggi." },
+  { code: "florence_metro", slug: "florence", shortName: "Florence", longName: "Firenze (Florence)", state: "IT", country: "IT", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Direzione Nuove Infrastrutture e Mobilità — Comune di Firenze", planningOfficeName: "Direzione Urbanistica — Comune di Firenze", parkingCodeCitation: "Piano Strutturale e Regolamento Urbanistico di Firenze — Standard parcheggi." },
+  { code: "genoa_metro", slug: "genoa", shortName: "Genoa", longName: "Genova (Genoa)", state: "IT", country: "IT", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Direzione Mobilità — Comune di Genova", planningOfficeName: "Direzione Urbanistica — Comune di Genova", parkingCodeCitation: "Piano Urbanistico Comunale (PUC) di Genova — Standard parcheggi." },
   { code: "madrid_metro", slug: "madrid", shortName: "Madrid", longName: "Madrid", state: "ES", country: "ES", signals: 7583, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Área de Gobierno de Obras y Equipamientos — Ayuntamiento de Madrid", planningOfficeName: "Área de Gobierno de Urbanismo, Medio Ambiente y Movilidad — Ayuntamiento de Madrid", parkingCodeCitation: "Plan General de Ordenación Urbana (PGOU) de Madrid — Normas zonales." },
   { code: "barcelona_metro", slug: "barcelona", shortName: "Barcelona", longName: "Barcelona", state: "ES", country: "ES", signals: 8092, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Gerència de Mobilitat i Infraestructures — Ajuntament de Barcelona", planningOfficeName: "Gerència d'Urbanisme — Ajuntament de Barcelona", parkingCodeCitation: "Pla General Metropolità (PGM) — Normes urbanístiques d'aparcament." },
   { code: "valencia_metro", slug: "valencia", shortName: "Valencia", longName: "València (Valencia)", state: "ES", country: "ES", signals: 1269, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Regidoria de Mobilitat Sostenible — Ajuntament de València", planningOfficeName: "Àrea d'Urbanisme — Ajuntament de València", parkingCodeCitation: "Pla General d'Ordenació Urbana de València — Normes d'aparcament." },
@@ -595,6 +599,7 @@ export const METROS: MetroCoverage[] = [
   { code: "dublin_metro", slug: "dublin", shortName: "Dublin", longName: "Dublin", state: "IE", country: "IE", signals: 3136, namedPct: 0.3, aadtPct: 0, liveSource: null, dotName: "Active Travel and Transportation — Dublin City Council", planningOfficeName: "Planning and Property Development Department — Dublin City Council", parkingCodeCitation: "Dublin City Development Plan 2022–2028 — Chapter 15 Standards: Car Parking." },
   { code: "warsaw_metro", slug: "warsaw", shortName: "Warsaw", longName: "Warszawa (Warsaw)", state: "PL", country: "PL", signals: 3472, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Zarząd Dróg Miejskich w Warszawie (ZDM)", planningOfficeName: "Biuro Architektury i Planowania Przestrzennego — m.st. Warszawa", parkingCodeCitation: "Studium uwarunkowań i kierunków zagospodarowania przestrzennego m.st. Warszawy — wskaźniki miejsc postojowych." },
   { code: "krakow_metro", slug: "krakow", shortName: "Kraków", longName: "Kraków", state: "PL", country: "PL", signals: 860, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Zarząd Dróg Miasta Krakowa (ZDMK)", planningOfficeName: "Biuro Planowania Przestrzennego Urzędu Miasta Krakowa", parkingCodeCitation: "Studium uwarunkowań i kierunków zagospodarowania przestrzennego Krakowa — standardy miejsc postojowych." },
+  { code: "lodz_metro", slug: "lodz", shortName: "Łódź", longName: "Łódź", state: "PL", country: "PL", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Zarząd Dróg i Transportu w Łodzi (ZDiT)", planningOfficeName: "Miejska Pracownia Urbanistyczna w Łodzi", parkingCodeCitation: "Studium uwarunkowań i kierunków zagospodarowania przestrzennego miasta Łodzi — wskaźniki parkingowe." },
   { code: "prague_metro", slug: "prague", shortName: "Prague", longName: "Praha (Prague)", state: "CZ", country: "CZ", signals: 2073, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Technická správa komunikací hl. m. Prahy (TSK)", planningOfficeName: "Institut plánování a rozvoje hl. m. Prahy (IPR)", parkingCodeCitation: "Pražské stavební předpisy (PSP) — § 32 Stání pro vozidla." },
   { code: "budapest_metro", slug: "budapest", shortName: "Budapest", longName: "Budapest", state: "HU", country: "HU", signals: 2833, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Budapest Közút Zrt. — Budapesti Közlekedési Központ (BKK)", planningOfficeName: "Főpolgármesteri Hivatal Várostervezési Főosztály — Budapest", parkingCodeCitation: "Budapesti Településszerkezeti Terv és Fővárosi Rendezési Szabályzat — parkolási normák." },
   { code: "bucharest_metro", slug: "bucharest", shortName: "Bucharest", longName: "București (Bucharest)", state: "RO", country: "RO", signals: 1386, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Administrația Străzilor București (ASB)", planningOfficeName: "Direcția Urbanism — Primăria Municipiului București", parkingCodeCitation: "Planul Urbanistic General (PUG) al Municipiului București — Norme parcaje." },
@@ -622,11 +627,6 @@ export const METROS: MetroCoverage[] = [
   { code: "kolkata_metro", slug: "kolkata", shortName: "Kolkata", longName: "Kolkata", state: "IND", country: "IN", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Kolkata Municipal Corporation (KMC) — Traffic Department", planningOfficeName: "Kolkata Metropolitan Development Authority (KMDA)", parkingCodeCitation: "KMC Building Rules 2009 — Parking Schedule." },
   { code: "pune_metro", slug: "pune", shortName: "Pune", longName: "Pune", state: "IND", country: "IN", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Pune Municipal Corporation (PMC) — Road Department", planningOfficeName: "Pune Metropolitan Region Development Authority (PMRDA)", parkingCodeCitation: "PMC Development Plan — Parking Regulations." },
   { code: "ahmedabad_metro", slug: "ahmedabad", shortName: "Ahmedabad", longName: "Ahmedabad", state: "IND", country: "IN", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Ahmedabad Municipal Corporation (AMC) — Roads & Buildings Department", planningOfficeName: "Ahmedabad Urban Development Authority (AUDA)", parkingCodeCitation: "Comprehensive General Development Control Regulations (CGDCR) — Parking." },
-  { code: "beijing_metro", slug: "beijing", shortName: "Beijing", longName: "Beijing (北京)", state: "CN", country: "CN", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Beijing Municipal Commission of Transport (北京市交通委员会)", planningOfficeName: "Beijing Municipal Planning and Natural Resources Commission (北京市规划和自然资源委员会)", parkingCodeCitation: "Beijing Parking Management Regulations (北京市机动车停车条例)." },
-  { code: "shanghai_metro", slug: "shanghai", shortName: "Shanghai", longName: "Shanghai (上海)", state: "CN", country: "CN", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Shanghai Municipal Transportation Commission (上海市交通委员会)", planningOfficeName: "Shanghai Municipal Bureau of Planning and Natural Resources (上海市规划和自然资源局)", parkingCodeCitation: "Shanghai Municipal Parking Facility Regulations (上海市停车场(库)管理办法)." },
-  { code: "guangzhou_metro", slug: "guangzhou", shortName: "Guangzhou", longName: "Guangzhou (广州)", state: "CN", country: "CN", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Guangzhou Municipal Transportation Bureau (广州市交通运输局)", planningOfficeName: "Guangzhou Municipal Planning and Natural Resources Bureau (广州市规划和自然资源局)", parkingCodeCitation: "Guangzhou Parking Place Construction and Management Regulations (广州市停车场建设和管理规定)." },
-  { code: "shenzhen_metro", slug: "shenzhen", shortName: "Shenzhen", longName: "Shenzhen (深圳)", state: "CN", country: "CN", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Shenzhen Municipal Transportation Bureau (深圳市交通运输局)", planningOfficeName: "Shenzhen Municipal Planning and Natural Resources Bureau (深圳市规划和自然资源局)", parkingCodeCitation: "Shenzhen Parking Management Regulations (深圳市机动车停放管理规定)." },
-  { code: "chengdu_metro", slug: "chengdu", shortName: "Chengdu", longName: "Chengdu (成都)", state: "CN", country: "CN", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Chengdu Municipal Transportation Bureau (成都市交通运输局)", planningOfficeName: "Chengdu Municipal Planning and Natural Resources Bureau (成都市规划和自然资源局)", parkingCodeCitation: "Chengdu Parking Management Regulations (成都市机动车停车场管理办法)." },
   { code: "hong_kong_metro", slug: "hong-kong", shortName: "Hong Kong", longName: "Hong Kong", state: "HK", country: "HK", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Transport Department — HKSAR Government", planningOfficeName: "Planning Department — HKSAR Government", parkingCodeCitation: "Hong Kong Planning Standards and Guidelines (HKPSG) — Chapter 8 Internal Transport Facilities." },
   { code: "singapore_metro", slug: "singapore", shortName: "Singapore", longName: "Singapore", state: "SG", country: "SG", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Land Transport Authority (LTA) — Singapore", planningOfficeName: "Urban Redevelopment Authority (URA) — Singapore", parkingCodeCitation: "Code of Practice on Vehicle Parking Provision in Development Proposals (LTA)." },
   { code: "taipei_metro", slug: "taipei", shortName: "Taipei", longName: "Taipei (台北)", state: "TW", country: "TW", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Taipei City Department of Transportation (臺北市政府交通局)", planningOfficeName: "Taipei City Department of Urban Development (臺北市政府都市發展局)", parkingCodeCitation: "Taipei City Parking Lot Self-Government Ordinance (臺北市停車場管理自治條例)." },
@@ -640,6 +640,7 @@ export const METROS: MetroCoverage[] = [
   { code: "kuala_lumpur_metro", slug: "kuala-lumpur", shortName: "Kuala Lumpur", longName: "Kuala Lumpur", state: "MY", country: "MY", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Dewan Bandaraya Kuala Lumpur (DBKL) — Department of Urban Transport", planningOfficeName: "DBKL — Department of Planning", parkingCodeCitation: "Kuala Lumpur City Plan 2040 — Parking Standards." },
   { code: "penang_metro", slug: "penang", shortName: "Penang", longName: "Penang (George Town)", state: "MY", country: "MY", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Majlis Bandaraya Pulau Pinang (MBPP)", planningOfficeName: "Penang Island City Council — Planning Department", parkingCodeCitation: "MBPP Local Plan — Parking Standards." },
   { code: "karachi_metro", slug: "karachi", shortName: "Karachi", longName: "Karachi", state: "PK", country: "PK", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Karachi Metropolitan Corporation (KMC) — Transport & Communications Department", planningOfficeName: "Karachi Development Authority (KDA)", parkingCodeCitation: "Karachi Building & Town Planning Regulations 2002 — Parking Provisions." },
+  { code: "tashkent_metro", slug: "tashkent", shortName: "Tashkent", longName: "Toshkent (Tashkent)", state: "UZ", country: "UZ", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Toshkent shahar hokimiyati — Transport boshqarmasi (Tashkent City Transport Department)", planningOfficeName: "Toshkent shahar bosh me'morchiligi (Chief Architecture Office of Tashkent)", parkingCodeCitation: "O'zbekiston Respublikasi shaharsozlik me'yorlari (Uzbek Urban Planning Norms) — avtoturargoh standartlari." },
 
   // Middle East (8)
   { code: "dubai_metro", slug: "dubai", shortName: "Dubai", longName: "Dubai", state: "AE", country: "AE", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Roads and Transport Authority (RTA) — Dubai", planningOfficeName: "Dubai Municipality — Planning Department", parkingCodeCitation: "Dubai Municipality — Parking Standards for Buildings (Administrative Decision 5 of 2018)." },
@@ -650,6 +651,7 @@ export const METROS: MetroCoverage[] = [
   { code: "ankara_metro", slug: "ankara", shortName: "Ankara", longName: "Ankara", state: "TR", country: "TR", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Ankara Büyükşehir Belediyesi — Ulaşım Daire Başkanlığı", planningOfficeName: "Ankara Büyükşehir Belediyesi — İmar ve Şehircilik Daire Başkanlığı", parkingCodeCitation: "Otopark Yönetmeliği (Türkiye) — Bakanlık standartları." },
   { code: "doha_metro", slug: "doha", shortName: "Doha", longName: "Doha (الدوحة)", state: "QA", country: "QA", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Ministry of Transport — Qatar", planningOfficeName: "Ministry of Municipality — Urban Planning Department", parkingCodeCitation: "Qatar Construction Specifications (QCS) — Parking Requirements." },
   { code: "amman_metro", slug: "amman", shortName: "Amman", longName: "Amman (عمّان)", state: "JO", country: "JO", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Greater Amman Municipality (GAM) — Transportation Department", planningOfficeName: "Greater Amman Municipality — Urban Planning Department", parkingCodeCitation: "Jordan Building Regulations — Parking Provisions." },
+  { code: "beirut_metro", slug: "beirut", shortName: "Beirut", longName: "Beirut (بيروت)", state: "LB", country: "LB", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Ministry of Public Works and Transport (وزارة الأشغال العامة والنقل) — Lebanon", planningOfficeName: "Directorate General of Urban Planning (المديرية العامة للتنظيم المدني)", parkingCodeCitation: "Lebanese Building Code — Parking provisions (المرسوم 14969/2005)." },
 
   // South America (15)
   { code: "sao_paulo_metro", slug: "sao-paulo", shortName: "São Paulo", longName: "São Paulo", state: "BR", country: "BR", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Companhia de Engenharia de Tráfego (CET) — Prefeitura de São Paulo", planningOfficeName: "Secretaria Municipal de Urbanismo e Licenciamento — Prefeitura de São Paulo", parkingCodeCitation: "Lei de Parcelamento, Uso e Ocupação do Solo — São Paulo (Lei 16.402/2016)." },
@@ -685,11 +687,9 @@ export const METROS: MetroCoverage[] = [
   { code: "perth_metro", slug: "perth", shortName: "Perth", longName: "Perth", state: "AU", country: "AU", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Main Roads Western Australia", planningOfficeName: "Department of Planning, Lands and Heritage — Western Australia", parkingCodeCitation: "State Planning Policy 4.2 (Activity Centres) and local planning schemes — Parking standards." },
   { code: "adelaide_metro", slug: "adelaide", shortName: "Adelaide", longName: "Adelaide", state: "AU", country: "AU", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Department for Infrastructure and Transport — South Australia", planningOfficeName: "Department for Trade and Investment — Planning and Land Use Services (SA)", parkingCodeCitation: "Planning and Design Code (SA) — Off-Street Car Parking Requirements." },
   { code: "auckland_metro", slug: "auckland", shortName: "Auckland", longName: "Auckland", state: "NZ", country: "NZ", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Auckland Transport (AT)", planningOfficeName: "Auckland Council — Plans and Places", parkingCodeCitation: "Auckland Unitary Plan — Chapter E27 Transport (Parking and Loading)." },
+  { code: "wellington_metro", slug: "wellington", shortName: "Wellington", longName: "Wellington", state: "NZ", country: "NZ", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Waka Kotahi NZ Transport Agency — Wellington region", planningOfficeName: "Wellington City Council — City Design and District Plan", parkingCodeCitation: "Wellington City District Plan — Transport rules: Parking, loading and access." },
 
-  // Russia / Eastern Europe (4)
-  { code: "moscow_metro", slug: "moscow", shortName: "Moscow", longName: "Moscow (Москва)", state: "RU", country: "RU", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Moscow Department of Transport (Департамент транспорта Москвы)", planningOfficeName: "Moscow Committee for Architecture and Urban Planning (Москомархитектура)", parkingCodeCitation: "Moscow Government Resolution No. 289-PP — Parking Standards (нормативы парковочных мест)." },
-  { code: "st_petersburg_metro", slug: "st-petersburg", shortName: "Saint Petersburg", longName: "Saint Petersburg (Санкт-Петербург)", state: "RU", country: "RU", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Saint Petersburg Committee for Transport (Комитет по транспорту Санкт-Петербурга)", planningOfficeName: "Saint Petersburg Committee for Urban Planning and Architecture (КГА)", parkingCodeCitation: "Saint Petersburg Town Planning Regulations — Parking Standards." },
-  { code: "novosibirsk_metro", slug: "novosibirsk", shortName: "Novosibirsk", longName: "Novosibirsk (Новосибирск)", state: "RU", country: "RU", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Novosibirsk Department of Transport and Road Improvement (Департамент транспорта и дорожно-благоустроительного комплекса)", planningOfficeName: "Novosibirsk Department of Construction and Architecture", parkingCodeCitation: "Novosibirsk Town Planning Regulations — Parking Provisions." },
+  // Eastern Europe (1) — Russia removed.
   { code: "kyiv_metro", slug: "kyiv", shortName: "Kyiv", longName: "Kyiv (Київ)", state: "UA", country: "UA", signals: 0, namedPct: 0, aadtPct: 0, liveSource: null, dotName: "Kyiv City State Administration — Department of Transport Infrastructure (Департамент транспортної інфраструктури КМДА)", planningOfficeName: "Kyiv City State Administration — Department of Urban Planning and Architecture", parkingCodeCitation: "DBN B.2.3-5:2018 — Streets and Roads of Settlements (Ukrainian Building Norms) — Parking Standards." },
 
   // Central America / Caribbean (3)
@@ -727,10 +727,10 @@ const COUNTRY_CONTINENT: Record<string, "North America" | "Europe" | "Asia" | "S
   IE: "Europe", PL: "Europe", CZ: "Europe", HU: "Europe", RO: "Europe",
   SE: "Europe", NO: "Europe", DK: "Europe", FI: "Europe", GR: "Europe",
   RU: "Europe", UA: "Europe",
-  JP: "Asia", KR: "Asia", IN: "Asia", CN: "Asia", HK: "Asia", SG: "Asia",
+  JP: "Asia", KR: "Asia", IN: "Asia", HK: "Asia", SG: "Asia",
   TW: "Asia", TH: "Asia", VN: "Asia", PH: "Asia", ID: "Asia", MY: "Asia",
-  PK: "Asia",
-  AE: "Asia", SA: "Asia", IL: "Asia", TR: "Asia", QA: "Asia", JO: "Asia",
+  PK: "Asia", UZ: "Asia",
+  AE: "Asia", SA: "Asia", IL: "Asia", TR: "Asia", QA: "Asia", JO: "Asia", LB: "Asia",
   BR: "South America", AR: "South America", CL: "South America",
   CO: "South America", PE: "South America", UY: "South America", EC: "South America",
   ZA: "Africa", EG: "Africa", NG: "Africa", KE: "Africa", MA: "Africa", GH: "Africa",
@@ -784,17 +784,17 @@ export const STATE_NAMES: Record<MetroCoverage["state"], string> = {
   BE: "Belgium", CH: "Switzerland", AT: "Austria", PT: "Portugal", IE: "Ireland",
   PL: "Poland", CZ: "Czechia", HU: "Hungary", RO: "Romania",
   SE: "Sweden", NO: "Norway", DK: "Denmark", FI: "Finland", GR: "Greece",
-  JP: "Japan", KR: "South Korea", IND: "India", CN: "China", HK: "Hong Kong",
+  JP: "Japan", KR: "South Korea", IND: "India", HK: "Hong Kong",
   SG: "Singapore", TW: "Taiwan", TH: "Thailand", VN: "Vietnam", PH: "Philippines",
-  IDN: "Indonesia", MY: "Malaysia", PK: "Pakistan",
+  IDN: "Indonesia", MY: "Malaysia", PK: "Pakistan", UZ: "Uzbekistan",
   AE: "United Arab Emirates", SA: "Saudi Arabia", ISR: "Israel", TR: "Türkiye",
-  QA: "Qatar", JO: "Jordan",
+  QA: "Qatar", JO: "Jordan", LB: "Lebanon",
   BR: "Brazil", ARG: "Argentina", CL: "Chile", COL: "Colombia",
   PE: "Peru", UY: "Uruguay", EC: "Ecuador",
   ZA: "South Africa", EG: "Egypt", NG: "Nigeria", KE: "Kenya",
   MAR: "Morocco", GH: "Ghana",
   AU: "Australia", NZ: "New Zealand",
-  RU: "Russia", UA: "Ukraine",
+  UA: "Ukraine",
   PAN: "Panama", CR: "Costa Rica", CU: "Cuba",
 };
 
