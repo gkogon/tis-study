@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import {
   Sparkles, Building2, Briefcase, ShoppingBag, Coffee, Home, Hotel,
-  Stethoscope, ShoppingCart, UtensilsCrossed,
+  Stethoscope, ShoppingCart, UtensilsCrossed, Globe2,
   Loader2, ArrowRight, AlertCircle, MapPin, FileCheck2, ChevronRight,
   ChevronDown, Hourglass, ShieldCheck, Download,
 } from "lucide-react";
@@ -152,6 +152,7 @@ type DemoReport = {
 
 type DemoResponse = {
   projectName: string;
+  regionName?: string;
   latitude: number;
   longitude: number;
   landUseCode: string;
@@ -173,6 +174,10 @@ const ICONS: Record<string, typeof Building2> = {
   medical: Stethoscope,
   supermarket: ShoppingCart,
   restaurant: UtensilsCrossed,
+  global_paris: Globe2,
+  global_london: Globe2,
+  global_tokyo: Globe2,
+  global_sydney: Globe2,
 };
 
 const LOS_CHIP: Record<string, string> = {
@@ -275,11 +280,11 @@ export default function DemoPage() {
               </span>
             </h1>
             <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-2xl mx-auto">
-              Drop a pin anywhere in the Atlanta MSA. We'll generate a full
-              screening TIS against live GDOT data: every intersection,
-              approach-level v/c and queues, all peak periods, mitigations,
-              methodology, and Monte-Carlo sensitivity. Nothing held back. No
-              email required.
+              Drop a pin in any of our 300 indexed metros worldwide — Atlanta,
+              Paris, Tokyo, Sydney, anywhere we cover. We'll generate a full
+              screening TIS: every intersection, approach-level v/c and queues,
+              all peak periods, mitigations, methodology, and Monte-Carlo
+              sensitivity. Nothing held back. No email required.
             </p>
           </div>
         </div>
@@ -317,12 +322,13 @@ export default function DemoPage() {
  * preset buttons sit above the form for one-click examples.
  *
  * Bounds (mirrored on the server in routes/demo.ts):
- *   - lat in [33.4, 34.2]   (Atlanta MSA box)
- *   - lon in [-84.9, -83.9]
+ *   - (lat, lon) must fall inside the bbox of one of our 300 indexed
+ *     metros. Client-side check is loose (just valid lat/lon range);
+ *     the backend re-validates against the canonical regions registry
+ *     and returns a clear error if the site is outside coverage.
  *   - size in (0, 10000]
  *   - landUseCode must match a published ITE 11th Ed. row
  */
-const ATL_BOUNDS = { latMin: 33.4, latMax: 34.2, lonMin: -84.9, lonMax: -83.9 };
 
 function DemoForm({
   presets, landUses, onRun,
@@ -363,12 +369,12 @@ function DemoForm({
     const sz = Number(size);
     const yr = Number(openingYear);
 
-    if (!Number.isFinite(lat) || lat < ATL_BOUNDS.latMin || lat > ATL_BOUNDS.latMax) {
-      setFormError(`Latitude must be between ${ATL_BOUNDS.latMin} and ${ATL_BOUNDS.latMax} (Atlanta MSA).`);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+      setFormError(`Latitude must be a number between -90 and 90.`);
       return;
     }
-    if (!Number.isFinite(lon) || lon < ATL_BOUNDS.lonMin || lon > ATL_BOUNDS.lonMax) {
-      setFormError(`Longitude must be between ${ATL_BOUNDS.lonMin} and ${ATL_BOUNDS.lonMax} (Atlanta MSA).`);
+    if (!Number.isFinite(lon) || lon < -180 || lon > 180) {
+      setFormError(`Longitude must be a number between -180 and 180.`);
       return;
     }
     if (!landUseCode || !landUses?.some((lu) => lu.code === landUseCode)) {
@@ -444,7 +450,7 @@ function DemoForm({
             Demo study inputs
           </span>
           <span className="font-mono text-[10px] text-muted-foreground">
-            Atlanta MSA · lat 33.4–34.2 · lon -84.9 to -83.9
+            Any of our 300 covered metros worldwide
           </span>
         </div>
 
@@ -473,11 +479,11 @@ function DemoForm({
                 id="demo-lat"
                 type="number"
                 step="0.0001"
-                min={ATL_BOUNDS.latMin}
-                max={ATL_BOUNDS.latMax}
+                min={-90}
+                max={90}
                 value={latitude}
                 onChange={(e) => setLatitude(e.target.value)}
-                placeholder="33.7858"
+                placeholder="48.8566"
                 className={inputCls}
                 required
                 data-testid="input-latitude"
@@ -489,11 +495,11 @@ function DemoForm({
                 id="demo-lon"
                 type="number"
                 step="0.0001"
-                min={ATL_BOUNDS.lonMin}
-                max={ATL_BOUNDS.lonMax}
+                min={-180}
+                max={180}
                 value={longitude}
                 onChange={(e) => setLongitude(e.target.value)}
-                placeholder="-84.3848"
+                placeholder="2.3522"
                 className={inputCls}
                 required
                 data-testid="input-longitude"
@@ -575,7 +581,7 @@ function DemoForm({
             </button>
             <span className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5" />
-              Coordinates must fall inside the Atlanta MSA box.
+              Coordinates must fall inside one of our 300 covered metros.
             </span>
           </div>
         </div>
@@ -781,12 +787,13 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
           {response.projectName}
         </h1>
         <p className="text-sm text-muted-foreground font-mono">
-          {response.latitude.toFixed(4)}, {response.longitude.toFixed(4)} ·{" "}
+          {response.latitude.toFixed(4)}, {response.longitude.toFixed(4)}
+          {response.regionName ? ` · ${response.regionName}` : ""} ·{" "}
           {response.landUseName} (ITE {response.landUseCode}) ·{" "}
           {response.size.toLocaleString()} {response.landUseUnitShort}
         </p>
         <p className="text-sm text-muted-foreground">
-          Generated against live GDOT data · ITE 11th Ed. · HCM 6th Ed. · MUTCD
+          Generated against indexed regional traffic data · ITE 11th Ed. · HCM 6th Ed. · MUTCD
         </p>
       </div>
 

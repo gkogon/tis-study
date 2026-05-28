@@ -1,17 +1,17 @@
 /**
  * Public /demo endpoint. Lets a non-signed-in prospect run a real
- * TIS against arbitrary coordinates inside the Atlanta MSA and see
- * the full deliverable inline on /demo. Designed as a cold-outreach
- * conversion accelerator — prospects clicking through from a cold
- * email can feel the workflow in ~30 seconds without giving us their
- * email first.
+ * TIS against arbitrary coordinates inside any of our 300 indexed
+ * metros worldwide and see the full deliverable inline on /demo.
+ * Designed as a cold-outreach conversion accelerator — prospects
+ * clicking through from a cold email can feel the workflow in
+ * ~30 seconds without giving us their email first.
  *
  * Constraints by design:
  *   - No auth required.
  *   - Rate-limited 3/day/IP (demoRateLimiter).
- *   - Coordinates must fall inside the Atlanta MSA bounding box
- *     (lat 33.4–34.2, lon -84.9 to -83.9). Outside that the engine
- *     has no signal/intersection data to study against.
+ *   - Coordinates must fall inside the bounding box of one of our
+ *     300 active regions (regionForCoordinate). Outside that the
+ *     engine has no signal/intersection data to study against.
  *   - Land-use code must be a known ITE 11th Ed. code from LAND_USES.
  *   - Size capped at 10,000 (DU / ksf / rooms / beds, depending on
  *     the land use) to defeat probing for absurd impact reports.
@@ -33,15 +33,9 @@ import { LAND_USES } from "../lib/land-uses";
 import { demoRateLimiter } from "../lib/security";
 import { logEvent } from "../lib/events";
 import { renderStudyPdf } from "../lib/pdf-export";
+import { regionForCoordinate } from "../lib/regions";
 
 const router: IRouter = Router();
-
-// Atlanta MSA bounding box — the analyzer / GDOT data is only useful
-// inside this rectangle. Mirrors the openapi study-area bounds.
-const ATL_LAT_MIN = 33.4;
-const ATL_LAT_MAX = 34.2;
-const ATL_LON_MIN = -84.9;
-const ATL_LON_MAX = -83.9;
 
 const DEMO_RADIUS_MAX_MI = 1.5;
 const SIZE_MAX = 10_000;
@@ -151,6 +145,52 @@ const PRESETS = {
       size: 11,
     },
   },
+  // Global examples — one per continent. Useful to demonstrate that
+  // the same engine runs anywhere in our 300-metro footprint.
+  global_paris: {
+    label: "Office — 50,000 sqft Paris (Le Marais)",
+    blurb: "ITE 710 · 50 ksf · Paris Open Data + synthetic AADT",
+    prefill: {
+      projectName: "Demo: Paris Office — 50 ksf",
+      latitude: 48.8566,
+      longitude: 2.3522,
+      landUseCode: "710",
+      size: 50,
+    },
+  },
+  global_london: {
+    label: "Multifamily — 200 units London (Shoreditch)",
+    blurb: "ITE 221 · 200 DU · DfT calibrated counts",
+    prefill: {
+      projectName: "Demo: London Multifamily — 200 DU",
+      latitude: 51.5238,
+      longitude: -0.0772,
+      landUseCode: "221",
+      size: 200,
+    },
+  },
+  global_tokyo: {
+    label: "Retail — 75,000 sqft Tokyo (Shibuya)",
+    blurb: "ITE 820 · 75 ksf · synthetic AADT (OSM road-class baseline)",
+    prefill: {
+      projectName: "Demo: Tokyo Retail — 75 ksf",
+      latitude: 35.6595,
+      longitude: 139.7005,
+      landUseCode: "820",
+      size: 75,
+    },
+  },
+  global_sydney: {
+    label: "Hotel — 240 rooms Sydney (CBD)",
+    blurb: "ITE 310 · 240 rooms · synthetic AADT",
+    prefill: {
+      projectName: "Demo: Sydney Hotel — 240 rooms",
+      latitude: -33.8688,
+      longitude: 151.2093,
+      landUseCode: "310",
+      size: 240,
+    },
+  },
 } as const;
 
 router.get("/demo/landuses", (_req, res) => {
@@ -182,7 +222,7 @@ router.get("/demo/presets", (_req, res) => {
  * download) so both endpoints enforce identical bounds and don't drift.
  */
 type DemoRequestParse =
-  | { ok: true; request: TisRequest; landUse: typeof LAND_USES[number]; projectName: string }
+  | { ok: true; request: TisRequest; landUse: typeof LAND_USES[number]; projectName: string; regionName: string }
   | { ok: false; status: number; error: string };
 
 function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
@@ -200,11 +240,19 @@ function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
   const projectNameRaw = typeof body.projectName === "string" ? body.projectName.trim() : "";
   const addressRaw = typeof body.address === "string" ? body.address.trim() : "";
 
-  if (!Number.isFinite(latitude) || latitude < ATL_LAT_MIN || latitude > ATL_LAT_MAX) {
-    return { ok: false, status: 400, error: `Latitude must be between ${ATL_LAT_MIN} and ${ATL_LAT_MAX} (Atlanta MSA).` };
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    return { ok: false, status: 400, error: `Latitude must be a number between -90 and 90.` };
   }
-  if (!Number.isFinite(longitude) || longitude < ATL_LON_MIN || longitude > ATL_LON_MAX) {
-    return { ok: false, status: 400, error: `Longitude must be between ${ATL_LON_MIN} and ${ATL_LON_MAX} (Atlanta MSA).` };
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return { ok: false, status: 400, error: `Longitude must be a number between -180 and 180.` };
+  }
+  const region = regionForCoordinate(latitude, longitude);
+  if (!region) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Coordinates (${latitude.toFixed(4)}, ${longitude.toFixed(4)}) fall outside our 300 covered metros. Try a different site, or see /cities for the full list.`,
+    };
   }
   const landUse = LAND_USES.find((lu) => lu.code === landUseCode);
   if (!landUse) {
@@ -220,12 +268,13 @@ function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
   const projectName =
     projectNameRaw ||
     `Demo: ${landUse.name} @ ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-  const address = addressRaw || `Custom site (${latitude.toFixed(4)}, ${longitude.toFixed(4)}), Atlanta MSA`;
+  const address = addressRaw || `Custom site (${latitude.toFixed(4)}, ${longitude.toFixed(4)}), ${region.displayName}`;
 
   return {
     ok: true,
     landUse,
     projectName,
+    regionName: region.displayName,
     request: {
       projectName,
       address,
@@ -248,19 +297,20 @@ router.post("/demo/generate", demoRateLimiter, async (req, res): Promise<void> =
     res.status(parsed.status).json({ error: parsed.error });
     return;
   }
-  const { request, landUse, projectName } = parsed;
+  const { request, landUse, projectName, regionName } = parsed;
   const { latitude, longitude, landUseCode, size, openingYear, studyRadiusMi } = request;
 
   try {
     const report = await generateTisReport(request);
     req.log.info(
-      { landUseCode, intersectionCount: report.intersectionsStudied },
+      { landUseCode, regionName, intersectionCount: report.intersectionsStudied },
       "demo.completed",
     );
     logEvent("demo_run", {
       metadata: {
         mode: "freeform",
         landUseCode,
+        regionName,
         lat: latitude.toFixed(4),
         lon: longitude.toFixed(4),
         size,
@@ -269,6 +319,7 @@ router.post("/demo/generate", demoRateLimiter, async (req, res): Promise<void> =
     });
     res.json({
       projectName,
+      regionName,
       latitude,
       longitude,
       landUseCode,
