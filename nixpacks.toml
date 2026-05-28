@@ -33,4 +33,8 @@ cmds = [
 ]
 
 [start]
-cmd = "pnpm --filter @workspace/tis-api-server run start"
+# Migration step runs before the server boots so the schema is in sync.
+# Idempotent — `node lib/db/migrate.mjs` only applies ADD COLUMN IF NOT
+# EXISTS statements, so re-runs on an up-to-date DB are no-ops. Failure
+# is fatal: better to fail-fast at startup than 500 every query.
+cmd = "node lib/db/migrate.mjs && pnpm --filter @workspace/tis-api-server run start"

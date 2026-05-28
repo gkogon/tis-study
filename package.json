@@ -8,7 +8,8 @@
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
     "typecheck:all": "pnpm run typecheck && pnpm -r --if-present run build",
     "build": "pnpm --filter @workspace/atlanta-tis run build && pnpm --filter @workspace/tis-api-server run build",
-    "start": "pnpm --filter @workspace/tis-api-server run start"
+    "migrate": "node lib/db/migrate.mjs",
+    "start": "pnpm run migrate && pnpm --filter @workspace/tis-api-server run start"
   },
   "private": true,
   "devDependencies": {
