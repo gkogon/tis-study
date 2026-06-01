@@ -1,6 +1,6 @@
 /**
- * Fetch measured AADT for Tokyo from MLIT's 令和3年度 全国道路・街路交通情勢調査
- * （道路交通センサス, 2021 National Road Traffic Census).
+ * Fetch measured AADT for a Japanese metro from MLIT's 令和3年度
+ * 全国道路・街路交通情勢調査（道路交通センサス, 2021 National Road Traffic Census).
  *
  * Source: the official census result web-map serves the surveyed road
  * network as tiled GeoJSON at
@@ -25,10 +25,12 @@
  * naturally lower than the synthetic baseline — that's the honest
  * measured footprint.
  *
- * Output: tokyo-aadt.json overlays the synthetic baseline with
- * source: "mlit_census_r3_2021" for snapped signals.
+ * Output: <slug>-aadt.json overlays the synthetic baseline with
+ * source: "mlit_census_r3_2021" for snapped signals, and updates the
+ * metro-coverage.ts row for the metro.
  *
- * Run: pnpm --filter @workspace/scripts exec tsx src/fetch-tokyo-aadt.ts
+ * Run: pnpm --filter @workspace/scripts exec tsx src/fetch-jp-census-aadt.ts <metro>
+ *   where <metro> is one of: tokyo osaka yokohama nagoya sapporo
  */
 
 import { writeFileSync, readFileSync, existsSync } from "node:fs";
@@ -44,12 +46,23 @@ const BASE = "https://www.mlit.go.jp/road/ir/ir-data/census_visualizationR3";
 const RANKS = ["drm10", "drm20", "drm31", "drm32", "drm40_50", "drm60_70"];
 const ZOOM = 13;
 
-// tokyo_metro bounds from regions.ts
-const BBOX = { latMin: 35.55, latMax: 35.83, lonMin: 139.55, lonMax: 139.9 };
-
 const SNAP_RADIUS_M = 70; // signals sit on the surveyed centerline
 const DENSIFY_M = 25; // interpolate centerline points at this spacing
 const GRID_DEG = 0.0025; // ~250 m spatial-index cell
+
+type BBox = { latMin: number; latMax: number; lonMin: number; lonMax: number };
+
+// bounds mirror tis-api-server/src/lib/regions.ts <code>.bounds
+const REGIONS: Record<string, { code: string; bbox: BBox }> = {
+  tokyo: { code: "tokyo_metro", bbox: { latMin: 35.55, latMax: 35.83, lonMin: 139.55, lonMax: 139.9 } },
+  osaka: { code: "osaka_metro", bbox: { latMin: 34.55, latMax: 34.78, lonMin: 135.35, lonMax: 135.62 } },
+  yokohama: { code: "yokohama_metro", bbox: { latMin: 35.32, latMax: 35.55, lonMin: 139.5, lonMax: 139.72 } },
+  nagoya: { code: "nagoya_metro", bbox: { latMin: 35.06, latMax: 35.24, lonMin: 136.83, lonMax: 137.05 } },
+  sapporo: { code: "sapporo_metro", bbox: { latMin: 43.0, latMax: 43.2, lonMin: 141.2, lonMax: 141.5 } },
+};
+
+const CENSUS_SOURCE_LABEL =
+  "MLIT 全国道路・街路交通情勢調査（道路交通センサス）令和3年度 — 24h observed volumes";
 
 type AadtRec = { aadt: number; year: number; kFactor: number; distM: number; source: string };
 type CandPoint = { lat: number; lon: number; aadt: number };
@@ -102,7 +115,14 @@ function gridKey(lat: number, lon: number): string {
 }
 
 async function main(): Promise<void> {
-  const slug = "tokyo";
+  const slug = process.argv[2];
+  const region = slug ? REGIONS[slug] : undefined;
+  if (!region) {
+    console.error(`Usage: tsx src/fetch-jp-census-aadt.ts <metro>\n  metro ∈ {${Object.keys(REGIONS).join(", ")}}`);
+    process.exit(1);
+  }
+  const { code, bbox: BBOX } = region;
+  console.log(`Metro: ${slug} (${code})  bbox ${JSON.stringify(BBOX)}`);
 
   // 1. Determine the tile window covering the bbox.
   const xMin = lon2x(BBOX.lonMin, ZOOM);
@@ -177,7 +197,7 @@ async function main(): Promise<void> {
     : {};
 
   const measured: Record<string, AadtRec> = {};
-  let snapped = 0;
+  const snapDists: number[] = [];
   for (const [osmId, sLat, sLon] of signals) {
     const baseLatCell = Math.floor(sLat / GRID_DEG);
     const baseLonCell = Math.floor(sLon / GRID_DEG);
@@ -201,11 +221,13 @@ async function main(): Promise<void> {
         distM: Math.round(best.d),
         source: "mlit_census_r3_2021",
       };
-      snapped++;
+      snapDists.push(best.d);
     }
   }
+  const snapped = snapDists.length;
   const pct = (snapped / signals.length) * 100;
-  console.log(`Snapped ${snapped} / ${signals.length} = ${pct.toFixed(1)}%`);
+  const median = snapped ? [...snapDists].sort((a, b) => a - b)[Math.floor(snapped / 2)] : 0;
+  console.log(`Snapped ${snapped} / ${signals.length} = ${pct.toFixed(1)}% (median ${median.toFixed(1)}m to centerline)`);
 
   // 5. Merge measured over synthetic baseline.
   const merged: Record<string, AadtRec> = {};
@@ -218,19 +240,21 @@ async function main(): Promise<void> {
     `Wrote ${aadtPath} — ${Object.keys(merged).length} total (measured ${snapped}, synthetic ${Object.keys(merged).length - snapped})`,
   );
 
-  // 6. Update metro-coverage.ts tokyo_metro.
+  // 6. Update metro-coverage.ts row for this metro.
   const measuredPct = Math.round(pct * 10) / 10;
   let coverage = readFileSync(COVERAGE_PATH, "utf8");
-  const pattern = /(\{ code: "tokyo_metro",[^}]*?)aadtPct:\s*[0-9.]+,([^}]*?)aadtSource:\s*"[^"]*",\s*aadtQuality:\s*"[^"]*",/;
+  const pattern = new RegExp(
+    `(\\{ code: "${code}",[^}]*?)aadtPct:\\s*[0-9.]+,([^}]*?)aadtSource:\\s*"[^"]*",\\s*aadtQuality:\\s*"[^"]*",`,
+  );
   if (pattern.test(coverage)) {
     coverage = coverage.replace(
       pattern,
-      `$1aadtPct: ${measuredPct},$2aadtSource: "MLIT 全国道路・街路交通情勢調査（道路交通センサス）令和3年度 — 24h observed volumes", aadtQuality: "measured",`,
+      `$1aadtPct: ${measuredPct},$2aadtSource: "${CENSUS_SOURCE_LABEL}", aadtQuality: "measured",`,
     );
     writeFileSync(COVERAGE_PATH, coverage);
-    console.log(`Updated tokyo_metro: aadtPct=${measuredPct}%, quality=measured`);
+    console.log(`Updated ${code}: aadtPct=${measuredPct}%, quality=measured`);
   } else {
-    console.log("! pattern miss — tokyo_metro coverage row not updated");
+    console.log(`! pattern miss — ${code} coverage row not updated`);
   }
 }
 
