@@ -8,16 +8,22 @@
  *   {
  *     "classes": ["motorway","trunk","primary","secondary","tertiary"],
  *     "ways": [
- *       [classCode, "Way Name", [[lat,lon], ...]],   // named
+ *       [classCode, "Way Name", [[lat,lon], ...], lanes|null, maxspeedKmh|null],
  *     ]
  *   }
  *
  * The roads file backs cross-street naming (e.g. "Roswell Rd & Mt Vernon Hwy")
  * for signals in that region. Without it, signals show as "Signal #<osmId>".
  *
+ * Trailing `lanes` + `maxspeedKmh` (both null when untagged in OSM) feed the
+ * per-road AADT modulation in precompute-tier10-synthetic-aadt.ts. Readers that
+ * only need geometry/name (runtime naming, the naming precompute) ignore the
+ * trailing fields — they read indices 0..2 and tolerate any tuple length >= 3.
+ *
  * Run:
  *   pnpm --filter @workspace/scripts exec tsx src/fetch-osm-roads.ts charlotte_metro
  *   pnpm --filter @workspace/scripts exec tsx src/fetch-osm-roads.ts --all
+ *   pnpm --filter @workspace/scripts exec tsx src/fetch-osm-roads.ts --osm-only
  */
 
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -51,20 +57,48 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 type OverpassWay = {
   type: "way";
   id: number;
-  tags?: { highway?: string; name?: string };
+  tags?: { highway?: string; name?: string; lanes?: string; maxspeed?: string };
   geometry?: Array<{ lat: number; lon: number }>;
 };
 type OverpassResp = { elements: OverpassWay[] };
 
-/** Build N latitude strips of ~0.14° each — keeps Overpass replies under mirror limits. */
-function bboxStrips(region: Region, stripDegLat = 0.14): string[] {
+/** OSM `lanes` is total both-directions; values like "2", "3", "2;3" occur.
+ *  Take the max of any ;-separated list. Returns null when untagged/unparseable. */
+function parseLanes(raw: string | undefined): number | null {
+  if (!raw) return null;
+  let best: number | null = null;
+  for (const part of raw.split(";")) {
+    const n = Number.parseInt(part.trim(), 10);
+    if (Number.isFinite(n) && n > 0 && n < 30 && (best === null || n > best)) best = n;
+  }
+  return best;
+}
+
+/** OSM `maxspeed` → km/h. Handles "50", "50 mph", "50 km/h"; null for zone
+ *  refs ("RU:urban"), "none", "walk", or anything non-numeric. */
+function parseMaxspeedKmh(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const m = raw.trim().toLowerCase().match(/^(\d+(?:\.\d+)?)\s*(mph|km\/h|kmh|kph)?$/);
+  if (!m) return null;
+  const val = Number.parseFloat(m[1]!);
+  if (!Number.isFinite(val) || val <= 0) return null;
+  const kmh = m[2] === "mph" ? val * 1.60934 : val;
+  return Math.round(kmh);
+}
+
+/** Tile the bbox into ~0.14°×0.14° cells. Tiling BOTH axes (not just latitude
+ *  strips) keeps every Overpass query small even for metros that are wide in
+ *  longitude — a full-width strip across a wide bbox 504s/times out on the
+ *  mirrors. Cross-cell duplicate ways are deduped by OSM id downstream. */
+function bboxStrips(region: Region, cellDeg = 0.14): string[] {
   const { latMin, latMax, lonMin, lonMax } = region.bounds;
   const out: string[] = [];
-  let s = latMin;
-  while (s < latMax) {
-    const e = Math.min(s + stripDegLat, latMax);
-    out.push(`${s.toFixed(2)},${lonMin.toFixed(2)},${e.toFixed(2)},${lonMax.toFixed(2)}`);
-    s = e;
+  for (let s = latMin; s < latMax; s += cellDeg) {
+    const e = Math.min(s + cellDeg, latMax);
+    for (let w = lonMin; w < lonMax; w += cellDeg) {
+      const x = Math.min(w + cellDeg, lonMax);
+      out.push(`${s.toFixed(2)},${w.toFixed(2)},${e.toFixed(2)},${x.toFixed(2)}`);
+    }
   }
   return out;
 }
@@ -178,7 +212,9 @@ async function fetchOneRegion(regionCode: RegionCode): Promise<{
         Math.round(p.lat * 1e5) / 1e5,
         Math.round(p.lon * 1e5) / 1e5,
       ]);
-      ways.push([code, name, polyline]);
+      const lanes = parseLanes(el.tags?.lanes);
+      const maxspeed = parseMaxspeedKmh(el.tags?.maxspeed);
+      ways.push([code, name, polyline, lanes, maxspeed]);
       byClass[baseClass] = (byClass[baseClass] ?? 0) + 1;
     }
     await sleep(5_000);
@@ -198,9 +234,14 @@ async function fetchOneRegion(regionCode: RegionCode): Promise<{
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const wantAll = args.includes("--all");
-  const codes: RegionCode[] = wantAll
-    ? (Object.keys(REGIONS) as RegionCode[]).filter((c) => REGIONS[c].active && c !== "atlanta_metro")
-    : (args.filter((a) => !a.startsWith("--")) as RegionCode[]);
+  const wantOsmOnly = args.includes("--osm-only");
+  const codes: RegionCode[] = wantOsmOnly
+    ? (Object.keys(REGIONS) as RegionCode[]).filter(
+        (c) => REGIONS[c].active && REGIONS[c].dataSourceId === "osm_only",
+      )
+    : wantAll
+      ? (Object.keys(REGIONS) as RegionCode[]).filter((c) => REGIONS[c].active && c !== "atlanta_metro")
+      : (args.filter((a) => !a.startsWith("--")) as RegionCode[]);
 
   if (codes.length === 0) {
     console.error("Usage: tsx src/fetch-osm-roads.ts <region_code> [<region_code>...]");

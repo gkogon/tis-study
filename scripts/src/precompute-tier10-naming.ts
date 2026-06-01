@@ -49,7 +49,7 @@ function buildGrid(road: RoadNetwork): Grid {
   const grid: Grid = new Map();
   for (const w of road.ways) {
     const way = w as unknown[];
-    if (way.length !== 3 || typeof way[1] !== "string") continue;
+    if (way.length < 3 || typeof way[1] !== "string") continue;
     const classCode = typeof way[0] === "number" ? (way[0] as number) : 99;
     const name = (way[1] as string).trim();
     if (!name) continue;
