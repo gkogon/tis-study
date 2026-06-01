@@ -251,6 +251,10 @@ export type RegionCode =
   | "kyiv_metro"
   // Central America / Caribbean (3)
   | "panama_city_metro" | "san_jose_cr_metro" | "havana_metro"
+  // Tier-11 (2026-05-31): 12 new countries — light OSM coverage
+  | "dhaka_metro" | "addis_ababa_metro" | "dar_es_salaam_metro" | "almaty_metro"
+  | "kuwait_city_metro" | "muscat_metro" | "tunis_metro" | "dakar_metro"
+  | "belgrade_metro" | "sofia_metro" | "zagreb_metro" | "vilnius_metro"
   // Reserved (planned but not yet wired).
   | "greenville_metro";
 
@@ -288,7 +292,9 @@ export type Region = {
     | "ZA" | "EG" | "NG" | "KE" | "MAR" | "GH"
     | "AU" | "NZ"
     | "UA"
-    | "PAN" | "CR" | "CU";
+    | "PAN" | "CR" | "CU"
+    // Tier-11 global. TUN (not TN) — avoids US Tennessee clash.
+    | "BD" | "ET" | "TZ" | "KZ" | "KW" | "OM" | "TUN" | "SN" | "RS" | "BG" | "HR" | "LT";
   /** Country — defaults to "US" when omitted (back-compat for all pre-Tier-8 regions). */
   country?: "US" | "CA" | "MX" | "UK"
     // Tier-10 global countries (ISO 3166-1 alpha-2)
@@ -301,7 +307,9 @@ export type Region = {
     | "ZA" | "EG" | "NG" | "KE" | "MA" | "GH"
     | "AU" | "NZ"
     | "UA"
-    | "PA" | "CR" | "CU";
+    | "PA" | "CR" | "CU"
+    // Tier-11 global (ISO 3166-1 alpha-2)
+    | "BD" | "ET" | "TZ" | "KZ" | "KW" | "OM" | "TN" | "SN" | "RS" | "BG" | "HR" | "LT";
   /** Jurisdictional copy that gets substituted into methodology/findings strings. */
   jurisdiction: {
     /** "City of Atlanta DOT" — used in TIS-mitigation findings. */
@@ -2211,6 +2219,20 @@ export const REGIONS: Record<RegionCode, Region> = {
   panama_city_metro: { code: "panama_city_metro", displayName: "Panama City", bounds: { latMin: 8.85, latMax: 9.10, lonMin: -79.65, lonMax: -79.40 }, stateCode: "PAN", country: "PA", jurisdiction: { dotName: "Autoridad del Tránsito y Transporte Terrestre (ATTT) — Panamá", planningOfficeName: "Municipio de Panamá — Dirección de Planificación Urbana", parkingCodeCitation: "Reglamento de Urbanizaciones — Municipio de Panamá, Capítulo Estacionamientos." }, dataSourceId: "osm_only", active: true },
   san_jose_cr_metro: { code: "san_jose_cr_metro", displayName: "San José (CR)", bounds: { latMin: 9.85, latMax: 10.05, lonMin: -84.20, lonMax: -83.95 }, stateCode: "CR", country: "CR", jurisdiction: { dotName: "Ministerio de Obras Públicas y Transportes (MOPT) — Costa Rica", planningOfficeName: "Instituto Nacional de Vivienda y Urbanismo (INVU) — Costa Rica", parkingCodeCitation: "Reglamento de Construcciones de Costa Rica — Estacionamientos." }, dataSourceId: "osm_only", active: true },
   havana_metro: { code: "havana_metro", displayName: "La Habana (Havana)", bounds: { latMin: 22.95, latMax: 23.20, lonMin: -82.55, lonMax: -82.27 }, stateCode: "CU", country: "CU", jurisdiction: { dotName: "Dirección Provincial de Transporte de La Habana", planningOfficeName: "Dirección Provincial de Planificación Física — La Habana", parkingCodeCitation: "Regulaciones urbanísticas de La Habana — Provisiones de estacionamiento." }, dataSourceId: "osm_only", active: true },
+
+  // Tier-11 (2026-05-31): 12 new countries — light OSM coverage. Jurisdiction copy source-verified (real authorities + named parking instruments).
+  dhaka_metro: { code: "dhaka_metro", displayName: "Dhaka (ঢাকা)", bounds: { latMin: 23.68, latMax: 23.90, lonMin: 90.32, lonMax: 90.50 }, stateCode: "BD", country: "BD", jurisdiction: { dotName: "Dhaka Transport Coordination Authority (DTCA) — ঢাকা পরিবহন সমন্বয় কর্তৃপক্ষ", planningOfficeName: "Rajdhani Unnayan Kartripakkha (RAJUK) — Capital Development Authority", parkingCodeCitation: "Dhaka Imarat Nirman Bidhimala 2008 (Dhaka Building Construction Rules) — off-street parking provisions." }, dataSourceId: "osm_only", active: true },
+  addis_ababa_metro: { code: "addis_ababa_metro", displayName: "Addis Ababa (አዲስ አበባ)", bounds: { latMin: 8.93, latMax: 9.10, lonMin: 38.68, lonMax: 38.88 }, stateCode: "ET", country: "ET", jurisdiction: { dotName: "Addis Ababa Traffic Management Authority (AATMA) — የአዲስ አበባ ትራፊክ ማኔጅመንት ባለሥልጣን", planningOfficeName: "Addis Ababa Plan and Development Commission — City Planning", parkingCodeCitation: "Ethiopian Building Proclamation No. 624/2009 & Regulation No. 243/2011 — parking provisions." }, dataSourceId: "osm_only", active: true },
+  dar_es_salaam_metro: { code: "dar_es_salaam_metro", displayName: "Dar es Salaam", bounds: { latMin: -6.92, latMax: -6.72, lonMin: 39.16, lonMax: 39.34 }, stateCode: "TZ", country: "TZ", jurisdiction: { dotName: "Land Transport Regulatory Authority (LATRA) — Dar Rapid Transit Agency (DART)", planningOfficeName: "Dar es Salaam City Council — Department of Urban Planning", parkingCodeCitation: "Urban Planning (Planning and Space Standards) Regulations 2018 (GN No. 93) — off-street parking standards." }, dataSourceId: "osm_only", active: true },
+  almaty_metro: { code: "almaty_metro", displayName: "Almaty (Алматы)", bounds: { latMin: 43.16, latMax: 43.36, lonMin: 76.83, lonMax: 77.03 }, stateCode: "KZ", country: "KZ", jurisdiction: { dotName: "Almaty City Urban Mobility Department — Алматы қаласының Қалалық мобильділік басқармасы", planningOfficeName: "Almaty City Department of Urban Planning and Urbanism", parkingCodeCitation: "СП РК 3.01-101-2013 (Urban Planning code) & СН РК 3.03-05-2014 'Стоянки автомобилей' — parking-provision standards." }, dataSourceId: "osm_only", active: true },
+  kuwait_city_metro: { code: "kuwait_city_metro", displayName: "Kuwait City (مدينة الكويت)", bounds: { latMin: 29.28, latMax: 29.48, lonMin: 47.90, lonMax: 48.10 }, stateCode: "KW", country: "KW", jurisdiction: { dotName: "Kuwait Municipality (بلدية الكويت) — General Traffic Department (MOI)", planningOfficeName: "Supreme Council for Planning and Development (المجلس الأعلى للتخطيط والتنمية)", parkingCodeCitation: "Kuwait Municipality construction regulations — Ministerial Resolution No. 206/2009 (as amended) — parking provisions." }, dataSourceId: "osm_only", active: true },
+  muscat_metro: { code: "muscat_metro", displayName: "Muscat (مسقط)", bounds: { latMin: 23.50, latMax: 23.70, lonMin: 58.30, lonMax: 58.55 }, stateCode: "OM", country: "OM", jurisdiction: { dotName: "Muscat Municipality (بلدية مسقط)", planningOfficeName: "Ministry of Housing and Urban Planning (وزارة الإسكان والتخطيط العمراني)", parkingCodeCitation: "Local Order No. 23/92 (Building Regulations for Muscat) & Oman National Planning Standards 2023 — off-street parking." }, dataSourceId: "osm_only", active: true },
+  tunis_metro: { code: "tunis_metro", displayName: "Tunis (تونس)", bounds: { latMin: 36.74, latMax: 36.90, lonMin: 10.10, lonMax: 10.28 }, stateCode: "TUN", country: "TN", jurisdiction: { dotName: "Ministère du Transport — Direction Régionale du Transport / Transtu", planningOfficeName: "Agence d'Urbanisme du Grand Tunis (AUGT) — وكالة التعمير لتونس الكبرى", parkingCodeCitation: "Code de l'Aménagement du Territoire et de l'Urbanisme (Loi n°94-122) & PAU de Tunis — stationnement." }, dataSourceId: "osm_only", active: true },
+  dakar_metro: { code: "dakar_metro", displayName: "Dakar", bounds: { latMin: 14.65, latMax: 14.78, lonMin: -17.50, lonMax: -17.38 }, stateCode: "SN", country: "SN", jurisdiction: { dotName: "Conseil Exécutif des Transports Urbains Durables (CETUD)", planningOfficeName: "Direction de l'Urbanisme et de l'Architecture (DUA) — Ministère de l'Urbanisme", parkingCodeCitation: "Code de l'Urbanisme du Sénégal (Loi n°2008-43 & décret n°2009-1450) — Règlement, stationnement." }, dataSourceId: "osm_only", active: true },
+  belgrade_metro: { code: "belgrade_metro", displayName: "Belgrade (Београд)", bounds: { latMin: 44.74, latMax: 44.86, lonMin: 20.40, lonMax: 20.54 }, stateCode: "RS", country: "RS", jurisdiction: { dotName: "City of Belgrade Secretariat for Transport — Секретаријат за саобраћај града Београда", planningOfficeName: "Secretariat for Urban Planning & Construction — Urban Planning Institute of Belgrade", parkingCodeCitation: "Pravilnik o opštim pravilima za parcelaciju, regulaciju i izgradnju (Sl. glasnik RS 22/2015) — parking-space provisions." }, dataSourceId: "osm_only", active: true },
+  sofia_metro: { code: "sofia_metro", displayName: "Sofia (София)", bounds: { latMin: 42.62, latMax: 42.74, lonMin: 23.26, lonMax: 23.40 }, stateCode: "BG", country: "BG", jurisdiction: { dotName: "Sofia Municipality — Transport & Urban Mobility / Centre for Urban Mobility (ЦГМ)", planningOfficeName: "Sofia Municipality — Directorate for Architecture & Urban Planning (НАГ) / Sofiaplan", parkingCodeCitation: "Наредба № РД-02-20-2/2017 — Annex 6 to Art. 60 (required parking/garage spaces)." }, dataSourceId: "osm_only", active: true },
+  zagreb_metro: { code: "zagreb_metro", displayName: "Zagreb", bounds: { latMin: 45.74, latMax: 45.86, lonMin: 15.90, lonMax: 16.04 }, stateCode: "HR", country: "HR", jurisdiction: { dotName: "City of Zagreb — City Office for Spatial Planning, Construction & Transport", planningOfficeName: "Institute for Spatial Planning of the City of Zagreb (Zavod za prostorno uređenje Grada Zagreba)", parkingCodeCitation: "Generalni urbanistički plan grada Zagreba (GUP) — Odredbe za provođenje (Sl. glasnik Grada Zagreba 19/2024) — parking provision." }, dataSourceId: "osm_only", active: true },
+  vilnius_metro: { code: "vilnius_metro", displayName: "Vilnius", bounds: { latMin: 54.63, latMax: 54.75, lonMin: 25.20, lonMax: 25.36 }, stateCode: "LT", country: "LT", jurisdiction: { dotName: "Vilnius City Municipality — Transport & Mobility administration (Susisiekimo paslaugos)", planningOfficeName: "Vilnius City Municipality — Office of the Chief City Architect (Vyriausiojo miesto architekto skyrius)", parkingCodeCitation: "STR 2.06.04:2014 'Gatvės ir vietinės reikšmės keliai' — minimum off-street parking spaces." }, dataSourceId: "osm_only", active: true },
 };
 
 /**
