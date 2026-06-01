@@ -133,7 +133,7 @@ function regionSlug(code: string): string {
 
 type AadtRec = { aadt: number; year: number; kFactor: number; distM: number; source: string };
 
-function generateForRegion(slug: string): { total: number; snapped: number; snapPct: number } | null {
+function generateForRegion(slug: string): { total: number; snapped: number; snapPct: number; measured: number } | null {
   const sigPath = path.resolve(DATA_DIR, `${slug}-signals.json`);
   const roadPath = path.resolve(DATA_DIR, `${slug}-roads.json`);
   if (!existsSync(sigPath) || !existsSync(roadPath)) return null;
@@ -165,11 +165,45 @@ function generateForRegion(slug: string): { total: number; snapped: number; snap
   }
 
   const outPath = path.resolve(DATA_DIR, `${slug}-aadt.json`);
-  writeFileSync(outPath, JSON.stringify(out));
+
+  // Non-destructive, order-stable merge: never clobber a measured overlay.
+  // Some osm_only metros (paris, tokyo, osaka, berlin, madrid) carry a
+  // partial measured AADT layer merged into this same file under a
+  // non-synthetic `source` (e.g. "paris_opendata", "mlit_census_r3_2021").
+  // Those measured counts are the credibility hook in cold outreach, so a
+  // measured entry must always survive a synthetic pass. Walk the existing
+  // file in its own key order — keep every measured entry verbatim, refresh
+  // each still-snapped synthetic entry in place, drop synthetics that no
+  // longer snap — then append newly-snapped synthetic signals. This leaves
+  // an already-correct file byte-identical, so a re-run is a no-op.
+  let merged: Record<string, AadtRec> = out;
+  let measured = 0;
+  if (existsSync(outPath)) {
+    try {
+      const existing = JSON.parse(readFileSync(outPath, "utf8")) as Record<string, AadtRec>;
+      merged = {};
+      for (const [id, rec] of Object.entries(existing)) {
+        if (rec && rec.source !== "synthetic_osm_class") {
+          merged[id] = rec;
+          measured++;
+        } else if (out[id]) {
+          merged[id] = out[id];
+        }
+      }
+      for (const id of Object.keys(out)) {
+        if (!(id in merged)) merged[id] = out[id];
+      }
+    } catch {
+      merged = out; // Unreadable existing file: write fresh synthetic.
+    }
+  }
+
+  writeFileSync(outPath, JSON.stringify(merged));
   return {
     total: signals.length,
     snapped,
     snapPct: Math.round((snapped / signals.length) * 1000) / 10,
+    measured,
   };
 }
 
@@ -202,6 +236,13 @@ function main(): void {
     }
     totalSnapped += r.snapped;
     totalSignals += r.total;
+    if (r.measured > 0) {
+      // Measured-overlay metro: its coverage row (aadtPct / aadtQuality:
+      // "measured") is owned by the measured-overlay script. Leave coverage
+      // untouched and just report what the synthetic pass preserved.
+      console.log(`  ⊙ ${region.code}: preserved ${r.measured} measured + filled synthetic ${r.snapped}/${r.total}`);
+      continue;
+    }
     const res = updateCoverage(coverage, region.code, r.snapPct);
     if (res.changed) {
       coverage = res.text;
