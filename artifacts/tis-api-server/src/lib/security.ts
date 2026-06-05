@@ -146,6 +146,22 @@ export const demoRateLimiter = rateLimit({
   passOnStoreError: true,
 });
 
+// /demo/geocode — looser than demoRateLimiter because geocoding is the
+// helper that turns "1100 Peachtree St" into lat/lon before a study
+// runs. A cold-click visitor might type 2–3 candidate addresses before
+// landing on one inside a covered metro, so 3/day is far too tight.
+// 30/hour caps obvious scraping but lets the genuine try-a-few-addresses
+// path through. Falls back to the in-memory store if Redis is unset.
+export const geocodeRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many address lookups in the last hour. Try again later, or paste coordinates directly." },
+  store: makeRateLimitStore("rl:geocode:"),
+  passOnStoreError: true,
+});
+
 // Per-IP rate limit on the public /api/* proxy to the analyzer service.
 // The analyzer's ~30 read-only /atlanta/* endpoints (live-incidents,
 // cameras, live-weather, predicted-traffic-flow, today-accident-

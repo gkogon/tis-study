@@ -30,7 +30,7 @@
 import { Router, type IRouter } from "express";
 import { generateTisReport, type TisRequest } from "../lib/tis";
 import { LAND_USES } from "../lib/land-uses";
-import { demoRateLimiter } from "../lib/security";
+import { demoRateLimiter, geocodeRateLimiter } from "../lib/security";
 import { logEvent } from "../lib/events";
 import { renderStudyPdf } from "../lib/pdf-export";
 import { regionForCoordinate, nearestRegionForCoordinate, type Region } from "../lib/regions";
@@ -370,6 +370,97 @@ function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
     },
   };
 }
+
+/**
+ * Address → coordinates helper for the demo form. Cold-click visitors
+ * from cold outreach think in addresses, not lat/lon, and forcing them
+ * to look up coordinates was a major bounce point. This endpoint
+ * forwards the address query to OpenStreetMap's Nominatim geocoder
+ * (free, no API key, polite-use only) and returns the resolved
+ * lat/lon plus the canonical display name so the user can confirm
+ * the right place was picked.
+ *
+ * Caching: in-memory LRU keyed by the normalized query. Nominatim's
+ * usage policy asks consumers to cache aggressively and stay under
+ * 1 req/sec; the cache plus the per-IP rate limiter together hold
+ * us well within that ceiling. If demo traffic ramps significantly
+ * we should switch to Mapbox / Google for SLAs.
+ *
+ * Failure modes:
+ *   - empty / too-short / too-long query → 400
+ *   - Nominatim down or timeout → 502 with retry-friendly copy
+ *   - no results → 404 with "couldn't find that address" copy
+ * Out-of-coverage addresses (geocoded fine but outside our 300 metros)
+ * are not caught here — the user sees the out-of-bounds error when
+ * they click Run study, which is correct because the bounds check
+ * lives in /demo/generate.
+ */
+const geocodeCache = new Map<string, { latitude: number; longitude: number; displayName: string } | "miss">();
+const GEOCODE_CACHE_MAX = 1000;
+const NOMINATIM_TIMEOUT_MS = 5000;
+
+router.post("/demo/geocode", geocodeRateLimiter, async (req, res): Promise<void> => {
+  const raw = String((req.body as { query?: unknown })?.query ?? "").trim();
+  if (raw.length < 3 || raw.length > 200) {
+    res.status(400).json({ error: "Address must be between 3 and 200 characters." });
+    return;
+  }
+  const key = raw.toLowerCase().replace(/\s+/g, " ");
+
+  const cached = geocodeCache.get(key);
+  if (cached === "miss") {
+    res.status(404).json({ error: "Couldn't find that address. Try adding a city or country." });
+    return;
+  }
+  if (cached) {
+    res.json(cached);
+    return;
+  }
+
+  try {
+    const url = new URL("https://nominatim.openstreetmap.org/search");
+    url.searchParams.set("q", raw);
+    url.searchParams.set("format", "json");
+    url.searchParams.set("limit", "1");
+
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), NOMINATIM_TIMEOUT_MS);
+    const r = await fetch(url.toString(), {
+      headers: {
+        "User-Agent": "SimpleImpactStudies/1.0 (gkogon@simpleimpactstudies.com)",
+        Accept: "application/json",
+      },
+      signal: ctrl.signal,
+    });
+    clearTimeout(t);
+
+    if (!r.ok) {
+      res.status(502).json({ error: "Address lookup is temporarily unavailable. Try again or paste coordinates directly." });
+      return;
+    }
+    const data = (await r.json()) as Array<{ lat?: string; lon?: string; display_name?: string }>;
+    if (!Array.isArray(data) || data.length === 0 || !data[0]?.lat || !data[0]?.lon) {
+      if (geocodeCache.size < GEOCODE_CACHE_MAX) geocodeCache.set(key, "miss");
+      res.status(404).json({ error: "Couldn't find that address. Try adding a city or country." });
+      return;
+    }
+    const result = {
+      latitude: Number(data[0].lat),
+      longitude: Number(data[0].lon),
+      displayName: String(data[0].display_name ?? raw),
+    };
+    if (!Number.isFinite(result.latitude) || !Number.isFinite(result.longitude)) {
+      res.status(502).json({ error: "Address lookup returned bad coordinates. Try a more specific address." });
+      return;
+    }
+    if (geocodeCache.size < GEOCODE_CACHE_MAX) geocodeCache.set(key, result);
+    res.json(result);
+  } catch (err) {
+    // AbortError, network error, or upstream JSON parse failure — all
+    // map to the same recoverable surface.
+    res.status(502).json({ error: "Address lookup is temporarily unavailable. Try again or paste coordinates directly." });
+  }
+});
 
 router.post("/demo/generate", demoRateLimiter, async (req, res): Promise<void> => {
   const parsed = parseDemoRequest((req.body ?? {}) as Record<string, unknown>);

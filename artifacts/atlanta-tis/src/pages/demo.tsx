@@ -356,6 +356,47 @@ function DemoForm({
   const [openingYear, setOpeningYear] = useState(String(currentYear + 1));
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Address → coordinates UI state. Cold-click visitors think in
+  // addresses, not lat/lon; the geocoder lets them paste "1100 Peachtree
+  // St, Atlanta GA" and skip the coordinate lookup that was bouncing
+  // them. Resolved address is shown back so they can confirm the right
+  // place was picked.
+  const [addressQuery, setAddressQuery] = useState("");
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
+  const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
+
+  async function resolveAddress() {
+    const q = addressQuery.trim();
+    if (q.length < 3) {
+      setGeocodeError("Type at least a few characters of an address.");
+      return;
+    }
+    setGeocoding(true);
+    setGeocodeError(null);
+    setFormError(null);
+    try {
+      const r = await fetch("/tis-api/demo/geocode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: q }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setGeocodeError(String(data?.error ?? "Couldn't look that up."));
+        setResolvedAddress(null);
+        return;
+      }
+      setLatitude(String(data.latitude));
+      setLongitude(String(data.longitude));
+      setResolvedAddress(String(data.displayName ?? q));
+    } catch {
+      setGeocodeError("Couldn't reach the address lookup. Try again or paste coordinates directly.");
+    } finally {
+      setGeocoding(false);
+    }
+  }
+
   const activeLandUse = useMemo(
     () => landUses?.find((lu) => lu.code === landUseCode) ?? null,
     [landUses, landUseCode],
@@ -518,7 +559,63 @@ function DemoForm({
             />
           </div>
 
-          {/* Coords */}
+          {/* Address → coords. The fast path for cold-click visitors:
+              type an address, click Find, lat/lon auto-fill. The
+              lat/lon row below stays editable for power-users who
+              know exact coords or want to override the geocode. */}
+          <div>
+            <label htmlFor="demo-address" className={labelCls}>
+              Site address <span className="text-muted-foreground/60 normal-case">(fastest path)</span>
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="demo-address"
+                type="text"
+                value={addressQuery}
+                onChange={(e) => setAddressQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void resolveAddress();
+                  }
+                }}
+                placeholder="e.g. 1100 Peachtree St NE, Atlanta GA"
+                className={inputCls + " font-sans flex-1"}
+                data-testid="input-address"
+                disabled={geocoding}
+              />
+              <button
+                type="button"
+                onClick={() => void resolveAddress()}
+                disabled={geocoding || addressQuery.trim().length < 3}
+                className="px-4 py-2 text-sm font-semibold rounded-md bg-foreground text-background hover:bg-foreground/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                data-testid="button-geocode"
+              >
+                {geocoding ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Looking up</>
+                ) : (
+                  <><MapPin className="w-3.5 h-3.5" /> Find</>
+                )}
+              </button>
+            </div>
+            {resolvedAddress && !geocodeError && (
+              <div className="mt-1.5 text-[11px] text-muted-foreground flex items-start gap-1.5">
+                <FileCheck2 className="w-3 h-3 text-emerald-600 shrink-0 mt-0.5" />
+                <span className="truncate" title={resolvedAddress}>
+                  Resolved: {resolvedAddress}
+                </span>
+              </div>
+            )}
+            {geocodeError && (
+              <div className="mt-1.5 text-[11px] text-red-600 flex items-start gap-1.5">
+                <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+                <span>{geocodeError}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Coords — auto-filled by the address lookup above, or
+              editable directly for power-users. */}
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="demo-lat" className={labelCls}>Latitude</label>
