@@ -20,7 +20,9 @@
  * scanner can't iterate. The real reason is logged server-side.
  */
 
+import { randomUUID } from "node:crypto";
 import { logger } from "./logger";
+import { redis } from "./redis";
 
 /* ----- 1. Disposable-email blocklist ----------------------------------
  *
@@ -121,18 +123,37 @@ export function validateAntiBotFields(body: Record<string, unknown>): AntiBotChe
  * hundreds of accounts in an hour would have to pace itself below this
  * across all IPs.
  *
- * Single-process in-memory state. If the API scales to multiple
- * replicas this will undercount across instances — fine at our scale,
- * worth migrating to Redis later.
+ * Shared across instances when REDIS_URL is set: the rolling window lives
+ * in a Redis sorted set (score = timestamp), so the ceiling holds across
+ * Replit autoscale + Railway replicas. Without Redis it falls back to the
+ * original single-process in-memory window (undercounts across replicas,
+ * fine for dev). Both checks are async now and fail open — a Redis blip
+ * must never block legitimate signups.
  * --------------------------------------------------------------------- */
 const GLOBAL_WINDOW_MS = 60 * 60 * 1000; // 1 hour rolling
 const GLOBAL_CEILING = 30;               // max signups per rolling hour, globally
+const CEILING_KEY = "signup:ceiling";    // Redis sorted-set key
 
 let globalSignupTimes: number[] = [];
 
-export function checkGlobalSignupCeiling(): AntiBotCheck {
+export async function checkGlobalSignupCeiling(): Promise<AntiBotCheck> {
   const now = Date.now();
-  // Drop timestamps older than the window.
+  if (redis) {
+    try {
+      // Drop entries outside the window, then count what remains.
+      await redis.zremrangebyscore(CEILING_KEY, 0, now - GLOBAL_WINDOW_MS);
+      const count = await redis.zcard(CEILING_KEY);
+      if (count >= GLOBAL_CEILING) {
+        return { ok: false, reason: "global_signup_ceiling_reached" };
+      }
+      return { ok: true };
+    } catch (err) {
+      // Fail open: a Redis outage shouldn't pause all signups.
+      logger.error({ err }, "signup.ceiling.redis_check_error");
+      return { ok: true };
+    }
+  }
+  // In-memory fallback (per-instance).
   globalSignupTimes = globalSignupTimes.filter((t) => now - t < GLOBAL_WINDOW_MS);
   if (globalSignupTimes.length >= GLOBAL_CEILING) {
     return { ok: false, reason: "global_signup_ceiling_reached" };
@@ -140,8 +161,22 @@ export function checkGlobalSignupCeiling(): AntiBotCheck {
   return { ok: true };
 }
 
-export function recordSuccessfulSignup(): void {
-  globalSignupTimes.push(Date.now());
+export async function recordSuccessfulSignup(): Promise<void> {
+  const now = Date.now();
+  if (redis) {
+    try {
+      // Unique member per signup so concurrent signups in the same ms
+      // don't collapse to one sorted-set entry. Expire the whole key a
+      // bit past the window so it self-cleans when signups go quiet.
+      await redis.zadd(CEILING_KEY, now, `${now}:${randomUUID()}`);
+      await redis.expire(CEILING_KEY, Math.ceil(GLOBAL_WINDOW_MS / 1000) + 60);
+      return;
+    } catch (err) {
+      logger.error({ err }, "signup.ceiling.redis_record_error");
+      return; // best-effort; the per-IP + other layers still apply
+    }
+  }
+  globalSignupTimes.push(now);
 }
 
 /* ----- 5. Optional Cloudflare Turnstile ------------------------------- *

@@ -124,7 +124,7 @@ router.post("/auth/signup", signupRateLimiter, async (req, res): Promise<void> =
     return;
   }
 
-  const ceiling = checkGlobalSignupCeiling();
+  const ceiling = await checkGlobalSignupCeiling();
   if (!ceiling.ok) {
     logger.warn({ email, reason: ceiling.reason }, "signup.rejected.global_ceiling");
     res.status(429).json({ error: "Signups are temporarily paused. Please try again in an hour." });
@@ -173,7 +173,7 @@ router.post("/auth/signup", signupRateLimiter, async (req, res): Promise<void> =
     const sid = await createSession(sessionFromUser(user));
     setSessionCookie(res, sid);
     logger.info({ userId: user.id, email }, "email-auth.signup");
-    recordSuccessfulSignup();
+    await recordSuccessfulSignup();
     logEvent("signup", {
       userId: user.id,
       metadata: { promotedFromExisting: !!existing },

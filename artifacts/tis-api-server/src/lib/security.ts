@@ -1,5 +1,14 @@
 import type { CorsOptions } from "cors";
 import rateLimit from "express-rate-limit";
+import { makeRateLimitStore } from "./redis";
+
+// Every limiter below shares two cross-instance settings:
+//   - `store`: a Redis-backed store (namespaced per limiter) when
+//     REDIS_URL is set, so counters hold across all instances; falls
+//     back to express-rate-limit's in-memory MemoryStore otherwise.
+//   - `passOnStoreError: true`: if the Redis store errors (outage,
+//     timeout), allow the request rather than 500 — a rate limiter must
+//     never be a single point of failure for the whole API.
 
 function parseAllowedOrigins(): string[] {
   // `ALLOWED_ORIGINS` is a comma-separated list of fully-qualified
@@ -49,6 +58,8 @@ export const leadsRateLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many requests. Please try again in a few minutes." },
+  store: makeRateLimitStore("rl:leads:"),
+  passOnStoreError: true,
 });
 
 // Per-IP rate limit for TIS generate.
@@ -58,6 +69,8 @@ export const generateRateLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many TIS generations. Please slow down." },
+  store: makeRateLimitStore("rl:generate:"),
+  passOnStoreError: true,
 });
 
 // Per-IP brute-force protection for /auth/login. A real attacker
@@ -70,6 +83,8 @@ export const loginRateLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many sign-in attempts. Try again in 15 minutes." },
+  store: makeRateLimitStore("rl:login:"),
+  passOnStoreError: true,
 });
 
 // Per-IP rate limit on signups. Tightened from 5/hr to 3/hr in the
@@ -82,6 +97,8 @@ export const signupRateLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many signup attempts. Try again later." },
+  store: makeRateLimitStore("rl:signup:"),
+  passOnStoreError: true,
 });
 
 // Per-IP rate limit on password-reset request. Prevents an attacker
@@ -94,6 +111,8 @@ export const passwordResetRateLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many password reset requests. Try again later." },
+  store: makeRateLimitStore("rl:pwreset:"),
+  passOnStoreError: true,
 });
 
 // Per-IP rate limit on the public unsubscribe endpoint. Honest users
@@ -106,6 +125,8 @@ export const unsubscribeRateLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many requests. Try again in a few minutes." },
+  store: makeRateLimitStore("rl:unsub:"),
+  passOnStoreError: true,
 });
 
 // Per-IP rate limit on the public /demo/generate endpoint. The demo
@@ -121,6 +142,8 @@ export const demoRateLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "You've used your free demo runs for today. Sign up free to keep generating." },
+  store: makeRateLimitStore("rl:demo:"),
+  passOnStoreError: true,
 });
 
 // Per-IP rate limit on the public /api/* proxy to the analyzer service.
@@ -147,4 +170,6 @@ export const analyzerProxyRateLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many requests. Please slow down." },
+  store: makeRateLimitStore("rl:analyzer:"),
+  passOnStoreError: true,
 });

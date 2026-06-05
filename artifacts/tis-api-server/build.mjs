@@ -53,6 +53,10 @@ async function buildAll() {
     external: [
       "*.node",
       "sharp",
+      // ioredis is CJS and pulls in optional native parser deps; let node
+      // resolve it from node_modules at runtime. (rate-limit-redis is pure
+      // ESM and bundles fine, so it stays bundled.)
+      "ioredis",
       // pdfkit + fontkit drag in legacy decorator helpers that don't bundle
       // cleanly with our pinned @swc/helpers. Loading them at runtime lets
       // node resolve their own transitive deps from node_modules.
