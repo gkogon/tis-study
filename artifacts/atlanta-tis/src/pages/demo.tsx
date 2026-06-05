@@ -362,12 +362,26 @@ function DemoForm({
   );
 
   function applyPreset(p: Preset) {
+    // Reflect the preset in the form for visual feedback...
     setProjectName(p.prefill.projectName);
     setLatitude(String(p.prefill.latitude));
     setLongitude(String(p.prefill.longitude));
     setLandUseCode(p.prefill.landUseCode);
     setSize(String(p.prefill.size));
     setFormError(null);
+    // ...and immediately run the study. Cold-click visitors from cold
+    // outreach were clicking a preset, seeing the form populate, not
+    // realizing they had to ALSO press "Run study," and bouncing. One
+    // click should produce a real result; the form below stays editable
+    // for re-runs on the visitor's own coords.
+    onRun({
+      projectName: p.prefill.projectName,
+      latitude: p.prefill.latitude,
+      longitude: p.prefill.longitude,
+      landUseCode: p.prefill.landUseCode,
+      size: p.prefill.size,
+      openingYear: Math.trunc(Number(openingYear)) || currentYear + 1,
+    });
   }
 
   function submit(e: React.FormEvent) {
@@ -433,12 +447,14 @@ function DemoForm({
         </div>
       )}
 
-      {/* Quick-fill examples — collapsible, click to prefill the form */}
+      {/* One-click sample runs — clicking any preset auto-fills the form
+          AND launches the study immediately. This is the on-ramp for
+          cold-click visitors who don't have a specific site in hand. */}
       {presets && presets.length > 0 && (
-        <div className="rounded-xl border border-border bg-slate-50 dark:bg-slate-950/40 p-5 space-y-3">
+        <div className="rounded-xl border-2 border-blue-700/40 bg-blue-50/60 dark:bg-blue-950/40 p-5 space-y-3">
           <div className="flex items-baseline justify-between gap-4 flex-wrap">
-            <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-              Quick examples — click to fill the form
+            <div className="font-mono text-xs uppercase tracking-[0.16em] font-semibold text-blue-800 dark:text-blue-300">
+              Run a sample TIS · one click launches
             </div>
             <div className="text-[11px] text-muted-foreground">
               {presets.length} starting points
@@ -514,7 +530,7 @@ function DemoForm({
                 max={90}
                 value={latitude}
                 onChange={(e) => setLatitude(e.target.value)}
-                placeholder="48.8566"
+                placeholder="33.7858"
                 className={inputCls}
                 required
                 data-testid="input-latitude"
@@ -530,7 +546,7 @@ function DemoForm({
                 max={180}
                 value={longitude}
                 onChange={(e) => setLongitude(e.target.value)}
-                placeholder="2.3522"
+                placeholder="-84.3848"
                 className={inputCls}
                 required
                 data-testid="input-longitude"
