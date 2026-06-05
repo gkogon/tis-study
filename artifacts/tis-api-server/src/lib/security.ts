@@ -122,3 +122,29 @@ export const demoRateLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "You've used your free demo runs for today. Sign up free to keep generating." },
 });
+
+// Per-IP rate limit on the public /api/* proxy to the analyzer service.
+// The analyzer's ~30 read-only /atlanta/* endpoints (live-incidents,
+// cameras, live-weather, predicted-traffic-flow, today-accident-
+// predictions, …) are only reachable through this proxy, and several
+// fan out to upstream feeds (GDOT, NWS). Without a limiter here a scraper
+// could grind those endpoints — and our upstream quotas — for free.
+//
+// Sizing: the home-page flagship widgets poll a handful of these at 60s
+// intervals plus a one-time burst on load, so a real user (even a NAT'd
+// office sharing one IP) stays far under 5 req/s. 300/min caps a grinder
+// at 5 req/s — orders of magnitude below the hundreds/s they'd want —
+// while leaving generous headroom for legitimate polling. Tune `limit`
+// if real traffic ever bumps the ceiling.
+//
+// NOTE: like every limiter here this uses the default in-memory store, so
+// the effective cap is 300/min × instance count and resets on redeploy.
+// A shared (Redis/Upstash) store would make it hold globally — tracked
+// separately as the cross-cutting store fix.
+export const analyzerProxyRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 300,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please slow down." },
+});

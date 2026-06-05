@@ -12,7 +12,7 @@ import stripeWebhookRouter from "./routes/stripe-webhook";
 import unsubscribeRouter from "./routes/unsubscribe";
 import { logger } from "./lib/logger";
 import { authMiddleware } from "./middlewares/authMiddleware";
-import { corsOptions } from "./lib/security";
+import { corsOptions, analyzerProxyRateLimiter } from "./lib/security";
 
 const app: Express = express();
 
@@ -63,6 +63,10 @@ const analyzerUrl = process.env.ANALYZER_API_URL;
 if (analyzerUrl) {
   app.use(
     "/api",
+    // Rate-limit before forwarding: the analyzer is internal-only and has
+    // no limiter of its own, so this public proxy edge (where the real
+    // client IP is known via trust-proxy) is the place to cap abuse.
+    analyzerProxyRateLimiter,
     createProxyMiddleware({
       target: analyzerUrl,
       changeOrigin: true,
