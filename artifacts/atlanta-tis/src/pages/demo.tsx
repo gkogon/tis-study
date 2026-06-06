@@ -362,6 +362,25 @@ function DemoForm({
   const [studyRadiusMi, setStudyRadiusMi] = useState(0.75);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Land-use combobox state. The dropdown has 80+ ITE codes; without a
+  // search box, an engineer landing from cold outreach has to scroll
+  // through everything from Single-Family Housing to Mini-Warehouse to
+  // find Museum or Live Theater. Typeahead filters on code, name, and
+  // unit so "the" surfaces Live Theater + Movie Theater, "kid" finds
+  // Day Care, "shop" finds the retail family, etc.
+  const [landUseOpen, setLandUseOpen] = useState(false);
+  const [landUseQuery, setLandUseQuery] = useState("");
+  const filteredLandUses = useMemo(() => {
+    if (!landUses) return [];
+    const q = landUseQuery.trim().toLowerCase();
+    if (!q) return landUses;
+    return landUses.filter((lu) =>
+      lu.code.toLowerCase().includes(q) ||
+      lu.name.toLowerCase().includes(q) ||
+      lu.unitShort.toLowerCase().includes(q),
+    );
+  }, [landUses, landUseQuery]);
+
   // Address → coordinates UI state. Cold-click visitors think in
   // addresses, not lat/lon; the geocoder lets them paste "1100 Peachtree
   // St, Atlanta GA" and skip the coordinate lookup that was bouncing
@@ -691,24 +710,96 @@ function DemoForm({
 
           {/* Land use + size + year */}
           <div className="grid sm:grid-cols-12 gap-4">
-            <div className="sm:col-span-6">
+            <div className="sm:col-span-6 relative">
               <label htmlFor="demo-landuse" className={labelCls}>
                 ITE land use {landUses === null && <span className="text-muted-foreground/60">(loading…)</span>}
               </label>
-              <select
+              <button
                 id="demo-landuse"
-                value={landUseCode}
-                onChange={(e) => setLandUseCode(e.target.value)}
+                type="button"
+                onClick={() => setLandUseOpen((v) => !v)}
                 disabled={!landUses || landUses.length === 0}
-                className={inputCls + " font-sans"}
+                className={inputCls + " font-sans text-left flex items-center justify-between gap-2"}
                 data-testid="input-landuse"
               >
-                {(landUses ?? []).map((lu) => (
-                  <option key={lu.code} value={lu.code}>
-                    {lu.code} · {lu.name}
-                  </option>
-                ))}
-              </select>
+                <span className="truncate">
+                  {activeLandUse ? `${activeLandUse.code} · ${activeLandUse.name}` : "Select land use"}
+                </span>
+                <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${landUseOpen ? "rotate-180" : ""}`} />
+              </button>
+              {landUseOpen && (
+                <>
+                  {/* Click-outside backdrop. z-30 so it sits above the
+                      form but below the dropdown panel (z-40). */}
+                  <div
+                    className="fixed inset-0 z-30"
+                    onClick={() => { setLandUseOpen(false); setLandUseQuery(""); }}
+                    aria-hidden
+                  />
+                  <div className="absolute z-40 mt-1 w-full bg-background border border-border rounded-md shadow-lg overflow-hidden">
+                    <div className="p-2 border-b border-border bg-slate-50 dark:bg-slate-950/40">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={landUseQuery}
+                        onChange={(e) => setLandUseQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") {
+                            setLandUseOpen(false);
+                            setLandUseQuery("");
+                          } else if (e.key === "Enter" && filteredLandUses.length > 0) {
+                            e.preventDefault();
+                            setLandUseCode(filteredLandUses[0]!.code);
+                            setLandUseOpen(false);
+                            setLandUseQuery("");
+                          }
+                        }}
+                        placeholder="Search by code, name, or unit (museum, theater, ksf…)"
+                        className="w-full px-3 py-1.5 text-sm rounded-sm border border-border bg-background focus:outline-none focus:ring-2 focus:ring-blue-700/30 focus:border-blue-700 font-sans"
+                        data-testid="input-landuse-search"
+                      />
+                    </div>
+                    <ul className="max-h-64 overflow-y-auto py-1" role="listbox">
+                      {filteredLandUses.length === 0 ? (
+                        <li className="px-3 py-4 text-xs text-muted-foreground text-center">
+                          No land uses match "{landUseQuery}".
+                        </li>
+                      ) : (
+                        filteredLandUses.map((lu) => (
+                          <li key={lu.code}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLandUseCode(lu.code);
+                                setLandUseOpen(false);
+                                setLandUseQuery("");
+                              }}
+                              className={
+                                "w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors flex items-baseline justify-between gap-3 " +
+                                (lu.code === landUseCode ? "bg-blue-50/60 dark:bg-blue-950/30 font-semibold" : "")
+                              }
+                              role="option"
+                              aria-selected={lu.code === landUseCode}
+                            >
+                              <span className="truncate">
+                                <span className="font-mono text-xs text-muted-foreground tabular-nums">{lu.code}</span>
+                                <span className="ml-2">{lu.name}</span>
+                              </span>
+                              <span className="font-mono text-[10px] text-muted-foreground shrink-0">
+                                {lu.unitShort}
+                              </span>
+                            </button>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                    <div className="px-3 py-1.5 border-t border-border bg-slate-50 dark:bg-slate-950/40 font-mono text-[10px] text-muted-foreground flex items-center justify-between">
+                      <span>{filteredLandUses.length} of {landUses?.length ?? 0} shown</span>
+                      <span>Enter to pick · Esc to close</span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
             <div className="sm:col-span-3">
               <label htmlFor="demo-size" className={labelCls}>
