@@ -38,7 +38,7 @@ import { clientIpFromRequest, geolocateIp } from "../lib/ip-geolocate";
 
 const router: IRouter = Router();
 
-const DEMO_RADIUS_MAX_MI = 1.5;
+const DEMO_RADIUS_MAX_MI = 3;
 const SIZE_MAX = 10_000;
 
 // Quick-start examples. Surfaced via /demo/presets so the frontend

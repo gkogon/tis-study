@@ -44,6 +44,7 @@ type StudyForm = {
   landUseCode: string;
   size: number;
   openingYear: number;
+  studyRadiusMi: number;
 };
 
 type Los = "A" | "B" | "C" | "D" | "E" | "F";
@@ -354,6 +355,11 @@ function DemoForm({
   const [landUseCode, setLandUseCode] = useState("221");
   const [size, setSize] = useState("");
   const [openingYear, setOpeningYear] = useState(String(currentYear + 1));
+  // Study radius — how far from the site the engine sweeps for affected
+  // signals. Default 0.75 mi balances coverage and latency for a cold-
+  // click visitor; the slider exposes 0.25 → 3 mi for prospects who
+  // want to test bigger sites. Backend clamps to the same range.
+  const [studyRadiusMi, setStudyRadiusMi] = useState(0.75);
   const [formError, setFormError] = useState<string | null>(null);
 
   // Address → coordinates UI state. Cold-click visitors think in
@@ -422,6 +428,7 @@ function DemoForm({
       landUseCode: p.prefill.landUseCode,
       size: p.prefill.size,
       openingYear: Math.trunc(Number(openingYear)) || currentYear + 1,
+      studyRadiusMi,
     });
   }
 
@@ -462,6 +469,7 @@ function DemoForm({
       landUseCode,
       size: sz,
       openingYear: Math.trunc(yr),
+      studyRadiusMi,
     });
   }
 
@@ -648,6 +656,36 @@ function DemoForm({
                 required
                 data-testid="input-longitude"
               />
+            </div>
+          </div>
+
+          {/* Study radius — how far from the site to sweep for affected
+              signals. Slider 0.25 → 3.0 mi (demo cap). Most prospects
+              leave this alone, but the option is here for larger sites. */}
+          <div>
+            <div className="flex items-baseline justify-between gap-3 mb-1.5">
+              <label htmlFor="demo-radius" className={labelCls + " mb-0"}>
+                Study radius
+              </label>
+              <span className="font-mono text-xs font-semibold text-foreground tabular-nums">
+                {studyRadiusMi.toFixed(2)} mi
+              </span>
+            </div>
+            <input
+              id="demo-radius"
+              type="range"
+              min={0.25}
+              max={3}
+              step={0.25}
+              value={studyRadiusMi}
+              onChange={(e) => setStudyRadiusMi(Number(e.target.value))}
+              className="w-full accent-blue-700"
+              data-testid="input-radius"
+            />
+            <div className="flex justify-between mt-1 font-mono text-[10px] text-muted-foreground tabular-nums">
+              <span>0.25 mi</span>
+              <span>1.5 mi</span>
+              <span>3.0 mi</span>
             </div>
           </div>
 
