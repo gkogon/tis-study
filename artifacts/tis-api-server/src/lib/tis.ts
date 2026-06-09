@@ -430,7 +430,69 @@ async function findAffectedIntersections(
     }
   }
   out.sort((a, b) => a.distanceMi - b.distanceMi);
-  return out;
+  return dedupCloseSignals(out);
+}
+
+/**
+ * Collapse signal records that represent the SAME physical intersection
+ * into one row, so a single intersection doesn't double-count in the
+ * report. Two common causes of duplication:
+ *
+ *   1. **Divided arterials** — OSM frequently models a single intersection
+ *      where the two halves of a divided arterial cross a side street as
+ *      TWO separate signal records, one per direction of the divided
+ *      arterial, typically 15–40m apart with identical street names.
+ *
+ *   2. **OSM way-splits** — an intersection on a road that's tagged as
+ *      multiple OSM `way` records (separate lanes, frontage road, ramp,
+ *      etc.) can register as multiple "signals" 5–15m apart.
+ *
+ * Dedup strategy: cluster signals by proximity (≤45m apart). Within each
+ * cluster, keep the record closest to the project site. The 45m threshold
+ * is wide enough to catch divided-arterial pairs (10–40m typical) and
+ * tight enough that genuinely separate intersections (urban grid block
+ * faces are 80–120m+ apart) stay separate.
+ *
+ * Returns a new array in the same distance-sorted order as the input.
+ * Caltran flagged the dupe-road behavior in their meeting feedback;
+ * this is the fix.
+ */
+function dedupCloseSignals(
+  candidates: Array<{ sig: AnalyzerIntersection; distanceMi: number }>,
+): Array<{ sig: AnalyzerIntersection; distanceMi: number }> {
+  const DEDUP_THRESHOLD_M = 45;
+  // Candidates are already sorted by distance-to-site ascending. Walk in
+  // order so the first record in each cluster (= closest to project) wins.
+  const kept: typeof candidates = [];
+  const merged: Array<{ sig: AnalyzerIntersection; distanceMi: number }> = [];
+  for (const c of candidates) {
+    let absorbedInto: typeof kept[number] | null = null;
+    for (const k of kept) {
+      const dM = haversineM(
+        { lat: c.sig.latitude, lon: c.sig.longitude },
+        { lat: k.sig.latitude, lon: k.sig.longitude },
+      );
+      if (dM <= DEDUP_THRESHOLD_M) {
+        absorbedInto = k;
+        break;
+      }
+    }
+    if (absorbedInto) {
+      merged.push(c);
+    } else {
+      kept.push(c);
+    }
+  }
+  // Telemetry: log the dedup count so we can see in production whether
+  // the threshold is catching what we expect. Not surfaced in the report.
+  if (merged.length > 0) {
+    logger.debug({
+      keptCount: kept.length,
+      mergedCount: merged.length,
+      merged: merged.map((m) => ({ id: m.sig.id, name: m.sig.name })),
+    }, "tis.intersection-dedup");
+  }
+  return kept;
 }
 
 function periodRawTrips(lu: LandUse, size: number, period: AnalysisPeriod): number {
