@@ -408,21 +408,28 @@ function renderTis(doc: PDFKit.PDFDocument, r: any) {
     doc.moveDown(1);
   }
 
-  // Affected intersections table
+  // Affected intersections table — three scenarios stacked per standard
+  // TIS convention: Existing (current year) / No-Build (opening year,
+  // growth only) / Build (opening year, growth + project).
   if (intersections.length) {
     section(doc, `Affected Intersections (${intersections.length})`);
     table(doc, {
-      headers: ["Intersection", "Dist (mi)", "Trips", "Existing LOS", "Future LOS", "Δ delay (s)", "Q95 (ft)"],
-      widths: [180, 50, 40, 60, 60, 60, 50],
-      align: ["left", "right", "right", "center", "center", "right", "right"],
+      headers: ["Intersection", "Dist (mi)", "Trips", "Exist LOS", "No-Bld LOS", "Build LOS", "Δ delay", "Q95"],
+      widths: [165, 45, 40, 55, 60, 55, 55, 45],
+      align: ["left", "right", "right", "center", "center", "center", "right", "right"],
       rows: intersections.map((it) => {
         const losChanged = it.losChanged === true;
+        // Fallback when older payloads don't carry currentLos.
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const noBuildLos = it.existingLos ?? "—";
+        const buildLos = it.futureLos ?? "—";
         return [
           it.name ?? it.signalId ?? "—",
           fmtNum(it.distanceMi, 2),
           fmtNum(it.addedTripsPmPeak),
-          String(it.existingLos ?? "—"),
-          (losChanged ? "▲ " : "") + String(it.futureLos ?? "—"),
+          String(currentLos),
+          String(noBuildLos),
+          (losChanged ? "▲ " : "") + String(buildLos),
           fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
           fmtNum(it.queue95thFt),
         ];
