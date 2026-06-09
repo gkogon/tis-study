@@ -19,6 +19,7 @@ import PDFDocument from "pdfkit";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { regionForCoordinate, type Region } from "./regions";
 
 type StoredProject = {
   id: string;
@@ -291,7 +292,7 @@ function drawBody(doc: PDFKit.PDFDocument, project: StoredProject) {
 
   const result = project.resultPayload as Record<string, unknown>;
   switch (project.studyType) {
-    case "tis": renderTis(doc, result); break;
+    case "tis": dispatchTisRender(doc, result, project); break;
     case "parking": renderParking(doc, result); break;
     case "warrants": renderWarrants(doc, result); break;
     case "sight_distance": renderSightDistance(doc, result); break;
@@ -299,6 +300,46 @@ function drawBody(doc: PDFKit.PDFDocument, project: StoredProject) {
     case "road_diet": renderRoadDiet(doc, result); break;
     default: renderGenericJson(doc, result); break;
   }
+}
+
+/**
+ * Region-dispatched TIS renderer. Looks up the site's region from its
+ * coordinates and routes to a jurisdiction-specific renderer that
+ * follows that jurisdiction's TIS reporting conventions (section
+ * structure, citation conventions, terminology, methodology
+ * disclosure). Falls back to the generic `renderTis` for any region
+ * we don't yet have a specialized renderer for — so the new dispatch
+ * never regresses existing markets.
+ *
+ * Region-specific renderers added so far:
+ *   - GA (Georgia) — matches the GRTA/ARC/GDOT format engineers expect
+ *     in Atlanta-metro and Georgia-statewide submittals.
+ *
+ * Planned (spec-research-in-progress):
+ *   - FL (FDOT Site Impact Handbook)
+ *   - IL (IDOT BLR + CDOT)
+ *   - TX (TxDOT + city overlays)
+ *   - UK / London (DfT + TfL Transport Assessment)
+ *   - CA (Caltrans + SB 743 VMT — paradigm shift, may require engine work)
+ */
+function dispatchTisRender(
+  doc: PDFKit.PDFDocument,
+  result: Record<string, unknown>,
+  project: StoredProject,
+) {
+  const region = detectRegion(project);
+  if (region?.stateCode === "GA" && (region?.country ?? "US") === "US") {
+    renderTisGeorgia(doc, result, project, region);
+    return;
+  }
+  renderTis(doc, result);
+}
+
+function detectRegion(project: StoredProject): Region | null {
+  const lat = project.siteLat ? Number(project.siteLat) : NaN;
+  const lon = project.siteLon ? Number(project.siteLon) : NaN;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return regionForCoordinate(lat, lon);
 }
 
 // ---------- Per-study renderers ----------
@@ -444,6 +485,387 @@ function renderTis(doc: PDFKit.PDFDocument, r: any) {
     }
     doc.moveDown(1);
   }
+}
+
+/**
+ * Georgia-specific TIS renderer. Follows the section structure and
+ * conventions that GRTA / ARC / GDOT reviewers expect on a Georgia
+ * Transportation Analysis deliverable, modeled on the GDOT/GRTA DRI
+ * report format (e.g., 131 Ponce De Leon DRI #1476).
+ *
+ * Section structure (matches the GA convention):
+ *   §1  Project Description
+ *   §2  Traffic Analysis Methodology and Assumptions
+ *   §3  Study Network
+ *   §4  Trip Generation
+ *   §5  Trip Distribution and Assignment
+ *   §6  Traffic Analysis (existing + build; multi-scenario
+ *       Existing/No-Build/Build pending engine refactor)
+ *   §7  Identification of Programmed Projects
+ *   §8  Ingress/Egress Analysis
+ *   §9  Internal Circulation Analysis
+ *   §10 Compliance with Comprehensive Plan Analysis
+ *
+ * DRI-specific sections (§11 Non-Expedited Criteria, §12 Area of
+ * Influence, §13 ARC Air Quality Benchmark) are not produced by this
+ * renderer — those require GRTA-specific data integration (AOI GIS,
+ * ARC scoring rubric, Census ACS demographics) tracked separately as
+ * the "DRI Module" roadmap item. When the project clearly exceeds
+ * DRI thresholds, this renderer notes that the DRI sections need
+ * separate preparation.
+ */
+function renderTisGeorgia(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const intersections: any[] = Array.isArray(r.affectedIntersections) ? r.affectedIntersections : [];
+  const periods: any[] = Array.isArray(r.periodReports) ? r.periodReports : [];
+
+  // --- Executive Summary --------------------------------------------------
+  gaSection(doc, "EXECUTIVE SUMMARY");
+  doc.font("body").fontSize(10).fillColor("black");
+  const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
+  const losEf = Number(r.intersectionsAtLosEf ?? 0);
+  const summary = `This report presents the analysis of anticipated traffic impacts associated with the proposed ${project.projectName || "development"} located within ${region.displayName}, Georgia. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius using methodology consistent with the Highway Capacity Manual 6th Edition and Institute of Transportation Engineers' Trip Generation Manual 11th Edition. Trip generation is calculated for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
+  doc.text(summary, { paragraphGap: 6 });
+
+  doc.font("body").fontSize(10).fillColor("black").text("Findings:", { paragraphGap: 2 });
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+  if (losDrops === 0 && losEf === 0) {
+    doc.text("• No intersections within the study network are projected to drop one or more LOS during the build conditions.", { paragraphGap: 2 });
+    doc.text("• No improvements are necessary to maintain the Level of Service standard (LOS D) within the study network.", { paragraphGap: 4 });
+  } else {
+    doc.text(`• ${losDrops} intersection${losDrops === 1 ? "" : "s"} project to drop one or more LOS under build conditions.`, { paragraphGap: 2 });
+    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate at LOS E or F under build conditions and may require mitigation.`, { paragraphGap: 4 });
+  }
+  doc.fillColor("black");
+  doc.moveDown(0.5);
+
+  // Headline metric strip retains the engine's at-a-glance numbers.
+  metricStrip(doc, [
+    { label: "Intersections", value: String(r.intersectionsStudied ?? intersections.length ?? 0) },
+    { label: "LOS drops", value: String(losDrops) },
+    { label: "At LOS E/F", value: String(losEf) },
+    { label: "Worst Δ delay", value: `${(r.worstDelayDeltaSec ?? 0).toFixed(1)}s` },
+  ]);
+  doc.moveDown(0.8);
+
+  // --- §1 Project Description --------------------------------------------
+  gaSection(doc, "1.0 PROJECT DESCRIPTION");
+  gaSubsection(doc, "1.1 Introduction");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `This report presents the analysis of the anticipated traffic impacts associated with the proposed ${project.projectName || "development"}, located within ${region.displayName}, Georgia. Analysis follows methodology consistent with Georgia Department of Transportation (GDOT), Atlanta Regional Commission (ARC), and Georgia Regional Transportation Authority (GRTA) guidance.`,
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "1.2 Site Plan Review");
+  rows(doc, [
+    ["Project name", project.projectName || "—"],
+    ["Land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
+    ["Opening year", String(req.openingYear ?? "—")],
+    ["Region", region.displayName],
+  ]);
+  doc.moveDown(0.5);
+
+  gaSubsection(doc, "1.3 Site Access");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Site access analysis for proposed driveways is not included in this screening-level analysis. Driveway-level ingress/egress evaluation per GRTA Site Plan Guidelines should be prepared separately based on the final site plan.",
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "1.4 Bicycle and Pedestrian Facilities");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Existing bicycle and pedestrian facility inventory within the study area should be confirmed against current GDOT and local agency mapping. ARC-programmed bicycle and pedestrian improvements per the Regional Transportation Plan (RTP) should be reviewed during the methodology meeting.",
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "1.5 Transit Facilities");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Transit service area within the study network should be confirmed against current MARTA, GRTA Xpress, and local transit operator route maps. Proximity to transit influences trip-mode reductions under ARC's Air Quality Benchmark.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.moveDown(0.5);
+
+  // --- §2 Methodology and Assumptions ------------------------------------
+  gaSection(doc, "2.0 TRAFFIC ANALYSIS METHODOLOGY AND ASSUMPTIONS");
+  gaSubsection(doc, "2.1 Growth Rate");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Background traffic growth is applied at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. This rate is consistent with GDOT historical traffic count growth observed along adjacent roadways within the study area. For DRI submittals, the growth rate is typically agreed upon during the pre-application methodology meeting with GRTA, ARC, GDOT, and the local jurisdiction.`,
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "2.2 Traffic Data Collection");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Intersection capacity analysis uses calibration data from the GDOT 511 NaviGAtor system, including live incident, camera, and signal data feeds. Per-intersection delay calibration is updated hourly from the 7-day rolling incident archive. For formal submittal, supplementary peak-hour turning movement counts conducted within the most recent 12 months are recommended.`,
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "2.3 Detailed Intersection Analysis");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Level of Service (LOS) is calculated per the Highway Capacity Manual 6th Edition, Chapter 19 (Signalized Intersections), Equation 19-13 (control delay) and Equation 19-50 (95th-percentile queue). LOS is reported for each affected intersection per HCM 6th Ed. Exhibit 19-8 thresholds: A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F >80s of average control delay per vehicle.",
+    { paragraphGap: 6 },
+  );
+
+  // --- §3 Study Network --------------------------------------------------
+  gaSection(doc, "3.0 STUDY NETWORK");
+
+  gaSubsection(doc, "3.1 Gross Trip Generation");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Gross trip generation is calculated per the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Average rates are used where ITE-published equations are not available.`,
+    { paragraphGap: 6 },
+  );
+  table(doc, {
+    headers: ["Period", "Entering trips", "Exiting trips"],
+    widths: [180, 100, 100],
+    align: ["left", "right", "right"],
+    rows: [
+      ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
+      ["AM peak hour", fmtNum(tg.amPeakTrips), "—"],
+      ["PM peak hour", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
+    ],
+  });
+  doc.moveDown(0.5);
+
+  gaSubsection(doc, "3.2 Trip Distribution");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Directional distribution and assignment of new project trips is based on the existing roadway network geometry, proximity to project access points, and engineering judgment. For formal DRI submittal, distribution percentages should be agreed upon during the methodology meeting with GRTA, ARC, GDOT, and the local jurisdiction.",
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "3.3 Level of Service Standards");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per GDOT and GRTA convention, the Level of Service standard for all intersections and roadway segments within the study network is LOS D. Where an intersection or segment currently operates at LOS E or F during the existing peak period, the LOS standard for that period becomes LOS E, consistent with GRTA's Letter of Understanding.",
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "3.4 Study Network Determination");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `The study network covers all signalized intersections within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile radius of the project site. For DRI-level submittal, GRTA's 7-percent rule (which extends the network to any intersection or segment where project-generated trips exceed 7 percent of the service volume) should be applied; this screening-level analysis applies the radius-based criterion as a starting point.`,
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "3.5 Existing Facilities");
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Affected intersection", "Distance (mi)", "Existing LOS", "Existing delay (s)"],
+      widths: [240, 70, 70, 90],
+      align: ["left", "right", "center", "right"],
+      rows: intersections.map((it) => [
+        it.name ?? it.signalId ?? "—",
+        fmtNum(it.distanceMi, 2),
+        String(it.existingLos ?? "—"),
+        fmtNum(it.existingDelaySec, 1),
+      ]),
+    });
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text("No signalized intersections within the study radius. Off-site capacity impact is not anticipated for this development.", { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.5);
+
+  // --- §4 Trip Generation (detailed) -------------------------------------
+  gaSection(doc, "4.0 TRIP GENERATION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Net new trips applied to the study network are calculated by subtracting pass-by capture and internal capture from the gross trip generation, per the ITE Trip Generation Handbook (current edition).",
+    { paragraphGap: 6 },
+  );
+  rows(doc, [
+    ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
+    ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}%`],
+    ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
+    ["Weather condition", String(r.weather ?? req.weather ?? "clear")],
+  ]);
+  doc.moveDown(0.5);
+
+  if (periods.length > 0) {
+    table(doc, {
+      headers: ["Period", "Raw", "Pass-by", "Int. cap.", "External", "In", "Out"],
+      widths: [100, 50, 60, 60, 70, 50, 50],
+      align: ["left", "right", "right", "right", "right", "right", "right"],
+      rows: periods.map((p) => {
+        const t = p.tripGeneration ?? {};
+        return [
+          String(p.periodLabel ?? p.period ?? ""),
+          fmtNum(t.rawTrips),
+          fmtNum(t.passByCredit),
+          fmtNum(t.internalCaptureCredit),
+          fmtNum(t.externalTrips),
+          fmtNum(t.inTrips),
+          fmtNum(t.outTrips),
+        ];
+      }),
+    });
+    doc.moveDown(0.5);
+  }
+
+  // --- §5 Trip Distribution and Assignment -------------------------------
+  gaSection(doc, "5.0 TRIP DISTRIBUTION AND ASSIGNMENT");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Net new trips are assigned to the study network proportionally to signal proximity and approach geometry. The per-intersection trip allocation for each affected signal is reflected in the Section 6.0 Traffic Analysis tables below.",
+    { paragraphGap: 6 },
+  );
+
+  // --- §6 Traffic Analysis -----------------------------------------------
+  gaSection(doc, "6.0 TRAFFIC ANALYSIS");
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "Note: This screening analysis presents Existing and Build conditions in a single table. A formal GRTA submittal also requires a No-Build (background-growth-only) scenario; that scenario is not currently produced by the screening engine and should be prepared separately for any DRI submittal.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Intersection", "Existing LOS", "Build LOS", "Δ delay (s)", "Q95 (ft)"],
+      widths: [220, 70, 70, 70, 70],
+      align: ["left", "center", "center", "right", "right"],
+      rows: intersections.map((it) => {
+        const losChanged = it.losChanged === true;
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(it.existingLos ?? "—"),
+          (losChanged ? "▲ " : "") + String(it.futureLos ?? "—"),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+          fmtNum(it.queue95thFt),
+        ];
+      }),
+    });
+
+    // Mitigation list — GA-style, called out as "Recommended Improvements"
+    const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
+    if (needMitigation.length > 0) {
+      doc.moveDown(0.5);
+      doc.font("bold").fontSize(11).fillColor("black").text("Recommended Improvements (Build Conditions)");
+      doc.moveDown(0.3);
+      doc.font("body").fontSize(10).fillColor("black");
+      for (const it of needMitigation) {
+        const sev = String(it.mitigationSeverity ?? "").toUpperCase();
+        doc.font("bold").text(`${it.name ?? it.signalId} `, { continued: true });
+        doc.font("body").fillColor(TEXT_GRAY).text(`[${sev}]`, { continued: false });
+        doc.font("body").fillColor("black").text("  " + it.mitigation);
+        doc.moveDown(0.3);
+      }
+    } else {
+      doc.moveDown(0.3);
+      doc.font("body").fontSize(10).fillColor("black").text(
+        "No improvements are necessary to maintain the Level of Service standard (LOS D) within the study network under build conditions.",
+        { paragraphGap: 6 },
+      );
+    }
+  }
+  doc.moveDown(0.5);
+
+  // --- §7 Programmed Projects --------------------------------------------
+  gaSection(doc, "7.0 IDENTIFICATION OF PROGRAMMED PROJECTS");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Review of programmed transportation projects within the study area should consult: GDOT Transportation Improvement Program (TIP), Statewide Transportation Improvement Program (STIP), Atlanta Regional Commission Regional Transportation Plan (RTP), and GDOT's Construction Work Program. This screening analysis does not automatically integrate programmed-projects data; manual review is recommended for any submittal.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- §8 Ingress/Egress Analysis ----------------------------------------
+  gaSection(doc, "8.0 INGRESS/EGRESS ANALYSIS");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Per-driveway operational analysis is not included in this screening-level study. Proposed site access driveways should be analyzed individually under build conditions to determine ingress and egress operations, including full-movement vs. left-in/left-out configurations and signal warrant evaluation where appropriate.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- §9 Internal Circulation Analysis ----------------------------------
+  gaSection(doc, "9.0 INTERNAL CIRCULATION ANALYSIS");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Internal site circulation, parking access, and service-vehicle pathways are dependent on the final site plan and are not included in this screening-level analysis. Internal circulation review should follow the local jurisdiction's site plan review process.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- §10 Comprehensive Plan Compliance ---------------------------------
+  gaSection(doc, "10.0 COMPLIANCE WITH COMPREHENSIVE PLAN ANALYSIS");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Compliance with the local jurisdiction's Future Land Use Plan and Comprehensive Plan should be confirmed against the most recent adopted plan and any applicable Neighborhood Planning Unit (NPU) or Special Public Interest (SPI) overlay district designations.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- DRI advisory note -------------------------------------------------
+  // Detect probable DRI-scale projects (per GA DCA Chapter 110-12-3 — a
+  // moving target with metro-vs-rural thresholds; this is a rough flag,
+  // not a determination). When the project looks DRI-scale, surface the
+  // additional sections that would normally be required.
+  if (probablyDriScale(tg)) {
+    doc.moveDown(0.5);
+    doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text("Note: DRI Threshold Considerations");
+    doc.moveDown(0.3);
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Based on the proposed development size, this project may meet or exceed Development of Regional Impact (DRI) review thresholds under the Georgia Planning Act (O.C.G.A. § 50-8-7.1) and GRTA's review jurisdiction. If DRI review is triggered, additional sections required for submittal include: §11 Non-Expedited Criteria (transit, VMT, regional mobility, transit relationship, TMA designation, offsite trip reduction, jobs/housing balance, infrastructure relationship), §12 Area of Influence analysis, and §13 ARC Air Quality Benchmark. These sections require GIS-based demographic analysis, ARC scoring rubric application, and pre-application coordination with GRTA, ARC, GDOT, and the local jurisdiction — they are not automatically generated by this screening tool.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- Findings + Methodology (engine output preserved) ------------------
+  const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
+  if (findings.length > 0) {
+    doc.moveDown(0.5);
+    gaSection(doc, "FINDINGS");
+    doc.font("body").fontSize(10).fillColor("black");
+    for (const f of findings) {
+      doc.text("• " + f, { paragraphGap: 4 });
+    }
+    doc.moveDown(0.5);
+  }
+
+  const methodology: string[] = Array.isArray(r.methodology) ? r.methodology : [];
+  if (methodology.length > 0) {
+    gaSection(doc, "METHODOLOGY NOTES");
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY);
+    for (const m of methodology) {
+      doc.text("• " + m, { paragraphGap: 4 });
+    }
+    doc.fillColor("black");
+  }
+}
+
+/** Section heading in the GA-style numbered format (uppercase, bold). */
+function gaSection(doc: PDFKit.PDFDocument, title: string) {
+  doc.x = PAGE_MARGIN;
+  doc.font("bold").fontSize(13).fillColor("black").text(title, { characterSpacing: 0.5 });
+  doc.moveDown(0.3);
+  doc.x = PAGE_MARGIN;
+}
+
+/** Subsection heading (e.g. "1.1 Introduction"). */
+function gaSubsection(doc: PDFKit.PDFDocument, title: string) {
+  doc.x = PAGE_MARGIN;
+  doc.font("bold").fontSize(11).fillColor("black").text(title);
+  doc.moveDown(0.2);
+  doc.x = PAGE_MARGIN;
+}
+
+/**
+ * Rough DRI-scale detector. The actual GA DRI thresholds vary by use
+ * type and metro/rural designation (O.C.G.A. § 50-8-7.1 + GA DCA
+ * regulations Chapter 110-12-3) — this is a screening flag only.
+ * Triggers a DRI advisory note in the report when project size looks
+ * DRI-scale; does NOT determine DRI applicability.
+ */
+function probablyDriScale(tg: any): boolean {
+  const size = Number(tg?.size ?? 0);
+  const code = String(tg?.landUseCode ?? "");
+  if (!Number.isFinite(size) || size <= 0 || !code) return false;
+  // Quick screening thresholds — metro Atlanta (lower) values.
+  if (code.startsWith("21") || code.startsWith("22") || code.startsWith("23")) return size >= 200; // residential DU
+  if (code === "310" || code === "311" || code === "320" || code === "330") return size >= 200; // hotel rooms
+  if (code.startsWith("71") || code.startsWith("75") || code.startsWith("77")) return size >= 100; // office ksf
+  if (code.startsWith("82") || code.startsWith("85") || code.startsWith("86") || code.startsWith("87") || code.startsWith("88")) return size >= 50; // retail ksf
+  if (code.startsWith("11") || code.startsWith("13") || code.startsWith("14") || code.startsWith("15")) return size >= 200; // industrial ksf
+  return false;
 }
 
 function renderParking(doc: PDFKit.PDFDocument, r: any) {
