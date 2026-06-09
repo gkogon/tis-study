@@ -343,6 +343,10 @@ function dispatchTisRender(
     renderTisLondon(doc, result, project, region);
     return;
   }
+  if (region?.stateCode === "CA" && (region?.country ?? "US") === "US") {
+    renderTisCalifornia(doc, result, project, region);
+    return;
+  }
   renderTis(doc, result);
 }
 
@@ -856,6 +860,557 @@ function renderTisGeorgia(
     }
     doc.fillColor("black");
   }
+}
+
+// ===========================================================================
+// California (SB 743 / VMT-aware) renderer
+// ===========================================================================
+//
+// California Senate Bill 743 (effective statewide 2020-07-01) replaced
+// LOS-based CEQA transportation impact analysis with VMT-based analysis
+// (PRC § 21099(b)(2); CEQA Guidelines 14 CCR § 15064.3). The existing
+// LOS engine therefore CANNOT produce a CEQA-compliant transportation
+// determination on its own — but LOS is still the operational metric
+// for Caltrans Encroachment Permits, local non-CEQA operational review,
+// HDM design, EPM permitting, and CA MUTCD Part 4C signal warrants.
+//
+// Per REGIONAL-SPECS/california-vmt-spec.md (Option C, phased), the
+// Phase 1 renderer:
+//   (1) leads with explicit SB 743 framing so the reviewer knows what
+//       this report does and does not satisfy,
+//   (2) reframes the LOS engine output as a "Non-CEQA Operational
+//       Analysis" section with the PRC § 21099(b)(2) footnote,
+//   (3) ships the CEQA-VMT determination as a structured Tier-1
+//       placeholder that lists exactly the inputs needed (MPO baseline,
+//       project VMT estimate, jurisdiction threshold) — NEVER
+//       fabricates baseline VMT numbers, and
+//   (4) adapts terminology and citations to the host jurisdiction
+//       (LA TAG / SF TIA Guidelines / San Diego TSM / etc.).
+//
+// Phase 2 (~3–4 engineering-weeks) wires the Tier-1 VMT screening
+// engine — OPR's six screening criteria + per-jurisdiction baseline
+// lookups. Not implemented here. See spec §5 + §10.
+
+type CaliforniaJurisdiction = {
+  name: string;
+  guidelinesDoc: string;
+  vmtThresholdPct: number;
+  baselineGeography: string;
+  screeningTripCount: number;
+  mpoName: string;
+  vmtCalculator?: string;
+  operationalContext: string;
+  extraNote?: string;
+};
+
+/**
+ * Resolve the host jurisdiction for a California site. Uses rough
+ * bounding boxes (good enough for prose adaptation; not authoritative).
+ * Falls back to a "Caltrans / OPR default" jurisdiction for sites
+ * outside the named major cities.
+ */
+function californiaJurisdiction(lat: number, lon: number): CaliforniaJurisdiction {
+  const inBox = (latMin: number, latMax: number, lonMin: number, lonMax: number) =>
+    lat >= latMin && lat <= latMax && lon >= lonMin && lon <= lonMax;
+
+  if (inBox(37.708, 37.835, -122.515, -122.355)) {
+    return {
+      name: "City and County of San Francisco",
+      guidelinesDoc: "SF Planning, Transportation Impact Analysis Guidelines for Environmental Review (Oct 2019)",
+      vmtThresholdPct: 15,
+      baselineGeography: "MTC Bay Area regional VMT/capita and VMT/employee",
+      screeningTripCount: 100,
+      mpoName: "Metropolitan Transportation Commission (MTC)",
+      vmtCalculator: "SFCTA's SF-CHAMP model (TM1-derived TAZ baselines)",
+      operationalContext: "site-access design review; non-CEQA local operational review (SF Public Works)",
+      extraNote: "San Francisco is the only California jurisdiction that has removed LOS from CEQA review entirely. The non-CEQA operational analysis below is provided for site-access design and SF Public Works coordination; it is not part of the SF Planning CEQA record.",
+    };
+  }
+  if (inBox(33.700, 34.337, -118.668, -118.155)) {
+    return {
+      name: "City of Los Angeles",
+      guidelinesDoc: "LADOT Transportation Assessment Guidelines (TAG) (Jul 2020)",
+      vmtThresholdPct: 15,
+      baselineGeography: "LA Area Planning Commission (APC) sub-area average VMT/capita and VMT/employee",
+      screeningTripCount: 250,
+      mpoName: "Southern California Association of Governments (SCAG)",
+      vmtCalculator: "LADOT VMT Calculator v1.3 (May 2020); SCAG HELPR 3.0 for TAZ baselines",
+      operationalContext: "Caltrans Encroachment Permit review on SHS frontage; LADOT site-access design review",
+    };
+  }
+  if (inBox(33.730, 33.890, -118.250, -118.080)) {
+    return {
+      name: "City of Long Beach",
+      guidelinesDoc: "Long Beach CM Memo, CEQA Transportation Methodology / VMT Standards for Development Review (Jun 30, 2020)",
+      vmtThresholdPct: 15,
+      baselineGeography: "LA County (SCAG) regional VMT/capita and VMT/employee",
+      screeningTripCount: 500,
+      mpoName: "Southern California Association of Governments (SCAG)",
+      operationalContext: "Caltrans Encroachment Permit review on SHS frontage; Long Beach Public Works site-access review",
+    };
+  }
+  if (inBox(33.770, 33.890, -118.020, -117.690)) {
+    return {
+      name: "City of Anaheim",
+      guidelinesDoc: "Anaheim Traffic Impact Analysis Guidelines for CEQA (Feb 2025, final draft)",
+      vmtThresholdPct: 15,
+      baselineGeography: "Orange County VMT per service population (population + employment denominator)",
+      screeningTripCount: 110,
+      mpoName: "Southern California Association of Governments (SCAG)",
+      operationalContext: "Caltrans D12 Encroachment Permit review; Anaheim Public Works site-access review",
+      extraNote: "Anaheim uses VMT per service population (population + employment), not VMT per capita — a different denominator than the OPR default. Verify the OC service-population baseline against the Feb 2025 final-draft TIA Guidelines before adopting for submittal.",
+    };
+  }
+  if (inBox(33.700, 34.823, -118.951, -117.646)) {
+    return {
+      name: "Los Angeles County (Department of Public Works)",
+      guidelinesDoc: "LA County DPW Transportation Impact Analysis Guidelines (Jul 23, 2020, v1.1)",
+      vmtThresholdPct: 16.8,
+      baselineGeography: "LA County sub-area VMT/capita (~22.3 North / ~12.7 South) and VMT/employee (~19.0 / ~18.4)",
+      screeningTripCount: 110,
+      mpoName: "Southern California Association of Governments (SCAG)",
+      operationalContext: "Caltrans Encroachment Permit review on SHS frontage; LA County DPW site-access review",
+      extraNote: "LA County uses a 16.8% reduction threshold (CARB 2017 Scoping Plan compute), NOT the 15% OPR default. Baseline values diverge between North and South sub-areas.",
+    };
+  }
+  if (inBox(32.534, 33.114, -117.282, -116.906)) {
+    return {
+      name: "City of San Diego",
+      guidelinesDoc: "San Diego Transportation Study Manual (TSM), adopted Sept 29, 2020; current revision Sept 19, 2022",
+      vmtThresholdPct: 15,
+      baselineGeography: "SANDAG regional VMT/resident and VMT/employee (project ≤85% of regional baseline)",
+      screeningTripCount: 110,
+      mpoName: "San Diego Association of Governments (SANDAG)",
+      vmtCalculator: "SANDAG SB 743 VMT Maps (ArcGIS Experience Builder); San Diego Mobility Evaluation Tool (MET)",
+      operationalContext: "Caltrans D11 Encroachment Permit review; San Diego TSM Ch. 4 operational analysis",
+      extraNote: "San Diego applies a Mobility Zone-based screen (1/2/3) rather than a single trip count; verify the project's Mobility Zone via the MET before adopting the 110-trip floor.",
+    };
+  }
+  if (inBox(38.430, 38.685, -121.560, -121.362)) {
+    return {
+      name: "City of Sacramento",
+      guidelinesDoc: "Sacramento 2040 General Plan, VMT Thresholds of Significance (Council Ord. 2024-0017, Jun 25, 2024)",
+      vmtThresholdPct: 15,
+      baselineGeography: "Citywide existing VMT/capita and VMT/employee",
+      screeningTripCount: 250,
+      mpoName: "Sacramento Area Council of Governments (SACOG)",
+      operationalContext: "Caltrans D3 Encroachment Permit review; Sacramento Public Works site-access review",
+    };
+  }
+  if (inBox(37.180, 37.470, -122.045, -121.745)) {
+    return {
+      name: "City of San Jose",
+      guidelinesDoc: "San Jose Transportation Analysis Handbook (TAH), April 2023; CEQA thresholds via Council Policy 5-1",
+      vmtThresholdPct: 15,
+      baselineGeography: "Citywide existing VMT/capita and VMT/employee",
+      screeningTripCount: 110,
+      mpoName: "Metropolitan Transportation Commission (MTC)",
+      operationalContext: "Caltrans D4 Encroachment Permit review; San Jose Local Transportation Analysis (LTA) non-CEQA track",
+      extraNote: "San Jose codifies a non-CEQA Local Transportation Analysis (LTA) track that runs IN PARALLEL with the CEQA-VMT analysis. The operational LOS section below corresponds to the LTA scope when ≥10 peak-hour trips per lane are added to a signalized intersection within ½-mile already at LOS D or worse.",
+    };
+  }
+  if (inBox(37.700, 37.880, -122.350, -122.114)) {
+    return {
+      name: "City of Oakland",
+      guidelinesDoc: "Oakland Transportation Impact Review Guidelines for Land Use Development Projects (Apr 2017)",
+      vmtThresholdPct: 15,
+      baselineGeography: "MTC Bay Area regional VMT/capita and VMT/employee",
+      screeningTripCount: 100,
+      mpoName: "Metropolitan Transportation Commission (MTC)",
+      operationalContext: "Caltrans D4 Encroachment Permit review; Oakland Public Works site-access review",
+    };
+  }
+  if (inBox(36.670, 36.910, -119.910, -119.620)) {
+    return {
+      name: "City of Fresno",
+      guidelinesDoc: "Fresno CEQA Guidelines for VMT Thresholds (Council adoption Jun 25, 2020) + 2025 VMT Reduction Program (Aug 2025)",
+      vmtThresholdPct: 13,
+      baselineGeography: "Fresno County VMT/capita and VMT/employee (Central Valley GHG math)",
+      screeningTripCount: 500,
+      mpoName: "Fresno Council of Governments (Fresno COG)",
+      vmtCalculator: "Fresno COG VMT Screening Tool (LSA-hosted ArcGIS app)",
+      operationalContext: "Caltrans D6 Encroachment Permit review; Fresno Public Works site-access review",
+      extraNote: "Fresno uses a 13% reduction threshold (Central Valley GHG-aligned), NOT the 15% OPR default applied in coastal metros.",
+    };
+  }
+  if (inBox(35.270, 35.480, -119.190, -118.910)) {
+    return {
+      name: "City of Bakersfield",
+      guidelinesDoc: "No separately adopted Bakersfield VMT guidelines; defers to OPR Technical Advisory on Evaluating Transportation Impacts in CEQA (Dec 2018)",
+      vmtThresholdPct: 15,
+      baselineGeography: "OPR default — regional or city VMT/capita and VMT/employee (Kern COG draft guidance pending)",
+      screeningTripCount: 110,
+      mpoName: "Kern Council of Governments (Kern COG)",
+      operationalContext: "Caltrans D6 Encroachment Permit review; Bakersfield Public Works site-access review",
+      extraNote: "Bakersfield has not formally adopted city-level VMT guidelines; defaults to the OPR Dec 2018 Technical Advisory. Kern COG has been workshopping regional VMT guidance; verify Kern COG adoption status before submittal.",
+    };
+  }
+  return {
+    name: "Caltrans + OPR Dec 2018 defaults",
+    guidelinesDoc: "OPR (LCI) Technical Advisory on Evaluating Transportation Impacts in CEQA (Dec 2018); local lead-agency adoption status to be confirmed",
+    vmtThresholdPct: 15,
+    baselineGeography: "Regional MPO VMT/capita and VMT/employee (OPR default); county-level if region is much larger than commute-shed (OPR p. 16)",
+    screeningTripCount: 110,
+    mpoName: "Regional MPO covering project site",
+    operationalContext: "Caltrans District Encroachment Permit review (SHS frontage); local agency site-access design review",
+    extraNote: "No host-jurisdiction-specific TIA guidelines were identified for this site. Confirm the local lead agency's adopted VMT guidelines and threshold before submittal — most California jurisdictions adopted between 2019 and 2024 and many post-date OPR defaults.",
+  };
+}
+
+/**
+ * California-specific TIS renderer. SB 743 paradigm-aware: leads with
+ * explicit framing that distinguishes the engine's LOS output (a
+ * non-CEQA operational analysis useful for Caltrans Encroachment
+ * Permit review + local site-access design) from the CEQA-VMT
+ * determination required under PRC § 21099(b)(2) / CEQA Guidelines
+ * § 15064.3. The CEQA-VMT section ships as a structured placeholder
+ * pending the Tier-1 VMT screening engine (Phase 2 roadmap per
+ * REGIONAL-SPECS/california-vmt-spec.md). Per-jurisdiction adaptation
+ * routes through {@link californiaJurisdiction} for thresholds,
+ * baseline geography, guidelines docs, screening trip counts, and
+ * MPO citations.
+ */
+function renderTisCalifornia(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const intersections: any[] = Array.isArray(r.affectedIntersections) ? r.affectedIntersections : [];
+  const periods: any[] = Array.isArray(r.periodReports) ? r.periodReports : [];
+
+  const lat = Number(project.siteLat ?? req.latitude ?? NaN);
+  const lon = Number(project.siteLon ?? req.longitude ?? NaN);
+  const jur = Number.isFinite(lat) && Number.isFinite(lon)
+    ? californiaJurisdiction(lat, lon)
+    : californiaJurisdiction(34.0522, -118.2437);
+
+  // --- Executive Summary --------------------------------------------------
+  caSection(doc, "EXECUTIVE SUMMARY");
+  doc.font("body").fontSize(10).fillColor("black");
+  doc.text(
+    `This report addresses the transportation impacts associated with the proposed ${project.projectName || "development"} located within ${region.displayName}, California. The host lead agency is ${jur.name}; the regional MPO is ${jur.mpoName}.`,
+    { paragraphGap: 6 },
+  );
+
+  doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
+    "SB 743 FRAMING — SCOPE OF THIS REPORT",
+    { paragraphGap: 2 },
+  );
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `California Senate Bill 743 (Stats. 2013, Ch. 386), codified at Public Resources Code § 21099(b)(2) and implemented through CEQA Guidelines 14 CCR § 15064.3 (effective statewide 2020-07-01), replaced LOS-based CEQA transportation impact analysis with Vehicle Miles Traveled (VMT) analysis. Per § 21099(b)(2), "automobile delay, as described solely by level of service or similar measures of vehicular capacity or traffic congestion, shall not be considered a significant impact on the environment."`,
+    { paragraphGap: 4 },
+  );
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `This report presents §4 non-CEQA operational LOS analysis suitable for ${jur.operationalContext}, AND §3 a structured CEQA-VMT determination scaffold listing the inputs required for a CEQA-compliant determination under § 15064.3. The §4 LOS analysis does NOT, by itself, satisfy CEQA transportation-impact requirements; a complete CEQA submittal requires the VMT determination in §3 to be filled with project-specific MPO baseline and trip-VMT inputs per the ${jur.guidelinesDoc} methodology (OPR Technical Advisory, Dec 2018).`,
+    { paragraphGap: 6 },
+  );
+
+  doc.font("body").fontSize(10).fillColor("black").text("Findings (operational scope):", { paragraphGap: 2 });
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+  const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
+  const losEf = Number(r.intersectionsAtLosEf ?? 0);
+  if (losDrops === 0 && losEf === 0) {
+    doc.text("• No intersections within the study network are projected to drop one or more LOS under build conditions.", { paragraphGap: 2 });
+    doc.text("• No operational improvements appear necessary to maintain the LOS D standard within the study network (non-CEQA scope).", { paragraphGap: 4 });
+  } else {
+    doc.text(`• ${losDrops} intersection${losDrops === 1 ? "" : "s"} project to drop one or more LOS under build conditions (non-CEQA scope).`, { paragraphGap: 2 });
+    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate at LOS E or F under build conditions and may warrant operational mitigation (non-CEQA scope).`, { paragraphGap: 4 });
+  }
+  doc.fillColor("black");
+  doc.moveDown(0.3);
+
+  metricStrip(doc, [
+    { label: "Intersections", value: String(r.intersectionsStudied ?? intersections.length ?? 0) },
+    { label: "LOS drops", value: String(losDrops) },
+    { label: "At LOS E/F", value: String(losEf) },
+    { label: "Worst Δ delay", value: `${(r.worstDelayDeltaSec ?? 0).toFixed(1)}s` },
+  ]);
+  doc.moveDown(0.8);
+
+  // --- §1 Project Description --------------------------------------------
+  caSection(doc, "1.0 PROJECT DESCRIPTION");
+  caSubsection(doc, "1.1 Project Location");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `The proposed ${project.projectName || "development"} is located within ${region.displayName}, California. The host CEQA lead agency for the transportation determination is ${jur.name}.`,
+    { paragraphGap: 6 },
+  );
+
+  caSubsection(doc, "1.2 Project Summary");
+  rows(doc, [
+    ["Project name", project.projectName || "—"],
+    ["Land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
+    ["Opening year", String(req.openingYear ?? "—")],
+    ["Host lead agency", jur.name],
+    ["Regional MPO", jur.mpoName],
+  ]);
+  doc.moveDown(0.5);
+
+  caSubsection(doc, "1.3 Site Access and Multimodal Context");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Driveway-level ingress/egress, internal circulation, bicycle/pedestrian network connectivity, and transit access detail are dependent on the final site plan and are not produced by this screening tool. Site-plan-stage analysis is recommended for any formal submittal.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.moveDown(0.3);
+
+  // --- §2 Regulatory Framework -------------------------------------------
+  caSection(doc, "2.0 REGULATORY FRAMEWORK");
+  caSubsection(doc, "2.1 CEQA / SB 743 / OPR Technical Advisory");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "CEQA transportation-impact significance for this project is governed by Pub. Resources Code § 21099 (SB 743, Stats. 2013, Ch. 386), CEQA Guidelines 14 CCR § 15064.3 (adopted Dec 28, 2018; effective statewide 2020-07-01), and the OPR (now Governor's Office of Land Use and Climate Innovation, LCI) Technical Advisory on Evaluating Transportation Impacts in CEQA (Dec 2018). Per § 15064.3(a), VMT is the default transportation metric for CEQA impact significance determinations.",
+    { paragraphGap: 6 },
+  );
+
+  caSubsection(doc, `2.2 Local Lead Agency Guidelines — ${jur.name}`);
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `The applicable local lead-agency methodology and significance thresholds derive from: ${jur.guidelinesDoc}. Significance threshold: ${jur.vmtThresholdPct}% below the ${jur.baselineGeography}. Screening floor: <${jur.screeningTripCount} daily project trips presumed less-than-significant. Project-level VMT estimation source: ${jur.vmtCalculator ?? `${jur.mpoName} travel demand model or jurisdiction-published calculator (host agency to confirm)`}.`,
+    { paragraphGap: 6 },
+  );
+  if (jur.extraNote) {
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(`Note. ${jur.extraNote}`, { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
+
+  caSubsection(doc, "2.3 Caltrans Authority on State Highway System Frontage");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Where the project fronts on a Caltrans-owned State Highway System (SHS) facility, the Caltrans Transportation Analysis under CEQA (TAC, 2nd Edition, Sept 2025) governs CEQA significance determination for SHS impacts and invokes the Caltrans Transportation Analysis Framework (TAF, 2nd Edition, Sept 2025) for induced-travel analysis on capacity-increasing SHS projects. Non-CEQA encroachment permitting in state right-of-way is governed by the Caltrans Encroachment Permits Manual (EPM); HDM-compliant operational analysis (LOS, queueing, signal warrants per CA MUTCD 2026 Part 4C) is expected for any new access onto an SHS facility.",
+    { paragraphGap: 6 },
+  );
+
+  // --- §3 CEQA-VMT Determination (Tier-1 placeholder) --------------------
+  caSection(doc, "3.0 CEQA-VMT IMPACT DETERMINATION");
+  doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
+    "PHASE-1 SCAFFOLD — VMT INPUTS REQUIRED",
+    { paragraphGap: 2 },
+  );
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `This section identifies the inputs required to complete a CEQA-compliant VMT impact determination under CEQA Guidelines § 15064.3 and the ${jur.guidelinesDoc} methodology. Project-level VMT numbers are NOT fabricated; they must be sourced from the regional MPO travel demand model or the host jurisdiction's published calculator. The Tier-1 VMT screening engine that automates these lookups is on the product roadmap (Phase 2; see REGIONAL-SPECS/california-vmt-spec.md §5).`,
+    { paragraphGap: 6 },
+  );
+
+  caSubsection(doc, "3.1 Required Baseline VMT Inputs");
+  rows(doc, [
+    ["Baseline geography", jur.baselineGeography],
+    ["Residential metric (OPR Tech Advisory p. 10)", "Home-based VMT per capita (tour-based ideal; trip-based acceptable)"],
+    ["Office / employment metric (OPR p. 16)", "Home-based work VMT per employee"],
+    ["Retail metric (OPR p. 16)", "Net change in total VMT (absolute, not per-capita)"],
+    ["Required baseline source", `${jur.mpoName} latest published RTP/SCS travel demand model run`],
+    ["Optional jurisdiction calculator", jur.vmtCalculator ?? "None published — MPO model run required"],
+  ]);
+  doc.moveDown(0.3);
+
+  caSubsection(doc, "3.2 Required Project VMT Inputs");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per OPR Technical Advisory p. 4–5, the project VMT estimate and the threshold must use the same method (apples-to-apples constraint — tour-based with tour-based, trip-based with trip-based).",
+    { paragraphGap: 4 },
+  );
+  rows(doc, [
+    ["Required project VMT estimate", `${jur.mpoName} with-project travel demand model run, or the jurisdiction's published calculator`],
+    ["Required method consistency", "Project method MUST match baseline method (tour-based OR trip-based; not mixed)"],
+    ["Required cumulative scenario", "Project + reasonably-foreseeable cumulative projects vs. RTP/SCS horizon year baseline"],
+    ["Required RTP/SCS consistency check", `Project alignment with ${jur.mpoName} Sustainable Communities Strategy`],
+  ]);
+  doc.moveDown(0.3);
+
+  caSubsection(doc, "3.3 Screening Criteria to Evaluate (OPR § E.1, p. 12–14)");
+  doc.font("body").fontSize(10).fillColor("black");
+  const screeningCriteria = [
+    `Small project: project generates <${jur.screeningTripCount} daily trips (${jur.name} threshold)`,
+    "Transit Priority Area (TPA): within ½-mile of a major transit stop (PRC § 21064.3) or high-quality transit corridor (PRC § 21155, fixed-route bus ≤15-min peak headway). TPA presumption does NOT apply if FAR <0.75, parking exceeds requirement, project is inconsistent with the SCS, or affordable units are replaced with fewer market-rate units (Tech Advisory p. 14)",
+    "Low-VMT area: project sited in a TAZ already performing ≥15% below baseline (consult jurisdiction's published low-VMT map)",
+    "Locally-serving retail: retail <50,000 sf (LA County draws the line at 50ksf; OPR concurs)",
+    "100% affordable residential infill (OPR p. 14–15)",
+    "Redevelopment with net VMT decrease (existing use → proposed use comparison)",
+  ];
+  for (const c of screeningCriteria) {
+    doc.text("• " + c, { paragraphGap: 2 });
+  }
+  doc.moveDown(0.3);
+
+  caSubsection(doc, "3.4 Significance Threshold");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Per ${jur.guidelinesDoc}: project VMT (per capita for residential, per employee for office, total for retail) is significant if it exceeds ${(100 - jur.vmtThresholdPct).toFixed(1)}% of the ${jur.baselineGeography} (i.e., reduction of less than ${jur.vmtThresholdPct}% from baseline). The baseline value must be drawn from the ${jur.mpoName} latest published RTP/SCS travel demand model; the value is not hardcoded in this report because MPO model updates and RTP/SCS cycles shift the published number.`,
+    { paragraphGap: 6 },
+  );
+
+  caSubsection(doc, "3.5 VMT-Reduction Mitigation Menu (CAPCOA 2024)");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "If the project exceeds the significance threshold above, the CEQA-VMT analysis must propose mitigation measures with quantified reduction credits drawn from the CAPCOA Handbook for Analyzing GHG Emission Reductions, Assessing Climate Vulnerabilities, and Advancing Health and Equity (2024 Edition, adopted 2024-11-21; supersedes Dec 2021). Measure categories: land use density, neighborhood design, transit proximity / frequency, parking management, trip-reduction / TDM, pricing / road management. Stacked measures apply a multiplicative cap to prevent double-counting. Note: intersection geometry improvements (turn lanes, signal timing) do NOT reduce VMT and are not creditable mitigation under § 15064.3.",
+    { paragraphGap: 6 },
+  );
+
+  // --- §4 Non-CEQA Operational Analysis (LOS engine output) --------------
+  caSection(doc, "4.0 NON-CEQA OPERATIONAL ANALYSIS");
+  doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
+    "SCOPE — NON-CEQA OPERATIONAL ANALYSIS ONLY",
+    { paragraphGap: 2 },
+  );
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    `Per Pub. Resources Code § 21099(b)(2) and CEQA Guidelines § 15064.3(a), level-of-service analysis does not constitute a CEQA transportation-impact determination. This section is provided for non-CEQA operational review including ${jur.operationalContext} — that is, Caltrans Encroachment Permit review under the Encroachment Permits Manual, signal warrant analysis under CA MUTCD 2026 Part 4C, queueing and site-access design under Highway Design Manual Chapters 100 and 400, and the local agency's adopted operational standards.`,
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  caSubsection(doc, "4.1 Methodology");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Level of Service (LOS) is calculated per the Highway Capacity Manual 6th Edition, Chapter 19 (Signalized Intersections), Equation 19-13 (control delay) and Equation 19-50 (95th-percentile queue). LOS thresholds (HCM 6th Ed. Exhibit 19-8): A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F >80s of average control delay per vehicle. Caltrans Highway Design Manual (HDM, 7th Edition) Topic 102 + Ch. 400 governs LOS-based design capacity for SHS facilities. CA MUTCD 2026 Part 4C governs signal-warrant analyses.",
+    { paragraphGap: 6 },
+  );
+
+  caSubsection(doc, "4.2 Trip Generation");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Gross trip generation is calculated per the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Background traffic growth is applied at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. Pass-by capture applied: ${r.passByPctApplied ?? 0}%; internal capture applied: ${r.internalCapturePctApplied ?? 0}%.`,
+    { paragraphGap: 6 },
+  );
+  table(doc, {
+    headers: ["Period", "Entering trips", "Exiting trips"],
+    widths: [180, 100, 100],
+    align: ["left", "right", "right"],
+    rows: [
+      ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
+      ["AM peak hour", fmtNum(tg.amPeakTrips), "—"],
+      ["PM peak hour", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
+    ],
+  });
+  doc.moveDown(0.5);
+
+  if (periods.length > 0) {
+    table(doc, {
+      headers: ["Period", "Raw", "Pass-by", "Int. cap.", "External", "In", "Out"],
+      widths: [100, 50, 60, 60, 70, 50, 50],
+      align: ["left", "right", "right", "right", "right", "right", "right"],
+      rows: periods.map((p) => {
+        const t = p.tripGeneration ?? {};
+        return [
+          String(p.periodLabel ?? p.period ?? ""),
+          fmtNum(t.rawTrips),
+          fmtNum(t.passByCredit),
+          fmtNum(t.internalCaptureCredit),
+          fmtNum(t.externalTrips),
+          fmtNum(t.inTrips),
+          fmtNum(t.outTrips),
+        ];
+      }),
+    });
+    doc.moveDown(0.5);
+  }
+
+  caSubsection(doc, "4.3 Affected Intersections — Existing / No-Build / Build");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Three scenarios are evaluated at each affected intersection: (1) Existing — current-year volumes from live data feeds, no growth applied; (2) No-Build (opening year ${req.openingYear ?? "—"}) — existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year(s) without project trips; (3) Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the proposed development's external trips at the assigned distribution.`,
+    { paragraphGap: 6 },
+  );
+
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Intersection", "Existing LOS", "No-Build LOS", "Build LOS", "Δ delay (s)", "Q95 (ft)"],
+      widths: [200, 65, 75, 65, 70, 60],
+      align: ["left", "center", "center", "center", "right", "right"],
+      rows: intersections.map((it) => {
+        const losChanged = it.losChanged === true;
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const noBuildLos = it.existingLos ?? "—";
+        const buildLos = it.futureLos ?? "—";
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(currentLos),
+          String(noBuildLos),
+          (losChanged ? "▲ " : "") + String(buildLos),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+          fmtNum(it.queue95thFt),
+        ];
+      }),
+    });
+
+    caSubsection(doc, "4.4 Recommended Operational Improvements (Non-CEQA)");
+    const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
+    if (needMitigation.length > 0) {
+      doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+        "Improvements below address non-CEQA operational impact only. Per § 15064.3, intersection geometry improvements do NOT reduce VMT and are NOT creditable as CEQA mitigation; CEQA mitigation must come from CAPCOA 2024 (see §3.5).",
+        { paragraphGap: 6 },
+      );
+      doc.fillColor("black");
+      doc.font("body").fontSize(10).fillColor("black");
+      for (const it of needMitigation) {
+        const sev = String(it.mitigationSeverity ?? "").toUpperCase();
+        doc.font("bold").text(`${it.name ?? it.signalId} `, { continued: true });
+        doc.font("body").fillColor(TEXT_GRAY).text(`[${sev}]`, { continued: false });
+        doc.font("body").fillColor("black").text("  " + it.mitigation);
+        doc.moveDown(0.3);
+      }
+    } else {
+      doc.font("body").fontSize(10).fillColor("black").text(
+        "No operational improvements are necessary to maintain the LOS D standard within the study network under build conditions (non-CEQA scope).",
+        { paragraphGap: 6 },
+      );
+    }
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "No signalized intersections within the study radius. Off-site operational capacity impact is not anticipated for this development.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.3);
+
+  // --- §5 Caltrans Coordination ------------------------------------------
+  caSection(doc, "5.0 CALTRANS COORDINATION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "If the project fronts on a Caltrans State Highway System (SHS) facility or proposes new access to an SHS route, the following Caltrans coordination items apply:",
+    { paragraphGap: 6 },
+  );
+  rows(doc, [
+    ["CEQA significance on SHS", "Caltrans Transportation Analysis under CEQA (TAC, 2nd Ed., Sept 2025)"],
+    ["Induced-travel analysis", "Caltrans Transportation Analysis Framework (TAF, 2nd Ed., Sept 2025) — capacity-increasing SHS projects only"],
+    ["Design references", "Caltrans Highway Design Manual (HDM, 7th Edition), Chapters 100 + 400"],
+    ["Encroachment permitting", "Caltrans Encroachment Permits Manual (EPM) — non-CEQA, LOS-based operational analysis required"],
+    ["Signal warrants", "California MUTCD 2026 (effective 2026-01-18), Part 4C"],
+    ["Signal timing operations", "Caltrans Traffic Signal Operations Manual (Jan 2020)"],
+  ]);
+  doc.moveDown(0.5);
+
+  // --- §6 Findings -------------------------------------------------------
+  const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
+  if (findings.length > 0) {
+    caSection(doc, "6.0 FINDINGS");
+    doc.font("body").fontSize(10).fillColor("black");
+    for (const f of findings) {
+      doc.text("• " + f, { paragraphGap: 4 });
+    }
+    doc.moveDown(0.3);
+  }
+
+  // --- §7 Methodology Notes ----------------------------------------------
+  const methodology: string[] = Array.isArray(r.methodology) ? r.methodology : [];
+  if (methodology.length > 0) {
+    caSection(doc, "7.0 METHODOLOGY NOTES (NON-CEQA OPERATIONAL)");
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY);
+    for (const m of methodology) {
+      doc.text("• " + m, { paragraphGap: 4 });
+    }
+    doc.fillColor("black");
+  }
+}
+
+/** California-style section heading (uppercase, bold). Mirrors gaSection. */
+function caSection(doc: PDFKit.PDFDocument, title: string) {
+  doc.x = PAGE_MARGIN;
+  doc.font("bold").fontSize(13).fillColor("black").text(title, { characterSpacing: 0.5 });
+  doc.moveDown(0.3);
+  doc.x = PAGE_MARGIN;
+}
+
+/** California-style subsection heading. Mirrors gaSubsection. */
+function caSubsection(doc: PDFKit.PDFDocument, title: string) {
+  doc.x = PAGE_MARGIN;
+  doc.font("bold").fontSize(11).fillColor("black").text(title);
+  doc.moveDown(0.2);
+  doc.x = PAGE_MARGIN;
 }
 
 /** Section heading in the GA-style numbered format (uppercase, bold). */
