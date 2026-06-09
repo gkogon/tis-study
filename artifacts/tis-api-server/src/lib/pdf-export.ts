@@ -336,6 +336,13 @@ function dispatchTisRender(
     renderTisTexas(doc, result, project, region);
     return;
   }
+  // One UK renderer covers both England (ENG) and Scotland (SCT) regions —
+  // they share the NPPF + TRICS + DMRB methodology stack even though the
+  // referral / planning regimes diverge (GLA referral is London-only).
+  if (region?.country === "UK") {
+    renderTisLondon(doc, result, project, region);
+    return;
+  }
   renderTis(doc, result);
 }
 
@@ -861,6 +868,400 @@ function gaSection(doc: PDFKit.PDFDocument, title: string) {
 
 /** Subsection heading (e.g. "1.1 Introduction"). */
 function gaSubsection(doc: PDFKit.PDFDocument, title: string) {
+  doc.x = PAGE_MARGIN;
+  doc.font("bold").fontSize(11).fillColor("black").text(title);
+  doc.moveDown(0.2);
+  doc.x = PAGE_MARGIN;
+}
+
+/**
+ * London Transport Assessment renderer. First non-US state-specific
+ * renderer. Frames the engine's HCM-based output in UK Transport
+ * Assessment terminology following the TfL Healthy Streets TA
+ * Recommended Contents & Chapters TOC (8 chapters).
+ *
+ * Honest framing: the engine computes HCM 6 Ch.19 capacity from ITE
+ * 11th Edition trip rates. A defensible UK TA requires TRICS multi-modal
+ * rates + DMRB CD 116/123 capacity + PTAL + ATZ + Healthy Streets Check
+ * — none of which the engine produces today. This renderer is a
+ * screening-level cross-reference to UK methodology and names that
+ * mismatch explicitly in §1.2. A chartered engineer preparing a
+ * submitted TA must re-run the analysis on TRICS / DMRB tooling.
+ *
+ * Section structure (TfL Healthy Streets TA):
+ *   Ch 1  Introduction (incl. methodology-mismatch disclosure)
+ *   Ch 2  Transport planning for people (placeholder — needs demographics)
+ *   Ch 3  Site and surroundings (PTAL placeholder, parking under London Plan T6)
+ *   Ch 4  Active Travel Zone (placeholder — needs WebCAT isochrones)
+ *   Ch 5  London-wide network (trip generation, assessment, mitigation
+ *         framed as S106 / S278 / MCIL2)
+ *   Ch 6  Additional borough analysis (placeholder — needs LPA Local Plan)
+ *   Ch 7  Construction (placeholder — needs Construction Logistics Plan)
+ *   Ch 8  Conclusion
+ *
+ * Mode share is applied per metro upstream (mode-share.ts, London 38%),
+ * so the engine's external-trip count already reflects the car-mode
+ * share. Surfaced in §1.2.
+ */
+function renderTisLondon(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const intersections: any[] = Array.isArray(r.affectedIntersections) ? r.affectedIntersections : [];
+  const periods: any[] = Array.isArray(r.periodReports) ? r.periodReports : [];
+  const isLondon = region.code === "london_metro";
+  const lpa = isLondon ? "the relevant London borough (LPA)" : `${region.displayName} (LPA)`;
+
+  // --- Executive Summary --------------------------------------------------
+  ldnSection(doc, "EXECUTIVE SUMMARY");
+  doc.font("body").fontSize(10).fillColor("black");
+  const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
+  const losEf = Number(r.intersectionsAtLosEf ?? 0);
+  const radiusMi = Number(r.studyRadiusMi ?? req.studyRadiusMi ?? 0);
+  const radiusKm = (radiusMi * 1.609344).toFixed(2);
+  const summary = `This Transport Assessment cross-reference reports the anticipated transport effects of the proposed ${project.projectName || "development"} within ${region.displayName}, ${isLondon ? "Greater London" : "United Kingdom"}. ${intersections.length} junction${intersections.length === 1 ? "" : "s"} fall within a ${radiusKm} km (${fmtNum(radiusMi, 2)} mi) study radius of the site. The analysis is screening-level and is prepared as a cross-reference to UK Transport Assessment methodology; it does not replace a TRICS-based TA prepared by a chartered engineer reviewing under the NPPF (December 2024), the Planning Practice Guidance on transport assessments, and (within Greater London) the London Plan 2021 and TfL Healthy Streets TA format.`;
+  doc.text(summary, { paragraphGap: 6 });
+
+  doc.font("body").fontSize(10).fillColor("black").text("Headline findings:", { paragraphGap: 2 });
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+  if (losDrops === 0 && losEf === 0) {
+    doc.text("• No junction within the study network is projected to deteriorate by one or more LOS categories under the With-Development scenario.", { paragraphGap: 2 });
+    doc.text("• Highway capacity is not the limiting factor for this scheme on the basis of this screening; PTAL-banded car parking, sustainable-mode uptake and Healthy Streets compliance remain to be assessed separately.", { paragraphGap: 4 });
+  } else {
+    doc.text(`• ${losDrops} junction${losDrops === 1 ? "" : "s"} project to deteriorate by one or more LOS categories under the With-Development scenario.`, { paragraphGap: 2 });
+    doc.text(`• ${losEf} junction${losEf === 1 ? " operates" : "s operate"} at LOS E or F under With-Development and would warrant mitigation under either S106 obligation or S278 highway works (depending on the responsible authority).`, { paragraphGap: 4 });
+  }
+  doc.fillColor("black");
+  doc.moveDown(0.5);
+
+  metricStrip(doc, [
+    { label: "Junctions", value: String(r.intersectionsStudied ?? intersections.length ?? 0) },
+    { label: "LOS drops", value: String(losDrops) },
+    { label: "At LOS E/F", value: String(losEf) },
+    { label: "Worst Δ delay", value: `${(r.worstDelayDeltaSec ?? 0).toFixed(1)}s` },
+  ]);
+  doc.moveDown(0.8);
+
+  // --- Ch 1 Introduction --------------------------------------------------
+  ldnSection(doc, "1.0 INTRODUCTION");
+  ldnSubsection(doc, "1.1 Purpose and Planning Context");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `This report cross-references the anticipated transport effects of the proposed ${project.projectName || "development"}, located within ${region.displayName}. It is presented in the structure of a UK Transport Assessment (TA) as set out in the TfL Healthy Streets TA Recommended Contents & Chapters, with the National Planning Policy Framework (NPPF, December 2024) as the statutory planning hook — paragraph 115 (sustainable modes), paragraph 116 (significant transport impact) and paragraph 118 (vision-led TA / TS). Where the proposed development falls below the local planning authority's "significant amount of movement" trigger a Transport Statement (TS) may suffice in place of a full TA; the threshold is judgement-led by ${lpa}.`,
+    { paragraphGap: 6 },
+  );
+
+  ldnSubsection(doc, "1.2 Methodology Cross-Reference and Disclosure");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "This is the critical disclosure for a UK reviewer. The analysis in this report is generated by a screening engine calibrated to United States standards and is presented here as a cross-reference to UK methodology, not as a substitute for it:",
+    { paragraphGap: 4 },
+  );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+  doc.text("• Capacity analysis uses the Highway Capacity Manual 6th Edition, Chapter 19 (signalised junctions) — NOT DMRB CD 116 (roundabouts) or CD 123 (priority and signal junctions). A chartered engineer preparing a submitted TA should re-run the affected junctions in LinSig 3, TRANSYT 16, or Junctions 11 (with ARCADY / PICADY / OSCADY modules as appropriate) and report Ratio of Flow to Capacity (RFC), Degree of Saturation (DOS), Practical Reserve Capacity (PRC) and Mean Maximum Queue (MMQ in PCUs).", { paragraphGap: 4 });
+  doc.text("• Trip generation uses the ITE Trip Generation Manual 11th Edition — NOT TRICS. UK reviewers do not accept ITE rates for TA work; the TRICS multi-modal database (85th-percentile rate as the starting point per DfT 2007 §4.62, with the scenario filter — date band, region, day type, parking provision, GFA range — recorded for reviewer audit) is the required source.", { paragraphGap: 4 });
+  doc.text("• Level of Service is reported as letters A–F against the HCM Exhibit 19-8 control-delay thresholds (A ≤ 10 s, B ≤ 20 s, C ≤ 35 s, D ≤ 55 s, E ≤ 80 s, F > 80 s of average control delay per vehicle). LOS letters are not used in UK TA practice; the thresholds are given here so a UK reviewer can map them informally to the delay categories they recognise.", { paragraphGap: 4 });
+  doc.text("• Sustainable-mode demand is approximated through a metro-specific auto-mode-share factor (38% applied for London, per the engine's mode-share configuration sourced from TfL Travel in London). The external-trip totals shown below already reflect that 38% reduction from the gross ITE rate. This is a screening-level approximation in place of the full multi-modal split (walking / cycling / bus / rail / car / taxi / motorcycle / LGV / HGV) that a UK TA is required to demonstrate under NPPF paragraph 115.", { paragraphGap: 4 });
+  doc.text("• Geometric design citations in the engine's output are HCM and AASHTO; UK chartered review would substitute DMRB CD 109 / CD 116 / CD 122 / CD 123 (trunk) and Manual for Streets / Manual for Streets 2 (urban / residential).", { paragraphGap: 4 });
+  doc.text("• Units are metric where derivable; some engine-generated fields remain in imperial (queue 95th-percentile reported in feet rather than MMQ in PCUs) and are flagged inline.", { paragraphGap: 6 });
+  doc.fillColor("black");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "In short: treat the LOS / delay / queue numbers in this report as a sanity check on capacity-driven impact, not as the capacity assessment a submitted TA requires. The PTAL band, Active Travel Zone, Healthy Streets Indicators check and TRICS-derived multi-modal trip generation are the deliverables a London TA actually stands on — they are listed as placeholders below.",
+    { paragraphGap: 6 },
+  );
+
+  ldnSubsection(doc, "1.3 Policy Context");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Applicable policy framework, in order: NPPF Chapter 9 (Promoting sustainable transport, December 2024 edition); Planning Practice Guidance — Travel plans, transport assessments and statements${isLondon ? "; the London Plan 2021 (in particular policies T1 Strategic approach to transport, T2 Healthy Streets, T5 Cycling, and T6 Car parking sub-policies banded by PTAL); the Mayor's Transport Strategy 2018 (the 80% sustainable-mode-share target by 2041); and the local borough Local Plan and any borough Supplementary Planning Documents on parking, travel plans and S106" : "; and the local development plan adopted by " + region.displayName}.`,
+    { paragraphGap: 6 },
+  );
+
+  ldnSubsection(doc, "1.4 Vision-Led Approach");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "NPPF (December 2024) paragraph 118 frames TAs and TSs as \"vision-led\" — the assessment should articulate the place outcome the scheme seeks and demonstrate how transport supports that vision, before reporting capacity numbers. The vision-led narrative is bespoke to the scheme and is not produced by this screening report; it should be drafted by the chartered engineer in consultation with the design team.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.moveDown(0.3);
+
+  // --- Ch 2 Transport planning for people ---------------------------------
+  ldnSection(doc, "2.0 TRANSPORT PLANNING FOR PEOPLE");
+  ldnSubsection(doc, "2.1 Site Demographics");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    `Demographic context within the site catchment (2021 Census MSOA / ward profile, GLA population projections, journey-to-work mode share) is not produced by this screening engine. It should be drawn from the London Datastore (data.london.gov.uk) for ${isLondon ? "the relevant ward and MSOA" : "the relevant UK ward and MSOA"} at the time of submittal.`,
+    { paragraphGap: 6 },
+  );
+  ldnSubsection(doc, "2.2 Transport Classification of Londoners (ToL)");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "TfL's Transport Classification of Londoners segments residents into travel-attitude groups for use in TA work. ToL is not produced here and should be drawn from TfL Insight at the time of submittal.",
+    { paragraphGap: 6 },
+  );
+  ldnSubsection(doc, "2.3 Equality and Inclusion");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Equality and inclusion considerations (step-free access, the Public Sector Equality Duty under the Equality Act 2010) require a bespoke assessment against the proposed access strategy and are not generated by the engine.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.moveDown(0.3);
+
+  // --- Ch 3 Site and surroundings -----------------------------------------
+  ldnSection(doc, "3.0 SITE AND SURROUNDINGS");
+  ldnSubsection(doc, "3.1 Site Identification");
+  rows(doc, [
+    ["Scheme", project.projectName || "—"],
+    ["Land use (ITE proxy)", `${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
+    ["Opening year", String(req.openingYear ?? "—")],
+    ["Region", region.displayName],
+    ["Highway authority(ies)", isLondon ? "Transport for London (TLRN / red routes), the relevant London borough (borough roads); National Highways for any affected SRN length" : "Local highway authority for the area"],
+    ["Local planning authority", lpa],
+  ]);
+  doc.moveDown(0.4);
+
+  ldnSubsection(doc, "3.2 Public Transport Accessibility Level (PTAL)");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    isLondon
+      ? "PTAL is mandatory in every London TA. The site's PTAL band (0, 1a, 1b, 2, 3, 4, 5, 6a, 6b) and Accessibility Index (AI) value are not computed by this engine; they should be drawn from the TfL 100 m × 100 m PTAL grid via WebCAT 3.0 (tfl.gov.uk planning-with-webcat) or the GIS layer on the London Datastore. PTAL band determines the car-parking maximum under London Plan policy T6 sub-policies (Tables 10.3–10.6) — PTAL 5 / 6a / 6b is a car-free starting point in policy."
+      : "Public-transport accessibility metrics for non-London UK metros vary by combined authority and are not standardised; the local authority's adopted methodology should be applied.",
+    { paragraphGap: 6 },
+  );
+
+  ldnSubsection(doc, "3.3 Active Travel Network");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    isLondon
+      ? "Cycle infrastructure within 1 km of the site (Cycleways, segregated lanes, Advanced Stop Lines, cycle parking) should be drawn from the TfL Cycle Infrastructure Database (cycling.data.tfl.gov.uk). Strategic Cycling Analysis corridors should be flagged where the site falls on or near one. The walking environment should be assessed against CIHT Planning for Walking."
+      : "Active-travel network inventory should be drawn from the local highway authority's mapping at the time of submittal.",
+    { paragraphGap: 6 },
+  );
+
+  ldnSubsection(doc, "3.4 Healthy Streets Indicators");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    isLondon
+      ? "TfL's 10 Healthy Streets Indicators are required for any London TA; the Healthy Streets Check for Designers workbook (31 metrics, XLSX) should be completed for both existing and proposed conditions and surfaced as an appendix. This screening engine does not run the Healthy Streets Check."
+      : "Where the local authority operates a Healthy Streets or equivalent framework, the relevant check should be appended.",
+    { paragraphGap: 6 },
+  );
+
+  ldnSubsection(doc, "3.5 Car and Cycle Parking");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    isLondon
+      ? "Cycle parking provision is set by London Plan policy T5 / Table 10.2. Car-parking maxima are set by London Plan policy T6 sub-policies (Tables 10.3–10.6), banded by PTAL and use class. Borough Supplementary Planning Documents may impose tighter local standards. Neither standard is automatically determined by this engine; both should be calculated against the final scheme at the chartered-engineer stage."
+      : "Parking provision should be assessed against the adopted local plan parking standards for the area.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.moveDown(0.3);
+
+  // --- Ch 4 Active Travel Zone --------------------------------------------
+  ldnSection(doc, "4.0 ACTIVE TRAVEL ZONE (ATZ)");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    isLondon
+      ? "The Active Travel Zone — the 20-minute cycle catchment from the site — is required in Chapter 4 of a TfL Healthy Streets TA, generated through WebCAT 3.0. Walking catchments (5 / 10 / 15-minute isochrones) should also be reported. Severance, desire-line analysis and any constraints in the catchment (Healthy Streets Indicators applied at the catchment scale) should be discussed. The engine does not produce isochrones; the WebCAT export should be included as an appendix."
+      : "Where applicable, an active-travel catchment analysis should be appended.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.moveDown(0.3);
+
+  // --- Ch 5 London-wide network -------------------------------------------
+  ldnSection(doc, "5.0 LONDON-WIDE NETWORK");
+  ldnSubsection(doc, "5.1 Trip Generation (Engine — ITE 11th proxy)");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Gross trip generation in this report is calculated per the ITE Trip Generation Manual 11th Edition for land-use code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. The TRICS-equivalent multi-modal table — person-trips by mode, linked PT trips, 85th-percentile rate against the agreed TRICS filter — is not produced by this engine and must be prepared separately for any submitted TA. The figures below represent the engine's car-mode estimate after the London 38% auto-mode-share factor has been applied to net out walking, cycling, bus, rail and other modes.`,
+    { paragraphGap: 6 },
+  );
+  table(doc, {
+    headers: ["Period", "Entering trips", "Exiting trips"],
+    widths: [180, 100, 100],
+    align: ["left", "right", "right"],
+    rows: [
+      ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
+      ["AM peak hour (08:00–09:00)", fmtNum(tg.amPeakTrips), "—"],
+      ["PM peak hour (17:00–18:00)", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
+    ],
+  });
+  doc.moveDown(0.4);
+
+  rows(doc, [
+    ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
+    ["Internalisation (linked trips) applied", `${r.internalCapturePctApplied ?? 0}%`],
+    ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
+    ["Auto-mode-share factor (London)", "38% (Travel in London — already applied upstream)"],
+  ]);
+  doc.moveDown(0.4);
+
+  if (periods.length > 0) {
+    table(doc, {
+      headers: ["Period", "Raw", "Pass-by", "Linked", "Net car", "In", "Out"],
+      widths: [100, 50, 60, 60, 70, 50, 50],
+      align: ["left", "right", "right", "right", "right", "right", "right"],
+      rows: periods.map((p) => {
+        const t = p.tripGeneration ?? {};
+        return [
+          String(p.periodLabel ?? p.period ?? ""),
+          fmtNum(t.rawTrips),
+          fmtNum(t.passByCredit),
+          fmtNum(t.internalCaptureCredit),
+          fmtNum(t.externalTrips),
+          fmtNum(t.inTrips),
+          fmtNum(t.outTrips),
+        ];
+      }),
+    });
+    doc.moveDown(0.4);
+  }
+
+  ldnSubsection(doc, "5.2 Trip Distribution and Assignment");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Net car trips are assigned to the study network proportionally to junction proximity (gravity-model assignment, volume × distance⁻¹·⁵). For a submitted TA, distribution should be agreed in the scoping note signed by the LPA and (in London) TfL; for major schemes affecting the TLRN, TfL's strategic models (MoTiON for demand, LoHAM and the sub-regional HAMs for highway assignment, Railplan for PT) would be referenced and may need to be run under TfL's Model Auditing Process (MAP v4).",
+    { paragraphGap: 6 },
+  );
+
+  ldnSubsection(doc, "5.3 Assessment Years");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Three scenarios are reported per affected junction: (1) Existing — current-year baseline, no growth applied; (2) No-Build (opening year ${req.openingYear ?? "—"}) — baseline grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year(s) without scheme trips; (3) With-Development (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the scheme's net car trips at the assigned distribution. A submitted TA conventionally also reports a design-year horizon (commonly opening + 5 or +10 years).`,
+    { paragraphGap: 6 },
+  );
+
+  ldnSubsection(doc, "5.4 Assessment of Junction Impact");
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Junction", "Existing LOS", "No-Build LOS", "With-Dev LOS", "Δ delay (s)", "Queue 95% (ft)*"],
+      widths: [195, 60, 70, 70, 65, 70],
+      align: ["left", "center", "center", "center", "right", "right"],
+      rows: intersections.map((it) => {
+        const losChanged = it.losChanged === true;
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const noBuildLos = it.existingLos ?? "—";
+        const buildLos = it.futureLos ?? "—";
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(currentLos),
+          String(noBuildLos),
+          (losChanged ? "▲ " : "") + String(buildLos),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+          fmtNum(it.queue95thFt),
+        ];
+      }),
+    });
+    doc.moveDown(0.3);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "* Queue is the engine's HCM 95th-percentile in feet (not MMQ in PCUs as a UK reviewer would expect). LOS letters map informally to delay categories — see §1.2.",
+      { paragraphGap: 4 },
+    );
+    doc.fillColor("black");
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text("No signalised junctions within the study radius. No off-network capacity impact is anticipated at the screening level.", { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.3);
+
+  ldnSubsection(doc, "5.5 Design Solutions and Mitigation");
+  const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
+  if (needMitigation.length > 0) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      isLondon
+        ? "The following screening-level mitigations are flagged. Each would be secured through one of: S106 planning obligation (Town and Country Planning Act 1990 s.106) — for off-site contributions, travel plan funding and monitoring fees; S278 highway works agreement (Highways Act 1980 s.278) — for physical works on the public highway, with the borough for borough roads or with TfL for the TLRN; or, where applicable, the Mayoral Community Infrastructure Levy (MCIL2). New estate roads are adopted under S38. The responsible authority for each junction must be confirmed against its highway-authority designation (borough / TLRN / SRN)."
+        : "The following screening-level mitigations are flagged. Each would be secured through S106 planning obligation or S278 highway works agreement with the responsible highway authority.",
+      { paragraphGap: 6 },
+    );
+    doc.font("body").fontSize(10).fillColor("black");
+    for (const it of needMitigation) {
+      const sev = String(it.mitigationSeverity ?? "").toUpperCase();
+      doc.font("bold").text(`${it.name ?? it.signalId} `, { continued: true });
+      doc.font("body").fillColor(TEXT_GRAY).text(`[${sev}]`, { continued: false });
+      doc.font("body").fillColor("black").text("  " + it.mitigation);
+      doc.moveDown(0.3);
+    }
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "No screening-level mitigations are indicated under the With-Development scenario. A chartered engineer should still verify against DMRB CD 116 / CD 123 capacity and the relevant TfL / borough operational standards before concluding no mitigation is required.",
+      { paragraphGap: 6 },
+    );
+  }
+  doc.moveDown(0.3);
+
+  // --- Ch 6 Additional borough analysis -----------------------------------
+  ldnSection(doc, "6.0 ADDITIONAL BOROUGH / LPA ANALYSIS");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    isLondon
+      ? "Borough-level analysis — relevant Local Plan policies, Supplementary Planning Documents (parking, cycle parking, travel plan, S106 SPD), and any local cumulative-impact assessment drawn from the Planning London Datahub (PLD) approved-development pipeline — is bespoke to the host borough and is not produced by this screening engine."
+      : "Local-authority-specific policies (Local Plan, Supplementary Planning Documents, parking standards) are not produced by this screening engine.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.moveDown(0.3);
+
+  // --- Ch 7 Construction --------------------------------------------------
+  ldnSection(doc, "7.0 CONSTRUCTION");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "A Construction Logistics Plan (CLP) and Delivery and Servicing Plan (DSP) are required at submittal and are not produced by this screening engine; they should be prepared in line with TfL's published CLP guidance and (where the site fronts a TLRN red route) the TLRN servicing rules.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.moveDown(0.3);
+
+  // --- Ch 8 Conclusion ----------------------------------------------------
+  ldnSection(doc, "8.0 CONCLUSION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `On the basis of the screening-level cross-reference set out above, ${losDrops === 0 && losEf === 0 ? "no junction within the study network is projected to deteriorate by one or more LOS categories under the With-Development scenario, and capacity is not the limiting factor on this analysis." : `${losDrops} junction(s) project to deteriorate by one or more LOS categories under the With-Development scenario and ${losEf} junction(s) project to operate at LOS E or F, indicating mitigation would be warranted.`} The following deliverables remain outstanding and are required for a submittable London Transport Assessment:`,
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+  doc.text("• TRICS multi-modal trip generation (85th-percentile, scenario filter recorded for reviewer audit).", { paragraphGap: 3 });
+  if (isLondon) {
+    doc.text("• PTAL band and Accessibility Index for the site centroid (TfL grid via WebCAT).", { paragraphGap: 3 });
+    doc.text("• Active Travel Zone (20-minute cycle catchment) and walking isochrones from WebCAT.", { paragraphGap: 3 });
+    doc.text("• Healthy Streets Check for Designers workbook (existing and proposed).", { paragraphGap: 3 });
+  }
+  doc.text("• Junction capacity analysis in LinSig 3 / Junctions 11 / TRANSYT / VISSIM as appropriate, reporting RFC, DOS, PRC and MMQ (PCUs).", { paragraphGap: 3 });
+  doc.text("• Borough Local Plan and SPD compliance review.", { paragraphGap: 3 });
+  doc.text("• S106 / S278 / MCIL2 contribution schedule per the agreed mitigation.", { paragraphGap: 3 });
+  doc.text("• Travel Plan with named Travel Plan Coordinator, modal-shift targets, monitoring and remedial-measure ladder.", { paragraphGap: 3 });
+  doc.text("• Construction Logistics Plan and Delivery and Servicing Plan.", { paragraphGap: 3 });
+  doc.text("• Scoping note signed by the LPA" + (isLondon ? " and (for any TLRN-impacting or PSI-triggering scheme) TfL." : "."), { paragraphGap: 6 });
+  doc.fillColor("black");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Sign-off should be by a Chartered Engineer (CEng) and Member of CIHT (MCIHT) under their professional registration; the PE stamp on the cover page is the US engine's default and should be replaced by the chartered engineer's signature block on submitted work.",
+    { paragraphGap: 6 },
+  );
+
+  // --- Engine output preserved -------------------------------------------
+  const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
+  if (findings.length > 0) {
+    doc.moveDown(0.3);
+    ldnSection(doc, "ENGINE FINDINGS (CROSS-REFERENCE)");
+    doc.font("body").fontSize(10).fillColor("black");
+    for (const f of findings) {
+      doc.text("• " + f, { paragraphGap: 4 });
+    }
+    doc.moveDown(0.3);
+  }
+
+  const methodology: string[] = Array.isArray(r.methodology) ? r.methodology : [];
+  if (methodology.length > 0) {
+    ldnSection(doc, "ENGINE METHODOLOGY NOTES");
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY);
+    for (const m of methodology) {
+      doc.text("• " + m, { paragraphGap: 4 });
+    }
+    doc.fillColor("black");
+  }
+}
+
+/** Section heading for the London renderer (same visual treatment as GA). */
+function ldnSection(doc: PDFKit.PDFDocument, title: string) {
+  doc.x = PAGE_MARGIN;
+  doc.font("bold").fontSize(13).fillColor("black").text(title, { characterSpacing: 0.5 });
+  doc.moveDown(0.3);
+  doc.x = PAGE_MARGIN;
+}
+
+/** Subsection heading for the London renderer. */
+function ldnSubsection(doc: PDFKit.PDFDocument, title: string) {
   doc.x = PAGE_MARGIN;
   doc.font("bold").fontSize(11).fillColor("black").text(title);
   doc.moveDown(0.2);
