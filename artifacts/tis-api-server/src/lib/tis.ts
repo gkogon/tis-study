@@ -15,6 +15,7 @@
 // HCM thresholds, or clearly-stated engineering assumptions.
 
 import { logger } from "./logger";
+import { getAutoModeShare, getAutoModeShareSource } from "./mode-share";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
 // Canonical land-use registry (ITE 11th Ed.) lives in one place so the
@@ -204,10 +205,45 @@ function approachAddedTripShares(
   return raw;
 }
 
-// Inverse-distance weights for assigning project trips across affected signals.
-function assignmentWeights(affected: Array<{ distanceMi: number }>): number[] {
+/**
+ * Gravity-model assignment of project trips across affected signals.
+ * Combines two factors a working PE would weight a real distribution by:
+ *
+ *   1. **Roadway attractiveness** — signals on higher-volume roads
+ *      attract more project trips, because that's where the development's
+ *      patrons are actually going to/from. A signal on a 35,000-AADT
+ *      arterial is a route; a signal on a 4,000-AADT collector is a
+ *      side-street people avoid.
+ *
+ *   2. **Distance decay** — closer signals still attract more trips
+ *      (drivers minimize travel distance), but with a steeper-than-linear
+ *      falloff so a marginally-closer side street doesn't unjustly
+ *      out-weight a slightly-farther arterial.
+ *
+ * Formula:  weight_i ∝ volume_i · distance_i^(-1.5)
+ *
+ * Chosen exponent 1.5 sits between simple inverse-distance (β=1, which
+ * the engine used to use and which Caltran flagged as too crude) and
+ * inverse-square (β=2, which over-penalizes anything past 1 mi).
+ * Volume falls back to a constant when a signal lacks AADT data, so
+ * the model degrades gracefully for low-data tiers (osm_only metros).
+ *
+ * This is NOT a full network shortest-path assignment — that would
+ * require an OSM road graph + Dijkstra, multi-week work. It is the
+ * single highest-leverage improvement available without the graph,
+ * and matches the assignment-by-volume heuristic engineers apply
+ * by hand at the methodology meeting.
+ */
+function assignmentWeights(
+  affected: Array<{ sig: AnalyzerIntersection; distanceMi: number }>,
+): number[] {
   if (affected.length === 0) return [];
-  const raw = affected.map((a) => 1 / Math.max(0.06, a.distanceMi));
+  const FALLBACK_VOLUME = 5_000;
+  const raw = affected.map((a) => {
+    const vol = a.sig.totalVolume > 0 ? a.sig.totalVolume : FALLBACK_VOLUME;
+    const dist = Math.max(0.06, a.distanceMi);
+    return vol * Math.pow(dist, -1.5);
+  });
   const total = raw.reduce((s, v) => s + v, 0);
   return total > 0 ? raw.map((v) => v / total) : raw.map(() => 1 / raw.length);
 }
@@ -701,6 +737,7 @@ function plainFindings(
   internalCapPct: number,
   sens: SensitivityResult | undefined,
   region: Region,
+  autoModeShare: number,
 ): string[] {
   const out: string[] = [];
   out.push(
@@ -709,6 +746,12 @@ function plainFindings(
   if (passByPct > 0 || internalCapPct > 0) {
     out.push(
       `Pass-by credit ${passByPct.toFixed(0)}% and internal-capture credit ${internalCapPct.toFixed(0)}% applied at the PM peak before off-site assignment (ITE Pass-By Trip Generation Manual; ULI Internal Capture).`,
+    );
+  }
+  if (autoModeShare < 0.95) {
+    const nonAutoPct = Math.round((1 - autoModeShare) * 100);
+    out.push(
+      `Auto-mode share of ${(autoModeShare * 100).toFixed(0)}% applied to external trips for ${region.displayName}; ${nonAutoPct}% of generated trips are assumed to arrive by transit, walking, or cycling and do not load the off-site roadway network. Source: ${getAutoModeShareSource(region.code)}.`,
     );
   }
   if (growthYears > 0 && growthPct > 0) {
@@ -758,7 +801,9 @@ const TIS_METHODOLOGY = [
   "Pass-by and internal-capture credits are applied at the PM peak per ITE's Pass-By Trip Generation Manual (3rd Edition) and ULI Mixed-Use Internal Capture defaults; only the residual external trips are assigned to off-site intersections.",
   "Existing intersection volumes are grown to the opening-year horizon at the user-supplied annual growth rate (default 1.5%/yr) before the capacity analysis.",
   "Weather adjustment follows HCM 6th-Edition Ch. 11 (rain/snow capacity reduction): clear 1.00, light rain 0.95, heavy rain 0.86, light snow 0.86, heavy snow 0.70. The factor multiplies the saturation flow at every intersection.",
-  "Off-site impact is screened for all signalized intersections within the study radius (default 0.5 mi). New trips are assigned by inverse-distance weighting (clamped at 100m), normalised to sum to 100% of the period's external trip total.",
+  "Off-site impact is screened for all signalized intersections within the study radius (default 0.5 mi). Project trips are assigned by a gravity model: weight_i ∝ existing_volume_i · distance_i^(-1.5), normalized to sum to 100% of the period's external trip total. The model favors signals on higher-volume roads (the routes patrons actually use) over closer side streets, matching the assignment-by-volume heuristic engineers apply at the methodology meeting. Signals lacking AADT data fall back to a constant 5,000 vpd.",
+  "Auto-mode share is applied per metro before assignment. Suburban-US metros default to 90% auto (ACS 5-Year B08301 median); transit-heavy metros use measured auto-mode share (e.g., NYC 32%, Tokyo 30%, London 38%, San Francisco 47%). Non-auto trips (transit, walking, cycling) do not load the off-site roadway. This is a screening-level adjustment; a real TIS submittal in a transit-heavy market should refine with project-specific TAZ data.",
+  "Candidate signals are de-duplicated within a 45m clustering threshold to prevent OSM divided-arterial splits and way-record artifacts from double-counting a single physical intersection.",
   "Intersection-level control delay uses the HCM signalized-intersection model d = d1 + d2 (Webster uniform delay + Akçelik/HCM incremental-delay term) with a 90s cycle, g/C = 0.45, 1,800 vphpl saturation flow (× weather factor), 15-minute peak analysis period (T = 0.25 hr) and pretimed-signal incremental-delay factor k = 0.5.",
   "Approach-level analysis splits each signal's inflow across NB/SB/EB/WB approaches (deterministic per-signal allocation perturbed ±15% from a 30/25/25/20 base) and assigns added trips to each approach by cosine-similarity to the bearing of the project relative to the signal. Per-approach v/c, control delay, LOS, and 95th-percentile back-of-queue length (HCM Eq. 19-50, Q95 ≈ Q1 × 1.65 × 25 ft/veh) are reported.",
   "Level of Service is assigned from HCM 6th-Edition signalized-intersection control-delay thresholds (Exhibit 19-8): A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s.",
@@ -880,6 +925,13 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const project = { lat: req.latitude, lon: req.longitude };
   const calibrationMap = await loadCalibrationMap();
 
+  // Per-metro auto-mode share. NYC's project trips don't all arrive by
+  // car (transit-heavy market); applying the share is the screening-
+  // level version of mode choice. Suburban-US default 90% means almost
+  // no change in those markets; transit-heavy metros see a meaningful
+  // reduction (e.g., London 38%, Tokyo 30%, NYC 32%).
+  const autoModeShare = getAutoModeShare(region.code);
+
   // Per-period analyses.
   const periodReports: PeriodReport[] = [];
   for (const period of periods) {
@@ -890,7 +942,10 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     const creditScale = period === "pm_peak" ? 1.0 : 0.25;
     const passByCredit = raw * (passByPct / 100) * creditScale;
     const internalCredit = (raw - passByCredit) * (internalCapturePct / 100) * creditScale;
-    const externalTrips = Math.max(0, raw - passByCredit - internalCredit);
+    const externalTripsAllModes = Math.max(0, raw - passByCredit - internalCredit);
+    // Mode-split: only the auto-mode share lands on the off-site roadway.
+    // Walk / transit / cycle trips don't contribute to intersection v/c.
+    const externalTrips = externalTripsAllModes * autoModeShare;
     const inFraction = periodDirectionalIn(lu, period);
     const inTrips = Math.round(externalTrips * inFraction);
     const outTrips = Math.round(externalTrips) - inTrips;
@@ -988,6 +1043,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     internalCapturePct,
     sens,
     region,
+    autoModeShare,
   );
 
   const mitigationSummary = buildSummaryMitigations(pmReport.affectedIntersections, region);
