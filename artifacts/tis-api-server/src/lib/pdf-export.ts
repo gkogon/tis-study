@@ -395,9 +395,24 @@ function renderTis(doc: PDFKit.PDFDocument, r: any) {
   ]);
   doc.moveDown(1);
 
-  // PM peak trip generation summary
+  // PM peak trip generation summary. Independent-variable label is recorded
+  // here so a reviewing PE can verify which ITE 11th rate set the screening
+  // used — primary vs. one of the alternate variables (employees, occupied
+  // rooms, weekly attendees, etc.) added by the multi-variable pass.
   section(doc, "PM Peak Trip Generation");
+  const tgRowsTop: Array<[string, string]> = [
+    ["Independent variable", `${tg.unit ?? "—"} (${tg.unitShort ?? "—"})`],
+  ];
+  if (tg.variableConfidence === "interpolated") {
+    tgRowsTop.push([
+      "Rate confidence",
+      `Interpolated${tg.variableNote ? ` — ${tg.variableNote}` : ""}`,
+    ]);
+  } else if (tg.variableConfidence === "ite_published") {
+    tgRowsTop.push(["Rate confidence", "ITE 11th Ed. published"]);
+  }
   rows(doc, [
+    ...tgRowsTop,
     ["Daily trips", String(tg.dailyTrips ?? "—")],
     ["AM peak trips", String(tg.amPeakTrips ?? "—")],
     ["PM peak trips", `${tg.pmPeakTrips ?? "—"} (${tg.pmIn ?? 0} in / ${tg.pmOut ?? 0} out)`],
@@ -706,12 +721,36 @@ function renderTisGeorgia(
     "Net new trips applied to the study network are calculated by subtracting pass-by capture and internal capture from the gross trip generation, per the ITE Trip Generation Handbook (current edition).",
     { paragraphGap: 6 },
   );
+  // Surface which ITE 11th independent variable the screening used so the
+  // reviewing engineer can verify the assumption (GRTA reviewers ask for
+  // this explicitly). Interpolated secondaries are flagged so the
+  // submittal-grade study can re-run against the primary if needed.
+  const gaTopRows: Array<[string, string]> = [
+    ["Independent variable", `${tg.unit ?? "—"} (${tg.unitShort ?? "—"})`],
+  ];
+  if (tg.variableConfidence === "interpolated") {
+    gaTopRows.push([
+      "Rate confidence",
+      `Interpolated${tg.variableNote ? ` — ${tg.variableNote}` : ""}`,
+    ]);
+  } else if (tg.variableConfidence === "ite_published") {
+    gaTopRows.push(["Rate confidence", "ITE 11th Ed. published"]);
+  }
   rows(doc, [
+    ...gaTopRows,
     ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
     ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}%`],
     ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
     ["Weather condition", String(r.weather ?? req.weather ?? "clear")],
   ]);
+  if (tg.variableConfidence === "interpolated") {
+    doc.moveDown(0.3);
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+      "Note: trip rate for the chosen independent variable was derived from a defensible engineering ratio rather than transcribed directly from the ITE 11th Edition tables. A submittal-grade study should verify this assumption against the primary published variable for this code.",
+      { paragraphGap: 4 },
+    );
+    doc.fillColor("black");
+  }
   doc.moveDown(0.5);
 
   if (periods.length > 0) {

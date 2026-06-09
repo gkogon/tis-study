@@ -73,6 +73,24 @@ export default function LegalDisclaimerPage() {
         Service for an unusual land use should verify the rate against
         the ITE manual before relying on the output.
       </p>
+      <p>
+        Several ITE 11th Ed. codes accept more than one independent
+        variable — e.g., Hotel (310) can be sized by Rooms <em>or</em>
+        Occupied Rooms <em>or</em> Employees; Church (560) by 1,000 sqft
+        GFA <em>or</em> Seats <em>or</em> Weekly Attendees; Office (710) by
+        ksf <em>or</em> Employees. The Service surfaces these alternates in
+        the demo form and records the variable that was actually used in
+        every generated study (PDF §4 Trip Generation, "Independent
+        variable" row), so the reviewing engineer can verify the assumption.
+        Where ITE publishes a rate for the secondary variable it is
+        transcribed directly; where ITE publishes only the primary, the
+        Service derives a defensible engineering ratio (e.g., office at
+        ~250 sqft per employee → 4 employees per ksf). Derived rates are
+        explicitly flagged in the report as <em>interpolated</em> alongside
+        the engineering ratio used; the reviewing engineer should re-run a
+        submittal-grade study against the primary published variable
+        before relying on a derived rate.
+      </p>
 
       <h2>Real-time data sources</h2>
       <p>

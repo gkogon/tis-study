@@ -35,7 +35,20 @@ type Preset = {
   };
 };
 
-type LandUse = { code: string; name: string; unit: string; unitShort: string };
+type SecondaryVariable = {
+  unit: string;
+  unitShort: string;
+  confidence: "ite_published" | "interpolated";
+  note?: string;
+};
+
+type LandUse = {
+  code: string;
+  name: string;
+  unit: string;
+  unitShort: string;
+  secondaryVariables?: SecondaryVariable[];
+};
 
 type StudyForm = {
   projectName: string;
@@ -45,6 +58,7 @@ type StudyForm = {
   size: number;
   openingYear: number;
   studyRadiusMi: number;
+  independentVariable?: string;
 };
 
 type Los = "A" | "B" | "C" | "D" | "E" | "F";
@@ -197,6 +211,181 @@ const SEVERITY_CHIP: Record<string, string> = {
   none: "bg-slate-100 text-slate-600 dark:bg-slate-800/40 dark:text-slate-400",
 };
 
+/**
+ * Project-name keyword → suggested ITE land-use code(s). When the user types
+ * a recognizable project name ("Marriott Buckhead", "240-unit apartment
+ * tower", "shopping plaza") the form surfaces a pill above the dropdown
+ * suggesting the most likely code. Conservative match list: only codes
+ * where the mapping is unambiguous from a single keyword. Misses are
+ * cheap (no pill); false-positives would teach the engineer to ignore
+ * the hint, so we tune for precision over recall.
+ */
+const PROJECT_NAME_HINTS: Array<{ pattern: RegExp; code: string; label: string }> = [
+  // Lodging
+  { pattern: /\b(?:hotel|inn|marriott|hilton|hyatt|sheraton|westin|four\s*seasons)\b/i, code: "310", label: "Hotel" },
+  { pattern: /\b(?:motel|extended[\s-]?stay)\b/i, code: "320", label: "Motel" },
+  { pattern: /\bresort\b/i, code: "330", label: "Resort Hotel" },
+  // Residential
+  { pattern: /\b(?:apartments?|apt|multifamily|mid[\s-]?rise|tower)\b/i, code: "221", label: "Multifamily Mid-Rise" },
+  { pattern: /\b(?:condos?|condominiums?|townhomes?|townhouses?)\b/i, code: "230", label: "Condo / Townhouse" },
+  { pattern: /\b(?:subdivision|single[\s-]?family|sfd|homes?\s*subdivision)\b/i, code: "210", label: "Single-Family Detached" },
+  { pattern: /\b(?:senior|55\+|retirement)\b/i, code: "252", label: "Senior Adult Housing" },
+  // Office
+  { pattern: /\b(?:medical\s+office|dental|mob)\b/i, code: "720", label: "Medical/Dental Office" },
+  { pattern: /\b(?:office\s+tower|office\s+park|office\s+building|class\s*[ab])\b/i, code: "710", label: "General Office" },
+  { pattern: /\b(?:business\s+park|biz\s+park)\b/i, code: "770", label: "Business Park" },
+  // Retail
+  { pattern: /\b(?:shopping\s+center|shopping\s+mall|mall|plaza)\b/i, code: "820", label: "Shopping Center" },
+  { pattern: /\b(?:supermarket|grocery)\b/i, code: "850", label: "Supermarket" },
+  { pattern: /\b(?:pharmacy|drugstore|cvs|walgreens)\b/i, code: "880", label: "Pharmacy" },
+  // Food
+  { pattern: /\b(?:drive[\s-]?thru|drive[\s-]?through|qsr|chick[\s-]?fil[\s-]?a|chipotle)\b/i, code: "934", label: "Fast-Food w/ Drive-Through" },
+  { pattern: /\b(?:coffee|starbucks|dunkin)\b/i, code: "935", label: "Coffee Shop w/ Drive-Through" },
+  { pattern: /\b(?:restaurant|dining|cafe|bistro)\b/i, code: "932", label: "Sit-Down Restaurant" },
+  // Institutional
+  { pattern: /\b(?:elementary)\b/i, code: "520", label: "Public Elementary School" },
+  { pattern: /\b(?:middle\s+school|junior\s+high)\b/i, code: "522", label: "Middle School" },
+  { pattern: /\b(?:high\s+school)\b/i, code: "530", label: "High School" },
+  { pattern: /\b(?:church|chapel|synagogue|mosque|temple|cathedral)\b/i, code: "560", label: "Church" },
+  { pattern: /\b(?:day\s*care|daycare|preschool)\b/i, code: "565", label: "Day Care Center" },
+  { pattern: /\b(?:hospital|medical\s+center)\b/i, code: "610", label: "Hospital" },
+  { pattern: /\b(?:clinic|urgent\s+care)\b/i, code: "630", label: "Clinic" },
+  // Entertainment / recreation
+  { pattern: /\b(?:movie\s+theater|cineplex|cinema)\b/i, code: "444", label: "Movie Theater" },
+  { pattern: /\b(?:theater|playhouse|opera)\b/i, code: "445", label: "Live Theater" },
+  { pattern: /\b(?:gym|fitness|health\s+club)\b/i, code: "492", label: "Health Club" },
+  // Industrial
+  { pattern: /\b(?:warehouse|fulfillment\s+center)\b/i, code: "150", label: "Warehousing" },
+  { pattern: /\b(?:self[\s-]?storage|mini[\s-]?storage)\b/i, code: "151", label: "Self-Storage" },
+  { pattern: /\b(?:manufacturing|factory|plant)\b/i, code: "140", label: "Manufacturing" },
+];
+
+/**
+ * Suggest the first ITE land-use code whose keyword pattern hits in the
+ * project name. Returns null when nothing matches the name reads as
+ * generic ("Project Phase 1" etc.). Caller uses this to surface a
+ * "Did you mean ITE X?" pill above the dropdown.
+ */
+function suggestIteCodeForName(name: string): { code: string; label: string } | null {
+  const trimmed = name.trim();
+  if (trimmed.length < 4) return null;
+  for (const h of PROJECT_NAME_HINTS) {
+    if (h.pattern.test(trimmed)) return { code: h.code, label: h.label };
+  }
+  return null;
+}
+
+/**
+ * Suggest 2–3 quick-pick sizes for the user's land use + chosen unit. The
+ * sizes are the "what does a typical project look like" sizes a developer
+ * is likely to be sketching — for ITE 221 mid-rise MF: 120 / 200 / 400 DU.
+ * Tuned to span small / medium / large for each code so the chip strip is
+ * useful regardless of project scale. Falls back to a generic 50/100/200
+ * scheme for codes without a custom entry.
+ */
+function quickSizesFor(landUseCode: string, unitShort: string): number[] {
+  // unitShort key disambiguates secondary-variable choices.
+  const key = `${landUseCode}:${unitShort}`;
+  const map: Record<string, number[]> = {
+    // Residential — DU
+    "210:DU": [80, 160, 320],
+    "215:DU": [60, 120, 240],
+    "220:DU": [80, 160, 320],
+    "221:DU": [120, 200, 400],
+    "222:DU": [200, 400, 800],
+    "230:DU": [80, 160, 320],
+    "251:DU": [40, 80, 160],
+    "252:DU": [60, 120, 240],
+    // Residential alternates
+    "221:ksf": [100, 200, 400],
+    "222:ksf": [200, 400, 800],
+    "210:acres": [10, 30, 80],
+    // Lodging
+    "310:rooms": [120, 200, 320],
+    "310:occ":   [90, 150, 240],
+    "310:emp":   [50, 100, 200],
+    "311:rooms": [120, 200, 320],
+    "320:rooms": [60, 100, 160],
+    "330:rooms": [180, 320, 500],
+    // Office
+    "710:ksf":   [25, 50, 100],
+    "710:emp":   [80, 200, 500],
+    "712:ksf":   [10, 20, 35],
+    "720:ksf":   [20, 45, 80],
+    "720:emp":   [40, 100, 250],
+    "750:ksf":   [50, 100, 200],
+    "770:ksf":   [50, 100, 250],
+    // Retail
+    "820:ksf":   [40, 75, 150],
+    "820:emp":   [50, 150, 350],
+    "820:acres": [4, 8, 15],
+    "850:ksf":   [40, 60, 80],
+    "934:ksf":   [3, 4, 6],
+    "934:seats": [40, 80, 120],
+    "932:ksf":   [6, 10, 14],
+    "932:seats": [120, 200, 300],
+    // Institutional
+    "520:students": [400, 700, 1000],
+    "520:ksf":      [40, 70, 100],
+    "530:students": [800, 1500, 2400],
+    "550:students": [5000, 12000, 25000],
+    "560:ksf":      [10, 25, 60],
+    "560:seats":    [200, 600, 1500],
+    "560:att":      [150, 400, 1000],
+    "565:students": [60, 120, 200],
+    "610:beds":     [120, 250, 500],
+    "610:ksf":      [150, 300, 600],
+    "630:ksf":      [10, 25, 60],
+    // Industrial
+    "110:ksf":   [50, 150, 400],
+    "150:ksf":   [100, 300, 800],
+    "150:acres": [10, 30, 80],
+    "140:ksf":   [60, 200, 500],
+  };
+  return map[key] ?? [50, 100, 200];
+}
+
+/**
+ * Recommendation for study radius based on the project's scale. Cold-click
+ * visitors usually leave the slider at the default; this hint nudges
+ * larger projects to a larger radius so they don't miss obvious mitigation
+ * candidates one mile away. The thresholds match the practitioner rule of
+ * thumb: <100 DU / <50 ksf → 0.5 mi (very local), DRI-scale → 1.5–3 mi.
+ */
+function recommendRadiusMi(landUseCode: string, unitShort: string, size: number): number {
+  if (!Number.isFinite(size) || size <= 0) return 0.75;
+  // Hotel / hospitality use rooms-equivalent
+  if (unitShort === "rooms") {
+    if (size >= 400) return 2.0;
+    if (size >= 200) return 1.5;
+    if (size >= 100) return 1.0;
+    return 0.5;
+  }
+  // Residential DUs
+  if (unitShort === "DU") {
+    if (size >= 500) return 2.0;
+    if (size >= 250) return 1.5;
+    if (size >= 100) return 1.0;
+    return 0.5;
+  }
+  // Square-footage codes
+  if (unitShort === "ksf") {
+    if (size >= 500) return 2.5;
+    if (size >= 250) return 1.5;
+    if (size >= 100) return 1.0;
+    return 0.5;
+  }
+  // Employees / students / acres / seats — heuristic scale by absolute number
+  if (size >= 1000) return 1.5;
+  if (size >= 200) return 1.0;
+  return 0.75;
+}
+
+/** localStorage key for the persisted demo form. Bumping the version
+ *  invalidates older saved drafts that may have shapes the new form
+ *  can't restore cleanly. */
+const DEMO_FORM_LOCALSTORAGE_KEY = "tis-demo-form:v2";
+
 function losChip(los: string) {
   return (
     <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${LOS_CHIP[los] ?? ""}`}>
@@ -256,6 +445,17 @@ export default function DemoPage() {
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
       setResponse(data);
+      // Clear the saved draft on a successful run so a fresh visit doesn't
+      // surprise the user with stale inputs from someone else's session at
+      // the same browser. The form is unmounted while the result is showing,
+      // so this clear happens behind the scenes.
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem(DEMO_FORM_LOCALSTORAGE_KEY);
+        }
+      } catch {
+        // Quota / private browsing — ignore; the form will just re-save.
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
@@ -349,17 +549,36 @@ function DemoForm({
   resolvedRegion: ResolvedRegion | null;
 }) {
   const currentYear = new Date().getFullYear();
-  const [projectName, setProjectName] = useState("");
-  const [latitude, setLatitude] = useState("");
-  const [longitude, setLongitude] = useState("");
-  const [landUseCode, setLandUseCode] = useState("221");
-  const [size, setSize] = useState("");
-  const [openingYear, setOpeningYear] = useState(String(currentYear + 1));
+  // Hydrate from localStorage if a prior session left a draft behind. Cold-
+  // click visitors often bounce away to /pricing or /cities to research and
+  // come back; without persistence they lose every input. v2 of the key
+  // also stores independentVariable so the unit picker survives a reload.
+  const persisted = useMemo<Partial<StudyForm> | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(DEMO_FORM_LOCALSTORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Partial<StudyForm>;
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const [projectName, setProjectName] = useState(persisted?.projectName ?? "");
+  const [latitude, setLatitude] = useState(persisted?.latitude !== undefined ? String(persisted.latitude) : "");
+  const [longitude, setLongitude] = useState(persisted?.longitude !== undefined ? String(persisted.longitude) : "");
+  const [landUseCode, setLandUseCode] = useState(persisted?.landUseCode ?? "221");
+  const [size, setSize] = useState(persisted?.size !== undefined ? String(persisted.size) : "");
+  const [openingYear, setOpeningYear] = useState(persisted?.openingYear !== undefined ? String(persisted.openingYear) : String(currentYear + 1));
   // Study radius — how far from the site the engine sweeps for affected
   // signals. Default 0.75 mi balances coverage and latency for a cold-
   // click visitor; the slider exposes 0.25 → 3 mi for prospects who
   // want to test bigger sites. Backend clamps to the same range.
-  const [studyRadiusMi, setStudyRadiusMi] = useState(0.75);
+  const [studyRadiusMi, setStudyRadiusMi] = useState(persisted?.studyRadiusMi ?? 0.75);
+  // Chosen independent variable. Empty string ⇒ use the land use's primary
+  // unit (the demo behaves identically to before for codes without secondaries).
+  const [independentVariable, setIndependentVariable] = useState(persisted?.independentVariable ?? "");
   const [formError, setFormError] = useState<string | null>(null);
 
   // Land-use combobox state. The dropdown has 80+ ITE codes; without a
@@ -427,6 +646,92 @@ function DemoForm({
     [landUses, landUseCode],
   );
 
+  // The unit short the form is currently sized in — primary by default,
+  // secondary when the user picked an alternate from the variable picker.
+  // Used to scope the size input label, quick-size chips, and radius
+  // recommendation.
+  const activeUnitShort = useMemo(() => {
+    if (!activeLandUse) return "";
+    if (independentVariable && activeLandUse.secondaryVariables?.some((v) => v.unitShort === independentVariable)) {
+      return independentVariable;
+    }
+    return activeLandUse.unitShort;
+  }, [activeLandUse, independentVariable]);
+
+  const activeVariableMeta = useMemo<SecondaryVariable | null>(() => {
+    if (!activeLandUse || !independentVariable) return null;
+    return activeLandUse.secondaryVariables?.find((v) => v.unitShort === independentVariable) ?? null;
+  }, [activeLandUse, independentVariable]);
+
+  // Project-name → ITE-code hint. Only surfaces when the matched code is
+  // DIFFERENT from the current selection — no point telling the user "did
+  // you mean ITE 310 Hotel?" if they already picked 310.
+  const nameHint = useMemo(() => {
+    const h = suggestIteCodeForName(projectName);
+    if (!h) return null;
+    if (h.code === landUseCode) return null;
+    // Only surface when we actually have the suggested code in the menu.
+    if (!landUses?.some((lu) => lu.code === h.code)) return null;
+    return h;
+  }, [projectName, landUseCode, landUses]);
+
+  // Size-based radius recommendation. Only surfaces when the user's current
+  // radius differs from the recommendation by ≥0.25 mi — small deltas aren't
+  // worth a nag.
+  const recommendedRadius = useMemo(() => {
+    const sz = Number(size);
+    if (!Number.isFinite(sz) || sz <= 0 || !activeUnitShort) return null;
+    const rec = recommendRadiusMi(landUseCode, activeUnitShort, sz);
+    if (Math.abs(rec - studyRadiusMi) < 0.25) return null;
+    return rec;
+  }, [size, landUseCode, activeUnitShort, studyRadiusMi]);
+
+  // Size quick-pick chips, scoped to the active code + chosen unit. Empty
+  // array when there's no useful suggestion (e.g. unknown alternate unit).
+  const quickSizes = useMemo<number[]>(() => {
+    if (!activeLandUse || !activeUnitShort) return [];
+    return quickSizesFor(landUseCode, activeUnitShort);
+  }, [activeLandUse, landUseCode, activeUnitShort]);
+
+  // Persist the form state to localStorage so navigating away and back
+  // doesn't lose work. Only persist when the user has typed something
+  // meaningful (avoids polluting localStorage on first page hit).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const draft: Partial<StudyForm> = {
+      projectName,
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+      landUseCode,
+      size: Number(size),
+      openingYear: Math.trunc(Number(openingYear)) || currentYear + 1,
+      studyRadiusMi,
+      independentVariable: independentVariable || undefined,
+    };
+    const hasContent =
+      projectName.trim() !== "" || latitude !== "" || longitude !== "" || size !== "";
+    try {
+      if (hasContent) {
+        window.localStorage.setItem(DEMO_FORM_LOCALSTORAGE_KEY, JSON.stringify(draft));
+      } else {
+        window.localStorage.removeItem(DEMO_FORM_LOCALSTORAGE_KEY);
+      }
+    } catch {
+      // Quota / disabled storage / private browsing — silently ignore;
+      // persistence is a convenience, not a correctness requirement.
+    }
+  }, [projectName, latitude, longitude, landUseCode, size, openingYear, studyRadiusMi, independentVariable, currentYear]);
+
+  // Reset the independent variable when the user picks a different land use
+  // — the unitShort that was valid for the old code may not exist on the new one.
+  useEffect(() => {
+    if (!activeLandUse || !independentVariable) return;
+    const valid =
+      independentVariable === activeLandUse.unitShort ||
+      activeLandUse.secondaryVariables?.some((v) => v.unitShort === independentVariable);
+    if (!valid) setIndependentVariable("");
+  }, [activeLandUse, independentVariable]);
+
   function applyPreset(p: Preset) {
     // Reflect the preset in the form for visual feedback...
     setProjectName(p.prefill.projectName);
@@ -434,6 +739,8 @@ function DemoForm({
     setLongitude(String(p.prefill.longitude));
     setLandUseCode(p.prefill.landUseCode);
     setSize(String(p.prefill.size));
+    // Presets always use the primary variable; reset any leftover secondary.
+    setIndependentVariable("");
     setFormError(null);
     // ...and immediately run the study. Cold-click visitors from cold
     // outreach were clicking a preset, seeing the form populate, not
@@ -489,7 +796,23 @@ function DemoForm({
       size: sz,
       openingYear: Math.trunc(yr),
       studyRadiusMi,
+      independentVariable: independentVariable || undefined,
     });
+  }
+
+  /** Nudge the geocoded coordinate by ±deltaDeg in lat/lon. Used by the
+   *  "Use a different coordinate near here" mini-editor when the geocoded
+   *  address landed at a different corner of a large parcel than the
+   *  developer actually means. ~0.01° ≈ 1.1 km north-south. */
+  function nudgeCoord(field: "lat" | "lon", deltaDeg: number) {
+    const lat = Number(latitude);
+    const lon = Number(longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    if (field === "lat") {
+      setLatitude((lat + deltaDeg).toFixed(4));
+    } else {
+      setLongitude((lon + deltaDeg).toFixed(4));
+    }
   }
 
   const inputCls =
@@ -678,6 +1001,20 @@ function DemoForm({
             </div>
           </div>
 
+          {/* Nudge controls for projects where the geocoded address sits on
+              the wrong corner of a large parcel (DRI-scale developments,
+              entire blocks). 0.01° ≈ 1.1 km north-south; 0.001° ≈ 110 m. */}
+          {latitude && longitude && Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)) && (
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground -mt-2">
+              <span>Nudge coordinate:</span>
+              <button type="button" onClick={() => nudgeCoord("lat", 0.001)} className="px-1.5 py-0.5 rounded border border-border hover:border-foreground/40 font-mono">N+</button>
+              <button type="button" onClick={() => nudgeCoord("lat", -0.001)} className="px-1.5 py-0.5 rounded border border-border hover:border-foreground/40 font-mono">S+</button>
+              <button type="button" onClick={() => nudgeCoord("lon", 0.001)} className="px-1.5 py-0.5 rounded border border-border hover:border-foreground/40 font-mono">E+</button>
+              <button type="button" onClick={() => nudgeCoord("lon", -0.001)} className="px-1.5 py-0.5 rounded border border-border hover:border-foreground/40 font-mono">W+</button>
+              <span className="text-muted-foreground/60">(±110 m steps — useful for large parcels)</span>
+            </div>
+          )}
+
           {/* Study radius — how far from the site to sweep for affected
               signals. Slider 0.25 → 3.0 mi (demo cap). Most prospects
               leave this alone, but the option is here for larger sites. */}
@@ -706,7 +1043,33 @@ function DemoForm({
               <span>1.5 mi</span>
               <span>3.0 mi</span>
             </div>
+            {recommendedRadius !== null && (
+              <button
+                type="button"
+                onClick={() => setStudyRadiusMi(recommendedRadius)}
+                className="mt-1.5 text-[11px] text-blue-700 hover:text-blue-800 inline-flex items-center gap-1"
+                data-testid="button-radius-recommend"
+              >
+                ⤷ Recommend {recommendedRadius.toFixed(2)} mi for this project scale
+              </button>
+            )}
           </div>
+
+          {/* Project name → ITE-code hint. Surfaced as a small pill above the
+              dropdown when the user's project name unambiguously points to a
+              specific code and they haven't picked that code yet. */}
+          {nameHint && (
+            <button
+              type="button"
+              onClick={() => setLandUseCode(nameHint.code)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-blue-700/40 bg-blue-50 dark:bg-blue-950/30 text-xs text-blue-800 dark:text-blue-300 hover:border-blue-700 transition-colors"
+              data-testid="button-name-hint"
+            >
+              <Sparkles className="w-3 h-3" />
+              Did you mean <span className="font-mono">ITE {nameHint.code}</span>{" "}
+              <span className="font-semibold">{nameHint.label}</span>?
+            </button>
+          )}
 
           {/* Land use + size + year */}
           <div className="grid sm:grid-cols-12 gap-4">
@@ -800,10 +1163,66 @@ function DemoForm({
                   </div>
                 </>
               )}
+              {/* Unit picker — surfaces when ITE 11th publishes (or our
+                  table derives) more than one independent variable for the
+                  chosen code. Sizing a hotel by occupied rooms instead of
+                  rooms, an office by employees instead of ksf, a church by
+                  weekly attendees — all map cleanly to the right rate set
+                  via TisRequest.independentVariable. Empty selection ⇒
+                  primary unit (the original demo behavior). */}
+              {activeLandUse && (activeLandUse.secondaryVariables?.length ?? 0) > 0 && (
+                <div className="mt-2 space-y-1">
+                  <div className="text-[10px] uppercase tracking-[0.16em] font-mono text-muted-foreground">
+                    Size this project by
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setIndependentVariable("")}
+                      className={
+                        "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs border transition-colors " +
+                        (independentVariable === ""
+                          ? "bg-foreground text-background border-foreground"
+                          : "bg-background text-foreground border-border hover:border-foreground/40")
+                      }
+                      data-testid="button-variable-primary"
+                    >
+                      <span className="font-mono text-[10px] text-muted-foreground">{activeLandUse.unitShort}</span>
+                      <span>{activeLandUse.unit}</span>
+                    </button>
+                    {(activeLandUse.secondaryVariables ?? []).map((v) => (
+                      <button
+                        key={v.unitShort}
+                        type="button"
+                        onClick={() => setIndependentVariable(v.unitShort)}
+                        title={v.note ?? ""}
+                        className={
+                          "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs border transition-colors " +
+                          (independentVariable === v.unitShort
+                            ? "bg-foreground text-background border-foreground"
+                            : "bg-background text-foreground border-border hover:border-foreground/40")
+                        }
+                        data-testid={`button-variable-${v.unitShort}`}
+                      >
+                        <span className="font-mono text-[10px] text-muted-foreground">{v.unitShort}</span>
+                        <span>{v.unit}</span>
+                        {v.confidence === "interpolated" && (
+                          <span className="font-mono text-[9px] text-amber-700 dark:text-amber-400" title="Derived rate — see methodology">~</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  {activeVariableMeta?.confidence === "interpolated" && activeVariableMeta?.note && (
+                    <div className="text-[10px] text-amber-700 dark:text-amber-400 leading-snug">
+                      Derived rate — {activeVariableMeta.note}. Recorded in the report's methodology.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="sm:col-span-3">
               <label htmlFor="demo-size" className={labelCls}>
-                Size {activeLandUse && <span className="text-muted-foreground/60 normal-case">({activeLandUse.unitShort})</span>}
+                Size {activeLandUse && <span className="text-muted-foreground/60 normal-case">({activeUnitShort})</span>}
               </label>
               <input
                 id="demo-size"
@@ -818,6 +1237,33 @@ function DemoForm({
                 required
                 data-testid="input-size"
               />
+              {/* Quick-pick size chips — one-click fills the size field with
+                  a "what does a typical project look like" value for this
+                  land use + chosen unit. Cuts the keystrokes needed to run
+                  the demo from ~6 to 1 for ballpark studies. */}
+              {quickSizes.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  {quickSizes.map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setSize(String(v))}
+                      className={
+                        "inline-flex items-center px-2 py-0.5 rounded-sm text-[10px] font-mono tabular-nums border transition-colors " +
+                        (String(v) === size
+                          ? "bg-blue-700 text-white border-blue-700"
+                          : "bg-background text-muted-foreground border-border hover:border-foreground/40 hover:text-foreground")
+                      }
+                      data-testid={`button-size-${v}`}
+                    >
+                      {v.toLocaleString()}
+                    </button>
+                  ))}
+                  <span className="text-[10px] text-muted-foreground/60 font-mono">
+                    {activeUnitShort}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="sm:col-span-3">
               <label htmlFor="demo-year" className={labelCls}>Opening year</label>

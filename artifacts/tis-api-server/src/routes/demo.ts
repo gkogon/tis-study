@@ -195,12 +195,23 @@ const PRESETS = {
 } as const;
 
 router.get("/demo/landuses", (_req, res) => {
+  // Surface secondaryVariables so the demo form can render the unit picker
+  // for codes that accept more than one independent variable (ITE TGM 11th).
+  // Each variable carries enough metadata (unit label, short label, confidence
+  // tier, engineering note) that the form can show "Did you mean per-employee?"
+  // and the PDF can later record exactly which assumption shipped.
   res.json({
     landUses: LAND_USES.map((lu) => ({
       code: lu.code,
       name: lu.name,
       unit: lu.unit,
       unitShort: lu.unitShort,
+      secondaryVariables: (lu.secondaryVariables ?? []).map((v) => ({
+        unit: v.unit,
+        unitShort: v.unitShort,
+        confidence: v.confidence,
+        note: v.note,
+      })),
     })),
   });
 });
@@ -319,6 +330,9 @@ function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
     : 0.75;
   const projectNameRaw = typeof body.projectName === "string" ? body.projectName.trim() : "";
   const addressRaw = typeof body.address === "string" ? body.address.trim() : "";
+  const independentVariableRaw = typeof body.independentVariable === "string"
+    ? body.independentVariable.trim()
+    : "";
 
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
     return { ok: false, status: 400, error: `Latitude must be a number between -90 and 90.` };
@@ -338,8 +352,34 @@ function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
   if (!landUse) {
     return { ok: false, status: 400, error: `Unknown ITE land-use code: "${landUseCode}".` };
   }
+  // Validate the chosen independent variable against the land use. Must
+  // match either the primary `unitShort` or one of the secondaryVariables'
+  // `unitShort`. Unknown values are rejected so the engine never silently
+  // applies the primary when the user thought they picked a secondary.
+  let independentVariable: string | undefined;
+  if (independentVariableRaw) {
+    const validUnits = new Set<string>([
+      landUse.unitShort,
+      ...(landUse.secondaryVariables ?? []).map((v) => v.unitShort),
+    ]);
+    if (!validUnits.has(independentVariableRaw)) {
+      return {
+        ok: false,
+        status: 400,
+        error: `"${independentVariableRaw}" is not a valid independent variable for ITE ${landUse.code}. Valid: ${[...validUnits].join(", ")}.`,
+      };
+    }
+    // Only thread through when it's a secondary; primary is the default.
+    if (independentVariableRaw !== landUse.unitShort) {
+      independentVariable = independentVariableRaw;
+    }
+  }
+  // The size-limit error message should reflect the unit the user actually
+  // picked, not the primary, so the error reads naturally for a per-employee
+  // input. Resolve unitShort from the selected variable for the error copy.
+  const sizeUnitShort = independentVariable ?? landUse.unitShort;
   if (!Number.isFinite(size) || size <= 0 || size > SIZE_MAX) {
-    return { ok: false, status: 400, error: `Project size must be between 0 and ${SIZE_MAX} ${landUse.unitShort}.` };
+    return { ok: false, status: 400, error: `Project size must be between 0 and ${SIZE_MAX} ${sizeUnitShort}.` };
   }
   if (openingYear < currentYear - 1 || openingYear > currentYear + 30) {
     return { ok: false, status: 400, error: `Opening year must be between ${currentYear - 1} and ${currentYear + 30}.` };
@@ -367,6 +407,7 @@ function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
       growthRatePct: 1.5,
       weather: "clear",
       runSensitivity: true,
+      independentVariable,
     },
   };
 }
@@ -488,6 +529,11 @@ router.post("/demo/generate", demoRateLimiter, async (req, res): Promise<void> =
         intersections: report.intersectionsStudied,
       },
     });
+    // Surface the variable the engine actually used so the result-view
+    // header doesn't read "240 ksf" for a project the user entered as
+    // "240 emp". The engine writes back unitShort + variableConfidence
+    // on tripGeneration; pull from there so client + PDF agree.
+    const usedUnitShort = report.tripGeneration.unitShort ?? landUse.unitShort;
     res.json({
       projectName,
       regionName,
@@ -495,7 +541,7 @@ router.post("/demo/generate", demoRateLimiter, async (req, res): Promise<void> =
       longitude,
       landUseCode,
       landUseName: landUse.name,
-      landUseUnitShort: landUse.unitShort,
+      landUseUnitShort: usedUnitShort,
       size,
       openingYear,
       studyRadiusMi,
