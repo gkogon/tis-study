@@ -108,6 +108,12 @@ export const GenerateTisBody = zod.object({
     .describe(
       "If true, runs a 100-iteration Monte-Carlo sensitivity analysis.",
     ),
+  independentVariable: zod
+    .string()
+    .optional()
+    .describe(
+      "Optional ITE TGM 11th Ed. alternate independent variable (matches a `unitShort` from the land use's `secondaryVariables`). Defaults to the primary published variable.",
+    ),
 });
 
 export const generateTisResponseRequestLatitudeMin = 33.4;
@@ -201,6 +207,9 @@ export const GenerateTisResponse = zod.object({
     landUseName: zod.string(),
     size: zod.number(),
     unit: zod.string(),
+    unitShort: zod.string().optional(),
+    variableConfidence: zod.enum(["ite_published", "interpolated"]).optional(),
+    variableNote: zod.string().optional(),
     dailyTrips: zod.number(),
     amPeakTrips: zod.number(),
     pmPeakTrips: zod.number(),

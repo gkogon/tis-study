@@ -21,9 +21,9 @@ import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
 // Canonical land-use registry (ITE 11th Ed.) lives in one place so the
 // Parking engine and TIS engine stay in sync. Re-exported below for any
 // downstream callers that imported `LAND_USES` from this module.
-import { LAND_USES, type LandUse } from "./land-uses";
+import { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates } from "./land-uses";
 
-export { LAND_USES, type LandUse };
+export { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates };
 
 export function getLandUse(code: string): LandUse | undefined {
   return LAND_USES.find((l) => l.code === code);
@@ -335,6 +335,13 @@ export type TisRequest = {
   passByPct?: number;           // 0..70, overrides land-use default
   internalCapturePct?: number;  // 0..50, overrides land-use default
   runSensitivity?: boolean;     // default false
+  // Independent-variable choice. Matches the primary `unitShort` of the
+  // selected land use (default) or the `unitShort` of one of its
+  // secondaryVariables (e.g. "emp" to size an office by employees instead
+  // of ksf). When unset or unmatched, the primary published variable is
+  // used. The chosen variable is surfaced in the report so a reviewing PE
+  // can verify the assumption.
+  independentVariable?: string;
 };
 
 export type ApproachImpact = {
@@ -401,6 +408,18 @@ export type TripGenerationSummary = {
   landUseName: string;
   size: number;
   unit: string;
+  /** Short label for the chosen independent variable (e.g. "ksf", "emp"). */
+  unitShort: string;
+  /**
+   * Which variable's rates the screening actually used. "ite_published"
+   * means the primary ITE 11th Ed. rate; "interpolated" means a secondary
+   * derived from a defensible engineering ratio (also surfaced via the
+   * legal disclaimer). PDF renderers display this in §4 so a reviewing PE
+   * can verify the assumption.
+   */
+  variableConfidence: "ite_published" | "interpolated";
+  /** Optional engineering note for the chosen variable. */
+  variableNote?: string;
   dailyTrips: number;
   amPeakTrips: number;
   pmPeakTrips: number;
@@ -546,12 +565,19 @@ function dedupCloseSignals(
   return kept;
 }
 
-function periodRawTrips(lu: LandUse, size: number, period: AnalysisPeriod): number {
+function periodRawTrips(lu: LandUse, size: number, period: AnalysisPeriod, rates?: ResolvedRates): number {
+  // Sat multiplier and directional split are inherent to the land use
+  // (people don't change *when* they drive because the developer counted
+  // employees instead of square feet) so they keep coming from `lu`;
+  // only the size-vs-trips conversion factor switches with the variable.
+  const dailyRate = rates?.dailyRate ?? lu.dailyRate;
+  const amRate = rates?.amRate ?? lu.amRate;
+  const pmRate = rates?.pmRate ?? lu.pmRate;
   switch (period) {
-    case "am_peak": return lu.amRate * size;
-    case "pm_peak": return lu.pmRate * size;
-    case "saturday_midday": return lu.pmRate * size * lu.satMultiplier;
-    case "daily": return lu.dailyRate * size;
+    case "am_peak": return amRate * size;
+    case "pm_peak": return pmRate * size;
+    case "saturday_midday": return pmRate * size * lu.satMultiplier;
+    case "daily": return dailyRate * size;
   }
 }
 
@@ -914,6 +940,12 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const passByPct = clamp(req.passByPct ?? lu.passByPctPm, 0, 70);
   const internalCapturePct = clamp(req.internalCapturePct ?? lu.internalCapturePctPm, 0, 50);
 
+  // Resolve the active rate set from the chosen independent variable
+  // (primary unitShort by default; matches a secondary's unitShort
+  // otherwise). The renderers + findings need both the rates and the
+  // metadata so the report surfaces which assumption was used.
+  const rates = resolveRatesForVariable(lu, req.independentVariable);
+
   // Resolve region once from the project coordinate. Region-scoped cache
   // means a Charlotte project won't accidentally see Atlanta signals.
   // Fall back to Atlanta if outside every active region (belt-and-braces;
@@ -935,7 +967,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // Per-period analyses.
   const periodReports: PeriodReport[] = [];
   for (const period of periods) {
-    const raw = periodRawTrips(lu, req.size, period);
+    const raw = periodRawTrips(lu, req.size, period, rates);
     // Pass-by + internal capture only credit at the PM peak (most defensible
     // application). For other periods we apply 25% of the PM credit fraction
     // (industry rule of thumb that off-peak shopping has less pass-by).
@@ -997,20 +1029,25 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // synthesize it for the back-compat fields so downstream consumers don't
   // crash.
   const pmReport = periodReports.find((p) => p.period === "pm_peak")
-    ?? (await synthesizePmReport(lu, req, candidates, weights, project, growthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct));
+    ?? (await synthesizePmReport(lu, req, candidates, weights, project, growthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates));
 
   // Top-level back-compat trip-generation summary uses ORIGINAL (non-credited)
-  // PM trips so the existing UI labels keep their meaning.
-  const dailyTrips = Math.round(lu.dailyRate * req.size);
-  const amTrips = Math.round(lu.amRate * req.size);
-  const pmTrips = Math.round(lu.pmRate * req.size);
+  // PM trips so the existing UI labels keep their meaning. Rates come from
+  // the resolved variable so a secondary-variable run also produces a
+  // sensible summary in the back-compat fields.
+  const dailyTrips = Math.round(rates.dailyRate * req.size);
+  const amTrips = Math.round(rates.amRate * req.size);
+  const pmTrips = Math.round(rates.pmRate * req.size);
   const pmIn = Math.round(pmTrips * lu.directionalSplitPm.in);
   const pmOut = pmTrips - pmIn;
   const tripGeneration: TripGenerationSummary = {
     landUseCode: lu.code,
     landUseName: lu.name,
     size: req.size,
-    unit: lu.unit,
+    unit: rates.unit,
+    unitShort: rates.unitShort,
+    variableConfidence: rates.confidence,
+    variableNote: rates.note,
     dailyTrips,
     amPeakTrips: amTrips,
     pmPeakTrips: pmTrips,
@@ -1083,8 +1120,9 @@ async function synthesizePmReport(
   approachCapacityVph: number,
   passByPct: number,
   internalCapturePct: number,
+  rates: ResolvedRates,
 ): Promise<PeriodReport> {
-  const raw = periodRawTrips(lu, req.size, "pm_peak");
+  const raw = periodRawTrips(lu, req.size, "pm_peak", rates);
   const passByCredit = raw * (passByPct / 100);
   const internalCredit = (raw - passByCredit) * (internalCapturePct / 100);
   const externalTrips = Math.max(0, raw - passByCredit - internalCredit);
