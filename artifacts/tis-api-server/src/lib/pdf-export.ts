@@ -332,6 +332,10 @@ function dispatchTisRender(
     renderTisGeorgia(doc, result, project, region);
     return;
   }
+  if (region?.stateCode === "TX" && (region?.country ?? "US") === "US") {
+    renderTisTexas(doc, result, project, region);
+    return;
+  }
   renderTis(doc, result);
 }
 
@@ -861,6 +865,376 @@ function gaSubsection(doc: PDFKit.PDFDocument, title: string) {
   doc.font("bold").fontSize(11).fillColor("black").text(title);
   doc.moveDown(0.2);
   doc.x = PAGE_MARGIN;
+}
+
+/**
+ * Texas uses "TIA" (Traffic Impact Analysis), not "TIS". Statewide
+ * procedure lives in TxDOT TSP Ch. 16 + Appendix Q, but Houston,
+ * Austin, Dallas, Fort Worth, and San Antonio each publish their own
+ * city-level TIA standards that materially differ. The renderer picks
+ * the host-city section pack from site coords; outside all five city
+ * envelopes we fall back to TxDOT-only framing.
+ *
+ * Bounds are rough city-envelope rectangles (not legal city limits) —
+ * good enough for picking the citation pack. Source: visual bounds
+ * from each city's published MSA boundary shapefile.
+ */
+type TxJurisdiction = "houston" | "austin" | "dallas" | "fortworth" | "sanantonio" | "txdot";
+
+function txJurisdiction(lat: number, lon: number): TxJurisdiction {
+  if (lat >= 29.5 && lat <= 30.1 && lon >= -95.8 && lon <= -95.0) return "houston";
+  if (lat >= 30.1 && lat <= 30.5 && lon >= -97.95 && lon <= -97.55) return "austin";
+  // Dallas / Fort Worth envelopes overlap in latitude — disambiguate by
+  // longitude (FW sits ~30 mi west of Dallas core).
+  if (lat >= 32.6 && lat <= 32.95 && lon >= -97.5 && lon <= -97.2) return "fortworth";
+  if (lat >= 32.6 && lat <= 33.0 && lon >= -96.95 && lon <= -96.65) return "dallas";
+  if (lat >= 29.3 && lat <= 29.7 && lon >= -98.7 && lon <= -98.3) return "sanantonio";
+  return "txdot";
+}
+
+function renderTisTexas(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const intersections: any[] = Array.isArray(r.affectedIntersections) ? r.affectedIntersections : [];
+  const periods: any[] = Array.isArray(r.periodReports) ? r.periodReports : [];
+
+  const lat = Number(req.latitude ?? project.siteLat ?? NaN);
+  const lon = Number(req.longitude ?? project.siteLon ?? NaN);
+  const juris = Number.isFinite(lat) && Number.isFinite(lon) ? txJurisdiction(lat, lon) : "txdot";
+
+  const cityName = {
+    houston: "City of Houston",
+    austin: "City of Austin",
+    dallas: "City of Dallas",
+    fortworth: "City of Fort Worth",
+    sanantonio: "City of San Antonio",
+    txdot: "TxDOT (no host-city overlay)",
+  }[juris];
+  const cityAuthority = {
+    houston: "Houston Public Works — Office of the City Engineer (OCE), Traffic Group, per the 2023 Infrastructure Design Manual (IDM) Ch. 15 and the OCE TIA Content Guide.",
+    austin: "Austin Transportation and Public Works — Transportation Development Services (TDS), per Land Development Code Ch. 25-6 (§25-6-117 TIA trigger), Transportation Criteria Manual §10, and the City of Austin TIA Guidelines (June 2022).",
+    dallas: "Dallas Department of Transportation — Traffic Engineering, per Dallas Development Code §51A-4.803 (Site Plan Review) and Connect Dallas (Strategic Mobility Plan, adopted Apr 28, 2021).",
+    fortworth: "Fort Worth Transportation & Public Works (TPW) — Traffic Engineering, per the City of Fort Worth Transportation Engineering Manual (June 2019) and the Master Thoroughfare Plan.",
+    sanantonio: "San Antonio Development Services Department (DSD) — Land Development, per Unified Development Code §35-502 (TIA & Roughly Proportionate Determination) and UDC Appendix B §35-B122 (TIA Submittal Contents).",
+    txdot: "the TxDOT District with jurisdiction over the host route (no incorporated host-city standard applies).",
+  }[juris];
+  const cityThreshold = {
+    houston: "≥ ~100 new peak-hour trips (2023 IDM Ch. 15 — verify exact figure against current edition).",
+    austin: "≥ 2,000 vpd net new trips (LDC §25-6-117). Below 2,000 vpd, a Neighborhood Traffic Analysis or TIA Determination Worksheet may still be required.",
+    dallas: "no canonical figure published — consultant practice uses ~1,000 ADT (TIS Waiver form) or ~100 PHT. Flagged as ambiguous.",
+    fortworth: "≥ 300 PHT or ≥ 5,000 ADT triggers a Full TIA; 100–299 PHT triggers an Abbreviated TIA; <100 PHT uses the TIA Worksheet only.",
+    sanantonio: "≥ 75 peak-hour trips (UDC §35-502). Below 75 PHT, a Peak Hour Trip Generation Form only.",
+    txdot: "no statewide trip-count trigger; TxDOT TSP Ch. 16 Categories 1 (100–499 PHT), 2 (500–1,000 PHT), 3 (>1,000 PHT) drive the level of effort.",
+  }[juris];
+  const cityLos = {
+    houston: "Vehicle LOS (VLOS) per the 2023 IDM; LOS D was the historical target but the 2023 IDM demotes letter-grade LOS in favor of multimodal metrics.",
+    austin: "LOS A–F (no VMT switch as of June 2022). Mitigation required when a movement drops from LOS D (No-Build) to LOS E (Build).",
+    dallas: "Transitional — Connect Dallas (Apr 2021) is moving Dallas from LOS toward VMT. Practice currently uses LOS D suburban / LOS E in the CBD.",
+    fortworth: "LOS D for arterials and collectors outside the CBD; LOS E in the CBD and Urban Villages.",
+    sanantonio: "LOS D generally; LOS E inside Transit-Oriented Development overlays per UDC §35-208.",
+    txdot: "no statewide LOS mandate — target is District-discretionary per TSP Ch. 16.",
+  }[juris];
+  const cityDeliverables = {
+    houston: "TIA + Houston Access Form (mandatory for commercial sites) submitted via the Houston Permitting Center. Approval is required before plan submittal if no plat is required.",
+    austin: "Three-tier process — (1) TIA Determination Worksheet → TDS portal, (2) Scope of Work submittal, (3) Full TIA — plus a Sustainable Modes Analysis within a TDM Plan. Scoping pre-approval is a hard gate before TIA submittal.",
+    dallas: "No fixed required-elements list. Submittal carries the TxDOT-equivalent engineering tables/figures plus alignment with Connect Dallas and any PD-overlay traffic conditions. A TIS Waiver form is required when the threshold is not triggered.",
+    fortworth: "Tiered deliverables (Worksheet <100 PHT · Abbreviated 100–299 PHT · Full TIA ≥300 PHT or ≥5,000 ADT). Full TIA requires a mitigation plan with cost/phasing referencing the Master Thoroughfare Plan and the NCTCOG Regional Thoroughfare Plan.",
+    sanantonio: "TIA + Rough Proportionality cost calculation (mitigation cost capped at the maximum proportional impact, UDC §35-502). Pre-submittal scoping meeting with TCI + Public Works + Planning is mandatory.",
+    txdot: "TIA accompanies a Driveway Access Permit (DAP) application submitted through the TxDOT District with jurisdiction over the route.",
+  }[juris];
+
+  // --- Executive Summary --------------------------------------------------
+  gaSection(doc, "EXECUTIVE SUMMARY");
+  doc.font("body").fontSize(10).fillColor("black");
+  const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
+  const losEf = Number(r.intersectionsAtLosEf ?? 0);
+  const summary = `This Traffic Impact Analysis (TIA) presents the anticipated traffic impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Texas. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius using methodology consistent with the Highway Capacity Manual 6th Edition, the ITE Trip Generation Manual 11th Edition, and TxDOT Traffic and Safety Analysis Procedures Manual (TSP) Chapter 16 — Traffic Impact Analysis. Trip generation is calculated for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
+  doc.text(summary, { paragraphGap: 6 });
+
+  doc.font("body").fontSize(10).fillColor("black").text(`Reviewing authority: ${cityName}.`, { paragraphGap: 2 });
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(cityAuthority, { paragraphGap: 6 });
+  doc.fillColor("black");
+
+  doc.font("body").fontSize(10).fillColor("black").text("Findings:", { paragraphGap: 2 });
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+  if (losDrops === 0 && losEf === 0) {
+    doc.text("• No intersections within the study network are projected to drop one or more LOS under build conditions.", { paragraphGap: 2 });
+    doc.text("• No mitigation is necessary to maintain the host-jurisdiction Level of Service standard within the study network.", { paragraphGap: 4 });
+  } else {
+    doc.text(`• ${losDrops} intersection${losDrops === 1 ? "" : "s"} project to drop one or more LOS under build conditions.`, { paragraphGap: 2 });
+    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate at LOS E or F under build conditions and may require mitigation per TxDOT TSP §16.4.3 and the host-city standard above.`, { paragraphGap: 4 });
+  }
+  doc.fillColor("black");
+  doc.moveDown(0.5);
+
+  metricStrip(doc, [
+    { label: "Intersections", value: String(r.intersectionsStudied ?? intersections.length ?? 0) },
+    { label: "LOS drops", value: String(losDrops) },
+    { label: "At LOS E/F", value: String(losEf) },
+    { label: "Worst Δ delay", value: `${(r.worstDelayDeltaSec ?? 0).toFixed(1)}s` },
+  ]);
+  doc.moveDown(0.8);
+
+  // --- §1 Introduction ---------------------------------------------------
+  gaSection(doc, "1.0 INTRODUCTION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `This Traffic Impact Analysis follows the TxDOT Traffic and Safety Analysis Procedures Manual Chapter 16 outline (with Appendix Q as the structural reference) and is layered with the ${cityName} TIA standard where applicable. ${cityAuthority}`,
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Required submission: ${cityDeliverables}`,
+    { paragraphGap: 6 },
+  );
+  if (juris === "dallas") {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Dallas TIA standards are not consolidated into a single dated manual — review is partly discretionary under §51A-4.803 site plan review. This report aligns with the engineering tables and figures expected by Dallas DOT Traffic Engineering plus the multimodal context of Connect Dallas.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- §2 Project Description --------------------------------------------
+  gaSection(doc, "2.0 PROJECT DESCRIPTION");
+  rows(doc, [
+    ["Project name", project.projectName || "—"],
+    ["Land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Site coordinates", Number.isFinite(lat) && Number.isFinite(lon) ? `${lat.toFixed(4)}°, ${lon.toFixed(4)}°` : "—"],
+    ["Opening year", String(req.openingYear ?? "—")],
+    ["Region", region.displayName],
+    ["Host jurisdiction", cityName],
+  ]);
+  doc.moveDown(0.5);
+
+  // --- §3 Study Area -----------------------------------------------------
+  gaSection(doc, "3.0 STUDY AREA");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `The study area covers all signalized intersections within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile radius of the project site. Host-jurisdiction TIA threshold: ${cityThreshold}`,
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per TxDOT TSP §16.3 the study network is defined during the TxDOT-District scoping coordination. Where the project fronts a state-system roadway (IH / US / SH / FM / RM / BU / BS / SL / SS), a Driveway Access Permit (DAP) application under the Access Management Manual Ch. 3 §3 accompanies the TIA submittal.",
+    { paragraphGap: 6 },
+  );
+
+  // --- §4 Existing Conditions --------------------------------------------
+  gaSection(doc, "4.0 EXISTING CONDITIONS");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Existing geometry, signal timing, posted speed, and historical AADT for state-system routes are referenced from the TxDOT Statewide Planning Map, TxDOT Roadway Inventory (RHiNo), and the TxDOT Open Data Portal AADT layer. Crash history is sourced from the TxDOT Crash Records Information System (CRIS).",
+    { paragraphGap: 6 },
+  );
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Affected intersection", "Distance (mi)", "Existing LOS", "Existing delay (s)"],
+      widths: [240, 70, 70, 90],
+      align: ["left", "right", "center", "right"],
+      rows: intersections.map((it) => [
+        it.name ?? it.signalId ?? "—",
+        fmtNum(it.distanceMi, 2),
+        String(it.currentLos ?? it.existingLos ?? "—"),
+        fmtNum(it.currentDelaySec ?? it.existingDelaySec, 1),
+      ]),
+    });
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text("No signalized intersections within the study radius. Off-site capacity impact is not anticipated for this development.", { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.5);
+
+  // --- §5 Trip Generation -------------------------------------------------
+  gaSection(doc, "5.0 TRIP GENERATION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Trip generation is calculated per the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Rate-vs.-equation selection follows the ITE Trip Generation Handbook 3rd Edition, Figure 4.2. Pass-by and internal-capture credits are taken from the ITE Trip Generation Handbook and reflected only against the external trips assigned to the study network.`,
+    { paragraphGap: 6 },
+  );
+  table(doc, {
+    headers: ["Period", "Entering trips", "Exiting trips"],
+    widths: [180, 100, 100],
+    align: ["left", "right", "right"],
+    rows: [
+      ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
+      ["AM peak hour", fmtNum(tg.amPeakTrips), "—"],
+      ["PM peak hour", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
+    ],
+  });
+  doc.moveDown(0.3);
+  rows(doc, [
+    ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
+    ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}%`],
+  ]);
+  doc.moveDown(0.5);
+  if (juris === "austin") {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Austin TIAs require a Sustainable Modes Analysis and a TDM Plan; internal capture, transit-proximity, reduced-parking-supply, and TDM credits are codified as Street Impact Fee credits per the SIF Guidelines (Jan 31, 2023). The trip-generation table above does not yet apply Austin SIF credits — those reductions are scoped in the TDM Plan section [placeholder, requires site-specific TDM inputs].",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  if (periods.length > 0) {
+    table(doc, {
+      headers: ["Period", "Raw", "Pass-by", "Int. cap.", "External", "In", "Out"],
+      widths: [100, 50, 60, 60, 70, 50, 50],
+      align: ["left", "right", "right", "right", "right", "right", "right"],
+      rows: periods.map((p) => {
+        const t = p.tripGeneration ?? {};
+        return [
+          String(p.periodLabel ?? p.period ?? ""),
+          fmtNum(t.rawTrips),
+          fmtNum(t.passByCredit),
+          fmtNum(t.internalCaptureCredit),
+          fmtNum(t.externalTrips),
+          fmtNum(t.inTrips),
+          fmtNum(t.outTrips),
+        ];
+      }),
+    });
+    doc.moveDown(0.5);
+  }
+
+  // --- §6 Trip Distribution and Assignment -------------------------------
+  gaSection(doc, "6.0 TRIP DISTRIBUTION AND ASSIGNMENT");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "External trips are assigned to the study network using inverse-distance weighting from the project site to each signalized intersection, normalized so the period total matches the external-trip count from §5. Final distribution percentages should be agreed upon during the TxDOT-District + host-city scoping meeting prior to formal submittal.",
+    { paragraphGap: 6 },
+  );
+
+  // --- §7 Background Growth ----------------------------------------------
+  gaSection(doc, "7.0 BACKGROUND GROWTH");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Background traffic is grown at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. TxDOT TSP §16.3.3 does not prescribe a fixed growth rate — it is derived from historical AADT trend (TxDOT STARS II / TCDS) combined with current field counts and committed-development trips. The value applied here is a screening default and should be re-calibrated to the historical AADT trend on the affected segments before formal submittal. Regional MPO model factors (H-GAC, NCTCOG, CAMPO, or AAMPO depending on the host MSA) are commonly cited.`,
+    { paragraphGap: 6 },
+  );
+
+  // --- §8 Build / No-Build Analysis --------------------------------------
+  gaSection(doc, "8.0 BUILD / NO-BUILD ANALYSIS");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Per TxDOT TSP §16.3, the future horizon is Opening Year + 5. Three scenarios are evaluated at each affected intersection: (1) Existing — current-year volumes, no growth applied; (2) No-Build (opening year ${req.openingYear ?? "—"}) — existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year(s) without project trips; (3) Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the project's external trips at the assigned distribution. Level of Service is calculated per HCM 6th Edition Exhibit 19-8. Host-jurisdiction LOS standard: ${cityLos}`,
+    { paragraphGap: 6 },
+  );
+
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Intersection", "Existing LOS", "No-Build LOS", "Build LOS", "Δ delay (s)", "Q95 (ft)"],
+      widths: [200, 65, 75, 65, 70, 60],
+      align: ["left", "center", "center", "center", "right", "right"],
+      rows: intersections.map((it) => {
+        const losChanged = it.losChanged === true;
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const noBuildLos = it.existingLos ?? "—";
+        const buildLos = it.futureLos ?? "—";
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(currentLos),
+          String(noBuildLos),
+          (losChanged ? "▲ " : "") + String(buildLos),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+          fmtNum(it.queue95thFt),
+        ];
+      }),
+    });
+  }
+  doc.moveDown(0.5);
+
+  // --- §9 Mitigation ------------------------------------------------------
+  gaSection(doc, "9.0 MITIGATION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Mitigation recommendations follow TxDOT TSP §16.4.3. Each recommendation below is a screening-level concept sized to the projected delay change; detailed signal-timing optimization (HCS or Synchro) and turn-lane geometry checks per Roadway Design Manual Ch. 16 should be confirmed in the formal submittal.",
+    { paragraphGap: 6 },
+  );
+  if (intersections.length > 0) {
+    const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
+    if (needMitigation.length > 0) {
+      doc.font("body").fontSize(10).fillColor("black");
+      for (const it of needMitigation) {
+        const sev = String(it.mitigationSeverity ?? "").toUpperCase();
+        doc.font("bold").text(`${it.name ?? it.signalId} `, { continued: true });
+        doc.font("body").fillColor(TEXT_GRAY).text(`[${sev}]`, { continued: false });
+        doc.font("body").fillColor("black").text("  " + it.mitigation);
+        doc.moveDown(0.3);
+      }
+    } else {
+      doc.font("body").fontSize(10).fillColor("black").text(
+        "No mitigation is necessary to maintain the host-jurisdiction LOS standard within the study network under build conditions.",
+        { paragraphGap: 6 },
+      );
+    }
+  }
+  if (juris === "sanantonio") {
+    doc.moveDown(0.3);
+    doc.font("bold").fontSize(10).fillColor("black").text("Rough Proportionality Cap");
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Per UDC §35-502, the total mitigation cost the City may require of this development is capped at the project's maximum proportional traffic impact. A Rough Proportionality cost calculation must be prepared and submitted with this TIA; this screening report does not generate that calculation — it requires the final mitigation cost estimate and the City's proportionality methodology [placeholder].",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  if (juris === "houston") {
+    doc.moveDown(0.3);
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Houston commercial submittals must include the Houston Access Form alongside this TIA, and an MDR drainage report integration is required where new impervious cover is added — neither is generated by this screening report [placeholder, requires site-civil inputs].",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  if (juris === "austin") {
+    doc.moveDown(0.3);
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Austin's two-tier TIA Memo / Full TIA process determines which deliverable set applies based on the TIA Determination Worksheet outcome and the Scope of Work pre-approval. Tier selection is a discretionary determination by TDS and is not generated by this screening report [placeholder, requires TDS scoping outcome].",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- §10 Conclusions & Recommendations ---------------------------------
+  gaSection(doc, "10.0 CONCLUSIONS & RECOMMENDATIONS");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `This screening TIA identifies ${losDrops} intersection${losDrops === 1 ? "" : "s"} with LOS drops and ${losEf} operating at LOS E or F under build conditions. A formal submittal to ${cityName} (with parallel TxDOT-District coordination where any state-system route is in frontage) should validate these screening results against current-edition manuals, updated turning-movement counts within the most recent 12 months, and the host-jurisdiction scoping outcome. The report must be sealed by a Texas-licensed Professional Engineer per 22 TAC §137.33.`,
+    { paragraphGap: 6 },
+  );
+
+  // --- §11 Programmed Projects -------------------------------------------
+  gaSection(doc, "11.0 PROGRAMMED PROJECTS");
+  const mpoName = {
+    houston: "Houston-Galveston Area Council (H-GAC) TIP 2025–2028",
+    austin: "CAMPO TIP",
+    dallas: "North Central Texas Council of Governments (NCTCOG) TIP and Mobility 2045",
+    fortworth: "NCTCOG TIP, Mobility 2045, and the NCTCOG Regional Thoroughfare Plan",
+    sanantonio: "Alamo Area MPO (AAMPO) TIP",
+    txdot: "the applicable regional MPO TIP",
+  }[juris];
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    `Review of programmed transportation projects within the study area should consult the TxDOT Unified Transportation Program (UTP 2026, adopted Aug 2025), the federally-required Statewide Transportation Improvement Program (STIP), and ${mpoName}. This screening analysis does not automatically integrate programmed-projects data; manual review is recommended for any submittal.`,
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- Findings + Methodology (engine output preserved) ------------------
+  const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
+  if (findings.length > 0) {
+    doc.moveDown(0.5);
+    gaSection(doc, "FINDINGS");
+    doc.font("body").fontSize(10).fillColor("black");
+    for (const f of findings) {
+      doc.text("• " + f, { paragraphGap: 4 });
+    }
+    doc.moveDown(0.5);
+  }
+
+  const methodology: string[] = Array.isArray(r.methodology) ? r.methodology : [];
+  if (methodology.length > 0) {
+    gaSection(doc, "METHODOLOGY NOTES");
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY);
+    for (const m of methodology) {
+      doc.text("• " + m, { paragraphGap: 4 });
+    }
+    doc.fillColor("black");
+  }
 }
 
 /**
