@@ -660,8 +660,11 @@ function renderTisGeorgia(
       rows: intersections.map((it) => [
         it.name ?? it.signalId ?? "—",
         fmtNum(it.distanceMi, 2),
-        String(it.existingLos ?? "—"),
-        fmtNum(it.existingDelaySec, 1),
+        // Prefer the true current-year LOS; fall back to the legacy
+        // "existing" (no-build) field if the engine output predates the
+        // currentLos addition.
+        String(it.currentLos ?? it.existingLos ?? "—"),
+        fmtNum(it.currentDelaySec ?? it.existingDelaySec, 1),
       ]),
     });
   } else {
@@ -714,23 +717,28 @@ function renderTisGeorgia(
 
   // --- §6 Traffic Analysis -----------------------------------------------
   gaSection(doc, "6.0 TRAFFIC ANALYSIS");
-  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
-    "Note: This screening analysis presents Existing and Build conditions in a single table. A formal GRTA submittal also requires a No-Build (background-growth-only) scenario; that scenario is not currently produced by the screening engine and should be prepared separately for any DRI submittal.",
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Three scenarios are evaluated at each affected intersection: (1) Existing — current-year volumes from the GDOT 511 system, no growth applied; (2) No-Build (opening year ${req.openingYear ?? "—"}) — existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year(s) without project trips; (3) Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the proposed development's external trips at the assigned distribution.`,
     { paragraphGap: 6 },
   );
-  doc.fillColor("black");
 
   if (intersections.length > 0) {
     table(doc, {
-      headers: ["Intersection", "Existing LOS", "Build LOS", "Δ delay (s)", "Q95 (ft)"],
-      widths: [220, 70, 70, 70, 70],
-      align: ["left", "center", "center", "right", "right"],
+      headers: ["Intersection", "Existing LOS", "No-Build LOS", "Build LOS", "Δ delay (s)", "Q95 (ft)"],
+      widths: [200, 65, 75, 65, 70, 60],
+      align: ["left", "center", "center", "center", "right", "right"],
       rows: intersections.map((it) => {
         const losChanged = it.losChanged === true;
+        // Fallback: if `currentLos` is missing (older payload), use existingLos
+        // for both Existing and No-Build columns so the table still renders.
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const noBuildLos = it.existingLos ?? "—";
+        const buildLos = it.futureLos ?? "—";
         return [
           it.name ?? it.signalId ?? "—",
-          String(it.existingLos ?? "—"),
-          (losChanged ? "▲ " : "") + String(it.futureLos ?? "—"),
+          String(currentLos),
+          String(noBuildLos),
+          (losChanged ? "▲ " : "") + String(buildLos),
           fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
           fmtNum(it.queue95thFt),
         ];

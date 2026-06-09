@@ -303,6 +303,12 @@ export type TisRequest = {
 
 export type ApproachImpact = {
   direction: Direction;
+  // True current-year baseline (no growth).
+  currentVolumeVph: number;
+  currentVc: number;
+  currentDelaySec: number;
+  currentLos: Los;
+  // Existing-grown-to-opening-year (No-Build). Legacy naming kept.
   existingVolumeVph: number;
   addedTripsPeak: number;
   futureVolumeVph: number;
@@ -322,6 +328,15 @@ export type AffectedIntersection = {
   latitude: number;
   longitude: number;
   distanceMi: number;
+  // True current-year baseline — existing volumes WITHOUT growth applied.
+  // State TIS conventions report this as "Existing Year" or "Year YYYY"
+  // and renderers expect three scenarios stacked: Current → No-Build → Build.
+  currentVc: number;
+  currentDelaySec: number;
+  currentLos: Los;
+  // No-Build = opening-year existing-volumes-grown WITHOUT project trips.
+  // Historically labeled "existing" in this codebase; that naming is a
+  // legacy quirk — the values are no-build under HCM convention.
   existingVc: number;
   addedTripsPmPeak: number;
   futureVc: number;
@@ -555,10 +570,20 @@ function buildAffectedRow(
   params: ScenarioParams,
   calibration?: CalibrationEntry,
 ): AffectedIntersection {
+  // True current-year baseline — no growth, no project. State TIS
+  // conventions report this as the "Existing Conditions" scenario;
+  // it's what a count taken this week would show.
+  const currentVolume = c.sig.totalVolume;
+  const currentCriticalVph = currentVolume * CRITICAL_MOVEMENT_FRACTION;
+  const currentVc = currentCriticalVph / params.capacityVph;
+
+  // No-Build = current volumes grown to the opening year, no project.
+  // Historically labeled "before" / "existing" here.
   const grownVolume = c.sig.totalVolume * params.growthMultiplier;
   const beforeCriticalVph = grownVolume * CRITICAL_MOVEMENT_FRACTION;
   const beforeVc = beforeCriticalVph / params.capacityVph;
 
+  // Build = No-Build + project trips.
   const addedTrips = Math.round(params.externalTrips * weight);
   const addedCriticalVph = addedTrips * CRITICAL_MOVEMENT_FRACTION;
   const afterVc = beforeVc + addedCriticalVph / params.capacityVph;
@@ -570,8 +595,10 @@ function buildAffectedRow(
   // negative) cannot collapse delay → push every signal to LOS A and
   // wreck mitigation decisions. Range mirrors the DB CHECK constraint.
   const calMul = Math.min(5, Math.max(0.25, calibration?.multiplier ?? 1.0));
+  const currentDelay = vcToDelay(currentVc, params.capacityVph) * calMul;
   const beforeDelay = vcToDelay(beforeVc, params.capacityVph) * calMul;
   const afterDelay = vcToDelay(afterVc, params.capacityVph) * calMul;
+  const currentLos = delayToLos(currentDelay);
   const beforeLos = delayToLos(beforeDelay);
   const afterLos = delayToLos(afterDelay);
 
@@ -583,6 +610,12 @@ function buildAffectedRow(
   // the opposite approach. For peak-hour delay we model both as a directional
   // load using the inbound share + outbound share split per direction.
   const approaches: ApproachImpact[] = DIRECTIONS.map((d) => {
+    // Current-year baseline (no growth) for this approach.
+    const currentVolByApproach = currentVolume * volShares[d];
+    const currentVcByApproach = currentVolByApproach / params.approachCapacityVph;
+    const currentDelayByApproach = vcToDelay(currentVcByApproach, params.approachCapacityVph) * calMul;
+
+    // No-Build (existing-grown-to-opening-year).
     const baseVol = grownVolume * volShares[d];
     const inOnApproach = addedTrips * params.inFraction * tripShares[d];
     // Outbound trips depart on the approach opposite the inbound origin.
@@ -596,6 +629,10 @@ function buildAffectedRow(
     const fuDelay = vcToDelay(fuVc, params.approachCapacityVph) * calMul;
     return {
       direction: d,
+      currentVolumeVph: round1(currentVolByApproach),
+      currentVc: round2(currentVcByApproach),
+      currentDelaySec: round1(currentDelayByApproach),
+      currentLos: delayToLos(currentDelayByApproach),
       existingVolumeVph: round1(baseVol),
       addedTripsPeak: Math.round(inOnApproach + outOnApproach),
       futureVolumeVph: round1(futureVol),
@@ -619,6 +656,9 @@ function buildAffectedRow(
     latitude: c.sig.latitude,
     longitude: c.sig.longitude,
     distanceMi: round2(c.distanceMi),
+    currentVc: round2(currentVc),
+    currentDelaySec: round1(currentDelay),
+    currentLos: currentLos,
     existingVc: round2(beforeVc),
     addedTripsPmPeak: addedTrips,
     futureVc: round2(afterVc),
