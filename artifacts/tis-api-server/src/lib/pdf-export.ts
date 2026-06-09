@@ -328,6 +328,10 @@ function dispatchTisRender(
   project: StoredProject,
 ) {
   const region = detectRegion(project);
+  if (region?.stateCode === "FL" && (region?.country ?? "US") === "US") {
+    renderTisFlorida(doc, result, project, region);
+    return;
+  }
   if (region?.stateCode === "GA" && (region?.country ?? "US") === "US") {
     renderTisGeorgia(doc, result, project, region);
     return;
@@ -2211,6 +2215,338 @@ function probablyDriScale(tg: any): boolean {
   if (code.startsWith("82") || code.startsWith("85") || code.startsWith("86") || code.startsWith("87") || code.startsWith("88")) return size >= 50; // retail ksf
   if (code.startsWith("11") || code.startsWith("13") || code.startsWith("14") || code.startsWith("15")) return size >= 200; // industrial ksf
   return false;
+}
+
+/**
+ * Florida-specific TIS renderer. Follows the section structure and
+ * citation conventions FDOT and Florida-district reviewers expect on a
+ * Florida Multimodal Transportation Impact Assessment (MTIA — FDOT's
+ * current term, used interchangeably with TIA/SIA/TIS), per the FDOT
+ * Multimodal Transportation Site Impact Handbook (MTSIH) March 25 2024,
+ * the FDOT Quality/Level of Service Handbook v6.0 (Aug 2025), and FDOT
+ * Procedure 525-000-006 (SHS LOS standards).
+ *
+ * Key conventions that differ from the generic / Georgia renderer:
+ *   - SHS LOS standard is D in urbanized areas and C outside urbanized
+ *     areas per Procedure 525-000-006 (not a blanket LOS D).
+ *   - "MTIA" / "Multimodal Transportation Impact Assessment" is the
+ *     FDOT-preferred term; multimodal scope is reflected throughout.
+ *   - Connection / access work cites Rule 14-96 F.A.C. (Connection
+ *     Permits) and Rule 14-97 F.A.C. (Access Classification).
+ *   - Geometric / driveway design cites the FDOT Design Manual (FDM),
+ *     not the superseded Plans Preparation Manual.
+ *   - Committed-projects review uses the FDOT Five-Year Work Program,
+ *     not GA TIP/STIP.
+ *   - DRI is curtailed post-2015 HB 7065; the renderer does not assume
+ *     DRI review and instead frames the deliverable around local
+ *     concurrency / comp plan amendments / FDOT connection permits.
+ *   - Approved software per FDOT TAH §4.1 (HCS, Synchro, SIDRA, CORSIM,
+ *     Vissim) — Vistro is explicitly NOT in the FDOT inventory.
+ *
+ * Sections deferred (data the engine doesn't yet produce, or inputs
+ * unique to a specific district / county) are surfaced as placeholder
+ * prose naming what the section requires for formal submittal — never
+ * fabricated values.
+ */
+function renderTisFlorida(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const intersections: any[] = Array.isArray(r.affectedIntersections) ? r.affectedIntersections : [];
+  const periods: any[] = Array.isArray(r.periodReports) ? r.periodReports : [];
+
+  // --- 1.0 Executive Summary --------------------------------------------
+  gaSection(doc, "1.0 EXECUTIVE SUMMARY");
+  doc.font("body").fontSize(10).fillColor("black");
+  const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
+  const losEf = Number(r.intersectionsAtLosEf ?? 0);
+  const summary = `This Multimodal Transportation Impact Assessment (MTIA) evaluates the anticipated transportation impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Florida. Analysis follows the FDOT Multimodal Transportation Site Impact Handbook (MTSIH, March 25, 2024) and the FDOT Quality/Level of Service Handbook v6.0 (August 2025). Capacity analysis follows the Highway Capacity Manual 6th Edition consistent with FDOT Traffic Analysis Handbook §4.1. The study covers ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study area for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
+  doc.text(summary, { paragraphGap: 6 });
+
+  doc.font("body").fontSize(10).fillColor("black").text("Findings:", { paragraphGap: 2 });
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+  if (losDrops === 0 && losEf === 0) {
+    doc.text("• No intersections within the study network are projected to drop a Level of Service grade under Build conditions.", { paragraphGap: 2 });
+    doc.text("• No mitigation is required to maintain the FDOT State Highway System LOS standard within the study area.", { paragraphGap: 4 });
+  } else {
+    doc.text(`• ${losDrops} intersection${losDrops === 1 ? "" : "s"} project to drop one or more LOS grade${losDrops === 1 ? "" : "s"} under Build conditions.`, { paragraphGap: 2 });
+    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate at LOS E or F under Build conditions; mitigation per MTSIH 2024 §5 should be evaluated.`, { paragraphGap: 4 });
+  }
+  doc.fillColor("black");
+  doc.moveDown(0.5);
+
+  metricStrip(doc, [
+    { label: "Intersections", value: String(r.intersectionsStudied ?? intersections.length ?? 0) },
+    { label: "LOS drops", value: String(losDrops) },
+    { label: "At LOS E/F", value: String(losEf) },
+    { label: "Worst Δ delay", value: `${(r.worstDelayDeltaSec ?? 0).toFixed(1)}s` },
+  ]);
+  doc.moveDown(0.8);
+
+  // --- 2.0 Project Description ------------------------------------------
+  gaSection(doc, "2.0 PROJECT DESCRIPTION");
+  rows(doc, [
+    ["Project name", project.projectName || "—"],
+    ["Land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
+    ["Region", region.displayName],
+    ["Opening year", String(req.openingYear ?? "—")],
+  ]);
+  doc.moveDown(0.3);
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Surrounding land use, site plan figures, and detailed land-use description are dependent on the final site plan and are not produced by this screening tool. Final submittal should incorporate site plan figures and a written project description per MTSIH 2024.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- 3.0 Methodology --------------------------------------------------
+  gaSection(doc, "3.0 METHODOLOGY");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per MTSIH 2024 §4.3, methodology and scope are established through a pre-application methodology meeting with the controlling FDOT District, county, and applicable MPO/TPO. The methodology letter or meeting minutes must be included as Appendix A of the formal submittal.",
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "3.1 Controlling Guidance");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Primary references: FDOT Multimodal Transportation Site Impact Handbook (MTSIH), March 25, 2024; FDOT Multimodal Transportation Site Impact Applications Guide, June 5, 2024; FDOT Quality/Level of Service Handbook v6.0, August 2025; FDOT Procedure 525-000-006 (Level of Service Standards and Highway Capacity Analysis for the State Highway System); FDOT Procedure 525-030-120 (project traffic forecasting); FDOT Traffic Analysis Handbook (TAH), October 2025.",
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "3.2 Analysis Software");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per FDOT TAH §4.1, approved analysis tools are HCS, Synchro / SimTraffic, SIDRA INTERSECTION (roundabouts), CORSIM, and Vissim. This screening analysis applies the HCM 6th Edition signalized-intersection model consistent with HCS output formatting. Vistro is not included in the FDOT TAH tool inventory; formal submittal output should be prepared in HCS or Synchro.",
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "3.3 Traffic Data Collection");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per MTSIH 2024, traffic counts should be 72 consecutive hours (Monday afternoon through Friday morning) in urbanized, transitioning, and urban area classes, and 7 days in rural areas, in 15-minute increments on typical weekdays excluding holiday weeks. Saturday and midday peaks should be collected for retail land uses per ITE convention. Turning movement counts of 2-hour AM and 2-hour PM peaks in 15-minute increments are typical Florida practice; the controlling FDOT District should confirm during the methodology meeting.",
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "3.4 Time Horizons");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Per MTSIH 2024 §4.3, minimum analysis years are: Existing, Future Background (No-Build), Future Build, and Future Build with Mitigation. Opening year is canonical; there is no fixed +5 horizon for concurrency or connection-permit work. Each year must be explicitly labeled. For a Comprehensive Plan Amendment (CPA) review, the analysis must include Existing, short-term (5-year), and long-term (10-year minimum) horizons. This analysis evaluates Existing (current-year), No-Build (opening year ${req.openingYear ?? "—"}), and Build (opening year ${req.openingYear ?? "—"}) scenarios.`,
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "3.5 Growth Rate");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Per FDOT TAH §2.7, demand projections should use the adopted regional MPO/TPO travel-demand model (TDM); where TDM use is not warranted, historical AADT trend growth from Florida Traffic Online (FTO) is the FDOT-wide convention. Background traffic is grown at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"} for this analysis; the rate should be confirmed against FDOT historical AADT and agreed upon during the methodology meeting.`,
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "3.6 Level of Service Standards");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per FDOT Procedure 525-000-006, the peak-hour automobile-mode LOS standard on the State Highway System is LOS D in urbanized areas and LOS C in rural and transitioning areas. Constrained or backlogged facilities maintain their facility-specific designation. Roadway segment LOS reporting uses the FDOT Q/LOS Handbook v6.0 Generalized Service Volume Tables (GSVTs). Intersection LOS uses HCM 6th Edition Chapter 19 (signalized intersections), Exhibit 19-8 thresholds: A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s of average control delay per vehicle.",
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "3.7 Context Classification");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per FDOT Q/LOS v6.0 (which replaced \"complete streets\" terminology with \"context-based solutions\") and FDM Chapter 201, the study network's context classification (C1 Natural through C6 Urban Core, including C2T Rural Town) calibrates mode treatments and design standards. The controlling context class should be confirmed against FDM Chapter 201 mapping during the methodology meeting.",
+    { paragraphGap: 6 },
+  );
+
+  // --- 4.0 Existing Conditions ------------------------------------------
+  gaSection(doc, "4.0 EXISTING CONDITIONS");
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Affected intersection", "Distance (mi)", "Existing LOS", "Existing delay (s)"],
+      widths: [240, 70, 70, 90],
+      align: ["left", "right", "center", "right"],
+      rows: intersections.map((it) => [
+        it.name ?? it.signalId ?? "—",
+        fmtNum(it.distanceMi, 2),
+        String(it.currentLos ?? it.existingLos ?? "—"),
+        fmtNum(it.currentDelaySec ?? it.existingDelaySec, 1),
+      ]),
+    });
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "No signalized intersections within the study radius. Off-site capacity impact is not anticipated.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.3);
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Existing AADT counts should be confirmed against Florida Traffic Online (https://tdaappsprod.dot.state.fl.us/fto/) for the most recent year. Functional classification should be confirmed against the FDOT Roadway Characteristics Inventory (RCI). Existing turn-lane storage, signal control type, and existing pedestrian, bicycle, and transit facilities should be field-verified and documented as part of formal submittal.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- 5.0 Trip Generation ----------------------------------------------
+  gaSection(doc, "5.0 TRIP GENERATION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Trip generation follows the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Net new external trips are calculated by applying pass-by and internal capture credits to gross trip generation per the ITE Trip Generation Handbook (current edition). Where the project lies within Hillsborough County (FDOT District 7), the Hillsborough Mobility Fee study still references ITE 10th Edition rates blended with the Florida Trip Characteristics Studies Database; trip generation for mobility-fee calculation should be prepared in parallel using that methodology.`,
+    { paragraphGap: 6 },
+  );
+  rows(doc, [
+    ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
+    ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}% (capped at 25% per FDOT District 2 TSIH App. C; confirm cap with controlling district)`],
+    ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
+    ["Weather condition", String(r.weather ?? req.weather ?? "clear")],
+  ]);
+  doc.moveDown(0.3);
+  table(doc, {
+    headers: ["Period", "Entering trips", "Exiting trips"],
+    widths: [180, 100, 100],
+    align: ["left", "right", "right"],
+    rows: [
+      ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
+      ["AM peak hour", fmtNum(tg.amPeakTrips), "—"],
+      ["PM peak hour", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
+    ],
+  });
+  doc.moveDown(0.3);
+
+  if (periods.length > 0) {
+    table(doc, {
+      headers: ["Period", "Raw", "Pass-by", "Int. cap.", "External", "In", "Out"],
+      widths: [100, 50, 60, 60, 70, 50, 50],
+      align: ["left", "right", "right", "right", "right", "right", "right"],
+      rows: periods.map((p) => {
+        const t = p.tripGeneration ?? {};
+        return [
+          String(p.periodLabel ?? p.period ?? ""),
+          fmtNum(t.rawTrips),
+          fmtNum(t.passByCredit),
+          fmtNum(t.internalCaptureCredit),
+          fmtNum(t.externalTrips),
+          fmtNum(t.inTrips),
+          fmtNum(t.outTrips),
+        ];
+      }),
+    });
+    doc.moveDown(0.3);
+  }
+
+  // --- 6.0 Trip Distribution and Assignment ------------------------------
+  gaSection(doc, "6.0 TRIP DISTRIBUTION AND ASSIGNMENT");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per FDOT TAH §2.7, trip distribution and assignment should use the adopted regional MPO/TPO travel-demand model, with model version, base year, and horizon year identified in the methodology letter. This screening analysis assigns net new external trips by inverse-distance weighting to signalized intersections within the study area; for formal submittal, distribution percentages and the TDM run identifier should be agreed upon during the methodology meeting.",
+    { paragraphGap: 6 },
+  );
+
+  // --- 7.0 / 8.0 Future (No-Build) and Future (Build) -------------------
+  gaSection(doc, "7.0 / 8.0 FUTURE (NO-BUILD) AND FUTURE (BUILD) TRAFFIC ANALYSIS");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Three scenarios are evaluated at each affected intersection: (1) Existing — current-year background volumes; (2) Future Background / No-Build (opening year ${req.openingYear ?? "—"}) — existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"} without project trips; (3) Future Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the proposed development's net new external trips at the assigned distribution.`,
+    { paragraphGap: 6 },
+  );
+
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Intersection", "Existing LOS", "No-Build LOS", "Build LOS", "Δ delay (s)", "Q95 (ft)"],
+      widths: [200, 65, 75, 65, 70, 60],
+      align: ["left", "center", "center", "center", "right", "right"],
+      rows: intersections.map((it) => {
+        const losChanged = it.losChanged === true;
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const noBuildLos = it.existingLos ?? "—";
+        const buildLos = it.futureLos ?? "—";
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(currentLos),
+          String(noBuildLos),
+          (losChanged ? "▲ " : "") + String(buildLos),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+          fmtNum(it.queue95thFt),
+        ];
+      }),
+    });
+  }
+  doc.moveDown(0.3);
+
+  // --- 9.0 Mitigation Analysis ------------------------------------------
+  gaSection(doc, "9.0 MITIGATION ANALYSIS");
+  const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
+  if (needMitigation.length > 0) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "The following intersection mitigations are recommended to address projected Build-condition impacts. Geometric mitigation should be designed to FDOT Design Manual (FDM 2025) standards. Proportionate-share, mobility-fee, or developer contribution amounts for jurisdictions that retain concurrency (e.g., Miami-Dade Chapter 33-G) or operate mobility-fee programs (e.g., Hillsborough Chapter 33E) should be calculated separately based on the controlling local-government ordinance.",
+      { paragraphGap: 6 },
+    );
+    for (const it of needMitigation) {
+      const sev = String(it.mitigationSeverity ?? "").toUpperCase();
+      doc.font("bold").fontSize(10).fillColor("black").text(`${it.name ?? it.signalId} `, { continued: true });
+      doc.font("body").fillColor(TEXT_GRAY).text(`[${sev}]`, { continued: false });
+      doc.font("body").fillColor("black").text("  " + it.mitigation);
+      doc.moveDown(0.3);
+    }
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "No mitigation is required to maintain the FDOT SHS LOS standard within the study network under Build conditions. Proportionate-share and mobility-fee calculations (where applicable per the controlling local-government ordinance) are not produced by this screening tool.",
+      { paragraphGap: 6 },
+    );
+  }
+
+  // --- 10.0 Site Access / Ingress-Egress --------------------------------
+  gaSection(doc, "10.0 SITE ACCESS / INGRESS-EGRESS");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Connection to the FDOT State Highway System requires a connection permit per Rule 14-96 F.A.C. (2025 update). Driveway spacing, median-opening spacing, and signal spacing are governed by the access-management class assigned to the impacted SHS segment per Rule 14-97 F.A.C. and FDOT Procedure 525-030-155. Turn-lane warrants, deceleration-lane length, and intersection sight distance must be designed to FDOT Design Manual (FDM 2025) standards. The access-management class for the impacted SHS facility should be confirmed against the FDOT-published Access Classification map.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- 11.0 Internal Circulation ----------------------------------------
+  gaSection(doc, "11.0 INTERNAL CIRCULATION");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Internal site circulation, parking access, and service-vehicle pathways depend on the final site plan and are not included in this screening-level analysis. Internal queuing at the principal driveway should be evaluated for adequate storage between the SHS edge of pavement and the first internal conflict point per FDM guidance.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- 12.0 Comprehensive Plan / Concurrency Consistency ----------------
+  gaSection(doc, "12.0 COMPREHENSIVE PLAN / CONCURRENCY CONSISTENCY");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Transportation concurrency was made optional statewide by HB 7207 (2011). Where the local jurisdiction retains concurrency, comprehensive-plan consistency must be confirmed against the most recent adopted Comprehensive Plan and concurrency management ordinance. Miami-Dade County has retained concurrency under Administrative Order 4-85 and Chapter 33-G; new Chapter 33E (Multimodal Mobility Impact Fee) complements rather than replaces 33-G. Hillsborough County operates a mobility fee in lieu of concurrency. Per Florida Statutes §163.3180(5)(h)1.a., local governments must consult with FDOT whenever a Strategic Intermodal System (SIS) facility is expected to be impacted by a comprehensive-plan amendment.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- 13.0 Programmed Projects -----------------------------------------
+  gaSection(doc, "13.0 PROGRAMMED PROJECTS");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Committed-projects review should consult the FDOT Five-Year Work Program (https://www.fdot.gov/workprogram) and the controlling MPO/TPO Transportation Improvement Program (TIP) and Long Range Transportation Plan (LRTP). Programmed roadway and intersection improvements within the study area should be incorporated into the No-Build network. This screening analysis does not automatically integrate Work Program data; manual review is recommended for any submittal.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- 14.0 Professional Engineer Certification -------------------------
+  gaSection(doc, "14.0 PROFESSIONAL ENGINEER CERTIFICATION");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "A Florida TIS / MTIA deliverable must be signed and sealed by a Florida-licensed Professional Engineer per Florida Statutes Chapter 471 and Florida Administrative Code Rule 61G15-23.001. The cover and signature page of the formal submittal must bear the seal, signature, and date of the Engineer of Record.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- Findings + Methodology (engine output preserved) ------------------
+  const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
+  if (findings.length > 0) {
+    doc.moveDown(0.3);
+    gaSection(doc, "FINDINGS");
+    doc.font("body").fontSize(10).fillColor("black");
+    for (const f of findings) {
+      doc.text("• " + f, { paragraphGap: 4 });
+    }
+    doc.moveDown(0.3);
+  }
+
+  const methodology: string[] = Array.isArray(r.methodology) ? r.methodology : [];
+  if (methodology.length > 0) {
+    gaSection(doc, "METHODOLOGY NOTES");
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY);
+    for (const m of methodology) {
+      doc.text("• " + m, { paragraphGap: 4 });
+    }
+    doc.fillColor("black");
+  }
 }
 
 function renderParking(doc: PDFKit.PDFDocument, r: any) {
