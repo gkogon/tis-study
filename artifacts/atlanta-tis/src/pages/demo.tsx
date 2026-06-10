@@ -414,19 +414,59 @@ export default function DemoPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Fallback land uses surfaced when /demo/landuses fails or returns
+  // empty (network issue, ad-blocker, slow API rollout, etc.). Without
+  // this, the user lands on a form with a disabled land-use button and
+  // no error message — they bounce. With it, the form is always usable;
+  // the live API is just an upgrade path. List covers the 10 most-used
+  // ITE codes to keep the demo functional for ~80% of project types.
+  const FALLBACK_LAND_USES: LandUse[] = [
+    { code: "210", name: "Single-Family Detached Housing", unit: "Dwelling Units", unitShort: "DU" },
+    { code: "220", name: "Multifamily Housing (Low-Rise)", unit: "Dwelling Units", unitShort: "DU" },
+    { code: "221", name: "Multifamily Housing (Mid-Rise)", unit: "Dwelling Units", unitShort: "DU" },
+    { code: "222", name: "Multifamily Housing (High-Rise)", unit: "Dwelling Units", unitShort: "DU" },
+    { code: "310", name: "Hotel", unit: "Rooms", unitShort: "rooms" },
+    { code: "710", name: "General Office", unit: "1,000 sqft GFA", unitShort: "ksf" },
+    { code: "820", name: "Shopping Center (≤100 ksf)", unit: "1,000 sqft GFA", unitShort: "ksf" },
+    { code: "932", name: "High-Turnover (Sit-Down) Restaurant", unit: "1,000 sqft GFA", unitShort: "ksf" },
+    { code: "934", name: "Fast-Food Restaurant w/ Drive-Through", unit: "1,000 sqft GFA", unitShort: "ksf" },
+    { code: "560", name: "Church", unit: "1,000 sqft GFA", unitShort: "ksf" },
+  ];
+
+  const [landUsesError, setLandUsesError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
+
   useEffect(() => {
     let cancelled = false;
+    setLandUsesError(null);
     Promise.all([
       fetch("/tis-api/demo/presets").then((r) => r.json()).catch(() => ({ presets: [], resolvedRegion: null })),
-      fetch("/tis-api/demo/landuses").then((r) => r.json()).catch(() => ({ landUses: [] })),
+      fetch("/tis-api/demo/landuses").then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      }),
     ]).then(([p, l]) => {
       if (cancelled) return;
       setPresets((p?.presets as Preset[] | undefined) ?? []);
       setResolvedRegion((p?.resolvedRegion as ResolvedRegion | null) ?? null);
-      setLandUses((l?.landUses as LandUse[] | undefined) ?? []);
+      const fetched = (l?.landUses as LandUse[] | undefined) ?? [];
+      if (fetched.length === 0) {
+        // The fetch resolved but returned nothing usable. Fall back to
+        // the hardcoded list and tell the user, so they can still run
+        // the demo on the common codes.
+        setLandUses(FALLBACK_LAND_USES);
+        setLandUsesError("Couldn't load the full ITE land-use library. Using a fallback list of the 10 most-used codes — refresh to retry.");
+      } else {
+        setLandUses(fetched);
+      }
+    }).catch(() => {
+      if (cancelled) return;
+      // Network / parse failure. Same fallback path.
+      setLandUses(FALLBACK_LAND_USES);
+      setLandUsesError("Couldn't load the full ITE land-use library. Using a fallback list of the 10 most-used codes — refresh to retry.");
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadTick]);
 
   async function run(form: StudyForm) {
     setLoading(true);
@@ -502,7 +542,7 @@ export default function DemoPage() {
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
         {!response && !loading && (
-          <DemoForm presets={presets} landUses={landUses} onRun={run} resolvedRegion={resolvedRegion} />
+          <DemoForm presets={presets} landUses={landUses} landUsesError={landUsesError} onReload={() => setReloadTick((n) => n + 1)} onRun={run} resolvedRegion={resolvedRegion} />
         )}
 
         {loading && <LoadingState projectName={activeName} />}
@@ -541,10 +581,12 @@ export default function DemoPage() {
  */
 
 function DemoForm({
-  presets, landUses, onRun, resolvedRegion,
+  presets, landUses, landUsesError, onReload, onRun, resolvedRegion,
 }: {
   presets: Preset[] | null;
   landUses: LandUse[] | null;
+  landUsesError: string | null;
+  onReload: () => void;
   onRun: (form: StudyForm) => void;
   resolvedRegion: ResolvedRegion | null;
 }) {
@@ -1076,6 +1118,11 @@ function DemoForm({
             <div className="sm:col-span-6 relative">
               <label htmlFor="demo-landuse" className={labelCls}>
                 ITE land use {landUses === null && <span className="text-muted-foreground/60">(loading…)</span>}
+                {landUsesError && (
+                  <button type="button" onClick={onReload} className="ml-2 normal-case text-amber-600 underline hover:no-underline">
+                    {landUsesError.includes("fallback") ? "Using fallback list · retry" : "retry"}
+                  </button>
+                )}
               </label>
               <button
                 id="demo-landuse"
