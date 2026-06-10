@@ -428,9 +428,36 @@ export default function DemoPage() {
     { code: "310", name: "Hotel", unit: "Rooms", unitShort: "rooms" },
     { code: "710", name: "General Office", unit: "1,000 sqft GFA", unitShort: "ksf" },
     { code: "820", name: "Shopping Center (≤100 ksf)", unit: "1,000 sqft GFA", unitShort: "ksf" },
-    { code: "932", name: "High-Turnover (Sit-Down) Restaurant", unit: "1,000 sqft GFA", unitShort: "ksf" },
-    { code: "934", name: "Fast-Food Restaurant w/ Drive-Through", unit: "1,000 sqft GFA", unitShort: "ksf" },
-    { code: "560", name: "Church", unit: "1,000 sqft GFA", unitShort: "ksf" },
+    {
+      code: "932",
+      name: "High-Turnover (Sit-Down) Restaurant",
+      unit: "1,000 sqft GFA",
+      unitShort: "ksf",
+      // Keep the unit picker working on the fallback path too. Mirrors
+      // the live land-uses.ts payload for these codes.
+      secondaryVariables: [
+        { unit: "Seats", unitShort: "seats", confidence: "ite_published" },
+      ],
+    },
+    {
+      code: "934",
+      name: "Fast-Food Restaurant w/ Drive-Through",
+      unit: "1,000 sqft GFA",
+      unitShort: "ksf",
+      secondaryVariables: [
+        { unit: "Seats", unitShort: "seats", confidence: "ite_published" },
+      ],
+    },
+    {
+      code: "560",
+      name: "Church",
+      unit: "1,000 sqft GFA",
+      unitShort: "ksf",
+      secondaryVariables: [
+        { unit: "Seats", unitShort: "seats", confidence: "ite_published" },
+        { unit: "Weekly Attendees", unitShort: "att", confidence: "interpolated" },
+      ],
+    },
   ];
 
   const [landUsesError, setLandUsesError] = useState<string | null>(null);
@@ -1218,9 +1245,9 @@ function DemoForm({
                   via TisRequest.independentVariable. Empty selection ⇒
                   primary unit (the original demo behavior). */}
               {activeLandUse && (activeLandUse.secondaryVariables?.length ?? 0) > 0 && (
-                <div className="mt-2 space-y-1">
-                  <div className="text-[10px] uppercase tracking-[0.16em] font-mono text-muted-foreground">
-                    Size this project by
+                <div className="mt-2 space-y-1 p-2.5 rounded-md bg-blue-50/60 dark:bg-blue-950/30 border border-blue-700/30">
+                  <div className="text-[11px] font-semibold text-blue-800 dark:text-blue-300">
+                    Measure this project by:
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     <button
