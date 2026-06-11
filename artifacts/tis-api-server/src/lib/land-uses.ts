@@ -152,16 +152,20 @@ export const LAND_USES: LandUse[] = [
   { code: "415", name: "Public Park",                              unit: "Acres",                 unitShort: "acres",    dailyRate:  0.78, amRate: 0.02, pmRate: 0.11, directionalSplitPm: { in: 0.51, out: 0.49 }, amDirectionalIn: 0.50, satMultiplier: 1.30, passByPctPm:  0, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "Picnic Sites",      unitShort: "sites", dailyRate:  7.80, amRate: 0.18, pmRate: 1.05, confidence: "interpolated", note: "Derived at ~10 picnic sites/acre (typical urban park)" },
+      { unit: "Ballfields",        unitShort: "fld",   dailyRate:  2.34, amRate: 0.06, pmRate: 0.33, confidence: "interpolated", note: "Derived at ~1 ballfield per 3 acres (typical neighborhood-park sports area)" },
+      { unit: "Parking Spaces",    unitShort: "stalls", dailyRate: 1.56, amRate: 0.04, pmRate: 0.22, confidence: "interpolated", note: "Derived at ~2 stalls/acre (typical municipal park parking provision)" },
     ] },
   { code: "430", name: "Golf Course",                              unit: "Holes",                 unitShort: "holes",    dailyRate: 35.00, amRate: 2.20, pmRate: 2.74, directionalSplitPm: { in: 0.55, out: 0.45 }, amDirectionalIn: 0.80, satMultiplier: 1.30, passByPctPm:  0, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "Acres",             unitShort: "acres", dailyRate:  5.83, amRate: 0.37, pmRate: 0.46, confidence: "ite_published", note: "ITE 11th — Golf Course per-acre rates" },
       { unit: "Employees",         unitShort: "emp",   dailyRate: 23.33, amRate: 1.47, pmRate: 1.83, confidence: "interpolated", note: "Derived at ~1.5 emp/hole (typical full-service golf)" },
+      { unit: "Rounds per Day",    unitShort: "rnd",   dailyRate:  2.06, amRate: 0.13, pmRate: 0.16, confidence: "interpolated", note: "Derived at ~17 rounds/hole/day (typical busy public course)" },
     ] },
   { code: "444", name: "Movie Theater",                            unit: "Screens",               unitShort: "screens",  dailyRate: 78.00, amRate: 0.50, pmRate: 13.50, directionalSplitPm: { in: 0.64, out: 0.36 }, amDirectionalIn: 0.50, satMultiplier: 1.40, passByPctPm: 10, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "Seats",             unitShort: "seats", dailyRate:  0.39, amRate: 0.0025, pmRate: 0.068, confidence: "ite_published", note: "ITE 11th — Movie Theater per-seat" },
       { unit: "1,000 sqft GFA",    unitShort: "ksf",   dailyRate: 17.55, amRate: 0.11, pmRate: 3.04, confidence: "interpolated", note: "Derived at ~4.45 ksf/screen (multiplex industry avg)" },
+      { unit: "Auditoriums",       unitShort: "aud",   dailyRate: 78.00, amRate: 0.50, pmRate: 13.50, confidence: "interpolated", note: "Equivalent to Screens for typical multiplex (1 auditorium = 1 screen)" },
     ] },
   { code: "445", name: "Live Theater",                             unit: "Seats",                 unitShort: "seats",    dailyRate:  0.42, amRate: 0.00, pmRate: 0.10, directionalSplitPm: { in: 0.70, out: 0.30 }, amDirectionalIn: 0.50, satMultiplier: 1.40, passByPctPm:  0, internalCapturePctPm: 0,
     secondaryVariables: [
@@ -182,6 +186,7 @@ export const LAND_USES: LandUse[] = [
   { code: "488", name: "Soccer Complex",                           unit: "Fields",                unitShort: "fields",   dailyRate: 71.33, amRate: 0.00, pmRate: 17.50, directionalSplitPm: { in: 0.65, out: 0.35 }, amDirectionalIn: 0.50, satMultiplier: 1.40, passByPctPm:  0, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "Acres",             unitShort: "acres", dailyRate: 35.67, amRate: 0.00, pmRate: 8.75, confidence: "interpolated", note: "Derived at ~2 acres/field (standard tournament soccer field plus parking)" },
+      { unit: "Peak-Hour Attendees", unitShort: "att", dailyRate:  1.78, amRate: 0.00, pmRate: 0.44, confidence: "interpolated", note: "Derived at ~40 peak-hour attendees per field (tournament-day estimate)" },
     ] },
   { code: "491", name: "Racquet / Tennis Club",                    unit: "Courts",                unitShort: "courts",   dailyRate: 36.95, amRate: 2.30, pmRate: 3.40, directionalSplitPm: { in: 0.60, out: 0.40 }, amDirectionalIn: 0.55, satMultiplier: 1.10, passByPctPm:  0, internalCapturePctPm: 0,
     secondaryVariables: [
@@ -199,16 +204,19 @@ export const LAND_USES: LandUse[] = [
     secondaryVariables: [
       { unit: "1,000 sqft GFA",    unitShort: "ksf",   dailyRate: 19.52, amRate: 6.71, pmRate: 2.67, confidence: "ite_published", note: "ITE 11th — Elementary School per-ksf" },
       { unit: "Employees",         unitShort: "emp",   dailyRate: 21.30, amRate: 7.32, pmRate: 2.91, confidence: "interpolated", note: "Derived at ~10.7 students/employee (typical public K-5)" },
+      { unit: "Classrooms",        unitShort: "rooms", dailyRate: 45.40, amRate: 15.60, pmRate: 6.20, confidence: "interpolated", note: "Derived at ~20 students/classroom (typical elementary cap)" },
     ] },
   { code: "522", name: "Middle School / Junior High",              unit: "Students",              unitShort: "students", dailyRate:  2.10, amRate: 0.71, pmRate: 0.16, directionalSplitPm: { in: 0.46, out: 0.54 }, amDirectionalIn: 0.51, satMultiplier: 0.05, passByPctPm:  0, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "1,000 sqft GFA",    unitShort: "ksf",   dailyRate: 18.06, amRate: 6.11, pmRate: 1.38, confidence: "ite_published", note: "ITE 11th — Middle School per-ksf" },
       { unit: "Employees",         unitShort: "emp",   dailyRate: 16.80, amRate: 5.68, pmRate: 1.28, confidence: "interpolated", note: "Derived at ~8 students/employee (typical middle school)" },
+      { unit: "Classrooms",        unitShort: "rooms", dailyRate: 46.20, amRate: 15.62, pmRate: 3.52, confidence: "interpolated", note: "Derived at ~22 students/classroom (typical middle-school cap)" },
     ] },
   { code: "530", name: "High School",                              unit: "Students",              unitShort: "students", dailyRate:  1.94, amRate: 0.42, pmRate: 0.14, directionalSplitPm: { in: 0.43, out: 0.57 }, amDirectionalIn: 0.55, satMultiplier: 0.05, passByPctPm:  0, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "1,000 sqft GFA",    unitShort: "ksf",   dailyRate: 14.07, amRate: 3.05, pmRate: 1.02, confidence: "ite_published", note: "ITE 11th — High School per-ksf" },
       { unit: "Employees",         unitShort: "emp",   dailyRate: 30.10, amRate: 6.51, pmRate: 2.17, confidence: "interpolated", note: "Derived at ~15.5 students/employee (typical high school)" },
+      { unit: "Classrooms",        unitShort: "rooms", dailyRate: 48.50, amRate: 10.50, pmRate: 3.50, confidence: "interpolated", note: "Derived at ~25 students/classroom (typical high-school cap)" },
     ] },
   { code: "540", name: "Junior / Community College",               unit: "Students",              unitShort: "students", dailyRate:  1.20, amRate: 0.10, pmRate: 0.12, directionalSplitPm: { in: 0.42, out: 0.58 }, amDirectionalIn: 0.65, satMultiplier: 0.30, passByPctPm:  0, internalCapturePctPm: 0,
     secondaryVariables: [
@@ -229,6 +237,7 @@ export const LAND_USES: LandUse[] = [
     secondaryVariables: [
       { unit: "1,000 sqft GFA",    unitShort: "ksf",   dailyRate: 47.62, amRate: 9.08, pmRate: 9.42, confidence: "ite_published", note: "ITE 11th — Day Care per-ksf" },
       { unit: "Employees",         unitShort: "emp",   dailyRate: 28.63, amRate: 5.46, pmRate: 5.67, confidence: "interpolated", note: "Derived at ~7 students/employee (typical infant + preschool blend)" },
+      { unit: "Classrooms",        unitShort: "rooms", dailyRate: 49.10, amRate: 9.36, pmRate: 9.72, confidence: "interpolated", note: "Derived at ~12 students/classroom (typical multi-age day care)" },
     ] },
   { code: "580", name: "Museum",                                   unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 22.93, amRate: 0.41, pmRate: 0.99, directionalSplitPm: { in: 0.51, out: 0.49 }, amDirectionalIn: 0.50, satMultiplier: 1.30, passByPctPm:  0, internalCapturePctPm: 0,
     secondaryVariables: [
@@ -243,14 +252,19 @@ export const LAND_USES: LandUse[] = [
     secondaryVariables: [
       { unit: "1,000 sqft GFA",    unitShort: "ksf",   dailyRate: 10.77, amRate: 0.95, pmRate: 1.06, confidence: "ite_published", note: "ITE 11th — Hospital per-ksf" },
       { unit: "Employees",         unitShort: "emp",   dailyRate:  3.79, amRate: 0.34, pmRate: 0.37, confidence: "ite_published", note: "ITE 11th — Hospital per-employee" },
+      { unit: "Licensed Beds",     unitShort: "lic",   dailyRate: 10.07, amRate: 0.89, pmRate: 0.99, confidence: "interpolated", note: "Derived at ~85% beds licensed/staffed (typical acute-care)" },
+      { unit: "Surgical Suites",   unitShort: "OR",    dailyRate: 593, amRate: 53, pmRate: 59, confidence: "interpolated", note: "Derived at ~50 beds per OR (typical full-service hospital)" },
     ] },
   { code: "620", name: "Nursing Home",                             unit: "Beds",                  unitShort: "beds",     dailyRate:  3.06, amRate: 0.19, pmRate: 0.26, directionalSplitPm: { in: 0.42, out: 0.58 }, amDirectionalIn: 0.61, satMultiplier: 0.55, passByPctPm:  0, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "Employees",         unitShort: "emp",   dailyRate:  6.80, amRate: 0.42, pmRate: 0.58, confidence: "ite_published", note: "ITE 11th — Nursing Home per-employee" },
+      { unit: "Residents",         unitShort: "res",   dailyRate:  3.22, amRate: 0.20, pmRate: 0.27, confidence: "interpolated", note: "Derived at 95% bed occupancy (typical SNF census)" },
     ] },
   { code: "630", name: "Clinic",                                   unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 37.60, amRate: 2.85, pmRate: 5.18, directionalSplitPm: { in: 0.31, out: 0.69 }, amDirectionalIn: 0.69, satMultiplier: 0.20, passByPctPm:  0, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "Employees",         unitShort: "emp",   dailyRate: 31.45, amRate: 2.38, pmRate: 4.33, confidence: "interpolated", note: "Derived at ~1.2 emp/ksf (typical outpatient clinic staffing)" },
+      { unit: "Exam Rooms",        unitShort: "exam",  dailyRate: 75.20, amRate: 5.70, pmRate: 10.36, confidence: "interpolated", note: "Derived at ~0.5 exam rooms/ksf (typical urgent-care / specialty clinic)" },
+      { unit: "Practitioners",     unitShort: "pract", dailyRate: 188.0, amRate: 14.25, pmRate: 25.90, confidence: "interpolated", note: "Derived at ~5 ksf per practitioner (typical multi-specialty clinic)" },
     ] },
 
   // ---------- Office ----------
@@ -269,6 +283,8 @@ export const LAND_USES: LandUse[] = [
   { code: "720", name: "Medical / Dental Office",                  unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 36.00, amRate: 2.78, pmRate: 3.46, directionalSplitPm: { in: 0.28, out: 0.72 }, amDirectionalIn: 0.79, satMultiplier: 0.20, passByPctPm:  0, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "Employees",         unitShort: "emp",   dailyRate:  9.00, amRate: 0.70, pmRate: 0.87, confidence: "ite_published", note: "ITE 11th — Medical/Dental Office per-employee" },
+      { unit: "Exam Rooms",        unitShort: "exam",  dailyRate: 90.00, amRate: 6.95, pmRate: 8.65, confidence: "interpolated", note: "Derived at ~0.4 exam rooms/ksf (typical medical/dental office)" },
+      { unit: "Practitioners",     unitShort: "pract", dailyRate: 270.0, amRate: 20.85, pmRate: 25.95, confidence: "interpolated", note: "Derived at ~7.5 ksf per practitioner (typical solo/small-group MOB)" },
     ] },
   { code: "730", name: "Government Office Building",               unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 22.59, amRate: 2.62, pmRate: 2.50, directionalSplitPm: { in: 0.33, out: 0.67 }, amDirectionalIn: 0.83, satMultiplier: 0.15, passByPctPm:  0, internalCapturePctPm: 0,
     secondaryVariables: [
@@ -294,6 +310,8 @@ export const LAND_USES: LandUse[] = [
     secondaryVariables: [
       { unit: "Employees",         unitShort: "emp",   dailyRate: 15.10, amRate: 0.38, pmRate: 1.36, confidence: "ite_published", note: "ITE 11th — Shopping Center per-employee" },
       { unit: "Acres",             unitShort: "acres", dailyRate: 377.5, amRate: 9.40, pmRate: 34.0, confidence: "interpolated", note: "Derived at ~10 ksf/acre (typical strip retail FAR)" },
+      { unit: "Tenants",           unitShort: "tnt",   dailyRate: 113.3, amRate: 2.82, pmRate: 10.20, confidence: "interpolated", note: "Derived at ~3 ksf/tenant (typical small-format shopping center)" },
+      { unit: "Parking Spaces",    unitShort: "stalls", dailyRate: 9.44, amRate: 0.24, pmRate: 0.85, confidence: "interpolated", note: "Derived at ~4 stalls/ksf (typical suburban retail parking standard)" },
     ] },
   { code: "821", name: "Shopping Plaza (40–150 ksf)",               unit: "1,000 sqft GLA",        unitShort: "ksf",      dailyRate: 67.52, amRate: 1.73, pmRate: 5.40, directionalSplitPm: { in: 0.48, out: 0.52 }, amDirectionalIn: 0.61, satMultiplier: 1.20, passByPctPm: 28, internalCapturePctPm: 0,
     secondaryVariables: [
@@ -307,13 +325,19 @@ export const LAND_USES: LandUse[] = [
   { code: "840", name: "Automobile Sales (New)",                    unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 27.84, amRate: 1.74, pmRate: 2.43, directionalSplitPm: { in: 0.42, out: 0.58 }, amDirectionalIn: 0.78, satMultiplier: 1.00, passByPctPm: 20, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "Employees",         unitShort: "emp",   dailyRate: 12.65, amRate: 0.79, pmRate: 1.11, confidence: "interpolated", note: "Derived at ~2.2 emp/ksf (typical new-car dealership)" },
+      { unit: "Inventory Vehicles", unitShort: "veh",  dailyRate:  1.39, amRate: 0.09, pmRate: 0.12, confidence: "interpolated", note: "Derived at ~20 inventory vehicles/ksf (typical new-car lot density)" },
+      { unit: "Acres",             unitShort: "acres", dailyRate: 222.7, amRate: 13.92, pmRate: 19.44, confidence: "interpolated", note: "Derived at ~8 ksf/acre (typical dealership site coverage)" },
     ] },
-  { code: "841", name: "Automobile Sales (Used)",                   unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 27.06, amRate: 1.74, pmRate: 3.75, directionalSplitPm: { in: 0.42, out: 0.58 }, amDirectionalIn: 0.78, satMultiplier: 1.00, passByPctPm: 20, internalCapturePctPm: 0 },
+  { code: "841", name: "Automobile Sales (Used)",                   unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 27.06, amRate: 1.74, pmRate: 3.75, directionalSplitPm: { in: 0.42, out: 0.58 }, amDirectionalIn: 0.78, satMultiplier: 1.00, passByPctPm: 20, internalCapturePctPm: 0,
+    secondaryVariables: [
+      { unit: "Inventory Vehicles", unitShort: "veh",  dailyRate:  1.35, amRate: 0.09, pmRate: 0.19, confidence: "interpolated", note: "Derived at ~20 inventory vehicles/ksf (typical used-car lot density)" },
+    ] },
   { code: "843", name: "Auto Parts Sales",                          unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 54.74, amRate: 2.36, pmRate: 4.91, directionalSplitPm: { in: 0.48, out: 0.52 }, amDirectionalIn: 0.61, satMultiplier: 1.10, passByPctPm: 30, internalCapturePctPm: 0 },
   { code: "848", name: "Tire Store",                                unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 27.69, amRate: 0.84, pmRate: 4.39, directionalSplitPm: { in: 0.40, out: 0.60 }, amDirectionalIn: 0.59, satMultiplier: 1.00, passByPctPm: 28, internalCapturePctPm: 0 },
   { code: "850", name: "Supermarket",                               unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 93.84, amRate: 3.40, pmRate: 9.24, directionalSplitPm: { in: 0.51, out: 0.49 }, amDirectionalIn: 0.62, satMultiplier: 1.20, passByPctPm: 36, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "Employees",         unitShort: "emp",   dailyRate: 24.69, amRate: 0.89, pmRate: 2.43, confidence: "ite_published", note: "ITE 11th — Supermarket per-employee" },
+      { unit: "Cashier Lanes",     unitShort: "lanes", dailyRate: 586.5, amRate: 21.25, pmRate: 57.75, confidence: "interpolated", note: "Derived at ~1 lane per 6.25 ksf (typical full-service supermarket)" },
     ] },
   { code: "851", name: "Convenience Market",                        unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 762.28, amRate: 65.38, pmRate: 49.11, directionalSplitPm: { in: 0.51, out: 0.49 }, amDirectionalIn: 0.51, satMultiplier: 0.85, passByPctPm: 61, internalCapturePctPm: 0 },
   { code: "857", name: "Discount Club",                             unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 41.80, amRate: 0.85, pmRate: 4.18, directionalSplitPm: { in: 0.49, out: 0.51 }, amDirectionalIn: 0.61, satMultiplier: 1.25, passByPctPm: 30, internalCapturePctPm: 0,
@@ -330,16 +354,27 @@ export const LAND_USES: LandUse[] = [
     secondaryVariables: [
       { unit: "Employees",         unitShort: "emp",   dailyRate: 11.44, amRate: 0.31, pmRate: 1.00, confidence: "interpolated", note: "Derived at ~2 emp/ksf (typical anchor department store)" },
     ] },
-  { code: "880", name: "Pharmacy w/o Drive-Through",                unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 90.06, amRate: 2.94, pmRate: 8.51, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.61, satMultiplier: 1.10, passByPctPm: 49, internalCapturePctPm: 0 },
-  { code: "881", name: "Pharmacy w/ Drive-Through",                 unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 108.40, amRate: 5.04, pmRate: 10.29, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.61, satMultiplier: 1.10, passByPctPm: 50, internalCapturePctPm: 0 },
+  { code: "880", name: "Pharmacy w/o Drive-Through",                unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 90.06, amRate: 2.94, pmRate: 8.51, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.61, satMultiplier: 1.10, passByPctPm: 49, internalCapturePctPm: 0,
+    secondaryVariables: [
+      { unit: "Prescription Counters", unitShort: "rx", dailyRate: 1080.7, amRate: 35.28, pmRate: 102.1, confidence: "interpolated", note: "Derived at ~1 prescription counter per 12 ksf (typical chain pharmacy)" },
+    ] },
+  { code: "881", name: "Pharmacy w/ Drive-Through",                 unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 108.40, amRate: 5.04, pmRate: 10.29, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.61, satMultiplier: 1.10, passByPctPm: 50, internalCapturePctPm: 0,
+    secondaryVariables: [
+      { unit: "Drive-Through Lanes", unitShort: "DTL", dailyRate: 1301, amRate: 60.48, pmRate: 123.5, confidence: "interpolated", note: "Derived at ~1 DTL per 12 ksf (typical drive-thru pharmacy)" },
+    ] },
   { code: "890", name: "Furniture Store",                           unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate:  5.06, amRate: 0.20, pmRate: 0.52, directionalSplitPm: { in: 0.51, out: 0.49 }, amDirectionalIn: 0.61, satMultiplier: 1.30, passByPctPm: 50, internalCapturePctPm: 0 },
 
   // ---------- Services / Banks / Food ----------
   { code: "911", name: "Walk-In Bank",                              unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 156.48, amRate: 12.13, pmRate: 21.01, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.55, satMultiplier: 0.40, passByPctPm: 35, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "Employees",         unitShort: "emp",   dailyRate: 41.73, amRate: 3.23, pmRate: 5.60, confidence: "interpolated", note: "Derived at ~3.75 emp/ksf (typical retail bank staffing)" },
+      { unit: "Teller Windows",    unitShort: "tlr",   dailyRate: 313.0, amRate: 24.26, pmRate: 42.02, confidence: "interpolated", note: "Derived at ~0.5 tellers/ksf (typical full-service retail branch)" },
     ] },
-  { code: "912", name: "Drive-In Bank",                             unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 100.35, amRate: 12.13, pmRate: 20.45, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.55, satMultiplier: 0.40, passByPctPm: 35, internalCapturePctPm: 0 },
+  { code: "912", name: "Drive-In Bank",                             unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 100.35, amRate: 12.13, pmRate: 20.45, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.55, satMultiplier: 0.40, passByPctPm: 35, internalCapturePctPm: 0,
+    secondaryVariables: [
+      { unit: "Drive-Through Lanes", unitShort: "DTL", dailyRate: 100.4, amRate: 12.13, pmRate: 20.45, confidence: "interpolated", note: "Derived at ~1 DTL per ksf (typical 3 ksf / 3-lane drive-in branch)" },
+      { unit: "Employees",         unitShort: "emp",   dailyRate: 26.76, amRate: 3.23, pmRate: 5.45, confidence: "interpolated", note: "Derived at ~3.75 emp/ksf" },
+    ] },
   { code: "925", name: "Drinking Place / Tavern",                   unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 11.36, amRate: 0.46, pmRate: 11.36, directionalSplitPm: { in: 0.65, out: 0.35 }, amDirectionalIn: 0.55, satMultiplier: 1.30, passByPctPm: 43, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "Seats",             unitShort: "seats", dailyRate:  0.42, amRate: 0.017, pmRate: 0.42, confidence: "interpolated", note: "Derived at ~27 seats/ksf (typical tavern seating density)" },
@@ -363,15 +398,39 @@ export const LAND_USES: LandUse[] = [
   { code: "934", name: "Fast-Food Restaurant w/ Drive-Through",     unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 467.48, amRate: 44.61, pmRate: 33.03, directionalSplitPm: { in: 0.51, out: 0.49 }, amDirectionalIn: 0.51, satMultiplier: 0.85, passByPctPm: 40, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "Seats",             unitShort: "seats", dailyRate: 13.36, amRate: 1.27, pmRate: 0.94, confidence: "ite_published", note: "ITE 11th — Fast-Food w/ Drive-Through per-seat" },
+      { unit: "Drive-Through Lanes", unitShort: "DTL", dailyRate: 1870, amRate: 178.4, pmRate: 132.1, confidence: "interpolated", note: "Derived at ~4 ksf per drive-through lane (typical QSR 1-lane restaurant)" },
     ] },
-  { code: "935", name: "Coffee/Donut Shop w/ Drive-Through",        unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 533.57, amRate: 101.49, pmRate: 41.95, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.51, satMultiplier: 0.70, passByPctPm: 70, internalCapturePctPm: 0 },
-  { code: "936", name: "Coffee/Donut Shop w/o Drive-Through",       unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 234.85, amRate: 80.19, pmRate: 36.31, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.51, satMultiplier: 0.70, passByPctPm: 60, internalCapturePctPm: 0 },
-  { code: "941", name: "Quick Lubrication Vehicle Shop",            unit: "Service Positions",     unitShort: "bays",     dailyRate: 40.00, amRate: 2.34, pmRate: 4.85, directionalSplitPm: { in: 0.45, out: 0.55 }, amDirectionalIn: 0.55, satMultiplier: 1.10, passByPctPm: 40, internalCapturePctPm: 0 },
-  { code: "942", name: "Automobile Care Center",                    unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 23.10, amRate: 1.10, pmRate: 3.11, directionalSplitPm: { in: 0.45, out: 0.55 }, amDirectionalIn: 0.55, satMultiplier: 1.10, passByPctPm: 30, internalCapturePctPm: 0 },
-  { code: "944", name: "Gas Station (no C-store)",                  unit: "Vehicle Fueling Positions", unitShort: "VFP", dailyRate: 168.56, amRate: 11.10, pmRate: 13.99, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.51, satMultiplier: 1.05, passByPctPm: 42, internalCapturePctPm: 0 },
-  { code: "945", name: "Gas Station / Convenience Store",           unit: "Vehicle Fueling Positions", unitShort: "VFP", dailyRate: 205.36, amRate: 13.99, pmRate: 14.03, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.51, satMultiplier: 1.05, passByPctPm: 50, internalCapturePctPm: 0 },
+  { code: "935", name: "Coffee/Donut Shop w/ Drive-Through",        unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 533.57, amRate: 101.49, pmRate: 41.95, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.51, satMultiplier: 0.70, passByPctPm: 70, internalCapturePctPm: 0,
+    secondaryVariables: [
+      { unit: "Drive-Through Lanes", unitShort: "DTL", dailyRate: 1067, amRate: 203.0, pmRate: 83.9, confidence: "interpolated", note: "Derived at ~2 ksf per drive-through lane (typical 1-lane coffee shop)" },
+      { unit: "Seats",             unitShort: "seats", dailyRate: 17.79, amRate: 3.38, pmRate: 1.40, confidence: "interpolated", note: "Derived at ~30 seats/ksf (typical drive-thru coffee layout)" },
+    ] },
+  { code: "936", name: "Coffee/Donut Shop w/o Drive-Through",       unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 234.85, amRate: 80.19, pmRate: 36.31, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.51, satMultiplier: 0.70, passByPctPm: 60, internalCapturePctPm: 0,
+    secondaryVariables: [
+      { unit: "Seats",             unitShort: "seats", dailyRate:  4.70, amRate: 1.60, pmRate: 0.73, confidence: "interpolated", note: "Derived at ~50 seats/ksf (typical walk-in coffee shop)" },
+    ] },
+  { code: "941", name: "Quick Lubrication Vehicle Shop",            unit: "Service Positions",     unitShort: "bays",     dailyRate: 40.00, amRate: 2.34, pmRate: 4.85, directionalSplitPm: { in: 0.45, out: 0.55 }, amDirectionalIn: 0.55, satMultiplier: 1.10, passByPctPm: 40, internalCapturePctPm: 0,
+    secondaryVariables: [
+      { unit: "Employees",         unitShort: "emp",   dailyRate: 13.33, amRate: 0.78, pmRate: 1.62, confidence: "interpolated", note: "Derived at ~3 employees/bay (typical quick-lube staffing)" },
+    ] },
+  { code: "942", name: "Automobile Care Center",                    unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 23.10, amRate: 1.10, pmRate: 3.11, directionalSplitPm: { in: 0.45, out: 0.55 }, amDirectionalIn: 0.55, satMultiplier: 1.10, passByPctPm: 30, internalCapturePctPm: 0,
+    secondaryVariables: [
+      { unit: "Service Bays",      unitShort: "bays",  dailyRate: 11.55, amRate: 0.55, pmRate: 1.56, confidence: "interpolated", note: "Derived at ~2 bays/ksf (typical auto-care center layout)" },
+    ] },
+  { code: "944", name: "Gas Station (no C-store)",                  unit: "Vehicle Fueling Positions", unitShort: "VFP", dailyRate: 168.56, amRate: 11.10, pmRate: 13.99, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.51, satMultiplier: 1.05, passByPctPm: 42, internalCapturePctPm: 0,
+    secondaryVariables: [
+      { unit: "Pumps",             unitShort: "pumps", dailyRate: 337.1, amRate: 22.20, pmRate: 27.98, confidence: "interpolated", note: "Derived at 2 VFP per pump (standard 2-sided fuel dispenser)" },
+    ] },
+  { code: "945", name: "Gas Station / Convenience Store",           unit: "Vehicle Fueling Positions", unitShort: "VFP", dailyRate: 205.36, amRate: 13.99, pmRate: 14.03, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.51, satMultiplier: 1.05, passByPctPm: 50, internalCapturePctPm: 0,
+    secondaryVariables: [
+      { unit: "Pumps",             unitShort: "pumps", dailyRate: 410.7, amRate: 27.98, pmRate: 28.06, confidence: "interpolated", note: "Derived at 2 VFP per pump" },
+      { unit: "C-Store ksf GFA",   unitShort: "ksf",   dailyRate: 762.3, amRate: 65.38, pmRate: 49.11, confidence: "interpolated", note: "Use the c-store sqft; same rate as ITE 851 Convenience Market" },
+    ] },
   { code: "947", name: "Self-Service Car Wash",                     unit: "Wash Stalls",           unitShort: "stalls",   dailyRate: 43.94, amRate: 2.34, pmRate: 5.54, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.51, satMultiplier: 1.30, passByPctPm: 44, internalCapturePctPm: 0 },
-  { code: "948", name: "Automated Car Wash",                        unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 77.50, amRate: 4.30, pmRate: 13.60, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.51, satMultiplier: 1.20, passByPctPm: 45, internalCapturePctPm: 0 },
+  { code: "948", name: "Automated Car Wash",                        unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 77.50, amRate: 4.30, pmRate: 13.60, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.51, satMultiplier: 1.20, passByPctPm: 45, internalCapturePctPm: 0,
+    secondaryVariables: [
+      { unit: "Wash Tunnels",      unitShort: "tnls",  dailyRate: 116.3, amRate: 6.45, pmRate: 20.40, confidence: "interpolated", note: "Derived at ~1.5 ksf per tunnel (typical conveyorized car wash)" },
+    ] },
 
   // ---------- Industrial ----------
   { code: "110", name: "Light Industrial",                          unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate:  4.96, amRate: 0.70, pmRate: 0.65, directionalSplitPm: { in: 0.19, out: 0.81 }, amDirectionalIn: 0.81, satMultiplier: 0.15, passByPctPm:  0, internalCapturePctPm: 0,
@@ -393,6 +452,7 @@ export const LAND_USES: LandUse[] = [
     secondaryVariables: [
       { unit: "Employees",         unitShort: "emp",   dailyRate:  5.05, amRate: 0.50, pmRate: 0.53, confidence: "ite_published", note: "ITE 11th — Warehousing per-employee" },
       { unit: "Acres",             unitShort: "acres", dailyRate: 17.10, amRate: 1.70, pmRate: 1.80, confidence: "interpolated", note: "Derived at ~10 ksf/acre (typical bulk warehouse coverage)" },
+      { unit: "Truck Dock Doors",  unitShort: "dock",  dailyRate: 17.10, amRate: 1.70, pmRate: 1.80, confidence: "interpolated", note: "Derived at ~1 dock door per 10 ksf (typical bulk-warehouse loading)" },
     ] },
   { code: "151", name: "Mini-Warehouse / Self-Storage",             unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate:  1.51, amRate: 0.10, pmRate: 0.17, directionalSplitPm: { in: 0.48, out: 0.52 }, amDirectionalIn: 0.51, satMultiplier: 1.10, passByPctPm:  0, internalCapturePctPm: 0,
     secondaryVariables: [
