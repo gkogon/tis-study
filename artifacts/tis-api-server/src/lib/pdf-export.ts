@@ -356,6 +356,10 @@ function dispatchTisRender(
     renderTisCalifornia(doc, result, project, region);
     return;
   }
+  if (region?.stateCode === "NY" && (region?.country ?? "US") === "US") {
+    renderTisNewYork(doc, result, project, region);
+    return;
+  }
   renderTis(doc, result);
 }
 
@@ -1113,6 +1117,115 @@ function californiaJurisdiction(lat: number, lon: number): CaliforniaJurisdictio
  * baseline geography, guidelines docs, screening trip counts, and
  * MPO citations.
  */
+type ScreeningCriterionStatus = "screened_out" | "not_screened_out" | "not_applicable" | "requires_verification";
+
+type ScreeningCriterionResult = {
+  label: string;
+  status: ScreeningCriterionStatus;
+  note: string;
+};
+
+function statusLabel(s: ScreeningCriterionStatus): string {
+  switch (s) {
+    case "screened_out": return "Screened out — presumed less-than-significant";
+    case "not_screened_out": return "Not screened out by this criterion";
+    case "not_applicable": return "N/A for this project";
+    case "requires_verification": return "Requires verification (data source named below)";
+  }
+}
+
+/**
+ * OPR § E.1 six-criteria boolean cascade. Auto-determines the
+ * criteria the engine can evaluate from project metadata
+ * (trip count, ITE land-use code, size). Flags GIS-dependent
+ * criteria (TPA, low-VMT map, redevelopment baseline) as
+ * "Requires verification" with the data source named.
+ */
+function caVmtScreening(
+  dailyTrips: number,
+  luCode: string,
+  size: number,
+  unit: string,
+  jurisScreeningTripCount: number,
+  jurisName: string,
+): ScreeningCriterionResult[] {
+  const isResidential = luCode.startsWith("21") || luCode.startsWith("22") || luCode.startsWith("23");
+  const isRetail = luCode.startsWith("82") || luCode.startsWith("85") || luCode.startsWith("86") || luCode.startsWith("87") || luCode.startsWith("88");
+  const sizeKsf = unit && unit.toLowerCase().includes("ksf") ? size : NaN;
+
+  const results: ScreeningCriterionResult[] = [];
+
+  // (1) Small project — auto-evaluable
+  results.push({
+    label: `Small project: <${jurisScreeningTripCount} daily trips (${jurisName} screening threshold; OPR floor 110)`,
+    status: dailyTrips > 0 && dailyTrips < jurisScreeningTripCount ? "screened_out" : (dailyTrips > 0 ? "not_screened_out" : "requires_verification"),
+    note: dailyTrips > 0
+      ? `Project generates ${Math.round(dailyTrips).toLocaleString()} daily trips. Threshold: ${jurisScreeningTripCount}.`
+      : "Daily trip count not available from engine output.",
+  });
+
+  // (2) Transit Priority Area — requires GIS
+  results.push({
+    label: "Transit Priority Area (TPA): within ½ mi of a major transit stop (PRC § 21064.3) or high-quality transit corridor (PRC § 21155)",
+    status: "requires_verification",
+    note: "Requires GIS query against the MPO's major-transit-stop layer + high-quality-transit-corridor layer. TPA presumption does NOT apply if FAR <0.75, parking exceeds requirement, project is inconsistent with the SCS, or affordable units are replaced with fewer market-rate units (OPR Tech Advisory p. 14) — flag in submittal even if TPA-eligible.",
+  });
+
+  // (3) Low-VMT area map — requires GIS
+  results.push({
+    label: "Low-VMT area: project sited in a TAZ already performing ≥15% below baseline",
+    status: "requires_verification",
+    note: "Consult the host jurisdiction's published low-VMT screening map (e.g., SCAG HELPR 3.0; SANDAG SB 743 portal; LADOT VMT Calculator zone lookup; Fresno COG screening tool). Auto-screening from project lat/lon not implemented in this Phase-2 slice.",
+  });
+
+  // (4) Locally-serving retail <50 ksf — auto-evaluable when ITE codes a retail use
+  if (isRetail) {
+    if (Number.isFinite(sizeKsf)) {
+      results.push({
+        label: "Locally-serving retail <50,000 sf (LA County / OPR convention)",
+        status: sizeKsf < 50 ? "screened_out" : "not_screened_out",
+        note: `Project is ITE land use ${luCode} (retail category) at ${sizeKsf} ksf. Threshold: 50 ksf.`,
+      });
+    } else {
+      results.push({
+        label: "Locally-serving retail <50,000 sf",
+        status: "requires_verification",
+        note: `Project is ITE land use ${luCode} (retail) but size unit (${unit || "—"}) is not in ksf; cannot auto-compare. Convert to ksf and reapply.`,
+      });
+    }
+  } else {
+    results.push({
+      label: "Locally-serving retail <50,000 sf",
+      status: "not_applicable",
+      note: `Project is ITE land use ${luCode}${isResidential ? " (residential)" : ""}, not a retail category. This criterion applies only to local-serving retail uses.`,
+    });
+  }
+
+  // (5) 100% affordable residential infill — requires applicant-side attestation
+  if (isResidential) {
+    results.push({
+      label: "100% affordable residential infill (OPR Tech Advisory p. 14–15)",
+      status: "requires_verification",
+      note: "Project is ITE residential. Applicant must attest to 100% affordable unit mix + infill-location qualification. Not auto-determined from ITE land use alone.",
+    });
+  } else {
+    results.push({
+      label: "100% affordable residential infill",
+      status: "not_applicable",
+      note: `Project is ITE land use ${luCode}, not residential.`,
+    });
+  }
+
+  // (6) Redevelopment net VMT decrease — requires prior-use VMT
+  results.push({
+    label: "Redevelopment with net VMT decrease (existing use → proposed use)",
+    status: "requires_verification",
+    note: "Requires prior-use VMT computation (existing site land use + intensity + tenancy). If the site is vacant or undeveloped, this criterion does not apply — flag as N/A in submittal. OPR p. 14: presumption does not apply where redevelopment displaces affordable housing near transit.",
+  });
+
+  return results;
+}
+
 function renderTisCalifornia(
   doc: PDFKit.PDFDocument,
   r: any,
@@ -1260,20 +1373,42 @@ function renderTisCalifornia(
   ]);
   doc.moveDown(0.3);
 
-  caSubsection(doc, "3.3 Screening Criteria to Evaluate (OPR § E.1, p. 12–14)");
-  doc.font("body").fontSize(10).fillColor("black");
-  const screeningCriteria = [
-    `Small project: project generates <${jur.screeningTripCount} daily trips (${jur.name} threshold)`,
-    "Transit Priority Area (TPA): within ½-mile of a major transit stop (PRC § 21064.3) or high-quality transit corridor (PRC § 21155, fixed-route bus ≤15-min peak headway). TPA presumption does NOT apply if FAR <0.75, parking exceeds requirement, project is inconsistent with the SCS, or affordable units are replaced with fewer market-rate units (Tech Advisory p. 14)",
-    "Low-VMT area: project sited in a TAZ already performing ≥15% below baseline (consult jurisdiction's published low-VMT map)",
-    "Locally-serving retail: retail <50,000 sf (LA County draws the line at 50ksf; OPR concurs)",
-    "100% affordable residential infill (OPR p. 14–15)",
-    "Redevelopment with net VMT decrease (existing use → proposed use comparison)",
-  ];
-  for (const c of screeningCriteria) {
-    doc.text("• " + c, { paragraphGap: 2 });
-  }
+  caSubsection(doc, "3.3 Auto-Screening Cascade (OPR § E.1, p. 12–14)");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `The six OPR screening criteria below are auto-evaluated against project metadata where the engine has the inputs (daily trip count, ITE land-use category, project size). Criteria that require GIS layers the engine does not yet ingest (Transit Priority Area, low-VMT TAZ map, prior-use VMT for redevelopment) are flagged "Requires verification" with the data source named. If ANY criterion resolves to "Screened out," the project is presumed less-than-significant for CEQA-VMT purposes and a full VMT impact analysis is not required.`,
+    { paragraphGap: 6 },
+  );
+
+  const screeningResults = caVmtScreening(
+    Number(tg.dailyTrips ?? 0),
+    String(tg.landUseCode ?? ""),
+    Number(tg.size ?? 0),
+    String(tg.unit ?? ""),
+    jur.screeningTripCount,
+    jur.name,
+  );
+
+  table(doc, {
+    headers: ["OPR Criterion", "Auto-screening result", "Notes"],
+    widths: [200, 130, 170],
+    align: ["left", "center", "left"],
+    rows: screeningResults.map((c) => [c.label, statusLabel(c.status), c.note]),
+  });
   doc.moveDown(0.3);
+
+  const anyScreenedOut = screeningResults.some((c) => c.status === "screened_out");
+  doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
+    anyScreenedOut
+      ? "AUTO-SCREENING RESULT: SCREENED OUT — presumed less-than-significant under CEQA Guidelines § 15064.3."
+      : "AUTO-SCREENING RESULT: NOT screened out by any auto-evaluable criterion. Verification-pending criteria above may still resolve to screened-out; otherwise, complete the §3.1 / §3.2 baseline + project-VMT inputs and apply the §3.4 significance threshold.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "Note: this screening cascade does not fabricate VMT numbers or substitute for a full MPO model run. The TPA, low-VMT-map, and redevelopment criteria are GIS-dependent and on the Phase-2 roadmap (per REGIONAL-SPECS/california-vmt-spec.md § 5).",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
 
   caSubsection(doc, "3.4 Significance Threshold");
   doc.font("body").fontSize(10).fillColor("black").text(
