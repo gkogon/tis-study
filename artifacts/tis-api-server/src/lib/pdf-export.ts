@@ -337,6 +337,10 @@ function dispatchTisRender(
     renderTisGeorgia(doc, result, project, region);
     return;
   }
+  if (region?.stateCode === "IL" && (region?.country ?? "US") === "US") {
+    renderTisIllinois(doc, result, project, region);
+    return;
+  }
   if (region?.stateCode === "TX" && (region?.country ?? "US") === "US") {
     renderTisTexas(doc, result, project, region);
     return;
@@ -2251,6 +2255,402 @@ function probablyDriScale(tg: any): boolean {
   if (code.startsWith("11") || code.startsWith("13") || code.startsWith("14") || code.startsWith("15")) return size >= 200; // industrial ksf
   return false;
 }
+
+/**
+ * Illinois has no single statewide TIS manual. Methodology is
+ * assembled from IDOT BLRS chapters, Title 92 Part 550 driveway
+ * policy, and the District 8 Access-Permit Guidelines April 2024
+ * (the only IDOT-published doc with a fully prescribed TIS section
+ * structure that this codebase's research located).
+ *
+ * Inside Chicago, CDOT's TDM Guidelines v1.1 (June 2023) replace
+ * vehicle-LOS analysis with a multimodal Travel Demand Management
+ * plan keyed off the Connected Communities Ordinance — a
+ * fundamentally different deliverable, surfaced here as a Chicago
+ * Variant block at the head of the report rather than as a separate
+ * renderer.
+ *
+ * Bounds below are rough county-envelope rectangles; the
+ * collar/Cook overlap is real and unresolved by lat/lon alone — the
+ * kickoff-meeting flag in the cover memo acknowledges this.
+ *
+ * Spec: REGIONAL-SPECS/illinois-tis-spec.md
+ */
+type IlJurisdiction =
+  | "chicago_cdot"
+  | "cook_county"
+  | "collar_dupage"
+  | "collar_lake"
+  | "collar_will"
+  | "collar_kane"
+  | "collar_mchenry"
+  | "tollway_influence"
+  | "downstate_idot";
+
+function ilJurisdiction(lat: number, lon: number): IlJurisdiction {
+  if (lat >= 41.64 && lat <= 42.03 && lon >= -87.94 && lon <= -87.52) return "chicago_cdot";
+  if (lat >= 42.15 && lat <= 42.50 && lon >= -88.20 && lon <= -87.65) return "collar_lake";
+  if (lat >= 42.15 && lat <= 42.50 && lon >= -88.70 && lon <= -88.20) return "collar_mchenry";
+  if (lat >= 41.70 && lat <= 42.15 && lon >= -88.65 && lon <= -88.30) return "collar_kane";
+  if (lat >= 41.70 && lat <= 42.03 && lon >= -88.40 && lon <= -87.94) return "collar_dupage";
+  if (lat >= 41.25 && lat <= 41.70 && lon >= -88.30 && lon <= -87.55) return "collar_will";
+  if (lat >= 41.40 && lat <= 42.15 && lon >= -88.30 && lon <= -87.52) return "cook_county";
+  return "downstate_idot";
+}
+
+function renderTisIllinois(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const intersections: any[] = Array.isArray(r.affectedIntersections) ? r.affectedIntersections : [];
+  const periods: any[] = Array.isArray(r.periodReports) ? r.periodReports : [];
+
+  const lat = Number(req.latitude ?? project.siteLat ?? NaN);
+  const lon = Number(req.longitude ?? project.siteLon ?? NaN);
+  const juris = Number.isFinite(lat) && Number.isFinite(lon) ? ilJurisdiction(lat, lon) : "downstate_idot";
+
+  const jurisName: Record<IlJurisdiction, string> = {
+    chicago_cdot: "City of Chicago (CDOT)",
+    cook_county: "Cook County DOTH",
+    collar_dupage: "DuPage County DOT",
+    collar_lake: "Lake County DOT",
+    collar_will: "Will County DOT",
+    collar_kane: "Kane County DOT",
+    collar_mchenry: "McHenry County DOT",
+    tollway_influence: "Illinois Tollway (ISTHA) influence area",
+    downstate_idot: "IDOT District (downstate)",
+  };
+  const reviewAuthority: Record<IlJurisdiction, string> = {
+    chicago_cdot: "Chicago Department of Transportation — Plan Review Committee (PRC), per the CDOT Guidelines for Travel Demand Study and Management (TDM) Plans v1.1 (June 2023), the Connected Communities Ordinance (Municipal Code §17-3-0308 / §17-4-0301), and Complete Streets Chicago (CDOT, 2013). State-system frontage routes inside Chicago co-route to IDOT District 1 (Schaumburg).",
+    cook_county: "Cook County Department of Transportation & Highways (DOTH) — Permits Division, per the Construction Permit Packet (Nov 2020). Cook County publishes no standalone TIS manual; TIS scope is staff-discretionary during the access/signal permit review.",
+    collar_dupage: "DuPage County DOT — Engineering, per the (request-only) Project Manual. DuPage's Fair Share Impact-Fee program terminated 2023-05-24; TIS is now staff-discretionary during the access/signal permit review.",
+    collar_lake: "Lake County DOT, per the Highway Access and Use Ordinance (2019) and its Technical Reference Manual.",
+    collar_will: "Will County DOT — Division of Transportation, Permit and Access Regulations. Will publishes no standalone TIS manual; TIS scope is staff-discretionary.",
+    collar_kane: "Kane County DOT (KDOT), per the Permit Regulations Manual (2004 base + revisions).",
+    collar_mchenry: "McHenry County DOT (MCDOT), per the Access Development Permit policy. Major Access Permit trigger: anticipated ADT > 50 trips per ITE → IL-PE-sealed TIS required.",
+    tollway_influence: "Illinois Tollway (ISTHA) Planning. No published TIS manual; Tollway review fires when the development requests new/modified Tollway access OR discharges drainage to Tollway ROW. Cost-sharing per the 2007/2012 Interchange and Roadway Cost Sharing Policy (≥ 50% local share, IGA-driven).",
+    downstate_idot: "IDOT District Permits Unit Chief, per BLRS Ch. 27 / 32 / 34 / 41 (design + access), Title 92 Part 550 (driveway permits), and the District 8 High-Volume Access-Permit Guidelines, April 2024 — Appendix A (the only IDOT-published prescriptive TIS section list located).",
+  };
+  const losStandard: Record<IlJurisdiction, string> = {
+    chicago_cdot: "No vehicle LOS pass/fail. CDOT enforces the Complete Streets modal hierarchy (pedestrians → transit → cyclists → automobiles) and a Travel Demand Management measures matrix in lieu of LOS targets.",
+    cook_county: "BLRS Ch. 32: LOS C controlling for arterials/collectors, LOS D allowed in heavily-developed metro sections, LOS D minimum for urban local streets.",
+    collar_dupage: "BLRS Ch. 32 plus DuPage County overlay where staff specify.",
+    collar_lake: "Lake County Highway Access and Use Ordinance (2019) numeric thresholds — refer to the Technical Reference Manual for the LOS criterion applicable to the route classification.",
+    collar_will: "BLRS Ch. 32 unless the County specifies otherwise during the permit review.",
+    collar_kane: "BLRS Ch. 32 plus Kane County Permit Regulations Manual.",
+    collar_mchenry: "BLRS Ch. 32 plus McHenry County Access Permit Policy.",
+    tollway_influence: "BLRS Ch. 32 for cross-road LOS; Tollway mainline / ramp criteria per the Tollway Roadway Design Criteria (March 2026).",
+    downstate_idot: "BLRS Ch. 32: LOS C controlling for rural arterials/collectors, LOS C controlling for urban arterials/collectors (with LOS D allowed in heavily-developed metro sections), LOS D minimum for urban local streets. Unsignalized intersections per BLRS Fig. 27-6A (HCM delay-based).",
+  };
+  const trigger: Record<IlJurisdiction, string> = {
+    chicago_cdot: "Tiered by dwelling-unit count per the CDOT TDM Guidelines v1.1: Tier 1 (20–50 DU site plan), Tier 2 (51–175 DU TDM Memo), Tier 3 (>175 DU full TDM Study + Plan). Connected Communities Ordinance transit-served-location designation (½ mile of a CTA/Metra rail station entrance or eligible high-frequency bus corridor) drives by-right parking reductions and informs trip-generation reductions.",
+    cook_county: "Staff-discretionary during the access/signal permit review (no published numeric trigger).",
+    collar_dupage: "Staff-discretionary during the access/signal permit review (no published numeric trigger since Fair Share Impact-Fee termination 2023-05-24).",
+    collar_lake: "Per Lake County Highway Access and Use Ordinance Technical Reference Manual — numeric thresholds keyed to access classification.",
+    collar_will: "Staff-discretionary during the access/signal permit review.",
+    collar_kane: "Per Kane County Permit Regulations Manual.",
+    collar_mchenry: "Major Access Permit threshold: anticipated > 50 vehicle trips per day per ITE → IL-PE-sealed TIS required.",
+    tollway_influence: "No numeric trigger; ISTHA review fires only when the development requests new/modified Tollway access OR proposes drainage discharge into Tollway ROW.",
+    downstate_idot: "No statewide numeric peak-hour trip threshold. The IDOT TIS-trigger is implicit through turn-lane and signal warrants: a TIS is required if turn lanes or traffic signals are anticipated (D8 Appx. A). The renderer evaluates ILMUTCD signal warrants and BDE turn-lane nomographs as the gating analysis.",
+  };
+  const programmedSource: Record<IlJurisdiction, string> = {
+    chicago_cdot: "IDOT Multi-Year Improvement Program FY 2026–2031, CMAP TIP (FFY 2023–2028, FFY 2026–2030 call open), CMAP ON TO 2050 Comprehensive Regional Plan, and the CDOT Capital Improvement Program.",
+    cook_county: "IDOT MYP FY 2026–2031, CMAP TIP, and Cook County DOTH project list.",
+    collar_dupage: "IDOT MYP FY 2026–2031, CMAP TIP, ON TO 2050, and DuPage County DOT capital program.",
+    collar_lake: "IDOT MYP FY 2026–2031, CMAP TIP, ON TO 2050, and Lake County DOT capital program.",
+    collar_will: "IDOT MYP FY 2026–2031, CMAP TIP, ON TO 2050, and Will County DOT capital program.",
+    collar_kane: "IDOT MYP FY 2026–2031, CMAP TIP, ON TO 2050, and Kane County DOT capital program.",
+    collar_mchenry: "IDOT MYP FY 2026–2031, CMAP TIP, ON TO 2050, and McHenry County DOT capital program.",
+    tollway_influence: "IDOT MYP FY 2026–2031, the Move Illinois capital program (completing end of 2027), and the successor Bridging the Future $2B / 7-yr program approved Dec 2024.",
+    downstate_idot: "IDOT MYP FY 2026–2031 and the federally-required STIP FY 2026. For projects within an MPO planning area, the applicable regional MPO TIP also applies.",
+  };
+
+  // --- Executive Summary --------------------------------------------------
+  gaSection(doc, "EXECUTIVE SUMMARY");
+  doc.font("body").fontSize(10).fillColor("black");
+  const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
+  const losEf = Number(r.intersectionsAtLosEf ?? 0);
+  const summary = `This Traffic Impact Study (TIS) presents the anticipated traffic impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Illinois. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius using methodology consistent with the Highway Capacity Manual current edition and the ITE Trip Generation Manual current edition. Trip generation is calculated for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
+  doc.text(summary, { paragraphGap: 6 });
+
+  doc.font("body").fontSize(10).fillColor("black").text(`Reviewing authority: ${jurisName[juris]}.`, { paragraphGap: 2 });
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(reviewAuthority[juris], { paragraphGap: 6 });
+  doc.fillColor("black");
+
+  if (juris === "chicago_cdot") {
+    doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text("Chicago Variant — Travel Demand Management framework");
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Inside the City of Chicago, the CDOT TDM Guidelines v1.1 (June 2023) replace the traditional vehicle-LOS TIS with a tiered Travel Demand Management deliverable: Tier 1 (site plan), Tier 2 (TDM Memo), Tier 3 (TDM Study + Plan). The vehicle-LOS analysis below is included as supplementary engineering context and as the IDOT-side basis if any state-route frontage co-routes to District 1 (Schaumburg). The TDM-side deliverable — mode-shift reductions, transit-served-location designation, TDM Measures Matrix tied to ordinance §17-3-0308 / §17-4-0301 — is scoped during DPD / CDOT PRC coordination and is not auto-generated by this screening tool.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  doc.font("body").fontSize(10).fillColor("black").text("Findings:", { paragraphGap: 2 });
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+  if (losDrops === 0 && losEf === 0) {
+    doc.text("• No intersections within the study network are projected to drop one or more LOS under build conditions.", { paragraphGap: 2 });
+    doc.text("• No mitigation is necessary to maintain the host-jurisdiction Level of Service standard within the study network.", { paragraphGap: 4 });
+  } else {
+    doc.text(`• ${losDrops} intersection${losDrops === 1 ? "" : "s"} project to drop one or more LOS under build conditions.`, { paragraphGap: 2 });
+    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate at LOS E or F under build conditions and may require mitigation per BLRS Ch. 32 + Ch. 34 and the host-jurisdiction standard above.`, { paragraphGap: 4 });
+  }
+  doc.fillColor("black");
+  doc.moveDown(0.5);
+
+  metricStrip(doc, [
+    { label: "Intersections", value: String(r.intersectionsStudied ?? intersections.length ?? 0) },
+    { label: "LOS drops", value: String(losDrops) },
+    { label: "At LOS E/F", value: String(losEf) },
+    { label: "Worst Δ delay", value: `${(r.worstDelayDeltaSec ?? 0).toFixed(1)}s` },
+  ]);
+  doc.moveDown(0.8);
+
+  // --- §1 Introduction ---------------------------------------------------
+  gaSection(doc, "1.0 INTRODUCTION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `This Traffic Impact Study follows the IDOT District 8 High-Volume Access-Permit Guidelines (April 2024) Appendix A as the base section structure — the only IDOT-published prescriptive TIS content list located. The report is layered with the ${jurisName[juris]} overlay where applicable. ${reviewAuthority[juris]}`,
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Trigger basis: ${trigger[juris]}`,
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Note: Illinois has no single statewide TIS manual. The methodology applied here is assembled from IDOT BLRS chapters (Ch. 17 planning, Ch. 27 design controls + LOS, Ch. 28 sight distance, Ch. 32 geometric tables, Ch. 34 intersections, Ch. 39 traffic-control devices, Ch. 41 driveways), Title 92 Illinois Admin. Code Part 550 (driveway permit policy), and the IDOT District 8 April 2024 guidelines. District 1 may have unwritten internal variations on scope, growth-rate convention, software choice at IDS phase, and timeline — confirm at the kickoff meeting with the District Permits Unit Chief.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- §2 Project Description --------------------------------------------
+  gaSection(doc, "2.0 PROJECT DESCRIPTION");
+  rows(doc, [
+    ["Project name", project.projectName || "—"],
+    ["Land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Site coordinates", Number.isFinite(lat) && Number.isFinite(lon) ? `${lat.toFixed(4)}°, ${lon.toFixed(4)}°` : "—"],
+    ["Opening year", String(req.openingYear ?? "—")],
+    ["Design year (opening + 20)", String((Number(req.openingYear ?? 0) || 0) + 20 || "—")],
+    ["Region", region.displayName],
+    ["Host jurisdiction", jurisName[juris]],
+  ]);
+  doc.moveDown(0.5);
+
+  // --- §3 Existing Conditions --------------------------------------------
+  gaSection(doc, "3.0 EXISTING CONDITIONS");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Existing roadway geometry, posted speed, functional classification, lane count, and historical AADT are referenced from the IDOT Getting Around Illinois public AADT viewer (gettingaroundillinois.com) and the IDOT AADT GIS open-data layer. Crash history (3-year minimum) is sourced from the IDOT Safety Data Mart (consultant access via FOIA). Existing peak-period turning-movement counts (TMCs) and 24-hr machine counts within the most recent 12 months should be collected per D8 Appx. A — three-to-four peak-period hours minimum, Tuesday/Wednesday/Thursday, clear-and-dry conditions.",
+    { paragraphGap: 6 },
+  );
+  if (juris === "chicago_cdot") {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Inside Chicago, the City of Chicago Average Daily Traffic Counts open-data portal supplies historical ADT (note: many CDOT counts are aged — flag the count year explicitly when citing). The CNT Chicago Truck Counts portal supplies truck / bike / pedestrian counts for freight-generator sites and TDM analysis.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Affected intersection", "Distance (mi)", "Existing LOS", "Existing delay (s)"],
+      widths: [240, 70, 70, 90],
+      align: ["left", "right", "center", "right"],
+      rows: intersections.map((it) => [
+        it.name ?? it.signalId ?? "—",
+        fmtNum(it.distanceMi, 2),
+        String(it.currentLos ?? it.existingLos ?? "—"),
+        fmtNum(it.currentDelaySec ?? it.existingDelaySec, 1),
+      ]),
+    });
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text("No signalized intersections within the study radius. Off-site capacity impact is not anticipated for this development.", { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.5);
+
+  // --- §4 Trip Generation -------------------------------------------------
+  gaSection(doc, "4.0 TRIP GENERATION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Trip generation is calculated per the ITE Trip Generation Manual current edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Per IDOT District 8 Appendix A, "the current edition of the ITE Trip Generation Manual shall be used" — no edition pin. Pass-by and internal-capture credits are taken from the ITE Trip Generation Handbook and applied only against the external trips assigned to the study network. Supplemental sources are allowed for land uses not represented in ITE, with District permission.`,
+    { paragraphGap: 6 },
+  );
+  table(doc, {
+    headers: ["Period", "Entering trips", "Exiting trips"],
+    widths: [180, 100, 100],
+    align: ["left", "right", "right"],
+    rows: [
+      ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
+      ["AM peak hour", fmtNum(tg.amPeakTrips), "—"],
+      ["PM peak hour", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
+    ],
+  });
+  doc.moveDown(0.3);
+  rows(doc, [
+    ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
+    ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}%`],
+  ]);
+  doc.moveDown(0.5);
+
+  if (juris === "chicago_cdot") {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Chicago additional reductions (TDM context, not auto-applied): Connected Communities Ordinance transit-served-location reduction (½-mi rule from CTA/Metra rail station entrance per §17-3-0308 / §17-4-0301), pedestrian-network density credits, and P-street designation effects on access geometry. The site's transit-served eligibility and TDM Measures Matrix commitments determine the final trip-reduction figure used in the TDM deliverable; this screening report shows the ITE-base trip generation only.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  if (periods.length > 0) {
+    table(doc, {
+      headers: ["Period", "Raw", "Pass-by", "Int. cap.", "External", "In", "Out"],
+      widths: [100, 50, 60, 60, 70, 50, 50],
+      align: ["left", "right", "right", "right", "right", "right", "right"],
+      rows: periods.map((p) => {
+        const t = p.tripGeneration ?? {};
+        return [
+          String(p.periodLabel ?? p.period ?? ""),
+          fmtNum(t.rawTrips),
+          fmtNum(t.passByCredit),
+          fmtNum(t.internalCaptureCredit),
+          fmtNum(t.externalTrips),
+          fmtNum(t.inTrips),
+          fmtNum(t.outTrips),
+        ];
+      }),
+    });
+    doc.moveDown(0.5);
+  }
+
+  // --- §5 Background Growth ----------------------------------------------
+  gaSection(doc, "5.0 BACKGROUND GROWTH");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Background traffic is grown at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. IDOT does not codify a statewide fixed growth rate; D8 Appx. A requires the consultant to derive and justify the rate. Common practice is the 5-year compound AADT growth rate from the nearest IDOT count station on Getting Around Illinois, or a CMAP travel-demand-model node projection for sites within the 7-county region. The value applied here is a screening default and should be re-calibrated against historical AADT trend on affected segments and confirmed at the District kickoff meeting before formal submittal.`,
+    { paragraphGap: 6 },
+  );
+
+  // --- §6 Future Conditions — Four Scenarios -----------------------------
+  gaSection(doc, "6.0 FUTURE CONDITIONS ANALYSIS");
+  const openingYr = Number(req.openingYear ?? 0) || null;
+  const designYr = openingYr ? openingYr + 20 : null;
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Per IDOT District 8 Appendix A, four mandatory scenarios are evaluated for each phase: (1) Opening (Construction) Year No-Build (${openingYr ?? "opening year"}); (2) Opening Year Build (${openingYr ?? "opening year"}); (3) 20-Year Design Year No-Build (${designYr ?? "opening + 20"}); (4) 20-Year Design Year Build (${designYr ?? "opening + 20"}). For phased developments, a Full-Build-Out year between opening and design year is added. The design year is measured from construction completion, not submittal year, per BLRS §27-6.02(a). Level of Service is calculated per HCM current edition.`,
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Host-jurisdiction LOS standard: ${losStandard[juris]}`,
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "This screening tool currently reports three scenarios (Existing / Opening No-Build / Opening Build) at each affected intersection. The 20-Year Design Year No-Build and Build scenarios are required for the formal D8-style submittal and should be generated for each affected intersection at design year before submittal.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Intersection", "Existing LOS", "Opening NB LOS", "Opening Build LOS", "Δ delay (s)", "Q95 (ft)"],
+      widths: [180, 65, 75, 80, 65, 60],
+      align: ["left", "center", "center", "center", "right", "right"],
+      rows: intersections.map((it) => {
+        const losChanged = it.losChanged === true;
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const noBuildLos = it.existingLos ?? "—";
+        const buildLos = it.futureLos ?? "—";
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(currentLos),
+          String(noBuildLos),
+          (losChanged ? "▲ " : "") + String(buildLos),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+          fmtNum(it.queue95thFt),
+        ];
+      }),
+    });
+  }
+  doc.moveDown(0.5);
+
+  // --- §7 Mitigation, Warrants, Sight Distance ---------------------------
+  gaSection(doc, "7.0 MITIGATION, WARRANTS, AND SIGHT DISTANCE");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Recommended improvements below are screening-level concepts sized to the projected delay change. The formal D8-style submittal additionally requires explicit turn-lane warrant analysis (BDE nomographs), ILMUTCD signal warrant analysis (Warrants 1–9 with met/not-met), sight-distance verification (BLRS Ch. 28: SSD, ISD), and auxiliary-lane / acceleration / deceleration geometry per BLRS Ch. 34. Pedestrian and bicycle accommodations are evaluated against BDE Ch. 17 non-motorized warrants.",
+    { paragraphGap: 6 },
+  );
+  if (intersections.length > 0) {
+    const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
+    if (needMitigation.length > 0) {
+      doc.font("body").fontSize(10).fillColor("black");
+      for (const it of needMitigation) {
+        const sev = String(it.mitigationSeverity ?? "").toUpperCase();
+        doc.font("bold").text(`${it.name ?? it.signalId} `, { continued: true });
+        doc.font("body").fillColor(TEXT_GRAY).text(`[${sev}]`, { continued: false });
+        doc.font("body").fillColor("black").text("  " + it.mitigation);
+        doc.moveDown(0.3);
+      }
+    } else {
+      doc.font("body").fontSize(10).fillColor("black").text(
+        "No mitigation is necessary to maintain the host-jurisdiction LOS standard within the study network under build conditions.",
+        { paragraphGap: 6 },
+      );
+    }
+  }
+  if (juris === "chicago_cdot") {
+    doc.moveDown(0.3);
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Chicago note: CDOT does not apply vehicle-LOS pass/fail mitigation. The TDM Measures Matrix — transit subsidies, bike/pedestrian infrastructure, off-street loading commitments, parking-supply caps — is the equivalent CDOT mitigation instrument, with a monetized cost share and monitoring commitment per the CDOT TDM Guidelines v1.1. Loading-zone minimums follow Chicago Municipal Code §17-10-1100. Driveways onto Pedestrian Streets (P-street overlay) are restricted under §17-3-0500 / §17-4-0500 — site access must come from the alley where applicable.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  if (juris === "tollway_influence") {
+    doc.moveDown(0.3);
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Tollway interchange/ramp modifications fall under the ISTHA Interchange and Roadway Cost Sharing Policy (≥ 50% local share) and the Environmental Studies Manual (Categorical Exclusion / EA process). Drainage discharge to Tollway ROW requires conformance with the Tollway Drainage Design Manual (March 2026). This screening report does not size cost-share or trigger the IGA — coordinate directly with ISTHA Planning.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- §8 Programmed Projects --------------------------------------------
+  gaSection(doc, "8.0 PROGRAMMED PROJECTS");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    `Review of programmed transportation projects within the study area should consult: ${programmedSource[juris]} This screening analysis does not automatically integrate programmed-projects data; manual review against the IDOT MYP GIS layer (gis-idot.opendata.arcgis.com) is recommended for any submittal.`,
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- §9 Conclusions ----------------------------------------------------
+  gaSection(doc, "9.0 CONCLUSIONS & RECOMMENDATIONS");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `This screening TIS identifies ${losDrops} intersection${losDrops === 1 ? "" : "s"} with LOS drops and ${losEf} operating at LOS E or F under build conditions. The formal submittal to ${jurisName[juris]} should validate these screening results against current-edition manuals, fresh TMCs within the most recent 12 months, derived growth rates, the four-scenario horizon analysis, and the host-jurisdiction scoping outcome. The report must be sealed by a Licensed Professional Engineer of Illinois; digital seals and signatures are allowed per 68 Ill. Admin. Code §1380.295. The required submittal package is two bound paper copies + one electronic PDF + the electronic capacity-analysis source files (Synchro / HCS / Vistro), routed to the District Permits Unit Chief. Allow approximately 8–10 weeks per submittal review and 18–24 months total for signalized or widening projects.`,
+    { paragraphGap: 6 },
+  );
+
+  // --- Findings + Methodology (engine output preserved) ------------------
+  const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
+  if (findings.length > 0) {
+    doc.moveDown(0.5);
+    gaSection(doc, "FINDINGS");
+    doc.font("body").fontSize(10).fillColor("black");
+    for (const f of findings) {
+      doc.text("• " + f, { paragraphGap: 4 });
+    }
+    doc.moveDown(0.5);
+  }
+
+  const methodology: string[] = Array.isArray(r.methodology) ? r.methodology : [];
+  if (methodology.length > 0) {
+    gaSection(doc, "METHODOLOGY NOTES");
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY);
+    for (const m of methodology) {
+      doc.text("• " + m, { paragraphGap: 4 });
+    }
+    doc.fillColor("black");
+  }
+}
+
 
 /**
  * Land-use-aware average trip length for VMT estimation.
