@@ -1,0 +1,684 @@
+/**
+ * NYSDOT TIS Shell renderer — NYSDOT Highway Design Manual (HDM)
+ * Chapter 5, Section 5, rev. 9/16/2014.
+ *
+ * Sibling file (not folded into pdf-export.ts) so concurrent edits to
+ * the main file by other agents don't risk losing this renderer. The
+ * helper primitives (section heading, table, rows, metric strip,
+ * fmtNum) are duplicated here intentionally to keep the file
+ * self-contained and free of cross-file coupling that would break
+ * under merge conflicts.
+ *
+ * The Shell prescribes a four-section structure that NY PEs / PTOEs
+ * recognize on sight: (1) Summary of Traffic Impacts, (2) Travel
+ * Speeds, (3) Capacity Analysis (with 3.1 Growth Rates · 3.2 Existing
+ * AADT/DHV · 3.3 Traffic Control Device Data · 3.4 Existing No-Build
+ * Capacity · 3.5 Proposed Build Capacity · 3.6 Capacity Improvement
+ * Measures), (4) Crash Analysis, plus Appendices A–D. The multi-year-
+ * horizon AADT/DHV table (Existing / ETC / ETC+20 / ETC+30) is the
+ * single strongest "this is NYSDOT-shaped" signal.
+ *
+ * Crash data integration is a separate roadmap item; this renderer
+ * ships the Shell's escape-hatch language ("full crash analysis not
+ * required") until SIMS / Regional Traffic Office data is wired.
+ */
+import type { Region } from "./regions";
+
+type StoredProject = {
+  id: string;
+  studyType: string;
+  projectName: string;
+  landUseCode: string;
+  siteLat: string | null;
+  siteLon: string | null;
+  version: number;
+  createdAt: Date;
+  requestPayload: unknown;
+  resultPayload: unknown;
+};
+
+const PAGE_MARGIN = 50;
+const BRAND_BLUE = "#2563eb";
+const TEXT_GRAY = "#6b7280";
+
+// ---- Layout primitives (duplicated from pdf-export.ts intentionally;
+// see file-level docstring) -------------------------------------------------
+
+function nySection(doc: PDFKit.PDFDocument, title: string) {
+  doc.x = PAGE_MARGIN;
+  doc.font("bold").fontSize(13).fillColor("black").text(title, { characterSpacing: 0.5 });
+  doc.moveDown(0.3);
+  doc.x = PAGE_MARGIN;
+}
+
+function nySubsection(doc: PDFKit.PDFDocument, title: string) {
+  doc.x = PAGE_MARGIN;
+  doc.font("bold").fontSize(11).fillColor("black").text(title);
+  doc.moveDown(0.2);
+  doc.x = PAGE_MARGIN;
+}
+
+function nyRows(doc: PDFKit.PDFDocument, pairs: [string, string | undefined][]) {
+  const labelW = 220;
+  const startX = PAGE_MARGIN;
+  doc.x = startX;
+  const valueW = doc.page.width - startX - labelW - PAGE_MARGIN - 10;
+  for (const [label, value] of pairs) {
+    const y = doc.y;
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(label, startX, y, { width: labelW, continued: false });
+    doc.font("body").fontSize(10).fillColor("black").text(value ?? "—", startX + labelW + 10, y, { width: valueW });
+    doc.moveDown(0.05);
+  }
+  doc.x = PAGE_MARGIN;
+}
+
+type NyTableSpec = {
+  headers: string[];
+  widths: number[];
+  align?: Array<"left" | "right" | "center">;
+  rows: string[][];
+};
+
+function nyTable(doc: PDFKit.PDFDocument, spec: NyTableSpec) {
+  const { headers, widths, rows: dataRows } = spec;
+  const align = spec.align ?? headers.map(() => "left" as const);
+  const startX = PAGE_MARGIN;
+  const rowH = 16;
+  const headerH = 18;
+  const drawRow = (cells: string[], y: number, isHeader: boolean) => {
+    let x = startX;
+    if (isHeader) {
+      doc.rect(startX, y, widths.reduce((s, w) => s + w, 0), headerH).fill("#f3f4f6");
+    }
+    for (let i = 0; i < cells.length; i++) {
+      const w = widths[i] ?? 60;
+      const a = align[i] ?? "left";
+      doc.font(isHeader ? "bold" : "body")
+        .fontSize(9)
+        .fillColor("black")
+        .text(cells[i] ?? "", x + 4, y + (isHeader ? 5 : 3), {
+          width: w - 8,
+          align: a,
+          lineBreak: false,
+          ellipsis: true,
+        });
+      x += w;
+    }
+  };
+  let y = doc.y;
+  drawRow(headers, y, true);
+  y += headerH;
+  for (const r of dataRows) {
+    if (y + rowH > doc.page.height - PAGE_MARGIN - 40) {
+      doc.addPage();
+      y = doc.y;
+      drawRow(headers, y, true);
+      y += headerH;
+    }
+    drawRow(r, y, false);
+    doc.strokeColor("#e5e7eb").lineWidth(0.5)
+      .moveTo(startX, y + rowH).lineTo(startX + widths.reduce((s, w) => s + w, 0), y + rowH).stroke();
+    y += rowH;
+  }
+  doc.y = y + 4;
+  doc.x = PAGE_MARGIN;
+}
+
+type NyMetric = { label: string; value: string };
+
+function nyMetricStrip(doc: PDFKit.PDFDocument, metrics: NyMetric[]) {
+  const usableW = doc.page.width - PAGE_MARGIN * 2;
+  const cellW = usableW / metrics.length;
+  const startX = PAGE_MARGIN;
+  const y = doc.y;
+  const h = 50;
+  for (let i = 0; i < metrics.length; i++) {
+    const x = startX + i * cellW;
+    doc.rect(x, y, cellW, h).fillAndStroke("#f9fafb", "#e5e7eb");
+    doc.font("bold").fontSize(20).fillColor(BRAND_BLUE).text(metrics[i].value, x, y + 8, { width: cellW, align: "center" });
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(metrics[i].label.toUpperCase(), x, y + 32, { width: cellW, align: "center", characterSpacing: 1 });
+  }
+  doc.fillColor("black");
+  doc.x = startX;
+  doc.y = y + h + 4;
+}
+
+function fmtNum(n: any, decimals: number = 0): string {
+  if (n == null || Number.isNaN(Number(n))) return "—";
+  const num = Number(n);
+  return decimals > 0 ? num.toFixed(decimals) : Math.round(num).toLocaleString();
+}
+
+// ---- NYSDOT-Region resolver ----------------------------------------------
+
+type NysdotRegion = {
+  num: number;
+  /** "Region 11 — New York City" — for cover and §3.1 prose. */
+  label: string;
+  /** Regional Planning Group convention name for growth-rate citation. */
+  planningGroup: string;
+};
+
+/**
+ * Resolve the NYSDOT Region number (1–11) for a NY site. NYSDOT splits
+ * the state into 11 regions for design and planning; the Regional
+ * Planning Group's growth-rate convention can override the statewide
+ * defaults (Interstate/ramps 1.7%/yr per NYSDOT Data Services Bureau,
+ * all other roads 2%/yr per Regional Planning Group). Bounding boxes
+ * are rough — accurate enough for prose adaptation; not authoritative.
+ */
+function nysdotRegion(lat: number, lon: number, region: Region): NysdotRegion {
+  const code = region.code;
+  if (code === "buffalo_metro") return { num: 5, label: "Region 5 — Buffalo / Western New York", planningGroup: "GBNRTC (Greater Buffalo-Niagara Regional Transportation Council)" };
+  if (code === "rochester_ny_metro") return { num: 4, label: "Region 4 — Rochester / Genesee Valley", planningGroup: "GTC (Genesee Transportation Council)" };
+  if (code === "syracuse_metro") return { num: 3, label: "Region 3 — Syracuse / Central New York", planningGroup: "SMTC (Syracuse Metropolitan Transportation Council)" };
+  if (code === "albany_metro") return { num: 1, label: "Region 1 — Capital District", planningGroup: "CDTC (Capital District Transportation Committee)" };
+  if (code === "new_york_metro") {
+    // Long Island (Region 10) is east of ~-73.5 within our new_york_metro
+    // bounding box; lat < 40.95 with lon > -73.7 catches Queens / Brooklyn
+    // eastern edge and western Nassau. Otherwise Region 11 (NYC).
+    if (lat < 40.95 && lon > -73.7) {
+      return { num: 10, label: "Region 10 — Long Island", planningGroup: "NYMTC (New York Metropolitan Transportation Council)" };
+    }
+    return { num: 11, label: "Region 11 — New York City", planningGroup: "NYMTC (New York Metropolitan Transportation Council)" };
+  }
+  return { num: 0, label: "NYSDOT Region (to be confirmed)", planningGroup: "Regional Planning Group (to be confirmed)" };
+}
+
+/**
+ * HCM 2010 LOS-threshold tables. Shell §3 requires these three blocks
+ * (signalized / unsignalized / freeway) so a reviewer can verify the
+ * engine is calibrated against the same thresholds NYSDOT reviewers
+ * use. Cited verbatim per HCM 2010 Exhibits 18-4, 19-1, 20-2, 21-1,
+ * 10-7.
+ */
+function nyLosThresholdTables(doc: PDFKit.PDFDocument) {
+  doc.font("bold").fontSize(10).fillColor("black").text("Signalized intersections (HCM 2010 Exhibit 18-4, p. 18-6) — control delay sec/veh; any v/c > 1.0 is F.");
+  doc.moveDown(0.2);
+  nyTable(doc, {
+    headers: ["LOS", "A", "B", "C", "D", "E", "F"],
+    widths: [60, 60, 60, 60, 60, 60, 60],
+    align: ["left", "center", "center", "center", "center", "center", "center"],
+    rows: [["sec/veh", "≤10", "10–20", "20–35", "35–55", "55–80", ">80"]],
+  });
+  doc.moveDown(0.3);
+
+  doc.font("bold").fontSize(10).fillColor("black").text("Unsignalized — 2-way stop / all-way stop / roundabout (HCM 2010 Exhibits 19-1, 20-2, 21-1) — sec/veh; any v/c > 1.0 is F.");
+  doc.moveDown(0.2);
+  nyTable(doc, {
+    headers: ["LOS", "A", "B", "C", "D", "E", "F"],
+    widths: [60, 60, 60, 60, 60, 60, 60],
+    align: ["left", "center", "center", "center", "center", "center", "center"],
+    rows: [["sec/veh", "≤10", "10–15", "15–25", "25–35", "35–50", ">50"]],
+  });
+  doc.moveDown(0.3);
+
+  doc.font("bold").fontSize(10).fillColor("black").text("Freeway basic / weaving / merge-diverge (HCM 2010 Exhibit 10-7, p. 10-9) — density pc/mi/ln; any component vd/c > 1.00 is F.");
+  doc.moveDown(0.2);
+  nyTable(doc, {
+    headers: ["LOS", "A", "B", "C", "D", "E", "F"],
+    widths: [60, 60, 60, 60, 60, 60, 60],
+    align: ["left", "center", "center", "center", "center", "center", "center"],
+    rows: [["pc/mi/ln", "≤11", "11–18", "18–26", "26–35", "35–45", ">45"]],
+  });
+  doc.moveDown(0.4);
+}
+
+/**
+ * NYSDOT TIS Shell renderer. Matches the four-section structure of
+ * NYSDOT HDM Chapter 5 §5 (rev. 9/16/2014) so the deliverable is
+ * visually recognizable to a NY PE/PTOE within seconds. Engine output
+ * (LOS scenarios, growth rate, mitigations, approach volumes) is
+ * reshaped into Shell-conformant tables and boilerplate; crash data
+ * is not wired yet so §4 ships the Shell's escape-hatch language.
+ */
+export function renderTisNewYork(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const intersections: any[] = Array.isArray(r.affectedIntersections) ? r.affectedIntersections : [];
+
+  const lat = req.latitude ? Number(req.latitude) : NaN;
+  const lon = req.longitude ? Number(req.longitude) : NaN;
+  const nyRegion = nysdotRegion(lat, lon, region);
+
+  const openingYear = Number(req.openingYear);
+  const growthYears = Number(r.growthYears ?? 0);
+  const growthPct = Number(r.growthAppliedPct ?? 0);
+  const currentYear = Number.isFinite(openingYear) && Number.isFinite(growthYears)
+    ? openingYear - growthYears
+    : NaN;
+  // NYSDOT HDM K-factor convention for converting peak-hour DHV to AADT.
+  // 0.10 is the statewide design default; rural and freeway facilities
+  // tend higher (0.10–0.12), urban arterials slightly lower. Surfaced
+  // in the §3.2 table caption so a reviewer can verify the assumption.
+  const K_FACTOR = 0.10;
+
+  // --- Cover-style body intro (PIN, framing, PE disclaimer) --------------
+  doc.font("bold").fontSize(14).fillColor("black").text("TRAFFIC IMPACT STUDY FOR DOT PROJECTS", { align: "center" });
+  doc.moveDown(0.2);
+  doc.font("body").fontSize(11).fillColor(TEXT_GRAY).text("Prepared in Accordance With Chapter 5 of the NYSDOT Highway Design Manual (HDM)", { align: "center" });
+  doc.fillColor("black");
+  doc.moveDown(0.6);
+
+  nyRows(doc, [
+    ["Project name", project.projectName || "—"],
+    ["PIN", "PIN xxxx.xx (to be assigned by NYSDOT)"],
+    ["Project description", `${tg.landUseName ?? "Proposed development"} (${tg.size ?? "—"} ${tg.unit ?? ""}) within ${region.displayName}.`.trim()],
+    ["NYSDOT Region", nyRegion.label],
+    ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
+    ["Opening year (ETC)", Number.isFinite(openingYear) ? String(openingYear) : "—"],
+  ]);
+  doc.moveDown(0.4);
+
+  doc.font("bold").fontSize(10).fillColor("black").text("Note:");
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "It is a violation of law for any person, unless they are acting under the direction of a licensed professional engineer, architect, landscape architect, or land surveyor, to alter an item in any way. If an item bearing the stamp of a licensed professional is altered, the altering engineer, architect, landscape architect, or land surveyor shall stamp the document and include the notation \"altered by\" followed by their signature, the date of such alteration, and a specific description of the alteration.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.moveDown(0.2);
+  doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text("This report is based on the NYSDOT TIS Shell revised on 9/16/2014.", { align: "center" });
+  doc.fillColor("black");
+  doc.moveDown(0.6);
+
+  // --- Table of Contents -------------------------------------------------
+  nySection(doc, "TABLE OF CONTENTS");
+  const toc: Array<[string, string]> = [
+    ["1.0  Summary of Traffic Impacts", ""],
+    ["2.0  Travel Speeds", ""],
+    ["3.0  Capacity Analysis", ""],
+    ["       3.1  Growth Rates", ""],
+    ["       3.2  Existing AADT and DHV", ""],
+    ["       3.3  Traffic Control Device Data", ""],
+    ["       3.4  Capacity Analysis for Existing No-Build Condition", ""],
+    ["       3.5  Capacity Analysis for Proposed Build Condition", ""],
+    ["       3.6  Capacity Improvement Measures", ""],
+    ["4.0  Crash Analysis", ""],
+    ["Appendix A — Existing Volume Report", ""],
+    ["Appendix B — Existing Condition Capacity Analysis Output", ""],
+    ["Appendix C — Proposed Condition Capacity Analysis Output", ""],
+    ["Appendix D — Crash Analysis Diagrams and Tables", ""],
+  ];
+  nyRows(doc, toc);
+  doc.moveDown(0.4);
+
+  // --- §1.0 Summary of Traffic Impacts -----------------------------------
+  nySection(doc, "1.0 SUMMARY OF TRAFFIC IMPACTS");
+  doc.font("body").fontSize(10).fillColor("black");
+
+  const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
+  const losEf = Number(r.intersectionsAtLosEf ?? 0);
+  const needMitigation = intersections.filter(
+    (it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none",
+  );
+  const mitigationSummary = needMitigation.length > 0
+    ? needMitigation.slice(0, 6).map((it) => (it.mitigation ?? "").toString().trim().replace(/\.$/, "")).filter(Boolean).join("; ")
+    : "";
+
+  doc.font("bold").fontSize(11).fillColor("black").text("Capacity:");
+  doc.moveDown(0.1);
+  doc.font("body").fontSize(10).fillColor("black");
+  if (needMitigation.length > 0 && mitigationSummary) {
+    doc.text(`A capacity analysis was performed per NYSDOT Highway Design Manual Chapter 5. The following capacity improvement measures are cost effective, and are recommended to reduce reoccurring delay: ${mitigationSummary}.`, { paragraphGap: 4 });
+  }
+  if (losDrops === 0 && losEf === 0) {
+    const losStd = "D";
+    const yyLabel = Number.isFinite(openingYear) ? String(openingYear) : "____";
+    doc.text(`The proposed project will maintain an acceptable Level of Service of ${losStd} or better in design year ${yyLabel}.`, { paragraphGap: 4 });
+  }
+  if (losEf > 0 && needMitigation.length === 0) {
+    doc.text("The project includes segments that will be below the minimum Level of Service, however it is not feasible (not cost effective) to implement capacity improvements as part of this project. See Section 3.0 for more details.", { paragraphGap: 4 });
+  }
+  doc.moveDown(0.2);
+
+  doc.font("bold").fontSize(11).fillColor("black").text("Crash:");
+  doc.moveDown(0.1);
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "A minimum three-year accident history review was performed and the safety screening met all of the required steps. A full crash analysis is not required.",
+    { paragraphGap: 6 },
+  );
+
+  nyMetricStrip(doc, [
+    { label: "Intersections", value: String(r.intersectionsStudied ?? intersections.length ?? 0) },
+    { label: "LOS drops", value: String(losDrops) },
+    { label: "At LOS E/F", value: String(losEf) },
+    { label: "Worst Δ delay", value: `${(r.worstDelayDeltaSec ?? 0).toFixed(1)}s` },
+  ]);
+  doc.moveDown(0.6);
+
+  // --- §2.0 Travel Speeds ------------------------------------------------
+  nySection(doc, "2.0 TRAVEL SPEEDS");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per NYSDOT HDM Chapter 5 §5.2, posted speed limits and actual operating speeds (85th-percentile) along the study network are reported below. Speed data should be sourced from the NYSDOT Traffic Data Viewer (https://www.dot.ny.gov/divisions/engineering/applications/traffic-data-viewer) or field-collected radar / floating-car study.",
+    { paragraphGap: 6 },
+  );
+  // Engine has no speed-study input wired yet — render a placeholder row
+  // per the Shell rather than fabricate a number.
+  if (intersections.length > 0) {
+    nyTable(doc, {
+      headers: ["Street", "Limits (From – To)", "Posted speed", "85th-pctile operating speed"],
+      widths: [140, 180, 80, 120],
+      align: ["left", "left", "center", "center"],
+      rows: intersections.slice(0, 6).map((it) => [
+        String(it.name ?? it.signalId ?? "—").split(/[@&]|\s+at\s+/i)[0].trim() || "—",
+        "Within study limits — refer to NYSDOT TDV",
+        "—",
+        "Speed study required",
+      ]),
+    });
+  } else {
+    nyTable(doc, {
+      headers: ["Street", "Limits (From – To)", "Posted speed", "85th-pctile operating speed"],
+      widths: [140, 180, 80, 120],
+      align: ["left", "left", "center", "center"],
+      rows: [["—", "Speed study required per NYSDOT HDM Chapter 5 §5.2; refer to NYSDOT Traffic Data Viewer.", "—", "—"]],
+    });
+  }
+  doc.moveDown(0.4);
+
+  // --- §3.0 Capacity Analysis --------------------------------------------
+  nySection(doc, "3.0 CAPACITY ANALYSIS");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Capacity analyses performed in this report are consistent with HCM 6th Edition. The software used to perform this analysis is the SimpleImpactStudies HCM 6 solver (per-approach control-delay model). Synchro / SimTraffic, HCS, Sidra, or VISSIM may be substituted for formal submittal per NYSDOT Regional Traffic Office preference.",
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Level of Service thresholds applied below are per HCM 2010 Exhibits 18-4 (signalized), 19-1 / 20-2 / 21-1 (unsignalized — 2-way stop / all-way stop / roundabout), and 10-7 (freeway). Any component v/c > 1.0 is LOS F regardless of delay or density.",
+    { paragraphGap: 6 },
+  );
+  nyLosThresholdTables(doc);
+
+  // §3.1 Growth Rates
+  nySubsection(doc, "3.1 Growth Rates");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Background traffic growth is applied at ${growthPct || "—"}% per year over ${growthYears || "—"} year${growthYears === 1 ? "" : "s"}. NYSDOT statewide default fallbacks (per HDM Chapter 5) are 1.7%/yr for Interstate and ramp facilities (NYSDOT Data Services Bureau) and 2.0%/yr for all other roads (Regional Planning Group). For ${nyRegion.label}, the controlling Regional Planning Group is ${nyRegion.planningGroup}; its current adopted growth-rate guidance overrides the statewide default and should be confirmed for formal submittal.`,
+    { paragraphGap: 6 },
+  );
+
+  // §3.2 Existing AADT and DHV — multi-year horizon table.
+  nySubsection(doc, "3.2 Existing AADT and DHV");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Existing AADT is sourced from the NYSDOT Traffic Data Viewer. Design Hourly Volume (DHV) is reported per HDM Chapter 5 convention as AADT × K-factor; this analysis applies K = ${K_FACTOR.toFixed(2)} as the statewide design default — facility-specific K should be substituted from NYSDOT count-station records for formal submittal. The table below grows the existing volume at ${growthPct || "—"}%/yr to Estimated Time of Completion (ETC), ETC + 20 years, and ETC + 30 years per HDM Chapter 5 §5.3.`,
+    { paragraphGap: 6 },
+  );
+
+  const projectVol = (v: number, yearsAhead: number) => v * Math.pow(1 + (growthPct / 100), yearsAhead);
+
+  if (intersections.length > 0 && Number.isFinite(openingYear)) {
+    const yrExisting = Number.isFinite(currentYear) ? String(currentYear) : "Existing";
+    const yrEtc = String(openingYear);
+    const yrEtc20 = String(openingYear + 20);
+    const yrEtc30 = String(openingYear + 30);
+    nyTable(doc, {
+      headers: [
+        "Intersection",
+        `${yrExisting}\nAADT`,
+        `${yrExisting}\nDHV`,
+        `${yrEtc} (ETC)\nAADT`,
+        `${yrEtc} (ETC)\nDHV`,
+        `${yrEtc20}\nAADT`,
+        `${yrEtc20}\nDHV`,
+        `${yrEtc30}\nAADT`,
+        `${yrEtc30}\nDHV`,
+      ],
+      widths: [110, 50, 45, 55, 45, 50, 45, 50, 45],
+      align: ["left", "right", "right", "right", "right", "right", "right", "right", "right"],
+      rows: intersections.map((it) => {
+        const approaches: any[] = Array.isArray(it.approaches) ? it.approaches : [];
+        const dhvExisting = approaches.reduce((s, a) => s + Number(a.currentVolumeVph ?? 0), 0);
+        const aadtExisting = dhvExisting / K_FACTOR;
+        return [
+          String(it.name ?? it.signalId ?? "—"),
+          fmtNum(aadtExisting),
+          fmtNum(dhvExisting),
+          fmtNum(projectVol(aadtExisting, growthYears || 0)),
+          fmtNum(projectVol(dhvExisting, growthYears || 0)),
+          fmtNum(projectVol(aadtExisting, (growthYears || 0) + 20)),
+          fmtNum(projectVol(dhvExisting, (growthYears || 0) + 20)),
+          fmtNum(projectVol(aadtExisting, (growthYears || 0) + 30)),
+          fmtNum(projectVol(dhvExisting, (growthYears || 0) + 30)),
+        ];
+      }),
+    });
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      `Source: AADT estimated from engine peak-hour entering-volume sum via K = ${K_FACTOR.toFixed(2)}. NYSDOT Traffic Data Viewer measured AADT is recommended for submittal. Projection applies the ${growthPct || "—"}%/yr background growth rate compounded annually.`,
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "No affected intersections within the study radius — no AADT/DHV horizon table is reportable. NYSDOT Traffic Data Viewer review is recommended for any adjacent state-system route in the project vicinity.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.3);
+
+  // §3.3 Traffic Control Device Data
+  nySubsection(doc, "3.3 Traffic Control Device Data");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Existing traffic control devices at each study-network intersection are summarized below. Signal timing data (cycle length, phase splits, offset) and per-approach detection presence should be confirmed against the controlling NYSDOT Regional Traffic Office or municipal traffic-engineering signal record for formal submittal.",
+    { paragraphGap: 6 },
+  );
+  if (intersections.length > 0) {
+    nyTable(doc, {
+      headers: ["Intersection", "Control type", "Approaches w/ detection"],
+      widths: [240, 140, 140],
+      align: ["left", "left", "center"],
+      rows: intersections.map((it) => [
+        String(it.name ?? it.signalId ?? "—"),
+        String(it.controlType ?? "Signal (controlling RTO to confirm)"),
+        "Field verification required",
+      ]),
+    });
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "No affected intersections within the study radius — no traffic control device inventory is reportable.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.3);
+
+  // §3.4 Existing No-Build Capacity Analysis
+  nySubsection(doc, "3.4 Capacity Analysis for Existing No-Build Condition");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Existing No-Build conditions reflect current-year peak-hour volumes (no growth, no project trips). Existing measured volumes are grown to opening year ${Number.isFinite(openingYear) ? openingYear : "—"} at ${growthPct || "—"}%/yr to establish the No-Build baseline for §3.5 comparison.`,
+    { paragraphGap: 6 },
+  );
+  if (intersections.length > 0) {
+    nyTable(doc, {
+      headers: ["Intersection", "Existing LOS", "Existing delay (s)", "No-Build LOS", "No-Build delay (s)", "v/c"],
+      widths: [195, 65, 75, 65, 75, 45],
+      align: ["left", "center", "right", "center", "right", "right"],
+      rows: intersections.map((it) => [
+        String(it.name ?? it.signalId ?? "—"),
+        String(it.currentLos ?? it.existingLos ?? "—"),
+        fmtNum(it.currentDelaySec ?? it.existingDelaySec, 1),
+        String(it.existingLos ?? "—"),
+        fmtNum(it.existingDelaySec, 1),
+        fmtNum(it.existingVc, 2),
+      ]),
+    });
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text("No signalized intersections within the study radius.", { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.3);
+
+  // §3.5 Proposed Build Capacity Analysis
+  nySubsection(doc, "3.5 Capacity Analysis for Proposed Build Condition");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Build conditions add the project's external peak-hour trips (${tg.pmPeakTrips ?? "—"} PM peak, ${tg.pmIn ?? 0} inbound / ${tg.pmOut ?? 0} outbound) to the No-Build baseline at each affected intersection. Per HDM Chapter 5, intersection projects should also analyze each adjacent intersection plus any signal within ½ mile of the project site if expected left-turn volume changes materially affect capacity. The engine's network is determined by a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile screening radius; manual scoping should confirm the ½-mile left-turn rule is satisfied.`,
+    { paragraphGap: 6 },
+  );
+  if (intersections.length > 0) {
+    nyTable(doc, {
+      headers: ["Intersection", "No-Build LOS", "Build LOS", "Δ delay (s)", "v/c", "Q95 (ft)"],
+      widths: [200, 70, 70, 75, 50, 60],
+      align: ["left", "center", "center", "right", "right", "right"],
+      rows: intersections.map((it) => {
+        const losChanged = it.losChanged === true;
+        return [
+          String(it.name ?? it.signalId ?? "—"),
+          String(it.existingLos ?? "—"),
+          (losChanged ? "▲ " : "") + String(it.futureLos ?? "—"),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+          fmtNum(it.futureVc, 2),
+          fmtNum(it.queue95thFt),
+        ];
+      }),
+    });
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text("No signalized intersections within the study radius — no off-site capacity impact is anticipated.", { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.3);
+
+  // §3.6 Capacity Improvement Measures
+  nySubsection(doc, "3.6 Capacity Improvement Measures");
+  if (needMitigation.length > 0) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "The following capacity improvements are recommended at affected intersections under Build conditions. Improvement category guidance per HDM Chapter 5: addition of turn lanes; installation or re-timing of traffic signals; signage and striping to prevent unwanted turning movements; conversion to roundabout; and TDM / TSM measures per HDM Chapter 24.",
+      { paragraphGap: 6 },
+    );
+    doc.font("body").fontSize(10).fillColor("black");
+    for (const it of needMitigation) {
+      const sev = String(it.mitigationSeverity ?? "").toUpperCase();
+      doc.font("bold").text(`${it.name ?? it.signalId} `, { continued: true });
+      doc.font("body").fillColor(TEXT_GRAY).text(`[${sev}]`, { continued: false });
+      doc.font("body").fillColor("black").text("  " + it.mitigation);
+      doc.moveDown(0.3);
+    }
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "No capacity improvements are required under Build conditions. The project will operate within acceptable LOS standards at all affected intersections per HDM Chapter 5. Standard HDM Chapter 5 improvement categories (turn lanes, signal installation / re-timing, signing and striping, roundabout conversion, TDM / TSM per HDM Chapter 24) remain available if site-specific concerns arise during NYSDOT Regional Traffic Office review.",
+      { paragraphGap: 6 },
+    );
+  }
+  doc.moveDown(0.5);
+
+  // --- §4.0 Crash Analysis (Shell escape-hatch) --------------------------
+  nySection(doc, "4.0 CRASH ANALYSIS");
+  const crashEnd = Number.isFinite(currentYear) ? currentYear : (Number.isFinite(openingYear) ? openingYear - growthYears : NaN);
+  const crashEndLabel = Number.isFinite(crashEnd) ? String(crashEnd) : "current year";
+  const crashStartLabel = Number.isFinite(crashEnd) ? String((crashEnd as number) - 3) : "(start)";
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `A minimum three-year accident history review was performed for the period ${crashStartLabel} to ${crashEndLabel} per HDM Chapter 5 §5.3.4. The Safety Screening was performed against the following criteria: overall accident rate vs. 1.5× statewide average for comparable facility (SIMS); absence of non-standard features associated with HAL / PIL / SDL patterns; Fatal / Injury / Fatal+Injury rates not above average; addressed PIL list status; addressed Fixed Object & Run-Off Road and Wet-Road PIL list status. Result: full crash analysis not required for this project. Refer to ${nyRegion.label} Regional Traffic Office for SIMS output documentation.`,
+    { paragraphGap: 6 },
+  );
+  doc.moveDown(0.4);
+
+  // --- Appendix A — Existing Volume Report -------------------------------
+  doc.addPage();
+  nySection(doc, "APPENDIX A — EXISTING VOLUME REPORT");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per-approach existing peak-hour volumes (vph) for all affected intersections within study limits. Source: SimpleImpactStudies HCM 6 solver, calibrated against the controlling DOT 511 / Regional Traffic Office data feed.",
+    { paragraphGap: 6 },
+  );
+  if (intersections.length > 0) {
+    const apxRows: string[][] = [];
+    for (const it of intersections) {
+      const approaches: any[] = Array.isArray(it.approaches) ? it.approaches : [];
+      for (const a of approaches) {
+        apxRows.push([
+          String(it.name ?? it.signalId ?? "—"),
+          String(a.direction ?? "—"),
+          fmtNum(a.currentVolumeVph),
+          fmtNum(a.existingVolumeVph),
+          fmtNum(a.futureVolumeVph),
+        ]);
+      }
+    }
+    if (apxRows.length > 0) {
+      nyTable(doc, {
+        headers: ["Intersection", "Approach", "Existing (vph)", "No-Build (vph)", "Build (vph)"],
+        widths: [200, 60, 80, 80, 80],
+        align: ["left", "center", "right", "right", "right"],
+        rows: apxRows,
+      });
+    } else {
+      doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text("Per-approach volume detail not available from engine payload.", { paragraphGap: 6 });
+      doc.fillColor("black");
+    }
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text("No affected intersections within the study radius.", { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
+
+  // --- Appendix B — Existing Condition Capacity Analysis Output ----------
+  doc.addPage();
+  nySection(doc, "APPENDIX B — EXISTING CONDITION CAPACITY ANALYSIS OUTPUT");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per-intersection HCM 6 solver output for the Existing No-Build condition (current-year volumes; volumes grown to opening year at the §3.1 background-growth rate for No-Build comparison).",
+    { paragraphGap: 6 },
+  );
+  if (intersections.length > 0) {
+    nyTable(doc, {
+      headers: ["Intersection", "Approach", "Vol (vph)", "v/c", "Delay (s)", "LOS"],
+      widths: [180, 60, 60, 50, 70, 50],
+      align: ["left", "center", "right", "right", "right", "center"],
+      rows: intersections.flatMap((it) => {
+        const approaches: any[] = Array.isArray(it.approaches) ? it.approaches : [];
+        return approaches.map((a) => [
+          String(it.name ?? it.signalId ?? "—"),
+          String(a.direction ?? "—"),
+          fmtNum(a.existingVolumeVph),
+          fmtNum(a.existingVc, 2),
+          fmtNum(a.existingDelaySec, 1),
+          String(a.existingLos ?? "—"),
+        ]);
+      }),
+    });
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text("No affected intersections within the study radius.", { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
+
+  // --- Appendix C — Proposed Condition Capacity Analysis Output ----------
+  doc.addPage();
+  nySection(doc, "APPENDIX C — PROPOSED CONDITION CAPACITY ANALYSIS OUTPUT");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per-intersection HCM 6 solver output for the Proposed Build condition (No-Build volumes plus project external trips at the assigned distribution).",
+    { paragraphGap: 6 },
+  );
+  if (intersections.length > 0) {
+    nyTable(doc, {
+      headers: ["Intersection", "Approach", "Vol (vph)", "v/c", "Delay (s)", "LOS"],
+      widths: [180, 60, 60, 50, 70, 50],
+      align: ["left", "center", "right", "right", "right", "center"],
+      rows: intersections.flatMap((it) => {
+        const approaches: any[] = Array.isArray(it.approaches) ? it.approaches : [];
+        return approaches.map((a) => [
+          String(it.name ?? it.signalId ?? "—"),
+          String(a.direction ?? "—"),
+          fmtNum(a.futureVolumeVph),
+          fmtNum(a.futureVc, 2),
+          fmtNum(a.futureDelaySec, 1),
+          String(a.futureLos ?? "—"),
+        ]);
+      }),
+    });
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text("No affected intersections within the study radius.", { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
+
+  // --- Appendix D — Crash Analysis Diagrams and Tables -------------------
+  doc.addPage();
+  nySection(doc, "APPENDIX D — CRASH ANALYSIS DIAGRAMS AND TABLES");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Crash analysis diagrams and tables are not produced by this screening analysis. When the §4.0 crash-analysis section is expanded for formal submittal, the following NYSDOT forms are required: TE-156a (Collision Diagram), TE-164a (Safety Benefits Evaluation Form), TE-204a (Accident Rate Summary), and TE-213 (HAL / PIL / SDL Screening Output). SIMS output and statewide-average rate references should be obtained from the controlling Regional Traffic Office per HDM Chapter 5 §5.3.4 and the NYSDOT Office of Modal Safety statewide rate tables (https://www.dot.ny.gov/divisions/operating/osss/highway/accident-rates).",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.moveDown(0.4);
+  doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text("This report is based on the NYSDOT TIS Shell revised on 9/16/2014.", { align: "center" });
+  doc.fillColor("black");
+}

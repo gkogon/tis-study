@@ -21,6 +21,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { regionForCoordinate, type Region } from "./regions";
 import { getAutoModeShare } from "./mode-share";
+import { renderTisNewYork } from "./pdf-export-ny";
 
 type StoredProject = {
   id: string;
@@ -356,10 +357,10 @@ function dispatchTisRender(
     renderTisCalifornia(doc, result, project, region);
     return;
   }
-  // NY-specific renderer not yet shipped — fall through to the generic
-  // renderer (same fallback every other state uses). The dispatch stub
-  // was landed ahead of the renderer; restore it once renderTisNewYork
-  // is in place.
+  if (region?.stateCode === "NY" && (region?.country ?? "US") === "US") {
+    renderTisNewYork(doc, result, project, region);
+    return;
+  }
   renderTis(doc, result);
 }
 
