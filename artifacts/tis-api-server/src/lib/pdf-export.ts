@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { regionForCoordinate, type Region } from "./regions";
 import { getAutoModeShare } from "./mode-share";
 import { renderTisNewYork } from "./pdf-export-ny";
-import { enrichNyIntersectionsWithSpeed } from "./nysdot-data";
+import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite } from "./nysdot-data";
 
 type StoredProject = {
   id: string;
@@ -156,9 +156,22 @@ export async function renderStudyPdf(
         const intersections = Array.isArray(result?.affectedIntersections)
           ? (result?.affectedIntersections as Array<Record<string, unknown>>)
           : [];
-        if (intersections.length > 0) {
-          await enrichNyIntersectionsWithSpeed(intersections);
-        }
+        // Two Tier-1 NY enrichments, run in parallel:
+        //   (a) per-intersection posted-speed from NYSDOT RDM
+        //       (mutates intersections in place)
+        //   (b) county-level 3-year crash summary from the NY State
+        //       Police Case Information SODA endpoint (stashed on
+        //       result.nyCrashSummary for renderTisNewYork §4)
+        // Both fail open: any error leaves the prior placeholders.
+        const speedTask = intersections.length > 0
+          ? enrichNyIntersectionsWithSpeed(intersections)
+          : Promise.resolve();
+        const crashTask = getNyCrashSummaryForSite(lat, lon).then((s) => {
+          if (s && result && typeof result === "object") {
+            (result as Record<string, unknown>).nyCrashSummary = s;
+          }
+        });
+        await Promise.all([speedTask, crashTask]);
       }
     }
   }

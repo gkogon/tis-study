@@ -588,15 +588,61 @@ export function renderTisNewYork(
   }
   doc.moveDown(0.5);
 
-  // --- §4.0 Crash Analysis (Shell escape-hatch) --------------------------
+  // --- §4.0 Crash Analysis -----------------------------------------------
   nySection(doc, "4.0 CRASH ANALYSIS");
   const crashEnd = Number.isFinite(currentYear) ? currentYear : (Number.isFinite(openingYear) ? openingYear - growthYears : NaN);
   const crashEndLabel = Number.isFinite(crashEnd) ? String(crashEnd) : "current year";
   const crashStartLabel = Number.isFinite(crashEnd) ? String((crashEnd as number) - 3) : "(start)";
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `A minimum three-year accident history review was performed for the period ${crashStartLabel} to ${crashEndLabel} per HDM Chapter 5 §5.3.4. The Safety Screening was performed against the following criteria: overall accident rate vs. 1.5× statewide average for comparable facility (SIMS); absence of non-standard features associated with HAL / PIL / SDL patterns; Fatal / Injury / Fatal+Injury rates not above average; addressed PIL list status; addressed Fixed Object & Run-Off Road and Wet-Road PIL list status. Result: full crash analysis not required for this project. Refer to ${nyRegion.label} Regional Traffic Office for SIMS output documentation.`,
-    { paragraphGap: 6 },
-  );
+
+  // Tier-1 crash module: county-level 3-year crash counts from the
+  // NY State Police MV Crash Case Information SODA endpoint, fetched
+  // in renderStudyPdf via getNyCrashSummaryForSite() and stashed on
+  // result.nyCrashSummary. Falls back to the Shell escape-hatch
+  // language when the ingest returned nothing.
+  const crashSummary = (r as any).nyCrashSummary as
+    | {
+        countyName: string;
+        fatalAccidents: number;
+        injuryAccidents: number;
+        propertyDamageAccidents: number;
+        propertyDamageAndInjuryAccidents: number;
+        totalAccidents: number;
+      }
+    | undefined;
+
+  if (crashSummary && crashSummary.totalAccidents > 0) {
+    const totalInjurious =
+      crashSummary.injuryAccidents + crashSummary.propertyDamageAndInjuryAccidents;
+    const fatalPctAnnual = (crashSummary.fatalAccidents / 3 / crashSummary.totalAccidents) * 100;
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `A minimum three-year accident history review was performed for the period ${crashStartLabel} to ${crashEndLabel} per HDM Chapter 5 §5.3.4. County-level crash counts below are auto-ingested from the New York State Police "Motor Vehicle Crashes – Case Information: Three Year Window" Open Data dataset (https://data.ny.gov/Transportation/Motor-Vehicle-Crashes-Case-Information-Three-Year-/e8ky-4vqe), filtered by county_name resolved from the project site coordinates via the NYSDOT RDM_Roadway_Current FeatureServer. The values cover the entire rolling 3-year reporting window for ${crashSummary.countyName} County, statewide-system-wide — they are NOT a per-segment or per-intersection rate.`,
+      { paragraphGap: 6 },
+    );
+
+    nyTable(doc, {
+      headers: ["Severity descriptor (NY DMV)", "Count (3-yr rolling)", "Annualized"],
+      widths: [240, 130, 110],
+      align: ["left", "right", "right"],
+      rows: [
+        ["Fatal Accident", fmtNum(crashSummary.fatalAccidents), fmtNum(crashSummary.fatalAccidents / 3, 1)],
+        ["Injury Accident", fmtNum(crashSummary.injuryAccidents), fmtNum(crashSummary.injuryAccidents / 3, 1)],
+        ["Property Damage Accident", fmtNum(crashSummary.propertyDamageAccidents), fmtNum(crashSummary.propertyDamageAccidents / 3, 1)],
+        ["Property Damage & Injury Accident", fmtNum(crashSummary.propertyDamageAndInjuryAccidents), fmtNum(crashSummary.propertyDamageAndInjuryAccidents / 3, 1)],
+        ["Total (all severities)", fmtNum(crashSummary.totalAccidents), fmtNum(crashSummary.totalAccidents / 3, 1)],
+      ],
+    });
+
+    doc.moveDown(0.3);
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Within ${crashSummary.countyName} County over the rolling 3-year window, ${fmtNum(crashSummary.totalAccidents)} crashes were reported to NY DMV (${fmtNum(crashSummary.fatalAccidents)} fatal, ${fmtNum(totalInjurious)} injury-involved, ${fmtNum(crashSummary.propertyDamageAccidents)} property damage only). The Fatal share is ${fatalPctAnnual.toFixed(3)}% of all reported crashes (annualized). For the Safety Screening per HDM Chapter 5 §5.3.4, the project-specific rate must be normalized against the controlling facility's exposure (segment AADT × segment length; intersection AADT × entry-flow) for comparison to NYSDOT Office of Modal Safety statewide averages and the 1.5× HAL trigger. County-totals above provide a county-baseline reference only — site-radius (1/4-mile typical) crash records, HAL / PIL / SDL flags, and CMF / CRF mitigation values must be obtained from the ${nyRegion.label} Regional Traffic Office via FOIL or SIMS. Required NYSDOT forms when the §4.0 section is expanded for formal submittal: TE-156a (Collision Diagram), TE-164a (Safety Benefits Evaluation), TE-204a (Accident Rate Summary), TE-213 (HAL / PIL / SDL Screening Output).`,
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `A minimum three-year accident history review was performed for the period ${crashStartLabel} to ${crashEndLabel} per HDM Chapter 5 §5.3.4. Auto-ingest from the New York State Police 3-year Crash Case Information dataset (data.ny.gov / e8ky-4vqe) was attempted but did not return county-level totals — either the project site's county could not be resolved via the NYSDOT RDM FeatureServer, or the SODA endpoint is unavailable. Refer to ${nyRegion.label} Regional Traffic Office for SIMS output documentation; the Safety Screening criteria from HDM Chapter 5 §5.3.4 (overall accident rate vs. 1.5× statewide average for comparable facility; HAL / PIL / SDL pattern flags; Fatal / Injury / Fatal+Injury rates not above average; addressed PIL list status; Fixed Object, Run-Off Road, and Wet-Road PIL list status) must be applied manually for this project.`,
+      { paragraphGap: 6 },
+    );
+  }
   doc.moveDown(0.4);
 
   // --- Appendix A — Existing Volume Report -------------------------------

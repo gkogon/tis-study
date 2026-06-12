@@ -49,6 +49,7 @@ export type NyRoadwayData = {
   functionalClass: string | null;
   dotRegionName: string | null;
   routeDisplay: string | null;
+  countyName: string | null;
 };
 
 type Intersection = {
@@ -59,6 +60,7 @@ type Intersection = {
   nysdotFunctionalClass?: string | null;
   nysdotDotRegionName?: string | null;
   nysdotRouteDisplay?: string | null;
+  nysdotCountyName?: string | null;
   [key: string]: unknown;
 };
 
@@ -85,7 +87,7 @@ async function fetchOnePoint(lat: number, lon: number): Promise<NyRoadwayData | 
     distance: String(SEARCH_RADIUS_METERS),
     units: "esriSRUnit_Meter",
     outFields:
-      "Posted_Speed_Limit_MPH,Roadway_Name,Functional_Class_Desc,DOT_Region_Name,Route_Display_Value",
+      "Posted_Speed_Limit_MPH,Roadway_Name,Functional_Class_Desc,DOT_Region_Name,Route_Display_Value,County_Name",
     returnGeometry: "false",
     // Cap the response to limit per-request bytes; we pick a row with a
     // non-null speed when possible (see below) so a small page is enough.
@@ -128,6 +130,7 @@ async function fetchOnePoint(lat: number, lon: number): Promise<NyRoadwayData | 
       functionalClass: typeof a.Functional_Class_Desc === "string" ? a.Functional_Class_Desc : null,
       dotRegionName: typeof a.DOT_Region_Name === "string" ? a.DOT_Region_Name : null,
       routeDisplay: typeof a.Route_Display_Value === "string" ? a.Route_Display_Value : null,
+      countyName: typeof a.County_Name === "string" ? a.County_Name : null,
     };
     cache.set(key, out);
     return out;
@@ -206,5 +209,144 @@ export async function enrichNyIntersectionsWithSpeed(
     it.nysdotFunctionalClass = r.functionalClass;
     it.nysdotDotRegionName = r.dotRegionName;
     it.nysdotRouteDisplay = r.routeDisplay;
+    it.nysdotCountyName = r.countyName;
   }
+}
+
+// ===========================================================================
+// NY crash module — NY State Police 3-year MV crash window
+// ===========================================================================
+//
+// Source dataset (Socrata SODA API):
+//   https://data.ny.gov/Transportation/Motor-Vehicle-Crashes-Case-Information-Three-Year-/e8ky-4vqe
+//
+// The dataset is the NY State DMV's rolling 3-year window of all
+// reported motor-vehicle crashes statewide. Granularity is the
+// case level — one row per reported crash. Geographic resolution
+// is County + Municipality + DOT Reference Marker (NOT lat/lon),
+// so this module aggregates by County (sourced from the NYSDOT
+// RDM enrichment above using the site coordinates).
+//
+// Tier-1 scope:
+//   - County-level crash counts by severity (Fatal / Injury / Property
+//     Damage / Property Damage + Injury) over the rolling 3-year window
+//   - Sourced from the public Socrata SODA endpoint — no auth required
+//
+// Tier-2 scope (NOT implemented here):
+//   - Per-municipality counts, rate normalization vs. county / statewide
+//     averages, HAL / PIL / SDL classification (requires NYSDOT VMT
+//     data + crash-type filtering)
+//   - Site-radius (1/4-mile) analysis requires NYSDOT Regional Traffic
+//     Office crash records via FOIL or SIMS access (staff-gated)
+
+const NY_CRASH_SODA_URL = "https://data.ny.gov/resource/e8ky-4vqe.json";
+const CRASH_REQUEST_TIMEOUT_MS = 8_000;
+
+export type NyCountyCrashSummary = {
+  countyName: string;
+  fatalAccidents: number;
+  injuryAccidents: number;
+  propertyDamageAccidents: number;
+  propertyDamageAndInjuryAccidents: number;
+  totalAccidents: number;
+};
+
+const crashCache = new Map<string, NyCountyCrashSummary | null>();
+
+/**
+ * Query the NY State Police Case Information dataset for crash counts
+ * aggregated by accident_descriptor for a given county over the
+ * rolling 3-year window. Uses Socrata SoQL $select aggregation so the
+ * server returns one row per descriptor — minimal payload.
+ *
+ * Returns null on any error (renderer falls back to escape-hatch).
+ *
+ * County name MUST match the NY State DMV uppercase convention
+ * (e.g., "NEW YORK", "ALBANY", "ERIE") — the NYSDOT RDM County_Name
+ * field is already in this format.
+ */
+export async function getNyCountyCrashSummary(
+  countyName: string,
+): Promise<NyCountyCrashSummary | null> {
+  if (!countyName) return null;
+  const key = countyName.toUpperCase();
+  if (crashCache.has(key)) return crashCache.get(key) ?? null;
+
+  const params = new URLSearchParams({
+    $select: "accident_descriptor,count(*) as cnt",
+    $where: `county_name='${key.replace(/'/g, "''")}'`,
+    $group: "accident_descriptor",
+  });
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CRASH_REQUEST_TIMEOUT_MS);
+
+  try {
+    const r = await fetch(`${NY_CRASH_SODA_URL}?${params.toString()}`, {
+      signal: ctrl.signal,
+      headers: { Accept: "application/json" },
+    });
+    if (!r.ok) {
+      crashCache.set(key, null);
+      return null;
+    }
+    const rows = (await r.json()) as Array<{
+      accident_descriptor?: string;
+      cnt?: string | number;
+    }>;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      crashCache.set(key, null);
+      return null;
+    }
+    const out: NyCountyCrashSummary = {
+      countyName: key,
+      fatalAccidents: 0,
+      injuryAccidents: 0,
+      propertyDamageAccidents: 0,
+      propertyDamageAndInjuryAccidents: 0,
+      totalAccidents: 0,
+    };
+    for (const row of rows) {
+      const cnt = Number(row.cnt ?? 0);
+      if (!Number.isFinite(cnt)) continue;
+      switch (row.accident_descriptor) {
+        case "Fatal Accident":
+          out.fatalAccidents = cnt;
+          break;
+        case "Injury Accident":
+          out.injuryAccidents = cnt;
+          break;
+        case "Property Damage Accident":
+          out.propertyDamageAccidents = cnt;
+          break;
+        case "Property Damage & Injury Accident":
+          out.propertyDamageAndInjuryAccidents = cnt;
+          break;
+      }
+      out.totalAccidents += cnt;
+    }
+    crashCache.set(key, out);
+    return out;
+  } catch {
+    crashCache.set(key, null);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Convenience: given a site lat/lon, resolve the County via the NYSDOT
+ * RDM FeatureServer (reusing the same per-point query that the
+ * intersection enrichment uses), then pull the county's 3-year crash
+ * summary. Returns null on any failure.
+ */
+export async function getNyCrashSummaryForSite(
+  lat: number,
+  lon: number,
+): Promise<NyCountyCrashSummary | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const rdm = await fetchOnePoint(lat, lon);
+  if (!rdm?.countyName) return null;
+  return getNyCountyCrashSummary(rdm.countyName);
 }
