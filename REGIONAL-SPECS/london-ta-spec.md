@@ -481,6 +481,8 @@ Source: London City Hall "Referral process for LPAs" + SI 2008/580 + practitione
 | **Stage 2** | After LPA resolves to grant/refuse. LPA submits officer report, draft S106, proposed conditions. | **14 days** | (a) allow LPA decision to stand; (b) direct refusal; (c) call-in (→ Stage 3). |
 | **Stage 3 (call-in)** | Mayor takes over as LPA. | n/a — public representation hearing | Mayor determines the application. |
 
+**Cat 3J exception (SI 2026/345, effective 11 May 2026).** A **Cat-3J-only** application (50+ houses/flats/houses-and-flats that does *not* also hit any of Cat 1A / 1B / 1C / 1D / 2A–2D / 3A–3I) **does not enter Stage 1 / Stage 2**. Instead it follows a single-stage notification path — LPA notifies Mayor at receipt; LPA cannot refuse without giving the Mayor 21 days (from the date the Mayor notifies in writing) to direct that he determine the application, or obtaining the Mayor's written consent to determine. If the project also hits one of Cat 1A–3I (e.g. a 200-dwelling scheme that is both 1A *and* 3J), the standard Stage 1/Stage 2 path applies and the Cat 3J mechanism is subsumed. The renderer's PSI-trigger summary should distinguish "Cat 3J only" from "Cat 1A (or other) + Cat 3J" so the consenting flow rendered downstream is correct.
+
 TfL itself acts as statutory consultee for the Mayor on transport matters at every stage. For schemes affecting TLRN, TfL highway-works consent (S278) is required regardless of referral.
 
 ### 6.4 Highway-authority split
