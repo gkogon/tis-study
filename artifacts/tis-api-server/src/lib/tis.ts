@@ -345,7 +345,16 @@ export type TisRequest = {
   // used. The chosen variable is surfaced in the report so a reviewing PE
   // can verify the assumption.
   independentVariable?: string;
+  // Tier of TIS deliverable to produce. "auto" resolves to one of the
+  // three concrete tiers from the project's size + jurisdiction
+  // thresholds; the explicit values override the resolver when the
+  // consultant has a specific deliverable scope in mind.
+  // Default: "auto".
+  studyTier?: StudyTier;
 };
+
+export type StudyTier = "auto" | "worksheet" | "abbreviated" | "full";
+export type ResolvedStudyTier = Exclude<StudyTier, "auto">;
 
 export type ApproachImpact = {
   direction: Direction;

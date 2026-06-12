@@ -23,6 +23,8 @@ import { regionForCoordinate, type Region } from "./regions";
 import { getAutoModeShare } from "./mode-share";
 import { renderTisNewYork } from "./pdf-export-ny";
 import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite } from "./nysdot-data";
+import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
+import type { StudyTier } from "./tis";
 
 type StoredProject = {
   id: string;
@@ -610,6 +612,26 @@ function renderTisGeorgia(
   const req = r.request ?? {};
   const intersections: any[] = Array.isArray(r.affectedIntersections) ? r.affectedIntersections : [];
   const periods: any[] = Array.isArray(r.periodReports) ? r.periodReports : [];
+
+  // --- Tier dispatch ------------------------------------------------------
+  // Gwinnett's 4-level scheme is the de-facto metro Atlanta template
+  // (Level 1: 0–20 PHT = Worksheet; Level 2: 21–249 PHT = Abbreviated;
+  // Level 3: 250–499 PHT = Full TIS; Level 4: ≥500 PHT OR DRI = DRI). Below
+  // the Level 1 threshold a Worksheet / Screening Letter is the
+  // appropriate deliverable, not a Full TIS — short-circuit here.
+  const tierInput: TierInput = {
+    dailyTrips: Number(tg.dailyTrips ?? 0),
+    pmPeakTrips: Number(tg.pmPeakTrips ?? (Number(tg.pmIn ?? 0) + Number(tg.pmOut ?? 0))),
+    size: Number(tg.size ?? 0),
+    unit: String(tg.unit ?? ""),
+    landUseCode: String(tg.landUseCode ?? ""),
+  };
+  const requested: StudyTier | undefined = req.studyTier;
+  const resolvedTier = resolveStudyTier(region, tierInput, requested);
+  if (resolvedTier === "worksheet") {
+    renderTisGeorgiaWorksheet(doc, r, project, region, tierInput);
+    return;
+  }
 
   // --- Executive Summary --------------------------------------------------
   gaSection(doc, "EXECUTIVE SUMMARY");
@@ -1745,6 +1767,117 @@ function caSubsection(doc: PDFKit.PDFDocument, title: string) {
   doc.font("bold").fontSize(11).fillColor("black").text(title);
   doc.moveDown(0.2);
   doc.x = PAGE_MARGIN;
+}
+
+/**
+ * GA Worksheet / Screening Letter (Gwinnett County DOT TIS Guidelines 2023
+ * Level 1 / GRTA Limited Trip Generation Memo). Short-form deliverable
+ * for projects below the warrant-implicit TIS trigger (≤20 PHT per
+ * Gwinnett Table 1; <1,000 Net ADT per GRTA DRI Procedures p. 9).
+ *
+ * Content (per Gwinnett Level 1 verbatim section list): Location
+ * Description; Existing/Proposed Land Use; Trip Generation Estimate;
+ * Access Management Review; Adjacent Access Spacing; Intersection Sight
+ * Distance; Connectivity & Circulation Review; Existing Street Functional
+ * Classification; Posted Speed Limit; Future Identified Projects
+ * (GCCTP/GDOT/SPLOST); Existing-Conditions Scenario only; Intersection
+ * & Roadway Geometric Recommendations. No turning movement counts, no
+ * crash history, no future ADT, no operations analysis.
+ */
+function renderTisGeorgiaWorksheet(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+  tierInput: TierInput,
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const tierName = jurisdictionTierLabel(region, "worksheet");
+
+  // --- Header banner ----------------------------------------------------
+  gaSection(doc, "TRAFFIC IMPACT SCREENING LETTER");
+  doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(tierName, { paragraphGap: 4 });
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "Worksheet-tier deliverable per Gwinnett County DOT TIS Guidelines (2023) Level 1 / GRTA DRI Review Procedures (2021-03-10) Limited Trip Generation Memo. Selected automatically based on the project's screened trip generation; an Abbreviated or Full TIS would be substituted at higher tiers.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- §1 Location Description -----------------------------------------
+  gaSection(doc, "1.0 LOCATION DESCRIPTION");
+  rows(doc, [
+    ["Project name", project.projectName || "—"],
+    ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
+    ["Region", region.displayName],
+    ["Opening year", String(req.openingYear ?? "—")],
+  ]);
+  doc.moveDown(0.5);
+
+  // --- §2 Existing / Proposed Land Use ---------------------------------
+  gaSection(doc, "2.0 EXISTING AND PROPOSED LAND USE");
+  rows(doc, [
+    ["Proposed ITE land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Proposed development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Existing land use", "Subject to site verification (Gwinnett Level 1 does not require existing-use trip credit)"],
+  ]);
+  doc.moveDown(0.5);
+
+  // --- §3 Trip Generation Estimate -------------------------------------
+  gaSection(doc, "3.0 TRIP GENERATION ESTIMATE");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Trip generation is estimated per the ITE Trip Generation Manual (current edition) for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. No pass-by or internal capture credits have been applied at this screening tier (Gwinnett Level 1 explicitly excludes those from the worksheet scope).`,
+    { paragraphGap: 6 },
+  );
+  table(doc, {
+    headers: ["Period", "Trips"],
+    widths: [280, 100],
+    align: ["left", "right"],
+    rows: [
+      ["Daily total", fmtNum(tg.dailyTrips)],
+      ["AM peak hour", fmtNum(tg.amPeakTrips)],
+      ["PM peak hour (in)", fmtNum(tg.pmIn)],
+      ["PM peak hour (out)", fmtNum(tg.pmOut)],
+      ["PM peak hour (total)", fmtNum(tierInput.pmPeakTrips)],
+    ],
+  });
+  doc.moveDown(0.3);
+
+  // --- §4 Tier Determination -------------------------------------------
+  gaSection(doc, "4.0 WORKSHEET-TIER DETERMINATION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Per Gwinnett County DOT TIS Guidelines (2023) Table 1, projects generating 0–20 peak-hour site-generated automobile trips qualify as Level 1. The proposed development estimate of ${fmtNum(tierInput.pmPeakTrips)} PM peak-hour trips falls within this band; accordingly, no Level 2 (Abbreviated) or Level 3 (Full) TIS is required. The GRTA equivalent (Limited Trip Generation Memo, applicable when Net ADT < 1,000) is also satisfied at ${fmtNum(tierInput.dailyTrips)} daily trips.`,
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Verification: the consultant should confirm the screened trip count against any reviewing-agency-specific credit (existing-use credit, internal capture) before finalizing this determination. Where the reviewing agency requests a higher-tier deliverable (e.g. site fronts a state route, or the agency cites a non-trip-related concern), regenerate the report with Tier = Abbreviated or Full from the form.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- §5 Access, Sight Distance, Circulation --------------------------
+  gaSection(doc, "5.0 ACCESS MANAGEMENT AND SITE CIRCULATION");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "The following items are part of the Gwinnett Level 1 scope and require site-plan inputs to populate in this screening tool: (a) adjacent access spacing (upstream and downstream driveways within the influence area); (b) intersection sight distance per AASHTO Green Book / GDOT BLR-style checks; (c) connectivity and circulation review against the local jurisdiction's site-plan standards; (d) inventory of existing street functional classification and posted speed limit on each fronting roadway; (e) review of future identified projects in the Gwinnett County Comprehensive Transportation Plan (GCCTP), GDOT TIP/STIP, and SPLOST programs. Verify these items against the site plan prior to submittal.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- §6 Findings -----------------------------------------------------
+  gaSection(doc, "6.0 FINDINGS");
+  doc.font("body").fontSize(10).fillColor("black");
+  doc.text(`• The proposed ${project.projectName || "development"} is projected to generate ${fmtNum(tierInput.dailyTrips)} daily trips and ${fmtNum(tierInput.pmPeakTrips)} PM peak-hour trips.`, { paragraphGap: 2 });
+  doc.text("• Trip generation falls within Gwinnett County DOT Level 1 worksheet criteria; no Level 2 or Level 3 TIS is required at this tier.", { paragraphGap: 2 });
+  doc.text("• Site access geometry, sight distance, and pedestrian / bicycle connectivity should be verified against the final site plan and applicable jurisdictional standards prior to permit submittal.", { paragraphGap: 4 });
+  doc.moveDown(0.5);
+
+  // --- PE Seal block ---------------------------------------------------
+  gaSection(doc, "PROFESSIONAL ENGINEER CERTIFICATION");
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "This screening letter has been prepared at the worksheet tier defined by Gwinnett County DOT TIS Guidelines (2023) and is consistent with GRTA DRI Review Procedures Adopted 2021-03-10. As a screening-level deliverable it does not substitute for a full TIS where one is required by the reviewing agency. The signing PE attests only to the worksheet-tier scope and that the project's screened trip generation falls below the warrant-implicit Level 2 threshold.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
 }
 
 /** Section heading in the GA-style numbered format (uppercase, bold). */

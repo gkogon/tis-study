@@ -50,6 +50,8 @@ type LandUse = {
   secondaryVariables?: SecondaryVariable[];
 };
 
+type StudyTier = "auto" | "worksheet" | "abbreviated" | "full";
+
 type StudyForm = {
   projectName: string;
   latitude: number;
@@ -59,6 +61,13 @@ type StudyForm = {
   openingYear: number;
   studyRadiusMi: number;
   independentVariable?: string;
+  // Deliverable scope. "auto" resolves from project size + jurisdiction
+  // thresholds (Gwinnett 4-level / TxDOT TSP Ch. 16 / CDOT TDM Tiers /
+  // OPR screening cascade / FDOT MTSIH planning vs. detailed). Explicit
+  // values override the resolver when the consultant needs a specific
+  // shape (e.g. forcing a Worksheet for an Atlanta carwash that auto-
+  // resolves to Abbreviated to match a city's request).
+  studyTier?: StudyTier;
 };
 
 type Los = "A" | "B" | "C" | "D" | "E" | "F";
@@ -688,6 +697,10 @@ function DemoForm({
   // Chosen independent variable. Empty string ⇒ use the land use's primary
   // unit (the demo behaves identically to before for codes without secondaries).
   const [independentVariable, setIndependentVariable] = useState(persisted?.independentVariable ?? "");
+  // Deliverable tier. "auto" lets the backend resolver pick based on
+  // project size + jurisdiction thresholds; explicit values force the
+  // sub-template (worksheet / abbreviated / full).
+  const [studyTier, setStudyTier] = useState<StudyTier>(persisted?.studyTier ?? "auto");
   const [formError, setFormError] = useState<string | null>(null);
 
   // Land-use combobox state. The dropdown has 80+ ITE codes; without a
@@ -816,6 +829,7 @@ function DemoForm({
       openingYear: Math.trunc(Number(openingYear)) || currentYear + 1,
       studyRadiusMi,
       independentVariable: independentVariable || undefined,
+      studyTier,
     };
     const hasContent =
       projectName.trim() !== "" || latitude !== "" || longitude !== "" || size !== "";
@@ -829,7 +843,7 @@ function DemoForm({
       // Quota / disabled storage / private browsing — silently ignore;
       // persistence is a convenience, not a correctness requirement.
     }
-  }, [projectName, latitude, longitude, landUseCode, size, openingYear, studyRadiusMi, independentVariable, currentYear]);
+  }, [projectName, latitude, longitude, landUseCode, size, openingYear, studyRadiusMi, independentVariable, studyTier, currentYear]);
 
   // Reset the independent variable when the user picks a different land use
   // — the unitShort that was valid for the old code may not exist on the new one.
@@ -906,6 +920,7 @@ function DemoForm({
       openingYear: Math.trunc(yr),
       studyRadiusMi,
       independentVariable: independentVariable || undefined,
+      studyTier,
     });
   }
 
@@ -1162,6 +1177,35 @@ function DemoForm({
                 ⤷ Recommend {recommendedRadius.toFixed(2)} mi for this project scale
               </button>
             )}
+          </div>
+
+          {/* Deliverable tier. Most consultants leave this on Auto and let
+              the backend resolver pick from project size + host-jurisdiction
+              thresholds (Gwinnett 4-level / TxDOT TSP Ch. 16 / CDOT TDM
+              Tiers / OPR screening cascade / FDOT MTSIH planning vs.
+              detailed / DfT 2007 Annex B). The explicit values are here
+              for jurisdictions that occasionally ask for a different shape
+              than the auto-resolver picks. */}
+          <div>
+            <label htmlFor="demo-tier" className={labelCls}>
+              Deliverable tier
+            </label>
+            <select
+              id="demo-tier"
+              value={studyTier}
+              onChange={(e) => setStudyTier(e.target.value as StudyTier)}
+              className="w-full px-3 py-2 rounded border border-border bg-background text-foreground focus:border-blue-700 focus:outline-none text-sm"
+              data-testid="select-study-tier"
+            >
+              <option value="auto">Auto — pick from project size + jurisdiction</option>
+              <option value="worksheet">Worksheet / Screening Letter (smallest projects)</option>
+              <option value="abbreviated">Abbreviated TIS (mid-tier projects)</option>
+              <option value="full">Full Traffic Impact Study (large projects)</option>
+            </select>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Auto reads the host jurisdiction's published thresholds. Override
+              when a reviewing agency asks for a specific deliverable shape.
+            </p>
           </div>
 
           {/* Project name → ITE-code hint. Surfaced as a small pill above the

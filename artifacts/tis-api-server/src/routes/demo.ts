@@ -333,6 +333,11 @@ function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
   const independentVariableRaw = typeof body.independentVariable === "string"
     ? body.independentVariable.trim()
     : "";
+  const studyTierRaw = typeof body.studyTier === "string" ? body.studyTier.trim() : "auto";
+  const studyTier: TisRequest["studyTier"] =
+    studyTierRaw === "worksheet" || studyTierRaw === "abbreviated" || studyTierRaw === "full"
+      ? studyTierRaw
+      : "auto";
 
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
     return { ok: false, status: 400, error: `Latitude must be a number between -90 and 90.` };
@@ -408,6 +413,7 @@ function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
       weather: "clear",
       runSensitivity: true,
       independentVariable,
+      studyTier,
     },
   };
 }
