@@ -41,7 +41,13 @@ type AadtRecord = {
   /** K-factor: peak-hour traffic as a percentage of daily (typically 8-10%). */
   kFactor: number;
   distM: number;
-  source: "fdot" | "ncdot" | "tdot";
+  /**
+   * Provenance tag. Short DOT slug aligned with `dataSourceId` in
+   * regions.ts (idot / mdot_mi / nysdot / caltrans / fhwa_hpms_2018 /
+   * cdot_adt_portal / synthetic_osm_class / mlit_census_r3_2021 / etc.).
+   * Not consumed by routing logic — it's an audit trail.
+   */
+  source: string;
 };
 type AadtMap = Record<string, AadtRecord>;
 

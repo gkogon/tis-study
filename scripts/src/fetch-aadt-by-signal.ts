@@ -39,12 +39,22 @@ const DEFAULT_K_FACTOR_PCT = 9; // FHWA standard for urban arterials
 
 type SignalTuple = [number, number, number, string | null, number];
 
+/**
+ * Per-signal AADT record persisted to <slug>-aadt.json. `source` is a
+ * short DOT slug matching `dataSourceId` in artifacts/tis-api-server/
+ * src/lib/regions.ts (idot / mdot_mi / nysdot / penndot / massdot /
+ * caltrans / etc.) — so a downstream consumer can route a provenance
+ * audit to the right source-system docs. Historically this was a
+ * narrow `"fdot" | "ncdot"` enum, but new state wires kept getting
+ * mis-tagged "fdot" because the type didn't admit anything else;
+ * widened to a free string to make truthful provenance the easy path.
+ */
 type AadtRecord = {
   aadt: number;
   year: number;
   kFactor: number;
   distM: number;
-  source: "fdot" | "ncdot";
+  source: string;
 };
 
 // ── FDOT polyline shape ───────────────────────────────────────────────
@@ -142,8 +152,14 @@ type PolylineBboxConfig = {
   yearExtractor: YearExtractor;
   /** Snap radius in meters. */
   snapM: number;
-  /** Source tag for the output AADT record (consumer doesn't branch — purely for logging). */
-  sourceTag: "fdot" | "ncdot"; // reuse existing enum; "fdot" for polyline, "ncdot" for point
+  /**
+   * Provenance tag written into each AADT record's `source` field.
+   * Use the short DOT slug matching `dataSourceId` in regions.ts
+   * (idot / mdot_mi / nysdot / etc.). Previously locked to "fdot" /
+   * "ncdot" which caused every state's polyline output to be silently
+   * mis-tagged "fdot"; widened to free string.
+   */
+  sourceTag: string;
   /** Optional WHERE clause snippet ANDed with the AADT > 0 filter. */
   extraWhere?: string;
 };
@@ -160,7 +176,8 @@ type PointBboxConfig = {
   aadtFieldAlt?: string;
   yearExtractor: YearExtractor;
   snapM: number;
-  sourceTag: "fdot" | "ncdot";
+  /** Same widened provenance tag — see PolylineBboxConfig.sourceTag. */
+  sourceTag: string;
   extraWhere?: string;
 };
 
@@ -258,7 +275,7 @@ const REGIONS: RegionConfig[] = [
         aadtField: "AADT_CUR",
         yearExtractor: { kind: "static", year: 2025 },
         snapM: 200,
-        sourceTag: "fdot",
+        sourceTag: "txdot",
       },
     } as RegionConfig];
   })),
@@ -281,7 +298,7 @@ const REGIONS: RegionConfig[] = [
         aadtField: "AADT_TOTAL",
         yearExtractor: { kind: "field_int", field: "AADT_YEAR" },
         snapM: 200,
-        sourceTag: "fdot",
+        sourceTag: "odot_ok",
       },
     } as RegionConfig];
   })),
@@ -303,7 +320,7 @@ const REGIONS: RegionConfig[] = [
         aadtField: "CUR_AADT",
         yearExtractor: { kind: "field_int", field: "BASE_ADT_YR" },
         snapM: 200,
-        sourceTag: "fdot",
+        sourceTag: "penndot",
       },
     } as RegionConfig];
   })),
@@ -320,7 +337,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT",
       yearExtractor: { kind: "field_int", field: "AADT_Year" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "massdot",
       extraWhere: "AADT_Year >= 2018",
     },
   },
@@ -337,7 +354,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT",
       yearExtractor: { kind: "field_int", field: "HPMS_YEAR" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "indot",
     },
   },
 
@@ -360,7 +377,7 @@ const REGIONS: RegionConfig[] = [
         aadtField: "AADT",
         yearExtractor: { kind: "field_int", field: "AADT_YEAR" },
         snapM: 200,
-        sourceTag: "fdot",
+        sourceTag: "modot",
       },
     } as RegionConfig];
   })),
@@ -377,7 +394,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT",
       yearExtractor: { kind: "static", year: 2023 },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "mdot_md",
     },
   },
 
@@ -393,7 +410,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT",
       yearExtractor: { kind: "field_int", field: "AADT_YEAR" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "ddot_dc",
     },
   },
 
@@ -421,7 +438,7 @@ const REGIONS: RegionConfig[] = [
         aadtFieldAlt: "BACK_AADT",
         yearExtractor: { kind: "static", year: 2023 },
         snapM: 400,  // postmile-anchored points are sparser than NCDOT stations
-        sourceTag: "ncdot",
+        sourceTag: "caltrans",
       },
     } as RegionConfig];
   })),
@@ -438,7 +455,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT",
       yearExtractor: { kind: "static", year: 2024 },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "odot_or",
     },
   },
 
@@ -454,7 +471,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT",
       yearExtractor: { kind: "field_int", field: "ReportingYear" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "wsdot",
     },
   },
 
@@ -470,7 +487,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT_2024",
       yearExtractor: { kind: "static", year: 2024 },
       snapM: 500,
-      sourceTag: "ncdot",
+      sourceTag: "nvdot",
       extraWhere: "Visible = 'Y'",
     },
   },
@@ -492,7 +509,7 @@ const REGIONS: RegionConfig[] = [
         aadtField: "AADT",
         yearExtractor: { kind: "field_int", field: "SubmittalYear" },
         snapM: 200,
-        sourceTag: "fdot",
+        sourceTag: "adot",
       },
     } as RegionConfig];
   })),
@@ -509,7 +526,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT",
       yearExtractor: { kind: "field_int", field: "AADTYR" },
       snapM: 500,
-      sourceTag: "ncdot",
+      sourceTag: "cdot_co",
     },
   },
 
@@ -525,7 +542,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT2024",
       yearExtractor: { kind: "static", year: 2024 },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "udot",
     },
   },
 
@@ -541,7 +558,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT",
       yearExtractor: { kind: "field_int", field: "AADTYear" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "nmdot",
       extraWhere: "RouteID NOT LIKE 'LOC%'",
     },
   },
@@ -560,7 +577,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT",
       yearExtractor: { kind: "field_int", field: "AADT_YR" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "idot",
     },
   },
 
@@ -576,7 +593,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "Aadt",
       yearExtractor: { kind: "static", year: 2023 },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "mdot_mi",
     },
   },
 
@@ -592,7 +609,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "CURRENT_VOLUME",
       yearExtractor: { kind: "field_int", field: "CURRENT_YEAR" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "mndot",
     },
   },
 
@@ -608,7 +625,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "RDWY_AADT",
       yearExtractor: { kind: "field_int", field: "AADT_RPTG_YR" },
       snapM: 500,
-      sourceTag: "ncdot",
+      sourceTag: "wisdot",
     },
   },
 
@@ -624,7 +641,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADTLastAct",
       yearExtractor: { kind: "field_int", field: "YearLastAct" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "nysdot",
     },
   },
 
@@ -642,7 +659,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT_AADT_VALUE",
       yearExtractor: { kind: "field_int", field: "AADT_AADT_YEAR" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "ctdot",
     },
   },
 
@@ -658,7 +675,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT_FOR_SUMMARY",
       yearExtractor: { kind: "field_int", field: "AADT_YEAR" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "nhdot",
     },
   },
 
@@ -674,7 +691,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT",
       yearExtractor: { kind: "field_int", field: "Year" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "vtrans",
     },
   },
 
@@ -690,7 +707,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "aadt",
       yearExtractor: { kind: "field_int", field: "aadtyrcnt" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "medot",
     },
   },
 
@@ -706,7 +723,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "CURRENT_AA",
       yearExtractor: { kind: "field_int", field: "CURRENT_YE" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "njdot",
     },
   },
 
@@ -722,7 +739,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "Value_Nume",
       yearExtractor: { kind: "field_int", field: "Year_Recor" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "wvdot",
     },
   },
 
@@ -743,7 +760,7 @@ const REGIONS: RegionConfig[] = [
         aadtField: "AADT",
         yearExtractor: { kind: "field_int", field: "AADT_YEAR" },
         snapM: 200,
-        sourceTag: "fdot",
+        sourceTag: "odot_ok",
       },
     } as RegionConfig];
   })),
@@ -760,7 +777,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT",
       yearExtractor: { kind: "field_int", field: "AADT_YEAR" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "iadot",
     },
   },
 
@@ -776,7 +793,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "ADJ_ADT_TOT_NUM",
       yearExtractor: { kind: "field_int", field: "ADT_YEAR" },
       snapM: 500,
-      sourceTag: "ncdot",
+      sourceTag: "ndor",
     },
   },
 
@@ -792,7 +809,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADTCount",
       yearExtractor: { kind: "field_int", field: "AADTCountYear" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "ksdot",
     },
   },
 
@@ -808,7 +825,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AVE_DAILY_TRAFFIC_1",
       yearExtractor: { kind: "field_int", field: "YEAR_COUNTED_1" },
       snapM: 500,
-      sourceTag: "ncdot",
+      sourceTag: "nddot",
     },
   },
 
@@ -824,7 +841,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "Adt01Nbr",
       yearExtractor: { kind: "static", year: 2021 },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "sddot",
     },
   },
 
@@ -840,7 +857,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT",
       yearExtractor: { kind: "field_int", field: "AADTYear" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "itd",
     },
   },
 
@@ -856,7 +873,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT_25",
       yearExtractor: { kind: "static", year: 2025 },
       snapM: 500,
-      sourceTag: "ncdot",
+      sourceTag: "mdt",
     },
   },
 
@@ -872,7 +889,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT",
       yearExtractor: { kind: "field_int", field: "AADT_Year" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "akdot",
     },
   },
 
@@ -888,7 +905,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "aadt",
       yearExtractor: { kind: "field_int", field: "year_record" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "hidot",
     },
   },
 
@@ -902,7 +919,7 @@ const REGIONS: RegionConfig[] = [
       "syracuse": { latMin: 42.9, latMax: 43.2, lonMin: -76.3, lonMax: -75.9 },
       "albany": { latMin: 42.5, latMax: 42.9, lonMin: -74.0, lonMax: -73.6 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "NYSDOT Traffic Monitoring", polylineConfig: { url: "https://gisportalny.dot.ny.gov/hostingny/rest/services/Roadways/Traffic_Monitoring/FeatureServer/1", aadtField: "AADTLastAct", yearExtractor: { kind: "field_int", field: "YearLastAct" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "NYSDOT Traffic Monitoring", polylineConfig: { url: "https://gisportalny.dot.ny.gov/hostingny/rest/services/Roadways/Traffic_Monitoring/FeatureServer/1", aadtField: "AADTLastAct", yearExtractor: { kind: "field_int", field: "YearLastAct" }, snapM: 200, sourceTag: "nysdot" } } as RegionConfig];
   })),
 
   // ODOT-OH (4)
@@ -913,7 +930,7 @@ const REGIONS: RegionConfig[] = [
       "dayton": { latMin: 39.6, latMax: 40.0, lonMin: -84.3, lonMax: -83.9 },
       "youngstown": { latMin: 41.0, latMax: 41.3, lonMin: -80.9, lonMax: -80.5 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "ODOT 2024 Traffic Count Segments", polylineConfig: { url: "https://tims.dot.state.oh.us/ags/rest/services/Roadway_Information/Traffic_Count_Segments/MapServer/0", aadtField: "AADT_TOTAL", yearExtractor: { kind: "field_int", field: "AADT_YEAR" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "ODOT 2024 Traffic Count Segments", polylineConfig: { url: "https://tims.dot.state.oh.us/ags/rest/services/Roadway_Information/Traffic_Count_Segments/MapServer/0", aadtField: "AADT_TOTAL", yearExtractor: { kind: "field_int", field: "AADT_YEAR" }, snapM: 200, sourceTag: "odot_oh" } } as RegionConfig];
   })),
 
   // MDOT-MI (4)
@@ -924,7 +941,7 @@ const REGIONS: RegionConfig[] = [
       "ann-arbor": { latMin: 42.2, latMax: 42.4, lonMin: -83.9, lonMax: -83.6 },
       "flint": { latMin: 42.9, latMax: 43.2, lonMin: -83.9, lonMax: -83.5 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "MDOT-MI 2023 Traffic Volumes", polylineConfig: { url: "https://mdotgis.state.mi.us/arcgis/rest/services/DataAccess/MdotAadtCaadt2023/FeatureServer/0", aadtField: "Aadt", yearExtractor: { kind: "static", year: 2023 }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "MDOT-MI 2023 Traffic Volumes", polylineConfig: { url: "https://mdotgis.state.mi.us/arcgis/rest/services/DataAccess/MdotAadtCaadt2023/FeatureServer/0", aadtField: "Aadt", yearExtractor: { kind: "static", year: 2023 }, snapM: 200, sourceTag: "mdot_mi" } } as RegionConfig];
   })),
 
   // PennDOT (4)
@@ -935,7 +952,7 @@ const REGIONS: RegionConfig[] = [
       "scranton": { latMin: 41.3, latMax: 41.6, lonMin: -75.9, lonMax: -75.4 },
       "erie": { latMin: 42.0, latMax: 42.2, lonMin: -80.3, lonMax: -79.9 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "PennDOT RMS Traffic Volumes", polylineConfig: { url: "https://gis.penndot.gov/arcgis/rest/services/opendata/roadwaytraffic/MapServer/0", aadtField: "CUR_AADT", yearExtractor: { kind: "field_int", field: "BASE_ADT_YR" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "PennDOT RMS Traffic Volumes", polylineConfig: { url: "https://gis.penndot.gov/arcgis/rest/services/opendata/roadwaytraffic/MapServer/0", aadtField: "CUR_AADT", yearExtractor: { kind: "field_int", field: "BASE_ADT_YR" }, snapM: 200, sourceTag: "penndot" } } as RegionConfig];
   })),
 
   // MassDOT (2)
@@ -944,7 +961,7 @@ const REGIONS: RegionConfig[] = [
       "worcester": { latMin: 42.1, latMax: 42.5, lonMin: -72.0, lonMax: -71.6 },
       "springfield-ma": { latMin: 42.0, latMax: 42.2, lonMin: -72.8, lonMax: -72.4 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "MassDOT 2024 Traffic Inventory", polylineConfig: { url: "https://gis.massdot.state.ma.us/arcgis/rest/services/Roads/TrafficInventoryYearEnd/FeatureServer/1", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "AADT_Year" }, snapM: 200, sourceTag: "fdot", extraWhere: "AADT_Year >= 2018" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "MassDOT 2024 Traffic Inventory", polylineConfig: { url: "https://gis.massdot.state.ma.us/arcgis/rest/services/Roads/TrafficInventoryYearEnd/FeatureServer/1", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "AADT_Year" }, snapM: 200, sourceTag: "massdot", extraWhere: "AADT_Year >= 2018" } } as RegionConfig];
   })),
 
   // CTDOT (2)
@@ -953,7 +970,7 @@ const REGIONS: RegionConfig[] = [
       "new-haven": { latMin: 41.2, latMax: 41.4, lonMin: -73.1, lonMax: -72.8 },
       "bridgeport": { latMin: 41.0, latMax: 41.3, lonMin: -73.6, lonMax: -73.0 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "CTDOT Traffic Monitoring", polylineConfig: { url: "https://services1.arcgis.com/FCaUeJ5SOVtImake/arcgis/rest/services/CTDOT_Traffic_Monitoring_Data/FeatureServer/1", aadtField: "AADT_AADT_VALUE", yearExtractor: { kind: "field_int", field: "AADT_AADT_YEAR" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "CTDOT Traffic Monitoring", polylineConfig: { url: "https://services1.arcgis.com/FCaUeJ5SOVtImake/arcgis/rest/services/CTDOT_Traffic_Monitoring_Data/FeatureServer/1", aadtField: "AADT_AADT_VALUE", yearExtractor: { kind: "field_int", field: "AADT_AADT_YEAR" }, snapM: 200, sourceTag: "ctdot" } } as RegionConfig];
   })),
 
   // INDOT (3)
@@ -963,7 +980,7 @@ const REGIONS: RegionConfig[] = [
       "south-bend": { latMin: 41.5, latMax: 41.8, lonMin: -86.4, lonMax: -86.0 },
       "evansville": { latMin: 37.8, latMax: 38.2, lonMin: -87.8, lonMax: -87.3 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "INDOT 2021 AADT", polylineConfig: { url: "https://gis.indot.in.gov/ro/rest/services/DOT/RO_RandH_Organization_Default/FeatureServer/110", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "HPMS_YEAR" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "INDOT 2021 AADT", polylineConfig: { url: "https://gis.indot.in.gov/ro/rest/services/DOT/RO_RandH_Organization_Default/FeatureServer/110", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "HPMS_YEAR" }, snapM: 200, sourceTag: "indot" } } as RegionConfig];
   })),
 
   // WisDOT (2)
@@ -972,7 +989,7 @@ const REGIONS: RegionConfig[] = [
       "madison": { latMin: 43.0, latMax: 43.2, lonMin: -89.6, lonMax: -89.2 },
       "green-bay": { latMin: 44.4, latMax: 44.6, lonMin: -88.2, lonMax: -87.8 },
     };
-    return [{ slug, source: "point_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "WisDOT Traffic Counts", pointConfig: { url: "https://dotmaps.wi.gov/arcgis/rest/services/agohub/TRAFFIC_COUNTS/MapServer/0", aadtField: "RDWY_AADT", yearExtractor: { kind: "field_int", field: "AADT_RPTG_YR" }, snapM: 500, sourceTag: "ncdot" } } as RegionConfig];
+    return [{ slug, source: "point_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "WisDOT Traffic Counts", pointConfig: { url: "https://dotmaps.wi.gov/arcgis/rest/services/agohub/TRAFFIC_COUNTS/MapServer/0", aadtField: "RDWY_AADT", yearExtractor: { kind: "field_int", field: "AADT_RPTG_YR" }, snapM: 500, sourceTag: "wisdot" } } as RegionConfig];
   })),
 
   // IDOT (4)
@@ -983,7 +1000,7 @@ const REGIONS: RegionConfig[] = [
       "peoria": { latMin: 40.5, latMax: 40.9, lonMin: -89.8, lonMax: -89.3 },
       "champaign": { latMin: 40.0, latMax: 40.2, lonMin: -88.4, lonMax: -88.1 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "IDOT 2025 AADT", polylineConfig: { url: "https://gis1.dot.illinois.gov/arcgis/rest/services/AdministrativeData/AADT_Historical/FeatureServer/2025", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "AADT_YR" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "IDOT 2025 AADT", polylineConfig: { url: "https://gis1.dot.illinois.gov/arcgis/rest/services/AdministrativeData/AADT_Historical/FeatureServer/2025", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "AADT_YR" }, snapM: 200, sourceTag: "idot" } } as RegionConfig];
   })),
 
   // TxDOT (4)
@@ -994,7 +1011,7 @@ const REGIONS: RegionConfig[] = [
       "lubbock": { latMin: 33.4, latMax: 33.7, lonMin: -102.0, lonMax: -101.7 },
       "mcallen": { latMin: 26.0, latMax: 26.4, lonMin: -98.4, lonMax: -97.9 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "TxDOT current AADT", polylineConfig: { url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/TxDOT_AADT/FeatureServer/0", aadtField: "AADT_CUR", yearExtractor: { kind: "static", year: 2025 }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "TxDOT current AADT", polylineConfig: { url: "https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/TxDOT_AADT/FeatureServer/0", aadtField: "AADT_CUR", yearExtractor: { kind: "static", year: 2025 }, snapM: 200, sourceTag: "txdot" } } as RegionConfig];
   })),
 
   // Caltrans (4) — state highways only, expect ~20-30%
@@ -1005,7 +1022,7 @@ const REGIONS: RegionConfig[] = [
       "modesto": { latMin: 37.5, latMax: 37.8, lonMin: -121.2, lonMax: -120.8 },
       "oxnard": { latMin: 34.1, latMax: 34.5, lonMin: -119.5, lonMax: -118.7 },
     };
-    return [{ slug, source: "point_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "Caltrans 2023 Traffic Census", pointConfig: { url: "https://caltrans-gis.dot.ca.gov/arcgis/rest/services/CHhighway/Traffic_AADT/FeatureServer/0", aadtField: "AHEAD_AADT", aadtFieldAlt: "BACK_AADT", yearExtractor: { kind: "static", year: 2023 }, snapM: 400, sourceTag: "ncdot" } } as RegionConfig];
+    return [{ slug, source: "point_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "Caltrans 2023 Traffic Census", pointConfig: { url: "https://caltrans-gis.dot.ca.gov/arcgis/rest/services/CHhighway/Traffic_AADT/FeatureServer/0", aadtField: "AHEAD_AADT", aadtFieldAlt: "BACK_AADT", yearExtractor: { kind: "static", year: 2023 }, snapM: 400, sourceTag: "caltrans" } } as RegionConfig];
   })),
 
   // CDOT-CO (2)
@@ -1014,7 +1031,7 @@ const REGIONS: RegionConfig[] = [
       "colorado-springs": { latMin: 38.7, latMax: 39.0, lonMin: -104.9, lonMax: -104.6 },
       "fort-collins": { latMin: 40.4, latMax: 40.7, lonMin: -105.2, lonMax: -104.9 },
     };
-    return [{ slug, source: "point_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "CDOT-CO OTIS 2024 Traffic Stations", pointConfig: { url: "https://dtdapps.coloradodot.info/arcgis/rest/services/OTIS/TrafficExplorer/MapServer/0", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "AADTYR" }, snapM: 500, sourceTag: "ncdot" } } as RegionConfig];
+    return [{ slug, source: "point_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "CDOT-CO OTIS 2024 Traffic Stations", pointConfig: { url: "https://dtdapps.coloradodot.info/arcgis/rest/services/OTIS/TrafficExplorer/MapServer/0", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "AADTYR" }, snapM: 500, sourceTag: "cdot_co" } } as RegionConfig];
   })),
 
   // NDOT-NV (1) — Reno
@@ -1024,7 +1041,7 @@ const REGIONS: RegionConfig[] = [
     counties: [],
     bbox: { latMin: 39.4, latMax: 39.7, lonMin: -119.9, lonMax: -119.6 },
     sourceLabel: "NDOT TRINA 2024 AADT",
-    pointConfig: { url: "https://gis.dot.nv.gov/arcgis/rest/services/Applications/TRINA/FeatureServer/1", aadtField: "AADT_2024", yearExtractor: { kind: "static", year: 2024 }, snapM: 500, sourceTag: "ncdot", extraWhere: "Visible = 'Y'" },
+    pointConfig: { url: "https://gis.dot.nv.gov/arcgis/rest/services/Applications/TRINA/FeatureServer/1", aadtField: "AADT_2024", yearExtractor: { kind: "static", year: 2024 }, snapM: 500, sourceTag: "nvdot", extraWhere: "Visible = 'Y'" },
   },
 
   // WSDOT (2)
@@ -1033,7 +1050,7 @@ const REGIONS: RegionConfig[] = [
       "spokane": { latMin: 47.5, latMax: 47.8, lonMin: -117.6, lonMax: -117.2 },
       "tacoma": { latMin: 47.0, latMax: 47.4, lonMin: -122.7, lonMax: -122.2 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "WSDOT 2024 Traffic Sections", polylineConfig: { url: "https://data.wsdot.wa.gov/arcgis/rest/services/Shared/TrafficData/FeatureServer/1", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "ReportingYear" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "WSDOT 2024 Traffic Sections", polylineConfig: { url: "https://data.wsdot.wa.gov/arcgis/rest/services/Shared/TrafficData/FeatureServer/1", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "ReportingYear" }, snapM: 200, sourceTag: "wsdot" } } as RegionConfig];
   })),
 
   // ODOT-OR (2)
@@ -1042,7 +1059,7 @@ const REGIONS: RegionConfig[] = [
       "eugene": { latMin: 43.9, latMax: 44.2, lonMin: -123.3, lonMax: -122.9 },
       "salem-or": { latMin: 44.8, latMax: 45.1, lonMin: -123.2, lonMax: -122.8 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "ODOT-OR 2024 Traffic Flow", polylineConfig: { url: "https://gis.odot.state.or.us/arcgis1006/rest/services/transgis/catalog/MapServer/159", aadtField: "AADT", yearExtractor: { kind: "static", year: 2024 }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "ODOT-OR 2024 Traffic Flow", polylineConfig: { url: "https://gis.odot.state.or.us/arcgis1006/rest/services/transgis/catalog/MapServer/159", aadtField: "AADT", yearExtractor: { kind: "static", year: 2024 }, snapM: 200, sourceTag: "odot_or" } } as RegionConfig];
   })),
 
   // UDOT (2)
@@ -1051,7 +1068,7 @@ const REGIONS: RegionConfig[] = [
       "provo": { latMin: 40.1, latMax: 40.4, lonMin: -111.8, lonMax: -111.5 },
       "ogden": { latMin: 41.1, latMax: 41.4, lonMin: -112.2, lonMax: -111.8 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "UDOT 2024 AADT", polylineConfig: { url: "https://services.arcgis.com/pA2nEVnB6tquxgOW/arcgis/rest/services/AADT2024_Unrounded/FeatureServer/3", aadtField: "AADT2024", yearExtractor: { kind: "static", year: 2024 }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "UDOT 2024 AADT", polylineConfig: { url: "https://services.arcgis.com/pA2nEVnB6tquxgOW/arcgis/rest/services/AADT2024_Unrounded/FeatureServer/3", aadtField: "AADT2024", yearExtractor: { kind: "static", year: 2024 }, snapM: 200, sourceTag: "udot" } } as RegionConfig];
   })),
 
   // MnDOT (2)
@@ -1060,7 +1077,7 @@ const REGIONS: RegionConfig[] = [
       "rochester-mn": { latMin: 43.9, latMax: 44.2, lonMin: -92.6, lonMax: -92.3 },
       "duluth": { latMin: 46.6, latMax: 46.9, lonMin: -92.3, lonMax: -92.0 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "MnDOT current AADT segments", polylineConfig: { url: "https://webgis.dot.state.mn.us/65agsf1/rest/services/sdw_incdt/AADT_SEGMENT_CURRENT/FeatureServer/0", aadtField: "CURRENT_VOLUME", yearExtractor: { kind: "field_int", field: "CURRENT_YEAR" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "MnDOT current AADT segments", polylineConfig: { url: "https://webgis.dot.state.mn.us/65agsf1/rest/services/sdw_incdt/AADT_SEGMENT_CURRENT/FeatureServer/0", aadtField: "CURRENT_VOLUME", yearExtractor: { kind: "field_int", field: "CURRENT_YEAR" }, snapM: 200, sourceTag: "mndot" } } as RegionConfig];
   })),
 
   // FDOT (6) — fort-lauderdale uses point bbox via FDOT; the existing FDOT branch uses counties, so reuse the polyline_bbox generic path by pointing at the same TDA service
@@ -1082,7 +1099,7 @@ const REGIONS: RegionConfig[] = [
       "roanoke": { latMin: 37.1, latMax: 37.4, lonMin: -80.1, lonMax: -79.7 },
       "charlottesville": { latMin: 37.9, latMax: 38.2, lonMin: -78.6, lonMax: -78.3 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "VDOT 2024 Traffic Volume", polylineConfig: { url: "https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/VDOT_Traffic_Volume_2024/FeatureServer/0", aadtField: "ADT", yearExtractor: { kind: "field_epoch_ms", field: "DATA_DATE" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "VDOT 2024 Traffic Volume", polylineConfig: { url: "https://services.arcgis.com/p5v98VHDX9Atv3l7/arcgis/rest/services/VDOT_Traffic_Volume_2024/FeatureServer/0", aadtField: "ADT", yearExtractor: { kind: "field_epoch_ms", field: "DATA_DATE" }, snapM: 200, sourceTag: "vdot" } } as RegionConfig];
   })),
 
   // MoDOT (2)
@@ -1091,7 +1108,7 @@ const REGIONS: RegionConfig[] = [
       "springfield-mo": { latMin: 37.0, latMax: 37.3, lonMin: -93.4, lonMax: -93.1 },
       "columbia-mo": { latMin: 38.8, latMax: 39.1, lonMin: -92.5, lonMax: -92.1 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "MoDOT Directional AADT", polylineConfig: { url: "https://mapping.modot.mo.gov/arcgis/rest/services/BusinessInt/TrafficInfoSegAADT/MapServer/1", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "AADT_YEAR" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "MoDOT Directional AADT", polylineConfig: { url: "https://mapping.modot.mo.gov/arcgis/rest/services/BusinessInt/TrafficInfoSegAADT/MapServer/1", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "AADT_YEAR" }, snapM: 200, sourceTag: "modot" } } as RegionConfig];
   })),
 
   // Iowa DOT (1) — Cedar Rapids
@@ -1101,7 +1118,7 @@ const REGIONS: RegionConfig[] = [
     counties: [],
     bbox: { latMin: 41.9, latMax: 42.1, lonMin: -91.8, lonMax: -91.5 },
     sourceLabel: "Iowa DOT RAMS AADT",
-    polylineConfig: { url: "https://gis.iowadot.gov/agshost/rest/services/RAMS/Road_Network/FeatureServer/0", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "AADT_YEAR" }, snapM: 200, sourceTag: "fdot" },
+    polylineConfig: { url: "https://gis.iowadot.gov/agshost/rest/services/RAMS/Road_Network/FeatureServer/0", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "AADT_YEAR" }, snapM: 200, sourceTag: "iadot" },
   },
 
   // ── Dark-state re-probe wins (2026-05-27 third pass) ──
@@ -1113,7 +1130,7 @@ const REGIONS: RegionConfig[] = [
       "huntsville": { latMin: 34.5, latMax: 34.9, lonMin: -86.8, lonMax: -86.4 },
       "mobile": { latMin: 30.5, latMax: 30.9, lonMin: -88.3, lonMax: -87.8 },
     };
-    return [{ slug, source: "point_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "ALDOT TDM 2024-2025 AADT", pointConfig: { url: "https://aldotgis.dot.state.al.us/pubgis2/rest/services/EGISATDServices/TDMPublic/MapServer/0", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "YearAADT" }, snapM: 500, sourceTag: "ncdot", extraWhere: "YearAADT IN (2024, 2025) AND IsActive = 1" } } as RegionConfig];
+    return [{ slug, source: "point_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "ALDOT TDM 2024-2025 AADT", pointConfig: { url: "https://aldotgis.dot.state.al.us/pubgis2/rest/services/EGISATDServices/TDMPublic/MapServer/0", aadtField: "AADT", yearExtractor: { kind: "field_int", field: "YearAADT" }, snapM: 500, sourceTag: "aldot", extraWhere: "YearAADT IN (2024, 2025) AND IsActive = 1" } } as RegionConfig];
   })),
 
   // GDOT non-Atlanta (3) — Savannah/Augusta/Macon, point stations via DeKalbGIS ingest of GDOT_AADT.
@@ -1124,7 +1141,7 @@ const REGIONS: RegionConfig[] = [
       "augusta": { latMin: 33.3, latMax: 33.6, lonMin: -82.1, lonMax: -81.8 },
       "macon": { latMin: 32.7, latMax: 33.0, lonMin: -83.8, lonMax: -83.5 },
     };
-    return [{ slug, source: "point_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "GDOT AADT (DeKalbGIS ingest)", pointConfig: { url: "https://services2.arcgis.com/IxVN2oUE9EYLSnPE/arcgis/rest/services/GDOT_AADT/FeatureServer/1", aadtField: "aadt", yearExtractor: { kind: "static", year: 2024 }, snapM: 500, sourceTag: "ncdot" } } as RegionConfig];
+    return [{ slug, source: "point_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "GDOT AADT (DeKalbGIS ingest)", pointConfig: { url: "https://services2.arcgis.com/IxVN2oUE9EYLSnPE/arcgis/rest/services/GDOT_AADT/FeatureServer/1", aadtField: "aadt", yearExtractor: { kind: "static", year: 2024 }, snapM: 500, sourceTag: "gdot_511" } } as RegionConfig];
   })),
 
   // RIDOT — Providence, polyline (TRANS_Traffic_Counts_spf, 855 segments).
@@ -1140,7 +1157,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADTYR",
       yearExtractor: { kind: "field_int", field: "YR" },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "ridot",
     },
   },
 
@@ -1153,7 +1170,7 @@ const REGIONS: RegionConfig[] = [
       "calgary": { latMin: 50.8, latMax: 51.2, lonMin: -114.3, lonMax: -113.8 },
       "edmonton": { latMin: 53.4, latMax: 53.7, lonMin: -113.7, lonMax: -113.3 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "Alberta Transportation LoS 2021 (WAADT)", polylineConfig: { url: "https://services3.arcgis.com/mSGO1HzZze9kkZcj/arcgis/rest/services/Level_of_Service_2021/FeatureServer/0", aadtField: "WAADT_VOLUME", yearExtractor: { kind: "field_int", field: "TRAFFIC_YEAR" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "Alberta Transportation LoS 2021 (WAADT)", polylineConfig: { url: "https://services3.arcgis.com/mSGO1HzZze9kkZcj/arcgis/rest/services/Level_of_Service_2021/FeatureServer/0", aadtField: "WAADT_VOLUME", yearExtractor: { kind: "field_int", field: "TRAFFIC_YEAR" }, snapM: 200, sourceTag: "ab_transportation" } } as RegionConfig];
   })),
 
   // SICT Mexico (via Jacobs Engineering AGOL mirror) — all 10 MX metros.
@@ -1172,7 +1189,7 @@ const REGIONS: RegionConfig[] = [
       "queretaro": { latMin: 20.5, latMax: 20.7, lonMin: -100.5, lonMax: -100.3 },
       "merida": { latMin: 20.9, latMax: 21.1, lonMin: -89.7, lonMax: -89.5 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "SICT TDPA 2022 (federal highways, via Jacobs mirror)", polylineConfig: { url: "https://services9.arcgis.com/eNX73FDxjlKFtCtH/arcgis/rest/services/Mexico_Traffic_Data/FeatureServer/1", aadtField: "TDPA2022", yearExtractor: { kind: "static", year: 2022 }, snapM: 300, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "SICT TDPA 2022 (federal highways, via Jacobs mirror)", polylineConfig: { url: "https://services9.arcgis.com/eNX73FDxjlKFtCtH/arcgis/rest/services/Mexico_Traffic_Data/FeatureServer/1", aadtField: "TDPA2022", yearExtractor: { kind: "static", year: 2022 }, snapM: 300, sourceTag: "sict" } } as RegionConfig];
   })),
 
   // MTO Ontario — Toronto/Ottawa/Hamilton, polyline (Historical AADT, AADT19 = 2019 latest).
@@ -1183,7 +1200,7 @@ const REGIONS: RegionConfig[] = [
       "ottawa": { latMin: 45.2, latMax: 45.5, lonMin: -76.0, lonMax: -75.4 },
       "hamilton": { latMin: 43.1, latMax: 43.4, lonMin: -80.0, lonMax: -79.7 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "MTO Historical AADT (2019)", polylineConfig: { url: "https://services.arcgis.com/6iGx1Dq91oKtcE7x/arcgis/rest/services/Historical_AADT/FeatureServer/0", aadtField: "AADT19", yearExtractor: { kind: "static", year: 2019 }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "MTO Historical AADT (2019)", polylineConfig: { url: "https://services.arcgis.com/6iGx1Dq91oKtcE7x/arcgis/rest/services/Historical_AADT/FeatureServer/0", aadtField: "AADT19", yearExtractor: { kind: "static", year: 2019 }, snapM: 200, sourceTag: "mto" } } as RegionConfig];
   })),
 
   // Manitoba Infrastructure (via UManitoba MHTIS) — Winnipeg, polyline. 2019 stale.
@@ -1198,7 +1215,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "AADT",
       yearExtractor: { kind: "static", year: 2019 },
       snapM: 200,
-      sourceTag: "fdot",
+      sourceTag: "mb_infrastructure",
     },
   },
 
@@ -1214,7 +1231,7 @@ const REGIONS: RegionConfig[] = [
       aadtField: "aadt",
       yearExtractor: { kind: "field_int", field: "eff_year" },
       snapM: 300,
-      sourceTag: "fdot",
+      sourceTag: "wydot",
     },
   },
 
@@ -1225,7 +1242,7 @@ const REGIONS: RegionConfig[] = [
       "louisville": { latMin: 38.0, latMax: 38.4, lonMin: -85.9, lonMax: -85.4 },
       "lexington": { latMin: 37.9, latMax: 38.2, lonMin: -84.7, lonMax: -84.3 },
     };
-    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "KYTC Traffic Section AADT", polylineConfig: { url: "https://services2.arcgis.com/CcI36Pduqd0OR4W9/arcgis/rest/services/Traffic_Section_Middle_Third/FeatureServer/0", aadtField: "LASTCNT", yearExtractor: { kind: "field_int", field: "LASTCNTYR" }, snapM: 200, sourceTag: "fdot" } } as RegionConfig];
+    return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "KYTC Traffic Section AADT", polylineConfig: { url: "https://services2.arcgis.com/CcI36Pduqd0OR4W9/arcgis/rest/services/Traffic_Section_Middle_Third/FeatureServer/0", aadtField: "LASTCNT", yearExtractor: { kind: "field_int", field: "LASTCNTYR" }, snapM: 200, sourceTag: "kytc" } } as RegionConfig];
   })),
 
   // New Orleans — RPC SE Louisiana point stations (4,597 records, merges RPC + DOTD AADT, 2022-2025).
@@ -1242,7 +1259,7 @@ const REGIONS: RegionConfig[] = [
       aadtFieldAlt: "RPC_ADT",
       yearExtractor: { kind: "field_int", field: "COUNT_YEAR" },
       snapM: 500,
-      sourceTag: "ncdot",
+      sourceTag: "ladotd",
     },
   },
 ];
