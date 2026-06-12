@@ -25,6 +25,7 @@ import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite, getGml239Status, getCbdtpStatus } from "./nysdot-data";
 import { getNycTransitContext } from "./nyc-transit-data";
 import { crashesNearPoint } from "./crashes";
+import { atrSegmentsNearPoint } from "./atr-counts";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
 import {
@@ -223,7 +224,28 @@ export async function renderStudyPdf(
             (result as Record<string, unknown>).nyTransitContext = ctx;
           }
         });
-        await Promise.all([speedTask, crashTask, preciseCrashTask, gml239Task, transitTask]);
+        // (f) NYC DOT ATR measured volumes — populates §3.2a in
+        //     renderTisNewYork when ATR coverage exists within 1.0 mi.
+        //     Fails open: outside NYC or when no ATR rows are nearby,
+        //     the §3.2a block is silently omitted and the K-factor-
+        //     derived §3.2 table stands alone. 1.0 mi radius because
+        //     NYC DOT counts a rotating sample — many midtown sites
+        //     have no ATR segment closer than 0.5 mi (e.g. Times
+        //     Square's nearest is on 9th Ave, 0.7 mi west).
+        const atrTask = atrSegmentsNearPoint({
+          lat,
+          lon,
+          radiusMi: 1.0,
+          windowYears: 3,
+          source: "nyc_dot_atr",
+        })
+          .then((s) => {
+            if (s.segments.length > 0 && result && typeof result === "object") {
+              (result as Record<string, unknown>).nycAtrSummary = s;
+            }
+          })
+          .catch(() => {});
+        await Promise.all([speedTask, crashTask, preciseCrashTask, gml239Task, transitTask, atrTask]);
       }
     }
   }

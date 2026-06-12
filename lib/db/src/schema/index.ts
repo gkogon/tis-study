@@ -9,3 +9,4 @@ export * from "./traffic-snapshots";
 export * from "./marketing";
 export * from "./events";
 export * from "./crashes";
+export * from "./atr-counts";

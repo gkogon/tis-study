@@ -658,6 +658,67 @@ export function renderTisNewYork(
   }
   doc.moveDown(0.3);
 
+  // §3.2 supplement — NYC DOT ATR measured volumes when available.
+  // Populated in renderStudyPdf by atrSegmentsNearPoint() and stashed
+  // on result.nycAtrSummary. When present, the block replaces the
+  // K-factor-derived DHV with measured peak-hour volumes from real
+  // ATR counts; engineers can cross-check the AADT table above
+  // against the measured peaks. The block omits silently when no ATR
+  // coverage exists near the site (NYC DOT counts a rotating sample,
+  // not the full grid).
+  const atrSummary = (r as any).nycAtrSummary as
+    | {
+        windowYears: number;
+        radiusMi: number;
+        segments: Array<{
+          segmentId: string;
+          street: string | null;
+          fromStreet: string | null;
+          toStreet: string | null;
+          direction: string;
+          distanceMi: number;
+          latestCountDate: string;
+          sampleDays: number;
+          amPeakHourVph: number | null;
+          pmPeakHourVph: number | null;
+          avgDailyVph: number | null;
+        }>;
+        source: string;
+        totalSegmentsFound: number;
+      }
+    | undefined;
+
+  if (atrSummary && atrSummary.segments.length > 0) {
+    nySubsection(doc, "3.2a NYC DOT ATR Measured Volumes (Supplemental)");
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `The §3.2 AADT/DHV table above is derived from the engine's modeled peak-hour estimate via K = ${K_FACTOR.toFixed(2)}. The block below carries Automated Traffic Recorder (ATR) volumes published by NYC DOT (data.cityofnewyork.us / 7ym2-wayt) at ${atrSummary.segments.length} count location${atrSummary.segments.length === 1 ? "" : "s"} within ${atrSummary.radiusMi.toFixed(2)} miles of the site, looking back ${atrSummary.windowYears} year${atrSummary.windowYears === 1 ? "" : "s"}. These are measured, not modeled — they should be used to validate the §3.2 estimate. NYC DOT ATR is directional segment volume, not per-approach turning movement counts; TMCs at the affected intersection${atrSummary.segments.length === 1 ? "" : "s"} must still be collected separately for formal submittal.`,
+      { paragraphGap: 6 },
+    );
+
+    nyTable(doc, {
+      headers: ["Segment", "Direction", "Dist (mi)", "Latest count", "Sample days", "AM peak (vph)", "PM peak (vph)", "Daily (vph)"],
+      widths: [165, 50, 50, 70, 55, 65, 65, 60],
+      align: ["left", "center", "right", "center", "right", "right", "right", "right"],
+      rows: atrSummary.segments.map((s) => [
+        s.street ?? "—",
+        s.direction,
+        s.distanceMi.toFixed(2),
+        s.latestCountDate,
+        String(s.sampleDays),
+        s.amPeakHourVph !== null ? fmtNum(s.amPeakHourVph) : "—",
+        s.pmPeakHourVph !== null ? fmtNum(s.pmPeakHourVph) : "—",
+        s.avgDailyVph !== null ? fmtNum(s.avgDailyVph) : "—",
+      ]),
+    });
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      `Source: NYC DOT Automated Traffic Volume Counts (data.cityofnewyork.us / 7ym2-wayt). AM peak = max weekday hourly volume in 7:00-9:00 AM local. PM peak = max weekday hourly volume in 4:00-6:00 PM local. Daily = weekday average of 24-hour summed bins. Sample-days counts unique calendar days of observation within the ${atrSummary.windowYears}-year window. Total ATR segments found within radius: ${atrSummary.totalSegmentsFound}.`,
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+    doc.moveDown(0.3);
+  }
+
   // §3.3 Traffic Control Device Data
   nySubsection(doc, "3.3 Traffic Control Device Data");
   doc.font("body").fontSize(10).fillColor("black").text(

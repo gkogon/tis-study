@@ -12,15 +12,18 @@
     "test-pdf": "tsx ./src/test-pdf.ts",
     "generate-sample-pdf": "tsx ./src/generate-sample-pdf.ts",
     "update-calibration": "tsx ./src/update-calibration.ts",
-    "ingest-crashes-nyc": "tsx ./src/ingest-crashes-nyc.ts"
+    "ingest-crashes-nyc": "tsx ./src/ingest-crashes-nyc.ts",
+    "ingest-atr-nyc": "tsx ./src/ingest-atr-nyc.ts"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/proj4": "^2.5.6",
     "playwright": "^1.60.0",
     "tsx": "catalog:"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",
-    "drizzle-orm": "catalog:"
+    "drizzle-orm": "catalog:",
+    "proj4": "^2.20.0"
   }
 }
