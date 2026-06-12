@@ -16,6 +16,7 @@
 
 import { logger } from "./logger";
 import { getAutoModeShare, getAutoModeShareSource, getLondonAutoModeShare, type PTALBand } from "./mode-share";
+import { lookupLondonPtal } from "./tfl-ptal";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
 import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate } from "./regional-growth-rates";
@@ -566,6 +567,13 @@ export type TisReport = {
    *  PTAL-banded value. Surfaced so renderers print the actual share
    *  rather than a hard-coded constant. */
   autoModeShareApplied: number;
+  /** The PTAL band the engine resolved for this London project, plus
+   *  its source. "caller" means `request.ptalBand` was supplied;
+   *  "tfl-webcat-2023" means the engine ran a point-in-polygon
+   *  lookup against the TfL WebCAT 3.0 PTAL 2023 grid; absent means
+   *  no band was resolved (non-London project, outside Greater London,
+   *  or the lookup failed and the flat london_metro fallback applied). */
+  resolvedPtalBand?: { band: PTALBand; source: "caller" | "tfl-webcat-2023"; ai?: number };
   sensitivity?: SensitivityResult;
   /** True when the project's net PM-peak car-mode external trips meet or
    *  exceed `JUNCTION_IMPACT_PM_TRIP_THRESHOLD`. Renderers (currently
@@ -1140,12 +1148,29 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // London PTAL refinement: the flat 0.38 london_metro figure is the
   // Greater-London average and is ~10× too high at high-PTAL inner-
   // London sites where London Plan T6 Part B sets a car-free starting
-  // point. When the caller supplies a PTAL band for a London project,
-  // swap in the banded curve; otherwise preserve flat-average behavior.
-  const autoModeShare =
-    region.code === "london_metro" && req.ptalBand
-      ? getLondonAutoModeShare(req.ptalBand)
-      : getAutoModeShare(region.code);
+  // point. Band-resolution precedence for london_metro projects:
+  //   1. Caller-supplied req.ptalBand wins (explicit override; the
+  //      consultant ran WebCAT and knows the band).
+  //   2. Otherwise the engine queries the TfL WebCAT 3.0 PTAL 2023 grid
+  //      (point-in-polygon on the 100m × 100m FeatureServer layer) and
+  //      uses the looked-up band.
+  //   3. If the lookup returns null (out-of-extent, network failure,
+  //      grid gap), fall back to the flat london_metro 0.38 — same as
+  //      pre-PTAL behavior so degrade is graceful, not breaking.
+  let resolvedPtalBand: TisReport["resolvedPtalBand"] = undefined;
+  if (region.code === "london_metro") {
+    if (req.ptalBand) {
+      resolvedPtalBand = { band: req.ptalBand, source: "caller" };
+    } else {
+      const looked = await lookupLondonPtal(req.latitude, req.longitude);
+      if (looked) {
+        resolvedPtalBand = { band: looked.band, source: "tfl-webcat-2023", ai: looked.ai };
+      }
+    }
+  }
+  const autoModeShare = resolvedPtalBand
+    ? getLondonAutoModeShare(resolvedPtalBand.band)
+    : getAutoModeShare(region.code);
 
   // Per-period analyses.
   const periodReports: PeriodReport[] = [];
@@ -1320,6 +1345,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     passByPctApplied: passByPct,
     internalCapturePctApplied: internalCapturePct,
     autoModeShareApplied: autoModeShare,
+    ...(resolvedPtalBand ? { resolvedPtalBand } : {}),
     sensitivity: sens,
     junctionImpactSignificant,
   };

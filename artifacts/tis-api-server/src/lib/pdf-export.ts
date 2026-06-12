@@ -23,6 +23,7 @@ import { regionForCoordinate, type Region } from "./regions";
 import { getAutoModeShare } from "./mode-share";
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite, getGml239Status, getCbdtpStatus } from "./nysdot-data";
+import { getNycTransitContext } from "./nyc-transit-data";
 import { crashesNearPoint } from "./crashes";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
@@ -207,7 +208,16 @@ export async function renderStudyPdf(
             (result as Record<string, unknown>).nyGml239Status = s;
           }
         });
-        await Promise.all([speedTask, crashTask, preciseCrashTask, gml239Task]);
+        // (e) NYC transit + active-mode context — MTA subway stations
+        //     within 0.5 mi + nearest NYC DOT bike counter within 1 mi.
+        //     Only meaningful inside the five boroughs; the adapter
+        //     returns empty results harmlessly for non-NYC coords.
+        const transitTask = getNycTransitContext(lat, lon).then((ctx) => {
+          if (ctx && result && typeof result === "object") {
+            (result as Record<string, unknown>).nyTransitContext = ctx;
+          }
+        });
+        await Promise.all([speedTask, crashTask, preciseCrashTask, gml239Task, transitTask]);
       }
     }
   }
@@ -898,12 +908,46 @@ function renderTisGeorgia(
 
   // --- §6 Traffic Analysis -----------------------------------------------
   gaSection(doc, "6.0 TRAFFIC ANALYSIS");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `Three scenarios are evaluated at each affected intersection: (1) Existing — current-year volumes from the GDOT 511 system, no growth applied; (2) No-Build (opening year ${req.openingYear ?? "—"}) — existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year(s) without project trips; (3) Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the proposed development's external trips at the assigned distribution.`,
-    { paragraphGap: 6 },
+  const gaHasDesignYear = intersections.some(
+    (it) => it.designNoBuildLos != null || it.designBuildLos != null,
   );
+  const gaDesignYr = r.designYear ?? (req.openingYear ? Number(req.openingYear) + 20 : null);
+  if (gaHasDesignYear) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Four scenarios are evaluated at each affected intersection per GRTA / GDOT convention for projects exceeding screening thresholds: (1) Existing — current-year volumes from the GDOT 511 system, no growth applied; (2) No-Build at opening year ${req.openingYear ?? "—"} — existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year(s); (3) Build at opening year ${req.openingYear ?? "—"} — No-Build volumes plus project external trips at the assigned distribution; (4) 20-Year Design Year (${gaDesignYr ?? "—"}) No-Build and Build — opening-year volumes compounded another 20 years at the same growth rate, project trips at full build-out unchanged.`,
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Three scenarios are evaluated at each affected intersection: (1) Existing — current-year volumes from the GDOT 511 system, no growth applied; (2) No-Build (opening year ${req.openingYear ?? "—"}) — existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year(s) without project trips; (3) Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the proposed development's external trips at the assigned distribution.`,
+      { paragraphGap: 6 },
+    );
+  }
 
-  if (intersections.length > 0) {
+  if (intersections.length > 0 && gaHasDesignYear) {
+    table(doc, {
+      headers: ["Intersection", "Existing", "Opening NB", "Opening Bld", "Design NB", "Design Bld", "Δ delay (s)"],
+      widths: [180, 55, 65, 65, 55, 55, 55],
+      align: ["left", "center", "center", "center", "center", "center", "right"],
+      rows: intersections.map((it) => {
+        const losChanged = it.losChanged === true;
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const noBuildLos = it.existingLos ?? "—";
+        const buildLos = it.futureLos ?? "—";
+        const designNbLos = it.designNoBuildLos ?? "—";
+        const designBldLos = it.designBuildLos ?? "—";
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(currentLos),
+          String(noBuildLos),
+          (losChanged ? "▲ " : "") + String(buildLos),
+          String(designNbLos),
+          String(designBldLos),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+        ];
+      }),
+    });
+  } else if (intersections.length > 0) {
     table(doc, {
       headers: ["Intersection", "Existing LOS", "No-Build LOS", "Build LOS", "Δ delay (s)", "Q95 (ft)"],
       widths: [200, 65, 75, 65, 70, 60],
@@ -925,8 +969,10 @@ function renderTisGeorgia(
         ];
       }),
     });
-
-    // Mitigation list — GA-style, called out as "Recommended Improvements"
+  }
+  if (intersections.length > 0) {
+    // Mitigation list — GA-style, "Recommended Improvements". Runs for
+    // both the 3-scenario and 4-scenario branches.
     const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
     if (needMitigation.length > 0) {
       doc.moveDown(0.5);
@@ -1728,13 +1774,47 @@ function renderTisCalifornia(
     doc.moveDown(0.5);
   }
 
-  caSubsection(doc, "4.3 Affected Intersections — Existing / No-Build / Build");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `Three scenarios are evaluated at each affected intersection: (1) Existing — current-year volumes from live data feeds, no growth applied; (2) No-Build (opening year ${req.openingYear ?? "—"}) — existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year(s) without project trips; (3) Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the proposed development's external trips at the assigned distribution.`,
-    { paragraphGap: 6 },
+  const caHasDesignYear = intersections.some(
+    (it) => it.designNoBuildLos != null || it.designBuildLos != null,
   );
+  const caDesignYr = r.designYear ?? (req.openingYear ? Number(req.openingYear) + 20 : null);
+  caSubsection(doc, caHasDesignYear
+    ? "4.3 Affected Intersections — Existing / Opening / 20-Year Design"
+    : "4.3 Affected Intersections — Existing / No-Build / Build");
+  if (caHasDesignYear) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Four scenarios are evaluated at each affected intersection per Caltrans / local-jurisdiction operational-analysis convention (LOS-only context, not CEQA-VMT): (1) Existing — current-year volumes, no growth; (2) Opening-Year No-Build (${req.openingYear ?? "—"}) — existing grown at ${r.growthAppliedPct ?? "—"}%/yr; (3) Opening-Year Build — No-Build plus project external trips; (4) 20-Year Design Year (${caDesignYr ?? "—"}) No-Build and Build — opening volumes compounded another 20 years, project trips at full build-out unchanged.`,
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Three scenarios are evaluated at each affected intersection: (1) Existing — current-year volumes from live data feeds, no growth applied; (2) No-Build (opening year ${req.openingYear ?? "—"}) — existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year(s) without project trips; (3) Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the proposed development's external trips at the assigned distribution.`,
+      { paragraphGap: 6 },
+    );
+  }
 
-  if (intersections.length > 0) {
+  if (intersections.length > 0 && caHasDesignYear) {
+    table(doc, {
+      headers: ["Intersection", "Existing", "Opening NB", "Opening Bld", "Design NB", "Design Bld", "Δ delay (s)"],
+      widths: [180, 55, 65, 65, 55, 55, 55],
+      align: ["left", "center", "center", "center", "center", "center", "right"],
+      rows: intersections.map((it) => {
+        const losChanged = it.losChanged === true;
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const noBuildLos = it.existingLos ?? "—";
+        const buildLos = it.futureLos ?? "—";
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(currentLos),
+          String(noBuildLos),
+          (losChanged ? "▲ " : "") + String(buildLos),
+          String(it.designNoBuildLos ?? "—"),
+          String(it.designBuildLos ?? "—"),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+        ];
+      }),
+    });
+  } else if (intersections.length > 0) {
     table(doc, {
       headers: ["Intersection", "Existing LOS", "No-Build LOS", "Build LOS", "Δ delay (s)", "Q95 (ft)"],
       widths: [200, 65, 75, 65, 70, 60],
@@ -1754,6 +1834,8 @@ function renderTisCalifornia(
         ];
       }),
     });
+  }
+  if (intersections.length > 0) {
 
     caSubsection(doc, "4.4 Recommended Operational Improvements (Non-CEQA)");
     const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
@@ -2573,13 +2655,32 @@ function renderTisLondon(
 
   ldnSubsection(doc, "3.2 Public Transport Accessibility Level (PTAL)");
   {
-    const ptalBand = typeof req.ptalBand === "string" && req.ptalBand.length > 0 ? req.ptalBand : null;
+    // Prefer the structured TisReport.resolvedPtalBand (carries the
+    // source — caller vs. TfL WebCAT 3.0 grid lookup). Fall back to the
+    // raw request.ptalBand when older payloads were generated before
+    // the resolver shipped.
+    const resolved = r.resolvedPtalBand as
+      | { band?: string; source?: "caller" | "tfl-webcat-2023"; ai?: number }
+      | undefined;
+    const ptalBand =
+      (resolved && typeof resolved.band === "string" && resolved.band.length > 0 ? resolved.band : null) ??
+      (typeof req.ptalBand === "string" && req.ptalBand.length > 0 ? req.ptalBand : null);
+    const bandSource: "caller" | "tfl-webcat-2023" | "request-fallback" =
+      resolved?.source ?? (req.ptalBand ? "request-fallback" : "caller");
+    const sourceLabel =
+      bandSource === "tfl-webcat-2023"
+        ? "Engine-resolved via point-in-polygon lookup against the TfL WebCAT 3.0 PTAL 2023 100 m × 100 m grid (gis-tfl.opendata.arcgis.com, Open Government Licence v3.0). Reconcile against WebCAT 3.0 at the time of submittal."
+        : "Caller-supplied (not computed by this engine — should be cross-checked against WebCAT 3.0 at submittal).";
     if (isLondon && ptalBand) {
-      rows(doc, [
-        ["Site PTAL band (supplied)", `PTAL ${ptalBand}`],
+      const sourceCellRows: [string, string][] = [
+        ["Site PTAL band", `PTAL ${ptalBand}`],
         ["Engine auto-mode share applied at this PTAL", `${(Number(r.autoModeShareApplied) * 100).toFixed(0)}% (calibrated against TfL Travel in London + 3 published London TAs)`],
-        ["Source of band", "Caller-supplied (not computed by this engine)"],
-      ]);
+        ["Source of band", sourceLabel],
+      ];
+      if (typeof resolved?.ai === "number") {
+        sourceCellRows.splice(1, 0, ["Accessibility Index (AI) at cell", resolved.ai.toFixed(2)]);
+      }
+      rows(doc, sourceCellRows);
       doc.moveDown(0.3);
     }
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
