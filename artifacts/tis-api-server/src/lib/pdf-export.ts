@@ -2920,7 +2920,7 @@ function probablyDriScale(tg: any): boolean {
  * (the only IDOT-published doc with a fully prescribed TIS section
  * structure that this codebase's research located).
  *
- * Inside Chicago, CDOT's TDM Guidelines v1.1 (June 2023) replace
+ * Inside Chicago, CDOT's TDM Guidelines v1.2 (Feb 2024; supersedes the interim v1.1 of June 2023) replace
  * vehicle-LOS analysis with a multimodal Travel Demand Management
  * plan keyed off the Connected Communities Ordinance — a
  * fundamentally different deliverable, surfaced here as a Chicago
@@ -3119,8 +3119,8 @@ function renderTisIllinois(
     downstate_idot: "IDOT District (downstate)",
   };
   const reviewAuthority: Record<IlJurisdiction, string> = {
-    chicago_cdot: "Chicago Department of Transportation — Plan Review Committee (PRC), per the CDOT Guidelines for Travel Demand Study and Management (TDM) Plans v1.1 (June 2023), the Connected Communities Ordinance (Municipal Code §17-3-0308 / §17-4-0301), and Complete Streets Chicago (CDOT, 2013). State-system frontage routes inside Chicago co-route to IDOT District 1 (Schaumburg).",
-    chicago_idot: `Dual-jurisdiction review${chicagoStateRoute ? ` — project fronts ${chicagoStateRoute}, an IDOT state-system route inside Chicago city limits` : " on state-system roadway inside Chicago"}. The IL spec (§2.3) requires both an IDOT TIS appendix and a CDOT TDM summary: IDOT District 1 (Schaumburg) Permits Unit Chief controls vehicle-LOS analysis per BLRS Ch. 27 / 32 / 34 / 41 + D8 Appx. A; CDOT Plan Review Committee controls the multimodal mode-shift commitments per the TDM Guidelines v1.1 (June 2023) + Complete Streets Chicago (2013). The January 2023 IDOT-CDOT MOU streamlines co-review on safety improvements along state routes inside Chicago.`,
+    chicago_cdot: "Chicago Department of Transportation — Plan Review Committee (PRC), per the CDOT Guidelines for Travel Demand Study and Management (TDM) Plans v1.2 (February 5, 2024; supersedes interim v1.1 of June 2023), the Connected Communities Ordinance (Municipal Code §17-3-0308 / §17-4-0301), and Complete Streets Chicago (CDOT, 2013). State-system frontage routes inside Chicago co-route to IDOT District 1 (Schaumburg).",
+    chicago_idot: `Dual-jurisdiction review${chicagoStateRoute ? ` — project fronts ${chicagoStateRoute}, an IDOT state-system route inside Chicago city limits` : " on state-system roadway inside Chicago"}. The IL spec (§2.3) requires both an IDOT TIS appendix and a CDOT TDM summary: IDOT District 1 (Schaumburg) Permits Unit Chief controls vehicle-LOS analysis per BLRS Ch. 27 / 32 / 34 / 41 + D8 Appx. A; CDOT Plan Review Committee controls the multimodal mode-shift commitments per the TDM Guidelines v1.2 (Feb 2024) + Complete Streets Chicago (2013). The January 2023 IDOT-CDOT MOU streamlines co-review on safety improvements along state routes inside Chicago.`,
     cook_county: "Cook County Department of Transportation & Highways (DOTH) — Permits Division, per the Construction Permit Packet (Nov 2020). Cook County publishes no standalone TIS manual; TIS scope is staff-discretionary during the access/signal permit review.",
     collar_dupage: "DuPage County DOT — Engineering, per the (request-only) Project Manual. DuPage's Fair Share Impact-Fee program terminated 2023-05-24; TIS is now staff-discretionary during the access/signal permit review.",
     collar_lake: "Lake County DOT, per the Highway Access and Use Ordinance (2019) and its Technical Reference Manual.",
@@ -3143,7 +3143,7 @@ function renderTisIllinois(
     downstate_idot: "BLRS Ch. 32: LOS C controlling for rural arterials/collectors, LOS C controlling for urban arterials/collectors (with LOS D allowed in heavily-developed metro sections), LOS D minimum for urban local streets. Unsignalized intersections per BLRS Fig. 27-6A (HCM delay-based).",
   };
   const trigger: Record<IlJurisdiction, string> = {
-    chicago_cdot: "Tiered by dwelling-unit count per the CDOT TDM Guidelines v1.1: Tier 1 (20–50 DU site plan), Tier 2 (51–175 DU TDM Memo), Tier 3 (>175 DU full TDM Study + Plan). Connected Communities Ordinance transit-served-location designation (½ mile of a CTA/Metra rail station entrance or eligible high-frequency bus corridor) drives by-right parking reductions and informs trip-generation reductions.",
+    chicago_cdot: "Tiered by dwelling-unit count per the CDOT TDM Guidelines v1.2 (February 2024): Tier 1 (20–50 DU site plan), Tier 2 (51–175 DU TDM Memo), Tier 3 (>175 DU full TDM Study + Plan). Connected Communities Ordinance transit-served-location designation (½ mile of a CTA/Metra rail station entrance or eligible high-frequency bus corridor) drives by-right parking reductions and informs trip-generation reductions. The July 16, 2025 amendment (O2025-0015577, effective September 25, 2025) eliminated parking mandates outright in transit-served locations outside the downtown D districts — confirm the project's zoning district and the version of the Ordinance in force at submittal.",
     chicago_idot: "Both trigger paths apply: the CDOT TDM tiers (Tier 1/2/3 by DU count) gate the multimodal deliverable, AND the IDOT D8 Appx. A warrant-implicit trigger (turn-lane or signal warrant on the state-route frontage) gates the IDOT TIS appendix. Any access modification to the state route requires a permit under 92 Ill. Adm. Code Part 550 routed via OPER 1050 / OPER 1051 to District 1 Permits.",
     cook_county: "Staff-discretionary during the access/signal permit review (no published numeric trigger).",
     collar_dupage: "Staff-discretionary during the access/signal permit review (no published numeric trigger since Fair Share Impact-Fee termination 2023-05-24).",
@@ -3183,7 +3183,7 @@ function renderTisIllinois(
     doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text("Chicago Variant — Travel Demand Management framework");
     doc.moveDown(0.2);
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-      "Inside the City of Chicago, the CDOT TDM Guidelines v1.1 (June 2023) replace the traditional vehicle-LOS TIS with a tiered Travel Demand Management deliverable: Tier 1 (site plan), Tier 2 (TDM Memo), Tier 3 (TDM Study + Plan). The vehicle-LOS analysis below is included as supplementary engineering context and as the IDOT-side basis if any state-route frontage co-routes to District 1 (Schaumburg). The TDM-side deliverable — mode-shift reductions, transit-served-location designation, TDM Measures Matrix tied to ordinance §17-3-0308 / §17-4-0301 — is scoped during DPD / CDOT PRC coordination and is not auto-generated by this screening tool.",
+      "Inside the City of Chicago, the CDOT TDM Guidelines v1.2 (February 5, 2024) replace the traditional vehicle-LOS TIS with a tiered Travel Demand Management deliverable: Tier 1 (site plan), Tier 2 (TDM Memo), Tier 3 (TDM Study + Plan). The vehicle-LOS analysis below is included as supplementary engineering context and as the IDOT-side basis if any state-route frontage co-routes to District 1 (Schaumburg). The TDM-side deliverable — mode-shift reductions, transit-served-location designation, TDM Measures Matrix tied to ordinance §17-3-0308 / §17-4-0301 — is scoped during DPD / CDOT PRC coordination and is not auto-generated by this screening tool.",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
@@ -3220,7 +3220,7 @@ function renderTisIllinois(
     { paragraphGap: 6 },
   );
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Note: Illinois has no single statewide TIS manual. The methodology applied here is assembled from IDOT BLRS chapters (Ch. 17 planning, Ch. 27 design controls + LOS, Ch. 28 sight distance, Ch. 32 geometric tables, Ch. 34 intersections, Ch. 39 traffic-control devices, Ch. 41 driveways), Title 92 Illinois Admin. Code Part 550 (driveway permit policy), and the IDOT District 8 April 2024 guidelines. District 1 may have unwritten internal variations on scope, growth-rate convention, software choice at IDS phase, and timeline — confirm at the kickoff meeting with the District Permits Unit Chief.",
+    "Note: Illinois has no single statewide TIS manual. The methodology applied here is assembled from IDOT BLRS chapters (Ch. 17 planning, Ch. 27 design controls + LOS, Ch. 28 sight distance, Ch. 32 geometric tables, Ch. 34 intersections, Ch. 39 traffic-control devices, Ch. 41 driveways), Title 92 Illinois Admin. Code Part 550 (driveway permit policy), and the IDOT District 8 April 2024 guidelines. District 1 (Schaumburg) publishes NO TIS-specific guideline document — only the D1 Traffic Signal Design Guidelines (October 2025), which govern signal design rather than TIS scope; D8 Appx. A is the de facto fallback statewide. D1 may still impose unwritten variations on growth-rate convention, software choice at IDS phase, and timeline — confirm at the kickoff meeting with the District Permits Unit Chief.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
@@ -3407,7 +3407,7 @@ function renderTisIllinois(
   if (juris === "chicago_cdot") {
     doc.moveDown(0.3);
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-      "Chicago note: CDOT does not apply vehicle-LOS pass/fail mitigation. The TDM Measures Matrix — transit subsidies, bike/pedestrian infrastructure, off-street loading commitments, parking-supply caps — is the equivalent CDOT mitigation instrument, with a monetized cost share and monitoring commitment per the CDOT TDM Guidelines v1.1. Loading-zone minimums follow Chicago Municipal Code §17-10-1100. Driveways onto Pedestrian Streets (P-street overlay) are restricted under §17-3-0500 / §17-4-0500 — site access must come from the alley where applicable.",
+      "Chicago note: CDOT does not apply vehicle-LOS pass/fail mitigation. The TDM Measures Matrix — transit subsidies, bike/pedestrian infrastructure, off-street loading commitments, parking-supply caps — is the equivalent CDOT mitigation instrument, with a monetized cost share and monitoring commitment per the CDOT TDM Guidelines v1.2. Loading-zone minimums follow Chicago Municipal Code §17-10-1100. Driveways onto Pedestrian Streets (P-street overlay) are restricted under §17-3-0500 / §17-4-0500 — site access must come from the alley where applicable.",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
