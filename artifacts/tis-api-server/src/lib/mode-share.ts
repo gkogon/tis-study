@@ -199,6 +199,61 @@ export function getAutoModeShare(regionCode: string | null | undefined): number 
   return PER_REGION_AUTO_SHARE[regionCode] ?? FALLBACK_AUTO_SHARE;
 }
 
+/**
+ * London PTAL bands as published by TfL (0, 1a, 1b, 2, 3, 4, 5, 6a, 6b).
+ * Mirrors the band labels surfaced via WebCAT 3.0 and the GIS layer on
+ * the London Datastore.
+ */
+export type PTALBand = "0" | "1a" | "1b" | "2" | "3" | "4" | "5" | "6a" | "6b";
+
+/**
+ * Per-PTAL-band auto-mode share for London projects.
+ *
+ * The flat london_metro 0.38 figure (TfL Travel in London) is a useful
+ * Greater-London-wide average, but it is wildly wrong at the band
+ * extremes — inner-London PTAL 6a/6b schemes are policy car-free under
+ * London Plan T6 Part B ("car-free should be the starting point for
+ * development… well-connected by public transport"), while outer-London
+ * PTAL 0/1 sites behave close to a UK suburban average.
+ *
+ * Calibration sources:
+ *   - TfL "Travel in London" reports (mode-share curves vs. PTAL band).
+ *   - Holloway 985-unit PTAL 6a TA (car-free; ~0% car-mode).
+ *   - Registry Beckenham 134-unit PTAL 5 TA (~18% car-mode incl.
+ *     parking provision; local Bromley mode share quoted in the TA is
+ *     more car-skewed than the inner-London average so we sit closer
+ *     to the TfL band curve).
+ *   - Hyde Estate 115-unit PTAL 2 TA (~40% car-mode; matches the
+ *     flat London average — this is the band the 0.38 default was
+ *     unintentionally calibrated to).
+ *
+ * The flat 0.38 stays in PER_REGION_AUTO_SHARE as the backward-compat
+ * default when no PTAL band is supplied by the caller — preserving
+ * pre-PTAL behavior for any payload that doesn't yet carry the band.
+ */
+const PTAL_AUTO_SHARE: Record<PTALBand, number> = {
+  "6b": 0.03, // dense central / Zone 1 super-PT; policy car-free zone
+  "6a": 0.05, // inner London core; policy car-free zone (T6 Part B)
+  "5":  0.18, // strong PT, e.g. Registry Beckenham PTAL 5 ref
+  "4":  0.25,
+  "3":  0.32,
+  "2":  0.40, // matches Hyde Estate PTAL 2 calibration
+  "1b": 0.50, // outer London low PT
+  "1a": 0.50,
+  "0":  0.55, // no SAP in range — close to UK suburban average
+};
+
+/**
+ * London auto-mode share by PTAL band. When `ptalBand` is undefined
+ * the engine falls back to the flat london_metro 0.38 (Travel in
+ * London Greater-London-wide average) so older payloads without a
+ * PTAL band continue to behave as before.
+ */
+export function getLondonAutoModeShare(ptalBand?: PTALBand): number {
+  if (!ptalBand) return PER_REGION_AUTO_SHARE["london_metro"] ?? FALLBACK_AUTO_SHARE;
+  return PTAL_AUTO_SHARE[ptalBand] ?? PER_REGION_AUTO_SHARE["london_metro"] ?? FALLBACK_AUTO_SHARE;
+}
+
 /** Same lookup, but returns the source label for the methodology note. */
 export function getAutoModeShareSource(regionCode: string | null | undefined): string {
   if (!regionCode || !(regionCode in PER_REGION_AUTO_SHARE)) {

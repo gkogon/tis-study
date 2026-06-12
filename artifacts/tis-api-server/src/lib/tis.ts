@@ -15,9 +15,10 @@
 // HCM thresholds, or clearly-stated engineering assumptions.
 
 import { logger } from "./logger";
-import { getAutoModeShare, getAutoModeShareSource } from "./mode-share";
+import { getAutoModeShare, getAutoModeShareSource, getLondonAutoModeShare, type PTALBand } from "./mode-share";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
+import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate } from "./regional-growth-rates";
 // Canonical land-use registry (ITE 11th Ed.) lives in one place so the
 // Parking engine and TIS engine stay in sync. Re-exported below for any
 // downstream callers that imported `LAND_USES` from this module.
@@ -54,6 +55,20 @@ const CRITICAL_MOVEMENT_FRACTION = 0.45;
 const PER_INTERSECTION_CAPACITY_VPH = SATURATION_FLOW_VPH * G_OVER_C;
 const APPROACH_CAPACITY_VPH = PER_INTERSECTION_CAPACITY_VPH; // 1 critical lane per approach
 const VEH_LENGTH_FT = 25;
+
+// Net PM-peak car-mode external-trip count below which renderers are
+// expected to demote junction-capacity analysis to a screening appendix
+// and lead §5.4 with a trip-comparison narrative instead. Calibrated
+// against published London residential TAs (Registry Beckenham 134 DU /
+// Hyde Estate 115 DU — zero junctions modelled, trip-comparison only;
+// Holloway 985 DU — three junctions modelled, only because the scheme
+// proposes new accesses + a TLRN junction). Below ~15 PM-peak car trips
+// the published practice is trip-comparison, not capacity modelling.
+// Surface as a single constant so future calibration can move it without
+// hunting renderer code. Tracks PTAL-banded mode share when that ships:
+// 100 dwellings at PTAL 6a will fall well below this threshold, which
+// is the intended behavior.
+const JUNCTION_IMPACT_PM_TRIP_THRESHOLD = 15;
 
 // Weather capacity adjustment (HCM Ch. 11). Multiplied into the saturation
 // flow (and thus the lane group capacity).
@@ -351,6 +366,21 @@ export type TisRequest = {
   // consultant has a specific deliverable scope in mind.
   // Default: "auto".
   studyTier?: StudyTier;
+  // Optional prior land use on the site, free-text. London residential
+  // TAs lean on cumulative-vs-previous-use trip comparison (e.g. "vs the
+  // existing office", "vs the prior motor-garage use") whenever the net
+  // car-mode peak is small enough that capacity modelling isn't the
+  // limiting factor. When set, the London renderer's §5.4 demoted-path
+  // prose names this prior use; when unset, the prose scaffolds a TODO
+  // for the consultant.
+  priorUse?: string;
+  // London PTAL band for the site (0, 1a, 1b, 2, 3, 4, 5, 6a, 6b). When
+  // supplied for a London project the engine swaps the flat 0.38
+  // london_metro auto-mode share for the PTAL-banded curve in
+  // mode-share.ts. Unset → flat-average behavior preserved.
+  // Lat/lon → PTAL lookup against the TfL 100m grid is the planned
+  // follow-up (WebCAT 3.0 / Datastore GIS) — out of scope here.
+  ptalBand?: PTALBand;
 };
 
 export type StudyTier = "auto" | "worksheet" | "abbreviated" | "full";
@@ -399,6 +429,19 @@ export type AffectedIntersection = {
   futureDelaySec: number;
   existingLos: Los;
   futureLos: Los;
+  // Design-year scenarios — opening-year volumes grown by an additional
+  // `designYearHorizon` years at the same compound growth rate. Project
+  // trips at full build-out are unchanged from the Opening-Year Build
+  // scenario (the project's external trip generation doesn't grow with
+  // the design horizon — its build-out is fixed). Required by IL D8
+  // Appx. A (and most US state TIS standards) as the 4th scenario.
+  // Optional so older payloads pre-design-year refactor still validate.
+  designNoBuildVc?: number;
+  designNoBuildDelaySec?: number;
+  designNoBuildLos?: Los;
+  designBuildVc?: number;
+  designBuildDelaySec?: number;
+  designBuildLos?: Los;
   losChanged: boolean;
   mitigation: string;
   mitigationSeverity: "none" | "minor" | "moderate" | "major";
@@ -492,7 +535,19 @@ export type TisReport = {
   weatherCapacityFactor: number;
   passByPctApplied: number;
   internalCapturePctApplied: number;
+  /** The auto-mode share that was multiplied through to derive net car
+   *  trips. Equal to the per-metro default unless a PTAL band was
+   *  supplied for a London project, in which case it is the
+   *  PTAL-banded value. Surfaced so renderers print the actual share
+   *  rather than a hard-coded constant. */
+  autoModeShareApplied: number;
   sensitivity?: SensitivityResult;
+  /** True when the project's net PM-peak car-mode external trips meet or
+   *  exceed `JUNCTION_IMPACT_PM_TRIP_THRESHOLD`. Renderers (currently
+   *  only London) use this to decide whether junction-capacity analysis
+   *  earns headline placement (true) or is demoted to a screening
+   *  appendix behind a trip-comparison narrative (false). */
+  junctionImpactSignificant: boolean;
 };
 
 // ---------- Implementation ----------
@@ -630,7 +685,11 @@ function recommendMitigation(
 }
 
 type ScenarioParams = {
-  growthMultiplier: number;       // applied to existing volume
+  growthMultiplier: number;       // current → opening-year (no-build / build)
+  /** Current → design year (opening + designYearHorizon at same CAGR).
+   *  Optional so callers that don't want the 4th scenario can omit it;
+   *  the engine just won't emit the designNoBuild* / designBuild* fields. */
+  designGrowthMultiplier?: number;
   capacityVph: number;            // weather-adjusted intersection capacity
   approachCapacityVph: number;    // weather-adjusted approach capacity
   externalTrips: number;          // post-credit external trips for this period
@@ -662,6 +721,18 @@ function buildAffectedRow(
   const addedCriticalVph = addedTrips * CRITICAL_MOVEMENT_FRACTION;
   const afterVc = beforeVc + addedCriticalVph / params.capacityVph;
 
+  // Design-Year No-Build = current × designGrowthMultiplier (no project).
+  // Design-Year Build   = Design No-Build + project trips (same external
+  // trip generation as the Opening Build scenario; the project's build-out
+  // trips don't grow with the design horizon).
+  const dgm = params.designGrowthMultiplier;
+  const hasDesignYear = dgm !== undefined && dgm > 0;
+  const designNoBuildCriticalVph = hasDesignYear
+    ? c.sig.totalVolume * (dgm as number) * CRITICAL_MOVEMENT_FRACTION
+    : 0;
+  const designNoBuildVc = hasDesignYear ? designNoBuildCriticalVph / params.capacityVph : 0;
+  const designBuildVc = hasDesignYear ? designNoBuildVc + addedCriticalVph / params.capacityVph : 0;
+
   // HCM delay first; calibration multiplier applied AFTER so the LOS bucket
   // reflects the calibrated value reviewers care about. When no row exists
   // for this signal `multiplier` is 1.0 and behavior is unchanged.
@@ -675,6 +746,10 @@ function buildAffectedRow(
   const currentLos = delayToLos(currentDelay);
   const beforeLos = delayToLos(beforeDelay);
   const afterLos = delayToLos(afterDelay);
+  const designNoBuildDelay = hasDesignYear ? vcToDelay(designNoBuildVc, params.capacityVph) * calMul : 0;
+  const designBuildDelay = hasDesignYear ? vcToDelay(designBuildVc, params.capacityVph) * calMul : 0;
+  const designNoBuildLos = hasDesignYear ? delayToLos(designNoBuildDelay) : undefined;
+  const designBuildLos = hasDesignYear ? delayToLos(designBuildDelay) : undefined;
 
   // Approach split.
   const volShares = approachVolumeShares(c.sig.id);
@@ -740,6 +815,16 @@ function buildAffectedRow(
     futureDelaySec: round1(afterDelay),
     existingLos: beforeLos,
     futureLos: afterLos,
+    ...(hasDesignYear
+      ? {
+          designNoBuildVc: round2(designNoBuildVc),
+          designNoBuildDelaySec: round1(designNoBuildDelay),
+          designNoBuildLos,
+          designBuildVc: round2(designBuildVc),
+          designBuildDelaySec: round1(designBuildDelay),
+          designBuildLos,
+        }
+      : {}),
     losChanged: beforeLos !== afterLos,
     mitigation: mit.text,
     mitigationSeverity: mit.severity,
@@ -1009,7 +1094,15 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // level version of mode choice. Suburban-US default 90% means almost
   // no change in those markets; transit-heavy metros see a meaningful
   // reduction (e.g., London 38%, Tokyo 30%, NYC 32%).
-  const autoModeShare = getAutoModeShare(region.code);
+  // London PTAL refinement: the flat 0.38 london_metro figure is the
+  // Greater-London average and is ~10× too high at high-PTAL inner-
+  // London sites where London Plan T6 Part B sets a car-free starting
+  // point. When the caller supplies a PTAL band for a London project,
+  // swap in the banded curve; otherwise preserve flat-average behavior.
+  const autoModeShare =
+    region.code === "london_metro" && req.ptalBand
+      ? getLondonAutoModeShare(req.ptalBand)
+      : getAutoModeShare(region.code);
 
   // Per-period analyses.
   const periodReports: PeriodReport[] = [];
@@ -1145,6 +1238,16 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
 
   const mitigationSummary = buildSummaryMitigations(pmReport.affectedIntersections, region);
 
+  // Junction-impact significance: derived from the net PM-peak car-mode
+  // external trips (already mode-share-net-out upstream). Below the
+  // threshold, the London renderer demotes §5.4's junction capacity
+  // table to Appendix A and leads with a trip-comparison narrative —
+  // matching the published convention for sub-150-unit residential TAs.
+  // Other renderers ignore the flag today (the US convention is to
+  // model every nearby signalised junction regardless of project size).
+  const junctionImpactSignificant =
+    pmReport.tripGeneration.externalTrips >= JUNCTION_IMPACT_PM_TRIP_THRESHOLD;
+
   return {
     generatedAt: new Date().toISOString(),
     request: req,
@@ -1165,7 +1268,9 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     weatherCapacityFactor: round2(weatherFactor),
     passByPctApplied: passByPct,
     internalCapturePctApplied: internalCapturePct,
+    autoModeShareApplied: autoModeShare,
     sensitivity: sens,
+    junctionImpactSignificant,
   };
 }
 
