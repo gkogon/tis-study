@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import { regionForCoordinate, type Region } from "./regions";
 import { getAutoModeShare } from "./mode-share";
 import { renderTisNewYork } from "./pdf-export-ny";
+import { enrichNyIntersectionsWithSpeed } from "./nysdot-data";
 
 type StoredProject = {
   id: string;
@@ -140,6 +141,31 @@ export async function renderStudyPdf(
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
   });
+
+  // NY-only Tier-1 data enrichment: hit NYSDOT RDM_Roadway_Current
+  // FeatureServer for posted-speed-per-intersection BEFORE drawBody, so
+  // the renderer stays sync. Fails open — any error keeps the existing
+  // placeholders. Concurrency + timeouts are bounded inside the adapter.
+  if (project.studyType === "tis") {
+    const lat = project.siteLat ? Number(project.siteLat) : NaN;
+    const lon = project.siteLon ? Number(project.siteLon) : NaN;
+    console.log("[NY-enrich] lat=", lat, "lon=", lon);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      const region = regionForCoordinate(lat, lon);
+      console.log("[NY-enrich] region=", region?.code, "stateCode=", region?.stateCode);
+      if (region?.stateCode === "NY" && (region?.country ?? "US") === "US") {
+        const result = project.resultPayload as Record<string, unknown> | null;
+        const intersections = Array.isArray(result?.affectedIntersections)
+          ? (result?.affectedIntersections as Array<Record<string, unknown>>)
+          : [];
+        console.log("[NY-enrich] intersections.length=", intersections.length);
+        if (intersections.length > 0) {
+          await enrichNyIntersectionsWithSpeed(intersections);
+          console.log("[NY-enrich] after enrich, sample=", JSON.stringify(intersections[0]).slice(0, 200));
+        }
+      }
+    }
+  }
 
   drawCover(doc, project, firm, logoBuf);
   doc.addPage();
@@ -2172,6 +2198,32 @@ function txTiaCategory(peakHourTrips: number): TxTiaCategory {
   return "cat3";
 }
 
+
+/**
+ * Rough Texas county overlay for unincorporated coords. When the
+ * site falls in unincorporated Harris/Travis/Bexar territory the
+ * county-level TIA program supersedes the (absent) host-city
+ * standard. Bounds are rough county-outline rectangles intersected
+ * with their respective MSA — good enough to pick the citation pack.
+ *
+ * Harris County: TIA Guidelines May 8, 2025 — ≥50 PHT triggers a TIA;
+ * study-area scaling 50–149 → ¼ mi, 150–299 → ½ mi, ≥300 → 1 mi.
+ * Travis County: TNR Subdivision Preliminary Plan — ≥1,000 net new
+ * daily trips triggers TIA review.
+ * Bexar County: coordinates through City of San Antonio UDC §35-502
+ * (the 76-PHT trigger).
+ */
+type TxCounty = "harris" | "travis" | "bexar" | null;
+function txCounty(lat: number, lon: number): TxCounty {
+  // Harris County rough bounds (covers Houston MSA core)
+  if (lat >= 29.5 && lat <= 30.2 && lon >= -95.95 && lon <= -94.9) return "harris";
+  // Travis County rough bounds (covers Austin MSA core)
+  if (lat >= 30.0 && lat <= 30.55 && lon >= -98.05 && lon <= -97.55) return "travis";
+  // Bexar County rough bounds (covers San Antonio MSA core)
+  if (lat >= 29.25 && lat <= 29.75 && lon >= -98.85 && lon <= -98.2) return "bexar";
+  return null;
+}
+
 function renderTisTexas(
   doc: PDFKit.PDFDocument,
   r: any,
@@ -2186,6 +2238,7 @@ function renderTisTexas(
   const lat = Number(req.latitude ?? project.siteLat ?? NaN);
   const lon = Number(req.longitude ?? project.siteLon ?? NaN);
   const juris = Number.isFinite(lat) && Number.isFinite(lon) ? txJurisdiction(lat, lon) : "txdot";
+  const county = Number.isFinite(lat) && Number.isFinite(lon) ? txCounty(lat, lon) : null;
 
   // Pick the determining peak-hour trip count: the larger of AM/PM peak
   // entering+exiting, per TSP §16.2.1 "peak hour trip generation".
@@ -2330,6 +2383,17 @@ function renderTisTexas(
     `Host-jurisdiction TIA threshold: ${cityThreshold}`,
     { paragraphGap: 6 },
   );
+  // County-level overlay — applies in unincorporated TX where the
+  // host city standard isn't the controlling authority.
+  if (juris === "txdot" && county) {
+    const countyNote = {
+      harris: "Harris County (unincorporated) overlay: per the Harris County TIA Guidelines (May 8, 2025), a development that generates more than 50 trips during the highest peak hour triggers a TIA. Study-area scaling from the plat boundary: 50 ≤ PHT < 150 → ¼ mile; 150 ≤ PHT < 300 → ½ mile; PHT ≥ 300 → 1 mile.",
+      travis: "Travis County (unincorporated) overlay: per the Travis County TNR Subdivision Preliminary Plan process, a project generating ≥ 1,000 net new daily trips triggers TIA review.",
+      bexar: "Bexar County (unincorporated) overlay: TIA review coordinates through the City of San Antonio UDC §35-502 process (76-PHT trigger), as no separate county-level TIA program is published.",
+    }[county];
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(countyNote, { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
   if (juris === "dallas") {
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
       "Dallas TIA standards are not consolidated into a single dated manual — review is partly discretionary under §51A-4.803 site plan review. This report aligns with the engineering tables and figures expected by Dallas DOT Traffic Engineering plus the multimodal context of Connect Dallas.",
@@ -2513,6 +2577,14 @@ function renderTisTexas(
     "Where the project fronts a state-system roadway (IH / US / SH / FM / RM / BU / BS / SL / SS), site access is reviewed through the TxDOT Driveway Access Permit (DAP) process under the Access Management Manual Chapter 3 §3. Driveway spacing, geometry, and auxiliary lanes (right-turn deceleration, left-turn) are checked against ACM Chapter 2 §3 (Table 2-2 spacing) and the Roadway Design Manual Chapter 16.",
     { paragraphGap: 6 },
   );
+  if (juris === "austin" || juris === "txdot") {
+    // CTRMA-specific frontage-road policy.
+    const ctrmaNote = juris === "austin"
+      ? "Within the CTRMA managed-lane corridor (183A, MoPac Express, 290 Toll), any new or modified access onto the CTRMA frontage roads is governed by CTRMA Board Resolution 07-58 (Procedures for Access Management of Frontage Roads on CTRMA Facilities) and remains subject to the underlying TxDOT DAP review."
+      : "Where the project fronts an HCTRA (Sam Houston Tollway, Hardy Toll Road, Westpark Tollway), NTTA (DNT, PGBT, SRT, LLTB), CTRMA (183A, MoPac Express, 290 Toll), or TxDOT-operated toll facility frontage road, access review runs through TxDOT (and the host city where applicable); the tollway authority itself reviews only direct facility impacts on ramp / managed-lane geometry.";
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(ctrmaNote, { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
 
   gaSubsection(doc, "6.2 Auxiliary Lane and Sight Distance Analysis");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
