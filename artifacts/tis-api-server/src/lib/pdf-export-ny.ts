@@ -353,27 +353,51 @@ export function renderTisNewYork(
 
   // --- §2.0 Travel Speeds ------------------------------------------------
   nySection(doc, "2.0 TRAVEL SPEEDS");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    "Per NYSDOT HDM Chapter 5 §5.2, posted speed limits and actual operating speeds (85th-percentile) along the study network are reported below. Speed data should be sourced from the NYSDOT Traffic Data Viewer (https://www.dot.ny.gov/divisions/engineering/applications/traffic-data-viewer) or field-collected radar / floating-car study.",
-    { paragraphGap: 6 },
+  // Tier-1 enrichment: posted speeds are auto-ingested from the NYSDOT
+  // RDM_Roadway_Current FeatureServer (see lib/nysdot-data.ts) before
+  // this renderer is called. The 85th-percentile column REMAINS field-
+  // required — NYSDOT does not publish speed-study data; per project-
+  // specific radar / floating-car study per HDM Chapter 5 §5.2.
+  const nyEnriched = intersections.filter((it) =>
+    typeof it.nysdotPostedSpeedMph === "number" || typeof it.nysdotRoadwayName === "string"
   );
-  // Engine has no speed-study input wired yet — render a placeholder row
-  // per the Shell rather than fabricate a number.
+  if (nyEnriched.length > 0) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Per NYSDOT HDM Chapter 5 §5.2, posted speed limits and actual operating speeds (85th-percentile) along the study network are reported below. Posted-speed-limit values in the third column are auto-ingested from the NYSDOT Roadway Data Management (RDM) FeatureServer (https://gis.dot.ny.gov/hostingny/rest/services/Roadways/RDM_Roadway_Current/FeatureServer) at PDF-generation time — the same source data viewable through the NYSDOT Traffic Data Viewer (https://gis.dot.ny.gov/html5viewer/?viewer=tdv). Operating speeds (85th-percentile) are NOT published by NYSDOT and require a project-specific radar / floating-car speed study.`,
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "Per NYSDOT HDM Chapter 5 §5.2, posted speed limits and actual operating speeds (85th-percentile) along the study network are reported below. Speed data should be sourced from the NYSDOT Traffic Data Viewer (https://gis.dot.ny.gov/html5viewer/?viewer=tdv) or field-collected radar / floating-car study. (Auto-ingest from the NYSDOT RDM FeatureServer was attempted but returned no matching records — verify intersection coordinates and re-run, or fall through to manual TDV lookup.)",
+      { paragraphGap: 6 },
+    );
+  }
+
   if (intersections.length > 0) {
     nyTable(doc, {
-      headers: ["Street", "Limits (From – To)", "Posted speed", "85th-pctile operating speed"],
+      headers: ["Street", "Functional class", "Posted speed", "85th-pctile operating speed"],
       widths: [140, 180, 80, 120],
       align: ["left", "left", "center", "center"],
-      rows: intersections.slice(0, 6).map((it) => [
-        String(it.name ?? it.signalId ?? "—").split(/[@&]|\s+at\s+/i)[0].trim() || "—",
-        "Within study limits — refer to NYSDOT TDV",
-        "—",
-        "Speed study required",
-      ]),
+      rows: intersections.slice(0, 6).map((it) => {
+        const intName = String(it.name ?? it.signalId ?? "—").split(/[@&]|\s+at\s+/i)[0].trim() || "—";
+        const ingestedName = typeof it.nysdotRoadwayName === "string" ? it.nysdotRoadwayName : null;
+        const street = ingestedName
+          ? `${intName} (${ingestedName})`
+          : intName;
+        const fc = typeof it.nysdotFunctionalClass === "string"
+          ? it.nysdotFunctionalClass
+          : "Refer to NYSDOT TDV";
+        const ps = typeof it.nysdotPostedSpeedMph === "number"
+          ? `${it.nysdotPostedSpeedMph} mph`
+          : ingestedName
+            ? "Not posted (local)"
+            : "—";
+        return [street, fc, ps, "Speed study required"];
+      }),
     });
   } else {
     nyTable(doc, {
-      headers: ["Street", "Limits (From – To)", "Posted speed", "85th-pctile operating speed"],
+      headers: ["Street", "Functional class", "Posted speed", "85th-pctile operating speed"],
       widths: [140, 180, 80, 120],
       align: ["left", "left", "center", "center"],
       rows: [["—", "Speed study required per NYSDOT HDM Chapter 5 §5.2; refer to NYSDOT Traffic Data Viewer.", "—", "—"]],

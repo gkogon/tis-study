@@ -149,19 +149,15 @@ export async function renderStudyPdf(
   if (project.studyType === "tis") {
     const lat = project.siteLat ? Number(project.siteLat) : NaN;
     const lon = project.siteLon ? Number(project.siteLon) : NaN;
-    console.log("[NY-enrich] lat=", lat, "lon=", lon);
     if (Number.isFinite(lat) && Number.isFinite(lon)) {
       const region = regionForCoordinate(lat, lon);
-      console.log("[NY-enrich] region=", region?.code, "stateCode=", region?.stateCode);
       if (region?.stateCode === "NY" && (region?.country ?? "US") === "US") {
         const result = project.resultPayload as Record<string, unknown> | null;
         const intersections = Array.isArray(result?.affectedIntersections)
           ? (result?.affectedIntersections as Array<Record<string, unknown>>)
           : [];
-        console.log("[NY-enrich] intersections.length=", intersections.length);
         if (intersections.length > 0) {
           await enrichNyIntersectionsWithSpeed(intersections);
-          console.log("[NY-enrich] after enrich, sample=", JSON.stringify(intersections[0]).slice(0, 200));
         }
       }
     }
@@ -1909,7 +1905,7 @@ function renderTisLondon(
   ldnSubsection(doc, "3.2 Public Transport Accessibility Level (PTAL)");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     isLondon
-      ? "PTAL is mandatory in every London TA. The site's PTAL band (0, 1a, 1b, 2, 3, 4, 5, 6a, 6b) and Accessibility Index (AI) value are not computed by this engine; they should be drawn from the TfL 100 m × 100 m PTAL grid via WebCAT 3.0 (tfl.gov.uk planning-with-webcat) or the GIS layer on the London Datastore. PTAL band determines the car-parking maximum under London Plan policy T6 sub-policies — Table 10.3 (T6.1 residential), Table 10.4 (T6.2 office) and Table 10.5 (T6.3 retail) are the PTAL-banded maxima; T6.4 hotel and leisure is PTAL-band narrative with no numbered maxima table; Table 10.6 (T6.5) sets non-residential disabled persons provision. PTAL 5 / 6a / 6b is a car-free starting point in policy."
+      ? "PTAL is mandatory in every London TA. The site's PTAL band (0, 1a, 1b, 2, 3, 4, 5, 6a, 6b) and Accessibility Index (AI) value are not computed by this engine; they should be drawn from the TfL 100 m × 100 m PTAL grid via WebCAT 3.0 (tfl.gov.uk planning-with-webcat) or the GIS layer on the London Datastore. TfL's methodology: Service Access Points are bus stops within 640 m (8 min walk) and rail / tube / Overground / DLR / Elizabeth line / tram / river-bus stations within 960 m (12 min walk), both at the standard assumed walking speed of 80 m/min; the Equivalent Doorstep Frequency window is the AM peak 08:15–09:15; AI sums weighted EDFs across all SAPs. The published AI → PTAL bands are: PTAL 0 = AI 0 (no SAP in range); 1a = 0.01–2.50; 1b = 2.51–5.00; 2 = 5.01–10.00; 3 = 10.01–15.00; 4 = 15.01–20.00; 5 = 20.01–25.00; 6a = 25.01–40.00; 6b > 40.00. PTAL band drives the car-parking maxima under London Plan policy T6 sub-policies — Table 10.3 (T6.1 residential), Table 10.4 (T6.2 office) and Table 10.5 (T6.3 retail) are the PTAL-banded maxima; T6.4 hotel and leisure is PTAL-band narrative with no numbered maxima table; Table 10.6 (T6.5) sets non-residential disabled persons provision. Policy T6 Part B is worded as \"Car-free development should be the starting point for all development proposals in places that are (or are planned to be) well-connected by public transport, with developments elsewhere designed to provide the minimum necessary parking ('car-lite')\" — the policy text itself does not name a hard PTAL-band cut-off; the only explicit numeric PTAL hook in the policy is Part K, which restricts Outer London boroughs adopting minimum residential parking standards to PTAL 0–1 parts of London."
       : "Public-transport accessibility metrics for non-London UK metros vary by combined authority and are not standardised; the local authority's adopted methodology should be applied.",
     { paragraphGap: 6 },
   );
