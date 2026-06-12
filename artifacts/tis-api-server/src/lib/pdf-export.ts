@@ -23,6 +23,7 @@ import { regionForCoordinate, type Region } from "./regions";
 import { getAutoModeShare } from "./mode-share";
 import { renderTisNewYork } from "./pdf-export-ny";
 import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite } from "./nysdot-data";
+import { crashesNearPoint } from "./crashes";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
 
@@ -158,13 +159,19 @@ export async function renderStudyPdf(
         const intersections = Array.isArray(result?.affectedIntersections)
           ? (result?.affectedIntersections as Array<Record<string, unknown>>)
           : [];
-        // Two Tier-1 NY enrichments, run in parallel:
+        // Three Tier-1 NY enrichments, run in parallel:
         //   (a) per-intersection posted-speed from NYSDOT RDM
         //       (mutates intersections in place)
         //   (b) county-level 3-year crash summary from the NY State
         //       Police Case Information SODA endpoint (stashed on
         //       result.nyCrashSummary for renderTisNewYork §4)
-        // Both fail open: any error leaves the prior placeholders.
+        //   (c) precise intersection-radius 3-year crash records from
+        //       our crashes table, populated by ingest-crashes-nyc.ts
+        //       (stashed on result.nyPreciseCrashSummary). Only
+        //       returns non-empty inside NYC where coords exist; the
+        //       renderer falls through to the county-level block
+        //       outside NYC.
+        // All three fail open: any error leaves the prior placeholders.
         const speedTask = intersections.length > 0
           ? enrichNyIntersectionsWithSpeed(intersections)
           : Promise.resolve();
@@ -173,7 +180,23 @@ export async function renderStudyPdf(
             (result as Record<string, unknown>).nyCrashSummary = s;
           }
         });
-        await Promise.all([speedTask, crashTask]);
+        const preciseCrashTask = crashesNearPoint({
+          lat,
+          lon,
+          radiusMi: 0.25,
+          windowYears: 3,
+          source: "nyc_opendata",
+        })
+          .then((s) => {
+            if (s.totalCrashes > 0 && result && typeof result === "object") {
+              (result as Record<string, unknown>).nyPreciseCrashSummary = s;
+            }
+          })
+          .catch(() => {
+            // DB unreachable or table missing — keep county-level
+            // fallback. No reason to surface this as a render error.
+          });
+        await Promise.all([speedTask, crashTask, preciseCrashTask]);
       }
     }
   }
@@ -630,6 +653,10 @@ function renderTisGeorgia(
   const resolvedTier = resolveStudyTier(region, tierInput, requested);
   if (resolvedTier === "worksheet") {
     renderTisGeorgiaWorksheet(doc, r, project, region, tierInput);
+    return;
+  }
+  if (resolvedTier === "abbreviated") {
+    renderTisGeorgiaAbbreviated(doc, r, project, region, tierInput);
     return;
   }
 
@@ -1353,6 +1380,29 @@ function renderTisCalifornia(
     ? californiaJurisdiction(lat, lon)
     : californiaJurisdiction(34.0522, -118.2437);
 
+  // --- Tier dispatch ------------------------------------------------------
+  // CA does not formally tier (single "Transportation Analysis" is the
+  // standard deliverable above the OPR screen), but OPR § E.1 explicitly
+  // permits a screened-out memo for projects below the host-jurisdiction
+  // screening trip floor (110 OPR default; 250 LA/Sacramento; 500
+  // Long Beach/Fresno). When the cascade screens the project out, the
+  // appropriate deliverable is a short Screened-Out Determination Memo,
+  // NOT a full TIA — short-circuit to the worksheet renderer.
+  const tierInput: TierInput = {
+    dailyTrips: Number(tg.dailyTrips ?? 0),
+    pmPeakTrips: Number(tg.pmPeakTrips ?? (Number(tg.pmIn ?? 0) + Number(tg.pmOut ?? 0))),
+    size: Number(tg.size ?? 0),
+    unit: String(tg.unit ?? ""),
+    landUseCode: String(tg.landUseCode ?? ""),
+    jurisdictionScreeningTripCount: jur.screeningTripCount,
+  };
+  const requested: StudyTier | undefined = req.studyTier;
+  const resolvedTier = resolveStudyTier(region, tierInput, requested);
+  if (resolvedTier === "worksheet") {
+    renderTisCaliforniaWorksheet(doc, r, project, region, tierInput, jur);
+    return;
+  }
+
   // --- Executive Summary --------------------------------------------------
   caSection(doc, "EXECUTIVE SUMMARY");
   doc.font("body").fontSize(10).fillColor("black");
@@ -1880,6 +1930,366 @@ function renderTisGeorgiaWorksheet(
   doc.fillColor("black");
 }
 
+// ---------------------------------------------------------------------------
+// Gwinnett Level 2 / Abbreviated TIS renderer.
+//
+// Level 2 per Gwinnett County DOT TIS Guidelines (2023) is a strict superset
+// of Level 1 (Worksheet) plus existing/future ADT, turning movement volumes,
+// truck circulation, pedestrian/bicycle and transit inventories, trip
+// distribution + pass-by assumptions, a Traffic Operation Analysis, MUTCD
+// signal warrant analysis (as part of an Intersection Control Evaluation),
+// turn lane warrant analysis, and traffic control recommendations.
+//
+// Explicitly excluded at Level 2 (Level 3 / Full TIS triggers): crash
+// history, comparative no-build vs. build scenarios, and turn-lane storage
+// recommendations. The §7 operations table therefore reports Existing and
+// Future-with-Project conditions only — no No-Build column, no Δ-delay
+// against No-Build.
+// ---------------------------------------------------------------------------
+function renderTisGeorgiaAbbreviated(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+  tierInput: TierInput,
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const intersections: any[] = Array.isArray(r.affectedIntersections) ? r.affectedIntersections : [];
+  const periods: any[] = Array.isArray(r.periodReports) ? r.periodReports : [];
+  const tierName = jurisdictionTierLabel(region, "abbreviated");
+
+  // --- Header banner ----------------------------------------------------
+  gaSection(doc, "TRAFFIC IMPACT STUDY — ABBREVIATED");
+  doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(tierName, { paragraphGap: 4 });
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "Abbreviated-tier deliverable per Gwinnett County DOT TIS Guidelines (2023) Level 2 (21–249 PM peak-hour site-generated trips). Selected automatically based on the project's screened trip generation; a Full TIS would be substituted at Level 3 (≥250 PHT) and a DRI-level TIS at Level 4 (≥500 PHT or DRI status).",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // Headline metric strip — same at-a-glance numbers as the Full TIS so a
+  // reviewer can locate the screen quickly.
+  const losEf = Number(r.intersectionsAtLosEf ?? 0);
+  metricStrip(doc, [
+    { label: "Intersections", value: String(r.intersectionsStudied ?? intersections.length ?? 0) },
+    { label: "PM PHT", value: fmtNum(tierInput.pmPeakTrips) },
+    { label: "Daily trips", value: fmtNum(tierInput.dailyTrips) },
+    { label: "At LOS E/F", value: String(losEf) },
+  ]);
+  doc.moveDown(0.6);
+
+  // --- §1 Location Description -----------------------------------------
+  gaSection(doc, "1.0 LOCATION DESCRIPTION");
+  rows(doc, [
+    ["Project name", project.projectName || "—"],
+    ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
+    ["Region", region.displayName],
+    ["Opening year", String(req.openingYear ?? "—")],
+    ["Study radius", `${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)} mi`],
+  ]);
+  doc.moveDown(0.5);
+
+  // --- §2 Existing and Proposed Land Use --------------------------------
+  gaSection(doc, "2.0 EXISTING AND PROPOSED LAND USE");
+  rows(doc, [
+    ["Proposed ITE land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Proposed development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Existing land use", "Subject to site verification (existing-use trip credit may apply at this tier; confirm with reviewing agency)"],
+  ]);
+  doc.moveDown(0.5);
+
+  // --- §3 Trip Generation Estimate --------------------------------------
+  gaSection(doc, "3.0 TRIP GENERATION ESTIMATE");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Trip generation is estimated per the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`,
+    { paragraphGap: 6 },
+  );
+  const gaAbbrTopRows: Array<[string, string]> = [
+    ["Independent variable", `${tg.unit ?? "—"} (${tg.unitShort ?? "—"})`],
+  ];
+  if (tg.variableConfidence === "interpolated") {
+    gaAbbrTopRows.push([
+      "Rate confidence",
+      `Interpolated${tg.variableNote ? ` — ${tg.variableNote}` : ""}`,
+    ]);
+  } else if (tg.variableConfidence === "ite_published") {
+    gaAbbrTopRows.push(["Rate confidence", "ITE 11th Ed. published"]);
+  }
+  rows(doc, gaAbbrTopRows);
+  doc.moveDown(0.3);
+  table(doc, {
+    headers: ["Period", "Trips"],
+    widths: [280, 100],
+    align: ["left", "right"],
+    rows: [
+      ["Daily total", fmtNum(tg.dailyTrips)],
+      ["AM peak hour", fmtNum(tg.amPeakTrips)],
+      ["PM peak hour (in)", fmtNum(tg.pmIn)],
+      ["PM peak hour (out)", fmtNum(tg.pmOut)],
+      ["PM peak hour (total)", fmtNum(tierInput.pmPeakTrips)],
+    ],
+  });
+  doc.moveDown(0.5);
+
+  // --- §4 Tier Determination -------------------------------------------
+  gaSection(doc, "4.0 ABBREVIATED-TIER DETERMINATION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Per Gwinnett County DOT TIS Guidelines (2023) Table 1, projects generating 21–249 PM peak-hour site-generated automobile trips qualify as Level 2 (Abbreviated). The proposed development estimate of ${fmtNum(tierInput.pmPeakTrips)} PM peak-hour trips falls within this band; accordingly, a Level 2 Abbreviated deliverable is prepared rather than a Level 3 Full TIS or Level 4 DRI-level study. Where the reviewing agency requests a higher-tier deliverable (e.g. site fronts a state route, abuts a constrained corridor, or the agency cites a non-trip-related concern), regenerate the report with Tier = Full from the form.`,
+    { paragraphGap: 6 },
+  );
+
+  // --- §5 Existing Conditions ------------------------------------------
+  gaSection(doc, "5.0 EXISTING CONDITIONS");
+
+  gaSubsection(doc, "5.1 Existing ADT Volumes");
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Roadway segment / intersection approach", "Existing ADT (vpd)", "Source"],
+      widths: [260, 110, 110],
+      align: ["left", "right", "center"],
+      rows: intersections.map((it) => [
+        it.name ?? it.signalId ?? "—",
+        fmtNum(it.existingAadt ?? it.aadt ?? it.dailyVolume),
+        it.aadtSource ? String(it.aadtSource) : "GDOT 511 / TADA",
+      ]),
+    });
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text("No affected segments within the study radius.", { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.4);
+
+  gaSubsection(doc, "5.2 Current Intersection Turning Movement Peak Period Volumes");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Peak-period turning movement volumes are sourced from the GDOT 511 NaviGAtor signal-controller feed at each affected signal and supplemented (where available) by Gwinnett County DOT counts. For formal submittal, supplementary AM and PM peak-hour TMCs conducted within the most recent 12 months are recommended.",
+    { paragraphGap: 6 },
+  );
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Intersection", "AM peak (veh)", "PM peak (veh)", "Count source"],
+      widths: [220, 80, 80, 100],
+      align: ["left", "right", "right", "center"],
+      rows: intersections.map((it) => [
+        it.name ?? it.signalId ?? "—",
+        fmtNum(it.amPeakVolume ?? it.amTotal),
+        fmtNum(it.pmPeakVolume ?? it.pmTotal ?? it.existingPeakVolume),
+        it.countSource ? String(it.countSource) : "GDOT 511",
+      ]),
+    });
+  }
+  doc.moveDown(0.4);
+
+  gaSubsection(doc, "5.3 Truck Volumes and Circulation");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Heavy-vehicle (FHWA Class 4+) percentage on fronting roadways is approximated from GDOT Traffic Analysis & Data Application (TADA) classification counts. Site truck circulation should be designed for WB-67 turning templates per GDOT Driveway & Encroachment Control Manual §6 unless the proposed land use justifies a smaller design vehicle (SU-30 / SU-40). Truck percentage applied to the operations analysis: ${fmtNum(r.truckPct ?? r.heavyVehiclePct ?? 3, 1)}%.`,
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "5.4 Pedestrian and Bicycle Facilities Summary");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Existing sidewalk continuity, marked crosswalk locations, and bicycle facility inventory (ARC Regional Bicycle Network, Gwinnett Countywide Trails Master Plan, and any locally adopted bike/ped plans) within the study area should be confirmed against current ARC and Gwinnett County DOT mapping prior to submittal. Programmed bicycle and pedestrian improvements per the ARC Regional Transportation Plan (RTP) should be reviewed during the methodology meeting.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  gaSubsection(doc, "5.5 Existing Transit Routes and Stops");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Transit service within the study area should be confirmed against current Gwinnett County Transit, MARTA (Routes 110/410 cross-county service), and GRTA Xpress route maps (noting the May 2026 consolidation of GRTA Xpress under the Georgia Transportation Efficiency Authority, HB 297). Stop locations within ¼ mile of the site frontage warrant inclusion in the access management discussion. Proximity to fixed-route transit may support ARC Air Quality Benchmark trip-mode credit if pursued.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.moveDown(0.4);
+
+  // --- §6 Future Conditions --------------------------------------------
+  gaSection(doc, "6.0 FUTURE CONDITIONS");
+
+  gaSubsection(doc, "6.1 Future ADT Volumes");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Future-year ADT volumes are calculated by applying background traffic growth at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s) to existing volumes, then layering the proposed development's site-generated daily trips (${fmtNum(tierInput.dailyTrips)} vpd gross) net of any pass-by and internal capture credits. Growth rate is consistent with GDOT historical TADA growth observed along comparable roadways in the study area.`,
+    { paragraphGap: 6 },
+  );
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Roadway segment / intersection approach", "Future ADT (vpd)", "Δ vs. existing"],
+      widths: [260, 110, 110],
+      align: ["left", "right", "right"],
+      rows: intersections.map((it) => {
+        const existing = Number(it.existingAadt ?? it.aadt ?? it.dailyVolume ?? 0);
+        const future = Number(it.futureAadt ?? (existing * Math.pow(1 + Number(r.growthAppliedPct ?? 0) / 100, Number(r.growthYears ?? 0))));
+        return [
+          it.name ?? it.signalId ?? "—",
+          fmtNum(future),
+          existing > 0 ? `+${fmtNum(future - existing)}` : "—",
+        ];
+      }),
+    });
+  }
+  doc.moveDown(0.4);
+
+  gaSubsection(doc, "6.2 Distribution and Assignment Assumptions");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Directional distribution of site-generated trips is based on the existing roadway network geometry, proximity to project access points, regional travel patterns from the ARC Activity-Based Model (ABM2), and engineering judgment. Assignment to the study network follows a proportional allocation by signal proximity and approach geometry; the per-intersection allocation is reflected in the §7 Traffic Operation Analysis below. For final submittal, distribution percentages should be confirmed during the methodology meeting with Gwinnett County DOT, GDOT District 7, and (where applicable) GTEA.",
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "6.3 Pass-By and Trip-Generation Reduction Assumptions");
+  rows(doc, [
+    ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
+    ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}%`],
+    ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
+    ["Weather condition", String(r.weather ?? req.weather ?? "clear")],
+  ]);
+  if (periods.length > 0) {
+    doc.moveDown(0.3);
+    table(doc, {
+      headers: ["Period", "Raw", "Pass-by", "Int. cap.", "External", "In", "Out"],
+      widths: [100, 50, 60, 60, 70, 50, 50],
+      align: ["left", "right", "right", "right", "right", "right", "right"],
+      rows: periods.map((p) => {
+        const t = p.tripGeneration ?? {};
+        return [
+          String(p.periodLabel ?? p.period ?? ""),
+          fmtNum(t.rawTrips),
+          fmtNum(t.passByCredit),
+          fmtNum(t.internalCaptureCredit),
+          fmtNum(t.externalTrips),
+          fmtNum(t.inTrips),
+          fmtNum(t.outTrips),
+        ];
+      }),
+    });
+  }
+  doc.moveDown(0.3);
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "Pass-by and internal capture rates follow the ITE Trip Generation Handbook (current edition) for the applicable land use. Where the screened rate exceeds the ITE Handbook 85th-percentile value, the reduction is held back to the 85th percentile.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.moveDown(0.3);
+
+  // --- §7 Traffic Operation Analysis -----------------------------------
+  // Level 2 reports Existing + Future-with-Project only; the No-Build
+  // scenario and the Δ-delay comparison against No-Build are Level 3+.
+  gaSection(doc, "7.0 TRAFFIC OPERATION ANALYSIS");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Level of Service (LOS) is calculated per the Highway Capacity Manual 6th Edition, Chapter 19 (Signalized Intersections), Equation 19-13 (control delay) and Equation 19-50 (95th-percentile queue). LOS is reported per HCM 6th Ed. Exhibit 19-8 thresholds: A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F >80s of average control delay per vehicle. Per Gwinnett DOT Level 2 scope, Existing and Future-with-Project conditions are reported; comparative No-Build vs. Build scenario analysis is a Level 3 (Full TIS) requirement and is not included here.",
+    { paragraphGap: 6 },
+  );
+
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Intersection", "Existing LOS", "Existing delay (s)", "Future LOS", "Future delay (s)", "Q95 (ft)"],
+      widths: [180, 60, 70, 60, 70, 60],
+      align: ["left", "center", "right", "center", "right", "right"],
+      rows: intersections.map((it) => {
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const currentDelay = it.currentDelaySec ?? it.existingDelaySec;
+        const futureLos = it.futureLos ?? "—";
+        const futureDelay = it.futureDelaySec;
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(currentLos),
+          fmtNum(currentDelay, 1),
+          String(futureLos),
+          fmtNum(futureDelay, 1),
+          fmtNum(it.queue95thFt),
+        ];
+      }),
+    });
+  }
+  doc.moveDown(0.4);
+
+  // --- §8 MUTCD Signal Warrant Analysis (ICE) --------------------------
+  gaSection(doc, "8.0 MUTCD SIGNAL WARRANT ANALYSIS (ICE)");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Where the future condition introduces new traffic demand at an unsignalized intersection within the study network, a signal warrant analysis is presented as part of an Intersection Control Evaluation (ICE) per FHWA Every Day Counts and GDOT design policy. The applicable warrants from the Manual on Uniform Traffic Control Devices (MUTCD, 11th Edition, 2023) Chapter 4C are:",
+    { paragraphGap: 4 },
+  );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+  doc.text("• Warrant 1 — Eight-Hour Vehicular Volume (4C.02): Conditions A (minimum vehicular volume) and B (interruption of continuous traffic).", { paragraphGap: 2 });
+  doc.text("• Warrant 2 — Four-Hour Vehicular Volume (4C.03).", { paragraphGap: 2 });
+  doc.text("• Warrant 3 — Peak Hour (4C.04).", { paragraphGap: 2 });
+  doc.text("• Warrant 4 — Pedestrian Volume (4C.05).", { paragraphGap: 2 });
+  doc.text("• Warrant 5 — School Crossing (4C.06).", { paragraphGap: 2 });
+  doc.text("• Warrant 6 — Coordinated Signal System (4C.07).", { paragraphGap: 2 });
+  doc.text("• Warrant 7 — Crash Experience (4C.08) — flagged as data-dependent; see scope note below.", { paragraphGap: 2 });
+  doc.text("• Warrant 8 — Roadway Network (4C.09).", { paragraphGap: 2 });
+  doc.text("• Warrant 9 — Intersection Near a Highway-Rail Grade Crossing (4C.10).", { paragraphGap: 4 });
+  doc.fillColor("black");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "The ICE compares signal control against alternative control strategies (modern roundabout, restricted-crossing U-turn, etc.) on safety, operations, multimodal, environmental, and life-cycle-cost criteria per FHWA-SA-18-027. This screening tool does not auto-execute MUTCD warrant calculations; per-intersection warrant evaluation should be completed using the §5.2 turning movement volumes and §6.1 future ADT inputs above, and submitted with the ICE matrix during the methodology meeting. Warrant 7 (Crash Experience) requires crash history input that is not included in the Level 2 scope.",
+    { paragraphGap: 6 },
+  );
+
+  // --- §9 Turn Lane Warrant Analysis -----------------------------------
+  gaSection(doc, "9.0 TURN LANE WARRANT ANALYSIS");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Turn lane warrant analysis on the major street at each project access and at affected study intersections is conducted per NCHRP Report 457 (Engineering Study Guide for Evaluating Intersection Improvements) and the AASHTO Policy on Geometric Design of Highways and Streets (Green Book, 7th Edition, 2018) — supplemented by GDOT Driveway & Encroachment Control Manual §6 left-turn lane and §7 right-turn lane criteria. The warrant inputs are the §5.2 peak-period turning volumes, the §6.1 future ADT volumes, the §5.3 truck percentage, and the posted/operating speed on the major street.",
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Turn lane storage length recommendations are a Level 3 (Full TIS) deliverable and are not included at this tier. The Level 2 warrant analysis identifies whether a turn lane is warranted and the design vehicle that governs; final taper, deceleration, and storage geometry should be developed in the Full TIS or under separate site-plan review.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- §10 Traffic Control Recommendations -----------------------------
+  gaSection(doc, "10.0 TRAFFIC CONTROL RECOMMENDATIONS");
+  const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
+  if (needMitigation.length > 0) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "Based on the §7 Traffic Operation Analysis and §8/§9 warrant findings, the following traffic control adjustments are recommended at affected study intersections. Storage-length geometry is intentionally left to the Level 3 / Full TIS scope per Gwinnett County DOT TIS Guidelines (2023).",
+      { paragraphGap: 6 },
+    );
+    for (const it of needMitigation) {
+      const sev = String(it.mitigationSeverity ?? "").toUpperCase();
+      doc.font("bold").text(`${it.name ?? it.signalId} `, { continued: true });
+      doc.font("body").fillColor(TEXT_GRAY).text(`[${sev}]`, { continued: false });
+      doc.font("body").fillColor("black").text("  " + it.mitigation);
+      doc.moveDown(0.3);
+    }
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "No traffic control adjustments are recommended at the study intersections under the Level 2 operations analysis. Signal warrants (§8) and turn lane warrants (§9) should be re-evaluated against the final site plan prior to permit submittal.",
+      { paragraphGap: 6 },
+    );
+  }
+
+  // --- §11 Access Management and Site Circulation ----------------------
+  gaSection(doc, "11.0 ACCESS MANAGEMENT AND SITE CIRCULATION");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Adjacent access spacing (upstream and downstream driveways within the influence area), intersection sight distance per AASHTO Green Book / GDOT BLR-style checks, and connectivity against the local jurisdiction's site-plan standards should be verified against the final site plan prior to submittal. The fronting roadway functional classification and posted speed limit should be inventoried, and programmed projects in the Gwinnett County Comprehensive Transportation Plan (GCCTP), GDOT TIP/STIP, and SPLOST programs should be reviewed at the methodology meeting.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- §12 Findings ----------------------------------------------------
+  gaSection(doc, "12.0 FINDINGS");
+  doc.font("body").fontSize(10).fillColor("black");
+  doc.text(`• The proposed ${project.projectName || "development"} is projected to generate ${fmtNum(tierInput.dailyTrips)} daily trips and ${fmtNum(tierInput.pmPeakTrips)} PM peak-hour trips.`, { paragraphGap: 2 });
+  doc.text("• Trip generation falls within Gwinnett County DOT Level 2 (Abbreviated) criteria; a Level 3 Full TIS is not required at this tier.", { paragraphGap: 2 });
+  if (losEf > 0) {
+    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate at LOS E or F under future conditions and warrant mitigation per the §10 recommendations.`, { paragraphGap: 2 });
+  } else {
+    doc.text("• All affected study intersections are projected to operate at LOS D or better under future conditions, meeting the GDOT/Gwinnett LOS standard.", { paragraphGap: 2 });
+  }
+  doc.text("• MUTCD signal warrant analysis (§8) and turn lane warrant analysis (§9) should be completed by the engineer of record using the §5.2 and §6.1 inputs prior to permit submittal.", { paragraphGap: 4 });
+  const engineFindings: string[] = Array.isArray(r.findings) ? r.findings : [];
+  for (const f of engineFindings) {
+    doc.text("• " + f, { paragraphGap: 2 });
+  }
+  doc.moveDown(0.4);
+
+  // --- PE Seal block ---------------------------------------------------
+  gaSection(doc, "PROFESSIONAL ENGINEER CERTIFICATION");
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "This Abbreviated Traffic Impact Study has been prepared at the Level 2 tier defined by Gwinnett County DOT TIS Guidelines (2023). As an Abbreviated deliverable it covers existing + future-year operations, signal and turn-lane warrant identification, and traffic control recommendations; it does not include crash history, comparative No-Build vs. Build scenario analysis, or turn-lane storage geometry — those are Level 3 (Full TIS) elements. The signing PE attests to the Level 2 scope as set forth herein.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+}
+
 /** Section heading in the GA-style numbered format (uppercase, bold). */
 function gaSection(doc: PDFKit.PDFDocument, title: string) {
   doc.x = PAGE_MARGIN;
@@ -1938,6 +2348,76 @@ function renderTisLondon(
   const isLondon = region.code === "london_metro";
   const lpa = isLondon ? "the relevant London borough (LPA)" : `${region.displayName} (LPA)`;
 
+  // --- Deliverable shape: TA vs TS (DfT 2007 Appendix B) -----------------
+  // Calibration against three published London residential TAs:
+  //   • Holloway (985 DU, Velocity 2021)             — full 8-chapter
+  //     TfL Healthy Streets TA TOC (GLA-referable)
+  //   • Registry Beckenham (134 DU, Waterman 2022)   — 6-chapter TS shape
+  //   • Hyde Estate (115 DU, Patrick Parsons 2020)   — 7-chapter TS shape
+  // showed that sub-200-DU borough-only schemes overwhelmingly use the
+  // leaner Transport Statement (TS) shape. The branch here implements
+  // the two Appendix B tables: size-band thresholds (residential 50 /
+  // 80 DU, hotel 75 / 100 bedrooms, floorspace bands for other use
+  // classes) AND the "regardless of size" escalator table (≥ 30 vph in
+  // any peak, ≥ 100 vpd, ≥ 100 parking spaces — last not derivable from
+  // the engine — AQMA proximity, or inadequate local transport
+  // infrastructure). The latter two are surfaced as user-flagged
+  // TisRequest inputs (ptaInsideAqma, infrastructureAdequacy) so the
+  // renderer can document the trigger when the engine itself cannot
+  // compute it.
+  const code = String(tg.landUseCode ?? "");
+  const sizeNum = Number(tg.size ?? 0);
+  const isResidentialC3 = code.startsWith("21") || code.startsWith("22") || code.startsWith("23");
+  const isHotelC1 = code === "310" || code === "311" || code === "320" || code === "330";
+  const unitStr = String(tg.unit ?? "").toLowerCase();
+  const sizeM2 = unitStr.includes("ksf") ? sizeNum * 92.9 : sizeNum;
+
+  let sizeShape: "ta" | "ts" | "below_ts" = "ta";
+  let sizeRule = "";
+  if (isResidentialC3) {
+    if (sizeNum < 50) { sizeShape = "below_ts"; sizeRule = `${sizeNum} dwellings < 50-unit DfT 2007 Appendix B Table 1 residential TS floor — no assessment recommended`; }
+    else if (sizeNum <= 80) { sizeShape = "ts"; sizeRule = `${sizeNum} dwellings within the 50–80 residential TS band per DfT 2007 Appendix B Table 1`; }
+    else { sizeShape = "ta"; sizeRule = `${sizeNum} dwellings > 80-unit residential TA trigger per DfT 2007 Appendix B Table 1`; }
+  } else if (isHotelC1) {
+    if (sizeNum < 75) { sizeShape = "below_ts"; sizeRule = `${sizeNum} bedrooms < 75-bedroom C1 hotel TS floor per DfT 2007 Appendix B Table 1 — no assessment recommended`; }
+    else if (sizeNum <= 100) { sizeShape = "ts"; sizeRule = `${sizeNum} bedrooms within the 75–100 C1 hotel TS band per DfT 2007 Appendix B Table 1`; }
+    else { sizeShape = "ta"; sizeRule = `${sizeNum} bedrooms > 100-bedroom C1 hotel TA trigger per DfT 2007 Appendix B Table 1`; }
+  } else {
+    // Other use classes: conservative middle ground at ~750 m² TS floor,
+    // ~2,000 m² TA threshold (matches study-tier.ukTier defaults).
+    if (sizeM2 < 750) { sizeShape = "below_ts"; sizeRule = `${Math.round(sizeM2)} m² < ~750 m² TS floor for use class ${code || "(unspecified)"} — no assessment recommended`; }
+    else if (sizeM2 <= 2000) { sizeShape = "ts"; sizeRule = `${Math.round(sizeM2)} m² within ~750–2,000 m² TS band for use class ${code || "(unspecified)"}`; }
+    else { sizeShape = "ta"; sizeRule = `${Math.round(sizeM2)} m² > ~2,000 m² TA threshold for use class ${code || "(unspecified)"}`; }
+  }
+
+  // Appendix B Table 1 "regardless of size" escalators. Any one forces TA.
+  const escalators: string[] = [];
+  const amPeak = Number(tg.amPeakTrips ?? 0);
+  const pmPeak = Number(tg.pmIn ?? 0) + Number(tg.pmOut ?? 0);
+  const peakHourMax = Math.max(amPeak, pmPeak);
+  if (peakHourMax >= 30) escalators.push(`peak-hour two-way vehicle movements ${Math.round(peakHourMax)} ≥ 30 (Appendix B Table 1)`);
+  const dailyVeh = Number(tg.dailyTrips ?? 0);
+  if (dailyVeh >= 100) escalators.push(`daily two-way vehicle movements ${Math.round(dailyVeh)} ≥ 100 (Appendix B Table 1)`);
+  if (req.ptaInsideAqma === true) escalators.push("site lies inside or adjacent to a declared Air Quality Management Area (LAQM under Environment Act 1995)");
+  if (req.infrastructureAdequacy === "inadequate") escalators.push("local transport infrastructure judged inadequate to serve the proposal");
+
+  const deliverableShape: "ts" | "ta" = (sizeShape === "ta" || escalators.length > 0) ? "ta" : "ts";
+  const isBelowAssessmentFloor = sizeShape === "below_ts" && escalators.length === 0;
+  // True only when the escalator is what forced TA (size alone would
+  // have given TS or below-floor). Used in the prose declaration below
+  // and in the TA executive-summary disclosure.
+  const escalatorTriggered = deliverableShape === "ta" && sizeShape !== "ta" && escalators.length > 0;
+
+  if (deliverableShape === "ts") {
+    renderLondonTransportStatement(doc, r, project, region, {
+      isLondon,
+      lpa,
+      sizeRule,
+      isBelowAssessmentFloor,
+    });
+    return;
+  }
+
   // --- Executive Summary --------------------------------------------------
   ldnSection(doc, "EXECUTIVE SUMMARY");
   doc.font("body").fontSize(10).fillColor("black");
@@ -1990,9 +2470,20 @@ function renderTisLondon(
   doc.text("• Capacity analysis uses the Highway Capacity Manual 6th Edition, Chapter 19 (signalised junctions) — NOT DMRB CD 116 (roundabouts) or CD 123 (priority and signal junctions). A chartered engineer preparing a submitted TA should re-run the affected junctions in LinSig 3, TRANSYT 16, or Junctions 11 (with ARCADY / PICADY / OSCADY modules as appropriate) and report Ratio of Flow to Capacity (RFC), Degree of Saturation (DOS), Practical Reserve Capacity (PRC) and Mean Maximum Queue (MMQ in PCUs).", { paragraphGap: 4 });
   doc.text("• Trip generation uses the ITE Trip Generation Manual 11th Edition — NOT TRICS. UK reviewers do not accept ITE rates for TA work. The required source is the TRICS multi-modal database (currently TRICS 8 generation, base release March 2025, with the TRICS Good Practice Guide 2025 and Multi-Modal Methodology 2025 as the governing methodology, and the TRICS Decide & Provide Guidance Note 2021 for vision-led applications). The 85th-percentile rate remains the conventional UK starting point in TA practice, cited from DfT 2007 §4.62 (withdrawn October 2014 but still the de-facto reference); TRICS itself is methodologically neutral on which percentile to use and recommends ≥ 20 surveys in the rank-order list before 85th-percentile figures are quoted (TRICS Good Practice Guide 2025 §14.5–14.7). The scenario filter recorded for reviewer audit is date band, TRICS Main Location Type, day type, parking provision, GFA range, and any survey-day inclusion/exclusion decision on COVID-restriction surveys (which TRICS flags in the database but does not auto-exclude — user judgement, reason for any exclusion stated in the report, per Good Practice Guide §16.6). \"Region\" alone is no longer recommended as an exclusion criterion (Good Practice Guide §5.5–5.7) and TRICS 8 no longer allows exclusion on the basis of region or area alone. Three reporting-discipline elements must accompany any TRICS rates cited in a submitted TA: (i) the TRICS Calculation Reference code and licensee TRICS licence number, both auto-printed on every page of the TRICS PDF output (GPG §13.8 + §22.7) — reports lacking either are inadmissible per TRICS T&Cs; (ii) Cross Test results (mean vs median trip-rate variation %, GPG §14.8) reported alongside the rates so the reviewer can assess weighting/bias in the selected set; and (iii) where Vision-Led / Decide & Provide factoring has been applied to the TRICS-generated rates, the raw TRICS data is presented first and the factored data second, with the factoring method and reasoning explicit (GPG §10.7) — factored figures are not TRICS data. Per the 19 May 2026 TRICS licence-monitoring notice, TRICS will contact the LPA to advise that TRICS data is to be rejected as void if cited by a non-licensed organisation; the submitting consultancy's TRICS licence and produced-by attestation must be in the report.", { paragraphGap: 4 });
   doc.text("• Level of Service is reported as letters A–F against the HCM Exhibit 19-8 control-delay thresholds (A ≤ 10 s, B ≤ 20 s, C ≤ 35 s, D ≤ 55 s, E ≤ 80 s, F > 80 s of average control delay per vehicle). LOS letters are not used in UK TA practice; the thresholds are given here so a UK reviewer can map them informally to the delay categories they recognise.", { paragraphGap: 4 });
-  doc.text("• Sustainable-mode demand is approximated through a metro-specific auto-mode-share factor (38% applied for London, per the engine's mode-share configuration sourced from TfL Travel in London). The external-trip totals shown below already reflect that 38% reduction from the gross ITE rate. This is a screening-level approximation in place of the full multi-modal split (walking / cycling / bus / rail / car / taxi / motorcycle / LGV / HGV) that a UK TA is required to demonstrate under NPPF paragraph 115.", { paragraphGap: 4 });
+  {
+    const appliedShare = Number(r.autoModeShareApplied);
+    const sharePct = Number.isFinite(appliedShare) && appliedShare > 0
+      ? `${(appliedShare * 100).toFixed(0)}%`
+      : "38%";
+    const band = typeof req.ptalBand === "string" && req.ptalBand.length > 0 ? req.ptalBand : null;
+    const ptalClause = band
+      ? `driven by the supplied PTAL ${band} band (engine PTAL-band lookup against the curve calibrated to TfL Travel in London plus three published London TAs — Holloway PTAL 6a 985-unit car-free, Registry Beckenham PTAL 5 134-unit with parking, Hyde Estate PTAL 2 115-unit with parking)`
+      : `no PTAL band was supplied for this run so the flat London-wide average has been applied (TfL Travel in London), which materially over-states car-mode demand at inner-London high-PTAL sites — the run should be re-issued with the site's PTAL band`;
+    doc.text(`• Sustainable-mode demand is approximated through a metro-specific auto-mode-share factor (${sharePct} applied for London, per the engine's mode-share configuration sourced from TfL Travel in London). The external-trip totals shown below already reflect that ${sharePct} reduction from the gross ITE rate — ${ptalClause}. This is a screening-level approximation in place of the full multi-modal split (walking / cycling / bus / rail / car / taxi / motorcycle / LGV / HGV) that a UK TA is required to demonstrate under NPPF paragraph 115.`, { paragraphGap: 4 });
+  }
   doc.text("• Geometric design citations in the engine's output are HCM and AASHTO; UK chartered review would substitute DMRB CD 109 / CD 116 / CD 122 / CD 123 (trunk) and Manual for Streets / Manual for Streets 2 (urban / residential).", { paragraphGap: 4 });
-  doc.text("• Units are metric where derivable; some engine-generated fields remain in imperial (queue 95th-percentile reported in feet rather than MMQ in PCUs) and are flagged inline.", { paragraphGap: 6 });
+  doc.text("• Units are metric where derivable; some engine-generated fields remain in imperial (queue 95th-percentile reported in feet rather than MMQ in PCUs) and are flagged inline.", { paragraphGap: 4 });
+  doc.text("• Where net peak car-mode generation falls below 15 trips per peak hour, the engine demotes the junction capacity table to an appendix and surfaces a trip-comparison narrative shell — matching the convention adopted by London consultancies (Waterman, Patrick Parsons) for sub-150-unit residential schemes. Above that threshold the junction table remains the §5.4 headline.", { paragraphGap: 6 });
   doc.fillColor("black");
   doc.font("body").fontSize(10).fillColor("black").text(
     "In short: treat the LOS / delay / queue numbers in this report as a sanity check on capacity-driven impact, not as the capacity assessment a submitted TA requires. The PTAL band, Active Travel Zone, Healthy Streets Indicators check and TRICS-derived multi-modal trip generation are the deliverables a London TA actually stands on — they are listed as placeholders below.",
@@ -2049,12 +2540,25 @@ function renderTisLondon(
   doc.moveDown(0.4);
 
   ldnSubsection(doc, "3.2 Public Transport Accessibility Level (PTAL)");
-  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    isLondon
-      ? "PTAL is mandatory in every London TA. The site's PTAL band (0, 1a, 1b, 2, 3, 4, 5, 6a, 6b) and Accessibility Index (AI) value are not computed by this engine; they should be drawn from the TfL 100 m × 100 m PTAL grid via WebCAT 3.0 (tfl.gov.uk planning-with-webcat) or the GIS layer on the London Datastore. TfL's methodology: Service Access Points are bus stops within 640 m (8 min walk) and rail / tube / Overground / DLR / Elizabeth line / tram / river-bus stations within 960 m (12 min walk), both at the standard assumed walking speed of 80 m/min; the Equivalent Doorstep Frequency window is the AM peak 08:15–09:15; AI sums weighted EDFs across all SAPs. The published AI → PTAL bands are: PTAL 0 = AI 0 (no SAP in range); 1a = 0.01–2.50; 1b = 2.51–5.00; 2 = 5.01–10.00; 3 = 10.01–15.00; 4 = 15.01–20.00; 5 = 20.01–25.00; 6a = 25.01–40.00; 6b > 40.00. PTAL band drives the car-parking maxima under London Plan policy T6 sub-policies — Table 10.3 (T6.1 residential), Table 10.4 (T6.2 office) and Table 10.5 (T6.3 retail) are the PTAL-banded maxima; T6.4 hotel and leisure is PTAL-band narrative with no numbered maxima table; Table 10.6 (T6.5) sets non-residential disabled persons provision. Policy T6 Part B is worded as \"Car-free development should be the starting point for all development proposals in places that are (or are planned to be) well-connected by public transport, with developments elsewhere designed to provide the minimum necessary parking ('car-lite')\" — the policy text itself does not name a hard PTAL-band cut-off; the only explicit numeric PTAL hook in the policy is Part K, which restricts Outer London boroughs adopting minimum residential parking standards to PTAL 0–1 parts of London."
-      : "Public-transport accessibility metrics for non-London UK metros vary by combined authority and are not standardised; the local authority's adopted methodology should be applied.",
-    { paragraphGap: 6 },
-  );
+  {
+    const ptalBand = typeof req.ptalBand === "string" && req.ptalBand.length > 0 ? req.ptalBand : null;
+    if (isLondon && ptalBand) {
+      rows(doc, [
+        ["Site PTAL band (supplied)", `PTAL ${ptalBand}`],
+        ["Engine auto-mode share applied at this PTAL", `${(Number(r.autoModeShareApplied) * 100).toFixed(0)}% (calibrated against TfL Travel in London + 3 published London TAs)`],
+        ["Source of band", "Caller-supplied (not computed by this engine)"],
+      ]);
+      doc.moveDown(0.3);
+    }
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      isLondon
+        ? (ptalBand
+            ? `PTAL ${ptalBand} has been carried into the trip-generation calculation via the engine's PTAL-banded London auto-mode-share curve (mode-share.ts). The Accessibility Index (AI) value behind the band is not computed by this engine; the band itself was supplied by the caller and should be reconciled against the TfL 100 m × 100 m PTAL grid via WebCAT 3.0 (tfl.gov.uk planning-with-webcat) or the GIS layer on the London Datastore at the time of submittal. TfL's methodology: Service Access Points are bus stops within 640 m (8 min walk) and rail / tube / Overground / DLR / Elizabeth line / tram / river-bus stations within 960 m (12 min walk), both at the standard assumed walking speed of 80 m/min; the Equivalent Doorstep Frequency window is the AM peak 08:15–09:15; AI sums weighted EDFs across all SAPs. The published AI → PTAL bands are: PTAL 0 = AI 0 (no SAP in range); 1a = 0.01–2.50; 1b = 2.51–5.00; 2 = 5.01–10.00; 3 = 10.01–15.00; 4 = 15.01–20.00; 5 = 20.01–25.00; 6a = 25.01–40.00; 6b > 40.00. PTAL band drives the car-parking maxima under London Plan policy T6 sub-policies — Table 10.3 (T6.1 residential), Table 10.4 (T6.2 office) and Table 10.5 (T6.3 retail) are the PTAL-banded maxima; T6.4 hotel and leisure is PTAL-band narrative with no numbered maxima table; Table 10.6 (T6.5) sets non-residential disabled persons provision. Policy T6 Part B is worded as "Car-free development should be the starting point for all development proposals in places that are (or are planned to be) well-connected by public transport, with developments elsewhere designed to provide the minimum necessary parking ('car-lite')" — the policy text itself does not name a hard PTAL-band cut-off; the only explicit numeric PTAL hook in the policy is Part K, which restricts Outer London boroughs adopting minimum residential parking standards to PTAL 0–1 parts of London.`
+            : "PTAL is mandatory in every London TA. The site's PTAL band (0, 1a, 1b, 2, 3, 4, 5, 6a, 6b) and Accessibility Index (AI) value were NOT supplied for this run and are not computed by this engine; they should be drawn from the TfL 100 m × 100 m PTAL grid via WebCAT 3.0 (tfl.gov.uk planning-with-webcat) or the GIS layer on the London Datastore, and the run should then be re-issued with the band passed in so the engine's London auto-mode-share is set band-specifically rather than at the flat London-wide average. TfL's methodology: Service Access Points are bus stops within 640 m (8 min walk) and rail / tube / Overground / DLR / Elizabeth line / tram / river-bus stations within 960 m (12 min walk), both at the standard assumed walking speed of 80 m/min; the Equivalent Doorstep Frequency window is the AM peak 08:15–09:15; AI sums weighted EDFs across all SAPs. The published AI → PTAL bands are: PTAL 0 = AI 0 (no SAP in range); 1a = 0.01–2.50; 1b = 2.51–5.00; 2 = 5.01–10.00; 3 = 10.01–15.00; 4 = 15.01–20.00; 5 = 20.01–25.00; 6a = 25.01–40.00; 6b > 40.00. PTAL band drives the car-parking maxima under London Plan policy T6 sub-policies — Table 10.3 (T6.1 residential), Table 10.4 (T6.2 office) and Table 10.5 (T6.3 retail) are the PTAL-banded maxima; T6.4 hotel and leisure is PTAL-band narrative with no numbered maxima table; Table 10.6 (T6.5) sets non-residential disabled persons provision. Policy T6 Part B is worded as \"Car-free development should be the starting point for all development proposals in places that are (or are planned to be) well-connected by public transport, with developments elsewhere designed to provide the minimum necessary parking ('car-lite')\" — the policy text itself does not name a hard PTAL-band cut-off; the only explicit numeric PTAL hook in the policy is Part K, which restricts Outer London boroughs adopting minimum residential parking standards to PTAL 0–1 parts of London.")
+        : "Public-transport accessibility metrics for non-London UK metros vary by combined authority and are not standardised; the local authority's adopted methodology should be applied.",
+      { paragraphGap: 6 },
+    );
+  }
 
   ldnSubsection(doc, "3.3 Active Travel Network");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
@@ -2096,10 +2600,20 @@ function renderTisLondon(
   // --- Ch 5 London-wide network -------------------------------------------
   ldnSection(doc, "5.0 LONDON-WIDE NETWORK");
   ldnSubsection(doc, "5.1 Trip Generation (Engine — ITE 11th proxy)");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `Gross trip generation in this report is calculated per the ITE Trip Generation Manual 11th Edition for land-use code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. The TRICS-equivalent multi-modal table — person-trips by mode (Cars, Taxis, Motor Cycles, LGVs, OGVs, PSVs, Cyclists, Scooters, Pedestrians, plus the London public-transport split into Bus, Tram, Underground, Overground, National Rail, DLR and Water Service Passengers), linked PT trips, mean and 85th-percentile rate against the agreed TRICS filter — is not produced by this engine and must be prepared separately for any submitted TA. The figures below represent the engine's car-mode estimate after the London 38% auto-mode-share factor has been applied to net out walking, cycling, bus, rail and other modes.`,
-    { paragraphGap: 6 },
-  );
+  {
+    const appliedShare = Number(r.autoModeShareApplied);
+    const sharePct = Number.isFinite(appliedShare) && appliedShare > 0
+      ? `${(appliedShare * 100).toFixed(0)}%`
+      : "38%";
+    const band = typeof req.ptalBand === "string" && req.ptalBand.length > 0 ? req.ptalBand : null;
+    const bandClause = band
+      ? `the PTAL ${band}–specific London auto-mode-share factor of ${sharePct}`
+      : `the flat London-wide ${sharePct} auto-mode-share factor (no PTAL band supplied — band-specific share would refine this materially at high-PTAL inner-London sites)`;
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Gross trip generation in this report is calculated per the ITE Trip Generation Manual 11th Edition for land-use code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. The TRICS-equivalent multi-modal table — person-trips by mode (Cars, Taxis, Motor Cycles, LGVs, OGVs, PSVs, Cyclists, Scooters, Pedestrians, plus the London public-transport split into Bus, Tram, Underground, Overground, National Rail, DLR and Water Service Passengers), linked PT trips, mean and 85th-percentile rate against the agreed TRICS filter — is not produced by this engine and must be prepared separately for any submitted TA. The figures below represent the engine's car-mode estimate after ${bandClause} has been applied to net out walking, cycling, bus, rail and other modes.`,
+      { paragraphGap: 6 },
+    );
+  }
   table(doc, {
     headers: ["Period", "Entering trips", "Exiting trips"],
     widths: [180, 100, 100],
@@ -2112,12 +2626,22 @@ function renderTisLondon(
   });
   doc.moveDown(0.4);
 
-  rows(doc, [
-    ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
-    ["Internalisation (linked trips) applied", `${r.internalCapturePctApplied ?? 0}%`],
-    ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
-    ["Auto-mode-share factor (London)", "38% (Travel in London — already applied upstream)"],
-  ]);
+  {
+    const appliedShare = Number(r.autoModeShareApplied);
+    const sharePct = Number.isFinite(appliedShare) && appliedShare > 0
+      ? `${(appliedShare * 100).toFixed(0)}%`
+      : "38%";
+    const band = typeof req.ptalBand === "string" && req.ptalBand.length > 0 ? req.ptalBand : null;
+    const shareLabel = band
+      ? `${sharePct} (PTAL ${band}–specific, engine PTAL-band lookup — already applied upstream)`
+      : `${sharePct} (London-wide flat average, Travel in London — already applied upstream; no PTAL band supplied)`;
+    rows(doc, [
+      ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
+      ["Internalisation (linked trips) applied", `${r.internalCapturePctApplied ?? 0}%`],
+      ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
+      ["Auto-mode-share factor (London)", shareLabel],
+    ]);
+  }
   doc.moveDown(0.4);
 
   if (periods.length > 0) {
@@ -2154,7 +2678,37 @@ function renderTisLondon(
   );
 
   ldnSubsection(doc, "5.4 Assessment of Junction Impact");
-  if (intersections.length > 0) {
+  // Sub-threshold residential schemes (Registry Beckenham 134 DU,
+  // Hyde Estate 115 DU) carry no junction model in their published TAs
+  // — the convention is a trip-comparison narrative against the prior
+  // site use. The engine still surfaces every signal within the study
+  // radius for completeness; those are demoted to Appendix A below.
+  // Default-true fallback (`!== false`) preserves the headline table
+  // for older payloads that pre-date `junctionImpactSignificant`.
+  const junctionImpactSignificant = r.junctionImpactSignificant !== false;
+  if (!junctionImpactSignificant) {
+    const pmTgPeriod = periods.find((p) => p.period === "pm_peak")?.tripGeneration ?? {};
+    const amTgPeriod = periods.find((p) => p.period === "am_peak")?.tripGeneration ?? {};
+    const pmExt = Number(pmTgPeriod.externalTrips ?? tg.pmPeakTrips ?? 0);
+    const amExt = Number(amTgPeriod.externalTrips ?? tg.amPeakTrips ?? 0);
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Net peak car-mode generation (${fmtNum(amExt, 0)} AM / ${fmtNum(pmExt, 0)} PM) falls below the threshold at which junction capacity is conventionally the limiting factor for a London residential TA. The screening engine still flags ${intersections.length} nearby signalised junction${intersections.length === 1 ? "" : "s"} for completeness; their Current / No-Build / With-Development LOS is provided in Appendix A for reviewer reference.`,
+      { paragraphGap: 6 },
+    );
+    const priorUse = String(req.priorUse ?? "").trim();
+    if (priorUse) {
+      doc.font("body").fontSize(10).fillColor("black").text(
+        `The reviewer-facing assessment in place of a junction-by-junction LOS model is a cumulative-vs-previous-use trip comparison: the site's prior ${priorUse} generated a baseline of vehicular movements that should be netted against the proposed ${tg.landUseName ?? "scheme"} trips before the residual impact is reported. The TRICS-derived prior-use rates and the resulting net trip-comparison table are to be prepared by the chartered engineer at submittal.`,
+        { paragraphGap: 6 },
+      );
+    } else {
+      doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+        `[TODO — Consultant to insert trip-comparison narrative: name the prior use on the site (set TisRequest.priorUse to populate automatically), present TRICS-derived rates for both the prior use and the proposed ${tg.landUseName ?? "scheme"}, report the net change, and conclude on whether the residual impact warrants any further capacity assessment.]`,
+        { paragraphGap: 6 },
+      );
+      doc.fillColor("black");
+    }
+  } else if (intersections.length > 0) {
     table(doc, {
       headers: ["Junction", "Existing LOS", "No-Build LOS", "With-Dev LOS", "Δ delay (s)", "Queue 95% (ft)*"],
       widths: [195, 60, 70, 70, 65, 70],
@@ -2255,6 +2809,46 @@ function renderTisLondon(
     "Sign-off should be by a Chartered Engineer (CEng) and Member of CIHT (MCIHT) under their professional registration; the PE stamp on the cover page is the US engine's default and should be replaced by the chartered engineer's signature block on submitted work.",
     { paragraphGap: 6 },
   );
+
+  // --- Appendix A — Affected junctions (screening-level) ----------------
+  // Surface the per-junction screening table only when §5.4 has been
+  // demoted. When junction-impact is significant the table is already
+  // the §5.4 headline; repeating it here would be noise. When demoted,
+  // the table lands here so a reviewer can still audit which signals
+  // the engine flagged + their LOS triplet (Current / No-Build / Build).
+  if (r.junctionImpactSignificant === false && intersections.length > 0) {
+    ldnSection(doc, "APPENDIX A — AFFECTED JUNCTIONS (SCREENING-LEVEL)");
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Screening-level LOS triplet for each signalised junction within the ${fmtNum(Number(r.studyRadiusMi ?? req.studyRadiusMi ?? 0), 2)} mi study radius. Reproduced from the engine's per-junction output for reviewer reference; per §5.4, the scheme's net peak car-mode generation falls below the threshold at which junction capacity is the limiting factor, so this table is not the headline assessment.`,
+      { paragraphGap: 6 },
+    );
+    table(doc, {
+      headers: ["Junction", "Existing LOS", "No-Build LOS", "With-Dev LOS", "Δ delay (s)", "Queue 95% (ft)*"],
+      widths: [195, 60, 70, 70, 65, 70],
+      align: ["left", "center", "center", "center", "right", "right"],
+      rows: intersections.map((it) => {
+        const losChanged = it.losChanged === true;
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const noBuildLos = it.existingLos ?? "—";
+        const buildLos = it.futureLos ?? "—";
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(currentLos),
+          String(noBuildLos),
+          (losChanged ? "▲ " : "") + String(buildLos),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+          fmtNum(it.queue95thFt),
+        ];
+      }),
+    });
+    doc.moveDown(0.3);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "* Queue is the engine's HCM 95th-percentile in feet (not MMQ in PCUs as a UK reviewer would expect). LOS letters map informally to delay categories — see §1.2.",
+      { paragraphGap: 4 },
+    );
+    doc.fillColor("black");
+    doc.moveDown(0.3);
+  }
 
   // --- Engine output preserved -------------------------------------------
   const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
@@ -2381,6 +2975,32 @@ function renderTisTexas(
   const lon = Number(req.longitude ?? project.siteLon ?? NaN);
   const juris = Number.isFinite(lat) && Number.isFinite(lon) ? txJurisdiction(lat, lon) : "txdot";
   const county = Number.isFinite(lat) && Number.isFinite(lon) ? txCounty(lat, lon) : null;
+
+  // --- Tier dispatch ------------------------------------------------------
+  // Each Texas city publishes its own deliverable shapes for small/mid
+  // projects below the Full TIA threshold. Below Fort Worth's 100 PHT
+  // worksheet floor (or Austin's 2,000 vpd / Dallas's 1,000 ADT /
+  // San Antonio's 76 PHT / Houston's 100 PHT) the appropriate deliverable
+  // is a worksheet, not a Full TIA — short-circuit to the worksheet
+  // renderer here. Same for the city-specific abbreviated tier where one
+  // exists.
+  const tierInput: TierInput = {
+    dailyTrips: Number(tg.dailyTrips ?? 0),
+    pmPeakTrips: Number(tg.pmPeakTrips ?? (Number(tg.pmIn ?? 0) + Number(tg.pmOut ?? 0))),
+    size: Number(tg.size ?? 0),
+    unit: String(tg.unit ?? ""),
+    landUseCode: String(tg.landUseCode ?? ""),
+  };
+  const requested: StudyTier | undefined = req.studyTier;
+  const resolvedTier = resolveStudyTier(region, tierInput, requested);
+  if (resolvedTier === "worksheet") {
+    renderTisTexasWorksheet(doc, r, project, region, tierInput, juris, county);
+    return;
+  }
+  if (resolvedTier === "abbreviated") {
+    renderTisTexasAbbreviated(doc, r, project, region, tierInput, juris, county);
+    return;
+  }
 
   // Pick the determining peak-hour trip count: the larger of AM/PM peak
   // entering+exiting, per TSP §16.2.1 "peak hour trip generation".
@@ -3097,6 +3717,40 @@ function renderTisIllinois(
   const lon = Number(req.longitude ?? project.siteLon ?? NaN);
   const juris = Number.isFinite(lat) && Number.isFinite(lon) ? ilJurisdiction(lat, lon) : "downstate_idot";
 
+  // --- Chicago CDOT tier dispatch ---------------------------------------
+  // Inside Chicago on CDOT-jurisdiction streets, the CDOT TDM Guidelines
+  // v1.1 (June 2023, Table 1) define three tiers — Tier 1 (20–50 DU
+  // site plan + project narrative emailed to PRC), Tier 2 (51–175 DU
+  // TDM Memo), Tier 3 (>175 DU full TDM Study + Plan). The Full
+  // template below already covers Tier 3. Short-circuit to the
+  // tier-specific sub-renderers for Tier 1 and Tier 2. For
+  // chicago_idot the Full template still runs — the IL spec §2.3
+  // requires both an IDOT TIS appendix and a CDOT TDM summary, and
+  // the Full template is the IDOT TIS half of that dual-jurisdiction
+  // deliverable. For non-Chicago IL (downstate IDOT, collar counties,
+  // Cook County, Tollway) there is no formal sub-tier structure —
+  // IDOT D8 Appx. A is monolithic — and the Full template handles
+  // everything.
+  const ilTierInput: TierInput = {
+    dailyTrips: Number(tg.dailyTrips ?? 0),
+    pmPeakTrips: Number(tg.pmPeakTrips ?? (Number(tg.pmIn ?? 0) + Number(tg.pmOut ?? 0))),
+    size: Number(tg.size ?? 0),
+    unit: String(tg.unit ?? ""),
+    landUseCode: String(tg.landUseCode ?? ""),
+  };
+  const ilRequested: StudyTier | undefined = req.studyTier;
+  const ilResolvedTier = resolveStudyTier(region, ilTierInput, ilRequested);
+  if (juris === "chicago_cdot") {
+    if (ilResolvedTier === "worksheet") {
+      renderTisIllinoisCdotWorksheet(doc, r, project, region, ilTierInput);
+      return;
+    }
+    if (ilResolvedTier === "abbreviated") {
+      renderTisIllinoisCdotAbbreviated(doc, r, project, region, ilTierInput);
+      return;
+    }
+  }
+
   // For chicago_idot dispatch, the renderer also computes which
   // specific state route the project fronts (US-41, IL-50, etc.) so
   // the prose can name it for the reviewer.
@@ -3325,6 +3979,10 @@ function renderTisIllinois(
   // --- §5 Background Growth ----------------------------------------------
   gaSection(doc, "5.0 BACKGROUND GROWTH");
   const measuredGrowth = IL_MEASURED_GROWTH[region.code];
+  // When the engine applied a measured rate (via `r.growthSource`) the
+  // §5 prose AND the §6 No-Build/Build columns are now derived from the
+  // SAME number — no more renderer-vs-engine inconsistency where the
+  // prose printed 1.80%/yr but the volumes were grown at 1.50%/yr.
   if (measuredGrowth) {
     // We have a real measured trend for this metro — print the
     // derivation in place of the "screening default" hedge.
@@ -3351,32 +4009,68 @@ function renderTisIllinois(
     `Host-jurisdiction LOS standard: ${losStandard[juris]}`,
     { paragraphGap: 6 },
   );
-  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "This screening tool currently reports three scenarios (Existing / Opening No-Build / Opening Build) at each affected intersection. The 20-Year Design Year No-Build and Build scenarios are required for the formal D8-style submittal and should be generated for each affected intersection at design year before submittal.",
-    { paragraphGap: 6 },
+  const hasDesignYear = intersections.some(
+    (it) => it.designNoBuildLos != null || it.designBuildLos != null,
   );
-  doc.fillColor("black");
+  if (hasDesignYear) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `All four D8-mandated scenarios are reported below at each affected intersection. The Design-Year columns project the No-Build and Build conditions forward to ${designYr ?? "design year"} (opening + 20 yr at the same compound growth rate); the project's external trip generation does not grow with the design horizon — only the background traffic does.`,
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "This screening tool currently reports three scenarios (Existing / Opening No-Build / Opening Build) at each affected intersection. The 20-Year Design Year No-Build and Build scenarios are required for the formal D8-style submittal and should be generated for each affected intersection at design year before submittal.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
 
   if (intersections.length > 0) {
-    table(doc, {
-      headers: ["Intersection", "Existing LOS", "Opening NB LOS", "Opening Build LOS", "Δ delay (s)", "Q95 (ft)"],
-      widths: [180, 65, 75, 80, 65, 60],
-      align: ["left", "center", "center", "center", "right", "right"],
-      rows: intersections.map((it) => {
-        const losChanged = it.losChanged === true;
-        const currentLos = it.currentLos ?? it.existingLos ?? "—";
-        const noBuildLos = it.existingLos ?? "—";
-        const buildLos = it.futureLos ?? "—";
-        return [
-          it.name ?? it.signalId ?? "—",
-          String(currentLos),
-          String(noBuildLos),
-          (losChanged ? "▲ " : "") + String(buildLos),
-          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
-          fmtNum(it.queue95thFt),
-        ];
-      }),
-    });
+    if (hasDesignYear) {
+      table(doc, {
+        headers: ["Intersection", "Existing", "Opening NB", "Opening Bld", "Design NB", "Design Bld", "Δ delay (s)"],
+        widths: [165, 55, 65, 65, 60, 60, 55],
+        align: ["left", "center", "center", "center", "center", "center", "right"],
+        rows: intersections.map((it) => {
+          const losChanged = it.losChanged === true;
+          const currentLos = it.currentLos ?? it.existingLos ?? "—";
+          const noBuildLos = it.existingLos ?? "—";
+          const buildLos = it.futureLos ?? "—";
+          const designNbLos = it.designNoBuildLos ?? "—";
+          const designBldLos = it.designBuildLos ?? "—";
+          return [
+            it.name ?? it.signalId ?? "—",
+            String(currentLos),
+            String(noBuildLos),
+            (losChanged ? "▲ " : "") + String(buildLos),
+            String(designNbLos),
+            String(designBldLos),
+            fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+          ];
+        }),
+      });
+    } else {
+      table(doc, {
+        headers: ["Intersection", "Existing LOS", "Opening NB LOS", "Opening Build LOS", "Δ delay (s)", "Q95 (ft)"],
+        widths: [180, 65, 75, 80, 65, 60],
+        align: ["left", "center", "center", "center", "right", "right"],
+        rows: intersections.map((it) => {
+          const losChanged = it.losChanged === true;
+          const currentLos = it.currentLos ?? it.existingLos ?? "—";
+          const noBuildLos = it.existingLos ?? "—";
+          const buildLos = it.futureLos ?? "—";
+          return [
+            it.name ?? it.signalId ?? "—",
+            String(currentLos),
+            String(noBuildLos),
+            (losChanged ? "▲ " : "") + String(buildLos),
+            fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+            fmtNum(it.queue95thFt),
+          ];
+        }),
+      });
+    }
   }
   doc.moveDown(0.5);
 
@@ -3742,6 +4436,180 @@ function renderTisGeorgiaDriSections(
 }
 
 
+type FloridaJurisdictionKey =
+  | "miami_dade"
+  | "broward"
+  | "palm_beach"
+  | "hillsborough"
+  | "orange"
+  | "duval"
+  | "district_default";
+
+type FloridaJurisdiction = {
+  key: FloridaJurisdictionKey;
+  name: string;
+  fdotDistrict: string;
+  framework: string;
+  frameworkDoc: string;
+  losStandardNote: string;
+  tripThreshold: string;
+  horizonConvention: string;
+  studyAreaNote?: string;
+  mpoName?: string;
+  preStudyMeetingRequired: boolean;
+  methodologyLetterAppendix: "A" | "C";
+  certificationFrontMatter: boolean;
+  threeTrackEndChapters: boolean;
+  feeMethodologyNote?: string;
+  extraNote?: string;
+};
+
+/**
+ * Resolve the controlling Florida jurisdiction for a site by lat/lon.
+ * Uses rough county / metro bounding boxes — adequate for prose
+ * adaptation (which framework, which LOS standard, which thresholds,
+ * which methodology-meeting convention), not authoritative for parcel
+ * lookup. Returns a statewide `district_default` for any FL coordinate
+ * outside the six named major jurisdictions; the default surfaces only
+ * MTSIH 2024 + statewide Procedure 525-000-006 conventions.
+ *
+ * Boxes ordered south-to-north along the Atlantic coast (Miami-Dade →
+ * Broward → Palm Beach) with non-overlapping latitude bands to keep
+ * dispatch deterministic; Gulf-coast (Hillsborough) and central-state
+ * (Orange, Duval) follow.
+ */
+function floridaJurisdiction(lat: number, lon: number): FloridaJurisdiction {
+  const inBox = (latMin: number, latMax: number, lonMin: number, lonMax: number) =>
+    lat >= latMin && lat <= latMax && lon >= lonMin && lon <= lonMax;
+
+  if (inBox(25.13, 25.97, -80.87, -80.12)) {
+    return {
+      key: "miami_dade",
+      name: "Miami-Dade County",
+      fdotDistrict: "FDOT District 6 (Miami)",
+      framework: "Concurrency retained + Chapter 33E multimodal mobility impact fee",
+      frameworkDoc: "CDMP + Administrative Order 4-85 + Code Ch. 33-G (concurrency) + Ch. 33E (mobility fee)",
+      losStandardNote: "Per the Miami-Dade Comprehensive Development Master Plan (CDMP) Transportation Element; SHS LOS D urbanized per FDOT Procedure 525-000-006 applies on State Highway System frontage",
+      tripThreshold: "Per Code Ch. 33-G concurrency procedures (Admin. Order 4-85); all concurrency-relevant trips reviewed",
+      horizonConvention: "Per CDMP review; large CDMP applications typically use Existing + short-term build (e.g., 2020) + long-term build (e.g., 2040)",
+      mpoName: "Miami-Dade TPO",
+      preStudyMeetingRequired: true,
+      methodologyLetterAppendix: "C",
+      certificationFrontMatter: true,
+      threeTrackEndChapters: true,
+      extraNote: "Miami-Dade conventions observed in published CDMP-amendment exemplars: Engineer's Certification page as the first section (before Executive Summary); Methodology Letter placed at Appendix C (not the canonical Appendix A); the report closes with three parallel-track end-chapters numbered 1.0–3.0 each (Concurrency Analysis / CDMP Analysis / Zoning Analysis). The renderer surfaces those conventions as required structure for a Miami-Dade submittal but does not auto-generate the three-track parallel content.",
+    };
+  }
+  if (inBox(25.97, 26.32, -80.85, -80.05)) {
+    return {
+      key: "broward",
+      name: "Broward County",
+      fdotDistrict: "FDOT District 4 (Fort Lauderdale)",
+      framework: "10-district concurrency (2 standard roadway + 8 Transit-Oriented Concurrency Districts)",
+      frameworkDoc: "Broward County Transportation Concurrency System Guide + Broward Comprehensive Plan Transportation Element + per-Concurrency-District adequacy standards",
+      losStandardNote: "Per Broward County Comprehensive Plan + per-Concurrency-District adequacy standards (the Broward Trafficways Plan is a right-of-way preservation plan, NOT an LOS-threshold table)",
+      tripThreshold: "Per Comprehensive Plan + per-Concurrency-District adequacy standards",
+      horizonConvention: "Per Broward Comprehensive Plan + per-Concurrency-District adequacy standards",
+      mpoName: "Broward MPO",
+      preStudyMeetingRequired: true,
+      methodologyLetterAppendix: "A",
+      certificationFrontMatter: false,
+      threeTrackEndChapters: false,
+      feeMethodologyNote: "Within the 8 Transit-Oriented Concurrency Districts the concurrency assessment is a per-peak-hour-trip dollar contribution funding Transit Development Plan enhancements, assessed pre-building-permit; within the 2 standard (NW / SW) Concurrency Districts adequacy is determined by link-level v/c against adopted LOS. LOS standard and fee-per-PHT vary per Concurrency District and must be confirmed against the current adopted schedule.",
+      extraNote: "MPO note: Broward MPO publishes no developer-facing TIS guidance; rules dominate at the County level.",
+    };
+  }
+  if (inBox(26.32, 27.00, -80.88, -79.97)) {
+    return {
+      key: "palm_beach",
+      name: "Palm Beach County",
+      fdotDistrict: "FDOT District 4 (Fort Lauderdale)",
+      framework: "Concurrency (no countywide mobility fee)",
+      frameworkDoc: "Palm Beach County ULDC Article 12 — Traffic Performance Standards (TPS)",
+      losStandardNote: "LOS D on arterials per ULDC Table 12.B.2.C (triple table: link service volumes / intersection thresholds / speed thresholds); SHS LOS D urbanized per FDOT Procedure 525-000-006 applies on State Highway System frontage",
+      tripThreshold: "≤ 20 gross peak-hour trips generally exempt from full TIA; Test 1 / Test 2 significance methodology determines full TIA scope",
+      horizonConvention: "Buildout year + 5 years (Test 2 Five-Year) PLUS Long-Range horizon (e.g., 2045) — exceeds MTSIH default; both must be labeled explicitly",
+      mpoName: "Palm Beach TPA",
+      preStudyMeetingRequired: true,
+      methodologyLetterAppendix: "A",
+      certificationFrontMatter: false,
+      threeTrackEndChapters: false,
+      extraNote: "Palm Beach review type drives section structure: a full ULDC Art. 12 TPS report uses named \"Test 1\" + \"Test 2\" subsections at site-plan stage; an FLUA (Future Land Use Atlas) amendment uses a deliberately thin 6-section variant (Project Description / Current FLU / Proposed FLU / Traffic Impact / Traffic Analysis [5.1 Test 2 + 5.2 Long Range] / Conclusion). The renderer's default 1.0–13.0 structure should be substituted with the applicable PBC variant at submittal time.",
+    };
+  }
+  if (inBox(27.57, 28.18, -82.74, -82.05)) {
+    return {
+      key: "hillsborough",
+      name: "Hillsborough County (Tampa)",
+      fdotDistrict: "FDOT District 7 (Tampa)",
+      framework: "Mobility fee (replaced roadway impact fee in 2016)",
+      frameworkDoc: "Hillsborough County Mobility Fee Ordinance + Mobility Fee Schedule (last full study 2020; update study begun early 2025) — methodology uses ITE 10th Ed. (2017) blended with the Florida Trip Characteristics Studies Database (Tindale Oliver / Stantec proprietary corpus; not an FDOT public asset).",
+      losStandardNote: "Mobility-fee jurisdiction — no vehicle LOS pass/fail; SHS LOS D urbanized per FDOT Procedure 525-000-006 applies on State Highway System frontage for connection-permit review",
+      tripThreshold: "Per Land Development Code; mobility fee assessed at building permit",
+      horizonConvention: "Per Land Development Code; mobility fee applies at permit (no horizon-year LOS test)",
+      mpoName: "Plan Hillsborough (Hillsborough TPO)",
+      preStudyMeetingRequired: false,
+      methodologyLetterAppendix: "A",
+      certificationFrontMatter: false,
+      threeTrackEndChapters: false,
+      feeMethodologyNote: "The Hillsborough mobility fee schedule blends ITE 10th Edition (2017) rates with the Florida Trip Characteristics Studies Database — a PROPRIETARY Tindale Oliver / Stantec corpus, NOT an FDOT public asset (no public URL, no API). Vehicle occupancy 1.40 persons/vehicle per Tampa Bay Regional Planning Model. ITE is on 11th Ed. for FDOT-wide MTIA work; the Hillsborough fee schedule has not yet migrated.",
+      extraNote: "Trip generation for the mobility-fee calculation should be prepared in parallel using the published Hillsborough fee schedule; the trip generation reported in this analysis follows ITE 11th Edition per MTSIH 2024 §3.5.",
+    };
+  }
+  if (inBox(28.34, 28.78, -81.66, -80.87)) {
+    return {
+      key: "orange",
+      name: "Orange County (Orlando)",
+      fdotDistrict: "FDOT District 5 (DeLand)",
+      framework: "Concurrency + STAMP overlay (Specific Transportation Analysis Methodology Plan)",
+      frameworkDoc: "Orange County STAMP — adopted via Ordinance 2023-11, effective 2024-02-27; layered on existing Orange County concurrency",
+      losStandardNote: "Per Orange County Comprehensive Plan; SHS LOS D urbanized per FDOT Procedure 525-000-006 applies on State Highway System frontage",
+      tripThreshold: "> 5 net peak-hour trips → TIA required; > 50 net PM peak-hour trips → operational intersection analysis required",
+      horizonConvention: "Per STAMP / Orange County Comprehensive Plan; opening year canonical per MTSIH 2024",
+      studyAreaNote: "Per STAMP, the study area extends up to 2.5 miles from the site (broader than the MTSIH default)",
+      mpoName: "MetroPlan Orlando",
+      preStudyMeetingRequired: true,
+      methodologyLetterAppendix: "A",
+      certificationFrontMatter: false,
+      threeTrackEndChapters: false,
+      extraNote: "STAMP defines standardized county-specific pass-by reductions by land use; renderer-applied pass-by should be reconciled against the STAMP table at submittal time.",
+    };
+  }
+  if (inBox(30.10, 30.60, -82.05, -81.30)) {
+    return {
+      key: "duval",
+      name: "Duval County / City of Jacksonville",
+      fdotDistrict: "FDOT District 2 (Lake City)",
+      framework: "Mobility fee (replaced roadway concurrency)",
+      frameworkDoc: "City of Jacksonville Ordinance Code Chapter 655 (Concurrency and Mobility Management System; Part 5 = Mobility Fee, §§ 655.503, .506, .507) + Land Development Procedures Manual (LDPM) Vol. 1 (effective 2026-01-30)",
+      losStandardNote: "Mobility-fee jurisdiction — no vehicle LOS pass/fail; SHS LOS D urbanized per FDOT Procedure 525-000-006 applies on State Highway System frontage for connection-permit review",
+      tripThreshold: "Per Land Development Procedures Manual (LDPM) Vol. 1 (effective 2026-01-30)",
+      horizonConvention: "Per LDPM Vol. 1; mobility fee applies at permit",
+      mpoName: "North Florida TPO",
+      preStudyMeetingRequired: true,
+      methodologyLetterAppendix: "A",
+      certificationFrontMatter: false,
+      threeTrackEndChapters: false,
+      extraNote: "Jacksonville requires a Traffic Methodology Meeting with the City Traffic Engineer and the Chief of Transportation Planning BEFORE any TIS is accepted — the methodology meeting is a hard prerequisite, not an option. The Concurrency and Mobility Management System Office (CMMSO) was established in 1991 and is the controlling review body.",
+    };
+  }
+  return {
+    key: "district_default",
+    name: "Florida (statewide default — no major-jurisdiction overlay)",
+    fdotDistrict: "FDOT District (confirm against the FDOT districts map at https://www.fdot.gov/agencyresources/districts.shtm)",
+    framework: "Per controlling local government; MTSIH 2024 default if no local TIS procedure",
+    frameworkDoc: "MTSIH 2024 + statewide Procedure 525-000-006",
+    losStandardNote: "SHS LOS D in urbanized areas and LOS C outside urbanized areas per FDOT Procedure 525-000-006",
+    tripThreshold: "Driveway Category C–G (> 600 vpd including pass-by) triggers pre-application meeting + traffic study per MTSIH 2024 §3.2 / Appendix A",
+    horizonConvention: "Per MTSIH 2024 §4.3: Existing + Future Background + Future Build + Future Build with Mitigation; opening year canonical",
+    preStudyMeetingRequired: false,
+    methodologyLetterAppendix: "A",
+    certificationFrontMatter: false,
+    threeTrackEndChapters: false,
+    extraNote: "No FDOT district publishes a TIS supplement to MTSIH 2024; district-level practice is administered through pre-application meetings and methodology letters, not published handbooks.",
+  };
+}
+
 /**
  * Florida-specific TIS renderer. Follows the section structure and
  * citation conventions FDOT and Florida-district reviewers expect on a
@@ -3784,12 +4652,18 @@ function renderTisFlorida(
   const intersections: any[] = Array.isArray(r.affectedIntersections) ? r.affectedIntersections : [];
   const periods: any[] = Array.isArray(r.periodReports) ? r.periodReports : [];
 
+  const lat = Number(project.siteLat ?? req.latitude ?? NaN);
+  const lon = Number(project.siteLon ?? req.longitude ?? NaN);
+  const jur = Number.isFinite(lat) && Number.isFinite(lon)
+    ? floridaJurisdiction(lat, lon)
+    : floridaJurisdiction(27.7663, -82.6404);
+
   // --- 1.0 Executive Summary --------------------------------------------
   gaSection(doc, "1.0 EXECUTIVE SUMMARY");
   doc.font("body").fontSize(10).fillColor("black");
   const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
   const losEf = Number(r.intersectionsAtLosEf ?? 0);
-  const summary = `This Multimodal Transportation Impact Assessment (MTIA) evaluates the anticipated transportation impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Florida. Analysis follows the FDOT Multimodal Transportation Site Impact Handbook (MTSIH, March 25, 2024) and the FDOT Quality/Level of Service Handbook v6.0 (August 2025). Capacity analysis follows the Highway Capacity Manual 6th Edition consistent with FDOT Traffic Analysis Handbook §4.1. The study covers ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study area for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
+  const summary = `This Multimodal Transportation Impact Assessment (MTIA) evaluates the anticipated transportation impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Florida. The host controlling jurisdiction is ${jur.name} (${jur.fdotDistrict}); review framework: ${jur.framework}. Analysis follows the FDOT Multimodal Transportation Site Impact Handbook (MTSIH, March 25, 2024) and the FDOT Quality/Level of Service Handbook v6.0 (August 2025). Capacity analysis follows the Highway Capacity Manual 6th Edition consistent with FDOT Traffic Analysis Handbook §4.1. The study covers ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study area for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
   doc.text(summary, { paragraphGap: 6 });
 
   doc.font("body").fontSize(10).fillColor("black").text("Findings:", { paragraphGap: 2 });
@@ -3820,6 +4694,11 @@ function renderTisFlorida(
     ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
     ["Region", region.displayName],
+    ["Host jurisdiction", jur.name],
+    ["FDOT District", jur.fdotDistrict],
+    ["Review framework", jur.framework],
+    ["Controlling document(s)", jur.frameworkDoc],
+    ["Regional MPO / TPO", jur.mpoName ?? "Per controlling local government"],
     ["Opening year", String(req.openingYear ?? "—")],
   ]);
   doc.moveDown(0.3);
@@ -3829,12 +4708,55 @@ function renderTisFlorida(
   );
   doc.fillColor("black");
 
+  if (jur.certificationFrontMatter) {
+    doc.moveDown(0.2);
+    doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
+      `STRUCTURE NOTE — ${jur.name.toUpperCase()} CONVENTION`,
+      { paragraphGap: 2 },
+    );
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Miami-Dade CDMP-amendment submittals conventionally place the Engineer's Certification page as the FIRST section of the report (before the Executive Summary), and place the Methodology Letter at Appendix ${jur.methodologyLetterAppendix} rather than the canonical Appendix A. Confirm the Engineer of Record's seal and the Methodology Letter placement against the most recent submittal expectations before delivering.`,
+      { paragraphGap: 4 },
+    );
+    if (jur.threeTrackEndChapters) {
+      doc.font("body").fontSize(10).fillColor("black").text(
+        "Miami-Dade large-CDMP reports additionally conclude with three parallel-track end-chapters (Concurrency Analysis / CDMP Analysis / Zoning Analysis, each independently numbered 1.0–3.0). This screening tool does not auto-generate the three-track parallel content; sections 12.0 below identifies the inputs required.",
+        { paragraphGap: 6 },
+      );
+    }
+    doc.fillColor("black");
+  } else if (jur.key === "palm_beach") {
+    doc.moveDown(0.2);
+    doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
+      "STRUCTURE NOTE — PALM BEACH COUNTY CONVENTION",
+      { paragraphGap: 2 },
+    );
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "Palm Beach review type determines structure. A full ULDC Article 12 TPS report uses named \"Test 1\" + \"Test 2\" subsections at site-plan stage; a Future Land Use Atlas (FLUA) amendment uses a deliberately thinner 6-section variant (Project Description / Current FLU / Proposed FLU / Traffic Impact / Traffic Analysis [5.1 Test 2 + 5.2 Long Range] / Conclusion). The 1.0–13.0 structure used by this renderer is the MTSIH-aligned default; substitute the applicable Palm Beach variant at submittal time.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
   // --- 3.0 Methodology --------------------------------------------------
   gaSection(doc, "3.0 METHODOLOGY");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    "Per MTSIH 2024 §4.3, methodology and scope are established through a pre-application methodology meeting with the controlling FDOT District, county, and applicable MPO/TPO. The methodology letter or meeting minutes must be included as Appendix A of the formal submittal.",
-    { paragraphGap: 6 },
-  );
+  {
+    const appendixLetter = jur.methodologyLetterAppendix;
+    const meetingClause = jur.preStudyMeetingRequired
+      ? `For ${jur.name} the pre-application methodology meeting is a hard prerequisite under the controlling local procedure (not an option); the meeting must occur and the methodology letter must be on file with the reviewing agency before this analysis can be accepted for review.`
+      : "Per MTSIH 2024 §4.3, the pre-application methodology meeting establishes scope.";
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Per MTSIH 2024 §4.3, methodology and scope are established through a pre-application methodology meeting with the controlling FDOT District, county, and applicable MPO/TPO. ${meetingClause} The methodology letter or meeting minutes must be included as Appendix ${appendixLetter} of the formal submittal${appendixLetter === "C" ? " (Miami-Dade observed convention; canonical Florida default is Appendix A)" : ""}.`,
+      { paragraphGap: 6 },
+    );
+    if (jur.key === "duval") {
+      doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+        "Jacksonville-specific: the Traffic Methodology Meeting must be coordinated with the City Traffic Engineer and the Chief of Transportation Planning per the Land Development Procedures Manual (LDPM) Vol. 1 effective 2026-01-30. The Concurrency and Mobility Management System Office (CMMSO, established 1991) is the controlling review body.",
+        { paragraphGap: 6 },
+      );
+      doc.fillColor("black");
+    }
+  }
 
   gaSubsection(doc, "3.1 Controlling Guidance");
   doc.font("body").fontSize(10).fillColor("black").text(
@@ -3856,7 +4778,7 @@ function renderTisFlorida(
 
   gaSubsection(doc, "3.4 Time Horizons");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Per MTSIH 2024 §4.3, minimum analysis years are: Existing, Future Background (No-Build), Future Build, and Future Build with Mitigation. Opening year is canonical; there is no fixed +5 horizon for concurrency or connection-permit work. Each year must be explicitly labeled. For a Comprehensive Plan Amendment (CPA) review, the analysis must include Existing, short-term (5-year), and long-term (10-year minimum) horizons. This analysis evaluates Existing (current-year), No-Build (opening year ${req.openingYear ?? "—"}), and Build (opening year ${req.openingYear ?? "—"}) scenarios.`,
+    `Per MTSIH 2024 §4.3, minimum analysis years are: Existing, Future Background (No-Build), Future Build, and Future Build with Mitigation. Opening year is canonical; there is no fixed +5 horizon for concurrency or connection-permit work. Each year must be explicitly labeled. For a Comprehensive Plan Amendment (CPA) review, the analysis must include Existing, short-term (5-year), and long-term (10-year minimum) horizons. ${jur.name} convention: ${jur.horizonConvention}. This analysis evaluates Existing (current-year), No-Build (opening year ${req.openingYear ?? "—"}), and Build (opening year ${req.openingYear ?? "—"}) scenarios.`,
     { paragraphGap: 6 },
   );
 
@@ -3909,13 +4831,21 @@ function renderTisFlorida(
   // --- 5.0 Trip Generation ----------------------------------------------
   gaSection(doc, "5.0 TRIP GENERATION");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Trip generation follows the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Net new external trips are calculated by applying pass-by and internal capture credits to gross trip generation per the ITE Trip Generation Handbook (current edition). Where the project lies within Hillsborough County (FDOT District 7), the Hillsborough Mobility Fee study still references ITE 10th Edition rates blended with the Florida Trip Characteristics Studies Database; trip generation for mobility-fee calculation should be prepared in parallel using that methodology.`,
+    `Trip generation follows the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Net new external trips are calculated by applying pass-by and internal capture credits to gross trip generation per the ITE Trip Generation Handbook (current edition). Per MTSIH 2024 §4.6.4, the fitted-curve equation is preferred when ≥20 data points are available, or when R² ≥ 0.75 with the fitted curve falling within the data cluster and weighted standard deviation > 55% of the weighted average rate; otherwise the weighted average rate applies. Per MTSIH 2024 §4.6.6.6, pass-by trips at a site driveway cannot exceed 10% of the adjacent peak-hour two-way street traffic — this reasonableness check applies per roadway when the site fronts multiple streets and should be verified against the adjacent-street counts at submittal time.`,
     { paragraphGap: 6 },
   );
+  if (jur.feeMethodologyNote) {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      `${jur.name} fee methodology: ${jur.feeMethodologyNote}`,
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
   rows(doc, [
     ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
     ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}% (MTSIH 2024 §4.6.9 sets no statewide numeric cap; rate negotiated at the methodology meeting per NCHRP 684 / ITE Trip Generation Handbook)`],
     ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
+    [`${jur.name} TIA threshold`, jur.tripThreshold],
     ["Weather condition", String(r.weather ?? req.weather ?? "clear")],
   ]);
   doc.moveDown(0.3);
@@ -3955,9 +4885,23 @@ function renderTisFlorida(
   // --- 6.0 Trip Distribution and Assignment ------------------------------
   gaSection(doc, "6.0 TRIP DISTRIBUTION AND ASSIGNMENT");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Per FDOT TAH §2.7, trip distribution and assignment should use the adopted regional MPO/TPO travel-demand model, with model version, base year, and horizon year identified in the methodology letter. This screening analysis assigns net new external trips by inverse-distance weighting to signalized intersections within the study area; for formal submittal, distribution percentages and the TDM run identifier should be agreed upon during the methodology meeting.",
+    `Per FDOT TAH §2.7, trip distribution and assignment should use the adopted regional MPO/TPO travel-demand model${jur.mpoName ? ` (${jur.mpoName})` : ""}, with model version, base year, and horizon year identified in the methodology letter. This screening analysis assigns net new external trips by inverse-distance weighting to signalized intersections within the study area; for formal submittal, distribution percentages and the TDM run identifier should be agreed upon during the methodology meeting.`,
     { paragraphGap: 6 },
   );
+  if (jur.studyAreaNote) {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      `${jur.name} study-area convention: ${jur.studyAreaNote}. The renderer-applied study radius (${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)} mi) should be reconciled against this convention at submittal time.`,
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  if (jur.key === "orange") {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Orange County STAMP additionally publishes standardized county-specific pass-by reductions by land use; the renderer-applied pass-by capture should be reconciled against the STAMP pass-by table at submittal time.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
 
   // --- 7.0 / 8.0 Future (No-Build) and Future (Build) -------------------
   gaSection(doc, "7.0 / 8.0 FUTURE (NO-BUILD) AND FUTURE (BUILD) TRAFFIC ANALYSIS");
@@ -4014,7 +4958,7 @@ function renderTisFlorida(
   // --- 10.0 Site Access / Ingress-Egress --------------------------------
   gaSection(doc, "10.0 SITE ACCESS / INGRESS-EGRESS");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Connection to the FDOT State Highway System requires a connection permit per Rule 14-96 F.A.C. (2025 update). Driveway spacing, median-opening spacing, and signal spacing are governed by the access-management class (Classes 1–7) assigned to the impacted SHS segment per Rule 14-97 F.A.C. and FDOT Procedure 525-030-155; the class is stored in the RCI as Feature 146 / ACMANCLS (codes 00–07; 99 = unclassified, interim standards in Rule 14-97.004(1) apply until assignment). Driveway geometry (W, R, F, Y, G, Driveway Length, S, I; Categories A–D in FDM Chapter 214, Categories E–F–G punt to FDM Chapter 212), turn-lane warrants, deceleration-lane length, and intersection sight distance must be designed to FDOT Design Manual (FDM 2026) standards; off-SHS connections on city/county facilities follow the Florida Greenbook. The access-management class for the impacted SHS facility should be confirmed against the FDOT-published Access Management TDA layer.",
+    "Per MTSIH 2024 §3.2 Table 5, driveway TIA-scoping is keyed to gross trips per day (including pass-by): Category A 1–20 vpd (single-family); B 21–600 (small multifamily / very small commercial); C 601–1,500 (small-mid retail / small office); D 1,501–4,000 (mid retail / mid office); E 4,001–15,000 (large retail / mixed-use); F 15,001–30,000 (very large mixed-use / mall); G ≥30,001 (regional mall). Pre-application meeting + traffic study are required for Categories C–G (>600 vpd including pass-by). A connection-permit change-of-use is additionally triggered per F.S. 335.182(3)(b) when trip generation increases by >25% AND >100 vpd vs. the existing use. Connection to the FDOT State Highway System requires a connection permit per Rule 14-96 F.A.C. (2025 update). Driveway spacing, median-opening spacing, and signal spacing are governed by the access-management class (Classes 1–7) assigned to the impacted SHS segment per Rule 14-97 F.A.C. and FDOT Procedure 525-030-155; the class is stored in the RCI as Feature 146 / ACMANCLS (codes 00–07; 99 = unclassified, interim standards in Rule 14-97.004(1) apply until assignment). Driveway geometry (W, R, F, Y, G, Driveway Length, S, I; Categories A–D in FDM Chapter 214, Categories E–F–G punt to FDM Chapter 212), turn-lane warrants, deceleration-lane length, and intersection sight distance must be designed to FDOT Design Manual (FDM 2026) standards; off-SHS connections on city/county facilities follow the Florida Greenbook. The access-management class for the impacted SHS facility should be confirmed against the FDOT-published Access Management TDA layer.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
@@ -4029,10 +4973,24 @@ function renderTisFlorida(
 
   // --- 12.0 Comprehensive Plan / Concurrency Consistency ----------------
   gaSection(doc, "12.0 COMPREHENSIVE PLAN / CONCURRENCY CONSISTENCY");
-  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Transportation concurrency was made optional statewide by HB 7207 (2011). Where the local jurisdiction retains concurrency, comprehensive-plan consistency must be confirmed against the most recent adopted Comprehensive Plan and concurrency management ordinance. Miami-Dade County has retained concurrency under Administrative Order 4-85 and Chapter 33-G; new Chapter 33E (Multimodal Mobility Impact Fee) complements rather than replaces 33-G. Hillsborough County operates a mobility fee in lieu of concurrency. Per Florida Statutes §163.3180(5)(h)1.a., local governments must consult with FDOT whenever a Strategic Intermodal System (SIS) facility is expected to be impacted by a comprehensive-plan amendment.",
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Transportation concurrency was made optional statewide by HB 7207 (2011). For new development, the Development of Regional Impact (DRI) review track was further curtailed by SB 1216 / Ch. 2015-30 (which added F.S. 380.06(30) routing otherwise-DRI projects through the State Coordinated Review Process at F.S. 163.3184(4) in lieu of DRI), with cleanup completed by CS/CS/HB 1151 / Ch. 2018-158 — DRI is now a legacy branch retained only for amendments/abandonments of existing DRIs. ${jur.name} review framework: ${jur.framework}. Controlling document(s): ${jur.frameworkDoc}. LOS standard: ${jur.losStandardNote}. Per Florida Statutes §163.3180(5)(h)1.a., local governments must consult with FDOT whenever a Strategic Intermodal System (SIS) facility is expected to be impacted by a comprehensive-plan amendment.`,
     { paragraphGap: 6 },
   );
+  if (jur.extraNote) {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      `Note. ${jur.extraNote}`,
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  if (jur.threeTrackEndChapters) {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Three-track end-chapter convention (Miami-Dade): the formal CDMP-amendment submittal should additionally provide three parallel-track end-chapters (Concurrency Analysis / CDMP Analysis / Zoning Analysis), each independently numbered 1.0–3.0. The Concurrency track is reviewed against Code Ch. 33-G + Admin. Order 4-85; the CDMP track is reviewed against the adopted Transportation Element; the Zoning track is reviewed against the host municipal zoning ordinance. This screening tool does not auto-generate the three-track parallel content; the inputs required for each track must be coordinated with the Miami-Dade TPO and Miami-Dade County DTPW prior to submittal.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
   doc.fillColor("black");
 
   // --- 13.0 Programmed Projects -----------------------------------------
