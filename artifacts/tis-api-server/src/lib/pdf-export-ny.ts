@@ -174,12 +174,23 @@ function nysdotRegion(lat: number, lon: number, region: Region): NysdotRegion {
   if (code === "syracuse_metro") return { num: 3, label: "Region 3 — Syracuse / Central New York", planningGroup: "SMTC (Syracuse Metropolitan Transportation Council)" };
   if (code === "albany_metro") return { num: 1, label: "Region 1 — Capital District", planningGroup: "CDTC (Capital District Transportation Committee)" };
   if (code === "new_york_metro") {
-    // Long Island (Region 10) is east of ~-73.5 within our new_york_metro
-    // bounding box; lat < 40.95 with lon > -73.7 catches Queens / Brooklyn
-    // eastern edge and western Nassau. Otherwise Region 11 (NYC).
-    if (lat < 40.95 && lon > -73.7) {
+    // Region 8 (Hudson Valley) — Westchester, Rockland, Putnam, Orange,
+    // Dutchess, Ulster, Sullivan, Columbia. The Bronx's northernmost edge
+    // sits at lat ~40.92; anything north of that within the new_york_metro
+    // bounding box belongs to Region 8. Without this branch, Westchester
+    // sites (e.g. Rye 40.985, -73.683) get labeled Region 11 — the
+    // DTS Provident / HVEA cold-outreach pitch is built on accurate
+    // Hudson Valley framing, so misclassifying here would be a
+    // credibility hit on the demo.
+    if (lat >= 40.92) {
+      return { num: 8, label: "Region 8 — Hudson Valley", planningGroup: "NYMTC (New York Metropolitan Transportation Council)" };
+    }
+    // Region 10 (Long Island) — Nassau + Suffolk. East of Brooklyn
+    // (lon > -73.83) below the Westchester line.
+    if (lon > -73.83) {
       return { num: 10, label: "Region 10 — Long Island", planningGroup: "NYMTC (New York Metropolitan Transportation Council)" };
     }
+    // Default: Region 11 (NYC five boroughs).
     return { num: 11, label: "Region 11 — New York City", planningGroup: "NYMTC (New York Metropolitan Transportation Council)" };
   }
   return { num: 0, label: "NYSDOT Region (to be confirmed)", planningGroup: "Regional Planning Group (to be confirmed)" };
