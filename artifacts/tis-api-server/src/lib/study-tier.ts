@@ -34,6 +34,14 @@ export type TierInput = {
   unit: string;
   /** ITE land use code (used for residential-DU tier rules in Chicago). */
   landUseCode: string;
+  /**
+   * Optional jurisdiction-specific screening trip floor. Used by caTier
+   * to honor per-city OPR overlays (LA / Sacramento 250, Long Beach /
+   * Fresno 500) — falls back to the OPR Dec 2018 110-trip floor when
+   * unset. Resolved at the dispatch site in pdf-export.ts from the
+   * californiaJurisdiction lookup.
+   */
+  jurisdictionScreeningTripCount?: number;
 };
 
 /**
@@ -224,7 +232,8 @@ function ilTier(region: Region, input: TierInput): ResolvedStudyTier {
 // We use a mid-tier "Abbreviated" for projects in the 110-500 trip
 // band as a practitioner convenience.
 function caTier(input: TierInput): ResolvedStudyTier {
-  if (input.dailyTrips < 110) return "worksheet";
+  const screeningFloor = input.jurisdictionScreeningTripCount ?? 110;
+  if (input.dailyTrips < screeningFloor) return "worksheet";
   if (input.dailyTrips < 500) return "abbreviated";
   return "full";
 }
