@@ -23,7 +23,8 @@
  * required") until SIMS / Regional Traffic Office data is wired.
  */
 import type { Region } from "./regions";
-import { getCbdtpStatus, type CbdtpStatus } from "./nysdot-data";
+import { getCbdtpStatus, type CbdtpStatus, type Gml239Status } from "./nysdot-data";
+import { getMeasuredGrowthRate } from "./regional-growth-rates";
 
 type StoredProject = {
   id: string;
@@ -324,6 +325,38 @@ export function renderTisNewYork(
   nyRows(doc, toc);
   doc.moveDown(0.4);
 
+  // --- Project / regulatory context ---------------------------------------
+  // SEQRA classification — surfaced when set on the project; default to
+  // "not yet determined" so the reviewer sees the prompt. Inside NYC,
+  // SEQRA findings are typically folded into the CEQR EAS/EIS package
+  // rather than determined separately.
+  const seqraType = typeof (project as any)?.seqraType === "string"
+    ? String((project as any).seqraType)
+    : null;
+  const inNyc = cbdtp.inCordon || nyRegion.num === 11;
+  nySection(doc, "PROJECT CONTEXT");
+  doc.font("body").fontSize(10).fillColor("black");
+  doc.font("bold").fontSize(10).text("NYSDOT region: ", { continued: true });
+  doc.font("body").text(nyRegion.label);
+  doc.font("bold").fontSize(10).text("Planning group: ", { continued: true });
+  doc.font("body").text(nyRegion.planningGroup);
+  doc.font("bold").fontSize(10).text("Regulatory regime: ", { continued: true });
+  doc.font("body").text(
+    inNyc
+      ? "SEQRA (ECL Article 8 / 6 NYCRR Part 617) overlaid by CEQR (NYC Charter §192 + Mayor's EO 91; CEQR Technical Manual, December 2025 Edition, Chapter 16 Transportation)."
+      : "SEQRA (ECL Article 8 / 6 NYCRR Part 617)."
+  );
+  doc.font("bold").fontSize(10).text("SEQRA classification: ", { continued: true });
+  if (seqraType) {
+    doc.font("body").text(`${seqraType} (per project record).`);
+  } else {
+    doc.font("body").fillColor(TEXT_GRAY).text(
+      "Not yet determined — lead agency to classify as Type I (6 NYCRR Part 617.4 — likely EIS), Type II (Part 617.5 — exempt), or Unlisted (Part 617.6 — Short EAF + significance finding) before locking the TIS."
+    );
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.4);
+
   // --- §1.0 Summary of Traffic Impacts -----------------------------------
   nySection(doc, "1.0 SUMMARY OF TRAFFIC IMPACTS");
   doc.font("body").fontSize(10).fillColor("black");
@@ -373,6 +406,31 @@ export function renderTisNewYork(
         : `The site is within approximately ${cbdtp.bufferMiles} mile of the Central Business District Tolling Program (CBDTP) cordon (Manhattan south of 60th Street, in force from 5 January 2025). Generated trips that route through the cordon will be subject to the toll schedule; the project's mode-share assumptions for vehicle-vs-transit-vs-rideshare should reflect the CBDTP-era distribution rather than pre-2025 conditions. Baseline counts on study-area corridors that feed into the cordon may also reflect the program's first-year impact (CBD volumes fell ~11%) — see §3.2 for the count-vintage caveat.`,
       { paragraphGap: 6 },
     );
+  }
+
+  // GML §239-m / §239-n referral test — surfaced when the site sits
+  // within 500 ft of a state or county road (outside NYC; NYC sites
+  // use ULURP / CEQR instead). The lookup is done in renderStudyPdf
+  // before this renderer is called and stashed at r.nyGml239Status.
+  const gml239: Gml239Status | null =
+    !inNyc && r && typeof r === "object" && r.nyGml239Status
+      ? (r.nyGml239Status as Gml239Status)
+      : null;
+  if (gml239?.required) {
+    doc.font("bold").fontSize(11).fillColor("black").text(
+      "GML §239-m / §239-n county planning board referral required:",
+    );
+    doc.moveDown(0.1);
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `The site is within ${gml239.bufferFeet} ft of ${gml239.triggeringRoadway ? `${gml239.triggeringRoadway} (${gml239.triggeringClass})` : "a state or county classified roadway"}, which triggers mandatory referral to the controlling county planning board under General Municipal Law §239-m (site-plan / special-permit / variance / zoning amendment) or §239-n (subdivision review) before the local board may act. The county may make adverse findings under §239-f; the local board can override only by supermajority. Practical TIS consequence: the county will typically request the TIS in full as part of the §239 referral package — pre-application coordination with the county planning agency is recommended.`,
+      { paragraphGap: 6 },
+    );
+  } else if (!inNyc && r?.nyGml239Status !== undefined) {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "GML §239 referral: no state or county classified roadway was identified within 500 ft of the site via the NYSDOT RDM FeatureServer. The lead agency should still verify against the county's locally-adopted §239 mapping (some counties extend referral to additional facilities — e.g. county-designated scenic byways).",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
   }
 
   nyMetricStrip(doc, [
@@ -451,10 +509,18 @@ export function renderTisNewYork(
 
   // §3.1 Growth Rates
   nySubsection(doc, "3.1 Growth Rates");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `Background traffic growth is applied at ${growthPct || "—"}% per year over ${growthYears || "—"} year${growthYears === 1 ? "" : "s"}. NYSDOT statewide default fallbacks (per HDM Chapter 5) are 1.7%/yr for Interstate and ramp facilities (NYSDOT Data Services Bureau) and 2.0%/yr for all other roads (Regional Planning Group). For ${nyRegion.label}, the controlling Regional Planning Group is ${nyRegion.planningGroup}; its current adopted growth-rate guidance overrides the statewide default and should be confirmed for formal submittal.`,
-    { paragraphGap: 6 },
-  );
+  const measured = getMeasuredGrowthRate(region.code);
+  if (measured) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Background traffic growth is applied at ${growthPct || "—"}% per year over ${growthYears || "—"} year${growthYears === 1 ? "" : "s"}. This rate is the per-station median CAGR measured from the NYSDOT Traffic Monitoring AADT FeatureServer for ${nyRegion.label}: ${measured.growthPct.toFixed(2)}%/yr median across ${measured.stations.toLocaleString()} count stations (rolling actual-count window approximately ${measured.yearFrom}-${measured.yearTo}; 25th-75th percentile range ${measured.p25Pct.toFixed(2)}% to ${measured.p75Pct.toFixed(2)}%). The measured value supersedes the NYSDOT statewide default fallbacks (per HDM Chapter 5: 1.7%/yr Interstate + ramps from the Data Services Bureau, 2.0%/yr all other roads from the Regional Planning Group). The controlling Regional Planning Group ${nyRegion.planningGroup} may have separately-adopted growth-rate guidance that overrides the measured median for formal submittal — confirm at scoping.`,
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Background traffic growth is applied at ${growthPct || "—"}% per year over ${growthYears || "—"} year${growthYears === 1 ? "" : "s"}. NYSDOT statewide default fallbacks (per HDM Chapter 5) are 1.7%/yr for Interstate and ramp facilities (NYSDOT Data Services Bureau) and 2.0%/yr for all other roads (Regional Planning Group). For ${nyRegion.label}, the controlling Regional Planning Group is ${nyRegion.planningGroup}; its current adopted growth-rate guidance overrides the statewide default and should be confirmed for formal submittal.`,
+      { paragraphGap: 6 },
+    );
+  }
 
   // §3.2 Existing AADT and DHV — multi-year horizon table.
   nySubsection(doc, "3.2 Existing AADT and DHV");
@@ -881,3 +947,167 @@ export function renderTisNewYork(
   doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text("This report is based on the NYSDOT TIS Shell revised on 9/16/2014.", { align: "center" });
   doc.fillColor("black");
 }
+
+// ===========================================================================
+// CEQR Ch 16 — NYC overlay (scaffold)
+// ===========================================================================
+//
+// renderCeqrNyc emits a CEQR-shaped overlay on top of the HDM Chapter
+// 5 shell when the site is in the five boroughs. Per new-york-tis-spec
+// §2.2 and §10, the recommended architecture is a sibling function
+// (analogous to renderTisGeorgiaDriSections) that re-reads the engine
+// output, classifies trip generation against the CEQR Table 16-1
+// thresholds (50 peak-hr vehicle / 200 peak-hr transit / 200 peak-hr
+// pedestrian), and emits the §A-§E section structure expected by NYC
+// OEC reviewers.
+//
+// This first cut implements:
+//   §A.1 Project description / screening assumptions
+//   §A.2 Trip generation vs Table 16-1 thresholds (preliminary)
+//   §A.3 Threshold-crossing summary
+//   §B.1-B.4 Detailed trip generation (when any threshold is crossed)
+//   §C-§E sections are SCAFFOLDED with placeholder text — the
+//   detailed methodology (pedestrian LOS via Pushkarev/Zupan, subway
+//   line-haul / bus capacity, parking accumulation, Vision Zero
+//   review) is out of scope for this first cut and is queued as a
+//   follow-up to new-york-tis-spec §12.
+
+const CEQR_VEH_THRESHOLD = 50; // peak-hour vehicle trip-ends
+const CEQR_TRANSIT_THRESHOLD = 200; // peak-hour transit riders
+const CEQR_PED_THRESHOLD = 200; // peak-hour pedestrian trips
+
+/**
+ * Render the CEQR Chapter 16 overlay for NYC sites. Called from
+ * renderStudyPdf AFTER renderTisNewYork when the site sits inside the
+ * five boroughs (NYSDOT Region 11).
+ *
+ * The CEQR Technical Manual's December 2025 Edition is the governing
+ * source; Chapter 16 (Transportation) is the operational chapter.
+ * Preliminary screening uses Table 16-1 trip-end thresholds. Detailed
+ * analysis only kicks in when at least one threshold is crossed.
+ */
+export function renderCeqrNyc(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  _region: Region,
+) {
+  const tg = r.tripGeneration ?? {};
+  const amPeak = Number(tg.amPeakTrips ?? 0);
+  const pmIn = Number(tg.pmIn ?? 0);
+  const pmOut = Number(tg.pmOut ?? 0);
+  const peakHourVeh = Math.max(amPeak, pmIn + pmOut);
+  // Modal split — CEQR Ch 16 directs zone-specific shares (Manhattan
+  // CBD vs Manhattan non-CBD vs Outer Boroughs) drawn from local
+  // surveys. Lacking that detail in the engine output today, the
+  // scaffold uses a Manhattan-CBD representative split of 30/60/10
+  // (vehicle / transit / pedestrian) so the screening totals are
+  // intelligible. A full CEQR analysis would pull these per
+  // sub-borough from Ch 16 Appendix C.
+  const peakHourPerson = peakHourVeh / 0.30;
+  const peakHourTransit = Math.round(peakHourPerson * 0.60);
+  const peakHourPed = Math.round(peakHourPerson * 0.10);
+
+  const vehAbove = peakHourVeh > CEQR_VEH_THRESHOLD;
+  const transitAbove = peakHourTransit > CEQR_TRANSIT_THRESHOLD;
+  const pedAbove = peakHourPed > CEQR_PED_THRESHOLD;
+  const anyAbove = vehAbove || transitAbove || pedAbove;
+
+  doc.addPage();
+  nySection(doc, "CEQR CHAPTER 16 — NYC TRANSPORTATION ANALYSIS");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "This section overlays the NYSDOT HDM Chapter 5 shell above with the CEQR Chapter 16 (Transportation) framing required for any NYC discretionary action. Reference: CEQR Technical Manual, December 2025 Edition (NYC Mayor's Office of Environmental Coordination). Chapter 16 PDF: https://www.nyc.gov/assets/oec/technical-manual/16_Transportation_2025.pdf.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // §A — Preliminary Screening
+  nySubsection(doc, "A.1 Project Description and Screening Assumptions");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Project ${project.projectName || "(unnamed)"} — land-use code ${project.landUseCode || "—"}. Peak-hour vehicle trip-end estimate from the engine (max of AM and PM peaks): ${peakHourVeh} vehicle trips. The §A.2 screening converts the vehicle-trip figure to person-trips and modal totals using a representative Manhattan-CBD mode split (30% vehicle / 60% transit / 10% pedestrian). A submittable CEQR analysis must replace this representative split with the zone-specific share drawn from CEQR Tech Manual Ch 16 Appendix C for the actual sub-borough zone of the site.`,
+    { paragraphGap: 6 },
+  );
+
+  nySubsection(doc, "A.2 Trip Generation vs CEQR Table 16-1 Thresholds");
+  nyTable(doc, {
+    headers: ["Mode", "Peak-hour trip estimate", "CEQR threshold", "Status"],
+    widths: [140, 140, 120, 100],
+    align: ["left", "right", "right", "center"],
+    rows: [
+      [
+        "Vehicle (trip-ends)",
+        String(peakHourVeh),
+        `${CEQR_VEH_THRESHOLD}`,
+        vehAbove ? "Above" : "Below",
+      ],
+      [
+        "Transit riders (subway + bus)",
+        String(peakHourTransit),
+        `${CEQR_TRANSIT_THRESHOLD}`,
+        transitAbove ? "Above" : "Below",
+      ],
+      [
+        "Pedestrians",
+        String(peakHourPed),
+        `${CEQR_PED_THRESHOLD}`,
+        pedAbove ? "Above" : "Below",
+      ],
+    ],
+  });
+  doc.moveDown(0.2);
+  doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+    "Thresholds per CEQR Tech Manual Ch 16 (Dec 2025 Edition). The Table 16-1 development-density thresholds translate the trip-end thresholds above into per-land-use floor-area cutoffs by zone; the renderer does not currently reproduce Table 16-1 verbatim — confirm against the December 2025 edition PDF for formal submittal.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  nySubsection(doc, "A.3 Preliminary Screening Conclusion");
+  if (!anyAbove) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "All three peak-hour trip-end estimates fall below the CEQR Ch 16 screening thresholds. Per the Tech Manual, no detailed transportation analysis is required (except in unusual circumstances). The CEQR transportation conclusion is no significant adverse impact. Sections B-E below are not triggered.",
+      { paragraphGap: 6 },
+    );
+    return;
+  }
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `${[
+      vehAbove ? "vehicle" : null,
+      transitAbove ? "transit" : null,
+      pedAbove ? "pedestrian" : null,
+    ].filter(Boolean).join(" / ")} threshold(s) crossed — detailed analysis required for each crossed mode per CEQR Tech Manual Ch 16. The detailed analyses scaffolded below should be expanded by the engineering team for the formal CEQR submittal.`,
+    { paragraphGap: 6 },
+  );
+
+  // §B — Detailed Trip Generation
+  nySubsection(doc, "B.1-B.4 Detailed Trip Generation (scaffold)");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Detailed trip generation per CEQR Ch 16 §B requires: (1) daily + peak-hour person trips per zone-specific modal split (Appendix C); (2) vehicle occupancy from Table 16-3; (3) per-mode trip totals broken out by vehicle, taxi/FHV, subway, bus, walk, bike. The engine produces vehicle trip-ends only; the full multi-modal table must be derived from the CEQR rate library and is not auto-generated by this renderer. Pre-permission CEQR rate set should be agreed with NYC OEC at scoping.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // §C — Detailed Analysis placeholders
+  nySubsection(doc, "C.1-C.5 Detailed Analysis (scaffold — outside scope of this renderer iteration)");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+  if (vehAbove) {
+    doc.text("• C.1 Traffic operations — Synchro / HCS intersection LOS at affected intersections, with mitigation per the CEQR significant-impact thresholds for delay (5 sec for LOS C, 4 sec for D, 2.5 sec for E, etc.). The §3 HDM Ch 5 capacity analysis above provides the engine baseline; CEQR-specific delay-change thresholds apply.", { paragraphGap: 3 });
+  }
+  if (transitAbove) {
+    doc.text("• C.2 Transit — subway line-haul capacity analysis (peak-load-point ridership vs NYCT capacity at affected stations) + bus-route capacity analysis (peak-load-point ridership vs MTA Bus / NYCT Bus guidelines). Requires MTA-supplied data; not produced by the engine.", { paragraphGap: 3 });
+  }
+  if (pedAbove) {
+    doc.text("• C.3 Pedestrian — sidewalk / corner / crosswalk LOS via the Pushkarev & Zupan (1975) flow-rate procedure (NOT HCM Ch 18) at every affected sidewalk segment, corner reservoir, and crosswalk within the study area. Requires field-collected pedestrian counts; not produced by the engine.", { paragraphGap: 3 });
+  }
+  doc.text("• C.4 Parking — accumulation analysis vs zoning maxima/minima per NYC Zoning Resolution. Requires the development's parking provision and an hourly accumulation curve; not produced by the engine.", { paragraphGap: 3 });
+  doc.text("• C.5 Safety — Vision Zero high-crash-location review at affected intersections within the study area. The county-level crash totals in §4.0 above provide reference but are NOT a substitute for the NYC Vision Zero View intersection-level overlay.", { paragraphGap: 6 });
+  doc.fillColor("black");
+
+  // §D — Impacts + Mitigation
+  nySubsection(doc, "D.1-D.3 Significant Impact Determination and Mitigation (scaffold)");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "CEQR significant-impact thresholds are mode- and metric-specific (delay change, LOS drop, queue length, transit capacity utilization, pedestrian LOS step). The CEQR finding (positive declaration, conditioned negative declaration, or negative declaration) is determined by the lead agency on the basis of the §C detailed analyses; this renderer does not synthesize the finding.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+}
+

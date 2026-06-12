@@ -21,8 +21,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { regionForCoordinate, type Region } from "./regions";
 import { getAutoModeShare } from "./mode-share";
-import { renderTisNewYork } from "./pdf-export-ny";
-import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite } from "./nysdot-data";
+import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
+import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite, getGml239Status, getCbdtpStatus } from "./nysdot-data";
 import { crashesNearPoint } from "./crashes";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
@@ -197,7 +197,17 @@ export async function renderStudyPdf(
             // DB unreachable or table missing — keep county-level
             // fallback. No reason to surface this as a render error.
           });
-        await Promise.all([speedTask, crashTask, preciseCrashTask]);
+        // (d) GML §239-m / §239-n referral test — site within 500 ft
+        //     of a state or county road? Outside NYC only (NYC uses
+        //     ULURP / CEQR, not §239 referral). Stashes
+        //     result.nyGml239Status for renderTisNewYork §4.4
+        //     permitting block.
+        const gml239Task = getGml239Status(lat, lon).then((s) => {
+          if (s && result && typeof result === "object") {
+            (result as Record<string, unknown>).nyGml239Status = s;
+          }
+        });
+        await Promise.all([speedTask, crashTask, preciseCrashTask, gml239Task]);
       }
     }
   }
@@ -420,6 +430,17 @@ function dispatchTisRender(
   }
   if (region?.stateCode === "NY" && (region?.country ?? "US") === "US") {
     renderTisNewYork(doc, result, project, region);
+    // CEQR Chapter 16 overlay — only for NYC sites (inside the CBDTP
+    // cordon serves as a proxy for "in the five boroughs that need
+    // CEQR"). The CEQR overlay appears after the HDM Chapter 5
+    // shell so a reviewer sees both framings.
+    const reqAny = result?.request as { latitude?: number | string; longitude?: number | string } | undefined;
+    const lat = reqAny?.latitude !== undefined ? Number(reqAny.latitude) : NaN;
+    const lon = reqAny?.longitude !== undefined ? Number(reqAny.longitude) : NaN;
+    const cbdtp = getCbdtpStatus(lat, lon);
+    if (cbdtp.inCordon || cbdtp.nearCordon) {
+      renderCeqrNyc(doc, result, project, region);
+    }
     return;
   }
   renderTis(doc, result);
@@ -3271,7 +3292,7 @@ function renderTisTexasWorksheet(
     : "Category I TIA";
 
   const banner = {
-    houston: `Houston worksheet-tier deliverable per 2023 Infrastructure Design Manual Ch. 15 Table 15.04.01-02 — currently routed to ${houstonSubTier}. The 2023 IDM publishes four sub-tiers below the Full TIA Category III threshold (AMF / Tech Memo 80–120 PHT / Cat I <100 PHT / Cat II 100–499 PHT); the AMF + Tech Memo + Cat I band is collapsed into this worksheet shape.`,
+    houston: `Houston worksheet-tier deliverable per the Infrastructure Design Manual (IDM) Ch. 15, revision 07-01-2022, Table 15.04.01 — currently routed to ${houstonSubTier}. The IDM publishes four Table 15.04.01 categories — I (<100 PHT), II (100–499), III (500–999), IV (≥1,000) — plus the sub-tiers below Category I (Access Management Form / Technical Memorandum 80–120 PHT per §15.04.A.5). ≥100 PHT triggers the scoping meeting that determines whether a full TIA is required (§15.04.A.4.a); the AMF + Tech Memo + Cat I band is collapsed into this worksheet shape.`,
     austin: "Austin worksheet-tier deliverable per Land Development Code §25-6-117 and TIA Guidelines (June 2022). At <2,000 vpd net new the TIA Determination Worksheet is the gating deliverable submitted via the TDS portal; a Scope of Work + Full TIA only follows when staff escalates.",
     dallas: "Dallas worksheet-tier deliverable per Development Code §51A-4.803 (Site Plan Review) plus the Paving/Drainage Traffic Impact Study Waiver form. At <1,000 daily a non-school site qualifies for the TIS Waiver; this report carries that form's substantive fields plus the screening trip generation.",
     fortworth: "Fort Worth worksheet-tier deliverable per the City of Fort Worth Transportation Engineering Manual (June 2019). The TIA Worksheet is the published deliverable for projects under 100 PHT and 1,000 ADT; an Abbreviated TIA follows at 100–299 PHT and Full TIA at ≥300 PHT or ≥5,000 ADT.",
@@ -3338,9 +3359,9 @@ function renderTisTexasWorksheet(
   // --- §4 Worksheet-Tier Determination ---------------------------------
   gaSection(doc, "4.0 WORKSHEET-TIER DETERMINATION");
   const determinationText = {
-    houston: `Per the 2023 Infrastructure Design Manual Ch. 15, projects below the Houston Category III Full TIA threshold are gated through one of three lower tiers: Access Management Form (driveway-only review), Technical Memorandum (≈80–120 PHT band), or Category I TIA (<100 PHT, ~100-trip floor per consultant practice; the verbatim IDM threshold was not auto-pulled from Houston Permitting PDFs). The screened ${fmtNum(pht)} PM PHT and ${fmtNum(daily)} daily trips route this project to ${houstonSubTier}.`,
+    houston: `Per IDM Ch. 15 (revision 07-01-2022), projects below the Category III Full TIA scoping threshold are gated through one of three lower tiers: Access Management Form (driveway-only review), Technical Memorandum (80–120 PHT band per §15.04.A.5), or Category I TIA (<100 PHT per Table 15.04.01). ≥100 PHT triggers a scoping meeting that determines whether a full TIA is required (§15.04.A.4.a). The screened ${fmtNum(pht)} PM PHT and ${fmtNum(daily)} daily trips route this project to ${houstonSubTier}.`,
     austin: `Per Land Development Code §25-6-117 and TIA Guidelines (June 2022), a project must submit the TIA Determination Worksheet whenever site-generated traffic is < 2,000 vpd net new. The screened ${fmtNum(daily)} daily trips falls within that band, so this Determination Worksheet is the gating deliverable. Scope of Work + Full TIA submittal follows only if Transportation Development Services (TDS) escalates after worksheet review.`,
-    dallas: `Per Development Code §51A-4.803 (Site Plan Review) plus the Paving/Drainage Traffic Impact Study Waiver form, a non-school site generating < 1,000 daily trips qualifies for the TIS Waiver. The screened ${fmtNum(daily)} daily trips (and ${fmtNum(pht)} PM PHT) falls within that band. Note that Dallas has no single canonical TIA threshold — consultant practice also cites ~100 PHT / ~2,000 ADT; review is partly discretionary under §51A-4.803.`,
+    dallas: `Per the Paving/Drainage Traffic Impact Study Waiver form, less than 1,000 trips per day requires no Traffic Impact Study or Waiver; greater than 1,000 trips per day requires either a Traffic Impact Study or a TIS Waiver, with waivers considered per-case by the Director of the Department of Development Services. The screened ${fmtNum(daily)} daily trips (and ${fmtNum(pht)} PM PHT) falls within the no-action band. Development Code §51A-4.803 (Site Plan Review) governs the engineering submittal regardless of whether a TIS is required.`,
     fortworth: `Per the City of Fort Worth Transportation Engineering Manual (June 2019), the published tier ladder is: TIA Worksheet (<100 PHT and <1,000 ADT) → Abbreviated TIA (100–299 PHT or 1,000–4,999 ADT) → Full TIA (≥300 PHT or ≥5,000 ADT). The screened ${fmtNum(pht)} PM PHT and ${fmtNum(daily)} daily trips falls within the TIA Worksheet band; no Abbreviated or Full TIA is required at the consultant-screening level.`,
     sanantonio: `Per UDC §35-502, a project that generates < 76 peak-hour trips submits the Peak Hour Trip Generation Form + Turn Lane Assessment instead of a Full TIA. The screened ${fmtNum(pht)} PM PHT falls below the 76-PHT trigger, so this deliverable is the gating form. (The often-cited "100 PHT" figure in San Antonio is the driveway-geometry threshold, not the TIA trigger.) No formal abbreviated tier exists in San Antonio between this form and the Full TIA + Rough Proportionality Determination.`,
     txdot: `Per TxDOT Traffic and Safety Analysis Procedures Manual (TSP) §16.2.1, Category 1 begins at 100 peak-hour trips. The screened ${fmtNum(pht)} PM PHT falls below the Category 1 floor, so no Appendix Q-formatted Full TIA is required by default; the TxDOT District may still request a TIA under District discretion for local safety or capacity concerns. ACM Ch. 3 §3 driveway-compliance review still applies on any state-system frontage.`,
@@ -3355,7 +3376,7 @@ function renderTisTexasWorksheet(
   // --- §5 Access, Sight Distance, Circulation --------------------------
   gaSection(doc, "5.0 ACCESS MANAGEMENT AND SITE CIRCULATION");
   const accessText = {
-    houston: "Per Houston IDM Ch. 15, the Access Management Form is required for all commercial site driveways regardless of TIA tier — driveway spacing, throat depth, and turn-lane assessment must be submitted as a companion to this worksheet. Where any site frontage is on a TxDOT route (IH / US / SH / FM / RM / BU / BS / SL / SS), a parallel DAP application is required.",
+    houston: "Per Houston IDM Ch. 15, the Access Management Data Summary Form (embedded in IDM pp. 15-5 to 15-8) is required for all commercial site driveways regardless of TIA tier — driveway spacing, throat depth, and turn-lane assessment must be submitted as a companion to this worksheet. CPC 101 Form is also required per the OCE TIA Content Guide p. 3. Where any site frontage is on a TxDOT route (IH / US / SH / FM / RM / BU / BS / SL / SS), a parallel DAP application is required.",
     austin: "Per Transportation Criteria Manual §10, even at the Determination Worksheet tier the consultant should verify the adjacent transit/bike network against the Austin Strategic Mobility Plan, fronting-street classification against the Future Land Use Map, and any AISD school-zone overlays. The City of Austin TIA Guidelines (June 2022) Sustainable Modes Analysis is not required at this tier but should be summarized informally.",
     dallas: "Per Development Code §51A-4.803, the Site Plan Review tracks the substantive engineering items even when a TIS is waived: adjacent access spacing, intersection sight distance, sidewalk continuity, and any Connect Dallas multimodal corridors abutting the site. The TIS Waiver form should be filed concurrently with the engineering site plan via ProjectDox.",
     fortworth: "Per the FW Transportation Engineering Manual (June 2019), the TIA Worksheet requires: (a) trip generation table; (b) site access geometry against the Master Thoroughfare Plan classification; (c) ITE pass-by/internal-capture justification (often n/a at this tier); (d) any NCTCOG Regional Thoroughfare Plan corridors abutting the site; (e) driveway sight distance and posted-speed verification. The full set should be carried into the formal submittal.",
@@ -3430,7 +3451,7 @@ function renderTisTexasAbbreviated(
   }[juris];
 
   const banner = {
-    houston: `Houston Category II per 2023 IDM Ch. 15 Table 15.04.01-02 — the mid-tier deliverable between Category I (<100 PHT) and Category III Full TIA (≥500 PHT). The screened ${fmtNum(pht)} PM PHT routes this project to Category II at the abbreviated trip-band (100–499 PHT). Houston's Vehicle LOS (VLOS) framing replaces letter-grade LOS as the operational MOE at this tier.`,
+    houston: `Houston Category II per IDM Ch. 15 (revision 07-01-2022) Table 15.04.01 — the mid-tier between Category I (<100 PHT) and Category III (500–999 PHT). The screened ${fmtNum(pht)} PM PHT routes this project to Category II (100–499 PHT). LOS D remains the published threshold of significance for area-street facilities per IDM §15.04.B.6.a.`,
     austin: isResidentialUse
       ? `Austin Neighborhood Traffic Analysis per TIA Guidelines (June 2022) and the Transportation Criteria Manual §10. The NTA shape applies to residential-only-access sites generating > 300 vpd net new, gating concerns about neighborhood-street volume rather than full-network capacity. The screened ${fmtNum(daily)} daily trips and ${fmtNum(pht)} PM PHT at residential land use ${tierInput.landUseCode} fits this template.`
       : `Austin mid-tier TIA at non-residential land use ${tierInput.landUseCode}. The published Austin tier ladder for non-residential is binary: <2,000 vpd → Determination Worksheet, ≥2,000 vpd → Full TIA. The Neighborhood Traffic Analysis (NTA) shape used here is residential-only by the TIA Guidelines (June 2022). At this trip band a non-residential project would normally escalate to Full TIA; this report carries the abbreviated shape as a consultant-screening deliverable.`,
@@ -3496,7 +3517,7 @@ function renderTisTexasAbbreviated(
   // --- §4 Tier Determination ------------------------------------------
   gaSection(doc, "4.0 ABBREVIATED-TIER DETERMINATION");
   const determinationText = {
-    houston: `Per Houston IDM Ch. 15 Table 15.04.01-02, Category II covers the 100–499 PHT band. The screened ${fmtNum(pht)} PM PHT places this project within that band. The OCE TIA Content Guide outline is reduced relative to Category III — VLOS at the site-access intersections plus adjacent signalized intersections, no full corridor-capacity sweep. The Houston Access Form remains required as a commercial-site companion regardless of TIA tier.`,
+    houston: `Per IDM Ch. 15 (revision 07-01-2022) Table 15.04.01, Category II covers the 100–499 PHT band. The screened ${fmtNum(pht)} PM PHT places this project within that band. The OCE TIA Content Guide outline is reduced relative to Category III — LOS analysis at the site-access intersections plus adjacent signalized intersections (LOS D threshold of significance per IDM §15.04.B.6.a), no full corridor-capacity sweep. The Access Management Data Summary Form remains required as a commercial-site companion regardless of TIA tier; CPC 101 Form is also required per TIA Content Guide p. 3.`,
     austin: isResidentialUse
       ? `Per Austin TIA Guidelines (June 2022), Neighborhood Traffic Analysis (NTA) is the deliverable for residential-only-access sites generating > 300 vpd net new. The analysis focuses on neighborhood-street volume and speed rather than full-network LOS. A Sustainable Modes Analysis and TDM Plan are required at this tier when site access is on a city collector or higher.`
       : `Per LDC §25-6-117, a non-residential project generating ≥ 2,000 vpd should submit a Transportation Assessment or Full TIA — there is no formal mid-tier deliverable for non-residential land uses in Austin. This abbreviated shape is a screening-level cross-reference; the formal submittal should be regenerated at the Full TIA tier.`,
@@ -3571,7 +3592,7 @@ function renderTisTexasAbbreviated(
   }
   if (juris === "houston") {
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-      "Reminder: a Houston Access Form must accompany this Category II TIA for any commercial site, submitted via the Houston Permitting Center alongside the report.",
+      "Reminder: the Access Management Data Summary Form (IDM pp. 15-5 to 15-8) and the CPC 101 Form (OCE TIA Content Guide p. 3) must accompany this Category II TIA for any commercial site, submitted via the Houston Permitting Center alongside the report. The TIA must be sealed by a Texas-licensed civil PE per IDM §15.04.B.1.a (civil specialty, not traffic).",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
@@ -3678,7 +3699,7 @@ function renderTisTexas(
     txdot: "TxDOT (no host-city overlay)",
   }[juris];
   const cityAuthority = {
-    houston: "Houston Public Works — Office of the City Engineer (OCE), Traffic Group, per the 2023 Infrastructure Design Manual (IDM) Ch. 15 and the OCE TIA Content Guide.",
+    houston: "Houston Public Works — Office of the City Engineer (OCE), Traffic Group, per the Infrastructure Design Manual (IDM) Ch. 15, revision 07-01-2022, and the OCE TIA Content Guide.",
     austin: "Austin Transportation and Public Works — Transportation Development Services (TDS), per Land Development Code Ch. 25-6 (§25-6-117 TIA trigger), Transportation Criteria Manual §10, and the City of Austin TIA Guidelines (June 2022).",
     dallas: "Dallas Department of Transportation — Traffic Engineering, per Dallas Development Code §51A-4.803 (Site Plan Review) and Connect Dallas (Strategic Mobility Plan, adopted Apr 28, 2021).",
     fortworth: "Fort Worth Transportation & Public Works (TPW) — Traffic Engineering, per the City of Fort Worth Transportation Engineering Manual (June 2019) and the Master Thoroughfare Plan.",
@@ -3686,15 +3707,15 @@ function renderTisTexas(
     txdot: "the TxDOT District with jurisdiction over the host route (no incorporated host-city standard applies).",
   }[juris];
   const cityThreshold = {
-    houston: "Technical Memorandum tier 80–120 vph during the AM or PM peak hour; Full TIA above 120 vph (2023 IDM Ch. 15, effective Nov 27, 2023; OCE TIA Content Guide).",
-    austin: "≥ 2,000 vpd unadjusted triggers analysis (LDC §25-6-117). 2,000–5,000 vpd → Transportation Assessment + TDM Plan; > 5,000 vpd → Full TIA + TDM Plan (TCM §10 / TIA Guidelines June 2022). Below 2,000 vpd a Neighborhood Traffic Analysis or TIA Determination Worksheet may still be required.",
-    dallas: "< 1,000 trips per day exempts a non-school site per the Paving/Drainage TIS Waiver form. Above that, consultant practice triggers a TIS at ~100 PHT or ~2,000 ADT — the Development Code (§51A-4.803) does not publish a single canonical numeric, leaving the threshold partly discretionary under Site Plan Review.",
+    houston: "≥100 PHT triggers a scoping meeting that determines whether a full TIA is required (IDM §15.04.A.4.a, revision 07-01-2022). The Technical Memorandum tier is 80–120 vph during AM or PM peak (IDM §15.04.A.5). Table 15.04.01 categories: I (<100 PHT), II (100–499), III (500–999), IV (≥1,000).",
+    austin: "≥ 2,000 vpd unadjusted triggers analysis. 2,000–5,000 vpd → Transportation Assessment + TDM Plan; > 5,000 vpd → Full TIA + TDM Plan (Austin TIA Guidelines, June 2022; LDC §25-6-117 is the statutory trigger, but the 2,000/5,000 bands live in the Guidelines, not the LDC). Below 2,000 vpd a Neighborhood Traffic Analysis or TIA Determination Worksheet may still be required.",
+    dallas: "Less than 1,000 trips per day → no Traffic Impact Study or Waiver required (Paving/Drainage TIS Waiver form). Greater than 1,000 trips per day → either a Traffic Impact Study or a TIS Waiver is required; waivers are considered per-case by the Director of the Department of Development Services.",
     fortworth: "≥ 300 PHT or ≥ 5,000 ADT triggers a Full TIA; 100–299 PHT triggers an Abbreviated TIA; <100 PHT uses the TIA Worksheet only.",
     sanantonio: "≥ 76 peak-hour trips (UDC §35-502). An update-TIA is required when an increase to an existing TIA or zoning results in ≥ 76 PHT or ≥ 10% of the total PHT for the development, whichever is greater. Below 76 PHT a Peak Hour Trip Generation Form only.",
     txdot: "no statewide trip-count trigger; TSP §16.2.1 Categories 1 (100–499 PHT), 2 (500–1,000 PHT), 3 (>1,000 PHT) drive the level of effort.",
   }[juris];
   const cityLos = {
-    houston: "Vehicle LOS (VLOS) per the 2023 IDM; LOS D was the historical target but the 2023 IDM demotes letter-grade LOS in favor of multimodal metrics.",
+    houston: "Per IDM §15.04.B.6.a: the need for mitigation is determined by using the qualitative measure Level-of-Service (LOS); the threshold of significance for transportation facilities on the area street system is LOS D.",
     austin: "LOS A–F (no VMT switch as of June 2022). Mitigation required when a movement drops from LOS D (Background) to LOS E (Background plus site).",
     dallas: "Transitional — Connect Dallas (Apr 2021) is moving Dallas from LOS toward VMT. Practice currently uses LOS D suburban / LOS E in the CBD.",
     fortworth: "LOS D for arterials and collectors outside the CBD; LOS E in the CBD and Urban Villages.",
@@ -3702,7 +3723,7 @@ function renderTisTexas(
     txdot: "no statewide LOS mandate — per TSP §16.4.3, the LOS threshold (and queue / travel-time MOEs) is agreed upon with the District during preliminary scoping.",
   }[juris];
   const cityDeliverables = {
-    houston: "TIA + Houston Access Form (mandatory for commercial sites) submitted via the Houston Permitting Center. Approval is required before plan submittal if no plat is required.",
+    houston: "TIA + Access Management Data Summary Form (mandatory for commercial sites, embedded in IDM pp. 15-5 to 15-8) + CPC 101 Form (per OCE TIA Content Guide p. 3), submitted via the Houston Permitting Center. Approval is required before plan submittal if no plat is required. The TIA must be sealed by a Texas-licensed civil PE (civil specialty per IDM §15.04.B.1.a, not traffic specialty).",
     austin: "Three-tier process — (1) TIA Determination Worksheet → TDS portal, (2) Scope of Work submittal, (3) Full TIA — plus a Sustainable Modes Analysis within a TDM Plan. Scoping pre-approval is a hard gate before TIA submittal.",
     dallas: "No fixed required-elements list. Submittal carries the TxDOT-equivalent engineering tables/figures plus alignment with Connect Dallas and any PD-overlay traffic conditions. A TIS Waiver form is required when the threshold is not triggered.",
     fortworth: "Tiered deliverables (Worksheet <100 PHT · Abbreviated 100–299 PHT · Full TIA ≥300 PHT or ≥5,000 ADT). Full TIA requires a mitigation plan with cost/phasing referencing the Master Thoroughfare Plan and the NCTCOG Regional Thoroughfare Plan.",
@@ -3867,7 +3888,7 @@ function renderTisTexas(
   doc.fillColor("black");
   gaSubsection(doc, "4.3 Traffic Volumes");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Existing AADT for state-system segments is taken from the TxDOT Open Data Portal AADT layer (annual refresh). Peak-hour turning-movement counts at study intersections should be collected mid-week (Tue/Wed/Thu), school-in-session, within 12 months of submittal — Houston OCE requires 24 months max; Austin TDS no longer accepts pre-COVID counts by default.",
+    "Existing AADT for state-system segments is taken from the TxDOT Open Data Portal AADT layer (annual refresh). Peak-hour turning-movement counts at study intersections should be collected mid-week (Tue/Wed/Thu), school-in-session, within 12 months of submittal — per Houston IDM §15.06.01.A counts must be within 12 months in high-growth areas and within 24 months elsewhere; Austin TDS no longer accepts pre-COVID counts by default.",
     { paragraphGap: 6 },
   );
   gaSubsection(doc, "4.4 Level of Service");
@@ -4064,7 +4085,7 @@ function renderTisTexas(
   if (juris === "houston") {
     doc.moveDown(0.3);
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-      "Houston commercial submittals must include the Houston Access Form alongside this TIA, and an MDR drainage report integration is required where new impervious cover is added — neither is generated by this screening report [placeholder — requires site-civil inputs].",
+      "Houston commercial submittals must include the Access Management Data Summary Form (IDM pp. 15-5 to 15-8) and the CPC 101 Form (OCE TIA Content Guide p. 3) alongside this TIA; an MDR drainage report integration is required where new impervious cover is added — none of these are generated by this screening report [placeholder — requires site-civil inputs].",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
@@ -4103,14 +4124,14 @@ function renderTisTexas(
   // --- §9 Recommendations ------------------------------------------------
   gaSection(doc, "9.0 RECOMMENDATIONS");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Submit this TIA to ${cityName}, with parallel TxDOT-District coordination where any state-system route is in frontage. Validate the screening results against current-edition manuals, updated turning-movement counts within the most recent 12 months (24 months max per Houston OCE), and the preliminary-scoping outcome with the District. The report must be sealed by a Texas-licensed Professional Engineer per 22 TAC §137.33 (Texas Engineering Practice Act, Tex. Occ. Code Ch. 1001), with the seal on the cover and on every sealed sheet.`,
+    `Submit this TIA to ${cityName}, with parallel TxDOT-District coordination where any state-system route is in frontage. Validate the screening results against current-edition manuals, updated turning-movement counts within the most recent 12 months (Houston IDM §15.06.01.A: 12 months in high-growth areas, 24 months elsewhere), and the preliminary-scoping outcome with the District. The report must be sealed by a Texas-licensed Professional Engineer per 22 TAC §137.33 (Texas Engineering Practice Act, Tex. Occ. Code Ch. 1001), with the seal on the cover and on every sealed sheet${juris === "houston" ? " — Houston IDM §15.04.B.1.a requires the signing PE to hold the civil specialty (not traffic)" : ""}.`,
     { paragraphGap: 6 },
   );
 
   // --- §10 Appendices ----------------------------------------------------
   gaSection(doc, "10.0 APPENDICES");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "The formal submittal appendices, per the Appendix Q outline, should include: scoping correspondence with the TxDOT District; site plan figures; TMC count sheets with date, weather, observer; ITE worksheets with rate/equation selection rationale; HCS / Synchro / Vissim / Vistro output; signal warrant analyses citing the TMUTCD (2025 edition, effective Jan 18, 2026); auxiliary-lane and sight-distance worksheets; CRIS crash data summary; and the host-jurisdiction's submission forms (Houston Access Form / Austin TIA Determination + Scope / Dallas TIS Waiver / Fort Worth TIA Worksheet / San Antonio TIA Threshold Worksheet + Rough Proportionality calculation).",
+    "The formal submittal appendices, per the Appendix Q outline, should include: scoping correspondence with the TxDOT District; site plan figures; TMC count sheets with date, weather, observer; ITE worksheets with rate/equation selection rationale; HCS / Synchro / Vissim / Vistro output; signal warrant analyses citing the TMUTCD (2025 edition, effective Jan 18, 2026); auxiliary-lane and sight-distance worksheets; CRIS crash data summary; and the host-jurisdiction's submission forms (Houston Access Management Data Summary Form + CPC 101 Form / Austin TIA Determination + Scope / Dallas TIS Waiver / Fort Worth TIA Worksheet / San Antonio TIA Threshold Worksheet + Rough Proportionality calculation).",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");

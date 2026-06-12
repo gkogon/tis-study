@@ -445,6 +445,136 @@ function isInCbdtpCordon(lat: number, lon: number): boolean {
  * approach corridors on the major bridges and tunnels feed traffic
  * into the cordon for roughly a mile in every direction).
  */
+// ===========================================================================
+// GML §239-m / §239-n referral detection
+// ===========================================================================
+//
+// Per General Municipal Law §239-m and §239-n, any site-plan, special
+// permit, variance, zoning amendment, or subdivision review for a
+// project within 500 ft of:
+//   - a state or county road,
+//   - a state or county park,
+//   - state-owned land,
+//   - or an intermunicipal boundary,
+// must be referred to the county planning board (or regional planning
+// agency where the county has none) for review before the local board
+// can act. The county can find adverse impact under §239-f, and the
+// local board can override only by supermajority.
+//
+// Practical TIS consequence: any project outside NYC within 500 ft
+// of a state or county road triggers §239 referral, and the county
+// often demands TIS-level traffic analysis as part of the package.
+//
+// Detection uses the NYSDOT RDM FeatureServer (same endpoint as the
+// posted-speed ingest at the top of this file): query for any
+// roadway segment with Functional_Class_Desc indicating a state or
+// county facility within the 500-ft buffer.
+
+const GML_239_BUFFER_METERS = 152.4; // 500 ft
+
+/** Functional-class strings that indicate a state or county road
+ *  for §239 referral purposes. NYSDOT functional-class values are
+ *  free-text but a stable set of prefixes; "Local" and "Rural Local"
+ *  are out. Anything Collector / Arterial / Freeway / Interstate is in.
+ *  Surface streets in NYC are sometimes coded "Urban Major Collector"
+ *  even when they are city-owned (not state/county) — §239 doesn't
+ *  apply inside NYC because NYC is excepted from §239 (NYC has its
+ *  own consolidated land-use review). Caller gates on `inNyc`. */
+function isStateOrCountyFunctionalClass(fc: string | null | undefined): boolean {
+  if (!fc) return false;
+  const f = fc.toLowerCase();
+  if (f.includes("local")) return false;
+  return (
+    f.includes("interstate") ||
+    f.includes("freeway") ||
+    f.includes("expressway") ||
+    f.includes("arterial") ||
+    f.includes("collector")
+  );
+}
+
+export type Gml239Status = {
+  /** True if a state or county road is within 500 ft of the site. */
+  required: boolean;
+  /** Roadway name (when found) — for the §4.4 permitting summary. */
+  triggeringRoadway: string | null;
+  /** Functional class of the triggering roadway. */
+  triggeringClass: string | null;
+  /** Distance buffer used, in feet. */
+  bufferFeet: number;
+};
+
+/**
+ * Determine whether a site triggers GML §239-m / §239-n county
+ * planning board referral. The test queries the NYSDOT RDM
+ * FeatureServer for any non-local-class roadway segment within
+ * the 500-ft buffer, then returns the first qualifying roadway.
+ *
+ * Network-bounded: fails closed (`required: false`). A slow or
+ * down NYSDOT host should not falsely declare §239 required.
+ *
+ * Outside-NYC only: the caller should gate on the site being
+ * outside the five boroughs (NYC site-plan / zoning review runs
+ * through ULURP / CEQR, not §239 referral).
+ */
+export async function getGml239Status(lat: number, lon: number): Promise<Gml239Status> {
+  const fallback: Gml239Status = {
+    required: false,
+    triggeringRoadway: null,
+    triggeringClass: null,
+    bufferFeet: 500,
+  };
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return fallback;
+
+  const params = new URLSearchParams({
+    where: "1=1",
+    geometry: `${lon},${lat}`,
+    geometryType: "esriGeometryPoint",
+    inSR: "4326",
+    spatialRel: "esriSpatialRelIntersects",
+    distance: String(GML_239_BUFFER_METERS),
+    units: "esriSRUnit_Meter",
+    outFields: "Roadway_Name,Functional_Class_Desc,Route_Display_Value",
+    returnGeometry: "false",
+    resultRecordCount: "20",
+    f: "json",
+  });
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const r = await fetch(`${NYSDOT_RDM_URL}?${params.toString()}`, {
+      signal: ctrl.signal,
+      headers: { Accept: "application/json" },
+    });
+    if (!r.ok) return fallback;
+    const j: any = await r.json();
+    const feats: any[] = Array.isArray(j?.features) ? j.features : [];
+    for (const f of feats) {
+      const a = f?.attributes ?? {};
+      const fc = typeof a.Functional_Class_Desc === "string" ? a.Functional_Class_Desc : null;
+      if (isStateOrCountyFunctionalClass(fc)) {
+        return {
+          required: true,
+          triggeringRoadway: typeof a.Roadway_Name === "string" ? a.Roadway_Name : null,
+          triggeringClass: fc,
+          bufferFeet: 500,
+        };
+      }
+    }
+    return fallback;
+  } catch {
+    return fallback;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ===========================================================================
+// CBDTP cordon — Central Business District Tolling Program
+// (existing — defined below)
+// ===========================================================================
+
 export function getCbdtpStatus(
   lat: number,
   lon: number,

@@ -42,6 +42,23 @@ const RATES: Record<string, MeasuredGrowthRate> = {
   rockford_metro:       { growthPct: -0.66, yearFrom: 2020, yearTo: 2025, stations:  33, p25Pct: -1.47, p75Pct:  2.74 },
   peoria_metro:         { growthPct: -1.34, yearFrom: 2020, yearTo: 2025, stations:  73, p25Pct: -5.92, p75Pct:  2.56 },
   champaign_metro:      { growthPct:  1.30, yearFrom: 2020, yearTo: 2025, stations:  43, p25Pct: -2.29, p75Pct:  4.76 },
+
+  // New York — NYSDOT Traffic_Monitoring AADT FeatureServer layer 1
+  // (script: scripts/src/fetch-ny-growth-rate.ts; raw output:
+  // artifacts/api-server/src/data/ny-growth-rates.json). NY uses the
+  // rolling-4-actual-counts per station shape (vs IL's per-year
+  // snapshot layers) so the per-station CAGR spans the oldest and
+  // newest non-null actual counts — typically a 3-4 year window.
+  // The aggregate yearFrom-yearTo below shows the absolute min/max
+  // across all stations included in the median; the typical station
+  // span is closer to 4 years. Statewide medians are essentially
+  // flat — consistent with mature-network NY traffic patterns and
+  // post-COVID remote-work persistence in the metro counties.
+  new_york_metro:        { growthPct:  0.07, yearFrom: 2000, yearTo: 2019, stations: 12244, p25Pct: -1.57, p75Pct: 1.80 },
+  albany_metro:          { growthPct:  0.02, yearFrom: 2000, yearTo: 2019, stations:  2050, p25Pct: -1.42, p75Pct: 1.28 },
+  buffalo_metro:         { growthPct:  0.13, yearFrom: 2000, yearTo: 2019, stations:  3171, p25Pct: -1.24, p75Pct: 1.48 },
+  rochester_ny_metro:    { growthPct:  0.01, yearFrom: 2000, yearTo: 2019, stations:  1892, p25Pct: -1.45, p75Pct: 1.40 },
+  syracuse_metro:        { growthPct:  0.00, yearFrom: 2000, yearTo: 2019, stations:  1492, p25Pct: -1.16, p75Pct: 1.39 },
 };
 
 export function getMeasuredGrowthRate(regionCode: string): MeasuredGrowthRate | undefined {

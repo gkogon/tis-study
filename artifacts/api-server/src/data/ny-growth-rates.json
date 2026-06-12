@@ -1,0 +1,47 @@
+{
+  "new_york_metro": {
+    "growthPct": 0.07,
+    "yearFrom": 2000,
+    "yearTo": 2019,
+    "stations": 12244,
+    "p25Pct": -1.57,
+    "p75Pct": 1.8,
+    "source": "NYSDOT Traffic_Monitoring FeatureServer layer 1 (rolling 4-year actual-count history per station; CAGR between oldest and newest non-null actual counts; outliers |CAGR| > 20%/yr dropped)"
+  },
+  "albany_metro": {
+    "growthPct": 0.02,
+    "yearFrom": 2000,
+    "yearTo": 2019,
+    "stations": 2050,
+    "p25Pct": -1.42,
+    "p75Pct": 1.28,
+    "source": "NYSDOT Traffic_Monitoring FeatureServer layer 1 (rolling 4-year actual-count history per station; CAGR between oldest and newest non-null actual counts; outliers |CAGR| > 20%/yr dropped)"
+  },
+  "buffalo_metro": {
+    "growthPct": 0.13,
+    "yearFrom": 2000,
+    "yearTo": 2019,
+    "stations": 3171,
+    "p25Pct": -1.24,
+    "p75Pct": 1.48,
+    "source": "NYSDOT Traffic_Monitoring FeatureServer layer 1 (rolling 4-year actual-count history per station; CAGR between oldest and newest non-null actual counts; outliers |CAGR| > 20%/yr dropped)"
+  },
+  "rochester_ny_metro": {
+    "growthPct": 0.01,
+    "yearFrom": 2000,
+    "yearTo": 2019,
+    "stations": 1892,
+    "p25Pct": -1.45,
+    "p75Pct": 1.4,
+    "source": "NYSDOT Traffic_Monitoring FeatureServer layer 1 (rolling 4-year actual-count history per station; CAGR between oldest and newest non-null actual counts; outliers |CAGR| > 20%/yr dropped)"
+  },
+  "syracuse_metro": {
+    "growthPct": 0,
+    "yearFrom": 2000,
+    "yearTo": 2019,
+    "stations": 1492,
+    "p25Pct": -1.16,
+    "p75Pct": 1.39,
+    "source": "NYSDOT Traffic_Monitoring FeatureServer layer 1 (rolling 4-year actual-count history per station; CAGR between oldest and newest non-null actual counts; outliers |CAGR| > 20%/yr dropped)"
+  }
+}
