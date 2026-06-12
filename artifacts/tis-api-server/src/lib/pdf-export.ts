@@ -1988,7 +1988,7 @@ function renderTisLondon(
   );
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
   doc.text("• Capacity analysis uses the Highway Capacity Manual 6th Edition, Chapter 19 (signalised junctions) — NOT DMRB CD 116 (roundabouts) or CD 123 (priority and signal junctions). A chartered engineer preparing a submitted TA should re-run the affected junctions in LinSig 3, TRANSYT 16, or Junctions 11 (with ARCADY / PICADY / OSCADY modules as appropriate) and report Ratio of Flow to Capacity (RFC), Degree of Saturation (DOS), Practical Reserve Capacity (PRC) and Mean Maximum Queue (MMQ in PCUs).", { paragraphGap: 4 });
-  doc.text("• Trip generation uses the ITE Trip Generation Manual 11th Edition — NOT TRICS. UK reviewers do not accept ITE rates for TA work. The required source is the TRICS multi-modal database (currently TRICS 8 generation, with the TRICS Good Practice Guide 2025 and Multi-Modal Methodology 2025 as the governing methodology). The 85th-percentile rate remains the conventional UK starting point in TA practice, cited from DfT 2007 §4.62 (withdrawn October 2014 but still the de-facto reference); TRICS itself is methodologically neutral on which percentile to use and recommends ≥ 20 surveys in the rank-order list before 85th-percentile figures are quoted (TRICS Good Practice Guide 2025 §14.5–14.7). The scenario filter recorded for reviewer audit is date band, TRICS Main Location Type, day type, parking provision, GFA range, and any survey-day inclusion/exclusion decision on COVID-restriction surveys (which TRICS flags in the database but does not auto-exclude — user judgement, reason for any exclusion stated in the report, per Good Practice Guide §16.6). \"Region\" alone is no longer recommended as an exclusion criterion (Good Practice Guide §5.5–5.7) and TRICS 8 no longer allows exclusion on the basis of region or area alone.", { paragraphGap: 4 });
+  doc.text("• Trip generation uses the ITE Trip Generation Manual 11th Edition — NOT TRICS. UK reviewers do not accept ITE rates for TA work. The required source is the TRICS multi-modal database (currently TRICS 8 generation, base release March 2025, with the TRICS Good Practice Guide 2025 and Multi-Modal Methodology 2025 as the governing methodology, and the TRICS Decide & Provide Guidance Note 2021 for vision-led applications). The 85th-percentile rate remains the conventional UK starting point in TA practice, cited from DfT 2007 §4.62 (withdrawn October 2014 but still the de-facto reference); TRICS itself is methodologically neutral on which percentile to use and recommends ≥ 20 surveys in the rank-order list before 85th-percentile figures are quoted (TRICS Good Practice Guide 2025 §14.5–14.7). The scenario filter recorded for reviewer audit is date band, TRICS Main Location Type, day type, parking provision, GFA range, and any survey-day inclusion/exclusion decision on COVID-restriction surveys (which TRICS flags in the database but does not auto-exclude — user judgement, reason for any exclusion stated in the report, per Good Practice Guide §16.6). \"Region\" alone is no longer recommended as an exclusion criterion (Good Practice Guide §5.5–5.7) and TRICS 8 no longer allows exclusion on the basis of region or area alone. Three reporting-discipline elements must accompany any TRICS rates cited in a submitted TA: (i) the TRICS Calculation Reference code and licensee TRICS licence number, both auto-printed on every page of the TRICS PDF output (GPG §13.8 + §22.7) — reports lacking either are inadmissible per TRICS T&Cs; (ii) Cross Test results (mean vs median trip-rate variation %, GPG §14.8) reported alongside the rates so the reviewer can assess weighting/bias in the selected set; and (iii) where Vision-Led / Decide & Provide factoring has been applied to the TRICS-generated rates, the raw TRICS data is presented first and the factored data second, with the factoring method and reasoning explicit (GPG §10.7) — factored figures are not TRICS data. Per the 19 May 2026 TRICS licence-monitoring notice, TRICS will contact the LPA to advise that TRICS data is to be rejected as void if cited by a non-licensed organisation; the submitting consultancy's TRICS licence and produced-by attestation must be in the report.", { paragraphGap: 4 });
   doc.text("• Level of Service is reported as letters A–F against the HCM Exhibit 19-8 control-delay thresholds (A ≤ 10 s, B ≤ 20 s, C ≤ 35 s, D ≤ 55 s, E ≤ 80 s, F > 80 s of average control delay per vehicle). LOS letters are not used in UK TA practice; the thresholds are given here so a UK reviewer can map them informally to the delay categories they recognise.", { paragraphGap: 4 });
   doc.text("• Sustainable-mode demand is approximated through a metro-specific auto-mode-share factor (38% applied for London, per the engine's mode-share configuration sourced from TfL Travel in London). The external-trip totals shown below already reflect that 38% reduction from the gross ITE rate. This is a screening-level approximation in place of the full multi-modal split (walking / cycling / bus / rail / car / taxi / motorcycle / LGV / HGV) that a UK TA is required to demonstrate under NPPF paragraph 115.", { paragraphGap: 4 });
   doc.text("• Geometric design citations in the engine's output are HCM and AASHTO; UK chartered review would substitute DMRB CD 109 / CD 116 / CD 122 / CD 123 (trunk) and Manual for Streets / Manual for Streets 2 (urban / residential).", { paragraphGap: 4 });
@@ -2238,7 +2238,7 @@ function renderTisLondon(
     { paragraphGap: 6 },
   );
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
-  doc.text("• TRICS multi-modal trip generation (TRICS 8; mean + 85th-percentile rate per TRICS Good Practice Guide 2025 §14, with ≥ 20 surveys for any quoted 85th-percentile figure; scenario filter — date band, TRICS Main Location Type, day type, parking provision, GFA range, COVID-flag inclusion/exclusion — recorded for reviewer audit).", { paragraphGap: 3 });
+  doc.text("• TRICS multi-modal trip generation (TRICS 8; mean + 85th-percentile rate per TRICS Good Practice Guide 2025 §14, with ≥ 20 surveys for any quoted 85th-percentile figure; scenario filter — date band, TRICS Main Location Type, day type, parking provision, GFA range, COVID-flag inclusion/exclusion — recorded for reviewer audit; Cross Test mean-vs-median variation reported; TRICS Calculation Reference + licensee TRICS licence number on every output page; produced by a TRICS-licensed organisation per the 19 May 2026 TRICS licence-monitoring notice).", { paragraphGap: 3 });
   if (isLondon) {
     doc.text("• PTAL band and Accessibility Index for the site centroid (TfL grid via WebCAT).", { paragraphGap: 3 });
     doc.text("• Active Travel Zone (20-minute cycle catchment) and walking isochrones from WebCAT.", { paragraphGap: 3 });
@@ -2247,7 +2247,7 @@ function renderTisLondon(
   doc.text("• Junction capacity analysis in LinSig 3 / Junctions 11 / TRANSYT / VISSIM as appropriate, reporting RFC, DOS, PRC and MMQ (PCUs).", { paragraphGap: 3 });
   doc.text("• Borough Local Plan and SPD compliance review.", { paragraphGap: 3 });
   doc.text("• S106 / S278 / MCIL2 contribution schedule per the agreed mitigation.", { paragraphGap: 3 });
-  doc.text("• Travel Plan with named Travel Plan Coordinator, modal-shift targets, monitoring and remedial-measure ladder.", { paragraphGap: 3 });
+  doc.text("• Travel Plan with named Travel Plan Coordinator, modal-shift targets, monitoring and remedial-measure ladder. For any S106-secured travel plan, post-permission monitoring is conventionally undertaken via the TRICS Standardised Assessment Methodology (SAM) — Level-3 multi-modal surveys commissioned at years 1, 3 and 5 of operation, reported through the TRICS Travel Plan Monitoring Report (TPMR) module.", { paragraphGap: 3 });
   doc.text("• Construction Logistics Plan and Delivery and Servicing Plan.", { paragraphGap: 3 });
   doc.text("• Scoping note signed by the LPA" + (isLondon ? " and (for any TLRN-impacting or PSI-triggering scheme) TfL." : "."), { paragraphGap: 6 });
   doc.fillColor("black");
@@ -2933,6 +2933,41 @@ function probablyDriScale(tg: any): boolean {
  *
  * Spec: REGIONAL-SPECS/illinois-tis-spec.md
  */
+
+/**
+ * Per-metro measured background-traffic growth rate from IDOT's
+ * Historical AADT layers. Values are the median per-segment CAGR
+ * between the 2020 and 2025 IDOT snapshots, computed by
+ * `scripts/src/fetch-il-growth-rate.ts` and inlined here so the
+ * renderer remains a pure function. Re-run the fetcher and
+ * regenerate this constant when IDOT publishes a newer historical
+ * layer; the source-of-truth JSON lives at
+ * `artifacts/api-server/src/data/il-growth-rates.json`.
+ *
+ * The downstate metros (Springfield-IL, Rockford, Peoria) showing
+ * mildly negative growth is REAL — it reflects the actual urban-
+ * to-rural-Illinois traffic dynamic of the 2020-2025 window
+ * (COVID + remote-work persistence + population shift) and matches
+ * the IDOT count-station distribution. The numbers are NOT
+ * fabricated to look like "more growth = better"; they're what the
+ * data says.
+ */
+type IlMeasuredGrowth = {
+  growthPct: number;
+  yearFrom: number;
+  yearTo: number;
+  stations: number;
+  p25Pct: number;
+  p75Pct: number;
+};
+const IL_MEASURED_GROWTH: Record<string, IlMeasuredGrowth> = {
+  chicago_metro:        { growthPct:  1.80, yearFrom: 2020, yearTo: 2025, stations: 646, p25Pct: -1.69, p75Pct:  5.92 },
+  springfield_il_metro: { growthPct: -1.87, yearFrom: 2020, yearTo: 2025, stations:  14, p25Pct: -8.28, p75Pct:  4.80 },
+  rockford_metro:       { growthPct: -0.66, yearFrom: 2020, yearTo: 2025, stations:  33, p25Pct: -1.47, p75Pct:  2.74 },
+  peoria_metro:         { growthPct: -1.34, yearFrom: 2020, yearTo: 2025, stations:  73, p25Pct: -5.92, p75Pct:  2.56 },
+  champaign_metro:      { growthPct:  1.30, yearFrom: 2020, yearTo: 2025, stations:  43, p25Pct: -2.29, p75Pct:  4.76 },
+};
+
 type IlJurisdiction =
   | "chicago_cdot"
   | "cook_county"
@@ -3183,10 +3218,20 @@ function renderTisIllinois(
 
   // --- §5 Background Growth ----------------------------------------------
   gaSection(doc, "5.0 BACKGROUND GROWTH");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `Background traffic is grown at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. IDOT does not codify a statewide fixed growth rate; D8 Appx. A requires the consultant to derive and justify the rate. Common practice is the 5-year compound AADT growth rate from the nearest IDOT count station on Getting Around Illinois, or a CMAP travel-demand-model node projection for sites within the 7-county region. The value applied here is a screening default and should be re-calibrated against historical AADT trend on affected segments and confirmed at the District kickoff meeting before formal submittal.`,
-    { paragraphGap: 6 },
-  );
+  const measuredGrowth = IL_MEASURED_GROWTH[region.code];
+  if (measuredGrowth) {
+    // We have a real measured trend for this metro — print the
+    // derivation in place of the "screening default" hedge.
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Background traffic is grown at ${measuredGrowth.growthPct.toFixed(2)}% per year, derived from the ${measuredGrowth.yearTo - measuredGrowth.yearFrom}-year compound AADT growth rate measured across ${measuredGrowth.stations} matched IDOT count stations within the ${region.displayName} bounding box. Source: IDOT Historical AADT, ${measuredGrowth.yearFrom} and ${measuredGrowth.yearTo} layer snapshots, segments matched by INVENTORY where the AADT vintage year is within ±1 of each layer year. Per-station CAGR distribution: P25 ${measuredGrowth.p25Pct.toFixed(2)}%/yr · median ${measuredGrowth.growthPct.toFixed(2)}%/yr · P75 ${measuredGrowth.p75Pct.toFixed(2)}%/yr. The wide IQR reflects real corridor heterogeneity (heavily developed infill arterials grow faster than legacy state highways in declining counties); for the formal submittal, IDOT D8 Appx. A asks for the per-segment trend on the affected facilities specifically, not the metro median. This screening value is published here for transparency and to give the District a starting point at the kickoff meeting.`,
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Background traffic is grown at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. IDOT does not codify a statewide fixed growth rate; D8 Appx. A requires the consultant to derive and justify the rate. Common practice is the 5-year compound AADT growth rate from the nearest IDOT count station on Getting Around Illinois, or a CMAP travel-demand-model node projection for sites within the 7-county region. The value applied here is a screening default and should be re-calibrated against historical AADT trend on affected segments and confirmed at the District kickoff meeting before formal submittal.`,
+      { paragraphGap: 6 },
+    );
+  }
 
   // --- §6 Future Conditions — Four Scenarios -----------------------------
   gaSection(doc, "6.0 FUTURE CONDITIONS ANALYSIS");

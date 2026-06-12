@@ -1,0 +1,47 @@
+{
+  "chicago_metro": {
+    "growthPct": 1.8,
+    "yearFrom": 2020,
+    "yearTo": 2025,
+    "stations": 646,
+    "p25Pct": -1.69,
+    "p75Pct": 5.92,
+    "source": "IDOT Historical AADT FeatureServer layers 2020 and 2025 (segment match by INVENTORY, AADT_YR within ±1 of layer year)"
+  },
+  "springfield_il_metro": {
+    "growthPct": -1.87,
+    "yearFrom": 2020,
+    "yearTo": 2025,
+    "stations": 14,
+    "p25Pct": -8.28,
+    "p75Pct": 4.8,
+    "source": "IDOT Historical AADT FeatureServer layers 2020 and 2025 (segment match by INVENTORY, AADT_YR within ±1 of layer year)"
+  },
+  "rockford_metro": {
+    "growthPct": -0.66,
+    "yearFrom": 2020,
+    "yearTo": 2025,
+    "stations": 33,
+    "p25Pct": -1.47,
+    "p75Pct": 2.74,
+    "source": "IDOT Historical AADT FeatureServer layers 2020 and 2025 (segment match by INVENTORY, AADT_YR within ±1 of layer year)"
+  },
+  "peoria_metro": {
+    "growthPct": -1.34,
+    "yearFrom": 2020,
+    "yearTo": 2025,
+    "stations": 73,
+    "p25Pct": -5.92,
+    "p75Pct": 2.56,
+    "source": "IDOT Historical AADT FeatureServer layers 2020 and 2025 (segment match by INVENTORY, AADT_YR within ±1 of layer year)"
+  },
+  "champaign_metro": {
+    "growthPct": 1.3,
+    "yearFrom": 2020,
+    "yearTo": 2025,
+    "stations": 43,
+    "p25Pct": -2.29,
+    "p75Pct": 4.76,
+    "source": "IDOT Historical AADT FeatureServer layers 2020 and 2025 (segment match by INVENTORY, AADT_YR within ±1 of layer year)"
+  }
+}
