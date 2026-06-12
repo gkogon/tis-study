@@ -1501,6 +1501,48 @@ function renderTisCalifornia(
     { paragraphGap: 6 },
   );
 
+  // --- §3.6 Cumulative VMT Determination ---------------------------------
+  caSubsection(doc, "3.6 Cumulative VMT Determination");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Per CEQA Guidelines § 15130 and OPR Technical Advisory p. 17, the CEQA-VMT analysis must evaluate the project's contribution to cumulative VMT impacts in the host RTP/SCS horizon year (${jur.rtpScs}). Two cumulative scenarios are required: (1) cumulative no-project — the RTP/SCS horizon-year baseline VMT including all reasonably-foreseeable cumulative projects; (2) cumulative plus project — the same horizon plus this project's VMT. A project's cumulative contribution is significant when the project's incremental contribution exceeds the §3.4 threshold OR when the cumulative no-project scenario already exceeds the regional GHG-reduction target and the project is not RTP/SCS-consistent (OPR p. 17).`,
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "This screening tool does not auto-generate cumulative VMT — the cumulative scenario requires an MPO horizon-year model run with the reasonably-foreseeable project pipeline coded. The inputs below identify what the consultant must compile.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  rows(doc, [
+    ["Horizon year", jur.rtpScs],
+    ["Cumulative no-project source", `${jur.mpoName} ${jur.mpoModel} run at the RTP/SCS horizon year, including all reasonably-foreseeable cumulative projects per CEQA Guidelines § 15130(b)(1)(B)`],
+    ["Cumulative plus-project source", "Same MPO model run with this project coded into the cumulative pipeline"],
+    ["Reasonably-foreseeable project pipeline", "Pulled from host jurisdiction's pending-applications register and the MPO's RTP committed-projects list"],
+    ["GHG-reduction-target benchmark", "CARB SB 375 regional GHG target for the host MPO; cumulative exceedance + project inconsistency triggers § 15130 significance"],
+    ["RTP/SCS consistency check", "See §3.7"],
+  ]);
+  doc.moveDown(0.3);
+
+  // --- §3.7 RTP/SCS Consistency ------------------------------------------
+  caSubsection(doc, "3.7 RTP/SCS Consistency Narrative");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Per CEQA Guidelines § 15125(d) and § 15183.3, the project must demonstrate consistency with the host MPO's Sustainable Communities Strategy (${jur.rtpScs}). A project that is RTP/SCS-consistent receives presumption that its land-use pattern aligns with the regional GHG-reduction trajectory. Inconsistency does not by itself render a project significant, but it removes the consistency presumption and shifts the burden onto the lead agency to demonstrate that the project's deviation from the SCS does not cumulatively undermine the SB 375 target.`,
+    { paragraphGap: 6 },
+  );
+  rows(doc, [
+    ["SCS land-use designation", `Pull the project parcel's SCS designation from the ${jur.mpoName} RTP/SCS land-use overlay`],
+    ["Project land use vs. SCS designation", "Apply the SCS-consistency test from the host MPO's adopted SCS consistency review framework (varies by MPO — SCAG uses the SCS Consistency Review Process; MTC uses the PBA 2050 Implementation Plan; SANDAG uses the SB 375 Consistency Determination)"],
+    ["Transit Priority Project (TPP) eligibility", "PRC § 21155 — TPPs receive streamlined CEQA review; check if project qualifies"],
+    ["Priority Development Area (PDA) eligibility", "MTC region: PBA 2050 PDA overlay confers SCS-consistency presumption"],
+    ["Priority Conservation Area (PCA) overlap", "Project sited in a PCA cannot claim SCS consistency without explicit lead-agency variance"],
+    ["GHG-reduction policy alignment", `Project's role in helping the host MPO meet its CARB SB 375 GHG target (per the latest CARB Sustainable Communities Strategy Evaluation)`],
+  ]);
+  doc.moveDown(0.3);
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "Note: SCS consistency is a narrative determination by the lead agency, not a computed metric. The renderer surfaces the required inputs; the narrative itself is compiled by the consultant against the host MPO's consistency review framework prior to submittal.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
   // --- §4 Non-CEQA Operational Analysis (LOS engine output) --------------
   caSection(doc, "4.0 NON-CEQA OPERATIONAL ANALYSIS");
   doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
@@ -1841,7 +1883,7 @@ function renderTisLondon(
   ldnSubsection(doc, "3.2 Public Transport Accessibility Level (PTAL)");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     isLondon
-      ? "PTAL is mandatory in every London TA. The site's PTAL band (0, 1a, 1b, 2, 3, 4, 5, 6a, 6b) and Accessibility Index (AI) value are not computed by this engine; they should be drawn from the TfL 100 m × 100 m PTAL grid via WebCAT 3.0 (tfl.gov.uk planning-with-webcat) or the GIS layer on the London Datastore. PTAL band determines the car-parking maximum under London Plan policy T6 sub-policies (Tables 10.3–10.6) — PTAL 5 / 6a / 6b is a car-free starting point in policy."
+      ? "PTAL is mandatory in every London TA. The site's PTAL band (0, 1a, 1b, 2, 3, 4, 5, 6a, 6b) and Accessibility Index (AI) value are not computed by this engine; they should be drawn from the TfL 100 m × 100 m PTAL grid via WebCAT 3.0 (tfl.gov.uk planning-with-webcat) or the GIS layer on the London Datastore. PTAL band determines the car-parking maximum under London Plan policy T6 sub-policies — Table 10.3 (T6.1 residential), Table 10.4 (T6.2 office) and Table 10.5 (T6.3 retail) are the PTAL-banded maxima; T6.4 hotel and leisure is PTAL-band narrative with no numbered maxima table; Table 10.6 (T6.5) sets non-residential disabled persons provision. PTAL 5 / 6a / 6b is a car-free starting point in policy."
       : "Public-transport accessibility metrics for non-London UK metros vary by combined authority and are not standardised; the local authority's adopted methodology should be applied.",
     { paragraphGap: 6 },
   );
@@ -1865,7 +1907,7 @@ function renderTisLondon(
   ldnSubsection(doc, "3.5 Car and Cycle Parking");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     isLondon
-      ? "Cycle parking provision is set by London Plan policy T5 / Table 10.2. Car-parking maxima are set by London Plan policy T6 sub-policies (Tables 10.3–10.6), banded by PTAL and use class. Borough Supplementary Planning Documents may impose tighter local standards. Neither standard is automatically determined by this engine; both should be calculated against the final scheme at the chartered-engineer stage."
+      ? "Cycle parking provision is set by London Plan policy T5 / Table 10.2. Car-parking maxima are set by London Plan policy T6 sub-policies — Table 10.3 governs T6.1 residential, Table 10.4 governs T6.2 office, and Table 10.5 governs T6.3 retail, each banded by PTAL and use class; T6.4 hotel and leisure is PTAL-band narrative (CAZ + PTAL 4–6 operational only; PTAL 0–3 case-by-case under Healthy Streets) with no numbered maxima table; Table 10.6 covers T6.5 non-residential disabled persons provision. Borough Supplementary Planning Documents may impose tighter local standards. Neither standard is automatically determined by this engine; both should be calculated against the final scheme at the chartered-engineer stage."
       : "Parking provision should be assessed against the adopted local plan parking standards for the area.",
     { paragraphGap: 6 },
   );
