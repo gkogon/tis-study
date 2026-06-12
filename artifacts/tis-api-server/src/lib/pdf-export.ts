@@ -1391,14 +1391,14 @@ function renderTisCalifornia(
     { paragraphGap: 6 },
   );
 
-  // --- §3 CEQA-VMT Determination (Tier-1 placeholder) --------------------
+  // --- §3 CEQA-VMT Determination (Tier-1 screening engine) ---------------
   caSection(doc, "3.0 CEQA-VMT IMPACT DETERMINATION");
   doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
-    "PHASE-1 SCAFFOLD — VMT INPUTS REQUIRED",
+    "TIER-1 SCREENING DETERMINATION (Phase 2)",
     { paragraphGap: 2 },
   );
   doc.font("body").fontSize(10).fillColor("black").text(
-    `This section identifies the inputs required to complete a CEQA-compliant VMT impact determination under CEQA Guidelines § 15064.3 and the ${jur.guidelinesDoc} methodology. Project-level VMT numbers are NOT fabricated; they must be sourced from the regional MPO travel demand model or the host jurisdiction's published calculator. The Tier-1 VMT screening engine that automates these lookups is on the product roadmap (Phase 2; see REGIONAL-SPECS/california-vmt-spec.md §5).`,
+    `This section auto-evaluates the six OPR § E.1 screening criteria against project metadata where the engine has the inputs and surfaces the remaining GIS-dependent criteria (TPA / low-VMT TAZ / redevelopment baseline) as "Requires verification." If any criterion auto-screens out, the project is presumed less-than-significant under CEQA Guidelines § 15064.3 without further VMT analysis. Otherwise, §3.1 / §3.2 list the baseline + project-VMT inputs needed to apply the §3.4 significance threshold; the auto-screening engine does NOT fabricate VMT numbers or substitute for a regional MPO model run (see REGIONAL-SPECS/california-vmt-spec.md §5 for Tier-1 scope and §3.6 below for Tier-2 wiring roadmap).`,
     { paragraphGap: 6 },
   );
 
@@ -2186,11 +2186,11 @@ function renderTisTexas(
     txdot: "the TxDOT District with jurisdiction over the host route (no incorporated host-city standard applies).",
   }[juris];
   const cityThreshold = {
-    houston: "≥ ~100 new peak-hour trips (2023 IDM Ch. 15 — verify exact figure against current edition).",
-    austin: "≥ 2,000 vpd net new trips (LDC §25-6-117). Below 2,000 vpd, a Neighborhood Traffic Analysis or TIA Determination Worksheet may still be required.",
-    dallas: "no canonical figure published — consultant practice uses ~1,000 ADT (TIS Waiver form) or ~100 PHT. Flagged as ambiguous.",
+    houston: "Technical Memorandum tier 80–120 vph during the AM or PM peak hour; Full TIA above 120 vph (2023 IDM Ch. 15, effective Nov 27, 2023; OCE TIA Content Guide).",
+    austin: "≥ 2,000 vpd unadjusted triggers analysis (LDC §25-6-117). 2,000–5,000 vpd → Transportation Assessment + TDM Plan; > 5,000 vpd → Full TIA + TDM Plan (TCM §10 / TIA Guidelines June 2022). Below 2,000 vpd a Neighborhood Traffic Analysis or TIA Determination Worksheet may still be required.",
+    dallas: "< 1,000 trips per day exempts a non-school site per the Paving/Drainage TIS Waiver form. Above that, consultant practice triggers a TIS at ~100 PHT or ~2,000 ADT — the Development Code (§51A-4.803) does not publish a single canonical numeric, leaving the threshold partly discretionary under Site Plan Review.",
     fortworth: "≥ 300 PHT or ≥ 5,000 ADT triggers a Full TIA; 100–299 PHT triggers an Abbreviated TIA; <100 PHT uses the TIA Worksheet only.",
-    sanantonio: "≥ 75 peak-hour trips (UDC §35-502). Below 75 PHT, a Peak Hour Trip Generation Form only.",
+    sanantonio: "≥ 76 peak-hour trips (UDC §35-502). An update-TIA is required when an increase to an existing TIA or zoning results in ≥ 76 PHT or ≥ 10% of the total PHT for the development, whichever is greater. Below 76 PHT a Peak Hour Trip Generation Form only.",
     txdot: "no statewide trip-count trigger; TSP §16.2.1 Categories 1 (100–499 PHT), 2 (500–1,000 PHT), 3 (>1,000 PHT) drive the level of effort.",
   }[juris];
   const cityLos = {
@@ -2282,6 +2282,10 @@ function renderTisTexas(
 
   doc.font("body").fontSize(10).fillColor("black").text(
     `Required submission: ${cityDeliverables}`,
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Host-jurisdiction TIA threshold: ${cityThreshold}`,
     { paragraphGap: 6 },
   );
   if (juris === "dallas") {
@@ -2533,7 +2537,7 @@ function renderTisTexas(
     doc.moveDown(0.3);
     doc.font("bold").fontSize(10).fillColor("black").text("Rough Proportionality Cap (UDC §35-502)");
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-      "Per UDC §35-502, the total mitigation cost the City may require of this development is capped at the project's maximum proportional traffic impact. A Rough Proportionality cost calculation must be prepared and submitted with this TIA; this screening report does not generate that calculation [placeholder — requires final mitigation cost estimate and the City's proportionality methodology].",
+      "Per UDC §35-502, if the proposed mitigation cost is less than or roughly equal to the maximum proportional impact, the mitigation is considered roughly proportionate; if it exceeds that maximum, the City must limit required mitigation to an amount roughly equal to the maximum proportional impact. A Rough Proportionality cost calculation must be prepared and submitted with this TIA; this screening report does not generate that calculation [placeholder — requires final mitigation cost estimate and the City's proportionality worksheet].",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
