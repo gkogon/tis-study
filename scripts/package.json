@@ -11,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test-pdf": "tsx ./src/test-pdf.ts",
     "generate-sample-pdf": "tsx ./src/generate-sample-pdf.ts",
-    "update-calibration": "tsx ./src/update-calibration.ts"
+    "update-calibration": "tsx ./src/update-calibration.ts",
+    "ingest-crashes-nyc": "tsx ./src/ingest-crashes-nyc.ts"
   },
   "devDependencies": {
     "@types/node": "catalog:",
