@@ -249,7 +249,7 @@ export const METROS: MetroCoverage[] = [
   { code: "chicago_metro", slug: "chicago", shortName: "Chicago", longName: "Chicago-Naperville-Elgin MSA", state: "IL", signals: 13305, namedPct: 99.0, aadtPct: 97.4, liveSource: null,
     dotName: "Chicago Department of Transportation (CDOT)", planningOfficeName: "Chicago Department of Planning and Development",
     parkingCodeCitation: "Chicago Zoning Ordinance, Section 17-10 — Off-Street Parking and Loading.",
-    aadtSource: "IDOT 2020 Annual Average Daily Traffic" },
+    aadtSource: "IDOT 2020 Annual Average Daily Traffic + CDOT ADT Portal" },
   // MI
   { code: "detroit_metro", slug: "detroit", shortName: "Detroit", longName: "Detroit-Warren-Dearborn MSA", state: "MI", signals: 7041, namedPct: 98.7, aadtPct: 75.3, liveSource: null,
     dotName: "Detroit Department of Public Works", planningOfficeName: "Detroit Planning and Development Department",
