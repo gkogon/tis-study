@@ -381,6 +381,19 @@ export type TisRequest = {
   // Lat/lon → PTAL lookup against the TfL 100m grid is the planned
   // follow-up (WebCAT 3.0 / Datastore GIS) — out of scope here.
   ptalBand?: PTALBand;
+  // DfT 2007 Appendix B "regardless of size" escalator inputs that the
+  // engine itself cannot derive. The London renderer's Appendix B
+  // branching uses these to escalate a size-based TS shape back to a
+  // TA shape when either trigger applies:
+  //   - ptaInsideAqma: the site lies inside or adjacent to a declared
+  //     Air Quality Management Area (LAQM under the Environment Act
+  //     1995).
+  //   - infrastructureAdequacy: the consultant's judgement of whether
+  //     local transport infrastructure is adequate to serve the
+  //     proposal. "inadequate" forces a TA shape; "adequate" / "unknown"
+  //     do not. Mirrors the Appendix B Table 1 escalator language.
+  ptaInsideAqma?: boolean;
+  infrastructureAdequacy?: "adequate" | "inadequate" | "unknown";
 };
 
 export type StudyTier = "auto" | "worksheet" | "abbreviated" | "full";

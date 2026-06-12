@@ -234,6 +234,175 @@ for (const { units, expectSignificant } of calibrationCases) {
   console.log("");
 }
 
+// ---------------------------------------------------------------------
+// TS / TA shape calibration (DfT 2007 Appendix B).
+//
+// Calibration against three published London residential TAs/TSs:
+//   - Registry Beckenham (134 DU, Waterman 2022) — 6-chapter TS shape
+//   - Hyde Estate (115 DU, Patrick Parsons 2020) — 7-chapter TS shape
+//   - Holloway (985 DU, Velocity 2021) — full 8-chapter TfL Healthy
+//     Streets TA TOC
+// drove the DfT 2007 Appendix B branching in renderTisLondon. This
+// block renders three synthetic London PDFs that exercise each
+// outcome and runs pdftotext on each to confirm the right shape:
+//
+//   - 60 DU residential  → TS shape   (<80 DU TS band; no escalator)
+//   - 200 DU residential → TA shape   (>80 DU TA trigger)
+//   - 100 DU residential adjacent to an AQMA → TA shape via the
+//     Appendix B Table 1 "regardless of size" escalator (size alone
+//     would have indicated a TA anyway, but the escalator path is
+//     the one we want to prove)
+//
+// Exits non-zero on any miss so the script doubles as a smoke test.
+// ---------------------------------------------------------------------
+
+type ShapeCase = {
+  units: number;
+  expect: "ts" | "ta";
+  trigger: "size" | "escalator";
+  ptaInsideAqma?: boolean;
+  label: string;
+  // Override the flat 38% London auto-mode share for the synthetic
+  // trip generation that's fed to the renderer. Inner / Central London
+  // residential schemes at PTAL 5–6b have a much lower car-mode share
+  // than the flat default (Registry Beckenham 134 DU and Hyde Estate
+  // 115 DU — both published as TS-shape — operate at car-mode shares
+  // of 8–15% per their published surveys). Without this override the
+  // ≥100 vpd Appendix B Table 1 escalator trips on a 60-DU scheme at
+  // 38% share even though the published practice for that size is TS.
+  carModeShareOverride?: number;
+};
+
+const shapeCases: ShapeCase[] = [
+  { units: 60, expect: "ts", trigger: "size", carModeShareOverride: 0.10, label: "60 DU residential, PTAL 5 car-mode 10% (Appendix B 50–80 TS band, no escalator)" },
+  { units: 200, expect: "ta", trigger: "size", label: "200 DU residential (>80 DU TA trigger)" },
+  { units: 100, expect: "ta", trigger: "escalator", ptaInsideAqma: true, label: "100 DU residential adjacent to AQMA (TA via escalator)" },
+];
+
+function buildLondonShapeReport(c: ShapeCase) {
+  const share = c.carModeShareOverride ?? londonShare;
+  const pmAllMode = calibrationLandUse.pmRate * c.units;
+  const amAllMode = calibrationLandUse.amRate * c.units;
+  const dailyAllMode = calibrationLandUse.dailyRate * c.units;
+  const pmCar = pmAllMode * share;
+  const amCar = amAllMode * share;
+  const dailyCar = dailyAllMode * share;
+  const intersections = [
+    { signalId: "LDN-101", name: "A23 Brixton Hill / Tulse Hill", zone: "lambeth", latitude: 51.456, longitude: -0.118, distanceMi: 0.18, currentVc: 0.71, currentDelaySec: 22.1, currentLos: "C", existingVc: 0.72, existingDelaySec: 22.7, addedTripsPmPeak: 1, futureVc: 0.73, futureDelaySec: 23.4, existingLos: "C", futureLos: "C", losChanged: false, mitigation: "", mitigationSeverity: "none", approaches: [], queue95thFt: 88 },
+  ];
+  const pmGen = { period: "pm_peak", periodLabel: "PM Peak", rawTrips: Math.round(pmAllMode), passByCredit: 0, internalCaptureCredit: 0, externalTrips: Math.round(pmCar), inTrips: Math.round(pmCar * calibrationLandUse.directionalSplitPm.in), outTrips: Math.round(pmCar * (1 - calibrationLandUse.directionalSplitPm.in)) };
+  const amGen = { period: "am_peak", periodLabel: "AM Peak", rawTrips: Math.round(amAllMode), passByCredit: 0, internalCaptureCredit: 0, externalTrips: Math.round(amCar), inTrips: Math.round(amCar * calibrationLandUse.amDirectionalIn), outTrips: Math.round(amCar * (1 - calibrationLandUse.amDirectionalIn)) };
+  return {
+    generatedAt: "2026-06-12T12:00:00.000Z",
+    request: {
+      projectName: `${c.units}-unit Brixton residential (${c.expect.toUpperCase()} ${c.trigger})`,
+      address: "Brixton, London SW2",
+      latitude: 51.456,
+      longitude: -0.116,
+      landUseCode: "221",
+      size: c.units,
+      openingYear: 2028,
+      studyRadiusMi: 0.5,
+      ptaInsideAqma: c.ptaInsideAqma,
+    },
+    studyRadiusMi: 0.5,
+    tripGeneration: {
+      landUseCode: "221",
+      landUseName: calibrationLandUse.name,
+      size: c.units,
+      unit: calibrationLandUse.unit,
+      dailyTrips: Math.round(dailyCar),
+      amPeakTrips: Math.round(amCar),
+      pmPeakTrips: Math.round(pmCar),
+      pmIn: Math.round(pmCar * calibrationLandUse.directionalSplitPm.in),
+      pmOut: Math.round(pmCar * (1 - calibrationLandUse.directionalSplitPm.in)),
+    },
+    affectedIntersections: intersections,
+    intersectionsStudied: intersections.length,
+    intersectionsWithLosDrop: 0,
+    intersectionsAtLosEf: 0,
+    worstDelayDeltaSec: 0.7,
+    mitigationSummary: [],
+    findings: [],
+    methodology: [],
+    periodReports: [
+      { period: "am_peak", periodLabel: "AM Peak", tripGeneration: amGen, affectedIntersections: [], intersectionsWithLosDrop: 0, intersectionsAtLosEf: 0, worstDelayDeltaSec: 0 },
+      { period: "pm_peak", periodLabel: "PM Peak", tripGeneration: pmGen, affectedIntersections: intersections, intersectionsWithLosDrop: 0, intersectionsAtLosEf: 0, worstDelayDeltaSec: 0.7 },
+    ],
+    growthAppliedPct: 1.5,
+    growthYears: 2,
+    weather: "clear",
+    weatherCapacityFactor: 1.0,
+    passByPctApplied: 0,
+    internalCapturePctApplied: 0,
+    autoModeShareApplied: londonShare,
+    junctionImpactSignificant: true,
+  };
+}
+
+console.log(`\n=== DfT 2007 Appendix B — TS / TA shape calibration ===\n`);
+
+for (const c of shapeCases) {
+  const report = buildLondonShapeReport(c);
+  const project = {
+    id: `shape-${c.units}-${c.trigger}`,
+    studyType: "tis",
+    projectName: report.request.projectName,
+    landUseCode: "221",
+    siteLat: String(report.request.latitude),
+    siteLon: String(report.request.longitude),
+    version: 1,
+    createdAt: new Date("2026-06-12T12:00:00.000Z"),
+    requestPayload: report.request,
+    resultPayload: report,
+  };
+  const firm = { name: "Calibration Run", logoUrl: null };
+  const buf = await renderStudyPdf(project as any, firm);
+  const pdfPath = `/tmp/london-shape-${c.units}u-${c.trigger}.pdf`;
+  writeFileSync(pdfPath, buf);
+  const txt = spawnSync("pdftotext", ["-layout", pdfPath, "-"], { encoding: "utf8" });
+  if (txt.status !== 0) {
+    console.error(`pdftotext failed for ${pdfPath}: ${txt.stderr}`);
+    failed++;
+    continue;
+  }
+  const body = txt.stdout;
+  const flat = body.replace(/\s+/g, " ");
+  const declaresTS = /This document is structured as a Transport Statement \(TS\)/.test(flat);
+  const declaresTA = /This document is structured as a Transport Assessment \(TA\)/.test(flat);
+  const mentionsEscalator = /escalator/i.test(flat) && /AQMA|Air Quality Management Area/.test(flat);
+  const hasTaCh2People = /2\.0 TRANSPORT PLANNING FOR PEOPLE/.test(body);
+  const hasTaCh4Atz = /4\.0 ACTIVE TRAVEL ZONE/.test(body);
+  const hasTsCh4TripGen = /4\.0 TRIP GENERATION/.test(body);
+  const hasTaCh7Construction = /7\.0 CONSTRUCTION/.test(body);
+
+  console.log(`${c.label}`);
+  console.log(`  pdf: ${pdfPath}`);
+  console.log(`  declares Transport Statement?  ${declaresTS}`);
+  console.log(`  declares Transport Assessment? ${declaresTA}`);
+  console.log(`  has TA Ch 2 (People)?          ${hasTaCh2People}`);
+  console.log(`  has TA Ch 4 (ATZ)?             ${hasTaCh4Atz}`);
+  console.log(`  has TA Ch 7 (Construction)?    ${hasTaCh7Construction}`);
+  console.log(`  has TS Ch 4 (Trip Generation)? ${hasTsCh4TripGen}`);
+  if (c.trigger === "escalator") console.log(`  mentions AQMA escalator?       ${mentionsEscalator}`);
+
+  if (c.expect === "ts") {
+    if (!declaresTS) { console.error(`  ✗ FAIL: expected TS declaration`); failed++; }
+    if (declaresTA) { console.error(`  ✗ FAIL: TS case should not also declare TA`); failed++; }
+    if (hasTaCh2People) { console.error(`  ✗ FAIL: TS should not have TA Ch 2 (People)`); failed++; }
+    if (hasTaCh4Atz) { console.error(`  ✗ FAIL: TS should not have TA Ch 4 (ATZ)`); failed++; }
+    if (hasTaCh7Construction) { console.error(`  ✗ FAIL: TS should not have TA Ch 7 (Construction)`); failed++; }
+    if (!hasTsCh4TripGen) { console.error(`  ✗ FAIL: TS should have Ch 4 Trip Generation`); failed++; }
+  } else {
+    if (!declaresTA) { console.error(`  ✗ FAIL: expected TA declaration`); failed++; }
+    if (declaresTS) { console.error(`  ✗ FAIL: TA case should not also declare TS`); failed++; }
+    if (!hasTaCh2People) { console.error(`  ✗ FAIL: TA should have Ch 2 (People)`); failed++; }
+    if (!hasTaCh4Atz) { console.error(`  ✗ FAIL: TA should have Ch 4 (ATZ)`); failed++; }
+    if (c.trigger === "escalator" && !mentionsEscalator) { console.error(`  ✗ FAIL: escalator-triggered TA should mention the AQMA escalator`); failed++; }
+  }
+  console.log("");
+}
+
 if (failed > 0) {
   console.error(`Calibration: ${failed} check(s) failed.`);
   process.exit(1);

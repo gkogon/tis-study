@@ -2426,6 +2426,16 @@ function renderTisLondon(
   const losEf = Number(r.intersectionsAtLosEf ?? 0);
   const radiusMi = Number(r.studyRadiusMi ?? req.studyRadiusMi ?? 0);
   const radiusKm = (radiusMi * 1.609344).toFixed(2);
+
+  // In-prose declaration of the deliverable shape and the Appendix B
+  // trigger that selected it. Placed before the body of the executive
+  // summary so a reviewer can verify the screen in the first paragraph.
+  const taTriggerSentence = escalatorTriggered
+    ? `This document is structured as a Transport Assessment (TA) under the full 8-chapter TfL Healthy Streets format. Size alone (${sizeRule.toLowerCase()}) would otherwise have indicated a Transport Statement; the TA shape was forced by the DfT 2007 Appendix B "regardless of size" escalator(s): ${escalators.join("; ")}.`
+    : `This document is structured as a Transport Assessment (TA) under the full 8-chapter TfL Healthy Streets format per DfT 2007 Appendix B (${sizeRule}).`;
+  doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(taTriggerSentence, { paragraphGap: 6 });
+  doc.font("body").fontSize(10).fillColor("black");
+
   const summary = `This Transport Assessment cross-reference reports the anticipated transport effects of the proposed ${project.projectName || "development"} within ${region.displayName}, ${isLondon ? "Greater London" : "United Kingdom"}. ${intersections.length} junction${intersections.length === 1 ? "" : "s"} fall within a ${radiusKm} km (${fmtNum(radiusMi, 2)} mi) study radius of the site. The analysis is screening-level and is prepared as a cross-reference to UK Transport Assessment methodology; it does not replace a TRICS-based TA prepared by a chartered engineer reviewing under the NPPF (December 2024), the Planning Practice Guidance on transport assessments, and (within Greater London) the London Plan 2021 and TfL Healthy Streets TA format.`;
   doc.text(summary, { paragraphGap: 6 });
 
@@ -2888,6 +2898,211 @@ function ldnSubsection(doc: PDFKit.PDFDocument, title: string) {
   doc.font("bold").fontSize(11).fillColor("black").text(title);
   doc.moveDown(0.2);
   doc.x = PAGE_MARGIN;
+}
+
+/**
+ * Transport Statement (TS) renderer — the leaner shape that the
+ * Appendix B branching in renderTisLondon falls through to for
+ * sub-80-DU residential schemes (and the equivalent floorspace bands
+ * for non-residential use classes), absent any "regardless of size"
+ * escalator.
+ *
+ * Chapter set calibrated against published London residential TSs:
+ *   Cover + Executive Summary (with explicit TS declaration)
+ *   Ch 1  Introduction (incl. methodology-mismatch disclosure)
+ *   Ch 2  Site and Surroundings (condensed — merges Ch 2 + Ch 3 of TA)
+ *   Ch 3  Proposed Development (split from §3.1 of TA)
+ *   Ch 4  Trip Generation (TA §5.1)
+ *   Ch 5  Conclusion (TA §8)
+ *
+ * Dropped vs the full TA TOC: 2.0 Transport planning for people,
+ * 4.0 Active Travel Zone, 6.0 Additional borough analysis,
+ * 7.0 Construction (the last would re-enter only on TA-shaped
+ * schemes with an on-site Construction Logistics Plan requirement).
+ */
+function renderLondonTransportStatement(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+  opts: { isLondon: boolean; lpa: string; sizeRule: string; isBelowAssessmentFloor: boolean },
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const intersections: any[] = Array.isArray(r.affectedIntersections) ? r.affectedIntersections : [];
+  const periods: any[] = Array.isArray(r.periodReports) ? r.periodReports : [];
+  const { isLondon, lpa, sizeRule, isBelowAssessmentFloor } = opts;
+
+  ldnSection(doc, "EXECUTIVE SUMMARY");
+  const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
+  const losEf = Number(r.intersectionsAtLosEf ?? 0);
+  const radiusMi = Number(r.studyRadiusMi ?? req.studyRadiusMi ?? 0);
+  const radiusKm = (radiusMi * 1.609344).toFixed(2);
+
+  const tsTriggerSentence = isBelowAssessmentFloor
+    ? `This document is structured as a Transport Statement (TS); however, ${sizeRule} so no formal assessment is recommended by DfT 2007 Appendix B. The TS shape is retained as a screening-level cross-reference for the consultant's pre-application discussion with ${lpa}.`
+    : `This document is structured as a Transport Statement (TS) per DfT 2007 Appendix B (${sizeRule}). The full 8-chapter TfL Healthy Streets Transport Assessment TOC is reserved for schemes that exceed the residential 80-DU / hotel 100-bedroom / equivalent-floorspace TA trigger, or that trip one of the Appendix B "regardless of size" escalators (≥ 30 vph in any peak, ≥ 100 vpd, ≥ 100 parking spaces, AQMA proximity, or inadequate local transport infrastructure).`;
+  doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(tsTriggerSentence, { paragraphGap: 6 });
+  doc.font("body").fontSize(10).fillColor("black");
+
+  const summary = `This Transport Statement reports the anticipated transport effects of the proposed ${project.projectName || "development"} within ${region.displayName}, ${isLondon ? "Greater London" : "United Kingdom"}. ${intersections.length} junction${intersections.length === 1 ? "" : "s"} fall within a ${radiusKm} km (${fmtNum(radiusMi, 2)} mi) study radius of the site. The analysis is screening-level and is prepared as a cross-reference to UK Transport Statement methodology; a submittable TS prepared by a chartered engineer would re-run trip generation on TRICS multi-modal rates and junction capacity in LinSig 3 / Junctions 11 as appropriate.`;
+  doc.text(summary, { paragraphGap: 6 });
+
+  doc.font("body").fontSize(10).fillColor("black").text("Headline findings:", { paragraphGap: 2 });
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+  if (losDrops === 0 && losEf === 0) {
+    doc.text("• No junction within the study network is projected to deteriorate by one or more LOS categories under the With-Development scenario.", { paragraphGap: 2 });
+    doc.text("• Highway capacity is not the limiting factor for this scheme on the basis of this screening; PTAL-banded car parking and sustainable-mode uptake remain to be confirmed at the chartered-engineer stage.", { paragraphGap: 4 });
+  } else {
+    doc.text(`• ${losDrops} junction${losDrops === 1 ? "" : "s"} project to deteriorate by one or more LOS categories under the With-Development scenario.`, { paragraphGap: 2 });
+    doc.text(`• ${losEf} junction${losEf === 1 ? " operates" : "s operate"} at LOS E or F under With-Development and would warrant mitigation.`, { paragraphGap: 4 });
+  }
+  doc.fillColor("black");
+  doc.moveDown(0.5);
+
+  metricStrip(doc, [
+    { label: "Junctions", value: String(r.intersectionsStudied ?? intersections.length ?? 0) },
+    { label: "LOS drops", value: String(losDrops) },
+    { label: "At LOS E/F", value: String(losEf) },
+    { label: "Worst Δ delay", value: `${(r.worstDelayDeltaSec ?? 0).toFixed(1)}s` },
+  ]);
+  doc.moveDown(0.8);
+
+  ldnSection(doc, "1.0 INTRODUCTION");
+  ldnSubsection(doc, "1.1 Purpose and Planning Context");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `This Transport Statement cross-references the anticipated transport effects of the proposed ${project.projectName || "development"}, located within ${region.displayName}. It is presented in the structure of a UK Transport Statement consistent with the DfT Guidance on Transport Assessment (2007) Appendix B residential and use-class size bands, with the National Planning Policy Framework (NPPF, December 2024) paragraphs 115 / 116 / 118 as the statutory planning hook. ${sizeRule}. The TS shape is appropriate where the scheme does not generate a "significant amount of movement" within the judgement of ${lpa}; promotion to a Transport Assessment (TA) would be triggered by exceeding the TA size threshold or by tripping any of the Appendix B "regardless of size" escalators.`,
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Note. The DfT 2007 guidance was formally withdrawn in October 2014 but Appendix B remains in operational use as the de-facto threshold register; TfL continues to host the table at content.tfl.gov.uk/thresholds-for-transport-assessments.pdf. Use Class labels A1 / A2 / B1 / D1 / D2 in the original table are pre-2020 nomenclature now collapsed into Class E under SI 2020/757.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  ldnSubsection(doc, "1.2 Methodology Cross-Reference and Disclosure");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "The analysis is generated by a screening engine calibrated to United States standards and is presented as a cross-reference to UK methodology, not as a substitute for it. Capacity analysis uses the HCM 6th Edition (Ch. 19, signalised junctions) rather than DMRB CD 116 / CD 123; trip generation uses the ITE Trip Generation Manual 11th Edition rather than TRICS 8; LOS letters A–F are reported against the HCM Exhibit 19-8 control-delay thresholds. A chartered engineer preparing a submittable TS should re-run the affected junctions in LinSig 3 / Junctions 11 with TRICS multi-modal trip rates filtered per the TRICS Good Practice Guide 2025.",
+    { paragraphGap: 6 },
+  );
+  doc.moveDown(0.3);
+
+  ldnSection(doc, "2.0 SITE AND SURROUNDINGS");
+  ldnSubsection(doc, "2.1 Site Identification");
+  rows(doc, [
+    ["Scheme", project.projectName || "—"],
+    ["Land use (ITE proxy)", `${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
+    ["Opening year", String(req.openingYear ?? "—")],
+    ["Region", region.displayName],
+    ["Highway authority(ies)", isLondon ? "Transport for London (TLRN); host London borough (borough roads)" : "Local highway authority for the area"],
+    ["Local planning authority", lpa],
+  ]);
+  doc.moveDown(0.4);
+
+  ldnSubsection(doc, "2.2 Public Transport, Active Travel and Parking");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    isLondon
+      ? "PTAL band, cycle infrastructure, and London Plan policy T5 / T6 parking provision (cycle parking under Table 10.2; car parking maxima under Tables 10.3–10.5 banded by PTAL and use class) should be confirmed against the WebCAT 3.0 lookup and the host borough's Local Plan / SPDs at the chartered-engineer stage. This TS does not auto-compute PTAL or parking standards."
+      : "Public-transport accessibility, active-travel network and parking standards should be confirmed against the host authority's adopted methodology at the chartered-engineer stage.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.moveDown(0.3);
+
+  ldnSection(doc, "3.0 PROPOSED DEVELOPMENT");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `The proposed scheme is a ${tg.landUseName ?? "—"} (ITE land use ${tg.landUseCode ?? "—"}) of ${tg.size ?? "—"} ${tg.unit ?? ""} at the address above. The scheme size sits within the Appendix B TS band for the use class (${sizeRule}). Access, servicing arrangements and any Travel Plan commitments are bespoke to the planning submission and should be drawn from the architectural and access drawings at the chartered-engineer stage.`,
+    { paragraphGap: 6 },
+  );
+  if (req.priorUse) {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      `Existing / prior use on the site: ${req.priorUse}. A cumulative-vs-prior-use trip comparison is typically presented in a London TS where the net new car-mode peak is the key acceptability test.`,
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.3);
+
+  ldnSection(doc, "4.0 TRIP GENERATION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Gross trip generation is calculated per the ITE Trip Generation Manual 11th Edition for land-use code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. A submittable TS would substitute TRICS 8 multi-modal rates filtered per the TRICS Good Practice Guide 2025; the figures below are screening-level estimates after the London 38% auto-mode-share factor has been applied.`,
+    { paragraphGap: 6 },
+  );
+  table(doc, {
+    headers: ["Period", "Entering trips", "Exiting trips"],
+    widths: [180, 100, 100],
+    align: ["left", "right", "right"],
+    rows: [
+      ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
+      ["AM peak hour (08:00–09:00)", fmtNum(tg.amPeakTrips), "—"],
+      ["PM peak hour (17:00–18:00)", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
+    ],
+  });
+  doc.moveDown(0.4);
+
+  rows(doc, [
+    ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
+    ["Internalisation (linked trips) applied", `${r.internalCapturePctApplied ?? 0}%`],
+    ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
+    ["Auto-mode-share factor (London)", "38% (Travel in London — already applied upstream)"],
+  ]);
+  doc.moveDown(0.4);
+
+  if (periods.length > 0) {
+    table(doc, {
+      headers: ["Period", "Raw", "Pass-by", "Linked", "Net car", "In", "Out"],
+      widths: [100, 50, 60, 60, 70, 50, 50],
+      align: ["left", "right", "right", "right", "right", "right", "right"],
+      rows: periods.map((p) => {
+        const t = p.tripGeneration ?? {};
+        return [
+          String(p.periodLabel ?? p.period ?? ""),
+          fmtNum(t.rawTrips),
+          fmtNum(t.passByCredit),
+          fmtNum(t.internalCaptureCredit),
+          fmtNum(t.externalTrips),
+          fmtNum(t.inTrips),
+          fmtNum(t.outTrips),
+        ];
+      }),
+    });
+    doc.moveDown(0.4);
+  }
+
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Junction", "Existing LOS", "No-Build LOS", "With-Dev LOS", "Δ delay (s)"],
+      widths: [225, 70, 75, 75, 75],
+      align: ["left", "center", "center", "center", "right"],
+      rows: intersections.map((it) => {
+        const losChanged = it.losChanged === true;
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const noBuildLos = it.existingLos ?? "—";
+        const buildLos = it.futureLos ?? "—";
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(currentLos),
+          String(noBuildLos),
+          (losChanged ? "▲ " : "") + String(buildLos),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+        ];
+      }),
+    });
+    doc.moveDown(0.4);
+  }
+
+  ldnSection(doc, "5.0 CONCLUSION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `On the basis of this screening-level Transport Statement, ${losDrops === 0 && losEf === 0 ? "no junction within the study network is projected to deteriorate by one or more LOS categories under the With-Development scenario, and capacity is not the limiting factor on this analysis." : `${losDrops} junction(s) project to deteriorate by one or more LOS categories under the With-Development scenario and ${losEf} junction(s) project to operate at LOS E or F, indicating mitigation would be warranted.`} The scheme falls within the DfT 2007 Appendix B TS size band for the use class (${sizeRule}) and trips none of the "regardless of size" escalators (peak-hour ≥ 30 vph, daily ≥ 100 vpd, ≥ 100 parking spaces, AQMA proximity, inadequate local transport infrastructure); a Transport Statement is therefore the appropriate deliverable shape under the de-facto DfT 2007 / PPG split. Promotion to a full Transport Assessment (TA) would be required only if (i) the scheme grew above the TA size threshold for the use class, or (ii) any Appendix B escalator subsequently triggered.`,
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "A submittable TS prepared by a chartered engineer would substitute TRICS multi-modal trip rates, LinSig 3 / Junctions 11 capacity, and London Plan T5 / T6 parking provision for the screening-level figures above; PTAL band and Healthy Streets Indicators are not required at TS shape but may still be requested by the host borough at pre-application discussion.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
 }
 
 /**
