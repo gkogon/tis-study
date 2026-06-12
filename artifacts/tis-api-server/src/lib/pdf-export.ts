@@ -27,7 +27,6 @@ import { getNycTransitContext } from "./nyc-transit-data";
 import { crashesNearPoint } from "./crashes";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
-import { renderTisCaliforniaWorksheet } from "./pdf-export-ca-worksheet";
 import {
   FDOT_ARTERIAL_GSVT,
   floridaGsvtServiceVolume,
@@ -1931,6 +1930,162 @@ function caSubsection(doc: PDFKit.PDFDocument, title: string) {
   doc.font("bold").fontSize(11).fillColor("black").text(title);
   doc.moveDown(0.2);
   doc.x = PAGE_MARGIN;
+}
+
+/**
+ * Map each OPR § E.1 screening criterion to its Dec 2018 Technical
+ * Advisory page citation. Index order matches caVmtScreening() above
+ * (small project / TPA / low-VMT / retail / affordable / redevelopment).
+ */
+function caScreeningCriterionCitation(index: number): string {
+  switch (index) {
+    case 0: return "OPR Tech Advisory (Dec 2018), p. 12 — small-project floor (CEQA § 15301(e)(2))";
+    case 1: return "OPR Tech Advisory (Dec 2018), p. 14 — TPA presumption (PRC § 21064.3 + § 21155)";
+    case 2: return "OPR Tech Advisory (Dec 2018), p. 13–14 — low-VMT area map screen";
+    case 3: return "OPR Tech Advisory (Dec 2018), p. 14 — locally-serving retail size cap";
+    case 4: return "OPR Tech Advisory (Dec 2018), p. 14–15 — 100% affordable residential infill";
+    case 5: return "OPR Tech Advisory (Dec 2018), p. 14 — redevelopment with net VMT decrease";
+    default: return "OPR Tech Advisory (Dec 2018), § E.1";
+  }
+}
+
+/**
+ * California Screened-Out Determination Memo (worksheet tier).
+ * Short-form deliverable the OPR § E.1 cascade supports when a project
+ * clears one of the six screening criteria (typical case: daily trips
+ * below the host-jurisdiction screening floor — 110 OPR default; 250
+ * LA / Sacramento; 500 Long Beach / Fresno). Five sections — project
+ * description, the screening cascade table, citation chain, PE seal,
+ * and a non-CEQA operational carve-out — sized to land at 4–5 pages
+ * so the reviewer sees the determination + chain on the first sweep.
+ *
+ * Shares all helpers (caVmtScreening, caSection, rows, table,
+ * statusLabel, fmtNum, BRAND_BLUE, TEXT_GRAY, the CaliforniaJurisdiction
+ * type) with renderTisCalifornia above — no duplication. The dispatch
+ * site in renderTisCalifornia short-circuits here when resolvedTier ===
+ * "worksheet".
+ */
+function renderTisCaliforniaWorksheet(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+  tierInput: TierInput,
+  jur: CaliforniaJurisdiction,
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const tierName = jurisdictionTierLabel(region, "worksheet");
+
+  const screeningResults = caVmtScreening(
+    tierInput.dailyTrips,
+    tierInput.landUseCode,
+    tierInput.size,
+    tierInput.unit,
+    jur.screeningTripCount,
+    jur.name,
+  );
+  const firedIndex = screeningResults.findIndex((c) => c.status === "screened_out");
+  const firedCriterion = firedIndex >= 0 ? screeningResults[firedIndex] : null;
+
+  // --- Header banner + determination ------------------------------------
+  caSection(doc, "CEQA-VMT SCREENED-OUT DETERMINATION MEMO");
+  doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(tierName, { paragraphGap: 4 });
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    `Short-form deliverable issued when the OPR § E.1 six-criterion cascade screens a project out of full CEQA-VMT analysis. Per ${jur.guidelinesDoc.split("(")[0].trim()} and the OPR Dec 2018 Technical Advisory, a project satisfying any of the six criteria is presumed less-than-significant under CEQA Guidelines § 15064.3 without further VMT analysis. Does NOT substitute for the §5 non-CEQA operational review.`,
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  if (firedCriterion) {
+    doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(
+      `AUTO-SCREENING RESULT: SCREENED OUT via ${firedCriterion.label} — presumed less-than-significant under CEQA Guidelines § 15064.3.`,
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(
+      "AUTO-SCREENING RESULT: No auto-evaluable criterion fired. Tier resolved to Worksheet by explicit request — verify the screening basis (TPA / low-VMT map / redevelopment baseline) before relying on this memo.",
+      { paragraphGap: 6 },
+    );
+  }
+  doc.fillColor("black");
+
+  // --- §1 Project Description -------------------------------------------
+  caSection(doc, "1.0 PROJECT DESCRIPTION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `The proposed ${project.projectName || "development"} is located within ${region.displayName}, California. Host CEQA lead agency: ${jur.name}; regional MPO: ${jur.mpoName}.`,
+    { paragraphGap: 6 },
+  );
+  rows(doc, [
+    ["Project name", project.projectName || "—"],
+    ["Land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
+    ["Opening year", String(req.openingYear ?? "—")],
+    ["Host lead agency", jur.name],
+    ["Daily trip generation (ITE)", `${fmtNum(tierInput.dailyTrips)} trips/day`],
+    ["Jurisdiction screening floor", `${jur.screeningTripCount} daily trips`],
+  ]);
+  doc.moveDown(0.3);
+
+  // --- §2 Auto-Screening Result -----------------------------------------
+  caSection(doc, "2.0 AUTO-SCREENING RESULT (OPR § E.1)");
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "Six OPR § E.1 criteria evaluated against project metadata. GIS-dependent criteria (TPA, low-VMT TAZ map, prior-use VMT) flagged for verification. Any one \"Screened out\" presumes less-than-significant under § 15064.3 without further VMT analysis.",
+    { paragraphGap: 4 },
+  );
+  doc.fillColor("black");
+  table(doc, {
+    headers: ["OPR Criterion", "Result", "Notes"],
+    widths: [200, 130, 170],
+    align: ["left", "center", "left"],
+    rows: screeningResults.map((c) => [c.label, statusLabel(c.status), c.note]),
+  });
+  doc.moveDown(0.3);
+  if (firedCriterion) {
+    doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
+      `DETERMINATION: SCREENED OUT via "${firedCriterion.label}" — § 15064.3(b)(1).`,
+      { paragraphGap: 6 },
+    );
+  }
+  doc.fillColor("black");
+
+  // --- §3 Citation Block -------------------------------------------------
+  caSection(doc, "3.0 CITATION BLOCK");
+  rows(doc, [
+    ["Screening criterion fired", firedCriterion ? firedCriterion.label : "None auto-fired — verification pending (see §2)"],
+    ["OPR Tech Advisory", firedIndex >= 0 ? caScreeningCriterionCitation(firedIndex) : "OPR Tech Advisory (Dec 2018), § E.1"],
+    ["Statutory hook (SB 743)", "Pub. Resources Code § 21099(b)(2)"],
+    ["CEQA Guidelines", "14 CCR § 15064.3(b)(1)"],
+    ["Host jurisdiction guidelines", jur.guidelinesDoc],
+  ]);
+  doc.moveDown(0.2);
+  if (jur.extraNote) {
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+      `Jurisdiction note. ${jur.extraNote}`,
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- §4 Professional Engineer Certification ----------------------------
+  caSection(doc, "4.0 PROFESSIONAL ENGINEER CERTIFICATION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "California Business & Professions Code § 6730 (Civil Engineers) and § 6731.5 (Traffic Engineers) reserve transportation-impact determinations submitted to a public agency to PEs licensed by BPELSG. The cover and signature page of the formal submittal must bear the seal, signature, and date of a California-licensed Civil Engineer or Traffic Engineer per 16 CCR Div. 5, Article 6, § 411 (Seals — content, form, and use). The signing PE attests only to (a) the screening criterion auto-fire identified in §2 and (b) the citation chain in §3 as applied to §1's project parameters — NOT to any non-CEQA operational analysis (§5), which is a separate scope under the Caltrans EPM / HDM stack.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- §5 Non-CEQA Operational Note --------------------------------------
+  caSection(doc, "5.0 NON-CEQA OPERATIONAL NOTE");
+  doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
+    "A screened-out CEQA determination does NOT exempt the project from non-CEQA operational review.",
+    { paragraphGap: 4 },
+  );
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `LOS is not a CEQA metric under § 21099(b)(2), but it remains the operational metric Caltrans and most local agencies apply for permit and site-access review. Check both carve-outs against the final site plan: (1) Caltrans Encroachment Permit (EPM) if the project fronts on or proposes new access to a State Highway System facility — HCM LOS, queueing, and CA MUTCD 2026 Part 4C signal-warrant analysis are typically required; (2) HDM Ch. 100 (Basic Design Policies) + Ch. 400 (Intersections at Grade) for driveway geometry, intersection sight distance (AASHTO Green Book), and turn-lane warrants on any project access. Host-jurisdiction operational context: ${jur.operationalContext}.`,
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
 }
 
 /**

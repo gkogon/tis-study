@@ -978,11 +978,12 @@ function plainFindings(
       `Worst-impact location: ${worst.name} — projected delay rises ${(worst.futureDelaySec - worst.existingDelaySec).toFixed(1)}s (LOS ${worst.existingLos} → ${worst.futureLos}); 95th-pct queue ${worst.queue95thFt.toFixed(0)} ft on the critical approach.`,
     );
   }
-  if (sens) {
-    out.push(
-      `Monte-Carlo sensitivity (${sens.iterations} runs, ±10% trip-rate / ±15% existing-volume): worst-case delay change is ${sens.worstDelayDeltaP50.toFixed(1)}s (median); 80% range ${sens.worstDelayDeltaP10.toFixed(1)}–${sens.worstDelayDeltaP90.toFixed(1)}s. Probability of ≥1 LOS drop: ${(sens.probAnyLosDrop * 100).toFixed(0)}%.`,
-    );
-  }
+  // Scenario-sensitivity finding (the statistical Monte-Carlo finding has
+  // been retired per standard TIA practice — engine output retained for
+  // demo-mode diagnostics but not surfaced in deliverable findings).
+  out.push(
+    `Conclusions are reported at the applied screening assumptions. Discrete-scenario sensitivity at the formal TIA scoping meeting should test: trip-generation method (rate vs. equation per ITE Trip Generation Handbook Fig. 4.2); internal capture and pass-by credit variants; and a ±0.5%/yr background growth band around the applied value.`,
+  );
   return out;
 }
 
@@ -998,7 +999,7 @@ const TIS_METHODOLOGY = [
   "Intersection-level control delay uses the HCM signalized-intersection model d = d1 + d2 (Webster uniform delay + Akçelik/HCM incremental-delay term) with a 90s cycle, g/C = 0.45, 1,800 vphpl saturation flow (× weather factor), 15-minute peak analysis period (T = 0.25 hr) and pretimed-signal incremental-delay factor k = 0.5.",
   "Approach-level analysis splits each signal's inflow across NB/SB/EB/WB approaches (deterministic per-signal allocation perturbed ±15% from a 30/25/25/20 base) and assigns added trips to each approach by cosine-similarity to the bearing of the project relative to the signal. Per-approach v/c, control delay, LOS, and 95th-percentile back-of-queue length (HCM Eq. 19-50, Q95 ≈ Q1 × 1.65 × 25 ft/veh) are reported.",
   "Level of Service is assigned from HCM 6th-Edition signalized-intersection control-delay thresholds (Exhibit 19-8): A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s.",
-  "Optional Monte-Carlo sensitivity perturbs the project trip rate by N(1, 0.10) and the baseline existing volume by N(1, 0.15) over 100 iterations and reports the resulting distribution of worst-case delay change and probability of any LOS drop.",
+  "Sensitivity is reported in narrative form per standard TIA practice: trip-generation method (rate vs. equation per ITE Trip Generation Handbook Fig. 4.2), discrete internal capture and pass-by credit variants, and a ±0.5%/yr growth-rate band around the applied value. The engine retains an internal stochastic-sensitivity routine (Box-Muller-perturbed trip rate and existing volume) for demo-mode diagnostics; it is not surfaced in the deliverable because TIA sensitivity is conducted through discrete scoping-agreed scenario variants, not statistical perturbation of unmeasured distributions.",
   "Mitigations are screening-level recommendations sized to the projected delay change, not full Synchro/SimTraffic optimization runs. A formal TIS submittal should validate these recommendations with detailed traffic counts and signal-timing analysis.",
 ];
 
