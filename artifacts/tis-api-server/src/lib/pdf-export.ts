@@ -28,6 +28,13 @@ import { crashesNearPoint } from "./crashes";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
 import { renderTisCaliforniaWorksheet } from "./pdf-export-ca-worksheet";
+import {
+  FDOT_ARTERIAL_GSVT,
+  floridaGsvtServiceVolume,
+  floridaRepresentativeK,
+  asFdotContextClass,
+  type FdotFacility,
+} from "./fdot-gsvt";
 
 type StoredProject = {
   id: string;
@@ -592,20 +599,23 @@ function renderTis(doc: PDFKit.PDFDocument, r: any) {
     doc.moveDown(1);
   }
 
-  // Sensitivity (optional)
-  if (r.sensitivity) {
-    const s = r.sensitivity;
-    section(doc, "Monte-Carlo Sensitivity");
-    rows(doc, [
-      ["Iterations", String(s.iterations ?? "—")],
-      ["Mean worst Δ delay", `${fmtNum(s.worstDelayDeltaMean, 2)}s`],
-      ["P10 / P50 / P90", `${fmtNum(s.worstDelayDeltaP10, 2)}s / ${fmtNum(s.worstDelayDeltaP50, 2)}s / ${fmtNum(s.worstDelayDeltaP90, 2)}s`],
-      ["Probability ≥1 LOS drop", `${Math.round((s.probAnyLosDrop ?? 0) * 100)}%`],
-      ["Probability any LOS E/F", `${Math.round((s.probAnyLosEf ?? 0) * 100)}%`],
-      ["Expected LOS drops", fmtNum(s.expectedLosDrops, 2)],
-    ]);
-    doc.moveDown(1);
-  }
+  // Scenario sensitivity (replaces the statistical Monte-Carlo block per
+  // standard TIA practice — discrete scoping-meeting-bound variants, not
+  // bootstrap perturbation of trip rates and existing volumes). The
+  // underlying Monte-Carlo engine in tis.ts is retained for demo-mode
+  // diagnostics but is not rendered in the deliverable.
+  section(doc, "Scenario Sensitivity");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `At the applied background growth rate of ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s), ${r.intersectionsWithLosDrop ?? 0} intersection${(r.intersectionsWithLosDrop ?? 0) === 1 ? "" : "s"} project a LOS drop and ${r.intersectionsAtLosEf ?? 0} operate${(r.intersectionsAtLosEf ?? 0) === 1 ? "s" : ""} at LOS E or F under build conditions. Conclusions are sensitive to four scoping-meeting assumptions and should be exercised at discrete variants in the formal TIA:`,
+    { paragraphGap: 4 },
+  );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+  doc.text(`• Trip-generation method (rate vs. equation per ITE Trip Generation Handbook Fig. 4.2) — equation preferred when the ITE plot has ≥ 20 data points or R² ≥ 0.75 with the fitted curve falling within the data cluster.`, { paragraphGap: 2 });
+  doc.text(`• Internal capture credit: ${r.internalCapturePctApplied ?? 0}% applied. Removing the credit increases assigned external trips at the affected intersections; confirm internal capture % at the scoping methodology meeting.`, { paragraphGap: 2 });
+  doc.text(`• Pass-by credit: ${r.passByPctApplied ?? 0}% applied. Removing the credit increases assigned external trips proportionally; confirm at scoping. (Florida sites: pass-by cannot exceed 10% of adjacent peak-hour two-way street traffic per MTSIH 2024 §4.6.6.6.)`, { paragraphGap: 2 });
+  doc.text(`• Background growth rate: ${r.growthAppliedPct ?? "—"}%/yr applied. A ±0.5%/yr variation would shift buildout-year volumes proportionally; the LOS-deficient list is expected to be stable within that band when v/c margins at the worst-impact location exceed 0.05.`, { paragraphGap: 6 });
+  doc.fillColor("black");
+  doc.moveDown(0.5);
 
   // Findings
   const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
@@ -3506,7 +3516,7 @@ function renderTisTexasWorksheet(
   // --- PE Seal block ---------------------------------------------------
   gaSection(doc, "PROFESSIONAL ENGINEER CERTIFICATION");
   doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
-    "This worksheet-tier deliverable has been prepared at the screening level defined by the host jurisdiction's TIA-tier scheme and is sealed by a Texas-licensed Professional Engineer per 22 TAC §137.33 (Texas Engineering Practice Act, Tex. Occ. Code Ch. 1001). The signing PE attests only to the worksheet-tier scope and that the project's screened trip generation falls below the host jurisdiction's Full TIA threshold. It does not substitute for a Full TIA where one is later required by the reviewing agency.",
+    "This worksheet-tier deliverable has been prepared at the screening level defined by the host jurisdiction's TIA-tier scheme and is sealed by a Texas-licensed Professional Engineer per 22 TAC §137.33 (Sealing Procedures), promulgated under The Texas Engineering Practice Act (Tex. Occ. Code Ch. 1001). The signing PE attests only to the worksheet-tier scope and that the project's screened trip generation falls below the host jurisdiction's Full TIA threshold. It does not substitute for a Full TIA where one is later required by the reviewing agency.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
@@ -3719,7 +3729,7 @@ function renderTisTexasAbbreviated(
   // --- PE Seal block ------------------------------------------------
   gaSection(doc, "PROFESSIONAL ENGINEER CERTIFICATION");
   doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
-    "This abbreviated-tier TIA has been prepared at the mid-tier deliverable defined by the host jurisdiction's TIA scheme and is sealed by a Texas-licensed Professional Engineer per 22 TAC §137.33 (Texas Engineering Practice Act, Tex. Occ. Code Ch. 1001). The signing PE attests only to the abbreviated-tier scope and the screened operational outcome reported above. It does not substitute for a Full TIA where one is later required by the reviewing agency.",
+    "This abbreviated-tier TIA has been prepared at the mid-tier deliverable defined by the host jurisdiction's TIA scheme and is sealed by a Texas-licensed Professional Engineer per 22 TAC §137.33 (Sealing Procedures), promulgated under The Texas Engineering Practice Act (Tex. Occ. Code Ch. 1001). The signing PE attests only to the abbreviated-tier scope and the screened operational outcome reported above. It does not substitute for a Full TIA where one is later required by the reviewing agency.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
@@ -4107,7 +4117,7 @@ function renderTisTexas(
   if (juris === "austin" || juris === "txdot") {
     // CTRMA-specific frontage-road policy.
     const ctrmaNote = juris === "austin"
-      ? "Within the CTRMA managed-lane corridor (183A, MoPac Express, 290 Toll), any new or modified access onto the CTRMA frontage roads is governed by CTRMA Board Resolution 07-58 (Procedures for Access Management of Frontage Roads on CTRMA Facilities) and remains subject to the underlying TxDOT DAP review."
+      ? "Within the CTRMA managed-lane corridor (183A, MoPac Express, 290 Toll), any new or modified access onto the CTRMA frontage roads is governed by CTRMA Board Resolution 07-58 (Policies and Procedures for Access Management of Frontage Roads on CTRMA Facilities) and remains subject to the underlying TxDOT DAP review."
       : "Where the project fronts an HCTRA (Sam Houston Tollway, Hardy Toll Road, Westpark Tollway), NTTA (DNT, PGBT, SRT, LLTB), CTRMA (183A, MoPac Express, 290 Toll), or TxDOT-operated toll facility frontage road, access review runs through TxDOT (and the host city where applicable); the tollway authority itself reviews only direct facility impacts on ramp / managed-lane geometry.";
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(ctrmaNote, { paragraphGap: 6 });
     doc.fillColor("black");
@@ -4225,7 +4235,7 @@ function renderTisTexas(
   // --- §9 Recommendations ------------------------------------------------
   gaSection(doc, "9.0 RECOMMENDATIONS");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Submit this TIA to ${cityName}, with parallel TxDOT-District coordination where any state-system route is in frontage. Validate the screening results against current-edition manuals, updated turning-movement counts within the most recent 12 months (Houston IDM §15.06.01.A: 12 months in high-growth areas, 24 months elsewhere), and the preliminary-scoping outcome with the District. The report must be sealed by a Texas-licensed Professional Engineer per 22 TAC §137.33 (Texas Engineering Practice Act, Tex. Occ. Code Ch. 1001), with the seal on the cover and on every sealed sheet${juris === "houston" ? " — Houston IDM §15.04.B.1.a requires the signing PE to hold the civil specialty (not traffic)" : ""}.`,
+    `Submit this TIA to ${cityName}, with parallel TxDOT-District coordination where any state-system route is in frontage. Validate the screening results against current-edition manuals, updated turning-movement counts within the most recent 12 months (Houston IDM §15.06.01.A: 12 months in high-growth areas, 24 months elsewhere), and the preliminary-scoping outcome with the District. The report must be sealed by a Texas-licensed Professional Engineer per 22 TAC §137.33 (Sealing Procedures), promulgated under The Texas Engineering Practice Act (Tex. Occ. Code Ch. 1001), with the seal on the cover and on every sealed sheet${juris === "houston" ? " — Houston IDM §15.04.B.1.a requires the signing PE to hold the civil specialty (not traffic)" : ""}.`,
     { paragraphGap: 6 },
   );
 
@@ -4562,7 +4572,7 @@ function renderTisIllinois(
     downstate_idot: "BLRS Ch. 32: LOS C controlling for rural arterials/collectors, LOS C controlling for urban arterials/collectors (with LOS D allowed in heavily-developed metro sections), LOS D minimum for urban local streets. Unsignalized intersections per BLRS Fig. 27-6A (HCM delay-based).",
   };
   const trigger: Record<IlJurisdiction, string> = {
-    chicago_cdot: "Tiered by dwelling-unit count per the CDOT TDM Guidelines v1.2 (February 2024): Tier 1 (20–50 DU site plan), Tier 2 (51–175 DU TDM Memo), Tier 3 (>175 DU full TDM Study + Plan). Connected Communities Ordinance transit-served-location designation (½ mile of a CTA/Metra rail station entrance or eligible high-frequency bus corridor) drives by-right parking reductions and informs trip-generation reductions. The July 16, 2025 amendment (O2025-0015577, effective September 25, 2025) eliminated parking mandates outright in transit-served locations outside the downtown D districts — confirm the project's zoning district and the version of the Ordinance in force at submittal.",
+    chicago_cdot: "Tiered by dwelling-unit count per the CDOT TDM Guidelines v1.2 (February 2024): Tier 1 (20–50 DU site plan), Tier 2 (51–175 DU TDM Memo), Tier 3 (>175 DU full TDM Study + Plan). Connected Communities Ordinance transit-served-location designation (½ mile of a CTA/Metra rail station entrance, or ¼ mile of an eligible high-frequency CTA/Pace bus corridor with ≤15-minute midday headways) drives by-right parking reductions and informs trip-generation reductions. The July 16, 2025 amendment (O2025-0015577, effective September 25, 2025) eliminated parking mandates outright in transit-served locations outside the downtown D districts — confirm the project's zoning district and the version of the Ordinance in force at submittal.",
     chicago_idot: "Both trigger paths apply: the CDOT TDM tiers (Tier 1/2/3 by DU count) gate the multimodal deliverable, AND the IDOT D8 Appx. A warrant-implicit trigger (turn-lane or signal warrant on the state-route frontage) gates the IDOT TIS appendix. Any access modification to the state route requires a permit under 92 Ill. Adm. Code Part 550 routed via OPER 1050 / OPER 1051 to District 1 Permits.",
     cook_county: "Staff-discretionary during the access/signal permit review (no published numeric trigger).",
     collar_dupage: "Staff-discretionary during the access/signal permit review (no published numeric trigger since Fair Share Impact-Fee termination 2023-05-24).",
@@ -5865,6 +5875,77 @@ function renderTisFlorida(
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
+
+  // --- 4.1 Roadway Segment Capacity (GSVT, Q/LOS v6.0) ------------------
+  gaSubsection(doc, "4.1 Roadway Segment Capacity — Generalized Service Volumes");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Roadway-segment level of service is screened against the FDOT Quality/Level of Service Handbook v6.0 (August 2025) Generalized Service Volume Tables (GSVTs). Per Q/LOS v6.0 the peak-hour two-way service volume is keyed to FDM Chapter 200 context class (C1–C6, C2T) and through-lane count, with D = 0.55 statewide. The applicable context class and lane count for each segment are FDOT Roadway Characteristics Inventory (RCI) attributes (Feature 126 context class; lane count from the RCI flat file) and must be confirmed during the methodology meeting. This screening tool selects the GSVT row only where those inputs are supplied and otherwise defers the segment v/c rather than assume a class.",
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "Arterial (signalized) peak-hour two-way service volumes (vph) — Q/LOS v6.0 App. B:",
+    { paragraphGap: 2 },
+  );
+  doc.fillColor("black");
+  table(doc, {
+    headers: ["Context / lanes", "LOS C", "LOS D", "LOS E"],
+    widths: [250, 70, 70, 70],
+    align: ["left", "right", "right", "right"],
+    rows: FDOT_ARTERIAL_GSVT.map((row) => [
+      row.label,
+      row.C == null ? "—" : fmtNum(row.C),
+      row.D == null ? "—" : fmtNum(row.D),
+      row.E == null ? "—" : fmtNum(row.E),
+    ]),
+  });
+  doc.moveDown(0.2);
+  doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+    "C6 LOS C is undefined in v6.0 (C6 facilities are neither planned nor designed for auto LOS C); cells marked \"—\" past LOS D are F at signal capacity. Material adjustment multipliers (one-way × 1.2; multilane without exclusive LT × 0.75; 2-lane undivided without exclusive LT × 0.80; non-State signalized × 0.90; exclusive RT lane × 1.05) and per-context K factors (C1/C2/C2T 8.5–10.5%; C3C/C3R/C4 7.5–9.5%; C5/C6 7.0–9.0%) apply per Q/LOS v6.0 Ch. 6. Freeway (Limited Access) GSVT LOS-D capacities: Urbanized 4/6/8-lane = 7,400 / 11,050 / 14,710 vph (AADT-equivalent 82,200 / 122,800 / 163,400); Rural 4-lane divided = 5,950 vph (AADT-equivalent 56,700).",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // Per-segment v/c only where context class + lane count are supplied —
+  // never assume a class/lane count (would fabricate the capacity side).
+  const flCtx = asFdotContextClass((req as any).contextClass ?? (r as any).contextClass);
+  const flLanes = Number((req as any).segmentLanes ?? (req as any).throughLanes ?? NaN);
+  const flFacility: FdotFacility =
+    String((req as any).facilityType ?? "arterial").toLowerCase().includes("freeway") ? "freeway" : "arterial";
+  if (intersections.length > 0 && flCtx != null && Number.isFinite(flLanes) && flLanes > 0) {
+    const losD = floridaGsvtServiceVolume({ facility: flFacility, context: flCtx, lanes: flLanes, los: "D" });
+    const k = floridaRepresentativeK(flFacility, flCtx);
+    table(doc, {
+      headers: ["Roadway segment", "AADT", "Peak-hr 2-way", `LOS-D SV (${flCtx}/${flLanes}-ln)`, "v/c", "≤ LOS D?"],
+      widths: [165, 60, 80, 100, 45, 60],
+      align: ["left", "right", "right", "right", "right", "center"],
+      rows: intersections.map((it) => {
+        const aadt = Number(it.existingAadt ?? it.aadt ?? it.dailyVolume ?? 0);
+        const peak = aadt * k;
+        const sv = losD.serviceVolumeVph;
+        const vc = sv && sv > 0 && aadt > 0 ? peak / sv : null;
+        return [
+          it.name ?? it.signalId ?? "—",
+          aadt > 0 ? fmtNum(aadt) : "—",
+          aadt > 0 ? fmtNum(peak) : "—",
+          sv == null ? "—" : fmtNum(sv),
+          vc == null ? "—" : vc.toFixed(2),
+          vc == null ? "—" : (vc <= 1.0 ? "Yes" : "No"),
+        ];
+      }),
+    });
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      `Segment v/c = (AADT × K) ÷ GSVT LOS-D service volume for context ${flCtx}, ${flLanes} through lanes, using representative screening K = ${k.toFixed(3)} (Q/LOS v6.0 Ch. 6 midpoint). For submittal, derive K per segment from RCI (KFCTR / K100FCTR) and confirm context class and lane count against the FDOT Preliminary Context Classification and RCI lane attributes.`,
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Per-segment GSVT v/c is not computed for this run: a segment context class (C1–C6 / C2T) and through-lane count were not supplied. Provide them as inputs — or rely on the FDOT RCI data adapter once wired — to populate the roadway-segment LOS table against the service volumes above. Segment AADT available to the screen is listed in §4.0.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
 
   // --- 5.0 Trip Generation ----------------------------------------------
   gaSection(doc, "5.0 TRIP GENERATION");

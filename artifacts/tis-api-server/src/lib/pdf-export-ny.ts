@@ -695,7 +695,30 @@ export function renderTisNewYork(
     `Build conditions add the project's external peak-hour trips (${tg.pmPeakTrips ?? "—"} PM peak, ${tg.pmIn ?? 0} inbound / ${tg.pmOut ?? 0} outbound) to the No-Build baseline at each affected intersection. Per HDM Chapter 5, intersection projects should also analyze each adjacent intersection plus any signal within ½ mile of the project site if expected left-turn volume changes materially affect capacity. The engine's network is determined by a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile screening radius; manual scoping should confirm the ½-mile left-turn rule is satisfied.`,
     { paragraphGap: 6 },
   );
-  if (intersections.length > 0) {
+  const nyHasDesignYear = intersections.some(
+    (it: any) => it.designNoBuildLos != null || it.designBuildLos != null,
+  );
+  if (intersections.length > 0 && nyHasDesignYear) {
+    // NYSDOT HDM Ch. 5 expects ETC + ETC+20 capacity analysis to mirror
+    // the multi-horizon AADT/DHV table. When the engine produced
+    // design-year scenarios, show all four LOS columns.
+    nyTable(doc, {
+      headers: ["Intersection", "ETC No-Build", "ETC Build", "ETC+20 NB", "ETC+20 Bld", "Δ delay (s)"],
+      widths: [180, 70, 70, 70, 70, 65],
+      align: ["left", "center", "center", "center", "center", "right"],
+      rows: intersections.map((it: any) => {
+        const losChanged = it.losChanged === true;
+        return [
+          String(it.name ?? it.signalId ?? "—"),
+          String(it.existingLos ?? "—"),
+          (losChanged ? "▲ " : "") + String(it.futureLos ?? "—"),
+          String(it.designNoBuildLos ?? "—"),
+          String(it.designBuildLos ?? "—"),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+        ];
+      }),
+    });
+  } else if (intersections.length > 0) {
     nyTable(doc, {
       headers: ["Intersection", "No-Build LOS", "Build LOS", "Δ delay (s)", "v/c", "Q95 (ft)"],
       widths: [200, 70, 70, 75, 50, 60],
@@ -1157,7 +1180,32 @@ export function renderCeqrNyc(
     doc.text("• C.3 Pedestrian — sidewalk / corner / crosswalk LOS via the Pushkarev & Zupan (1975) flow-rate procedure (NOT HCM Ch 18) at every affected sidewalk segment, corner reservoir, and crosswalk within the study area. Requires field-collected pedestrian counts; not produced by the engine.", { paragraphGap: 3 });
   }
   doc.text("• C.4 Parking — accumulation analysis vs zoning maxima/minima per NYC Zoning Resolution. Requires the development's parking provision and an hourly accumulation curve; not produced by the engine.", { paragraphGap: 3 });
-  doc.text("• C.5 Safety — Vision Zero high-crash-location review at affected intersections within the study area. The county-level crash totals in §4.0 above provide reference but are NOT a substitute for the NYC Vision Zero View intersection-level overlay.", { paragraphGap: 6 });
+  // §C.5 Safety — when NYC OpenData precise crashes are present at
+  // the intersection radius (populated by crashesNearPoint with
+  // source nyc_opendata), surface them as a Vision Zero
+  // intersection-level overlay. Otherwise emit the scaffold prose.
+  const preciseCrash = (r as any)?.nyPreciseCrashSummary as
+    | {
+        totalCrashes?: number;
+        radiusMi?: number;
+        windowYears?: number;
+        fatalities?: number;
+        seriousInjuries?: number;
+        pedestrianInvolved?: number;
+        cyclistInvolved?: number;
+      }
+    | undefined;
+  if (preciseCrash && (preciseCrash.totalCrashes ?? 0) > 0) {
+    doc.text(
+      `• C.5 Safety — NYC OpenData Vision Zero crashes within ${preciseCrash.radiusMi ?? "—"} mi of the site over the rolling ${preciseCrash.windowYears ?? "—"}-year window: ${preciseCrash.totalCrashes} total crashes (${preciseCrash.fatalities ?? 0} fatalities, ${preciseCrash.seriousInjuries ?? 0} serious injuries, ${preciseCrash.pedestrianInvolved ?? 0} pedestrian-involved, ${preciseCrash.cyclistInvolved ?? 0} cyclist-involved). A submittable CEQR §C.5 narrative must compare these counts against the city-wide crash rate per veh-mi-traveled, identify HCLs in the study area, and surface mitigation per the NYC DOT Vision Zero priority-intersection list. Source: NYC OpenData Motor Vehicle Collisions (h9gi-nx95).`,
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.text(
+      "• C.5 Safety — Vision Zero high-crash-location review at affected intersections within the study area. The county-level crash totals in §4.0 above provide reference but are NOT a substitute for the NYC Vision Zero View intersection-level overlay. The NYC OpenData precise-crash adapter returned no records — verify the intersection coordinates and re-run, or query Vision Zero View directly (https://www.nyc.gov/site/visionzero/maps/vz-view.page).",
+      { paragraphGap: 6 },
+    );
+  }
   doc.fillColor("black");
 
   // §D — Impacts + Mitigation
