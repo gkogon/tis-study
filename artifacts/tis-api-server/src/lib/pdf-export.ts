@@ -3850,7 +3850,7 @@ function renderTisFlorida(
 
   gaSubsection(doc, "3.3 Traffic Data Collection");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Per MTSIH 2024, traffic counts should be 72 consecutive hours (Monday afternoon through Friday morning) in urbanized, transitioning, and urban area classes, and 7 days in rural areas, in 15-minute increments on typical weekdays excluding holiday weeks. Saturday and midday peaks should be collected for retail land uses per ITE convention. Turning movement counts of 2-hour AM and 2-hour PM peaks in 15-minute increments are typical Florida practice; the controlling FDOT District should confirm during the methodology meeting.",
+    "Per MTSIH 2024, roadway-segment counts should be 72 consecutive hours (Monday afternoon through Friday morning) in urbanized, transitioning, and urban area classes, and 7 days in rural areas, in 15-minute increments on typical weekdays excluding holiday weeks. The default analysis peak per MTSIH 2024 §2.3.1 is the Weekday PM Peak Hour of Adjacent Street Traffic (one hour between 4–6 PM); MTSIH 2024 imposes no blanket Saturday-peak requirement for retail or restaurant land uses — midday, Saturday, or other special peaks are added only where site characteristics warrant (the Applications Guide fast-food case study analyzes AM + PM + midday). For turning-movement counts, MTSIH 2024 Appendix A (p. A-3) requires AM and PM TMCs covering trucks, pedestrians, and bicycles but does not prescribe duration or bin size; both are agreed at the pre-application methodology meeting. The Applications Guide Case Study 2 (§3.4.3) uses 8-hour TMCs (3 hr AM + 2 hr midday + 3 hr PM) as a worked example, while 2-hr AM and 2-hr PM in 15-minute bins is common Florida practice.",
     { paragraphGap: 6 },
   );
 
@@ -3874,7 +3874,7 @@ function renderTisFlorida(
 
   gaSubsection(doc, "3.7 Context Classification");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Per FDOT Q/LOS v6.0 (which replaced \"complete streets\" terminology with \"context-based solutions\") and FDM Chapter 201, the study network's context classification (C1 Natural through C6 Urban Core, including C2T Rural Town) calibrates mode treatments and design standards. The controlling context class should be confirmed against FDM Chapter 201 mapping during the methodology meeting.",
+    "Per FDOT Q/LOS v6.0 (which replaced \"complete streets\" terminology with \"context-based solutions\") and FDM Chapter 200 §200.4 (Table 200.4.1), the study network's context classification (C1 Natural, C2 Rural, C2T Rural Town, C3R Suburban Residential, C3C Suburban Commercial, C4 Urban General, C5 Urban Center, C6 Urban Core) calibrates mode treatments and design standards; cross-section and lane widths follow FDM Table 210.2.1. The controlling context class should be confirmed against the FDOT Preliminary Context Classification mapping during the methodology meeting.",
     { paragraphGap: 6 },
   );
 
@@ -3914,7 +3914,7 @@ function renderTisFlorida(
   );
   rows(doc, [
     ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
-    ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}% (capped at 25% per FDOT District 2 TSIH App. C; confirm cap with controlling district)`],
+    ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}% (MTSIH 2024 §4.6.9 sets no statewide numeric cap; rate negotiated at the methodology meeting per NCHRP 684 / ITE Trip Generation Handbook)`],
     ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
     ["Weather condition", String(r.weather ?? req.weather ?? "clear")],
   ]);
@@ -3994,7 +3994,7 @@ function renderTisFlorida(
   const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
   if (needMitigation.length > 0) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      "The following intersection mitigations are recommended to address projected Build-condition impacts. Geometric mitigation should be designed to FDOT Design Manual (FDM 2025) standards. Proportionate-share, mobility-fee, or developer contribution amounts for jurisdictions that retain concurrency (e.g., Miami-Dade Chapter 33-G) or operate mobility-fee programs (e.g., Hillsborough Chapter 33E) should be calculated separately based on the controlling local-government ordinance.",
+      "The following intersection mitigations are recommended to address projected Build-condition impacts. Geometric mitigation should be designed to FDOT Design Manual (FDM 2026, Topic No. 625-000-002, dated January 1, 2026) standards — turn-lane warrants, deceleration / storage / taper lengths, intersection sight distance, and median-opening design per FDM Chapter 212; roundabouts per FDM Chapter 213. Proportionate-share, mobility-fee, or developer contribution amounts for jurisdictions that retain concurrency (e.g., Miami-Dade Chapter 33-G) or operate mobility-fee programs (e.g., Hillsborough, Jacksonville/Duval Chapter 655, Miami-Dade Chapter 33E) should be calculated separately based on the controlling local-government ordinance.",
       { paragraphGap: 6 },
     );
     for (const it of needMitigation) {
@@ -4014,7 +4014,7 @@ function renderTisFlorida(
   // --- 10.0 Site Access / Ingress-Egress --------------------------------
   gaSection(doc, "10.0 SITE ACCESS / INGRESS-EGRESS");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Connection to the FDOT State Highway System requires a connection permit per Rule 14-96 F.A.C. (2025 update). Driveway spacing, median-opening spacing, and signal spacing are governed by the access-management class assigned to the impacted SHS segment per Rule 14-97 F.A.C. and FDOT Procedure 525-030-155. Turn-lane warrants, deceleration-lane length, and intersection sight distance must be designed to FDOT Design Manual (FDM 2025) standards. The access-management class for the impacted SHS facility should be confirmed against the FDOT-published Access Classification map.",
+    "Connection to the FDOT State Highway System requires a connection permit per Rule 14-96 F.A.C. (2025 update). Driveway spacing, median-opening spacing, and signal spacing are governed by the access-management class (Classes 1–7) assigned to the impacted SHS segment per Rule 14-97 F.A.C. and FDOT Procedure 525-030-155; the class is stored in the RCI as Feature 146 / ACMANCLS (codes 00–07; 99 = unclassified, interim standards in Rule 14-97.004(1) apply until assignment). Driveway geometry (W, R, F, Y, G, Driveway Length, S, I; Categories A–D in FDM Chapter 214, Categories E–F–G punt to FDM Chapter 212), turn-lane warrants, deceleration-lane length, and intersection sight distance must be designed to FDOT Design Manual (FDM 2026) standards; off-SHS connections on city/county facilities follow the Florida Greenbook. The access-management class for the impacted SHS facility should be confirmed against the FDOT-published Access Management TDA layer.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
