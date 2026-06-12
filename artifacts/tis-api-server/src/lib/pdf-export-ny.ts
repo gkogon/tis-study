@@ -23,6 +23,7 @@
  * required") until SIMS / Regional Traffic Office data is wired.
  */
 import type { Region } from "./regions";
+import { getCbdtpStatus, type CbdtpStatus } from "./nysdot-data";
 
 type StoredProject = {
   id: string;
@@ -256,6 +257,11 @@ export function renderTisNewYork(
   const lat = req.latitude ? Number(req.latitude) : NaN;
   const lon = req.longitude ? Number(req.longitude) : NaN;
   const nyRegion = nysdotRegion(lat, lon, region);
+  // CBDTP cordon test — Manhattan south of 60th, in force from 5 Jan
+  // 2025. When the site is inside or near the cordon, the renderer
+  // must caveat any baseline counts that pre-date the program (CBD
+  // vehicle volumes fell ~11% in the first year of operation).
+  const cbdtp: CbdtpStatus = getCbdtpStatus(lat, lon);
 
   const openingYear = Number(req.openingYear);
   const growthYears = Number(r.growthYears ?? 0);
@@ -354,6 +360,21 @@ export function renderTisNewYork(
     { paragraphGap: 6 },
   );
 
+  // CBDTP cordon caveat — surfaced in §1.0 when the site is inside or
+  // adjacent to the Manhattan Central Business District Tolling
+  // Program zone (in force from 5 January 2025). The caveat governs
+  // any baseline-counts vintage discussion downstream in §3.2.
+  if (cbdtp.inCordon || cbdtp.nearCordon) {
+    doc.font("bold").fontSize(11).fillColor("black").text("Congestion-pricing context (CBDTP):");
+    doc.moveDown(0.1);
+    doc.font("body").fontSize(10).fillColor("black").text(
+      cbdtp.inCordon
+        ? "The site is within the Central Business District Tolling Program (CBDTP) cordon — Manhattan south of 60th Street, in force from 5 January 2025. The CBDTP is the first cordon-pricing program in the United States; first-year independent analyses (RPA, NBER, 2025–2026) report a ~11% drop in CBD vehicle volumes and a 15–25% rise in CBD vehicle speeds. Any TIS baseline drawn from pre-2025 NYSDOT or NYC DOT counts within the cordon will systematically overstate today's vehicle baseline; supplemental post-CBDTP counts at the affected intersections are recommended before the TIS is locked, and the No-Build assignment for opening years after 2025 should be drawn from post-CBDTP counts rather than interpolated from the pre-2025 trend. See §3.2 for the per-intersection count-vintage caveat."
+        : `The site is within approximately ${cbdtp.bufferMiles} mile of the Central Business District Tolling Program (CBDTP) cordon (Manhattan south of 60th Street, in force from 5 January 2025). Generated trips that route through the cordon will be subject to the toll schedule; the project's mode-share assumptions for vehicle-vs-transit-vs-rideshare should reflect the CBDTP-era distribution rather than pre-2025 conditions. Baseline counts on study-area corridors that feed into the cordon may also reflect the program's first-year impact (CBD volumes fell ~11%) — see §3.2 for the count-vintage caveat.`,
+      { paragraphGap: 6 },
+    );
+  }
+
   nyMetricStrip(doc, [
     { label: "Intersections", value: String(r.intersectionsStudied ?? intersections.length ?? 0) },
     { label: "LOS drops", value: String(losDrops) },
@@ -441,6 +462,19 @@ export function renderTisNewYork(
     `Existing AADT is sourced from the NYSDOT Traffic Data Viewer. Design Hourly Volume (DHV) is reported per HDM Chapter 5 convention as AADT × K-factor; this analysis applies K = ${K_FACTOR.toFixed(2)} as the statewide design default — facility-specific K should be substituted from NYSDOT count-station records for formal submittal. The table below grows the existing volume at ${growthPct || "—"}%/yr to Estimated Time of Completion (ETC), ETC + 20 years, and ETC + 30 years per HDM Chapter 5 §5.3.`,
     { paragraphGap: 6 },
   );
+
+  // CBDTP count-vintage caveat — surfaced when the site sits in or
+  // adjacent to the Manhattan cordon, where pre-Jan-2025 NYSDOT /
+  // NYC DOT counts overstate today's vehicle baseline.
+  if (cbdtp.inCordon || cbdtp.nearCordon) {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      cbdtp.inCordon
+        ? "Count-vintage caveat — CBDTP: existing volumes drawn from NYSDOT TDV or NYC DOT counts predating 5 January 2025 systematically overstate the post-cordon baseline (CBD vehicle volumes fell ~11% in the program's first year; CBD vehicle speeds rose 15-25%). For any intersection inside the cordon, the existing baseline should be replaced with a post-CBDTP count (manual classified count or NYC DOT post-Jan-2025 publish) before the analysis is locked. Where pre-2025 counts are retained as a placeholder, the renderer's growth-rate projection compounds the pre-cordon level into the future — i.e. the No-Build and Build columns will both be systematically high. Reviewer-facing flag noted."
+        : `Count-vintage caveat — CBDTP feeder: this site lies within approximately ${cbdtp.bufferMiles} mile of the CBDTP cordon. Baseline counts on corridors that feed into the cordon may reflect the program's first-year ~11% volume reduction; vintage of each NYSDOT TDV count station used in the table below should be verified against the 5 January 2025 program date.`,
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
 
   const projectVol = (v: number, yearsAhead: number) => v * Math.pow(1 + (growthPct / 100), yearsAhead);
 
@@ -620,6 +654,90 @@ export function renderTisNewYork(
         totalAccidents: number;
       }
     | undefined;
+
+  // Tier-2 precise crash records — populated when the study site is
+  // inside NYC. h9gi-nx95 carries officer-geocoded lat/lon, so we
+  // can run a 0.25-mile-radius query against the local `crashes`
+  // table (populated by ingest-crashes-nyc.ts) and produce
+  // per-intersection-level crash exposure — the thing the county-
+  // level table explicitly cannot give. Renders ABOVE the county
+  // block; the county block stays as statewide-rate context for the
+  // §5.3.4 screening.
+  const preciseCrashSummary = (r as any).nyPreciseCrashSummary as
+    | {
+        windowYears: number;
+        totalCrashes: number;
+        bySeverity: { K: number; A: number; B: number; C: number; O: number; UNKNOWN: number };
+        pedestrianInvolved: number;
+        cyclistInvolved: number;
+        recentSevere: Array<{
+          occurredAt: string;
+          severity: string;
+          onStreet: string | null;
+          crossStreet: string | null;
+          mannerOfCollision: string | null;
+          pedestrianInvolved: boolean;
+          cyclistInvolved: boolean;
+        }>;
+        source: string;
+        locationPrecision: "precise" | "approximate";
+      }
+    | undefined;
+
+  if (preciseCrashSummary && preciseCrashSummary.totalCrashes > 0) {
+    const fatal = preciseCrashSummary.bySeverity.K;
+    const injury = preciseCrashSummary.bySeverity.C; // NYC dataset doesn't grade A/B/C; see ingest-crashes-nyc.ts.
+    const pdo = preciseCrashSummary.bySeverity.O;
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `A site-radius crash review (0.25-mile radius, ${preciseCrashSummary.windowYears}-year window) was performed using the NYC Open Data "Motor Vehicle Collisions — Crashes" dataset (data.cityofnewyork.us / h9gi-nx95), which carries lat/lon geocoded by NYPD Track Traffic / Criminal at the time of report. The values below are intersection-level, not county-level — they reflect the exposure local to the proposed site access and study network. NYC does not publish KABCO injury-severity grades; every injury crash is reported here as "C — minor" rather than fabricated A or B grades.`,
+      { paragraphGap: 6 },
+    );
+
+    nyTable(doc, {
+      headers: ["Severity (KABCO)", "Count (3-yr)", "Annualized"],
+      widths: [240, 130, 110],
+      align: ["left", "right", "right"],
+      rows: [
+        ["K — Fatal", fmtNum(fatal), fmtNum(fatal / preciseCrashSummary.windowYears, 2)],
+        ["C — Injury (source publishes no A/B subgrade)", fmtNum(injury), fmtNum(injury / preciseCrashSummary.windowYears, 2)],
+        ["O — Property Damage Only", fmtNum(pdo), fmtNum(pdo / preciseCrashSummary.windowYears, 2)],
+        ["Total (all severities)", fmtNum(preciseCrashSummary.totalCrashes), fmtNum(preciseCrashSummary.totalCrashes / preciseCrashSummary.windowYears, 2)],
+      ],
+    });
+    doc.moveDown(0.2);
+
+    if (preciseCrashSummary.pedestrianInvolved > 0 || preciseCrashSummary.cyclistInvolved > 0) {
+      doc.font("body").fontSize(10).fillColor("black").text(
+        `Vulnerable road user involvement within the 0.25-mile radius: ${fmtNum(preciseCrashSummary.pedestrianInvolved)} pedestrian-involved crash${preciseCrashSummary.pedestrianInvolved === 1 ? "" : "es"}, ${fmtNum(preciseCrashSummary.cyclistInvolved)} cyclist-involved crash${preciseCrashSummary.cyclistInvolved === 1 ? "" : "es"}. Multimodal mitigation review is required at any site access where the §4 screening flags an above-statewide-average crash rate.`,
+        { paragraphGap: 6 },
+      );
+    }
+
+    if (preciseCrashSummary.recentSevere.length > 0) {
+      doc.font("bold").fontSize(10).fillColor("black").text(`Recent severe crashes within 0.25 mi (most recent ${preciseCrashSummary.recentSevere.length}):`);
+      doc.moveDown(0.2);
+      nyTable(doc, {
+        headers: ["Date", "Severity", "On street", "Cross street", "Manner"],
+        widths: [70, 60, 150, 130, 70],
+        align: ["left", "center", "left", "left", "left"],
+        rows: preciseCrashSummary.recentSevere.map((c) => [
+          c.occurredAt,
+          c.severity,
+          c.onStreet ?? "—",
+          c.crossStreet ?? "—",
+          c.mannerOfCollision ?? "—",
+        ]),
+      });
+      doc.moveDown(0.3);
+    }
+
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "The county-level table below is included for statewide-rate context per HDM Chapter 5 §5.3.4. For formal submittal the rate comparison must be made against the controlling facility's exposure (segment AADT × segment length; intersection AADT × entry-flow) and benchmarked to NYSDOT Office of Modal Safety statewide averages; the site-radius detail above provides the per-intersection exposure the county-rate alone cannot.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+    doc.moveDown(0.3);
+  }
 
   if (crashSummary && crashSummary.totalAccidents > 0) {
     const totalInjurious =

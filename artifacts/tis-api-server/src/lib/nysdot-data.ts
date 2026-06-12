@@ -350,3 +350,128 @@ export async function getNyCrashSummaryForSite(
   if (!rdm?.countyName) return null;
   return getNyCountyCrashSummary(rdm.countyName);
 }
+
+// ===========================================================================
+// CBDTP cordon — Central Business District Tolling Program
+// ===========================================================================
+//
+// The CBDTP went into force 5 January 2025 — the first cordon-pricing
+// program in the United States. The cordon covers Manhattan south of
+// 60th Street. The FDR Drive, the West Side Highway / Route 9A, the
+// Battery Park Underpass, and the Hugh L. Carey Tunnel are "excluded
+// roadways" where pass-through traffic is toll-exempt, but development
+// sites are on city streets, not on through-routes — so for the
+// renderer's purpose (flagging that pre-2025 traffic counts overstate
+// today's vehicle baseline) the simple cordon test below is the right
+// granularity.
+//
+// Material to any TIS that uses pre-Jan-2025 NYSDOT or NYC DOT counts
+// inside or adjacent to the cordon: CBD vehicle volumes fell ~11% in
+// the first year of operation and CBD vehicle speeds rose 15-25%
+// (RPA + NBER 2025-26 analyses). Pre-CBDTP counts overstate today's
+// CBD vehicle baseline by an order-of-magnitude 10-15%.
+//
+// See: https://congestionreliefzone.mta.info/
+
+// 60th Street runs along a tilted line because the Manhattan grid is
+// rotated ~29° east of true north. The northern boundary of the
+// cordon is the lat/lon line connecting:
+//   60th & East End Ave (East River) — ~40.7615, -73.9610
+//   60th & 12th Ave    (Hudson)      — ~40.7710, -73.9942
+// The other three boundaries are the natural shoreline.
+
+const CBDTP_NORTH_EAST_CORNER = { lat: 40.7615, lon: -73.961 }; // 60th & East End Ave
+const CBDTP_NORTH_WEST_CORNER = { lat: 40.771, lon: -73.9942 }; // 60th & 12th Ave / WSH ramp
+const CBDTP_SOUTH_LAT = 40.6995; // Battery / Castle Clinton north tip
+const CBDTP_WEST_LON = -74.025; // Hudson River outer (W. of Battery Park City)
+const CBDTP_EAST_LON = -73.94; // East River outer
+
+export type CbdtpStatus = {
+  /** True when the site is geographically inside the CBDTP cordon. */
+  inCordon: boolean;
+  /**
+   * True when the site is within `bufferMiles` of the cordon (also
+   * true when `inCordon` is true). A "near" site is one whose
+   * generated trips would plausibly route through the cordon.
+   */
+  nearCordon: boolean;
+  /** Buffer used for the `nearCordon` test, in miles. */
+  bufferMiles: number;
+};
+
+/**
+ * Internal: strict polygon test for the CBDTP cordon. The northern
+ * boundary follows 60th Street's tilted line; the other three are
+ * generous bounding-box limits matched to the Manhattan shoreline.
+ *
+ * Note: sites in Brooklyn DUMBO / Williamsburg / LIC that fall inside
+ * the bbox correctly carry the same caveat as Manhattan sites — their
+ * bridge / tunnel traffic flows into the cordon, so pre-2025 counts
+ * are equally inflated there.
+ */
+function isInCbdtpCordon(lat: number, lon: number): boolean {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  if (lat < CBDTP_SOUTH_LAT) return false;
+  if (lat > CBDTP_NORTH_WEST_CORNER.lat) return false;
+  if (lon < CBDTP_WEST_LON) return false;
+  if (lon > CBDTP_EAST_LON) return false;
+  // Tilted northern boundary: linearly interpolate the 60th-St latitude
+  // by longitude between the NW and NE corners. Clamp lon to the
+  // corner range so points west of NW or east of NE use the
+  // appropriate corner latitude (the bbox already passed).
+  const nwLon = CBDTP_NORTH_WEST_CORNER.lon;
+  const neLon = CBDTP_NORTH_EAST_CORNER.lon;
+  const lonClamp = Math.max(nwLon, Math.min(neLon, lon));
+  const t = (lonClamp - nwLon) / (neLon - nwLon);
+  const northBoundAtLon =
+    CBDTP_NORTH_WEST_CORNER.lat +
+    t * (CBDTP_NORTH_EAST_CORNER.lat - CBDTP_NORTH_WEST_CORNER.lat);
+  if (lat > northBoundAtLon) return false;
+  return true;
+}
+
+/**
+ * Determine the CBDTP cordon status for a site coordinate.
+ *
+ * Returns `{ inCordon: true }` when the site is inside the cordon
+ * (also implies `nearCordon: true`). Returns `{ inCordon: false,
+ * nearCordon: true }` when the site is within `bufferMiles` of the
+ * cordon edge — feeding-traffic sites whose pre-2025 baseline counts
+ * are also affected by the CBDTP modal shift. Returns `outside`
+ * for any non-NYC coordinate.
+ *
+ * The default 1-mile buffer is calibrated to catch sites whose
+ * outbound/inbound trips would plausibly traverse the cordon (the
+ * approach corridors on the major bridges and tunnels feed traffic
+ * into the cordon for roughly a mile in every direction).
+ */
+export function getCbdtpStatus(
+  lat: number,
+  lon: number,
+  bufferMiles: number = 1,
+): CbdtpStatus {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return { inCordon: false, nearCordon: false, bufferMiles };
+  }
+  if (isInCbdtpCordon(lat, lon)) {
+    return { inCordon: true, nearCordon: true, bufferMiles };
+  }
+  // Buffer test by perturbing the point in each of 8 cardinal+ordinal
+  // directions and checking whether any perturbed point lies inside
+  // the cordon. 1° latitude ≈ 69 mi; 1° longitude at Manhattan
+  // latitude (40.76°) ≈ 69 × cos(40.76°) ≈ 52.3 mi.
+  const dLat = bufferMiles / 69;
+  const dLon = bufferMiles / (69 * Math.cos((40.76 * Math.PI) / 180));
+  const probes: Array<[number, number]> = [
+    [lat - dLat, lon],
+    [lat + dLat, lon],
+    [lat, lon - dLon],
+    [lat, lon + dLon],
+    [lat - dLat, lon - dLon],
+    [lat - dLat, lon + dLon],
+    [lat + dLat, lon - dLon],
+    [lat + dLat, lon + dLon],
+  ];
+  const nearCordon = probes.some(([la, lo]) => isInCbdtpCordon(la, lo));
+  return { inCordon: false, nearCordon, bufferMiles };
+}
