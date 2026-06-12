@@ -1083,16 +1083,37 @@ export function renderCeqrNyc(
   const pmIn = Number(tg.pmIn ?? 0);
   const pmOut = Number(tg.pmOut ?? 0);
   const peakHourVeh = Math.max(amPeak, pmIn + pmOut);
-  // Modal split — CEQR Ch 16 directs zone-specific shares (Manhattan
-  // CBD vs Manhattan non-CBD vs Outer Boroughs) drawn from local
-  // surveys. Lacking that detail in the engine output today, the
-  // scaffold uses a Manhattan-CBD representative split of 30/60/10
-  // (vehicle / transit / pedestrian) so the screening totals are
-  // intelligible. A full CEQR analysis would pull these per
-  // sub-borough from Ch 16 Appendix C.
-  const peakHourPerson = peakHourVeh / 0.30;
-  const peakHourTransit = Math.round(peakHourPerson * 0.60);
-  const peakHourPed = Math.round(peakHourPerson * 0.10);
+  // Modal split inferred from the transit-context — CEQR Ch 16 zone
+  // bands are driven by transit accessibility, and the number of
+  // subway routes within walk-shed is the cleanest available proxy:
+  //   - 5+ routes (Manhattan CBD-typical) → 25/65/10 vehicle/transit/ped
+  //   - 3-4 routes (Manhattan non-CBD)    → 30/60/10
+  //   - 1-2 routes (Outer Borough TOD)    → 40/45/15
+  //   - 0 routes  (Outer Borough non-TOD) → 55/30/15
+  // A submittable CEQR analysis must replace the inferred split with
+  // the actual CEQR Ch 16 Appendix C zone-specific value.
+  const transitCtxCeqr = (r as any)?.nyTransitContext as NycTransitContext | undefined;
+  const routesAvailable = transitCtxCeqr?.subway.routesAvailable.length ?? 0;
+  let vehShare: number;
+  let transitShare: number;
+  let pedShare: number;
+  let modalSplitBasis: string;
+  if (routesAvailable >= 5) {
+    vehShare = 0.25; transitShare = 0.65; pedShare = 0.10;
+    modalSplitBasis = "Manhattan-CBD-typical (≥5 subway routes accessible within the 0.5-mi walk-shed)";
+  } else if (routesAvailable >= 3) {
+    vehShare = 0.30; transitShare = 0.60; pedShare = 0.10;
+    modalSplitBasis = `Manhattan-non-CBD-typical (${routesAvailable} subway routes accessible within the walk-shed)`;
+  } else if (routesAvailable >= 1) {
+    vehShare = 0.40; transitShare = 0.45; pedShare = 0.15;
+    modalSplitBasis = `Outer-Borough TOD (${routesAvailable} subway route${routesAvailable === 1 ? "" : "s"} accessible within the walk-shed)`;
+  } else {
+    vehShare = 0.55; transitShare = 0.30; pedShare = 0.15;
+    modalSplitBasis = "Outer-Borough non-TOD (no subway station within 0.5 mi; transit served by NYCT bus only)";
+  }
+  const peakHourPerson = peakHourVeh / vehShare;
+  const peakHourTransit = Math.round(peakHourPerson * transitShare);
+  const peakHourPed = Math.round(peakHourPerson * pedShare);
 
   const vehAbove = peakHourVeh > CEQR_VEH_THRESHOLD;
   const transitAbove = peakHourTransit > CEQR_TRANSIT_THRESHOLD;
@@ -1110,7 +1131,7 @@ export function renderCeqrNyc(
   // §A — Preliminary Screening
   nySubsection(doc, "A.1 Project Description and Screening Assumptions");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Project ${project.projectName || "(unnamed)"} — land-use code ${project.landUseCode || "—"}. Peak-hour vehicle trip-end estimate from the engine (max of AM and PM peaks): ${peakHourVeh} vehicle trips. The §A.2 screening converts the vehicle-trip figure to person-trips and modal totals using a representative Manhattan-CBD mode split (30% vehicle / 60% transit / 10% pedestrian). A submittable CEQR analysis must replace this representative split with the zone-specific share drawn from CEQR Tech Manual Ch 16 Appendix C for the actual sub-borough zone of the site.`,
+    `Project ${project.projectName || "(unnamed)"} — land-use code ${project.landUseCode || "—"}. Peak-hour vehicle trip-end estimate from the engine (max of AM and PM peaks): ${peakHourVeh} vehicle trips. The §A.2 screening converts the vehicle-trip figure to person-trips and modal totals using a ${(vehShare * 100).toFixed(0)}/${(transitShare * 100).toFixed(0)}/${(pedShare * 100).toFixed(0)} (vehicle / transit / pedestrian) mode split. Basis: ${modalSplitBasis}. A submittable CEQR analysis must replace this transit-context-inferred split with the zone-specific share drawn from CEQR Tech Manual Ch 16 Appendix C for the actual sub-borough zone of the site.`,
     { paragraphGap: 6 },
   );
 
