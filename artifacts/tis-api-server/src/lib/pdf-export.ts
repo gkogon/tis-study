@@ -949,6 +949,10 @@ type CaliforniaJurisdiction = {
   vmtCalculator?: string;
   operationalContext: string;
   extraNote?: string;
+  mpoModel: string;
+  rtpScs: string;
+  mpoBaselineUrl: string;
+  publishedBaseline?: string;
 };
 
 /**
@@ -972,7 +976,11 @@ function californiaJurisdiction(lat: number, lon: number): CaliforniaJurisdictio
       vmtCalculator: "SFCTA's SF-CHAMP model (TM1-derived TAZ baselines)",
       operationalContext: "site-access design review; non-CEQA local operational review (SF Public Works)",
       extraNote: "San Francisco is the only California jurisdiction that has removed LOS from CEQA review entirely. The non-CEQA operational analysis below is provided for site-access design and SF Public Works coordination; it is not part of the SF Planning CEQA record.",
-    };
+          mpoModel: "Travel Model One v1.6.1 (May 2025); TM2 under development",
+      rtpScs: "Plan Bay Area 2050 (adopted Oct 2021); PBA 2050+ update slated early 2026",
+      mpoBaselineUrl: "https://vitalsigns.mtc.ca.gov/indicators/daily-miles-traveled",
+      publishedBaseline: "MTC publishes regional aggregate via Vital Signs; project-level VMT delegated to cities. SF uses SFCTA SF-CHAMP TAZ baselines.",
+};
   }
   if (inBox(33.700, 34.337, -118.668, -118.155)) {
     return {
@@ -984,7 +992,11 @@ function californiaJurisdiction(lat: number, lon: number): CaliforniaJurisdictio
       mpoName: "Southern California Association of Governments (SCAG)",
       vmtCalculator: "LADOT VMT Calculator v1.3 (May 2020); SCAG HELPR 3.0 for TAZ baselines",
       operationalContext: "Caltrans Encroachment Permit review on SHS frontage; LADOT site-access design review",
-    };
+          mpoModel: "SCAG ABM (TransCAD); legacy TBM retained as parallel",
+      rtpScs: "Connect SoCal 2024 (adopted Apr 4, 2024)",
+      mpoBaselineUrl: "https://rdp.scag.ca.gov/helpr/",
+      publishedBaseline: "Project-level baseline pulled from SCAG HELPR 3.0 (Regional Data Platform, parcel-level VMT layer at 2019 baseline) at the APC sub-area aggregation.",
+};
   }
   if (inBox(33.730, 33.890, -118.250, -118.080)) {
     return {
@@ -995,7 +1007,11 @@ function californiaJurisdiction(lat: number, lon: number): CaliforniaJurisdictio
       screeningTripCount: 500,
       mpoName: "Southern California Association of Governments (SCAG)",
       operationalContext: "Caltrans Encroachment Permit review on SHS frontage; Long Beach Public Works site-access review",
-    };
+          mpoModel: "SCAG ABM (TransCAD)",
+      rtpScs: "Connect SoCal 2024 (adopted Apr 4, 2024)",
+      mpoBaselineUrl: "https://rdp.scag.ca.gov/helpr/",
+      publishedBaseline: "LA County (SCAG region) VMT/capita and VMT/employee — pull from SCAG HELPR 3.0 at the LA County aggregation.",
+};
   }
   if (inBox(33.770, 33.890, -118.020, -117.690)) {
     return {
@@ -1007,7 +1023,11 @@ function californiaJurisdiction(lat: number, lon: number): CaliforniaJurisdictio
       mpoName: "Southern California Association of Governments (SCAG)",
       operationalContext: "Caltrans D12 Encroachment Permit review; Anaheim Public Works site-access review",
       extraNote: "Anaheim uses VMT per service population (population + employment), not VMT per capita — a different denominator than the OPR default. Verify the OC service-population baseline against the Feb 2025 final-draft TIA Guidelines before adopting for submittal.",
-    };
+          mpoModel: "SCAG ABM (TransCAD)",
+      rtpScs: "Connect SoCal 2024 (adopted Apr 4, 2024)",
+      mpoBaselineUrl: "https://rdp.scag.ca.gov/helpr/",
+      publishedBaseline: "OC VMT per service population (population + employment denominator). Pull from SCAG HELPR 3.0 at the Orange County aggregation; confirm denominator method against the Feb 2025 final-draft TIA Guidelines.",
+};
   }
   if (inBox(33.700, 34.823, -118.951, -117.646)) {
     return {
@@ -1019,7 +1039,11 @@ function californiaJurisdiction(lat: number, lon: number): CaliforniaJurisdictio
       mpoName: "Southern California Association of Governments (SCAG)",
       operationalContext: "Caltrans Encroachment Permit review on SHS frontage; LA County DPW site-access review",
       extraNote: "LA County uses a 16.8% reduction threshold (CARB 2017 Scoping Plan compute), NOT the 15% OPR default. Baseline values diverge between North and South sub-areas.",
-    };
+          mpoModel: "SCAG ABM (TransCAD)",
+      rtpScs: "Connect SoCal 2024 (adopted Apr 4, 2024)",
+      mpoBaselineUrl: "https://rdp.scag.ca.gov/helpr/",
+      publishedBaseline: "LA County DPW Guidelines § 3.1.4.2 require the SCAG RTP/SCS Travel Demand Forecast Model. Rough sub-area values cited in jurisdiction guidelines: ~22.3 (North VMT/capita) / ~12.7 (South VMT/capita); ~19.0 / ~18.4 VMT/employee. Confirm against current SCAG model run for submittal.",
+};
   }
   if (inBox(32.534, 33.114, -117.282, -116.906)) {
     return {
@@ -1032,7 +1056,11 @@ function californiaJurisdiction(lat: number, lon: number): CaliforniaJurisdictio
       vmtCalculator: "SANDAG SB 743 VMT Maps (ArcGIS Experience Builder); San Diego Mobility Evaluation Tool (MET)",
       operationalContext: "Caltrans D11 Encroachment Permit review; San Diego TSM Ch. 4 operational analysis",
       extraNote: "San Diego applies a Mobility Zone-based screen (1/2/3) rather than a single trip count; verify the project's Mobility Zone via the MET before adopting the 110-trip floor.",
-    };
+          mpoModel: "SANDAG ABM3 (base year 2022) for 2025 plan; ABM2+ (2016 base) for 2021 plan",
+      rtpScs: "Final Amended 2021 Regional Plan (CARB-approved Feb 2025); 2025 Regional Plan in development",
+      mpoBaselineUrl: "https://geo.sandag.org/portal/apps/experiencebuilder/experience/?id=636ddd919dc6439cb7b8f26ba2c25388",
+      publishedBaseline: "SANDAG SB 743 VMT Maps (ArcGIS Experience Builder) — VMT/resident and VMT/employee by City, CPA, or Census Tract. The most project-ready VMT portal in California; reads MET (Mobility Evaluation Tool) for Mobility Zone screen.",
+};
   }
   if (inBox(38.430, 38.685, -121.560, -121.362)) {
     return {
@@ -1043,7 +1071,11 @@ function californiaJurisdiction(lat: number, lon: number): CaliforniaJurisdictio
       screeningTripCount: 250,
       mpoName: "Sacramento Area Council of Governments (SACOG)",
       operationalContext: "Caltrans D3 Encroachment Permit review; Sacramento Public Works site-access review",
-    };
+          mpoModel: "SACSIM23 (activity-based, DaySim)",
+      rtpScs: "2025 Blueprint (MTP/SCS) — adoption Fall 2025",
+      mpoBaselineUrl: "https://github.com/SACOG/SACSIM19",
+      publishedBaseline: "No SACOG-published project-level tool; member jurisdictions handle independently. Citywide existing VMT baseline maintained by Sacramento Community Development for §3.1.4 lookups.",
+};
   }
   if (inBox(37.180, 37.470, -122.045, -121.745)) {
     return {
@@ -1055,7 +1087,11 @@ function californiaJurisdiction(lat: number, lon: number): CaliforniaJurisdictio
       mpoName: "Metropolitan Transportation Commission (MTC)",
       operationalContext: "Caltrans D4 Encroachment Permit review; San Jose Local Transportation Analysis (LTA) non-CEQA track",
       extraNote: "San Jose codifies a non-CEQA Local Transportation Analysis (LTA) track that runs IN PARALLEL with the CEQA-VMT analysis. The operational LOS section below corresponds to the LTA scope when ≥10 peak-hour trips per lane are added to a signalized intersection within ½-mile already at LOS D or worse.",
-    };
+          mpoModel: "Travel Model One v1.6.1 (May 2025); TM2 under development",
+      rtpScs: "Plan Bay Area 2050 (adopted Oct 2021); PBA 2050+ update slated early 2026",
+      mpoBaselineUrl: "https://github.com/BayAreaMetro/travel-model-one",
+      publishedBaseline: "Citywide existing VMT baseline maintained by San Jose Department of Transportation. SJ TAH Apr 2023 publishes residential + office screening maps; consult those before any MPO model run.",
+};
   }
   if (inBox(37.700, 37.880, -122.350, -122.114)) {
     return {
@@ -1066,7 +1102,11 @@ function californiaJurisdiction(lat: number, lon: number): CaliforniaJurisdictio
       screeningTripCount: 100,
       mpoName: "Metropolitan Transportation Commission (MTC)",
       operationalContext: "Caltrans D4 Encroachment Permit review; Oakland Public Works site-access review",
-    };
+          mpoModel: "Travel Model One v1.6.1 (May 2025); TM2 under development",
+      rtpScs: "Plan Bay Area 2050 (adopted Oct 2021); PBA 2050+ update slated early 2026",
+      mpoBaselineUrl: "https://vitalsigns.mtc.ca.gov/indicators/daily-miles-traveled",
+      publishedBaseline: "MTC Bay Area regional VMT/capita and VMT/employee — pull from MTC Vital Signs or commission a TM1 model run at the project TAZ.",
+};
   }
   if (inBox(36.670, 36.910, -119.910, -119.620)) {
     return {
@@ -1079,7 +1119,11 @@ function californiaJurisdiction(lat: number, lon: number): CaliforniaJurisdictio
       vmtCalculator: "Fresno COG VMT Screening Tool (LSA-hosted ArcGIS app)",
       operationalContext: "Caltrans D6 Encroachment Permit review; Fresno Public Works site-access review",
       extraNote: "Fresno uses a 13% reduction threshold (Central Valley GHG-aligned), NOT the 15% OPR default applied in coastal metros.",
-    };
+          mpoModel: "Fresno COG ABM (DaySim + Replica IX/XI)",
+      rtpScs: "SJV COGs hub; current Fresno COG MTP",
+      mpoBaselineUrl: "http://gis1.lsa.net/FCOGVMT/",
+      publishedBaseline: "Fresno COG VMT Screening Tool (LSA-hosted ArcGIS app, parcel-level screening). User guide: gis1.lsa.net/FCOGVMT/Fresno COG Screening Tool User Guide 2025.pdf. SB 743 Regional Guidelines published June 2025.",
+};
   }
   if (inBox(35.270, 35.480, -119.190, -118.910)) {
     return {
@@ -1091,7 +1135,11 @@ function californiaJurisdiction(lat: number, lon: number): CaliforniaJurisdictio
       mpoName: "Kern Council of Governments (Kern COG)",
       operationalContext: "Caltrans D6 Encroachment Permit review; Bakersfield Public Works site-access review",
       extraNote: "Bakersfield has not formally adopted city-level VMT guidelines; defaults to the OPR Dec 2018 Technical Advisory. Kern COG has been workshopping regional VMT guidance; verify Kern COG adoption status before submittal.",
-    };
+          mpoModel: "Kern COG model (regional guidance in workshopping)",
+      rtpScs: "Kern COG RTP/SCS",
+      mpoBaselineUrl: "https://www.bakersfieldcity.us/279/Environmental-Documents",
+      publishedBaseline: "No city-level TIA/VMT guidelines adopted; defers to OPR Dec 2018 defaults on project EIRs. Kern COG workshopping regional guidance. Use OPR floor (15% below baseline; 110-trip screen) unless Kern COG publishes intervening guidance.",
+};
   }
   return {
     name: "Caltrans + OPR Dec 2018 defaults",
@@ -1102,6 +1150,10 @@ function californiaJurisdiction(lat: number, lon: number): CaliforniaJurisdictio
     mpoName: "Regional MPO covering project site",
     operationalContext: "Caltrans District Encroachment Permit review (SHS frontage); local agency site-access design review",
     extraNote: "No host-jurisdiction-specific TIA guidelines were identified for this site. Confirm the local lead agency's adopted VMT guidelines and threshold before submittal — most California jurisdictions adopted between 2019 and 2024 and many post-date OPR defaults.",
+    mpoModel: "Host MPO model — confirm at scoping",
+    rtpScs: "Host MPO RTP/SCS — confirm at scoping",
+    mpoBaselineUrl: "https://dot.ca.gov/programs/sustainability/sb-743/resources",
+    publishedBaseline: "No host-jurisdiction baseline lookup; use OPR floor (15% below regional baseline) and pull baseline from host MPO RTP/SCS at scoping.",
   };
 }
 
@@ -1261,7 +1313,7 @@ function renderTisCalifornia(
     { paragraphGap: 4 },
   );
   doc.font("body").fontSize(10).fillColor("black").text(
-    `This report presents §4 non-CEQA operational LOS analysis suitable for ${jur.operationalContext}, AND §3 a structured CEQA-VMT determination scaffold listing the inputs required for a CEQA-compliant determination under § 15064.3. The §4 LOS analysis does NOT, by itself, satisfy CEQA transportation-impact requirements; a complete CEQA submittal requires the VMT determination in §3 to be filled with project-specific MPO baseline and trip-VMT inputs per the ${jur.guidelinesDoc} methodology (OPR Technical Advisory, Dec 2018).`,
+    `This report presents §4 non-CEQA operational LOS analysis suitable for ${jur.operationalContext}, AND §3 a Tier-1 CEQA-VMT screening determination that auto-evaluates the six OPR § E.1 screening criteria against project metadata. The §4 LOS analysis does NOT, by itself, satisfy CEQA transportation-impact requirements. If §3 auto-screens the project out, the project is presumed less-than-significant under CEQA Guidelines § 15064.3 without further VMT analysis; otherwise, §3 surfaces the inputs needed for a full VMT determination under the ${jur.guidelinesDoc} methodology (OPR Technical Advisory, Dec 2018).`,
     { paragraphGap: 6 },
   );
 
@@ -1356,7 +1408,10 @@ function renderTisCalifornia(
     ["Residential metric (OPR Tech Advisory p. 10)", "Home-based VMT per capita (tour-based ideal; trip-based acceptable)"],
     ["Office / employment metric (OPR p. 16)", "Home-based work VMT per employee"],
     ["Retail metric (OPR p. 16)", "Net change in total VMT (absolute, not per-capita)"],
-    ["Required baseline source", `${jur.mpoName} latest published RTP/SCS travel demand model run`],
+    ["MPO travel-demand model", jur.mpoModel],
+    ["Current RTP/SCS", jur.rtpScs],
+    ["MPO baseline portal / source", jur.mpoBaselineUrl],
+    ["Published baseline status", jur.publishedBaseline ?? "Not specified — commission an MPO model run at the project TAZ"],
     ["Optional jurisdiction calculator", jur.vmtCalculator ?? "None published — MPO model run required"],
   ]);
   doc.moveDown(0.3);
@@ -1419,7 +1474,30 @@ function renderTisCalifornia(
 
   caSubsection(doc, "3.5 VMT-Reduction Mitigation Menu (CAPCOA 2024)");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "If the project exceeds the significance threshold above, the CEQA-VMT analysis must propose mitigation measures with quantified reduction credits drawn from the CAPCOA Handbook for Analyzing GHG Emission Reductions, Assessing Climate Vulnerabilities, and Advancing Health and Equity (2024 Edition, adopted 2024-11-21; supersedes Dec 2021). Measure categories: land use density, neighborhood design, transit proximity / frequency, parking management, trip-reduction / TDM, pricing / road management. Stacked measures apply a multiplicative cap to prevent double-counting. Note: intersection geometry improvements (turn lanes, signal timing) do NOT reduce VMT and are not creditable mitigation under § 15064.3.",
+    "If the project exceeds the §3.4 significance threshold, the CEQA-VMT analysis must propose VMT-reducing mitigation drawn from the CAPCOA Handbook for Analyzing GHG Emission Reductions, Assessing Climate Vulnerabilities, and Advancing Health and Equity (2024 Edition, adopted 2024-11-21; supersedes Dec 2021). The categories and representative measures below are the Tier-1 reference menu. Project-specific reduction percentages must be computed in CAPCOA's per-measure formulas, parameterized on context (urban / suburban / rural; transit availability), with the multiplicative stacked-measures cap applied to prevent double-counting.",
+    { paragraphGap: 6 },
+  );
+  table(doc, {
+    headers: ["CAPCOA category", "Representative measures", "Reduction range (context-dependent)"],
+    widths: [130, 220, 150],
+    align: ["left", "left", "left"],
+    rows: [
+      ["Land use", "Increased residential density (T-1); increased job density (T-2); diverse / mixed-use land use (T-3); affordable-housing integration (T-4)", "Up to ~30% (density); ~9% (mixed-use); ~10% (affordable inclusion). Urban context, project-specific."],
+      ["Neighborhood design", "Improved pedestrian network (T-7); traffic calming (T-9, T-26); local-serving retail (T-27); intersection-density / street-grid improvements", "0–~7% per measure; high-leverage when combined with transit access."],
+      ["Transit", "Transit-accessibility improvements (T-5); subsidized / discounted transit (T-12); bicycle end-trip facilities (T-13); bike-sharing (T-29); EV charging (T-31)", "0–~15% (transit access); transit subsidy ~0.3–20% per CAPCOA Ch. 3."],
+      ["Parking management", "Limit residential parking supply (T-22); price residential parking (T-23); unbundle parking costs (T-24); price workplace parking (T-20); cash-out (T-21); car-sharing (T-18, T-28)", "Parking supply / pricing among the highest-leverage measures in suburban contexts."],
+      ["Trip reduction / TDM", "Workplace TDM program (T-10, T-30); ride-share (T-11); marketing (T-14); compressed work week (T-15); telecommute / WFH (T-16); vehicle-trip caps (T-17); school-pool (T-19)", "Workplace TDM up to ~21%; telecommute / compressed weeks scale with eligible employee share."],
+      ["Pricing / road management", "Cordon / area pricing; HOT lanes; VMT fee programs; locally-administered VMT mitigation funds (e.g., San Diego Mobility Choices Active Transportation In-Lieu Fee, City of Fresno VMT Reduction Program 2025)", "Context-specific; programmatic mitigation typically requires nexus / fee adoption by the lead agency."],
+    ],
+  });
+  doc.moveDown(0.3);
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "Measure codes (T-1 … T-31) reference CAPCOA 2024 Handbook Ch. 3. Reduction ranges above are illustrative ceilings drawn from the published handbook tables; the binding project-specific reduction is computed from the per-measure formula in the host jurisdiction's adopted CAPCOA edition (some jurisdictions still lock to CAPCOA Dec 2021 — confirm at scoping). The 2024 update split measures into (a) sufficient-evidence-for-quantified-reductions and (b) requires-additional-evidence; only (a) is creditable as primary mitigation, (b) is supplemental.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Important: intersection geometry improvements (turn lanes, signal-timing retiming, queue jumps, additional through lanes) do NOT reduce VMT and are NOT creditable mitigation under CEQA Guidelines § 15064.3(b)(1). Those improvements remain creditable as non-CEQA operational improvements (see §4 of this report) but cannot serve as CEQA-VMT mitigation. Caltrans' July 2022 Mitigation Playbook (citing CAPCOA Dec 2021, now superseded by 2024) specifically endorses increased density and affordable-housing inclusion as the highest-leverage residential VMT mitigations.",
     { paragraphGap: 6 },
   );
 
@@ -1684,9 +1762,14 @@ function renderTisLondon(
   ldnSection(doc, "1.0 INTRODUCTION");
   ldnSubsection(doc, "1.1 Purpose and Planning Context");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `This report cross-references the anticipated transport effects of the proposed ${project.projectName || "development"}, located within ${region.displayName}. It is presented in the structure of a UK Transport Assessment (TA) as set out in the TfL Healthy Streets TA Recommended Contents & Chapters, with the National Planning Policy Framework (NPPF, December 2024) as the statutory planning hook — paragraph 115 (sustainable modes), paragraph 116 (significant transport impact) and paragraph 118 (vision-led TA / TS). Where the proposed development falls below the local planning authority's "significant amount of movement" trigger a Transport Statement (TS) may suffice in place of a full TA; the threshold is judgement-led by ${lpa}.`,
+    `This report cross-references the anticipated transport effects of the proposed ${project.projectName || "development"}, located within ${region.displayName}. It is presented in the structure of a UK Transport Assessment (TA) as set out in the TfL Healthy Streets TA Recommended Contents & Chapters (last updated 17 June 2019), with the National Planning Policy Framework (NPPF, December 2024) as the statutory planning hook — paragraph 115 (sustainable modes, including the December-2024 "vision-led" framing), paragraph 116 (the residual-impact "severe" refusal test) and paragraph 118 (vision-led TA / TS plus travel plan for developments generating significant amounts of movement). Where the proposed development falls below the local planning authority's "significant amount of movement" trigger a Transport Statement (TS) may suffice in place of a full TA; the threshold is judgement-led by ${lpa}, supported by the indicative DfT 2007 Appendix B floorspace thresholds that TfL continues to host operationally at content.tfl.gov.uk/thresholds-for-transport-assessments.pdf (note that the DfT 2007 guidance was formally withdrawn in October 2014 — Appendix B remains in operational use but is no longer live policy, and the Use Class labels A1 / A2 / B1 / D1 / D2 in the table are pre-2020 nomenclature now collapsed into Class E under SI 2020/757).`,
     { paragraphGap: 6 },
   );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Note that the same Appendix B contains a second \"thresholds based on other considerations\" table that forces a TA regardless of floorspace whenever ANY of the following apply: ≥ 30 two-way vehicle movements in any hour; ≥ 100 two-way vehicle movements per day; ≥ 100 off-street parking spaces; location in or adjacent to an Air Quality Management Area (AQMA); or local transport infrastructure inadequate to serve the proposal. This screening-level report does not auto-evaluate AQMA proximity or infrastructure adequacy; the vehicle-movement and parking-space triggers should be checked against the engine's external-trip totals reported in §5.1 and the proposed parking provision before relying on a floorspace-only screen.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
 
   ldnSubsection(doc, "1.2 Methodology Cross-Reference and Disclosure");
   doc.font("body").fontSize(10).fillColor("black").text(
