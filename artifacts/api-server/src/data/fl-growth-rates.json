@@ -1,0 +1,90 @@
+{
+  "tampa_metro": {
+    "growthPct": 2.92,
+    "yearFrom": 2021,
+    "yearTo": 2025,
+    "stations": 2129,
+    "p25Pct": 0.87,
+    "p75Pct": 6.05
+  },
+  "orlando_metro": {
+    "growthPct": 2.14,
+    "yearFrom": 2021,
+    "yearTo": 2025,
+    "stations": 2181,
+    "p25Pct": -0.54,
+    "p75Pct": 5.63
+  },
+  "miami_dade_metro": {
+    "growthPct": 2.74,
+    "yearFrom": 2021,
+    "yearTo": 2025,
+    "stations": 1747,
+    "p25Pct": 0,
+    "p75Pct": 6.66
+  },
+  "jacksonville_metro": {
+    "growthPct": 1.69,
+    "yearFrom": 2021,
+    "yearTo": 2025,
+    "stations": 1411,
+    "p25Pct": -0.9,
+    "p75Pct": 4.35
+  },
+  "fort_lauderdale_metro": {
+    "growthPct": 3.66,
+    "yearFrom": 2021,
+    "yearTo": 2025,
+    "stations": 1377,
+    "p25Pct": 1.12,
+    "p75Pct": 6.99
+  },
+  "west_palm_beach_metro": {
+    "growthPct": 2.5,
+    "yearFrom": 2021,
+    "yearTo": 2025,
+    "stations": 814,
+    "p25Pct": 0.42,
+    "p75Pct": 4.66
+  },
+  "daytona_beach_metro": {
+    "growthPct": 1.47,
+    "yearFrom": 2021,
+    "yearTo": 2025,
+    "stations": 352,
+    "p25Pct": -1.96,
+    "p75Pct": 3.45
+  },
+  "lakeland_metro": {
+    "growthPct": 3.11,
+    "yearFrom": 2021,
+    "yearTo": 2025,
+    "stations": 457,
+    "p25Pct": 0.47,
+    "p75Pct": 5.97
+  },
+  "tallahassee_metro": {
+    "growthPct": 0.73,
+    "yearFrom": 2021,
+    "yearTo": 2025,
+    "stations": 414,
+    "p25Pct": -0.79,
+    "p75Pct": 2.93
+  },
+  "fort_myers_metro": {
+    "growthPct": 2.48,
+    "yearFrom": 2021,
+    "yearTo": 2025,
+    "stations": 445,
+    "p25Pct": 0.9,
+    "p75Pct": 5.82
+  },
+  "pensacola_metro": {
+    "growthPct": 0.3,
+    "yearFrom": 2021,
+    "yearTo": 2025,
+    "stations": 555,
+    "p25Pct": -1.98,
+    "p75Pct": 2.78
+  }
+}

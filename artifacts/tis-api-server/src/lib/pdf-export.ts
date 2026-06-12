@@ -2022,29 +2022,26 @@ function renderTisCaliforniaWorksheet(
     ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
     ["Opening year", String(req.openingYear ?? "—")],
     ["Host lead agency", jur.name],
-    ["Daily trip generation (ITE)", `${fmtNum(tierInput.dailyTrips)} trips/day`],
-    ["Jurisdiction screening floor", `${jur.screeningTripCount} daily trips`],
+    ["Daily trips · screening floor", `${fmtNum(tierInput.dailyTrips)} · ${jur.screeningTripCount}`],
   ]);
-  doc.moveDown(0.3);
+  doc.moveDown(0.2);
 
   // --- §2 Auto-Screening Result -----------------------------------------
+  // The determination banner above and §3's citation block already carry
+  // the OPR § E.1 framing — drop §2's preamble paragraph to keep the
+  // cascade table the focus and save ~3 lines of vertical space.
   caSection(doc, "2.0 AUTO-SCREENING RESULT (OPR § E.1)");
-  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
-    "Six OPR § E.1 criteria evaluated against project metadata. GIS-dependent criteria (TPA, low-VMT TAZ map, prior-use VMT) flagged for verification. Any one \"Screened out\" presumes less-than-significant under § 15064.3 without further VMT analysis.",
-    { paragraphGap: 4 },
-  );
-  doc.fillColor("black");
   table(doc, {
     headers: ["OPR Criterion", "Result", "Notes"],
     widths: [200, 130, 170],
     align: ["left", "center", "left"],
     rows: screeningResults.map((c) => [c.label, statusLabel(c.status), c.note]),
   });
-  doc.moveDown(0.3);
+  doc.moveDown(0.2);
   if (firedCriterion) {
     doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
       `DETERMINATION: SCREENED OUT via "${firedCriterion.label}" — § 15064.3(b)(1).`,
-      { paragraphGap: 6 },
+      { paragraphGap: 4 },
     );
   }
   doc.fillColor("black");
@@ -2054,8 +2051,7 @@ function renderTisCaliforniaWorksheet(
   rows(doc, [
     ["Screening criterion fired", firedCriterion ? firedCriterion.label : "None auto-fired — verification pending (see §2)"],
     ["OPR Tech Advisory", firedIndex >= 0 ? caScreeningCriterionCitation(firedIndex) : "OPR Tech Advisory (Dec 2018), § E.1"],
-    ["Statutory hook (SB 743)", "Pub. Resources Code § 21099(b)(2)"],
-    ["CEQA Guidelines", "14 CCR § 15064.3(b)(1)"],
+    ["SB 743 / CEQA", "PRC § 21099(b)(2) · 14 CCR § 15064.3(b)(1)"],
     ["Host jurisdiction guidelines", jur.guidelinesDoc],
   ]);
   doc.moveDown(0.2);

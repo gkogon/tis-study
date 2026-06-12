@@ -30,7 +30,39 @@ export type MeasuredGrowthRate = {
   p25Pct: number;
   /** 75th percentile of the per-segment CAGR distribution, in % per year. */
   p75Pct: number;
+  /** Source citation written into the result payload's `growthSource`
+   *  field — the renderers print this verbatim, so it should name the
+   *  authoritative DOT layer that the rate came from. Optional with a
+   *  per-state group default. */
+  source?: string;
 };
+
+/** Per-state source citations for the per-metro CAGR data. The
+ *  engine writes this into `r.growthSource` so each renderer can
+ *  cite the authoritative DOT layer. */
+const SOURCE_BY_STATE: Record<string, string> = {
+  IL: "IDOT Historical AADT FeatureServer (per-year polyline snapshots; segment match by INVENTORY)",
+  NY: "NYSDOT Traffic_Monitoring AADT FeatureServer layer 1 (rolling per-station actual counts; CAGR across oldest and newest non-null actual values)",
+  FL: "FDOT TDA Annual_Average_Daily_Traffic_Historical FeatureServer layer 0 (per-year polyline snapshots; segment match by COSITE composite site ID)",
+};
+
+const STATE_BY_METRO: Record<string, string> = {
+  // IL
+  chicago_metro: "IL", springfield_il_metro: "IL", rockford_metro: "IL", peoria_metro: "IL", champaign_metro: "IL",
+  // NY
+  new_york_metro: "NY", albany_metro: "NY", buffalo_metro: "NY", rochester_ny_metro: "NY", syracuse_metro: "NY",
+  // FL
+  tampa_metro: "FL", orlando_metro: "FL", miami_dade_metro: "FL", jacksonville_metro: "FL",
+  fort_lauderdale_metro: "FL", west_palm_beach_metro: "FL", daytona_beach_metro: "FL",
+  lakeland_metro: "FL", tallahassee_metro: "FL", fort_myers_metro: "FL", pensacola_metro: "FL",
+};
+
+/** Return the authoritative DOT-layer citation for a metro's measured
+ *  growth rate. Used by the engine to populate result.growthSource. */
+export function getMeasuredGrowthSource(regionCode: string): string | undefined {
+  const state = STATE_BY_METRO[regionCode];
+  return state ? SOURCE_BY_STATE[state] : undefined;
+}
 
 const RATES: Record<string, MeasuredGrowthRate> = {
   // Illinois — IDOT Historical AADT FeatureServer 2020 + 2025 (script:
@@ -59,6 +91,27 @@ const RATES: Record<string, MeasuredGrowthRate> = {
   buffalo_metro:         { growthPct:  0.13, yearFrom: 2000, yearTo: 2019, stations:  3171, p25Pct: -1.24, p75Pct: 1.48 },
   rochester_ny_metro:    { growthPct:  0.01, yearFrom: 2000, yearTo: 2019, stations:  1892, p25Pct: -1.45, p75Pct: 1.40 },
   syracuse_metro:        { growthPct:  0.00, yearFrom: 2000, yearTo: 2019, stations:  1492, p25Pct: -1.16, p75Pct: 1.39 },
+
+  // Florida — FDOT TDA Annual_Average_Daily_Traffic_Historical 2021 +
+  // 2025 layers (script: scripts/src/fetch-fl-growth-rate.ts; raw
+  // output: artifacts/api-server/src/data/fl-growth-rates.json). All
+  // 11 FDOT metros wired. Florida is uniformly growing — the slowest
+  // metros (Tallahassee, Pensacola) still trend positive; the fastest
+  // (Fort Lauderdale 3.66%/yr) reflects real Sun Belt population
+  // influx and housing-driven trip generation. Sample sizes are
+  // robust (352-2181 sites per metro, all measured against the
+  // stable COSITE composite ID).
+  tampa_metro:           { growthPct:  2.92, yearFrom: 2021, yearTo: 2025, stations: 2129, p25Pct:  0.87, p75Pct: 6.05 },
+  orlando_metro:         { growthPct:  2.14, yearFrom: 2021, yearTo: 2025, stations: 2181, p25Pct: -0.54, p75Pct: 5.63 },
+  miami_dade_metro:      { growthPct:  2.74, yearFrom: 2021, yearTo: 2025, stations: 1747, p25Pct:  0.00, p75Pct: 6.66 },
+  jacksonville_metro:    { growthPct:  1.69, yearFrom: 2021, yearTo: 2025, stations: 1411, p25Pct: -0.90, p75Pct: 4.35 },
+  fort_lauderdale_metro: { growthPct:  3.66, yearFrom: 2021, yearTo: 2025, stations: 1377, p25Pct:  1.12, p75Pct: 6.99 },
+  west_palm_beach_metro: { growthPct:  2.50, yearFrom: 2021, yearTo: 2025, stations:  814, p25Pct:  0.42, p75Pct: 4.66 },
+  daytona_beach_metro:   { growthPct:  1.47, yearFrom: 2021, yearTo: 2025, stations:  352, p25Pct: -1.96, p75Pct: 3.45 },
+  lakeland_metro:        { growthPct:  3.11, yearFrom: 2021, yearTo: 2025, stations:  457, p25Pct:  0.47, p75Pct: 5.97 },
+  tallahassee_metro:     { growthPct:  0.73, yearFrom: 2021, yearTo: 2025, stations:  414, p25Pct: -0.79, p75Pct: 2.93 },
+  fort_myers_metro:      { growthPct:  2.48, yearFrom: 2021, yearTo: 2025, stations:  445, p25Pct:  0.90, p75Pct: 5.82 },
+  pensacola_metro:       { growthPct:  0.30, yearFrom: 2021, yearTo: 2025, stations:  555, p25Pct: -1.98, p75Pct: 2.78 },
 };
 
 export function getMeasuredGrowthRate(regionCode: string): MeasuredGrowthRate | undefined {

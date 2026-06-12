@@ -19,7 +19,7 @@ import { getAutoModeShare, getAutoModeShareSource, getLondonAutoModeShare, type 
 import { lookupLondonPtal } from "./tfl-ptal";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
-import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate } from "./regional-growth-rates";
+import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSource } from "./regional-growth-rates";
 // Canonical land-use registry (ITE 11th Ed.) lives in one place so the
 // Parking engine and TIS engine stay in sync. Re-exported below for any
 // downstream callers that imported `LAND_USES` from this module.
@@ -1336,7 +1336,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     growthYears,
     ...(measuredRate
       ? {
-          growthSource: `IDOT Historical AADT FeatureServer layers ${measuredRate.yearFrom} and ${measuredRate.yearTo} — median per-segment CAGR across ${measuredRate.stations} matched count stations within the ${region.displayName} bounding box`,
+          growthSource: `${getMeasuredGrowthSource(region.code) ?? "Per-metro historical AADT layer"} — median per-segment CAGR across ${measuredRate.stations} matched count stations within the ${region.displayName} bounding box (${measuredRate.yearFrom} → ${measuredRate.yearTo})`,
         }
       : {}),
     designYear,
