@@ -16,7 +16,7 @@
  * strings rely on. We embed DejaVu Sans (BSD-clean) for full Unicode.
  */
 import PDFDocument from "pdfkit";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { regionForCoordinate, type Region } from "./regions";
@@ -2970,6 +2970,7 @@ const IL_MEASURED_GROWTH: Record<string, IlMeasuredGrowth> = {
 
 type IlJurisdiction =
   | "chicago_cdot"
+  | "chicago_idot"
   | "cook_county"
   | "collar_dupage"
   | "collar_lake"
@@ -2979,8 +2980,99 @@ type IlJurisdiction =
   | "tollway_influence"
   | "downstate_idot";
 
+/**
+ * IDOT state-route geometry inside Chicago city limits, densified
+ * to ~25m point spacing. Built by
+ * `scripts/src/fetch-chicago-state-routes.ts` from the IDOT
+ * Historical AADT layer 2025 (MARKED_NAM where not null within the
+ * Chicago bbox), covers 30 routes (US-41 Lake Shore Drive, IL-50
+ * Cicero, IL-64 North Ave, IL-19 Irving Park, IL-43 Western,
+ * plus the expressway network).
+ *
+ * Used by `ilJurisdiction()` to distinguish `chicago_idot` (IDOT/
+ * CDOT co-review on state-route frontage) from `chicago_cdot`
+ * (CDOT-only review on city streets) per the IL spec §8.1 /
+ * §2.3. The check: snap the project lat/lon to the nearest state-
+ * route point within 60m. 60m matches typical Chicago grid block
+ * half-depth — a parcel within frontage distance of a state route
+ * will land within 60m of at least one densified point.
+ *
+ * Lazy-loaded so module init doesn't pay the file-read cost for
+ * non-IL renders; built once on first use, then cached. Falls back
+ * to an empty grid (chicago_idot dispatch disabled) if the data
+ * file is missing — keeps the renderer functional in dev without
+ * the data shipped.
+ */
+type StateRoutePoint = { lat: number; lon: number; route: string };
+let chicagoStateRoutesGrid: Map<string, StateRoutePoint[]> | null = null;
+let chicagoStateRoutesLoadAttempted = false;
+const CHICAGO_STATE_ROUTE_GRID_DEG = 0.0025; // ~250m cell
+const CHICAGO_STATE_ROUTE_SNAP_M = 60;
+
+function loadChicagoStateRoutesGrid(): Map<string, StateRoutePoint[]> | null {
+  if (chicagoStateRoutesGrid !== null || chicagoStateRoutesLoadAttempted) {
+    return chicagoStateRoutesGrid;
+  }
+  chicagoStateRoutesLoadAttempted = true;
+  // Probe both dist (prod, __dirname = dist/lib) and src (tsx/test,
+  // __dirname = src/lib) — same convention as FONT_DIR.
+  const candidates = [
+    path.resolve(__dirname, "../data/chicago-state-routes.json"),
+    path.resolve(__dirname, "../../data/chicago-state-routes.json"),
+  ];
+  for (const p of candidates) {
+    if (!existsSync(p)) continue;
+    try {
+      const j = JSON.parse(readFileSync(p, "utf8")) as { points: Array<[number, number, string]> };
+      const grid = new Map<string, StateRoutePoint[]>();
+      for (const [lat, lon, route] of j.points ?? []) {
+        const k = `${Math.floor(lat / CHICAGO_STATE_ROUTE_GRID_DEG)}:${Math.floor(lon / CHICAGO_STATE_ROUTE_GRID_DEG)}`;
+        let arr = grid.get(k);
+        if (!arr) grid.set(k, (arr = []));
+        arr.push({ lat, lon, route });
+      }
+      chicagoStateRoutesGrid = grid;
+      return grid;
+    } catch {
+      // fall through to next candidate
+    }
+  }
+  return null;
+}
+
+function nearestChicagoStateRoute(lat: number, lon: number): string | null {
+  const grid = loadChicagoStateRoutesGrid();
+  if (!grid) return null;
+  const baseLat = Math.floor(lat / CHICAGO_STATE_ROUTE_GRID_DEG);
+  const baseLon = Math.floor(lon / CHICAGO_STATE_ROUTE_GRID_DEG);
+  const mLat = 111_320;
+  const mLon = 111_320 * Math.cos((lat * Math.PI) / 180);
+  let bestRoute: string | null = null;
+  let bestDist2 = (CHICAGO_STATE_ROUTE_SNAP_M + 1) ** 2;
+  for (let dl = -1; dl <= 1; dl++) for (let dn = -1; dn <= 1; dn++) {
+    const arr = grid.get(`${baseLat + dl}:${baseLon + dn}`);
+    if (!arr) continue;
+    for (const p of arr) {
+      const dx = (p.lon - lon) * mLon;
+      const dy = (p.lat - lat) * mLat;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestDist2) {
+        bestDist2 = d2;
+        bestRoute = p.route;
+      }
+    }
+  }
+  return bestRoute;
+}
+
 function ilJurisdiction(lat: number, lon: number): IlJurisdiction {
-  if (lat >= 41.64 && lat <= 42.03 && lon >= -87.94 && lon <= -87.52) return "chicago_cdot";
+  if (lat >= 41.64 && lat <= 42.03 && lon >= -87.94 && lon <= -87.52) {
+    // Inside Chicago city bbox — check if project fronts an IDOT
+    // state route. If so, IDOT/CDOT co-review applies (chicago_idot)
+    // per the IL spec §2.3 + §8.1. Otherwise CDOT-only review on
+    // city streets.
+    return nearestChicagoStateRoute(lat, lon) ? "chicago_idot" : "chicago_cdot";
+  }
   if (lat >= 42.15 && lat <= 42.50 && lon >= -88.20 && lon <= -87.65) return "collar_lake";
   if (lat >= 42.15 && lat <= 42.50 && lon >= -88.70 && lon <= -88.20) return "collar_mchenry";
   if (lat >= 41.70 && lat <= 42.15 && lon >= -88.65 && lon <= -88.30) return "collar_kane";
@@ -3005,8 +3097,18 @@ function renderTisIllinois(
   const lon = Number(req.longitude ?? project.siteLon ?? NaN);
   const juris = Number.isFinite(lat) && Number.isFinite(lon) ? ilJurisdiction(lat, lon) : "downstate_idot";
 
+  // For chicago_idot dispatch, the renderer also computes which
+  // specific state route the project fronts (US-41, IL-50, etc.) so
+  // the prose can name it for the reviewer.
+  const chicagoStateRoute = juris === "chicago_idot"
+    ? nearestChicagoStateRoute(lat, lon)
+    : null;
+
   const jurisName: Record<IlJurisdiction, string> = {
     chicago_cdot: "City of Chicago (CDOT)",
+    chicago_idot: chicagoStateRoute
+      ? `IDOT District 1 + CDOT PRC co-review (project fronts ${chicagoStateRoute} inside Chicago)`
+      : "IDOT District 1 + CDOT PRC co-review (state route inside Chicago)",
     cook_county: "Cook County DOTH",
     collar_dupage: "DuPage County DOT",
     collar_lake: "Lake County DOT",
@@ -3018,6 +3120,7 @@ function renderTisIllinois(
   };
   const reviewAuthority: Record<IlJurisdiction, string> = {
     chicago_cdot: "Chicago Department of Transportation — Plan Review Committee (PRC), per the CDOT Guidelines for Travel Demand Study and Management (TDM) Plans v1.1 (June 2023), the Connected Communities Ordinance (Municipal Code §17-3-0308 / §17-4-0301), and Complete Streets Chicago (CDOT, 2013). State-system frontage routes inside Chicago co-route to IDOT District 1 (Schaumburg).",
+    chicago_idot: `Dual-jurisdiction review${chicagoStateRoute ? ` — project fronts ${chicagoStateRoute}, an IDOT state-system route inside Chicago city limits` : " on state-system roadway inside Chicago"}. The IL spec (§2.3) requires both an IDOT TIS appendix and a CDOT TDM summary: IDOT District 1 (Schaumburg) Permits Unit Chief controls vehicle-LOS analysis per BLRS Ch. 27 / 32 / 34 / 41 + D8 Appx. A; CDOT Plan Review Committee controls the multimodal mode-shift commitments per the TDM Guidelines v1.1 (June 2023) + Complete Streets Chicago (2013). The January 2023 IDOT-CDOT MOU streamlines co-review on safety improvements along state routes inside Chicago.`,
     cook_county: "Cook County Department of Transportation & Highways (DOTH) — Permits Division, per the Construction Permit Packet (Nov 2020). Cook County publishes no standalone TIS manual; TIS scope is staff-discretionary during the access/signal permit review.",
     collar_dupage: "DuPage County DOT — Engineering, per the (request-only) Project Manual. DuPage's Fair Share Impact-Fee program terminated 2023-05-24; TIS is now staff-discretionary during the access/signal permit review.",
     collar_lake: "Lake County DOT, per the Highway Access and Use Ordinance (2019) and its Technical Reference Manual.",
@@ -3029,6 +3132,7 @@ function renderTisIllinois(
   };
   const losStandard: Record<IlJurisdiction, string> = {
     chicago_cdot: "No vehicle LOS pass/fail. CDOT enforces the Complete Streets modal hierarchy (pedestrians → transit → cyclists → automobiles) and a Travel Demand Management measures matrix in lieu of LOS targets.",
+    chicago_idot: "Dual standard: along the state-route mainline and at IDOT-jurisdiction intersections, BLRS Ch. 32 LOS applies (LOS C controlling for urban arterials/collectors, LOS D allowed in heavily-developed metro sections). On adjacent CDOT-jurisdiction city streets, CDOT does not apply vehicle-LOS pass/fail — the Complete Streets modal hierarchy and TDM measures matrix govern there.",
     cook_county: "BLRS Ch. 32: LOS C controlling for arterials/collectors, LOS D allowed in heavily-developed metro sections, LOS D minimum for urban local streets.",
     collar_dupage: "BLRS Ch. 32 plus DuPage County overlay where staff specify.",
     collar_lake: "Lake County Highway Access and Use Ordinance (2019) numeric thresholds — refer to the Technical Reference Manual for the LOS criterion applicable to the route classification.",
@@ -3040,6 +3144,7 @@ function renderTisIllinois(
   };
   const trigger: Record<IlJurisdiction, string> = {
     chicago_cdot: "Tiered by dwelling-unit count per the CDOT TDM Guidelines v1.1: Tier 1 (20–50 DU site plan), Tier 2 (51–175 DU TDM Memo), Tier 3 (>175 DU full TDM Study + Plan). Connected Communities Ordinance transit-served-location designation (½ mile of a CTA/Metra rail station entrance or eligible high-frequency bus corridor) drives by-right parking reductions and informs trip-generation reductions.",
+    chicago_idot: "Both trigger paths apply: the CDOT TDM tiers (Tier 1/2/3 by DU count) gate the multimodal deliverable, AND the IDOT D8 Appx. A warrant-implicit trigger (turn-lane or signal warrant on the state-route frontage) gates the IDOT TIS appendix. Any access modification to the state route requires a permit under 92 Ill. Adm. Code Part 550 routed via OPER 1050 / OPER 1051 to District 1 Permits.",
     cook_county: "Staff-discretionary during the access/signal permit review (no published numeric trigger).",
     collar_dupage: "Staff-discretionary during the access/signal permit review (no published numeric trigger since Fair Share Impact-Fee termination 2023-05-24).",
     collar_lake: "Per Lake County Highway Access and Use Ordinance Technical Reference Manual — numeric thresholds keyed to access classification.",
@@ -3051,6 +3156,7 @@ function renderTisIllinois(
   };
   const programmedSource: Record<IlJurisdiction, string> = {
     chicago_cdot: "IDOT Multi-Year Improvement Program FY 2026–2031, CMAP TIP (FFY 2023–2028, FFY 2026–2030 call open), CMAP ON TO 2050 Comprehensive Regional Plan, and the CDOT Capital Improvement Program.",
+    chicago_idot: "IDOT Multi-Year Improvement Program FY 2026–2031 (any programmed project on the state-route frontage is committed background per the IDOT review), CMAP TIP, CMAP ON TO 2050, and the CDOT Capital Improvement Program (committed CDOT improvements adjacent to the state route per the CDOT review).",
     cook_county: "IDOT MYP FY 2026–2031, CMAP TIP, and Cook County DOTH project list.",
     collar_dupage: "IDOT MYP FY 2026–2031, CMAP TIP, ON TO 2050, and DuPage County DOT capital program.",
     collar_lake: "IDOT MYP FY 2026–2031, CMAP TIP, ON TO 2050, and Lake County DOT capital program.",
