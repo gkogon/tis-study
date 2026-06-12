@@ -59,15 +59,19 @@ const VEH_LENGTH_FT = 25;
 // Net PM-peak car-mode external-trip count below which renderers are
 // expected to demote junction-capacity analysis to a screening appendix
 // and lead §5.4 with a trip-comparison narrative instead. Calibrated
-// against published London residential TAs (Registry Beckenham 134 DU /
-// Hyde Estate 115 DU — zero junctions modelled, trip-comparison only;
-// Holloway 985 DU — three junctions modelled, only because the scheme
-// proposes new accesses + a TLRN junction). Below ~15 PM-peak car trips
-// the published practice is trip-comparison, not capacity modelling.
-// Surface as a single constant so future calibration can move it without
-// hunting renderer code. Tracks PTAL-banded mode share when that ships:
-// 100 dwellings at PTAL 6a will fall well below this threshold, which
-// is the intended behavior.
+// against three published London residential TAs (PTAL band → DU count
+// → junctions modelled):
+//   - Registry Beckenham — PTAL 5,  134 DU → 0 junctions, trip-comparison only
+//   - Hyde Estate        — PTAL 2,  115 DU → 0 junctions, trip-comparison only
+//   - Holloway           — PTAL 6a, 985 DU → 3 junctions, ONLY because
+//     the scheme proposes new site accesses plus a TLRN junction
+//     (Camden Road / Parkhurst Road / Hillmarton Road).
+// Below ~15 PM-peak car trips the published convention is trip-
+// comparison, not capacity modelling. Surfaced as a single constant so
+// future calibration can move it without hunting renderer code. Tracks
+// PTAL-banded mode share (mode-share.ts getLondonAutoModeShare): at
+// PTAL 6a, 100 dwellings yields ~2 PM car trips — well below this
+// threshold, which is the intended behavior.
 const JUNCTION_IMPACT_PM_TRIP_THRESHOLD = 15;
 
 // Weather capacity adjustment (HCM Ch. 11). Multiplied into the saturation
