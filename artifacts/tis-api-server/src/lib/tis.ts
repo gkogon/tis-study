@@ -531,6 +531,14 @@ export type TisReport = {
   periodReports: PeriodReport[];
   growthAppliedPct: number;
   growthYears: number;
+  /** Source label for `growthAppliedPct` when it came from measured
+   *  historical-AADT data rather than the screening default. Lets
+   *  renderers name the derivation in their growth-rate prose. Absent
+   *  when the screening default (1.5%/yr) was used. */
+  growthSource?: string;
+  /** Opening + 20yr design horizon used for the Design-Year scenarios. */
+  designYear?: number;
+  designYearHorizonYears?: number;
   weather: Weather;
   weatherCapacityFactor: number;
   passByPctApplied: number;
@@ -1060,10 +1068,6 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     ? req.analysisPeriods
     : (["am_peak", "pm_peak", "saturday_midday", "daily"] as AnalysisPeriod[]);
 
-  const growthRatePct = clamp(req.growthRatePct ?? 1.5, 0, 6);
-  const growthYears = Math.max(0, req.openingYear - CURRENT_YEAR);
-  const growthMultiplier = Math.pow(1 + growthRatePct / 100, growthYears);
-
   const weather = req.weather ?? "clear";
   const weatherFactor = WEATHER_FACTOR[weather];
   const capacityVph = PER_INTERSECTION_CAPACITY_VPH * weatherFactor;
@@ -1083,6 +1087,28 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // Fall back to Atlanta if outside every active region (belt-and-braces;
   // OpenAPI bounds + per-region check should have caught it upstream).
   const region = regionForCoordinate(req.latitude, req.longitude) ?? ATLANTA_METRO;
+
+  // Background growth rate. Order of precedence:
+  //   1. Explicit `req.growthRatePct` (user overrides — scenario modeling)
+  //   2. Per-metro measured CAGR from regional-growth-rates (when no
+  //      explicit override and the metro has historical AADT data wired)
+  //   3. Screening default 1.5%/yr (legacy behavior)
+  // The measured rate also writes back into the result payload's
+  // `growthAppliedPct` + `growthSource` so the renderer prose and
+  // No-Build / Build LOS columns stay consistent — without this, the IL
+  // renderer §5 prose would print "1.80%/yr" while the engine still grew
+  // volumes at 1.50%/yr, a reviewer-visible mismatch.
+  const measuredRate = req.growthRatePct === undefined ? getMeasuredGrowthRate(region.code) : undefined;
+  const growthRatePct = clamp(req.growthRatePct ?? measuredRate?.growthPct ?? 1.5, -5, 6);
+  const growthYears = Math.max(0, req.openingYear - CURRENT_YEAR);
+  const growthMultiplier = Math.pow(1 + growthRatePct / 100, growthYears);
+  // 4th-scenario design year: opening + 20yr at the same CAGR. Per IL
+  // D8 Appx. A and BLRS §27-6.02(a); other US state TIS standards mostly
+  // converge on the same 20-yr horizon.
+  const designYearHorizon = DESIGN_YEAR_HORIZON_DEFAULT;
+  const designYear = req.openingYear + designYearHorizon;
+  const designYears = Math.max(0, designYear - CURRENT_YEAR);
+  const designGrowthMultiplier = Math.pow(1 + growthRatePct / 100, designYears);
 
   const candidates = await findAffectedIntersections(req.latitude, req.longitude, radiusMi, region.code);
   const weights = assignmentWeights(candidates);
@@ -1124,6 +1150,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
 
     const params: ScenarioParams = {
       growthMultiplier,
+      designGrowthMultiplier,
       capacityVph,
       approachCapacityVph,
       externalTrips,
@@ -1182,7 +1209,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // synthesize it for the back-compat fields so downstream consumers don't
   // crash.
   const pmReport = periodReports.find((p) => p.period === "pm_peak")
-    ?? (await synthesizePmReport(lu, req, candidates, weights, project, growthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates));
+    ?? (await synthesizePmReport(lu, req, candidates, weights, project, growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates));
 
   // Top-level back-compat trip-generation summary uses ORIGINAL (non-credited)
   // PM trips so the existing UI labels keep their meaning. Rates come from
@@ -1264,6 +1291,13 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     periodReports,
     growthAppliedPct: growthRatePct,
     growthYears,
+    ...(measuredRate
+      ? {
+          growthSource: `IDOT Historical AADT FeatureServer layers ${measuredRate.yearFrom} and ${measuredRate.yearTo} — median per-segment CAGR across ${measuredRate.stations} matched count stations within the ${region.displayName} bounding box`,
+        }
+      : {}),
+    designYear,
+    designYearHorizonYears: designYearHorizon,
     weather,
     weatherCapacityFactor: round2(weatherFactor),
     passByPctApplied: passByPct,
@@ -1281,6 +1315,7 @@ async function synthesizePmReport(
   weights: number[],
   project: { lat: number; lon: number },
   growthMultiplier: number,
+  designGrowthMultiplier: number,
   capacityVph: number,
   approachCapacityVph: number,
   passByPct: number,
@@ -1292,7 +1327,7 @@ async function synthesizePmReport(
   const internalCredit = (raw - passByCredit) * (internalCapturePct / 100);
   const externalTrips = Math.max(0, raw - passByCredit - internalCredit);
   const inFraction = lu.directionalSplitPm.in;
-  const params: ScenarioParams = { growthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction };
+  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction };
   const calibrationMap = await loadCalibrationMap();
   const allRows = candidates.map((c, i) =>
     buildAffectedRow(c, weights[i] ?? 0, project, params, calibrationMap.get(c.sig.id)),
