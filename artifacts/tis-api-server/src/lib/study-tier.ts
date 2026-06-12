@@ -394,6 +394,38 @@ export function jurisdictionTierLabel(region: Region | null, tier: ResolvedStudy
     }
   }
 
+  if (stateCode === "FL" && (name.includes("orlando") || name.includes("orange county"))) {
+    switch (tier) {
+      case "worksheet": return "Orange County STAMP Applicability Screening";
+      case "abbreviated": return "Orange County STAMP Operational TIA";
+      case "full": return "Orange County STAMP Full TIA";
+    }
+  }
+
+  if (stateCode === "FL" && name.includes("jacksonville")) {
+    switch (tier) {
+      case "worksheet": return "Jacksonville Mobility Fee Worksheet (CMMSO)";
+      case "abbreviated": return "Jacksonville Abbreviated TIS (LDPM Vol. 1)";
+      case "full": return "Jacksonville Full TIS (LDPM Vol. 1)";
+    }
+  }
+
+  if (stateCode === "FL" && (name.includes("fort lauderdale") || name.includes("broward"))) {
+    switch (tier) {
+      case "worksheet": return "Fort Lauderdale / Broward Concurrency-District Worksheet";
+      case "abbreviated": return "Broward Concurrency-District Abbreviated TIS";
+      case "full": return "Broward Concurrency-District Full TIS";
+    }
+  }
+
+  if (stateCode === "FL") {
+    switch (tier) {
+      case "worksheet": return "FDOT MTSIH Planning-Level Analysis";
+      case "abbreviated": return "FDOT MTSIH Abbreviated MTIA";
+      case "full": return "FDOT MTSIH Full MTIA";
+    }
+  }
+
   if (stateCode === "TX") {
     if (name.includes("fort worth")) {
       switch (tier) {

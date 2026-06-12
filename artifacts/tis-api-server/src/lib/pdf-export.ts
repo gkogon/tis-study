@@ -4155,6 +4155,279 @@ function renderTisIllinois(
 
 
 /**
+ * CDOT Tier 1 — Site Plan + Project Narrative (cover memo, 1–2 pp).
+ *
+ * Per CDOT TDM Guidelines v1.1 (June 2023) Table 1, the Tier 1
+ * deliverable is NOT a study — it is a site plan plus a project
+ * narrative emailed to CDOTPRC@cityofchicago.org for Plan Review
+ * Committee (PRC) review. CDOT enforces the Complete Streets
+ * Chicago modal hierarchy (pedestrian → transit → bike → auto); no
+ * vehicle-LOS analysis, no signal warrants, no turn-lane nomographs
+ * are part of Tier 1. This memo surfaces the transit-served-
+ * location designation (CCO ½-mile rule, Municipal Code §17-3-0308
+ * / §17-4-0301) and the Connected Communities Ordinance compliance
+ * check so the applicant + PRC can confirm tier classification.
+ */
+function renderTisIllinoisCdotWorksheet(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+  tierInput: TierInput,
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const lat = Number(req.latitude ?? project.siteLat ?? NaN);
+  const lon = Number(req.longitude ?? project.siteLon ?? NaN);
+  const tierName = jurisdictionTierLabel(region, "worksheet");
+
+  gaSection(doc, "CDOT TIER 1 — SITE PLAN + PROJECT NARRATIVE");
+  doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(tierName, { paragraphGap: 4 });
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "Tier 1 cover memo per the CDOT Guidelines for Travel Demand Study and Management (TDM) Plans v1.1 (June 2023), Table 1. No formal study is required at this tier — the deliverable is a site plan + project narrative emailed to CDOTPRC@cityofchicago.org for Plan Review Committee (PRC) review. CDOT enforces the Complete Streets Chicago modal hierarchy pedestrian → transit → bike → auto; vehicle-LOS analysis, signal warrants, and turn-lane nomographs are NOT part of a Tier 1 review.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  gaSection(doc, "1.0 PROJECT NARRATIVE");
+  rows(doc, [
+    ["Project name", project.projectName || "—"],
+    ["Site coordinates", Number.isFinite(lat) && Number.isFinite(lon) ? `${lat.toFixed(4)}°, ${lon.toFixed(4)}°` : "—"],
+    ["Region", region.displayName],
+    ["Host jurisdiction", "City of Chicago (CDOT)"],
+    ["Opening year", String(req.openingYear ?? "—")],
+    ["Proposed ITE land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Proposed development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Screened daily / PM-peak trips (ITE base)", `${fmtNum(tierInput.dailyTrips)} / ${fmtNum(tierInput.pmPeakTrips)}`],
+  ]);
+  doc.moveDown(0.3);
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `The proposed ${project.projectName || "development"} is a ${tg.landUseName ?? ""} project at ${tg.size ?? "—"} ${tg.unit ?? ""} located within ${region.displayName}, Illinois (City of Chicago, CDOT jurisdiction). At this scale (residential 20–50 dwelling units, or the equivalent threshold per use class), CDOT requires a site plan + project narrative for PRC review only. No TDM Memo, TDM Plan, or vehicle-LOS analysis is required.`,
+    { paragraphGap: 6 },
+  );
+
+  gaSection(doc, "2.0 TRANSIT-SERVED LOCATION DESIGNATION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "The Connected Communities Ordinance (CCO) — Chicago Municipal Code §17-3-0308 (B/C districts) and §17-4-0301 (D districts) — defines a \"Transit-Served Location\" as within 2,640 feet (½ mile) of a CTA or Metra rail station entrance, or within an eligible high-frequency CTA bus corridor. Transit-served-location designation drives the by-right parking reductions and informs the project narrative's mode-share assumptions.",
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Verification items the applicant attests in the narrative: (a) walking distance from the site to the nearest CTA \"L\" station entrance; (b) walking distance to the nearest Metra commuter-rail station; (c) whether the site is on an eligible CTA high-frequency bus corridor. This screening tool does not auto-resolve transit-served eligibility — the applicant attests in the project narrative. The July 16, 2025 amendment (Ordinance O2025-0015577, effective September 25, 2025) eliminated parking mandates outright in transit-served locations outside the downtown D districts; confirm the project's zoning district and the Ordinance version in force at submittal.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  gaSection(doc, "3.0 CONNECTED COMMUNITIES ORDINANCE COMPLIANCE CHECK");
+  doc.font("body").fontSize(10).fillColor("black");
+  doc.text("• §17-3-0308 (B/C transit-served zoning) — confirm the project's zoning district and applicable parking-reduction provisions.", { paragraphGap: 2 });
+  doc.text("• §17-4-0301 (D transit-served zoning) — applies where the site is within a Downtown (D) district transit-served location.", { paragraphGap: 2 });
+  doc.text("• §17-3-0500 / §17-4-0500 (Pedestrian Streets) — if any frontage is a designated P-street, new curb cuts / driveways are restricted on the primary frontage; primary access must come from the alley.", { paragraphGap: 2 });
+  doc.text("• §17-10-1100 (loading-zone minimums) — verify required off-street loading spaces by use class and size.", { paragraphGap: 4 });
+  doc.moveDown(0.3);
+
+  gaSection(doc, "4.0 SITE-PLAN ITEMS (TIER 1 SUBMITTAL SCOPE)");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "The Tier 1 site plan submitted to the CDOT Plan Review Committee should label: (a) all proposed curb cuts and driveways, with horizontal dimensions and throat depth; (b) sidewalk, pedestrian crossing, and ADA ramp details at every street frontage; (c) bicycle parking (short-term and long-term per Chicago Municipal Code §17-10-0700); (d) off-street loading geometry per §17-10-1100; (e) any proposed modifications within the public way (note: a separate CIPW permit per the CDOT Regulations for Construction in the Public Way is required); (f) transit-stop / bus-shelter adjacency if a CTA stop fronts the site; (g) the alley-access path if any frontage is a Pedestrian Street.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  gaSection(doc, "5.0 SUBMITTAL");
+  doc.font("body").fontSize(10).fillColor("black");
+  doc.text("• Reviewing authority: Chicago Department of Transportation — Plan Review Committee (PRC).", { paragraphGap: 2 });
+  doc.text("• Submission: site plan + this project narrative emailed to CDOTPRC@cityofchicago.org.", { paragraphGap: 2 });
+  doc.text("• No formal Traffic Impact Study, TDM Memo, or TDM Plan is required at Tier 1.", { paragraphGap: 2 });
+  doc.text("• PE seal: not strictly required at Tier 1 — the project architect or AICP/PTP may sign the narrative; confirm signing-professional requirements at PRC coordination.", { paragraphGap: 4 });
+  doc.moveDown(0.3);
+
+  gaSection(doc, "6.0 TIER ESCALATION");
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    `If CDOT PRC requests additional analysis — e.g., the project triggers a Planned Development designation, the site fronts an IDOT state route requiring co-review, or the project crosses a CCO size threshold during design refinement — regenerate this report with Tier = Abbreviated (Tier 2 TDM Memo) or Full (Tier 3 TDM Study + Plan). The dwelling-unit count screening for residential land uses (ITE 220-series): Tier 1 = 20–50 DU, Tier 2 = 51–175 DU, Tier 3 = >175 DU. The screened project size of ${tg.size ?? "—"} ${tg.unit ?? ""} falls within the Tier 1 band.`,
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+}
+
+/**
+ * CDOT Tier 2 — Travel Demand Management Memo.
+ *
+ * Per CDOT TDM Guidelines v1.1 (June 2023) Table 1, the Tier 2
+ * deliverable is a TDM Memo — fundamentally a trip-REDUCTION plan,
+ * not a network-impact study. The required Table 1 content list:
+ *   • SOV-trip minimization approach
+ *   • Transit / bike / walk maximization
+ *   • Pedestrian-oriented design
+ *   • Infrastructure improvements
+ *   • TDM strategies selected (with monetized cost share + monitoring)
+ *   • Baseline SOV-reduction goal (≤50% single-occupancy trip share)
+ *   • Commitment letter required at approval (load-bearing legal hook)
+ *
+ * No vehicle LOS tables, no signal warrants, no turn-lane
+ * nomographs. CDOT enforces the Complete Streets Chicago modal
+ * hierarchy (pedestrian → transit → bike → auto); vehicle-LOS
+ * pass/fail is not a CDOT performance metric.
+ */
+function renderTisIllinoisCdotAbbreviated(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+  tierInput: TierInput,
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const lat = Number(req.latitude ?? project.siteLat ?? NaN);
+  const lon = Number(req.longitude ?? project.siteLon ?? NaN);
+  const tierName = jurisdictionTierLabel(region, "abbreviated");
+
+  gaSection(doc, "CDOT TIER 2 — TRAVEL DEMAND MANAGEMENT MEMO");
+  doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(tierName, { paragraphGap: 4 });
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "Tier 2 TDM Memo per the CDOT Guidelines for Travel Demand Study and Management (TDM) Plans v1.1 (June 2023), Table 1. This is NOT a vehicle-LOS Traffic Impact Study — CDOT enforces the Complete Streets Chicago (CDOT, 2013) modal hierarchy pedestrian → transit → bike → auto and a Travel Demand Management strategies matrix in lieu of vehicle-LOS pass/fail. The Table 1 required content list is: (1) SOV-trip minimization approach, (2) transit / bike / walk maximization, (3) pedestrian-oriented design, (4) infrastructure improvements, (5) TDM strategies selected (monetized cost share + monitoring), (6) baseline SOV-reduction goal (≤50% single-occupancy trip share), and (7) a TDM commitment letter at approval.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  gaSection(doc, "1.0 APPLICANT AND ZONING SUMMARY");
+  rows(doc, [
+    ["Project name", project.projectName || "—"],
+    ["Site coordinates", Number.isFinite(lat) && Number.isFinite(lon) ? `${lat.toFixed(4)}°, ${lon.toFixed(4)}°` : "—"],
+    ["Region", region.displayName],
+    ["Host jurisdiction", "City of Chicago (CDOT)"],
+    ["Proposed ITE land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Proposed development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Opening year", String(req.openingYear ?? "—")],
+    ["Tier (CDOT TDM Guidelines v1.1)", "Tier 2 — TDM Memo (residential 51–175 DU, or equivalent threshold per use class)"],
+    ["Screened daily / PM-peak trips (ITE base)", `${fmtNum(tierInput.dailyTrips)} / ${fmtNum(tierInput.pmPeakTrips)}`],
+  ]);
+  doc.moveDown(0.3);
+
+  gaSection(doc, "2.0 MODAL HIERARCHY (COMPLETE STREETS CHICAGO)");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per Complete Streets Chicago (CDOT, 2013), the design priority order for every project within the public way is: (1) pedestrians, (2) transit, (3) cyclists, (4) automobiles. This Tier 2 TDM Memo demonstrates that each step in the modal hierarchy has been addressed in the proposed development's circulation, access geometry, and TDM strategies. Vehicle Level of Service is NOT a CDOT performance metric and is not part of this deliverable.",
+    { paragraphGap: 6 },
+  );
+
+  gaSection(doc, "3.0 EXISTING MULTIMODAL CONDITIONS");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "The Tier 2 memo describes existing conditions for each mode in priority order: (a) pedestrian — sidewalk widths, crossing distances, ADA compliance, P-street designation; (b) transit — CTA bus and rail service within ¼-mile walkshed, Metra commuter rail within ½-mile, headways, route frequency; (c) bicycle — adjacent CDOT-designated bike facilities (Streets for Cycling Plan 2020, protected bike lane network), Divvy bike-share station proximity; (d) auto — adjacent roadway functional class, posted speed, and (for context only) Chicago Data Portal ADT counts. Note: CDOT ADT counts at data.cityofchicago.org/Transportation/Average-Daily-Traffic-Counts/gc7y-n4xa are aged — flag the count year explicitly when citing. The CNT Chicago Truck Counts portal (chicagotruckcounts.cnt.org) supplies truck / bike / pedestrian counts for freight-generator sites.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  gaSection(doc, "4.0 TRANSIT-SERVED LOCATION DESIGNATION (CCO)");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "The Connected Communities Ordinance (CCO) — Chicago Municipal Code §17-3-0308 (B/C districts) and §17-4-0301 (D districts) — defines a Transit-Served Location as within 2,640 feet (½ mile) of a CTA or Metra rail station entrance, or within an eligible high-frequency CTA bus corridor. The Tier 2 memo establishes transit-served-location eligibility by (a) measuring walking distance to the nearest CTA rail station entrance, (b) measuring walking distance to the nearest Metra rail station, and (c) confirming high-frequency-bus-corridor eligibility against the current CTA service plan. Transit-served-location designation drives the by-right parking reductions, the by-right zero-parking provisions in the downtown D districts (per the July 16, 2025 amendment O2025-0015577 effective September 25, 2025), and the TDM Memo mode-shift trip-reduction credit.",
+    { paragraphGap: 6 },
+  );
+
+  gaSection(doc, "5.0 SOV-TRIP MINIMIZATION APPROACH");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Baseline ITE trip generation is calculated per the ITE Trip Generation Manual current edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. The Tier 2 TDM Memo's primary performance metric is the projected single-occupancy-vehicle (SOV) trip share AFTER the selected TDM strategies are applied. CDOT's baseline goal is that the project demonstrate an SOV share ≤ 50% of total trips. Reductions from the ITE base are claimed against the modal hierarchy: pedestrian trips (walk-up from transit-served-location density), transit trips (CTA / Metra catchment), bicycle trips (PBL network connectivity + Divvy access), shared-vehicle trips (carpool / vanpool, TNC), and trip elimination (work-from-home, mixed-use internal capture).`,
+    { paragraphGap: 6 },
+  );
+  table(doc, {
+    headers: ["Period", "ITE base", "After TDM (target)", "SOV share goal"],
+    widths: [140, 90, 110, 100],
+    align: ["left", "right", "right", "right"],
+    rows: [
+      ["Daily", fmtNum(tierInput.dailyTrips), "—", "≤ 50%"],
+      ["AM peak hour", fmtNum(tg.amPeakTrips), "—", "≤ 50%"],
+      ["PM peak hour", fmtNum(tierInput.pmPeakTrips), "—", "≤ 50%"],
+    ],
+  });
+  doc.moveDown(0.3);
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "The After-TDM column is computed by the applicant at submittal from the §9 TDM Strategies Matrix cumulative reduction percentages — this screening renderer does not auto-apply the strategy bundle since the strategy selection is a design choice, not a deterministic computation. Show working in an appendix and cite source rates (e.g., TCRP Report 95 mode-shift literature; VTPI TDM Encyclopedia; ULI Mixed-Use Internal Capture).",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  gaSection(doc, "6.0 TRANSIT, BIKE, AND WALK MAXIMIZATION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Design moves taken to maximize each non-auto mode share: (a) pedestrian — sidewalk widening to Complete Streets standard, mid-block crossings where warranted, weather protection (canopy / colonnade) at primary entrances, direct pedestrian connections to adjacent transit; (b) transit — bus-shelter / queue accommodations on adjacent frontages, real-time transit information display in the project lobby, employer transit-benefit pre-tax (§132 TransitChek) commitment for non-residential uses; (c) bicycle — short-term and long-term bicycle parking per Chicago Municipal Code §17-10-0700 (and above-minimum bike parking as a TDM credit), shower / locker facilities for non-residential uses, repair station, Divvy station siting coordination with the operator (Lyft), direct connection to the protected bike lane (PBL) network. Each commitment carries through to the §9 TDM Strategies Matrix as a monetized commitment with a monitoring plan.",
+    { paragraphGap: 6 },
+  );
+
+  gaSection(doc, "7.0 PEDESTRIAN-ORIENTED DESIGN");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Per Complete Streets Chicago, the building face engages the public way as a pedestrian experience: (a) active uses (retail, lobby, residential entrances) at the ground floor; (b) no blank walls on primary frontages; (c) curb cuts minimized — primary access from the alley wherever a Pedestrian Street (§17-3-0500 / §17-4-0500) is involved, and even where not, curb-cut count limited to the minimum needed for off-street parking access; (d) pedestrian-scale lighting on every frontage; (e) loading and service docks oriented to side streets or alleys, not primary pedestrian frontages.",
+    { paragraphGap: 6 },
+  );
+
+  gaSection(doc, "8.0 INFRASTRUCTURE IMPROVEMENTS");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Site-frontage infrastructure improvements committed under this Tier 2 TDM Memo (typical scope): sidewalk reconstruction to current CDOT standards, ADA-compliant curb ramps at every intersection touched, pedestrian-scale street lighting, planted curb extensions where reduced corner radii apply, bicycle parking and (where applicable) Divvy station relocation / expansion in coordination with the Divvy operator. Each improvement requires a separate Construction in the Public Way (CIPW) permit per the CDOT Regulations for Construction in the Public Way. Bus-stop displacement during construction follows the CDOT Better Streets for Buses Plan (December 2023) protocols + CTA coordination.",
+    { paragraphGap: 6 },
+  );
+
+  gaSection(doc, "9.0 TDM STRATEGIES MATRIX (SELECTED)");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Per CDOT TDM Guidelines v1.1 Table 1, this section selects from the published TDM Strategies Matrix and binds each selection to a monetized cost share and a monitoring commitment. The matrix below shows a typical Tier 2 selection bundle for a mid-rise residential project; final selection is determined at PRC coordination. Each strategy's effective-trip-reduction percentage is drawn from the literature (TCRP Report 95; VTPI TDM Encyclopedia; ULI Mixed-Use Internal Capture) — values shown are typical ranges, not committed values.",
+    { paragraphGap: 4 },
+  );
+  doc.fillColor("black");
+  table(doc, {
+    headers: ["Strategy", "Typ. SOV reduction", "Cost (est.)", "Monitoring"],
+    widths: [220, 80, 80, 100],
+    align: ["left", "right", "right", "left"],
+    rows: [
+      ["Unbundled parking (separate parking lease from unit)", "5–15%", "Operational", "Annual leasing report"],
+      ["Transit-benefit subsidy / Ventra pass distribution", "3–8%", "$ per occupant/yr", "Quarterly enrollment count"],
+      ["Bike-share (Divvy) corporate / building membership", "1–3%", "$ per member/yr", "Annual membership audit"],
+      ["Above-minimum long-term bike parking", "1–4%", "Capital, $$", "Quarterly inventory check"],
+      ["Carshare / TNC pick-up zone designation", "1–3%", "Capital, $$", "Annual usage report"],
+      ["Pre-tax §132 TransitChek (employer-side)", "2–5%", "Tax-neutral", "Annual enrollment count"],
+      ["Real-time transit info display in lobby", "0–1%", "Capital, $", "—"],
+      ["Pedestrian-scale wayfinding to nearest CTA", "0–2%", "Capital, $", "—"],
+      ["Telework / hybrid work agreement (non-residential)", "5–25%", "Operational", "Annual mode survey"],
+    ],
+  });
+  doc.moveDown(0.3);
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "Note: TDM-strategy reduction values are not additive — overlapping strategies share trips. The cumulative reduction should be calculated using a discounted-bundle approach (each subsequent strategy applied to the residual share after prior strategies), not a straight sum. CDOT requires the applicant to show the bundle calculation in an appendix.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  gaSection(doc, "10.0 BASELINE SOV REDUCTION GOAL");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "CDOT's baseline performance goal for a Tier 2 TDM Memo is that the project demonstrate ≤50% single-occupancy-vehicle (SOV) share of total daily trips after the selected TDM strategies are applied. SOV share is computed against the ITE-base daily trip count, net of mode-shift, internal-capture, and trip-elimination credits, with documented source rates. Projects in transit-served locations with strong walk-up density commonly exceed the 50%-reduction goal; suburban-style projects (limited transit catchment + high parking ratios) may fail this gate and trigger escalation to a Tier 3 TDM Study + Plan.",
+    { paragraphGap: 6 },
+  );
+
+  gaSection(doc, "11.0 TDM COMMITMENT LETTER (LOAD-BEARING)");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "At PRC approval, the applicant signs a TDM Commitment Letter — the load-bearing legal hook for the Tier 2 deliverable. The letter binds the applicant (and successors) to: (a) the selected TDM Strategies Matrix; (b) the per-strategy monetized cost share; (c) the per-strategy monitoring + reporting cadence; (d) annual reporting to CDOT for a defined post-occupancy term (commonly 3–5 years). The Commitment Letter is recorded with the project's zoning approval — it survives ownership transfer and operating-company changes. Tier 2 projects that fail to file annual TDM reports are flagged in the CDOT enforcement queue.",
+    { paragraphGap: 6 },
+  );
+
+  gaSection(doc, "12.0 LOADING, PEDESTRIAN STREETS, AND ACCESS");
+  doc.font("body").fontSize(10).fillColor("black");
+  doc.text("• Off-street loading: minimum spaces per Chicago Municipal Code §17-10-1100 by use class and size.", { paragraphGap: 2 });
+  doc.text("• Pedestrian Street (P-street) overlay: §17-3-0500 / §17-4-0500 — restricts new curb cuts on primary frontage; primary access must come from the alley.", { paragraphGap: 2 });
+  doc.text("• Curb cuts and driveways: subject to the CDOT Street and Site Plan Design Standards; minimize count and width.", { paragraphGap: 2 });
+  doc.text("• Construction-period MOT: per the CDOT Regulations for Construction in the Public Way (CIPW). Bus-stop displacement requires CTA coordination per the Better Streets for Buses Plan (December 2023).", { paragraphGap: 4 });
+  doc.moveDown(0.3);
+
+  gaSection(doc, "13.0 SUBMITTAL");
+  doc.font("body").fontSize(10).fillColor("black");
+  doc.text("• Reviewing authority: Chicago Department of Transportation — Plan Review Committee (PRC).", { paragraphGap: 2 });
+  doc.text("• Submission: TDM Memo + appendices emailed to CDOTPRC@cityofchicago.org. Coordinate Planned Development (PD) routing via DPD if the project is a PD.", { paragraphGap: 2 });
+  doc.text("• Signing professional: a Licensed Professional Engineer of Illinois (or an AICP / PTP with relevant transportation-planning credentials) signs the TDM Memo. Confirm signing-professional requirements at the CDOT PRC kickoff.", { paragraphGap: 2 });
+  doc.text("• CTA: letter of no objection where the site affects bus-stop / station access.", { paragraphGap: 2 });
+  doc.text("• If the site fronts an IDOT state route, co-route to IDOT District 1 (Schaumburg) Permits per 92 Ill. Adm. Code Part 550 — that triggers a parallel IDOT TIS appendix per IL spec §2.3.", { paragraphGap: 4 });
+  doc.moveDown(0.3);
+
+  gaSection(doc, "14.0 TIER ESCALATION");
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    `If the project's screened SOV share fails the ≤50% gate after the selected TDM Strategies Matrix is applied, OR if the dwelling-unit count exceeds 175 DU during design refinement, regenerate this report as a Tier 3 TDM Study + Plan (the existing renderTisIllinois Full template). The screened project size of ${tg.size ?? "—"} ${tg.unit ?? ""} falls within the Tier 2 band (residential 51–175 DU).`,
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+}
+
+/**
  * Land-use-aware average trip length for VMT estimation.
  * Conservative blended values from NHTS/ARC regional travel-survey
  * literature for the Atlanta MSA. Used only where the engine has no
