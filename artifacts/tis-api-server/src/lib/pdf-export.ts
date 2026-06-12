@@ -2960,6 +2960,433 @@ function txCounty(lat: number, lon: number): TxCounty {
   return null;
 }
 
+type TxJurisdictionKey = "houston" | "austin" | "dallas" | "fortworth" | "sanantonio" | "txdot";
+
+function txCityName(juris: TxJurisdictionKey): string {
+  return {
+    houston: "City of Houston",
+    austin: "City of Austin",
+    dallas: "City of Dallas",
+    fortworth: "City of Fort Worth",
+    sanantonio: "City of San Antonio",
+    txdot: "TxDOT (no host-city overlay)",
+  }[juris];
+}
+
+function txCountyName(county: NonNullable<TxCounty>): string {
+  return {
+    harris: "Harris County (unincorporated)",
+    travis: "Travis County (unincorporated)",
+    bexar: "Bexar County (unincorporated)",
+  }[county];
+}
+
+function txCountyOverlayNote(county: NonNullable<TxCounty>): string {
+  return {
+    harris: "Harris County (unincorporated) overlay: per the Harris County TIA Guidelines (May 8, 2025), a development that generates more than 50 trips during the highest peak hour triggers a TIA. Study-area scaling from the plat boundary: 50 ≤ PHT < 150 → ¼ mile; 150 ≤ PHT < 300 → ½ mile; PHT ≥ 300 → 1 mile.",
+    travis: "Travis County (unincorporated) overlay: per the Travis County TNR Subdivision Preliminary Plan process, a project generating ≥ 1,000 net new daily trips triggers TIA review.",
+    bexar: "Bexar County (unincorporated) overlay: TIA review coordinates through the City of San Antonio UDC §35-502 process (76-PHT trigger), as no separate county-level TIA program is published.",
+  }[county];
+}
+
+/**
+ * Tier label keyed off the coord-resolved `juris`, not region.displayName.
+ * Needed because the Dallas-Fort Worth MSA displayName contains both city
+ * names, and `jurisdictionTierLabel` matches "fort worth" first — without
+ * this override, Dallas-coord projects would get a Fort Worth label.
+ */
+function txTierLabel(juris: TxJurisdictionKey, tier: "worksheet" | "abbreviated"): string {
+  const tiers = {
+    houston: {
+      worksheet: "Houston Access Management Form / Technical Memorandum / Category I",
+      abbreviated: "Houston Category II TIA",
+    },
+    austin: {
+      worksheet: "Austin TIA Determination Worksheet",
+      abbreviated: "Austin TIA Memo / Neighborhood Traffic Analysis",
+    },
+    dallas: {
+      worksheet: "Dallas Traffic Impact Worksheet / TIS Waiver",
+      abbreviated: "Dallas Abbreviated TIS (consultant convention)",
+    },
+    fortworth: {
+      worksheet: "Fort Worth TIA Worksheet",
+      abbreviated: "Fort Worth Abbreviated TIA",
+    },
+    sanantonio: {
+      worksheet: "San Antonio Peak Hour Trip Generation Form + Turn Lane Assessment",
+      abbreviated: "San Antonio Abbreviated TIA (no formal tier — consultant convention)",
+    },
+    txdot: {
+      worksheet: "TxDOT Below-Category-1 Scoping Memo",
+      abbreviated: "TxDOT Category 1 TIA (TSP §16.2.1)",
+    },
+  } as const;
+  return tiers[juris][tier];
+}
+
+/**
+ * Worksheet-tier Texas TIA. Routes to a per-city deliverable name and
+ * a city-tailored section list per REGIONAL-SPECS/texas-tis-spec.md.
+ * Mirrors renderTisGeorgiaWorksheet's structural pattern.
+ */
+function renderTisTexasWorksheet(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+  tierInput: TierInput,
+  juris: TxJurisdictionKey,
+  county: TxCounty,
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const tierName = txTierLabel(juris, "worksheet");
+  const pht = tierInput.pmPeakTrips;
+  const daily = tierInput.dailyTrips;
+
+  // Houston has four published sub-tiers below Full TIA (AMF / Tech
+  // Memo 80-120 PHT / Cat I <100 PHT / Cat II 100-499 PHT). At the
+  // worksheet shape we collapse AMF + Tech Memo + Cat I and pick the
+  // sub-label by PHT band.
+  const houstonSubTier =
+    pht < 80 ? "Access Management Form"
+    : pht <= 120 ? "Technical Memorandum (Tech Memo)"
+    : "Category I TIA";
+
+  const banner = {
+    houston: `Houston worksheet-tier deliverable per 2023 Infrastructure Design Manual Ch. 15 Table 15.04.01-02 — currently routed to ${houstonSubTier}. The 2023 IDM publishes four sub-tiers below the Full TIA Category III threshold (AMF / Tech Memo 80–120 PHT / Cat I <100 PHT / Cat II 100–499 PHT); the AMF + Tech Memo + Cat I band is collapsed into this worksheet shape.`,
+    austin: "Austin worksheet-tier deliverable per Land Development Code §25-6-117 and TIA Guidelines (June 2022). At <2,000 vpd net new the TIA Determination Worksheet is the gating deliverable submitted via the TDS portal; a Scope of Work + Full TIA only follows when staff escalates.",
+    dallas: "Dallas worksheet-tier deliverable per Development Code §51A-4.803 (Site Plan Review) plus the Paving/Drainage Traffic Impact Study Waiver form. At <1,000 daily a non-school site qualifies for the TIS Waiver; this report carries that form's substantive fields plus the screening trip generation.",
+    fortworth: "Fort Worth worksheet-tier deliverable per the City of Fort Worth Transportation Engineering Manual (June 2019). The TIA Worksheet is the published deliverable for projects under 100 PHT and 1,000 ADT; an Abbreviated TIA follows at 100–299 PHT and Full TIA at ≥300 PHT or ≥5,000 ADT.",
+    sanantonio: "San Antonio worksheet-tier deliverable per UDC §35-502. Below 76 PHT a Peak Hour Trip Generation Form + Turn Lane Assessment is the published deliverable; no abbreviated tier exists between this and the Full TIA + Rough Proportionality Determination at ≥76 PHT.",
+    txdot: "TxDOT below-Category-1 scoping memo. With <100 peak-hour trips the project falls below the TSP §16.2.1 Category 1 floor; the District may still elect to require a TIA for local safety or capacity concerns under District discretion, but no Appendix Q-formatted Full TIA is required by default.",
+  }[juris];
+
+  const sectionTitle = {
+    houston: "HOUSTON WORKSHEET-TIER TIA",
+    austin: "AUSTIN TIA DETERMINATION WORKSHEET",
+    dallas: "DALLAS TRAFFIC IMPACT WORKSHEET / TIS WAIVER",
+    fortworth: "FORT WORTH TIA WORKSHEET",
+    sanantonio: "SAN ANTONIO PEAK HOUR TRIP GENERATION FORM",
+    txdot: "TxDOT BELOW-CATEGORY-1 SCOPING MEMO",
+  }[juris];
+
+  // --- Header banner ----------------------------------------------------
+  gaSection(doc, sectionTitle);
+  doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(tierName, { paragraphGap: 4 });
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(banner, { paragraphGap: 6 });
+  doc.fillColor("black");
+
+  // --- §1 Location Description -----------------------------------------
+  gaSection(doc, "1.0 LOCATION DESCRIPTION");
+  rows(doc, [
+    ["Project name", project.projectName || "—"],
+    ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
+    ["Region", region.displayName],
+    ["Host jurisdiction", txCityName(juris)],
+    ["County overlay", county ? txCountyName(county) : "—"],
+    ["Opening year", String(req.openingYear ?? "—")],
+  ]);
+  doc.moveDown(0.5);
+
+  // --- §2 Existing / Proposed Land Use ---------------------------------
+  gaSection(doc, "2.0 EXISTING AND PROPOSED LAND USE");
+  rows(doc, [
+    ["Proposed ITE land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Proposed development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Existing land use", "Subject to site verification — no existing-use trip credit applied at the worksheet tier."],
+  ]);
+  doc.moveDown(0.5);
+
+  // --- §3 Trip Generation Estimate -------------------------------------
+  gaSection(doc, "3.0 TRIP GENERATION ESTIMATE");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Trip generation is estimated per the ITE Trip Generation Manual 11th Ed. for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. No pass-by or internal capture credits are applied at the worksheet tier — those reductions belong in the formal Full TIA where one is required.`,
+    { paragraphGap: 6 },
+  );
+  table(doc, {
+    headers: ["Period", "Trips"],
+    widths: [280, 100],
+    align: ["left", "right"],
+    rows: [
+      ["Daily total", fmtNum(tg.dailyTrips)],
+      ["AM peak hour", fmtNum(tg.amPeakTrips)],
+      ["PM peak hour (in)", fmtNum(tg.pmIn)],
+      ["PM peak hour (out)", fmtNum(tg.pmOut)],
+      ["PM peak hour (total)", fmtNum(pht)],
+    ],
+  });
+  doc.moveDown(0.3);
+
+  // --- §4 Worksheet-Tier Determination ---------------------------------
+  gaSection(doc, "4.0 WORKSHEET-TIER DETERMINATION");
+  const determinationText = {
+    houston: `Per the 2023 Infrastructure Design Manual Ch. 15, projects below the Houston Category III Full TIA threshold are gated through one of three lower tiers: Access Management Form (driveway-only review), Technical Memorandum (≈80–120 PHT band), or Category I TIA (<100 PHT, ~100-trip floor per consultant practice; the verbatim IDM threshold was not auto-pulled from Houston Permitting PDFs). The screened ${fmtNum(pht)} PM PHT and ${fmtNum(daily)} daily trips route this project to ${houstonSubTier}.`,
+    austin: `Per Land Development Code §25-6-117 and TIA Guidelines (June 2022), a project must submit the TIA Determination Worksheet whenever site-generated traffic is < 2,000 vpd net new. The screened ${fmtNum(daily)} daily trips falls within that band, so this Determination Worksheet is the gating deliverable. Scope of Work + Full TIA submittal follows only if Transportation Development Services (TDS) escalates after worksheet review.`,
+    dallas: `Per Development Code §51A-4.803 (Site Plan Review) plus the Paving/Drainage Traffic Impact Study Waiver form, a non-school site generating < 1,000 daily trips qualifies for the TIS Waiver. The screened ${fmtNum(daily)} daily trips (and ${fmtNum(pht)} PM PHT) falls within that band. Note that Dallas has no single canonical TIA threshold — consultant practice also cites ~100 PHT / ~2,000 ADT; review is partly discretionary under §51A-4.803.`,
+    fortworth: `Per the City of Fort Worth Transportation Engineering Manual (June 2019), the published tier ladder is: TIA Worksheet (<100 PHT and <1,000 ADT) → Abbreviated TIA (100–299 PHT or 1,000–4,999 ADT) → Full TIA (≥300 PHT or ≥5,000 ADT). The screened ${fmtNum(pht)} PM PHT and ${fmtNum(daily)} daily trips falls within the TIA Worksheet band; no Abbreviated or Full TIA is required at the consultant-screening level.`,
+    sanantonio: `Per UDC §35-502, a project that generates < 76 peak-hour trips submits the Peak Hour Trip Generation Form + Turn Lane Assessment instead of a Full TIA. The screened ${fmtNum(pht)} PM PHT falls below the 76-PHT trigger, so this deliverable is the gating form. (The often-cited "100 PHT" figure in San Antonio is the driveway-geometry threshold, not the TIA trigger.) No formal abbreviated tier exists in San Antonio between this form and the Full TIA + Rough Proportionality Determination.`,
+    txdot: `Per TxDOT Traffic and Safety Analysis Procedures Manual (TSP) §16.2.1, Category 1 begins at 100 peak-hour trips. The screened ${fmtNum(pht)} PM PHT falls below the Category 1 floor, so no Appendix Q-formatted Full TIA is required by default; the TxDOT District may still request a TIA under District discretion for local safety or capacity concerns. ACM Ch. 3 §3 driveway-compliance review still applies on any state-system frontage.`,
+  }[juris];
+  doc.font("body").fontSize(10).fillColor("black").text(determinationText, { paragraphGap: 6 });
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Verification: the consultant should confirm the screened trip count against current jurisdiction publications and any reviewing-agency-specific credit (existing-use credit, internal capture, pass-by) before finalizing this determination. Where the reviewing agency requests a higher-tier deliverable — staff escalation, frontage on a state-system route, or a non-trip-related concern — regenerate the report with Tier = Abbreviated or Full from the form.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- §5 Access, Sight Distance, Circulation --------------------------
+  gaSection(doc, "5.0 ACCESS MANAGEMENT AND SITE CIRCULATION");
+  const accessText = {
+    houston: "Per Houston IDM Ch. 15, the Access Management Form is required for all commercial site driveways regardless of TIA tier — driveway spacing, throat depth, and turn-lane assessment must be submitted as a companion to this worksheet. Where any site frontage is on a TxDOT route (IH / US / SH / FM / RM / BU / BS / SL / SS), a parallel DAP application is required.",
+    austin: "Per Transportation Criteria Manual §10, even at the Determination Worksheet tier the consultant should verify the adjacent transit/bike network against the Austin Strategic Mobility Plan, fronting-street classification against the Future Land Use Map, and any AISD school-zone overlays. The City of Austin TIA Guidelines (June 2022) Sustainable Modes Analysis is not required at this tier but should be summarized informally.",
+    dallas: "Per Development Code §51A-4.803, the Site Plan Review tracks the substantive engineering items even when a TIS is waived: adjacent access spacing, intersection sight distance, sidewalk continuity, and any Connect Dallas multimodal corridors abutting the site. The TIS Waiver form should be filed concurrently with the engineering site plan via ProjectDox.",
+    fortworth: "Per the FW Transportation Engineering Manual (June 2019), the TIA Worksheet requires: (a) trip generation table; (b) site access geometry against the Master Thoroughfare Plan classification; (c) ITE pass-by/internal-capture justification (often n/a at this tier); (d) any NCTCOG Regional Thoroughfare Plan corridors abutting the site; (e) driveway sight distance and posted-speed verification. The full set should be carried into the formal submittal.",
+    sanantonio: "Per UDC §35-502, the Peak Hour Trip Generation Form pairs with a Turn Lane Assessment evaluating right-turn deceleration and left-turn warrant on each fronting roadway. The pre-submittal scoping meeting with TCI + Public Works + Planning is mandatory regardless of TIA tier; this worksheet is the input to that meeting.",
+    txdot: "Per ACM Ch. 2 §3 (Table 2-2 connection spacing) and ACM Ch. 2 §4 (driveway permits), driveway spacing, geometry, and auxiliary lanes are reviewed at the DAP stage on any state-system frontage. Roadway Design Manual Ch. 16 (driveways) and Ch. 2 (sight distance) govern the geometric design.",
+  }[juris];
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(accessText, { paragraphGap: 6 });
+  doc.fillColor("black");
+
+  if (county) {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      txCountyOverlayNote(county),
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- §6 Findings -----------------------------------------------------
+  gaSection(doc, "6.0 FINDINGS");
+  doc.font("body").fontSize(10).fillColor("black");
+  doc.text(`• The proposed ${project.projectName || "development"} is projected to generate ${fmtNum(daily)} daily trips and ${fmtNum(pht)} PM peak-hour trips.`, { paragraphGap: 2 });
+  doc.text(`• Trip generation falls within the ${txCityName(juris)} worksheet-tier band; no Abbreviated or Full TIA is required at the consultant-screening level for this deliverable.`, { paragraphGap: 2 });
+  doc.text("• Site access geometry, sight distance, and pedestrian / bicycle connectivity should be verified against the final site plan and applicable jurisdictional standards prior to permit submittal.", { paragraphGap: 4 });
+  doc.moveDown(0.5);
+
+  // --- PE Seal block ---------------------------------------------------
+  gaSection(doc, "PROFESSIONAL ENGINEER CERTIFICATION");
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "This worksheet-tier deliverable has been prepared at the screening level defined by the host jurisdiction's TIA-tier scheme and is sealed by a Texas-licensed Professional Engineer per 22 TAC §137.33 (Texas Engineering Practice Act, Tex. Occ. Code Ch. 1001). The signing PE attests only to the worksheet-tier scope and that the project's screened trip generation falls below the host jurisdiction's Full TIA threshold. It does not substitute for a Full TIA where one is later required by the reviewing agency.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+}
+
+/**
+ * Abbreviated-tier Texas TIA per REGIONAL-SPECS/texas-tis-spec.md:
+ *   FW → Abbreviated TIA · Houston → Cat II · Austin → NTA (residential
+ *   only) · Dallas → consultant convention · SA → no formal tier (flag) ·
+ *   TxDOT → TSP Cat 1.
+ */
+function renderTisTexasAbbreviated(
+  doc: PDFKit.PDFDocument,
+  r: any,
+  project: StoredProject,
+  region: Region,
+  tierInput: TierInput,
+  juris: TxJurisdictionKey,
+  county: TxCounty,
+) {
+  const tg = r.tripGeneration ?? {};
+  const req = r.request ?? {};
+  const intersections: any[] = Array.isArray(r.affectedIntersections) ? r.affectedIntersections : [];
+  const tierName = txTierLabel(juris, "abbreviated");
+  const pht = tierInput.pmPeakTrips;
+  const daily = tierInput.dailyTrips;
+
+  // Austin's NTA shape is residential-only by TIA Guidelines (June 2022).
+  // Non-residential at this trip count normally escalates to Full TIA; we
+  // still render but flag it.
+  const isResidentialUse =
+    tierInput.landUseCode.startsWith("21") ||
+    tierInput.landUseCode.startsWith("22") ||
+    tierInput.landUseCode.startsWith("23");
+
+  const sectionTitle = {
+    houston: "HOUSTON CATEGORY II TIA",
+    austin: isResidentialUse ? "AUSTIN NEIGHBORHOOD TRAFFIC ANALYSIS (NTA)" : "AUSTIN MID-TIER TIA",
+    dallas: "DALLAS ABBREVIATED TIS (CONSULTANT CONVENTION)",
+    fortworth: "FORT WORTH ABBREVIATED TIA",
+    sanantonio: "SAN ANTONIO ABBREVIATED TIA (NO FORMAL TIER)",
+    txdot: "TxDOT CATEGORY 1 TIA",
+  }[juris];
+
+  const banner = {
+    houston: `Houston Category II per 2023 IDM Ch. 15 Table 15.04.01-02 — the mid-tier deliverable between Category I (<100 PHT) and Category III Full TIA (≥500 PHT). The screened ${fmtNum(pht)} PM PHT routes this project to Category II at the abbreviated trip-band (100–499 PHT). Houston's Vehicle LOS (VLOS) framing replaces letter-grade LOS as the operational MOE at this tier.`,
+    austin: isResidentialUse
+      ? `Austin Neighborhood Traffic Analysis per TIA Guidelines (June 2022) and the Transportation Criteria Manual §10. The NTA shape applies to residential-only-access sites generating > 300 vpd net new, gating concerns about neighborhood-street volume rather than full-network capacity. The screened ${fmtNum(daily)} daily trips and ${fmtNum(pht)} PM PHT at residential land use ${tierInput.landUseCode} fits this template.`
+      : `Austin mid-tier TIA at non-residential land use ${tierInput.landUseCode}. The published Austin tier ladder for non-residential is binary: <2,000 vpd → Determination Worksheet, ≥2,000 vpd → Full TIA. The Neighborhood Traffic Analysis (NTA) shape used here is residential-only by the TIA Guidelines (June 2022). At this trip band a non-residential project would normally escalate to Full TIA; this report carries the abbreviated shape as a consultant-screening deliverable.`,
+    dallas: `Dallas has no codified abbreviated TIS tier — Development Code §51A-4.803 publishes only Worksheet/Waiver and Full TIS. The screened ${fmtNum(pht)} PM PHT and ${fmtNum(daily)} daily trips falls within the 100–499 PHT band where consultant practice commonly carries an abbreviated shape; this is a practitioner convention, not a formal tier. Dallas DOT Traffic Engineering may request escalation to Full TIS at their discretion.`,
+    fortworth: `Fort Worth Abbreviated TIA per the City of Fort Worth Transportation Engineering Manual (June 2019). The published tier ladder is: TIA Worksheet (<100 PHT, <1,000 ADT) → Abbreviated TIA (100–299 PHT or 1,000–4,999 ADT) → Full TIA (≥300 PHT or ≥5,000 ADT). The screened ${fmtNum(pht)} PM PHT and ${fmtNum(daily)} daily trips routes this project to Abbreviated TIA.`,
+    sanantonio: `San Antonio publishes no formal abbreviated TIA tier — UDC §35-502 collapses straight from the Peak Hour Trip Generation Form (<76 PHT) to the Full TIA + Rough Proportionality Determination (≥76 PHT). The screened ${fmtNum(pht)} PM PHT is at or above the 76-PHT trigger; the consultant-convention Abbreviated shape carried here should escalate to a Full TIA before formal submittal.`,
+    txdot: `TxDOT Category 1 per TSP §16.2.1 (100–499 PHT). The screened ${fmtNum(pht)} PM PHT falls within the Category 1 band. Per TSP §16.2.1 Table 16-1 the analysis horizon at Category 1 is the buildout year only; the Appendix Q-formatted outline is reduced from the Full Category 2/3 outline.`,
+  }[juris];
+
+  // --- Header banner ----------------------------------------------------
+  gaSection(doc, sectionTitle);
+  doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(tierName, { paragraphGap: 4 });
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(banner, { paragraphGap: 6 });
+  doc.fillColor("black");
+
+  // --- §1 Location Description -----------------------------------------
+  gaSection(doc, "1.0 LOCATION DESCRIPTION");
+  rows(doc, [
+    ["Project name", project.projectName || "—"],
+    ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
+    ["Region", region.displayName],
+    ["Host jurisdiction", txCityName(juris)],
+    ["County overlay", county ? txCountyName(county) : "—"],
+    ["Opening year", String(req.openingYear ?? "—")],
+    ["Study radius", `${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)} mi`],
+  ]);
+  doc.moveDown(0.5);
+
+  // --- §2 Existing / Proposed Land Use ---------------------------------
+  gaSection(doc, "2.0 EXISTING AND PROPOSED LAND USE");
+  rows(doc, [
+    ["Proposed ITE land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Proposed development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Existing land use", "Subject to site verification — abbreviated-tier credit handled per the host jurisdiction's TIA standard."],
+  ]);
+  doc.moveDown(0.5);
+
+  // --- §3 Trip Generation ---------------------------------------------
+  gaSection(doc, "3.0 TRIP GENERATION ESTIMATE");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Trip generation is estimated per the ITE Trip Generation Manual 11th Ed. for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. At the abbreviated tier, pass-by and internal-capture credits per ITE Trip Generation Handbook 3rd Ed. Fig. 4.2 are applied where supported by the land use and adjacent network context.`,
+    { paragraphGap: 6 },
+  );
+  table(doc, {
+    headers: ["Period", "Trips"],
+    widths: [280, 100],
+    align: ["left", "right"],
+    rows: [
+      ["Daily total", fmtNum(tg.dailyTrips)],
+      ["AM peak hour", fmtNum(tg.amPeakTrips)],
+      ["PM peak hour (in)", fmtNum(tg.pmIn)],
+      ["PM peak hour (out)", fmtNum(tg.pmOut)],
+      ["PM peak hour (total)", fmtNum(pht)],
+    ],
+  });
+  doc.moveDown(0.3);
+  rows(doc, [
+    ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
+    ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}%`],
+  ]);
+  doc.moveDown(0.4);
+
+  // --- §4 Tier Determination ------------------------------------------
+  gaSection(doc, "4.0 ABBREVIATED-TIER DETERMINATION");
+  const determinationText = {
+    houston: `Per Houston IDM Ch. 15 Table 15.04.01-02, Category II covers the 100–499 PHT band. The screened ${fmtNum(pht)} PM PHT places this project within that band. The OCE TIA Content Guide outline is reduced relative to Category III — VLOS at the site-access intersections plus adjacent signalized intersections, no full corridor-capacity sweep. The Houston Access Form remains required as a commercial-site companion regardless of TIA tier.`,
+    austin: isResidentialUse
+      ? `Per Austin TIA Guidelines (June 2022), Neighborhood Traffic Analysis (NTA) is the deliverable for residential-only-access sites generating > 300 vpd net new. The analysis focuses on neighborhood-street volume and speed rather than full-network LOS. A Sustainable Modes Analysis and TDM Plan are required at this tier when site access is on a city collector or higher.`
+      : `Per LDC §25-6-117, a non-residential project generating ≥ 2,000 vpd should submit a Transportation Assessment or Full TIA — there is no formal mid-tier deliverable for non-residential land uses in Austin. This abbreviated shape is a screening-level cross-reference; the formal submittal should be regenerated at the Full TIA tier.`,
+    dallas: `Dallas has no codified abbreviated tier; the screened ${fmtNum(pht)} PM PHT falls within the 100–499 PHT band where consultant practice commonly carries an abbreviated shape. Connect Dallas (Apr 28, 2021) is in mid-transition from LOS to VMT — both context types are addressed below. Dallas DOT Traffic Engineering may require escalation to Full TIS at their discretion; flag this in the formal submittal cover letter.`,
+    fortworth: `Per the City of Fort Worth Transportation Engineering Manual (June 2019), the Abbreviated TIA covers 100–299 PHT or 1,000–4,999 ADT. The screened ${fmtNum(pht)} PM PHT and ${fmtNum(daily)} daily trips falls within that band. Required: trip generation table, distribution, abbreviated LOS analysis at site-access intersections plus first adjacent intersection on each fronting street, mitigation summary referencing the Master Thoroughfare Plan and NCTCOG Regional Thoroughfare Plan.`,
+    sanantonio: `San Antonio publishes no formal abbreviated TIA tier — UDC §35-502 ladder is binary at 76 PHT. At ${fmtNum(pht)} PM PHT this project sits above the 76-PHT trigger; the formal submittal should be a Full TIA + Rough Proportionality Determination, not the abbreviated shape carried here. The pre-submittal scoping meeting with TCI + Public Works + Planning is mandatory before any TIA submittal at this trip count.`,
+    txdot: `Per TSP §16.2.1, Category 1 (100–499 PHT) is the lowest TIA category. The screened ${fmtNum(pht)} PM PHT places this project within Category 1. Per Table 16-1, the analysis horizon at Category 1 is the buildout year only — no opening-year+5 horizon and no per-phase analysis required. The Appendix Q outline still applies but the appendix workload is reduced.`,
+  }[juris];
+  doc.font("body").fontSize(10).fillColor("black").text(determinationText, { paragraphGap: 6 });
+  doc.fillColor("black");
+
+  // --- §5 Abbreviated Operations Analysis ------------------------------
+  gaSection(doc, "5.0 ABBREVIATED OPERATIONS ANALYSIS");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "At the abbreviated tier, capacity analysis is restricted to the site-access intersections and the first adjacent signalized intersection on each fronting street. Two scenarios are compared: Background (grown traffic without the proposed project) and Background-plus-site (grown traffic plus the project's external trips at the assigned distribution).",
+    { paragraphGap: 6 },
+  );
+  if (intersections.length > 0) {
+    table(doc, {
+      headers: ["Intersection", "Existing LOS", "Background LOS", "Bgd+Site LOS", "Δ delay (s)"],
+      widths: [215, 75, 80, 75, 75],
+      align: ["left", "center", "center", "center", "right"],
+      rows: intersections.slice(0, 8).map((it) => {
+        const losChanged = it.losChanged === true;
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(it.currentLos ?? it.existingLos ?? "—"),
+          String(it.existingLos ?? "—"),
+          (losChanged ? "▲ " : "") + String(it.futureLos ?? "—"),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+        ];
+      }),
+    });
+    if (intersections.length > 8) {
+      doc.moveDown(0.2);
+      doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+        `(${intersections.length - 8} additional intersection${intersections.length - 8 === 1 ? "" : "s"} not shown at the abbreviated tier; carry into Full TIA if escalated.)`,
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+    }
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "No signalized intersections within the abbreviated-tier study radius. Off-site capacity impact is not anticipated for this development at this tier.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.4);
+
+  // --- §6 Mitigation / Access ----------------------------------------
+  gaSection(doc, "6.0 MITIGATION AND ACCESS MANAGEMENT");
+  const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
+  const losEf = Number(r.intersectionsAtLosEf ?? 0);
+  if (losDrops === 0 && losEf === 0) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "No intersections within the abbreviated study network are projected to drop one or more LOS grade between the Background and Background-plus-site scenarios. No mitigation is necessary to maintain the host-jurisdiction operational threshold at this tier.",
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `${losDrops} intersection${losDrops === 1 ? "" : "s"} project to drop one or more LOS grade and ${losEf} operate at LOS E or F under the Background-plus-site scenario. Abbreviated-tier mitigation typically covers driveway geometry (right-turn deceleration / left-turn lanes per ACM Ch. 2 §4 and RDW Ch. 16), signal-timing tweaks, and turn-lane warrants; full corridor mitigation belongs in the Full TIA where one is later required.`,
+      { paragraphGap: 6 },
+    );
+  }
+  if (juris === "sanantonio") {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Reminder: at ≥76 PHT the formal San Antonio submittal must include a Rough Proportionality cost calculation (UDC §35-502). This abbreviated shape does not generate that calculation [placeholder].",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  if (juris === "houston") {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Reminder: a Houston Access Form must accompany this Category II TIA for any commercial site, submitted via the Houston Permitting Center alongside the report.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  if (county) {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      txCountyOverlayNote(county),
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- §7 Findings ---------------------------------------------------
+  gaSection(doc, "7.0 FINDINGS");
+  doc.font("body").fontSize(10).fillColor("black");
+  doc.text(`• The proposed ${project.projectName || "development"} is projected to generate ${fmtNum(daily)} daily trips and ${fmtNum(pht)} PM peak-hour trips.`, { paragraphGap: 2 });
+  doc.text(`• Trip generation routes this project to ${txCityName(juris)}'s abbreviated-tier deliverable; the Full TIA scope is not triggered at this trip count.`, { paragraphGap: 2 });
+  doc.text(`• ${intersections.length} affected intersection${intersections.length === 1 ? "" : "s"} analyzed; ${losDrops} drop one or more LOS and ${losEf} operate at LOS E/F under the Background-plus-site scenario.`, { paragraphGap: 2 });
+  doc.text("• Final mitigation and access geometry should be verified against the site plan and confirmed in the host-jurisdiction pre-submittal scoping meeting prior to permit submittal.", { paragraphGap: 4 });
+  doc.moveDown(0.5);
+
+  // --- PE Seal block ------------------------------------------------
+  gaSection(doc, "PROFESSIONAL ENGINEER CERTIFICATION");
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "This abbreviated-tier TIA has been prepared at the mid-tier deliverable defined by the host jurisdiction's TIA scheme and is sealed by a Texas-licensed Professional Engineer per 22 TAC §137.33 (Texas Engineering Practice Act, Tex. Occ. Code Ch. 1001). The signing PE attests only to the abbreviated-tier scope and the screened operational outcome reported above. It does not substitute for a Full TIA where one is later required by the reviewing agency.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+}
+
 function renderTisTexas(
   doc: PDFKit.PDFDocument,
   r: any,
