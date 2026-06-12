@@ -543,6 +543,27 @@ export function renderTisNewYork(
     "Capacity analyses performed in this report are consistent with HCM 6th Edition. The software used to perform this analysis is the SimpleImpactStudies HCM 6 solver (per-approach control-delay model). Synchro / SimTraffic, HCS, Sidra, or VISSIM may be substituted for formal submittal per NYSDOT Regional Traffic Office preference.",
     { paragraphGap: 6 },
   );
+  // Functional-class summary — counts of each NYSDOT functional class
+  // represented in the study network, drawn from the nysdot* fields
+  // attached during the RDM enrichment pass. Gives the reviewer a
+  // one-glance read on whether the study network is freeway-dominant
+  // (K/D defaults skew higher), arterial-dominant (standard K/D), or
+  // collector/local-dominant (lower K/D).
+  const fcCounts = new Map<string, number>();
+  for (const it of intersections) {
+    const fc = typeof it.nysdotFunctionalClass === "string" ? it.nysdotFunctionalClass : null;
+    if (!fc) continue;
+    fcCounts.set(fc, (fcCounts.get(fc) ?? 0) + 1);
+  }
+  if (fcCounts.size > 0) {
+    const sorted = Array.from(fcCounts.entries()).sort((a, b) => b[1] - a[1]);
+    const summary = sorted.map(([fc, n]) => `${fc} (${n})`).join("; ");
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      `Study network functional-class composition (per NYSDOT RDM): ${summary}. NYSDOT functional class drives access management expectations under HDM Appendix 5A (entrance standards for state highways) and the default K-factor banding under HDM §5.3.`,
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
   doc.font("body").fontSize(10).fillColor("black").text(
     "Level of Service thresholds applied below are per HCM 2010 Exhibits 18-4 (signalized), 19-1 / 20-2 / 21-1 (unsignalized — 2-way stop / all-way stop / roundabout), and 10-7 (freeway). Any component v/c > 1.0 is LOS F regardless of delay or density.",
     { paragraphGap: 6 },
