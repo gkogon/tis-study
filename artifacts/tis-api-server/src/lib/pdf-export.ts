@@ -1069,6 +1069,7 @@ function renderTisGeorgia(
   doc.moveDown(0.5);
 
   // --- §7 Programmed Projects --------------------------------------------
+  renderFarsKBlock(doc, r, { subsection: "6.5 Safety / NHTSA FARS Fatal Crash History" });
   gaSection(doc, "7.0 IDENTIFICATION OF PROGRAMMED PROJECTS");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "Review of programmed transportation projects within the study area should consult: GDOT Transportation Improvement Program (TIP), Statewide Transportation Improvement Program (STIP), Atlanta Regional Commission Regional Transportation Plan (RTP), and GDOT's Construction Work Program. This screening analysis does not automatically integrate programmed-projects data; manual review is recommended for any submittal.",
@@ -1115,7 +1116,6 @@ function renderTisGeorgia(
   const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
   if (findings.length > 0) {
     doc.moveDown(0.5);
-    renderFarsKBlock(doc, r);
     gaSection(doc, "FINDINGS");
     doc.font("body").fontSize(10).fillColor("black");
     for (const f of findings) {
@@ -1949,6 +1949,7 @@ function renderTisCalifornia(
   doc.moveDown(0.3);
 
   // --- §5 Caltrans Coordination ------------------------------------------
+  renderFarsKBlock(doc, r, { subsection: "4.5 Safety — NHTSA FARS Fatal Crash History" });
   caSection(doc, "5.0 CALTRANS COORDINATION");
   doc.font("body").fontSize(10).fillColor("black").text(
     "If the project fronts on a Caltrans State Highway System (SHS) facility or proposes new access to an SHS route, the following Caltrans coordination items apply:",
@@ -1967,7 +1968,6 @@ function renderTisCalifornia(
   // --- §6 Findings -------------------------------------------------------
   const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
   if (findings.length > 0) {
-    renderFarsKBlock(doc, r);
     caSection(doc, "6.0 FINDINGS");
     doc.font("body").fontSize(10).fillColor("black");
     for (const f of findings) {
@@ -4507,6 +4507,7 @@ function renderTisTexas(
   doc.fillColor("black");
 
   // --- §8 Conclusions ----------------------------------------------------
+  renderFarsKBlock(doc, r, { subsection: "7.1 NHTSA FARS Fatal Crash History" });
   gaSection(doc, "8.0 CONCLUSIONS");
   doc.font("body").fontSize(10).fillColor("black").text(
     `Based on the screening analysis above, the project is classified as ${catLabel} per TSP §16.2.1. Of the ${intersections.length} affected intersection${intersections.length === 1 ? "" : "s"} analyzed, ${losDrops} drop one or more LOS grade and ${losEf} operate at LOS E or F under the Background-plus-site scenario. The horizon analyzed in this screening is the buildout year only; the full submittal must cover the years required by the project's TIA category per TSP §16.2.1 Table 16-1.`,
@@ -4550,7 +4551,6 @@ function renderTisTexas(
   const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
   if (findings.length > 0) {
     doc.moveDown(0.5);
-    renderFarsKBlock(doc, r);
     gaSection(doc, "FINDINGS");
     doc.font("body").fontSize(10).fillColor("black");
     for (const f of findings) {
@@ -5173,6 +5173,7 @@ function renderTisIllinois(
   }
 
   // --- §8 Programmed Projects --------------------------------------------
+  renderFarsKBlock(doc, r, { subsection: "7.5 NHTSA FARS Fatal Crash History" });
   gaSection(doc, "8.0 PROGRAMMED PROJECTS");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     `Review of programmed transportation projects within the study area should consult: ${programmedSource[juris]} This screening analysis does not automatically integrate programmed-projects data; manual review against the IDOT MYP GIS layer (gis-idot.opendata.arcgis.com) is recommended for any submittal.`,
@@ -5191,7 +5192,6 @@ function renderTisIllinois(
   const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
   if (findings.length > 0) {
     doc.moveDown(0.5);
-    renderFarsKBlock(doc, r);
     gaSection(doc, "FINDINGS");
     doc.font("body").fontSize(10).fillColor("black");
     for (const f of findings) {
@@ -6286,6 +6286,9 @@ function renderTisFlorida(
   }
   doc.moveDown(0.3);
 
+  // --- 4.3 NHTSA FARS Fatal Crash Supplement -----------------------------
+  renderFarsKBlock(doc, r, { subsection: "4.3 NHTSA FARS Fatal Crash Supplement" });
+
   // --- 5.0 Trip Generation ----------------------------------------------
   gaSection(doc, "5.0 TRIP GENERATION");
   doc.font("body").fontSize(10).fillColor("black").text(
@@ -6503,7 +6506,6 @@ function renderTisFlorida(
   const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
   if (findings.length > 0) {
     doc.moveDown(0.3);
-    renderFarsKBlock(doc, r);
     gaSection(doc, "FINDINGS");
     doc.font("body").fontSize(10).fillColor("black");
     for (const f of findings) {
