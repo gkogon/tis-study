@@ -1,0 +1,58 @@
+{
+  "houston_metro": {
+    "growthPct": 3.76,
+    "yearFrom": 2020,
+    "yearTo": 2024,
+    "stations": 4,
+    "p25Pct": 2.27,
+    "p75Pct": 5.84
+  },
+  "dallas_fort_worth_metro": {
+    "growthPct": 1.77,
+    "yearFrom": 2020,
+    "yearTo": 2024,
+    "stations": 1971,
+    "p25Pct": -4.68,
+    "p75Pct": 7.99
+  },
+  "san_antonio_metro": {
+    "growthPct": 2.66,
+    "yearFrom": 2020,
+    "yearTo": 2024,
+    "stations": 2,
+    "p25Pct": -1.78,
+    "p75Pct": 7.11
+  },
+  "el_paso_metro": {
+    "growthPct": 0.45,
+    "yearFrom": 2020,
+    "yearTo": 2024,
+    "stations": 1,
+    "p25Pct": 0.45,
+    "p75Pct": 0.45
+  },
+  "corpus_christi_metro": {
+    "growthPct": 1.15,
+    "yearFrom": 2020,
+    "yearTo": 2024,
+    "stations": 5,
+    "p25Pct": 0.55,
+    "p75Pct": 2.42
+  },
+  "lubbock_metro": {
+    "growthPct": 1.2,
+    "yearFrom": 2020,
+    "yearTo": 2024,
+    "stations": 17,
+    "p25Pct": -1.22,
+    "p75Pct": 2.2
+  },
+  "mcallen_metro": {
+    "growthPct": 2.2,
+    "yearFrom": 2020,
+    "yearTo": 2024,
+    "stations": 117,
+    "p25Pct": -3.96,
+    "p75Pct": 8.28
+  }
+}

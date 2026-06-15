@@ -45,6 +45,7 @@ const SOURCE_BY_STATE: Record<string, string> = {
   NY: "NYSDOT Traffic_Monitoring AADT FeatureServer layer 1 (rolling per-station actual counts; CAGR across oldest and newest non-null actual values)",
   FL: "FDOT TDA Annual_Average_Daily_Traffic_Historical FeatureServer layer 0 (per-year polyline snapshots; segment match by COSITE composite site ID)",
   GA: "Atlanta Regional Commission Open Data Hub — GDOT Traffic Counts (AADT and Truck Percent) 2008-2017 (per-station record with AADT_2008 … AADT_2017 columns; CAGR across earliest and latest non-null AADT per Station_ID, ≥5yr span)",
+  TX: "TxDOT TPP TMB_RPT_SHORT_AADT_HIST 5-Year Statewide AADT Traffic Counts FeatureServer (per-station LATEST_AADT_YR + AADT_RPT_QTY + AADT_RPT_HIST_01..HIST_04; CAGR across earliest and latest non-null AADT per TRFC_STATN_ID; coverage uneven — only metros with n ≥ 100 wired here)",
 };
 
 const STATE_BY_METRO: Record<string, string> = {
@@ -58,6 +59,8 @@ const STATE_BY_METRO: Record<string, string> = {
   lakeland_metro: "FL", tallahassee_metro: "FL", fort_myers_metro: "FL", pensacola_metro: "FL",
   // GA
   atlanta_metro: "GA", savannah_metro: "GA", augusta_metro: "GA", columbus_ga_metro: "GA", macon_metro: "GA",
+  // TX (only DFW + McAllen wired — others below n≥100 confidence floor)
+  dallas_fort_worth_metro: "TX", mcallen_metro: "TX",
 };
 
 /** Return the authoritative DOT-layer citation for a metro's measured
@@ -104,6 +107,20 @@ const RATES: Record<string, MeasuredGrowthRate> = {
   // influx and housing-driven trip generation. Sample sizes are
   // robust (352-2181 sites per metro, all measured against the
   // stable COSITE composite ID).
+  // Texas — TxDOT TPP TMB_RPT_SHORT_AADT_HIST 5-year service
+  // (script: scripts/src/fetch-tx-growth-rate.ts; raw output:
+  // artifacts/api-server/src/data/tx-growth-rates.json). Window
+  // 2020-2024 (LATEST_AADT_YR = 2024 statewide; HIST_01..HIST_04
+  // are 2023..2020). Coverage is uneven — TxDOT count stations
+  // are concentrated on the state highway system, so Dallas-Fort
+  // Worth (n=1971) has solid coverage while Houston / Austin /
+  // San Antonio / El Paso get <10 stations each (city streets
+  // are counted by the host municipality, not TxDOT). Only metros
+  // with n ≥ 100 are wired here; the other TX metros fall back to
+  // the screening default.
+  dallas_fort_worth_metro: { growthPct: 1.77, yearFrom: 2020, yearTo: 2024, stations: 1971, p25Pct: -4.68, p75Pct: 7.99 },
+  mcallen_metro:           { growthPct: 2.20, yearFrom: 2020, yearTo: 2024, stations:  117, p25Pct: -3.96, p75Pct: 8.28 },
+
   // Georgia — Atlanta Regional Commission Open Data Hub
   // re-publication of GDOT AADT 2008-2017 (script:
   // scripts/src/fetch-ga-growth-rate.ts; raw output: artifacts/api-
