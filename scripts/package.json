@@ -15,6 +15,7 @@
     "ingest-crashes-nyc": "tsx ./src/ingest-crashes-nyc.ts",
     "ingest-atr-nyc": "tsx ./src/ingest-atr-nyc.ts",
     "ingest-crashes-fl": "tsx ./src/ingest-crashes-fl.ts",
+    "ingest-crashes-fars": "tsx ./src/ingest-crashes-fars.ts",
     "test-utdf": "tsx ./src/test-utdf.ts"
   },
   "devDependencies": {

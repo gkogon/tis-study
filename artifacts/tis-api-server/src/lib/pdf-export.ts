@@ -262,6 +262,25 @@ export async function renderStudyPdf(
           })
           .catch(() => {});
       }
+      // Universal fatal-crash supplement — NHTSA FARS covers all US
+      // states. Per-state per-crash data is gated almost everywhere
+      // (GEARS / SWITRS / CRIS / Signal4 all require agency login),
+      // so FARS is the only public source of recent (post-2019)
+      // crash records for most states. Severity is fatal-only (K) by
+      // definition. Stashed on `farsKSummary`; each state renderer
+      // emits its own block format.
+      if ((region?.country ?? "US") === "US") {
+        const result = project.resultPayload as Record<string, unknown> | null;
+        await crashesNearPoint({
+          lat, lon, radiusMi: 1.0, windowYears: 6, source: "nhtsa_fars",
+        })
+          .then((cs) => {
+            if (cs.totalCrashes > 0 && result && typeof result === "object") {
+              (result as Record<string, unknown>).farsKSummary = cs;
+            }
+          })
+          .catch(() => {});
+      }
     }
   }
 
@@ -1096,6 +1115,7 @@ function renderTisGeorgia(
   const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
   if (findings.length > 0) {
     doc.moveDown(0.5);
+    renderFarsKBlock(doc, r);
     gaSection(doc, "FINDINGS");
     doc.font("body").fontSize(10).fillColor("black");
     for (const f of findings) {
@@ -1947,6 +1967,7 @@ function renderTisCalifornia(
   // --- §6 Findings -------------------------------------------------------
   const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
   if (findings.length > 0) {
+    renderFarsKBlock(doc, r);
     caSection(doc, "6.0 FINDINGS");
     doc.font("body").fontSize(10).fillColor("black");
     for (const f of findings) {
@@ -2620,6 +2641,50 @@ function gaSubsection(doc: PDFKit.PDFDocument, title: string) {
   doc.font("bold").fontSize(11).fillColor("black").text(title);
   doc.moveDown(0.2);
   doc.x = PAGE_MARGIN;
+}
+
+/**
+ * Generic FARS fatal-crash history block. Reads from
+ * `result.farsKSummary` (populated by the universal NHTSA FARS hook
+ * in renderStudyPdf for any US site) and renders a K-severity
+ * summary that every state renderer can call.
+ *
+ * No-op when no FARS data is present (e.g. before ingest runs or
+ * outside the 6-year FARS window).
+ */
+function renderFarsKBlock(doc: PDFKit.PDFDocument, r: any, opts?: { subsection?: string }): void {
+  const fars = (r as any).farsKSummary as
+    | {
+        windowYears: number;
+        radiusMi: number;
+        totalCrashes: number;
+        bySeverity: { K: number; A: number; B: number; C: number; O: number; UNKNOWN: number };
+        recentSevere: Array<{ occurredAt: string; severity: string; onStreet: string | null; crossStreet: string | null; mannerOfCollision: string | null }>;
+      }
+    | undefined;
+  if (!fars || fars.totalCrashes === 0) return;
+  gaSubsection(doc, opts?.subsection ?? "Fatal Crash History (NHTSA FARS supplement)");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `${fars.totalCrashes} fatal crash${fars.totalCrashes === 1 ? "" : "es"} within ${fars.radiusMi.toFixed(2)} mi of the site over a ${fars.windowYears}-year window are recorded in the NHTSA Fatality Analysis Reporting System (FARS) public ArcGIS layer (services.arcgis.com / FARS_Fatal_Crashes_2017_2022). FARS is the only public per-crash data source that covers every state uniformly with precise lat/lon — most state DOT systems (GEARS, SWITRS, CRIS, Signal4, etc.) gate per-crash data behind agency login. FARS records only K-severity (fatal) crashes by definition; injury and PDO crashes are not represented in this block and must be sourced from the state's restricted-access system for a formal Highway Safety Manual analysis. The crash date in FARS' public ArcGIS layer carries the calendar year only — the renderer stamps Jan 1 of the crash year and the engineer should not infer time-of-day patterns from this dataset.`,
+    { paragraphGap: 6 },
+  );
+  if (fars.recentSevere.length > 0) {
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(`Most recent ${fars.recentSevere.length} fatal crashes within radius:`, { paragraphGap: 2 });
+    doc.fillColor("black");
+    table(doc, {
+      headers: ["Year", "Severity", "On street", "Cross street", "Manner"],
+      widths: [55, 60, 150, 130, 90],
+      align: ["center", "center", "left", "left", "left"],
+      rows: fars.recentSevere.map((c) => [
+        c.occurredAt.slice(0, 4),
+        c.severity,
+        c.onStreet ?? "—",
+        c.crossStreet ?? "—",
+        c.mannerOfCollision ?? "—",
+      ]),
+    });
+    doc.moveDown(0.3);
+  }
 }
 
 /**
@@ -4478,6 +4543,7 @@ function renderTisTexas(
   const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
   if (findings.length > 0) {
     doc.moveDown(0.5);
+    renderFarsKBlock(doc, r);
     gaSection(doc, "FINDINGS");
     doc.font("body").fontSize(10).fillColor("black");
     for (const f of findings) {
@@ -5118,6 +5184,7 @@ function renderTisIllinois(
   const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
   if (findings.length > 0) {
     doc.moveDown(0.5);
+    renderFarsKBlock(doc, r);
     gaSection(doc, "FINDINGS");
     doc.font("body").fontSize(10).fillColor("black");
     for (const f of findings) {
@@ -6390,6 +6457,7 @@ function renderTisFlorida(
   const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
   if (findings.length > 0) {
     doc.moveDown(0.3);
+    renderFarsKBlock(doc, r);
     gaSection(doc, "FINDINGS");
     doc.font("body").fontSize(10).fillColor("black");
     for (const f of findings) {
