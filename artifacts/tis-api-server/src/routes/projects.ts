@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { listProjects, getProject } from "../lib/tis-projects";
 import { getOrCreateFirmForUser } from "../lib/firms";
 import { renderStudyPdf } from "../lib/pdf-export";
+import { generateUtdf } from "../lib/utdf-export";
 
 const router: IRouter = Router();
 
@@ -98,6 +99,63 @@ router.get("/projects/:id/pdf", async (req, res): Promise<void> => {
   } catch (err) {
     req.log.error({ err }, "tis-projects.pdf_failed");
     res.status(500).json({ error: "Failed to render PDF." });
+  }
+});
+
+/**
+ * Synchro UTDF export — text/csv scaffold the firm's PE imports into
+ * Synchro Studio, overlays measured TMCs onto, and uses to produce a
+ * verifiable submittal. See lib/utdf-export.ts for the methodology
+ * disclosures emitted in the file header.
+ *
+ * Query param `scenario` selects which volumes to emit:
+ *   - current = baseline (no growth, no project)
+ *   - no_build = opening-year grown without project
+ *   - build = opening-year grown plus project trips (default)
+ */
+router.get("/projects/:id/utdf", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Sign in to download projects." });
+    return;
+  }
+  const id = String(req.params.id);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+    res.status(404).json({ error: "Project not found." });
+    return;
+  }
+  const scenarioParam = String(req.query.scenario ?? "build");
+  const scenario: "current" | "no_build" | "build" =
+    scenarioParam === "current" || scenarioParam === "no_build" ? scenarioParam : "build";
+  try {
+    const user = req.user!;
+    const { firm } = await getOrCreateFirmForUser(user.id, {
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    });
+    const project = await getProject(firm.id, id);
+    if (!project) {
+      res.status(404).json({ error: "Project not found." });
+      return;
+    }
+    if (project.studyType !== "tis") {
+      res.status(400).json({ error: "UTDF export is only available for TIS studies." });
+      return;
+    }
+    const csv = generateUtdf(project.resultPayload as Record<string, unknown>, {
+      scenario,
+      projectName: project.projectName,
+    });
+    const slug = project.projectName.replace(/[^a-z0-9-_]+/gi, "_").slice(0, 80) || "study";
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${slug}_${scenario}_UTDF.csv"`,
+    );
+    res.send(csv);
+  } catch (err) {
+    req.log.error({ err }, "tis-projects.utdf_failed");
+    res.status(500).json({ error: "Failed to generate UTDF." });
   }
 });
 
