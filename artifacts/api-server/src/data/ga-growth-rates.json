@@ -1,0 +1,42 @@
+{
+  "atlanta_metro": {
+    "growthPct": 0.92,
+    "yearFrom": 2008,
+    "yearTo": 2017,
+    "stations": 5148,
+    "p25Pct": -0.66,
+    "p75Pct": 2.52
+  },
+  "savannah_metro": {
+    "growthPct": 0.82,
+    "yearFrom": 2008,
+    "yearTo": 2017,
+    "stations": 818,
+    "p25Pct": -0.96,
+    "p75Pct": 2.59
+  },
+  "augusta_metro": {
+    "growthPct": 0.53,
+    "yearFrom": 2008,
+    "yearTo": 2017,
+    "stations": 536,
+    "p25Pct": -1.31,
+    "p75Pct": 2.38
+  },
+  "columbus_ga_metro": {
+    "growthPct": 0.36,
+    "yearFrom": 2008,
+    "yearTo": 2017,
+    "stations": 561,
+    "p25Pct": -1.18,
+    "p75Pct": 2.01
+  },
+  "macon_metro": {
+    "growthPct": -0.16,
+    "yearFrom": 2008,
+    "yearTo": 2017,
+    "stations": 612,
+    "p25Pct": -1.81,
+    "p75Pct": 1.14
+  }
+}

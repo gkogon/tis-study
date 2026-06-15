@@ -44,6 +44,7 @@ const SOURCE_BY_STATE: Record<string, string> = {
   IL: "IDOT Historical AADT FeatureServer (per-year polyline snapshots; segment match by INVENTORY)",
   NY: "NYSDOT Traffic_Monitoring AADT FeatureServer layer 1 (rolling per-station actual counts; CAGR across oldest and newest non-null actual values)",
   FL: "FDOT TDA Annual_Average_Daily_Traffic_Historical FeatureServer layer 0 (per-year polyline snapshots; segment match by COSITE composite site ID)",
+  GA: "Atlanta Regional Commission Open Data Hub — GDOT Traffic Counts (AADT and Truck Percent) 2008-2017 (per-station record with AADT_2008 … AADT_2017 columns; CAGR across earliest and latest non-null AADT per Station_ID, ≥5yr span)",
 };
 
 const STATE_BY_METRO: Record<string, string> = {
@@ -55,6 +56,8 @@ const STATE_BY_METRO: Record<string, string> = {
   tampa_metro: "FL", orlando_metro: "FL", miami_dade_metro: "FL", jacksonville_metro: "FL",
   fort_lauderdale_metro: "FL", west_palm_beach_metro: "FL", daytona_beach_metro: "FL",
   lakeland_metro: "FL", tallahassee_metro: "FL", fort_myers_metro: "FL", pensacola_metro: "FL",
+  // GA
+  atlanta_metro: "GA", savannah_metro: "GA", augusta_metro: "GA", columbus_ga_metro: "GA", macon_metro: "GA",
 };
 
 /** Return the authoritative DOT-layer citation for a metro's measured
@@ -101,6 +104,23 @@ const RATES: Record<string, MeasuredGrowthRate> = {
   // influx and housing-driven trip generation. Sample sizes are
   // robust (352-2181 sites per metro, all measured against the
   // stable COSITE composite ID).
+  // Georgia — Atlanta Regional Commission Open Data Hub
+  // re-publication of GDOT AADT 2008-2017 (script:
+  // scripts/src/fetch-ga-growth-rate.ts; raw output: artifacts/api-
+  // server/src/data/ga-growth-rates.json). GDOT does NOT publish a
+  // multi-year historical AADT layer through their own ArcGIS REST
+  // endpoint — the ARC republication is a single feature service
+  // with per-station AADT_2008 … AADT_2017 columns plus a stable
+  // Station_ID. Trade-off: window ends at 2017 (pre-COVID). For
+  // projects entitled now, the 9-year 2008-2017 trend better
+  // represents structural Atlanta-metro growth than the COVID-
+  // distorted 2020-2025 window would.
+  atlanta_metro:         { growthPct:  0.92, yearFrom: 2008, yearTo: 2017, stations: 5148, p25Pct: -0.66, p75Pct: 2.52 },
+  savannah_metro:        { growthPct:  0.82, yearFrom: 2008, yearTo: 2017, stations:  818, p25Pct: -0.96, p75Pct: 2.59 },
+  augusta_metro:         { growthPct:  0.53, yearFrom: 2008, yearTo: 2017, stations:  536, p25Pct: -1.31, p75Pct: 2.38 },
+  columbus_ga_metro:     { growthPct:  0.36, yearFrom: 2008, yearTo: 2017, stations:  561, p25Pct: -1.18, p75Pct: 2.01 },
+  macon_metro:           { growthPct: -0.16, yearFrom: 2008, yearTo: 2017, stations:  612, p25Pct: -1.81, p75Pct: 1.14 },
+
   tampa_metro:           { growthPct:  2.92, yearFrom: 2021, yearTo: 2025, stations: 2129, p25Pct:  0.87, p75Pct: 6.05 },
   orlando_metro:         { growthPct:  2.14, yearFrom: 2021, yearTo: 2025, stations: 2181, p25Pct: -0.54, p75Pct: 5.63 },
   miami_dade_metro:      { growthPct:  2.74, yearFrom: 2021, yearTo: 2025, stations: 1747, p25Pct:  0.00, p75Pct: 6.66 },
