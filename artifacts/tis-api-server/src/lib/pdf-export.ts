@@ -6107,10 +6107,17 @@ function renderTisFlorida(
   );
 
   gaSubsection(doc, "3.5 Growth Rate");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `Per FDOT TAH §2.7, demand projections should use the adopted regional MPO/TPO travel-demand model (TDM); where TDM use is not warranted, historical AADT trend growth from Florida Traffic Online (FTO) is the FDOT-wide convention. Background traffic is grown at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"} for this analysis; the rate should be confirmed against FDOT historical AADT and agreed upon during the methodology meeting.`,
-    { paragraphGap: 6 },
-  );
+  if (r.growthSource) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Per FDOT TAH §2.7, demand projections should use the adopted regional MPO/TPO travel-demand model (TDM); where TDM use is not warranted, historical AADT trend growth from Florida Traffic Online (FTO) is the FDOT-wide convention. Background traffic is grown at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from the measured per-segment compound annual growth rate across the FDOT TDA Annual_Average_Daily_Traffic_Historical layer. Source: ${r.growthSource}. The metro-level median is published here for transparency; for formal submittal, the FDOT D-pertinent District / FTO segment-level trend on the affected facilities is the authoritative input and should be confirmed at the methodology meeting.`,
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Per FDOT TAH §2.7, demand projections should use the adopted regional MPO/TPO travel-demand model (TDM); where TDM use is not warranted, historical AADT trend growth from Florida Traffic Online (FTO) is the FDOT-wide convention. Background traffic is grown at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"} for this analysis; the rate should be confirmed against FDOT historical AADT and agreed upon during the methodology meeting.`,
+      { paragraphGap: 6 },
+    );
+  }
 
   gaSubsection(doc, "3.6 Level of Service Standards");
   doc.font("body").fontSize(10).fillColor("black").text(
@@ -6349,12 +6356,44 @@ function renderTisFlorida(
 
   // --- 7.0 / 8.0 Future (No-Build) and Future (Build) -------------------
   gaSection(doc, "7.0 / 8.0 FUTURE (NO-BUILD) AND FUTURE (BUILD) TRAFFIC ANALYSIS");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `Three scenarios are evaluated at each affected intersection: (1) Existing — current-year background volumes; (2) Future Background / No-Build (opening year ${req.openingYear ?? "—"}) — existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"} without project trips; (3) Future Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the proposed development's net new external trips at the assigned distribution.`,
-    { paragraphGap: 6 },
+  const flHasDesignYear = intersections.some(
+    (it) => it.designNoBuildLos != null || it.designBuildLos != null,
   );
+  const flDesignYr = r.designYear ?? (req.openingYear ? Number(req.openingYear) + 20 : null);
+  if (flHasDesignYear) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Four scenarios are evaluated at each affected intersection per FDOT MTSIH 2024 long-range planning analysis: (1) Existing — current-year background volumes; (2) Future Background / No-Build at opening year ${req.openingYear ?? "—"} — existing grown at ${r.growthAppliedPct ?? "—"}%/yr; (3) Future Build at opening year ${req.openingYear ?? "—"} — No-Build plus project external trips; (4) 20-Year Long-Range Year (${flDesignYr ?? "—"}) No-Build and Build — opening volumes compounded another 20 years, project trips at full build-out unchanged.`,
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Three scenarios are evaluated at each affected intersection: (1) Existing — current-year background volumes; (2) Future Background / No-Build (opening year ${req.openingYear ?? "—"}) — existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"} without project trips; (3) Future Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the proposed development's net new external trips at the assigned distribution.`,
+      { paragraphGap: 6 },
+    );
+  }
 
-  if (intersections.length > 0) {
+  if (intersections.length > 0 && flHasDesignYear) {
+    table(doc, {
+      headers: ["Intersection", "Existing", "Opening NB", "Opening Bld", "Design NB", "Design Bld", "Δ delay (s)"],
+      widths: [180, 55, 65, 65, 55, 55, 55],
+      align: ["left", "center", "center", "center", "center", "center", "right"],
+      rows: intersections.map((it) => {
+        const losChanged = it.losChanged === true;
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const noBuildLos = it.existingLos ?? "—";
+        const buildLos = it.futureLos ?? "—";
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(currentLos),
+          String(noBuildLos),
+          (losChanged ? "▲ " : "") + String(buildLos),
+          String(it.designNoBuildLos ?? "—"),
+          String(it.designBuildLos ?? "—"),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+        ];
+      }),
+    });
+  } else if (intersections.length > 0) {
     table(doc, {
       headers: ["Intersection", "Existing LOS", "No-Build LOS", "Build LOS", "Δ delay (s)", "Q95 (ft)"],
       widths: [200, 65, 75, 65, 70, 60],
