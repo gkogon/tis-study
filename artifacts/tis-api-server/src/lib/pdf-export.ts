@@ -247,6 +247,21 @@ export async function renderStudyPdf(
           .catch(() => {});
         await Promise.all([speedTask, crashTask, preciseCrashTask, gml239Task, transitTask, atrTask]);
       }
+      // FL — precise crash records from FDOT SSO ingest (fdot_sso).
+      // Window is 10y because the public extract becomes stale after
+      // 2019; the renderer prose discloses the actual date range.
+      if (region?.stateCode === "FL" && (region?.country ?? "US") === "US") {
+        const result = project.resultPayload as Record<string, unknown> | null;
+        await crashesNearPoint({
+          lat, lon, radiusMi: 0.5, windowYears: 10, source: "fdot_sso",
+        })
+          .then((cs) => {
+            if (cs.totalCrashes > 0 && result && typeof result === "object") {
+              (result as Record<string, unknown>).flCrashSummary = cs;
+            }
+          })
+          .catch(() => {});
+      }
     }
   }
 
@@ -6140,6 +6155,55 @@ function renderTisFlorida(
     );
     doc.fillColor("black");
   }
+
+  // --- 4.2 Crash History (FDOT public crash extract) --------------------
+  gaSubsection(doc, "4.2 Crash History");
+  const flCrash = (r as any).flCrashSummary as
+    | {
+        windowYears: number;
+        totalCrashes: number;
+        bySeverity: { K: number; A: number; B: number; C: number; O: number; UNKNOWN: number };
+        pedestrianInvolved: number;
+        cyclistInvolved: number;
+        recentSevere: Array<{ occurredAt: string; severity: string; onStreet: string | null; crossStreet: string | null; mannerOfCollision: string | null }>;
+      }
+    | undefined;
+  if (flCrash && flCrash.totalCrashes > 0) {
+    const earliestSevere = flCrash.recentSevere.length > 0 ? flCrash.recentSevere[flCrash.recentSevere.length - 1].occurredAt : null;
+    const latestSevere = flCrash.recentSevere.length > 0 ? flCrash.recentSevere[0].occurredAt : null;
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `A site-radius crash review (0.5-mile radius) was performed using the FDOT SSO Crashes (All) FeatureServer (gis.fdot.gov / ssogis layer 2000). The FDOT public crash extract is known to be incomplete for 2020 and later — agency data agreements changed and the most-recent comprehensive year on the public service is 2018-2019. ${flCrash.totalCrashes.toLocaleString()} crashes are recorded within the radius${earliestSevere ? ` (severe-crash range ${earliestSevere} → ${latestSevere})` : ""}. For a formal submittal requiring current-year crash data per FDOT Crash Analysis Reporting (CAR) or per Highway Safety Manual conventions, the analyst should consult Signal4 Analytics (signal4lab.geoplan.ufl.edu, agency login required) for the post-2019 records this screening tool cannot provide.`,
+      { paragraphGap: 6 },
+    );
+    table(doc, {
+      headers: ["Severity (KABCO)", "Count", "Note"],
+      widths: [180, 100, 170],
+      align: ["left", "right", "left"],
+      rows: [
+        ["K — Fatal", fmtNum(flCrash.bySeverity.K), "INJSEVER 5"],
+        ["A — Incapacitating", fmtNum(flCrash.bySeverity.A), "INJSEVER 4"],
+        ["B — Non-incapacitating", fmtNum(flCrash.bySeverity.B), "INJSEVER 3"],
+        ["C — Possible Injury", fmtNum(flCrash.bySeverity.C), "INJSEVER 2"],
+        ["O — Property Damage Only", fmtNum(flCrash.bySeverity.O), "INJSEVER 1"],
+        ["UNKNOWN", fmtNum(flCrash.bySeverity.UNKNOWN), "INJSEVER blank"],
+        ["Total", fmtNum(flCrash.totalCrashes), ""],
+      ],
+    });
+    doc.moveDown(0.2);
+    if (flCrash.pedestrianInvolved > 0 || flCrash.cyclistInvolved > 0) {
+      doc.font("body").fontSize(10).fillColor("black").text(
+        `Vulnerable road user involvement: ${fmtNum(flCrash.pedestrianInvolved)} pedestrian-involved crash${flCrash.pedestrianInvolved === 1 ? "" : "es"}, ${fmtNum(flCrash.cyclistInvolved)} cyclist-involved crash${flCrash.cyclistInvolved === 1 ? "" : "es"}. Per Florida's Vital Few statewide focus on pedestrian/cyclist safety (FDOT Office of Modal Safety), VRU involvement within the study radius triggers a Safety Screening per FDM Chapter 213 and may warrant lighting, marking, or geometric mitigation.`,
+        { paragraphGap: 6 },
+      );
+    }
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Site-radius crash query against the FDOT SSO Crashes (All) public FeatureServer returned no records within 0.5 mi over the available data window (FDOT public extract is comprehensive through 2018-2019; post-2019 records require Signal4 Analytics agency login). A formal submittal must include the 3-year Crash Analysis Reporting (CAR) extract for the affected intersections — this screening tool's public-data path cannot supply that for current years.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.3);
 
   // --- 5.0 Trip Generation ----------------------------------------------
   gaSection(doc, "5.0 TRIP GENERATION");

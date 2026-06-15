@@ -151,6 +151,16 @@ export default function ProjectDetailPage() {
           >
             <Download className="w-4 h-4" /> JSON
           </a>
+          {project.studyType === "tis" && (
+            <a
+              href={`/tis-api/projects/${encodeURIComponent(project.id)}/utdf?scenario=build`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border hover:bg-muted"
+              data-testid="link-download-utdf"
+              title="Synchro-importable CSV scaffold (Build scenario). PE overlays measured TMCs after import — see file header for default assumptions."
+            >
+              <Download className="w-4 h-4" /> Synchro UTDF
+            </a>
+          )}
         </div>
       </div>
 
