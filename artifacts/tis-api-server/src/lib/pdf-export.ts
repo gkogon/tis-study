@@ -272,7 +272,7 @@ export async function renderStudyPdf(
       if ((region?.country ?? "US") === "US") {
         const result = project.resultPayload as Record<string, unknown> | null;
         await crashesNearPoint({
-          lat, lon, radiusMi: 1.0, windowYears: 6, source: "nhtsa_fars",
+          lat, lon, radiusMi: 2.0, windowYears: 7, source: "nhtsa_fars",
         })
           .then((cs) => {
             if (cs.totalCrashes > 0 && result && typeof result === "object") {
@@ -2442,10 +2442,17 @@ function renderTisGeorgiaAbbreviated(
   gaSection(doc, "6.0 FUTURE CONDITIONS");
 
   gaSubsection(doc, "6.1 Future ADT Volumes");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `Future-year ADT volumes are calculated by applying background traffic growth at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s) to existing volumes, then layering the proposed development's site-generated daily trips (${fmtNum(tierInput.dailyTrips)} vpd gross) net of any pass-by and internal capture credits. Growth rate is consistent with GDOT historical TADA growth observed along comparable roadways in the study area.`,
-    { paragraphGap: 6 },
-  );
+  if (r.growthSource) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Future-year ADT volumes are calculated by applying background traffic growth at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year (derived from the measured per-segment compound annual growth rate at GDOT count stations within the study metro; source: ${r.growthSource}) to existing volumes, then layering the proposed development's site-generated daily trips (${fmtNum(tierInput.dailyTrips)} vpd gross) net of any pass-by and internal capture credits.`,
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Future-year ADT volumes are calculated by applying background traffic growth at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s) to existing volumes, then layering the proposed development's site-generated daily trips (${fmtNum(tierInput.dailyTrips)} vpd gross) net of any pass-by and internal capture credits. Growth rate is consistent with GDOT historical TADA growth observed along comparable roadways in the study area.`,
+      { paragraphGap: 6 },
+    );
+  }
   if (intersections.length > 0) {
     table(doc, {
       headers: ["Roadway segment / intersection approach", "Future ADT (vpd)", "Δ vs. existing"],
@@ -2665,7 +2672,7 @@ function renderFarsKBlock(doc: PDFKit.PDFDocument, r: any, opts?: { subsection?:
   if (!fars || fars.totalCrashes === 0) return;
   gaSubsection(doc, opts?.subsection ?? "Fatal Crash History (NHTSA FARS supplement)");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `${fars.totalCrashes} fatal crash${fars.totalCrashes === 1 ? "" : "es"} within ${fars.radiusMi.toFixed(2)} mi of the site over a ${fars.windowYears}-year window are recorded in the NHTSA Fatality Analysis Reporting System (FARS) public ArcGIS layer (services.arcgis.com / FARS_Fatal_Crashes_2017_2022). FARS is the only public per-crash data source that covers every state uniformly with precise lat/lon — most state DOT systems (GEARS, SWITRS, CRIS, Signal4, etc.) gate per-crash data behind agency login. FARS records only K-severity (fatal) crashes by definition; injury and PDO crashes are not represented in this block and must be sourced from the state's restricted-access system for a formal Highway Safety Manual analysis. The crash date in FARS' public ArcGIS layer carries the calendar year only — the renderer stamps Jan 1 of the crash year and the engineer should not infer time-of-day patterns from this dataset.`,
+    `${fars.totalCrashes} fatal crash${fars.totalCrashes === 1 ? "" : "es"} within ${(fars.radiusMi ?? 0).toFixed(2)} mi of the site over a ${fars.windowYears}-year window are recorded in the NHTSA Fatality Analysis Reporting System (FARS) public ArcGIS layer (services.arcgis.com / FARS_Fatal_Crashes_2017_2022). FARS is the only public per-crash data source that covers every state uniformly with precise lat/lon — most state DOT systems (GEARS, SWITRS, CRIS, Signal4, etc.) gate per-crash data behind agency login. FARS records only K-severity (fatal) crashes by definition; injury and PDO crashes are not represented in this block and must be sourced from the state's restricted-access system for a formal Highway Safety Manual analysis. The crash date in FARS' public ArcGIS layer carries the calendar year only — the renderer stamps Jan 1 of the crash year and the engineer should not infer time-of-day patterns from this dataset.`,
     { paragraphGap: 6 },
   );
   if (fars.recentSevere.length > 0) {

@@ -36,6 +36,9 @@ const EARTH_RADIUS_MI = 3958.8;
  */
 export type CrashSummary = {
   windowYears: number;
+  // Spatial radius used for the search (mi). Absent / null when the
+  // result came from an approximate-match path that has no radius.
+  radiusMi?: number;
   totalCrashes: number;
   bySeverity: { K: number; A: number; B: number; C: number; O: number; UNKNOWN: number };
   pedestrianInvolved: number;
@@ -135,7 +138,7 @@ export async function crashesNearPoint(args: {
     .where(and(...conditions))
     .limit(50_000);
 
-  return aggregate(rows, { windowYears, locationPrecision: "precise" });
+  return aggregate(rows, { windowYears, radiusMi, locationPrecision: "precise" });
 }
 
 /**
@@ -186,6 +189,8 @@ export async function crashesByApproximateMatch(args: {
   return aggregate(rows, { windowYears, locationPrecision: "approximate" });
 }
 
+
+
 function aggregate(
   rows: Array<{
     severity: string;
@@ -197,7 +202,7 @@ function aggregate(
     cyclistInvolved: boolean;
     source: string;
   }>,
-  meta: { windowYears: number; locationPrecision: "precise" | "approximate" },
+  meta: { windowYears: number; radiusMi?: number; locationPrecision: "precise" | "approximate" },
 ): CrashSummary {
   const bySeverity = { K: 0, A: 0, B: 0, C: 0, O: 0, UNKNOWN: 0 };
   let pedestrianInvolved = 0;
@@ -225,6 +230,7 @@ function aggregate(
     }));
   return {
     windowYears: meta.windowYears,
+    radiusMi: meta.radiusMi,
     totalCrashes: rows.length,
     bySeverity,
     pedestrianInvolved,
