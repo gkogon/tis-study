@@ -794,10 +794,17 @@ function renderTisGeorgia(
   // --- §2 Methodology and Assumptions ------------------------------------
   gaSection(doc, "2.0 TRAFFIC ANALYSIS METHODOLOGY AND ASSUMPTIONS");
   gaSubsection(doc, "2.1 Growth Rate");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `Background traffic growth is applied at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. This rate is consistent with GDOT historical traffic count growth observed along adjacent roadways within the study area. For DRI submittals, the growth rate is typically agreed upon during the pre-application methodology meeting with GRTA, ARC, GDOT, and the local jurisdiction.`,
-    { paragraphGap: 6 },
-  );
+  if (r.growthSource) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Background traffic growth is applied at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from measured per-segment compound annual growth at GDOT count stations within the study metro. Source: ${r.growthSource}. The metro-level median is published here for transparency. For DRI submittals, the growth rate is typically refined to per-segment trend on the affected facilities and agreed upon during the pre-application methodology meeting with GRTA, ARC, GDOT, and the local jurisdiction.`,
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Background traffic growth is applied at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. This rate is consistent with GDOT historical traffic count growth observed along adjacent roadways within the study area. For DRI submittals, the growth rate is typically agreed upon during the pre-application methodology meeting with GRTA, ARC, GDOT, and the local jurisdiction.`,
+      { paragraphGap: 6 },
+    );
+  }
 
   gaSubsection(doc, "2.2 Traffic Data Collection");
   doc.font("body").fontSize(10).fillColor("black").text(
@@ -1768,10 +1775,17 @@ function renderTisCalifornia(
   );
 
   caSubsection(doc, "4.2 Trip Generation");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `Gross trip generation is calculated per the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Background traffic growth is applied at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. Pass-by capture applied: ${r.passByPctApplied ?? 0}%; internal capture applied: ${r.internalCapturePctApplied ?? 0}%.`,
-    { paragraphGap: 6 },
-  );
+  if (r.growthSource) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Gross trip generation is calculated per the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Background traffic growth is applied at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from measured per-segment compound annual growth at Caltrans count stations within the study metro. Source: ${r.growthSource}. Pass-by capture applied: ${r.passByPctApplied ?? 0}%; internal capture applied: ${r.internalCapturePctApplied ?? 0}%.`,
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Gross trip generation is calculated per the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Background traffic growth is applied at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. Pass-by capture applied: ${r.passByPctApplied ?? 0}%; internal capture applied: ${r.internalCapturePctApplied ?? 0}%.`,
+      { paragraphGap: 6 },
+    );
+  }
   table(doc, {
     headers: ["Period", "Entering trips", "Exiting trips"],
     widths: [180, 100, 100],
@@ -4248,10 +4262,17 @@ function renderTisTexas(
   );
 
   gaSubsection(doc, "5.4 Non-Site Traffic");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `Background traffic is grown at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. Per TSP §16.4.2, the prescribed method is to average at least the last five years of historical AADT data for the segment analyzed to derive an average annual growth rate; the value applied here is a screening default and should be re-calibrated to the affected segments' five-year AADT trend before formal submittal. Background growth data is also commonly sourced from the host city or regional MPO travel-demand model (H-GAC, NCTCOG, CAMPO, or AAMPO depending on the MSA).`,
-    { paragraphGap: 6 },
-  );
+  if (r.growthSource) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Background traffic is grown at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from measured per-segment compound annual growth at TxDOT count stations within the study metro. Source: ${r.growthSource}. Per TSP §16.4.2, the prescribed method is to average at least the last five years of historical AADT data for the segment analyzed; the metro-level median published here is a starting point and should be refined to per-segment trend on the affected facilities before formal submittal. Background growth data is also commonly sourced from the host city or regional MPO travel-demand model (H-GAC, NCTCOG, CAMPO, or AAMPO depending on the MSA).`,
+      { paragraphGap: 6 },
+    );
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Background traffic is grown at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. Per TSP §16.4.2, the prescribed method is to average at least the last five years of historical AADT data for the segment analyzed to derive an average annual growth rate; the value applied here is a screening default and should be re-calibrated to the affected segments' five-year AADT trend before formal submittal. Background growth data is also commonly sourced from the host city or regional MPO travel-demand model (H-GAC, NCTCOG, CAMPO, or AAMPO depending on the MSA).`,
+      { paragraphGap: 6 },
+    );
+  }
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "Other major projects in the area (committed developments) must be coordinated with the District and governing municipality per TSP §16.3.3 and added on top of the AADT-derived background growth. This screening analysis does not auto-pull committed-development trips.",
     { paragraphGap: 6 },
