@@ -23,6 +23,9 @@ import { regionForCoordinate, type Region } from "./regions";
 import { getAutoModeShare } from "./mode-share";
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { renderTisState } from "./pdf-export-states";
+import { getTransitContext, type TransitContext } from "./transit-routes";
+import { enrichFdotIntersections, fetchFdotSiteSnapshot, decodeFdotFunClass, decodeFdotAccessClass, type FdotSegmentSnapshot } from "./fdot-live-data";
+import { enrichGdotIntersections, fetchGdotSiteSnapshot } from "./gdot-live-data";
 import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite, getGml239Status, getCbdtpStatus } from "./nysdot-data";
 import { getNycTransitContext } from "./nyc-transit-data";
 import { crashesNearPoint } from "./crashes";
@@ -248,12 +251,25 @@ export async function renderStudyPdf(
           .catch(() => {});
         await Promise.all([speedTask, crashTask, preciseCrashTask, gml239Task, transitTask, atrTask]);
       }
-      // FL — precise crash records from FDOT SSO ingest (fdot_sso).
-      // Window is 10y because the public extract becomes stale after
-      // 2019; the renderer prose discloses the actual date range.
+      // FL — three parallel live-data enrichments:
+      //   (a) precise crash records from FDOT SSO ingest (fdot_sso, 10y
+      //       window — public extract is stale after 2019).
+      //   (b) per-intersection FDOT RCI live AADT + functional class +
+      //       SHS membership + Rule 14-97 access class from the TDA
+      //       ArcGIS REST services (gis.fdot.gov + services1.arcgis.com).
+      //       Mutates the intersection rows in place; stashes a site-level
+      //       snapshot at result.fdotSiteSnapshot.
+      //   (c) transit context — bus stops + route refs within 0.25 mi via
+      //       Transit.land v2 (preferred) with OSM Overpass fallback;
+      //       lets §11 emit Caltran-style "BCT routes 02, 22, 30, 81"
+      //       prose instead of a placeholder.
+      // All three fail-open: any error keeps the existing prose paths.
       if (region?.stateCode === "FL" && (region?.country ?? "US") === "US") {
         const result = project.resultPayload as Record<string, unknown> | null;
-        await crashesNearPoint({
+        const intersections = Array.isArray(result?.affectedIntersections)
+          ? (result?.affectedIntersections as Array<Record<string, unknown>>)
+          : [];
+        const flCrashTask = crashesNearPoint({
           lat, lon, radiusMi: 0.5, windowYears: 10, source: "fdot_sso",
         })
           .then((cs) => {
@@ -262,6 +278,44 @@ export async function renderStudyPdf(
             }
           })
           .catch(() => {});
+        const fdotIntersectionsTask = intersections.length > 0
+          ? enrichFdotIntersections(intersections as any).catch(() => 0)
+          : Promise.resolve(0);
+        const fdotSiteTask = fetchFdotSiteSnapshot(lat, lon).then((snap) => {
+          if (snap && result && typeof result === "object") {
+            (result as Record<string, unknown>).fdotSiteSnapshot = snap;
+          }
+        }).catch(() => {});
+        const transitTask = getTransitContext(lat, lon, 0.25).then((ctx) => {
+          if (ctx && result && typeof result === "object") {
+            (result as Record<string, unknown>).transitContext = ctx;
+          }
+        }).catch(() => {});
+        await Promise.all([flCrashTask, fdotIntersectionsTask, fdotSiteTask, transitTask]);
+      }
+      // GA — ARC AADT enrich for Atlanta-metro intersections + transit
+      // context (MARTA / CCT / Gwinnett County Transit via Transit.land /
+      // Overpass). Statewide outside the ARC footprint, the AADT enrich
+      // returns nothing and the GA renderer's existing prose stands.
+      if (region?.stateCode === "GA" && (region?.country ?? "US") === "US") {
+        const result = project.resultPayload as Record<string, unknown> | null;
+        const intersections = Array.isArray(result?.affectedIntersections)
+          ? (result?.affectedIntersections as Array<Record<string, unknown>>)
+          : [];
+        const gdotIntersectionsTask = intersections.length > 0
+          ? enrichGdotIntersections(intersections as any).catch(() => 0)
+          : Promise.resolve(0);
+        const gdotSiteTask = fetchGdotSiteSnapshot(lat, lon).then((snap) => {
+          if (snap && result && typeof result === "object") {
+            (result as Record<string, unknown>).gdotSiteSnapshot = snap;
+          }
+        }).catch(() => {});
+        const transitTaskGa = getTransitContext(lat, lon, 0.25).then((ctx) => {
+          if (ctx && result && typeof result === "object") {
+            (result as Record<string, unknown>).transitContext = ctx;
+          }
+        }).catch(() => {});
+        await Promise.all([gdotIntersectionsTask, gdotSiteTask, transitTaskGa]);
       }
       // Universal fatal-crash supplement — NHTSA FARS covers all US
       // states. Per-state per-crash data is gated almost everywhere
@@ -828,11 +882,37 @@ function renderTisGeorgia(
   );
 
   gaSubsection(doc, "1.5 Transit Facilities");
-  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Transit service area within the study network should be confirmed against current MARTA, GRTA Xpress, and local transit operator route maps. Proximity to transit influences trip-mode reductions under ARC's Air Quality Benchmark.",
-    { paragraphGap: 6 },
-  );
-  doc.fillColor("black");
+  {
+    const gaTransitCtx = (r as any).transitContext as TransitContext | undefined;
+    if (gaTransitCtx && gaTransitCtx.stops.length > 0) {
+      const src = gaTransitCtx.source === "transit_land" ? "Transit.land v2" : "OSM Overpass";
+      const agencyEntries = Object.entries(gaTransitCtx.routesByAgency).filter(([, refs]) => refs.length > 0);
+      const phrase = agencyEntries.length > 0
+        ? agencyEntries.map(([a, refs]) => `${a} route${refs.length === 1 ? "" : "s"} ${refs.join(", ")}`).join("; ")
+        : null;
+      doc.font("body").fontSize(10).fillColor("black").text(
+        `Within ${gaTransitCtx.radiusMi.toFixed(2)} mi of the site (live ${src} extract): ${gaTransitCtx.stops.length} transit stop${gaTransitCtx.stops.length === 1 ? "" : "s"}${phrase ? ` served by ${phrase}` : ""}. Proximity to transit informs trip-mode reductions under ARC's Air Quality Benchmark; the applicant should confirm route frequency and ridership with the controlling transit operator.`,
+        { paragraphGap: 6 },
+      );
+      const near = gaTransitCtx.stops.slice(0, 5);
+      table(doc, {
+        headers: ["Stop", "Agency", "Mode", "Routes", "Distance (mi)"],
+        widths: [180, 110, 60, 100, 75],
+        align: ["left", "left", "left", "left", "right"],
+        rows: near.map((s) => [
+          s.stopName, s.agency ?? "—", s.mode,
+          s.routeRefs.length > 0 ? s.routeRefs.join(", ") : "Verify",
+          s.distanceMi.toFixed(2),
+        ]),
+      });
+    } else {
+      doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+        "No transit stops detected within 0.25 mi of the site via the live Transit.land / OSM Overpass query. Transit service area should be confirmed against current MARTA, GRTA Xpress, CCT, GCT, and local transit operator route maps. Proximity to transit influences trip-mode reductions under ARC's Air Quality Benchmark.",
+        { paragraphGap: 6 },
+      );
+      doc.fillColor("black");
+    }
+  }
   doc.moveDown(0.5);
 
   // --- §2 Methodology and Assumptions ------------------------------------
@@ -6172,10 +6252,46 @@ function renderTisFlorida(
   }
   doc.moveDown(0.3);
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Existing AADT counts should be confirmed against Florida Traffic Online (https://tdaappsprod.dot.state.fl.us/fto/) for the most recent year. Functional classification should be confirmed against the FDOT Roadway Characteristics Inventory (RCI). Existing turn-lane storage, signal control type, and existing pedestrian, bicycle, and transit facilities should be field-verified and documented as part of formal submittal.",
+    "Existing AADT counts and functional classification are seeded from a live query of the FDOT Transportation Data and Analytics (TDA) ArcGIS REST services (gis.fdot.gov RCI_Layers FeatureServer 0/3/15 + Access_Management_TDA) within an 80-meter buffer of each intersection. Where the live extract returns a row, the in-table AADT, AADT year, and access-management class reflect the FDOT-published value at render time. Where no segment is matched (off-SHS local-road intersections, or radii beyond 80 m), values fall back to the engine estimate and must be confirmed against Florida Traffic Online (https://tdaappsprod.dot.state.fl.us/fto/). Existing turn-lane storage length must be field-supplied as `existingStorageFt` on each intersection record to enable the §9 storage-bay-adequacy comparison; the renderer surfaces a deficit calculation only when that field is present.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
+
+  // FDOT live site snapshot — emit a small "site context" card whenever the
+  // RCI lookup returned anything (helps the reviewer cross-check against
+  // FTO at scoping). Silent when the snapshot is missing.
+  const fdotSite = (r as any).fdotSiteSnapshot as FdotSegmentSnapshot | undefined;
+  if (fdotSite) {
+    gaSubsection(doc, "4.0a FDOT TDA Site Snapshot (live)");
+    rows(doc, [
+      ["RCI roadway ID", fdotSite.roadway ?? "—"],
+      ["Begin/end mileposts", fdotSite.beginPost != null && fdotSite.endPost != null ? `${fdotSite.beginPost.toFixed(3)} → ${fdotSite.endPost.toFixed(3)}` : "—"],
+      ["AADT", fdotSite.aadt != null ? `${fmtNum(fdotSite.aadt)} vpd${fdotSite.aadtYear ? ` (${fdotSite.aadtYear})` : ""}` : "—"],
+      ["K factor (peak-hour)", fdotSite.kFactor != null ? `${fdotSite.kFactor.toFixed(3)}` : "—"],
+      ["D factor (directional)", fdotSite.dFactor != null ? `${fdotSite.dFactor.toFixed(3)}` : "—"],
+      ["Truck %", fdotSite.truckPct != null ? `${fdotSite.truckPct.toFixed(1)}%` : "—"],
+      ["Functional class", decodeFdotFunClass(fdotSite.funClassCode) ?? "—"],
+      ["On State Highway System?", fdotSite.onShs == null ? "—" : (fdotSite.onShs ? "Yes" : "No")],
+      ["Access management class", decodeFdotAccessClass(fdotSite.accessClass) ?? "Not classified — interim Rule 14-97.004(1) standards apply"],
+      ["FDOT District", fdotSite.fdotDistrict != null ? `D-${fdotSite.fdotDistrict}` : "—"],
+    ]);
+    doc.moveDown(0.2);
+    {
+      const matched = fdotSite.matchedRadiusM;
+      const matchNote = matched != null
+        ? (matched <= 60
+            ? "Direct on-segment match (≤60 m buffer)."
+            : matched <= 200
+              ? `Nearest-segment match at ${matched} m (intersection point sits off the RCI polyline — likely in median or frontage road; verify route attribution).`
+              : `Wide-buffer fallback at ${matched} m (sparse rural corridor or significant offset from nearest RCI segment; treat attribute values as approximate and verify in FTO).`)
+        : "Match radius unrecorded.";
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        `Live extract from gis.fdot.gov/arcgis/rest/services/RCI_Layers/FeatureServer at render time. ${matchNote} Cross-check against Florida Traffic Online (https://tdaappsprod.dot.state.fl.us/fto/) for the most recent annual update before submittal.`,
+        { paragraphGap: 6 },
+      );
+    }
+    doc.fillColor("black");
+  }
 
   // --- 4.1 Roadway Segment Capacity (GSVT, Q/LOS v6.0) ------------------
   gaSubsection(doc, "4.1 Roadway Segment Capacity — Generalized Service Volumes");
@@ -6459,6 +6575,55 @@ function renderTisFlorida(
     );
   }
 
+  // --- 9.1 Left-Turn Storage Bay Adequacy --------------------------------
+  // Emit Caltran-style "Required X ft / Existing Y ft / Deficit Z ft" rows
+  // for any intersection whose payload carries `existingStorageFt`. Quiet
+  // when no intersection supplies the field — keeps screening-tier
+  // submittals clean without inventing storage lengths.
+  const storageRows = intersections.filter((it: any) => Number.isFinite(Number(it.existingStorageFt)) && Number.isFinite(Number(it.queue95thFt)));
+  if (storageRows.length > 0) {
+    gaSubsection(doc, "9.1 Left-Turn Storage Bay Adequacy");
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Existing turn-lane storage bay length at each affected intersection is compared to the 95th-percentile Build-scenario queue. Storage bay design and deceleration / taper lengths follow FDM Chapter 212 (turn-lane warrants, storage / taper). A "deficit" indicates that the existing bay length is shorter than the projected Build-scenario 95th-percentile queue — those locations require either a bay extension (where adjacent infrastructure permits) or a documented engineering finding that the spill-back is acceptable and does not impede the through movement.`,
+      { paragraphGap: 6 },
+    );
+    table(doc, {
+      headers: ["Intersection", "Movement", "Existing bay (ft)", "Q95 Build (ft)", "Required (ft)", "Deficit (ft)"],
+      widths: [165, 80, 80, 70, 70, 70],
+      align: ["left", "left", "right", "right", "right", "right"],
+      rows: storageRows.map((it: any) => {
+        const existing = Number(it.existingStorageFt);
+        const q95 = Number(it.queue95thFt);
+        // "Required" follows the FDM 212 convention: storage to contain
+        // the 95th-percentile queue without spillback. We use Q95 as the
+        // required length and report `max(0, required - existing)` as
+        // the deficit (zero when adequate).
+        const required = q95;
+        const deficit = Math.max(0, required - existing);
+        return [
+          it.name ?? it.signalId ?? "—",
+          it.criticalMovement ?? it.storageMovement ?? "Left-turn (verify)",
+          fmtNum(existing),
+          fmtNum(q95),
+          fmtNum(required),
+          deficit > 0 ? fmtNum(deficit) : "Adequate",
+        ];
+      }),
+    });
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "Required storage = Build-scenario 95th-percentile queue per FDM Chapter 212. Where the deficit is small relative to project contribution, a proportionate-share allocation per the controlling local-government formula is the conventional path; where adjacent infrastructure precludes bay extension, an engineering finding documenting acceptable spill-back is required.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Storage-bay adequacy: no intersection carries a field-measured existing storage length (`existingStorageFt`). Supply that field on each affected intersection record to enable the Caltran-style Required-vs-Existing-vs-Deficit table per FDM Chapter 212 storage / taper standards.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
   // --- 10.0 Site Access / Ingress-Egress --------------------------------
   gaSection(doc, "10.0 SITE ACCESS / INGRESS-EGRESS");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
@@ -6467,8 +6632,53 @@ function renderTisFlorida(
   );
   doc.fillColor("black");
 
-  // --- 11.0 Internal Circulation ----------------------------------------
-  gaSection(doc, "11.0 INTERNAL CIRCULATION");
+  // --- 11.0 Multimodal & Internal Circulation ---------------------------
+  gaSection(doc, "11.0 MULTIMODAL & INTERNAL CIRCULATION");
+
+  gaSubsection(doc, "11.1 Transit Service");
+  const transitCtx = (r as any).transitContext as TransitContext | undefined;
+  if (transitCtx && transitCtx.stops.length > 0) {
+    const sourceLabel = transitCtx.source === "transit_land" ? "Transit.land v2" : "OSM Overpass";
+    const agencyEntries = Object.entries(transitCtx.routesByAgency).filter(([, refs]) => refs.length > 0);
+    const agencyPhrase = agencyEntries.length > 0
+      ? agencyEntries.map(([agency, refs]) => `${agency} route${refs.length === 1 ? "" : "s"} ${refs.join(", ")}`).join("; ")
+      : null;
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Within ${transitCtx.radiusMi.toFixed(2)} mi of the site (live ${sourceLabel} extract at render time): ${transitCtx.stops.length} transit stop${transitCtx.stops.length === 1 ? "" : "s"}${agencyPhrase ? ` served by ${agencyPhrase}` : ""}. The applicant should coordinate with the controlling transit agency to confirm route frequency, ridership at the affected stops, and any planned bus stop / shelter upgrades concurrent with the project.`,
+      { paragraphGap: 6 },
+    );
+    // Nearest 5 stops in tabular form for the methodology meeting.
+    const nearest = transitCtx.stops.slice(0, 5);
+    table(doc, {
+      headers: ["Stop", "Agency", "Mode", "Routes", "Distance (mi)"],
+      widths: [180, 110, 60, 100, 75],
+      align: ["left", "left", "left", "left", "right"],
+      rows: nearest.map((s) => [
+        s.stopName,
+        s.agency ?? "—",
+        s.mode,
+        s.routeRefs.length > 0 ? s.routeRefs.join(", ") : "Verify",
+        s.distanceMi.toFixed(2),
+      ]),
+    });
+    if (transitCtx.source === "osm_overpass") {
+      doc.moveDown(0.2);
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        "Source: OpenStreetMap Overpass API — route_ref tags are crowdsourced and may be incomplete. Confirm exact route numbers against the controlling transit agency's GTFS feed (or set TRANSIT_LAND_API_KEY to use the Transit.land v2 GTFS-derived source primarily) before submittal.",
+        { paragraphGap: 6 },
+      );
+      doc.fillColor("black");
+    }
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "No transit stops detected within 0.25 mi of the site via the live Transit.land / OSM Overpass query. Verify against the controlling transit agency's published GTFS feed (e.g., Broward County Transit, Miami-Dade Transit, MARTA, LYNX, JTA, HART) at the methodology meeting. If transit-mode reduction is applied to trip generation, the supporting service must be cited and an alternative-mode trip reduction memo retained in the methodology letter (Appendix A or C per jurisdiction).",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.3);
+
+  gaSubsection(doc, "11.2 Internal Circulation");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "Internal site circulation, parking access, and service-vehicle pathways depend on the final site plan and are not included in this screening-level analysis. Internal queuing at the principal driveway should be evaluated for adequate storage between the SHS edge of pavement and the first internal conflict point per FDM guidance.",
     { paragraphGap: 6 },
