@@ -5812,7 +5812,7 @@ type FloridaJurisdiction = {
  * which methodology-meeting convention), not authoritative for parcel
  * lookup. Returns a statewide `district_default` for any FL coordinate
  * outside the six named major jurisdictions; the default surfaces only
- * MTSIH 2024 + statewide Procedure 525-000-006 conventions.
+ * MTSIH 2024 + statewide Policy 000-525-006 conventions.
  *
  * Boxes ordered south-to-north along the Atlantic coast (Miami-Dade →
  * Broward → Palm Beach) with non-overlapping latitude bands to keep
@@ -5830,7 +5830,7 @@ function floridaJurisdiction(lat: number, lon: number): FloridaJurisdiction {
       fdotDistrict: "FDOT District 6 (Miami)",
       framework: "Concurrency retained + Chapter 33E multimodal mobility impact fee",
       frameworkDoc: "CDMP + Administrative Order 4-85 + Code Ch. 33-G (concurrency) + Ch. 33E (mobility fee)",
-      losStandardNote: "Per the Miami-Dade Comprehensive Development Master Plan (CDMP) Transportation Element; SHS LOS D urbanized per FDOT Procedure 525-000-006 applies on State Highway System frontage",
+      losStandardNote: "Per the Miami-Dade Comprehensive Development Master Plan (CDMP) Transportation Element; SHS LOS D urbanized per FDOT Policy 000-525-006 applies on State Highway System frontage",
       tripThreshold: "Per Code Ch. 33-G concurrency procedures (Admin. Order 4-85); all concurrency-relevant trips reviewed",
       horizonConvention: "Per CDMP review; large CDMP applications typically use Existing + short-term build (e.g., 2020) + long-term build (e.g., 2040)",
       mpoName: "Miami-Dade TPO",
@@ -5867,7 +5867,7 @@ function floridaJurisdiction(lat: number, lon: number): FloridaJurisdiction {
       fdotDistrict: "FDOT District 4 (Fort Lauderdale)",
       framework: "Concurrency (no countywide mobility fee)",
       frameworkDoc: "Palm Beach County ULDC Article 12 — Traffic Performance Standards (TPS)",
-      losStandardNote: "LOS D on arterials per ULDC Table 12.B.2.C (triple table: link service volumes / intersection thresholds / speed thresholds); SHS LOS D urbanized per FDOT Procedure 525-000-006 applies on State Highway System frontage",
+      losStandardNote: "LOS D on arterials per ULDC Table 12.B.2.C (triple table: link service volumes / intersection thresholds / speed thresholds); SHS LOS D urbanized per FDOT Policy 000-525-006 applies on State Highway System frontage",
       tripThreshold: "≤ 20 gross peak-hour trips generally exempt from full TIA; Test 1 / Test 2 significance methodology determines full TIA scope",
       horizonConvention: "Buildout year + 5 years (Test 2 Five-Year) PLUS Long-Range horizon (e.g., 2045) — exceeds MTSIH default; both must be labeled explicitly",
       mpoName: "Palm Beach TPA",
@@ -5885,7 +5885,7 @@ function floridaJurisdiction(lat: number, lon: number): FloridaJurisdiction {
       fdotDistrict: "FDOT District 7 (Tampa)",
       framework: "Mobility fee (replaced roadway impact fee in 2016)",
       frameworkDoc: "Hillsborough County Mobility Fee Ordinance + Mobility Fee Schedule (last full study 2020; update study begun early 2025) — methodology uses ITE 10th Ed. (2017) blended with the Florida Trip Characteristics Studies Database (Tindale Oliver / Stantec proprietary corpus; not an FDOT public asset).",
-      losStandardNote: "Mobility-fee jurisdiction — no vehicle LOS pass/fail; SHS LOS D urbanized per FDOT Procedure 525-000-006 applies on State Highway System frontage for connection-permit review",
+      losStandardNote: "Mobility-fee jurisdiction — no vehicle LOS pass/fail; SHS LOS D urbanized per FDOT Policy 000-525-006 applies on State Highway System frontage for connection-permit review",
       tripThreshold: "Per Land Development Code; mobility fee assessed at building permit",
       horizonConvention: "Per Land Development Code; mobility fee applies at permit (no horizon-year LOS test)",
       mpoName: "Plan Hillsborough (Hillsborough TPO)",
@@ -5904,7 +5904,7 @@ function floridaJurisdiction(lat: number, lon: number): FloridaJurisdiction {
       fdotDistrict: "FDOT District 5 (DeLand)",
       framework: "Concurrency + STAMP overlay (Specific Transportation Analysis Methodology Plan)",
       frameworkDoc: "Orange County STAMP — adopted via Ordinance 2023-11, effective 2024-02-27; layered on existing Orange County concurrency",
-      losStandardNote: "Per Orange County Comprehensive Plan; SHS LOS D urbanized per FDOT Procedure 525-000-006 applies on State Highway System frontage",
+      losStandardNote: "Per Orange County Comprehensive Plan; SHS LOS D urbanized per FDOT Policy 000-525-006 applies on State Highway System frontage",
       tripThreshold: "> 5 net peak-hour trips → TIA required; > 50 net PM peak-hour trips → operational intersection analysis required",
       horizonConvention: "Per STAMP / Orange County Comprehensive Plan; opening year canonical per MTSIH 2024",
       studyAreaNote: "Per STAMP, the study area extends up to 2.5 miles from the site (broader than the MTSIH default)",
@@ -5923,7 +5923,7 @@ function floridaJurisdiction(lat: number, lon: number): FloridaJurisdiction {
       fdotDistrict: "FDOT District 2 (Lake City)",
       framework: "Mobility fee (replaced roadway concurrency)",
       frameworkDoc: "City of Jacksonville Ordinance Code Chapter 655 (Concurrency and Mobility Management System; Part 5 = Mobility Fee, §§ 655.503, .506, .507) + Land Development Procedures Manual (LDPM) Vol. 1 (effective 2026-01-30)",
-      losStandardNote: "Mobility-fee jurisdiction — no vehicle LOS pass/fail; SHS LOS D urbanized per FDOT Procedure 525-000-006 applies on State Highway System frontage for connection-permit review",
+      losStandardNote: "Mobility-fee jurisdiction — no vehicle LOS pass/fail; SHS LOS D urbanized per FDOT Policy 000-525-006 applies on State Highway System frontage for connection-permit review",
       tripThreshold: "Per Land Development Procedures Manual (LDPM) Vol. 1 (effective 2026-01-30)",
       horizonConvention: "Per LDPM Vol. 1; mobility fee applies at permit",
       mpoName: "North Florida TPO",
@@ -5939,8 +5939,8 @@ function floridaJurisdiction(lat: number, lon: number): FloridaJurisdiction {
     name: "Florida (statewide default — no major-jurisdiction overlay)",
     fdotDistrict: "FDOT District (confirm against the FDOT districts map at https://www.fdot.gov/agencyresources/districts.shtm)",
     framework: "Per controlling local government; MTSIH 2024 default if no local TIS procedure",
-    frameworkDoc: "MTSIH 2024 + statewide Procedure 525-000-006",
-    losStandardNote: "SHS LOS D in urbanized areas and LOS C outside urbanized areas per FDOT Procedure 525-000-006",
+    frameworkDoc: "MTSIH 2024 + statewide Policy 000-525-006",
+    losStandardNote: "SHS LOS D in urbanized areas and LOS C outside urbanized areas per FDOT Policy 000-525-006",
     tripThreshold: "Driveway Category C–G (> 600 vpd including pass-by) triggers pre-application meeting + traffic study per MTSIH 2024 §3.2 / Appendix A",
     horizonConvention: "Per MTSIH 2024 §4.3: Existing + Future Background + Future Build + Future Build with Mitigation; opening year canonical",
     preStudyMeetingRequired: false,
@@ -5958,11 +5958,11 @@ function floridaJurisdiction(lat: number, lon: number): FloridaJurisdiction {
  * current term, used interchangeably with TIA/SIA/TIS), per the FDOT
  * Multimodal Transportation Site Impact Handbook (MTSIH) March 25 2024,
  * the FDOT Quality/Level of Service Handbook v6.0 (Aug 2025), and FDOT
- * Procedure 525-000-006 (SHS LOS standards).
+ * Policy 000-525-006 (SHS LOS standards).
  *
  * Key conventions that differ from the generic / Georgia renderer:
  *   - SHS LOS standard is D in urbanized areas and C outside urbanized
- *     areas per Procedure 525-000-006 (not a blanket LOS D).
+ *     areas per Policy 000-525-006 (not a blanket LOS D).
  *   - "MTIA" / "Multimodal Transportation Impact Assessment" is the
  *     FDOT-preferred term; multimodal scope is reflected throughout.
  *   - Connection / access work cites Rule 14-96 F.A.C. (Connection
@@ -5971,9 +5971,10 @@ function floridaJurisdiction(lat: number, lon: number): FloridaJurisdiction {
  *     not the superseded Plans Preparation Manual.
  *   - Committed-projects review uses the FDOT Five-Year Work Program,
  *     not GA TIP/STIP.
- *   - DRI is curtailed post-2015 HB 7065; the renderer does not assume
- *     DRI review and instead frames the deliverable around local
- *     concurrency / comp plan amendments / FDOT connection permits.
+ *   - DRI is curtailed post-2015 SB 1216 (Ch. 2015-30) + CS/CS/HB 1151
+ *     (Ch. 2018-158); the renderer does not assume DRI review and instead
+ *     frames the deliverable around local concurrency / comp plan
+ *     amendments / FDOT connection permits.
  *   - Approved software per FDOT TAH §4.1 (HCS, Synchro, SIDRA, CORSIM,
  *     Vissim) — Vistro is explicitly NOT in the FDOT inventory.
  *
@@ -6101,7 +6102,7 @@ function renderTisFlorida(
 
   gaSubsection(doc, "3.1 Controlling Guidance");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Primary references: FDOT Multimodal Transportation Site Impact Handbook (MTSIH), March 25, 2024; FDOT Multimodal Transportation Site Impact Applications Guide, June 5, 2024; FDOT Quality/Level of Service Handbook v6.0, August 2025; FDOT Procedure 525-000-006 (Level of Service Standards and Highway Capacity Analysis for the State Highway System); FDOT Procedure 525-030-120 (project traffic forecasting); FDOT Traffic Analysis Handbook (TAH), October 2025.",
+    "Primary references: FDOT Multimodal Transportation Site Impact Handbook (MTSIH), March 25, 2024; FDOT Multimodal Transportation Site Impact Applications Guide, June 5, 2024; FDOT Quality/Level of Service Handbook v6.0, August 2025; FDOT Policy 000-525-006 (Level of Service Targets for the State Highway System); FDOT Procedure 525-030-120 (project traffic forecasting); FDOT Traffic Analysis Handbook (TAH), October 2025.",
     { paragraphGap: 6 },
   );
 
@@ -6138,7 +6139,7 @@ function renderTisFlorida(
 
   gaSubsection(doc, "3.6 Level of Service Standards");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Per FDOT Procedure 525-000-006, the peak-hour automobile-mode LOS standard on the State Highway System is LOS D in urbanized areas and LOS C in rural and transitioning areas. Constrained or backlogged facilities maintain their facility-specific designation. Roadway segment LOS reporting uses the FDOT Q/LOS Handbook v6.0 Generalized Service Volume Tables (GSVTs). Intersection LOS uses HCM 6th Edition Chapter 19 (signalized intersections), Exhibit 19-8 thresholds: A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s of average control delay per vehicle.",
+    "Per FDOT Policy 000-525-006, the peak-hour automobile-mode LOS standard on the State Highway System is LOS D in urbanized areas and LOS C in rural and transitioning areas. Constrained or backlogged facilities maintain their facility-specific designation. Roadway segment LOS reporting uses the FDOT Q/LOS Handbook v6.0 Generalized Service Volume Tables (GSVTs). Intersection LOS uses HCM 6th Edition Chapter 19 (signalized intersections), Exhibit 19-8 thresholds: A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s of average control delay per vehicle.",
     { paragraphGap: 6 },
   );
 
@@ -6461,7 +6462,7 @@ function renderTisFlorida(
   // --- 10.0 Site Access / Ingress-Egress --------------------------------
   gaSection(doc, "10.0 SITE ACCESS / INGRESS-EGRESS");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Per MTSIH 2024 §3.2 Table 5, driveway TIA-scoping is keyed to gross trips per day (including pass-by): Category A 1–20 vpd (single-family); B 21–600 (small multifamily / very small commercial); C 601–1,500 (small-mid retail / small office); D 1,501–4,000 (mid retail / mid office); E 4,001–15,000 (large retail / mixed-use); F 15,001–30,000 (very large mixed-use / mall); G ≥30,001 (regional mall). Pre-application meeting + traffic study are required for Categories C–G (>600 vpd including pass-by). A connection-permit change-of-use is additionally triggered per F.S. 335.182(3)(b) when trip generation increases by >25% AND >100 vpd vs. the existing use. Connection to the FDOT State Highway System requires a connection permit per Rule 14-96 F.A.C. (2025 update). Driveway spacing, median-opening spacing, and signal spacing are governed by the access-management class (Classes 1–7) assigned to the impacted SHS segment per Rule 14-97 F.A.C. and FDOT Procedure 525-030-155; the class is stored in the RCI as Feature 146 / ACMANCLS (codes 00–07; 99 = unclassified, interim standards in Rule 14-97.004(1) apply until assignment). Driveway geometry (W, R, F, Y, G, Driveway Length, S, I; Categories A–D in FDM Chapter 214, Categories E–F–G punt to FDM Chapter 212), turn-lane warrants, deceleration-lane length, and intersection sight distance must be designed to FDOT Design Manual (FDM 2026) standards; off-SHS connections on city/county facilities follow the Florida Greenbook. The access-management class for the impacted SHS facility should be confirmed against the FDOT-published Access Management TDA layer.",
+    "Per MTSIH 2024 §3.2 Table 5, driveway TIA-scoping is keyed to gross trips per day (including pass-by): Category A 1–20 vpd (single-family); B 21–600 (small multifamily / very small commercial); C 601–1,500 (small-mid retail / small office); D 1,501–4,000 (mid retail / mid office); E 4,001–15,000 (large retail / mixed-use); F 15,001–30,000 (very large mixed-use / mall); G ≥30,001 (regional mall). Pre-application meeting + traffic study are required for Categories C–G (>600 vpd including pass-by). A connection-permit change-of-use is additionally triggered per F.S. 335.182(3)(b) when trip generation increases by >25% AND >100 vpd vs. the existing use. Connection to the FDOT State Highway System requires a connection permit per Rule 14-96 F.A.C. (last amended April 2, 2023). Driveway spacing, median-opening spacing, and signal spacing are governed by the access-management class (Classes 1–7) assigned to the impacted SHS segment per Rule 14-97 F.A.C. and FDOT Procedure 525-030-155; the class is stored in the RCI as Feature 146 / ACMANCLS (codes 00–07; 99 = unclassified, interim standards in Rule 14-97.004(1) apply until assignment). Driveway geometry (W, R, F, Y, G, Driveway Length, S, I; Categories A–D in FDM Chapter 214, Categories E–F–G punt to FDM Chapter 212), turn-lane warrants, deceleration-lane length, and intersection sight distance must be designed to FDOT Design Manual (FDM 2026) standards; off-SHS connections on city/county facilities follow the Florida Greenbook. The access-management class for the impacted SHS facility should be confirmed against the FDOT-published Access Management TDA layer.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
