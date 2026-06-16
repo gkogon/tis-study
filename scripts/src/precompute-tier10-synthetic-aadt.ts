@@ -268,8 +268,19 @@ function updateCoverage(coverage: string, regionCode: string, snapPct: number): 
 }
 
 function main(): void {
-  const tier10 = Object.values(REGIONS).filter((r) => r.dataSourceId === "osm_only");
-  console.log(`Tier-10 regions: ${tier10.length}`);
+  // Default: every osm_only metro (tier-10 cold-start coverage).
+  // --metros CODE,CODE,...  : also include the listed metro codes
+  //                           (e.g. Canadian metros where we want synthetic
+  //                           to backfill the unmeasured share alongside an
+  //                           existing measured overlay).
+  const metrosArgIdx = process.argv.indexOf("--metros");
+  const extraCodes = metrosArgIdx >= 0
+    ? (process.argv[metrosArgIdx + 1] ?? "").split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+  const tier10 = Object.values(REGIONS).filter(
+    (r) => r.dataSourceId === "osm_only" || extraCodes.includes(r.code),
+  );
+  console.log(`Tier-10 regions: ${tier10.length}${extraCodes.length ? ` (+${extraCodes.length} explicit)` : ""}`);
 
   let coverage = readFileSync(COVERAGE_PATH, "utf8");
   let updated = 0;
