@@ -1377,8 +1377,32 @@ function renderTisState(
   }
 
   doc.moveDown(0.3);
-  stateSub("9.4 Queue Analysis");
+  stateSub("9.4 Storage Bay Adequacy");
   body(`95th-percentile queue analysis was performed at driveways and adjacent signalized intersections. Storage bay adequacy was evaluated against projected Build-scenario left-turn and right-turn queue lengths. Where storage deficiencies exist (95th-percentile queue exceeds available storage), turn-lane extensions or new auxiliary lanes are identified as required mitigation.`);
+  const storageRows = intersections.filter((it: any) => Number.isFinite(Number(it.existingStorageFt)) && Number.isFinite(Number(it.queue95thFt)));
+  if (storageRows.length > 0) {
+    tbl(
+      ["Intersection", "Movement", "Existing (ft)", "Q95 Build (ft)", "Required (ft)", "Deficit (ft)"],
+      [160, 80, 75, 75, 75, 75],
+      ["left", "left", "right", "right", "right", "right"],
+      storageRows.map((it: any) => {
+        const existing = Number(it.existingStorageFt);
+        const q95 = Number(it.queue95thFt);
+        const required = q95;
+        const deficit = Math.max(0, required - existing);
+        return [
+          it.name ?? it.signalId ?? "—",
+          it.criticalMovement ?? it.storageMovement ?? "Left-turn (verify)",
+          fmt(existing),
+          fmt(q95),
+          fmt(required),
+          deficit > 0 ? fmt(deficit) : "Adequate",
+        ];
+      }),
+    );
+  } else {
+    note("No intersection carries a field-measured `existingStorageFt` value. Supply that field on each affected intersection record to produce a Required-vs-Existing-vs-Deficit table per AASHTO Green Book Chapter 9 / applicable state DOT design manual storage-bay standards.");
+  }
 
   if (cfg.specialRequirements && cfg.specialRequirements.length > 0) {
     doc.moveDown(0.3);
