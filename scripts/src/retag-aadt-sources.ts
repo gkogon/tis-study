@@ -290,6 +290,11 @@ const PRESERVE: ReadonlySet<string> = new Set([
   "bordeaux_opendata",
   "cerema_tmja_rrnc_2024",
   "toronto_open_data_svc",
+  "ottawa_open_data_midblock",
+  "halifax_open_data_traffic_studies",
+  "calgary_open_data_2023",
+  "edmonton_open_data_aawdt",
+  "mtq_djma",
   "polyline_bbox",
   "point_bbox",
 ]);
