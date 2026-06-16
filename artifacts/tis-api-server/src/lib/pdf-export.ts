@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import { regionForCoordinate, type Region } from "./regions";
 import { getAutoModeShare } from "./mode-share";
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
+import { renderTisState } from "./pdf-export-states";
 import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite, getGml239Status, getCbdtpStatus } from "./nysdot-data";
 import { getNycTransitContext } from "./nyc-transit-data";
 import { crashesNearPoint } from "./crashes";
@@ -515,6 +516,15 @@ function dispatchTisRender(
     }
     return;
   }
+  // All remaining US states — use the multi-state generic renderer with
+  // per-state config (agency name, LOS standard, PE seal statute, etc.).
+  // The dedicated renderers above handle FL, GA, IL, TX, CA, NY explicitly;
+  // any other US state code falls through to renderTisState.
+  if ((region?.country ?? "US") === "US" && region?.stateCode) {
+    renderTisState(doc, result, project, region);
+    return;
+  }
+
   renderTis(doc, result);
 }
 

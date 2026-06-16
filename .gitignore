@@ -27,6 +27,9 @@ node_modules
 !.vscode/launch.json
 !.vscode/extensions.json
 
+# Claude Code local dev configs
+.claude/
+
 # misc
 /.sass-cache
 /connect.lock
