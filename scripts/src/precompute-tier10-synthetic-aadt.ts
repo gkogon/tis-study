@@ -33,6 +33,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { REGIONS, type Region } from "../../artifacts/tis-api-server/src/lib/regions";
 import { regionGroup, type RegionGroup } from "./region-groups";
+import { MeasuredIndex, idwPredict, type MeasuredSignal } from "./knn-idw-aadt";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../..");
@@ -241,35 +242,106 @@ function generateForRegion(region: Region): { total: number; snapped: number; sn
   // measured signals (where available), monotonicity smoothing (motorway ≥
   // trunk ≥ primary ≥ secondary ≥ tertiary), sanity caps, and a country-
   // motorization-scaled group fallback for metros without measured data.
-  // It's produced by `tsx src/calibrate-global-per-metro.ts`.
+  // It's produced by `tsx src/calibrate-global-per-metro.ts`. This is the
+  // fallback when KNN/IDW (below) can't find enough nearby measured signals.
   const override = PER_METRO_BASELINE[region.code];
   const metroBase: Record<number, number> = {};
   for (let c = 0; c <= 4; c++) {
     metroBase[c] = override?.baseline?.[String(c)] ?? groupBase[c] ?? groupBase[4]!;
   }
+
+  // ── KNN/IDW from this metro's measured signals (primary predictor) ─────
+  // For metros with ≥MIN_KNN_SIGNALS measured signals, build a spatial index
+  // and predict each unmeasured signal as a log-space IDW of its nearest
+  // measured neighbors on the same road class. Empirically lifts global
+  // per-signal accuracy from ~49% (class-baseline) to ~90% (leave-one-out
+  // MdAPE 10.0% across 442k measured signals globally; see measure-knn-
+  // accuracy.ts). Falls back to the class baseline when fewer than 2
+  // qualifying neighbors are found within 4 km.
+  const MIN_KNN_SIGNALS = 30;
+  let knnIndex: MeasuredIndex | null = null;
+  let knnMeasuredAadt: Map<number, number> | null = null;
+  const outPathForRead = path.resolve(DATA_DIR, `${slug}-aadt.json`);
+  if (existsSync(outPathForRead)) {
+    try {
+      const existing = JSON.parse(readFileSync(outPathForRead, "utf8")) as Record<string, AadtRec>;
+      const coordsByOsmId = new Map<number, [number, number]>();
+      for (const [osmId, lat, lon] of signals) coordsByOsmId.set(osmId, [lat, lon]);
+      const measured: MeasuredSignal[] = [];
+      knnMeasuredAadt = new Map();
+      for (const [idStr, rec] of Object.entries(existing)) {
+        if (!rec || rec.source === "synthetic_osm_class" || typeof rec.source !== "string") continue;
+        if (rec.aadt == null || rec.aadt <= 0) continue;
+        const id = Number(idStr);
+        const c = coordsByOsmId.get(id);
+        if (!c) continue;
+        const seg = nearestSegment(grid, c[0], c[1]);
+        if (!seg) continue;
+        measured.push({ id, lat: c[0], lon: c[1], classCode: seg.seg.classCode, aadt: rec.aadt });
+        knnMeasuredAadt.set(id, rec.aadt);
+      }
+      if (measured.length >= MIN_KNN_SIGNALS) {
+        knnIndex = new MeasuredIndex(measured);
+      } else {
+        knnMeasuredAadt = null;
+      }
+    } catch {
+      knnIndex = null;
+      knnMeasuredAadt = null;
+    }
+  }
+
+  const synthMethod = knnIndex ? "knn_idw" : "class_baseline";
   if (override) {
     const summary = [0, 1, 2, 3, 4].map((c) => `c${c}=${metroBase[c]}`).join(" ");
-    console.log(`    ${region.code} baseline [${override.method}]: ${summary}`);
+    console.log(`    ${region.code} [${synthMethod}, baseline=${override.method}, knn_pool=${knnIndex?.size ?? 0}]: ${summary}`);
   } else {
-    console.log(`    ${region.code} baseline [group fallback]: ${[0,1,2,3,4].map((c)=>`c${c}=${metroBase[c]}`).join(" ")}`);
+    console.log(`    ${region.code} [${synthMethod}, baseline=group_fallback, knn_pool=${knnIndex?.size ?? 0}]: ${[0,1,2,3,4].map((c)=>`c${c}=${metroBase[c]}`).join(" ")}`);
   }
 
   const out: Record<string, AadtRec> = {};
   let snapped = 0;
+  let knnHits = 0, baselineHits = 0;
   for (const [osmId, lat, lon] of signals) {
     if (osmId < 0) continue; // city-authoritative signals — skip
     const hit = nearestSegment(grid, lat, lon);
     if (!hit) continue;
-    const baseAadt = metroBase[hit.seg.classCode] ?? metroBase[4]!;
-    const aadt = Math.round(baseAadt * laneFactor(hit.seg.lanes, hit.seg.classCode) * speedFactor(hit.seg.maxspeed));
+
+    let aadt: number;
+    if (knnIndex) {
+      // KNN excludes the signal itself if it's measured (so re-running synth
+      // doesn't overwrite a measured signal with a self-prediction). Falls
+      // back to class baseline only when fewer than 2 same/adjacent-class
+      // neighbors are within 4 km.
+      const neighbors = knnIndex.query(lat, lon, hit.seg.classCode, {
+        k: 5, maxRadiusM: 4000, excludeId: osmId,
+      });
+      const knnPred = idwPredict(neighbors, { p: 2, logSpace: true, outlierRatio: 4 });
+      if (knnPred != null) {
+        aadt = knnPred;
+        knnHits++;
+      } else {
+        const baseAadt = metroBase[hit.seg.classCode] ?? metroBase[4]!;
+        aadt = baseAadt * laneFactor(hit.seg.lanes, hit.seg.classCode) * speedFactor(hit.seg.maxspeed);
+        baselineHits++;
+      }
+    } else {
+      const baseAadt = metroBase[hit.seg.classCode] ?? metroBase[4]!;
+      aadt = baseAadt * laneFactor(hit.seg.lanes, hit.seg.classCode) * speedFactor(hit.seg.maxspeed);
+      baselineHits++;
+    }
+
     out[String(osmId)] = {
-      aadt,
+      aadt: Math.round(aadt),
       year: 2024,
       kFactor,
       distM: hit.distM,
       source: "synthetic_osm_class",
     };
     snapped++;
+  }
+  if (knnIndex) {
+    console.log(`      knn ${knnHits}/${snapped} (${Math.round(knnHits / Math.max(1, snapped) * 100)}%), baseline fallback ${baselineHits}`);
   }
 
   const outPath = path.resolve(DATA_DIR, `${slug}-aadt.json`);
