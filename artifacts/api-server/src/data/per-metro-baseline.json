@@ -1,0 +1,5636 @@
+{
+  "atlanta_metro": {
+    "method": "group",
+    "provenance": "north_america baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 15000,
+      "3": 8000,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "charlotte_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=265/417/1455/1242/410 per class",
+    "baseline": {
+      "0": 25500,
+      "1": 25500,
+      "2": 17000,
+      "3": 17000,
+      "4": 12000
+    },
+    "measuredN": {
+      "0": 265,
+      "1": 417,
+      "2": 1455,
+      "3": 1242,
+      "4": 410
+    }
+  },
+  "nashville_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=122/244/1326/671/158 per class",
+    "baseline": {
+      "0": 24312,
+      "1": 24312,
+      "2": 20630,
+      "3": 14240,
+      "4": 8610
+    },
+    "measuredN": {
+      "0": 122,
+      "1": 244,
+      "2": 1326,
+      "3": 671,
+      "4": 158
+    }
+  },
+  "tampa_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=303/336/2000/1173/342 per class",
+    "baseline": {
+      "0": 39000,
+      "1": 39000,
+      "2": 27500,
+      "3": 17900,
+      "4": 11000
+    },
+    "measuredN": {
+      "0": 303,
+      "1": 336,
+      "2": 2000,
+      "3": 1173,
+      "4": 342
+    }
+  },
+  "orlando_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=551/629/1930/1616/1067 per class",
+    "baseline": {
+      "0": 38500,
+      "1": 38500,
+      "2": 26000,
+      "3": 20100,
+      "4": 14300
+    },
+    "measuredN": {
+      "0": 551,
+      "1": 629,
+      "2": 1930,
+      "3": 1616,
+      "4": 1067
+    }
+  },
+  "raleigh_durham_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=254/662/2020/1292/367 per class",
+    "baseline": {
+      "0": 17000,
+      "1": 17000,
+      "2": 15000,
+      "3": 12500,
+      "4": 8000
+    },
+    "measuredN": {
+      "0": 254,
+      "1": 662,
+      "2": 2020,
+      "3": 1292,
+      "4": 367
+    }
+  },
+  "miami_dade_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=784/1013/2707/2647/1492 per class",
+    "baseline": {
+      "0": 32000,
+      "1": 32000,
+      "2": 32000,
+      "3": 19900,
+      "4": 10200
+    },
+    "measuredN": {
+      "0": 784,
+      "1": 1013,
+      "2": 2707,
+      "3": 2647,
+      "4": 1492
+    }
+  },
+  "jacksonville_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=236/200/1042/457/146 per class",
+    "baseline": {
+      "0": 36000,
+      "1": 36000,
+      "2": 21000,
+      "3": 16000,
+      "4": 11500
+    },
+    "measuredN": {
+      "0": 236,
+      "1": 200,
+      "2": 1042,
+      "3": 457,
+      "4": 146
+    }
+  },
+  "memphis_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 19270,
+      "3": 11200,
+      "4": 10270
+    },
+    "measuredN": {
+      "0": 92,
+      "1": 45,
+      "2": 558,
+      "3": 476,
+      "4": 71
+    }
+  },
+  "knoxville_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 23150,
+      "2": 13000,
+      "3": 11150,
+      "4": 8560
+    },
+    "measuredN": {
+      "0": 80,
+      "1": 464,
+      "2": 375,
+      "3": 410,
+      "4": 155
+    }
+  },
+  "chattanooga_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 26560,
+      "2": 12620,
+      "3": 10850,
+      "4": 10670
+    },
+    "measuredN": {
+      "0": 9,
+      "1": 69,
+      "2": 253,
+      "3": 135,
+      "4": 32
+    }
+  },
+  "savannah_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 14900,
+      "2": 12600,
+      "3": 8390,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 90,
+      "1": 81,
+      "2": 234,
+      "3": 144,
+      "4": 5
+    }
+  },
+  "asheville_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 9500,
+      "3": 7100,
+      "4": 5500
+    },
+    "measuredN": {
+      "0": 76,
+      "1": 9,
+      "2": 363,
+      "3": 92,
+      "4": 39
+    }
+  },
+  "wilmington_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 34000,
+      "2": 18500,
+      "3": 13000,
+      "4": 9300
+    },
+    "measuredN": {
+      "0": 21,
+      "1": 194,
+      "2": 225,
+      "3": 95,
+      "4": 44
+    }
+  },
+  "triad_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=217/248/1176/711/213 per class",
+    "baseline": {
+      "0": 9500,
+      "1": 9500,
+      "2": 9500,
+      "3": 8300,
+      "4": 4600
+    },
+    "measuredN": {
+      "0": 217,
+      "1": 248,
+      "2": 1176,
+      "3": 711,
+      "4": 213
+    }
+  },
+  "birmingham_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 16220,
+      "3": 10258,
+      "4": 6557
+    },
+    "measuredN": {
+      "0": 35,
+      "1": 24,
+      "2": 594,
+      "3": 619,
+      "4": 202
+    }
+  },
+  "hampton_roads_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=255/654/2278/1022/189 per class",
+    "baseline": {
+      "0": 20000,
+      "1": 20000,
+      "2": 20000,
+      "3": 13000,
+      "4": 7300
+    },
+    "measuredN": {
+      "0": 255,
+      "1": 654,
+      "2": 2278,
+      "3": 1022,
+      "4": 189
+    }
+  },
+  "richmond_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=245/528/1874/665/105 per class",
+    "baseline": {
+      "0": 15000,
+      "1": 15000,
+      "2": 14000,
+      "3": 9400,
+      "4": 5400
+    },
+    "measuredN": {
+      "0": 245,
+      "1": 528,
+      "2": 1874,
+      "3": 665,
+      "4": 105
+    }
+  },
+  "charleston_sc_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 21800,
+      "2": 18800,
+      "3": 13000,
+      "4": 8200
+    },
+    "measuredN": {
+      "0": 36,
+      "1": 78,
+      "2": 233,
+      "3": 122,
+      "4": 72
+    }
+  },
+  "columbia_sc_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 15700,
+      "2": 15700,
+      "3": 15700,
+      "4": 8300
+    },
+    "measuredN": {
+      "0": 43,
+      "1": 102,
+      "2": 312,
+      "3": 229,
+      "4": 99
+    }
+  },
+  "louisville_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 14290,
+      "2": 13027,
+      "3": 11197,
+      "4": 6738
+    },
+    "measuredN": {
+      "0": 71,
+      "1": 53,
+      "2": 795,
+      "3": 374,
+      "4": 141
+    }
+  },
+  "new_orleans_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=112/242/732/621/153 per class",
+    "baseline": {
+      "0": 29900,
+      "1": 29900,
+      "2": 22314,
+      "3": 16363,
+      "4": 9530
+    },
+    "measuredN": {
+      "0": 112,
+      "1": 242,
+      "2": 732,
+      "3": 621,
+      "4": 153
+    }
+  },
+  "lexington_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 23253,
+      "2": 14720,
+      "3": 10658,
+      "4": 8157
+    },
+    "measuredN": {
+      "0": 33,
+      "1": 272,
+      "2": 491,
+      "3": 148,
+      "4": 33
+    }
+  },
+  "mobile_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 13343,
+      "3": 13343,
+      "4": 10929
+    },
+    "measuredN": {
+      "0": 8,
+      "1": 30,
+      "2": 310,
+      "3": 282,
+      "4": 141
+    }
+  },
+  "huntsville_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 20810,
+      "2": 13843,
+      "3": 11804,
+      "4": 5744
+    },
+    "measuredN": {
+      "0": 76,
+      "1": 150,
+      "2": 196,
+      "3": 363,
+      "4": 154
+    }
+  },
+  "pensacola_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 39500,
+      "2": 18700,
+      "3": 17500,
+      "4": 8400
+    },
+    "measuredN": {
+      "0": 26,
+      "1": 54,
+      "2": 251,
+      "3": 212,
+      "4": 31
+    }
+  },
+  "fayetteville_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 17500,
+      "2": 17500,
+      "3": 14500,
+      "4": 14500
+    },
+    "measuredN": {
+      "0": 85,
+      "1": 152,
+      "2": 349,
+      "3": 135,
+      "4": 33
+    }
+  },
+  "greenville_nc_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 14000,
+      "2": 14000,
+      "3": 11500,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 80,
+      "2": 83,
+      "3": 36,
+      "4": 12
+    }
+  },
+  "augusta_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 7920,
+      "2": 7450,
+      "3": 7450,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 49,
+      "1": 84,
+      "2": 150,
+      "3": 100,
+      "4": 6
+    }
+  },
+  "macon_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 13000,
+      "2": 13000,
+      "3": 13000,
+      "4": 6220
+    },
+    "measuredN": {
+      "0": 35,
+      "1": 69,
+      "2": 359,
+      "3": 150,
+      "4": 144
+    }
+  },
+  "washington_dc_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=281/411/1396/485/146 per class",
+    "baseline": {
+      "0": 15291,
+      "1": 15291,
+      "2": 15291,
+      "3": 7815,
+      "4": 6826
+    },
+    "measuredN": {
+      "0": 281,
+      "1": 411,
+      "2": 1396,
+      "3": 485,
+      "4": 146
+    }
+  },
+  "baltimore_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=356/273/2490/1034/261 per class",
+    "baseline": {
+      "0": 19060,
+      "1": 19060,
+      "2": 12964,
+      "3": 10883,
+      "4": 8680
+    },
+    "measuredN": {
+      "0": 356,
+      "1": 273,
+      "2": 2490,
+      "3": 1034,
+      "4": 261
+    }
+  },
+  "philadelphia_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=566/1266/3230/1265/905 per class",
+    "baseline": {
+      "0": 10458,
+      "1": 10458,
+      "2": 9543,
+      "3": 8247,
+      "4": 8232
+    },
+    "measuredN": {
+      "0": 566,
+      "1": 1266,
+      "2": 3230,
+      "3": 1265,
+      "4": 905
+    }
+  },
+  "pittsburgh_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=286/646/1165/426/249 per class",
+    "baseline": {
+      "0": 11342,
+      "1": 11342,
+      "2": 8600,
+      "3": 6129,
+      "4": 5699
+    },
+    "measuredN": {
+      "0": 286,
+      "1": 646,
+      "2": 1165,
+      "3": 426,
+      "4": 249
+    }
+  },
+  "new_york_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=2839/1127/8643/6181/2634 per class",
+    "baseline": {
+      "0": 11036,
+      "1": 11036,
+      "2": 10261,
+      "3": 7316,
+      "4": 4963
+    },
+    "measuredN": {
+      "0": 2839,
+      "1": 1127,
+      "2": 8643,
+      "3": 6181,
+      "4": 2634
+    }
+  },
+  "boston_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=800/1222/3323/1968/255 per class",
+    "baseline": {
+      "0": 21034,
+      "1": 21034,
+      "2": 13698,
+      "3": 10657,
+      "4": 4697
+    },
+    "measuredN": {
+      "0": 800,
+      "1": 1222,
+      "2": 3323,
+      "3": 1968,
+      "4": 255
+    }
+  },
+  "chicago_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=1141/470/4489/5415/1326 per class",
+    "baseline": {
+      "0": 21700,
+      "1": 21700,
+      "2": 21700,
+      "3": 12800,
+      "4": 9200
+    },
+    "measuredN": {
+      "0": 1141,
+      "1": 470,
+      "2": 4489,
+      "3": 5415,
+      "4": 1326
+    }
+  },
+  "detroit_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=734/407/1267/2070/779 per class",
+    "baseline": {
+      "0": 30025,
+      "1": 30025,
+      "2": 21344,
+      "3": 14014,
+      "4": 6461
+    },
+    "measuredN": {
+      "0": 734,
+      "1": 407,
+      "2": 1267,
+      "3": 2070,
+      "4": 779
+    }
+  },
+  "twin_cities_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=234/507/1041/3186/1192 per class",
+    "baseline": {
+      "0": 11406,
+      "1": 11406,
+      "2": 10965,
+      "3": 9088,
+      "4": 6823
+    },
+    "measuredN": {
+      "0": 234,
+      "1": 507,
+      "2": 1041,
+      "3": 3186,
+      "4": 1192
+    }
+  },
+  "cleveland_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 30000,
+      "1": 30000,
+      "2": 13149,
+      "3": 10693,
+      "4": 8138
+    },
+    "measuredN": {
+      "0": 305,
+      "1": 16,
+      "2": 1684,
+      "3": 843,
+      "4": 459
+    }
+  },
+  "columbus_oh_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=232/190/1244/564/191 per class",
+    "baseline": {
+      "0": 16122,
+      "1": 16122,
+      "2": 16122,
+      "3": 11909,
+      "4": 7420
+    },
+    "measuredN": {
+      "0": 232,
+      "1": 190,
+      "2": 1244,
+      "3": 564,
+      "4": 191
+    }
+  },
+  "cincinnati_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=273/175/845/923/345 per class",
+    "baseline": {
+      "0": 18912,
+      "1": 18912,
+      "2": 14139,
+      "3": 12831,
+      "4": 8739
+    },
+    "measuredN": {
+      "0": 273,
+      "1": 175,
+      "2": 845,
+      "3": 923,
+      "4": 345
+    }
+  },
+  "indianapolis_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 30000,
+      "1": 30000,
+      "2": 15659,
+      "3": 10575,
+      "4": 10575
+    },
+    "measuredN": {
+      "0": 128,
+      "1": 19,
+      "2": 1946,
+      "3": 908,
+      "4": 153
+    }
+  },
+  "st_louis_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=472/262/1638/843/276 per class",
+    "baseline": {
+      "0": 16760,
+      "1": 16760,
+      "2": 16760,
+      "3": 10713,
+      "4": 6784
+    },
+    "measuredN": {
+      "0": 472,
+      "1": 262,
+      "2": 1638,
+      "3": 843,
+      "4": 276
+    }
+  },
+  "kansas_city_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=222/156/459/926/172 per class",
+    "baseline": {
+      "0": 16430,
+      "1": 16430,
+      "2": 16430,
+      "3": 9768,
+      "4": 7238
+    },
+    "measuredN": {
+      "0": 222,
+      "1": 156,
+      "2": 459,
+      "3": 926,
+      "4": 172
+    }
+  },
+  "milwaukee_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 30000,
+      "1": 30000,
+      "2": 13400,
+      "3": 9900,
+      "4": 6700
+    },
+    "measuredN": {
+      "0": 575,
+      "1": 0,
+      "2": 1986,
+      "3": 1599,
+      "4": 350
+    }
+  },
+  "houston_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=2820/181/3662/7156/517 per class",
+    "baseline": {
+      "0": 15429,
+      "1": 15429,
+      "2": 15429,
+      "3": 11267,
+      "4": 5019
+    },
+    "measuredN": {
+      "0": 2820,
+      "1": 181,
+      "2": 3662,
+      "3": 7156,
+      "4": 517
+    }
+  },
+  "dallas_fort_worth_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=2508/300/3667/8631/607 per class",
+    "baseline": {
+      "0": 17590,
+      "1": 17590,
+      "2": 17590,
+      "3": 9954,
+      "4": 5107
+    },
+    "measuredN": {
+      "0": 2508,
+      "1": 300,
+      "2": 3667,
+      "3": 8631,
+      "4": 607
+    }
+  },
+  "austin_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=452/174/879/1157/218 per class",
+    "baseline": {
+      "0": 28844,
+      "1": 28844,
+      "2": 16869,
+      "3": 9980,
+      "4": 4844
+    },
+    "measuredN": {
+      "0": 452,
+      "1": 174,
+      "2": 879,
+      "3": 1157,
+      "4": 218
+    }
+  },
+  "san_antonio_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=897/86/906/1263/195 per class",
+    "baseline": {
+      "0": 19647,
+      "1": 19647,
+      "2": 16660,
+      "3": 8447,
+      "4": 5793
+    },
+    "measuredN": {
+      "0": 897,
+      "1": 86,
+      "2": 906,
+      "3": 1263,
+      "4": 195
+    }
+  },
+  "los_angeles_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=4616/757/10153/6115/1283 per class",
+    "baseline": {
+      "0": 206900,
+      "1": 39250,
+      "2": 15274,
+      "3": 14573,
+      "4": 12346
+    },
+    "measuredN": {
+      "0": 4616,
+      "1": 757,
+      "2": 10153,
+      "3": 6115,
+      "4": 1283
+    }
+  },
+  "sf_bay_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=1970/930/4324/4382/959 per class",
+    "baseline": {
+      "0": 158000,
+      "1": 28000,
+      "2": 17874,
+      "3": 13259,
+      "4": 8908
+    },
+    "measuredN": {
+      "0": 1970,
+      "1": 930,
+      "2": 4324,
+      "3": 4382,
+      "4": 959
+    }
+  },
+  "san_diego_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=1530/302/3628/1849/156 per class",
+    "baseline": {
+      "0": 165000,
+      "1": 24500,
+      "2": 11788,
+      "3": 11788,
+      "4": 11773
+    },
+    "measuredN": {
+      "0": 1530,
+      "1": 302,
+      "2": 3628,
+      "3": 1849,
+      "4": 156
+    }
+  },
+  "sacramento_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 113000,
+      "1": 30000,
+      "2": 9228,
+      "3": 7564,
+      "4": 7161
+    },
+    "measuredN": {
+      "0": 402,
+      "1": 2,
+      "2": 1098,
+      "3": 1220,
+      "4": 150
+    }
+  },
+  "inland_empire_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=1429/157/3866/2426/381 per class",
+    "baseline": {
+      "0": 168000,
+      "1": 27500,
+      "2": 11212,
+      "3": 9546,
+      "4": 9546
+    },
+    "measuredN": {
+      "0": 1429,
+      "1": 157,
+      "2": 3866,
+      "3": 2426,
+      "4": 381
+    }
+  },
+  "fresno_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 95000,
+      "1": 30000,
+      "2": 10647,
+      "3": 10447,
+      "4": 10447
+    },
+    "measuredN": {
+      "0": 277,
+      "1": 26,
+      "2": 588,
+      "3": 481,
+      "4": 42
+    }
+  },
+  "portland_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=329/378/1443/925/212 per class",
+    "baseline": {
+      "0": 25350,
+      "1": 25350,
+      "2": 20000,
+      "3": 12220,
+      "4": 8300
+    },
+    "measuredN": {
+      "0": 329,
+      "1": 378,
+      "2": 1443,
+      "3": 925,
+      "4": 212
+    }
+  },
+  "seattle_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=251/207/1280/1546/312 per class",
+    "baseline": {
+      "0": 29000,
+      "1": 29000,
+      "2": 25000,
+      "3": 18063,
+      "4": 12650
+    },
+    "measuredN": {
+      "0": 251,
+      "1": 207,
+      "2": 1280,
+      "3": 1546,
+      "4": 312
+    }
+  },
+  "las_vegas_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=733/101/3315/1395/50 per class",
+    "baseline": {
+      "0": 23900,
+      "1": 23900,
+      "2": 22900,
+      "3": 10700,
+      "4": 7450
+    },
+    "measuredN": {
+      "0": 733,
+      "1": 101,
+      "2": 3315,
+      "3": 1395,
+      "4": 50
+    }
+  },
+  "phoenix_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=1320/170/2741/3260/323 per class",
+    "baseline": {
+      "0": 25779,
+      "1": 25779,
+      "2": 19155,
+      "3": 15689,
+      "4": 5264
+    },
+    "measuredN": {
+      "0": 1320,
+      "1": 170,
+      "2": 2741,
+      "3": 3260,
+      "4": 323
+    }
+  },
+  "tucson_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=145/106/1037/572/70 per class",
+    "baseline": {
+      "0": 33617,
+      "1": 33617,
+      "2": 23694,
+      "3": 12154,
+      "4": 8799
+    },
+    "measuredN": {
+      "0": 145,
+      "1": 106,
+      "2": 1037,
+      "3": 572,
+      "4": 70
+    }
+  },
+  "denver_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=696/430/3364/2217/545 per class",
+    "baseline": {
+      "0": 47000,
+      "1": 40000,
+      "2": 28000,
+      "3": 15000,
+      "4": 10000
+    },
+    "measuredN": {
+      "0": 696,
+      "1": 430,
+      "2": 3364,
+      "3": 2217,
+      "4": 545
+    }
+  },
+  "salt_lake_city_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=336/152/1269/718/261 per class",
+    "baseline": {
+      "0": 29227,
+      "1": 26208,
+      "2": 26208,
+      "3": 15928,
+      "4": 9682
+    },
+    "measuredN": {
+      "0": 336,
+      "1": 152,
+      "2": 1269,
+      "3": 718,
+      "4": 261
+    }
+  },
+  "albuquerque_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 30000,
+      "1": 30000,
+      "2": 16592,
+      "3": 14216,
+      "4": 7416
+    },
+    "measuredN": {
+      "0": 170,
+      "1": 11,
+      "2": 787,
+      "3": 792,
+      "4": 131
+    }
+  },
+  "hartford_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 15800,
+      "2": 12000,
+      "3": 10200,
+      "4": 6600
+    },
+    "measuredN": {
+      "0": 11,
+      "1": 461,
+      "2": 646,
+      "3": 982,
+      "4": 162
+    }
+  },
+  "providence_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 17500,
+      "3": 14000,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 90,
+      "1": 35,
+      "2": 419,
+      "3": 71,
+      "4": 7
+    }
+  },
+  "manchester_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 23895,
+      "2": 12424,
+      "3": 10313,
+      "4": 7128
+    },
+    "measuredN": {
+      "0": 87,
+      "1": 74,
+      "2": 482,
+      "3": 252,
+      "4": 108
+    }
+  },
+  "burlington_vt_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 13491,
+      "3": 10010,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 29,
+      "2": 137,
+      "3": 58,
+      "4": 5
+    }
+  },
+  "portland_me_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 8175,
+      "2": 7250,
+      "3": 7250,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 19,
+      "1": 144,
+      "2": 475,
+      "3": 178,
+      "4": 13
+    }
+  },
+  "trenton_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 23427,
+      "2": 19912,
+      "3": 19912,
+      "4": 15000
+    },
+    "measuredN": {
+      "0": 35,
+      "1": 119,
+      "2": 109,
+      "3": 34,
+      "4": 83
+    }
+  },
+  "charleston_wv_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 6364,
+      "3": 4429,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 6,
+      "1": 8,
+      "2": 295,
+      "3": 77,
+      "4": 28
+    }
+  },
+  "jackson_ms_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 17631,
+      "2": 14929,
+      "3": 11952,
+      "4": 5932
+    },
+    "measuredN": {
+      "0": 13,
+      "1": 98,
+      "2": 175,
+      "3": 226,
+      "4": 77
+    }
+  },
+  "little_rock_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 16673,
+      "3": 14000,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 37,
+      "1": 0,
+      "2": 208,
+      "3": 401,
+      "4": 26
+    }
+  },
+  "oklahoma_city_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=538/109/595/1227/155 per class",
+    "baseline": {
+      "0": 16100,
+      "1": 16100,
+      "2": 11600,
+      "3": 10900,
+      "4": 4600
+    },
+    "measuredN": {
+      "0": 538,
+      "1": 109,
+      "2": 595,
+      "3": 1227,
+      "4": 155
+    }
+  },
+  "tulsa_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 30000,
+      "1": 30000,
+      "2": 9300,
+      "3": 9300,
+      "4": 6200
+    },
+    "measuredN": {
+      "0": 487,
+      "1": 47,
+      "2": 843,
+      "3": 1102,
+      "4": 169
+    }
+  },
+  "des_moines_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 18600,
+      "2": 14700,
+      "3": 9330,
+      "4": 6000
+    },
+    "measuredN": {
+      "0": 90,
+      "1": 103,
+      "2": 723,
+      "3": 744,
+      "4": 78
+    }
+  },
+  "omaha_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=155/283/1356/758/92 per class",
+    "baseline": {
+      "0": 26000,
+      "1": 19345,
+      "2": 19345,
+      "3": 13070,
+      "4": 9000
+    },
+    "measuredN": {
+      "0": 155,
+      "1": 283,
+      "2": 1356,
+      "3": 758,
+      "4": 92
+    }
+  },
+  "wichita_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 11810,
+      "3": 11610,
+      "4": 7480
+    },
+    "measuredN": {
+      "0": 86,
+      "1": 31,
+      "2": 91,
+      "3": 458,
+      "4": 100
+    }
+  },
+  "fargo_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 11020,
+      "3": 11020,
+      "4": 5500
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 184,
+      "3": 161,
+      "4": 37
+    }
+  },
+  "sioux_falls_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 1 classes; 4 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 8000,
+      "3": 8000,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 58,
+      "1": 12,
+      "2": 39,
+      "3": 9,
+      "4": 3
+    }
+  },
+  "boise_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 20500,
+      "3": 9400,
+      "4": 7200
+    },
+    "measuredN": {
+      "0": 32,
+      "1": 48,
+      "2": 241,
+      "3": 235,
+      "4": 51
+    }
+  },
+  "billings_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 9787,
+      "3": 6026,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 15,
+      "2": 119,
+      "3": 65,
+      "4": 5
+    }
+  },
+  "cheyenne_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 4000,
+      "3": 4000,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 9,
+      "1": 43,
+      "2": 63,
+      "3": 41,
+      "4": 6
+    }
+  },
+  "anchorage_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 15936,
+      "3": 10240,
+      "4": 7514
+    },
+    "measuredN": {
+      "0": 61,
+      "1": 24,
+      "2": 216,
+      "3": 183,
+      "4": 36
+    }
+  },
+  "honolulu_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=122/97/331/159/77 per class",
+    "baseline": {
+      "0": 36531,
+      "1": 36531,
+      "2": 18648,
+      "3": 18618,
+      "4": 11600
+    },
+    "measuredN": {
+      "0": 122,
+      "1": 97,
+      "2": 331,
+      "3": 159,
+      "4": 77
+    }
+  },
+  "toronto_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from canada × 1.00 motorization scalar",
+    "baseline": {
+      "0": 51630,
+      "1": 35000,
+      "2": 35000,
+      "3": 22000,
+      "4": 15000
+    },
+    "measuredN": {
+      "0": 484,
+      "1": 4,
+      "2": 1495,
+      "3": 3573,
+      "4": 763
+    }
+  },
+  "montreal_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=2383/847/3669/9175/3971 per class",
+    "baseline": {
+      "0": 68000,
+      "1": 57000,
+      "2": 18700,
+      "3": 15000,
+      "4": 15000
+    },
+    "measuredN": {
+      "0": 2383,
+      "1": 847,
+      "2": 3669,
+      "3": 9175,
+      "4": 3971
+    }
+  },
+  "vancouver_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from canada × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 14535,
+      "2": 5321,
+      "3": 2929,
+      "4": 1949
+    },
+    "measuredN": {
+      "0": 48,
+      "1": 352,
+      "2": 971,
+      "3": 1445,
+      "4": 511
+    }
+  },
+  "calgary_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=297/156/413/1843/526 per class",
+    "baseline": {
+      "0": 69000,
+      "1": 43000,
+      "2": 34000,
+      "3": 22000,
+      "4": 15000
+    },
+    "measuredN": {
+      "0": 297,
+      "1": 156,
+      "2": 413,
+      "3": 1843,
+      "4": 526
+    }
+  },
+  "ottawa_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from canada × 1.00 motorization scalar",
+    "baseline": {
+      "0": 147000,
+      "1": 31000,
+      "2": 1839,
+      "3": 1839,
+      "4": 1654
+    },
+    "measuredN": {
+      "0": 107,
+      "1": 36,
+      "2": 873,
+      "3": 1262,
+      "4": 136
+    }
+  },
+  "edmonton_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from canada × 1.00 motorization scalar",
+    "baseline": {
+      "0": 31000,
+      "1": 31000,
+      "2": 21000,
+      "3": 12900,
+      "4": 6600
+    },
+    "measuredN": {
+      "0": 137,
+      "1": 26,
+      "2": 411,
+      "3": 1528,
+      "4": 92
+    }
+  },
+  "winnipeg_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from canada × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 14297,
+      "2": 11034,
+      "3": 9760,
+      "4": 5516
+    },
+    "measuredN": {
+      "0": 14,
+      "1": 189,
+      "2": 590,
+      "3": 741,
+      "4": 84
+    }
+  },
+  "quebec_city_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from canada × 1.00 motorization scalar",
+    "baseline": {
+      "0": 66000,
+      "1": 31000,
+      "2": 22000,
+      "3": 22000,
+      "4": 15000
+    },
+    "measuredN": {
+      "0": 243,
+      "1": 48,
+      "2": 418,
+      "3": 513,
+      "4": 239
+    }
+  },
+  "hamilton_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from canada × 1.00 motorization scalar",
+    "baseline": {
+      "0": 31000,
+      "1": 31000,
+      "2": 10154,
+      "3": 3265,
+      "4": 2905
+    },
+    "measuredN": {
+      "0": 127,
+      "1": 12,
+      "2": 303,
+      "3": 548,
+      "4": 40
+    }
+  },
+  "halifax_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from canada × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 31000,
+      "2": 9357,
+      "3": 9357,
+      "4": 9357
+    },
+    "measuredN": {
+      "0": 47,
+      "1": 1,
+      "2": 156,
+      "3": 274,
+      "4": 63
+    }
+  },
+  "mexico_city_metro": {
+    "method": "group_scaled",
+    "provenance": "north_america baseline × 0.40 (country motorization 348/1000 vs north_america reference 868/1000)",
+    "baseline": {
+      "0": 24055,
+      "1": 12028,
+      "2": 6014,
+      "3": 3207,
+      "4": 1604
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "guadalajara_metro": {
+    "method": "group_scaled",
+    "provenance": "north_america baseline × 0.40 (country motorization 348/1000 vs north_america reference 868/1000)",
+    "baseline": {
+      "0": 24055,
+      "1": 12028,
+      "2": 6014,
+      "3": 3207,
+      "4": 1604
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "monterrey_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 0.40 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 60000,
+      "2": 35000,
+      "3": 3207,
+      "4": 1604
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 58,
+      "2": 53,
+      "3": 21,
+      "4": 0
+    }
+  },
+  "puebla_metro": {
+    "method": "group_scaled",
+    "provenance": "north_america baseline × 0.40 (country motorization 348/1000 vs north_america reference 868/1000)",
+    "baseline": {
+      "0": 24055,
+      "1": 12028,
+      "2": 6014,
+      "3": 3207,
+      "4": 1604
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "tijuana_metro": {
+    "method": "group_scaled",
+    "provenance": "north_america baseline × 0.40 (country motorization 348/1000 vs north_america reference 868/1000)",
+    "baseline": {
+      "0": 24055,
+      "1": 12028,
+      "2": 6014,
+      "3": 3207,
+      "4": 1604
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "toluca_metro": {
+    "method": "group_scaled",
+    "provenance": "north_america baseline × 0.40 (country motorization 348/1000 vs north_america reference 868/1000)",
+    "baseline": {
+      "0": 24055,
+      "1": 12028,
+      "2": 6014,
+      "3": 3207,
+      "4": 1604
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "leon_metro": {
+    "method": "group_scaled",
+    "provenance": "north_america baseline × 0.40 (country motorization 348/1000 vs north_america reference 868/1000)",
+    "baseline": {
+      "0": 24055,
+      "1": 12028,
+      "2": 6014,
+      "3": 3207,
+      "4": 1604
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "juarez_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 1 classes; 4 thin-sample classes filled from north_america × 0.40 motorization scalar",
+    "baseline": {
+      "0": 35000,
+      "1": 35000,
+      "2": 35000,
+      "3": 3207,
+      "4": 1604
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 6,
+      "2": 35,
+      "3": 4,
+      "4": 0
+    }
+  },
+  "queretaro_metro": {
+    "method": "group_scaled",
+    "provenance": "north_america baseline × 0.40 (country motorization 348/1000 vs north_america reference 868/1000)",
+    "baseline": {
+      "0": 24055,
+      "1": 12028,
+      "2": 6014,
+      "3": 3207,
+      "4": 1604
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "merida_metro": {
+    "method": "group_scaled",
+    "provenance": "north_america baseline × 0.40 (country motorization 348/1000 vs north_america reference 868/1000)",
+    "baseline": {
+      "0": 24055,
+      "1": 12028,
+      "2": 6014,
+      "3": 3207,
+      "4": 1604
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "london_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from europe × 0.92 motorization scalar",
+    "baseline": {
+      "0": 45948,
+      "1": 23461,
+      "2": 15104,
+      "3": 13476,
+      "4": 13476
+    },
+    "measuredN": {
+      "0": 36,
+      "1": 4710,
+      "2": 6137,
+      "3": 258,
+      "4": 428
+    }
+  },
+  "manchester_uk_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=117/1706/803/117/77 per class",
+    "baseline": {
+      "0": 43947,
+      "1": 23069,
+      "2": 13531,
+      "3": 13531,
+      "4": 13254
+    },
+    "measuredN": {
+      "0": 117,
+      "1": 1706,
+      "2": 803,
+      "3": 117,
+      "4": 77
+    }
+  },
+  "birmingham_uk_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from europe × 0.92 motorization scalar",
+    "baseline": {
+      "0": 45948,
+      "1": 25784,
+      "2": 17693,
+      "3": 13976,
+      "4": 13976
+    },
+    "measuredN": {
+      "0": 19,
+      "1": 618,
+      "2": 235,
+      "3": 148,
+      "4": 106
+    }
+  },
+  "glasgow_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from europe × 0.92 motorization scalar",
+    "baseline": {
+      "0": 45948,
+      "1": 16541,
+      "2": 15037,
+      "3": 14555,
+      "4": 14555
+    },
+    "measuredN": {
+      "0": 20,
+      "1": 0,
+      "2": 716,
+      "3": 39,
+      "4": 89
+    }
+  },
+  "edinburgh_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from europe × 0.92 motorization scalar",
+    "baseline": {
+      "0": 45948,
+      "1": 16541,
+      "2": 9707,
+      "3": 8295,
+      "4": 8295
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 32,
+      "2": 276,
+      "3": 16,
+      "4": 41
+    }
+  },
+  "leeds_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=124/463/252/59/167 per class",
+    "baseline": {
+      "0": 32761,
+      "1": 21010,
+      "2": 17012,
+      "3": 15430,
+      "4": 10007
+    },
+    "measuredN": {
+      "0": 124,
+      "1": 463,
+      "2": 252,
+      "3": 59,
+      "4": 167
+    }
+  },
+  "bristol_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from europe × 0.92 motorization scalar",
+    "baseline": {
+      "0": 45948,
+      "1": 20018,
+      "2": 20018,
+      "3": 20018,
+      "4": 4135
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 353,
+      "2": 282,
+      "3": 38,
+      "4": 26
+    }
+  },
+  "rochester_ny_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 30000,
+      "1": 30000,
+      "2": 9330,
+      "3": 5883,
+      "4": 5852
+    },
+    "measuredN": {
+      "0": 181,
+      "1": 44,
+      "2": 493,
+      "3": 224,
+      "4": 104
+    }
+  },
+  "buffalo_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=125/186/470/286/309 per class",
+    "baseline": {
+      "0": 11923,
+      "1": 11923,
+      "2": 8145,
+      "3": 7923,
+      "4": 5270
+    },
+    "measuredN": {
+      "0": 125,
+      "1": 186,
+      "2": 470,
+      "3": 286,
+      "4": 309
+    }
+  },
+  "syracuse_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 9488,
+      "2": 7014,
+      "3": 6353,
+      "4": 3869
+    },
+    "measuredN": {
+      "0": 14,
+      "1": 83,
+      "2": 529,
+      "3": 192,
+      "4": 167
+    }
+  },
+  "albany_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 9660,
+      "2": 7225,
+      "3": 5396,
+      "4": 4051
+    },
+    "measuredN": {
+      "0": 51,
+      "1": 92,
+      "2": 753,
+      "3": 147,
+      "4": 261
+    }
+  },
+  "toledo_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 13556,
+      "2": 13556,
+      "3": 10848,
+      "4": 5787
+    },
+    "measuredN": {
+      "0": 20,
+      "1": 68,
+      "2": 436,
+      "3": 267,
+      "4": 185
+    }
+  },
+  "akron_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 10683,
+      "3": 7930,
+      "4": 5994
+    },
+    "measuredN": {
+      "0": 56,
+      "1": 4,
+      "2": 315,
+      "3": 316,
+      "4": 124
+    }
+  },
+  "dayton_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 11889,
+      "3": 11437,
+      "4": 8188
+    },
+    "measuredN": {
+      "0": 26,
+      "1": 46,
+      "2": 540,
+      "3": 350,
+      "4": 118
+    }
+  },
+  "youngstown_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 9414,
+      "3": 8957,
+      "4": 4134
+    },
+    "measuredN": {
+      "0": 46,
+      "1": 42,
+      "2": 220,
+      "3": 191,
+      "4": 103
+    }
+  },
+  "grand_rapids_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 15165,
+      "3": 12068,
+      "4": 9258
+    },
+    "measuredN": {
+      "0": 21,
+      "1": 24,
+      "2": 327,
+      "3": 306,
+      "4": 79
+    }
+  },
+  "lansing_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 13877,
+      "3": 12986,
+      "4": 8088
+    },
+    "measuredN": {
+      "0": 14,
+      "1": 0,
+      "2": 152,
+      "3": 106,
+      "4": 109
+    }
+  },
+  "ann_arbor_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 13444,
+      "3": 13032,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 2,
+      "1": 27,
+      "2": 103,
+      "3": 258,
+      "4": 16
+    }
+  },
+  "flint_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 9920,
+      "3": 7258,
+      "4": 5461
+    },
+    "measuredN": {
+      "0": 50,
+      "1": 0,
+      "2": 72,
+      "3": 170,
+      "4": 75
+    }
+  },
+  "allentown_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 9487,
+      "2": 9313,
+      "3": 7641,
+      "4": 6381
+    },
+    "measuredN": {
+      "0": 87,
+      "1": 164,
+      "2": 415,
+      "3": 151,
+      "4": 90
+    }
+  },
+  "harrisburg_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 8801,
+      "3": 6555,
+      "4": 5685
+    },
+    "measuredN": {
+      "0": 47,
+      "1": 36,
+      "2": 391,
+      "3": 157,
+      "4": 33
+    }
+  },
+  "scranton_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 7756,
+      "3": 5788,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 47,
+      "1": 37,
+      "2": 210,
+      "3": 63,
+      "4": 22
+    }
+  },
+  "erie_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 6138,
+      "3": 4855,
+      "4": 3912
+    },
+    "measuredN": {
+      "0": 21,
+      "1": 39,
+      "2": 186,
+      "3": 95,
+      "4": 46
+    }
+  },
+  "worcester_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 15862,
+      "2": 13697,
+      "3": 9278,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 14,
+      "1": 154,
+      "2": 173,
+      "3": 160,
+      "4": 7
+    }
+  },
+  "springfield_ma_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 11936,
+      "3": 7884,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 14,
+      "1": 19,
+      "2": 230,
+      "3": 88,
+      "4": 6
+    }
+  },
+  "new_haven_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 19400,
+      "2": 12600,
+      "3": 7100,
+      "4": 4800
+    },
+    "measuredN": {
+      "0": 29,
+      "1": 119,
+      "2": 473,
+      "3": 456,
+      "4": 45
+    }
+  },
+  "bridgeport_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 14900,
+      "3": 9200,
+      "4": 4500
+    },
+    "measuredN": {
+      "0": 45,
+      "1": 42,
+      "2": 844,
+      "3": 768,
+      "4": 69
+    }
+  },
+  "fort_wayne_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 21075,
+      "2": 13248,
+      "3": 5786,
+      "4": 3060
+    },
+    "measuredN": {
+      "0": 9,
+      "1": 222,
+      "2": 253,
+      "3": 123,
+      "4": 37
+    }
+  },
+  "south_bend_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 12384,
+      "3": 12087,
+      "4": 7950
+    },
+    "measuredN": {
+      "0": 32,
+      "1": 34,
+      "2": 193,
+      "3": 140,
+      "4": 81
+    }
+  },
+  "evansville_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 19183,
+      "2": 13786,
+      "3": 7650,
+      "4": 7650
+    },
+    "measuredN": {
+      "0": 29,
+      "1": 65,
+      "2": 104,
+      "3": 97,
+      "4": 64
+    }
+  },
+  "madison_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 30000,
+      "1": 30000,
+      "2": 18500,
+      "3": 13200,
+      "4": 12500
+    },
+    "measuredN": {
+      "0": 117,
+      "1": 9,
+      "2": 413,
+      "3": 225,
+      "4": 157
+    }
+  },
+  "green_bay_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 12300,
+      "3": 12300,
+      "4": 12300
+    },
+    "measuredN": {
+      "0": 2,
+      "1": 0,
+      "2": 132,
+      "3": 161,
+      "4": 60
+    }
+  },
+  "springfield_il_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 9500,
+      "2": 9500,
+      "3": 7200,
+      "4": 5100
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 218,
+      "2": 483,
+      "3": 433,
+      "4": 295
+    }
+  },
+  "rockford_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 11700,
+      "3": 9050,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 10,
+      "1": 0,
+      "2": 322,
+      "3": 167,
+      "4": 29
+    }
+  },
+  "peoria_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 16400,
+      "2": 7800,
+      "3": 7800,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 12,
+      "1": 70,
+      "2": 145,
+      "3": 336,
+      "4": 8
+    }
+  },
+  "champaign_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 11300,
+      "3": 7550,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 139,
+      "3": 197,
+      "4": 18
+    }
+  },
+  "el_paso_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 23357,
+      "1": 23357,
+      "2": 12767,
+      "3": 12767,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 142,
+      "1": 79,
+      "2": 365,
+      "3": 866,
+      "4": 27
+    }
+  },
+  "corpus_christi_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 13264,
+      "3": 8540,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 72,
+      "1": 14,
+      "2": 122,
+      "3": 231,
+      "4": 9
+    }
+  },
+  "lubbock_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 21497,
+      "3": 11251,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 71,
+      "1": 46,
+      "2": 64,
+      "3": 191,
+      "4": 5
+    }
+  },
+  "mcallen_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 17184,
+      "3": 12744,
+      "4": 5747
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 8,
+      "2": 257,
+      "3": 423,
+      "4": 59
+    }
+  },
+  "bakersfield_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 69000,
+      "1": 30000,
+      "2": 5040,
+      "3": 4378,
+      "4": 4124
+    },
+    "measuredN": {
+      "0": 141,
+      "1": 26,
+      "2": 242,
+      "3": 425,
+      "4": 78
+    }
+  },
+  "stockton_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 107000,
+      "1": 30000,
+      "2": 11681,
+      "3": 9600,
+      "4": 9600
+    },
+    "measuredN": {
+      "0": 102,
+      "1": 3,
+      "2": 200,
+      "3": 307,
+      "4": 70
+    }
+  },
+  "modesto_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 14750,
+      "3": 4938,
+      "4": 4938
+    },
+    "measuredN": {
+      "0": 58,
+      "1": 2,
+      "2": 252,
+      "3": 223,
+      "4": 83
+    }
+  },
+  "oxnard_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 119000,
+      "1": 30000,
+      "2": 12408,
+      "3": 12408,
+      "4": 6632
+    },
+    "measuredN": {
+      "0": 371,
+      "1": 40,
+      "2": 277,
+      "3": 838,
+      "4": 113
+    }
+  },
+  "colorado_springs_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=139/315/435/346/37 per class",
+    "baseline": {
+      "0": 29000,
+      "1": 29000,
+      "2": 18000,
+      "3": 13000,
+      "4": 11000
+    },
+    "measuredN": {
+      "0": 139,
+      "1": 315,
+      "2": 435,
+      "3": 346,
+      "4": 37
+    }
+  },
+  "fort_collins_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 33000,
+      "2": 24000,
+      "3": 16000,
+      "4": 15000
+    },
+    "measuredN": {
+      "0": 20,
+      "1": 257,
+      "2": 208,
+      "3": 207,
+      "4": 32
+    }
+  },
+  "reno_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 30000,
+      "1": 30000,
+      "2": 13800,
+      "3": 10500,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 177,
+      "1": 0,
+      "2": 308,
+      "3": 322,
+      "4": 14
+    }
+  },
+  "spokane_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 17793,
+      "3": 8214,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 30,
+      "1": 4,
+      "2": 455,
+      "3": 76,
+      "4": 17
+    }
+  },
+  "tacoma_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 24231,
+      "3": 13631,
+      "4": 8950
+    },
+    "measuredN": {
+      "0": 74,
+      "1": 26,
+      "2": 514,
+      "3": 541,
+      "4": 100
+    }
+  },
+  "eugene_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 12600,
+      "3": 10400,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 57,
+      "1": 11,
+      "2": 182,
+      "3": 135,
+      "4": 14
+    }
+  },
+  "salem_or_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 21524,
+      "2": 14398,
+      "3": 11300,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 5,
+      "1": 57,
+      "2": 178,
+      "3": 56,
+      "4": 2
+    }
+  },
+  "provo_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 32096,
+      "2": 32096,
+      "3": 12576,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 74,
+      "1": 107,
+      "2": 226,
+      "3": 136,
+      "4": 25
+    }
+  },
+  "ogden_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 25627,
+      "3": 11237,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 33,
+      "1": 0,
+      "2": 144,
+      "3": 69,
+      "4": 29
+    }
+  },
+  "rochester_mn_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 12200,
+      "3": 7600,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 7,
+      "1": 0,
+      "2": 220,
+      "3": 98,
+      "4": 6
+    }
+  },
+  "duluth_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 15000,
+      "2": 15000,
+      "3": 7219,
+      "4": 3800
+    },
+    "measuredN": {
+      "0": 8,
+      "1": 63,
+      "2": 0,
+      "3": 51,
+      "4": 65
+    }
+  },
+  "fort_lauderdale_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=208/370/1945/874/194 per class",
+    "baseline": {
+      "0": 37500,
+      "1": 37500,
+      "2": 35000,
+      "3": 21500,
+      "4": 13700
+    },
+    "measuredN": {
+      "0": 208,
+      "1": 370,
+      "2": 1945,
+      "3": 874,
+      "4": 194
+    }
+  },
+  "west_palm_beach_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30500,
+      "2": 27500,
+      "3": 22000,
+      "4": 15000
+    },
+    "measuredN": {
+      "0": 8,
+      "1": 78,
+      "2": 796,
+      "3": 875,
+      "4": 255
+    }
+  },
+  "daytona_beach_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 21400,
+      "3": 15800,
+      "4": 7500
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 358,
+      "3": 120,
+      "4": 34
+    }
+  },
+  "lakeland_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 26500,
+      "3": 14800,
+      "4": 9500
+    },
+    "measuredN": {
+      "0": 33,
+      "1": 46,
+      "2": 322,
+      "3": 142,
+      "4": 93
+    }
+  },
+  "tallahassee_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 19800,
+      "2": 19800,
+      "3": 13700,
+      "4": 8900
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 62,
+      "2": 386,
+      "3": 190,
+      "4": 55
+    }
+  },
+  "fort_myers_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 34500,
+      "2": 34500,
+      "3": 22000,
+      "4": 9100
+    },
+    "measuredN": {
+      "0": 3,
+      "1": 109,
+      "2": 646,
+      "3": 117,
+      "4": 39
+    }
+  },
+  "roanoke_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 26000,
+      "2": 12000,
+      "3": 11000,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 23,
+      "1": 79,
+      "2": 294,
+      "3": 80,
+      "4": 4
+    }
+  },
+  "charlottesville_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 21000,
+      "2": 16000,
+      "3": 16000,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 115,
+      "2": 88,
+      "3": 56,
+      "4": 18
+    }
+  },
+  "springfield_mo_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 19594,
+      "3": 9740,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 53,
+      "1": 7,
+      "2": 316,
+      "3": 117,
+      "4": 17
+    }
+  },
+  "columbia_mo_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 14840,
+      "3": 11833,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 9,
+      "1": 0,
+      "2": 113,
+      "3": 36,
+      "4": 13
+    }
+  },
+  "cedar_rapids_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 14200,
+      "3": 9400,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 63,
+      "1": 26,
+      "2": 167,
+      "3": 76,
+      "4": 21
+    }
+  },
+  "greenville_metro": {
+    "method": "group",
+    "provenance": "north_america baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 60000,
+      "1": 30000,
+      "2": 15000,
+      "3": 8000,
+      "4": 4000
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "berlin_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from europe × 1.00 motorization scalar",
+    "baseline": {
+      "0": 50000,
+      "1": 18000,
+      "2": 16535,
+      "3": 8700,
+      "4": 4500
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 12,
+      "2": 189,
+      "3": 243,
+      "4": 6
+    }
+  },
+  "hamburg_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from europe × 1.00 motorization scalar",
+    "baseline": {
+      "0": 50000,
+      "1": 32901,
+      "2": 32901,
+      "3": 12600,
+      "4": 4500
+    },
+    "measuredN": {
+      "0": 12,
+      "1": 20,
+      "2": 514,
+      "3": 414,
+      "4": 28
+    }
+  },
+  "munich_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 1 classes; 4 thin-sample classes filled from europe × 1.00 motorization scalar",
+    "baseline": {
+      "0": 50000,
+      "1": 18000,
+      "2": 13796,
+      "3": 13796,
+      "4": 4500
+    },
+    "measuredN": {
+      "0": 3,
+      "1": 0,
+      "2": 24,
+      "3": 43,
+      "4": 8
+    }
+  },
+  "cologne_metro": {
+    "method": "group",
+    "provenance": "europe baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 50000,
+      "1": 18000,
+      "2": 8000,
+      "3": 6000,
+      "4": 4500
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "frankfurt_metro": {
+    "method": "group",
+    "provenance": "europe baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 50000,
+      "1": 18000,
+      "2": 8000,
+      "3": 6000,
+      "4": 4500
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "stuttgart_metro": {
+    "method": "group",
+    "provenance": "europe baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 50000,
+      "1": 18000,
+      "2": 8000,
+      "3": 6000,
+      "4": 4500
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "dusseldorf_metro": {
+    "method": "group",
+    "provenance": "europe baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 50000,
+      "1": 18000,
+      "2": 8000,
+      "3": 6000,
+      "4": 4500
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "leipzig_metro": {
+    "method": "group",
+    "provenance": "europe baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 50000,
+      "1": 18000,
+      "2": 8000,
+      "3": 6000,
+      "4": 4500
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "dortmund_metro": {
+    "method": "group",
+    "provenance": "europe baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 50000,
+      "1": 18000,
+      "2": 8000,
+      "3": 6000,
+      "4": 4500
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "bremen_metro": {
+    "method": "group",
+    "provenance": "europe baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 50000,
+      "1": 18000,
+      "2": 8000,
+      "3": 6000,
+      "4": 4500
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "hannover_metro": {
+    "method": "group",
+    "provenance": "europe baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 50000,
+      "1": 18000,
+      "2": 8000,
+      "3": 6000,
+      "4": 4500
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "paris_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from europe × 0.98 motorization scalar",
+    "baseline": {
+      "0": 49052,
+      "1": 29172,
+      "2": 6364,
+      "3": 5213,
+      "4": 4211
+    },
+    "measuredN": {
+      "0": 35,
+      "1": 372,
+      "2": 2119,
+      "3": 886,
+      "4": 45
+    }
+  },
+  "marseille_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.98 (country motorization 569/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 49052,
+      "1": 17659,
+      "2": 7848,
+      "3": 5886,
+      "4": 4415
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "lyon_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from europe × 0.98 motorization scalar",
+    "baseline": {
+      "0": 49052,
+      "1": 9535,
+      "2": 6592,
+      "3": 4697,
+      "4": 3820
+    },
+    "measuredN": {
+      "0": 6,
+      "1": 281,
+      "2": 1746,
+      "3": 813,
+      "4": 405
+    }
+  },
+  "toulouse_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from europe × 0.98 motorization scalar",
+    "baseline": {
+      "0": 49052,
+      "1": 17659,
+      "2": 6210,
+      "3": 4567,
+      "4": 3172
+    },
+    "measuredN": {
+      "0": 48,
+      "1": 3,
+      "2": 252,
+      "3": 113,
+      "4": 104
+    }
+  },
+  "nice_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.98 (country motorization 569/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 49052,
+      "1": 17659,
+      "2": 7848,
+      "3": 5886,
+      "4": 4415
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "nantes_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.98 (country motorization 569/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 49052,
+      "1": 17659,
+      "2": 7848,
+      "3": 5886,
+      "4": 4415
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "bordeaux_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from europe × 0.98 motorization scalar",
+    "baseline": {
+      "0": 49052,
+      "1": 17659,
+      "2": 8644,
+      "3": 5262,
+      "4": 3737
+    },
+    "measuredN": {
+      "0": 17,
+      "1": 0,
+      "2": 253,
+      "3": 474,
+      "4": 89
+    }
+  },
+  "strasbourg_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.98 (country motorization 569/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 49052,
+      "1": 17659,
+      "2": 7848,
+      "3": 5886,
+      "4": 4415
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "rome_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.14 (country motorization 663/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 57155,
+      "1": 20576,
+      "2": 9145,
+      "3": 6859,
+      "4": 5144
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "milan_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.14 (country motorization 663/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 57155,
+      "1": 20576,
+      "2": 9145,
+      "3": 6859,
+      "4": 5144
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "naples_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.14 (country motorization 663/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 57155,
+      "1": 20576,
+      "2": 9145,
+      "3": 6859,
+      "4": 5144
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "turin_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.14 (country motorization 663/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 57155,
+      "1": 20576,
+      "2": 9145,
+      "3": 6859,
+      "4": 5144
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "palermo_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.14 (country motorization 663/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 57155,
+      "1": 20576,
+      "2": 9145,
+      "3": 6859,
+      "4": 5144
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "bologna_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from europe × 1.14 motorization scalar",
+    "baseline": {
+      "0": 57155,
+      "1": 20576,
+      "2": 6943,
+      "3": 5928,
+      "4": 3470
+    },
+    "measuredN": {
+      "0": 14,
+      "1": 6,
+      "2": 545,
+      "3": 169,
+      "4": 162
+    }
+  },
+  "florence_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.14 (country motorization 663/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 57155,
+      "1": 20576,
+      "2": 9145,
+      "3": 6859,
+      "4": 5144
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "genoa_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.14 (country motorization 663/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 57155,
+      "1": 20576,
+      "2": 9145,
+      "3": 6859,
+      "4": 5144
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "madrid_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=767/375/2015/1519/1352 per class",
+    "baseline": {
+      "0": 14508,
+      "1": 14508,
+      "2": 9242,
+      "3": 5986,
+      "4": 4478
+    },
+    "measuredN": {
+      "0": 767,
+      "1": 375,
+      "2": 2015,
+      "3": 1519,
+      "4": 1352
+    }
+  },
+  "barcelona_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from europe × 1.02 motorization scalar",
+    "baseline": {
+      "0": 50948,
+      "1": 17231,
+      "2": 9154,
+      "3": 5099,
+      "4": 2908
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 435,
+      "2": 1168,
+      "3": 1359,
+      "4": 609
+    }
+  },
+  "valencia_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.02 (country motorization 591/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 50948,
+      "1": 18341,
+      "2": 8152,
+      "3": 6114,
+      "4": 4585
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "seville_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.02 (country motorization 591/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 50948,
+      "1": 18341,
+      "2": 8152,
+      "3": 6114,
+      "4": 4585
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "zaragoza_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.02 (country motorization 591/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 50948,
+      "1": 18341,
+      "2": 8152,
+      "3": 6114,
+      "4": 4585
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "malaga_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.02 (country motorization 591/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 50948,
+      "1": 18341,
+      "2": 8152,
+      "3": 6114,
+      "4": 4585
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "amsterdam_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.90 (country motorization 522/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 45000,
+      "1": 16200,
+      "2": 7200,
+      "3": 5400,
+      "4": 4050
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "rotterdam_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 1 classes; 4 thin-sample classes filled from europe × 0.90 motorization scalar",
+    "baseline": {
+      "0": 45000,
+      "1": 19842,
+      "2": 19842,
+      "3": 5400,
+      "4": 4050
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 90,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "the_hague_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.90 (country motorization 522/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 45000,
+      "1": 16200,
+      "2": 7200,
+      "3": 5400,
+      "4": 4050
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 1,
+      "2": 26,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "brussels_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.98 (country motorization 568/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 48966,
+      "1": 17628,
+      "2": 7834,
+      "3": 5876,
+      "4": 4407
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "antwerp_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.98 (country motorization 568/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 48966,
+      "1": 17628,
+      "2": 7834,
+      "3": 5876,
+      "4": 4407
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "zurich_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.93 (country motorization 538/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 46379,
+      "1": 16697,
+      "2": 7421,
+      "3": 5566,
+      "4": 4174
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "geneva_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from europe × 0.93 motorization scalar",
+    "baseline": {
+      "0": 46379,
+      "1": 16697,
+      "2": 6568,
+      "3": 6260,
+      "4": 3510
+    },
+    "measuredN": {
+      "0": 34,
+      "1": 0,
+      "2": 426,
+      "3": 439,
+      "4": 39
+    }
+  },
+  "vienna_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.98 (country motorization 569/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 49052,
+      "1": 17659,
+      "2": 7848,
+      "3": 5886,
+      "4": 4415
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "lisbon_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.88 (country motorization 511/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 44052,
+      "1": 15859,
+      "2": 7048,
+      "3": 5286,
+      "4": 3965
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "porto_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.88 (country motorization 511/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 44052,
+      "1": 15859,
+      "2": 7048,
+      "3": 5286,
+      "4": 3965
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "dublin_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.78 (country motorization 451/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 38879,
+      "1": 13997,
+      "2": 6221,
+      "3": 4666,
+      "4": 3499
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "warsaw_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.24 (country motorization 718/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 61897,
+      "1": 22283,
+      "2": 9903,
+      "3": 7428,
+      "4": 5571
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "krakow_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.24 (country motorization 718/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 61897,
+      "1": 22283,
+      "2": 9903,
+      "3": 7428,
+      "4": 5571
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "lodz_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.24 (country motorization 718/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 61897,
+      "1": 22283,
+      "2": 9903,
+      "3": 7428,
+      "4": 5571
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "prague_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.07 (country motorization 619/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 53362,
+      "1": 19210,
+      "2": 8538,
+      "3": 6403,
+      "4": 4803
+    },
+    "measuredN": {
+      "0": 8,
+      "1": 0,
+      "2": 0,
+      "3": 10,
+      "4": 0
+    }
+  },
+  "budapest_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.84 (country motorization 488/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 42069,
+      "1": 15145,
+      "2": 6731,
+      "3": 5048,
+      "4": 3786
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "bucharest_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.67 (country motorization 391/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 33707,
+      "1": 12134,
+      "2": 5393,
+      "3": 4045,
+      "4": 3034
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "stockholm_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.83 (country motorization 480/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 41379,
+      "1": 14897,
+      "2": 6621,
+      "3": 4966,
+      "4": 3724
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "oslo_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from europe × 0.90 motorization scalar",
+    "baseline": {
+      "0": 45172,
+      "1": 14991,
+      "2": 14991,
+      "3": 5421,
+      "4": 4066
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 69,
+      "2": 46,
+      "3": 19,
+      "4": 1
+    }
+  },
+  "copenhagen_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from europe × 0.81 motorization scalar",
+    "baseline": {
+      "0": 40690,
+      "1": 14648,
+      "2": 14000,
+      "3": 14000,
+      "4": 8400
+    },
+    "measuredN": {
+      "0": 26,
+      "1": 5,
+      "2": 185,
+      "3": 39,
+      "4": 760
+    }
+  },
+  "helsinki_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from europe × 1.13 motorization scalar",
+    "baseline": {
+      "0": 56379,
+      "1": 12858,
+      "2": 12858,
+      "3": 6237,
+      "4": 4260
+    },
+    "measuredN": {
+      "0": 44,
+      "1": 122,
+      "2": 853,
+      "3": 510,
+      "4": 66
+    }
+  },
+  "athens_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 1.18 (country motorization 686/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 59138,
+      "1": 21290,
+      "2": 9462,
+      "3": 7097,
+      "4": 5322
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "tokyo_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=1885/1823/3571/1922/117 per class",
+    "baseline": {
+      "0": 35801,
+      "1": 35801,
+      "2": 22535,
+      "3": 14314,
+      "4": 13649
+    },
+    "measuredN": {
+      "0": 1885,
+      "1": 1823,
+      "2": 3571,
+      "3": 1922,
+      "4": 117
+    }
+  },
+  "osaka_metro": {
+    "method": "direct",
+    "provenance": "direct calibration: n=1651/1693/2130/719/239 per class",
+    "baseline": {
+      "0": 28863,
+      "1": 28863,
+      "2": 21578,
+      "3": 15000,
+      "4": 15000
+    },
+    "measuredN": {
+      "0": 1651,
+      "1": 1693,
+      "2": 2130,
+      "3": 719,
+      "4": 239
+    }
+  },
+  "yokohama_metro": {
+    "method": "group",
+    "provenance": "east_asia baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 60000,
+      "1": 32000,
+      "2": 22000,
+      "3": 13500,
+      "4": 10000
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "nagoya_metro": {
+    "method": "group",
+    "provenance": "east_asia baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 60000,
+      "1": 32000,
+      "2": 22000,
+      "3": 13500,
+      "4": 10000
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "sapporo_metro": {
+    "method": "group",
+    "provenance": "east_asia baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 60000,
+      "1": 32000,
+      "2": 22000,
+      "3": 13500,
+      "4": 10000
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "fukuoka_metro": {
+    "method": "group",
+    "provenance": "east_asia baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 60000,
+      "1": 32000,
+      "2": 22000,
+      "3": 13500,
+      "4": 10000
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "seoul_metro": {
+    "method": "group_scaled",
+    "provenance": "east_asia baseline × 0.81 (country motorization 504/1000 vs east_asia reference 622/1000)",
+    "baseline": {
+      "0": 48617,
+      "1": 25929,
+      "2": 17826,
+      "3": 10939,
+      "4": 8103
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "busan_metro": {
+    "method": "group_scaled",
+    "provenance": "east_asia baseline × 0.81 (country motorization 504/1000 vs east_asia reference 622/1000)",
+    "baseline": {
+      "0": 48617,
+      "1": 25929,
+      "2": 17826,
+      "3": 10939,
+      "4": 8103
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "incheon_metro": {
+    "method": "group_scaled",
+    "provenance": "east_asia baseline × 0.81 (country motorization 504/1000 vs east_asia reference 622/1000)",
+    "baseline": {
+      "0": 48617,
+      "1": 25929,
+      "2": 17826,
+      "3": 10939,
+      "4": 8103
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "mumbai_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 0.67 (country motorization 67/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 30150,
+      "1": 16080,
+      "2": 9380,
+      "3": 5360,
+      "4": 3015
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "delhi_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 0.67 (country motorization 67/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 30150,
+      "1": 16080,
+      "2": 9380,
+      "3": 5360,
+      "4": 3015
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "bangalore_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 0.67 (country motorization 67/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 30150,
+      "1": 16080,
+      "2": 9380,
+      "3": 5360,
+      "4": 3015
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "hyderabad_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 0.67 (country motorization 67/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 30150,
+      "1": 16080,
+      "2": 9380,
+      "3": 5360,
+      "4": 3015
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "chennai_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 0.67 (country motorization 67/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 30150,
+      "1": 16080,
+      "2": 9380,
+      "3": 5360,
+      "4": 3015
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "kolkata_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 0.67 (country motorization 67/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 30150,
+      "1": 16080,
+      "2": 9380,
+      "3": 5360,
+      "4": 3015
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "pune_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 0.67 (country motorization 67/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 30150,
+      "1": 16080,
+      "2": 9380,
+      "3": 5360,
+      "4": 3015
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "ahmedabad_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 0.67 (country motorization 67/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 30150,
+      "1": 16080,
+      "2": 9380,
+      "3": 5360,
+      "4": 3015
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "hong_kong_metro": {
+    "method": "group_scaled",
+    "provenance": "east_asia baseline × 0.45 (country motorization 280/1000 vs east_asia reference 622/1000)",
+    "baseline": {
+      "0": 27010,
+      "1": 14405,
+      "2": 9904,
+      "3": 6077,
+      "4": 4502
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "singapore_metro": {
+    "method": "group_scaled",
+    "provenance": "east_asia baseline × 0.56 (country motorization 350/1000 vs east_asia reference 622/1000)",
+    "baseline": {
+      "0": 33762,
+      "1": 18006,
+      "2": 12379,
+      "3": 7596,
+      "4": 5627
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "taipei_metro": {
+    "method": "group_scaled",
+    "provenance": "east_asia baseline × 0.58 (country motorization 363/1000 vs east_asia reference 622/1000)",
+    "baseline": {
+      "0": 35016,
+      "1": 18675,
+      "2": 12839,
+      "3": 7879,
+      "4": 5836
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "kaohsiung_metro": {
+    "method": "group_scaled",
+    "provenance": "east_asia baseline × 0.58 (country motorization 363/1000 vs east_asia reference 622/1000)",
+    "baseline": {
+      "0": 35016,
+      "1": 18675,
+      "2": 12839,
+      "3": 7879,
+      "4": 5836
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "bangkok_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 1.60 (country motorization 285/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 72000,
+      "1": 38400,
+      "2": 22400,
+      "3": 12800,
+      "4": 7200
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "ho_chi_minh_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 0.50 (country motorization 50/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 22500,
+      "1": 12000,
+      "2": 7000,
+      "3": 4000,
+      "4": 2250
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "hanoi_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 0.50 (country motorization 50/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 22500,
+      "1": 12000,
+      "2": 7000,
+      "3": 4000,
+      "4": 2250
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "manila_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 0.86 (country motorization 86/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 38700,
+      "1": 20640,
+      "2": 12040,
+      "3": 6880,
+      "4": 3870
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "jakarta_metro": {
+    "method": "group",
+    "provenance": "south_se_asia baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 45000,
+      "1": 24000,
+      "2": 14000,
+      "3": 8000,
+      "4": 4500
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "surabaya_metro": {
+    "method": "group",
+    "provenance": "south_se_asia baseline (no measured signals, no motorization data)",
+    "baseline": {
+      "0": 45000,
+      "1": 24000,
+      "2": 14000,
+      "3": 8000,
+      "4": 4500
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "kuala_lumpur_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 1.60 (country motorization 542/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 72000,
+      "1": 38400,
+      "2": 22400,
+      "3": 12800,
+      "4": 7200
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "penang_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 1.60 (country motorization 542/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 72000,
+      "1": 38400,
+      "2": 22400,
+      "3": 12800,
+      "4": 7200
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "karachi_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 0.40 (country motorization 19/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 18000,
+      "1": 9600,
+      "2": 5600,
+      "3": 3200,
+      "4": 1800
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "tashkent_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 0.75 (country motorization 75/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 33750,
+      "1": 18000,
+      "2": 10500,
+      "3": 6000,
+      "4": 3375
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "dubai_metro": {
+    "method": "group_scaled",
+    "provenance": "gulf baseline × 1.35 (country motorization 540/1000 vs gulf reference 400/1000)",
+    "baseline": {
+      "0": 87750,
+      "1": 43200,
+      "2": 21600,
+      "3": 12150,
+      "4": 6750
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "abu_dhabi_metro": {
+    "method": "group_scaled",
+    "provenance": "gulf baseline × 1.35 (country motorization 540/1000 vs gulf reference 400/1000)",
+    "baseline": {
+      "0": 87750,
+      "1": 43200,
+      "2": 21600,
+      "3": 12150,
+      "4": 6750
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "riyadh_metro": {
+    "method": "group_scaled",
+    "provenance": "gulf baseline × 0.50 (country motorization 199/1000 vs gulf reference 400/1000)",
+    "baseline": {
+      "0": 32338,
+      "1": 15920,
+      "2": 7960,
+      "3": 4478,
+      "4": 2488
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "tel_aviv_metro": {
+    "method": "group_scaled",
+    "provenance": "gulf baseline × 0.97 (country motorization 388/1000 vs gulf reference 400/1000)",
+    "baseline": {
+      "0": 63050,
+      "1": 31040,
+      "2": 15520,
+      "3": 8730,
+      "4": 4850
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "istanbul_metro": {
+    "method": "group_scaled",
+    "provenance": "gulf baseline × 0.66 (country motorization 263/1000 vs gulf reference 400/1000)",
+    "baseline": {
+      "0": 42738,
+      "1": 21040,
+      "2": 10520,
+      "3": 5918,
+      "4": 3288
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "ankara_metro": {
+    "method": "group_scaled",
+    "provenance": "gulf baseline × 0.66 (country motorization 263/1000 vs gulf reference 400/1000)",
+    "baseline": {
+      "0": 42738,
+      "1": 21040,
+      "2": 10520,
+      "3": 5918,
+      "4": 3288
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "doha_metro": {
+    "method": "group_scaled",
+    "provenance": "gulf baseline × 1.41 (country motorization 562/1000 vs gulf reference 400/1000)",
+    "baseline": {
+      "0": 91325,
+      "1": 44960,
+      "2": 22480,
+      "3": 12645,
+      "4": 7025
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "amman_metro": {
+    "method": "group_scaled",
+    "provenance": "gulf baseline × 0.44 (country motorization 175/1000 vs gulf reference 400/1000)",
+    "baseline": {
+      "0": 28438,
+      "1": 14000,
+      "2": 7000,
+      "3": 3938,
+      "4": 2188
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "beirut_metro": {
+    "method": "group_scaled",
+    "provenance": "gulf baseline × 1.15 (country motorization 460/1000 vs gulf reference 400/1000)",
+    "baseline": {
+      "0": 74750,
+      "1": 36800,
+      "2": 18400,
+      "3": 10350,
+      "4": 5750
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "sao_paulo_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 1.57 (country motorization 393/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 78600,
+      "1": 40872,
+      "2": 20436,
+      "3": 12576,
+      "4": 7074
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "rio_de_janeiro_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 1.57 (country motorization 393/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 78600,
+      "1": 40872,
+      "2": 20436,
+      "3": 12576,
+      "4": 7074
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "brasilia_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 1.57 (country motorization 393/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 78600,
+      "1": 40872,
+      "2": 20436,
+      "3": 12576,
+      "4": 7074
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "salvador_br_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 1.57 (country motorization 393/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 78600,
+      "1": 40872,
+      "2": 20436,
+      "3": 12576,
+      "4": 7074
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "fortaleza_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 1.57 (country motorization 393/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 78600,
+      "1": 40872,
+      "2": 20436,
+      "3": 12576,
+      "4": 7074
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "belo_horizonte_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 1.57 (country motorization 393/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 78600,
+      "1": 40872,
+      "2": 20436,
+      "3": 12576,
+      "4": 7074
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "buenos_aires_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 1.52 (country motorization 379/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 75800,
+      "1": 39416,
+      "2": 19708,
+      "3": 12128,
+      "4": 6822
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "cordoba_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 1.52 (country motorization 379/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 75800,
+      "1": 39416,
+      "2": 19708,
+      "3": 12128,
+      "4": 6822
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "rosario_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 1.52 (country motorization 379/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 75800,
+      "1": 39416,
+      "2": 19708,
+      "3": 12128,
+      "4": 6822
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "santiago_cl_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 1.14 (country motorization 285/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 57000,
+      "1": 29640,
+      "2": 14820,
+      "3": 9120,
+      "4": 5130
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "bogota_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 0.40 (country motorization 78/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 20000,
+      "1": 10400,
+      "2": 5200,
+      "3": 3200,
+      "4": 1800
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "medellin_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 0.40 (country motorization 78/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 20000,
+      "1": 10400,
+      "2": 5200,
+      "3": 3200,
+      "4": 1800
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "lima_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 0.40 (country motorization 80/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 20000,
+      "1": 10400,
+      "2": 5200,
+      "3": 3200,
+      "4": 1800
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "montevideo_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 1.01 (country motorization 252/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 50400,
+      "1": 26208,
+      "2": 13104,
+      "3": 8064,
+      "4": 4536
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "quito_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 0.40 (country motorization 77/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 20000,
+      "1": 10400,
+      "2": 5200,
+      "3": 3200,
+      "4": 1800
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "johannesburg_metro": {
+    "method": "group_scaled",
+    "provenance": "africa baseline × 1.60 (country motorization 200/1000 vs africa reference 80/1000)",
+    "baseline": {
+      "0": 56000,
+      "1": 28800,
+      "2": 16000,
+      "3": 9600,
+      "4": 5600
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "cape_town_metro": {
+    "method": "group_scaled",
+    "provenance": "africa baseline × 1.60 (country motorization 200/1000 vs africa reference 80/1000)",
+    "baseline": {
+      "0": 56000,
+      "1": 28800,
+      "2": 16000,
+      "3": 9600,
+      "4": 5600
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "durban_metro": {
+    "method": "group_scaled",
+    "provenance": "africa baseline × 1.60 (country motorization 200/1000 vs africa reference 80/1000)",
+    "baseline": {
+      "0": 56000,
+      "1": 28800,
+      "2": 16000,
+      "3": 9600,
+      "4": 5600
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "cairo_metro": {
+    "method": "group_scaled",
+    "provenance": "africa baseline × 0.66 (country motorization 53/1000 vs africa reference 80/1000)",
+    "baseline": {
+      "0": 23188,
+      "1": 11925,
+      "2": 6625,
+      "3": 3975,
+      "4": 2319
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "lagos_metro": {
+    "method": "group_scaled",
+    "provenance": "africa baseline × 0.88 (country motorization 70/1000 vs africa reference 80/1000)",
+    "baseline": {
+      "0": 30625,
+      "1": 15750,
+      "2": 8750,
+      "3": 5250,
+      "4": 3063
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "nairobi_metro": {
+    "method": "group_scaled",
+    "provenance": "africa baseline × 0.40 (country motorization 27/1000 vs africa reference 80/1000)",
+    "baseline": {
+      "0": 14000,
+      "1": 7200,
+      "2": 4000,
+      "3": 2400,
+      "4": 1400
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "casablanca_metro": {
+    "method": "group_scaled",
+    "provenance": "africa baseline × 1.13 (country motorization 90/1000 vs africa reference 80/1000)",
+    "baseline": {
+      "0": 39375,
+      "1": 20250,
+      "2": 11250,
+      "3": 6750,
+      "4": 3938
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "accra_metro": {
+    "method": "group_scaled",
+    "provenance": "africa baseline × 0.81 (country motorization 65/1000 vs africa reference 80/1000)",
+    "baseline": {
+      "0": 28438,
+      "1": 14625,
+      "2": 8125,
+      "3": 4875,
+      "4": 2844
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "sydney_metro": {
+    "method": "group_scaled",
+    "provenance": "oceania baseline × 0.96 (country motorization 769/1000 vs oceania reference 800/1000)",
+    "baseline": {
+      "0": 52869,
+      "1": 26915,
+      "2": 11535,
+      "3": 6729,
+      "4": 3845
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "melbourne_metro": {
+    "method": "group_scaled",
+    "provenance": "oceania baseline × 0.96 (country motorization 769/1000 vs oceania reference 800/1000)",
+    "baseline": {
+      "0": 52869,
+      "1": 26915,
+      "2": 11535,
+      "3": 6729,
+      "4": 3845
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "brisbane_metro": {
+    "method": "group_scaled",
+    "provenance": "oceania baseline × 0.96 (country motorization 769/1000 vs oceania reference 800/1000)",
+    "baseline": {
+      "0": 52869,
+      "1": 26915,
+      "2": 11535,
+      "3": 6729,
+      "4": 3845
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "perth_metro": {
+    "method": "group_scaled",
+    "provenance": "oceania baseline × 0.96 (country motorization 769/1000 vs oceania reference 800/1000)",
+    "baseline": {
+      "0": 52869,
+      "1": 26915,
+      "2": 11535,
+      "3": 6729,
+      "4": 3845
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "adelaide_metro": {
+    "method": "group_scaled",
+    "provenance": "oceania baseline × 0.96 (country motorization 769/1000 vs oceania reference 800/1000)",
+    "baseline": {
+      "0": 52869,
+      "1": 26915,
+      "2": 11535,
+      "3": 6729,
+      "4": 3845
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "auckland_metro": {
+    "method": "group_scaled",
+    "provenance": "oceania baseline × 1.10 (country motorization 877/1000 vs oceania reference 800/1000)",
+    "baseline": {
+      "0": 60294,
+      "1": 30695,
+      "2": 13155,
+      "3": 7674,
+      "4": 4385
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "wellington_metro": {
+    "method": "group_scaled",
+    "provenance": "oceania baseline × 1.10 (country motorization 877/1000 vs oceania reference 800/1000)",
+    "baseline": {
+      "0": 60294,
+      "1": 30695,
+      "2": 13155,
+      "3": 7674,
+      "4": 4385
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "kyiv_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.40 (country motorization 215/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 20000,
+      "1": 7200,
+      "2": 3200,
+      "3": 2400,
+      "4": 1800
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "panama_city_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 0.72 (country motorization 180/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 36000,
+      "1": 18720,
+      "2": 9360,
+      "3": 5760,
+      "4": 3240
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "san_jose_cr_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 1.24 (country motorization 311/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 62200,
+      "1": 32344,
+      "2": 16172,
+      "3": 9952,
+      "4": 5598
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "havana_metro": {
+    "method": "group_scaled",
+    "provenance": "latin_america baseline × 0.40 (country motorization 47/1000 vs latin_america reference 250/1000)",
+    "baseline": {
+      "0": 20000,
+      "1": 10400,
+      "2": 5200,
+      "3": 3200,
+      "4": 1800
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "dhaka_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 0.40 (country motorization 5/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 18000,
+      "1": 9600,
+      "2": 5600,
+      "3": 3200,
+      "4": 1800
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "addis_ababa_metro": {
+    "method": "group_scaled",
+    "provenance": "africa baseline × 0.40 (country motorization 6/1000 vs africa reference 80/1000)",
+    "baseline": {
+      "0": 14000,
+      "1": 7200,
+      "2": 4000,
+      "3": 2400,
+      "4": 1400
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "dar_es_salaam_metro": {
+    "method": "group_scaled",
+    "provenance": "africa baseline × 0.40 (country motorization 9/1000 vs africa reference 80/1000)",
+    "baseline": {
+      "0": 14000,
+      "1": 7200,
+      "2": 4000,
+      "3": 2400,
+      "4": 1400
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "almaty_metro": {
+    "method": "group_scaled",
+    "provenance": "south_se_asia baseline × 1.60 (country motorization 230/1000 vs south_se_asia reference 100/1000)",
+    "baseline": {
+      "0": 72000,
+      "1": 38400,
+      "2": 22400,
+      "3": 12800,
+      "4": 7200
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "kuwait_city_metro": {
+    "method": "group_scaled",
+    "provenance": "gulf baseline × 1.34 (country motorization 537/1000 vs gulf reference 400/1000)",
+    "baseline": {
+      "0": 87263,
+      "1": 42960,
+      "2": 21480,
+      "3": 12083,
+      "4": 6713
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "muscat_metro": {
+    "method": "group_scaled",
+    "provenance": "gulf baseline × 0.77 (country motorization 308/1000 vs gulf reference 400/1000)",
+    "baseline": {
+      "0": 50050,
+      "1": 24640,
+      "2": 12320,
+      "3": 6930,
+      "4": 3850
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "tunis_metro": {
+    "method": "group_scaled",
+    "provenance": "africa baseline × 1.60 (country motorization 162/1000 vs africa reference 80/1000)",
+    "baseline": {
+      "0": 56000,
+      "1": 28800,
+      "2": 16000,
+      "3": 9600,
+      "4": 5600
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "dakar_metro": {
+    "method": "group_scaled",
+    "provenance": "africa baseline × 0.40 (country motorization 19/1000 vs africa reference 80/1000)",
+    "baseline": {
+      "0": 14000,
+      "1": 7200,
+      "2": 4000,
+      "3": 2400,
+      "4": 1400
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "belgrade_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.63 (country motorization 366/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 31552,
+      "1": 11359,
+      "2": 5048,
+      "3": 3786,
+      "4": 2840
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "sofia_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.82 (country motorization 477/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 41121,
+      "1": 14803,
+      "2": 6579,
+      "3": 4934,
+      "4": 3701
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "zagreb_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.83 (country motorization 480/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 41379,
+      "1": 14897,
+      "2": 6621,
+      "3": 4966,
+      "4": 3724
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  },
+  "vilnius_metro": {
+    "method": "group_scaled",
+    "provenance": "europe baseline × 0.91 (country motorization 530/1000 vs europe reference 580/1000)",
+    "baseline": {
+      "0": 45690,
+      "1": 16448,
+      "2": 7310,
+      "3": 5483,
+      "4": 4112
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    }
+  }
+}

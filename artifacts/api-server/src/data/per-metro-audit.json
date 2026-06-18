@@ -1,0 +1,4119 @@
+[
+  {
+    "code": "mexico_city_metro",
+    "slug": "mexico-city",
+    "country": "MX",
+    "dataSourceId": "sict",
+    "total": 4716,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 4716,
+    "sourceCounts": {
+      "synthetic_osm_class": 4716
+    }
+  },
+  {
+    "code": "guadalajara_metro",
+    "slug": "guadalajara",
+    "country": "MX",
+    "dataSourceId": "sict",
+    "total": 1381,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1381,
+    "sourceCounts": {
+      "synthetic_osm_class": 1381
+    }
+  },
+  {
+    "code": "puebla_metro",
+    "slug": "puebla",
+    "country": "MX",
+    "dataSourceId": "sict",
+    "total": 441,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 441,
+    "sourceCounts": {
+      "synthetic_osm_class": 441
+    }
+  },
+  {
+    "code": "tijuana_metro",
+    "slug": "tijuana",
+    "country": "MX",
+    "dataSourceId": "sict",
+    "total": 406,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 406,
+    "sourceCounts": {
+      "synthetic_osm_class": 406
+    }
+  },
+  {
+    "code": "toluca_metro",
+    "slug": "toluca",
+    "country": "MX",
+    "dataSourceId": "sict",
+    "total": 320,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 320,
+    "sourceCounts": {
+      "synthetic_osm_class": 320
+    }
+  },
+  {
+    "code": "leon_metro",
+    "slug": "leon",
+    "country": "MX",
+    "dataSourceId": "sict",
+    "total": 446,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 446,
+    "sourceCounts": {
+      "synthetic_osm_class": 446
+    }
+  },
+  {
+    "code": "queretaro_metro",
+    "slug": "queretaro",
+    "country": "MX",
+    "dataSourceId": "sict",
+    "total": 559,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 559,
+    "sourceCounts": {
+      "synthetic_osm_class": 559
+    }
+  },
+  {
+    "code": "merida_metro",
+    "slug": "merida",
+    "country": "MX",
+    "dataSourceId": "sict",
+    "total": 174,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 174,
+    "sourceCounts": {
+      "synthetic_osm_class": 174
+    }
+  },
+  {
+    "code": "cologne_metro",
+    "slug": "cologne",
+    "country": "DE",
+    "dataSourceId": "osm_only",
+    "total": 4773,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 4773,
+    "sourceCounts": {
+      "synthetic_osm_class": 4773
+    }
+  },
+  {
+    "code": "frankfurt_metro",
+    "slug": "frankfurt",
+    "country": "DE",
+    "dataSourceId": "osm_only",
+    "total": 3334,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 3334,
+    "sourceCounts": {
+      "synthetic_osm_class": 3334
+    }
+  },
+  {
+    "code": "stuttgart_metro",
+    "slug": "stuttgart",
+    "country": "DE",
+    "dataSourceId": "osm_only",
+    "total": 2231,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2231,
+    "sourceCounts": {
+      "synthetic_osm_class": 2231
+    }
+  },
+  {
+    "code": "dusseldorf_metro",
+    "slug": "dusseldorf",
+    "country": "DE",
+    "dataSourceId": "osm_only",
+    "total": 2998,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2998,
+    "sourceCounts": {
+      "synthetic_osm_class": 2998
+    }
+  },
+  {
+    "code": "leipzig_metro",
+    "slug": "leipzig",
+    "country": "DE",
+    "dataSourceId": "osm_only",
+    "total": 1261,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1261,
+    "sourceCounts": {
+      "synthetic_osm_class": 1261
+    }
+  },
+  {
+    "code": "dortmund_metro",
+    "slug": "dortmund",
+    "country": "DE",
+    "dataSourceId": "osm_only",
+    "total": 1874,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1874,
+    "sourceCounts": {
+      "synthetic_osm_class": 1874
+    }
+  },
+  {
+    "code": "bremen_metro",
+    "slug": "bremen",
+    "country": "DE",
+    "dataSourceId": "osm_only",
+    "total": 1287,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1287,
+    "sourceCounts": {
+      "synthetic_osm_class": 1287
+    }
+  },
+  {
+    "code": "hannover_metro",
+    "slug": "hannover",
+    "country": "DE",
+    "dataSourceId": "osm_only",
+    "total": 1858,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1858,
+    "sourceCounts": {
+      "synthetic_osm_class": 1858
+    }
+  },
+  {
+    "code": "marseille_metro",
+    "slug": "marseille",
+    "country": "FR",
+    "dataSourceId": "osm_only",
+    "total": 2195,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2195,
+    "sourceCounts": {
+      "synthetic_osm_class": 2195
+    }
+  },
+  {
+    "code": "nice_metro",
+    "slug": "nice",
+    "country": "FR",
+    "dataSourceId": "osm_only",
+    "total": 1361,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1361,
+    "sourceCounts": {
+      "synthetic_osm_class": 1361
+    }
+  },
+  {
+    "code": "nantes_metro",
+    "slug": "nantes",
+    "country": "FR",
+    "dataSourceId": "osm_only",
+    "total": 690,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 690,
+    "sourceCounts": {
+      "synthetic_osm_class": 690
+    }
+  },
+  {
+    "code": "strasbourg_metro",
+    "slug": "strasbourg",
+    "country": "FR",
+    "dataSourceId": "osm_only",
+    "total": 1061,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1061,
+    "sourceCounts": {
+      "synthetic_osm_class": 1061
+    }
+  },
+  {
+    "code": "rome_metro",
+    "slug": "rome",
+    "country": "IT",
+    "dataSourceId": "osm_only",
+    "total": 2105,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2105,
+    "sourceCounts": {
+      "synthetic_osm_class": 2105
+    }
+  },
+  {
+    "code": "milan_metro",
+    "slug": "milan",
+    "country": "IT",
+    "dataSourceId": "osm_only",
+    "total": 3329,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 3329,
+    "sourceCounts": {
+      "synthetic_osm_class": 3329
+    }
+  },
+  {
+    "code": "naples_metro",
+    "slug": "naples",
+    "country": "IT",
+    "dataSourceId": "osm_only",
+    "total": 232,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 232,
+    "sourceCounts": {
+      "synthetic_osm_class": 232
+    }
+  },
+  {
+    "code": "turin_metro",
+    "slug": "turin",
+    "country": "IT",
+    "dataSourceId": "osm_only",
+    "total": 3680,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 3680,
+    "sourceCounts": {
+      "synthetic_osm_class": 3680
+    }
+  },
+  {
+    "code": "palermo_metro",
+    "slug": "palermo",
+    "country": "IT",
+    "dataSourceId": "osm_only",
+    "total": 270,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 270,
+    "sourceCounts": {
+      "synthetic_osm_class": 270
+    }
+  },
+  {
+    "code": "florence_metro",
+    "slug": "florence",
+    "country": "IT",
+    "dataSourceId": "osm_only",
+    "total": 1172,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1172,
+    "sourceCounts": {
+      "synthetic_osm_class": 1172
+    }
+  },
+  {
+    "code": "genoa_metro",
+    "slug": "genoa",
+    "country": "IT",
+    "dataSourceId": "osm_only",
+    "total": 510,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 510,
+    "sourceCounts": {
+      "synthetic_osm_class": 510
+    }
+  },
+  {
+    "code": "valencia_metro",
+    "slug": "valencia",
+    "country": "ES",
+    "dataSourceId": "osm_only",
+    "total": 1229,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1229,
+    "sourceCounts": {
+      "synthetic_osm_class": 1229
+    }
+  },
+  {
+    "code": "seville_metro",
+    "slug": "seville",
+    "country": "ES",
+    "dataSourceId": "osm_only",
+    "total": 1264,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1264,
+    "sourceCounts": {
+      "synthetic_osm_class": 1264
+    }
+  },
+  {
+    "code": "zaragoza_metro",
+    "slug": "zaragoza",
+    "country": "ES",
+    "dataSourceId": "osm_only",
+    "total": 1198,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1198,
+    "sourceCounts": {
+      "synthetic_osm_class": 1198
+    }
+  },
+  {
+    "code": "malaga_metro",
+    "slug": "malaga",
+    "country": "ES",
+    "dataSourceId": "osm_only",
+    "total": 788,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 788,
+    "sourceCounts": {
+      "synthetic_osm_class": 788
+    }
+  },
+  {
+    "code": "amsterdam_metro",
+    "slug": "amsterdam",
+    "country": "NL",
+    "dataSourceId": "osm_only",
+    "total": 3290,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 3290,
+    "sourceCounts": {
+      "synthetic_osm_class": 3290
+    }
+  },
+  {
+    "code": "brussels_metro",
+    "slug": "brussels",
+    "country": "BE",
+    "dataSourceId": "osm_only",
+    "total": 3686,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 3686,
+    "sourceCounts": {
+      "synthetic_osm_class": 3686
+    }
+  },
+  {
+    "code": "antwerp_metro",
+    "slug": "antwerp",
+    "country": "BE",
+    "dataSourceId": "osm_only",
+    "total": 1519,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1519,
+    "sourceCounts": {
+      "synthetic_osm_class": 1519
+    }
+  },
+  {
+    "code": "zurich_metro",
+    "slug": "zurich",
+    "country": "CH",
+    "dataSourceId": "osm_only",
+    "total": 1652,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1652,
+    "sourceCounts": {
+      "synthetic_osm_class": 1652
+    }
+  },
+  {
+    "code": "vienna_metro",
+    "slug": "vienna",
+    "country": "AT",
+    "dataSourceId": "osm_only",
+    "total": 5117,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 5117,
+    "sourceCounts": {
+      "synthetic_osm_class": 5117
+    }
+  },
+  {
+    "code": "lisbon_metro",
+    "slug": "lisbon",
+    "country": "PT",
+    "dataSourceId": "osm_only",
+    "total": 2564,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2564,
+    "sourceCounts": {
+      "synthetic_osm_class": 2564
+    }
+  },
+  {
+    "code": "porto_metro",
+    "slug": "porto",
+    "country": "PT",
+    "dataSourceId": "osm_only",
+    "total": 1341,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1341,
+    "sourceCounts": {
+      "synthetic_osm_class": 1341
+    }
+  },
+  {
+    "code": "dublin_metro",
+    "slug": "dublin",
+    "country": "IE",
+    "dataSourceId": "osm_only",
+    "total": 3086,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 3086,
+    "sourceCounts": {
+      "synthetic_osm_class": 3086
+    }
+  },
+  {
+    "code": "warsaw_metro",
+    "slug": "warsaw",
+    "country": "PL",
+    "dataSourceId": "osm_only",
+    "total": 3427,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 3427,
+    "sourceCounts": {
+      "synthetic_osm_class": 3427
+    }
+  },
+  {
+    "code": "krakow_metro",
+    "slug": "krakow",
+    "country": "PL",
+    "dataSourceId": "osm_only",
+    "total": 856,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 856,
+    "sourceCounts": {
+      "synthetic_osm_class": 856
+    }
+  },
+  {
+    "code": "lodz_metro",
+    "slug": "lodz",
+    "country": "PL",
+    "dataSourceId": "osm_only",
+    "total": 937,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 937,
+    "sourceCounts": {
+      "synthetic_osm_class": 937
+    }
+  },
+  {
+    "code": "budapest_metro",
+    "slug": "budapest",
+    "country": "HU",
+    "dataSourceId": "osm_only",
+    "total": 2774,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2774,
+    "sourceCounts": {
+      "synthetic_osm_class": 2774
+    }
+  },
+  {
+    "code": "bucharest_metro",
+    "slug": "bucharest",
+    "country": "RO",
+    "dataSourceId": "osm_only",
+    "total": 1385,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1385,
+    "sourceCounts": {
+      "synthetic_osm_class": 1385
+    }
+  },
+  {
+    "code": "stockholm_metro",
+    "slug": "stockholm",
+    "country": "SE",
+    "dataSourceId": "osm_only",
+    "total": 1734,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1734,
+    "sourceCounts": {
+      "synthetic_osm_class": 1734
+    }
+  },
+  {
+    "code": "athens_metro",
+    "slug": "athens",
+    "country": "GR",
+    "dataSourceId": "osm_only",
+    "total": 3226,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 3226,
+    "sourceCounts": {
+      "synthetic_osm_class": 3226
+    }
+  },
+  {
+    "code": "yokohama_metro",
+    "slug": "yokohama",
+    "country": "JP",
+    "dataSourceId": "osm_only",
+    "total": 4081,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 4081,
+    "sourceCounts": {
+      "synthetic_osm_class": 4081
+    }
+  },
+  {
+    "code": "nagoya_metro",
+    "slug": "nagoya",
+    "country": "JP",
+    "dataSourceId": "osm_only",
+    "total": 4022,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 4022,
+    "sourceCounts": {
+      "synthetic_osm_class": 4022
+    }
+  },
+  {
+    "code": "sapporo_metro",
+    "slug": "sapporo",
+    "country": "JP",
+    "dataSourceId": "osm_only",
+    "total": 2905,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2905,
+    "sourceCounts": {
+      "synthetic_osm_class": 2905
+    }
+  },
+  {
+    "code": "fukuoka_metro",
+    "slug": "fukuoka",
+    "country": "JP",
+    "dataSourceId": "osm_only",
+    "total": 1676,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1676,
+    "sourceCounts": {
+      "synthetic_osm_class": 1676
+    }
+  },
+  {
+    "code": "seoul_metro",
+    "slug": "seoul",
+    "country": "KR",
+    "dataSourceId": "osm_only",
+    "total": 2791,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2791,
+    "sourceCounts": {
+      "synthetic_osm_class": 2791
+    }
+  },
+  {
+    "code": "busan_metro",
+    "slug": "busan",
+    "country": "KR",
+    "dataSourceId": "osm_only",
+    "total": 535,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 535,
+    "sourceCounts": {
+      "synthetic_osm_class": 535
+    }
+  },
+  {
+    "code": "incheon_metro",
+    "slug": "incheon",
+    "country": "KR",
+    "dataSourceId": "osm_only",
+    "total": 295,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 295,
+    "sourceCounts": {
+      "synthetic_osm_class": 295
+    }
+  },
+  {
+    "code": "mumbai_metro",
+    "slug": "mumbai",
+    "country": "IN",
+    "dataSourceId": "osm_only",
+    "total": 1906,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1906,
+    "sourceCounts": {
+      "synthetic_osm_class": 1906
+    }
+  },
+  {
+    "code": "delhi_metro",
+    "slug": "delhi",
+    "country": "IN",
+    "dataSourceId": "osm_only",
+    "total": 1236,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1236,
+    "sourceCounts": {
+      "synthetic_osm_class": 1236
+    }
+  },
+  {
+    "code": "bangalore_metro",
+    "slug": "bangalore",
+    "country": "IN",
+    "dataSourceId": "osm_only",
+    "total": 1365,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1365,
+    "sourceCounts": {
+      "synthetic_osm_class": 1365
+    }
+  },
+  {
+    "code": "hyderabad_metro",
+    "slug": "hyderabad",
+    "country": "IN",
+    "dataSourceId": "osm_only",
+    "total": 252,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 252,
+    "sourceCounts": {
+      "synthetic_osm_class": 252
+    }
+  },
+  {
+    "code": "chennai_metro",
+    "slug": "chennai",
+    "country": "IN",
+    "dataSourceId": "osm_only",
+    "total": 433,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 433,
+    "sourceCounts": {
+      "synthetic_osm_class": 433
+    }
+  },
+  {
+    "code": "kolkata_metro",
+    "slug": "kolkata",
+    "country": "IN",
+    "dataSourceId": "osm_only",
+    "total": 61,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 61,
+    "sourceCounts": {
+      "synthetic_osm_class": 61
+    }
+  },
+  {
+    "code": "pune_metro",
+    "slug": "pune",
+    "country": "IN",
+    "dataSourceId": "osm_only",
+    "total": 505,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 505,
+    "sourceCounts": {
+      "synthetic_osm_class": 505
+    }
+  },
+  {
+    "code": "ahmedabad_metro",
+    "slug": "ahmedabad",
+    "country": "IN",
+    "dataSourceId": "osm_only",
+    "total": 63,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 63,
+    "sourceCounts": {
+      "synthetic_osm_class": 63
+    }
+  },
+  {
+    "code": "hong_kong_metro",
+    "slug": "hong-kong",
+    "country": "HK",
+    "dataSourceId": "osm_only",
+    "total": 4234,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 4234,
+    "sourceCounts": {
+      "synthetic_osm_class": 4234
+    }
+  },
+  {
+    "code": "singapore_metro",
+    "slug": "singapore",
+    "country": "SG",
+    "dataSourceId": "osm_only",
+    "total": 5043,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 5043,
+    "sourceCounts": {
+      "synthetic_osm_class": 5043
+    }
+  },
+  {
+    "code": "taipei_metro",
+    "slug": "taipei",
+    "country": "TW",
+    "dataSourceId": "osm_only",
+    "total": 7409,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 7409,
+    "sourceCounts": {
+      "synthetic_osm_class": 7409
+    }
+  },
+  {
+    "code": "kaohsiung_metro",
+    "slug": "kaohsiung",
+    "country": "TW",
+    "dataSourceId": "osm_only",
+    "total": 6923,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 6923,
+    "sourceCounts": {
+      "synthetic_osm_class": 6923
+    }
+  },
+  {
+    "code": "bangkok_metro",
+    "slug": "bangkok",
+    "country": "TH",
+    "dataSourceId": "osm_only",
+    "total": 763,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 763,
+    "sourceCounts": {
+      "synthetic_osm_class": 763
+    }
+  },
+  {
+    "code": "ho_chi_minh_metro",
+    "slug": "ho-chi-minh",
+    "country": "VN",
+    "dataSourceId": "osm_only",
+    "total": 2388,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2388,
+    "sourceCounts": {
+      "synthetic_osm_class": 2388
+    }
+  },
+  {
+    "code": "hanoi_metro",
+    "slug": "hanoi",
+    "country": "VN",
+    "dataSourceId": "osm_only",
+    "total": 1160,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1160,
+    "sourceCounts": {
+      "synthetic_osm_class": 1160
+    }
+  },
+  {
+    "code": "manila_metro",
+    "slug": "manila",
+    "country": "PH",
+    "dataSourceId": "osm_only",
+    "total": 1567,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1567,
+    "sourceCounts": {
+      "synthetic_osm_class": 1567
+    }
+  },
+  {
+    "code": "jakarta_metro",
+    "slug": "jakarta",
+    "country": "ID",
+    "dataSourceId": "osm_only",
+    "total": 650,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 650,
+    "sourceCounts": {
+      "synthetic_osm_class": 650
+    }
+  },
+  {
+    "code": "surabaya_metro",
+    "slug": "surabaya",
+    "country": "ID",
+    "dataSourceId": "osm_only",
+    "total": 533,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 533,
+    "sourceCounts": {
+      "synthetic_osm_class": 533
+    }
+  },
+  {
+    "code": "kuala_lumpur_metro",
+    "slug": "kuala-lumpur",
+    "country": "MY",
+    "dataSourceId": "osm_only",
+    "total": 2392,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2392,
+    "sourceCounts": {
+      "synthetic_osm_class": 2392
+    }
+  },
+  {
+    "code": "penang_metro",
+    "slug": "penang",
+    "country": "MY",
+    "dataSourceId": "osm_only",
+    "total": 628,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 628,
+    "sourceCounts": {
+      "synthetic_osm_class": 628
+    }
+  },
+  {
+    "code": "karachi_metro",
+    "slug": "karachi",
+    "country": "PK",
+    "dataSourceId": "osm_only",
+    "total": 205,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 205,
+    "sourceCounts": {
+      "synthetic_osm_class": 205
+    }
+  },
+  {
+    "code": "tashkent_metro",
+    "slug": "tashkent",
+    "country": "UZ",
+    "dataSourceId": "osm_only",
+    "total": 1692,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1692,
+    "sourceCounts": {
+      "synthetic_osm_class": 1692
+    }
+  },
+  {
+    "code": "dubai_metro",
+    "slug": "dubai",
+    "country": "AE",
+    "dataSourceId": "osm_only",
+    "total": 2128,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2128,
+    "sourceCounts": {
+      "synthetic_osm_class": 2128
+    }
+  },
+  {
+    "code": "abu_dhabi_metro",
+    "slug": "abu-dhabi",
+    "country": "AE",
+    "dataSourceId": "osm_only",
+    "total": 936,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 936,
+    "sourceCounts": {
+      "synthetic_osm_class": 936
+    }
+  },
+  {
+    "code": "riyadh_metro",
+    "slug": "riyadh",
+    "country": "SA",
+    "dataSourceId": "osm_only",
+    "total": 525,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 525,
+    "sourceCounts": {
+      "synthetic_osm_class": 525
+    }
+  },
+  {
+    "code": "tel_aviv_metro",
+    "slug": "tel-aviv",
+    "country": "IL",
+    "dataSourceId": "osm_only",
+    "total": 2350,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2350,
+    "sourceCounts": {
+      "synthetic_osm_class": 2350
+    }
+  },
+  {
+    "code": "istanbul_metro",
+    "slug": "istanbul",
+    "country": "TR",
+    "dataSourceId": "osm_only",
+    "total": 2923,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2923,
+    "sourceCounts": {
+      "synthetic_osm_class": 2923
+    }
+  },
+  {
+    "code": "ankara_metro",
+    "slug": "ankara",
+    "country": "TR",
+    "dataSourceId": "osm_only",
+    "total": 1468,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1468,
+    "sourceCounts": {
+      "synthetic_osm_class": 1468
+    }
+  },
+  {
+    "code": "doha_metro",
+    "slug": "doha",
+    "country": "QA",
+    "dataSourceId": "osm_only",
+    "total": 593,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 593,
+    "sourceCounts": {
+      "synthetic_osm_class": 593
+    }
+  },
+  {
+    "code": "amman_metro",
+    "slug": "amman",
+    "country": "JO",
+    "dataSourceId": "osm_only",
+    "total": 447,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 447,
+    "sourceCounts": {
+      "synthetic_osm_class": 447
+    }
+  },
+  {
+    "code": "beirut_metro",
+    "slug": "beirut",
+    "country": "LB",
+    "dataSourceId": "osm_only",
+    "total": 217,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 217,
+    "sourceCounts": {
+      "synthetic_osm_class": 217
+    }
+  },
+  {
+    "code": "sao_paulo_metro",
+    "slug": "sao-paulo",
+    "country": "BR",
+    "dataSourceId": "osm_only",
+    "total": 9178,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 9178,
+    "sourceCounts": {
+      "synthetic_osm_class": 9178
+    }
+  },
+  {
+    "code": "rio_de_janeiro_metro",
+    "slug": "rio-de-janeiro",
+    "country": "BR",
+    "dataSourceId": "osm_only",
+    "total": 4269,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 4269,
+    "sourceCounts": {
+      "synthetic_osm_class": 4269
+    }
+  },
+  {
+    "code": "brasilia_metro",
+    "slug": "brasilia",
+    "country": "BR",
+    "dataSourceId": "osm_only",
+    "total": 401,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 401,
+    "sourceCounts": {
+      "synthetic_osm_class": 401
+    }
+  },
+  {
+    "code": "salvador_br_metro",
+    "slug": "salvador-br",
+    "country": "BR",
+    "dataSourceId": "osm_only",
+    "total": 431,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 431,
+    "sourceCounts": {
+      "synthetic_osm_class": 431
+    }
+  },
+  {
+    "code": "fortaleza_metro",
+    "slug": "fortaleza",
+    "country": "BR",
+    "dataSourceId": "osm_only",
+    "total": 2256,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2256,
+    "sourceCounts": {
+      "synthetic_osm_class": 2256
+    }
+  },
+  {
+    "code": "belo_horizonte_metro",
+    "slug": "belo-horizonte",
+    "country": "BR",
+    "dataSourceId": "osm_only",
+    "total": 1211,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1211,
+    "sourceCounts": {
+      "synthetic_osm_class": 1211
+    }
+  },
+  {
+    "code": "buenos_aires_metro",
+    "slug": "buenos-aires",
+    "country": "AR",
+    "dataSourceId": "osm_only",
+    "total": 7080,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 7080,
+    "sourceCounts": {
+      "synthetic_osm_class": 7080
+    }
+  },
+  {
+    "code": "cordoba_metro",
+    "slug": "cordoba",
+    "country": "AR",
+    "dataSourceId": "osm_only",
+    "total": 965,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 965,
+    "sourceCounts": {
+      "synthetic_osm_class": 965
+    }
+  },
+  {
+    "code": "rosario_metro",
+    "slug": "rosario",
+    "country": "AR",
+    "dataSourceId": "osm_only",
+    "total": 2103,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2103,
+    "sourceCounts": {
+      "synthetic_osm_class": 2103
+    }
+  },
+  {
+    "code": "santiago_cl_metro",
+    "slug": "santiago-cl",
+    "country": "CL",
+    "dataSourceId": "osm_only",
+    "total": 9828,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 9828,
+    "sourceCounts": {
+      "synthetic_osm_class": 9828
+    }
+  },
+  {
+    "code": "bogota_metro",
+    "slug": "bogota",
+    "country": "CO",
+    "dataSourceId": "osm_only",
+    "total": 4892,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 4892,
+    "sourceCounts": {
+      "synthetic_osm_class": 4892
+    }
+  },
+  {
+    "code": "medellin_metro",
+    "slug": "medellin",
+    "country": "CO",
+    "dataSourceId": "osm_only",
+    "total": 1553,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1553,
+    "sourceCounts": {
+      "synthetic_osm_class": 1553
+    }
+  },
+  {
+    "code": "lima_metro",
+    "slug": "lima",
+    "country": "PE",
+    "dataSourceId": "osm_only",
+    "total": 3645,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 3645,
+    "sourceCounts": {
+      "synthetic_osm_class": 3645
+    }
+  },
+  {
+    "code": "montevideo_metro",
+    "slug": "montevideo",
+    "country": "UY",
+    "dataSourceId": "osm_only",
+    "total": 1431,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1431,
+    "sourceCounts": {
+      "synthetic_osm_class": 1431
+    }
+  },
+  {
+    "code": "quito_metro",
+    "slug": "quito",
+    "country": "EC",
+    "dataSourceId": "osm_only",
+    "total": 2711,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2711,
+    "sourceCounts": {
+      "synthetic_osm_class": 2711
+    }
+  },
+  {
+    "code": "johannesburg_metro",
+    "slug": "johannesburg",
+    "country": "ZA",
+    "dataSourceId": "osm_only",
+    "total": 2981,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2981,
+    "sourceCounts": {
+      "synthetic_osm_class": 2981
+    }
+  },
+  {
+    "code": "cape_town_metro",
+    "slug": "cape-town",
+    "country": "ZA",
+    "dataSourceId": "osm_only",
+    "total": 3320,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 3320,
+    "sourceCounts": {
+      "synthetic_osm_class": 3320
+    }
+  },
+  {
+    "code": "durban_metro",
+    "slug": "durban",
+    "country": "ZA",
+    "dataSourceId": "osm_only",
+    "total": 1059,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1059,
+    "sourceCounts": {
+      "synthetic_osm_class": 1059
+    }
+  },
+  {
+    "code": "cairo_metro",
+    "slug": "cairo",
+    "country": "EG",
+    "dataSourceId": "osm_only",
+    "total": 180,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 180,
+    "sourceCounts": {
+      "synthetic_osm_class": 180
+    }
+  },
+  {
+    "code": "lagos_metro",
+    "slug": "lagos",
+    "country": "NG",
+    "dataSourceId": "osm_only",
+    "total": 148,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 148,
+    "sourceCounts": {
+      "synthetic_osm_class": 148
+    }
+  },
+  {
+    "code": "nairobi_metro",
+    "slug": "nairobi",
+    "country": "KE",
+    "dataSourceId": "osm_only",
+    "total": 19,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 19,
+    "sourceCounts": {
+      "synthetic_osm_class": 19
+    }
+  },
+  {
+    "code": "casablanca_metro",
+    "slug": "casablanca",
+    "country": "MA",
+    "dataSourceId": "osm_only",
+    "total": 787,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 787,
+    "sourceCounts": {
+      "synthetic_osm_class": 787
+    }
+  },
+  {
+    "code": "accra_metro",
+    "slug": "accra",
+    "country": "GH",
+    "dataSourceId": "osm_only",
+    "total": 144,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 144,
+    "sourceCounts": {
+      "synthetic_osm_class": 144
+    }
+  },
+  {
+    "code": "sydney_metro",
+    "slug": "sydney",
+    "country": "AU",
+    "dataSourceId": "osm_only",
+    "total": 9663,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 9663,
+    "sourceCounts": {
+      "synthetic_osm_class": 9663
+    }
+  },
+  {
+    "code": "melbourne_metro",
+    "slug": "melbourne",
+    "country": "AU",
+    "dataSourceId": "osm_only",
+    "total": 8730,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 8730,
+    "sourceCounts": {
+      "synthetic_osm_class": 8730
+    }
+  },
+  {
+    "code": "brisbane_metro",
+    "slug": "brisbane",
+    "country": "AU",
+    "dataSourceId": "osm_only",
+    "total": 5149,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 5149,
+    "sourceCounts": {
+      "synthetic_osm_class": 5149
+    }
+  },
+  {
+    "code": "perth_metro",
+    "slug": "perth",
+    "country": "AU",
+    "dataSourceId": "osm_only",
+    "total": 2896,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 2896,
+    "sourceCounts": {
+      "synthetic_osm_class": 2896
+    }
+  },
+  {
+    "code": "adelaide_metro",
+    "slug": "adelaide",
+    "country": "AU",
+    "dataSourceId": "osm_only",
+    "total": 1874,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1874,
+    "sourceCounts": {
+      "synthetic_osm_class": 1874
+    }
+  },
+  {
+    "code": "auckland_metro",
+    "slug": "auckland",
+    "country": "NZ",
+    "dataSourceId": "osm_only",
+    "total": 3262,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 3262,
+    "sourceCounts": {
+      "synthetic_osm_class": 3262
+    }
+  },
+  {
+    "code": "wellington_metro",
+    "slug": "wellington",
+    "country": "NZ",
+    "dataSourceId": "osm_only",
+    "total": 354,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 354,
+    "sourceCounts": {
+      "synthetic_osm_class": 354
+    }
+  },
+  {
+    "code": "kyiv_metro",
+    "slug": "kyiv",
+    "country": "UA",
+    "dataSourceId": "osm_only",
+    "total": 1397,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1397,
+    "sourceCounts": {
+      "synthetic_osm_class": 1397
+    }
+  },
+  {
+    "code": "panama_city_metro",
+    "slug": "panama-city",
+    "country": "PA",
+    "dataSourceId": "osm_only",
+    "total": 258,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 258,
+    "sourceCounts": {
+      "synthetic_osm_class": 258
+    }
+  },
+  {
+    "code": "san_jose_cr_metro",
+    "slug": "san-jose-cr",
+    "country": "CR",
+    "dataSourceId": "osm_only",
+    "total": 511,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 511,
+    "sourceCounts": {
+      "synthetic_osm_class": 511
+    }
+  },
+  {
+    "code": "havana_metro",
+    "slug": "havana",
+    "country": "CU",
+    "dataSourceId": "osm_only",
+    "total": 490,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 490,
+    "sourceCounts": {
+      "synthetic_osm_class": 490
+    }
+  },
+  {
+    "code": "dhaka_metro",
+    "slug": "dhaka",
+    "country": "BD",
+    "dataSourceId": "osm_only",
+    "total": 95,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 95,
+    "sourceCounts": {
+      "synthetic_osm_class": 95
+    }
+  },
+  {
+    "code": "addis_ababa_metro",
+    "slug": "addis-ababa",
+    "country": "ET",
+    "dataSourceId": "osm_only",
+    "total": 68,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 68,
+    "sourceCounts": {
+      "synthetic_osm_class": 68
+    }
+  },
+  {
+    "code": "dar_es_salaam_metro",
+    "slug": "dar-es-salaam",
+    "country": "TZ",
+    "dataSourceId": "osm_only",
+    "total": 51,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 51,
+    "sourceCounts": {
+      "synthetic_osm_class": 51
+    }
+  },
+  {
+    "code": "almaty_metro",
+    "slug": "almaty",
+    "country": "KZ",
+    "dataSourceId": "osm_only",
+    "total": 615,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 615,
+    "sourceCounts": {
+      "synthetic_osm_class": 615
+    }
+  },
+  {
+    "code": "kuwait_city_metro",
+    "slug": "kuwait-city",
+    "country": "KW",
+    "dataSourceId": "osm_only",
+    "total": 389,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 389,
+    "sourceCounts": {
+      "synthetic_osm_class": 389
+    }
+  },
+  {
+    "code": "muscat_metro",
+    "slug": "muscat",
+    "country": "OM",
+    "dataSourceId": "osm_only",
+    "total": 169,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 169,
+    "sourceCounts": {
+      "synthetic_osm_class": 169
+    }
+  },
+  {
+    "code": "tunis_metro",
+    "slug": "tunis",
+    "country": "TN",
+    "dataSourceId": "osm_only",
+    "total": 63,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 63,
+    "sourceCounts": {
+      "synthetic_osm_class": 63
+    }
+  },
+  {
+    "code": "dakar_metro",
+    "slug": "dakar",
+    "country": "SN",
+    "dataSourceId": "osm_only",
+    "total": 58,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 58,
+    "sourceCounts": {
+      "synthetic_osm_class": 58
+    }
+  },
+  {
+    "code": "belgrade_metro",
+    "slug": "belgrade",
+    "country": "RS",
+    "dataSourceId": "osm_only",
+    "total": 1342,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1342,
+    "sourceCounts": {
+      "synthetic_osm_class": 1342
+    }
+  },
+  {
+    "code": "sofia_metro",
+    "slug": "sofia",
+    "country": "BG",
+    "dataSourceId": "osm_only",
+    "total": 1293,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 1293,
+    "sourceCounts": {
+      "synthetic_osm_class": 1293
+    }
+  },
+  {
+    "code": "zagreb_metro",
+    "slug": "zagreb",
+    "country": "HR",
+    "dataSourceId": "osm_only",
+    "total": 937,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 937,
+    "sourceCounts": {
+      "synthetic_osm_class": 937
+    }
+  },
+  {
+    "code": "vilnius_metro",
+    "slug": "vilnius",
+    "country": "LT",
+    "dataSourceId": "osm_only",
+    "total": 408,
+    "measured": 0,
+    "measuredPct": 0,
+    "synthetic": 408,
+    "sourceCounts": {
+      "synthetic_osm_class": 408
+    }
+  },
+  {
+    "code": "prague_metro",
+    "slug": "prague",
+    "country": "CZ",
+    "dataSourceId": "osm_only",
+    "total": 2038,
+    "measured": 18,
+    "measuredPct": 0.9,
+    "synthetic": 2020,
+    "sourceCounts": {
+      "synthetic_osm_class": 2020,
+      "rsd_scitani_2020": 18
+    }
+  },
+  {
+    "code": "the_hague_metro",
+    "slug": "the-hague",
+    "country": "NL",
+    "dataSourceId": "osm_only",
+    "total": 2578,
+    "measured": 27,
+    "measuredPct": 1,
+    "synthetic": 2551,
+    "sourceCounts": {
+      "synthetic_osm_class": 2551,
+      "pzh_verkeersintensiteit": 27
+    }
+  },
+  {
+    "code": "munich_metro",
+    "slug": "munich",
+    "country": "DE",
+    "dataSourceId": "osm_only",
+    "total": 3652,
+    "measured": 89,
+    "measuredPct": 2.4,
+    "synthetic": 3563,
+    "sourceCounts": {
+      "synthetic_osm_class": 3563,
+      "baysis_svz2021": 89
+    }
+  },
+  {
+    "code": "rotterdam_metro",
+    "slug": "rotterdam",
+    "country": "NL",
+    "dataSourceId": "osm_only",
+    "total": 2829,
+    "measured": 90,
+    "measuredPct": 3.2,
+    "synthetic": 2739,
+    "sourceCounts": {
+      "pzh_verkeersintensiteit": 90,
+      "synthetic_osm_class": 2739
+    }
+  },
+  {
+    "code": "berlin_metro",
+    "slug": "berlin",
+    "country": "DE",
+    "dataSourceId": "osm_only",
+    "total": 9546,
+    "measured": 451,
+    "measuredPct": 4.7,
+    "synthetic": 9095,
+    "sourceCounts": {
+      "synthetic_osm_class": 9095,
+      "berlin_senat_2024_10": 451
+    }
+  },
+  {
+    "code": "hamburg_metro",
+    "slug": "hamburg",
+    "country": "DE",
+    "dataSourceId": "osm_only",
+    "total": 6250,
+    "measured": 994,
+    "measuredPct": 15.9,
+    "synthetic": 5256,
+    "sourceCounts": {
+      "hamburg_geoportal_dtv": 994,
+      "synthetic_osm_class": 5256
+    }
+  },
+  {
+    "code": "toulouse_metro",
+    "slug": "toulouse",
+    "country": "FR",
+    "dataSourceId": "osm_only",
+    "total": 1723,
+    "measured": 527,
+    "measuredPct": 30.6,
+    "synthetic": 1196,
+    "sourceCounts": {
+      "synthetic_osm_class": 1196,
+      "toulouse_opendata": 527
+    }
+  },
+  {
+    "code": "oslo_metro",
+    "slug": "oslo",
+    "country": "NO",
+    "dataSourceId": "osm_only",
+    "total": 426,
+    "measured": 135,
+    "measuredPct": 31.7,
+    "synthetic": 291,
+    "sourceCounts": {
+      "synthetic_osm_class": 291,
+      "vegvesen_adt": 135
+    }
+  },
+  {
+    "code": "paris_metro",
+    "slug": "paris",
+    "country": "FR",
+    "dataSourceId": "osm_only",
+    "total": 10793,
+    "measured": 3485,
+    "measuredPct": 32.3,
+    "synthetic": 7308,
+    "sourceCounts": {
+      "paris_opendata": 3485,
+      "synthetic_osm_class": 7308
+    }
+  },
+  {
+    "code": "vancouver_metro",
+    "slug": "vancouver",
+    "country": "CA",
+    "dataSourceId": "moti_bc",
+    "total": 8748,
+    "measured": 3327,
+    "measuredPct": 38,
+    "synthetic": 5421,
+    "sourceCounts": {
+      "synthetic_osm_class": 5421,
+      "vancouver_open_data_directional": 3327
+    }
+  },
+  {
+    "code": "bordeaux_metro",
+    "slug": "bordeaux",
+    "country": "FR",
+    "dataSourceId": "osm_only",
+    "total": 1804,
+    "measured": 850,
+    "measuredPct": 47.1,
+    "synthetic": 954,
+    "sourceCounts": {
+      "bordeaux_opendata": 850,
+      "synthetic_osm_class": 954
+    }
+  },
+  {
+    "code": "copenhagen_metro",
+    "slug": "copenhagen",
+    "country": "DK",
+    "dataSourceId": "osm_only",
+    "total": 2109,
+    "measured": 1023,
+    "measuredPct": 48.5,
+    "synthetic": 1086,
+    "sourceCounts": {
+      "kk_trafiktaelling": 1023,
+      "synthetic_osm_class": 1086
+    }
+  },
+  {
+    "code": "barcelona_metro",
+    "slug": "barcelona",
+    "country": "ES",
+    "dataSourceId": "osm_only",
+    "total": 7405,
+    "measured": 3608,
+    "measuredPct": 48.7,
+    "synthetic": 3797,
+    "sourceCounts": {
+      "barcelona_aforaments_imd": 3608,
+      "synthetic_osm_class": 3797
+    }
+  },
+  {
+    "code": "geneva_metro",
+    "slug": "geneva",
+    "country": "CH",
+    "dataSourceId": "osm_only",
+    "total": 1711,
+    "measured": 941,
+    "measuredPct": 55,
+    "synthetic": 770,
+    "sourceCounts": {
+      "sitg_tjm": 941,
+      "synthetic_osm_class": 770
+    }
+  },
+  {
+    "code": "tokyo_metro",
+    "slug": "tokyo",
+    "country": "JP",
+    "dataSourceId": "osm_only",
+    "total": 14825,
+    "measured": 9354,
+    "measuredPct": 63.1,
+    "synthetic": 5471,
+    "sourceCounts": {
+      "synthetic_osm_class": 5471,
+      "mlit_census_r3_2021": 9354
+    }
+  },
+  {
+    "code": "osaka_metro",
+    "slug": "osaka",
+    "country": "JP",
+    "dataSourceId": "osm_only",
+    "total": 8717,
+    "measured": 6510,
+    "measuredPct": 74.7,
+    "synthetic": 2207,
+    "sourceCounts": {
+      "mlit_census_r3_2021": 6510,
+      "synthetic_osm_class": 2207
+    }
+  },
+  {
+    "code": "quebec_city_metro",
+    "slug": "quebec-city",
+    "country": "CA",
+    "dataSourceId": "mtq",
+    "total": 1963,
+    "measured": 1482,
+    "measuredPct": 75.5,
+    "synthetic": 481,
+    "sourceCounts": {
+      "mtq_djma": 1482,
+      "synthetic_osm_class": 481
+    }
+  },
+  {
+    "code": "toronto_metro",
+    "slug": "toronto",
+    "country": "CA",
+    "dataSourceId": "mto",
+    "total": 8412,
+    "measured": 6365,
+    "measuredPct": 75.7,
+    "synthetic": 2047,
+    "sourceCounts": {
+      "toronto_open_data_svc": 6199,
+      "mto": 166,
+      "synthetic_osm_class": 2047
+    }
+  },
+  {
+    "code": "hamilton_metro",
+    "slug": "hamilton",
+    "country": "CA",
+    "dataSourceId": "mto",
+    "total": 1358,
+    "measured": 1033,
+    "measuredPct": 76.1,
+    "synthetic": 325,
+    "sourceCounts": {
+      "hamilton_open_data_adt": 951,
+      "synthetic_osm_class": 325,
+      "mto": 82
+    }
+  },
+  {
+    "code": "lyon_metro",
+    "slug": "lyon",
+    "country": "FR",
+    "dataSourceId": "osm_only",
+    "total": 4263,
+    "measured": 3300,
+    "measuredPct": 77.4,
+    "synthetic": 963,
+    "sourceCounts": {
+      "grandlyon_comptage": 3300,
+      "synthetic_osm_class": 963
+    }
+  },
+  {
+    "code": "halifax_metro",
+    "slug": "halifax",
+    "country": "CA",
+    "dataSourceId": "ns_public_works",
+    "total": 663,
+    "measured": 544,
+    "measuredPct": 82.1,
+    "synthetic": 119,
+    "sourceCounts": {
+      "halifax_open_data_traffic_studies": 544,
+      "synthetic_osm_class": 119
+    }
+  },
+  {
+    "code": "edmonton_metro",
+    "slug": "edmonton",
+    "country": "CA",
+    "dataSourceId": "ab_transportation",
+    "total": 2628,
+    "measured": 2196,
+    "measuredPct": 83.6,
+    "synthetic": 432,
+    "sourceCounts": {
+      "synthetic_osm_class": 432,
+      "edmonton_open_data_aawdt": 2154,
+      "ab_transportation": 42
+    }
+  },
+  {
+    "code": "madrid_metro",
+    "slug": "madrid",
+    "country": "ES",
+    "dataSourceId": "osm_only",
+    "total": 7397,
+    "measured": 6275,
+    "measuredPct": 84.8,
+    "synthetic": 1122,
+    "sourceCounts": {
+      "madrid_ayto_2020_02": 6275,
+      "synthetic_osm_class": 1122
+    }
+  },
+  {
+    "code": "calgary_metro",
+    "slug": "calgary",
+    "country": "CA",
+    "dataSourceId": "ab_transportation",
+    "total": 3802,
+    "measured": 3258,
+    "measuredPct": 85.7,
+    "synthetic": 544,
+    "sourceCounts": {
+      "calgary_open_data_volumes": 2547,
+      "calgary_open_data_2023": 659,
+      "synthetic_osm_class": 544,
+      "ab_transportation": 52
+    }
+  },
+  {
+    "code": "montreal_metro",
+    "slug": "montreal",
+    "country": "CA",
+    "dataSourceId": "mtq",
+    "total": 23403,
+    "measured": 20347,
+    "measuredPct": 86.9,
+    "synthetic": 3056,
+    "sourceCounts": {
+      "montreal_open_data_intersection": 12770,
+      "mtq_djma": 7577,
+      "synthetic_osm_class": 3056
+    }
+  },
+  {
+    "code": "bologna_metro",
+    "slug": "bologna",
+    "country": "IT",
+    "dataSourceId": "osm_only",
+    "total": 1020,
+    "measured": 896,
+    "measuredPct": 87.8,
+    "synthetic": 124,
+    "sourceCounts": {
+      "synthetic_osm_class": 124,
+      "bologna_spire_2024": 896
+    }
+  },
+  {
+    "code": "helsinki_metro",
+    "slug": "helsinki",
+    "country": "FI",
+    "dataSourceId": "osm_only",
+    "total": 1723,
+    "measured": 1604,
+    "measuredPct": 93.1,
+    "synthetic": 119,
+    "sourceCounts": {
+      "helsinki_liikennemaarat": 1604,
+      "synthetic_osm_class": 119
+    }
+  },
+  {
+    "code": "ottawa_metro",
+    "slug": "ottawa",
+    "country": "CA",
+    "dataSourceId": "mto",
+    "total": 2591,
+    "measured": 2418,
+    "measuredPct": 93.3,
+    "synthetic": 173,
+    "sourceCounts": {
+      "ottawa_open_data_midblock": 2300,
+      "mto": 118,
+      "synthetic_osm_class": 173
+    }
+  },
+  {
+    "code": "winnipeg_metro",
+    "slug": "winnipeg",
+    "country": "CA",
+    "dataSourceId": "mb_infrastructure",
+    "total": 1657,
+    "measured": 1622,
+    "measuredPct": 97.9,
+    "synthetic": 35,
+    "sourceCounts": {
+      "winnipeg_open_data_midblock": 1556,
+      "mb_infrastructure": 66,
+      "synthetic_osm_class": 35
+    }
+  },
+  {
+    "code": "charlotte_metro",
+    "slug": "charlotte",
+    "country": null,
+    "dataSourceId": "ncdot",
+    "total": 3852,
+    "measured": 3852,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ncdot": 3852
+    }
+  },
+  {
+    "code": "nashville_metro",
+    "slug": "nashville",
+    "country": null,
+    "dataSourceId": "tdot",
+    "total": 2582,
+    "measured": 2582,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 1742,
+      "tdot": 840
+    }
+  },
+  {
+    "code": "tampa_metro",
+    "slug": "tampa",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 4195,
+    "measured": 4195,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fdot": 4195
+    }
+  },
+  {
+    "code": "orlando_metro",
+    "slug": "orlando",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 6045,
+    "measured": 6045,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fdot": 4640,
+      "fhwa_hpms_2018": 1405
+    }
+  },
+  {
+    "code": "raleigh_durham_metro",
+    "slug": "raleigh-durham",
+    "country": null,
+    "dataSourceId": "ncdot",
+    "total": 4676,
+    "measured": 4676,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ncdot": 4676
+    }
+  },
+  {
+    "code": "miami_dade_metro",
+    "slug": "miami-dade",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 8752,
+    "measured": 8752,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fdot": 8752
+    }
+  },
+  {
+    "code": "jacksonville_metro",
+    "slug": "jacksonville",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 2128,
+    "measured": 2128,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fdot": 2128
+    }
+  },
+  {
+    "code": "memphis_metro",
+    "slug": "memphis",
+    "country": null,
+    "dataSourceId": "tdot",
+    "total": 1253,
+    "measured": 1253,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 824,
+      "tdot": 429
+    }
+  },
+  {
+    "code": "knoxville_metro",
+    "slug": "knoxville",
+    "country": null,
+    "dataSourceId": "tdot",
+    "total": 1528,
+    "measured": 1528,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 945,
+      "tdot": 583
+    }
+  },
+  {
+    "code": "chattanooga_metro",
+    "slug": "chattanooga",
+    "country": null,
+    "dataSourceId": "tdot",
+    "total": 516,
+    "measured": 516,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 305,
+      "tdot": 211
+    }
+  },
+  {
+    "code": "savannah_metro",
+    "slug": "savannah",
+    "country": null,
+    "dataSourceId": "gdot_511",
+    "total": 554,
+    "measured": 554,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "gdot_511": 554
+    }
+  },
+  {
+    "code": "asheville_metro",
+    "slug": "asheville",
+    "country": null,
+    "dataSourceId": "ncdot",
+    "total": 590,
+    "measured": 590,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ncdot": 590
+    }
+  },
+  {
+    "code": "wilmington_metro",
+    "slug": "wilmington",
+    "country": null,
+    "dataSourceId": "ncdot",
+    "total": 586,
+    "measured": 586,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ncdot": 586
+    }
+  },
+  {
+    "code": "triad_metro",
+    "slug": "triad",
+    "country": null,
+    "dataSourceId": "ncdot",
+    "total": 2606,
+    "measured": 2606,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ncdot": 2606
+    }
+  },
+  {
+    "code": "birmingham_metro",
+    "slug": "birmingham",
+    "country": null,
+    "dataSourceId": "aldot",
+    "total": 1542,
+    "measured": 1542,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "aldot": 1542
+    }
+  },
+  {
+    "code": "hampton_roads_metro",
+    "slug": "hampton-roads",
+    "country": null,
+    "dataSourceId": "vdot",
+    "total": 4407,
+    "measured": 4407,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "vdot": 4407
+    }
+  },
+  {
+    "code": "richmond_metro",
+    "slug": "richmond",
+    "country": null,
+    "dataSourceId": "vdot",
+    "total": 3417,
+    "measured": 3417,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "vdot": 3417
+    }
+  },
+  {
+    "code": "charleston_sc_metro",
+    "slug": "charleston-sc",
+    "country": null,
+    "dataSourceId": "scdot",
+    "total": 559,
+    "measured": 559,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "scdot": 559
+    }
+  },
+  {
+    "code": "columbia_sc_metro",
+    "slug": "columbia-sc",
+    "country": null,
+    "dataSourceId": "scdot",
+    "total": 790,
+    "measured": 790,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "scdot": 790
+    }
+  },
+  {
+    "code": "louisville_metro",
+    "slug": "louisville",
+    "country": null,
+    "dataSourceId": "kytc",
+    "total": 1451,
+    "measured": 1451,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "kytc": 752,
+      "fhwa_hpms_2018": 699
+    }
+  },
+  {
+    "code": "new_orleans_metro",
+    "slug": "new-orleans",
+    "country": null,
+    "dataSourceId": "ladotd",
+    "total": 1892,
+    "measured": 1892,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 1064,
+      "ladotd": 828
+    }
+  },
+  {
+    "code": "lexington_metro",
+    "slug": "lexington",
+    "country": null,
+    "dataSourceId": "kytc",
+    "total": 978,
+    "measured": 978,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 518,
+      "kytc": 460
+    }
+  },
+  {
+    "code": "mobile_metro",
+    "slug": "mobile",
+    "country": null,
+    "dataSourceId": "aldot",
+    "total": 791,
+    "measured": 791,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "aldot": 791
+    }
+  },
+  {
+    "code": "huntsville_metro",
+    "slug": "huntsville",
+    "country": null,
+    "dataSourceId": "aldot",
+    "total": 956,
+    "measured": 956,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 372,
+      "aldot": 584
+    }
+  },
+  {
+    "code": "pensacola_metro",
+    "slug": "pensacola",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 582,
+    "measured": 582,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fdot": 582
+    }
+  },
+  {
+    "code": "fayetteville_metro",
+    "slug": "fayetteville",
+    "country": null,
+    "dataSourceId": "ncdot",
+    "total": 767,
+    "measured": 767,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ncdot": 767
+    }
+  },
+  {
+    "code": "greenville_nc_metro",
+    "slug": "greenville-nc",
+    "country": null,
+    "dataSourceId": "ncdot",
+    "total": 212,
+    "measured": 212,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ncdot": 212
+    }
+  },
+  {
+    "code": "augusta_metro",
+    "slug": "augusta",
+    "country": null,
+    "dataSourceId": "gdot_511",
+    "total": 390,
+    "measured": 390,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "gdot_511": 390
+    }
+  },
+  {
+    "code": "macon_metro",
+    "slug": "macon",
+    "country": null,
+    "dataSourceId": "gdot_511",
+    "total": 798,
+    "measured": 798,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 414,
+      "gdot_511": 384
+    }
+  },
+  {
+    "code": "washington_dc_metro",
+    "slug": "washington-dc",
+    "country": null,
+    "dataSourceId": "ddot_dc",
+    "total": 2721,
+    "measured": 2721,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ddot_dc": 2721
+    }
+  },
+  {
+    "code": "baltimore_metro",
+    "slug": "baltimore",
+    "country": null,
+    "dataSourceId": "mdot_md",
+    "total": 4421,
+    "measured": 4421,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "mdot_md": 4421
+    }
+  },
+  {
+    "code": "philadelphia_metro",
+    "slug": "philadelphia",
+    "country": null,
+    "dataSourceId": "penndot",
+    "total": 7870,
+    "measured": 7870,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "penndot": 7870
+    }
+  },
+  {
+    "code": "pittsburgh_metro",
+    "slug": "pittsburgh",
+    "country": null,
+    "dataSourceId": "penndot",
+    "total": 2785,
+    "measured": 2785,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "penndot": 2785
+    }
+  },
+  {
+    "code": "new_york_metro",
+    "slug": "new-york",
+    "country": null,
+    "dataSourceId": "nysdot",
+    "total": 23464,
+    "measured": 23464,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "nysdot": 23464
+    }
+  },
+  {
+    "code": "boston_metro",
+    "slug": "boston",
+    "country": null,
+    "dataSourceId": "massdot",
+    "total": 7572,
+    "measured": 7572,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "massdot": 7572
+    }
+  },
+  {
+    "code": "chicago_metro",
+    "slug": "chicago",
+    "country": null,
+    "dataSourceId": "idot",
+    "total": 12957,
+    "measured": 12957,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "idot": 12204,
+      "cdot_adt_portal": 753
+    }
+  },
+  {
+    "code": "detroit_metro",
+    "slug": "detroit",
+    "country": null,
+    "dataSourceId": "mdot_mi",
+    "total": 5301,
+    "measured": 5301,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "mdot_mi": 5301
+    }
+  },
+  {
+    "code": "twin_cities_metro",
+    "slug": "twin-cities",
+    "country": null,
+    "dataSourceId": "mndot",
+    "total": 6268,
+    "measured": 6268,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "mndot": 6268
+    }
+  },
+  {
+    "code": "cleveland_metro",
+    "slug": "cleveland",
+    "country": null,
+    "dataSourceId": "odot_oh",
+    "total": 3333,
+    "measured": 3333,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "odot_oh": 3333
+    }
+  },
+  {
+    "code": "columbus_oh_metro",
+    "slug": "columbus-oh",
+    "country": null,
+    "dataSourceId": "odot_oh",
+    "total": 2444,
+    "measured": 2444,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "odot_oh": 2444
+    }
+  },
+  {
+    "code": "cincinnati_metro",
+    "slug": "cincinnati",
+    "country": null,
+    "dataSourceId": "odot_oh",
+    "total": 2594,
+    "measured": 2594,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "odot_oh": 2594
+    }
+  },
+  {
+    "code": "indianapolis_metro",
+    "slug": "indianapolis",
+    "country": null,
+    "dataSourceId": "indot",
+    "total": 3185,
+    "measured": 3185,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "indot": 3185
+    }
+  },
+  {
+    "code": "st_louis_metro",
+    "slug": "st-louis",
+    "country": null,
+    "dataSourceId": "modot",
+    "total": 3575,
+    "measured": 3575,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 3420,
+      "modot": 155
+    }
+  },
+  {
+    "code": "kansas_city_metro",
+    "slug": "kansas-city",
+    "country": null,
+    "dataSourceId": "modot",
+    "total": 2041,
+    "measured": 2041,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 1823,
+      "modot": 218
+    }
+  },
+  {
+    "code": "milwaukee_metro",
+    "slug": "milwaukee",
+    "country": null,
+    "dataSourceId": "wisdot",
+    "total": 4515,
+    "measured": 4515,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "wisdot": 4515
+    }
+  },
+  {
+    "code": "houston_metro",
+    "slug": "houston",
+    "country": null,
+    "dataSourceId": "txdot",
+    "total": 14409,
+    "measured": 14409,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "txdot": 14409
+    }
+  },
+  {
+    "code": "dallas_fort_worth_metro",
+    "slug": "dallas-fort-worth",
+    "country": null,
+    "dataSourceId": "txdot",
+    "total": 15729,
+    "measured": 15729,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "txdot": 15729
+    }
+  },
+  {
+    "code": "austin_metro",
+    "slug": "austin",
+    "country": null,
+    "dataSourceId": "txdot",
+    "total": 2911,
+    "measured": 2911,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "txdot": 2911
+    }
+  },
+  {
+    "code": "san_antonio_metro",
+    "slug": "san-antonio",
+    "country": null,
+    "dataSourceId": "txdot",
+    "total": 3353,
+    "measured": 3353,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "txdot": 3353
+    }
+  },
+  {
+    "code": "los_angeles_metro",
+    "slug": "los-angeles",
+    "country": null,
+    "dataSourceId": "caltrans",
+    "total": 22941,
+    "measured": 22941,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 16201,
+      "caltrans": 6740
+    }
+  },
+  {
+    "code": "sf_bay_metro",
+    "slug": "sf-bay",
+    "country": null,
+    "dataSourceId": "caltrans",
+    "total": 12643,
+    "measured": 12643,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 7993,
+      "caltrans": 4650
+    }
+  },
+  {
+    "code": "san_diego_metro",
+    "slug": "san-diego",
+    "country": null,
+    "dataSourceId": "caltrans",
+    "total": 7469,
+    "measured": 7469,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "caltrans": 2559,
+      "fhwa_hpms_2018": 4910
+    }
+  },
+  {
+    "code": "sacramento_metro",
+    "slug": "sacramento",
+    "country": null,
+    "dataSourceId": "caltrans",
+    "total": 2884,
+    "measured": 2884,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 2178,
+      "caltrans": 706
+    }
+  },
+  {
+    "code": "inland_empire_metro",
+    "slug": "inland-empire",
+    "country": null,
+    "dataSourceId": "caltrans",
+    "total": 8268,
+    "measured": 8268,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "caltrans": 2376,
+      "fhwa_hpms_2018": 5892
+    }
+  },
+  {
+    "code": "fresno_metro",
+    "slug": "fresno",
+    "country": null,
+    "dataSourceId": "caltrans",
+    "total": 1414,
+    "measured": 1414,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "caltrans": 422,
+      "fhwa_hpms_2018": 992
+    }
+  },
+  {
+    "code": "portland_metro",
+    "slug": "portland",
+    "country": null,
+    "dataSourceId": "odot_or",
+    "total": 3318,
+    "measured": 3318,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "odot_or": 1471,
+      "fhwa_hpms_2018": 1847
+    }
+  },
+  {
+    "code": "seattle_metro",
+    "slug": "seattle",
+    "country": null,
+    "dataSourceId": "wsdot",
+    "total": 4113,
+    "measured": 4113,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "wsdot": 1852,
+      "fhwa_hpms_2018": 2261
+    }
+  },
+  {
+    "code": "las_vegas_metro",
+    "slug": "las-vegas",
+    "country": null,
+    "dataSourceId": "nvdot",
+    "total": 5599,
+    "measured": 5599,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 1580,
+      "nvdot": 4019
+    }
+  },
+  {
+    "code": "phoenix_metro",
+    "slug": "phoenix",
+    "country": null,
+    "dataSourceId": "adot",
+    "total": 7824,
+    "measured": 7824,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "adot": 7824
+    }
+  },
+  {
+    "code": "tucson_metro",
+    "slug": "tucson",
+    "country": null,
+    "dataSourceId": "adot",
+    "total": 1930,
+    "measured": 1930,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "adot": 1930
+    }
+  },
+  {
+    "code": "denver_metro",
+    "slug": "denver",
+    "country": null,
+    "dataSourceId": "cdot_co",
+    "total": 7299,
+    "measured": 7299,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 4789,
+      "cdot_co": 2510
+    }
+  },
+  {
+    "code": "salt_lake_city_metro",
+    "slug": "salt-lake-city",
+    "country": null,
+    "dataSourceId": "udot",
+    "total": 2741,
+    "measured": 2741,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "udot": 2741
+    }
+  },
+  {
+    "code": "albuquerque_metro",
+    "slug": "albuquerque",
+    "country": null,
+    "dataSourceId": "nmdot",
+    "total": 1896,
+    "measured": 1896,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "nmdot": 1896
+    }
+  },
+  {
+    "code": "hartford_metro",
+    "slug": "hartford",
+    "country": null,
+    "dataSourceId": "ctdot",
+    "total": 2266,
+    "measured": 2266,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ctdot": 2266
+    }
+  },
+  {
+    "code": "providence_metro",
+    "slug": "providence",
+    "country": null,
+    "dataSourceId": "ridot",
+    "total": 622,
+    "measured": 622,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ridot": 622
+    }
+  },
+  {
+    "code": "manchester_metro",
+    "slug": "manchester",
+    "country": null,
+    "dataSourceId": "nhdot",
+    "total": 1022,
+    "measured": 1022,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "nhdot": 1022
+    }
+  },
+  {
+    "code": "burlington_vt_metro",
+    "slug": "burlington-vt",
+    "country": null,
+    "dataSourceId": "vtrans",
+    "total": 229,
+    "measured": 229,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "vtrans": 229
+    }
+  },
+  {
+    "code": "portland_me_metro",
+    "slug": "portland-me",
+    "country": null,
+    "dataSourceId": "medot",
+    "total": 829,
+    "measured": 829,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "medot": 829
+    }
+  },
+  {
+    "code": "trenton_metro",
+    "slug": "trenton",
+    "country": null,
+    "dataSourceId": "njdot",
+    "total": 401,
+    "measured": 401,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "njdot": 401
+    }
+  },
+  {
+    "code": "charleston_wv_metro",
+    "slug": "charleston-wv",
+    "country": null,
+    "dataSourceId": "wvdot",
+    "total": 420,
+    "measured": 420,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "wvdot": 420
+    }
+  },
+  {
+    "code": "jackson_ms_metro",
+    "slug": "jackson-ms",
+    "country": null,
+    "dataSourceId": "mdot_ms",
+    "total": 597,
+    "measured": 597,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 597
+    }
+  },
+  {
+    "code": "little_rock_metro",
+    "slug": "little-rock",
+    "country": null,
+    "dataSourceId": "ardot",
+    "total": 672,
+    "measured": 672,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 672
+    }
+  },
+  {
+    "code": "oklahoma_city_metro",
+    "slug": "oklahoma-city",
+    "country": null,
+    "dataSourceId": "odot_ok",
+    "total": 2628,
+    "measured": 2628,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "odot_ok": 2628
+    }
+  },
+  {
+    "code": "tulsa_metro",
+    "slug": "tulsa",
+    "country": null,
+    "dataSourceId": "odot_ok",
+    "total": 2651,
+    "measured": 2651,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "odot_ok": 2651
+    }
+  },
+  {
+    "code": "des_moines_metro",
+    "slug": "des-moines",
+    "country": null,
+    "dataSourceId": "iadot",
+    "total": 1738,
+    "measured": 1738,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "iadot": 1738
+    }
+  },
+  {
+    "code": "omaha_metro",
+    "slug": "omaha",
+    "country": null,
+    "dataSourceId": "ndor",
+    "total": 2647,
+    "measured": 2647,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ndor": 1374,
+      "fhwa_hpms_2018": 1273
+    }
+  },
+  {
+    "code": "wichita_metro",
+    "slug": "wichita",
+    "country": null,
+    "dataSourceId": "ksdot",
+    "total": 766,
+    "measured": 766,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ksdot": 220,
+      "fhwa_hpms_2018": 546
+    }
+  },
+  {
+    "code": "fargo_metro",
+    "slug": "fargo",
+    "country": null,
+    "dataSourceId": "nddot",
+    "total": 384,
+    "measured": 384,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "nddot": 384
+    }
+  },
+  {
+    "code": "sioux_falls_metro",
+    "slug": "sioux-falls",
+    "country": null,
+    "dataSourceId": "sddot",
+    "total": 121,
+    "measured": 121,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "sddot": 121
+    }
+  },
+  {
+    "code": "boise_metro",
+    "slug": "boise",
+    "country": null,
+    "dataSourceId": "itd",
+    "total": 607,
+    "measured": 607,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "itd": 607
+    }
+  },
+  {
+    "code": "billings_metro",
+    "slug": "billings",
+    "country": null,
+    "dataSourceId": "mdt",
+    "total": 204,
+    "measured": 204,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "mdt": 204
+    }
+  },
+  {
+    "code": "cheyenne_metro",
+    "slug": "cheyenne",
+    "country": null,
+    "dataSourceId": "wydot",
+    "total": 162,
+    "measured": 162,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "wydot": 162
+    }
+  },
+  {
+    "code": "anchorage_metro",
+    "slug": "anchorage",
+    "country": null,
+    "dataSourceId": "akdot",
+    "total": 523,
+    "measured": 523,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "akdot": 523
+    }
+  },
+  {
+    "code": "honolulu_metro",
+    "slug": "honolulu",
+    "country": null,
+    "dataSourceId": "hidot",
+    "total": 792,
+    "measured": 792,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "hidot": 792
+    }
+  },
+  {
+    "code": "monterrey_metro",
+    "slug": "monterrey",
+    "country": "MX",
+    "dataSourceId": "sict",
+    "total": 132,
+    "measured": 132,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "sict": 132
+    }
+  },
+  {
+    "code": "juarez_metro",
+    "slug": "juarez",
+    "country": "MX",
+    "dataSourceId": "sict",
+    "total": 45,
+    "measured": 45,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "sict": 45
+    }
+  },
+  {
+    "code": "london_metro",
+    "slug": "london",
+    "country": "UK",
+    "dataSourceId": "dft",
+    "total": 11645,
+    "measured": 11645,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "dft": 11645
+    }
+  },
+  {
+    "code": "manchester_uk_metro",
+    "slug": "manchester-uk",
+    "country": "UK",
+    "dataSourceId": "dft",
+    "total": 2837,
+    "measured": 2837,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "dft": 2837
+    }
+  },
+  {
+    "code": "birmingham_uk_metro",
+    "slug": "birmingham-uk",
+    "country": "UK",
+    "dataSourceId": "dft",
+    "total": 1143,
+    "measured": 1143,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "dft": 1143
+    }
+  },
+  {
+    "code": "glasgow_metro",
+    "slug": "glasgow",
+    "country": "UK",
+    "dataSourceId": "dft",
+    "total": 880,
+    "measured": 880,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "dft": 880
+    }
+  },
+  {
+    "code": "edinburgh_metro",
+    "slug": "edinburgh",
+    "country": "UK",
+    "dataSourceId": "dft",
+    "total": 381,
+    "measured": 381,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "dft": 381
+    }
+  },
+  {
+    "code": "leeds_metro",
+    "slug": "leeds",
+    "country": "UK",
+    "dataSourceId": "dft",
+    "total": 1092,
+    "measured": 1092,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "dft": 1092
+    }
+  },
+  {
+    "code": "bristol_metro",
+    "slug": "bristol",
+    "country": "UK",
+    "dataSourceId": "dft",
+    "total": 722,
+    "measured": 722,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "dft": 722
+    }
+  },
+  {
+    "code": "rochester_ny_metro",
+    "slug": "rochester-ny",
+    "country": null,
+    "dataSourceId": "nysdot",
+    "total": 1048,
+    "measured": 1048,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "nysdot": 1048
+    }
+  },
+  {
+    "code": "buffalo_metro",
+    "slug": "buffalo",
+    "country": null,
+    "dataSourceId": "nysdot",
+    "total": 1386,
+    "measured": 1386,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "nysdot": 1386
+    }
+  },
+  {
+    "code": "syracuse_metro",
+    "slug": "syracuse",
+    "country": null,
+    "dataSourceId": "nysdot",
+    "total": 997,
+    "measured": 997,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "nysdot": 997
+    }
+  },
+  {
+    "code": "albany_metro",
+    "slug": "albany",
+    "country": null,
+    "dataSourceId": "nysdot",
+    "total": 1338,
+    "measured": 1338,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "nysdot": 1338
+    }
+  },
+  {
+    "code": "toledo_metro",
+    "slug": "toledo",
+    "country": null,
+    "dataSourceId": "odot_oh",
+    "total": 983,
+    "measured": 983,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "odot_oh": 983
+    }
+  },
+  {
+    "code": "akron_metro",
+    "slug": "akron",
+    "country": null,
+    "dataSourceId": "odot_oh",
+    "total": 820,
+    "measured": 820,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "odot_oh": 820
+    }
+  },
+  {
+    "code": "dayton_metro",
+    "slug": "dayton",
+    "country": null,
+    "dataSourceId": "odot_oh",
+    "total": 1093,
+    "measured": 1093,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "odot_oh": 1093
+    }
+  },
+  {
+    "code": "youngstown_metro",
+    "slug": "youngstown",
+    "country": null,
+    "dataSourceId": "odot_oh",
+    "total": 603,
+    "measured": 603,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "odot_oh": 603
+    }
+  },
+  {
+    "code": "grand_rapids_metro",
+    "slug": "grand-rapids",
+    "country": null,
+    "dataSourceId": "mdot_mi",
+    "total": 757,
+    "measured": 757,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "mdot_mi": 757
+    }
+  },
+  {
+    "code": "lansing_metro",
+    "slug": "lansing",
+    "country": null,
+    "dataSourceId": "mdot_mi",
+    "total": 381,
+    "measured": 381,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "mdot_mi": 381
+    }
+  },
+  {
+    "code": "ann_arbor_metro",
+    "slug": "ann-arbor",
+    "country": null,
+    "dataSourceId": "mdot_mi",
+    "total": 406,
+    "measured": 406,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "mdot_mi": 406
+    }
+  },
+  {
+    "code": "flint_metro",
+    "slug": "flint",
+    "country": null,
+    "dataSourceId": "mdot_mi",
+    "total": 369,
+    "measured": 369,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "mdot_mi": 369
+    }
+  },
+  {
+    "code": "allentown_metro",
+    "slug": "allentown",
+    "country": null,
+    "dataSourceId": "penndot",
+    "total": 935,
+    "measured": 935,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "penndot": 935
+    }
+  },
+  {
+    "code": "harrisburg_metro",
+    "slug": "harrisburg",
+    "country": null,
+    "dataSourceId": "penndot",
+    "total": 668,
+    "measured": 668,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "penndot": 668
+    }
+  },
+  {
+    "code": "scranton_metro",
+    "slug": "scranton",
+    "country": null,
+    "dataSourceId": "penndot",
+    "total": 381,
+    "measured": 381,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "penndot": 381
+    }
+  },
+  {
+    "code": "erie_metro",
+    "slug": "erie",
+    "country": null,
+    "dataSourceId": "penndot",
+    "total": 388,
+    "measured": 388,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "penndot": 388
+    }
+  },
+  {
+    "code": "worcester_metro",
+    "slug": "worcester",
+    "country": null,
+    "dataSourceId": "massdot",
+    "total": 510,
+    "measured": 510,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "massdot": 510
+    }
+  },
+  {
+    "code": "springfield_ma_metro",
+    "slug": "springfield-ma",
+    "country": null,
+    "dataSourceId": "massdot",
+    "total": 357,
+    "measured": 357,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "massdot": 357
+    }
+  },
+  {
+    "code": "new_haven_metro",
+    "slug": "new-haven",
+    "country": null,
+    "dataSourceId": "ctdot",
+    "total": 1130,
+    "measured": 1130,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ctdot": 1130
+    }
+  },
+  {
+    "code": "bridgeport_metro",
+    "slug": "bridgeport",
+    "country": null,
+    "dataSourceId": "ctdot",
+    "total": 1775,
+    "measured": 1775,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ctdot": 1775
+    }
+  },
+  {
+    "code": "fort_wayne_metro",
+    "slug": "fort-wayne",
+    "country": null,
+    "dataSourceId": "indot",
+    "total": 647,
+    "measured": 647,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "indot": 647
+    }
+  },
+  {
+    "code": "south_bend_metro",
+    "slug": "south-bend",
+    "country": null,
+    "dataSourceId": "indot",
+    "total": 480,
+    "measured": 480,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "indot": 480
+    }
+  },
+  {
+    "code": "evansville_metro",
+    "slug": "evansville",
+    "country": null,
+    "dataSourceId": "indot",
+    "total": 383,
+    "measured": 383,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "indot": 383
+    }
+  },
+  {
+    "code": "madison_metro",
+    "slug": "madison",
+    "country": null,
+    "dataSourceId": "wisdot",
+    "total": 921,
+    "measured": 921,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "wisdot": 921
+    }
+  },
+  {
+    "code": "green_bay_metro",
+    "slug": "green-bay",
+    "country": null,
+    "dataSourceId": "wisdot",
+    "total": 355,
+    "measured": 355,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "wisdot": 355
+    }
+  },
+  {
+    "code": "springfield_il_metro",
+    "slug": "springfield-il",
+    "country": null,
+    "dataSourceId": "idot",
+    "total": 1447,
+    "measured": 1447,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "idot": 1447
+    }
+  },
+  {
+    "code": "rockford_metro",
+    "slug": "rockford",
+    "country": null,
+    "dataSourceId": "idot",
+    "total": 536,
+    "measured": 536,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "idot": 536
+    }
+  },
+  {
+    "code": "peoria_metro",
+    "slug": "peoria",
+    "country": null,
+    "dataSourceId": "idot",
+    "total": 571,
+    "measured": 571,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "idot": 571
+    }
+  },
+  {
+    "code": "champaign_metro",
+    "slug": "champaign",
+    "country": null,
+    "dataSourceId": "idot",
+    "total": 354,
+    "measured": 354,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "idot": 354
+    }
+  },
+  {
+    "code": "el_paso_metro",
+    "slug": "el-paso",
+    "country": null,
+    "dataSourceId": "txdot",
+    "total": 1479,
+    "measured": 1479,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "txdot": 1479
+    }
+  },
+  {
+    "code": "corpus_christi_metro",
+    "slug": "corpus-christi",
+    "country": null,
+    "dataSourceId": "txdot",
+    "total": 454,
+    "measured": 454,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "txdot": 454
+    }
+  },
+  {
+    "code": "lubbock_metro",
+    "slug": "lubbock",
+    "country": null,
+    "dataSourceId": "txdot",
+    "total": 382,
+    "measured": 382,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "txdot": 382
+    }
+  },
+  {
+    "code": "mcallen_metro",
+    "slug": "mcallen",
+    "country": null,
+    "dataSourceId": "txdot",
+    "total": 751,
+    "measured": 751,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "txdot": 751
+    }
+  },
+  {
+    "code": "bakersfield_metro",
+    "slug": "bakersfield",
+    "country": null,
+    "dataSourceId": "caltrans",
+    "total": 912,
+    "measured": 912,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "caltrans": 208,
+      "fhwa_hpms_2018": 704
+    }
+  },
+  {
+    "code": "stockton_metro",
+    "slug": "stockton",
+    "country": null,
+    "dataSourceId": "caltrans",
+    "total": 686,
+    "measured": 686,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "caltrans": 214,
+      "fhwa_hpms_2018": 472
+    }
+  },
+  {
+    "code": "modesto_metro",
+    "slug": "modesto",
+    "country": null,
+    "dataSourceId": "caltrans",
+    "total": 621,
+    "measured": 621,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "caltrans": 204,
+      "fhwa_hpms_2018": 417
+    }
+  },
+  {
+    "code": "oxnard_metro",
+    "slug": "oxnard",
+    "country": null,
+    "dataSourceId": "caltrans",
+    "total": 1644,
+    "measured": 1644,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 1024,
+      "caltrans": 620
+    }
+  },
+  {
+    "code": "colorado_springs_metro",
+    "slug": "colorado-springs",
+    "country": null,
+    "dataSourceId": "cdot_co",
+    "total": 1275,
+    "measured": 1275,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 1056,
+      "cdot_co": 219
+    }
+  },
+  {
+    "code": "fort_collins_metro",
+    "slug": "fort-collins",
+    "country": null,
+    "dataSourceId": "cdot_co",
+    "total": 739,
+    "measured": 739,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 451,
+      "cdot_co": 288
+    }
+  },
+  {
+    "code": "reno_metro",
+    "slug": "reno",
+    "country": null,
+    "dataSourceId": "nvdot",
+    "total": 821,
+    "measured": 821,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "nvdot": 821
+    }
+  },
+  {
+    "code": "spokane_metro",
+    "slug": "spokane",
+    "country": null,
+    "dataSourceId": "wsdot",
+    "total": 584,
+    "measured": 584,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 372,
+      "wsdot": 212
+    }
+  },
+  {
+    "code": "tacoma_metro",
+    "slug": "tacoma",
+    "country": null,
+    "dataSourceId": "wsdot",
+    "total": 1287,
+    "measured": 1287,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "wsdot": 493,
+      "fhwa_hpms_2018": 794
+    }
+  },
+  {
+    "code": "eugene_metro",
+    "slug": "eugene",
+    "country": null,
+    "dataSourceId": "odot_or",
+    "total": 399,
+    "measured": 399,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 289,
+      "odot_or": 110
+    }
+  },
+  {
+    "code": "salem_or_metro",
+    "slug": "salem-or",
+    "country": null,
+    "dataSourceId": "odot_or",
+    "total": 298,
+    "measured": 298,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "odot_or": 113,
+      "fhwa_hpms_2018": 185
+    }
+  },
+  {
+    "code": "provo_metro",
+    "slug": "provo",
+    "country": null,
+    "dataSourceId": "udot",
+    "total": 572,
+    "measured": 572,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "udot": 572
+    }
+  },
+  {
+    "code": "ogden_metro",
+    "slug": "ogden",
+    "country": null,
+    "dataSourceId": "udot",
+    "total": 278,
+    "measured": 278,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "udot": 278
+    }
+  },
+  {
+    "code": "rochester_mn_metro",
+    "slug": "rochester-mn",
+    "country": null,
+    "dataSourceId": "mndot",
+    "total": 331,
+    "measured": 331,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "mndot": 331
+    }
+  },
+  {
+    "code": "duluth_metro",
+    "slug": "duluth",
+    "country": null,
+    "dataSourceId": "mndot",
+    "total": 188,
+    "measured": 188,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "mndot": 188
+    }
+  },
+  {
+    "code": "fort_lauderdale_metro",
+    "slug": "fort-lauderdale",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 3592,
+    "measured": 3592,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fdot": 3592
+    }
+  },
+  {
+    "code": "west_palm_beach_metro",
+    "slug": "west-palm-beach",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 2029,
+    "measured": 2029,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fdot": 2029
+    }
+  },
+  {
+    "code": "daytona_beach_metro",
+    "slug": "daytona-beach",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 515,
+    "measured": 515,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fdot": 515
+    }
+  },
+  {
+    "code": "lakeland_metro",
+    "slug": "lakeland",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 646,
+    "measured": 646,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fdot": 646
+    }
+  },
+  {
+    "code": "tallahassee_metro",
+    "slug": "tallahassee",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 695,
+    "measured": 695,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fdot": 695
+    }
+  },
+  {
+    "code": "fort_myers_metro",
+    "slug": "fort-myers",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 920,
+    "measured": 920,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fdot": 920
+    }
+  },
+  {
+    "code": "roanoke_metro",
+    "slug": "roanoke",
+    "country": null,
+    "dataSourceId": "vdot",
+    "total": 480,
+    "measured": 480,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "vdot": 480
+    }
+  },
+  {
+    "code": "charlottesville_metro",
+    "slug": "charlottesville",
+    "country": null,
+    "dataSourceId": "vdot",
+    "total": 283,
+    "measured": 283,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "vdot": 283
+    }
+  },
+  {
+    "code": "springfield_mo_metro",
+    "slug": "springfield-mo",
+    "country": null,
+    "dataSourceId": "modot",
+    "total": 522,
+    "measured": 522,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 470,
+      "modot": 52
+    }
+  },
+  {
+    "code": "columbia_mo_metro",
+    "slug": "columbia-mo",
+    "country": null,
+    "dataSourceId": "modot",
+    "total": 172,
+    "measured": 172,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fhwa_hpms_2018": 152,
+      "modot": 20
+    }
+  },
+  {
+    "code": "cedar_rapids_metro",
+    "slug": "cedar-rapids",
+    "country": null,
+    "dataSourceId": "iadot",
+    "total": 363,
+    "measured": 363,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "iadot": 363
+    }
+  }
+]

@@ -38,6 +38,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const DATA_DIR = path.resolve(REPO_ROOT, "artifacts/api-server/src/data");
 const COVERAGE_PATH = path.resolve(REPO_ROOT, "artifacts/atlanta-tis/src/data/metro-coverage.ts");
+const PER_METRO_BASELINE_PATH = path.resolve(DATA_DIR, "per-metro-baseline.json");
 
 const CELL_DEG = 0.005;
 const FAR_RADIUS_M = 150;
@@ -79,6 +80,33 @@ const K_FACTOR_BY_GROUP: Record<RegionGroup, number> = {
   north_america: 9, canada: 9, europe: 10, east_asia: 10, gulf: 9,
   south_se_asia: 8, africa: 8, latin_america: 9, oceania: 9,
 };
+
+// Per-metro override of the per-class baseline, produced offline by
+// scripts/src/calibrate-global-per-metro.ts. Keyed by region.code. When a
+// metro has an entry here its baseline supersedes BASE_AADT[group]; the
+// calibrator already encoded direct calibration, monotonicity, sanity caps,
+// and the motorization-scaled fallback for unmeasured metros, so this script
+// just reads and applies. Falls back to group baseline when missing (which
+// shouldn't happen — the calibrator emits one entry per region — but is a
+// safe fallback).
+type PerMetroBaseline = {
+  method: string;
+  provenance: string;
+  baseline: Record<string, number>;  // keys "0".."4"
+  measuredN: Record<string, number>;
+};
+const PER_METRO_BASELINE: Record<string, PerMetroBaseline> = (() => {
+  if (!existsSync(PER_METRO_BASELINE_PATH)) {
+    console.warn(`⚠ per-metro-baseline.json not found — falling back to group baselines for every region. Run 'tsx src/calibrate-global-per-metro.ts' to generate it.`);
+    return {};
+  }
+  try {
+    return JSON.parse(readFileSync(PER_METRO_BASELINE_PATH, "utf8"));
+  } catch (e) {
+    console.warn(`⚠ per-metro-baseline.json unreadable (${(e as Error).message}) — falling back to group baselines.`);
+    return {};
+  }
+})();
 
 // Typical (reference) OSM lane count per class — lanes is total both directions.
 // laneFactor = (lanes / REF_LANES[class]) ^ LANE_EXP, clamped. Sub-linear because
@@ -208,55 +236,22 @@ function generateForRegion(region: Region): { total: number; snapped: number; sn
 
   const grid = buildGrid(road);
 
-  // ── Per-metro per-class calibration ────────────────────────────────────
-  // The group-level BASE_AADT is fine as a fallback but each metro has its
-  // own traffic distribution. When the metro already has substantial
-  // measured AADT (≥ a few percent of signals), learn the per-class median
-  // from that measured data and use it as the baseline for synthetic.
-  //
-  // For each measured signal in the existing aadt.json, snap to nearest
-  // road segment (same logic as synthetic generation) → record (class,
-  // measured AADT). Build per-class medians; require N_MIN samples per
-  // class before trusting the local median over the group baseline.
-  const outPathForRead = path.resolve(DATA_DIR, `${slug}-aadt.json`);
-  const measuredByClass = new Map<number, number[]>();
-  const coords = new Map<number, [number, number]>();
-  for (const [id, lat, lon] of signals) coords.set(id, [lat, lon]);
-  if (existsSync(outPathForRead)) {
-    try {
-      const existingAadt = JSON.parse(readFileSync(outPathForRead, "utf8")) as Record<string, AadtRec>;
-      for (const [id, rec] of Object.entries(existingAadt)) {
-        if (!rec || rec.source === "synthetic_osm_class") continue;
-        const c = coords.get(Number(id));
-        if (!c) continue;
-        const hit = nearestSegment(grid, c[0], c[1]);
-        if (!hit) continue;
-        let arr = measuredByClass.get(hit.seg.classCode);
-        if (!arr) measuredByClass.set(hit.seg.classCode, (arr = []));
-        arr.push(rec.aadt);
-      }
-    } catch {
-      // existing file unreadable; fall through with empty calibration → group baseline
-    }
-  }
-  const N_MIN = 20;
+  // ── Per-metro per-class baseline (offline-calibrated) ──────────────────
+  // The per-metro override map encodes direct calibration from this metro's
+  // measured signals (where available), monotonicity smoothing (motorway ≥
+  // trunk ≥ primary ≥ secondary ≥ tertiary), sanity caps, and a country-
+  // motorization-scaled group fallback for metros without measured data.
+  // It's produced by `tsx src/calibrate-global-per-metro.ts`.
+  const override = PER_METRO_BASELINE[region.code];
   const metroBase: Record<number, number> = {};
-  const usedLocal: number[] = [];
   for (let c = 0; c <= 4; c++) {
-    const arr = measuredByClass.get(c);
-    if (arr && arr.length >= N_MIN) {
-      const sorted = [...arr].sort((a, b) => a - b);
-      metroBase[c] = sorted[Math.floor(sorted.length / 2)]!;
-      usedLocal.push(c);
-    } else {
-      metroBase[c] = groupBase[c] ?? groupBase[4]!;
-    }
+    metroBase[c] = override?.baseline?.[String(c)] ?? groupBase[c] ?? groupBase[4]!;
   }
-  if (usedLocal.length > 0) {
-    const summary = [0, 1, 2, 3, 4]
-      .map((c) => `c${c}=${metroBase[c]}${usedLocal.includes(c) ? "*" : ""}`)
-      .join(" ");
-    console.log(`    calibrated ${region.code}: ${summary}  (* = per-metro median, n≥${N_MIN})`);
+  if (override) {
+    const summary = [0, 1, 2, 3, 4].map((c) => `c${c}=${metroBase[c]}`).join(" ");
+    console.log(`    ${region.code} baseline [${override.method}]: ${summary}`);
+  } else {
+    console.log(`    ${region.code} baseline [group fallback]: ${[0,1,2,3,4].map((c)=>`c${c}=${metroBase[c]}`).join(" ")}`);
   }
 
   const out: Record<string, AadtRec> = {};
@@ -330,19 +325,47 @@ function updateCoverage(coverage: string, regionCode: string, snapPct: number): 
 }
 
 function main(): void {
-  // Default: every osm_only metro (tier-10 cold-start coverage).
-  // --metros CODE,CODE,...  : also include the listed metro codes
-  //                           (e.g. Canadian metros where we want synthetic
-  //                           to backfill the unmeasured share alongside an
-  //                           existing measured overlay).
+  // Selection flags:
+  //   default:        every osm_only metro (tier-10 cold-start coverage)
+  //   --metros A,B    additionally include listed region codes
+  //   --under-85      additionally include every region under 85% measured
+  //                   per per-metro-audit.json (synth backfills the gap)
+  //   --all-eligible  every region with both signals.json + roads.json
   const metrosArgIdx = process.argv.indexOf("--metros");
   const extraCodes = metrosArgIdx >= 0
     ? (process.argv[metrosArgIdx + 1] ?? "").split(",").map((s) => s.trim()).filter(Boolean)
     : [];
-  const tier10 = Object.values(REGIONS).filter(
-    (r) => r.dataSourceId === "osm_only" || extraCodes.includes(r.code),
-  );
-  console.log(`Tier-10 regions: ${tier10.length}${extraCodes.length ? ` (+${extraCodes.length} explicit)` : ""}`);
+  const includeUnder85 = process.argv.includes("--under-85");
+  const allEligible = process.argv.includes("--all-eligible");
+
+  const under85Codes = new Set<string>();
+  if (includeUnder85) {
+    const auditPath = path.resolve(DATA_DIR, "per-metro-audit.json");
+    if (!existsSync(auditPath)) {
+      console.error(`✗ --under-85 requires per-metro-audit.json; run 'tsx src/audit-measured-aadt-global.ts' first`);
+      process.exit(1);
+    }
+    const audit = JSON.parse(readFileSync(auditPath, "utf8")) as Array<{ code: string; measuredPct: number }>;
+    for (const a of audit) if (a.measuredPct < 85) under85Codes.add(a.code);
+    console.log(`--under-85: ${under85Codes.size} regions tagged for backfill from audit`);
+  }
+
+  const tier10 = Object.values(REGIONS).filter((r) => {
+    if (extraCodes.includes(r.code)) return true;
+    if (r.dataSourceId === "osm_only") return true;
+    if (allEligible) {
+      const slug = regionSlug(r.code);
+      return existsSync(path.resolve(DATA_DIR, `${slug}-signals.json`))
+          && existsSync(path.resolve(DATA_DIR, `${slug}-roads.json`));
+    }
+    if (includeUnder85 && under85Codes.has(r.code)) {
+      const slug = regionSlug(r.code);
+      return existsSync(path.resolve(DATA_DIR, `${slug}-signals.json`))
+          && existsSync(path.resolve(DATA_DIR, `${slug}-roads.json`));
+    }
+    return false;
+  });
+  console.log(`Selected ${tier10.length} regions for synthesis${extraCodes.length ? ` (+${extraCodes.length} explicit)` : ""}`);
 
   let coverage = readFileSync(COVERAGE_PATH, "utf8");
   let updated = 0;
