@@ -6744,6 +6744,108 @@ function renderTisFlorida(
     }
     doc.fillColor("black");
   }
+
+  // --- Appendix A — Intersection Capacity Analysis Worksheets ------------
+  // Per-intersection HCM signalized-capacity detail, rendered from the
+  // approach-level results the engine already computes (volumes, v/c,
+  // control delay, LOS, 95th-percentile queue) for the Existing (No-Build)
+  // and Build conditions. This is the substantive worksheet content a
+  // reviewer expects in an FDOT submittal's appendix — no fabricated data.
+  renderFloridaCapacityAppendix(doc, intersections);
+}
+
+/**
+ * Appendix A for the FDOT renderer: a per-intersection capacity worksheet
+ * for every study intersection. Each worksheet shows the intersection-level
+ * Existing(No-Build)→Build summary plus a per-approach table (volumes, v/c,
+ * delay, LOS, queue). All values come straight from the engine result; this
+ * function fabricates nothing. Intersections are ordered by impact severity
+ * (LOS changes first, then by added control delay) to match the on-screen
+ * table and put the reviewer's attention on the affected signals first.
+ */
+function renderFloridaCapacityAppendix(
+  doc: PDFKit.PDFDocument,
+  intersections: any[],
+) {
+  doc.addPage();
+  gaSection(doc, "APPENDIX A — INTERSECTION CAPACITY ANALYSIS WORKSHEETS");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Per-approach capacity results for every study intersection, supporting Sections 4.0 and 7.0/8.0. "
+    + "Analysis follows the Highway Capacity Manual 6th Edition signalized-intersection method consistent with "
+    + "the FDOT Traffic Analysis Handbook (October 2025); v/c, control delay (sec/veh), Level of Service, and "
+    + "95th-percentile back-of-queue (ft) are reported for the Existing (No-Build) and Build conditions. "
+    + "These are screening-level (planning) results; a formal submittal validates them in HCS or Synchro/SimTraffic "
+    + "against measured turning-movement counts collected per MTSIH 2024 §4.",
+    { paragraphGap: 8 },
+  );
+  doc.fillColor("black");
+
+  if (!Array.isArray(intersections) || intersections.length === 0) {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "No signalized intersections fall within the study area, so no capacity worksheets are generated.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+    return;
+  }
+
+  const ordered = [...intersections].sort((a, b) => {
+    const ac = !!a.losChanged, bc = !!b.losChanged;
+    if (ac !== bc) return ac ? -1 : 1;
+    const ad = (Number(b.futureDelaySec) || 0) - (Number(b.existingDelaySec) || 0);
+    const aa = (Number(a.futureDelaySec) || 0) - (Number(a.existingDelaySec) || 0);
+    return ad - aa;
+  });
+
+  ordered.forEach((ix, i) => {
+    // Keep each worksheet's header + summary together: break to a new page
+    // if there isn't room for the subsection title and the summary block.
+    if (doc.y > doc.page.height - PAGE_MARGIN - 160) doc.addPage();
+
+    gaSubsection(doc, `A.${i + 1}  ${ix.name ?? ix.signalId ?? "Intersection"}`);
+    const deltaDelay = (Number(ix.futureDelaySec) || 0) - (Number(ix.existingDelaySec) || 0);
+    rows(doc, [
+      ["Signal ID", String(ix.signalId ?? "—")],
+      ["Location", `${ix.zone ?? "—"} · ${fmtNum(ix.distanceMi, 2)} mi from site`],
+      ["Added PM peak trips", fmtNum(ix.addedTripsPmPeak)],
+      ["Existing / No-Build (PM)", `LOS ${ix.existingLos ?? "—"} · ${fmtNum(ix.existingDelaySec, 1)} s/veh · v/c ${fmtNum(ix.existingVc, 2)}`],
+      ["Build (PM)", `LOS ${ix.futureLos ?? "—"} · ${fmtNum(ix.futureDelaySec, 1)} s/veh · v/c ${fmtNum(ix.futureVc, 2)}`],
+      ["Δ control delay", `${deltaDelay >= 0 ? "+" : ""}${fmtNum(deltaDelay, 1)} s/veh${ix.losChanged ? "  (LOS change)" : ""}`],
+      ["95th-pct queue", `${fmtNum(ix.queue95thFt)} ft`],
+      ["Mitigation", ix.mitigation ? String(ix.mitigation) : "None required at screening level"],
+    ]);
+    doc.moveDown(0.2);
+
+    const approaches: any[] = Array.isArray(ix.approaches) ? ix.approaches : [];
+    if (approaches.length === 0) {
+      doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+        "Approach-level detail not available for this intersection.",
+        { paragraphGap: 6 },
+      );
+      doc.fillColor("black");
+      return;
+    }
+
+    // Column captions are kept short so they fit on one line at the table
+    // helper's 9pt bold without wrapping/ellipsis; "E→B" means
+    // Existing(No-Build) → Build. Widths sum to ~500 < usable 512.
+    table(doc, {
+      headers: ["Appr.", "Exist vph", "+Trips", "Build vph", "v/c E→B", "Delay E→B", "LOS E→B", "Q95 ft"],
+      widths: [52, 64, 44, 64, 70, 84, 60, 54],
+      align: ["left", "right", "right", "right", "center", "center", "center", "right"],
+      rows: approaches.map((a) => [
+        String(a.direction ?? "—"),
+        fmtNum(a.existingVolumeVph),
+        fmtNum(a.addedTripsPeak),
+        fmtNum(a.futureVolumeVph),
+        `${fmtNum(a.existingVc, 2)} → ${fmtNum(a.futureVc, 2)}`,
+        `${fmtNum(a.existingDelaySec, 1)} → ${fmtNum(a.futureDelaySec, 1)}`,
+        `${a.existingLos ?? "—"} → ${a.futureLos ?? "—"}`,
+        fmtNum(a.queue95thFt),
+      ]),
+    });
+    doc.moveDown(0.4);
+  });
 }
 
 function renderParking(doc: PDFKit.PDFDocument, r: any) {
