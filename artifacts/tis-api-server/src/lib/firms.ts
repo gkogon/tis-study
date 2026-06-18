@@ -14,6 +14,7 @@ import {
   type FirmMember,
 } from "@workspace/db";
 import { logger } from "./logger";
+import { isAdminEmail } from "./auth";
 
 export type FirmWithRole = {
   firm: Firm;
@@ -110,15 +111,52 @@ export async function getOrCreateFirmForUser(
 }
 
 export type QuotaCheck =
-  | { ok: true; firmId: string; remaining: number }
+  | { ok: true; firmId: string; remaining: number; unlimited: boolean }
   | { ok: false; reason: "quota_exceeded"; firmId: string; limit: number };
+
+/**
+ * Returns true when a firm/user should never be metered against the study
+ * cap. Cases:
+ *   - Dev-auth environments (`DEV_AUTH_ENABLED=true`): the sign-in bypass
+ *     trusts any email and there's no billing, so the study quota is pure
+ *     friction. Every dev account is unlimited. (This is never set in prod
+ *     per the .env contract, so it can't leak a free tier to real users.)
+ *   - `studyLimit <= 0` is the documented "unlimited" sentinel (enterprise
+ *     / comped firms). The quota banner already self-hides on it; this
+ *     makes the actual generation gate honor the same convention. Without
+ *     this, an unlimited firm (limit 0) was HARD BLOCKED on every run,
+ *     because `studiesUsedThisPeriod (0) >= studyLimit (0)` is true.
+ *   - admin/operator emails (ADMIN_EMAILS) are always unlimited regardless
+ *     of the firm row, so the operator's own account is never blocked.
+ */
+export function isUnlimitedStudies(
+  firm: Pick<Firm, "studyLimit">,
+  email?: string | null,
+): boolean {
+  if (process.env.DEV_AUTH_ENABLED === "true") return true;
+  return firm.studyLimit <= 0 || isAdminEmail(email);
+}
 
 /**
  * Check whether the firm can run another TIS this billing period.
  * Returns `ok: true` and the new remaining count if so. The caller is
  * responsible for calling `incrementStudyUsage` after a successful run.
+ *
+ * Pass the signed-in user's email so admin/operator accounts (and the
+ * unlimited sentinel) are never blocked.
  */
-export function canGenerateStudy(firm: Firm): QuotaCheck {
+export function canGenerateStudy(
+  firm: Firm,
+  opts?: { email?: string | null },
+): QuotaCheck {
+  if (isUnlimitedStudies(firm, opts?.email)) {
+    return {
+      ok: true,
+      firmId: firm.id,
+      remaining: Number.POSITIVE_INFINITY,
+      unlimited: true,
+    };
+  }
   if (firm.studiesUsedThisPeriod >= firm.studyLimit) {
     return {
       ok: false,
@@ -131,6 +169,7 @@ export function canGenerateStudy(firm: Firm): QuotaCheck {
     ok: true,
     firmId: firm.id,
     remaining: firm.studyLimit - firm.studiesUsedThisPeriod - 1,
+    unlimited: false,
   };
 }
 

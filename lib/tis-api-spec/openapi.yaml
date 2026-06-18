@@ -359,8 +359,8 @@ components:
       properties:
         projectName: { type: string, minLength: 1 }
         address: { type: string }
-        latitude: { type: number, minimum: 33.4, maximum: 34.2 }
-        longitude: { type: number, minimum: -84.9, maximum: -83.9 }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
         landUseCode: { type: string, minLength: 2 }
         size: { type: number, minimum: 0.01 }
         openingYear: { type: integer, minimum: 2024, maximum: 2050 }
@@ -389,6 +389,12 @@ components:
         runSensitivity:
           type: boolean
           description: If true, runs a 100-iteration Monte-Carlo sensitivity analysis.
+        independentVariable:
+          type: string
+          description: >-
+            Optional ITE TGM 11th Ed. alternate independent variable (matches a
+            `unitShort` from the land use's `secondaryVariables`). Defaults to the
+            primary published variable.
       required: [projectName, address, latitude, longitude, landUseCode, size, openingYear]
     TisTripGeneration:
       type: object
@@ -397,6 +403,9 @@ components:
         landUseName: { type: string }
         size: { type: number }
         unit: { type: string }
+        unitShort: { type: string }
+        variableConfidence: { type: string, enum: [ite_published, interpolated] }
+        variableNote: { type: string }
         dailyTrips: { type: integer }
         amPeakTrips: { type: integer }
         pmPeakTrips: { type: integer }

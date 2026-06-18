@@ -73,7 +73,7 @@ export class MeasuredIndex {
     lon: number,
     classCode: number,
     opts: { k?: number; maxRadiusM?: number; excludeId?: number | null } = {},
-  ): MeasuredSignal[] {
+  ): Array<MeasuredSignal & { d: number }> {
     const k = opts.k ?? 5;
     const maxR = opts.maxRadiusM ?? 4000;
     const exclude = opts.excludeId ?? null;

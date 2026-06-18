@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, Printer, Building2, MapPin, Car, Activity, ChevronDown, ChevronRight,
   CheckCircle2, AlertTriangle, AlertCircle, FileText, Info, Calculator, Settings,
-  CloudRain, TrendingUp, Sliders, Sparkles, BarChart3,
+  CloudRain, TrendingUp, Sliders, Sparkles, BarChart3, Loader2,
 } from "lucide-react";
 import { CitationRef } from "@/components/citation-ref";
 import { QuotaBanner } from "@/components/quota-banner";
@@ -46,6 +46,13 @@ const DELAY_CONFIDENCE_FRAC = 0.15;
 function delayBand(delta: number): { lo: number; hi: number } {
   const half = Math.abs(delta) * DELAY_CONFIDENCE_FRAC;
   return { lo: delta - half, hi: delta + half };
+}
+
+// The capacity engine reads coordinates at 4-decimal precision (≈11 m);
+// extra digits from a geocoder or hand-paste are noise and have tripped
+// the spatial index in the past. Round every coordinate the form emits.
+function round4(n: number): number {
+  return Math.round(n * 1e4) / 1e4;
 }
 
 type ProjectTemplate = {
@@ -224,13 +231,62 @@ function TisFormSection({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const lu = useMemo(() => landUses.find((l) => l.code === form.landUseCode), [landUses, form.landUseCode]);
 
+  // Address → coordinates. Lets the engineer type any address in any city,
+  // click Find, and have lat/lon auto-fill — no need to look up coordinates
+  // by hand or pre-select a city. Reuses the public Nominatim-backed
+  // /demo/geocode endpoint (no auth required, rate-limited + cached).
+  const [geocoding, setGeocoding] = useState(false);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
+  const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
+
+  async function resolveAddress() {
+    const q = (form.address ?? "").trim();
+    if (q.length < 3) {
+      setGeocodeError("Type at least a few characters of an address.");
+      return;
+    }
+    setGeocoding(true);
+    setGeocodeError(null);
+    try {
+      const r = await fetch("/tis-api/demo/geocode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: q }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setGeocodeError(String(data?.error ?? "Couldn't look that up."));
+        setResolvedAddress(null);
+        return;
+      }
+      setForm((f) => ({
+        ...f,
+        latitude: round4(Number(data.latitude)),
+        longitude: round4(Number(data.longitude)),
+      }));
+      setResolvedAddress(String(data.displayName ?? q));
+    } catch {
+      setGeocodeError("Couldn't reach the address lookup. Try again or paste coordinates directly.");
+    } finally {
+      setGeocoding(false);
+    }
+  }
+
   function loadSample(s: TisRequest) {
     setForm(s);
+    setResolvedAddress(null);
+    setGeocodeError(null);
   }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    onGenerate(form);
+    // Snap coordinates to the engine's 4-decimal precision before sending,
+    // covering hand-typed values that the geocoder never touched.
+    onGenerate({
+      ...form,
+      latitude: round4(Number(form.latitude)),
+      longitude: round4(Number(form.longitude)),
+    });
   }
 
   const periods = form.analysisPeriods ?? ALL_PERIODS;
@@ -301,33 +357,65 @@ function TisFormSection({
               data-testid="input-project-name"
             />
           </label>
-          <label className="space-y-1">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Address</span>
-            <input
-              type="text" required
-              className="w-full px-3 py-2 rounded-md border bg-background text-sm"
-              value={form.address}
-              onChange={(e) => setForm({ ...form, address: e.target.value })}
-              data-testid="input-address"
-            />
-          </label>
+          <div className="space-y-1 md:col-span-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Address <span className="normal-case text-muted-foreground/60">— type any city, click Find to auto-fill coordinates</span>
+            </span>
+            <div className="flex gap-2">
+              <input
+                type="text" required
+                className="flex-1 px-3 py-2 rounded-md border bg-background text-sm"
+                value={form.address}
+                onChange={(e) => setForm({ ...form, address: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); void resolveAddress(); }
+                }}
+                placeholder="e.g. 90 Church St, Epworth, GA or 4 Pl. Jussieu, Paris"
+                disabled={geocoding}
+                data-testid="input-address"
+              />
+              <button
+                type="button"
+                onClick={() => void resolveAddress()}
+                disabled={geocoding || (form.address ?? "").trim().length < 3}
+                className="px-4 py-2 text-sm font-semibold rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5 shrink-0"
+                data-testid="button-geocode"
+              >
+                {geocoding ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Looking up</> : <><MapPin className="w-3.5 h-3.5" /> Find</>}
+              </button>
+            </div>
+            {resolvedAddress && !geocodeError && (
+              <div className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+                <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0 mt-0.5" />
+                <span className="truncate" title={resolvedAddress}>Resolved: {resolvedAddress}</span>
+              </div>
+            )}
+            {geocodeError && (
+              <div className="text-[11px] text-red-600 flex items-start gap-1.5">
+                <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+                <span>{geocodeError}</span>
+              </div>
+            )}
+          </div>
           <label className="space-y-1">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Latitude</span>
             <input
-              type="number" step="0.0001" required min={33.4} max={34.2}
+              type="number" step="0.0001" required min={-90} max={90}
               className="w-full px-3 py-2 rounded-md border bg-background text-sm font-mono"
               value={form.latitude}
               onChange={(e) => setForm({ ...form, latitude: Number(e.target.value) })}
+              onBlur={(e) => setForm({ ...form, latitude: round4(Number(e.target.value)) })}
               data-testid="input-lat"
             />
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Longitude</span>
             <input
-              type="number" step="0.0001" required min={-84.9} max={-83.9}
+              type="number" step="0.0001" required min={-180} max={180}
               className="w-full px-3 py-2 rounded-md border bg-background text-sm font-mono"
               value={form.longitude}
               onChange={(e) => setForm({ ...form, longitude: Number(e.target.value) })}
+              onBlur={(e) => setForm({ ...form, longitude: round4(Number(e.target.value)) })}
               data-testid="input-lon"
             />
           </label>

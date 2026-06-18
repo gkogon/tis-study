@@ -26,11 +26,11 @@ sized to the projected LOS impact.
  * @summary Generate a screening-level Traffic Impact Study (TIS) for a candidate site
  */
 
-export const generateTisBodyLatitudeMin = 33.4;
-export const generateTisBodyLatitudeMax = 34.2;
+export const generateTisBodyLatitudeMin = -90;
+export const generateTisBodyLatitudeMax = 90;
 
-export const generateTisBodyLongitudeMin = -84.9;
-export const generateTisBodyLongitudeMax = -83.9;
+export const generateTisBodyLongitudeMin = -180;
+export const generateTisBodyLongitudeMax = 180;
 
 export const generateTisBodyLandUseCodeMin = 2;
 
@@ -116,11 +116,11 @@ export const GenerateTisBody = zod.object({
     ),
 });
 
-export const generateTisResponseRequestLatitudeMin = 33.4;
-export const generateTisResponseRequestLatitudeMax = 34.2;
+export const generateTisResponseRequestLatitudeMin = -90;
+export const generateTisResponseRequestLatitudeMax = 90;
 
-export const generateTisResponseRequestLongitudeMin = -84.9;
-export const generateTisResponseRequestLongitudeMax = -83.9;
+export const generateTisResponseRequestLongitudeMin = -180;
+export const generateTisResponseRequestLongitudeMax = 180;
 
 export const generateTisResponseRequestLandUseCodeMin = 2;
 
@@ -199,6 +199,12 @@ export const GenerateTisResponse = zod.object({
       .optional()
       .describe(
         "If true, runs a 100-iteration Monte-Carlo sensitivity analysis.",
+      ),
+    independentVariable: zod
+      .string()
+      .optional()
+      .describe(
+        "Optional ITE TGM 11th Ed. alternate independent variable (matches a `unitShort` from the land use's `secondaryVariables`). Defaults to the primary published variable.",
       ),
   }),
   studyRadiusMi: zod.number(),
@@ -443,11 +449,11 @@ export const GetTisProjectParams = zod.object({
   id: zod.coerce.string().uuid(),
 });
 
-export const getTisProjectResponseRequestOneLatitudeMin = 33.4;
-export const getTisProjectResponseRequestOneLatitudeMax = 34.2;
+export const getTisProjectResponseRequestOneLatitudeMin = -90;
+export const getTisProjectResponseRequestOneLatitudeMax = 90;
 
-export const getTisProjectResponseRequestOneLongitudeMin = -84.9;
-export const getTisProjectResponseRequestOneLongitudeMax = -83.9;
+export const getTisProjectResponseRequestOneLongitudeMin = -180;
+export const getTisProjectResponseRequestOneLongitudeMax = 180;
 
 export const getTisProjectResponseRequestOneLandUseCodeMin = 2;
 
@@ -468,11 +474,11 @@ export const getTisProjectResponseRequestOnePassByPctMax = 70;
 export const getTisProjectResponseRequestOneInternalCapturePctMin = 0;
 export const getTisProjectResponseRequestOneInternalCapturePctMax = 50;
 
-export const getTisProjectResponseResultRequestLatitudeMin = 33.4;
-export const getTisProjectResponseResultRequestLatitudeMax = 34.2;
+export const getTisProjectResponseResultRequestLatitudeMin = -90;
+export const getTisProjectResponseResultRequestLatitudeMax = 90;
 
-export const getTisProjectResponseResultRequestLongitudeMin = -84.9;
-export const getTisProjectResponseResultRequestLongitudeMax = -83.9;
+export const getTisProjectResponseResultRequestLongitudeMin = -180;
+export const getTisProjectResponseResultRequestLongitudeMax = 180;
 
 export const getTisProjectResponseResultRequestLandUseCodeMin = 2;
 
@@ -571,6 +577,12 @@ export const GetTisProjectResponse = zod
             .describe(
               "If true, runs a 100-iteration Monte-Carlo sensitivity analysis.",
             ),
+          independentVariable: zod
+            .string()
+            .optional()
+            .describe(
+              "Optional ITE TGM 11th Ed. alternate independent variable (matches a `unitShort` from the land use's `secondaryVariables`). Defaults to the primary published variable.",
+            ),
         }),
         zod.record(zod.string(), zod.unknown()),
       ])
@@ -642,6 +654,12 @@ export const GetTisProjectResponse = zod
           .describe(
             "If true, runs a 100-iteration Monte-Carlo sensitivity analysis.",
           ),
+        independentVariable: zod
+          .string()
+          .optional()
+          .describe(
+            "Optional ITE TGM 11th Ed. alternate independent variable (matches a `unitShort` from the land use's `secondaryVariables`). Defaults to the primary published variable.",
+          ),
       }),
       studyRadiusMi: zod.number(),
       tripGeneration: zod.object({
@@ -649,6 +667,11 @@ export const GetTisProjectResponse = zod
         landUseName: zod.string(),
         size: zod.number(),
         unit: zod.string(),
+        unitShort: zod.string().optional(),
+        variableConfidence: zod
+          .enum(["ite_published", "interpolated"])
+          .optional(),
+        variableNote: zod.string().optional(),
         dailyTrips: zod.number(),
         amPeakTrips: zod.number(),
         pmPeakTrips: zod.number(),

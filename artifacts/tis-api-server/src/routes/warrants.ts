@@ -46,7 +46,7 @@ router.post(
       lastName: user.lastName,
     });
 
-    const quota = canGenerateStudy(firm);
+    const quota = canGenerateStudy(firm, { email: user.email });
     if (!quota.ok) {
       res.status(402).json({
         error:

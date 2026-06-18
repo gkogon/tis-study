@@ -158,13 +158,13 @@ export interface TisRequest {
   projectName: string;
   address: string;
   /**
-   * @minimum 33.4
-   * @maximum 34.2
+   * @minimum -90
+   * @maximum 90
    */
   latitude: number;
   /**
-   * @minimum -84.9
-   * @maximum -83.9
+   * @minimum -180
+   * @maximum 180
    */
   longitude: number;
   /** @minLength 2 */
@@ -204,13 +204,26 @@ export interface TisRequest {
   internalCapturePct?: number;
   /** If true, runs a 100-iteration Monte-Carlo sensitivity analysis. */
   runSensitivity?: boolean;
+  /** Optional ITE TGM 11th Ed. alternate independent variable (matches a `unitShort` from the land use's `secondaryVariables`). Defaults to the primary published variable. */
+  independentVariable?: string;
 }
+
+export type TisTripGenerationVariableConfidence =
+  (typeof TisTripGenerationVariableConfidence)[keyof typeof TisTripGenerationVariableConfidence];
+
+export const TisTripGenerationVariableConfidence = {
+  ite_published: "ite_published",
+  interpolated: "interpolated",
+} as const;
 
 export interface TisTripGeneration {
   landUseCode: string;
   landUseName: string;
   size: number;
   unit: string;
+  unitShort?: string;
+  variableConfidence?: TisTripGenerationVariableConfidence;
+  variableNote?: string;
   dailyTrips: number;
   amPeakTrips: number;
   pmPeakTrips: number;

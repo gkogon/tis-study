@@ -5,12 +5,16 @@
  * TIS (Traffic Impact Study) API specification — engineering-firm product surface.
  * OpenAPI spec version: 0.1.0
  */
+import type { TisTripGenerationVariableConfidence } from "./tisTripGenerationVariableConfidence";
 
 export interface TisTripGeneration {
   landUseCode: string;
   landUseName: string;
   size: number;
   unit: string;
+  unitShort?: string;
+  variableConfidence?: TisTripGenerationVariableConfidence;
+  variableNote?: string;
   dailyTrips: number;
   amPeakTrips: number;
   pmPeakTrips: number;

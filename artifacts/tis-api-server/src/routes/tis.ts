@@ -5,6 +5,7 @@ import {
   ListTisLandUsesResponse,
 } from "@workspace/tis-api-zod";
 import { generateTisReport, LAND_USES } from "../lib/tis";
+import { regionForCoordinate } from "../lib/regions";
 import { generateRateLimiter } from "../lib/security";
 import { saveProject } from "../lib/tis-projects";
 import {
@@ -41,6 +42,25 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
     return;
   }
 
+  // Coverage guard. Coordinates are now globally valid (the OpenAPI bounds
+  // were widened from Atlanta-only to -90/90, -180/180 so any city can be
+  // studied), but the engine only has signal/road data for the covered
+  // metros — outside them it would silently fall back to Atlanta region
+  // parameters and emit a misleading report. Reject out-of-coverage sites
+  // with a clear message instead, mirroring the demo route's guard.
+  if (!regionForCoordinate(parsed.data.latitude, parsed.data.longitude)) {
+    res.status(422).json({
+      error:
+        `Coordinates (${parsed.data.latitude.toFixed(4)}, ${parsed.data.longitude.toFixed(4)}) ` +
+        `fall outside our covered metros. Pick a site inside a covered city — see the Cities page for the full list.`,
+    });
+    req.log.info(
+      { lat: parsed.data.latitude, lon: parsed.data.longitude },
+      "tis-generate.out_of_coverage",
+    );
+    return;
+  }
+
   // Resolve user → firm (auto-creates personal firm on first hit).
   const { firm } = await getOrCreateFirmForUser(user.id, {
     email: user.email,
@@ -48,7 +68,7 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
     lastName: user.lastName,
   });
 
-  const quota = canGenerateStudy(firm);
+  const quota = canGenerateStudy(firm, { email: user.email });
   if (!quota.ok) {
     res.status(402).json({
       error:

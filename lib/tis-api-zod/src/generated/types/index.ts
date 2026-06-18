@@ -36,4 +36,5 @@ export * from "./tisReport";
 export * from "./tisRequest";
 export * from "./tisSensitivityResult";
 export * from "./tisTripGeneration";
+export * from "./tisTripGenerationVariableConfidence";
 export * from "./tisWeather";

@@ -25,6 +25,7 @@ type Summary = {
     seatLimit: number;
     studyLimit: number;
     studiesUsedThisPeriod: number;
+    unlimited?: boolean;
     currentPeriodEnd: string | null;
     currentPeriodStart: string | null;
     hasStripeCustomer: boolean;
@@ -121,10 +122,13 @@ export default function SettingsBillingPage() {
 
   const firm = summary.firm;
   const canManage = summary.role === "owner" || summary.role === "admin";
-  const usagePct = Math.min(
-    100,
-    Math.round((firm.studiesUsedThisPeriod / Math.max(1, firm.studyLimit)) * 100),
-  );
+  const unlimited = firm.unlimited || firm.studyLimit <= 0;
+  const usagePct = unlimited
+    ? 0
+    : Math.min(
+        100,
+        Math.round((firm.studiesUsedThisPeriod / Math.max(1, firm.studyLimit)) * 100),
+      );
 
   return (
     <div>
@@ -207,14 +211,16 @@ export default function SettingsBillingPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t">
             <Stat icon={BarChart3} label="Studies this period">
               <span className="text-2xl font-bold">{firm.studiesUsedThisPeriod}</span>
-              <span className="text-muted-foreground"> / {firm.studyLimit}</span>
+              <span className="text-muted-foreground">
+                {unlimited ? " / Unlimited" : ` / ${firm.studyLimit}`}
+              </span>
               <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
                 <div
                   className={
                     "h-full rounded-full transition-all " +
-                    (usagePct >= 100 ? "bg-red-600" : usagePct >= 80 ? "bg-amber-500" : "bg-blue-600")
+                    (unlimited ? "bg-emerald-500" : usagePct >= 100 ? "bg-red-600" : usagePct >= 80 ? "bg-amber-500" : "bg-blue-600")
                   }
-                  style={{ width: `${usagePct}%` }}
+                  style={{ width: unlimited ? "100%" : `${usagePct}%` }}
                 />
               </div>
             </Stat>

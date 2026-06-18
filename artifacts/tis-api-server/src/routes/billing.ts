@@ -17,7 +17,7 @@
  *     page load.
  */
 import { Router, type IRouter } from "express";
-import { getOrCreateFirmForUser, getMembership } from "../lib/firms";
+import { getOrCreateFirmForUser, getMembership, isUnlimitedStudies } from "../lib/firms";
 import {
   createCheckoutSession,
   createPortalSession,
@@ -123,6 +123,11 @@ router.get("/billing/summary", async (req, res): Promise<void> => {
       lastName: user.lastName,
     });
     const membership = await getMembership(firm.id, user.id);
+    // Unlimited accounts (the studyLimit<=0 sentinel, or an admin/operator
+    // email) report studyLimit 0 so the quota banner self-hides and no UI
+    // ever warns "you'll use up all your studies." `unlimited` is also
+    // surfaced explicitly for callers that want to show an "Unlimited" badge.
+    const unlimited = isUnlimitedStudies(firm, user.email);
     res.json({
       firm: {
         id: firm.id,
@@ -131,8 +136,9 @@ router.get("/billing/summary", async (req, res): Promise<void> => {
         planTier: firm.planTier,
         subscriptionStatus: firm.subscriptionStatus,
         seatLimit: firm.seatLimit,
-        studyLimit: firm.studyLimit,
+        studyLimit: unlimited ? 0 : firm.studyLimit,
         studiesUsedThisPeriod: firm.studiesUsedThisPeriod,
+        unlimited,
         currentPeriodEnd: firm.currentPeriodEnd?.toISOString() ?? null,
         currentPeriodStart: firm.currentPeriodStart?.toISOString() ?? null,
         hasStripeCustomer: !!firm.stripeCustomerId,
