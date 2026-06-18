@@ -23,6 +23,7 @@
 
 export type RegionGroup =
   | "north_america"
+  | "canada"
   | "europe"
   | "east_asia"
   | "gulf"
@@ -34,8 +35,11 @@ export type RegionGroup =
 /** country code (the `country` field on a region; ISO 3166-1 alpha-2, with the
  *  alpha-3 collision-forms also accepted) → group. US/undefined → north_america. */
 const COUNTRY_TO_GROUP: Record<string, RegionGroup> = {
-  // North America
-  US: "north_america", CA: "north_america", MX: "north_america",
+  // North America — split US/CA after measuring Canadian metros at
+  // 75-98% coverage (2026-06-16). Per-class medians ran materially
+  // lower in Canadian cities than the US DOT-anchored baseline, so
+  // CA gets its own group with its own calibration.
+  US: "north_america", CA: "canada", MX: "north_america",
   // Europe (EU + UK + EFTA + Balkans + Baltics + Ukraine)
   DE: "europe", FR: "europe", IT: "europe", ES: "europe", NL: "europe",
   BE: "europe", CH: "europe", AT: "europe", PT: "europe", IE: "europe",

@@ -129,16 +129,40 @@ function main(): void {
 
   // 2. Collect measured rows per anchored group
   console.log(`\n=== joining measured signals → road class/lanes/speed ===`);
+  // For Canada, pull every non-synthetic source tag we've wired:
+  //   - provincial DOTs: mto / ab_transportation / mb_infrastructure / mtq_djma
+  //   - city portals: toronto_open_data_svc / ottawa_open_data_midblock /
+  //                   hamilton_open_data_adt / calgary_open_data_(2023|volumes) /
+  //                   edmonton_open_data_aawdt / winnipeg_open_data_midblock /
+  //                   halifax_open_data_traffic_studies / vancouver_open_data_directional /
+  //                   montreal_open_data_intersection
+  const CA_PREFIXES = [
+    "mto", "ab_transportation", "mb_infrastructure", "mtq_djma",
+    "toronto_open_data_svc", "ottawa_open_data_midblock", "hamilton_open_data_adt",
+    "calgary_open_data_", "edmonton_open_data_aawdt", "winnipeg_open_data_midblock",
+    "halifax_open_data_traffic_studies", "vancouver_open_data_directional",
+    "montreal_open_data_intersection",
+  ];
   const rows: Row[] = [
     ...collect("paris", "europe", ["paris_opendata"]),
     ...collect("madrid", "europe", ["madrid_ayto"]),
     ...collect("berlin", "europe", ["berlin_senat"]),
     ...collect("tokyo", "east_asia", ["mlit_census"]),
     ...collect("osaka", "east_asia", ["mlit_census"]),
+    ...collect("toronto", "canada", CA_PREFIXES),
+    ...collect("ottawa", "canada", CA_PREFIXES),
+    ...collect("hamilton", "canada", CA_PREFIXES),
+    ...collect("montreal", "canada", CA_PREFIXES),
+    ...collect("quebec-city", "canada", CA_PREFIXES),
+    ...collect("vancouver", "canada", CA_PREFIXES),
+    ...collect("calgary", "canada", CA_PREFIXES),
+    ...collect("edmonton", "canada", CA_PREFIXES),
+    ...collect("winnipeg", "canada", CA_PREFIXES),
+    ...collect("halifax", "canada", CA_PREFIXES),
   ];
 
   // 3. Per group×class median AADT
-  for (const group of ["europe", "east_asia"] as RegionGroup[]) {
+  for (const group of ["europe", "east_asia", "canada"] as RegionGroup[]) {
     console.log(`\n=== ${group.toUpperCase()} — per-class measured AADT (the base-table anchor) ===`);
     for (let c = 0; c <= 4; c++) {
       const v = rows.filter((r) => r.group === group && r.classCode === c).map((r) => r.aadt);

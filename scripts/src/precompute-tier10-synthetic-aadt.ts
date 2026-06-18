@@ -54,6 +54,16 @@ const BASE_AADT: Record<RegionGroup, Record<number, number>> = {
   // high because signals almost never snap to a true motorway mainline — when
   // one does it's a ramp/interchange, and the rare case shouldn't be lowballed.
   north_america: { 0: 60_000, 1: 30_000, 2: 15_000, 3: 8_000, 4: 4_000 },   // CALIBRATED (legacy US DOT baseline)
+  // CANADA — measured from 42,184 signals across all 10 metros (2026-06-16,
+  // post-≥75% measured push). Motorway + trunk match the US baseline within
+  // ±3%. Primary, secondary, tertiary run materially higher than the US
+  // baseline — the secondary/tertiary jump is the OSM-classification gap:
+  // many Canadian urban arterials carry primary-level traffic but get
+  // tagged "secondary"/"tertiary" in OSM (especially in Toronto/Montréal/
+  // Vancouver). The tertiary median (21.9k) exceeds primary because the
+  // tertiary corpus is dominated by signalized intersections — which are
+  // themselves only placed where volume warrants. Anchored, not estimated.
+  canada:        { 0: 60_000, 1: 31_000, 2: 17_500, 3: 15_500, 4: 21_900 }, // CALIBRATED — n=42,184 across 10 metros
   europe:        { 0: 50_000, 1: 18_000, 2: 8_000,  3: 6_000,  4: 4_500 },  // CALIBRATED — Paris/Madrid/Berlin (n≈9.9k)
   east_asia:     { 0: 60_000, 1: 32_000, 2: 22_000, 3: 13_500, 4: 10_000 }, // CALIBRATED — Tokyo/Osaka (n≈15.7k)
   gulf:          { 0: 65_000, 1: 32_000, 2: 16_000, 3: 9_000,  4: 5_000 },  // ESTIMATE (high motorization)
@@ -66,7 +76,7 @@ const BASE_AADT: Record<RegionGroup, Record<number, number>> = {
 // Peak-hour factor (K, % of AADT in the design hour). US/FHWA ≈ 9%; flatter,
 // longer peaks in dense/developing networks → slightly lower K.
 const K_FACTOR_BY_GROUP: Record<RegionGroup, number> = {
-  north_america: 9, europe: 10, east_asia: 10, gulf: 9,
+  north_america: 9, canada: 9, europe: 10, east_asia: 10, gulf: 9,
   south_se_asia: 8, africa: 8, latin_america: 9, oceania: 9,
 };
 
@@ -193,17 +203,69 @@ function generateForRegion(region: Region): { total: number; snapped: number; sn
   if (!Array.isArray(signals) || signals.length === 0) return { total: 0, snapped: 0, snapPct: 0, measured: 0 };
 
   const group = regionGroup(region.country);
-  const base = BASE_AADT[group];
+  const groupBase = BASE_AADT[group];
   const kFactor = K_FACTOR_BY_GROUP[group];
 
   const grid = buildGrid(road);
+
+  // ── Per-metro per-class calibration ────────────────────────────────────
+  // The group-level BASE_AADT is fine as a fallback but each metro has its
+  // own traffic distribution. When the metro already has substantial
+  // measured AADT (≥ a few percent of signals), learn the per-class median
+  // from that measured data and use it as the baseline for synthetic.
+  //
+  // For each measured signal in the existing aadt.json, snap to nearest
+  // road segment (same logic as synthetic generation) → record (class,
+  // measured AADT). Build per-class medians; require N_MIN samples per
+  // class before trusting the local median over the group baseline.
+  const outPathForRead = path.resolve(DATA_DIR, `${slug}-aadt.json`);
+  const measuredByClass = new Map<number, number[]>();
+  const coords = new Map<number, [number, number]>();
+  for (const [id, lat, lon] of signals) coords.set(id, [lat, lon]);
+  if (existsSync(outPathForRead)) {
+    try {
+      const existingAadt = JSON.parse(readFileSync(outPathForRead, "utf8")) as Record<string, AadtRec>;
+      for (const [id, rec] of Object.entries(existingAadt)) {
+        if (!rec || rec.source === "synthetic_osm_class") continue;
+        const c = coords.get(Number(id));
+        if (!c) continue;
+        const hit = nearestSegment(grid, c[0], c[1]);
+        if (!hit) continue;
+        let arr = measuredByClass.get(hit.seg.classCode);
+        if (!arr) measuredByClass.set(hit.seg.classCode, (arr = []));
+        arr.push(rec.aadt);
+      }
+    } catch {
+      // existing file unreadable; fall through with empty calibration → group baseline
+    }
+  }
+  const N_MIN = 20;
+  const metroBase: Record<number, number> = {};
+  const usedLocal: number[] = [];
+  for (let c = 0; c <= 4; c++) {
+    const arr = measuredByClass.get(c);
+    if (arr && arr.length >= N_MIN) {
+      const sorted = [...arr].sort((a, b) => a - b);
+      metroBase[c] = sorted[Math.floor(sorted.length / 2)]!;
+      usedLocal.push(c);
+    } else {
+      metroBase[c] = groupBase[c] ?? groupBase[4]!;
+    }
+  }
+  if (usedLocal.length > 0) {
+    const summary = [0, 1, 2, 3, 4]
+      .map((c) => `c${c}=${metroBase[c]}${usedLocal.includes(c) ? "*" : ""}`)
+      .join(" ");
+    console.log(`    calibrated ${region.code}: ${summary}  (* = per-metro median, n≥${N_MIN})`);
+  }
+
   const out: Record<string, AadtRec> = {};
   let snapped = 0;
   for (const [osmId, lat, lon] of signals) {
     if (osmId < 0) continue; // city-authoritative signals — skip
     const hit = nearestSegment(grid, lat, lon);
     if (!hit) continue;
-    const baseAadt = base[hit.seg.classCode] ?? base[4]!;
+    const baseAadt = metroBase[hit.seg.classCode] ?? metroBase[4]!;
     const aadt = Math.round(baseAadt * laneFactor(hit.seg.lanes, hit.seg.classCode) * speedFactor(hit.seg.maxspeed));
     out[String(osmId)] = {
       aadt,
