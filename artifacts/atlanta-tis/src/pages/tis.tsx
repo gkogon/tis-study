@@ -1398,6 +1398,46 @@ export default function TisPage() {
     );
   }
 
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  // Download the SERVER-rendered PDF, which runs through the region-specific
+  // renderer (FDOT for Florida, NYSDOT for New York, GA GRTA/ARC, etc.) and
+  // firm branding. This is the real deliverable — distinct from browser-
+  // printing the generic on-screen HTML report via window.print().
+  async function downloadServerPdf() {
+    if (!report) return;
+    setDownloadingPdf(true);
+    setPdfError(null);
+    try {
+      const res = await fetch("/tis-api/generate/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(report.request),
+      });
+      if (!res.ok) {
+        let msg = "Could not generate the PDF.";
+        try { msg = (await res.json())?.error ?? msg; } catch { /* non-JSON */ }
+        setPdfError(msg);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(report.request.projectName || "tis-study").replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setPdfError("Couldn't reach the PDF service. Try again.");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6 print:py-0 print:max-w-none print:px-0">
       <div className="print:hidden">
@@ -1431,14 +1471,28 @@ export default function TisPage() {
             {isFirmConfigured(firm) ? firm.firmName : "Firm branding"}
           </button>
           {report && (
-            <button
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-foreground text-background hover:opacity-90 transition-opacity"
-              data-testid="button-print"
-            >
-              <Printer className="w-4 h-4" />
-              Print TIS / Save as PDF
-            </button>
+            <>
+              <button
+                onClick={() => void downloadServerPdf()}
+                disabled={downloadingPdf}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50"
+                data-testid="button-download-pdf"
+                title="Region-formatted PDF (FDOT, NYSDOT, GA GRTA/ARC, etc.) with your firm branding"
+              >
+                {downloadingPdf
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Building PDF…</>
+                  : <><FileText className="w-4 h-4" /> Download TIS PDF</>}
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border hover:bg-muted transition-colors"
+                data-testid="button-print"
+                title="Print this on-screen report (generic format)"
+              >
+                <Printer className="w-4 h-4" />
+                Print page
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1477,6 +1531,18 @@ export default function TisPage() {
             <div>
               <div className="font-medium">Could not generate TIS</div>
               <div className="text-xs">{generate.error instanceof Error ? generate.error.message : "Unknown error"}</div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {pdfError && (
+        <Card className="border-red-300 bg-red-50 dark:bg-red-950/20 print:hidden">
+          <CardContent className="p-4 text-sm text-red-700 dark:text-red-300 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            <div>
+              <div className="font-medium">Could not build the PDF</div>
+              <div className="text-xs">{pdfError}</div>
             </div>
           </CardContent>
         </Card>

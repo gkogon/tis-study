@@ -6,6 +6,7 @@ import {
 } from "@workspace/tis-api-zod";
 import { generateTisReport, LAND_USES } from "../lib/tis";
 import { regionForCoordinate } from "../lib/regions";
+import { renderStudyPdf } from "../lib/pdf-export";
 import { generateRateLimiter } from "../lib/security";
 import { saveProject } from "../lib/tis-projects";
 import {
@@ -126,6 +127,77 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
     res.json(validated);
   } catch (e) {
     req.log.error({ err: e }, "tis-generate failed");
+    const msg = e instanceof Error ? e.message : String(e);
+    const isUpstream = /analyzer/i.test(msg);
+    res.status(isUpstream ? 503 : 400).json({ error: msg });
+  }
+});
+
+/**
+ * Server-rendered PDF for an authenticated study. This is the deliverable
+ * the results-page export button should produce: it runs through
+ * `renderStudyPdf`, which dispatches to the region-specific renderer
+ * (e.g. FDOT MTSIH for Florida, NYSDOT HDM for New York, GA GRTA/ARC,
+ * etc.) and applies firm branding — NOT the browser's print of the
+ * generic on-screen HTML report. Render-only: the study was already
+ * generated + quota-charged via POST /generate, so this neither saves
+ * a project nor increments usage.
+ */
+router.post("/generate/pdf", generateRateLimiter, async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Sign in to download a TIS." });
+    return;
+  }
+  const user = req.user!;
+
+  const parsed = GenerateTisBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid TIS request" });
+    return;
+  }
+  if (!regionForCoordinate(parsed.data.latitude, parsed.data.longitude)) {
+    res.status(422).json({
+      error:
+        `Coordinates (${parsed.data.latitude.toFixed(4)}, ${parsed.data.longitude.toFixed(4)}) ` +
+        `fall outside our covered metros.`,
+    });
+    return;
+  }
+
+  const { firm } = await getOrCreateFirmForUser(user.id, {
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+  });
+
+  try {
+    const report = await generateTisReport(parsed.data);
+    const validated = GenerateTisResponse.parse(report);
+    const projectName =
+      (parsed.data as { projectName?: string }).projectName?.trim()
+      || `${validated.tripGeneration.landUseName} @ ${parsed.data.latitude.toFixed(4)}, ${parsed.data.longitude.toFixed(4)}`;
+    const pdf = await renderStudyPdf(
+      {
+        id: `live-${user.id}`,
+        studyType: "tis",
+        projectName,
+        landUseCode: parsed.data.landUseCode,
+        siteLat: String(parsed.data.latitude),
+        siteLon: String(parsed.data.longitude),
+        version: 1,
+        createdAt: new Date(),
+        requestPayload: parsed.data,
+        resultPayload: validated,
+      },
+      { name: firm.name, logoUrl: firm.logoUrl },
+    );
+    const safeName = projectName.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "study";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}.pdf"`);
+    res.setHeader("Content-Length", String(pdf.length));
+    res.send(pdf);
+  } catch (e) {
+    req.log.error({ err: e }, "tis-generate-pdf failed");
     const msg = e instanceof Error ? e.message : String(e);
     const isUpstream = /analyzer/i.test(msg);
     res.status(isUpstream ? 503 : 400).json({ error: msg });
