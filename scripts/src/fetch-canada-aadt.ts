@@ -137,31 +137,58 @@ function parseCsvRow(line: string): string[] {
   return out;
 }
 
-// ── Ottawa: ArcGIS REST point service ──────────────────────────────────
-const OTTAWA_URL =
-  "https://services.arcgis.com/G6F8XLCl5KtAlZ2G/arcgis/rest/services/Transportation_Midblock_Volumes_2024/FeatureServer/0";
+// ── Ottawa: ArcGIS REST point service (3 year layers, latest-year-wins) ──
+const OTTAWA_LAYERS: Array<{ url: string; year: number }> = [
+  { url: "https://services.arcgis.com/G6F8XLCl5KtAlZ2G/arcgis/rest/services/Transportation_Midblock_Volumes_2024/FeatureServer/0", year: 2024 },
+  { url: "https://services.arcgis.com/G6F8XLCl5KtAlZ2G/arcgis/rest/services/Transportation_Midblock_Volume_2023/FeatureServer/0", year: 2023 },
+  { url: "https://services.arcgis.com/G6F8XLCl5KtAlZ2G/arcgis/rest/services/Midblock_Volume_2022/FeatureServer/0", year: 2022 },
+];
 
 async function fetchOttawa(cfg: MetroConfig): Promise<CandPoint[]> {
-  const where = encodeURIComponent("Volume IS NOT NULL AND Volume > 0");
-  const url =
-    `${OTTAWA_URL}/query?where=${where}` +
-    `&outFields=Volume,AADT_Year,Lat,Long` +
-    `&returnGeometry=false&resultRecordCount=5000&f=json`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Ottawa: ${res.status}`);
-  const json = (await res.json()) as {
-    features?: Array<{ attributes: { Volume: number; AADT_Year: number; Lat: number; Long: number } }>;
-  };
-  const out: CandPoint[] = [];
-  for (const f of json.features ?? []) {
-    const a = f.attributes;
-    if (!a.Volume || !a.Lat || !a.Long) continue;
-    if (a.Lat < cfg.bbox.latMin || a.Lat > cfg.bbox.latMax) continue;
-    if (a.Long < cfg.bbox.lonMin || a.Long > cfg.bbox.lonMax) continue;
-    out.push({ lat: a.Lat, lon: a.Long, aadt: Math.round(a.Volume), year: a.AADT_Year || 2024 });
+  // Layer schemas drift across years — 2024 uses Volume+AADT_Year+Lat+Long,
+  // older ones may use lower-case or different aliases. Probe each.
+  const byLocation = new Map<string, CandPoint>();
+  for (const lyr of OTTAWA_LAYERS) {
+    const url =
+      `${lyr.url}/query?where=1%3D1` +
+      `&outFields=*&returnGeometry=false&resultRecordCount=5000&f=json`;
+    const res = await fetch(url);
+    if (!res.ok) { console.log(`  Ottawa ${lyr.year}: ${res.status} skip`); continue; }
+    const json = (await res.json()) as { features?: Array<{ attributes: Record<string, unknown> }> };
+    let kept = 0;
+    for (const f of json.features ?? []) {
+      const a = f.attributes;
+      const vol = numField(a, ["Volume", "volume", "AADT_Volume", "AADT"]);
+      const lat = numField(a, ["Lat", "lat", "Latitude", "latitude", "Y", "y"]);
+      const lon = numField(a, ["Long", "lon", "Lng", "Longitude", "longitude", "X", "x"]);
+      const yr = numField(a, ["AADT_Year", "Year", "year"]) || lyr.year;
+      if (!vol || vol <= 0 || !lat || !lon) continue;
+      if (lat < cfg.bbox.latMin || lat > cfg.bbox.latMax) continue;
+      if (lon < cfg.bbox.lonMin || lon > cfg.bbox.lonMax) continue;
+      const key = `${lat.toFixed(5)}:${lon.toFixed(5)}`;
+      const cur = byLocation.get(key);
+      if (!cur || yr > cur.year) {
+        byLocation.set(key, { lat, lon, aadt: Math.round(vol), year: yr });
+        kept++;
+      }
+    }
+    console.log(`  Ottawa ${lyr.year}: ${json.features?.length ?? 0} → ${kept} fresh`);
   }
-  console.log(`  Ottawa: ${out.length} midblock points in bbox`);
-  return out;
+  console.log(`  Ottawa: ${byLocation.size} unique midblock points in bbox`);
+  return [...byLocation.values()];
+}
+
+/** Pull the first numeric value found across a list of candidate attribute names. */
+function numField(a: Record<string, unknown>, keys: string[]): number {
+  for (const k of keys) {
+    const v = a[k];
+    if (typeof v === "number" && isFinite(v)) return v;
+    if (typeof v === "string") {
+      const n = parseFloat(v);
+      if (isFinite(n)) return n;
+    }
+  }
+  return 0;
 }
 
 // ── Halifax: ArcGIS REST point service (HRM Traffic Studies) ───────────
@@ -210,35 +237,69 @@ async function fetchHalifax(cfg: MetroConfig): Promise<CandPoint[]> {
   return out;
 }
 
-// ── Calgary: Socrata multilinestring with annual volume ────────────────
+// ── Calgary: Socrata multilinestring with annual volume (multi-year) ───
+// Each year of Calgary's Traffic Volumes is a separate Socrata dataset.
+// 2023 had 326 segments; 2018+ years each cover a different street subset,
+// so pulling them all yields ~10x the unique segments. Latest-year-wins
+// on (section_name) key.
+const CALGARY_YEAR_DATASETS: Array<{ id: string; year: number }> = [
+  { id: "cauu-7hnw", year: 2024 },
+  { id: "bjag-w7zi", year: 2023 },
+  { id: "57me-rcwr", year: 2022 },
+  { id: "qeqv-tb2c", year: 2019 },
+  { id: "wwf6-cpsg", year: 2018 },
+  { id: "nq4z-ts9x", year: 2017 },
+  { id: "wtec-i6zq", year: 2016 },
+];
+
 async function fetchCalgary(cfg: MetroConfig): Promise<CandPoint[]> {
-  const url =
-    `https://data.calgary.ca/resource/bjag-w7zi.json?$limit=50000`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Calgary: ${res.status}`);
-  const rows = (await res.json()) as Array<{
-    year: string;
+  type CalRow = {
+    year?: string;
+    section_name?: string;
     volume?: string;
     multilinestring?: { type: string; coordinates: number[][][] };
-  }>;
+  };
+  // Latest-year-wins by section_name. If multiple sections share a name,
+  // we keep the newest year's full polyline set.
+  const bySection = new Map<string, { rows: CalRow[]; year: number }>();
+  let totalRows = 0;
+  for (const ds of CALGARY_YEAR_DATASETS) {
+    const url = `https://data.calgary.ca/resource/${ds.id}.json?$limit=50000`;
+    const res = await fetch(url);
+    if (!res.ok) { console.log(`  Calgary ${ds.year}: ${res.status} skip`); continue; }
+    const rows = (await res.json()) as CalRow[];
+    totalRows += rows.length;
+    for (const r of rows) {
+      const key = r.section_name ?? "";
+      if (!key) continue;
+      const cur = bySection.get(key);
+      if (!cur || ds.year > cur.year) {
+        bySection.set(key, { rows: [r], year: ds.year });
+      } else if (ds.year === cur.year) {
+        cur.rows.push(r);
+      }
+    }
+    console.log(`  Calgary ${ds.year}: ${rows.length} rows`);
+  }
+  console.log(`  Calgary: ${totalRows} total → ${bySection.size} unique sections (latest year each)`);
+
   const out: CandPoint[] = [];
   let skipped = 0;
-  for (const r of rows) {
-    const vol = parseFloat(r.volume ?? "");
-    const yr = parseInt(r.year, 10);
-    if (!isFinite(vol) || vol <= 0 || !r.multilinestring) { skipped++; continue; }
-    for (const line of r.multilinestring.coordinates) {
-      // Bbox filter on first vertex (Calgary segments are short enough that
-      // first-vertex membership ≈ segment membership).
-      const first = line[0];
-      if (!first) continue;
-      const [lon, lat] = first;
-      if (lat < cfg.bbox.latMin || lat > cfg.bbox.latMax) continue;
-      if (lon < cfg.bbox.lonMin || lon > cfg.bbox.lonMax) continue;
-      densifyLine(line, Math.round(vol), yr || 2023, out);
+  for (const { rows, year } of bySection.values()) {
+    for (const r of rows) {
+      const vol = parseFloat(r.volume ?? "");
+      if (!isFinite(vol) || vol <= 0 || !r.multilinestring) { skipped++; continue; }
+      for (const line of r.multilinestring.coordinates) {
+        const first = line[0];
+        if (!first) continue;
+        const [lon, lat] = first;
+        if (lat < cfg.bbox.latMin || lat > cfg.bbox.latMax) continue;
+        if (lon < cfg.bbox.lonMin || lon > cfg.bbox.lonMax) continue;
+        densifyLine(line, Math.round(vol), year, out);
+      }
     }
   }
-  console.log(`  Calgary: ${rows.length} rows → ${out.length} densified candidate points (skipped ${skipped})`);
+  console.log(`  Calgary: ${out.length} densified candidate points (skipped ${skipped})`);
   return out;
 }
 
@@ -336,8 +397,8 @@ const METROS: Record<string, MetroConfig> = {
     code: "ottawa_metro",
     bbox: { latMin: 45.2, latMax: 45.5, lonMin: -76.0, lonMax: -75.4 },
     sourceTag: "ottawa_open_data_midblock",
-    coverageLabel: "Ottawa Open Data Midblock Volumes 2024 + MTO Historical AADT 2019",
-    snapM: 250,
+    coverageLabel: "Ottawa Open Data Midblock Volumes 2022-2024 + MTO Historical AADT 2019",
+    snapM: 1000,
     fetch: fetchOttawa,
   },
   halifax: {
@@ -353,9 +414,9 @@ const METROS: Record<string, MetroConfig> = {
     slug: "calgary",
     code: "calgary_metro",
     bbox: { latMin: 50.8, latMax: 51.2, lonMin: -114.3, lonMax: -113.8 },
-    sourceTag: "calgary_open_data_2023",
-    coverageLabel: "Calgary Open Data Traffic Volumes 2023 + Alberta Transportation LoS 2021",
-    snapM: 200,
+    sourceTag: "calgary_open_data_volumes",
+    coverageLabel: "Calgary Open Data Traffic Volumes 2016-2024 + Alberta Transportation LoS 2021",
+    snapM: 1500,
     fetch: fetchCalgary,
   },
   edmonton: {
@@ -373,7 +434,7 @@ const METROS: Record<string, MetroConfig> = {
     bbox: { latMin: 45.4, latMax: 45.7, lonMin: -73.8, lonMax: -73.4 },
     sourceTag: "mtq_djma",
     coverageLabel: "MTQ DJMA (Débit Journalier Moyen Annuel, latest available 2016-2025)",
-    snapM: 200,
+    snapM: 1000,
     fetch: fetchMtq,
   },
   "quebec-city": {
@@ -382,7 +443,7 @@ const METROS: Record<string, MetroConfig> = {
     bbox: { latMin: 46.7, latMax: 47.0, lonMin: -71.4, lonMax: -71.1 },
     sourceTag: "mtq_djma",
     coverageLabel: "MTQ DJMA (Débit Journalier Moyen Annuel, latest available 2016-2025)",
-    snapM: 200,
+    snapM: 1000,
     fetch: fetchMtq,
   },
 };
@@ -422,8 +483,9 @@ async function processMetro(cfg: MetroConfig): Promise<void> {
     const baseLonCell = Math.floor(sLon / GRID_DEG);
     let best: CandPoint | null = null;
     let bestD = Infinity;
-    for (let dLat = -1; dLat <= 1; dLat++) {
-      for (let dLon = -1; dLon <= 1; dLon++) {
+    const cellHalf = Math.ceil((cfg.snapM * 1.1) / (GRID_DEG * 111_000));
+    for (let dLat = -cellHalf; dLat <= cellHalf; dLat++) {
+      for (let dLon = -cellHalf; dLon <= cellHalf; dLon++) {
         const arr = grid.get(`${baseLatCell + dLat}:${baseLonCell + dLon}`);
         if (!arr) continue;
         for (const p of arr) {
@@ -436,7 +498,10 @@ async function processMetro(cfg: MetroConfig): Promise<void> {
     if (!best) continue;
     const key = String(id);
     const prior = merged[key];
-    if (prior && prior.distM <= bestD) continue; // existing record closer
+    // Measured > synthetic regardless of distance: a real count 300 m
+    // away beats an OSM-class guess 100 m away. Among two measured
+    // records, closer wins.
+    if (prior && prior.source !== "synthetic_osm_class" && prior.distM <= bestD) continue;
     merged[key] = {
       aadt: best.aadt,
       year: best.year,

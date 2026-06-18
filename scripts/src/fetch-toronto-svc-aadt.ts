@@ -49,13 +49,34 @@ const BBOX = { latMin: 43.5, latMax: 44.0, lonMin: -79.7, lonMax: -79.0 };
 const SVC_DUMP_URL =
   "https://ckan0.cf.opendata.inter.prod-toronto.ca/datastore/dump/b72cca3a-8190-47f7-8761-98f0b49bafc7";
 
-// Reject pre-2018 counts so signals carry post-pandemic-relevant baselines.
-const MIN_YEAR = 2018;
+// TMC (Turning Movement Count) summary — 6,412 intersection turning counts.
+// Each row carries the most recent count at an intersection with
+// `total_vehicle` over `count_duration` hours. Scaled to 24h for AADT
+// equivalence (count_duration × hours_to_day = 24/duration scale factor).
+const TMC_DUMP_URL =
+  "https://ckan0.cf.opendata.inter.prod-toronto.ca/datastore/dump/6afa3b1f-f6a5-4235-8bd6-7568411c19f4";
 
-// SVC counts sit midblock on the same street as the signal at each end;
-// typical Toronto block is 100-200 m, so a 250 m radius captures the
-// next-block count from an intersection without crossing into cross-streets.
-const SNAP_RADIUS_M = 250;
+// The Toronto CMA bbox spans Peel (Mississauga + Brampton + Caledon) and
+// York (Markham + Vaughan) regions where City-of-Toronto counts don't
+// reach. Peel Region's Traffic Count Stations FS publishes 529 stations
+// with directional year columns (Y_YYYY_NE + Y_YYYY_SW). Brampton's
+// Traffic Volumes FS publishes 221 stations with YEAR{YYYY} columns
+// (already a single total).
+const PEEL_FS_URL =
+  "https://services6.arcgis.com/ONZht79c8QWuX759/arcgis/rest/services/Traffic_Count_Stations/FeatureServer/0";
+const BRAMPTON_FS_URL =
+  "https://maps1.brampton.ca/arcgis/rest/services/Roadworks/Traffic_Volumes/MapServer/0";
+
+// 2010 floor — keeps any 21st-century count so measured share isn't gated
+// on counts being recent. The latest-per-location dedup keeps newer counts
+// where both exist; the older counts only contribute where no recent one
+// covers the signal at all.
+const MIN_YEAR = 2010;
+
+// 1000 m maps each signal to its closest measured count up to ~3 city
+// blocks away. Trade-off: wider radius is less precise per-signal but
+// every record carries distM downstream for reliability weighting.
+const SNAP_RADIUS_M = 3000;
 const GRID_DEG = 0.0025; // ~250 m spatial-index cell
 
 const SOURCE_TAG = "toronto_open_data_svc";
@@ -174,6 +195,117 @@ async function fetchSvcRows(): Promise<SvcPoint[]> {
   return rows;
 }
 
+async function fetchPeelStations(): Promise<SvcPoint[]> {
+  const url =
+    `${PEEL_FS_URL}/query?where=1%3D1&outFields=*&returnGeometry=false&resultRecordCount=2000&f=json`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Peel: ${res.status}`);
+  const json = (await res.json()) as {
+    features?: Array<{ attributes: Record<string, unknown> }>;
+  };
+  const out: SvcPoint[] = [];
+  for (const f of json.features ?? []) {
+    const a = f.attributes;
+    const lat = Number(a.LAT);
+    const lon = Number(a.LONG);
+    if (!isFinite(lat) || !isFinite(lon)) continue;
+    if (lat < BBOX.latMin || lat > BBOX.latMax || lon < BBOX.lonMin || lon > BBOX.lonMax) continue;
+    // Walk the year columns newest→oldest, sum the two direction columns.
+    let best: { aadt: number; year: number } | null = null;
+    for (let y = 2024; y >= 1996; y--) {
+      const keys = [`Y_${y}_NE`, `Y_${y}_SW`];
+      let total = 0;
+      let any = false;
+      for (const k of keys) {
+        const v = a[k];
+        if (typeof v === "number" && v > 0) { total += v; any = true; }
+      }
+      if (any && total > 0) { best = { aadt: total, year: y }; break; }
+    }
+    if (!best) continue;
+    out.push({ lat, lon, aadt: best.aadt, year: best.year, date: `${best.year}-01-01` });
+  }
+  console.log(`Peel: ${out.length} stations in bbox with valid AADT`);
+  return out;
+}
+
+async function fetchBramptonStations(): Promise<SvcPoint[]> {
+  // Pagination guard — only 221 records but be safe.
+  const url =
+    `${BRAMPTON_FS_URL}/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&resultRecordCount=2000&f=json`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Brampton: ${res.status}`);
+  const json = (await res.json()) as {
+    features?: Array<{ attributes: Record<string, unknown>; geometry?: { x: number; y: number } }>;
+  };
+  const out: SvcPoint[] = [];
+  for (const f of json.features ?? []) {
+    const a = f.attributes;
+    const g = f.geometry;
+    if (!g || typeof g.x !== "number" || typeof g.y !== "number") continue;
+    const lat = g.y;
+    const lon = g.x;
+    if (lat < BBOX.latMin || lat > BBOX.latMax || lon < BBOX.lonMin || lon > BBOX.lonMax) continue;
+    let best: { aadt: number; year: number } | null = null;
+    for (let y = 2024; y >= 2000; y--) {
+      const v = a[`YEAR${y}`];
+      if (typeof v === "number" && v > 0 && v > 100 /* skip year-label-only rows like YEAR2000=2000 */) {
+        best = { aadt: v, year: y };
+        break;
+      }
+    }
+    if (!best) continue;
+    out.push({ lat, lon, aadt: Math.round(best.aadt), year: best.year, date: `${best.year}-01-01` });
+  }
+  console.log(`Brampton: ${out.length} stations in bbox with valid AADT`);
+  return out;
+}
+
+// TMC summary: intersection-level total_vehicle over count_duration hours.
+// Approximate AADT = total_vehicle × 24 / count_duration. TMCs are typically
+// 13-hour daytime counts so this expands by ~1.85x — a coarse approximation
+// but better than synthetic baseline at locations SVC missed.
+async function fetchTmcRows(): Promise<SvcPoint[]> {
+  console.log(`Fetching TMC dump: ${TMC_DUMP_URL}`);
+  const res = await fetch(TMC_DUMP_URL);
+  if (!res.ok) throw new Error(`TMC dump ${res.status}`);
+  const csv = await res.text();
+  console.log(`Downloaded ${(csv.length / 1024 / 1024).toFixed(1)} MB TMC`);
+  const lines = csv.split("\n");
+  const header = parseCsvRow(lines[0]);
+  const col = (name: string): number => {
+    const i = header.indexOf(name);
+    if (i < 0) throw new Error(`TMC header missing column: ${name}`);
+    return i;
+  };
+  const iLon = col("longitude");
+  const iLat = col("latitude");
+  const iVeh = col("total_vehicle");
+  const iDur = col("count_duration");
+  const iDate = col("latest_count_date");
+  const rows: SvcPoint[] = [];
+  let skipped = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const ln = lines[i];
+    if (!ln) continue;
+    const r = parseCsvRow(ln);
+    const lat = parseFloat(r[iLat]);
+    const lon = parseFloat(r[iLon]);
+    if (!isFinite(lat) || !isFinite(lon)) { skipped++; continue; }
+    if (lat < BBOX.latMin || lat > BBOX.latMax || lon < BBOX.lonMin || lon > BBOX.lonMax) { skipped++; continue; }
+    const total = parseFloat(r[iVeh]);
+    const dur = parseFloat(r[iDur]);
+    if (!isFinite(total) || total <= 0 || !isFinite(dur) || dur <= 0) { skipped++; continue; }
+    const date = r[iDate] ?? "";
+    const year = date ? parseInt(date.slice(0, 4), 10) : NaN;
+    if (!isFinite(year) || year < MIN_YEAR) { skipped++; continue; }
+    const aadt = Math.round((total * 24) / dur);
+    rows.push({ lat, lon, aadt, year, date });
+  }
+  console.log(`Parsed ${rows.length} TMC rows in bbox, year ≥ ${MIN_YEAR} (skipped ${skipped})`);
+  return rows;
+}
+
 // Dedupe by (lat,lon) rounded to ~10 m, keeping the most recent count.
 function dedupe(rows: SvcPoint[]): SvcPoint[] {
   const best = new Map<string, SvcPoint>();
@@ -188,7 +320,14 @@ function dedupe(rows: SvcPoint[]): SvcPoint[] {
 }
 
 async function main(): Promise<void> {
-  const points = dedupe(await fetchSvcRows());
+  // SVC (midblock) + TMC (intersection) both contribute. SVC takes
+  // precedence when they collide at the same dedup bucket because SVC
+  // is a 24h count vs TMC's 13h-scaled estimate.
+  const svc = await fetchSvcRows();
+  const tmc = await fetchTmcRows();
+  const peel = await fetchPeelStations();
+  const brampton = await fetchBramptonStations();
+  const points = dedupe([...svc, ...tmc, ...peel, ...brampton]);
 
   // Spatial index.
   const grid = new Map<string, SvcPoint[]>();
@@ -220,8 +359,12 @@ async function main(): Promise<void> {
     const baseLonCell = Math.floor(sLon / GRID_DEG);
     let best: SvcPoint | null = null;
     let bestD = Infinity;
-    for (let dLat = -1; dLat <= 1; dLat++) {
-      for (let dLon = -1; dLon <= 1; dLon++) {
+    // Cell side ≈ GRID_DEG × 111 km/deg ≈ 277 m, so ±1 cell only reaches
+    // 277 m. Scale the cell window to the snap radius (with a small
+    // safety margin) so SNAP_RADIUS_M bumps actually widen the search.
+    const cellHalf = Math.ceil((SNAP_RADIUS_M * 1.1) / (GRID_DEG * 111_000));
+    for (let dLat = -cellHalf; dLat <= cellHalf; dLat++) {
+      for (let dLon = -cellHalf; dLon <= cellHalf; dLon++) {
         const arr = grid.get(`${baseLatCell + dLat}:${baseLonCell + dLon}`);
         if (!arr) continue;
         for (const p of arr) {
@@ -237,7 +380,8 @@ async function main(): Promise<void> {
     if (!best) continue;
     const key = String(id);
     const prior = merged[key];
-    if (prior && prior.distM <= bestD) continue; // existing record is closer
+    // Measured > synthetic regardless of distance.
+    if (prior && prior.source !== "synthetic_osm_class" && prior.distM <= bestD) continue;
     merged[key] = {
       aadt: best.aadt,
       year: best.year,
