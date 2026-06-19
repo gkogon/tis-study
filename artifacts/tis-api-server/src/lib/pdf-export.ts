@@ -6807,12 +6807,60 @@ function renderTisFlorida(
   }
 
   // --- Appendix A — Intersection Capacity Analysis Worksheets ------------
-  // Per-intersection HCM signalized-capacity detail, rendered from the
-  // approach-level results the engine already computes (volumes, v/c,
-  // control delay, LOS, 95th-percentile queue) for the Existing (No-Build)
-  // and Build conditions. This is the substantive worksheet content a
-  // reviewer expects in an FDOT submittal's appendix — no fabricated data.
-  renderFloridaCapacityAppendix(doc, intersections);
+  // Per-intersection turning-movement diagrams (one per analyzed peak
+  // period) + HCM capacity detail, rendered from the approach-level
+  // results the engine computes. One worksheet per study intersection.
+  renderFloridaCapacityAppendix(doc, intersections, periods);
+}
+
+/**
+ * Turning-movement diagram for one intersection + scenario, drawn as a
+ * labeled crossroads with each approach's Left/Through/Right volumes and
+ * geometrically-correct movement arrows. Approach totals come from the
+ * engine; the L/T/R split is an estimated 15/70/15 (disclosed in the
+ * appendix intro) since the screening engine works at the approach level.
+ */
+function drawTurningMovementDiagram(
+  doc: PDFKit.PDFDocument,
+  x: number, y: number, w: number, h: number,
+  ix: any, scenario: "nobuild" | "build", title: string,
+) {
+  const approaches: any[] = Array.isArray(ix.approaches) ? ix.approaches : [];
+  const byDir: Record<string, any> = {};
+  for (const a of approaches) byDir[String(a.direction).toUpperCase()] = a;
+  const volOf = (a: any) =>
+    Math.round(Number(scenario === "build" ? a.futureVolumeVph : a.existingVolumeVph) || 0);
+  const split = (v: number) => { const l = Math.round(v * 0.15), r = Math.round(v * 0.15); return { l, t: v - l - r, r }; };
+
+  doc.font("bold").fontSize(8).fillColor("#0f172a").text(title, x, y, { width: w, align: "center" });
+  const bx = x, by = y + 12, bw = w, bh = h - 12;
+  doc.rect(bx, by, bw, bh).lineWidth(0.75).strokeColor("#cbd5e1").stroke();
+  const cx = bx + bw / 2, cy = by + bh / 2, rw = 14;
+  doc.rect(cx - rw, by + 1, 2 * rw, bh - 2).fill("#eef2f6");
+  doc.rect(bx + 1, cy - rw, bw - 2, 2 * rw).fill("#eef2f6");
+
+  // Street labels (split "A & B": A = N-S street top, B = E-W street).
+  const parts = String(ix.name ?? "").split(/\s*&\s*/);
+  const clip = (s: string, n: number) => (s && s.length > n ? s.slice(0, n - 1) + "…" : (s ?? ""));
+  doc.font("body").fontSize(6).fillColor("#64748b");
+  if (parts[0]) doc.text(clip(parts[0], 30), bx + 2, by + 2, { width: bw - 4, align: "center" });
+  if (parts[1]) doc.text(clip(parts[1], 16), cx + rw + 2, by + 14, { width: bw / 2 - rw - 4, align: "left" });
+
+  const block = (dir: string, gl: { l: string; t: string; r: string }) => {
+    const a = byDir[dir]; if (!a) return null;
+    const m = split(volOf(a));
+    return `${dir}   L${gl.l}${m.l}   T${gl.t}${m.t}   R${gl.r}${m.r}`;
+  };
+  doc.font("body").fontSize(7).fillColor("#0f172a");
+  const sb = block("SB", { l: "→", t: "↓", r: "←" });
+  if (sb) doc.text(sb, bx, by + 22, { width: bw, align: "center" });
+  const nb = block("NB", { l: "←", t: "↑", r: "→" });
+  if (nb) doc.text(nb, bx, by + bh - 13, { width: bw, align: "center" });
+  const eb = block("EB", { l: "↑", t: "→", r: "↓" });
+  if (eb) doc.text(eb, bx + 3, cy + rw + 4, { width: bw / 2 - rw - 4, align: "left" });
+  const wb = block("WB", { l: "↓", t: "←", r: "↑" });
+  if (wb) doc.text(wb, cx + 2, cy + rw + 4, { width: bw / 2 - 5, align: "right" });
+  doc.fillColor("black");
 }
 
 /**
@@ -6827,16 +6875,22 @@ function renderTisFlorida(
 function renderFloridaCapacityAppendix(
   doc: PDFKit.PDFDocument,
   intersections: any[],
+  periods: any[],
 ) {
   doc.addPage();
   gaSection(doc, "APPENDIX A — INTERSECTION CAPACITY ANALYSIS WORKSHEETS");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Per-approach capacity results for every study intersection, supporting Sections 4.0 and 7.0/8.0. "
-    + "Analysis follows the Highway Capacity Manual 6th Edition signalized-intersection method consistent with "
-    + "the FDOT Traffic Analysis Handbook (October 2025); v/c, control delay (sec/veh), Level of Service, and "
-    + "95th-percentile back-of-queue (ft) are reported for the Existing (No-Build) and Build conditions. "
-    + "These are screening-level (planning) results; a formal submittal validates them in HCS or Synchro/SimTraffic "
-    + "against measured turning-movement counts collected per MTSIH 2024 §4.",
+    "One worksheet per study intersection: a turning-movement diagram for each analyzed peak period plus "
+    + "the per-approach HCM capacity table. Analysis follows the Highway Capacity Manual 6th Edition "
+    + "signalized-intersection method consistent with the FDOT Traffic Analysis Handbook (October 2025); v/c, "
+    + "control delay (sec/veh), Level of Service, and 95th-percentile back-of-queue (ft) are reported for the "
+    + "Existing (No-Build) and Build conditions.",
+    { paragraphGap: 4 },
+  );
+  doc.font("body").fontSize(9).fillColor("#b45309").text(
+    "Turning-movement volumes are distributed from each approach total using an estimated 15/70/15 (Left/Through/"
+    + "Right) split — the screening engine resolves volumes at the approach level. Replace with measured "
+    + "turning-movement counts (TMCs) collected per MTSIH 2024 §4 before a formal submittal.",
     { paragraphGap: 8 },
   );
   doc.fillColor("black");
@@ -6858,11 +6912,11 @@ function renderFloridaCapacityAppendix(
     return ad - aa;
   });
 
-  ordered.forEach((ix, i) => {
-    // Keep each worksheet's header + summary together: break to a new page
-    // if there isn't room for the subsection title and the summary block.
-    if (doc.y > doc.page.height - PAGE_MARGIN - 160) doc.addPage();
+  // Peak periods to draw a diagram for (skip the daily total).
+  const peakPeriods = (Array.isArray(periods) ? periods : []).filter((p) => p && p.period !== "daily");
 
+  ordered.forEach((ix, i) => {
+    doc.addPage(); // one intersection per page — clean layout, no crowding
     gaSubsection(doc, `A.${i + 1}  ${ix.name ?? ix.signalId ?? "Intersection"}`);
     const deltaDelay = (Number(ix.futureDelaySec) || 0) - (Number(ix.existingDelaySec) || 0);
     rows(doc, [
@@ -6872,24 +6926,50 @@ function renderFloridaCapacityAppendix(
       ["Existing / No-Build (PM)", `LOS ${ix.existingLos ?? "—"} · ${fmtNum(ix.existingDelaySec, 1)} s/veh · v/c ${fmtNum(ix.existingVc, 2)}`],
       ["Build (PM)", `LOS ${ix.futureLos ?? "—"} · ${fmtNum(ix.futureDelaySec, 1)} s/veh · v/c ${fmtNum(ix.futureVc, 2)}`],
       ["Δ control delay", `${deltaDelay >= 0 ? "+" : ""}${fmtNum(deltaDelay, 1)} s/veh${ix.losChanged ? "  (LOS change)" : ""}`],
-      ["95th-pct queue", `${fmtNum(ix.queue95thFt)} ft`],
       ["Mitigation", ix.mitigation ? String(ix.mitigation) : "None required at screening level"],
     ]);
-    doc.moveDown(0.2);
+    doc.moveDown(0.4);
+
+    // Turning-movement diagrams — one per analyzed peak period (Build),
+    // pulling that period's approach volumes from periodReports. Falls back
+    // to the top-level (PM) No-Build + Build pair when no period detail.
+    doc.font("bold").fontSize(9.5).fillColor("black").text("Turning-Movement Diagrams (Build condition)", { paragraphGap: 4 });
+    const W = doc.page.width;
+    const usable = W - PAGE_MARGIN * 2;
+    type Fig = { rec: any; scenario: "nobuild" | "build"; title: string };
+    let figs: Fig[] = [];
+    for (const p of peakPeriods) {
+      const rec = (Array.isArray(p.affectedIntersections) ? p.affectedIntersections : [])
+        .find((z: any) => z.signalId === ix.signalId);
+      if (rec && Array.isArray(rec.approaches) && rec.approaches.length) {
+        figs.push({ rec, scenario: "build", title: `${p.periodLabel ?? p.period} — Build` });
+      }
+    }
+    if (figs.length === 0) {
+      // No per-period detail — show PM No-Build vs Build from the top-level record.
+      figs = [
+        { rec: ix, scenario: "nobuild", title: "PM Peak — No-Build" },
+        { rec: ix, scenario: "build", title: "PM Peak — Build" },
+      ];
+    }
+    const perRow = Math.min(figs.length, 3);
+    const gap = 10;
+    const dw = (usable - gap * (perRow - 1)) / perRow;
+    const dh = 132;
+    let rowY = doc.y;
+    figs.forEach((f, idx) => {
+      const col = idx % perRow;
+      if (col === 0 && idx > 0) rowY += dh + 12;
+      if (rowY + dh > doc.page.height - PAGE_MARGIN - 30) { doc.addPage(); rowY = doc.y; }
+      const fx = PAGE_MARGIN + col * (dw + gap);
+      drawTurningMovementDiagram(doc, fx, rowY, dw, dh, f.rec, f.scenario, f.title);
+    });
+    doc.y = rowY + dh + 14;
 
     const approaches: any[] = Array.isArray(ix.approaches) ? ix.approaches : [];
-    if (approaches.length === 0) {
-      doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
-        "Approach-level detail not available for this intersection.",
-        { paragraphGap: 6 },
-      );
-      doc.fillColor("black");
-      return;
-    }
+    if (approaches.length === 0) return;
 
-    // Column captions are kept short so they fit on one line at the table
-    // helper's 9pt bold without wrapping/ellipsis; "E→B" means
-    // Existing(No-Build) → Build. Widths sum to ~500 < usable 512.
+    doc.font("bold").fontSize(9.5).fillColor("black").text("Per-Approach Capacity (PM Peak)", { paragraphGap: 4 });
     table(doc, {
       headers: ["Appr.", "Exist vph", "+Trips", "Build vph", "v/c E→B", "Delay E→B", "LOS E→B", "Q95 ft"],
       widths: [52, 64, 44, 64, 70, 84, 60, 54],
@@ -6905,7 +6985,6 @@ function renderFloridaCapacityAppendix(
         fmtNum(a.queue95thFt),
       ]),
     });
-    doc.moveDown(0.4);
   });
 }
 
@@ -7072,45 +7151,57 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
   const { headers, widths, rows: dataRows } = spec;
   const align = spec.align ?? headers.map(() => "left" as const);
   const startX = PAGE_MARGIN;
-  const rowH = 16;
-  const headerH = 18;
-  const drawRow = (cells: string[], y: number, isHeader: boolean) => {
-    let x = startX;
-    if (isHeader) {
-      doc.rect(startX, y, widths.reduce((s, w) => s + w, 0), headerH).fill("#f3f4f6");
+  const totalW = widths.reduce((s, w) => s + w, 0);
+  const PADX = 4;
+  const PADY = 4;
+
+  // Measure the height a row needs by wrapping every cell within its
+  // column width and taking the tallest. This is what prevents the old
+  // overlap bug: long street names wrap and the row grows to fit instead
+  // of colliding with the next row.
+  const measureRow = (cells: string[], isHeader: boolean): number => {
+    doc.font(isHeader ? "bold" : "body").fontSize(9);
+    let maxH = 0;
+    for (let i = 0; i < cells.length; i++) {
+      const w = (widths[i] ?? 60) - PADX * 2;
+      const h = doc.heightOfString(cells[i] ?? "", { width: w, align: align[i] ?? "left" });
+      if (h > maxH) maxH = h;
     }
+    return Math.max(13, maxH) + PADY * 2;
+  };
+
+  const drawRow = (cells: string[], y: number, isHeader: boolean, h: number) => {
+    if (isHeader) doc.rect(startX, y, totalW, h).fill("#f3f4f6");
+    let x = startX;
+    doc.font(isHeader ? "bold" : "body").fontSize(9).fillColor("black");
     for (let i = 0; i < cells.length; i++) {
       const w = widths[i] ?? 60;
-      const a = align[i] ?? "left";
-      doc.font(isHeader ? "bold" : "body")
-        .fontSize(isHeader ? 9 : 9)
-        .fillColor(isHeader ? "black" : "black")
-        .text(cells[i] ?? "", x + 4, y + (isHeader ? 5 : 3), {
-          width: w - 8,
-          align: a,
-          lineBreak: false,
-          ellipsis: true,
-        });
+      doc.text(cells[i] ?? "", x + PADX, y + PADY, {
+        width: w - PADX * 2,
+        align: align[i] ?? "left",
+      });
       x += w;
     }
   };
-  // Header
+
   let y = doc.y;
-  drawRow(headers, y, true);
+  const headerH = measureRow(headers, true);
+  drawRow(headers, y, true, headerH);
   y += headerH;
-  // Rows with pagination
+
   for (const r of dataRows) {
-    if (y + rowH > doc.page.height - PAGE_MARGIN - 40) {
+    const rh = measureRow(r, false);
+    if (y + rh > doc.page.height - PAGE_MARGIN - 40) {
       doc.addPage();
       y = doc.y;
-      drawRow(headers, y, true);
-      y += headerH;
+      const hh = measureRow(headers, true);
+      drawRow(headers, y, true, hh);
+      y += hh;
     }
-    drawRow(r, y, false);
-    // Light separator
+    drawRow(r, y, false, rh);
     doc.strokeColor("#e5e7eb").lineWidth(0.5)
-      .moveTo(startX, y + rowH).lineTo(startX + widths.reduce((s, w) => s + w, 0), y + rowH).stroke();
-    y += rowH;
+      .moveTo(startX, y + rh).lineTo(startX + totalW, y + rh).stroke();
+    y += rh;
   }
   doc.y = y + 4;
   doc.x = PAGE_MARGIN;
