@@ -146,7 +146,10 @@ router.patch("/firms", async (req, res): Promise<void> => {
     return;
   }
 
-  const body = req.body as { name?: unknown; logoUrl?: unknown };
+  const body = req.body as {
+    name?: unknown; logoUrl?: unknown; brandColor?: unknown;
+    addressLine?: unknown; phone?: unknown; website?: unknown;
+  };
   const updates: Partial<typeof firmsTable.$inferInsert> = {};
 
   if (body.name !== undefined) {
@@ -166,6 +169,41 @@ router.patch("/firms", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Logo URL must be a valid http(s) URL." });
       return;
     }
+  }
+  // Cover branding fields. All optional; empty string clears.
+  if (body.brandColor !== undefined) {
+    if (body.brandColor === null || body.brandColor === "") {
+      updates.brandColor = null;
+    } else if (typeof body.brandColor === "string" && /^#[0-9a-fA-F]{6}$/.test(body.brandColor.trim())) {
+      updates.brandColor = body.brandColor.trim().toLowerCase();
+    } else {
+      res.status(400).json({ error: "Brand color must be a hex value like #7a1420." });
+      return;
+    }
+  }
+  if (body.addressLine !== undefined) {
+    const v = body.addressLine === null ? "" : String(body.addressLine).trim();
+    if (v.length > 200) {
+      res.status(400).json({ error: "Address must be 200 characters or fewer." });
+      return;
+    }
+    updates.addressLine = v || null;
+  }
+  if (body.phone !== undefined) {
+    const v = body.phone === null ? "" : String(body.phone).trim();
+    if (v.length > 40) {
+      res.status(400).json({ error: "Phone must be 40 characters or fewer." });
+      return;
+    }
+    updates.phone = v || null;
+  }
+  if (body.website !== undefined) {
+    const v = body.website === null ? "" : String(body.website).trim();
+    if (v.length > 255) {
+      res.status(400).json({ error: "Website must be 255 characters or fewer." });
+      return;
+    }
+    updates.website = v || null;
   }
 
   if (Object.keys(updates).length === 0) {

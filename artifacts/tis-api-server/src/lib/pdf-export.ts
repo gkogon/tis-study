@@ -20,6 +20,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { regionForCoordinate, type Region } from "./regions";
+import { fetchStreetViewImage } from "./streetview";
 import { getAutoModeShare } from "./mode-share";
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { renderTisState } from "./pdf-export-states";
@@ -56,7 +57,15 @@ type StoredProject = {
 type FirmStamp = {
   name: string;
   logoUrl: string | null;
+  brandColor?: string | null;
+  addressLine?: string | null;
+  phone?: string | null;
+  website?: string | null;
 };
+
+// Default cover brand color when a firm hasn't set one — a professional
+// deep maroon matching the consultant-cover aesthetic.
+const DEFAULT_BRAND_COLOR = "#7a1420";
 
 const PAGE_MARGIN = 50;
 const BRAND_BLUE = "#2563eb";
@@ -130,6 +139,15 @@ export async function renderStudyPdf(
   // both want to draw it, and fetching twice would be wasteful (and
   // could double the timeout window if the host is slow).
   const logoBuf = await fetchLogoBuffer(firm.logoUrl);
+
+  // Cover site photo (Street View). Best-effort: null when no API key,
+  // no imagery at the site, or any error — the cover falls back to a
+  // brand-color band. Resolved from the project coordinate.
+  const coverLat = Number(project.siteLat ?? NaN);
+  const coverLon = Number(project.siteLon ?? NaN);
+  const sitePhotoBuf = (Number.isFinite(coverLat) && Number.isFinite(coverLon))
+    ? await fetchStreetViewImage(coverLat, coverLon)
+    : null;
 
   const doc = new PDFDocument({
     size: "LETTER",
@@ -339,7 +357,7 @@ export async function renderStudyPdf(
     }
   }
 
-  drawCover(doc, project, firm, logoBuf);
+  drawCover(doc, project, firm, logoBuf, sitePhotoBuf);
   doc.addPage();
   drawHeader(doc, project, firm);
   drawBody(doc, project);
@@ -374,91 +392,134 @@ function drawPageFooter(doc: PDFKit.PDFDocument) {
   doc.restore();
 }
 
+// --- Cover color helpers ------------------------------------------------
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+/** Relative luminance (0 dark … 1 light) for pick-readable-text decisions. */
+function luminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+/** White on dark brand colors, near-black on light ones. */
+function readableOn(hex: string): string {
+  return luminance(hex) < 0.55 ? "#ffffff" : "#1a1a1a";
+}
+/** Lighten (f>1) or darken (f<1) a hex color, clamped to [0,255]. */
+function shade(hex: string, f: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  const c = (v: number) => Math.max(0, Math.min(255, Math.round(v * f)));
+  return `#${[c(r), c(g), c(b)].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/**
+ * Consultant-grade branded cover, modeled on the FDOT/Caltran submittal
+ * format: firm logo top-left, a full-width site photo band (Street View
+ * when available), a brand-color geometric design (diagonal corner accent
+ * + chevrons), the project title on the brand block, and a firm contact
+ * block. All color comes from `firm.brandColor` (default deep maroon), so
+ * each firm gets this layout in its own brand.
+ */
 function drawCover(
   doc: PDFKit.PDFDocument,
   project: StoredProject,
   firm: FirmStamp,
   logoBuf: Buffer | null,
+  sitePhotoBuf: Buffer | null,
 ) {
-  // Top brand band
-  doc.rect(0, 0, doc.page.width, 12).fill(BRAND_BLUE);
-  doc.fillColor("black");
+  const W = doc.page.width;
+  const H = doc.page.height;
+  const brand = (firm.brandColor && /^#[0-9a-fA-F]{6}$/.test(firm.brandColor))
+    ? firm.brandColor
+    : DEFAULT_BRAND_COLOR;
+  const onBrand = readableOn(brand);
+  const subOnBrand = onBrand === "#ffffff" ? "rgba(255,255,255,0.82)" : "#333333";
 
-  doc.moveDown(2);
-  // Firm logo (if uploaded), top-right corner. PDFKit's image()
-  // preserves aspect ratio when given just a width; we cap at 120pt
-  // wide / 50pt tall so a square logo doesn't push the page banner
-  // off the cover. Fall back to the firm name in text if no logo is
-  // available or the fetch failed.
-  if (logoBuf) {
+  const photoTop = 116;
+  const photoH = 348;
+  const blockTop = photoTop + photoH; // brand block starts here
+
+  // 1) Site photo band (or brand-tint fallback). Clipped to the band rect.
+  if (sitePhotoBuf) {
     try {
-      const logoMaxW = 120;
-      const logoMaxH = 50;
-      const logoX = doc.page.width - PAGE_MARGIN - logoMaxW;
-      const logoY = doc.y;
-      doc.image(logoBuf, logoX, logoY, {
-        fit: [logoMaxW, logoMaxH],
-        align: "right",
-      });
-      // Advance the cursor past the logo block so subsequent moveDown
-      // calls don't draw over it.
-      doc.y = logoY + logoMaxH + 4;
+      doc.save();
+      doc.rect(0, photoTop, W, photoH).clip();
+      doc.image(sitePhotoBuf, 0, photoTop, { cover: [W, photoH], align: "center", valign: "center" });
+      doc.restore();
     } catch {
-      // PDFKit throws on unsupported image formats (it accepts JPEG +
-      // PNG only). Silently fall back to the name banner.
-      doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(firm.name.toUpperCase(), { align: "right" });
+      doc.rect(0, photoTop, W, photoH).fill(shade(brand, 1.6));
     }
   } else {
-    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(firm.name.toUpperCase(), { align: "right" });
+    // No photo: a soft brand-tint band keeps the cover composed.
+    doc.rect(0, photoTop, W, photoH).fill(shade(brand, 1.7));
+    doc.fillColor(shade(brand, 1.2)).font("body").fontSize(9)
+      .text("Site imagery available with a configured map key", 0, photoTop + photoH / 2 - 6, { width: W, align: "center" });
   }
-  doc.fillColor("black");
 
-  doc.moveDown(4);
-  doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(studyLabel(project.studyType).toUpperCase(), { align: "center", characterSpacing: 2 });
-  doc.moveDown(0.5);
-  doc.font("bold").fontSize(28).fillColor("black").text(project.projectName, { align: "center" });
+  // 2) Top-right diagonal brand accent (over the white top zone + photo).
+  doc.polygon([W, 0], [W, 150], [W - 175, 0]).fill(brand);
+  doc.polygon([W, 0], [W, 92], [W - 108, 0]).fill(shade(brand, 0.78));
 
-  doc.moveDown(2);
-  doc.font("body").fontSize(11).fillColor(TEXT_GRAY).text(`Prepared ${project.createdAt.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}`, { align: "center" });
+  // 3) Bottom brand block.
+  doc.rect(0, blockTop, W, H - blockTop).fill(brand);
 
-  // Field block
-  doc.moveDown(4);
-  const fields: [string, string][] = [
-    ["Project No.", "—"],
-    ["Prepared By", firm.name],
-    ["Reviewer", "—"],
-    ["Study Type", studyLabel(project.studyType)],
-  ];
-  if (project.siteLat && project.siteLon) {
-    fields.push(["Site Coordinates", `${Number(project.siteLat).toFixed(4)}, ${Number(project.siteLon).toFixed(4)}`]);
+  // 4) Chevron accent on the right of the brand block (Caltran motif).
+  const chevColor = shade(brand, onBrand === "#ffffff" ? 1.28 : 0.78);
+  for (let i = 0; i < 3; i++) {
+    const cx = W - 150 + i * 26;
+    const cy = blockTop + 70;
+    doc.save().lineWidth(11).strokeColor(chevColor).lineJoin("miter")
+      .moveTo(cx, cy - 34).lineTo(cx + 26, cy).lineTo(cx, cy + 34).stroke().restore();
   }
-  const fieldX = PAGE_MARGIN + 30;
-  fields.forEach(([label, value], i) => {
-    const y = doc.y + (i === 0 ? 0 : 18);
-    doc.font("bold").fontSize(8).fillColor(TEXT_GRAY).text(label.toUpperCase(), fieldX, y);
-    doc.font("body").fontSize(12).fillColor("black").text(value, fieldX + 130, y);
-  });
 
-  // PE stamp + signature
-  doc.moveDown(8);
-  const stampY = doc.page.height - 200;
-  doc.rect(PAGE_MARGIN + 30, stampY, 120, 120).strokeColor(TEXT_GRAY).stroke();
-  doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text("PE Stamp", PAGE_MARGIN + 30 + 40, stampY + 55);
+  // 5) Firm logo top-left (on white), or firm name fallback.
+  if (logoBuf) {
+    try {
+      doc.image(logoBuf, PAGE_MARGIN, 38, { fit: [220, 64] });
+    } catch {
+      doc.font("bold").fontSize(16).fillColor(brand).text(firm.name.toUpperCase(), PAGE_MARGIN, 52);
+    }
+  } else {
+    doc.font("bold").fontSize(16).fillColor(brand).text(firm.name.toUpperCase(), PAGE_MARGIN, 52);
+  }
 
-  const sigX = PAGE_MARGIN + 200;
-  doc.strokeColor("black").moveTo(sigX, stampY + 60).lineTo(sigX + 200, stampY + 60).stroke();
-  doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text("Signature", sigX, stampY + 65);
-  doc.moveTo(sigX, stampY + 100).lineTo(sigX + 200, stampY + 100).stroke();
-  doc.font("body").fontSize(8).text("Date", sigX, stampY + 105);
-  doc.fillColor("black");
-
-  // Footer
-  doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-    "Screening-level deliverable. See methodology + limitations on subsequent pages.",
-    PAGE_MARGIN,
-    doc.page.height - PAGE_MARGIN - 10,
-    { align: "center", width: doc.page.width - PAGE_MARGIN * 2 },
+  // 6) Title block on the brand block. Width is capped short of the
+  //    right edge so a long title wraps clear of the chevron accent.
+  const titleX = PAGE_MARGIN;
+  const titleW = W - PAGE_MARGIN - 175;
+  doc.fillColor(onBrand).font("bold").fontSize(26)
+    .text(project.projectName, titleX, blockTop + 44, { width: titleW });
+  // Underline rule under the title.
+  const ulY = doc.y + 2;
+  doc.save().lineWidth(1.5).strokeColor(onBrand).moveTo(titleX, ulY).lineTo(titleX + Math.min(titleW, 360), ulY).stroke().restore();
+  doc.moveDown(0.6);
+  doc.font("body").fontSize(16).fillColor(onBrand)
+    .text(studyLabel(project.studyType), titleX, doc.y, { width: titleW, oblique: true });
+  doc.moveDown(0.3);
+  doc.font("body").fontSize(10).fillColor(subOnBrand).text(
+    `Prepared ${project.createdAt.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}`
+    + (project.siteLat && project.siteLon ? `   ·   ${Number(project.siteLat).toFixed(4)}, ${Number(project.siteLon).toFixed(4)}` : ""),
+    titleX, doc.y, { width: titleW },
   );
+
+  // 7) Firm contact block, bottom-right of the brand block.
+  const contact: string[] = [];
+  if (firm.addressLine) contact.push(firm.addressLine);
+  if (firm.phone) contact.push(`Phone: ${firm.phone}`);
+  if (firm.website) contact.push(firm.website);
+  const lineH = 14;
+  const blockH = 18 + contact.length * lineH; // firm name line + contact lines
+  let cy = H - PAGE_MARGIN - blockH;
+  const cw = W - PAGE_MARGIN * 2;
+  doc.font("bold").fontSize(13).fillColor(onBrand).text(firm.name, PAGE_MARGIN, cy, { width: cw, align: "right" });
+  cy += 20;
+  doc.font("body").fontSize(10).fillColor(subOnBrand);
+  for (const line of contact) {
+    doc.text(line, PAGE_MARGIN, cy, { width: cw, align: "right" });
+    cy += lineH;
+  }
+  doc.fillColor("black");
 }
 
 function drawHeader(doc: PDFKit.PDFDocument, project: StoredProject, firm: FirmStamp) {

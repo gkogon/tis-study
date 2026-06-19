@@ -59,6 +59,15 @@ export const firmsTable = pgTable("firms", {
     .notNull()
     .default("atlanta_metro"),
 
+  // White-label cover branding for generated PDFs. brandColor drives the
+  // cover's geometric design (hex like "#7a1420"); address/phone/website
+  // render in the cover contact block. All nullable — a firm that hasn't
+  // configured them gets the default maroon cover with just name + logo.
+  brandColor: varchar("brand_color", { length: 9 }),
+  addressLine: text("address_line"),
+  phone: varchar("phone", { length: 40 }),
+  website: varchar("website", { length: 255 }),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .default(sql`now()`),

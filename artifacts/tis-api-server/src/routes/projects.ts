@@ -90,7 +90,14 @@ router.get("/projects/:id/pdf", async (req, res): Promise<void> => {
       res.status(404).json({ error: "Project not found." });
       return;
     }
-    const buffer = await renderStudyPdf(project, { name: firm.name, logoUrl: firm.logoUrl });
+    const buffer = await renderStudyPdf(project, {
+      name: firm.name,
+      logoUrl: firm.logoUrl,
+      brandColor: firm.brandColor,
+      addressLine: firm.addressLine,
+      phone: firm.phone,
+      website: firm.website,
+    });
     const slug = project.projectName.replace(/[^a-z0-9-_]+/gi, "_").slice(0, 80) || "study";
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${slug}.pdf"`);

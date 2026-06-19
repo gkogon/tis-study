@@ -21,9 +21,15 @@ type Firm = {
   name: string;
   slug: string;
   logoUrl: string | null;
+  brandColor: string | null;
+  addressLine: string | null;
+  phone: string | null;
+  website: string | null;
   planTier: string;
   seatLimit: number;
 };
+
+const DEFAULT_BRAND_COLOR = "#7a1420";
 
 type Member = {
   userId: string;
@@ -53,6 +59,10 @@ export default function SettingsFirmPage() {
   const [savingDetails, setSavingDetails] = useState(false);
   const [detailsName, setDetailsName] = useState("");
   const [detailsLogo, setDetailsLogo] = useState("");
+  const [detailsBrandColor, setDetailsBrandColor] = useState(DEFAULT_BRAND_COLOR);
+  const [detailsAddress, setDetailsAddress] = useState("");
+  const [detailsPhone, setDetailsPhone] = useState("");
+  const [detailsWebsite, setDetailsWebsite] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
   const [inviting, setInviting] = useState(false);
@@ -73,6 +83,10 @@ export default function SettingsFirmPage() {
           setRole(me.role);
           setDetailsName(me.firm.name);
           setDetailsLogo(me.firm.logoUrl ?? "");
+          setDetailsBrandColor(me.firm.brandColor ?? DEFAULT_BRAND_COLOR);
+          setDetailsAddress(me.firm.addressLine ?? "");
+          setDetailsPhone(me.firm.phone ?? "");
+          setDetailsWebsite(me.firm.website ?? "");
         }
         setMembers(mem.members ?? []);
         setInvites(mem.pendingInvites ?? []);
@@ -122,7 +136,14 @@ export default function SettingsFirmPage() {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: detailsName, logoUrl: detailsLogo || null }),
+        body: JSON.stringify({
+          name: detailsName,
+          logoUrl: detailsLogo || null,
+          brandColor: detailsBrandColor || null,
+          addressLine: detailsAddress || null,
+          phone: detailsPhone || null,
+          website: detailsWebsite || null,
+        }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
@@ -295,6 +316,76 @@ export default function SettingsFirmPage() {
               />
               <p className="text-xs text-muted-foreground">
                 PNG, JPG, SVG, or WEBP — up to 2 MB. Appears on the cover page of every white-labeled PDF.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Brand color</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={/^#[0-9a-fA-F]{6}$/.test(detailsBrandColor) ? detailsBrandColor : DEFAULT_BRAND_COLOR}
+                  onChange={(e) => setDetailsBrandColor(e.target.value)}
+                  disabled={!canEdit}
+                  className="h-9 w-14 rounded-md border border-input bg-background p-1 disabled:opacity-60"
+                  data-testid="input-firm-brand-color"
+                  aria-label="Brand color"
+                />
+                <input
+                  type="text"
+                  value={detailsBrandColor}
+                  onChange={(e) => setDetailsBrandColor(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="#7a1420"
+                  className="w-32 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-600 disabled:opacity-60"
+                  maxLength={7}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Drives the cover page's geometric design. Hex like <code>#7a1420</code>.
+              </p>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Office address</label>
+                <input
+                  type="text"
+                  value={detailsAddress}
+                  onChange={(e) => setDetailsAddress(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="410 S. Ware Blvd, Suite 1035, Tampa, FL 33619"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 disabled:opacity-60"
+                  maxLength={200}
+                  data-testid="input-firm-address"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Phone</label>
+                <input
+                  type="text"
+                  value={detailsPhone}
+                  onChange={(e) => setDetailsPhone(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="786-456-7700"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 disabled:opacity-60"
+                  maxLength={40}
+                  data-testid="input-firm-phone"
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-sm font-medium">Website</label>
+                <input
+                  type="text"
+                  value={detailsWebsite}
+                  onChange={(e) => setDetailsWebsite(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="www.yourfirm.com"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 disabled:opacity-60"
+                  maxLength={255}
+                  data-testid="input-firm-website"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                Address, phone, and website render in the cover's contact block.
               </p>
             </div>
             <button

@@ -189,7 +189,14 @@ router.post("/generate/pdf", generateRateLimiter, async (req, res): Promise<void
         requestPayload: parsed.data,
         resultPayload: validated,
       },
-      { name: firm.name, logoUrl: firm.logoUrl },
+      {
+        name: firm.name,
+        logoUrl: firm.logoUrl,
+        brandColor: firm.brandColor,
+        addressLine: firm.addressLine,
+        phone: firm.phone,
+        website: firm.website,
+      },
     );
     const safeName = projectName.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "study";
     res.setHeader("Content-Type", "application/pdf");
