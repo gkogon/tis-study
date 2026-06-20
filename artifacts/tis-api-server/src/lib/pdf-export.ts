@@ -588,6 +588,27 @@ function dispatchTisRender(
   result: Record<string, unknown>,
   project: StoredProject,
 ) {
+  // 1. Run the region-specific body renderer (GA/FL/NY/CA/TX/IL/UK/…).
+  selectRegionalTisRenderer(doc, result, project);
+
+  // 2. Append the shared per-intersection capacity appendix for EVERY
+  //    region — turning-movement diagrams per analyzed peak period + the
+  //    per-approach HCM capacity table. This was previously FL-only, which
+  //    is why an Atlanta (GA) study showed no worksheets.
+  const intersections = Array.isArray(result.affectedIntersections)
+    ? (result.affectedIntersections as any[]) : [];
+  const periods = Array.isArray(result.periodReports)
+    ? (result.periodReports as any[]) : [];
+  if (intersections.length > 0) {
+    renderCapacityAppendix(doc, intersections, periods);
+  }
+}
+
+function selectRegionalTisRenderer(
+  doc: PDFKit.PDFDocument,
+  result: Record<string, unknown>,
+  project: StoredProject,
+) {
   const region = detectRegion(project);
   if (region?.stateCode === "FL" && (region?.country ?? "US") === "US") {
     renderTisFlorida(doc, result, project, region);
@@ -6806,11 +6827,9 @@ function renderTisFlorida(
     doc.fillColor("black");
   }
 
-  // --- Appendix A — Intersection Capacity Analysis Worksheets ------------
-  // Per-intersection turning-movement diagrams (one per analyzed peak
-  // period) + HCM capacity detail, rendered from the approach-level
-  // results the engine computes. One worksheet per study intersection.
-  renderFloridaCapacityAppendix(doc, intersections, periods);
+  // The per-intersection turning-movement + capacity appendix is appended
+  // by dispatchTisRender for EVERY region (not just FL), so it is not
+  // called here.
 }
 
 /**
@@ -6872,25 +6891,24 @@ function drawTurningMovementDiagram(
  * (LOS changes first, then by added control delay) to match the on-screen
  * table and put the reviewer's attention on the affected signals first.
  */
-function renderFloridaCapacityAppendix(
+function renderCapacityAppendix(
   doc: PDFKit.PDFDocument,
   intersections: any[],
   periods: any[],
 ) {
   doc.addPage();
-  gaSection(doc, "APPENDIX A — INTERSECTION CAPACITY ANALYSIS WORKSHEETS");
+  gaSection(doc, "APPENDIX — INTERSECTION CAPACITY ANALYSIS WORKSHEETS");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "One worksheet per study intersection: a turning-movement diagram for each analyzed peak period plus "
     + "the per-approach HCM capacity table. Analysis follows the Highway Capacity Manual 6th Edition "
-    + "signalized-intersection method consistent with the FDOT Traffic Analysis Handbook (October 2025); v/c, "
-    + "control delay (sec/veh), Level of Service, and 95th-percentile back-of-queue (ft) are reported for the "
-    + "Existing (No-Build) and Build conditions.",
+    + "signalized-intersection method; v/c, control delay (sec/veh), Level of Service, and 95th-percentile "
+    + "back-of-queue (ft) are reported for the Existing (No-Build) and Build conditions.",
     { paragraphGap: 4 },
   );
   doc.font("body").fontSize(9).fillColor("#b45309").text(
     "Turning-movement volumes are distributed from each approach total using an estimated 15/70/15 (Left/Through/"
     + "Right) split — the screening engine resolves volumes at the approach level. Replace with measured "
-    + "turning-movement counts (TMCs) collected per MTSIH 2024 §4 before a formal submittal.",
+    + "turning-movement counts (TMCs) before a formal submittal.",
     { paragraphGap: 8 },
   );
   doc.fillColor("black");
