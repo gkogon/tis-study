@@ -1,5 +1,6 @@
 import type { CorsOptions } from "cors";
 import rateLimit from "express-rate-limit";
+import { isAdminEmail } from "./auth";
 import { makeRateLimitStore } from "./redis";
 
 // Every limiter below shares two cross-instance settings:
@@ -136,6 +137,14 @@ export const unsubscribeRateLimiter = rateLimit({
 // hundreds of presets. 3/day per IP is enough for an honest
 // prospect to try a couple of presets and lock in on signup, but
 // not enough for a bot to hammer GDOT through our pipe.
+//
+// Bypass: authenticated dev/admin sessions — the operator's "infinite"
+// account was hitting this 3/day cap when running demo flows
+// post-sign-in, even though the same account is treated as unlimited
+// on /generate. authMiddleware runs before this so `req.user` is
+// already populated; mirroring isUnlimitedStudies' sync conditions
+// (skipping the firm-load DB call — enterprise studyLimit<=0 firms
+// should be hitting /generate, not /demo/generate).
 export const demoRateLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000,
   limit: 3,
@@ -144,6 +153,11 @@ export const demoRateLimiter = rateLimit({
   message: { error: "You've used your free demo runs for today. Sign up free to keep generating." },
   store: makeRateLimitStore("rl:demo:"),
   passOnStoreError: true,
+  skip: (req) => {
+    if (process.env.DEV_AUTH_ENABLED === "true") return true;
+    const email = req.user?.email;
+    return !!email && isAdminEmail(email);
+  },
 });
 
 // /demo/geocode — looser than demoRateLimiter because geocoding is the
