@@ -556,6 +556,7 @@ export default function DemoPage() {
       const r = await fetch("/tis-api/demo/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(form),
       });
       const data = await r.json();
@@ -1587,6 +1588,7 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
       const res = await fetch("/tis-api/demo/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           projectName: response.projectName,
           latitude: response.latitude,

@@ -155,6 +155,10 @@ export const demoRateLimiter = rateLimit({
   passOnStoreError: true,
   skip: (req) => {
     if (process.env.DEV_AUTH_ENABLED === "true") return true;
+    // Any signed-in user has a real account — the demo cap is for
+    // anonymous prospects, so never rate-limit an authenticated session.
+    // (Requires the client to send credentials on /demo requests.)
+    try { if (typeof req.isAuthenticated === "function" && req.isAuthenticated()) return true; } catch { /* not augmented */ }
     const email = req.user?.email;
     return !!email && isAdminEmail(email);
   },
