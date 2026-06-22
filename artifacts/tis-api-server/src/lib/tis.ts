@@ -20,6 +20,7 @@ import { lookupLondonPtal } from "./tfl-ptal";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
 import { distributeAndAssign, modeChoiceLogit, GAMMA_FRICTION, type DemandZone } from "./four-step-model";
 import { fetchLocalRoads, assignRoutes, type RouteAssignment } from "./network-assignment";
+import { getTransitContext } from "./transit-routes";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
 import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSource } from "./regional-growth-rates";
 // Canonical land-use registry (ITE 11th Ed.) lives in one place so the
@@ -1106,9 +1107,28 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const densityVols = candidates.map((c) => c.sig.totalVolume).filter((v) => v > 0).sort((a, b) => a - b);
   const medianVol = densityVols.length ? densityVols[Math.floor(densityVols.length / 2)]! : 0;
   const densityIndex = Math.min(1, Math.max(0, medianVol / 30_000));
+  // Real transit LOS (best-effort): when a Transitland key is configured,
+  // measure the stops/routes near the site and fold that accessibility into
+  // the mode-choice logit. Returns null fast (no key / no data) → the logit
+  // uses the density proxy alone.
+  let transitAccess: number | undefined;
+  if (!resolvedPtalBand) {
+    try {
+      const tctx = await getTransitContext(req.latitude, req.longitude, 0.5);
+      if (tctx && tctx.stops.length > 0) {
+        const within = tctx.stops.filter((s) => s.distanceMi <= 0.25).length;
+        const routeCount = Object.values(tctx.routesByAgency ?? {})
+          .reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0);
+        const nearest = tctx.stops[0]?.distanceMi ?? Infinity;
+        const acc = Math.min(0.5, within / 12) + Math.min(0.3, routeCount / 20)
+          + (nearest <= 0.2 ? 0.2 : nearest <= 0.4 ? 0.1 : 0);
+        transitAccess = Math.min(1, Math.max(0, acc));
+      }
+    } catch { /* transit data unavailable — density-only mode choice */ }
+  }
   const autoModeShare = resolvedPtalBand
     ? getLondonAutoModeShare(resolvedPtalBand.band)
-    : modeChoiceLogit(getAutoModeShare(region.code), densityIndex).auto;
+    : modeChoiceLogit(getAutoModeShare(region.code), densityIndex, { transitAccess }).auto;
 
   // ----- Four-step travel demand model: distribution + assignment -------
   // Steps 1–3 (generation/mode-choice) are computed per period below; the
@@ -1153,7 +1173,12 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
         lon: c.sig.longitude,
         trips: (weights[i] ?? 0) * pmExternalAutoForAssign,
       }));
-      routeAssignment = assignRoutes({ lat: req.latitude, lon: req.longitude }, dests, segs);
+      // Measured per-link existing volume: seed link v/c from the counted
+      // signal volumes (AADT) rather than functional-class defaults.
+      const volumeRefs = candidates
+        .filter((c) => c.sig.totalVolume > 0)
+        .map((c) => ({ lat: c.sig.latitude, lon: c.sig.longitude, aadt: c.sig.totalVolume }));
+      routeAssignment = assignRoutes({ lat: req.latitude, lon: req.longitude }, dests, segs, { volumeRefs });
     }
   } catch {
     /* network roads unavailable — gravity assignment stands on its own */

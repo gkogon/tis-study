@@ -23,6 +23,11 @@ type RoadSegment = [number, number, number, number, number, number | null, numbe
 
 export type RouteDestination = { lat: number; lon: number; trips: number };
 
+/** Measured existing-volume reference point (a counted signal/segment). */
+export type VolumeRef = { lat: number; lon: number; aadt: number };
+
+const K_FACTOR = 0.09; // peak-hour fraction of AADT (screening default)
+
 export type CorridorClass = {
   classLabel: string;
   projectVph: number;   // project trips assigned to this road class
@@ -90,8 +95,9 @@ export function assignRoutes(
   site: { lat: number; lon: number },
   destinations: RouteDestination[],
   segments: RoadSegment[],
-  opts: { iterations?: number } = {},
+  opts: { iterations?: number; volumeRefs?: VolumeRef[] } = {},
 ): RouteAssignment {
+  const volumeRefs = opts.volumeRefs ?? [];
   const iterations = opts.iterations ?? 4;
   const empty: RouteAssignment = {
     available: false, method: "network shortest-path + BPR (MSA)", iterations: 0,
@@ -111,6 +117,22 @@ export function assignRoutes(
     if (i === undefined) { i = nodeLat.length; nodeIdx.set(k, i); nodeLat.push(la); nodeLon.push(lo); }
     return i;
   };
+  // Existing per-link utilization. When measured volume references are
+  // supplied (counted signals/segments), seed a link's v/c from the
+  // nearest reference's AADT (→ peak hour via K) over the link capacity;
+  // otherwise fall back to the functional-class default.
+  const seedBaseVc = (midLat: number, midLon: number, cls: number, capVph: number): number => {
+    if (volumeRefs.length === 0) return CLASS_BASE_VC[cls] ?? 0.5;
+    let best = -1, bestD = Infinity;
+    for (let i = 0; i < volumeRefs.length; i++) {
+      const d = distMi(midLat, midLon, volumeRefs[i]!.lat, volumeRefs[i]!.lon);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (best < 0 || bestD > 0.6 || !(volumeRefs[best]!.aadt > 0)) return CLASS_BASE_VC[cls] ?? 0.5;
+    const peakVph = volumeRefs[best]!.aadt * K_FACTOR;
+    return Math.min(1.2, Math.max(0.15, peakVph / capVph));
+  };
+
   const links: Link[] = [];
   const adj: number[][] = []; // node → link indices (undirected: traverse either way)
   const addAdj = (n: number, li: number) => { (adj[n] ??= []).push(li); };
@@ -124,7 +146,9 @@ export function assignRoutes(
     const mph = (typeof s[6] === "number" && s[6]! > 0) ? s[6]! : CLASS_FREE_MPH[cls]!;
     const lanesPerDir = (typeof s[5] === "number" && s[5]! > 0) ? Math.max(1, Math.round(s[5]! / 2)) : CLASS_LANES_PER_DIR[cls]!;
     const li = links.length;
-    links.push({ a, b, lenMi, freeMin: (lenMi / mph) * 60, capVph: lanesPerDir * PER_LANE_CAP_VPH, cls, baseVc: CLASS_BASE_VC[cls] ?? 0.5, vol: 0 });
+    const capVph = lanesPerDir * PER_LANE_CAP_VPH;
+    const baseVc = seedBaseVc((s[1] + s[3]) / 2, (s[2] + s[4]) / 2, cls, capVph);
+    links.push({ a, b, lenMi, freeMin: (lenMi / mph) * 60, capVph, cls, baseVc, vol: 0 });
     addAdj(a, li); addAdj(b, li);
   }
   if (links.length === 0) return empty;

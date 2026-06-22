@@ -98,10 +98,15 @@ export type ModeSplit = {
 export function modeChoiceLogit(
   measuredAutoShare: number,
   densityIndex: number,
-  opts: { lambda?: number; costSlope?: number } = {},
+  opts: { lambda?: number; costSlope?: number; transitAccess?: number } = {},
 ): ModeSplit {
   const anchor = Math.min(0.98, Math.max(0.05, measuredAutoShare));
-  const d = Math.min(1, Math.max(0, densityIndex));
+  // When measured transit accessibility is available (transit LOS from the
+  // stops/routes near the site), blend it with the volume-density proxy for
+  // a stronger urbanity signal; otherwise density alone.
+  const d = opts.transitAccess != null
+    ? Math.min(1, Math.max(0, 0.5 * densityIndex + 0.5 * Math.min(1, Math.max(0, opts.transitAccess))))
+    : Math.min(1, Math.max(0, densityIndex));
   const lambda = opts.lambda ?? 1.0;
   const costSlope = opts.costSlope ?? 1.1; // utility units across density 0→1
   // ΔGC relative to the median-density reference (0.5). Denser ⇒ higher
