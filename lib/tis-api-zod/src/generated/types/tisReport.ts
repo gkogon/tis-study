@@ -32,5 +32,6 @@ export interface TisReport {
   weatherCapacityFactor: number;
   passByPctApplied: number;
   internalCapturePctApplied: number;
+  autoModeShareApplied?: number;
   sensitivity?: TisSensitivityResult;
 }

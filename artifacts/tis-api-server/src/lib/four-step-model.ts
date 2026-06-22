@@ -64,6 +64,58 @@ export function bprTime(freeFlowMin: number, vOverC: number, alpha = 0.15, beta 
   return freeFlowMin * (1 + alpha * Math.pow(Math.max(0, vOverC), beta));
 }
 
+// ---- Step 3: Mode choice (binary multinomial logit) --------------------
+
+export type ModeSplit = {
+  auto: number;     // auto-mode share (0..1)
+  transit: number;  // transit + active share (0..1) — non-auto
+  /** Density index used (0 = greenfield … 1 = dense urban core). */
+  densityIndex: number;
+  /** Auto utility vs the non-auto alternative (for transparency). */
+  autoUtility: number;
+};
+
+/**
+ * Mode choice as a binary logit between AUTO and a NON-AUTO composite
+ * (transit + walk + bike), calibrated to the metro's measured auto-mode
+ * share (ACS B08301) and made responsive to SITE URBANITY.
+ *
+ * The flat metro share treats a downtown parcel and a greenfield parcel
+ * identically; in reality a denser, more walkable/transit-served site
+ * shifts mode split away from auto. We capture that intra-metro variation
+ * with a generalized-cost term that rises with local density (a proxy for
+ * parking cost + transit/walk competitiveness):
+ *
+ *   P(auto) = 1 / (1 + e^-(ASC − λ·ΔGC(density)))
+ *
+ * ASC is calibrated so a site at the metro-median density (index 0.5)
+ * reproduces the measured auto share exactly; denser sites fall below it,
+ * sparser sites rise toward it. λ and the density-cost slope are tuned for
+ * a bounded ±~0.12 swing and the result is clamped to a sane range. This
+ * is a screening logit — parking and transit level-of-service use density
+ * as a proxy rather than measured per-site LOS skims.
+ */
+export function modeChoiceLogit(
+  measuredAutoShare: number,
+  densityIndex: number,
+  opts: { lambda?: number; costSlope?: number } = {},
+): ModeSplit {
+  const anchor = Math.min(0.98, Math.max(0.05, measuredAutoShare));
+  const d = Math.min(1, Math.max(0, densityIndex));
+  const lambda = opts.lambda ?? 1.0;
+  const costSlope = opts.costSlope ?? 1.1; // utility units across density 0→1
+  // ΔGC relative to the median-density reference (0.5). Denser ⇒ higher
+  // auto generalized cost (parking) ⇒ lower auto utility.
+  const dGcRef = (0.5 - 0.5) * costSlope;        // = 0 (reference)
+  const dGcSite = (d - 0.5) * costSlope;
+  // Calibrate ASC so P(auto) = anchor at the reference density.
+  const asc = Math.log(anchor / (1 - anchor)) + lambda * dGcRef;
+  const v = asc - lambda * dGcSite;
+  let auto = 1 / (1 + Math.exp(-v));
+  auto = Math.min(0.98, Math.max(0.05, auto));
+  return { auto, transit: 1 - auto, densityIndex: d, autoUtility: Math.round(v * 1000) / 1000 };
+}
+
 export type DemandZone = {
   id: string;
   /** Trip attractiveness proxy (destination activity ~ through-volume). */

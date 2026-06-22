@@ -6971,9 +6971,11 @@ function renderFourStepSection(
   gaSubsection(doc, "Step 3 — Mode Choice");
   const autoPct = Number.isFinite(autoShare) ? Math.round(autoShare * 100) : 100;
   doc.font("body").fontSize(9.5).fillColor("black").text(
-    `Auto-mode share ${autoPct}% applied (ACS B08301 / measured for the metro); the remaining ${100 - autoPct}% `
-    + "of trips (transit, walking, cycling) do not load the off-site roadway network. Only auto trips are carried "
-    + "into Step 4.",
+    `Auto-mode share ${autoPct}% applied via a binary logit  P(auto) = 1 / (1 + e^-(ASC − λ·ΔGC))  calibrated to the `
+    + `metro's measured auto-mode share (ACS B08301) and shifted by site urbanity (local density), so a denser, more `
+    + `transit-served site splits further from auto than a greenfield parcel in the same metro. The remaining `
+    + `${100 - autoPct}% of trips (transit, walking, cycling) do not load the off-site roadway network; only auto `
+    + `trips are carried into Step 4.`,
     { paragraphGap: 6 });
 
   // Step 4 — Route Assignment

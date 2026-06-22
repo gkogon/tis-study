@@ -627,6 +627,7 @@ components:
         weatherCapacityFactor: { type: number }
         passByPctApplied: { type: number }
         internalCapturePctApplied: { type: number }
+        autoModeShareApplied: { type: number }
         sensitivity: { $ref: "#/components/schemas/TisSensitivityResult" }
       required:
         - generatedAt

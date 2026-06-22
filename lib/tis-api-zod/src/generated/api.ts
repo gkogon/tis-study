@@ -352,6 +352,7 @@ export const GenerateTisResponse = zod.object({
   weatherCapacityFactor: zod.number(),
   passByPctApplied: zod.number(),
   internalCapturePctApplied: zod.number(),
+  autoModeShareApplied: zod.number().optional(),
   sensitivity: zod
     .object({
       iterations: zod.number(),
@@ -818,6 +819,7 @@ export const GetTisProjectResponse = zod
       weatherCapacityFactor: zod.number(),
       passByPctApplied: zod.number(),
       internalCapturePctApplied: zod.number(),
+      autoModeShareApplied: zod.number().optional(),
       sensitivity: zod
         .object({
           iterations: zod.number(),

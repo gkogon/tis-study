@@ -18,7 +18,7 @@ import { logger } from "./logger";
 import { getAutoModeShare, getAutoModeShareSource, getLondonAutoModeShare, type PTALBand } from "./mode-share";
 import { lookupLondonPtal } from "./tfl-ptal";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
-import { distributeAndAssign, GAMMA_FRICTION, type DemandZone } from "./four-step-model";
+import { distributeAndAssign, modeChoiceLogit, GAMMA_FRICTION, type DemandZone } from "./four-step-model";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
 import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSource } from "./regional-growth-rates";
 // Canonical land-use registry (ITE 11th Ed.) lives in one place so the
@@ -917,7 +917,7 @@ const TIS_METHODOLOGY = [
   "Pass-by and internal-capture credits are applied at the PM peak per ITE's Pass-By Trip Generation Manual (3rd Edition) and ULI Mixed-Use Internal Capture defaults; only the residual external trips are assigned to off-site intersections.",
   "Existing intersection volumes are grown to the opening-year horizon at the user-supplied annual growth rate (default 1.5%/yr) before the capacity analysis.",
   "Weather adjustment follows HCM 6th-Edition Ch. 11 (rain/snow capacity reduction): clear 1.00, light rain 0.95, heavy rain 0.86, light snow 0.86, heavy snow 0.70. The factor multiplies the saturation flow at every intersection.",
-  "Off-site impact is screened for all signalized intersections within the study radius (default 0.5 mi) using the four-step travel demand model (FHWA; NCHRP Report 716). Step 1 Trip Generation: ITE rates give the site's external (post pass-by / internal-capture) productions. Step 2 Trip Distribution: a production-constrained gravity model T_j = P · (A_j·F_j) / Σ(A_x·F_x) allocates trips to surrounding signals, where attractiveness A_j is the signal's through-volume and the friction factor F_j is the NCHRP-716 gamma function F = a·t^b·e^(c·t) (home-based-work coefficients a=28507, b=-0.02, c=-0.123) on the travel time t to each signal. Step 3 Mode Choice: the metro's measured auto-mode share is applied so only vehicle trips load the network. Step 4 Route Assignment: a capacity-constrained assignment using the BPR volume-delay function t = t0·[1 + 0.15·(v/c)^4] iteratively shifts trips away from over-capacity signals toward less-congested alternatives. Signals lacking AADT data fall back to a constant 5,000 vpd attraction.",
+  "Off-site impact is screened for all signalized intersections within the study radius (default 0.5 mi) using the four-step travel demand model (FHWA; NCHRP Report 716). Step 1 Trip Generation: ITE rates give the site's external (post pass-by / internal-capture) productions. Step 2 Trip Distribution: a production-constrained gravity model T_j = P · (A_j·F_j) / Σ(A_x·F_x) allocates trips to surrounding signals, where attractiveness A_j is the signal's through-volume and the friction factor F_j is the NCHRP-716 gamma function F = a·t^b·e^(c·t) (home-based-work coefficients a=28507, b=-0.02, c=-0.123) on the travel time t to each signal. Step 3 Mode Choice: a binary logit P(auto)=1/(1+e^-(ASC−λ·ΔGC)) calibrated to the metro's measured auto-mode share (ACS B08301) and shifted by site urbanity (a density proxy from surrounding through-volumes) so denser, more transit-served sites split further from auto; only the resulting vehicle trips load the network. Step 4 Route Assignment: a capacity-constrained assignment using the BPR volume-delay function t = t0·[1 + 0.15·(v/c)^4] iteratively shifts trips away from over-capacity signals toward less-congested alternatives. Signals lacking AADT data fall back to a constant 5,000 vpd attraction.",
   "After assignment, all signalized intersections within the study radius are reported in the affected-intersections table. Project-added trips, v/c ratio change, control delay change, LOS change, and 95th-percentile queue are reported for each intersection so the reviewer can assess relative impact. Intersections beyond the study radius are excluded from analysis.",
   "Auto-mode share is applied per metro before assignment. Suburban-US metros default to 90% auto (ACS 5-Year B08301 median); transit-heavy metros use measured auto-mode share (e.g., NYC 32%, Tokyo 30%, London 38%, San Francisco 47%). Non-auto trips (transit, walking, cycling) do not load the off-site roadway. This is a screening-level adjustment; a real TIS submittal in a transit-heavy market should refine with project-specific TAZ data.",
   "Candidate signals are de-duplicated within a 45m clustering threshold to prevent OSM divided-arterial splits and way-record artifacts from double-counting a single physical intersection.",
@@ -1093,9 +1093,18 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       }
     }
   }
+  // Step 3 — Mode choice. London uses the PTAL-accessibility path (already
+  // a site-responsive mode choice). Everywhere else, a binary logit
+  // calibrated to the metro's measured auto-mode share, shifted by SITE
+  // URBANITY: a density proxy from the surrounding signals' through-volumes
+  // (median volume / 30k-AADT reference) so a downtown parcel splits more
+  // toward transit/walk than a greenfield parcel in the same metro.
+  const densityVols = candidates.map((c) => c.sig.totalVolume).filter((v) => v > 0).sort((a, b) => a - b);
+  const medianVol = densityVols.length ? densityVols[Math.floor(densityVols.length / 2)]! : 0;
+  const densityIndex = Math.min(1, Math.max(0, medianVol / 30_000));
   const autoModeShare = resolvedPtalBand
     ? getLondonAutoModeShare(resolvedPtalBand.band)
-    : getAutoModeShare(region.code);
+    : modeChoiceLogit(getAutoModeShare(region.code), densityIndex).auto;
 
   // ----- Four-step travel demand model: distribution + assignment -------
   // Steps 1–3 (generation/mode-choice) are computed per period below; the
