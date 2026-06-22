@@ -18,6 +18,7 @@ import { logger } from "./logger";
 import { getAutoModeShare, getAutoModeShareSource, getLondonAutoModeShare, type PTALBand } from "./mode-share";
 import { lookupLondonPtal } from "./tfl-ptal";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
+import { distributeAndAssign, GAMMA_FRICTION, type DemandZone } from "./four-step-model";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
 import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSource } from "./regional-growth-rates";
 // Canonical land-use registry (ITE 11th Ed.) lives in one place so the
@@ -225,51 +226,9 @@ function approachAddedTripShares(
   return raw;
 }
 
-/**
- * Gravity-model assignment of project trips across affected signals.
- * Combines two factors a working PE would weight a real distribution by:
- *
- *   1. **Roadway attractiveness** — signals on higher-volume roads
- *      attract more project trips, because that's where the development's
- *      patrons are actually going to/from. A signal on a 35,000-AADT
- *      arterial is a route; a signal on a 4,000-AADT collector is a
- *      side-street people avoid.
- *
- *   2. **Distance decay** — closer signals still attract more trips
- *      (drivers minimize travel distance), with a steep falloff so a
- *      marginally-closer side street doesn't unjustly out-weight a
- *      slightly-farther arterial, and so the project's predicted trip
- *      distribution doesn't smear flat across 20+ intersections.
- *
- * Formula:  weight_i ∝ volume_i · distance_i^(-2.0)
- *
- * β = 2.0 is the canonical inverse-square gravity model. β = 1.5 was the
- * previous compromise — it produced a long tail where the 18th-closest
- * intersection still got 2–3% of trips, which rounded to "1–2 added
- * vehicles per intersection" in the report and made the affected-list
- * read as noise. Inverse-square concentrates ~70% of trips on the closest
- * 3–5 high-volume signals, matching how a PE allocates by hand at the
- * methodology meeting. Volume falls back to a constant when a signal
- * lacks AADT data, so the model degrades gracefully for low-data tiers
- * (osm_only metros).
- *
- * This is NOT a full network shortest-path assignment — that would
- * require an OSM road graph + Dijkstra, multi-week work. It is the
- * single highest-leverage improvement available without the graph.
- */
-function assignmentWeights(
-  affected: Array<{ sig: AnalyzerIntersection; distanceMi: number }>,
-): number[] {
-  if (affected.length === 0) return [];
-  const FALLBACK_VOLUME = 5_000;
-  const raw = affected.map((a) => {
-    const vol = a.sig.totalVolume > 0 ? a.sig.totalVolume : FALLBACK_VOLUME;
-    const dist = Math.max(0.06, a.distanceMi);
-    return vol * Math.pow(dist, -2.0);
-  });
-  const total = raw.reduce((s, v) => s + v, 0);
-  return total > 0 ? raw.map((v) => v / total) : raw.map(() => 1 / raw.length);
-}
+// Trip distribution + route assignment now live in four-step-model.ts
+// (NCHRP-716 gamma-friction gravity model + BPR capacity-constrained
+// assignment), wired into generateTisReport below.
 
 // ---------- Intersection-summary fetch from analyzer ----------
 
@@ -958,7 +917,7 @@ const TIS_METHODOLOGY = [
   "Pass-by and internal-capture credits are applied at the PM peak per ITE's Pass-By Trip Generation Manual (3rd Edition) and ULI Mixed-Use Internal Capture defaults; only the residual external trips are assigned to off-site intersections.",
   "Existing intersection volumes are grown to the opening-year horizon at the user-supplied annual growth rate (default 1.5%/yr) before the capacity analysis.",
   "Weather adjustment follows HCM 6th-Edition Ch. 11 (rain/snow capacity reduction): clear 1.00, light rain 0.95, heavy rain 0.86, light snow 0.86, heavy snow 0.70. The factor multiplies the saturation flow at every intersection.",
-  "Off-site impact is screened for all signalized intersections within the study radius (default 0.5 mi). Project trips are assigned by a gravity model: weight_i ∝ existing_volume_i · distance_i^(-2.0), normalized to sum to 100% of the period's external trip total. The inverse-square distance penalty concentrates ~70% of trips on the closest 3–5 high-volume signals, matching how a PE allocates by hand at the methodology meeting. Signals lacking AADT data fall back to a constant 5,000 vpd.",
+  "Off-site impact is screened for all signalized intersections within the study radius (default 0.5 mi) using the four-step travel demand model (FHWA; NCHRP Report 716). Step 1 Trip Generation: ITE rates give the site's external (post pass-by / internal-capture) productions. Step 2 Trip Distribution: a production-constrained gravity model T_j = P · (A_j·F_j) / Σ(A_x·F_x) allocates trips to surrounding signals, where attractiveness A_j is the signal's through-volume and the friction factor F_j is the NCHRP-716 gamma function F = a·t^b·e^(c·t) (home-based-work coefficients a=28507, b=-0.02, c=-0.123) on the travel time t to each signal. Step 3 Mode Choice: the metro's measured auto-mode share is applied so only vehicle trips load the network. Step 4 Route Assignment: a capacity-constrained assignment using the BPR volume-delay function t = t0·[1 + 0.15·(v/c)^4] iteratively shifts trips away from over-capacity signals toward less-congested alternatives. Signals lacking AADT data fall back to a constant 5,000 vpd attraction.",
   "After assignment, all signalized intersections within the study radius are reported in the affected-intersections table. Project-added trips, v/c ratio change, control delay change, LOS change, and 95th-percentile queue are reported for each intersection so the reviewer can assess relative impact. Intersections beyond the study radius are excluded from analysis.",
   "Auto-mode share is applied per metro before assignment. Suburban-US metros default to 90% auto (ACS 5-Year B08301 median); transit-heavy metros use measured auto-mode share (e.g., NYC 32%, Tokyo 30%, London 38%, San Francisco 47%). Non-auto trips (transit, walking, cycling) do not load the off-site roadway. This is a screening-level adjustment; a real TIS submittal in a transit-heavy market should refine with project-specific TAZ data.",
   "Candidate signals are de-duplicated within a 45m clustering threshold to prevent OSM divided-arterial splits and way-record artifacts from double-counting a single physical intersection.",
@@ -1103,7 +1062,6 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const designGrowthMultiplier = Math.pow(1 + growthRatePct / 100, designYears);
 
   const candidates = await findAffectedIntersections(req.latitude, req.longitude, radiusMi, region.code);
-  const weights = assignmentWeights(candidates);
   const project = { lat: req.latitude, lon: req.longitude };
   const calibrationMap = await loadCalibrationMap();
 
@@ -1138,6 +1096,35 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const autoModeShare = resolvedPtalBand
     ? getLondonAutoModeShare(resolvedPtalBand.band)
     : getAutoModeShare(region.code);
+
+  // ----- Four-step travel demand model: distribution + assignment -------
+  // Steps 1–3 (generation/mode-choice) are computed per period below; the
+  // spatial DISTRIBUTION (gravity model) and ASSIGNMENT (BPR capacity-
+  // constrained) are computed once here and reused as period-independent
+  // shares. Replaces the old inverse-square heuristic with the NCHRP-716
+  // gamma friction factor + BPR congestion feedback. See four-step-model.ts.
+  const FALLBACK_VOLUME = 5_000;
+  const refVolume = Math.max(
+    FALLBACK_VOLUME,
+    ...candidates.map((c) => (c.sig.totalVolume > 0 ? c.sig.totalVolume : 0)),
+  );
+  const demandZones: DemandZone[] = candidates.map((c) => ({
+    id: c.sig.id,
+    attraction: c.sig.totalVolume > 0 ? c.sig.totalVolume : FALLBACK_VOLUME,
+    distanceMi: c.distanceMi,
+    // Existing congestion proxy for BPR feedback: a zone's through-volume
+    // relative to the busiest study signal (screening normalization, since
+    // absolute per-movement capacity isn't resolved at this stage).
+    baseVoverC: clamp((c.sig.totalVolume > 0 ? c.sig.totalVolume : FALLBACK_VOLUME) / refVolume, 0.05, 1.0),
+  }));
+  // PM-peak external auto trips drive the BPR loading (the controlling
+  // period); the resulting shares apply to every period.
+  const pmRawForAssign = periodRawTrips(lu, req.size, "pm_peak", rates);
+  const pmPassByForAssign = pmRawForAssign * (passByPct / 100);
+  const pmInternalForAssign = (pmRawForAssign - pmPassByForAssign) * (internalCapturePct / 100);
+  const pmExternalAutoForAssign = Math.max(0, pmRawForAssign - pmPassByForAssign - pmInternalForAssign) * autoModeShare;
+  const fourStep = distributeAndAssign(demandZones, pmExternalAutoForAssign, { gamma: GAMMA_FRICTION.hbw });
+  const weights = fourStep.weights;
 
   // Per-period analyses.
   const periodReports: PeriodReport[] = [];

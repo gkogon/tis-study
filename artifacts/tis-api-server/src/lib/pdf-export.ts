@@ -600,6 +600,10 @@ function dispatchTisRender(
   const periods = Array.isArray(result.periodReports)
     ? (result.periodReports as any[]) : [];
   if (intersections.length > 0) {
+    // Four-step travel demand model write-up (generation → gravity
+    // distribution → mode choice → BPR assignment), then the
+    // per-intersection capacity worksheets.
+    renderFourStepSection(doc, result);
     renderCapacityAppendix(doc, intersections, periods);
   }
 }
@@ -6891,6 +6895,100 @@ function drawTurningMovementDiagram(
  * (LOS changes first, then by added control delay) to match the on-screen
  * table and put the reviewer's attention on the affected signals first.
  */
+/**
+ * Four-Step Travel Demand Model section (FHWA / NCHRP 716). Documents the
+ * generation → gravity distribution → mode choice → BPR assignment chain
+ * the engine ran, with a per-signal distribution table. Computed from the
+ * report fields the PDF already carries — no extra payload needed.
+ */
+function renderFourStepSection(
+  doc: PDFKit.PDFDocument,
+  result: Record<string, unknown>,
+) {
+  const tg = (result.tripGeneration ?? {}) as Record<string, any>;
+  const intersections: any[] = Array.isArray(result.affectedIntersections) ? result.affectedIntersections : [];
+  if (intersections.length === 0) return;
+  const autoShare = Number(result.autoModeShareApplied);
+  const SPEED_MPH = 25;
+
+  doc.addPage();
+  gaSection(doc, "FOUR-STEP TRAVEL DEMAND MODEL");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Off-site project trips are distributed and assigned with the four-step urban transportation modeling process "
+    + "(FHWA; NCHRP Report 716, Travel Demand Forecasting). Each step below shows what the engine computed for this site.",
+    { paragraphGap: 8 },
+  );
+  doc.fillColor("black");
+
+  // Step 1 — Trip Generation
+  gaSubsection(doc, "Step 1 — Trip Generation");
+  doc.font("body").fontSize(9.5).fillColor(TEXT_GRAY).text(
+    "ITE Trip Generation (11th Ed.) rates applied to the proposed land use give the site's productions.",
+    { paragraphGap: 3 });
+  doc.fillColor("black");
+  rows(doc, [
+    ["Land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Daily trips (productions)", fmtNum(tg.dailyTrips)],
+    ["PM peak-hour trips", `${fmtNum(tg.pmPeakTrips)} (${fmtNum(tg.pmIn)} in / ${fmtNum(tg.pmOut)} out)`],
+  ]);
+  doc.moveDown(0.4);
+
+  // Step 2 — Trip Distribution (gravity model)
+  gaSubsection(doc, "Step 2 — Trip Distribution (Gravity Model)");
+  doc.font("body").fontSize(9.5).fillColor(TEXT_GRAY).text(
+    "A production-constrained gravity model allocates trips to surrounding signals:  T_j = P · (A_j · F_j) / Σ (A_x · F_x).  "
+    + "Attractiveness A_j is each signal's through-volume; the friction factor F_j is the NCHRP-716 gamma function "
+    + "F = a·t^b·e^(c·t) (home-based-work: a=28507, b=-0.02, c=-0.123) on the travel time t to the signal.",
+    { paragraphGap: 4 });
+  doc.fillColor("black");
+  const totalAdded = intersections.reduce((s, r) => s + (Number(r.addedTripsPmPeak) || 0), 0) || 1;
+  const distRows = [...intersections]
+    .sort((a, b) => (Number(b.addedTripsPmPeak) || 0) - (Number(a.addedTripsPmPeak) || 0))
+    .slice(0, 12)
+    .map((r) => {
+      const tMin = (Math.max(0.06, Number(r.distanceMi) || 0) / SPEED_MPH) * 60;
+      return [
+        String(r.name ?? r.signalId ?? "—"),
+        fmtNum(r.distanceMi, 2),
+        fmtNum(tMin, 1),
+        fmtNum(r.addedTripsPmPeak),
+        `${((Number(r.addedTripsPmPeak) || 0) / totalAdded * 100).toFixed(1)}%`,
+      ];
+    });
+  table(doc, {
+    headers: ["Signal (attraction zone)", "Dist mi", "Time min", "PM trips", "Share"],
+    widths: [250, 56, 60, 64, 60],
+    align: ["left", "right", "right", "right", "right"],
+    rows: distRows,
+  });
+  doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+    "Top 12 distribution zones by assigned PM-peak trips shown; the full set is in the capacity appendix.",
+    { paragraphGap: 6 });
+  doc.fillColor("black");
+
+  // Step 3 — Mode Choice
+  gaSubsection(doc, "Step 3 — Mode Choice");
+  const autoPct = Number.isFinite(autoShare) ? Math.round(autoShare * 100) : 100;
+  doc.font("body").fontSize(9.5).fillColor("black").text(
+    `Auto-mode share ${autoPct}% applied (ACS B08301 / measured for the metro); the remaining ${100 - autoPct}% `
+    + "of trips (transit, walking, cycling) do not load the off-site roadway network. Only auto trips are carried "
+    + "into Step 4.",
+    { paragraphGap: 6 });
+
+  // Step 4 — Route Assignment
+  gaSubsection(doc, "Step 4 — Route Assignment");
+  const vcs = intersections.map((r) => Number(r.futureVc) || 0).filter((v) => v > 0).sort((a, b) => b - a);
+  const worstVc = vcs.length ? vcs[0] : 0;
+  doc.font("body").fontSize(9.5).fillColor("black").text(
+    "A capacity-constrained assignment using the BPR volume-delay function  t = t0 · [1 + 0.15·(v/c)^4]  iteratively "
+    + "shifts trips away from over-capacity signals toward less-congested alternatives until the assignment is "
+    + `congestion-consistent. Highest post-build v/c among study signals: ${worstVc ? worstVc.toFixed(2) : "—"}. `
+    + "Per-signal v/c, delay, LOS, and queue are in the capacity appendix.",
+    { paragraphGap: 6 });
+  doc.fillColor("black");
+}
+
 function renderCapacityAppendix(
   doc: PDFKit.PDFDocument,
   intersections: any[],
