@@ -19,6 +19,7 @@ import { getAutoModeShare, getAutoModeShareSource, getLondonAutoModeShare, type 
 import { lookupLondonPtal } from "./tfl-ptal";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
 import { distributeAndAssign, modeChoiceLogit, GAMMA_FRICTION, type DemandZone } from "./four-step-model";
+import { fetchLocalRoads, assignRoutes, type RouteAssignment } from "./network-assignment";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
 import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSource } from "./regional-growth-rates";
 // Canonical land-use registry (ITE 11th Ed.) lives in one place so the
@@ -526,6 +527,9 @@ export type TisReport = {
    *  PTAL-banded value. Surfaced so renderers print the actual share
    *  rather than a hard-coded constant. */
   autoModeShareApplied: number;
+  /** Step-4 network route assignment (which road corridors carry the
+   *  project trips). Absent when the region has no road network. */
+  routeAssignment?: RouteAssignment;
   /** The PTAL band the engine resolved for this London project, plus
    *  its source. "caller" means `request.ptalBand` was supplied;
    *  "tfl-webcat-2023" means the engine ran a point-in-polygon
@@ -1135,6 +1139,26 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const fourStep = distributeAndAssign(demandZones, pmExternalAutoForAssign, { gamma: GAMMA_FRICTION.hbw });
   const weights = fourStep.weights;
 
+  // Step 4 (network) — best-effort road-network route assignment. Loads the
+  // PM-peak project trips onto the actual road corridors via shortest-path
+  // + BPR equilibrium. Additive: per-signal trip totals are unchanged; this
+  // reports which roads carry the trips. Falls back silently (undefined)
+  // when the region has no road network available.
+  let routeAssignment: RouteAssignment | undefined;
+  try {
+    const segs = await fetchLocalRoads(region.code, req.latitude, req.longitude, radiusMi);
+    if (segs) {
+      const dests = candidates.map((c, i) => ({
+        lat: c.sig.latitude,
+        lon: c.sig.longitude,
+        trips: (weights[i] ?? 0) * pmExternalAutoForAssign,
+      }));
+      routeAssignment = assignRoutes({ lat: req.latitude, lon: req.longitude }, dests, segs);
+    }
+  } catch {
+    /* network roads unavailable — gravity assignment stands on its own */
+  }
+
   // Per-period analyses.
   const periodReports: PeriodReport[] = [];
   for (const period of periods) {
@@ -1297,6 +1321,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     passByPctApplied: passByPct,
     internalCapturePctApplied: internalCapturePct,
     autoModeShareApplied: autoModeShare,
+    ...(routeAssignment ? { routeAssignment } : {}),
     ...(resolvedPtalBand ? { resolvedPtalBand } : {}),
     sensitivity: sens,
     junctionImpactSignificant,

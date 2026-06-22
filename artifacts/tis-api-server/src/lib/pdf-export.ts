@@ -6980,15 +6980,43 @@ function renderFourStepSection(
 
   // Step 4 — Route Assignment
   gaSubsection(doc, "Step 4 — Route Assignment");
-  const vcs = intersections.map((r) => Number(r.futureVc) || 0).filter((v) => v > 0).sort((a, b) => b - a);
-  const worstVc = vcs.length ? vcs[0] : 0;
-  doc.font("body").fontSize(9.5).fillColor("black").text(
-    "A capacity-constrained assignment using the BPR volume-delay function  t = t0 · [1 + 0.15·(v/c)^4]  iteratively "
-    + "shifts trips away from over-capacity signals toward less-congested alternatives until the assignment is "
-    + `congestion-consistent. Highest post-build v/c among study signals: ${worstVc ? worstVc.toFixed(2) : "—"}. `
-    + "Per-signal v/c, delay, LOS, and queue are in the capacity appendix.",
-    { paragraphGap: 6 });
-  doc.fillColor("black");
+  const ra = result.routeAssignment as Record<string, any> | undefined;
+  if (ra && ra.available && Array.isArray(ra.corridors) && ra.corridors.length) {
+    doc.font("body").fontSize(9.5).fillColor("black").text(
+      "Project trips are routed over the local road network by shortest path and loaded with a capacity-constrained "
+      + "BPR equilibrium (volume-delay  t = t0·[1 + 0.15·(v/c)^4], Method of Successive Averages), so congested links "
+      + `shift trips toward alternative routes. ${ra.onNetworkPct ?? 0}% of study signals lie on a modeled route; `
+      + `highest loaded-link v/c: ${Number(ra.worstLinkVoverC || 0).toFixed(2)}. Corridors carrying the project trips:`,
+      { paragraphGap: 4 });
+    doc.fillColor("black");
+    table(doc, {
+      headers: ["Corridor (road class)", "Loaded length mi", "PM project vph", "v/c"],
+      widths: [250, 100, 100, 60],
+      align: ["left", "right", "right", "right"],
+      rows: ra.corridors.slice(0, 8).map((c: any) => [
+        String(c.classLabel ?? "—"),
+        fmtNum(c.lengthMi, 2),
+        fmtNum(c.projectVph),
+        Number(c.vOverC || 0).toFixed(2),
+      ]),
+    });
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "Network shortest-path assignment over the OSM road graph within the study area; per-signal v/c, delay, LOS, "
+      + "and queue are in the capacity appendix.",
+      { paragraphGap: 6 });
+    doc.fillColor("black");
+  } else {
+    const vcs = intersections.map((r) => Number(r.futureVc) || 0).filter((v) => v > 0).sort((a, b) => b - a);
+    const worstVc = vcs.length ? vcs[0] : 0;
+    doc.font("body").fontSize(9.5).fillColor("black").text(
+      "A capacity-constrained assignment using the BPR volume-delay function  t = t0 · [1 + 0.15·(v/c)^4]  iteratively "
+      + "shifts trips away from over-capacity signals toward less-congested alternatives until the assignment is "
+      + `congestion-consistent. Highest post-build v/c among study signals: ${worstVc ? worstVc.toFixed(2) : "—"}. `
+      + "Per-signal v/c, delay, LOS, and queue are in the capacity appendix. (Road-network corridor routing was not "
+      + "available for this region; per-signal capacity-constrained assignment was used.)",
+      { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
 }
 
 function renderCapacityAppendix(

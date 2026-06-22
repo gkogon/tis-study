@@ -592,6 +592,35 @@ components:
         - probAnyLosDrop
         - probAnyLosEf
         - expectedLosDrops
+    TisRouteAssignment:
+      type: object
+      properties:
+        available: { type: boolean }
+        method: { type: string }
+        iterations: { type: integer }
+        destinationsTotal: { type: integer }
+        destinationsRouted: { type: integer }
+        onNetworkPct: { type: number }
+        worstLinkVoverC: { type: number }
+        corridors:
+          type: array
+          items:
+            type: object
+            properties:
+              classLabel: { type: string }
+              projectVph: { type: number }
+              lengthMi: { type: number }
+              vOverC: { type: number }
+            required: [classLabel, projectVph, lengthMi, vOverC]
+      required:
+        - available
+        - method
+        - iterations
+        - destinationsTotal
+        - destinationsRouted
+        - onNetworkPct
+        - worstLinkVoverC
+        - corridors
     TisReport:
       type: object
       properties:
@@ -628,6 +657,7 @@ components:
         passByPctApplied: { type: number }
         internalCapturePctApplied: { type: number }
         autoModeShareApplied: { type: number }
+        routeAssignment: { $ref: "#/components/schemas/TisRouteAssignment" }
         sensitivity: { $ref: "#/components/schemas/TisSensitivityResult" }
       required:
         - generatedAt

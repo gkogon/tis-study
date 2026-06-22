@@ -34,6 +34,8 @@ export * from "./tisProjectDetailRequest";
 export * from "./tisProjectSummary";
 export * from "./tisReport";
 export * from "./tisRequest";
+export * from "./tisRouteAssignment";
+export * from "./tisRouteAssignmentCorridorsItem";
 export * from "./tisSensitivityResult";
 export * from "./tisTripGeneration";
 export * from "./tisTripGenerationVariableConfidence";

@@ -353,6 +353,25 @@ export const GenerateTisResponse = zod.object({
   passByPctApplied: zod.number(),
   internalCapturePctApplied: zod.number(),
   autoModeShareApplied: zod.number().optional(),
+  routeAssignment: zod
+    .object({
+      available: zod.boolean(),
+      method: zod.string(),
+      iterations: zod.number(),
+      destinationsTotal: zod.number(),
+      destinationsRouted: zod.number(),
+      onNetworkPct: zod.number(),
+      worstLinkVoverC: zod.number(),
+      corridors: zod.array(
+        zod.object({
+          classLabel: zod.string(),
+          projectVph: zod.number(),
+          lengthMi: zod.number(),
+          vOverC: zod.number(),
+        }),
+      ),
+    })
+    .optional(),
   sensitivity: zod
     .object({
       iterations: zod.number(),
@@ -820,6 +839,25 @@ export const GetTisProjectResponse = zod
       passByPctApplied: zod.number(),
       internalCapturePctApplied: zod.number(),
       autoModeShareApplied: zod.number().optional(),
+      routeAssignment: zod
+        .object({
+          available: zod.boolean(),
+          method: zod.string(),
+          iterations: zod.number(),
+          destinationsTotal: zod.number(),
+          destinationsRouted: zod.number(),
+          onNetworkPct: zod.number(),
+          worstLinkVoverC: zod.number(),
+          corridors: zod.array(
+            zod.object({
+              classLabel: zod.string(),
+              projectVph: zod.number(),
+              lengthMi: zod.number(),
+              vOverC: zod.number(),
+            }),
+          ),
+        })
+        .optional(),
       sensitivity: zod
         .object({
           iterations: zod.number(),

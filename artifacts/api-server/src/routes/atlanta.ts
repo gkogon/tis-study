@@ -44,6 +44,7 @@ import {
 } from "../lib/atlanta-analysis";
 import { loadRoadNetwork } from "../lib/atlanta-data";
 import { loadRegionalIntersections } from "../lib/regional-intersections";
+import { roadSegmentsNear } from "../lib/regional-roads";
 import { getIncidentsForRegion as getNcdotIncidentsForRegion } from "../lib/ncdot-live";
 import { getIncidentsForRegion as getFdotIncidentsForRegion } from "../lib/fdot-live";
 import { getIncidentsForRegion as getKytcIncidentsForRegion } from "../lib/kytc-live";
@@ -187,6 +188,30 @@ router.get("/intersections", (req, res): void => {
       detail: (e as Error).message,
     });
   }
+});
+
+/**
+ * Bounded local road network for the TIS engine's route-assignment step.
+ * Returns OSM road segments within `radiusMi` of the site so the engine
+ * can build a routing graph. `available:false` when the region has no
+ * road file (engine falls back to per-signal gravity assignment).
+ */
+router.get("/roads", (req, res): void => {
+  const regionCode = String(req.query["regionCode"] ?? "atlanta_metro");
+  const lat = Number(req.query["lat"]);
+  const lon = Number(req.query["lon"]);
+  const radiusMi = Number(req.query["radiusMi"]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    res.status(400).json({ error: "lat and lon query params are required numbers" });
+    return;
+  }
+  const segments = roadSegmentsNear(regionCode, lat, lon, Number.isFinite(radiusMi) ? radiusMi : 0.75);
+  if (segments === null) {
+    res.json({ available: false, segments: [] });
+    return;
+  }
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  res.json({ available: true, segments });
 });
 
 router.get("/atlanta/summary", (_req, res): void => {

@@ -373,6 +373,24 @@ export interface TisPeriodReport {
   worstDelayDeltaSec: number;
 }
 
+export type TisRouteAssignmentCorridorsItem = {
+  classLabel: string;
+  projectVph: number;
+  lengthMi: number;
+  vOverC: number;
+};
+
+export interface TisRouteAssignment {
+  available: boolean;
+  method: string;
+  iterations: number;
+  destinationsTotal: number;
+  destinationsRouted: number;
+  onNetworkPct: number;
+  worstLinkVoverC: number;
+  corridors: TisRouteAssignmentCorridorsItem[];
+}
+
 export interface TisSensitivityResult {
   iterations: number;
   worstDelayDeltaMean: number;
@@ -405,6 +423,7 @@ export interface TisReport {
   passByPctApplied: number;
   internalCapturePctApplied: number;
   autoModeShareApplied?: number;
+  routeAssignment?: TisRouteAssignment;
   sensitivity?: TisSensitivityResult;
 }
 
