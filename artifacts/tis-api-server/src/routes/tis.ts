@@ -5,7 +5,7 @@ import {
   ListTisLandUsesResponse,
 } from "@workspace/tis-api-zod";
 import { generateTisReport, LAND_USES } from "../lib/tis";
-import { regionForCoordinate } from "../lib/regions";
+import { regionForCoordinate, REGIONS } from "../lib/regions";
 import { renderStudyPdf } from "../lib/pdf-export";
 import { generateRateLimiter } from "../lib/security";
 import { saveProject } from "../lib/tis-projects";
@@ -17,6 +17,27 @@ import {
 import { logEvent } from "../lib/events";
 
 const router: IRouter = Router();
+
+/**
+ * Covered cities/regions for the "Run a study → choose a city" picker.
+ * Returns each active region with its centroid so the form can drop a
+ * site at the city center and run with city-appropriate quick-start
+ * presets — the same one-click flow the public demo offers per metro.
+ */
+router.get("/regions", (_req, res): void => {
+  const regions = Object.values(REGIONS)
+    .filter((r) => r.active !== false)
+    .map((r) => ({
+      code: r.code,
+      displayName: r.displayName,
+      stateCode: r.stateCode ?? null,
+      country: r.country ?? "US",
+      lat: Math.round(((r.bounds.latMin + r.bounds.latMax) / 2) * 1e4) / 1e4,
+      lon: Math.round(((r.bounds.lonMin + r.bounds.lonMax) / 2) * 1e4) / 1e4,
+    }))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  res.json({ regions });
+});
 
 router.get("/land-uses", (_req, res): void => {
   const out = LAND_USES.map(({

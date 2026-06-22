@@ -272,6 +272,67 @@ function TisFormSection({
     }
   }
 
+  // Covered-city picker. "Run a study → choose a city" — selecting a city
+  // drops the site at the city center and swaps the quick-start band to
+  // that city's localized examples (same one-click flow as the public
+  // demo's per-metro presets), so the engineer doesn't have to type an
+  // address to study a covered metro.
+  type RegionOpt = { code: string; displayName: string; stateCode: string | null; country: string; lat: number; lon: number };
+  const [regions, setRegions] = useState<RegionOpt[]>([]);
+  const [cityCode, setCityCode] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/tis-api/regions", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : { regions: [] }))
+      .then((d) => { if (!cancelled) setRegions(Array.isArray(d?.regions) ? d.regions : []); })
+      .catch(() => { /* picker just stays empty; Find-by-address still works */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const cityPresets = useMemo<ProjectTemplate[]>(() => {
+    const region = regions.find((r) => r.code === cityCode);
+    if (!region) return [];
+    const specs: Array<{ code: string; size: number; verb: string }> = [
+      { code: "221", size: 280, verb: "Mid-rise apartments" },
+      { code: "710", size: 220, verb: "Class-A office" },
+      { code: "820", size: 75, verb: "Shopping center" },
+      { code: "310", size: 150, verb: "Hotel" },
+    ];
+    const offsets: Array<[number, number]> = [[0, 0], [0.003, 0.004], [-0.004, 0.003], [0.002, -0.005]];
+    return specs.map((spec, i) => {
+      const o = offsets[i] ?? [0, 0];
+      return {
+        category: "Other" as const,
+        description: `${spec.verb} in ${region.displayName}`,
+        request: {
+          projectName: `${region.displayName} ${spec.verb}`,
+          address: region.displayName,
+          latitude: round4(region.lat + o[0]),
+          longitude: round4(region.lon + o[1]),
+          landUseCode: spec.code,
+          size: spec.size,
+          openingYear: 2027,
+          studyRadiusMi: 0.5,
+          analysisPeriods: ["am_peak", "pm_peak", "saturday_midday", "daily"],
+          growthRatePct: 1.5,
+          weather: "clear",
+          runSensitivity: false,
+        },
+      };
+    });
+  }, [regions, cityCode]);
+
+  function selectCity(code: string) {
+    setCityCode(code);
+    const region = regions.find((r) => r.code === code);
+    if (region) {
+      setForm((f) => ({ ...f, latitude: round4(region.lat), longitude: round4(region.lon), address: region.displayName }));
+      setResolvedAddress(null);
+      setGeocodeError(null);
+    }
+  }
+
   function loadSample(s: TisRequest) {
     setForm(s);
     setResolvedAddress(null);
@@ -323,15 +384,44 @@ function TisFormSection({
         <div className="rounded-lg border bg-gradient-to-br from-slate-50 to-background dark:from-slate-950/40 px-4 py-3 space-y-2">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
-              <div className="text-sm font-semibold">First time here?</div>
-              <div className="text-xs text-muted-foreground">Click any template to prefill the form with a realistic Atlanta site.</div>
+              <div className="text-sm font-semibold">Choose a city to start</div>
+              <div className="text-xs text-muted-foreground">
+                Pick a covered metro and click a quick-start example — or type any address in the form below.
+              </div>
             </div>
             <span className="text-[10px] font-semibold uppercase tracking-widest text-blue-700">
               Quick start
             </span>
           </div>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <select
+              value={cityCode}
+              onChange={(e) => selectCity(e.target.value)}
+              className="px-3 py-2 rounded-md border bg-background text-sm max-w-[320px]"
+              data-testid="select-city"
+            >
+              <option value="">
+                {regions.length ? `Select a city (${regions.length} covered)…` : "Loading cities…"}
+              </option>
+              {regions.map((r) => (
+                <option key={r.code} value={r.code}>
+                  {r.displayName}{r.stateCode ? `, ${r.stateCode}` : r.country && r.country !== "US" ? `, ${r.country}` : ""}
+                </option>
+              ))}
+            </select>
+            {cityCode && (
+              <button
+                type="button"
+                onClick={() => { setCityCode(""); }}
+                className="text-xs text-muted-foreground hover:text-foreground underline"
+                data-testid="button-clear-city"
+              >
+                clear
+              </button>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2 pt-1">
-            {PROJECT_TEMPLATES.slice(0, 4).map((t) => (
+            {(cityPresets.length ? cityPresets : PROJECT_TEMPLATES.slice(0, 4)).map((t) => (
               <button
                 key={t.request.projectName}
                 type="button"
