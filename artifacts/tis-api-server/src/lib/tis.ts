@@ -705,6 +705,9 @@ type ScenarioParams = {
   approachCapacityVph: number;    // weather-adjusted approach capacity
   externalTrips: number;          // post-credit external trips for this period
   inFraction: number;             // directional split for this period
+  /** US site? Gates US-only screening (turbo-lane / continuous-green-T), an
+   *  FDOT/US intersection treatment that does not apply to non-US networks. */
+  isUS: boolean;
 };
 
 function buildAffectedRow(
@@ -812,8 +815,9 @@ function buildAffectedRow(
   // Turbo-lane (continuous-green-T) screening. Computed for every candidate
   // 3-leg T-intersection regardless of LOS; when the intersection also fails
   // under Build, the turbo option is folded into the mitigation prose.
+  // Turbo-lane (continuous-green-T) is a US/FDOT treatment — only screen US sites.
   let turboLane: TurboLaneScreening | undefined;
-  const turboCand = screenTurboCandidate(c.sig);
+  const turboCand = params.isUS ? screenTurboCandidate(c.sig) : null;
   if (turboCand) {
     const volOf = (d: Direction) =>
       approaches.find((a) => a.direction === d)?.futureVolumeVph ?? 0;
@@ -1265,6 +1269,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       approachCapacityVph,
       externalTrips,
       inFraction,
+      isUS: (region.country ?? "US") === "US",
     };
 
     // For "daily" we don't run an intersection-level analysis (HCM control
@@ -1428,7 +1433,8 @@ async function synthesizePmReport(
   const internalCredit = (raw - passByCredit) * (internalCapturePct / 100);
   const externalTrips = Math.max(0, raw - passByCredit - internalCredit);
   const inFraction = lu.directionalSplitPm.in;
-  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction };
+  const isUS = (regionForCoordinate(req.latitude, req.longitude)?.country ?? "US") === "US";
+  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, isUS };
   const calibrationMap = await loadCalibrationMap();
   const allRows = candidates.map((c, i) =>
     buildAffectedRow(c, weights[i] ?? 0, project, params, calibrationMap.get(c.sig.id)),
