@@ -16,7 +16,7 @@
  * when no longer needed.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Beaker, Loader2, Download, AlertCircle, MapPin, Play } from "lucide-react";
+import { Beaker, Loader2, Download, AlertCircle, MapPin, Play, ChevronDown, ChevronRight, Sliders, TrendingUp, CloudRain } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -35,7 +35,21 @@ const LONDON_SITES: LondonSite[] = [
   { id: "hammersmith", label: "Hammersmith & Fulham", lat: 51.4927, lon: -0.2240 },
 ];
 
-type LandUse = { code: string; name: string };
+type LandUse = { code: string; name: string; unit?: string };
+
+const ALL_PERIODS: { id: string; label: string }[] = [
+  { id: "am_peak", label: "AM peak" },
+  { id: "pm_peak", label: "PM peak" },
+  { id: "saturday_midday", label: "Sat midday" },
+  { id: "daily", label: "Daily" },
+];
+const WEATHER_OPTIONS: { value: string; label: string; cap: number }[] = [
+  { value: "clear", label: "Clear", cap: 1.0 },
+  { value: "light_rain", label: "Light rain", cap: 0.95 },
+  { value: "heavy_rain", label: "Heavy rain", cap: 0.86 },
+  { value: "light_snow", label: "Light snow", cap: 0.86 },
+  { value: "heavy_snow", label: "Heavy snow", cap: 0.70 },
+];
 
 type TisReport = {
   studyRadiusMi?: number;
@@ -60,6 +74,15 @@ function Generator() {
   const [landUseCode, setLandUseCode] = useState<string>("710");
   const [size, setSize] = useState<number>(180);
   const [openingYear, setOpeningYear] = useState<number>(2028);
+  // Advanced analysis settings — mirrors the main /tis form's options.
+  const [studyRadiusKm, setStudyRadiusKm] = useState<number>(0.8);
+  const [growthRatePct, setGrowthRatePct] = useState<number>(1.5);
+  const [periods, setPeriods] = useState<string[]>(["am_peak", "pm_peak"]);
+  const [weather, setWeather] = useState<string>("clear");
+  const [passByPct, setPassByPct] = useState<number>(0);
+  const [internalCapturePct, setInternalCapturePct] = useState<number>(0);
+  const [runSensitivity, setRunSensitivity] = useState<boolean>(false);
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
 
   const [report, setReport] = useState<TisReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -81,6 +104,9 @@ function Generator() {
 
   const site = useMemo(() => LONDON_SITES.find((s) => s.id === siteId) ?? LONDON_SITES[0]!, [siteId]);
   const landUseName = landUses.find((l) => l.code === landUseCode)?.name ?? landUseCode;
+  const landUseUnit = landUses.find((l) => l.code === landUseCode)?.unit ?? "units";
+  const togglePeriod = (p: string) =>
+    setPeriods((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
 
   function payload() {
     return {
@@ -91,6 +117,13 @@ function Generator() {
       landUseCode,
       size,
       openingYear,
+      studyRadiusMi: Math.round((studyRadiusKm / 1.609344) * 100) / 100,
+      growthRatePct,
+      analysisPeriods: periods.length ? periods : ["pm_peak"],
+      weather,
+      passByPct,
+      internalCapturePct,
+      runSensitivity,
     };
   }
 
@@ -204,7 +237,7 @@ function Generator() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Size</label>
+                <label className="text-xs font-medium text-muted-foreground">Size ({landUseUnit})</label>
                 <Input type="number" min="1" step="10" value={size}
                   onChange={(e) => setSize(Number(e.target.value) || 0)} />
               </div>
@@ -214,6 +247,68 @@ function Generator() {
                   onChange={(e) => setOpeningYear(Number(e.target.value) || 2028)} />
               </div>
             </div>
+
+            <button type="button" onClick={() => setShowAdvanced((v) => !v)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+              {showAdvanced ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+              <Sliders className="w-3.5 h-3.5" /> Advanced analysis settings
+            </button>
+
+            {showAdvanced && (
+              <div className="space-y-4 rounded-lg border bg-muted/30 p-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Analysis periods</label>
+                  <div className="flex flex-wrap gap-2">
+                    {ALL_PERIODS.map((p) => {
+                      const on = periods.includes(p.id);
+                      return (
+                        <button key={p.id} type="button" onClick={() => togglePeriod(p.id)}
+                          className={`text-xs px-2.5 py-1 rounded border transition-colors ${on ? "bg-foreground text-background border-foreground" : "hover:bg-accent"}`}>
+                          {p.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground flex items-center gap-1"><TrendingUp className="w-3 h-3" /> Growth (%/yr)</label>
+                    <Input type="number" min="0" max="6" step="0.1" value={growthRatePct}
+                      onChange={(e) => setGrowthRatePct(Number(e.target.value) || 0)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Study radius (km)</label>
+                    <Input type="number" min="0.2" max="10" step="0.1" value={studyRadiusKm}
+                      onChange={(e) => setStudyRadiusKm(Number(e.target.value) || 0.8)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Pass-by %</label>
+                    <Input type="number" min="0" max="70" step="1" value={passByPct}
+                      onChange={(e) => setPassByPct(Number(e.target.value) || 0)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Internal capture %</label>
+                    <Input type="number" min="0" max="50" step="1" value={internalCapturePct}
+                      onChange={(e) => setInternalCapturePct(Number(e.target.value) || 0)} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground flex items-center gap-1"><CloudRain className="w-3 h-3" /> Weather scenario</label>
+                  <Select value={weather} onValueChange={setWeather}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {WEATHER_OPTIONS.map((w) => (
+                        <SelectItem key={w.value} value={w.value}>{w.label} (capacity ×{w.cap.toFixed(2)})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={runSensitivity} onChange={(e) => setRunSensitivity(e.target.checked)} />
+                  Run Monte-Carlo sensitivity (100 iterations)
+                </label>
+              </div>
+            )}
 
             <Button onClick={generate} disabled={loading} className="w-full gap-2">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
