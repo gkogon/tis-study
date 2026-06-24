@@ -1,0 +1,22 @@
+{
+  "generated": "2026-06-23T22:27:56.490Z",
+  "source": "Census 2020 Centers of Population (block group) + LEHD LODES8 WAC (S000 JT00)",
+  "schema": [
+    "geoid",
+    "lat",
+    "lon",
+    "population",
+    "jobsShopping",
+    "jobsCommerce",
+    "jobsWorking"
+  ],
+  "blockGroups": 242335,
+  "blockGroupsWithJobs": 237388,
+  "statesWithJobs": 50,
+  "statesSkipped": 1,
+  "lodesYearsTried": [
+    2022,
+    2021,
+    2020
+  ]
+}
