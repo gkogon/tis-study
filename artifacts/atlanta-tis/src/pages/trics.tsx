@@ -17,7 +17,6 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Beaker, Loader2, Download, AlertCircle, MapPin, Play } from "lucide-react";
-import NotFound from "@/pages/not-found";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -49,26 +48,9 @@ type TisReport = {
 };
 
 export default function TricsPage() {
-  const [allowed, setAllowed] = useState<boolean | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/tis-api/auth/admin-status", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : { isAdmin: false, devSession: false }))
-      .then((d: { isAdmin?: boolean; devSession?: boolean }) => {
-        if (!cancelled) setAllowed(!!d.isAdmin || !!d.devSession);
-      })
-      .catch(() => { if (!cancelled) setAllowed(false); });
-    return () => { cancelled = true; };
-  }, []);
-
-  if (allowed === null) {
-    return (
-      <div className="max-w-6xl mx-auto px-4 py-24 flex items-center justify-center text-muted-foreground">
-        <Loader2 className="w-5 h-5 animate-spin" />
-      </div>
-    );
-  }
-  if (!allowed) return <NotFound />;
+  // Public-by-URL: not linked anywhere in the site nav, so it is reachable
+  // only by typing /trics directly — but it is NOT access-controlled. The
+  // backing /trics/* endpoints are public + rate-limited (see tis.ts).
   return <Generator />;
 }
 
@@ -173,7 +155,7 @@ function Generator() {
     <div className="max-w-6xl mx-auto px-4 py-10 space-y-6">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="outline" className="gap-1.5 border-amber-300 bg-amber-50 text-amber-800">
-          <Beaker className="w-3.5 h-3.5" /> Private · unlimited · London-only
+          <Beaker className="w-3.5 h-3.5" /> London-only · public preview
         </Badge>
         {count > 0 && (
           <Badge variant="outline" className="text-muted-foreground">{count} generated this session</Badge>
@@ -329,7 +311,7 @@ function Generator() {
       </div>
 
       <p className="text-[11px] text-muted-foreground pt-4 border-t">
-        Private generator — gated to admins / dev sessions, London-only, no quota. Numbers come from the live engine
+        Public preview — London-only, rate-limited (10 reports/hour). Numbers come from the live engine
         (<code>uk-capacity.ts</code>); on-screen capacity mirrors it via <code>lib/trcs.ts</code>.
       </p>
     </div>

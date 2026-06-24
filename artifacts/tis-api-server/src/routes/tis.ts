@@ -8,7 +8,6 @@ import { generateTisReport, LAND_USES } from "../lib/tis";
 import { regionForCoordinate, REGIONS } from "../lib/regions";
 import { renderStudyPdf } from "../lib/pdf-export";
 import { generateRateLimiter } from "../lib/security";
-import { isAdminEmail } from "../lib/auth";
 import { saveProject } from "../lib/tis-projects";
 import {
   getOrCreateFirmForUser,
@@ -234,31 +233,17 @@ router.post("/generate/pdf", generateRateLimiter, async (req, res): Promise<void
 });
 
 // ---------------------------------------------------------------------------
-// TRICS — locked, unlimited, London-only TA generator (`/trics` page).
+// TRICS — public-by-URL, London-only TA generator (`/trics` page).
 //
-// A private surface for generating UK Transport Assessment reports in the
-// London ("TRICS") format with NO rate limit and NO quota — unlike the
-// public /demo (3/day/IP, Atlanta) and authenticated /generate (charges
-// quota + saves a project). Locked so the public can neither reach it nor
-// abuse the uncapped generation:
-//   • access requires an operator on the ADMIN_EMAILS allow-list, OR any
-//     signed-in session while dev-auth is enabled (DEV_AUTH_ENABLED);
-//   • unauthorized callers get a bare 404 — the endpoints appear not to
-//     exist, rather than advertising a 401/403 to probe against;
-//   • coordinates are hard-restricted to the Greater London metro.
-// Neither endpoint saves a project or increments usage, so generation is
-// genuinely unlimited.
-function tricsAccessAllowed(req: { isAuthenticated(): boolean; user?: unknown }): boolean {
-  if (!req.isAuthenticated()) return false;
-  const email = (req.user as { email?: string | null } | undefined)?.email ?? null;
-  return isAdminEmail(email) || process.env.DEV_AUTH_ENABLED === "true";
-}
-
-router.post("/trics/generate", async (req, res): Promise<void> => {
-  if (!tricsAccessAllowed(req)) {
-    res.status(404).end();
-    return;
-  }
+// Open to anyone who navigates to /trics. It is NOT linked from the site
+// nav, so it is reachable only by typing the URL — "unlisted public", not
+// access-controlled. Unlike the authenticated /generate (charges quota +
+// saves a project), these endpoints save nothing and charge no quota; but
+// because they are public AND run the full engine + a multi-page PDF
+// render, they carry the shared `generateRateLimiter` (10 requests/hour
+// per IP) so the uncapped generation cannot be abused as a DoS / cost
+// vector. Coordinates are hard-restricted to the Greater London metro.
+router.post("/trics/generate", generateRateLimiter, async (req, res): Promise<void> => {
   const parsed = GenerateTisBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid TIS request" });
@@ -283,12 +268,7 @@ router.post("/trics/generate", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/trics/pdf", async (req, res): Promise<void> => {
-  if (!tricsAccessAllowed(req)) {
-    res.status(404).end();
-    return;
-  }
-  const user = req.user!;
+router.post("/trics/pdf", generateRateLimiter, async (req, res): Promise<void> => {
   const parsed = GenerateTisBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid TIS request" });
@@ -301,11 +281,27 @@ router.post("/trics/pdf", async (req, res): Promise<void> => {
     });
     return;
   }
-  const { firm } = await getOrCreateFirmForUser(user.id, {
-    email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
-  });
+  // Signed-in users get their firm branding; anonymous public users get the
+  // neutral demo-preview stamp (mirrors /demo/pdf) so an unbranded screening
+  // render is never mistaken for a stamped consultant TA.
+  let firmBranding: Parameters<typeof renderStudyPdf>[1];
+  if (req.isAuthenticated() && req.user) {
+    const { firm } = await getOrCreateFirmForUser(req.user.id, {
+      email: req.user.email,
+      firstName: req.user.firstName,
+      lastName: req.user.lastName,
+    });
+    firmBranding = {
+      name: firm.name,
+      logoUrl: firm.logoUrl,
+      brandColor: firm.brandColor,
+      addressLine: firm.addressLine,
+      phone: firm.phone,
+      website: firm.website,
+    };
+  } else {
+    firmBranding = { name: "Simple Impact Studies — Demo Preview", logoUrl: null };
+  }
   try {
     const report = await generateTisReport(parsed.data);
     const validated = GenerateTisResponse.parse(report);
@@ -314,7 +310,7 @@ router.post("/trics/pdf", async (req, res): Promise<void> => {
       || `London TA @ ${parsed.data.latitude.toFixed(4)}, ${parsed.data.longitude.toFixed(4)}`;
     const pdf = await renderStudyPdf(
       {
-        id: `trics-${user.id}`,
+        id: `trics-${Date.now()}`,
         studyType: "tis",
         projectName,
         landUseCode: parsed.data.landUseCode,
@@ -325,14 +321,7 @@ router.post("/trics/pdf", async (req, res): Promise<void> => {
         requestPayload: parsed.data,
         resultPayload: validated,
       },
-      {
-        name: firm.name,
-        logoUrl: firm.logoUrl,
-        brandColor: firm.brandColor,
-        addressLine: firm.addressLine,
-        phone: firm.phone,
-        website: firm.website,
-      },
+      firmBranding,
     );
     const safeName = projectName.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "london-ta";
     res.setHeader("Content-Type", "application/pdf");
