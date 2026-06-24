@@ -197,8 +197,8 @@ function Generator() {
       <div className="space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">TRICS — London TA generator</h1>
         <p className="text-muted-foreground max-w-3xl">
-          Generate a UK Transport Assessment (London "TRICS" format) for any Greater London site, as many times as
-          you like — no quota, no rate limit. DMRB / TRL capacity (DoS, PRC, MMQ) on-screen, full TA as a PDF.
+          Generate a UK Transport Assessment (London "TRICS" format) for any Greater London site — DMRB / TRL
+          capacity (DoS, PRC, MMQ) on-screen, full TA as a PDF. Public preview, rate-limited to 10 reports/hour.
         </p>
       </div>
 
