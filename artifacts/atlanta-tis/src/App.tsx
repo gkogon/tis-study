@@ -14,6 +14,8 @@ import ComparePage from "@/pages/compare";
 import SecurityPage from "@/pages/security";
 import HelpPage from "@/pages/help";
 import DemoPage from "@/pages/demo";
+import TrcsDemoPage from "@/pages/trcs-demo";
+import TricsPage from "@/pages/trics";
 import ProjectsPage from "@/pages/projects";
 import ProjectDetailPage from "@/pages/project-detail";
 import PricingPage from "@/pages/pricing";
@@ -83,6 +85,8 @@ function Router() {
       <Route path="/security" component={SecurityPage} />
       <Route path="/help" component={HelpPage} />
       <Route path="/demo" component={DemoPage} />
+      <Route path="/trcs-demo" component={TrcsDemoPage} />
+      <Route path="/trics" component={TricsPage} />
       <Route component={NotFound} />
     </Switch>
   );

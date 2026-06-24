@@ -13,6 +13,7 @@ import {
   clearSession,
   getSessionId,
   createSession,
+  isAdminEmail,
   SESSION_COOKIE,
   SESSION_TTL,
   type SessionData,
@@ -40,6 +41,21 @@ router.get("/auth/user", (req: Request, res: Response) => {
 
 router.get("/auth/config", (_req: Request, res: Response) => {
   res.json({ devAuthEnabled: devAuthEnabled() });
+});
+
+// Gate signal for admin-only client surfaces (e.g. the temporary TRCS
+// pitch demo at /trcs-demo) without shipping the ADMIN_EMAILS allow-list
+// to the browser. `isAdmin` is true for operators on the allow-list;
+// `devSession` is true for ANY signed-in session while dev-auth is
+// enabled (DEV_AUTH_ENABLED) — so any account you dev-login as can see
+// the demo, no email-list management. Both false for anonymous visitors.
+router.get("/auth/admin-status", (req: Request, res: Response) => {
+  const authed = req.isAuthenticated();
+  const email = authed ? (req.user as { email?: string | null } | undefined)?.email : null;
+  res.json({
+    isAdmin: isAdminEmail(email),
+    devSession: devAuthEnabled() && authed,
+  });
 });
 
 router.post("/dev-login", async (req: Request, res: Response): Promise<void> => {
