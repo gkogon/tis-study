@@ -27,6 +27,7 @@ import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSo
 // Parking engine and TIS engine stay in sync. Re-exported below for any
 // downstream callers that imported `LAND_USES` from this module.
 import { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates } from "./land-uses";
+import { screenTurboCandidate, turboLaneScreening, type TurboLaneScreening } from "./turbo-lane";
 
 export { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates };
 
@@ -241,6 +242,15 @@ type AnalyzerIntersection = {
   latitude: number;
   longitude: number;
   totalVolume: number;
+  // Turbo-lane (continuous-green-T) screening geometry from the analyzer.
+  // All optional → older analyzer payloads (and regions without a roads
+  // dataset) simply omit them and no turbo screening is produced.
+  roadClass?: string;
+  legCount?: number;
+  minorLegBearing?: number | null;
+  medianType?: "raised" | "painted" | "none";
+  mainThroughLanes?: number;
+  mainThroughLanesMeasured?: boolean;
 };
 
 const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8080";
@@ -435,6 +445,10 @@ export type AffectedIntersection = {
     delayMultiplier: number;
     lastObservedDelaySec: number | null;
   };
+  // Turbo-lane (continuous-green-T) screening, present only when this signal is
+  // a genuine 3-leg T-intersection candidate. Reported for every candidate in
+  // the study area regardless of LOS (screening-study convention).
+  turboLane?: TurboLaneScreening;
 };
 
 export type TripGenerationSummary = {
@@ -793,7 +807,37 @@ function buildAffectedRow(
   });
 
   const worstQueue = approaches.reduce((m, a) => Math.max(m, a.queue95thFt), 0);
-  const mit = recommendMitigation(afterDelay - beforeDelay, afterLos);
+  let mit = recommendMitigation(afterDelay - beforeDelay, afterLos);
+
+  // Turbo-lane (continuous-green-T) screening. Computed for every candidate
+  // 3-leg T-intersection regardless of LOS; when the intersection also fails
+  // under Build, the turbo option is folded into the mitigation prose.
+  let turboLane: TurboLaneScreening | undefined;
+  const turboCand = screenTurboCandidate(c.sig);
+  if (turboCand) {
+    const volOf = (d: Direction) =>
+      approaches.find((a) => a.direction === d)?.futureVolumeVph ?? 0;
+    const [m1, m2] = turboCand.mainStreetDirections;
+    const turboDirection = volOf(m1) >= volOf(m2) ? m1 : m2;
+    turboLane = turboLaneScreening(
+      turboCand,
+      turboDirection,
+      volOf(turboDirection),
+      volOf(turboCand.minorLegDirection),
+      calMul,
+    );
+    if (afterLos === "E" || afterLos === "F" || afterDelay - beforeDelay >= 15) {
+      mit = {
+        severity: mit.severity,
+        text:
+          `${mit.text} As a signalized 3-leg T-intersection, it is also a turbo-lane (continuous-green T, ` +
+          `Type ${turboLane.turboType}) candidate: running the ${turboLane.turboDirection} main-street through ` +
+          `continuously recovers ≈${Math.round(turboLane.capacityGainPct)}% approach capacity ` +
+          `(v/c ${turboLane.baselineApproachVc.toFixed(2)} → ${turboLane.mitigatedApproachVc.toFixed(2)}), ` +
+          `subject to field verification of the median and right-of-way.`,
+      };
+    }
+  }
 
   return {
     signalId: c.sig.id,
@@ -834,6 +878,7 @@ function buildAffectedRow(
           lastObservedDelaySec: calibration.lastObservedDelaySec,
         }
       : undefined,
+    turboLane,
   };
 }
 
@@ -908,6 +953,16 @@ function plainFindings(
       `Worst-impact location: ${worst.name} — projected delay rises ${(worst.futureDelaySec - worst.existingDelaySec).toFixed(1)}s (LOS ${worst.existingLos} → ${worst.futureLos}); 95th-pct queue ${worst.queue95thFt.toFixed(0)} ft on the critical approach.`,
     );
   }
+  const turboRows = rows.filter((r) => r.turboLane);
+  if (turboRows.length > 0) {
+    const gains = turboRows.map((r) => r.turboLane!.capacityGainPct);
+    const lo = Math.round(Math.min(...gains));
+    const hi = Math.round(Math.max(...gains));
+    const range = lo === hi ? `≈${lo}%` : `≈${lo}–${hi}%`;
+    out.push(
+      `${turboRows.length} signalized 3-leg T-intersection${turboRows.length === 1 ? "" : "s"} in the study area screen as turbo-lane (continuous-green-T) candidate${turboRows.length === 1 ? "" : "s"}, offering ${range} main-street approach-capacity recovery — see the capacity appendix. Field verification of lane configuration, median, and signal timing is required before design.`,
+    );
+  }
   // Scenario-sensitivity finding (the statistical Monte-Carlo finding has
   // been retired per standard TIA practice — engine output retained for
   // demo-mode diagnostics but not surfaced in deliverable findings).
@@ -931,6 +986,7 @@ const TIS_METHODOLOGY = [
   "Level of Service is assigned from HCM 6th-Edition signalized-intersection control-delay thresholds (Exhibit 19-8): A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s.",
   "Sensitivity is reported in narrative form per standard TIA practice: trip-generation method (rate vs. equation per ITE Trip Generation Handbook Fig. 4.2), discrete internal capture and pass-by credit variants, and a ±0.5%/yr growth-rate band around the applied value. The engine retains an internal stochastic-sensitivity routine (Box-Muller-perturbed trip rate and existing volume) for demo-mode diagnostics; it is not surfaced in the deliverable because TIA sensitivity is conducted through discrete scoping-agreed scenario variants, not statistical perturbation of unmeasured distributions.",
   "Mitigations are screening-level recommendations sized to the projected delay change, not full Synchro/SimTraffic optimization runs. A formal TIS submittal should validate these recommendations with detailed traffic counts and signal-timing analysis.",
+  "Turbo-lane (continuous-green-T) screening flags signalized 3-leg T-intersections where one or more main-street through lanes could flow continuously while the minor-street left turn merges in the median — recovering the green time the through movement would otherwise lose to the signal. Candidacy requires measured 3-leg geometry, an arterial-class main street, and a detected median (divided carriageway), all derived from the OpenStreetMap road network. Approach-capacity gain is computed as (turbo lanes / approach lanes) × (1 − g/C) / (g/C), with the main-street through g/C derived from the modeled main-vs-minor critical-flow split; the result is reported within the study's documented +7%…+173% envelope (Miami-Dade MPO / David Plummer & Associates, Adding Turbo Lanes to T-Intersections, 2010; FDOT District 6, Design Guidelines for the Development of Continuous Green Intersections, 1997). Lane counts and signal timing must be field-verified before design.",
 ];
 
 // ---------- Monte Carlo sensitivity (Box-Muller, deterministic seed) ----------
