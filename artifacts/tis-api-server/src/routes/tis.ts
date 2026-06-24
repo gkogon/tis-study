@@ -8,6 +8,7 @@ import { generateTisReport, LAND_USES } from "../lib/tis";
 import { regionForCoordinate, REGIONS } from "../lib/regions";
 import { renderStudyPdf } from "../lib/pdf-export";
 import { generateRateLimiter } from "../lib/security";
+import { isAdminEmail } from "../lib/auth";
 import { saveProject } from "../lib/tis-projects";
 import {
   getOrCreateFirmForUser,
@@ -226,6 +227,120 @@ router.post("/generate/pdf", generateRateLimiter, async (req, res): Promise<void
     res.send(pdf);
   } catch (e) {
     req.log.error({ err: e }, "tis-generate-pdf failed");
+    const msg = e instanceof Error ? e.message : String(e);
+    const isUpstream = /analyzer/i.test(msg);
+    res.status(isUpstream ? 503 : 400).json({ error: msg });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// TRICS — locked, unlimited, London-only TA generator (`/trics` page).
+//
+// A private surface for generating UK Transport Assessment reports in the
+// London ("TRICS") format with NO rate limit and NO quota — unlike the
+// public /demo (3/day/IP, Atlanta) and authenticated /generate (charges
+// quota + saves a project). Locked so the public can neither reach it nor
+// abuse the uncapped generation:
+//   • access requires an operator on the ADMIN_EMAILS allow-list, OR any
+//     signed-in session while dev-auth is enabled (DEV_AUTH_ENABLED);
+//   • unauthorized callers get a bare 404 — the endpoints appear not to
+//     exist, rather than advertising a 401/403 to probe against;
+//   • coordinates are hard-restricted to the Greater London metro.
+// Neither endpoint saves a project or increments usage, so generation is
+// genuinely unlimited.
+function tricsAccessAllowed(req: { isAuthenticated(): boolean; user?: unknown }): boolean {
+  if (!req.isAuthenticated()) return false;
+  const email = (req.user as { email?: string | null } | undefined)?.email ?? null;
+  return isAdminEmail(email) || process.env.DEV_AUTH_ENABLED === "true";
+}
+
+router.post("/trics/generate", async (req, res): Promise<void> => {
+  if (!tricsAccessAllowed(req)) {
+    res.status(404).end();
+    return;
+  }
+  const parsed = GenerateTisBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid TIS request" });
+    return;
+  }
+  const region = regionForCoordinate(parsed.data.latitude, parsed.data.longitude);
+  if (!region || region.code !== "london_metro") {
+    res.status(422).json({
+      error: "The TRICS generator is London-only. Pick a site within Greater London.",
+    });
+    return;
+  }
+  try {
+    const report = await generateTisReport(parsed.data);
+    const validated = GenerateTisResponse.parse(report);
+    res.json(validated);
+  } catch (e) {
+    req.log.error({ err: e }, "trics-generate failed");
+    const msg = e instanceof Error ? e.message : String(e);
+    const isUpstream = /analyzer/i.test(msg);
+    res.status(isUpstream ? 503 : 400).json({ error: msg });
+  }
+});
+
+router.post("/trics/pdf", async (req, res): Promise<void> => {
+  if (!tricsAccessAllowed(req)) {
+    res.status(404).end();
+    return;
+  }
+  const user = req.user!;
+  const parsed = GenerateTisBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid TIS request" });
+    return;
+  }
+  const region = regionForCoordinate(parsed.data.latitude, parsed.data.longitude);
+  if (!region || region.code !== "london_metro") {
+    res.status(422).json({
+      error: "The TRICS generator is London-only. Pick a site within Greater London.",
+    });
+    return;
+  }
+  const { firm } = await getOrCreateFirmForUser(user.id, {
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+  });
+  try {
+    const report = await generateTisReport(parsed.data);
+    const validated = GenerateTisResponse.parse(report);
+    const projectName =
+      (parsed.data as { projectName?: string }).projectName?.trim()
+      || `London TA @ ${parsed.data.latitude.toFixed(4)}, ${parsed.data.longitude.toFixed(4)}`;
+    const pdf = await renderStudyPdf(
+      {
+        id: `trics-${user.id}`,
+        studyType: "tis",
+        projectName,
+        landUseCode: parsed.data.landUseCode,
+        siteLat: String(parsed.data.latitude),
+        siteLon: String(parsed.data.longitude),
+        version: 1,
+        createdAt: new Date(),
+        requestPayload: parsed.data,
+        resultPayload: validated,
+      },
+      {
+        name: firm.name,
+        logoUrl: firm.logoUrl,
+        brandColor: firm.brandColor,
+        addressLine: firm.addressLine,
+        phone: firm.phone,
+        website: firm.website,
+      },
+    );
+    const safeName = projectName.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "london-ta";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}.pdf"`);
+    res.setHeader("Content-Length", String(pdf.length));
+    res.send(pdf);
+  } catch (e) {
+    req.log.error({ err: e }, "trics-pdf failed");
     const msg = e instanceof Error ? e.message : String(e);
     const isUpstream = /analyzer/i.test(msg);
     res.status(isUpstream ? 503 : 400).json({ error: msg });
