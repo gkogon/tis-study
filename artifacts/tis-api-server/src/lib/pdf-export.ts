@@ -35,6 +35,11 @@ import { atrSegmentsNearPoint } from "./atr-counts";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
 import {
+  ANALYSIS_LEVELS, resolveAnalysisLevel, STANDARD_TRIP_REDUCTION_CAPS,
+  STANDARD_ANALYSIS_SCENARIOS, STANDARD_MOES, STANDARD_DATA_REQUIREMENTS,
+  STANDARD_CONDITIONS, STANDARD_METHODOLOGY_SOURCE,
+} from "./standard-methodology";
+import {
   FDOT_ARTERIAL_GSVT,
   floridaGsvtServiceVolume,
   floridaRepresentativeK,
@@ -607,6 +612,90 @@ function dispatchTisRender(
     renderFourStepSection(doc, result);
     renderCapacityAppendix(doc, intersections, periods);
   }
+
+  // 3. Standard methodology framework — the universal baseline (Levels of
+  //    Analysis, trip-reduction caps, scenarios, MOEs, de-minimis) applied to
+  //    EVERY location on top of the region-specific sections above.
+  renderStandardMethodologyFramework(doc, result);
+}
+
+/**
+ * Standard Methodology Framework appendix — rendered for every study,
+ * regardless of jurisdiction, from standard-methodology.ts. The region-specific
+ * sections above govern where they differ; this is the common national-practice
+ * baseline (Levels of Analysis keyed to net new peak-hour trips, standard
+ * trip-reduction caps, the three analysis scenarios, MOEs, data requirements,
+ * and the de-minimis / methodology-meeting conditions).
+ */
+function renderStandardMethodologyFramework(doc: PDFKit.PDFDocument, r: any) {
+  const tg = r.tripGeneration ?? {};
+  const netPhTrips = Number(
+    tg.pmPeakTrips ?? (Number(tg.pmIn ?? 0) + Number(tg.pmOut ?? 0)),
+  ) || 0;
+  const level = resolveAnalysisLevel(netPhTrips);
+
+  doc.addPage();
+  section(doc, "Standard Methodology Framework");
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    `Applied to every study regardless of jurisdiction; where the region-specific sections above impose a different rule, that rule governs. Source: ${STANDARD_METHODOLOGY_SOURCE}`,
+    { paragraphGap: 8 },
+  );
+  doc.fillColor("black");
+
+  const sub = (t: string) => {
+    doc.x = PAGE_MARGIN;
+    doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(t);
+    doc.moveDown(0.2);
+    doc.x = PAGE_MARGIN;
+  };
+  const bullets = (items: ReadonlyArray<string>, gap = 2) => {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+    for (const it of items) doc.text("• " + it, { paragraphGap: gap });
+    doc.fillColor("black");
+    doc.x = PAGE_MARGIN;
+  };
+
+  // Levels of Analysis — with this project's determination.
+  sub("Levels of Analysis");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Study depth is scaled to net new peak-hour trips on the adjacent street. This project generates approximately ${Math.round(netPhTrips)} net new PM-peak-hour trips, placing it in ${level.label} (${level.rangeLabel}). Required components at this level:`,
+    { paragraphGap: 4 },
+  );
+  bullets(level.components);
+  doc.moveDown(0.2);
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY);
+  for (const lvl of ANALYSIS_LEVELS) {
+    doc.text(`${lvl.label}: ${lvl.rangeLabel}.`, { paragraphGap: 1 });
+  }
+  doc.fillColor("black").moveDown(0.5);
+
+  // Trip-reduction caps.
+  sub("Project Trip-Reduction Caps");
+  bullets([
+    `Internal capture ≤ ${STANDARD_TRIP_REDUCTION_CAPS.internalCaptureMaxPctOfTotal}% of total trip generation.`,
+    `Pass-by (retail/commercial land uses only) ≤ ${STANDARD_TRIP_REDUCTION_CAPS.passByMaxPctOfAdjacentStreet}% of the adjacent street's peak-hour two-way volume.`,
+    "Mode-split reductions from census journey-to-work data; transit-oriented sites may justify a project-specific reduction at the methodology meeting.",
+  ]);
+  doc.moveDown(0.5);
+
+  // Analysis scenarios.
+  sub("Analysis Scenarios");
+  bullets(STANDARD_ANALYSIS_SCENARIOS.map((s) => `${s.label} — ${s.description}`));
+  doc.moveDown(0.5);
+
+  // Measures of effectiveness.
+  sub("Measures of Effectiveness");
+  bullets(STANDARD_MOES);
+  doc.moveDown(0.5);
+
+  // Data requirements.
+  sub("Data Requirements");
+  bullets(STANDARD_DATA_REQUIREMENTS, 1);
+  doc.moveDown(0.5);
+
+  // Conditions applicable to all levels.
+  sub("Conditions Applicable to All Levels");
+  bullets(STANDARD_CONDITIONS);
 }
 
 function selectRegionalTisRenderer(
@@ -7400,16 +7489,32 @@ function renderCapacityAppendix(
     doc.addPage(); // one intersection per page — clean layout, no crowding
     gaSubsection(doc, `A.${i + 1}  ${ix.name ?? ix.signalId ?? "Intersection"}`);
     const deltaDelay = (Number(ix.futureDelaySec) || 0) - (Number(ix.existingDelaySec) || 0);
+    // A junction can receive < 1 net peak car trip — most often at high-PTAL
+    // London sites where the car-mode share collapses the whole scheme to a
+    // handful of car trips spread across the network. The reported count
+    // rounds to 0, but the capacity math already carried the exact fractional
+    // load (see buildAffectedRow). Surface "< 1" rather than a bare "0" so the
+    // unchanged Existing/Build columns read as a deliberate negligible-impact
+    // finding rather than a failed analysis.
+    const addedNegligible = Math.round(Number(ix.addedTripsPmPeak) || 0) === 0;
     rows(doc, [
       ["Signal ID", String(ix.signalId ?? "—")],
       ["Location", `${ix.zone ?? "—"} · ${fmtNum(ix.distanceMi, 2)} mi from site`],
-      ["Added PM peak trips", fmtNum(ix.addedTripsPmPeak)],
+      ["Added PM peak trips", addedNegligible ? "< 1 (negligible)" : fmtNum(ix.addedTripsPmPeak)],
       ["Existing / No-Build (PM)", `LOS ${ix.existingLos ?? "—"} · ${fmtNum(ix.existingDelaySec, 1)} s/veh · v/c ${fmtNum(ix.existingVc, 2)}`],
       ["Build (PM)", `LOS ${ix.futureLos ?? "—"} · ${fmtNum(ix.futureDelaySec, 1)} s/veh · v/c ${fmtNum(ix.futureVc, 2)}`],
       ["Δ control delay", `${deltaDelay >= 0 ? "+" : ""}${fmtNum(deltaDelay, 1)} s/veh${ix.losChanged ? "  (LOS change)" : ""}`],
       ["Mitigation", ix.mitigation ? String(ix.mitigation) : "None required at screening level"],
     ]);
     doc.moveDown(0.4);
+    if (addedNegligible) {
+      doc.font("body").fontSize(8.5).fillColor(TEXT_GRAY).text(
+        "The development distributes fewer than one net PM peak car trip to this junction, so the Existing (No-Build) and Build conditions are numerically identical. The junction is reproduced here for completeness; the scheme's net car-mode trip generation is below the level at which junction capacity governs.",
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+      doc.moveDown(0.2);
+    }
 
     // Turning-movement diagrams — one per analyzed peak period (Build),
     // pulling that period's approach volumes from periodReports. Falls back
@@ -7433,6 +7538,10 @@ function renderCapacityAppendix(
         { rec: ix, scenario: "build", title: "PM Peak — Build" },
       ];
     }
+    // Multi-period diagrams (one Build figure per analyzed peak hour) vs. the
+    // PM-only No-Build/Build fallback (mixed scenarios). Only the former gets
+    // the period-peaking caption.
+    const multiPeriod = figs.length > 1 && figs.every((f) => f.scenario === "build");
     const perRow = Math.min(figs.length, 3);
     const gap = 10;
     const dw = (usable - gap * (perRow - 1)) / perRow;
@@ -7446,6 +7555,14 @@ function renderCapacityAppendix(
       drawTurningMovementDiagram(doc, fx, rowY, dw, dh, f.rec, f.scenario, f.title);
     });
     doc.y = rowY + dh + 14;
+    if (multiPeriod) {
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        "Background turning-movement volumes vary by period: the stored design-hour count (AADT × K-factor, ≈ the PM peak) is carried at 100% for the PM peak and at screening-level shares of the design hour for the AM peak (90%) and Saturday midday (80%), reflecting that the network is not equally loaded across the day. A submitted study replaces these with measured per-period turning-movement counts.",
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+      doc.moveDown(0.2);
+    }
 
     const approaches: any[] = Array.isArray(ix.approaches) ? ix.approaches : [];
     if (approaches.length === 0) return;
@@ -7458,7 +7575,7 @@ function renderCapacityAppendix(
       rows: approaches.map((a) => [
         String(a.direction ?? "—"),
         fmtNum(a.existingVolumeVph),
-        fmtNum(a.addedTripsPeak),
+        addedNegligible ? "< 1" : fmtNum(a.addedTripsPeak),
         fmtNum(a.futureVolumeVph),
         `${fmtNum(a.existingVc, 2)} → ${fmtNum(a.futureVc, 2)}`,
         `${fmtNum(a.existingDelaySec, 1)} → ${fmtNum(a.futureDelaySec, 1)}`,
