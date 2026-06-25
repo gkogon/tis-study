@@ -15,6 +15,7 @@
  */
 
 import type { Region } from "./regions";
+import { renderDiurnalCharts } from "./pdf-charts";
 
 // Re-export for use in pdf-export.ts dispatch
 export { renderTisState };
@@ -1307,6 +1308,8 @@ function renderTisState(
     );
   }
   doc.moveDown(0.8);
+
+  renderDiurnalCharts(doc, r);
 
   // ─── §6 TRIP DISTRIBUTION AND ASSIGNMENT ────────────────────────────────
   stateSection("6.0 TRIP DISTRIBUTION AND ASSIGNMENT");
