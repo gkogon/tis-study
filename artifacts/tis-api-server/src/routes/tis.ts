@@ -211,6 +211,7 @@ router.post("/generate/pdf", generateRateLimiter, async (req, res): Promise<void
         resultPayload: validated,
       },
       {
+        firmId: firm.id,
         name: firm.name,
         logoUrl: firm.logoUrl,
         brandColor: firm.brandColor,

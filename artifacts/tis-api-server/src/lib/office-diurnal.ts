@@ -299,7 +299,8 @@ export type HourlyTrips = {
  * the standard person-accumulation construction used for office TAs.
  */
 export function distributeDaily(dailyTrips: number, profile: DiurnalProfile): HourlyTrips {
-  const half = Math.max(0, Number(dailyTrips) || 0) / 2;
+  const d = Number(dailyTrips);
+  const half = (Number.isFinite(d) && d > 0 ? d : 0) / 2;
   const arrivals = profile.arrivals.map((f) => f * half);
   const departures = profile.departures.map((f) => f * half);
   // Running net change in on-site population from the midnight baseline.
