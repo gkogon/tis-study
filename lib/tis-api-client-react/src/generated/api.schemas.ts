@@ -153,6 +153,26 @@ export interface TisLandUse {
   internalCapturePctPm?: number;
 }
 
+/**
+ * Optional consultant-supplied within-day arrival/departure distribution that overrides the engine's default office distribution for the inbound/outbound-by-start-time and on-site-accumulation charts. Each array holds 24 non-negative values (clock hours 0–23); the renderer normalises each to sum to 1, so only relative magnitudes matter. Supplying this also unlocks the figures for non-office use classes.
+ */
+export interface TisTripProfile {
+  /**
+   * Relative inbound (arrival) volume in each clock hour 0–23.
+   * @minItems 24
+   * @maxItems 24
+   */
+  arrivals: number[];
+  /**
+   * Relative outbound (departure) volume in each clock hour 0–23.
+   * @minItems 24
+   * @maxItems 24
+   */
+  departures: number[];
+  /** Provenance label printed under the figures. */
+  source?: string;
+}
+
 export interface TisRequest {
   /** @minLength 1 */
   projectName: string;
@@ -206,6 +226,7 @@ export interface TisRequest {
   runSensitivity?: boolean;
   /** Optional ITE TGM 11th Ed. alternate independent variable (matches a `unitShort` from the land use's `secondaryVariables`). Defaults to the primary published variable. */
   independentVariable?: string;
+  tripProfile?: TisTripProfile;
 }
 
 export type TisTripGenerationVariableConfidence =
