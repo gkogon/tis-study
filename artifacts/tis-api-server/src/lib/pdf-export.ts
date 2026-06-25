@@ -3528,17 +3528,17 @@ function renderTisLondon(
   doc.fillColor("black");
   doc.moveDown(0.3);
 
-  // --- Ch 2 Proposed Development (London) / Transport Planning for People --
-  // London (Velocity format): "2 Proposed Development" — employees vs
-  // visitors, the GIA area schedule, building entrances, and the proposed
-  // walking / cycling provision. Other UK regions keep the Holloway-format
-  // "Transport Planning for People" chapter unchanged.
-  ldnSection(doc, isLondon ? "2.0 PROPOSED DEVELOPMENT" : "2.0 TRANSPORT PLANNING FOR PEOPLE");
-  if (isLondon) ldnChapterIntro(doc, "i.e. What is being built, for whom (employees vs visitors), and how will they arrive? This chapter sets out the proposed development — its area schedule, entrances and the walking / cycling provision — and the people-first travel demand it supports.");
+  // --- Ch 2 Transport Planning for People (Velocity / Holloway format) -----
+  // Velocity's Chapter 2 is "Transport Planning for People" — who the
+  // development is for and when / why they travel (TfL LTDS-based), NOT the
+  // floor-area schedule. The GIA area schedule lives in Chapter 1 §1.4
+  // "Proposed Development" in the source TA, so it is not repeated here.
+  ldnSection(doc, "2.0 TRANSPORT PLANNING FOR PEOPLE");
+  if (isLondon) ldnChapterIntro(doc, "i.e. Who is the Proposed Development for, and when and why will they travel? This chapter sets out the people-first travel-demand basis for the assessment, drawing on TfL's London Travel Demand Survey (LTDS); the floorspace / area schedule is in Chapter 1 (§1.4 Proposed Development).");
 
   if (isLondon) {
-    ldnSubsection(doc, "2.1 Proposed Development and Area Schedule");
-    ldnNote(doc, `The proposal is ${project.projectName || "the subject development"} — land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"}. The full area schedule (Gross Internal Area by use class, employees vs visitors, the split of floorspace and the proposed building entrances) is a design-team output and is set out in the application drawings (Appendix A); for an office (Class E) scheme the employee population is derived from GIA at the agreed occupancy density. The employee inbound / outbound trip profile by start time is presented with the trip generation in Chapter 6.`);
+    ldnSubsection(doc, "2.1 Who, When and Why People Travel");
+    ldnNote(doc, `This chapter summarises who the Proposed Development would be for and when and why they would travel — the people-first basis for the assessment that follows. The proposal is ${project.projectName || "the subject development"} — land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"}; its floorspace / area schedule is set out in Chapter 1 (§1.4 Proposed Development) and the application drawings (Appendix A). Travel-attitude and demand context should be drawn from TfL's London Travel Demand Survey (LTDS) at submittal; it is not produced by this screening engine. The trip generation itself is presented in Chapter 6.`);
   } else {
     ldnSubsection(doc, "2.1 Content");
     ldnNote(doc, "This chapter establishes who will use the development and how, when and why they will travel — the people-first basis for the assessment that follows.");
@@ -3573,12 +3573,11 @@ function renderTisLondon(
   doc.moveDown(0.3);
 
   // --- Ch 3 Site and Surroundings -----------------------------------------
-  // London (Velocity format): "3 Site Access & Movement". Other UK regions
-  // keep the Holloway-format "Site and Surroundings" title. Same body
-  // either way (site context, walking, cycling, access, parking, servicing)
+  // Velocity's Chapter 3 is "Site and Surroundings" — site context, walking,
+  // cycling, access, parking, servicing. Same body for every UK region
   // EXCEPT the PTAL block, which Velocity places in Chapter 6 — so for
   // London it is omitted here and emitted there.
-  ldnSection(doc, isLondon ? "3.0 SITE ACCESS & MOVEMENT" : "3.0 SITE AND SURROUNDINGS");
+  ldnSection(doc, "3.0 SITE AND SURROUNDINGS");
   if (isLondon) ldnChapterIntro(doc, "i.e. How can people of all abilities move to, through and around the site and its immediate surroundings — both before and after the development is built? This covers existing and proposed access, the walking catchment, local cycle routes, the strategic highway network, cycle parking, servicing and parking.");
 
   ldnSubsection(doc, "3.1 Introduction");
@@ -3663,7 +3662,7 @@ function renderTisLondon(
   // numbers. Non-London UK regions do not get this chapter (the ATZ chapter
   // below stays their Chapter 4).
   if (isLondon) {
-    ldnSection(doc, "4.0 PEDESTRIAN COMFORT (PCL)");
+    ldnSection(doc, "4.0 PEDESTRIAN COMFORT LEVEL ANALYSIS");
     ldnChapterIntro(doc, "i.e. Are the footways and crossings around the site comfortable for the people who will use them, once the development's pedestrian demand is added? Assessed with TfL's Pedestrian Comfort Level (PCL) methodology.");
 
     ldnSubsection(doc, "4.1 Introduction and Methodology");
@@ -3686,8 +3685,8 @@ function renderTisLondon(
     doc.moveDown(0.3);
   }
 
-  // --- Ch 5 Active Travel Zone (London) / Ch 4 ATZ (other UK) -------------
-  ldnSection(doc, isLondon ? "5.0 ACTIVE TRAVEL ZONE" : "4.0 ACTIVE TRAVEL ZONE ASSESSMENT");
+  // --- Ch 5 Active Travel Zone Assessment (London) / Ch 4 ATZ (other UK) --
+  ldnSection(doc, isLondon ? "5.0 ACTIVE TRAVEL ZONE ASSESSMENT" : "4.0 ACTIVE TRAVEL ZONE ASSESSMENT");
   if (isLondon) ldnChapterIntro(doc, "i.e. How will people of all abilities make the key journeys in the Active Travel Zone — the 20-minute cycle around the site (TfL WebCAT) — that are essential to support car-free lifestyles?");
 
   ldnSubsection(doc, isLondon ? "5.1 Introduction" : "4.1 Introduction");
@@ -3737,13 +3736,14 @@ function renderTisLondon(
   ldnNote(doc, "A synthesis map of severance, desire lines, collision clusters and Healthy Streets constraints / opportunities across the catchment, informing the scheme's active-travel strategy. Generated at submittal.");
   doc.moveDown(0.3);
 
-  // --- Ch 6 Public Transport & Trip Generation (London) / Ch 5 (other UK) -
-  // London (Velocity format): "6 Public Transport & Trip Generation" — the
-  // PTAL band/map opens the chapter, followed by service frequencies, trip
-  // generation (the engine's car-mode estimate), net-change demand and the
-  // network/capacity assessment. The PTAL block is relocated here verbatim
-  // from §3.4. Other UK regions keep "Ch 5 London-Wide Network" unchanged.
-  ldnSection(doc, isLondon ? "6.0 PUBLIC TRANSPORT & TRIP GENERATION" : "5.0 LONDON-WIDE NETWORK");
+  // --- Ch 6 London-Wide Network (London) / Ch 5 (other UK) ----------------
+  // Velocity's Chapter 6 is "London-Wide Network" and legitimately contains
+  // public transport + trip generation + network impact: the PTAL band/map
+  // opens the chapter, followed by service frequencies, trip generation (the
+  // engine's car-mode estimate), net-change demand and the network/capacity
+  // assessment. The PTAL block is relocated here verbatim from §3.4. Other
+  // UK regions keep "Ch 5 London-Wide Network" unchanged.
+  ldnSection(doc, isLondon ? "6.0 LONDON-WIDE NETWORK" : "5.0 LONDON-WIDE NETWORK");
   if (isLondon) ldnChapterIntro(doc, "i.e. How will people of all abilities travel smoothly and easily from the development onto London's public transport and highway networks? This chapter covers the site's PTAL, public-transport service frequencies, trip generation (especially public transport, including linked trips), net-change travel demand, design solutions / mitigation for network-capacity impacts, and modelling where required.");
 
   ldnSubsection(doc, isLondon ? "6.1 Introduction" : "5.1 Introduction");
