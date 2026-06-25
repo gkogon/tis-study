@@ -91,6 +91,7 @@ router.get("/projects/:id/pdf", async (req, res): Promise<void> => {
       return;
     }
     const buffer = await renderStudyPdf(project, {
+      firmId: firm.id,
       name: firm.name,
       logoUrl: firm.logoUrl,
       brandColor: firm.brandColor,

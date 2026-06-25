@@ -26,6 +26,9 @@ import { profileForLandUse, distributeDaily, type ProfileLocale } from "./office
 const PAGE_MARGIN = 50;
 const TEXT_GRAY = "#6b7280";
 
+/** Coerce a chart value to a finite number so NaN/Infinity can never reach a draw op. */
+const fin = (x: unknown): number => (typeof x === "number" && Number.isFinite(x) ? x : 0);
+
 /** Velocity palette (sampled from 60gcs-ta-partA.pdf). */
 export const CHART_COLORS = {
   inbound: "#FC8460",
@@ -211,7 +214,7 @@ export function drawColumnChart(doc: PDFKit.PDFDocument, spec: ColumnChartSpec):
 
   const stacked = spec.stacked ?? false;
   const nCat = spec.categories.length;
-  const colTotal = (i: number) => spec.series.reduce((s, ser) => s + Math.max(0, ser.values[i] ?? 0), 0);
+  const colTotal = (i: number) => spec.series.reduce((s, ser) => s + Math.max(0, fin(ser.values[i])), 0);
   const maxVal = stacked
     ? Math.max(0, ...Array.from({ length: nCat }, (_, i) => colTotal(i)))
     : Math.max(0, ...spec.series.flatMap((s) => s.values));
@@ -239,7 +242,7 @@ export function drawColumnChart(doc: PDFKit.PDFDocument, spec: ColumnChartSpec):
     if (stacked) {
       let yCursor = layout.plotBottom;
       for (let s = 0; s < nS; s++) {
-        const v = Math.max(0, spec.series[s].values[i] ?? 0);
+        const v = Math.max(0, fin(spec.series[s].values[i]));
         if (v <= 0) continue;
         const h = (v / scale.max) * layout.plotH;
         doc.rect(groupX, yCursor - h, barW, h).fill(spec.series[s].color);
@@ -247,7 +250,7 @@ export function drawColumnChart(doc: PDFKit.PDFDocument, spec: ColumnChartSpec):
       }
     } else {
       for (let s = 0; s < nS; s++) {
-        const v = spec.series[s].values[i] ?? 0;
+        const v = fin(spec.series[s].values[i]);
         if (v <= 0) continue;
         const h = (v / scale.max) * layout.plotH;
         const x = groupX + s * barW;
@@ -291,7 +294,7 @@ export function drawLineChart(doc: PDFKit.PDFDocument, spec: LineChartSpec): voi
   const captionH = spec.title ? 16 : 0;
   ensureSpace(doc, captionH + plotH + 30 + (spec.xLabel ? 14 : 0) + (spec.caption ? 28 : 0));
 
-  const maxVal = Math.max(0, ...spec.values);
+  const maxVal = Math.max(0, ...spec.values.map(fin));
   const scale = niceScale(maxVal, 5);
 
   const layout = drawFrame(doc, {
@@ -307,7 +310,7 @@ export function drawLineChart(doc: PDFKit.PDFDocument, spec: LineChartSpec): voi
   const n = spec.values.length;
   const stepX = layout.plotW / Math.max(1, n - 1);
   const px = (i: number) => layout.plotLeft + i * stepX;
-  const py = (v: number) => layout.plotBottom - (Math.max(0, v) / scale.max) * layout.plotH;
+  const py = (v: number) => layout.plotBottom - (Math.max(0, fin(v)) / scale.max) * layout.plotH;
 
   if (fillArea && n > 1) {
     doc.save();
@@ -362,7 +365,7 @@ const fmtCount = (n: unknown): string => Math.round(Number(n) || 0).toLocaleStri
 export function renderDiurnalCharts(doc: PDFKit.PDFDocument, r: any, locale: ProfileLocale = "us"): void {
   const tg = r?.tripGeneration ?? {};
   const daily = Number(tg.dailyTrips ?? 0);
-  if (!(daily > 0)) return;
+  if (!(Number.isFinite(daily) && daily > 0)) return;
   const sel = profileForLandUse(String(tg.landUseCode ?? ""), (r?.request ?? {}).tripProfile, locale);
   if (!sel.matched) return;
   const hourly = distributeDaily(daily, sel.profile);

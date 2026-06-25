@@ -31,7 +31,11 @@ import { ukCapacityForIntersection, type UkCapacityResult } from "./uk-capacity"
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { renderTisState } from "./pdf-export-states";
 import { renderDiurnalCharts, drawColumnChart, drawLineChart, CHART_COLORS } from "./pdf-charts";
-import { profileForLandUse, distributeDaily } from "./office-diurnal";
+import { profileForLandUse, distributeDaily, type ProfileLocale } from "./office-diurnal";
+import { renderTemplatePdf, type RenderContext, type ReportTemplate } from "./report-template/engine";
+import { loadTemplate } from "./report-template/registry";
+import { buildProviders } from "./report-template/providers";
+import { loadFirmTemplate } from "./report-template/store";
 import { getTransitContext, type TransitContext } from "./transit-routes";
 import { enrichFdotIntersections, fetchFdotSiteSnapshot, decodeFdotFunClass, decodeFdotAccessClass, type FdotSegmentSnapshot } from "./fdot-live-data";
 import { enrichGdotIntersections, fetchGdotSiteSnapshot } from "./gdot-live-data";
@@ -69,6 +73,8 @@ type FirmStamp = {
   addressLine?: string | null;
   phone?: string | null;
   website?: string | null;
+  /** When set and the firm has an uploaded template, the study renders in it. */
+  firmId?: string | null;
 };
 
 // Default cover brand color when a firm hasn't set one — a professional
@@ -182,10 +188,60 @@ async function fetchLogoBuffer(logoUrl: string | null): Promise<Buffer | null> {
  * Returns a Buffer holding the rendered PDF. Streams internally for
  * memory efficiency but resolves a single Buffer for handler simplicity.
  */
+/**
+ * Region/firm → declarative report template. Template-driven studies render
+ * through the generic engine (report-template/) instead of a hand-coded
+ * renderer. A firm's uploaded template wins in any region; otherwise UK/London
+ * uses the built-in Velocity TA. US regions return null and keep their dedicated
+ * renderers.
+ */
+function resolveTemplate(project: StoredProject, firm: FirmStamp): { template: ReportTemplate; locale: ProfileLocale } | null {
+  if (project.studyType !== "tis") return null;
+  const lat = Number(project.siteLat ?? NaN);
+  const lon = Number(project.siteLon ?? NaN);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const region = regionForCoordinate(lat, lon);
+  const locale: ProfileLocale = region?.country === "UK" ? "uk" : "us";
+  if (firm.firmId) {
+    const t = loadFirmTemplate(firm.firmId);
+    if (t) return { template: t, locale };
+  }
+  if (region?.country === "UK") return { template: loadTemplate("velocity-ta"), locale };
+  return null;
+}
+
+/** Render a study through the declarative template engine. */
+async function renderTemplateReport(
+  project: StoredProject,
+  firm: FirmStamp,
+  sel: { template: ReportTemplate; locale: ProfileLocale },
+): Promise<Buffer> {
+  const lat = Number(project.siteLat ?? NaN);
+  const lon = Number(project.siteLon ?? NaN);
+  const region = regionForCoordinate(lat, lon);
+  const report = (project.resultPayload ?? {}) as any;
+  const address = report?.request?.address ?? project.projectName ?? "";
+  const dateLabel = project.createdAt
+    ? new Date(project.createdAt).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+    : "";
+  const ctx: RenderContext = {
+    report,
+    project: { ...project, address, dateLabel },
+    region,
+    firm: { name: firm.name, logoUrl: firm.logoUrl },
+  };
+  return renderTemplatePdf(sel.template, ctx, buildProviders({ locale: sel.locale }));
+}
+
 export async function renderStudyPdf(
   project: StoredProject,
   firm: FirmStamp,
 ): Promise<Buffer> {
+  // Template-driven studies render through the declarative engine rather than a
+  // hand-coded renderer; this is the path the Velocity / imported formats take.
+  const tplSel = resolveTemplate(project, firm);
+  if (tplSel) return renderTemplateReport(project, firm, tplSel);
+
   // Resolve the firm logo to bytes up front — the cover and header
   // both want to draw it, and fetching twice would be wasteful (and
   // could double the timeout window if the host is slow).
@@ -3306,7 +3362,7 @@ function renderTisLondon(
   // gates it (US renderers get the ITE TGM shape). distributeDaily spreads the
   // engine's gross daily ITE trip generation across the published office curve.
   const diurnalSel = profileForLandUse(code, (req as any).tripProfile, "uk");
-  const drawDiurnal = diurnalSel.matched && Number(tg.dailyTrips ?? 0) > 0;
+  const drawDiurnal = diurnalSel.matched && Number.isFinite(Number(tg.dailyTrips)) && Number(tg.dailyTrips) > 0;
   const diurnalHourly = drawDiurnal ? distributeDaily(Number(tg.dailyTrips ?? 0), diurnalSel.profile) : null;
   const diurnalHourLabels = Array.from({ length: 24 }, (_, h) => String(h));
   const diurnalBasis = diurnalSel.family ?? "supplied";

@@ -37,6 +37,11 @@ import {
   LogoInvalidTypeError,
 } from "../lib/logo-storage";
 import { logger } from "../lib/logger";
+import { writeFileSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { ingestTemplateFromPdf } from "../lib/report-template/ingest";
+import { saveFirmTemplate } from "../lib/report-template/store";
 
 const router: IRouter = Router();
 
@@ -262,6 +267,66 @@ router.post(
       }
       req.log.error({ err }, "firms.logo_upload_failed");
       res.status(500).json({ error: "Logo upload failed." });
+    }
+  },
+);
+
+/**
+ * POST /firms/report-template — upload an example report PDF; the firm's studies
+ * then render in that imported format (structure + branding + logo, ingested).
+ */
+router.post(
+  "/firms/report-template",
+  upload.single("file"),
+  async (req, res): Promise<void> => {
+    if (!req.isAuthenticated()) {
+      res.status(401).json({ error: "Sign in to upload a report template." });
+      return;
+    }
+    const user = req.user!;
+    const { firm, role } = await getOrCreateFirmForUser(user.id, {
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    });
+    if (!requireRole(role, ["owner", "admin"])) {
+      res.status(403).json({ error: "Only owners or admins can set the firm report template." });
+      return;
+    }
+    const file = (req as unknown as { file?: Express.Multer.File }).file;
+    if (!file) {
+      res.status(400).json({ error: "No file uploaded. Use multipart/form-data with field 'file' (a PDF)." });
+      return;
+    }
+    if (!/pdf$/i.test(file.mimetype) && !/\.pdf$/i.test(file.originalname)) {
+      res.status(400).json({ error: "Upload a PDF of an example report." });
+      return;
+    }
+    const tmp = path.join(os.tmpdir(), `tpl-upload-${firm.id}-${Date.now()}.pdf`);
+    try {
+      writeFileSync(tmp, file.buffer);
+      const tpl = ingestTemplateFromPdf(tmp, {
+        id: `firm-${firm.id}`,
+        name: `${firm.name} report template`,
+        firmName: firm.name,
+      });
+      saveFirmTemplate(firm.id, tpl);
+      res.json({
+        ok: true,
+        templateId: tpl.id,
+        documentType: tpl.documentType,
+        chapters: tpl.chapters.length,
+        brand: { primary: tpl.brand.palette.primary, hasLogo: !!tpl.brand.logo, cover: tpl.brand.cover.style },
+      });
+    } catch (err) {
+      req.log.error({ err }, "firms.template_upload_failed");
+      res.status(500).json({ error: "Template ingestion failed. Ensure the PDF has a text layer (and that poppler is available)." });
+    } finally {
+      try {
+        rmSync(tmp, { force: true });
+      } catch {
+        /* best effort */
+      }
     }
   },
 );
