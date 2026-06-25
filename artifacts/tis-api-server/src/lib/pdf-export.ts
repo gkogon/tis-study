@@ -68,6 +68,12 @@ type FirmStamp = {
 // deep maroon matching the consultant-cover aesthetic.
 const DEFAULT_BRAND_COLOR = "#7a1420";
 
+// Velocity Transport Planning house colour for the London (City-of-London)
+// cover + Document Control Sheet when the firm has not set its own brand.
+// A deep slate-teal that reads white-on-dark, matching Velocity's filed
+// reports. Used only by the London furniture; never the shared cover.
+const VELOCITY_BRAND = "#143a4a";
+
 const PAGE_MARGIN = 50;
 const BRAND_BLUE = "#2563eb";
 const TEXT_GRAY = "#6b7280";
@@ -358,17 +364,40 @@ export async function renderStudyPdf(
     }
   }
 
-  drawCover(doc, project, firm, logoBuf, sitePhotoBuf);
+  // Velocity Transport Planning is the only City-of-London client; their
+  // filed-report furniture (cover variant + Document Control Sheet + a
+  // bespoke per-page footer) is the London default. Gated to the
+  // `london_metro` region only — every other UK region (Manchester,
+  // Glasgow, Edinburgh, Birmingham …) and all US/Canada studies keep the
+  // shared consultant cover + screening footer unchanged.
+  const docRegion = project.studyType === "tis" ? detectRegion(project) : null;
+  const isVelocityLondon = docRegion?.code === "london_metro";
+  const velocityMeta = isVelocityLondon ? velocityDocMeta(project) : null;
+
+  if (velocityMeta) {
+    drawVelocityCover(doc, project, firm, logoBuf, sitePhotoBuf, velocityMeta);
+    doc.addPage();
+    drawVelocityDocControlSheet(doc, velocityMeta, firm);
+  } else {
+    drawCover(doc, project, firm, logoBuf, sitePhotoBuf);
+  }
   doc.addPage();
   drawHeader(doc, project, firm);
   drawBody(doc, project);
   drawCitationsFooter(doc, project);
 
-  // Iterate every buffered page and stamp the screening footer.
+  // Iterate every buffered page and stamp the footer. London (Velocity)
+  // gets the client's per-page footer; everyone else gets the screening
+  // disclaimer. The cover page (index 0) is skipped for the Velocity
+  // footer so it does not overprint the cover's own contact block.
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
-    drawPageFooter(doc);
+    if (velocityMeta) {
+      if (i > range.start) drawVelocityPageFooter(doc, velocityMeta, i - range.start);
+    } else {
+      drawPageFooter(doc);
+    }
   }
   doc.flushPages();
   doc.end();
@@ -388,6 +417,208 @@ function drawPageFooter(doc: PDFKit.PDFDocument) {
   // auto-paginate, which re-fires `pageAdded` and infinitely recurses.
   doc.font("body").fontSize(7).fillColor("#9ca3af").text(
     "Screening estimate — not for design submittal without independent verification by a licensed PE.   |   See /legal/disclaimer.",
+    PAGE_MARGIN, y, { width: w, align: "center", lineBreak: false },
+  );
+  doc.restore();
+}
+
+// --- Velocity Transport Planning furniture (London / City-of-London) ----
+// Velocity is our only City-of-London client, so their filed-report
+// furniture is the London default (see REGIONAL-SPECS/velocity-ta-format.md,
+// derived from the 60 Gracechurch Street TA, Velocity, Project 23/186, Doc
+// D002, v1.0, July 2024). SITE and DATE are pulled from existing project
+// fields; project number, doc number, revision and client are emitted as
+// bracket placeholders — this task deliberately does NOT add new request-
+// schema fields (stays off the codegen path), so the consultant fills the
+// brackets at submittal.
+const VELOCITY_NAME = "Velocity Transport Planning Ltd";
+const VELOCITY_NAME_LIMITED = "Velocity Transport Planning Limited";
+const VELOCITY_WEB = "www.velocity-tp.com";
+
+type VelocityMeta = {
+  site: string;
+  monthYear: string;
+  projectNo: string;
+  docNo: string;
+  version: string;
+  client: string;
+};
+
+function velocityDocMeta(project: StoredProject): VelocityMeta {
+  // SITE: prefer the request address (the street address Velocity prints
+  // on the cover), falling back to the project name.
+  const req = (project.resultPayload as { request?: { address?: string } } | null)?.request;
+  const addr = typeof req?.address === "string" ? req.address.trim() : "";
+  const site = addr || project.projectName || "[SITE]";
+  const monthYear = project.createdAt.toLocaleDateString("en-GB", {
+    year: "numeric",
+    month: "long",
+  });
+  return {
+    site,
+    monthYear,
+    // Bracket placeholders — filled by the consultant; no schema field yet.
+    projectNo: "[NN/NNN]",
+    docNo: "[DNNN]",
+    version: "[n.n]",
+    client: "[CLIENT]",
+  };
+}
+
+/**
+ * Velocity cover page. Dark brand block with the site, the report title,
+ * the project/doc/version/client metadata block, and the Velocity sign-off
+ * (firm name + website). Mirrors the 60 Gracechurch Street cover layout.
+ * London-only; the shared `drawCover` is untouched for every other region.
+ */
+function drawVelocityCover(
+  doc: PDFKit.PDFDocument,
+  project: StoredProject,
+  firm: FirmStamp,
+  logoBuf: Buffer | null,
+  sitePhotoBuf: Buffer | null,
+  meta: VelocityMeta,
+) {
+  const W = doc.page.width;
+  const H = doc.page.height;
+  const brand = (firm.brandColor && /^#[0-9a-fA-F]{6}$/.test(firm.brandColor))
+    ? firm.brandColor
+    : VELOCITY_BRAND;
+  const onBrand = readableOn(brand);
+  const subOnBrand = onBrand === "#ffffff" ? "rgba(255,255,255,0.85)" : "#333333";
+
+  const photoTop = 132;
+  const photoH = 300;
+  const blockTop = photoTop + photoH;
+
+  // 1) Site photo band (Street View) or brand-tint fallback.
+  if (sitePhotoBuf) {
+    try {
+      doc.save();
+      doc.rect(0, photoTop, W, photoH).clip();
+      doc.image(sitePhotoBuf, 0, photoTop, { cover: [W, photoH], align: "center", valign: "center" });
+      doc.restore();
+    } catch {
+      doc.rect(0, photoTop, W, photoH).fill(shade(brand, 1.6));
+    }
+  } else {
+    doc.rect(0, photoTop, W, photoH).fill(shade(brand, 1.7));
+  }
+
+  // 2) Top brand band carrying the firm name (or logo).
+  doc.rect(0, 0, W, photoTop).fill(brand);
+  if (logoBuf) {
+    try {
+      doc.image(logoBuf, PAGE_MARGIN, 40, { fit: [240, 56] });
+    } catch {
+      doc.font("bold").fontSize(18).fillColor(onBrand).text(firm.name.toUpperCase(), PAGE_MARGIN, 54);
+    }
+  } else {
+    doc.font("bold").fontSize(18).fillColor(onBrand).text(VELOCITY_NAME.toUpperCase(), PAGE_MARGIN, 54);
+  }
+  doc.font("body").fontSize(9).fillColor(subOnBrand).text(VELOCITY_WEB, PAGE_MARGIN, 100);
+
+  // 3) Bottom brand block carrying the cover metadata.
+  doc.rect(0, blockTop, W, H - blockTop).fill(brand);
+  const tX = PAGE_MARGIN;
+  const tW = W - PAGE_MARGIN * 2;
+  let y = blockTop + 36;
+  doc.fillColor(onBrand).font("bold").fontSize(24).text(meta.site, tX, y, { width: tW });
+  y = doc.y + 6;
+  doc.font("bold").fontSize(15).fillColor(onBrand).text("TRANSPORT ASSESSMENT", tX, y, { width: tW });
+  y = doc.y + 10;
+  doc.save().lineWidth(1.25).strokeColor(onBrand).moveTo(tX, y).lineTo(tX + Math.min(tW, 360), y).stroke().restore();
+  y += 14;
+
+  const metaLines = [
+    `PROJECT NO. ${meta.projectNo}`,
+    `DOC NO. ${meta.docNo}`,
+    `DATE: ${meta.monthYear}`,
+    `VERSION: ${meta.version}`,
+    `CLIENT: ${meta.client}`,
+  ];
+  doc.font("body").fontSize(11).fillColor(onBrand);
+  for (const line of metaLines) {
+    doc.text(line, tX, y, { width: tW });
+    y = doc.y + 3;
+  }
+
+  // 4) Velocity sign-off, bottom-right of the brand block.
+  doc.font("bold").fontSize(12).fillColor(onBrand)
+    .text(VELOCITY_NAME, tX, H - PAGE_MARGIN - 30, { width: tW, align: "right" });
+  doc.font("body").fontSize(10).fillColor(subOnBrand)
+    .text(VELOCITY_WEB, tX, H - PAGE_MARGIN - 14, { width: tW, align: "right" });
+  doc.fillColor("black");
+}
+
+/**
+ * Velocity Document Control Sheet (page i). Reference / title / number
+ * block, the Prepared-By / Reviewed-By / Authorised-By review table, and
+ * the © reproduction line. Placeholders for the metadata the consultant
+ * sets at submittal. London-only.
+ */
+function drawVelocityDocControlSheet(
+  doc: PDFKit.PDFDocument,
+  meta: VelocityMeta,
+  firm: FirmStamp,
+) {
+  doc.rect(0, 0, doc.page.width, 4).fill(VELOCITY_BRAND);
+  doc.fillColor("black");
+  doc.moveDown(1.5);
+  doc.font("bold").fontSize(16).fillColor("black").text("DOCUMENT CONTROL SHEET");
+  doc.moveDown(0.6);
+
+  rows(doc, [
+    ["Document Reference", `${meta.projectNo} ${meta.docNo}`],
+    ["Project Title", `${meta.site} — Transport Assessment`],
+    ["Document Title", "Transport Assessment"],
+    ["Project Number", meta.projectNo],
+    ["Document Number", meta.docNo],
+    ["Revision No.", meta.version],
+    ["Document Date", meta.monthYear],
+  ]);
+  doc.moveDown(0.8);
+
+  doc.font("bold").fontSize(11).fillColor("black").text("Document Review");
+  doc.moveDown(0.3);
+  table(doc, {
+    headers: ["Role", "Name / Initials", "Date completed"],
+    widths: [170, 170, 130],
+    align: ["left", "left", "left"],
+    rows: [
+      ["Prepared By", "[..]", "[..]"],
+      ["Reviewed By", "[..]", "[..]"],
+      ["Authorised By", "[..]", "[..]"],
+    ],
+  });
+  doc.moveDown(0.5);
+
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "Notes: project number, document number, revision, the named reviewers and the client are completed by " + (firm.name || VELOCITY_NAME) + " at submittal. The site and document date are auto-populated from the study record.",
+    { paragraphGap: 8 },
+  );
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    "© " + VELOCITY_NAME + " — Extracts may be reproduced provided that the source is acknowledged.",
+    { paragraphGap: 4 },
+  );
+  doc.fillColor("black");
+}
+
+/**
+ * Velocity per-page footer. Stamped on every page except the cover.
+ * Format: `Velocity Transport Planning Limited | Transport Assessment |
+ * Project No [..] Doc No [..] | [Site] | Page n | [Month Year]`.
+ */
+function drawVelocityPageFooter(doc: PDFKit.PDFDocument, meta: VelocityMeta, pageNum: number) {
+  const y = doc.page.height - 30;
+  const w = doc.page.width - PAGE_MARGIN * 2;
+  doc.save();
+  doc.strokeColor("#d1d5db").lineWidth(0.5)
+    .moveTo(PAGE_MARGIN, y - 4).lineTo(doc.page.width - PAGE_MARGIN, y - 4).stroke();
+  // `lineBreak: false` is critical: without it the footer text can
+  // auto-paginate, which re-fires `pageAdded` and infinitely recurses.
+  doc.font("body").fontSize(7).fillColor("#6b7280").text(
+    `${VELOCITY_NAME_LIMITED} | Transport Assessment | Project No ${meta.projectNo} Doc No ${meta.docNo} | ${meta.site} | Page ${pageNum} | ${meta.monthYear}`,
     PAGE_MARGIN, y, { width: w, align: "center", lineBreak: false },
   );
   doc.restore();
@@ -3023,6 +3254,54 @@ function renderTisLondon(
   ]);
   doc.moveDown(0.8);
 
+  // PTAL / public-transport-access block. Extracted into a closure so it
+  // can be emitted at the right place per format:
+  //   • Holloway / non-London UK format → §3.4 (Site and Surroundings)
+  //   • Velocity / London format        → Chapter 6 (Public Transport &
+  //     Trip Generation), where Velocity places the PTAL band + map.
+  // The block's text (PTAL band, Accessibility Index, WebCAT 3.0, the TfL
+  // GIS Open Data URL, "Engine-resolved" phrasing) is preserved VERBATIM —
+  // the London smoke test greps for it.
+  const renderPtalAccessBlock = (headingNum: string) => {
+    ldnSubsection(doc, `${headingNum} Access to Public Transport (incl. PTAL)`);
+    // Prefer the structured TisReport.resolvedPtalBand (carries the
+    // source — caller vs. TfL WebCAT 3.0 grid lookup). Fall back to the
+    // raw request.ptalBand when older payloads were generated before
+    // the resolver shipped.
+    const resolved = r.resolvedPtalBand as
+      | { band?: string; source?: "caller" | "tfl-webcat-2023"; ai?: number }
+      | undefined;
+    const ptalBand =
+      (resolved && typeof resolved.band === "string" && resolved.band.length > 0 ? resolved.band : null) ??
+      (typeof req.ptalBand === "string" && req.ptalBand.length > 0 ? req.ptalBand : null);
+    const bandSource: "caller" | "tfl-webcat-2023" | "request-fallback" =
+      resolved?.source ?? (req.ptalBand ? "request-fallback" : "caller");
+    const sourceLabel =
+      bandSource === "tfl-webcat-2023"
+        ? "Engine-resolved via point-in-polygon lookup against the TfL WebCAT 3.0 PTAL 2023 100 m × 100 m grid (gis-tfl.opendata.arcgis.com, Open Government Licence v3.0). Reconcile against WebCAT 3.0 at the time of submittal."
+        : "Caller-supplied (not computed by this engine — should be cross-checked against WebCAT 3.0 at submittal).";
+    if (isLondon && ptalBand) {
+      const sourceCellRows: [string, string][] = [
+        ["Site PTAL band", `PTAL ${ptalBand}`],
+        ["Engine auto-mode share applied at this PTAL", `${(Number(r.autoModeShareApplied) * 100).toFixed(0)}% (calibrated against TfL Travel in London + 3 published London TAs)`],
+        ["Source of band", sourceLabel],
+      ];
+      if (typeof resolved?.ai === "number") {
+        sourceCellRows.splice(1, 0, ["Accessibility Index (AI) at cell", resolved.ai.toFixed(2)]);
+      }
+      rows(doc, sourceCellRows);
+      doc.moveDown(0.3);
+    }
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      isLondon
+        ? (ptalBand
+            ? `PTAL ${ptalBand} has been carried into the trip-generation calculation via the engine's PTAL-banded London auto-mode-share curve (mode-share.ts). The Accessibility Index (AI) value behind the band is not computed by this engine; the band itself was supplied by the caller and should be reconciled against the TfL 100 m × 100 m PTAL grid via WebCAT 3.0 (tfl.gov.uk planning-with-webcat) or the GIS layer on the London Datastore at the time of submittal. TfL's methodology: Service Access Points are bus stops within 640 m (8 min walk) and rail / tube / Overground / DLR / Elizabeth line / tram / river-bus stations within 960 m (12 min walk), both at the standard assumed walking speed of 80 m/min; the Equivalent Doorstep Frequency window is the AM peak 08:15–09:15; AI sums weighted EDFs across all SAPs. The published AI → PTAL bands are: PTAL 0 = AI 0 (no SAP in range); 1a = 0.01–2.50; 1b = 2.51–5.00; 2 = 5.01–10.00; 3 = 10.01–15.00; 4 = 15.01–20.00; 5 = 20.01–25.00; 6a = 25.01–40.00; 6b > 40.00. PTAL band drives the car-parking maxima under London Plan policy T6 sub-policies — Table 10.3 (T6.1 residential), Table 10.4 (T6.2 office) and Table 10.5 (T6.3 retail) are the PTAL-banded maxima; T6.4 hotel and leisure is PTAL-band narrative with no numbered maxima table; Table 10.6 (T6.5) sets non-residential disabled persons provision. Policy T6 Part B is worded as "Car-free development should be the starting point for all development proposals in places that are (or are planned to be) well-connected by public transport, with developments elsewhere designed to provide the minimum necessary parking ('car-lite')" — the policy text itself does not name a hard PTAL-band cut-off; the only explicit numeric PTAL hook in the policy is Part K, which restricts Outer London boroughs adopting minimum residential parking standards to PTAL 0–1 parts of London.`
+            : "PTAL is mandatory in every London TA. The site's PTAL band (0, 1a, 1b, 2, 3, 4, 5, 6a, 6b) and Accessibility Index (AI) value were NOT supplied for this run and are not computed by this engine; they should be drawn from the TfL 100 m × 100 m PTAL grid via WebCAT 3.0 (tfl.gov.uk planning-with-webcat) or the GIS layer on the London Datastore, and the run should then be re-issued with the band passed in so the engine's London auto-mode-share is set band-specifically rather than at the flat London-wide average. TfL's methodology: Service Access Points are bus stops within 640 m (8 min walk) and rail / tube / Overground / DLR / Elizabeth line / tram / river-bus stations within 960 m (12 min walk), both at the standard assumed walking speed of 80 m/min; the Equivalent Doorstep Frequency window is the AM peak 08:15–09:15; AI sums weighted EDFs across all SAPs. The published AI → PTAL bands are: PTAL 0 = AI 0 (no SAP in range); 1a = 0.01–2.50; 1b = 2.51–5.00; 2 = 5.01–10.00; 3 = 10.01–15.00; 4 = 15.01–20.00; 5 = 20.01–25.00; 6a = 25.01–40.00; 6b > 40.00. PTAL band drives the car-parking maxima under London Plan policy T6 sub-policies — Table 10.3 (T6.1 residential), Table 10.4 (T6.2 office) and Table 10.5 (T6.3 retail) are the PTAL-banded maxima; T6.4 hotel and leisure is PTAL-band narrative with no numbered maxima table; Table 10.6 (T6.5) sets non-residential disabled persons provision. Policy T6 Part B is worded as \"Car-free development should be the starting point for all development proposals in places that are (or are planned to be) well-connected by public transport, with developments elsewhere designed to provide the minimum necessary parking ('car-lite')\" — the policy text itself does not name a hard PTAL-band cut-off; the only explicit numeric PTAL hook in the policy is Part K, which restricts Outer London boroughs adopting minimum residential parking standards to PTAL 0–1 parts of London.")
+        : "Public-transport accessibility metrics for non-London UK metros vary by combined authority and are not standardised; the local authority's adopted methodology should be applied.",
+      { paragraphGap: 6 },
+    );
+  };
+
   // --- Ch 1 Introduction --------------------------------------------------
   // Chapter/subsection structure mirrors the Velocity Transport Planning
   // "Former Holloway Prison (Holloway Park)" Healthy Streets TA (LB Islington,
@@ -3039,9 +3318,10 @@ function renderTisLondon(
   ldnSubsection(doc, "1.2 Existing Site Use");
   {
     const priorUse = String(req.priorUse ?? "").trim();
+    const tripGenCh = isLondon ? "Chapter 6" : "Chapter 5";
     ldnNote(doc, priorUse
-      ? `The site's existing / most-recent lawful use is ${priorUse}. The vehicular and multi-modal trips generated by that use should be established (TRICS or observed counts) and netted against the proposed trips before the residual impact is reported (see Chapter 5).`
-      : "The site's existing / most-recent lawful use and its established trip generation should be set out here and netted against the proposed trips (Chapter 5). Set TisRequest.priorUse to populate this automatically; not otherwise produced by the engine.");
+      ? `The site's existing / most-recent lawful use is ${priorUse}. The vehicular and multi-modal trips generated by that use should be established (TRICS or observed counts) and netted against the proposed trips before the residual impact is reported (see ${tripGenCh}).`
+      : `The site's existing / most-recent lawful use and its established trip generation should be set out here and netted against the proposed trips (${tripGenCh}). Set TisRequest.priorUse to populate this automatically; not otherwise produced by the engine.`);
   }
 
   ldnSubsection(doc, "1.3 What is Being Built?");
@@ -3055,11 +3335,11 @@ function renderTisLondon(
 
   ldnSubsection(doc, "1.6 Policy Context");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Applicable policy framework, in order: NPPF Chapter 9 (Promoting sustainable transport, December 2024 edition); Planning Practice Guidance — Travel plans, transport assessments and statements${isLondon ? "; the London Plan 2021 (in particular policies T1 Strategic approach to transport, T2 Healthy Streets, T5 Cycling, and T6 Car parking sub-policies banded by PTAL); the Mayor's Transport Strategy 2018 (the 80% sustainable-mode-share target by 2041); and the local borough Local Plan and any borough Supplementary Planning Documents on parking, travel plans and S106" : "; and the local development plan adopted by " + region.displayName}.`,
+    `Applicable policy framework, in order: NPPF Chapter 9 (Promoting sustainable transport, December 2024 edition); Planning Practice Guidance — Travel plans, transport assessments and statements${isLondon ? "; the London Plan 2021 (in particular policies T1 Strategic approach to transport, T2 Healthy Streets, T5 Cycling, and T6 Car parking sub-policies banded by PTAL); the Mayor's Transport Strategy 2018 (the 80% sustainable-mode-share target by 2041); the City of London Local Plan (the City Plan, in particular its transport, servicing and public-realm policies); the City of London Transport Strategy (2019, the 25-year strategy delivering the Square Mile's Healthy Streets and Vision Zero commitments); and the local borough Local Plan and any borough Supplementary Planning Documents on parking, travel plans and S106" : "; and the local development plan adopted by " + region.displayName}.`,
     { paragraphGap: 6 },
   );
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    `Whether a full TA or a lighter Transport Statement (TS) is required is judgement-led by ${lpa}, supported by the indicative DfT 2007 Appendix B thresholds TfL still hosts operationally at content.tfl.gov.uk/thresholds-for-transport-assessments.pdf (DfT 2007 was withdrawn October 2014 — Appendix B remains in operational use but is no longer live policy, and its A1 / A2 / B1 / D1 / D2 use-class labels are pre-2020 nomenclature now collapsed into Class E under SI 2020/757). Appendix B also forces a TA regardless of floorspace where ANY of the following apply: ≥ 30 two-way vehicle movements in any hour; ≥ 100 two-way vehicle movements per day; ≥ 100 off-street parking spaces; location in or adjacent to an Air Quality Management Area (AQMA); or local transport infrastructure inadequate to serve the proposal. This screening report does not auto-evaluate AQMA proximity or infrastructure adequacy; the vehicle-movement and parking-space triggers should be checked against the external-trip totals in Chapter 5 and the proposed parking provision before relying on a floorspace-only screen.`,
+    `Whether a full TA or a lighter Transport Statement (TS) is required is judgement-led by ${lpa}, supported by the indicative DfT 2007 Appendix B thresholds TfL still hosts operationally at content.tfl.gov.uk/thresholds-for-transport-assessments.pdf (DfT 2007 was withdrawn October 2014 — Appendix B remains in operational use but is no longer live policy, and its A1 / A2 / B1 / D1 / D2 use-class labels are pre-2020 nomenclature now collapsed into Class E under SI 2020/757). Appendix B also forces a TA regardless of floorspace where ANY of the following apply: ≥ 30 two-way vehicle movements in any hour; ≥ 100 two-way vehicle movements per day; ≥ 100 off-street parking spaces; location in or adjacent to an Air Quality Management Area (AQMA); or local transport infrastructure inadequate to serve the proposal. This screening report does not auto-evaluate AQMA proximity or infrastructure adequacy; the vehicle-movement and parking-space triggers should be checked against the external-trip totals in ${isLondon ? "Chapter 6" : "Chapter 5"} and the proposed parking provision before relying on a floorspace-only screen.`,
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
@@ -3100,12 +3380,21 @@ function renderTisLondon(
   doc.fillColor("black");
   doc.moveDown(0.3);
 
-  // --- Ch 2 Transport Planning for People ---------------------------------
-  ldnSection(doc, "2.0 TRANSPORT PLANNING FOR PEOPLE");
-  if (isLondon) ldnChapterIntro(doc, "i.e. Who is the development for, and when and why will they travel there (including visitors)? Healthy Streets and Vision Zero put people first; this chapter draws on TfL's Travel in London reports and Transport Classification of Londoners demographic segments.");
+  // --- Ch 2 Proposed Development (London) / Transport Planning for People --
+  // London (Velocity format): "2 Proposed Development" — employees vs
+  // visitors, the GIA area schedule, building entrances, and the proposed
+  // walking / cycling provision. Other UK regions keep the Holloway-format
+  // "Transport Planning for People" chapter unchanged.
+  ldnSection(doc, isLondon ? "2.0 PROPOSED DEVELOPMENT" : "2.0 TRANSPORT PLANNING FOR PEOPLE");
+  if (isLondon) ldnChapterIntro(doc, "i.e. What is being built, for whom (employees vs visitors), and how will they arrive? This chapter sets out the proposed development — its area schedule, entrances and the walking / cycling provision — and the people-first travel demand it supports.");
 
-  ldnSubsection(doc, "2.1 Content");
-  ldnNote(doc, "This chapter establishes who will use the development and how, when and why they will travel — the people-first basis for the assessment that follows.");
+  if (isLondon) {
+    ldnSubsection(doc, "2.1 Proposed Development and Area Schedule");
+    ldnNote(doc, `The proposal is ${project.projectName || "the subject development"} — land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"}. The full area schedule (Gross Internal Area by use class, employees vs visitors, the split of floorspace and the proposed building entrances) is a design-team output and is set out in the application drawings (Appendix A); for an office (Class E) scheme the employee population is derived from GIA at the agreed occupancy density. The employee inbound / outbound trip profile by start time is presented with the trip generation in Chapter 6.`);
+  } else {
+    ldnSubsection(doc, "2.1 Content");
+    ldnNote(doc, "This chapter establishes who will use the development and how, when and why they will travel — the people-first basis for the assessment that follows.");
+  }
 
   ldnSubsection(doc, "2.2 Who is the Development For?");
   ldnNote(doc, `The proposed ${tg.landUseName ?? "development"} will be used by its occupiers and visitors. Demographic context for the site catchment (2021 Census MSOA / ward profile, GLA population projections, journey-to-work mode share) and the Public Sector Equality Duty (Equality Act 2010 — step-free access for people of all abilities) should be drawn from the London Datastore (data.london.gov.uk) at submittal; neither is produced by this screening engine.`);
@@ -3117,25 +3406,32 @@ function renderTisLondon(
   {
     const appliedShare = Number(r.autoModeShareApplied);
     const sharePct = Number.isFinite(appliedShare) && appliedShare > 0 ? `${(appliedShare * 100).toFixed(0)}%` : "38%";
-    ldnNote(doc, `Mode of travel is approximated in this screening via a metro-specific auto-mode-share factor (${sharePct} car for London, from TfL Travel in London), applied to the gross trip rate to net out walking, cycling, bus and rail. A submitted TA replaces this with the full TRICS multi-modal split (walk / cycle / bus / Underground / Overground / National Rail / DLR / car / taxi / LGV / HGV) and the linked-PT-trip behaviour required under NPPF paragraph 115 — see Chapter 5.`);
+    ldnNote(doc, `Mode of travel is approximated in this screening via a metro-specific auto-mode-share factor (${sharePct} car for London, from TfL Travel in London), applied to the gross trip rate to net out walking, cycling, bus and rail. A submitted TA replaces this with the full TRICS multi-modal split (walk / cycle / bus / Underground / Overground / National Rail / DLR / car / taxi / LGV / HGV) and the linked-PT-trip behaviour required under NPPF paragraph 115 — see ${isLondon ? "Chapter 6" : "Chapter 5"}.`);
   }
 
   ldnSubsection(doc, "2.5 Where Will People Travel?");
-  ldnNote(doc, "Trip origins / destinations and the assignment of person-trips across the network are summarised in Chapter 5 (trip distribution). For a submitted TA the distribution is agreed in the scoping note and, for public transport, informed by TfL gateline / journey data.");
+  ldnNote(doc, `Trip origins / destinations and the assignment of person-trips across the network are summarised in ${isLondon ? "Chapter 6" : "Chapter 5"} (trip distribution). For a submitted TA the distribution is agreed in the scoping note and, for public transport, informed by TfL gateline / journey data.`);
 
   ldnSubsection(doc, "2.6 When Will People Travel and Why?");
-  ldnNote(doc, "The assessed periods are the weekday AM peak (08:00–09:00) and PM peak (17:00–18:00), with a Saturday peak where the use warrants it. Trip purpose (commuting, education, retail, leisure) follows the proposed use and is detailed in Chapter 5.");
+  ldnNote(doc, `The assessed periods are the weekday AM peak (08:00–09:00) and PM peak (17:00–18:00), with a Saturday peak where the use warrants it. Trip purpose (commuting, education, retail, leisure) follows the proposed use and is detailed in ${isLondon ? "Chapter 6" : "Chapter 5"}.`);
 
   ldnSubsection(doc, "2.7 Why Will They Travel?");
   ldnNote(doc, "Trip purpose and the extent to which the scheme's location supports sustainable, active travel for those purposes is a vision-led narrative (see §1.4) to be completed by the chartered engineer; it is not generated by the engine.");
 
   ldnSubsection(doc, "2.8 Summary");
-  ldnNote(doc, "The development is planned to be accessible by walking, cycling and public transport for people of all abilities; the chapters that follow assess that at the site scale (Chapter 3), the Active Travel Zone (Chapter 4) and the London-wide network (Chapter 5).");
+  ldnNote(doc, isLondon
+    ? "The development is planned to be accessible by walking, cycling and public transport for people of all abilities; the chapters that follow assess that at the site scale (Chapter 3), pedestrian comfort (Chapter 4), the Active Travel Zone (Chapter 5) and the public-transport & highway networks (Chapter 6)."
+    : "The development is planned to be accessible by walking, cycling and public transport for people of all abilities; the chapters that follow assess that at the site scale (Chapter 3), the Active Travel Zone (Chapter 4) and the London-wide network (Chapter 5).");
   doc.moveDown(0.3);
 
   // --- Ch 3 Site and Surroundings -----------------------------------------
-  ldnSection(doc, "3.0 SITE AND SURROUNDINGS");
-  if (isLondon) ldnChapterIntro(doc, "i.e. How can people of all abilities move around the site and its immediate surroundings — both before and after the development is built? This covers the site itself and just beyond its red-line boundary.");
+  // London (Velocity format): "3 Site Access & Movement". Other UK regions
+  // keep the Holloway-format "Site and Surroundings" title. Same body
+  // either way (site context, walking, cycling, access, parking, servicing)
+  // EXCEPT the PTAL block, which Velocity places in Chapter 6 — so for
+  // London it is omitted here and emitted there.
+  ldnSection(doc, isLondon ? "3.0 SITE ACCESS & MOVEMENT" : "3.0 SITE AND SURROUNDINGS");
+  if (isLondon) ldnChapterIntro(doc, "i.e. How can people of all abilities move to, through and around the site and its immediate surroundings — both before and after the development is built? This covers existing and proposed access, the walking catchment, local cycle routes, the strategic highway network, cycle parking, servicing and parking.");
 
   ldnSubsection(doc, "3.1 Introduction");
   rows(doc, [
@@ -3160,127 +3456,159 @@ function renderTisLondon(
     ? "Cycle infrastructure within ~1 km of the site (Cycleways, segregated lanes, Advanced Stop Lines, on-street cycle parking, Santander Cycles docks) should be drawn from the TfL Cycle Infrastructure Database (cycling.data.tfl.gov.uk); Strategic Cycling Analysis corridors should be flagged where the site falls on or near one. Not produced by the engine."
     : "Cycle infrastructure should be drawn from the local highway authority's mapping.");
 
-  ldnSubsection(doc, "3.4 Access to Public Transport (incl. PTAL)");
-  {
-    // Prefer the structured TisReport.resolvedPtalBand (carries the
-    // source — caller vs. TfL WebCAT 3.0 grid lookup). Fall back to the
-    // raw request.ptalBand when older payloads were generated before
-    // the resolver shipped.
-    const resolved = r.resolvedPtalBand as
-      | { band?: string; source?: "caller" | "tfl-webcat-2023"; ai?: number }
-      | undefined;
-    const ptalBand =
-      (resolved && typeof resolved.band === "string" && resolved.band.length > 0 ? resolved.band : null) ??
-      (typeof req.ptalBand === "string" && req.ptalBand.length > 0 ? req.ptalBand : null);
-    const bandSource: "caller" | "tfl-webcat-2023" | "request-fallback" =
-      resolved?.source ?? (req.ptalBand ? "request-fallback" : "caller");
-    const sourceLabel =
-      bandSource === "tfl-webcat-2023"
-        ? "Engine-resolved via point-in-polygon lookup against the TfL WebCAT 3.0 PTAL 2023 100 m × 100 m grid (gis-tfl.opendata.arcgis.com, Open Government Licence v3.0). Reconcile against WebCAT 3.0 at the time of submittal."
-        : "Caller-supplied (not computed by this engine — should be cross-checked against WebCAT 3.0 at submittal).";
-    if (isLondon && ptalBand) {
-      const sourceCellRows: [string, string][] = [
-        ["Site PTAL band", `PTAL ${ptalBand}`],
-        ["Engine auto-mode share applied at this PTAL", `${(Number(r.autoModeShareApplied) * 100).toFixed(0)}% (calibrated against TfL Travel in London + 3 published London TAs)`],
-        ["Source of band", sourceLabel],
-      ];
-      if (typeof resolved?.ai === "number") {
-        sourceCellRows.splice(1, 0, ["Accessibility Index (AI) at cell", resolved.ai.toFixed(2)]);
-      }
-      rows(doc, sourceCellRows);
-      doc.moveDown(0.3);
-    }
-    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-      isLondon
-        ? (ptalBand
-            ? `PTAL ${ptalBand} has been carried into the trip-generation calculation via the engine's PTAL-banded London auto-mode-share curve (mode-share.ts). The Accessibility Index (AI) value behind the band is not computed by this engine; the band itself was supplied by the caller and should be reconciled against the TfL 100 m × 100 m PTAL grid via WebCAT 3.0 (tfl.gov.uk planning-with-webcat) or the GIS layer on the London Datastore at the time of submittal. TfL's methodology: Service Access Points are bus stops within 640 m (8 min walk) and rail / tube / Overground / DLR / Elizabeth line / tram / river-bus stations within 960 m (12 min walk), both at the standard assumed walking speed of 80 m/min; the Equivalent Doorstep Frequency window is the AM peak 08:15–09:15; AI sums weighted EDFs across all SAPs. The published AI → PTAL bands are: PTAL 0 = AI 0 (no SAP in range); 1a = 0.01–2.50; 1b = 2.51–5.00; 2 = 5.01–10.00; 3 = 10.01–15.00; 4 = 15.01–20.00; 5 = 20.01–25.00; 6a = 25.01–40.00; 6b > 40.00. PTAL band drives the car-parking maxima under London Plan policy T6 sub-policies — Table 10.3 (T6.1 residential), Table 10.4 (T6.2 office) and Table 10.5 (T6.3 retail) are the PTAL-banded maxima; T6.4 hotel and leisure is PTAL-band narrative with no numbered maxima table; Table 10.6 (T6.5) sets non-residential disabled persons provision. Policy T6 Part B is worded as "Car-free development should be the starting point for all development proposals in places that are (or are planned to be) well-connected by public transport, with developments elsewhere designed to provide the minimum necessary parking ('car-lite')" — the policy text itself does not name a hard PTAL-band cut-off; the only explicit numeric PTAL hook in the policy is Part K, which restricts Outer London boroughs adopting minimum residential parking standards to PTAL 0–1 parts of London.`
-            : "PTAL is mandatory in every London TA. The site's PTAL band (0, 1a, 1b, 2, 3, 4, 5, 6a, 6b) and Accessibility Index (AI) value were NOT supplied for this run and are not computed by this engine; they should be drawn from the TfL 100 m × 100 m PTAL grid via WebCAT 3.0 (tfl.gov.uk planning-with-webcat) or the GIS layer on the London Datastore, and the run should then be re-issued with the band passed in so the engine's London auto-mode-share is set band-specifically rather than at the flat London-wide average. TfL's methodology: Service Access Points are bus stops within 640 m (8 min walk) and rail / tube / Overground / DLR / Elizabeth line / tram / river-bus stations within 960 m (12 min walk), both at the standard assumed walking speed of 80 m/min; the Equivalent Doorstep Frequency window is the AM peak 08:15–09:15; AI sums weighted EDFs across all SAPs. The published AI → PTAL bands are: PTAL 0 = AI 0 (no SAP in range); 1a = 0.01–2.50; 1b = 2.51–5.00; 2 = 5.01–10.00; 3 = 10.01–15.00; 4 = 15.01–20.00; 5 = 20.01–25.00; 6a = 25.01–40.00; 6b > 40.00. PTAL band drives the car-parking maxima under London Plan policy T6 sub-policies — Table 10.3 (T6.1 residential), Table 10.4 (T6.2 office) and Table 10.5 (T6.3 retail) are the PTAL-banded maxima; T6.4 hotel and leisure is PTAL-band narrative with no numbered maxima table; Table 10.6 (T6.5) sets non-residential disabled persons provision. Policy T6 Part B is worded as \"Car-free development should be the starting point for all development proposals in places that are (or are planned to be) well-connected by public transport, with developments elsewhere designed to provide the minimum necessary parking ('car-lite')\" — the policy text itself does not name a hard PTAL-band cut-off; the only explicit numeric PTAL hook in the policy is Part K, which restricts Outer London boroughs adopting minimum residential parking standards to PTAL 0–1 parts of London.")
-        : "Public-transport accessibility metrics for non-London UK metros vary by combined authority and are not standardised; the local authority's adopted methodology should be applied.",
-      { paragraphGap: 6 },
-    );
-  }
+  // PTAL / public-transport-access. Holloway / non-London UK puts this at
+  // §3.4; the Velocity / London format moves it to Chapter 6 (Public
+  // Transport & Trip Generation), so it is emitted there instead.
+  if (!isLondon) renderPtalAccessBlock("3.4");
 
-  ldnSubsection(doc, "3.5 Access to Local Facilities and Amenities");
-  ldnNote(doc, "Walking / cycling access to local facilities (shops, schools, healthcare, open space, town-centre uses) within the active-travel catchment supports a car-light scheme. The amenity inventory is site-specific and is not produced by the engine; it is examined at the catchment scale in Chapter 4.");
+  ldnSubsection(doc, isLondon ? "3.4 Access to Local Facilities and Amenities" : "3.5 Access to Local Facilities and Amenities");
+  ldnNote(doc, `Walking / cycling access to local facilities (shops, schools, healthcare, open space, town-centre uses) within the active-travel catchment supports a car-light scheme. The amenity inventory is site-specific and is not produced by the engine; it is examined at the catchment scale in ${isLondon ? "Chapter 5" : "Chapter 4"}.`);
 
-  ldnSubsection(doc, "3.6 Road Network");
+  ldnSubsection(doc, isLondon ? "3.5 Road Network" : "3.6 Road Network");
   ldnNote(doc, isLondon
     ? "The surrounding highway network — TLRN (red routes, TfL), Strategic Road Network and borough roads, with classifications, speed limits and any Controlled Parking Zones — should be described here. The engine carries the highway-authority split (see §3.1) but not the detailed road inventory."
     : "The surrounding highway network classification and speed limits should be described here.");
 
-  ldnSubsection(doc, "3.7 Nearby Public Realm");
+  ldnSubsection(doc, isLondon ? "3.6 Nearby Public Realm" : "3.7 Nearby Public Realm");
   ldnNote(doc, isLondon
     ? "The public realm immediately around the site should be assessed against the 10 Healthy Streets Indicators (existing condition), identifying any scores the scheme can improve. Not produced by the engine."
     : "The nearby public realm should be assessed against the local authority's standards.");
 
-  ldnSubsection(doc, "3.8 Healthy Streets Designers Checklist");
+  ldnSubsection(doc, isLondon ? "3.7 Healthy Streets Designers Checklist" : "3.8 Healthy Streets Designers Checklist");
   ldnNote(doc, isLondon
     ? "TfL's Healthy Streets Check for Designers workbook (31 metrics, XLSX) should be completed for both existing and proposed conditions for any street the scheme alters — scoring as highly as possible across all 10 indicators and eliminating any score of zero (Appendix D). This screening engine does not run the Check."
     : "Where the local authority operates a Healthy Streets or equivalent framework, the relevant check should be appended.");
 
-  ldnSubsection(doc, "3.9 On-Site Public Realm");
+  ldnSubsection(doc, isLondon ? "3.8 On-Site Public Realm" : "3.9 On-Site Public Realm");
   ldnNote(doc, "The proposed on-site streets, squares and routes (legibility, accessibility, greening, play) are a design-team output assessed against Healthy Streets and the London Plan; not produced by the engine.");
 
-  ldnSubsection(doc, "3.10 Pedestrian and Cycle Access");
+  ldnSubsection(doc, isLondon ? "3.9 Pedestrian and Cycle Access" : "3.10 Pedestrian and Cycle Access");
   ldnNote(doc, "The proposed pedestrian and cycle access points, their connection to the surrounding network, and visibility / desire-line provision are a design output; swept-path and visibility drawings are appended (Appendix I).");
 
-  ldnSubsection(doc, "3.11 Vehicle Access");
+  ldnSubsection(doc, isLondon ? "3.10 Vehicle Access" : "3.11 Vehicle Access");
   ldnNote(doc, isLondon
     ? "The proposed vehicle access (site-access geometry, visibility splays, swept paths for the design and refuse vehicles) is a design output. Any works to the public highway require a Stage 1 Road Safety Audit (Appendix F) and, on the TLRN, a Section 278 agreement with TfL; the engine produces neither."
     : "The proposed vehicle access and any highway works require a Stage 1 Road Safety Audit to the local highway authority's standards.");
 
-  ldnSubsection(doc, "3.12 Cycle Parking");
+  ldnSubsection(doc, isLondon ? "3.11 Cycle Parking" : "3.12 Cycle Parking");
   ldnNote(doc, isLondon
     ? "Cycle parking provision (long- and short-stay) is set by London Plan policy T5 / Table 10.2 by use class, with the London Cycling Design Standards governing layout. Provision should be calculated against the final scheme; the engine does not size it."
     : "Cycle parking should be provided to the adopted local plan standards.");
 
-  ldnSubsection(doc, "3.13 Delivery and Servicing");
+  ldnSubsection(doc, isLondon ? "3.12 Delivery and Servicing" : "3.13 Delivery and Servicing");
   ldnNote(doc, isLondon
     ? "Servicing, deliveries and refuse collection should be accommodated on-site wherever possible, with swept-path analysis for the design vehicle (Appendix I) and a Delivery and Servicing Plan prepared in line with TfL guidance. Where the site fronts a TLRN red route, kerbside servicing is governed by the red-route restrictions and must be agreed with TfL."
     : "Servicing and refuse collection should be accommodated on-site with swept-path analysis and a Delivery and Servicing Plan to the local authority's standards.");
 
-  ldnSubsection(doc, "3.14 Car Parking");
+  ldnSubsection(doc, isLondon ? "3.13 Car Parking" : "3.14 Car Parking");
   ldnNote(doc, isLondon
     ? "Car-parking maxima are set by London Plan policy T6 sub-policies — Table 10.3 (T6.1 residential), Table 10.4 (T6.2 office) and Table 10.5 (T6.3 retail), each banded by PTAL and use class; T6.4 hotel and leisure is PTAL-band narrative with no numbered maxima; Table 10.6 (T6.5) sets disabled-persons provision. Car-free / car-lite development is the starting point under Policy T6 Part B. The car-free / permit-free justification and blue-badge provision should be set against the final scheme; the engine does not size them."
     : "Car parking should be assessed against the adopted local plan parking standards for the area.");
   doc.fillColor("black");
   doc.moveDown(0.3);
 
-  // --- Ch 4 Active Travel Zone Assessment ---------------------------------
-  ldnSection(doc, "4.0 ACTIVE TRAVEL ZONE ASSESSMENT");
+  // --- Ch 4 Pedestrian Comfort (PCL) — LONDON ONLY ------------------------
+  // Velocity's Chapter 4 is the TfL Pedestrian Comfort Level assessment.
+  // The engine carries no footway-survey or pedestrian-count data, so this
+  // is a structured framework + "prepared at submittal / survey inputs
+  // uploaded" stub in the existing ldnNote style — a skeleton, not invented
+  // numbers. Non-London UK regions do not get this chapter (the ATZ chapter
+  // below stays their Chapter 4).
+  if (isLondon) {
+    ldnSection(doc, "4.0 PEDESTRIAN COMFORT (PCL)");
+    ldnChapterIntro(doc, "i.e. Are the footways and crossings around the site comfortable for the people who will use them, once the development's pedestrian demand is added? Assessed with TfL's Pedestrian Comfort Level (PCL) methodology.");
+
+    ldnSubsection(doc, "4.1 Introduction and Methodology");
+    ldnNote(doc, "Footway and crossing comfort is assessed with TfL's Pedestrian Comfort Level (PCL) method — peak pedestrian flow per metre of effective footway width is compared against the TfL PCL comfort bands (A+ to E-). The assessment requires footway widths, an obstruction/effective-width audit and surveyed pedestrian flows on the busiest nearby footways. None of these are produced by this screening engine; the survey pack is uploaded and the PCL worksheets prepared at submittal.");
+
+    ldnSubsection(doc, "4.2 Assessment Scenarios");
+    ldnNote(doc, "PCL is reported across the four scenarios Velocity assesses: Base 2024 (surveyed), Sensitivity 2024, Future Base 2040 (background growth) and 2040 + Development. The scenario flows are built from the surveyed base plus the forecast additional pedestrian trips (below); the engine does not generate the scenario pedestrian matrices.");
+
+    ldnSubsection(doc, "4.3 Forecast Additional Pedestrian Trips");
+    ldnNote(doc, "The development's additional pedestrian trips by mode (walk-all-the-way plus the walk leg of public-transport trips) feed the PCL scenarios. These derive from the trip generation in Chapter 6 once the full multi-modal split is prepared; the screening engine outputs only the car-mode estimate, so the pedestrian trip table is prepared at submittal (Velocity Table 4-6 equivalent).");
+
+    ldnSubsection(doc, "4.4 Pedestrian Movement Distribution and Assignment");
+    ldnNote(doc, "The forecast pedestrian trips are distributed to the surrounding footways and crossings along the key desire lines (to stations, the town centre and local amenities) and assigned to the assessed links. This distribution is a manual, survey-informed step and is not produced by the engine.");
+
+    ldnSubsection(doc, "4.5 Observed Crossing Flows and Queues");
+    ldnNote(doc, "Observed pedestrian flows and queues at the key crossings are surveyed at the AM, lunchtime and PM 15-minute peaks. The survey data is uploaded at submittal; the engine carries no crossing-count data.");
+
+    ldnSubsection(doc, "4.6 PCL Summary");
+    ldnNote(doc, "The footway and crossing PCL bands across all four scenarios are summarised in the PCL summary tables (Velocity Tables 4-10 and 4-15 equivalents), flagging any footway or crossing falling below the comfort threshold under 2040 + Development. Prepared at submittal from the surveyed inputs.");
+    doc.moveDown(0.3);
+  }
+
+  // --- Ch 5 Active Travel Zone (London) / Ch 4 ATZ (other UK) -------------
+  ldnSection(doc, isLondon ? "5.0 ACTIVE TRAVEL ZONE" : "4.0 ACTIVE TRAVEL ZONE ASSESSMENT");
   if (isLondon) ldnChapterIntro(doc, "i.e. How will people of all abilities make the key journeys in the Active Travel Zone — the 20-minute cycle around the site (TfL WebCAT) — that are essential to support car-free lifestyles?");
 
-  ldnSubsection(doc, "4.1 Introduction");
+  ldnSubsection(doc, isLondon ? "5.1 Introduction" : "4.1 Introduction");
   ldnNote(doc, isLondon
-    ? "The Active Travel Zone (ATZ) — the 20-minute cycle catchment from the site, with 5 / 10 / 15-minute walking isochrones — is required in Chapter 4 of a TfL Healthy Streets TA and is generated through WebCAT 3.0. The engine does not produce isochrones; the WebCAT export and the route-survey pack are appended (Appendix J)."
+    ? "The Active Travel Zone (ATZ) — the 20-minute cycle catchment from the site, with 5 / 10 / 15-minute walking isochrones — is required in a TfL Healthy Streets TA and is generated through WebCAT 3.0. The engine does not produce isochrones; the WebCAT export and the route-survey pack are appended (Appendix J)."
     : "Where applicable, an active-travel catchment analysis should be appended.");
 
-  ldnSubsection(doc, "4.2 Map 1 — Active Travel Zone Catchment");
+  ldnSubsection(doc, isLondon ? "5.2 Map One — Active Travel Zone Catchment" : "4.2 Map 1 — Active Travel Zone Catchment");
   ldnNote(doc, "WebCAT 20-minute cycle / walking-isochrone catchment map centred on the site. Generated at submittal; not produced by the engine.");
 
-  ldnSubsection(doc, "4.3 Map 2 — Key Walking and Cycling Routes");
+  ldnSubsection(doc, isLondon ? "5.3 Map Two — Key Walking and Cycling Routes" : "4.3 Map 2 — Key Walking and Cycling Routes");
   ldnNote(doc, "The key walking and cycling routes between the site and the destinations people need to reach (stations, town centre, schools, open space) within the catchment. Generated at submittal.");
 
-  ldnSubsection(doc, "4.4 Route Surveys");
-  ldnNote(doc, "Each key route is audited on foot / by cycle at ~150 m intervals against the 10 Healthy Streets Indicators, with survey photographs, identifying barriers and improvement opportunities. A manual survey task; not produced by the engine.");
+  if (isLondon) {
+    ldnSubsection(doc, "5.4 Key-Destination Prioritisation");
+    ldnNote(doc, "The destinations people most need to reach from the site are prioritised to select the agreed key routes for the Healthy Streets analysis (Velocity Table 5-1 equivalent). The prioritisation is agreed with the borough/TfL at scoping and is not produced by the engine.");
+  }
 
-  ldnSubsection(doc, "4.5 KSI (Collision) Analysis");
+  ldnSubsection(doc, isLondon ? "5.5 Route Surveys — Healthy Streets Indicators" : "4.4 Route Surveys");
   ldnNote(doc, isLondon
-    ? "A Killed-or-Seriously-Injured / Vision Zero collision-cluster analysis over the latest available period (typically 5 years of police STATS19 / TfL Personal Injury data) across the ATZ key routes, to identify safety constraints the scheme should not worsen and may help address. Not produced by the engine."
+    ? "Each of the ~5 agreed key routes is audited on foot / by cycle at ~150 m intervals against the 10 Healthy Streets Indicators, with survey photographs and a Neighbourhood Photo Survey, identifying barriers and improvement opportunities. The per-route Healthy Streets Indicator scoring tables (Velocity Tables 5-2 … 5-6 equivalents) are a manual survey output prepared at submittal; the engine carries no route-survey data."
+    : "Each key route is audited on foot / by cycle at ~150 m intervals against the 10 Healthy Streets Indicators, with survey photographs, identifying barriers and improvement opportunities. A manual survey task; not produced by the engine.");
+  if (isLondon) {
+    // Per-route Healthy Streets Indicator table framework. Survey inputs
+    // uploaded at submittal; the engine emits the skeleton only.
+    table(doc, {
+      headers: ["Key route", "Healthy Streets Indicators assessed", "Status"],
+      widths: [150, 246, 100],
+      align: ["left", "left", "left"],
+      rows: [
+        ["Route 1", "10 HSI (pedestrians from all walks of life … things to see & do)", "Survey at submittal"],
+        ["Route 2", "10 HSI", "Survey at submittal"],
+        ["Route 3", "10 HSI", "Survey at submittal"],
+        ["Route 4", "10 HSI", "Survey at submittal"],
+        ["Route 5", "10 HSI", "Survey at submittal"],
+      ],
+    });
+    doc.moveDown(0.3);
+  }
+
+  ldnSubsection(doc, isLondon ? "5.6 Vision Zero / KSI (Collision) Analysis" : "4.5 KSI (Collision) Analysis");
+  ldnNote(doc, isLondon
+    ? "A Vision Zero analysis using DfT personal-injury collision data — the latest 3 years of Killed-or-Seriously-Injured (KSI) records (police STATS19 / TfL Personal Injury data) — across the ATZ key routes, with a collision map, to identify safety constraints the scheme should not worsen and may help address. Not produced by the engine."
     : "A collision-history analysis over the latest available period should be appended.");
 
-  ldnSubsection(doc, "4.6 Map 3 — Constraints and Opportunities");
+  ldnSubsection(doc, isLondon ? "5.7 Map Three — Constraints and Opportunities" : "4.6 Map 3 — Constraints and Opportunities");
   ldnNote(doc, "A synthesis map of severance, desire lines, collision clusters and Healthy Streets constraints / opportunities across the catchment, informing the scheme's active-travel strategy. Generated at submittal.");
   doc.moveDown(0.3);
 
-  // --- Ch 5 London-Wide Network -------------------------------------------
-  ldnSection(doc, "5.0 LONDON-WIDE NETWORK");
-  if (isLondon) ldnChapterIntro(doc, "i.e. How will people of all abilities travel smoothly and easily from the development onto London's public transport and highway networks? This chapter covers trip generation (especially public transport, including linked trips), design solutions / mitigation for network-capacity impacts, and modelling where required.");
+  // --- Ch 6 Public Transport & Trip Generation (London) / Ch 5 (other UK) -
+  // London (Velocity format): "6 Public Transport & Trip Generation" — the
+  // PTAL band/map opens the chapter, followed by service frequencies, trip
+  // generation (the engine's car-mode estimate), net-change demand and the
+  // network/capacity assessment. The PTAL block is relocated here verbatim
+  // from §3.4. Other UK regions keep "Ch 5 London-Wide Network" unchanged.
+  ldnSection(doc, isLondon ? "6.0 PUBLIC TRANSPORT & TRIP GENERATION" : "5.0 LONDON-WIDE NETWORK");
+  if (isLondon) ldnChapterIntro(doc, "i.e. How will people of all abilities travel smoothly and easily from the development onto London's public transport and highway networks? This chapter covers the site's PTAL, public-transport service frequencies, trip generation (especially public transport, including linked trips), net-change travel demand, design solutions / mitigation for network-capacity impacts, and modelling where required.");
 
-  ldnSubsection(doc, "5.1 Introduction");
+  ldnSubsection(doc, isLondon ? "6.1 Introduction" : "5.1 Introduction");
   ldnNote(doc, "This chapter establishes the development's travel demand, distributes it across the public-transport and highway networks, and assesses the resulting impact and any mitigation.");
 
-  ldnSubsection(doc, "5.2 Existing Site");
+  // PTAL block, relocated here from §3.4 for the Velocity / London format.
+  if (isLondon) {
+    renderPtalAccessBlock("6.2");
+    ldnSubsection(doc, "6.3 Public Transport Service Frequencies");
+    ldnNote(doc, "Bus, Underground, Elizabeth line, DLR and National Rail service frequencies at the nearest stops/stations (Velocity Tables 6-1 … 6-3 equivalents) are drawn from TfL/rail-industry timetables at submittal; the engine carries no timetable data.");
+  }
+
+  ldnSubsection(doc, isLondon ? "6.4 Existing Site" : "5.2 Existing Site");
   {
     const priorUse = String(req.priorUse ?? "").trim();
     ldnNote(doc, priorUse
@@ -3288,7 +3616,7 @@ function renderTisLondon(
       : "Any trips generated by the site's existing / most-recent lawful use should be netted from the proposed demand below (set TisRequest.priorUse to surface this).");
   }
 
-  ldnSubsection(doc, "5.3 Residential Travel Demand (TRICS proxy — engine ITE 11th Edition)");
+  ldnSubsection(doc, isLondon ? "6.5 Travel Demand / Trip Generation (TRICS proxy — engine ITE 11th Edition)" : "5.3 Residential Travel Demand (TRICS proxy — engine ITE 11th Edition)");
   {
     const appliedShare = Number(r.autoModeShareApplied);
     const sharePct = Number.isFinite(appliedShare) && appliedShare > 0
@@ -3315,10 +3643,10 @@ function renderTisLondon(
   });
   doc.moveDown(0.4);
 
-  ldnSubsection(doc, "5.4 Non-Residential Travel Demand (TRICS)");
+  ldnSubsection(doc, isLondon ? "6.6 Non-Residential Travel Demand (TRICS)" : "5.4 Non-Residential Travel Demand (TRICS)");
   ldnNote(doc, "Where the scheme includes non-residential floorspace (retail, office, community), its TRICS multi-modal demand is assessed separately and added to the residential demand. The engine models a single primary land use; any mix should be assessed at submittal.");
 
-  ldnSubsection(doc, "5.5 Total Travel Demand");
+  ldnSubsection(doc, isLondon ? "6.7 Total Travel Demand (Net Change)" : "5.5 Total Travel Demand");
   {
     const appliedShare = Number(r.autoModeShareApplied);
     const sharePct = Number.isFinite(appliedShare) && appliedShare > 0
@@ -3358,16 +3686,16 @@ function renderTisLondon(
     doc.moveDown(0.4);
   }
 
-  ldnSubsection(doc, "5.6 Delivery and Servicing Trips");
+  ldnSubsection(doc, isLondon ? "6.8 Delivery and Servicing Trips" : "5.6 Delivery and Servicing Trips");
   ldnNote(doc, "Delivery, servicing and refuse-vehicle trips are generated separately (typically by GFA / unit count against TfL or freight-survey rates) and added to the demand. Not produced by the engine; assess against the Delivery and Servicing Plan at submittal.");
 
-  ldnSubsection(doc, "5.7 Site Land Use Quantum");
+  ldnSubsection(doc, isLondon ? "6.9 Site Land Use Quantum" : "5.7 Site Land Use Quantum");
   ldnNote(doc, `Assessed quantum: land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at ${tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"}. A mixed-use scheme should tabulate GFA / units per use class here.`);
 
-  ldnSubsection(doc, "5.8 Servicing Accumulation Profile");
+  ldnSubsection(doc, isLondon ? "6.10 Servicing Accumulation Profile" : "5.8 Servicing Accumulation Profile");
   ldnNote(doc, "The hourly accumulation of servicing / delivery vehicles (to size on-site servicing bays and confirm no overspill to the highway) is a Delivery and Servicing Plan output; not produced by the engine.");
 
-  ldnSubsection(doc, "5.9 Trip Distribution Methodology");
+  ldnSubsection(doc, isLondon ? "6.11 Trip Distribution Methodology" : "5.9 Trip Distribution Methodology");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Net car trips are assigned to the study network proportionally to junction proximity (gravity-model assignment, volume × distance⁻¹·⁵). For a submitted TA, distribution should be agreed in the scoping note signed by the LPA and (in London) TfL; for major schemes affecting the TLRN, TfL's strategic models (MoTiON for demand, LoHAM and the sub-regional HAMs for highway assignment, Railplan for PT) would be referenced and may need to be run under TfL's Model Auditing Process (MAP v4).",
     { paragraphGap: 6 },
@@ -3391,22 +3719,24 @@ function renderTisLondon(
       : { headers: ["Junction", "Dist (mi)", "Added trips PM", "Share of added PM"], widths: [220, 70, 110, 100], align: ["left", "right", "right", "right"], rows: distRows });
     doc.moveDown(0.3);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "Net car trips assigned per junction (engine gravity-model assignment). Bus / Underground / rail person-trip distribution is not produced by the engine — see §5.10–§5.12.",
+      isLondon
+        ? "Net car trips assigned per junction (engine gravity-model assignment). Bus / Underground / rail person-trip distribution is not produced by the engine — see §6.12–§6.14."
+        : "Net car trips assigned per junction (engine gravity-model assignment). Bus / Underground / rail person-trip distribution is not produced by the engine — see §5.10–§5.12.",
       { paragraphGap: 4 },
     );
     doc.fillColor("black");
   }
 
-  ldnSubsection(doc, "5.10 Bus Trip Distribution");
+  ldnSubsection(doc, isLondon ? "6.12 Bus Trip Distribution" : "5.10 Bus Trip Distribution");
   ldnNote(doc, "Bus-mode person-trips are distributed across the local bus network using TfL route and patronage data. Not produced by the engine; prepare at submittal where bus mode share is material.");
 
-  ldnSubsection(doc, "5.11 LUL (Underground) Trip Distribution");
+  ldnSubsection(doc, isLondon ? "6.13 LUL (Underground) Trip Distribution" : "5.11 LUL (Underground) Trip Distribution");
   ldnNote(doc, "Underground person-trips are distributed to the nearest stations and assessed against gateline / interchange capacity using TfL data. Not produced by the engine.");
 
-  ldnSubsection(doc, "5.12 Train Trip Distribution");
+  ldnSubsection(doc, isLondon ? "6.14 Train Trip Distribution" : "5.12 Train Trip Distribution");
   ldnNote(doc, "National Rail / Overground / Elizabeth line / DLR person-trips are distributed to the nearest stations and assessed against capacity using rail-industry / TfL data. Not produced by the engine.");
 
-  ldnSubsection(doc, "5.13 Road Network Impact");
+  ldnSubsection(doc, isLondon ? "6.15 Road Network Impact" : "5.13 Road Network Impact");
   {
     const hasDesign = intersections[0]?.designNoBuildVc != null;
     const oy = String(req.openingYear ?? "—");
@@ -3428,7 +3758,7 @@ function renderTisLondon(
     ldnNote(doc, "Committed-development (cumulative) flows and zonal TEMPRO / NTM growth factors are not produced by this engine — a single flat background-growth rate is applied; both should be added at submittal.");
   }
 
-  ldnSubsection(doc, "5.14 LinSig Modelling");
+  ldnSubsection(doc, isLondon ? "6.16 LinSig Modelling" : "5.14 LinSig Modelling");
   if (isLondon) ldnNote(doc, "A submitted TA models the affected signalised junctions in LinSig 3 (or TRANSYT / Junctions 11 / VISSIM as appropriate) with measured geometry, the stage / phase diagram and a saturation-flow survey, audited under TfL's Model Auditing Process (Appendix C). The engine's signalised Degree-of-Saturation result below (per DMRB CD 123 / TRL RR67) stands in for that at the screening level — see §1.8.");
   // Sub-threshold residential schemes (Registry Beckenham 134 DU,
   // Hyde Estate 115 DU) carry no junction model in their published TAs
@@ -3488,7 +3818,7 @@ function renderTisLondon(
     ranked.slice(0, DETAIL_CAP).forEach((it, i) => {
       const amIt = amBySignal.get(String(it.signalId ?? it.name));
       const noBuildPm = ukCapacityForIntersection(it, "noBuild");
-      ldnSubsection(doc, `Table 5.14.${i + 1} — Signalised capacity (DoS / PRC / MMQ): ${it.name ?? it.signalId ?? "junction"}`);
+      ldnSubsection(doc, `Table ${isLondon ? "6.16" : "5.14"}.${i + 1} — Signalised capacity (DoS / PRC / MMQ): ${it.name ?? it.signalId ?? "junction"}`);
       const scRows = scenarios.map((s) => {
         const pm = ukCapacityForIntersection(it, s.key);
         const worse = s.key === "build" && pm.dosPct > noBuildPm.dosPct + 0.05;
@@ -3560,7 +3890,7 @@ function renderTisLondon(
   }
   doc.moveDown(0.3);
 
-  ldnSubsection(doc, "5.15 Site Access and Junction Capacity — Design Solutions and Mitigation");
+  ldnSubsection(doc, isLondon ? "6.17 Site Access and Junction Capacity — Design Solutions and Mitigation" : "5.15 Site Access and Junction Capacity — Design Solutions and Mitigation");
   const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
   if (needMitigation.length > 0) {
     doc.font("body").fontSize(10).fillColor("black").text(
@@ -3585,54 +3915,90 @@ function renderTisLondon(
   }
   doc.moveDown(0.3);
 
-  // --- Ch 6 Additional Borough Analysis -----------------------------------
-  ldnSection(doc, "6.0 ADDITIONAL BOROUGH ANALYSIS");
-  if (isLondon) ldnChapterIntro(doc, "i.e. Any additional analysis the relevant London borough requests, kept in this dedicated chapter rather than mixed into the others above, with its inclusion justified.");
-  ldnNote(doc, isLondon
-    ? "Any borough-specific analysis requested at scoping — relevant Local Plan policies, Supplementary Planning Documents (parking, cycle parking, travel plan, S106), and any local cumulative-impact assessment from the Planning London Datahub approved-development pipeline — is presented in this dedicated chapter. The two items below are the borough analyses the canonical Holloway Park TA carried; both are bespoke and not produced by this screening engine."
-    : "Local-authority-specific policies (Local Plan, Supplementary Planning Documents, parking standards) are not produced by this screening engine.");
+  if (isLondon) {
+    // --- Ch 7 Planning Policy Delivery (Velocity / London) ----------------
+    // Velocity's Chapter 7 is the strategic-policy-delivery chapter: a table
+    // of how the scheme meets NPPF / London Plan / MTS / City-of-London
+    // policy, then the outline management plans (DSP, Operational Waste
+    // Management Plan, Cycle Promotion Plan, Construction Logistics Plan).
+    // The old "Additional Borough Analysis" PCL item now lives in Ch 4; the
+    // construction-logistics detail is condensed into the CLP plan below.
+    ldnSection(doc, "7.0 PLANNING POLICY DELIVERY");
+    ldnChapterIntro(doc, "i.e. How does the scheme deliver against the strategic transport policies, and which management plans secure that delivery through to occupation and operation?");
 
-  ldnSubsection(doc, "6.1 Pedestrian Comfort Level (PCL) Analysis");
-  ldnNote(doc, "TfL's Pedestrian Comfort Level methodology assesses footway crowding on the busiest nearby footways (peak pedestrian flow ÷ effective footway width → PCL band A–F+). Required where the scheme adds significant pedestrian demand. Not produced by the engine.");
+    ldnSubsection(doc, "7.1 Strategic Policy Delivery");
+    ldnNote(doc, "A strategic-policy-delivery table sets out how the scheme responds to each relevant policy — NPPF Chapter 9 (sustainable transport), London Plan policies T1–T9, the Mayor's Transport Strategy (the 80% sustainable-mode target), Healthy Streets, and the City of London Local Plan and Transport Strategy. The policy text is fixed; the per-scheme delivery commitments are drafted by the chartered engineer with the design team and are not produced by this screening engine.");
+    table(doc, {
+      headers: ["Policy", "Delivery mechanism", "Status"],
+      widths: [186, 210, 100],
+      align: ["left", "left", "left"],
+      rows: [
+        ["NPPF Ch 9 (sustainable transport)", "Vision-led, car-free/car-lite scheme; sustainable-mode priority", "Drafted at submittal"],
+        ["London Plan T1–T9", "Healthy Streets, cycle parking (T5), PTAL-banded car parking (T6)", "Drafted at submittal"],
+        ["Mayor's Transport Strategy", "Contribution to the 80% sustainable-mode-share target", "Drafted at submittal"],
+        ["City of London Local Plan + Transport Strategy", "Square Mile Healthy Streets / Vision Zero alignment", "Drafted at submittal"],
+      ],
+    });
+    doc.moveDown(0.4);
 
-  ldnSubsection(doc, "6.2 Approach to Access Road Design");
-  ldnNote(doc, "The design rationale for the proposed access road(s) — geometry, widths, speed control, materials, Healthy Streets fit and adoption (S38 / S278) — is a design-team output presented here at the borough's request; not produced by the engine.");
-  doc.moveDown(0.3);
+    ldnSubsection(doc, "7.2 Delivery and Servicing Plan (DSP)");
+    ldnNote(doc, "An outline Delivery and Servicing Plan — consolidated, retimed and off-peak servicing to minimise kerbside demand — is prepared on the TfL DSP template at submittal. Where the City of London applies, the servicing demand is estimated via the City's Loading Bay Ready Reckoner and off-site freight consolidation is assumed; neither is produced by the engine.");
 
-  // --- Ch 7 Construction Logistics Plan -----------------------------------
-  ldnSection(doc, "7.0 CONSTRUCTION LOGISTICS PLAN");
-  if (isLondon) ldnChapterIntro(doc, "i.e. How will construction impacts be managed? TfL requires a completed Construction Logistics Plan for major applications, dealing with all construction phases and the safety of pedestrians and cyclists.");
+    ldnSubsection(doc, "7.3 Operational Waste Management Plan");
+    ldnNote(doc, "An outline Operational Waste Management Plan setting out on-site storage, collection frequencies and swept-path access for the refuse vehicle. A design-team / project-team output, prepared at submittal.");
 
-  ldnSubsection(doc, "7.1 Introduction");
-  ldnNote(doc, "A Construction Logistics Plan (CLP) and Delivery and Servicing Plan are required at submittal for a major application; they are prepared on TfL's CLP template and are not produced by this screening engine. The subsections below mirror the canonical CLP structure.");
+    ldnSubsection(doc, "7.4 Cycle Promotion Plan");
+    ldnNote(doc, "An outline Cycle Promotion Plan — cycle-parking provision (London Plan T5), end-of-trip facilities, and the measures to encourage cycling among occupiers and visitors. Prepared at submittal.");
 
-  ldnSubsection(doc, "7.2 Context, Considerations and Challenges");
-  ldnNote(doc, "Site context and the principal construction constraints (proximity to busy footways, schools, cycle routes, a TLRN red route or a major junction) that the CLP must mitigate.");
+    ldnSubsection(doc, "7.5 Construction Logistics Plan (CLP)");
+    ldnNote(doc, "An outline Construction Logistics Plan on TfL's CLP template — construction programme and methodology, approved HGV routing and site access, consolidation/retiming and FORS/CLOCS measures to protect pedestrians and cyclists, estimated vehicle movements by phase, and the monitoring/updating regime through the build. The CLP is a live document confirmed with the contractor; it is not produced by this screening engine.");
+    doc.moveDown(0.3);
+  } else {
+    // --- Ch 6 Additional Borough Analysis (non-London UK) -----------------
+    ldnSection(doc, "6.0 ADDITIONAL BOROUGH ANALYSIS");
+    ldnNote(doc, "Local-authority-specific policies (Local Plan, Supplementary Planning Documents, parking standards) are not produced by this screening engine.");
 
-  ldnSubsection(doc, "7.3 Construction Programme and Methodology");
-  ldnNote(doc, "The build programme by phase (demolition, substructure, superstructure, fit-out) and the construction methodology that drives vehicle demand. Project-team output.");
+    ldnSubsection(doc, "6.1 Pedestrian Comfort Level (PCL) Analysis");
+    ldnNote(doc, "TfL's Pedestrian Comfort Level methodology assesses footway crowding on the busiest nearby footways (peak pedestrian flow ÷ effective footway width → PCL band A–F+). Required where the scheme adds significant pedestrian demand. Not produced by the engine.");
 
-  ldnSubsection(doc, "7.4 Vehicle Routing and Site Access");
-  ldnNote(doc, "Approved HGV routes to / from the strategic network, the construction access point(s), and any holding / call-up arrangement to keep vehicles off the local network.");
+    ldnSubsection(doc, "6.2 Approach to Access Road Design");
+    ldnNote(doc, "The design rationale for the proposed access road(s) — geometry, widths, speed control, materials, Healthy Streets fit and adoption (S38 / S278) — is a design-team output presented here at the borough's request; not produced by the engine.");
+    doc.moveDown(0.3);
 
-  ldnSubsection(doc, "7.5 Strategies to Reduce Impacts");
-  ldnNote(doc, "Measures to reduce and consolidate vehicle movements and protect pedestrians and cyclists — consolidation centres, retiming outside peaks, FORS / CLOCS accreditation, banksmen, hoarding and wayfinding.");
+    // --- Ch 7 Construction Logistics Plan (non-London UK) -----------------
+    ldnSection(doc, "7.0 CONSTRUCTION LOGISTICS PLAN");
 
-  ldnSubsection(doc, "7.6 Estimated Vehicle Movements");
-  ldnNote(doc, "Estimated construction-vehicle movements by phase (the TfL CLP spreadsheet output), with the peak-day / peak-hour totals the local network must absorb. Not produced by the engine.");
+    ldnSubsection(doc, "7.1 Introduction");
+    ldnNote(doc, "A Construction Logistics Plan (CLP) and Delivery and Servicing Plan are required at submittal for a major application; they are prepared on TfL's CLP template and are not produced by this screening engine. The subsections below mirror the canonical CLP structure.");
 
-  ldnSubsection(doc, "7.7 Implementing, Monitoring and Updating");
-  ldnNote(doc, "How the CLP is implemented and governed across the build, including the responsible parties and the trigger points for review.");
+    ldnSubsection(doc, "7.2 Context, Considerations and Challenges");
+    ldnNote(doc, "Site context and the principal construction constraints (proximity to busy footways, schools, cycle routes, a TLRN red route or a major junction) that the CLP must mitigate.");
 
-  ldnSubsection(doc, "7.8 Monitoring");
-  ldnNote(doc, "The monitoring regime — vehicle logs, complaint handling and compliance reporting to the borough / TfL.");
+    ldnSubsection(doc, "7.3 Construction Programme and Methodology");
+    ldnNote(doc, "The build programme by phase (demolition, substructure, superstructure, fit-out) and the construction methodology that drives vehicle demand. Project-team output.");
 
-  ldnSubsection(doc, "7.9 Updating");
-  ldnNote(doc, "The CLP is a live document, updated as the contractor, programme and methodology are confirmed; meanwhile uses should be considered where possible.");
-  doc.moveDown(0.3);
+    ldnSubsection(doc, "7.4 Vehicle Routing and Site Access");
+    ldnNote(doc, "Approved HGV routes to / from the strategic network, the construction access point(s), and any holding / call-up arrangement to keep vehicles off the local network.");
 
-  // --- Ch 8 Conclusion ----------------------------------------------------
-  ldnSection(doc, "8.0 CONCLUSION");
+    ldnSubsection(doc, "7.5 Strategies to Reduce Impacts");
+    ldnNote(doc, "Measures to reduce and consolidate vehicle movements and protect pedestrians and cyclists — consolidation centres, retiming outside peaks, FORS / CLOCS accreditation, banksmen, hoarding and wayfinding.");
+
+    ldnSubsection(doc, "7.6 Estimated Vehicle Movements");
+    ldnNote(doc, "Estimated construction-vehicle movements by phase (the TfL CLP spreadsheet output), with the peak-day / peak-hour totals the local network must absorb. Not produced by the engine.");
+
+    ldnSubsection(doc, "7.7 Implementing, Monitoring and Updating");
+    ldnNote(doc, "How the CLP is implemented and governed across the build, including the responsible parties and the trigger points for review.");
+
+    ldnSubsection(doc, "7.8 Monitoring");
+    ldnNote(doc, "The monitoring regime — vehicle logs, complaint handling and compliance reporting to the borough / TfL.");
+
+    ldnSubsection(doc, "7.9 Updating");
+    ldnNote(doc, "The CLP is a live document, updated as the contractor, programme and methodology are confirmed; meanwhile uses should be considered where possible.");
+    doc.moveDown(0.3);
+  }
+
+  // --- Ch 8 Summary and Conclusions (London) / Conclusion (other UK) ------
+  ldnSection(doc, isLondon ? "8.0 SUMMARY AND CONCLUSIONS" : "8.0 CONCLUSION");
   if (isLondon) {
     ldnChapterIntro(doc, "i.e. The summary table below — the matrix TfL recommends for a Healthy Streets TA conclusion — sets out the key transport impacts/issues and the solutions/mechanisms that respond to them. Outcomes (planning obligations, design changes, mitigation) are to be agreed between the applicant, the borough and TfL before planning permission is recommended.");
     const networkImpact = (losDrops === 0 && losEf === 0)
