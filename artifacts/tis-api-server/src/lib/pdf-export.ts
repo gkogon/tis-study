@@ -40,6 +40,9 @@ import {
   STANDARD_CONDITIONS, STANDARD_METHODOLOGY_SOURCE,
 } from "./standard-methodology";
 import {
+  CONCURRENCY_LOS_LEGEND, CONCURRENCY_SOURCE, stationsForStudyArea, assessConcurrency,
+} from "./fl-concurrency-stations";
+import {
   FDOT_ARTERIAL_GSVT,
   floridaGsvtServiceVolume,
   floridaRepresentativeK,
@@ -7216,6 +7219,53 @@ function renderTisFlorida(
     doc.fillColor("black");
   }
   doc.fillColor("black");
+
+  // --- 12.1 Concurrency Station Determination (Miami-Dade trip bank) -----
+  if (jur.key === "miami_dade") {
+    gaSubsection(doc, "12.1 Concurrency Station Determination");
+    const pmIn = Number(tg.pmIn ?? 0), pmOut = Number(tg.pmOut ?? 0);
+    const peakDir = Math.max(pmIn, pmOut, Number(tg.pmPeakTrips ?? 0) / 2);
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Miami-Dade administers roadway concurrency through a monitored "trip bank": each link is a concurrency station with an adopted peak-hour maximum-service volume, the existing peak-direction volume, reserved (date-of-service) trips, and the resulting AVAILABLE TRIPS a development may reserve. The project's net new peak-hour peak-direction trips on each adjacent link (≈ ${Math.round(peakDir)} site-total peak-direction trips before distribution) are compared to that link's available trips; a link where the project adds ≥ 5% of the maximum-service volume is a significant impact. Source: ${CONCURRENCY_SOURCE}`,
+      { paragraphGap: 6 },
+    );
+    const studyNames = intersections.map((it: any) => String(it.name ?? it.signalId ?? "")).filter(Boolean);
+    const matched = stationsForStudyArea(studyNames);
+    if (matched.length) {
+      doc.font("body").fontSize(10).fillColor("black").text(
+        `Published concurrency stations matched to the study-area roadways (${matched.length}):`,
+        { paragraphGap: 4 },
+      );
+      table(doc, {
+        headers: ["Sta.", "Roadway", "Max LOS", "Avail.", "Adopt", "Conc", "After proj."],
+        widths: [38, 196, 56, 50, 48, 48, 60],
+        align: ["left", "left", "right", "right", "center", "center", "right"],
+        rows: matched.map((s) => {
+          const a = assessConcurrency(s, peakDir);
+          return [String(s.id), s.roadway, fmtNum(s.maxLosVolume), fmtNum(s.availableTrips), s.adoptedLos, s.concurrencyLos, fmtNum(a.remainingAfterProject)];
+        }),
+      });
+      const deficient = matched.filter((s) => s.availableTrips < 0);
+      if (deficient.length) {
+        doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+          `${deficient.length} matched link(s) are already concurrency-deficient (negative available trips); mitigation or a proportionate-share contribution is required there per Admin. Order 4-85. "After proj." is the available trips remaining after the screening peak-direction estimate; per-link distribution must be applied at the methodology meeting.`,
+          { paragraphGap: 4 },
+        );
+        doc.fillColor("black");
+      }
+    } else {
+      doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+        "No published concurrency station could be auto-matched to the study-area roadway names. For a submittal, look up each adjacent link in the current Miami-Dade concurrency station tables (FDOT State Highway System + County roadways) and compare the project's peak-direction trips to the link's available trips.",
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+    }
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text("Concurrency LOS-standard legend:", { paragraphGap: 2 });
+    for (const [code, def] of Object.entries(CONCURRENCY_LOS_LEGEND)) {
+      doc.text(`• ${code} — ${def}`, { paragraphGap: 1 });
+    }
+    doc.fillColor("black").moveDown(0.4);
+  }
 
   // --- 13.0 Programmed Projects -----------------------------------------
   gaSection(doc, "13.0 PROGRAMMED PROJECTS");
