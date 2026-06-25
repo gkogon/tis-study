@@ -10,6 +10,7 @@ import type { TisAffectedIntersectionFutureLos } from "./tisAffectedIntersection
 import type { TisAffectedIntersectionMitigationSeverity } from "./tisAffectedIntersectionMitigationSeverity";
 import type { TisApproachImpact } from "./tisApproachImpact";
 import type { TisIntersectionCalibration } from "./tisIntersectionCalibration";
+import type { TisTurboLaneScreening } from "./tisTurboLaneScreening";
 
 export interface TisAffectedIntersection {
   signalId: string;
@@ -31,4 +32,5 @@ export interface TisAffectedIntersection {
   approaches: TisApproachImpact[];
   queue95thFt: number;
   calibration?: TisIntersectionCalibration;
+  turboLane?: TisTurboLaneScreening;
 }

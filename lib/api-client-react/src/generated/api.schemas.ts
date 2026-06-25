@@ -116,6 +116,18 @@ export const IntersectionSummarySeverity = {
   critical: "critical",
 } as const;
 
+/**
+ * Median present on the main street (divided-carriageway detection). A raised median is the physical prerequisite for a turbo lane.
+ */
+export type IntersectionSummaryMedianType =
+  (typeof IntersectionSummaryMedianType)[keyof typeof IntersectionSummaryMedianType];
+
+export const IntersectionSummaryMedianType = {
+  raised: "raised",
+  painted: "painted",
+  none: "none",
+} as const;
+
 export interface IntersectionSummary {
   id: string;
   name: string;
@@ -129,6 +141,16 @@ export interface IntersectionSummary {
   inefficiencyScore: number;
   avgDelaySeconds: number;
   severity: IntersectionSummarySeverity;
+  /** Distinct approach legs at the node (3 = T-intersection). Turbo-lane screening geometry; omitted when the region's road network isn't available. */
+  legCount?: number;
+  /** Bearing (deg from N) of the minor/stem leg of a 3-leg T, else null. */
+  minorLegBearing?: number | null;
+  /** Median present on the main street (divided-carriageway detection). A raised median is the physical prerequisite for a turbo lane. */
+  medianType?: IntersectionSummaryMedianType;
+  /** Per-direction through lanes on the main street (measured from lane tags when present, else a per-class default). */
+  mainThroughLanes?: number;
+  /** True when mainThroughLanes came from OSM lane tags rather than a class default. */
+  mainThroughLanesMeasured?: boolean;
 }
 
 export type IntersectionRoadClass =

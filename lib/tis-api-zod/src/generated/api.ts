@@ -51,6 +51,16 @@ export const generateTisBodyPassByPctMax = 70;
 export const generateTisBodyInternalCapturePctMin = 0;
 export const generateTisBodyInternalCapturePctMax = 50;
 
+export const generateTisBodyTripProfileArrivalsItemMin = 0;
+
+export const generateTisBodyTripProfileArrivalsMin = 24;
+export const generateTisBodyTripProfileArrivalsMax = 24;
+
+export const generateTisBodyTripProfileDeparturesItemMin = 0;
+
+export const generateTisBodyTripProfileDeparturesMin = 24;
+export const generateTisBodyTripProfileDeparturesMax = 24;
+
 export const GenerateTisBody = zod.object({
   projectName: zod.string().min(1),
   address: zod.string(),
@@ -114,6 +124,29 @@ export const GenerateTisBody = zod.object({
     .describe(
       "Optional ITE TGM 11th Ed. alternate independent variable (matches a `unitShort` from the land use's `secondaryVariables`). Defaults to the primary published variable.",
     ),
+  tripProfile: zod
+    .object({
+      arrivals: zod
+        .array(zod.number().min(generateTisBodyTripProfileArrivalsItemMin))
+        .min(generateTisBodyTripProfileArrivalsMin)
+        .max(generateTisBodyTripProfileArrivalsMax)
+        .describe("Relative inbound (arrival) volume in each clock hour 0–23."),
+      departures: zod
+        .array(zod.number().min(generateTisBodyTripProfileDeparturesItemMin))
+        .min(generateTisBodyTripProfileDeparturesMin)
+        .max(generateTisBodyTripProfileDeparturesMax)
+        .describe(
+          "Relative outbound (departure) volume in each clock hour 0–23.",
+        ),
+      source: zod
+        .string()
+        .optional()
+        .describe("Provenance label printed under the figures."),
+    })
+    .optional()
+    .describe(
+      "Optional consultant-supplied within-day arrival\/departure distribution that overrides the engine's default LTDS office profile for the Velocity-style Figure 2-1 (trips by start time) and Figure 6-2 (person accumulation) charts. Each array holds 24 non-negative values (clock hours 0–23); the renderer normalises each to sum to 1, so only relative magnitudes matter. Supplying this also unlocks the figures for non-office use classes.",
+    ),
 });
 
 export const generateTisResponseRequestLatitudeMin = -90;
@@ -140,6 +173,16 @@ export const generateTisResponseRequestPassByPctMax = 70;
 
 export const generateTisResponseRequestInternalCapturePctMin = 0;
 export const generateTisResponseRequestInternalCapturePctMax = 50;
+
+export const generateTisResponseRequestTripProfileArrivalsItemMin = 0;
+
+export const generateTisResponseRequestTripProfileArrivalsMin = 24;
+export const generateTisResponseRequestTripProfileArrivalsMax = 24;
+
+export const generateTisResponseRequestTripProfileDeparturesItemMin = 0;
+
+export const generateTisResponseRequestTripProfileDeparturesMin = 24;
+export const generateTisResponseRequestTripProfileDeparturesMax = 24;
 
 export const GenerateTisResponse = zod.object({
   generatedAt: zod.string(),
@@ -206,6 +249,39 @@ export const GenerateTisResponse = zod.object({
       .describe(
         "Optional ITE TGM 11th Ed. alternate independent variable (matches a `unitShort` from the land use's `secondaryVariables`). Defaults to the primary published variable.",
       ),
+    tripProfile: zod
+      .object({
+        arrivals: zod
+          .array(
+            zod
+              .number()
+              .min(generateTisResponseRequestTripProfileArrivalsItemMin),
+          )
+          .min(generateTisResponseRequestTripProfileArrivalsMin)
+          .max(generateTisResponseRequestTripProfileArrivalsMax)
+          .describe(
+            "Relative inbound (arrival) volume in each clock hour 0–23.",
+          ),
+        departures: zod
+          .array(
+            zod
+              .number()
+              .min(generateTisResponseRequestTripProfileDeparturesItemMin),
+          )
+          .min(generateTisResponseRequestTripProfileDeparturesMin)
+          .max(generateTisResponseRequestTripProfileDeparturesMax)
+          .describe(
+            "Relative outbound (departure) volume in each clock hour 0–23.",
+          ),
+        source: zod
+          .string()
+          .optional()
+          .describe("Provenance label printed under the figures."),
+      })
+      .optional()
+      .describe(
+        "Optional consultant-supplied within-day arrival\/departure distribution that overrides the engine's default LTDS office profile for the Velocity-style Figure 2-1 (trips by start time) and Figure 6-2 (person accumulation) charts. Each array holds 24 non-negative values (clock hours 0–23); the renderer normalises each to sum to 1, so only relative magnitudes matter. Supplying this also unlocks the figures for non-office use classes.",
+      ),
   }),
   studyRadiusMi: zod.number(),
   tripGeneration: zod.object({
@@ -265,6 +341,48 @@ export const GenerateTisResponse = zod.object({
         .optional()
         .describe(
           "Per-intersection calibration metadata when ground-truth observations exist for this signal.",
+        ),
+      turboLane: zod
+        .object({
+          candidate: zod.boolean(),
+          turboType: zod
+            .enum(["A", "B", "C", "D"])
+            .describe(
+              "Recommended configuration (A\/B full continuous, C\/D partial).",
+            ),
+          turboDirection: zod.enum(["NB", "SB", "EB", "WB"]),
+          minorLegDirection: zod.enum(["NB", "SB", "EB", "WB"]),
+          medianType: zod.enum(["raised", "painted"]),
+          approachLanes: zod.number(),
+          turboLanes: zod.number(),
+          throughGreenRatio: zod.number(),
+          capacityGainPct: zod
+            .number()
+            .describe(
+              "Approach-capacity improvement (%), within the study-observed 7–173% envelope.",
+            ),
+          baselineApproachVc: zod.number(),
+          mitigatedApproachVc: zod.number(),
+          baselineApproachDelaySec: zod.number(),
+          mitigatedApproachDelaySec: zod.number(),
+          baselineApproachLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+          mitigatedApproachLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+          baselineApproachQueueFt: zod.number(),
+          mitigatedApproachQueueFt: zod.number(),
+          provenance: zod
+            .object({
+              median: zod.enum(["measured", "derived", "default"]),
+              greenRatio: zod.enum(["measured", "derived", "default"]),
+              lanes: zod.enum(["measured", "derived", "default"]),
+            })
+            .describe(
+              "Whether each model input was measured, derived, or a default.",
+            ),
+          note: zod.string(),
+        })
+        .optional()
+        .describe(
+          "Turbo-lane (continuous-green-T) screening for a signalized 3-leg T-intersection candidate. Present only when the signal screens as a candidate (3-leg T geometry, arterial main street, detected median).",
         ),
     }),
   ),
@@ -332,6 +450,48 @@ export const GenerateTisResponse = zod.object({
             .optional()
             .describe(
               "Per-intersection calibration metadata when ground-truth observations exist for this signal.",
+            ),
+          turboLane: zod
+            .object({
+              candidate: zod.boolean(),
+              turboType: zod
+                .enum(["A", "B", "C", "D"])
+                .describe(
+                  "Recommended configuration (A\/B full continuous, C\/D partial).",
+                ),
+              turboDirection: zod.enum(["NB", "SB", "EB", "WB"]),
+              minorLegDirection: zod.enum(["NB", "SB", "EB", "WB"]),
+              medianType: zod.enum(["raised", "painted"]),
+              approachLanes: zod.number(),
+              turboLanes: zod.number(),
+              throughGreenRatio: zod.number(),
+              capacityGainPct: zod
+                .number()
+                .describe(
+                  "Approach-capacity improvement (%), within the study-observed 7–173% envelope.",
+                ),
+              baselineApproachVc: zod.number(),
+              mitigatedApproachVc: zod.number(),
+              baselineApproachDelaySec: zod.number(),
+              mitigatedApproachDelaySec: zod.number(),
+              baselineApproachLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+              mitigatedApproachLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+              baselineApproachQueueFt: zod.number(),
+              mitigatedApproachQueueFt: zod.number(),
+              provenance: zod
+                .object({
+                  median: zod.enum(["measured", "derived", "default"]),
+                  greenRatio: zod.enum(["measured", "derived", "default"]),
+                  lanes: zod.enum(["measured", "derived", "default"]),
+                })
+                .describe(
+                  "Whether each model input was measured, derived, or a default.",
+                ),
+              note: zod.string(),
+            })
+            .optional()
+            .describe(
+              "Turbo-lane (continuous-green-T) screening for a signalized 3-leg T-intersection candidate. Present only when the signal screens as a candidate (3-leg T geometry, arterial main street, detected median).",
             ),
         }),
       ),
@@ -494,6 +654,16 @@ export const getTisProjectResponseRequestOnePassByPctMax = 70;
 export const getTisProjectResponseRequestOneInternalCapturePctMin = 0;
 export const getTisProjectResponseRequestOneInternalCapturePctMax = 50;
 
+export const getTisProjectResponseRequestOneTripProfileArrivalsItemMin = 0;
+
+export const getTisProjectResponseRequestOneTripProfileArrivalsMin = 24;
+export const getTisProjectResponseRequestOneTripProfileArrivalsMax = 24;
+
+export const getTisProjectResponseRequestOneTripProfileDeparturesItemMin = 0;
+
+export const getTisProjectResponseRequestOneTripProfileDeparturesMin = 24;
+export const getTisProjectResponseRequestOneTripProfileDeparturesMax = 24;
+
 export const getTisProjectResponseResultRequestLatitudeMin = -90;
 export const getTisProjectResponseResultRequestLatitudeMax = 90;
 
@@ -518,6 +688,16 @@ export const getTisProjectResponseResultRequestPassByPctMax = 70;
 
 export const getTisProjectResponseResultRequestInternalCapturePctMin = 0;
 export const getTisProjectResponseResultRequestInternalCapturePctMax = 50;
+
+export const getTisProjectResponseResultRequestTripProfileArrivalsItemMin = 0;
+
+export const getTisProjectResponseResultRequestTripProfileArrivalsMin = 24;
+export const getTisProjectResponseResultRequestTripProfileArrivalsMax = 24;
+
+export const getTisProjectResponseResultRequestTripProfileDeparturesItemMin = 0;
+
+export const getTisProjectResponseResultRequestTripProfileDeparturesMin = 24;
+export const getTisProjectResponseResultRequestTripProfileDeparturesMax = 24;
 
 export const GetTisProjectResponse = zod
   .object({
@@ -603,6 +783,43 @@ export const GetTisProjectResponse = zod
             .describe(
               "Optional ITE TGM 11th Ed. alternate independent variable (matches a `unitShort` from the land use's `secondaryVariables`). Defaults to the primary published variable.",
             ),
+          tripProfile: zod
+            .object({
+              arrivals: zod
+                .array(
+                  zod
+                    .number()
+                    .min(
+                      getTisProjectResponseRequestOneTripProfileArrivalsItemMin,
+                    ),
+                )
+                .min(getTisProjectResponseRequestOneTripProfileArrivalsMin)
+                .max(getTisProjectResponseRequestOneTripProfileArrivalsMax)
+                .describe(
+                  "Relative inbound (arrival) volume in each clock hour 0–23.",
+                ),
+              departures: zod
+                .array(
+                  zod
+                    .number()
+                    .min(
+                      getTisProjectResponseRequestOneTripProfileDeparturesItemMin,
+                    ),
+                )
+                .min(getTisProjectResponseRequestOneTripProfileDeparturesMin)
+                .max(getTisProjectResponseRequestOneTripProfileDeparturesMax)
+                .describe(
+                  "Relative outbound (departure) volume in each clock hour 0–23.",
+                ),
+              source: zod
+                .string()
+                .optional()
+                .describe("Provenance label printed under the figures."),
+            })
+            .optional()
+            .describe(
+              "Optional consultant-supplied within-day arrival\/departure distribution that overrides the engine's default LTDS office profile for the Velocity-style Figure 2-1 (trips by start time) and Figure 6-2 (person accumulation) charts. Each array holds 24 non-negative values (clock hours 0–23); the renderer normalises each to sum to 1, so only relative magnitudes matter. Supplying this also unlocks the figures for non-office use classes.",
+            ),
         }),
         zod.record(zod.string(), zod.unknown()),
       ])
@@ -680,6 +897,43 @@ export const GetTisProjectResponse = zod
           .describe(
             "Optional ITE TGM 11th Ed. alternate independent variable (matches a `unitShort` from the land use's `secondaryVariables`). Defaults to the primary published variable.",
           ),
+        tripProfile: zod
+          .object({
+            arrivals: zod
+              .array(
+                zod
+                  .number()
+                  .min(
+                    getTisProjectResponseResultRequestTripProfileArrivalsItemMin,
+                  ),
+              )
+              .min(getTisProjectResponseResultRequestTripProfileArrivalsMin)
+              .max(getTisProjectResponseResultRequestTripProfileArrivalsMax)
+              .describe(
+                "Relative inbound (arrival) volume in each clock hour 0–23.",
+              ),
+            departures: zod
+              .array(
+                zod
+                  .number()
+                  .min(
+                    getTisProjectResponseResultRequestTripProfileDeparturesItemMin,
+                  ),
+              )
+              .min(getTisProjectResponseResultRequestTripProfileDeparturesMin)
+              .max(getTisProjectResponseResultRequestTripProfileDeparturesMax)
+              .describe(
+                "Relative outbound (departure) volume in each clock hour 0–23.",
+              ),
+            source: zod
+              .string()
+              .optional()
+              .describe("Provenance label printed under the figures."),
+          })
+          .optional()
+          .describe(
+            "Optional consultant-supplied within-day arrival\/departure distribution that overrides the engine's default LTDS office profile for the Velocity-style Figure 2-1 (trips by start time) and Figure 6-2 (person accumulation) charts. Each array holds 24 non-negative values (clock hours 0–23); the renderer normalises each to sum to 1, so only relative magnitudes matter. Supplying this also unlocks the figures for non-office use classes.",
+          ),
       }),
       studyRadiusMi: zod.number(),
       tripGeneration: zod.object({
@@ -741,6 +995,48 @@ export const GetTisProjectResponse = zod
             .optional()
             .describe(
               "Per-intersection calibration metadata when ground-truth observations exist for this signal.",
+            ),
+          turboLane: zod
+            .object({
+              candidate: zod.boolean(),
+              turboType: zod
+                .enum(["A", "B", "C", "D"])
+                .describe(
+                  "Recommended configuration (A\/B full continuous, C\/D partial).",
+                ),
+              turboDirection: zod.enum(["NB", "SB", "EB", "WB"]),
+              minorLegDirection: zod.enum(["NB", "SB", "EB", "WB"]),
+              medianType: zod.enum(["raised", "painted"]),
+              approachLanes: zod.number(),
+              turboLanes: zod.number(),
+              throughGreenRatio: zod.number(),
+              capacityGainPct: zod
+                .number()
+                .describe(
+                  "Approach-capacity improvement (%), within the study-observed 7–173% envelope.",
+                ),
+              baselineApproachVc: zod.number(),
+              mitigatedApproachVc: zod.number(),
+              baselineApproachDelaySec: zod.number(),
+              mitigatedApproachDelaySec: zod.number(),
+              baselineApproachLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+              mitigatedApproachLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+              baselineApproachQueueFt: zod.number(),
+              mitigatedApproachQueueFt: zod.number(),
+              provenance: zod
+                .object({
+                  median: zod.enum(["measured", "derived", "default"]),
+                  greenRatio: zod.enum(["measured", "derived", "default"]),
+                  lanes: zod.enum(["measured", "derived", "default"]),
+                })
+                .describe(
+                  "Whether each model input was measured, derived, or a default.",
+                ),
+              note: zod.string(),
+            })
+            .optional()
+            .describe(
+              "Turbo-lane (continuous-green-T) screening for a signalized 3-leg T-intersection candidate. Present only when the signal screens as a candidate (3-leg T geometry, arterial main street, detected median).",
             ),
         }),
       ),
@@ -818,6 +1114,55 @@ export const GetTisProjectResponse = zod
                 .optional()
                 .describe(
                   "Per-intersection calibration metadata when ground-truth observations exist for this signal.",
+                ),
+              turboLane: zod
+                .object({
+                  candidate: zod.boolean(),
+                  turboType: zod
+                    .enum(["A", "B", "C", "D"])
+                    .describe(
+                      "Recommended configuration (A\/B full continuous, C\/D partial).",
+                    ),
+                  turboDirection: zod.enum(["NB", "SB", "EB", "WB"]),
+                  minorLegDirection: zod.enum(["NB", "SB", "EB", "WB"]),
+                  medianType: zod.enum(["raised", "painted"]),
+                  approachLanes: zod.number(),
+                  turboLanes: zod.number(),
+                  throughGreenRatio: zod.number(),
+                  capacityGainPct: zod
+                    .number()
+                    .describe(
+                      "Approach-capacity improvement (%), within the study-observed 7–173% envelope.",
+                    ),
+                  baselineApproachVc: zod.number(),
+                  mitigatedApproachVc: zod.number(),
+                  baselineApproachDelaySec: zod.number(),
+                  mitigatedApproachDelaySec: zod.number(),
+                  baselineApproachLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+                  mitigatedApproachLos: zod.enum([
+                    "A",
+                    "B",
+                    "C",
+                    "D",
+                    "E",
+                    "F",
+                  ]),
+                  baselineApproachQueueFt: zod.number(),
+                  mitigatedApproachQueueFt: zod.number(),
+                  provenance: zod
+                    .object({
+                      median: zod.enum(["measured", "derived", "default"]),
+                      greenRatio: zod.enum(["measured", "derived", "default"]),
+                      lanes: zod.enum(["measured", "derived", "default"]),
+                    })
+                    .describe(
+                      "Whether each model input was measured, derived, or a default.",
+                    ),
+                  note: zod.string(),
+                })
+                .optional()
+                .describe(
+                  "Turbo-lane (continuous-green-T) screening for a signalized 3-leg T-intersection candidate. Present only when the signal screens as a candidate (3-leg T geometry, arterial main street, detected median).",
                 ),
             }),
           ),

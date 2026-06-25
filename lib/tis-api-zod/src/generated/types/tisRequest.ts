@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { TisAnalysisPeriod } from "./tisAnalysisPeriod";
+import type { TisTripProfile } from "./tisTripProfile";
 import type { TisWeather } from "./tisWeather";
 
 export interface TisRequest {
@@ -61,4 +62,5 @@ export interface TisRequest {
   runSensitivity?: boolean;
   /** Optional ITE TGM 11th Ed. alternate independent variable (matches a `unitShort` from the land use's `secondaryVariables`). Defaults to the primary published variable. */
   independentVariable?: string;
+  tripProfile?: TisTripProfile;
 }

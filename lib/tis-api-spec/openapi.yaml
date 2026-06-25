@@ -395,7 +395,36 @@ components:
             Optional ITE TGM 11th Ed. alternate independent variable (matches a
             `unitShort` from the land use's `secondaryVariables`). Defaults to the
             primary published variable.
+        tripProfile:
+          $ref: "#/components/schemas/TisTripProfile"
       required: [projectName, address, latitude, longitude, landUseCode, size, openingYear]
+    TisTripProfile:
+      type: object
+      description: >-
+        Optional consultant-supplied within-day arrival/departure distribution
+        that overrides the engine's default LTDS office profile for the
+        Velocity-style Figure 2-1 (trips by start time) and Figure 6-2 (person
+        accumulation) charts. Each array holds 24 non-negative values (clock
+        hours 0–23); the renderer normalises each to sum to 1, so only relative
+        magnitudes matter. Supplying this also unlocks the figures for
+        non-office use classes.
+      properties:
+        arrivals:
+          type: array
+          items: { type: number, minimum: 0 }
+          minItems: 24
+          maxItems: 24
+          description: Relative inbound (arrival) volume in each clock hour 0–23.
+        departures:
+          type: array
+          items: { type: number, minimum: 0 }
+          minItems: 24
+          maxItems: 24
+          description: Relative outbound (departure) volume in each clock hour 0–23.
+        source:
+          type: string
+          description: Provenance label printed under the figures.
+      required: [arrivals, departures]
     TisTripGeneration:
       type: object
       properties:
@@ -469,6 +498,8 @@ components:
         queue95thFt: { type: number }
         calibration:
           $ref: "#/components/schemas/TisIntersectionCalibration"
+        turboLane:
+          $ref: "#/components/schemas/TisTurboLaneScreening"
       required:
         - signalId
         - name
@@ -500,6 +531,66 @@ components:
       required:
         - sampleCount
         - delayMultiplier
+    TisTurboLaneScreening:
+      type: object
+      description: >-
+        Turbo-lane (continuous-green-T) screening for a signalized 3-leg
+        T-intersection candidate. Present only when the signal screens as a
+        candidate (3-leg T geometry, arterial main street, detected median).
+      properties:
+        candidate: { type: boolean }
+        turboType:
+          type: string
+          enum: [A, B, C, D]
+          description: Recommended configuration (A/B full continuous, C/D partial).
+        turboDirection: { $ref: "#/components/schemas/TisDirection" }
+        minorLegDirection: { $ref: "#/components/schemas/TisDirection" }
+        medianType:
+          type: string
+          enum: [raised, painted]
+        approachLanes: { type: integer }
+        turboLanes: { type: integer }
+        throughGreenRatio: { type: number }
+        capacityGainPct:
+          type: number
+          description: Approach-capacity improvement (%), within the study-observed 7–173% envelope.
+        baselineApproachVc: { type: number }
+        mitigatedApproachVc: { type: number }
+        baselineApproachDelaySec: { type: number }
+        mitigatedApproachDelaySec: { type: number }
+        baselineApproachLos: { type: string, enum: [A, B, C, D, E, F] }
+        mitigatedApproachLos: { type: string, enum: [A, B, C, D, E, F] }
+        baselineApproachQueueFt: { type: number }
+        mitigatedApproachQueueFt: { type: number }
+        provenance:
+          type: object
+          description: Whether each model input was measured, derived, or a default.
+          properties:
+            median: { type: string, enum: [measured, derived, default] }
+            greenRatio: { type: string, enum: [measured, derived, default] }
+            lanes: { type: string, enum: [measured, derived, default] }
+          required: [median, greenRatio, lanes]
+        note: { type: string }
+      required:
+        - candidate
+        - turboType
+        - turboDirection
+        - minorLegDirection
+        - medianType
+        - approachLanes
+        - turboLanes
+        - throughGreenRatio
+        - capacityGainPct
+        - baselineApproachVc
+        - mitigatedApproachVc
+        - baselineApproachDelaySec
+        - mitigatedApproachDelaySec
+        - baselineApproachLos
+        - mitigatedApproachLos
+        - baselineApproachQueueFt
+        - mitigatedApproachQueueFt
+        - provenance
+        - note
     TisProjectSummary:
       type: object
       description: Lightweight summary row used by the projects list page.

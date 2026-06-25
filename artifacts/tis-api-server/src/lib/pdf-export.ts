@@ -34,6 +34,16 @@ import { crashesNearPoint } from "./crashes";
 import { atrSegmentsNearPoint } from "./atr-counts";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
+import { drawColumnChart, drawLineChart, CHART_COLORS, renderDiurnalCharts } from "./pdf-charts";
+import { profileForLandUse, distributeDaily } from "./office-diurnal";
+import {
+  ANALYSIS_LEVELS, resolveAnalysisLevel, STANDARD_TRIP_REDUCTION_CAPS,
+  STANDARD_ANALYSIS_SCENARIOS, STANDARD_MOES, STANDARD_DATA_REQUIREMENTS,
+  STANDARD_CONDITIONS, STANDARD_METHODOLOGY_SOURCE,
+} from "./standard-methodology";
+import {
+  CONCURRENCY_LOS_LEGEND, CONCURRENCY_SOURCE, stationsForStudyArea, assessConcurrency,
+} from "./fl-concurrency-stations";
 import {
   FDOT_ARTERIAL_GSVT,
   floridaGsvtServiceVolume,
@@ -607,6 +617,90 @@ function dispatchTisRender(
     renderFourStepSection(doc, result);
     renderCapacityAppendix(doc, intersections, periods);
   }
+
+  // 3. Standard methodology framework — the universal baseline (Levels of
+  //    Analysis, trip-reduction caps, scenarios, MOEs, de-minimis) applied to
+  //    EVERY location on top of the region-specific sections above.
+  renderStandardMethodologyFramework(doc, result);
+}
+
+/**
+ * Standard Methodology Framework appendix — rendered for every study,
+ * regardless of jurisdiction, from standard-methodology.ts. The region-specific
+ * sections above govern where they differ; this is the common national-practice
+ * baseline (Levels of Analysis keyed to net new peak-hour trips, standard
+ * trip-reduction caps, the three analysis scenarios, MOEs, data requirements,
+ * and the de-minimis / methodology-meeting conditions).
+ */
+function renderStandardMethodologyFramework(doc: PDFKit.PDFDocument, r: any) {
+  const tg = r.tripGeneration ?? {};
+  const netPhTrips = Number(
+    tg.pmPeakTrips ?? (Number(tg.pmIn ?? 0) + Number(tg.pmOut ?? 0)),
+  ) || 0;
+  const level = resolveAnalysisLevel(netPhTrips);
+
+  doc.addPage();
+  section(doc, "Standard Methodology Framework");
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    `Applied to every study regardless of jurisdiction; where the region-specific sections above impose a different rule, that rule governs. Source: ${STANDARD_METHODOLOGY_SOURCE}`,
+    { paragraphGap: 8 },
+  );
+  doc.fillColor("black");
+
+  const sub = (t: string) => {
+    doc.x = PAGE_MARGIN;
+    doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(t);
+    doc.moveDown(0.2);
+    doc.x = PAGE_MARGIN;
+  };
+  const bullets = (items: ReadonlyArray<string>, gap = 2) => {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+    for (const it of items) doc.text("• " + it, { paragraphGap: gap });
+    doc.fillColor("black");
+    doc.x = PAGE_MARGIN;
+  };
+
+  // Levels of Analysis — with this project's determination.
+  sub("Levels of Analysis");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Study depth is scaled to net new peak-hour trips on the adjacent street. This project generates approximately ${Math.round(netPhTrips)} net new PM-peak-hour trips, placing it in ${level.label} (${level.rangeLabel}). Required components at this level:`,
+    { paragraphGap: 4 },
+  );
+  bullets(level.components);
+  doc.moveDown(0.2);
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY);
+  for (const lvl of ANALYSIS_LEVELS) {
+    doc.text(`${lvl.label}: ${lvl.rangeLabel}.`, { paragraphGap: 1 });
+  }
+  doc.fillColor("black").moveDown(0.5);
+
+  // Trip-reduction caps.
+  sub("Project Trip-Reduction Caps");
+  bullets([
+    `Internal capture ≤ ${STANDARD_TRIP_REDUCTION_CAPS.internalCaptureMaxPctOfTotal}% of total trip generation.`,
+    `Pass-by (retail/commercial land uses only) ≤ ${STANDARD_TRIP_REDUCTION_CAPS.passByMaxPctOfAdjacentStreet}% of the adjacent street's peak-hour two-way volume.`,
+    "Mode-split reductions from census journey-to-work data; transit-oriented sites may justify a project-specific reduction at the methodology meeting.",
+  ]);
+  doc.moveDown(0.5);
+
+  // Analysis scenarios.
+  sub("Analysis Scenarios");
+  bullets(STANDARD_ANALYSIS_SCENARIOS.map((s) => `${s.label} — ${s.description}`));
+  doc.moveDown(0.5);
+
+  // Measures of effectiveness.
+  sub("Measures of Effectiveness");
+  bullets(STANDARD_MOES);
+  doc.moveDown(0.5);
+
+  // Data requirements.
+  sub("Data Requirements");
+  bullets(STANDARD_DATA_REQUIREMENTS, 1);
+  doc.moveDown(0.5);
+
+  // Conditions applicable to all levels.
+  sub("Conditions Applicable to All Levels");
+  bullets(STANDARD_CONDITIONS);
 }
 
 function selectRegionalTisRenderer(
@@ -1048,6 +1142,8 @@ function renderTisGeorgia(
     ],
   });
   doc.moveDown(0.5);
+
+  renderDiurnalCharts(doc, r);
 
   gaSubsection(doc, "3.2 Trip Distribution");
   doc.font("body").fontSize(10).fillColor("black").text(
@@ -2030,6 +2126,8 @@ function renderTisCalifornia(
     });
     doc.moveDown(0.5);
   }
+
+  renderDiurnalCharts(doc, r);
 
   const caHasDesignYear = intersections.some(
     (it) => it.designNoBuildLos != null || it.designBuildLos != null,
@@ -3100,6 +3198,24 @@ function renderTisLondon(
   doc.fillColor("black");
   doc.moveDown(0.3);
 
+  // --- Within-day trip profile (Velocity Fig 2-1 / Fig 6-2) ---------------
+  // The engine has no within-day distribution of its own, so the inbound/
+  // outbound-by-hour and person-accumulation figures are reproduced by
+  // distributing the engine's gross daily trip generation across an
+  // LTDS-style office profile (office/commercial Class E only — the
+  // distribution differs by use). A consultant may override the profile
+  // end-to-end via TisRequest.tripProfile, which then also unlocks the
+  // figures for non-office use classes.
+  const profileOverride = (req as any).tripProfile;
+  // London/UK renderer: locale "uk" selects the LTDS/Velocity office shape (the
+  // only renderer permitted to print that TfL-sourced provenance line).
+  const diurnalSel = profileForLandUse(code, profileOverride, "uk");
+  const drawDiurnal = diurnalSel.matched && Number(tg.dailyTrips ?? 0) > 0;
+  const diurnalProfile = diurnalSel.profile;
+  const hourly = drawDiurnal ? distributeDaily(Number(tg.dailyTrips ?? 0), diurnalProfile) : null;
+  const hourLabels = Array.from({ length: 24 }, (_, h) => String(h));
+  const profileBasis = diurnalSel.family ?? "supplied";
+
   // --- Ch 2 Transport Planning for People ---------------------------------
   ldnSection(doc, "2.0 TRANSPORT PLANNING FOR PEOPLE");
   if (isLondon) ldnChapterIntro(doc, "i.e. Who is the development for, and when and why will they travel there (including visitors)? Healthy Streets and Vision Zero put people first; this chapter draws on TfL's Travel in London reports and Transport Classification of Londoners demographic segments.");
@@ -3125,6 +3241,24 @@ function renderTisLondon(
 
   ldnSubsection(doc, "2.6 When Will People Travel and Why?");
   ldnNote(doc, "The assessed periods are the weekday AM peak (08:00–09:00) and PM peak (17:00–18:00), with a Saturday peak where the use warrants it. Trip purpose (commuting, education, retail, leisure) follows the proposed use and is detailed in Chapter 5.");
+  if (drawDiurnal && hourly) {
+    ldnNote(doc, `A daily profile of journeys to and from the development is shown in Figure 2-1, distributing the engine's gross trip generation (${fmtNum(tg.dailyTrips)} daily trips) across the ${profileBasis} within-day distribution. The highest inbound (arrival) flow is in the AM peak and the highest outbound (departure) flow is in the PM peak, with a midday exchange over the lunch period.`);
+    drawColumnChart(doc, {
+      title: "Figure 2-1: Inbound/Outbound Trips by Start Time",
+      categories: hourLabels,
+      stacked: true,
+      series: [
+        { name: "Outbound", color: CHART_COLORS.outbound, values: hourly.departuresSharePct },
+        { name: "Inbound", color: CHART_COLORS.inbound, values: hourly.arrivalsSharePct },
+      ],
+      yLabel: "% of daily total",
+      xLabel: "Hour of day",
+      yTickFormat: (v) => `${v}%`,
+      caption: diurnalProfile.source,
+    });
+  } else {
+    ldnNote(doc, "A within-day arrival/departure profile (Velocity Fig 2-1) and daily person-accumulation profile (Fig 6-2) are produced for office / commercial Class E schemes from the LTDS office distribution; for this use class they should be derived from the matching TRICS / LTDS profile at submittal, or supplied via the request trip-profile override.");
+  }
 
   ldnSubsection(doc, "2.7 Why Will They Travel?");
   ldnNote(doc, "Trip purpose and the extent to which the scheme's location supports sustainable, active travel for those purposes is a vision-led narrative (see §1.4) to be completed by the chartered engineer; it is not generated by the engine.");
@@ -3356,6 +3490,24 @@ function renderTisLondon(
       }),
     });
     doc.moveDown(0.4);
+  }
+
+  if (drawDiurnal && hourly) {
+    doc.font("bold").fontSize(10).fillColor("black").text("Daily person accumulation", { paragraphGap: 2 });
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Figure 6-2 shows the accumulation profile of people on site through the day — the running net of arrivals less departures from the Figure 2-1 distribution. Based on the trip-generation methodology, the peak number of people on site is approximately ${fmtNum(hourly.peakAccumulation)} at ${String(hourly.peakAccumulationHour).padStart(2, "0")}:00.`,
+      { paragraphGap: 6 },
+    );
+    drawLineChart(doc, {
+      title: "Figure 6-2: Total Person Daily Accumulation",
+      categories: hourLabels,
+      values: hourly.accumulation,
+      color: CHART_COLORS.outbound,
+      yLabel: "Persons on site",
+      xLabel: "Hour of day",
+      caption: `Peak on-site accumulation ~${fmtNum(hourly.peakAccumulation)} persons, derived from ${fmtNum(tg.dailyTrips)} gross daily trips distributed on the ${profileBasis} profile (inbound total = outbound total, so the curve opens and closes the day at zero).`,
+    });
+    doc.moveDown(0.2);
   }
 
   ldnSubsection(doc, "5.6 Delivery and Servicing Trips");
@@ -4847,6 +4999,8 @@ function renderTisTexas(
     doc.fillColor("black");
   }
 
+  renderDiurnalCharts(doc, r);
+
   gaSubsection(doc, "5.2 Trip Distribution");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Per TSP §16.4, project distribution is assigned using engineering judgment, informed by the surrounding roadway network geometry and proximity to the project access points. If only one project driveway is proposed, all trips enter and exit through that driveway. Final distribution percentages are confirmed with the District during preliminary scoping.",
@@ -5543,6 +5697,8 @@ function renderTisIllinois(
     });
     doc.moveDown(0.5);
   }
+
+  renderDiurnalCharts(doc, r);
 
   // --- §5 Background Growth ----------------------------------------------
   gaSection(doc, "5.0 BACKGROUND GROWTH");
@@ -6892,6 +7048,8 @@ function renderTisFlorida(
   }
 
   // --- 6.0 Trip Distribution and Assignment ------------------------------
+  renderDiurnalCharts(doc, r);
+
   gaSection(doc, "6.0 TRIP DISTRIBUTION AND ASSIGNMENT");
   doc.font("body").fontSize(10).fillColor("black").text(
     `Per FDOT TAH §2.7, trip distribution and assignment should use the adopted regional MPO/TPO travel-demand model${jur.mpoName ? ` (${jur.mpoName})` : ""}, with model version, base year, and horizon year identified in the methodology letter. This screening analysis assigns net new external trips by inverse-distance weighting to signalized intersections within the study area; for formal submittal, distribution percentages and the TDM run identifier should be agreed upon during the methodology meeting.`,
@@ -7127,6 +7285,53 @@ function renderTisFlorida(
     doc.fillColor("black");
   }
   doc.fillColor("black");
+
+  // --- 12.1 Concurrency Station Determination (Miami-Dade trip bank) -----
+  if (jur.key === "miami_dade") {
+    gaSubsection(doc, "12.1 Concurrency Station Determination");
+    const pmIn = Number(tg.pmIn ?? 0), pmOut = Number(tg.pmOut ?? 0);
+    const peakDir = Math.max(pmIn, pmOut, Number(tg.pmPeakTrips ?? 0) / 2);
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Miami-Dade administers roadway concurrency through a monitored "trip bank": each link is a concurrency station with an adopted peak-hour maximum-service volume, the existing peak-direction volume, reserved (date-of-service) trips, and the resulting AVAILABLE TRIPS a development may reserve. The project's net new peak-hour peak-direction trips on each adjacent link (≈ ${Math.round(peakDir)} site-total peak-direction trips before distribution) are compared to that link's available trips; a link where the project adds ≥ 5% of the maximum-service volume is a significant impact. Source: ${CONCURRENCY_SOURCE}`,
+      { paragraphGap: 6 },
+    );
+    const studyNames = intersections.map((it: any) => String(it.name ?? it.signalId ?? "")).filter(Boolean);
+    const matched = stationsForStudyArea(studyNames);
+    if (matched.length) {
+      doc.font("body").fontSize(10).fillColor("black").text(
+        `Published concurrency stations matched to the study-area roadways (${matched.length}):`,
+        { paragraphGap: 4 },
+      );
+      table(doc, {
+        headers: ["Sta.", "Roadway", "Max LOS", "Avail.", "Adopt", "Conc", "After proj."],
+        widths: [38, 196, 56, 50, 48, 48, 60],
+        align: ["left", "left", "right", "right", "center", "center", "right"],
+        rows: matched.map((s) => {
+          const a = assessConcurrency(s, peakDir);
+          return [String(s.id), s.roadway, fmtNum(s.maxLosVolume), fmtNum(s.availableTrips), s.adoptedLos, s.concurrencyLos, fmtNum(a.remainingAfterProject)];
+        }),
+      });
+      const deficient = matched.filter((s) => s.availableTrips < 0);
+      if (deficient.length) {
+        doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+          `${deficient.length} matched link(s) are already concurrency-deficient (negative available trips); mitigation or a proportionate-share contribution is required there per Admin. Order 4-85. "After proj." is the available trips remaining after the screening peak-direction estimate; per-link distribution must be applied at the methodology meeting.`,
+          { paragraphGap: 4 },
+        );
+        doc.fillColor("black");
+      }
+    } else {
+      doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+        "No published concurrency station could be auto-matched to the study-area roadway names. For a submittal, look up each adjacent link in the current Miami-Dade concurrency station tables (FDOT State Highway System + County roadways) and compare the project's peak-direction trips to the link's available trips.",
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+    }
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text("Concurrency LOS-standard legend:", { paragraphGap: 2 });
+    for (const [code, def] of Object.entries(CONCURRENCY_LOS_LEGEND)) {
+      doc.text(`• ${code} — ${def}`, { paragraphGap: 1 });
+    }
+    doc.fillColor("black").moveDown(0.4);
+  }
 
   // --- 13.0 Programmed Projects -----------------------------------------
   gaSection(doc, "13.0 PROGRAMMED PROJECTS");
@@ -7400,16 +7605,32 @@ function renderCapacityAppendix(
     doc.addPage(); // one intersection per page — clean layout, no crowding
     gaSubsection(doc, `A.${i + 1}  ${ix.name ?? ix.signalId ?? "Intersection"}`);
     const deltaDelay = (Number(ix.futureDelaySec) || 0) - (Number(ix.existingDelaySec) || 0);
+    // A junction can receive < 1 net peak car trip — most often at high-PTAL
+    // London sites where the car-mode share collapses the whole scheme to a
+    // handful of car trips spread across the network. The reported count
+    // rounds to 0, but the capacity math already carried the exact fractional
+    // load (see buildAffectedRow). Surface "< 1" rather than a bare "0" so the
+    // unchanged Existing/Build columns read as a deliberate negligible-impact
+    // finding rather than a failed analysis.
+    const addedNegligible = Math.round(Number(ix.addedTripsPmPeak) || 0) === 0;
     rows(doc, [
       ["Signal ID", String(ix.signalId ?? "—")],
       ["Location", `${ix.zone ?? "—"} · ${fmtNum(ix.distanceMi, 2)} mi from site`],
-      ["Added PM peak trips", fmtNum(ix.addedTripsPmPeak)],
+      ["Added PM peak trips", addedNegligible ? "< 1 (negligible)" : fmtNum(ix.addedTripsPmPeak)],
       ["Existing / No-Build (PM)", `LOS ${ix.existingLos ?? "—"} · ${fmtNum(ix.existingDelaySec, 1)} s/veh · v/c ${fmtNum(ix.existingVc, 2)}`],
       ["Build (PM)", `LOS ${ix.futureLos ?? "—"} · ${fmtNum(ix.futureDelaySec, 1)} s/veh · v/c ${fmtNum(ix.futureVc, 2)}`],
       ["Δ control delay", `${deltaDelay >= 0 ? "+" : ""}${fmtNum(deltaDelay, 1)} s/veh${ix.losChanged ? "  (LOS change)" : ""}`],
       ["Mitigation", ix.mitigation ? String(ix.mitigation) : "None required at screening level"],
     ]);
     doc.moveDown(0.4);
+    if (addedNegligible) {
+      doc.font("body").fontSize(8.5).fillColor(TEXT_GRAY).text(
+        "The development distributes fewer than one net PM peak car trip to this junction, so the Existing (No-Build) and Build conditions are numerically identical. The junction is reproduced here for completeness; the scheme's net car-mode trip generation is below the level at which junction capacity governs.",
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+      doc.moveDown(0.2);
+    }
 
     // Turning-movement diagrams — one per analyzed peak period (Build),
     // pulling that period's approach volumes from periodReports. Falls back
@@ -7433,6 +7654,10 @@ function renderCapacityAppendix(
         { rec: ix, scenario: "build", title: "PM Peak — Build" },
       ];
     }
+    // Multi-period diagrams (one Build figure per analyzed peak hour) vs. the
+    // PM-only No-Build/Build fallback (mixed scenarios). Only the former gets
+    // the period-peaking caption.
+    const multiPeriod = figs.length > 1 && figs.every((f) => f.scenario === "build");
     const perRow = Math.min(figs.length, 3);
     const gap = 10;
     const dw = (usable - gap * (perRow - 1)) / perRow;
@@ -7446,6 +7671,14 @@ function renderCapacityAppendix(
       drawTurningMovementDiagram(doc, fx, rowY, dw, dh, f.rec, f.scenario, f.title);
     });
     doc.y = rowY + dh + 14;
+    if (multiPeriod) {
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        "Background turning-movement volumes vary by period: the stored design-hour count (AADT × K-factor, ≈ the PM peak) is carried at 100% for the PM peak and at screening-level shares of the design hour for the AM peak (90%) and Saturday midday (80%), reflecting that the network is not equally loaded across the day. A submitted study replaces these with measured per-period turning-movement counts.",
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+      doc.moveDown(0.2);
+    }
 
     const approaches: any[] = Array.isArray(ix.approaches) ? ix.approaches : [];
     if (approaches.length === 0) return;
@@ -7458,7 +7691,7 @@ function renderCapacityAppendix(
       rows: approaches.map((a) => [
         String(a.direction ?? "—"),
         fmtNum(a.existingVolumeVph),
-        fmtNum(a.addedTripsPeak),
+        addedNegligible ? "< 1" : fmtNum(a.addedTripsPeak),
         fmtNum(a.futureVolumeVph),
         `${fmtNum(a.existingVc, 2)} → ${fmtNum(a.futureVc, 2)}`,
         `${fmtNum(a.existingDelaySec, 1)} → ${fmtNum(a.futureDelaySec, 1)}`,

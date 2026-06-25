@@ -23,6 +23,7 @@
  * required") until SIMS / Regional Traffic Office data is wired.
  */
 import type { Region } from "./regions";
+import { renderDiurnalCharts } from "./pdf-charts";
 import { getCbdtpStatus, type CbdtpStatus, type Gml239Status } from "./nysdot-data";
 import type { NycTransitContext } from "./nyc-transit-data";
 import { getMeasuredGrowthRate } from "./regional-growth-rates";
@@ -772,6 +773,8 @@ export function renderTisNewYork(
   doc.moveDown(0.3);
 
   // §3.5 Proposed Build Capacity Analysis
+  renderDiurnalCharts(doc, r);
+
   nySubsection(doc, "3.5 Capacity Analysis for Proposed Build Condition");
   doc.font("body").fontSize(10).fillColor("black").text(
     `Build conditions add the project's external peak-hour trips (${tg.pmPeakTrips ?? "—"} PM peak, ${tg.pmIn ?? 0} inbound / ${tg.pmOut ?? 0} outbound) to the No-Build baseline at each affected intersection. Per HDM Chapter 5, intersection projects should also analyze each adjacent intersection plus any signal within ½ mile of the project site if expected left-turn volume changes materially affect capacity. The engine's network is determined by a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile screening radius; manual scoping should confirm the ½-mile left-turn rule is satisfied.`,
