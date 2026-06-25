@@ -1,0 +1,39 @@
+{
+  "source": "ONS 2011 Census WP703EW (NM_1318_1), workplace population, City of London MSOA E02000001",
+  "datasetId": "NM_1318_1",
+  "table": "WP703EW",
+  "geography": {
+    "msoa": "E02000001",
+    "name": "City of London 001",
+    "localAuthority": "E09000001"
+  },
+  "year": 2011,
+  "spec": "2001 method-of-travel specification",
+  "fetchedAt": "2026-06-25",
+  "total": 356706,
+  "travellingPopulation": 356019,
+  "counts": {
+    "workFromHome": 687,
+    "underground": 113428,
+    "rail": 165810,
+    "bus": 21940,
+    "taxi": 1799,
+    "motorcycle": 4876,
+    "carDriver": 16065,
+    "carPassenger": 1247,
+    "cycle": 13501,
+    "walk": 16416,
+    "other": 937
+  },
+  "modeShare": {
+    "_note": "shares of travelling population (total minus work-from-home); PT modes (underground/rail/bus) drive the engine PT adjustment per velocity-ta-format.md \u00a74",
+    "underground": 0.3186,
+    "rail": 0.4657,
+    "bus": 0.0616,
+    "car": 0.0623,
+    "taxi": 0.0051,
+    "cycle": 0.0379,
+    "walk": 0.0461,
+    "dlr": 0.0
+  }
+}

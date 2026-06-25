@@ -254,6 +254,84 @@ export function getLondonAutoModeShare(ptalBand?: PTALBand): number {
   return PTAL_AUTO_SHARE[ptalBand] ?? PER_REGION_AUTO_SHARE["london_metro"] ?? FALLBACK_AUTO_SHARE;
 }
 
+/**
+ * 2011 Census "Method of Travel to Work" mode split for the City of London,
+ * workplace population — the multi-modal split a London Transport Assessment
+ * uses to disaggregate the public-transport share for trip generation.
+ *
+ * This is client Velocity Transport Planning's own method (their Table 6-6
+ * "Census Mode Share for Travel to Work, City of London as destination"),
+ * codified in REGIONAL-SPECS/velocity-ta-format.md §4. The TRICS office rates
+ * give the all-purpose mode split; this census split disaggregates the
+ * public-transport portion into Underground / Rail / Bus and pins the car/van
+ * share. PT total ≈ 84.6%; car ≈ 6.2% — the near-car-free signature of a
+ * Zone-1 City site.
+ *
+ * Shares are of the TRAVELLING population (workplace total minus work-from-
+ * home), so they describe how the people who actually travel to work in the
+ * Square Mile get there.
+ *
+ * Source: ONS 2011 Census table WP703EW (NOMIS dataset NM_1318_1), workplace
+ * population, City of London MSOA E02000001 (2001 method-of-travel
+ * specification). Staged + fetched by scripts/src/fetch-nomis-2011-mtw.ts →
+ * artifacts/api-server/src/data/london-census-mtw-2011.json.
+ *
+ * 2011, not 2021: the 2021 Census was taken mid-COVID lockdown when travel-to-
+ * work was heavily distorted; ONS flags the 2021 travel-to-work tables as not
+ * comparable to prior censuses. 2011 is the planner's pre-COVID convention.
+ *
+ * DLR rolls into "Underground, metro, light rail or tram" under the 2001 spec,
+ * so it is reported separately as 0 and folded into `underground`.
+ */
+export type LondonCensusModeSplit = {
+  underground: number;
+  rail: number;
+  bus: number;
+  car: number;
+  taxi: number;
+  cycle: number;
+  walk: number;
+  dlr: number;
+};
+
+export const LONDON_CITY_CENSUS_2011: LondonCensusModeSplit = {
+  underground: 0.3186,
+  rail: 0.4657,
+  bus: 0.0616,
+  car: 0.0623,
+  taxi: 0.0051,
+  cycle: 0.0379,
+  walk: 0.0461,
+  dlr: 0.0,
+};
+
+/** Citation string for the census split, surfaced in the renderer table. */
+export const LONDON_CITY_CENSUS_2011_SOURCE =
+  "2011 Census, ONS Table WP703EW (Method of Travel to Work, workplace population), City of London MSOA E02000001";
+
+/**
+ * The 2011-Census City-of-London multi-modal travel-to-work split. London
+ * Transport Assessments (Velocity Table 6-6) use this to disaggregate the
+ * public-transport share for trip generation; the underground/rail/bus split
+ * is the census-driven part, while bus/cycle/pedestrian blend with TRICS
+ * office rates at submittal (see velocity-ta-format.md §4).
+ */
+export function getLondonCensusModeSplit(): LondonCensusModeSplit {
+  return LONDON_CITY_CENSUS_2011;
+}
+
+/**
+ * Car/van (auto) mode share for a City-of-London site, derived from the 2011
+ * Census travel-to-work split (≈6.2%). For london_metro sites this is the
+ * census-grounded auto share; it supersedes the flat London-wide 0.38 and the
+ * PTAL-band curve as the trip-generation basis Velocity actually files. Kept
+ * separate from getLondonAutoModeShare (which stays intact for backward
+ * compatibility — the smoke test asserts the PTAL-banded scalar).
+ */
+export function getLondonCensusAutoShare(): number {
+  return LONDON_CITY_CENSUS_2011.car;
+}
+
 /** Same lookup, but returns the source label for the methodology note. */
 export function getAutoModeShareSource(regionCode: string | null | undefined): string {
   if (!regionCode || !(regionCode in PER_REGION_AUTO_SHARE)) {

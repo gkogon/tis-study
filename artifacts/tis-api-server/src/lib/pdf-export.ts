@@ -21,7 +21,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { regionForCoordinate, type Region } from "./regions";
 import { fetchStreetViewImage } from "./streetview";
-import { getAutoModeShare } from "./mode-share";
+import {
+  getAutoModeShare,
+  getLondonCensusModeSplit,
+  getLondonCensusAutoShare,
+  LONDON_CITY_CENSUS_2011_SOURCE,
+} from "./mode-share";
 import { ukCapacityForIntersection, type UkCapacityResult } from "./uk-capacity";
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { renderTisState } from "./pdf-export-states";
@@ -3749,6 +3754,45 @@ function renderTisLondon(
     renderPtalAccessBlock("6.2");
     ldnSubsection(doc, "6.3 Public Transport Service Frequencies");
     ldnNote(doc, "Bus, Underground, Elizabeth line, DLR and National Rail service frequencies at the nearest stops/stations (Velocity Tables 6-1 … 6-3 equivalents) are drawn from TfL/rail-industry timetables at submittal; the engine carries no timetable data.");
+
+    // Census Mode Share for Travel to Work (Velocity Table 6-6 equivalent).
+    // London-gated. The TRICS office rates give the all-purpose mode split;
+    // the 2011 Census travel-to-work split (workplace population, City of
+    // London MSOA) disaggregates the public-transport share — Underground /
+    // Rail / Bus — and pins the car/van share for trip generation, per
+    // velocity-ta-format.md §4. Non-London regions never reach this block.
+    ldnSubsection(doc, "6.3.1 Census Mode Share for Travel to Work (City of London)");
+    {
+      const split = getLondonCensusModeSplit();
+      const pct = (x: number) => (x * 100).toFixed(1) + "%";
+      const ptTotal = split.underground + split.rail + split.bus;
+      doc.font("body").fontSize(10).fillColor("black").text(
+        `The public-transport mode split for trip generation is disaggregated from the 2011 Census "Method of Travel to Work" for the City of London as the workplace destination (Velocity Table 6-6 equivalent). The Underground, Rail and Bus shares below are the census-derived public-transport portion (${pct(ptTotal)} of travelling commuters); the bus, cycle and pedestrian trip rates blend with the TRICS office rates at submittal so the final multi-modal rates carry through the TRICS survey base rather than the census alone. The 2011 Census is used in preference to 2021: the 2021 Census was enumerated during a COVID-19 lockdown that heavily distorted travel-to-work, and ONS advises its 2021 travel-to-work figures are not comparable with earlier censuses, so 2011 is retained as the stable pre-COVID basis.`,
+        { paragraphGap: 6 },
+      );
+      table(doc, {
+        headers: ["Mode", "Census mode share"],
+        widths: [260, 130],
+        align: ["left", "right"],
+        rows: [
+          ["Underground / metro / light rail / tram", pct(split.underground)],
+          ["Rail (National Rail)", pct(split.rail)],
+          ["Bus / minibus / coach", pct(split.bus)],
+          ["DLR", pct(split.dlr)],
+          ["Public transport (subtotal)", pct(ptTotal)],
+          ["Car / van (driver + passenger)", pct(split.car)],
+          ["Taxi", pct(split.taxi)],
+          ["Bicycle", pct(split.cycle)],
+          ["On foot", pct(split.walk)],
+        ],
+      });
+      doc.moveDown(0.2);
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        `Source: ${LONDON_CITY_CENSUS_2011_SOURCE}. Shares are of the travelling population (workplace total minus work-from-home). DLR rolls into "Underground, metro, light rail or tram" under the 2001 method-of-travel specification and is reported as 0 here. The car/van share (${pct(split.car)}) is the trip-generation auto-mode basis applied to the City-of-London site below.`,
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+    }
   }
 
   ldnSubsection(doc, isLondon ? "6.4 Existing Site" : "5.2 Existing Site");
@@ -3773,6 +3817,12 @@ function renderTisLondon(
       `Gross trip generation in this report is calculated per the ITE Trip Generation Manual 11th Edition for land-use code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. The TRICS-equivalent multi-modal table — person-trips by mode (Cars, Taxis, Motor Cycles, LGVs, OGVs, PSVs, Cyclists, Scooters, Pedestrians, plus the London public-transport split into Bus, Tram, Underground, Overground, National Rail, DLR and Water Service Passengers), linked PT trips, mean and 85th-percentile rate against the agreed TRICS filter — is not produced by this engine and must be prepared separately for any submitted TA. The figures below represent the engine's car-mode estimate after ${bandClause} has been applied to net out walking, cycling, bus, rail and other modes.`,
       { paragraphGap: 6 },
     );
+    if (isLondon) {
+      doc.font("body").fontSize(10).fillColor("black").text(
+        `Consistent with the Velocity Table 6-6 method (§6.3.1), the car/van basis for a City-of-London site is the 2011 Census travel-to-work share of ${(getLondonCensusAutoShare() * 100).toFixed(1)}% — the near-car-free signature of a Zone-1 Square Mile workplace. The Underground / Rail / Bus public-transport split is taken from that census disaggregation, while the bus, cycle and pedestrian trip rates blend with the TRICS office survey rates at submittal; the final submitted trip rates therefore carry through TRICS rather than the census alone.`,
+        { paragraphGap: 6 },
+      );
+    }
   }
   table(doc, {
     headers: ["Period", "Entering trips", "Exiting trips"],
