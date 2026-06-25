@@ -111,11 +111,47 @@ const checks: Array<[string, RegExp]> = [
   ["WebCAT 3.0 attribution",         /WebCAT 3\.0/],
   ["TfL GIS Open Data attribution",  /gis-tfl\.opendata\.arcgis\.com/i],
   ["Engine-resolved phrasing",       /Engine-resolved/i],
+  // UK-convention furniture (London-gated): the document is a Transport
+  // Assessment, not a "Traffic Impact Study", and the executive-summary
+  // headline metrics use UK capacity convention (DoS / over-capacity),
+  // not HCM Level-of-Service cards. The metric-card labels are drawn with
+  // PDFKit characterSpacing, so pdftotext can serialise them with extra
+  // inter-glyph spaces ("O V E R C A PA C I T Y"); match against a
+  // whitespace-stripped copy of the text so the assertion is robust.
+  ["UK document label 'Transport Assessment'", /Transport Assessment/],
+];
+// Card labels checked against a despaced copy (see note above).
+const cardChecks: Array<[string, string]> = [
+  ["UK exec-summary card 'Junctions assessed'", "JUNCTIONSASSESSED"],
+  ["UK exec-summary card 'Over capacity'",      "OVERCAPACITY"],
+  ["UK exec-summary card 'Worst DoS'",          "WORSTDOS"],
+];
+const despaced = text.stdout.replace(/\s+/g, "").toUpperCase();
+// Negative checks — these US-convention strings must NOT appear in the
+// London output (the §1.2 methodology disclosure deliberately explains
+// the HCM/ITE/LOS mismatch, so we scope the ban to the running-header
+// document title and the executive-summary metric-card labels only).
+// The document-title ban is on the raw text (the header/H1 are not
+// character-spaced); the metric-card bans are on the despaced copy so a
+// character-spaced "L O S D R O P S" would still be caught.
+const negChecks: Array<[string, boolean]> = [
+  ["No 'Traffic Impact Study' document title", /Traffic Impact Study/i.test(text.stdout)],
+  ["No 'LOS DROPS' metric card",               despaced.includes("LOSDROPS")],
+  ["No 'AT LOS E/F' metric card",              despaced.includes("ATLOSE/F")],
 ];
 let fail = false;
 for (const [name, re] of checks) {
   const ok = re.test(text.stdout);
   console.log(`${ok ? "✔" : "✘"} ${name}`);
   if (!ok) fail = true;
+}
+for (const [name, needle] of cardChecks) {
+  const ok = despaced.includes(needle);
+  console.log(`${ok ? "✔" : "✘"} ${name}`);
+  if (!ok) fail = true;
+}
+for (const [name, present] of negChecks) {
+  console.log(`${present ? "✘" : "✔"} ${name}`);
+  if (present) fail = true;
 }
 process.exit(fail ? 1 : 0);

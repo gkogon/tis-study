@@ -201,9 +201,9 @@ export async function renderStudyPdf(
     // recursively during the draw passes.
     bufferPages: true,
     info: {
-      Title: `${studyLabel(project.studyType)} — ${project.projectName}`,
+      Title: `${documentLabel(project)} — ${project.projectName}`,
       Author: firm.name,
-      Subject: studyLabel(project.studyType),
+      Subject: documentLabel(project),
       Creator: "Atlanta TIS",
     },
   });
@@ -842,7 +842,7 @@ function drawHeader(doc: PDFKit.PDFDocument, project: StoredProject, firm: FirmS
   doc.fillColor("black");
   doc.font("body").fontSize(8).fillColor(TEXT_GRAY)
     .text(firm.name, PAGE_MARGIN, 12)
-    .text(studyLabel(project.studyType) + " — " + project.projectName, PAGE_MARGIN, 12, { align: "right" });
+    .text(documentLabel(project) + " — " + project.projectName, PAGE_MARGIN, 12, { align: "right" });
   doc.fillColor("black");
   doc.moveDown(2);
 }
@@ -861,7 +861,7 @@ function drawCitationsFooter(doc: PDFKit.PDFDocument, project: StoredProject) {
 }
 
 function drawBody(doc: PDFKit.PDFDocument, project: StoredProject) {
-  doc.font("bold").fontSize(18).fillColor("black").text(studyLabel(project.studyType));
+  doc.font("bold").fontSize(18).fillColor("black").text(documentLabel(project));
   doc.moveDown(0.3);
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(`Generated ${project.createdAt.toISOString()}`);
   doc.moveDown(1);
@@ -3198,6 +3198,32 @@ function renderFarsKBlock(doc: PDFKit.PDFDocument, r: any, opts?: { subsection?:
 }
 
 /**
+ * UK capacity headline for the London executive summary — derived from
+ * the SAME per-junction UK capacity computation the Ch 6 capacity table
+ * uses (`ukCapacityForIntersection(it, "build")` → DoS / PRC / MMQ), so
+ * the headline cards never disagree with the table below. UK TAs do not
+ * use HCM Level of Service, so the London exec summary reports junctions
+ * assessed, junctions over the UK practical-capacity threshold
+ * (signals DoS ≥ 90% / priority+roundabout RFC ≥ 0.85) and the worst
+ * Degree of Saturation, in place of the US "LOS drops / At LOS E-F"
+ * cards.
+ */
+function londonCapacityHeadline(intersections: any[]): {
+  assessed: number;
+  overCapacity: number;
+  worstDosPct: number;
+} {
+  let overCapacity = 0;
+  let worstDosPct = 0;
+  for (const it of intersections) {
+    const cap = ukCapacityForIntersection(it, "build");
+    if (!cap.withinCapacity) overCapacity += 1;
+    if (cap.dosPct > worstDosPct) worstDosPct = cap.dosPct;
+  }
+  return { assessed: intersections.length, overCapacity, worstDosPct };
+}
+
+/**
  * London Transport Assessment renderer. First non-US state-specific
  * renderer. Frames the engine's HCM-based output in UK Transport
  * Assessment terminology following the TfL Healthy Streets TA
@@ -3326,12 +3352,28 @@ function renderTisLondon(
   doc.font("bold").fontSize(10).fillColor(velocityPaletteActive ? VELOCITY_GREEN : BRAND_BLUE).text(taTriggerSentence, { paragraphGap: 6 });
   doc.font("body").fontSize(10).fillColor("black");
 
-  const summary = `This Transport Assessment cross-reference reports the anticipated transport effects of the proposed ${project.projectName || "development"} within ${region.displayName}, ${isLondon ? "Greater London" : "United Kingdom"}. ${intersections.length} junction${intersections.length === 1 ? "" : "s"} fall within a ${radiusKm} km (${fmtNum(radiusMi, 2)} mi) study radius of the site. The analysis is screening-level and is prepared as a cross-reference to UK Transport Assessment methodology; it does not replace a TRICS-based TA prepared by a chartered engineer reviewing under the NPPF (December 2024), the Planning Practice Guidance on transport assessments, and (within Greater London) the London Plan 2021 and TfL Healthy Streets TA format.`;
+  // UK capacity headline (London only) — derived from the same Ch 6
+  // `ukCapacityForIntersection(it, "build")` computation (DoS / PRC /
+  // MMQ) so the exec-summary cards match the capacity table. UK TAs do
+  // not use HCM Level of Service.
+  const ukCap = isLondon ? londonCapacityHeadline(intersections) : null;
+
+  const studyRadiusPhrase = isLondon ? `${radiusKm} km` : `${radiusKm} km (${fmtNum(radiusMi, 2)} mi)`;
+  const summary = `This Transport Assessment cross-reference reports the anticipated transport effects of the proposed ${project.projectName || "development"} within ${region.displayName}, ${isLondon ? "Greater London" : "United Kingdom"}. ${intersections.length} junction${intersections.length === 1 ? "" : "s"} fall within a ${studyRadiusPhrase} study radius of the site. The analysis is screening-level and is prepared as a cross-reference to UK Transport Assessment methodology; it does not replace a TRICS-based TA prepared by a chartered engineer reviewing under the NPPF (December 2024), the Planning Practice Guidance on transport assessments, and (within Greater London) the London Plan 2021 and TfL Healthy Streets TA format.`;
   doc.text(summary, { paragraphGap: 6 });
 
   doc.font("body").fontSize(10).fillColor("black").text("Headline findings:", { paragraphGap: 2 });
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
-  if (losDrops === 0 && losEf === 0) {
+  if (isLondon && ukCap) {
+    // UK capacity convention (DoS / PRC), not HCM LOS.
+    if (ukCap.overCapacity === 0) {
+      doc.text(`• No study junction exceeds the UK practical-capacity threshold (signals DoS ≥ 90% / priority and roundabout RFC ≥ 0.85) under the With-Development scenario; the worst Degree of Saturation is ${fmtNum(ukCap.worstDosPct, 1)}%.`, { paragraphGap: 2 });
+      doc.text("• Highway capacity is not the limiting factor for this scheme on the basis of this screening; PTAL-banded car parking, sustainable-mode uptake and Healthy Streets compliance remain to be assessed separately.", { paragraphGap: 4 });
+    } else {
+      doc.text(`• ${ukCap.overCapacity} junction${ukCap.overCapacity === 1 ? " exceeds" : "s exceed"} the UK practical-capacity threshold (signals DoS ≥ 90% / priority and roundabout RFC ≥ 0.85) under the With-Development scenario; the worst Degree of Saturation is ${fmtNum(ukCap.worstDosPct, 1)}%.`, { paragraphGap: 2 });
+      doc.text(`• Mitigation would be warranted at the over-capacity junction${ukCap.overCapacity === 1 ? "" : "s"} under either S106 obligation or S278 highway works (depending on the responsible authority), confirmed in LinSig 3 / Junctions 11.`, { paragraphGap: 4 });
+    }
+  } else if (losDrops === 0 && losEf === 0) {
     doc.text("• No junction within the study network is projected to deteriorate by one or more LOS categories under the With-Development scenario.", { paragraphGap: 2 });
     doc.text("• Highway capacity is not the limiting factor for this scheme on the basis of this screening; PTAL-banded car parking, sustainable-mode uptake and Healthy Streets compliance remain to be assessed separately.", { paragraphGap: 4 });
   } else {
@@ -3341,12 +3383,18 @@ function renderTisLondon(
   doc.fillColor("black");
   doc.moveDown(0.5);
 
-  metricStrip(doc, [
-    { label: "Junctions", value: String(r.intersectionsStudied ?? intersections.length ?? 0) },
-    { label: "LOS drops", value: String(losDrops) },
-    { label: "At LOS E/F", value: String(losEf) },
-    { label: "Worst Δ delay", value: `${(r.worstDelayDeltaSec ?? 0).toFixed(1)}s` },
-  ]);
+  metricStrip(doc, isLondon && ukCap
+    ? [
+        { label: "Junctions assessed", value: String(ukCap.assessed) },
+        { label: "Over capacity", value: String(ukCap.overCapacity) },
+        { label: "Worst DoS", value: `${fmtNum(ukCap.worstDosPct, 1)}%` },
+      ]
+    : [
+        { label: "Junctions", value: String(r.intersectionsStudied ?? intersections.length ?? 0) },
+        { label: "LOS drops", value: String(losDrops) },
+        { label: "At LOS E/F", value: String(losEf) },
+        { label: "Worst Δ delay", value: `${(r.worstDelayDeltaSec ?? 0).toFixed(1)}s` },
+      ]);
   doc.moveDown(0.8);
 
   // PTAL / public-transport-access block. Extracted into a closure so it
@@ -3801,17 +3849,24 @@ function renderTisLondon(
     const amBySignalD = new Map<string, any>(amIntsD.map((a) => [String(a.signalId ?? a.name), a]));
     const hasAmD = amIntsD.length > 0;
     const totalPm = intersections.reduce((s, it) => s + (Number(it.addedTripsPmPeak) || 0), 0) || 1;
+    // London reports distance metric (km); other UK regions (Manchester …)
+    // keep the engine's imperial miles for now.
+    const distHeader = isLondon ? "Dist (km)" : "Dist (mi)";
+    const distCell = (mi: any) => {
+      if (mi == null || Number.isNaN(Number(mi))) return "—";
+      return isLondon ? fmtNum(Number(mi) * 1.609344, 2) : fmtNum(mi, 2);
+    };
     const distRows = intersections.map((it) => {
       const pm = Number(it.addedTripsPmPeak) || 0;
       const amTwin = amBySignalD.get(String(it.signalId ?? it.name));
       const am = amTwin ? Number(amTwin.addedTripsPmPeak) || 0 : null;
-      const head = [String(it.name ?? it.signalId ?? "—"), fmtNum(it.distanceMi, 2)];
+      const head = [String(it.name ?? it.signalId ?? "—"), distCell(it.distanceMi)];
       const tail = [fmtNum(pm, 0), ((pm / totalPm) * 100).toFixed(1) + "%"];
       return hasAmD ? [...head, am === null ? "—" : fmtNum(am, 0), ...tail] : [...head, ...tail];
     });
     table(doc, hasAmD
-      ? { headers: ["Junction", "Dist (mi)", "Added trips AM", "Added trips PM", "Share of added PM"], widths: [175, 60, 90, 90, 90], align: ["left", "right", "right", "right", "right"], rows: distRows }
-      : { headers: ["Junction", "Dist (mi)", "Added trips PM", "Share of added PM"], widths: [220, 70, 110, 100], align: ["left", "right", "right", "right"], rows: distRows });
+      ? { headers: ["Junction", distHeader, "Added trips AM", "Added trips PM", "Share of added PM"], widths: [175, 60, 90, 90, 90], align: ["left", "right", "right", "right", "right"], rows: distRows }
+      : { headers: ["Junction", distHeader, "Added trips PM", "Share of added PM"], widths: [220, 70, 110, 100], align: ["left", "right", "right", "right"], rows: distRows });
     doc.moveDown(0.3);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
       isLondon
@@ -4096,9 +4151,9 @@ function renderTisLondon(
   ldnSection(doc, isLondon ? "8.0 SUMMARY AND CONCLUSIONS" : "8.0 CONCLUSION");
   if (isLondon) {
     ldnChapterIntro(doc, "i.e. The summary table below — the matrix TfL recommends for a Healthy Streets TA conclusion — sets out the key transport impacts/issues and the solutions/mechanisms that respond to them. Outcomes (planning obligations, design changes, mitigation) are to be agreed between the applicant, the borough and TfL before planning permission is recommended.");
-    const networkImpact = (losDrops === 0 && losEf === 0)
-      ? "No study junction projected to deteriorate by one or more LOS under the With-Development scenario; capacity is not the limiting factor at screening."
-      : `${losDrops} junction(s) deteriorate by ≥ 1 LOS and ${losEf} operate at LOS E/F under the With-Development scenario.`;
+    const networkImpact = (ukCap && ukCap.overCapacity === 0)
+      ? `No study junction exceeds the UK practical-capacity threshold (DoS ≥ 90% / RFC ≥ 0.85) under the With-Development scenario (worst DoS ${fmtNum(ukCap.worstDosPct, 1)}%); capacity is not the limiting factor at screening.`
+      : `${ukCap?.overCapacity ?? 0} junction(s) exceed the UK practical-capacity threshold (DoS ≥ 90% / RFC ≥ 0.85) under the With-Development scenario (worst DoS ${fmtNum(ukCap?.worstDosPct ?? 0, 1)}%).`;
     const networkSolution = needMitigation.length > 0
       ? `Mitigation flagged at ${needMitigation.length} junction(s); secure via S106 / S278 (borough or TLRN) plus an MCIL2 check, confirmed in LinSig 3 / Junctions 11.`
       : "No mitigation indicated at screening; confirm against DMRB CD 116 / CD 123 and the TfL / borough operational standards.";
@@ -4117,8 +4172,15 @@ function renderTisLondon(
     });
     doc.moveDown(0.5);
   }
+  const concCapacityClause = isLondon && ukCap
+    ? (ukCap.overCapacity === 0
+        ? `no study junction exceeds the UK practical-capacity threshold (signals DoS ≥ 90% / priority and roundabout RFC ≥ 0.85) under the With-Development scenario (worst Degree of Saturation ${fmtNum(ukCap.worstDosPct, 1)}%), and capacity is not the limiting factor on this analysis.`
+        : `${ukCap.overCapacity} junction(s) exceed the UK practical-capacity threshold (signals DoS ≥ 90% / priority and roundabout RFC ≥ 0.85) under the With-Development scenario (worst Degree of Saturation ${fmtNum(ukCap.worstDosPct, 1)}%), indicating mitigation would be warranted.`)
+    : (losDrops === 0 && losEf === 0
+        ? "no junction within the study network is projected to deteriorate by one or more LOS categories under the With-Development scenario, and capacity is not the limiting factor on this analysis."
+        : `${losDrops} junction(s) project to deteriorate by one or more LOS categories under the With-Development scenario and ${losEf} junction(s) project to operate at LOS E or F, indicating mitigation would be warranted.`);
   doc.font("body").fontSize(10).fillColor("black").text(
-    `On the basis of the screening-level cross-reference set out above, ${losDrops === 0 && losEf === 0 ? "no junction within the study network is projected to deteriorate by one or more LOS categories under the With-Development scenario, and capacity is not the limiting factor on this analysis." : `${losDrops} junction(s) project to deteriorate by one or more LOS categories under the With-Development scenario and ${losEf} junction(s) project to operate at LOS E or F, indicating mitigation would be warranted.`} The following deliverables remain outstanding and are required for a submittable London Transport Assessment:`,
+    `On the basis of the screening-level cross-reference set out above, ${concCapacityClause} The following deliverables remain outstanding and are required for a submittable London Transport Assessment:`,
     { paragraphGap: 6 },
   );
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
@@ -4336,12 +4398,25 @@ function renderLondonTransportStatement(
   doc.font("bold").fontSize(10).fillColor(velocityPaletteActive ? VELOCITY_GREEN : BRAND_BLUE).text(tsTriggerSentence, { paragraphGap: 6 });
   doc.font("body").fontSize(10).fillColor("black");
 
-  const summary = `This Transport Statement reports the anticipated transport effects of the proposed ${project.projectName || "development"} within ${region.displayName}, ${isLondon ? "Greater London" : "United Kingdom"}. ${intersections.length} junction${intersections.length === 1 ? "" : "s"} fall within a ${radiusKm} km (${fmtNum(radiusMi, 2)} mi) study radius of the site. The analysis is screening-level and is prepared as a cross-reference to UK Transport Statement methodology; a submittable TS prepared by a chartered engineer would re-run trip generation on TRICS multi-modal rates and junction capacity in LinSig 3 / Junctions 11 as appropriate.`;
+  // UK capacity headline (London only) — same Ch-4 / Ch-6 UK capacity
+  // computation (DoS / PRC / MMQ); UK reports do not use HCM LOS.
+  const ukCap = isLondon ? londonCapacityHeadline(intersections) : null;
+
+  const studyRadiusPhrase = isLondon ? `${radiusKm} km` : `${radiusKm} km (${fmtNum(radiusMi, 2)} mi)`;
+  const summary = `This Transport Statement reports the anticipated transport effects of the proposed ${project.projectName || "development"} within ${region.displayName}, ${isLondon ? "Greater London" : "United Kingdom"}. ${intersections.length} junction${intersections.length === 1 ? "" : "s"} fall within a ${studyRadiusPhrase} study radius of the site. The analysis is screening-level and is prepared as a cross-reference to UK Transport Statement methodology; a submittable TS prepared by a chartered engineer would re-run trip generation on TRICS multi-modal rates and junction capacity in LinSig 3 / Junctions 11 as appropriate.`;
   doc.text(summary, { paragraphGap: 6 });
 
   doc.font("body").fontSize(10).fillColor("black").text("Headline findings:", { paragraphGap: 2 });
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
-  if (losDrops === 0 && losEf === 0) {
+  if (isLondon && ukCap) {
+    if (ukCap.overCapacity === 0) {
+      doc.text(`• No study junction exceeds the UK practical-capacity threshold (signals DoS ≥ 90% / priority and roundabout RFC ≥ 0.85) under the With-Development scenario; the worst Degree of Saturation is ${fmtNum(ukCap.worstDosPct, 1)}%.`, { paragraphGap: 2 });
+      doc.text("• Highway capacity is not the limiting factor for this scheme on the basis of this screening; PTAL-banded car parking and sustainable-mode uptake remain to be confirmed at the chartered-engineer stage.", { paragraphGap: 4 });
+    } else {
+      doc.text(`• ${ukCap.overCapacity} junction${ukCap.overCapacity === 1 ? " exceeds" : "s exceed"} the UK practical-capacity threshold (signals DoS ≥ 90% / priority and roundabout RFC ≥ 0.85) under the With-Development scenario; the worst Degree of Saturation is ${fmtNum(ukCap.worstDosPct, 1)}%.`, { paragraphGap: 2 });
+      doc.text(`• Mitigation would be warranted at the over-capacity junction${ukCap.overCapacity === 1 ? "" : "s"}, confirmed in LinSig 3 / Junctions 11.`, { paragraphGap: 4 });
+    }
+  } else if (losDrops === 0 && losEf === 0) {
     doc.text("• No junction within the study network is projected to deteriorate by one or more LOS categories under the With-Development scenario.", { paragraphGap: 2 });
     doc.text("• Highway capacity is not the limiting factor for this scheme on the basis of this screening; PTAL-banded car parking and sustainable-mode uptake remain to be confirmed at the chartered-engineer stage.", { paragraphGap: 4 });
   } else {
@@ -4351,12 +4426,18 @@ function renderLondonTransportStatement(
   doc.fillColor("black");
   doc.moveDown(0.5);
 
-  metricStrip(doc, [
-    { label: "Junctions", value: String(r.intersectionsStudied ?? intersections.length ?? 0) },
-    { label: "LOS drops", value: String(losDrops) },
-    { label: "At LOS E/F", value: String(losEf) },
-    { label: "Worst Δ delay", value: `${(r.worstDelayDeltaSec ?? 0).toFixed(1)}s` },
-  ]);
+  metricStrip(doc, isLondon && ukCap
+    ? [
+        { label: "Junctions assessed", value: String(ukCap.assessed) },
+        { label: "Over capacity", value: String(ukCap.overCapacity) },
+        { label: "Worst DoS", value: `${fmtNum(ukCap.worstDosPct, 1)}%` },
+      ]
+    : [
+        { label: "Junctions", value: String(r.intersectionsStudied ?? intersections.length ?? 0) },
+        { label: "LOS drops", value: String(losDrops) },
+        { label: "At LOS E/F", value: String(losEf) },
+        { label: "Worst Δ delay", value: `${(r.worstDelayDeltaSec ?? 0).toFixed(1)}s` },
+      ]);
   doc.moveDown(0.8);
 
   ldnSection(doc, "1.0 INTRODUCTION");
@@ -4485,8 +4566,15 @@ function renderLondonTransportStatement(
   }
 
   ldnSection(doc, "5.0 CONCLUSION");
+  const tsConcCapacityClause = isLondon && ukCap
+    ? (ukCap.overCapacity === 0
+        ? `no study junction exceeds the UK practical-capacity threshold (signals DoS ≥ 90% / priority and roundabout RFC ≥ 0.85) under the With-Development scenario (worst Degree of Saturation ${fmtNum(ukCap.worstDosPct, 1)}%), and capacity is not the limiting factor on this analysis.`
+        : `${ukCap.overCapacity} junction(s) exceed the UK practical-capacity threshold (signals DoS ≥ 90% / priority and roundabout RFC ≥ 0.85) under the With-Development scenario (worst Degree of Saturation ${fmtNum(ukCap.worstDosPct, 1)}%), indicating mitigation would be warranted.`)
+    : (losDrops === 0 && losEf === 0
+        ? "no junction within the study network is projected to deteriorate by one or more LOS categories under the With-Development scenario, and capacity is not the limiting factor on this analysis."
+        : `${losDrops} junction(s) project to deteriorate by one or more LOS categories under the With-Development scenario and ${losEf} junction(s) project to operate at LOS E or F, indicating mitigation would be warranted.`);
   doc.font("body").fontSize(10).fillColor("black").text(
-    `On the basis of this screening-level Transport Statement, ${losDrops === 0 && losEf === 0 ? "no junction within the study network is projected to deteriorate by one or more LOS categories under the With-Development scenario, and capacity is not the limiting factor on this analysis." : `${losDrops} junction(s) project to deteriorate by one or more LOS categories under the With-Development scenario and ${losEf} junction(s) project to operate at LOS E or F, indicating mitigation would be warranted.`} The scheme falls within the DfT 2007 Appendix B TS size band for the use class (${sizeRule}) and trips none of the "regardless of size" escalators (peak-hour ≥ 30 vph, daily ≥ 100 vpd, ≥ 100 parking spaces, AQMA proximity, inadequate local transport infrastructure); a Transport Statement is therefore the appropriate deliverable shape under the de-facto DfT 2007 / PPG split. Promotion to a full Transport Assessment (TA) would be required only if (i) the scheme grew above the TA size threshold for the use class, or (ii) any Appendix B escalator subsequently triggered.`,
+    `On the basis of this screening-level Transport Statement, ${tsConcCapacityClause} The scheme falls within the DfT 2007 Appendix B TS size band for the use class (${sizeRule}) and trips none of the "regardless of size" escalators (peak-hour ≥ 30 vph, daily ≥ 100 vpd, ≥ 100 parking spaces, AQMA proximity, inadequate local transport infrastructure); a Transport Statement is therefore the appropriate deliverable shape under the de-facto DfT 2007 / PPG split. Promotion to a full Transport Assessment (TA) would be required only if (i) the scheme grew above the TA size threshold for the use class, or (ii) any Appendix B escalator subsequently triggered.`,
     { paragraphGap: 6 },
   );
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
@@ -8263,4 +8351,19 @@ function studyLabel(type: string): string {
     case "road_diet": return "Road-Diet Feasibility Screening";
     default: return type.toUpperCase();
   }
+}
+
+/**
+ * Document label for the running header, body H1 and PDF metadata, with
+ * the London (`london_metro`) TIS overriding the US "Traffic Impact
+ * Study" string with the UK "Transport Assessment" term a TfL/borough
+ * reviewer expects (it matches the Velocity cover, which hardcodes
+ * "Transport Assessment"). Gated to London only — every other UK region
+ * (Manchester, Glasgow …) and all US/Canada studies keep studyLabel().
+ */
+function documentLabel(project: StoredProject): string {
+  if (project.studyType === "tis" && detectRegion(project)?.code === "london_metro") {
+    return "Transport Assessment";
+  }
+  return studyLabel(project.studyType);
 }
