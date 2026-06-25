@@ -68,11 +68,29 @@ type FirmStamp = {
 // deep maroon matching the consultant-cover aesthetic.
 const DEFAULT_BRAND_COLOR = "#7a1420";
 
-// Velocity Transport Planning house colour for the London (City-of-London)
-// cover + Document Control Sheet when the firm has not set its own brand.
-// A deep slate-teal that reads white-on-dark, matching Velocity's filed
-// reports. Used only by the London furniture; never the shared cover.
-const VELOCITY_BRAND = "#143a4a";
+// Velocity Transport Planning brand identity, sampled from their filed
+// reports (60 Gracechurch Street TA, Velocity, July 2024). Applied ONLY to
+// the London (`london_metro`) furniture + headings; every other UK region
+// (Manchester, Glasgow …) and all US/Canada studies keep their own colours.
+//   • VELOCITY_GREEN — chapter titles, section headings, the rules under
+//     them, ring/bullet markers, table-header text + borders, Document
+//     Control Sheet accents.
+//   • VELOCITY_GRAD — diagonal cover gradient green→teal→blue (white text).
+//   • VELOCITY_FILL / VELOCITY_FILL_ALT — pale table/row fills.
+const VELOCITY_GREEN = "#8EC57C";
+const VELOCITY_GRAD = ["#07B160", "#269D89", "#5BA7CF"] as const;
+const VELOCITY_FILL = "#ECF5E9";
+const VELOCITY_FILL_ALT = "#E2F0DD";
+// Retained name for the Document Control Sheet top rule + cover fallback
+// tint; now the brand green rather than the old slate-teal placeholder.
+const VELOCITY_BRAND = VELOCITY_GREEN;
+
+// When the London (Velocity) render path is active, the SHARED table /
+// metricStrip helpers (used by every region) switch their header fill +
+// accent to the Velocity palette. Set true only for the duration of the
+// London render and reset in a finally, so non-London regions are never
+// touched. Module-level avoids threading a flag through ~40 call sites.
+let velocityPaletteActive = false;
 
 const PAGE_MARGIN = 50;
 const BRAND_BLUE = "#2563eb";
@@ -91,6 +109,25 @@ const FONT_DIR = (() => {
 const FONT_REGULAR = path.join(FONT_DIR, "DejaVuSans.ttf");
 const FONT_BOLD = path.join(FONT_DIR, "DejaVuSans-Bold.ttf");
 const FONT_MONO = path.join(FONT_DIR, "DejaVuSansMono.ttf");
+
+// Velocity logo assets (real, extracted from the filed 60 Gracechurch TA):
+// the white cover wordmark, plus the grey wordmark + green multimodal icon
+// for the title/footer furniture. Probed beside the bundled fonts (same
+// ../data vs ../../data dual-path as FONT_DIR so it resolves in both the
+// dist/ build and tsx/test runs). London-only — never loaded for other
+// regions.
+const VELOCITY_ASSET_DIR = (() => {
+  for (const c of [path.resolve(__dirname, "../data/velocity"), path.resolve(__dirname, "../../data/velocity")]) {
+    if (existsSync(path.join(c, "velocity-wordmark-white.png"))) return c;
+  }
+  return path.resolve(__dirname, "../data/velocity");
+})();
+function velocityAsset(name: string): Buffer | null {
+  try {
+    const p = path.join(VELOCITY_ASSET_DIR, name);
+    return existsSync(p) ? readFileSync(p) : null;
+  } catch { return null; }
+}
 
 /**
  * Resolve a firm logo URL to image bytes that PDFKit can render.
@@ -466,10 +503,16 @@ function velocityDocMeta(project: StoredProject): VelocityMeta {
 }
 
 /**
- * Velocity cover page. Dark brand block with the site, the report title,
- * the project/doc/version/client metadata block, and the Velocity sign-off
- * (firm name + website). Mirrors the 60 Gracechurch Street cover layout.
- * London-only; the shared `drawCover` is untouched for every other region.
+ * Velocity cover page. Full-bleed diagonal green→teal→blue gradient with
+ * the white VELOCITY wordmark top-left, the site / "Transport Assessment" /
+ * date bottom-left, and the project metadata + sign-off — reproducing the
+ * 60 Gracechurch Street cover. The Street View photo is dropped to a very
+ * faint ghost so the gradient stays the priority. London-only; the shared
+ * `drawCover` is untouched for every other region.
+ *
+ * If the firm has set its own `brandColor`, we honour it with a flat brand
+ * cover instead of Velocity's gradient (so a white-labelling firm gets its
+ * own identity); only the unbranded Velocity default gets the gradient.
  */
 function drawVelocityCover(
   doc: PDFKit.PDFDocument,
@@ -481,74 +524,86 @@ function drawVelocityCover(
 ) {
   const W = doc.page.width;
   const H = doc.page.height;
-  const brand = (firm.brandColor && /^#[0-9a-fA-F]{6}$/.test(firm.brandColor))
-    ? firm.brandColor
-    : VELOCITY_BRAND;
-  const onBrand = readableOn(brand);
-  const subOnBrand = onBrand === "#ffffff" ? "rgba(255,255,255,0.85)" : "#333333";
+  const firmBranded = !!(firm.brandColor && /^#[0-9a-fA-F]{6}$/.test(firm.brandColor));
 
-  const photoTop = 132;
-  const photoH = 300;
-  const blockTop = photoTop + photoH;
+  // 1) Background. Velocity default → diagonal gradient. White-labelled firm
+  //    → flat brand fill (their own colour, not Velocity's gradient).
+  if (firmBranded) {
+    doc.rect(0, 0, W, H).fill(firm.brandColor as string);
+  } else {
+    const g = doc.linearGradient(0, 0, W, H);
+    g.stop(0, VELOCITY_GRAD[0]).stop(0.55, VELOCITY_GRAD[1]).stop(1, VELOCITY_GRAD[2]);
+    doc.rect(0, 0, W, H).fill(g);
+  }
 
-  // 1) Site photo band (Street View) or brand-tint fallback.
+  // 2) Very faint ghost of the Street View photo over the gradient, lower
+  //    half only, so the gradient reads first. Skipped if no photo.
   if (sitePhotoBuf) {
     try {
       doc.save();
-      doc.rect(0, photoTop, W, photoH).clip();
-      doc.image(sitePhotoBuf, 0, photoTop, { cover: [W, photoH], align: "center", valign: "center" });
+      doc.rect(0, H * 0.32, W, H * 0.68).clip();
+      doc.opacity(0.12);
+      doc.image(sitePhotoBuf, 0, H * 0.32, { cover: [W, H * 0.68], align: "center", valign: "center" });
+      doc.opacity(1);
       doc.restore();
     } catch {
-      doc.rect(0, photoTop, W, photoH).fill(shade(brand, 1.6));
+      doc.opacity(1);
     }
-  } else {
-    doc.rect(0, photoTop, W, photoH).fill(shade(brand, 1.7));
   }
 
-  // 2) Top brand band carrying the firm name (or logo).
-  doc.rect(0, 0, W, photoTop).fill(brand);
-  if (logoBuf) {
-    try {
-      doc.image(logoBuf, PAGE_MARGIN, 40, { fit: [240, 56] });
-    } catch {
-      doc.font("bold").fontSize(18).fillColor(onBrand).text(firm.name.toUpperCase(), PAGE_MARGIN, 54);
-    }
-  } else {
-    doc.font("bold").fontSize(18).fillColor(onBrand).text(VELOCITY_NAME.toUpperCase(), PAGE_MARGIN, 54);
-  }
-  doc.font("body").fontSize(9).fillColor(subOnBrand).text(VELOCITY_WEB, PAGE_MARGIN, 100);
-
-  // 3) Bottom brand block carrying the cover metadata.
-  doc.rect(0, blockTop, W, H - blockTop).fill(brand);
+  const onBrand = firmBranded ? readableOn(firm.brandColor as string) : "#ffffff";
+  const subOnBrand = onBrand === "#ffffff" ? "rgba(255,255,255,0.88)" : "#333333";
   const tX = PAGE_MARGIN;
   const tW = W - PAGE_MARGIN * 2;
-  let y = blockTop + 36;
-  doc.fillColor(onBrand).font("bold").fontSize(24).text(meta.site, tX, y, { width: tW });
-  y = doc.y + 6;
-  doc.font("bold").fontSize(15).fillColor(onBrand).text("TRANSPORT ASSESSMENT", tX, y, { width: tW });
-  y = doc.y + 10;
-  doc.save().lineWidth(1.25).strokeColor(onBrand).moveTo(tX, y).lineTo(tX + Math.min(tW, 360), y).stroke().restore();
-  y += 14;
+
+  // 3) Wordmark top-left: firm logo if uploaded, else Velocity's real white
+  //    wordmark asset, else a styled-text fallback.
+  const whiteWordmark = velocityAsset("velocity-wordmark-white.png");
+  let placedLogo = false;
+  if (logoBuf) {
+    try { doc.image(logoBuf, tX, 44, { fit: [240, 60] }); placedLogo = true; } catch { placedLogo = false; }
+  } else if (!firmBranded && whiteWordmark) {
+    try { doc.image(whiteWordmark, tX, 46, { fit: [232, 52] }); placedLogo = true; } catch { placedLogo = false; }
+  }
+  if (!placedLogo) {
+    // Styled-text fallback in the brand voice (italic, letter-spaced).
+    doc.font("bold").fontSize(30).fillColor(onBrand)
+      .text((firmBranded ? firm.name : "VELOCITY").toUpperCase(), tX, 48, { width: tW, characterSpacing: 3, oblique: true });
+    if (!firmBranded) {
+      doc.font("body").fontSize(10).fillColor(subOnBrand)
+        .text("Transport Planning", tX, 86, { width: tW, characterSpacing: 4 });
+    }
+  }
+
+  // 4) Bottom-left title block: site, "Transport Assessment", rule, metadata.
+  let y = H - 300;
+  doc.fillColor(onBrand).font("bold").fontSize(30).text(meta.site, tX, y, { width: tW * 0.92 });
+  y = doc.y + 4;
+  doc.font("body").fontSize(18).fillColor(onBrand).text("Transport Assessment", tX, y, { width: tW });
+  y = doc.y + 8;
+  doc.font("body").fontSize(12).fillColor(subOnBrand).text(meta.monthYear, tX, y, { width: tW });
+  y = doc.y + 12;
+  doc.save().lineWidth(1.25).strokeColor(onBrand).opacity(0.85)
+    .moveTo(tX, y).lineTo(tX + Math.min(tW, 320), y).stroke().opacity(1).restore();
+  y += 12;
 
   const metaLines = [
-    `PROJECT NO. ${meta.projectNo}`,
-    `DOC NO. ${meta.docNo}`,
-    `DATE: ${meta.monthYear}`,
+    `PROJECT NO. ${meta.projectNo}    DOC NO. ${meta.docNo}`,
     `VERSION: ${meta.version}`,
     `CLIENT: ${meta.client}`,
   ];
-  doc.font("body").fontSize(11).fillColor(onBrand);
+  doc.font("body").fontSize(10).fillColor(subOnBrand);
   for (const line of metaLines) {
     doc.text(line, tX, y, { width: tW });
-    y = doc.y + 3;
+    y = doc.y + 2;
   }
 
-  // 4) Velocity sign-off, bottom-right of the brand block.
-  doc.font("bold").fontSize(12).fillColor(onBrand)
-    .text(VELOCITY_NAME, tX, H - PAGE_MARGIN - 30, { width: tW, align: "right" });
+  // 5) Velocity sign-off, bottom-left under the metadata.
+  doc.font("bold").fontSize(11).fillColor(onBrand)
+    .text(VELOCITY_NAME, tX, H - PAGE_MARGIN - 28, { width: tW });
   doc.font("body").fontSize(10).fillColor(subOnBrand)
-    .text(VELOCITY_WEB, tX, H - PAGE_MARGIN - 14, { width: tW, align: "right" });
-  doc.fillColor("black");
+    .text(VELOCITY_WEB, tX, H - PAGE_MARGIN - 13, { width: tW });
+  doc.opacity(1).fillColor("black");
 }
 
 /**
@@ -562,11 +617,23 @@ function drawVelocityDocControlSheet(
   meta: VelocityMeta,
   firm: FirmStamp,
 ) {
-  doc.rect(0, 0, doc.page.width, 4).fill(VELOCITY_BRAND);
+  const W = doc.page.width;
+  // Green diagonal corner badge top-right carrying the page mark "i",
+  // reproducing the filed-report Document Control Sheet header. Drawn
+  // inside save/restore; the badge "i" text is positioned explicitly and
+  // must NOT leave the text cursor near the right margin (restore() only
+  // restores graphics state, not doc.x/doc.y), so the title below sets its
+  // own x / y / width explicitly.
+  doc.save();
+  doc.fillColor(VELOCITY_GREEN);
+  doc.moveTo(W - 150, 0).lineTo(W, 0).lineTo(W, 70).lineTo(W - 110, 70).closePath().fill();
+  doc.fillColor("#ffffff").font("body").fontSize(11).text("i", W - 62, 24, { width: 24, align: "left", lineBreak: false });
+  doc.restore();
   doc.fillColor("black");
-  doc.moveDown(1.5);
-  doc.font("bold").fontSize(16).fillColor("black").text("DOCUMENT CONTROL SHEET");
-  doc.moveDown(0.6);
+  doc.font("bold").fontSize(16).fillColor(VELOCITY_GREEN)
+    .text("DOCUMENT CONTROL SHEET", PAGE_MARGIN, 96, { width: W - PAGE_MARGIN * 2 });
+  doc.x = PAGE_MARGIN;
+  doc.moveDown(0.8);
 
   rows(doc, [
     ["Document Reference", `${meta.projectNo} ${meta.docNo}`],
@@ -581,6 +648,7 @@ function drawVelocityDocControlSheet(
 
   doc.font("bold").fontSize(11).fillColor("black").text("Document Review");
   doc.moveDown(0.3);
+  velocityPaletteActive = true;
   table(doc, {
     headers: ["Role", "Name / Initials", "Date completed"],
     widths: [170, 170, 130],
@@ -591,6 +659,7 @@ function drawVelocityDocControlSheet(
       ["Authorised By", "[..]", "[..]"],
     ],
   });
+  velocityPaletteActive = false;
   doc.moveDown(0.5);
 
   doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
@@ -610,16 +679,30 @@ function drawVelocityDocControlSheet(
  * Project No [..] Doc No [..] | [Site] | Page n | [Month Year]`.
  */
 function drawVelocityPageFooter(doc: PDFKit.PDFDocument, meta: VelocityMeta, pageNum: number) {
+  const W = doc.page.width;
   const y = doc.page.height - 30;
-  const w = doc.page.width - PAGE_MARGIN * 2;
   doc.save();
-  doc.strokeColor("#d1d5db").lineWidth(0.5)
-    .moveTo(PAGE_MARGIN, y - 4).lineTo(doc.page.width - PAGE_MARGIN, y - 4).stroke();
+  // Green rule above the footer (brand), grey footer text below it.
+  doc.strokeColor(VELOCITY_GREEN).lineWidth(0.75)
+    .moveTo(PAGE_MARGIN, y - 6).lineTo(W - PAGE_MARGIN, y - 6).stroke();
+
+  // Green multimodal icon, bottom-right, mirroring the filed report.
+  const icon = velocityAsset("velocity-multimodal.png");
+  let textRight = W - PAGE_MARGIN;
+  if (icon) {
+    try {
+      const iconW = 66;
+      const iconH = iconW * (138 / 529); // preserve the asset aspect ratio
+      doc.image(icon, W - PAGE_MARGIN - iconW, y - 1, { fit: [iconW, iconH] });
+      textRight = W - PAGE_MARGIN - iconW - 8;
+    } catch { /* fall through to text-only footer */ }
+  }
+  const w = textRight - PAGE_MARGIN;
   // `lineBreak: false` is critical: without it the footer text can
   // auto-paginate, which re-fires `pageAdded` and infinitely recurses.
   doc.font("body").fontSize(7).fillColor("#6b7280").text(
     `${VELOCITY_NAME_LIMITED} | Transport Assessment | Project No ${meta.projectNo} Doc No ${meta.docNo} | ${meta.site} | Page ${pageNum} | ${meta.monthYear}`,
-    PAGE_MARGIN, y, { width: w, align: "center", lineBreak: false },
+    PAGE_MARGIN, y, { width: w, align: "left", lineBreak: false },
   );
   doc.restore();
 }
@@ -820,23 +903,35 @@ function dispatchTisRender(
   result: Record<string, unknown>,
   project: StoredProject,
 ) {
-  // 1. Run the region-specific body renderer (GA/FL/NY/CA/TX/IL/UK/…).
-  selectRegionalTisRenderer(doc, result, project);
+  // Velocity's brand palette is applied to the SHARED heading/table/metric
+  // helpers only while the London (`london_metro`) body + appendix render.
+  // Gated here (not inside renderTisLondon, which also serves non-London UK
+  // regions like Manchester) and reset in finally so no other region — and
+  // not even a non-London UK TA — picks up the green.
+  const region = project.studyType === "tis" ? detectRegion(project) : null;
+  const isVelocityLondon = region?.code === "london_metro";
+  if (isVelocityLondon) velocityPaletteActive = true;
+  try {
+    // 1. Run the region-specific body renderer (GA/FL/NY/CA/TX/IL/UK/…).
+    selectRegionalTisRenderer(doc, result, project);
 
-  // 2. Append the shared per-intersection capacity appendix for EVERY
-  //    region — turning-movement diagrams per analyzed peak period + the
-  //    per-approach HCM capacity table. This was previously FL-only, which
-  //    is why an Atlanta (GA) study showed no worksheets.
-  const intersections = Array.isArray(result.affectedIntersections)
-    ? (result.affectedIntersections as any[]) : [];
-  const periods = Array.isArray(result.periodReports)
-    ? (result.periodReports as any[]) : [];
-  if (intersections.length > 0) {
-    // Four-step travel demand model write-up (generation → gravity
-    // distribution → mode choice → BPR assignment), then the
-    // per-intersection capacity worksheets.
-    renderFourStepSection(doc, result);
-    renderCapacityAppendix(doc, intersections, periods);
+    // 2. Append the shared per-intersection capacity appendix for EVERY
+    //    region — turning-movement diagrams per analyzed peak period + the
+    //    per-approach HCM capacity table. This was previously FL-only, which
+    //    is why an Atlanta (GA) study showed no worksheets.
+    const intersections = Array.isArray(result.affectedIntersections)
+      ? (result.affectedIntersections as any[]) : [];
+    const periods = Array.isArray(result.periodReports)
+      ? (result.periodReports as any[]) : [];
+    if (intersections.length > 0) {
+      // Four-step travel demand model write-up (generation → gravity
+      // distribution → mode choice → BPR assignment), then the
+      // per-intersection capacity worksheets.
+      renderFourStepSection(doc, result);
+      renderCapacityAppendix(doc, intersections, periods);
+    }
+  } finally {
+    velocityPaletteActive = false;
   }
 }
 
@@ -3228,7 +3323,7 @@ function renderTisLondon(
   const taTriggerSentence = escalatorTriggered
     ? `This document is structured as a Transport Assessment (TA) under the full 8-chapter TfL Healthy Streets format. Size alone (${sizeRule.toLowerCase()}) would otherwise have indicated a Transport Statement; the TA shape was forced by the DfT 2007 Appendix B "regardless of size" escalator(s): ${escalators.join("; ")}.`
     : `This document is structured as a Transport Assessment (TA) under the full 8-chapter TfL Healthy Streets format per DfT 2007 Appendix B (${sizeRule}).`;
-  doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(taTriggerSentence, { paragraphGap: 6 });
+  doc.font("bold").fontSize(10).fillColor(velocityPaletteActive ? VELOCITY_GREEN : BRAND_BLUE).text(taTriggerSentence, { paragraphGap: 6 });
   doc.font("body").fontSize(10).fillColor("black");
 
   const summary = `This Transport Assessment cross-reference reports the anticipated transport effects of the proposed ${project.projectName || "development"} within ${region.displayName}, ${isLondon ? "Greater London" : "United Kingdom"}. ${intersections.length} junction${intersections.length === 1 ? "" : "s"} fall within a ${radiusKm} km (${fmtNum(radiusMi, 2)} mi) study radius of the site. The analysis is screening-level and is prepared as a cross-reference to UK Transport Assessment methodology; it does not replace a TRICS-based TA prepared by a chartered engineer reviewing under the NPPF (December 2024), the Planning Practice Guidance on transport assessments, and (within Greater London) the London Plan 2021 and TfL Healthy Streets TA format.`;
@@ -4142,15 +4237,28 @@ function renderTisLondon(
 /** Section heading for the London renderer (same visual treatment as GA). */
 function ldnSection(doc: PDFKit.PDFDocument, title: string) {
   doc.x = PAGE_MARGIN;
-  doc.font("bold").fontSize(13).fillColor("black").text(title, { characterSpacing: 0.5 });
-  doc.moveDown(0.3);
+  // London (Velocity): green chapter/section title with a green hairline rule
+  // beneath it. Non-London UK (Manchester …) keeps the original black heading
+  // — gated on velocityPaletteActive so Velocity's identity stays London-only.
+  if (velocityPaletteActive) {
+    doc.font("bold").fontSize(13).fillColor(VELOCITY_GREEN).text(title, { characterSpacing: 0.5 });
+    const ry = doc.y + 2;
+    doc.save().strokeColor(VELOCITY_GREEN).lineWidth(0.75)
+      .moveTo(PAGE_MARGIN, ry).lineTo(doc.page.width - PAGE_MARGIN, ry).stroke().restore();
+    doc.moveDown(0.45);
+  } else {
+    doc.font("bold").fontSize(13).fillColor("black").text(title, { characterSpacing: 0.5 });
+    doc.moveDown(0.3);
+  }
+  doc.fillColor("black");
   doc.x = PAGE_MARGIN;
 }
 
 /** Subsection heading for the London renderer. */
 function ldnSubsection(doc: PDFKit.PDFDocument, title: string) {
   doc.x = PAGE_MARGIN;
-  doc.font("bold").fontSize(11).fillColor("black").text(title);
+  doc.font("bold").fontSize(11).fillColor(velocityPaletteActive ? VELOCITY_GREEN : "black").text(title);
+  doc.fillColor("black");
   doc.moveDown(0.2);
   doc.x = PAGE_MARGIN;
 }
@@ -4225,7 +4333,7 @@ function renderLondonTransportStatement(
   const tsTriggerSentence = isBelowAssessmentFloor
     ? `This document is structured as a Transport Statement (TS); however, ${sizeRule} so no formal assessment is recommended by DfT 2007 Appendix B. The TS shape is retained as a screening-level cross-reference for the consultant's pre-application discussion with ${lpa}.`
     : `This document is structured as a Transport Statement (TS) per DfT 2007 Appendix B (${sizeRule}). The full 8-chapter TfL Healthy Streets Transport Assessment TOC is reserved for schemes that exceed the residential 80-DU / hotel 100-bedroom / equivalent-floorspace TA trigger, or that trip one of the Appendix B "regardless of size" escalators (≥ 30 vph in any peak, ≥ 100 vpd, ≥ 100 parking spaces, AQMA proximity, or inadequate local transport infrastructure).`;
-  doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(tsTriggerSentence, { paragraphGap: 6 });
+  doc.font("bold").fontSize(10).fillColor(velocityPaletteActive ? VELOCITY_GREEN : BRAND_BLUE).text(tsTriggerSentence, { paragraphGap: 6 });
   doc.font("body").fontSize(10).fillColor("black");
 
   const summary = `This Transport Statement reports the anticipated transport effects of the proposed ${project.projectName || "development"} within ${region.displayName}, ${isLondon ? "Greater London" : "United Kingdom"}. ${intersections.length} junction${intersections.length === 1 ? "" : "s"} fall within a ${radiusKm} km (${fmtNum(radiusMi, 2)} mi) study radius of the site. The analysis is screening-level and is prepared as a cross-reference to UK Transport Statement methodology; a submittable TS prepared by a chartered engineer would re-run trip generation on TRICS multi-modal rates and junction capacity in LinSig 3 / Junctions 11 as appropriate.`;
@@ -8049,6 +8157,13 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
   const totalW = widths.reduce((s, w) => s + w, 0);
   const PADX = 4;
   const PADY = 4;
+  // London (Velocity) palette, gated; every other region keeps the neutral
+  // greys. Header: pale-green fill + green text; rule under header + row
+  // separators in green. Body text stays dark.
+  const velo = velocityPaletteActive;
+  const headerFill = velo ? VELOCITY_FILL : "#f3f4f6";
+  const headerText = velo ? VELOCITY_GREEN : "black";
+  const sepColor = velo ? VELOCITY_GREEN : "#e5e7eb";
 
   // Measure the height a row needs by wrapping every cell within its
   // column width and taking the tallest. This is what prevents the old
@@ -8066,9 +8181,15 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
   };
 
   const drawRow = (cells: string[], y: number, isHeader: boolean, h: number) => {
-    if (isHeader) doc.rect(startX, y, totalW, h).fill("#f3f4f6");
+    if (isHeader) {
+      doc.rect(startX, y, totalW, h).fill(headerFill);
+      if (velo) {
+        doc.save().strokeColor(VELOCITY_GREEN).lineWidth(0.75)
+          .moveTo(startX, y + h).lineTo(startX + totalW, y + h).stroke().restore();
+      }
+    }
     let x = startX;
-    doc.font(isHeader ? "bold" : "body").fontSize(9).fillColor("black");
+    doc.font(isHeader ? "bold" : "body").fontSize(9).fillColor(isHeader ? headerText : "black");
     for (let i = 0; i < cells.length; i++) {
       const w = widths[i] ?? 60;
       doc.text(cells[i] ?? "", x + PADX, y + PADY, {
@@ -8094,7 +8215,7 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
       y += hh;
     }
     drawRow(r, y, false, rh);
-    doc.strokeColor("#e5e7eb").lineWidth(0.5)
+    doc.strokeColor(sepColor).lineWidth(0.5)
       .moveTo(startX, y + rh).lineTo(startX + totalW, y + rh).stroke();
     y += rh;
   }
@@ -8110,10 +8231,15 @@ function metricStrip(doc: PDFKit.PDFDocument, metrics: Metric[]) {
   const startX = PAGE_MARGIN;
   const y = doc.y;
   const h = 50;
+  // London (Velocity) palette, gated; other regions keep the blue accent.
+  const velo = velocityPaletteActive;
+  const cellFill = velo ? VELOCITY_FILL : "#f9fafb";
+  const cellStroke = velo ? VELOCITY_GREEN : "#e5e7eb";
+  const valColor = velo ? VELOCITY_GREEN : BRAND_BLUE;
   for (let i = 0; i < metrics.length; i++) {
     const x = startX + i * cellW;
-    doc.rect(x, y, cellW, h).fillAndStroke("#f9fafb", "#e5e7eb");
-    doc.font("bold").fontSize(20).fillColor(BRAND_BLUE).text(metrics[i].value, x, y + 8, { width: cellW, align: "center" });
+    doc.rect(x, y, cellW, h).fillAndStroke(cellFill, cellStroke);
+    doc.font("bold").fontSize(20).fillColor(valColor).text(metrics[i].value, x, y + 8, { width: cellW, align: "center" });
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(metrics[i].label.toUpperCase(), x, y + 32, { width: cellW, align: "center", characterSpacing: 1 });
   }
   doc.fillColor("black");
