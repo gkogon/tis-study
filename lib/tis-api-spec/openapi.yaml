@@ -395,7 +395,35 @@ components:
             Optional ITE TGM 11th Ed. alternate independent variable (matches a
             `unitShort` from the land use's `secondaryVariables`). Defaults to the
             primary published variable.
+        tripProfile:
+          $ref: "#/components/schemas/TisTripProfile"
       required: [projectName, address, latitude, longitude, landUseCode, size, openingYear]
+    TisTripProfile:
+      type: object
+      description: >-
+        Optional consultant-supplied within-day arrival/departure distribution
+        that overrides the engine's default office distribution for the
+        inbound/outbound-by-start-time and on-site-accumulation charts. Each
+        array holds 24 non-negative values (clock hours 0–23); the renderer
+        normalises each to sum to 1, so only relative magnitudes matter.
+        Supplying this also unlocks the figures for non-office use classes.
+      properties:
+        arrivals:
+          type: array
+          items: { type: number, minimum: 0 }
+          minItems: 24
+          maxItems: 24
+          description: Relative inbound (arrival) volume in each clock hour 0–23.
+        departures:
+          type: array
+          items: { type: number, minimum: 0 }
+          minItems: 24
+          maxItems: 24
+          description: Relative outbound (departure) volume in each clock hour 0–23.
+        source:
+          type: string
+          description: Provenance label printed under the figures.
+      required: [arrivals, departures]
     TisTripGeneration:
       type: object
       properties:
