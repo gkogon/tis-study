@@ -99,6 +99,24 @@ const PERIOD_LABEL: Record<AnalysisPeriod, string> = {
   daily: "Daily Total",
 };
 
+// Background-network temporal peaking, expressed as a fraction of the stored
+// design-hour volume. The signal `totalVolume` is AADT × K-factor, i.e. the
+// highest (design) hour of the day, which is conventionally the PM peak — so
+// PM anchors at 1.00 and the other analysis hours carry a documented, smaller
+// share of the design hour. Without this every period reused the single
+// design-hour volume, so the AM / PM / Saturday turning-movement diagrams and
+// per-approach v/c came out byte-identical even though the network is not
+// equally loaded at every time of day. This factors the BACKGROUND network
+// only (a property of the surrounding roads, not the development — the
+// project's own trips are already generated per period). Screening-level
+// defaults; a submitted study substitutes measured per-period turning counts.
+const PERIOD_VOLUME_FACTOR: Record<AnalysisPeriod, number> = {
+  am_peak: 0.90,
+  pm_peak: 1.0, // anchor: stored volume is the design (≈ PM) hour
+  saturday_midday: 0.80,
+  daily: 1.0, // daily emits trip generation only — no junction analysis runs
+};
+
 export type Direction = "NB" | "SB" | "EB" | "WB";
 const DIRECTIONS: Direction[] = ["NB", "SB", "EB", "WB"];
 
@@ -705,6 +723,10 @@ type ScenarioParams = {
   approachCapacityVph: number;    // weather-adjusted approach capacity
   externalTrips: number;          // post-credit external trips for this period
   inFraction: number;             // directional split for this period
+  /** Background-network volume as a fraction of the stored design hour for
+   *  this period (PERIOD_VOLUME_FACTOR). Optional; defaults to 1.0 so any
+   *  caller that omits it keeps the prior design-hour behaviour. */
+  periodVolumeFactor?: number;
 };
 
 function buildAffectedRow(
@@ -714,22 +736,38 @@ function buildAffectedRow(
   params: ScenarioParams,
   calibration?: CalibrationEntry,
 ): AffectedIntersection {
+  // Background-network volume for THIS period: the stored design-hour volume
+  // scaled by the period's peaking factor (PERIOD_VOLUME_FACTOR — PM anchors
+  // at 1.0, AM/Saturday carry a smaller share). Drives every background-volume
+  // figure below so each period's diagrams and v/c differ instead of reusing
+  // one design hour.
+  const baseVolume = c.sig.totalVolume * (params.periodVolumeFactor ?? 1);
+
   // True current-year baseline — no growth, no project. State TIS
   // conventions report this as the "Existing Conditions" scenario;
   // it's what a count taken this week would show.
-  const currentVolume = c.sig.totalVolume;
+  const currentVolume = baseVolume;
   const currentCriticalVph = currentVolume * CRITICAL_MOVEMENT_FRACTION;
   const currentVc = currentCriticalVph / params.capacityVph;
 
   // No-Build = current volumes grown to the opening year, no project.
   // Historically labeled "before" / "existing" here.
-  const grownVolume = c.sig.totalVolume * params.growthMultiplier;
+  const grownVolume = baseVolume * params.growthMultiplier;
   const beforeCriticalVph = grownVolume * CRITICAL_MOVEMENT_FRACTION;
   const beforeVc = beforeCriticalVph / params.capacityVph;
 
-  // Build = No-Build + project trips.
-  const addedTrips = Math.round(params.externalTrips * weight);
-  const addedCriticalVph = addedTrips * CRITICAL_MOVEMENT_FRACTION;
+  // Build = No-Build + project trips. Carry the EXACT (fractional) project
+  // load through the v/c, delay and per-approach math; round only for the
+  // integer trip count surfaced in the report. Rounding the count first and
+  // then deriving v/c from it discarded sub-vehicle loads entirely: at high-
+  // PTAL London sites (car-mode share ~3%) a whole scheme can distribute < 1
+  // net car trip to a junction, which previously collapsed to an exact 0.0
+  // delta and read as if the analysis had not run. The exact load preserves
+  // the (negligible but real) impact in the capacity math; `addedTrips` stays
+  // an integer because the API schema types the reported count as such.
+  const addedTripsExact = params.externalTrips * weight;
+  const addedTrips = Math.round(addedTripsExact);
+  const addedCriticalVph = addedTripsExact * CRITICAL_MOVEMENT_FRACTION;
   const afterVc = beforeVc + addedCriticalVph / params.capacityVph;
 
   // Design-Year No-Build = current × designGrowthMultiplier (no project).
@@ -739,7 +777,7 @@ function buildAffectedRow(
   const dgm = params.designGrowthMultiplier;
   const hasDesignYear = dgm !== undefined && dgm > 0;
   const designNoBuildCriticalVph = hasDesignYear
-    ? c.sig.totalVolume * (dgm as number) * CRITICAL_MOVEMENT_FRACTION
+    ? baseVolume * (dgm as number) * CRITICAL_MOVEMENT_FRACTION
     : 0;
   const designNoBuildVc = hasDesignYear ? designNoBuildCriticalVph / params.capacityVph : 0;
   const designBuildVc = hasDesignYear ? designNoBuildVc + addedCriticalVph / params.capacityVph : 0;
@@ -777,10 +815,13 @@ function buildAffectedRow(
 
     // No-Build (existing-grown-to-opening-year).
     const baseVol = grownVolume * volShares[d];
-    const inOnApproach = addedTrips * params.inFraction * tripShares[d];
+    // Distribute the EXACT junction load across approaches (see note above) —
+    // distributing the pre-rounded integer double-rounded the split and could
+    // zero out every approach on a sub-vehicle junction load.
+    const inOnApproach = addedTripsExact * params.inFraction * tripShares[d];
     // Outbound trips depart on the approach opposite the inbound origin.
     const oppositeShare = tripShares[oppositeDir(d)];
-    const outOnApproach = addedTrips * (1 - params.inFraction) * oppositeShare;
+    const outOnApproach = addedTripsExact * (1 - params.inFraction) * oppositeShare;
     const futureVol = baseVol + inOnApproach + outOnApproach;
 
     const exVc = (baseVol * 1.0) / params.approachCapacityVph;
@@ -1265,6 +1306,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       approachCapacityVph,
       externalTrips,
       inFraction,
+      periodVolumeFactor: PERIOD_VOLUME_FACTOR[period] ?? 1,
     };
 
     // For "daily" we don't run an intersection-level analysis (HCM control
@@ -1428,7 +1470,7 @@ async function synthesizePmReport(
   const internalCredit = (raw - passByCredit) * (internalCapturePct / 100);
   const externalTrips = Math.max(0, raw - passByCredit - internalCredit);
   const inFraction = lu.directionalSplitPm.in;
-  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction };
+  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak };
   const calibrationMap = await loadCalibrationMap();
   const allRows = candidates.map((c, i) =>
     buildAffectedRow(c, weights[i] ?? 0, project, params, calibrationMap.get(c.sig.id)),
