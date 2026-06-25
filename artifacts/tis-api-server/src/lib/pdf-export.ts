@@ -30,6 +30,7 @@ import {
 import { ukCapacityForIntersection, type UkCapacityResult } from "./uk-capacity";
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { renderTisState } from "./pdf-export-states";
+import { renderDiurnalCharts } from "./pdf-charts";
 import { getTransitContext, type TransitContext } from "./transit-routes";
 import { enrichFdotIntersections, fetchFdotSiteSnapshot, decodeFdotFunClass, decodeFdotAccessClass, type FdotSegmentSnapshot } from "./fdot-live-data";
 import { enrichGdotIntersections, fetchGdotSiteSnapshot } from "./gdot-live-data";
@@ -1380,6 +1381,8 @@ function renderTisGeorgia(
   });
   doc.moveDown(0.5);
 
+  renderDiurnalCharts(doc, r);
+
   gaSubsection(doc, "3.2 Trip Distribution");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Directional distribution and assignment of new project trips is based on the existing roadway network geometry, proximity to project access points, and engineering judgment. For formal DRI submittal, distribution percentages should be agreed upon during the methodology meeting with GRTA, ARC, GDOT, and the local jurisdiction.",
@@ -2361,6 +2364,8 @@ function renderTisCalifornia(
     });
     doc.moveDown(0.5);
   }
+
+  renderDiurnalCharts(doc, r);
 
   const caHasDesignYear = intersections.some(
     (it) => it.designNoBuildLos != null || it.designBuildLos != null,
@@ -5459,6 +5464,8 @@ function renderTisTexas(
     doc.fillColor("black");
   }
 
+  renderDiurnalCharts(doc, r);
+
   gaSubsection(doc, "5.2 Trip Distribution");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Per TSP §16.4, project distribution is assigned using engineering judgment, informed by the surrounding roadway network geometry and proximity to the project access points. If only one project driveway is proposed, all trips enter and exit through that driveway. Final distribution percentages are confirmed with the District during preliminary scoping.",
@@ -6155,6 +6162,8 @@ function renderTisIllinois(
     });
     doc.moveDown(0.5);
   }
+
+  renderDiurnalCharts(doc, r);
 
   // --- §5 Background Growth ----------------------------------------------
   gaSection(doc, "5.0 BACKGROUND GROWTH");
@@ -7504,6 +7513,8 @@ function renderTisFlorida(
   }
 
   // --- 6.0 Trip Distribution and Assignment ------------------------------
+  renderDiurnalCharts(doc, r);
+
   gaSection(doc, "6.0 TRIP DISTRIBUTION AND ASSIGNMENT");
   doc.font("body").fontSize(10).fillColor("black").text(
     `Per FDOT TAH §2.7, trip distribution and assignment should use the adopted regional MPO/TPO travel-demand model${jur.mpoName ? ` (${jur.mpoName})` : ""}, with model version, base year, and horizon year identified in the methodology letter. This screening analysis assigns net new external trips by inverse-distance weighting to signalized intersections within the study area; for formal submittal, distribution percentages and the TDM run identifier should be agreed upon during the methodology meeting.`,
