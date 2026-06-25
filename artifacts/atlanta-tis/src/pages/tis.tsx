@@ -11,6 +11,7 @@ import {
   type TisAnalysisPeriod,
   type TisWeather,
   type TisLandUse,
+  type TisTripProfile,
 } from "@workspace/tis-api-client-react";
 import { MapContainer, TileLayer, CircleMarker, Marker, Tooltip as LeafletTooltip } from "react-leaflet";
 import L from "leaflet";
@@ -20,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, Printer, Building2, MapPin, Car, Activity, ChevronDown, ChevronRight,
   CheckCircle2, AlertTriangle, AlertCircle, FileText, Info, Calculator, Settings,
-  CloudRain, TrendingUp, Sliders, Sparkles, BarChart3, Loader2,
+  CloudRain, TrendingUp, Sliders, Sparkles, BarChart3, Loader2, Clock, Upload, X,
 } from "lucide-react";
 import { CitationRef } from "@/components/citation-ref";
 import { QuotaBanner } from "@/components/quota-banner";
@@ -220,6 +221,104 @@ const WEATHER_OPTIONS: Array<{ value: TisWeather; label: string; cap: number }> 
   { value: "heavy_snow", label: "Heavy snow", cap: 0.70 },
 ];
 
+// ── Custom within-day trip profile (advanced, London/UK office) ──────────
+// Optional consultant override for the London renderer's default LTDS office
+// diurnal profile (drives the Velocity-style Fig 2-1 trips-by-start-time and
+// Fig 6-2 person-accumulation charts). Parsed + validated client-side to 24
+// non-negative values per series before submit is enabled; the engine
+// re-validates and normalises server-side (office-diurnal.ts/resolveProfile),
+// so only the relative shape supplied here matters.
+type SeriesParse = { values: number[]; valid: boolean; count: number; error: string | null };
+
+function parseProfileSeries(text: string): SeriesParse {
+  const tokens = text.split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean);
+  if (tokens.length === 0) return { values: [], valid: false, count: 0, error: null };
+  const values = tokens.map(Number);
+  const bad = values.findIndex((n) => !Number.isFinite(n));
+  if (bad >= 0) return { values, valid: false, count: tokens.length, error: `"${tokens[bad]}" isn't a number.` };
+  const neg = values.findIndex((n) => n < 0);
+  if (neg >= 0) return { values, valid: false, count: tokens.length, error: `Hour ${neg} (${values[neg]}) is negative — every value must be ≥ 0.` };
+  if (tokens.length !== 24) return { values, valid: false, count: tokens.length, error: `Need exactly 24 values — got ${tokens.length}.` };
+  if (values.reduce((s, n) => s + n, 0) <= 0) return { values, valid: false, count: 24, error: "Values can't all be zero." };
+  return { values, valid: true, count: 24, error: null };
+}
+
+// Parse a `hour,arrivals,departures` CSV (header row optional) into two
+// 24-length series. Throws a human-readable message on any structural problem.
+function parseProfileCsv(text: string): { arrivals: number[]; departures: number[] } {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) throw new Error("That file is empty.");
+  const cells = (l: string) => l.split(/[,;\t]/).map((c) => c.trim());
+  // Skip a header row when the first row has any non-numeric cell.
+  const first = cells(lines[0]);
+  const hasHeader = first.some((c) => c !== "" && !Number.isFinite(Number(c)));
+  const rows = hasHeader ? lines.slice(1) : lines;
+  if (rows.length === 0) throw new Error("No data rows under the header.");
+  const byHour = new Map<number, [number, number]>();
+  rows.forEach((line, i) => {
+    const c = cells(line);
+    if (c.length < 3) throw new Error(`Row ${i + 1}: expected hour,arrivals,departures.`);
+    const hour = Number(c[0]);
+    const a = Number(c[1]);
+    const d = Number(c[2]);
+    if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new Error(`Row ${i + 1}: hour must be a whole number 0–23.`);
+    if (![a, d].every((n) => Number.isFinite(n) && n >= 0)) throw new Error(`Row ${i + 1}: arrivals & departures must be non-negative numbers.`);
+    byHour.set(hour, [a, d]);
+  });
+  const arrivals: number[] = [];
+  const departures: number[] = [];
+  for (let h = 0; h < 24; h++) {
+    const v = byHour.get(h);
+    if (!v) throw new Error(`Missing a row for hour ${h}.`);
+    arrivals.push(v[0]);
+    departures.push(v[1]);
+  }
+  return { arrivals, departures };
+}
+
+function SeriesStatus({ parse }: { parse: SeriesParse }) {
+  if (parse.count === 0) {
+    return <span className="text-[10px] text-muted-foreground tabular-nums">0 / 24</span>;
+  }
+  if (parse.valid) {
+    return (
+      <span className="text-[10px] text-emerald-600 font-medium inline-flex items-center gap-0.5">
+        <CheckCircle2 className="w-3 h-3" /> 24 / 24
+      </span>
+    );
+  }
+  return (
+    <span className="text-[10px] text-red-600 font-medium inline-flex items-center gap-0.5" title={parse.error ?? ""}>
+      <AlertCircle className="w-3 h-3" /> {parse.count} / 24
+    </span>
+  );
+}
+
+// Compact 24-cell heat strip — opacity ∝ that hour's share — so the consultant
+// sees the supplied within-day shape (and peak hour) before generating.
+function ProfileStrip({ label, values, accent }: { label: string; values: number[]; accent: string }) {
+  const max = Math.max(1, ...values);
+  const peak = values.reduce((best, v, i) => (v > values[best] ? i : best), 0);
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">{label}</span>
+        <span className="text-[10px] text-muted-foreground tabular-nums font-mono">peak {String(peak).padStart(2, "0")}:00</span>
+      </div>
+      <div className="flex gap-px h-7">
+        {values.map((v, h) => (
+          <div
+            key={h}
+            className={`flex-1 rounded-[1px] ${accent}`}
+            style={{ opacity: 0.12 + 0.88 * (v / max) }}
+            title={`${String(h).padStart(2, "0")}:00 — ${v}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TisFormSection({
   landUses, onGenerate, busy,
 }: {
@@ -230,6 +329,59 @@ function TisFormSection({
   const [form, setForm] = useState<TisRequest>(PROJECT_TEMPLATES[0]!.request);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const lu = useMemo(() => landUses.find((l) => l.code === form.landUseCode), [landUses, form.landUseCode]);
+
+  // Optional custom within-day trip profile (see helpers above). Kept as raw
+  // text outside `form` so loading a template/city never clobbers it; it's
+  // injected into the payload at submit only when both series parse cleanly.
+  const [showTripProfile, setShowTripProfile] = useState(false);
+  const [arrivalsText, setArrivalsText] = useState("");
+  const [departuresText, setDeparturesText] = useState("");
+  const [profileSource, setProfileSource] = useState("");
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [csvFileName, setCsvFileName] = useState<string | null>(null);
+
+  const arrivalsParse = useMemo(() => parseProfileSeries(arrivalsText), [arrivalsText]);
+  const departuresParse = useMemo(() => parseProfileSeries(departuresText), [departuresText]);
+  const profileHasInput = arrivalsText.trim() !== "" || departuresText.trim() !== "";
+  const profileValid = arrivalsParse.valid && departuresParse.valid;
+  // Block submit only when the user has started a profile that doesn't yet
+  // parse — an untouched/empty profile just falls back to the LTDS default.
+  const profileInvalid = profileHasInput && !profileValid;
+  const tripProfile: TisTripProfile | undefined = profileValid
+    ? {
+        arrivals: arrivalsParse.values,
+        departures: departuresParse.values,
+        ...(profileSource.trim() ? { source: profileSource.trim() } : {}),
+      }
+    : undefined;
+
+  function onCsvFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // let the same file re-trigger onChange
+    if (!file) return;
+    setCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const { arrivals, departures } = parseProfileCsv(String(reader.result ?? ""));
+        setArrivalsText(arrivals.join(", "));
+        setDeparturesText(departures.join(", "));
+        setCsvError(null);
+      } catch (err) {
+        setCsvError(err instanceof Error ? err.message : "Couldn't parse that CSV.");
+      }
+    };
+    reader.onerror = () => setCsvError("Couldn't read that file.");
+    reader.readAsText(file);
+  }
+
+  function clearProfile() {
+    setArrivalsText("");
+    setDeparturesText("");
+    setProfileSource("");
+    setCsvError(null);
+    setCsvFileName(null);
+  }
 
   // Address → coordinates. Lets the engineer type any address in any city,
   // click Find, and have lat/lon auto-fill — no need to look up coordinates
@@ -347,6 +499,7 @@ function TisFormSection({
       ...form,
       latitude: round4(Number(form.latitude)),
       longitude: round4(Number(form.longitude)),
+      tripProfile,
     });
   }
 
@@ -657,9 +810,160 @@ function TisFormSection({
               </label>
             </div>
           )}
+          <div className="md:col-span-2 border-t pt-3">
+            <button
+              type="button"
+              onClick={() => setShowTripProfile((v) => !v)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+              data-testid="button-toggle-trip-profile"
+            >
+              {showTripProfile ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+              <Clock className="w-3.5 h-3.5" />
+              Custom within-day trip profile
+              <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-900">
+                London / UK office
+              </span>
+              {tripProfile && (
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900">
+                  <CheckCircle2 className="w-2.5 h-2.5" /> Set
+                </span>
+              )}
+              {profileInvalid && (
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-900">
+                  <AlertCircle className="w-2.5 h-2.5" /> Check values
+                </span>
+              )}
+            </button>
+          </div>
+          {showTripProfile && (
+            <div className="md:col-span-2 rounded-lg border bg-muted/20 p-4 space-y-4" data-testid="panel-trip-profile">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Optional. Overrides the engine's default LTDS office diurnal profile that drives the
+                London report's <span className="font-medium text-foreground">Figure 2-1</span>{" "}
+                (inbound/outbound trips by start time) and{" "}
+                <span className="font-medium text-foreground">Figure 6-2</span> (person accumulation).
+                Supply 24 hourly inbound and 24 hourly outbound values for clock hours 00–23 — paste two
+                lists or upload a CSV. Only the relative shape matters; the renderer normalises each
+                series. Supplying a profile also unlocks these figures for non-office use classes. Leave
+                blank to use the LTDS default.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="space-y-1">
+                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center justify-between gap-2">
+                    <span>Inbound (arrivals) — 24 hourly values</span>
+                    <SeriesStatus parse={arrivalsParse} />
+                  </span>
+                  <textarea
+                    rows={3}
+                    spellCheck={false}
+                    className="w-full px-3 py-2 rounded-md border bg-background text-sm font-mono leading-relaxed"
+                    placeholder="hours 00→23, comma/space/newline separated&#10;e.g. 0.2, 0.1, 0.1, … (24 values)"
+                    value={arrivalsText}
+                    onChange={(e) => setArrivalsText(e.target.value)}
+                    data-testid="input-profile-arrivals"
+                  />
+                  {arrivalsParse.error && (
+                    <span className="text-[11px] text-red-600 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3 shrink-0" />{arrivalsParse.error}
+                    </span>
+                  )}
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center justify-between gap-2">
+                    <span>Outbound (departures) — 24 hourly values</span>
+                    <SeriesStatus parse={departuresParse} />
+                  </span>
+                  <textarea
+                    rows={3}
+                    spellCheck={false}
+                    className="w-full px-3 py-2 rounded-md border bg-background text-sm font-mono leading-relaxed"
+                    placeholder="hours 00→23, comma/space/newline separated&#10;e.g. 0.3, 0.2, 0.1, … (24 values)"
+                    value={departuresText}
+                    onChange={(e) => setDeparturesText(e.target.value)}
+                    data-testid="input-profile-departures"
+                  />
+                  {departuresParse.error && (
+                    <span className="text-[11px] text-red-600 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3 shrink-0" />{departuresParse.error}
+                    </span>
+                  )}
+                </label>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <label
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border bg-background hover:bg-muted cursor-pointer transition-colors"
+                  data-testid="label-profile-csv"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Upload CSV
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={onCsvFile}
+                    data-testid="input-profile-csv"
+                  />
+                </label>
+                <span className="text-[11px] text-muted-foreground">
+                  Columns <code className="font-mono">hour,arrivals,departures</code> · 24 rows (hours 0–23). Fills the fields above.
+                </span>
+                {(profileHasInput || profileSource) && (
+                  <button
+                    type="button"
+                    onClick={clearProfile}
+                    className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground underline"
+                    data-testid="button-clear-profile"
+                  >
+                    <X className="w-3 h-3" /> clear
+                  </button>
+                )}
+              </div>
+              {csvFileName && !csvError && (
+                <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />Loaded {csvFileName}
+                </div>
+              )}
+              {csvError && (
+                <div className="text-[11px] text-red-600 flex items-start gap-1.5">
+                  <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" /><span>{csvError}</span>
+                </div>
+              )}
+
+              <label className="space-y-1 block">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Source label{" "}
+                  <span className="normal-case text-muted-foreground/60">— printed under the figures (optional)</span>
+                </span>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 rounded-md border bg-background text-sm"
+                  placeholder="e.g. Gateline counts, 60 Gracechurch St (Aug 2024)"
+                  value={profileSource}
+                  onChange={(e) => setProfileSource(e.target.value)}
+                  data-testid="input-profile-source"
+                />
+              </label>
+
+              {profileValid && (
+                <div className="space-y-2 rounded-md border bg-background p-3" data-testid="trip-profile-preview">
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center justify-between">
+                    <span>Profile preview — within-day shape</span>
+                    <span className="tabular-nums">normalised · 24 h</span>
+                  </div>
+                  <ProfileStrip label="Inbound (arrivals)" values={arrivalsParse.values} accent="bg-blue-600" />
+                  <ProfileStrip label="Outbound (departures)" values={departuresParse.values} accent="bg-amber-500" />
+                  <div className="flex justify-between text-[9px] text-muted-foreground tabular-nums font-mono pt-0.5">
+                    <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>23:00</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-2 border-t">
             <button
-              type="submit" disabled={busy}
+              type="submit" disabled={busy || profileInvalid}
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-50"
               data-testid="button-generate"
             >
@@ -670,7 +974,13 @@ function TisFormSection({
               {periods.length} period{periods.length === 1 ? "" : "s"}
               {form.runSensitivity ? " · sensitivity ON" : ""}
               {form.weather && form.weather !== "clear" ? ` · ${form.weather.replace("_", " ")}` : ""}
+              {tripProfile ? " · custom profile" : ""}
             </span>
+            {profileInvalid && (
+              <span className="text-xs text-red-600 inline-flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5" /> Fix the custom trip profile to continue
+              </span>
+            )}
           </div>
           <div className="md:col-span-2 pt-2 border-t">
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
