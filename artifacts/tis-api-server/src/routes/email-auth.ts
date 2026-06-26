@@ -17,6 +17,7 @@ import { db, usersTable } from "@workspace/db";
 import {
   hashPassword,
   verifyPassword,
+  dummyVerifyPassword,
   validatePasswordStrength,
   newResetToken,
   isValidEmail,
@@ -205,7 +206,10 @@ router.post("/auth/login", loginRateLimiter, async (req, res): Promise<void> => 
     .limit(1);
 
   if (!user || !user.passwordHash) {
-    // Generic message — don't reveal whether the account exists.
+    // Generic message — don't reveal whether the account exists. Burn the
+    // same bcrypt work a real verify would so response TIMING doesn't leak
+    // it either (email enumeration → targeted credential-stuffing).
+    await dummyVerifyPassword(password);
     res.status(401).json({ error: "Invalid email or password." });
     return;
   }

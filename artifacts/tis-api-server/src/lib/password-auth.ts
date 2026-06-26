@@ -34,6 +34,30 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
   }
 }
 
+// Timing-equalizer for the "no such account" login path. A real verify runs
+// bcrypt.compare (~100 ms); returning early when the email doesn't exist
+// leaks — through response time — whether an account exists, which lets an
+// attacker enumerate valid emails to target with credential-stuffing. The
+// fixed hash (of a random constant) is computed once and reveals nothing;
+// dummyVerifyPassword burns the same bcrypt work so both paths take the
+// same wall-clock time. Always returns false.
+let dummyHashPromise: Promise<string> | null = null;
+function dummyHash(): Promise<string> {
+  if (!dummyHashPromise) {
+    dummyHashPromise = bcrypt.hash("tis-login-timing-equalizer-constant", BCRYPT_ROUNDS);
+  }
+  return dummyHashPromise;
+}
+
+export async function dummyVerifyPassword(plain: string): Promise<false> {
+  try {
+    await bcrypt.compare(plain, await dummyHash());
+  } catch {
+    /* swallow — this path only exists to consume time */
+  }
+  return false;
+}
+
 /** Validate password meets minimum strength rules. */
 export function validatePasswordStrength(p: string): { ok: true } | { ok: false; reason: string } {
   if (p.length < 10) return { ok: false, reason: "Password must be at least 10 characters." };
