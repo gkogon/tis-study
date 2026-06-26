@@ -138,17 +138,31 @@ export function isUnlimitedStudies(
 }
 
 /**
- * Check whether the firm can run another TIS this billing period.
- * Returns `ok: true` and the new remaining count if so. The caller is
- * responsible for calling `incrementStudyUsage` after a successful run.
+ * Atomically reserve one study against the firm's period quota.
+ *
+ * This REPLACES the old check-then-charge pair (canGenerateStudy +
+ * incrementStudyUsage). Those raced: two concurrent generations could both
+ * read `used < limit` against a stale firm row and both proceed, letting a
+ * firm exceed its plan by (concurrency − 1) studies per period. Here the cap
+ * is enforced by the database in a single `UPDATE … WHERE used < limit`, so
+ * the row lock — not an in-memory read — decides who gets the last slot.
+ *
+ * Returns `ok: true` with the post-charge remaining count when a slot was
+ * reserved, or `ok: false` / `quota_exceeded` when the firm is at its cap.
+ * Unlimited firms (dev-auth, the studyLimit<=0 sentinel, or admin emails)
+ * are never metered and never have their counter touched.
+ *
+ * The caller MUST release the slot via `releaseStudySlot` if the run later
+ * fails (generation error or save failure) — see the engine routes — so a
+ * failed attempt never counts, honoring the pricing-page promise.
  *
  * Pass the signed-in user's email so admin/operator accounts (and the
  * unlimited sentinel) are never blocked.
  */
-export function canGenerateStudy(
+export async function reserveStudySlot(
   firm: Firm,
   opts?: { email?: string | null },
-): QuotaCheck {
+): Promise<QuotaCheck> {
   if (isUnlimitedStudies(firm, opts?.email)) {
     return {
       ok: true,
@@ -157,7 +171,25 @@ export function canGenerateStudy(
       unlimited: true,
     };
   }
-  if (firm.studiesUsedThisPeriod >= firm.studyLimit) {
+  // Conditional increment: the WHERE is re-evaluated under the row lock, so
+  // only one of N concurrent callers at `used = limit − 1` gets a row back —
+  // the rest see zero rows updated and are correctly rejected. (Unlimited
+  // firms — studyLimit <= 0 — are short-circuited above, so `used < limit`
+  // here only runs for genuinely metered firms.)
+  const [row] = await db
+    .update(firmsTable)
+    .set({
+      studiesUsedThisPeriod: sql`${firmsTable.studiesUsedThisPeriod} + 1`,
+    })
+    .where(
+      and(
+        eq(firmsTable.id, firm.id),
+        sql`${firmsTable.studiesUsedThisPeriod} < ${firmsTable.studyLimit}`,
+      ),
+    )
+    .returning({ used: firmsTable.studiesUsedThisPeriod });
+
+  if (!row) {
     return {
       ok: false,
       reason: "quota_exceeded",
@@ -168,24 +200,32 @@ export function canGenerateStudy(
   return {
     ok: true,
     firmId: firm.id,
-    remaining: firm.studyLimit - firm.studiesUsedThisPeriod - 1,
+    remaining: Math.max(firm.studyLimit - row.used, 0),
     unlimited: false,
   };
 }
 
-export async function incrementStudyUsage(firmId: string): Promise<void> {
+/**
+ * Return a previously reserved slot to the pool when a run fails after
+ * `reserveStudySlot` already charged it. No-ops for unlimited firms (their
+ * counter is never charged) and floors at zero so a stray double-release
+ * can't drive usage negative. Best-effort: a refund failure is logged, not
+ * thrown — the caller is already on an error path.
+ */
+export async function releaseStudySlot(
+  firm: Firm,
+  opts?: { email?: string | null },
+): Promise<void> {
+  if (isUnlimitedStudies(firm, opts?.email)) return;
   try {
-    // SQL expression avoids the read-then-write race when two engineers
-    // generate concurrently.
     await db
       .update(firmsTable)
       .set({
-        studiesUsedThisPeriod: sql`${firmsTable.studiesUsedThisPeriod} + 1`,
+        studiesUsedThisPeriod: sql`GREATEST(${firmsTable.studiesUsedThisPeriod} - 1, 0)`,
       })
-      .where(eq(firmsTable.id, firmId));
+      .where(eq(firmsTable.id, firm.id));
   } catch (err) {
-    // Generation already succeeded; usage tracking failure is non-fatal.
-    logger.error({ err, firmId }, "firms.increment_failed");
+    logger.error({ err, firmId: firm.id }, "firms.release_failed");
   }
 }
 
