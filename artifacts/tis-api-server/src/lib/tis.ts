@@ -543,6 +543,9 @@ export type TisReport = {
   tripGeneration: TripGenerationSummary;       // PM peak (back-compat)
   affectedIntersections: AffectedIntersection[]; // PM peak (back-compat)
   intersectionsStudied: number;
+  /** Total signalized intersections within the study radius (before the
+   *  impact-significance scope). `intersectionsStudied` is the analyzed subset. */
+  intersectionsInStudyArea: number;
   intersectionsWithLosDrop: number;
   intersectionsAtLosEf: number;
   worstDelayDeltaSec: number;
@@ -1485,6 +1488,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     tripGeneration,
     affectedIntersections: pmReport.affectedIntersections,
     intersectionsStudied: pmReport.affectedIntersections.length,
+    intersectionsInStudyArea: candidates.length,
     intersectionsWithLosDrop: pmReport.intersectionsWithLosDrop,
     intersectionsAtLosEf: pmReport.intersectionsAtLosEf,
     worstDelayDeltaSec: pmReport.worstDelayDeltaSec,
