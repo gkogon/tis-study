@@ -20,9 +20,18 @@ import { Router, type IRouter } from "express";
 import express from "express";
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
-import { db, firmsTable } from "@workspace/db";
+import { db, firmsTable, stripeWebhookEventsTable } from "@workspace/db";
 import { stripe, getWebhookSecret, resolvePlanFromPriceId } from "../lib/stripe";
 import { logger } from "../lib/logger";
+
+/** Postgres unique_violation (SQLSTATE 23505), surfaced raw by drizzle/pg. */
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { code?: unknown }).code === "23505"
+  );
+}
 
 const router: IRouter = Router();
 
@@ -57,11 +66,51 @@ router.post(
       return;
     }
 
+    // Idempotency — claim the event id before running any side effects.
+    // Stripe delivers at-least-once (it retries on every non-2xx, and a
+    // network blip can double-deliver), so without a dedup guard a replayed
+    // `invoice.paid` re-grants a billing period's study quota (free
+    // studies) and a replayed subscription event re-applies stale plan
+    // state. The PK insert is atomic: a duplicate raises a unique violation,
+    // which means we've already handled this event — ack 200 and stop.
+    try {
+      await db
+        .insert(stripeWebhookEventsTable)
+        .values({ id: event.id, type: event.type });
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        logger.info(
+          { eventId: event.id, eventType: event.type },
+          "stripe-webhook.duplicate_ignored",
+        );
+        res.json({ received: true, duplicate: true });
+        return;
+      }
+      // A transient DB error recording the claim — 500 so Stripe retries
+      // rather than risk processing-without-a-claim or dropping the event.
+      logger.error({ err, eventId: event.id }, "stripe-webhook.idempotency_failed");
+      res.status(500).json({ error: "Webhook idempotency check failed." });
+      return;
+    }
+
     try {
       await handleEvent(event);
       res.json({ received: true });
     } catch (err) {
       logger.error({ err, eventType: event.type }, "stripe-webhook.handler_failed");
+      // The handler failed AFTER we claimed the event. Release the claim so
+      // Stripe's retry actually re-processes it — otherwise the claim row
+      // would make us skip the retry as a "duplicate" and the event's side
+      // effects would be lost permanently.
+      await db
+        .delete(stripeWebhookEventsTable)
+        .where(eq(stripeWebhookEventsTable.id, event.id))
+        .catch((delErr) => {
+          logger.error(
+            { err: delErr, eventId: event.id },
+            "stripe-webhook.claim_release_failed",
+          );
+        });
       // 500 prompts Stripe to retry, which is what we want for a
       // transient DB error.
       res.status(500).json({ error: "Webhook handler error." });

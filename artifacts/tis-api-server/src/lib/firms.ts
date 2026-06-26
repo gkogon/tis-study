@@ -112,7 +112,12 @@ export async function getOrCreateFirmForUser(
 
 export type QuotaCheck =
   | { ok: true; firmId: string; remaining: number; unlimited: boolean }
-  | { ok: false; reason: "quota_exceeded"; firmId: string; limit: number };
+  | {
+      ok: false;
+      reason: "quota_exceeded" | "subscription_delinquent";
+      firmId: string;
+      limit: number;
+    };
 
 /**
  * Returns true when a firm/user should never be metered against the study
@@ -138,6 +143,39 @@ export function isUnlimitedStudies(
 }
 
 /**
+ * Stripe subscription statuses that HARD-BLOCK paid study generation,
+ * independent of remaining quota. These are the states where the firm is
+ * no longer paying for the access it has:
+ *   - 'unpaid'             — Stripe exhausted its dunning retries; this
+ *                            period's invoice was never paid.
+ *   - 'incomplete_expired' — the first payment never completed and the
+ *                            subscription was abandoned.
+ *   - 'canceled'           — the subscription has ended.
+ *
+ * 'past_due' is deliberately EXCLUDED: during past_due Stripe is still
+ * retrying the charge (smart retries / dunning), so we honor that as a
+ * grace period and keep the firm working until the status resolves to
+ * 'active' (payment recovered) or to one of the blocking states above.
+ * Trial firms have a NULL status and are never delinquent — they keep
+ * running on their trial quota.
+ *
+ * This Set is the single source of truth for "is this firm paying for what
+ * it's using." Tighten it (add 'past_due') or loosen it per billing policy.
+ */
+const DELINQUENT_SUBSCRIPTION_STATUSES: ReadonlySet<string> = new Set([
+  "unpaid",
+  "incomplete_expired",
+  "canceled",
+]);
+
+export function isSubscriptionDelinquent(
+  firm: Pick<Firm, "subscriptionStatus">,
+): boolean {
+  const status = firm.subscriptionStatus;
+  return status != null && DELINQUENT_SUBSCRIPTION_STATUSES.has(status);
+}
+
+/**
  * Check whether the firm can run another TIS this billing period.
  * Returns `ok: true` and the new remaining count if so. The caller is
  * responsible for calling `incrementStudyUsage` after a successful run.
@@ -155,6 +193,25 @@ export function canGenerateStudy(
       firmId: firm.id,
       remaining: Number.POSITIVE_INFINITY,
       unlimited: true,
+    };
+  }
+  // Revenue integrity: a firm whose subscription has definitively lapsed
+  // (payment failed after retries, first payment never completed, or
+  // canceled) must not keep drawing down the paid study quota it's no
+  // longer paying for. Checked AFTER the unlimited short-circuit so
+  // admin / dev / comped accounts are never gated, and BEFORE the
+  // per-period counter so it can't be sidestepped by a quota reset.
+  //
+  // NOTE (PR #32): when the atomic `reserveStudySlot` replaces this
+  // read-then-write path, fold `isSubscriptionDelinquent` into its WHERE
+  // clause (or guard the call site) so this gate survives that refactor —
+  // otherwise the revenue hole silently reopens.
+  if (isSubscriptionDelinquent(firm)) {
+    return {
+      ok: false,
+      reason: "subscription_delinquent",
+      firmId: firm.id,
+      limit: firm.studyLimit,
     };
   }
   if (firm.studiesUsedThisPeriod >= firm.studyLimit) {

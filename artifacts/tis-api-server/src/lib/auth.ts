@@ -7,7 +7,7 @@
 import crypto from "crypto";
 import { type Request, type Response } from "express";
 import { db, sessionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 
 export interface AuthUser {
   id: string;
@@ -64,6 +64,33 @@ export async function updateSession(sid: string, data: SessionData): Promise<voi
 
 export async function deleteSession(sid: string): Promise<void> {
   await db.delete(sessionsTable).where(eq(sessionsTable.sid, sid));
+}
+
+/**
+ * Revoke every stored session belonging to a user, optionally keeping one
+ * (typically the caller's current session). Used after a password change
+ * or reset so a stolen / stale session can't outlive the credential it was
+ * minted under — without this, an attacker who already has a live session
+ * keeps full access even after the victim resets their password, which
+ * defeats the whole point of a reset.
+ *
+ * There's no `user_id` column on the sessions table (the user lives inside
+ * the opaque JSONB `sess` payload), so this matches on the JSONB path
+ * `sess -> 'user' ->> 'id'`. Returns the number of sessions removed.
+ */
+export async function deleteUserSessions(
+  userId: string,
+  opts?: { exceptSid?: string },
+): Promise<number> {
+  const matchesUser = sql`${sessionsTable.sess} -> 'user' ->> 'id' = ${userId}`;
+  const where = opts?.exceptSid
+    ? and(matchesUser, ne(sessionsTable.sid, opts.exceptSid))
+    : matchesUser;
+  const deleted = await db
+    .delete(sessionsTable)
+    .where(where)
+    .returning({ sid: sessionsTable.sid });
+  return deleted.length;
 }
 
 export async function clearSession(res: Response, sid?: string): Promise<void> {

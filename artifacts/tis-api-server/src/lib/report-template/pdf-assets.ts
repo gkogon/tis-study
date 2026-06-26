@@ -10,12 +10,24 @@
  * PNG decoding is built-in. Best-effort by design: a vector-only cover yields no
  * raster logo, and the caller can always override the derived brand.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, type ExecFileSyncOptions } from "node:child_process";
 import { inflateSync, deflateSync } from "node:zlib";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Brand } from "./engine";
+
+// Hard ceiling on every poppler rasterise/extract. A normal report renders
+// in well under a second; a crafted or malformed PDF can make poppler spin
+// or balloon memory, so each subprocess gets a timeout and a hard SIGKILL.
+// (Kept local rather than imported from ingest.ts to avoid a circular dep —
+// ingest.ts already imports extractBrand from here.)
+const POPPLER_TIMEOUT_MS = 20_000;
+const POPPLER_EXEC_OPTS: ExecFileSyncOptions = {
+  stdio: ["ignore", "ignore", "ignore"],
+  timeout: POPPLER_TIMEOUT_MS,
+  killSignal: "SIGKILL",
+};
 
 type Decoded = { width: number; height: number; rgb: Uint8Array };
 
@@ -170,11 +182,11 @@ function mergeDecoded(decs: Decoded[]): Decoded {
 export function extractPalette(pdfPath: string): Brand["palette"] | null {
   const dir = mkdtempSync(path.join(tmpdir(), "tpl-pal-"));
   try {
-    execFileSync("pdftoppm", ["-f", "2", "-l", "4", "-r", "30", "-png", pdfPath, path.join(dir, "pg")], { stdio: ["ignore", "ignore", "ignore"] });
+    execFileSync("pdftoppm", ["-f", "2", "-l", "4", "-r", "30", "-png", pdfPath, path.join(dir, "pg")], POPPLER_EXEC_OPTS);
     let decs = decodeDirPngs(dir);
     if (!decs.length) {
       // No interior pages — fall back to the cover.
-      execFileSync("pdftoppm", ["-f", "1", "-l", "1", "-r", "24", "-png", pdfPath, path.join(dir, "cov")], { stdio: ["ignore", "ignore", "ignore"] });
+      execFileSync("pdftoppm", ["-f", "1", "-l", "1", "-r", "24", "-png", pdfPath, path.join(dir, "cov")], POPPLER_EXEC_OPTS);
       decs = decodeDirPngs(dir);
     }
     if (!decs.length) return null;
@@ -264,7 +276,7 @@ type ImgEntry = { f: string; buf: Buffer; width: number; height: number; aspect:
 function extractCoverAssets(pdfPath: string): { logo: string | null; coverImage: string | null } {
   const dir = mkdtempSync(path.join(tmpdir(), "tpl-img-"));
   try {
-    execFileSync("pdfimages", ["-png", "-f", "1", "-l", "1", pdfPath, path.join(dir, "img")], { stdio: ["ignore", "ignore", "ignore"] });
+    execFileSync("pdfimages", ["-png", "-f", "1", "-l", "1", pdfPath, path.join(dir, "img")], POPPLER_EXEC_OPTS);
     const entries: ImgEntry[] = [];
     for (const f of readdirSync(dir).filter((x) => x.endsWith(".png"))) {
       const buf = readFileSync(path.join(dir, f));
