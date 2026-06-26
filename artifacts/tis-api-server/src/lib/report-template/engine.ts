@@ -452,12 +452,22 @@ function renderBlocks(
 function stampFooters(doc: PDFKit.PDFDocument, t: ReportTemplate, ctx: RenderContext): void {
   const b = t.brand;
   const range = doc.bufferedPageRange();
+  // Front matter (cover + optional Document Control Sheet) is unnumbered.
+  const frontMatter = b.docControl ? 2 : 1;
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
-    if (i === range.start) continue; // skip the cover
+    const pageIdx = i - range.start;
+    if (pageIdx < frontMatter) continue; // no footer on cover / control sheet
+    const logicalPage = pageIdx - frontMatter + 1;
     const y = doc.page.height - PAGE_MARGIN + 8;
+    // Draw into the bottom margin WITHOUT triggering PDFKit auto-pagination: a
+    // text position past the bottom margin otherwise spawns a blank page per
+    // stamp (which the pre-captured page range can't number → "Page 1" blanks).
+    const savedBottom = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
     doc.font("body").fontSize(7.5).fillColor(b.palette.muted);
-    doc.text(interp(b.footer, ctx, i), PAGE_MARGIN, y, { width: doc.page.width - PAGE_MARGIN * 2, align: "center", lineBreak: false });
+    doc.text(interp(b.footer, ctx, logicalPage), PAGE_MARGIN, y, { width: doc.page.width - PAGE_MARGIN * 2, align: "center", lineBreak: false });
+    doc.page.margins.bottom = savedBottom;
   }
 }
 

@@ -15,7 +15,13 @@ function safeReturnTo(): string {
   try {
     const sp = new URLSearchParams(window.location.search);
     const raw = sp.get("returnTo");
-    if (raw && raw.startsWith("/") && !raw.startsWith("//")) return raw;
+    // Must be a same-origin path. Reject protocol-relative ("//host") and
+    // backslash forms ("/\host" / "\/host") — browsers normalise "\" to "/",
+    // so a naive startsWith("//") check alone leaks an off-origin open redirect.
+    if (raw && raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("\\")) {
+      const dest = new URL(raw, window.location.origin);
+      if (dest.origin === window.location.origin) return dest.pathname + dest.search + dest.hash;
+    }
   } catch {}
   return "/tis";
 }

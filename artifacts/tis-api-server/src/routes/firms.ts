@@ -374,6 +374,12 @@ router.get("/firms/members", async (req, res): Promise<void> => {
     )
     .orderBy(desc(firmInvitesTable.createdAt));
 
+  // Invite tokens are a privilege-escalation vector (any holder can redeem the
+  // invite's role) — only surface them to owners/admins, not every member.
+  const callerMembership = await getMembership(firm.id, user.id);
+  const canSeeTokens =
+    callerMembership?.role === "owner" || callerMembership?.role === "admin";
+
   res.json({
     members: members.map((m) => ({
       userId: m.userId,
@@ -389,9 +395,9 @@ router.get("/firms/members", async (req, res): Promise<void> => {
       role: p.role,
       createdAt: p.createdAt.toISOString(),
       expiresAt: p.expiresAt.toISOString(),
-      // Token is shown to the admin so they can copy/paste the
+      // Token is shown to owners/admins so they can copy/paste the
       // /invites/accept link manually until we add transactional email.
-      token: p.token,
+      ...(canSeeTokens ? { token: p.token } : {}),
     })),
     seatLimit: firm.seatLimit,
   });
@@ -529,6 +535,15 @@ router.post("/firms/invites/accept", async (req, res): Promise<void> => {
   }
   if (invite.expiresAt.getTime() < Date.now()) {
     res.status(400).json({ error: "Invite expired." });
+    return;
+  }
+  // Bind acceptance to the invited email — a token alone must not let an
+  // arbitrary account join (and inherit the invite's role).
+  if (
+    invite.email &&
+    String(user.email ?? "").toLowerCase() !== String(invite.email).toLowerCase()
+  ) {
+    res.status(403).json({ error: "This invite was sent to a different email address." });
     return;
   }
 
