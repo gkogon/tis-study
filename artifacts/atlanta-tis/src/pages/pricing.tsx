@@ -8,8 +8,8 @@
  * cadence query param attached to the upgrade CTAs. Annual is priced
  * at "2 months free" (~16.7% off) to lock in ARR.
  *
- * Enterprise is metered ($75/study) and not yet wired through Stripe
- * Checkout — its CTA is a mailto: to sales.
+ * All four tiers — including Enterprise, now a flat $10K/mo tier — route
+ * through the same /signup → Stripe Checkout flow.
  */
 import { useState } from "react";
 import { Link } from "wouter";
@@ -57,13 +57,13 @@ const TIERS: Tier[] = [
     name: "Starter",
     blurb: "For solo PEs and small firms running occasional screening TIS.",
     prices: {
-      monthly: { primary: "$599", cadence: "/month" },
-      annual:  { primary: "$5,990", cadence: "/year", subtitle: "Save $1,198 — 2 months free" },
+      monthly: { primary: "$1,500", cadence: "/month" },
+      annual:  { primary: "$15,000", cadence: "/year", subtitle: "Save $3,000 — 2 months free" },
     },
     cta: (c) => ({ label: "Start 14-day trial", href: `/signup?plan=starter&cadence=${c}` }),
     features: [
       "3 seats",
-      "10 studies / month",
+      "5 studies / month",
       "All 6 study types",
       "White-labeled PDFs + firm logo",
       "Project history & re-print",
@@ -75,14 +75,14 @@ const TIERS: Tier[] = [
     name: "Growth",
     blurb: "The default for traffic engineering firms shipping studies every week.",
     prices: {
-      monthly: { primary: "$2,499", cadence: "/month" },
-      annual:  { primary: "$24,990", cadence: "/year", subtitle: "Save $4,998 — 2 months free" },
+      monthly: { primary: "$5,000", cadence: "/month" },
+      annual:  { primary: "$50,000", cadence: "/year", subtitle: "Save $10,000 — 2 months free" },
     },
     cta: (c) => ({ label: "Start 14-day trial", href: `/signup?plan=growth&cadence=${c}` }),
     highlight: true,
     features: [
       "Unlimited seats",
-      "30 studies / month",
+      "15 studies / month",
       "Everything in Starter",
       "Post-build Verification (Monitoring) included",
       "Firm-wide project library",
@@ -95,14 +95,14 @@ const TIERS: Tier[] = [
     name: "Enterprise",
     blurb: "For multi-state firms and DOTs with high screening volume.",
     prices: {
-      monthly: { primary: "$75", cadence: "/study", subtitle: "≈ $13K/mo at 170 studies" },
-      annual:  { primary: "$10K", cadence: "/yr commit", subtitle: "+ $75/study overage" },
+      monthly: { primary: "$10,000", cadence: "/month" },
+      annual:  { primary: "$100,000", cadence: "/year", subtitle: "Save $20,000 — 2 months free" },
     },
-    cta: () => ({ label: "Contact sales", href: "mailto:gkogon@simpleimpactstudies.com?subject=Enterprise%20plan%20inquiry" }),
+    cta: (c) => ({ label: "Start Enterprise", href: `/signup?plan=enterprise&cadence=${c}` }),
     features: [
       "Unlimited seats",
-      "Unlimited studies — metered $75/study",
-      "Annual commit option (volume discount)",
+      "Unlimited studies — no cap",
+      "Annual commitment option (2 months free)",
       "SSO (Okta, Azure AD)",
       "DPA & MSA on request",
       "Custom API / data integrations",
@@ -226,7 +226,7 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What's the difference between Enterprise and Growth?",
-    a: "Growth is a flat $2,499/mo with a 30-study cap. Enterprise removes the cap entirely and bills $75 per study (with an annual commitment option for finance teams that need a predictable budget number). If you're regularly running more than 30 screenings/month, Enterprise is the move — for sub-30 firms Growth is cheaper.",
+    a: "Growth is a flat $5,000/mo with a 15-study cap. Enterprise is a flat $10,000/mo (or $100K/yr) with no cap, and adds SSO, a DPA/MSA, custom integrations, and a named contact. If you regularly run more than 15 screenings/month — or you need SSO and a signed contract — Enterprise is the move; otherwise Growth is cheaper.",
   },
   {
     q: "What citations are included in every report?",
@@ -234,7 +234,7 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What happens if we run out of studies in a billing period?",
-    a: "On Starter and Growth, generation is blocked until the next period or you upgrade — no surprise overage fees. On Enterprise, there's no cap; you just keep generating and the next invoice reflects the count.",
+    a: "On Starter and Growth, generation is blocked until the next period or you upgrade — no surprise overage fees. On Enterprise, there's no cap — it's flat monthly, so you just keep generating.",
   },
   {
     q: "Can we cancel anytime?",
