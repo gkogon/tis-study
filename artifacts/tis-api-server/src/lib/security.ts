@@ -78,6 +78,15 @@ export const generateRateLimiter = rateLimit({
 // distributes across IPs, so this is defense-in-depth — pair with
 // bcrypt cost on the password side and consider a per-email lockout
 // at the application layer when you have a Sentry/alerts pipeline.
+//
+// fail-CLOSED (passOnStoreError:false): this limiter guards credential
+// brute-force. If the Redis store errors we must NOT silently wave every
+// login attempt through — that would hand an attacker an unlimited
+// guessing window the instant Redis blips. express-rate-limit surfaces
+// the store error as a 500 instead, which is the correct fail direction
+// for an auth endpoint: briefly reject rather than open the floodgates.
+// Same reasoning on signup + password-reset below. (Compute/availability
+// limiters further down stay fail-open — see their notes.)
 export const loginRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -85,7 +94,7 @@ export const loginRateLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many sign-in attempts. Try again in 15 minutes." },
   store: makeRateLimitStore("rl:login:"),
-  passOnStoreError: true,
+  passOnStoreError: false,
 });
 
 // Per-IP rate limit on signups. Tightened from 5/hr to 3/hr in the
@@ -99,7 +108,10 @@ export const signupRateLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many signup attempts. Try again later." },
   store: makeRateLimitStore("rl:signup:"),
-  passOnStoreError: true,
+  // fail-CLOSED — see loginRateLimiter. Signup abuse (mass account
+  // creation to farm trial quota / pollute the funnel) must not be
+  // silently uncapped by a Redis hiccup.
+  passOnStoreError: false,
 });
 
 // Per-IP rate limit on password-reset request. Prevents an attacker
@@ -113,7 +125,10 @@ export const passwordResetRateLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many password reset requests. Try again later." },
   store: makeRateLimitStore("rl:pwreset:"),
-  passOnStoreError: true,
+  // fail-CLOSED — see loginRateLimiter. The reset endpoint also fronts
+  // the token-confirm route; leaving it fail-open would let an attacker
+  // brute-force reset tokens unbounded during a Redis outage.
+  passOnStoreError: false,
 });
 
 // Per-IP rate limit on the public unsubscribe endpoint. Honest users
@@ -138,13 +153,20 @@ export const unsubscribeRateLimiter = rateLimit({
 // prospect to try a couple of presets and lock in on signup, but
 // not enough for a bot to hammer GDOT through our pipe.
 //
-// Bypass: authenticated dev/admin sessions — the operator's "infinite"
-// account was hitting this 3/day cap when running demo flows
-// post-sign-in, even though the same account is treated as unlimited
-// on /generate. authMiddleware runs before this so `req.user` is
-// already populated; mirroring isUnlimitedStudies' sync conditions
-// (skipping the firm-load DB call — enterprise studyLimit<=0 firms
-// should be hitting /generate, not /demo/generate).
+// Bypass: ONLY dev-auth environments and admin/operator emails. The
+// operator's "infinite" account was hitting this 3/day cap when running
+// demo flows post-sign-in; admins are exempt so that stays smooth.
+//
+// SECURITY — do NOT exempt every authenticated session. /demo/generate
+// and /demo/pdf run the FULL engine and return the complete report + PDF
+// (the paid deliverable) without metering against firm quota. A blanket
+// `isAuthenticated()` skip let any signed-in firm — including one that
+// has exhausted its paid study quota — farm unlimited free studies
+// through /demo. Real paid usage goes through /generate (which meters
+// quota); the demo cap is abuse protection that must apply to ordinary
+// authenticated users too. Genuinely-unlimited firms (studyLimit<=0)
+// belong on /generate, so we don't load the firm row here just to exempt
+// them — they're never blocked there.
 export const demoRateLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000,
   limit: 3,
@@ -155,10 +177,6 @@ export const demoRateLimiter = rateLimit({
   passOnStoreError: true,
   skip: (req) => {
     if (process.env.DEV_AUTH_ENABLED === "true") return true;
-    // Any signed-in user has a real account — the demo cap is for
-    // anonymous prospects, so never rate-limit an authenticated session.
-    // (Requires the client to send credentials on /demo requests.)
-    try { if (typeof req.isAuthenticated === "function" && req.isAuthenticated()) return true; } catch { /* not augmented */ }
     const email = req.user?.email;
     return !!email && isAdminEmail(email);
   },
