@@ -111,8 +111,9 @@ const PRICE_COMPARE = [
   { who: "PTV Vistro", cost: "$5,000 – $10,000", unit: "annual subscription, per seat" },
   { who: "PTV Visum", cost: "$8,000 – $15,000", unit: "annual subscription, per seat" },
   { who: "TransCAD", cost: "$6,000 – $7,200", unit: "annual subscription" },
-  { who: "Simple Impact Studies — Starter", cost: "$599", unit: "firm-wide, monthly · 10 studies", highlight: true },
-  { who: "Simple Impact Studies — Growth", cost: "$2,499", unit: "firm-wide, monthly · 30 studies · unlimited seats", highlight: true },
+  { who: "Simple Impact Studies — Starter", cost: "$1,500", unit: "firm-wide, monthly · 5 studies", highlight: true },
+  { who: "Simple Impact Studies — Growth", cost: "$5,000", unit: "firm-wide, monthly · 15 studies · unlimited seats", highlight: true },
+  { who: "Simple Impact Studies — Enterprise", cost: "$10,000", unit: "firm-wide, monthly · unlimited studies · SSO", highlight: true },
 ];
 
 const PIPELINE: Array<{ label: string; highlight?: boolean }> = [

@@ -445,16 +445,16 @@ function EconomicsSection() {
               </span>
             </div>
             <div className="divide-y divide-border">
-              <RoiRow plan="Starter" volume="10 studies / mo" subscription="$599 / mo" savings="$50,000" multiple="83×" />
-              <RoiRow plan="Growth" volume="30 studies / mo" subscription="$2,499 / mo" savings="$150,000" multiple="60×" highlight />
-              <RoiRow plan="Enterprise" volume="170 studies / mo" subscription="$12,750 / mo" savings="$850,000" multiple="67×" />
+              <RoiRow plan="Starter" volume="5 studies / mo" subscription="$1,500 / mo" savings="$25,000" multiple="17×" />
+              <RoiRow plan="Growth" volume="15 studies / mo" subscription="$5,000 / mo" savings="$75,000" multiple="15×" highlight />
+              <RoiRow plan="Enterprise" volume="20+ studies / mo" subscription="$10,000 / mo" savings="$100,000" multiple="10×" />
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             Methodology: 40 hours saved per screening at $125/hr is the
             midpoint of the ITE-typical 20–60 hr range and the 2026 US
             junior-PE billable rate. Savings shown are gross labor cost
-            recovered. Enterprise meter at $75/study.
+            recovered. Enterprise is flat $10,000/mo — unlimited studies.
           </p>
         </div>
       </div>

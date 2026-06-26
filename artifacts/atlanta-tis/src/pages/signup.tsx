@@ -12,12 +12,13 @@ import {
 } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 
-type Plan = "starter" | "growth" | "trial";
+type Plan = "starter" | "growth" | "enterprise" | "trial";
 type Cadence = "monthly" | "annual";
 
 const PLAN_LABEL: Record<Plan, string> = {
-  starter: "Starter — $599/mo",
-  growth: "Growth — $2,499/mo",
+  starter: "Starter — $1,500/mo",
+  growth: "Growth — $5,000/mo",
+  enterprise: "Enterprise — $10,000/mo",
   trial: "Free trial",
 };
 
@@ -25,7 +26,8 @@ function readPlanFromUrl(): { plan: Plan; cadence: Cadence } {
   const sp = new URLSearchParams(window.location.search);
   const rawPlan = sp.get("plan");
   const rawCadence = sp.get("cadence");
-  const plan: Plan = rawPlan === "starter" || rawPlan === "growth" ? rawPlan : "trial";
+  const plan: Plan =
+    rawPlan === "starter" || rawPlan === "growth" || rawPlan === "enterprise" ? rawPlan : "trial";
   const cadence: Cadence = rawCadence === "annual" ? "annual" : "monthly";
   return { plan, cadence };
 }

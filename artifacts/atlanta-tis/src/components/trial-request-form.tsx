@@ -17,9 +17,9 @@ interface Props {
 
 const TIER_LABELS: Record<string, string> = {
   trial: "Free trial — 10 studies",
-  starter: "Starter — $599/mo",
-  growth: "Growth — $2,499/mo",
-  enterprise: "Enterprise — usage-based ($75/study)",
+  starter: "Starter — $1,500/mo",
+  growth: "Growth — $5,000/mo",
+  enterprise: "Enterprise — $10,000/mo",
 };
 
 export function TrialRequestForm({

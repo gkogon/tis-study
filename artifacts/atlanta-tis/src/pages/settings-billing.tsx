@@ -263,16 +263,16 @@ export default function SettingsBillingPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <UpgradeCard
                 plan="starter"
-                title={cadence === "annual" ? "Starter — $5,990/yr" : "Starter — $599/mo"}
-                body="3 seats · 10 studies / month"
+                title={cadence === "annual" ? "Starter — $15,000/yr" : "Starter — $1,500/mo"}
+                body="3 seats · 5 studies / month"
                 onClick={() => startCheckout("starter", cadence)}
                 disabled={!canManage || actioning !== null}
                 actioning={actioning === "checkout"}
               />
               <UpgradeCard
                 plan="growth"
-                title={cadence === "annual" ? "Growth — $24,990/yr" : "Growth — $2,499/mo"}
-                body="Unlimited seats · 30 studies / month"
+                title={cadence === "annual" ? "Growth — $50,000/yr" : "Growth — $5,000/mo"}
+                body="Unlimited seats · 15 studies / month"
                 primary
                 onClick={() => startCheckout("growth", cadence)}
                 disabled={!canManage || actioning !== null}
@@ -282,8 +282,8 @@ export default function SettingsBillingPage() {
             <div className="rounded-lg border border-dashed p-4 space-y-3 bg-background">
               <div className="flex items-start justify-between flex-wrap gap-3">
                 <div>
-                  <div className="font-semibold text-sm">Enterprise — usage-based, custom</div>
-                  <div className="text-xs text-muted-foreground">$75/study or $10K/yr commit + overage. Unlimited everything.</div>
+                  <div className="font-semibold text-sm">Enterprise — $10,000/mo</div>
+                  <div className="text-xs text-muted-foreground">$100K/yr (2 months free). Unlimited studies + seats, SSO, SLA.</div>
                 </div>
                 <a
                   href="mailto:gkogon@simpleimpactstudies.com?subject=Enterprise%20plan%20inquiry"
