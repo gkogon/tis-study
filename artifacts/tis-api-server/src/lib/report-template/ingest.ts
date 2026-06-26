@@ -15,6 +15,7 @@
  * how importing a new firm should work.
  */
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import type { Block, Brand, Chapter, ReportTemplate, Section } from "./engine";
 import { validateTemplate } from "./registry";
 import { extractBrand } from "./pdf-assets";
@@ -288,10 +289,44 @@ export function ingestTemplateFromText(text: string, opts: IngestOptions = {}): 
  * auto-branded — "reads the logo and the colours". Any caller-supplied brand
  * fields win over the auto-detected ones.
  */
+/** Hard ceiling on any poppler invocation. A normal report rasterises /
+ * extracts in well under a second; a crafted or malformed PDF can make
+ * poppler spin or balloon memory, so every subprocess gets a timeout and a
+ * hard SIGKILL. Shared with pdf-assets.ts's rasterisers. */
+export const PDF_SUBPROCESS_TIMEOUT_MS = 20_000;
+
+/**
+ * Assert the file at `pdfPath` really is a PDF before any poppler tool
+ * touches it. The upload route only inspects the client-supplied mimetype
+ * and filename — both fully attacker-controlled — so without this an
+ * arbitrary blob reaches pdftotext / pdftoppm / pdfimages, which is the
+ * untrusted-input → native-parser surface we don't want exposed. The PDF
+ * spec tolerates a little leading junk before the "%PDF-" header, so scan
+ * the first 1KB rather than insisting on offset 0. Files are already capped
+ * at 2 MB by multer, so reading the head is cheap.
+ */
+function assertIsPdf(pdfPath: string): void {
+  let head: Buffer;
+  try {
+    head = readFileSync(pdfPath).subarray(0, 1024);
+  } catch (e) {
+    throw new Error(`Could not read uploaded file: ${(e as Error).message}`);
+  }
+  if (!head.includes("%PDF-")) {
+    throw new Error("Uploaded file is not a valid PDF (missing %PDF header).");
+  }
+}
+
 export function ingestTemplateFromPdf(pdfPath: string, opts: IngestOptions = {}): ReportTemplate {
+  assertIsPdf(pdfPath);
   let text = "";
   try {
-    text = execFileSync("pdftotext", ["-layout", pdfPath, "-"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    text = execFileSync("pdftotext", ["-layout", pdfPath, "-"], {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: PDF_SUBPROCESS_TIMEOUT_MS,
+      killSignal: "SIGKILL",
+    });
   } catch (e) {
     throw new Error(`Could not extract text from ${pdfPath} (is poppler/pdftotext installed?): ${(e as Error).message}`);
   }

@@ -17,6 +17,7 @@ import { db, usersTable } from "@workspace/db";
 import {
   hashPassword,
   verifyPassword,
+  dummyVerifyPassword,
   validatePasswordStrength,
   newResetToken,
   isValidEmail,
@@ -25,6 +26,7 @@ import {
 import {
   createSession,
   clearSession,
+  deleteUserSessions,
   getSessionId,
   SESSION_COOKIE,
   SESSION_TTL,
@@ -204,7 +206,10 @@ router.post("/auth/login", loginRateLimiter, async (req, res): Promise<void> => 
     .limit(1);
 
   if (!user || !user.passwordHash) {
-    // Generic message — don't reveal whether the account exists.
+    // Generic message — don't reveal whether the account exists. Burn the
+    // same bcrypt work a real verify would so response TIMING doesn't leak
+    // it either (email enumeration → targeted credential-stuffing).
+    await dummyVerifyPassword(password);
     res.status(401).json({ error: "Invalid email or password." });
     return;
   }
@@ -298,10 +303,22 @@ router.post("/auth/password-confirm", passwordResetRateLimiter, async (req, res)
     })
     .where(eq(usersTable.id, user.id));
 
+  // Kill every existing session for this user BEFORE minting the new one.
+  // A password reset is the lever a user pulls when their account may be
+  // compromised — any session an attacker is holding must die here, or the
+  // reset accomplishes nothing. The fresh session below is created after
+  // this sweep, so it survives.
+  const revoked = await deleteUserSessions(user.id);
+
   // Issue a fresh session immediately so the user is signed in after
   // resetting.
   const sid = await createSession(sessionFromUser(user));
   setSessionCookie(res, sid);
+
+  logger.info(
+    { userId: user.id, revokedSessions: revoked },
+    "email-auth.password_reset.sessions_revoked",
+  );
 
   logger.info({ userId: user.id }, "email-auth.password_reset");
   // Maintain the existing auth-state response shape for downstream
@@ -412,6 +429,17 @@ router.post("/auth/change-password", async (req, res): Promise<void> => {
     .update(usersTable)
     .set({ passwordHash, passwordResetToken: null, passwordResetExpiresAt: null })
     .where(eq(usersTable.id, user.id));
+
+  // Revoke the user's OTHER sessions (keep the current device signed in).
+  // If the password was changed because a session was stolen, this is what
+  // actually evicts the attacker; without it they keep access indefinitely.
+  const currentSid = getSessionId(req);
+  const revoked = await deleteUserSessions(user.id, { exceptSid: currentSid });
+  logger.info(
+    { userId: user.id, revokedSessions: revoked },
+    "email-auth.change_password.sessions_revoked",
+  );
+
   res.json({ ok: true });
 });
 

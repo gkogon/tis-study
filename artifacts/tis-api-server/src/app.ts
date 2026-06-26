@@ -18,7 +18,66 @@ const app: Express = express();
 
 app.set("trust proxy", 1);
 
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+// Security headers. helmet's defaults give us HSTS, X-Content-Type-Options:
+// nosniff, X-Frame-Options, Referrer-Policy, and friends. On top of those
+// we layer a real Content-Security-Policy — the previous
+// `contentSecurityPolicy: false` left the SPA with NO CSP at all, so any
+// reflected/stored XSS could load attacker-controlled JS and (even though
+// the session cookie is httpOnly) drive authenticated API calls or
+// exfiltrate whatever's on the page. The directives are scoped to exactly
+// what the production frontend loads:
+//   - script-src 'self'      the Vite bundle is self-hosted + content-hashed;
+//                            there are no inline or third-party scripts. (The
+//                            index.html JSON-LD block is application/ld+json —
+//                            data, not executable — so it's exempt.)
+//   - style-src 'self' 'unsafe-inline' fonts.googleapis.com — Google Fonts CSS
+//                            plus the inline styles React/Radix/Tailwind inject
+//                            at runtime (can't be nonced per element).
+//   - font-src 'self' fonts.gstatic.com — the webfont files.
+//   - img-src 'self' data: blob: https: — logos, rendered PDFs, map/streetview
+//                            thumbnails (some served from object storage).
+//   - connect-src 'self'     the API and the /api analyzer proxy are same-origin.
+//   - frame-ancestors 'none' clickjacking protection.
+//   - object-src 'none'; base-uri 'self'; form-action 'self'.
+// Stripe Checkout + the billing Portal are full-page redirects (not embedded
+// iframes), so no js.stripe.com / frame-src entries are required.
+//
+// Rollout safety on the live site:
+//   - DISABLE_CSP=true       drop back to no-CSP without a code change if a
+//                            future frontend dependency needs an origin not
+//                            listed here (then add it and clear the flag).
+//   - CSP_REPORT_ONLY=true   ship the policy as Report-Only (headers present,
+//                            nothing blocked) to vet a change before enforcing.
+const cspDirectives: Record<string, Iterable<string>> = {
+  defaultSrc: ["'self'"],
+  scriptSrc: ["'self'"],
+  styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+  fontSrc: ["'self'", "https://fonts.gstatic.com"],
+  imgSrc: ["'self'", "data:", "blob:", "https:"],
+  connectSrc: ["'self'"],
+  objectSrc: ["'none'"],
+  baseUri: ["'self'"],
+  formAction: ["'self'"],
+  frameAncestors: ["'none'"],
+};
+if (process.env.NODE_ENV === "production") {
+  // Upgrade any stray http subresource to https in prod. Omitted in dev so
+  // it can't interfere with a plain-http localhost asset.
+  cspDirectives.upgradeInsecureRequests = [];
+}
+app.use(
+  helmet({
+    crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy:
+      process.env.DISABLE_CSP === "true"
+        ? false
+        : {
+            useDefaults: false,
+            reportOnly: process.env.CSP_REPORT_ONLY === "true",
+            directives: cspDirectives,
+          },
+  }),
+);
 app.use(compression());
 app.use(
   pinoHttp({
