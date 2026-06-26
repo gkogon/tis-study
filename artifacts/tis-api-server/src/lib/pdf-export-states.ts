@@ -1109,9 +1109,21 @@ function renderTisState(
     const labelW = 220;
     const valueW = doc.page.width - PAGE_MARGIN - labelW - PAGE_MARGIN - 10;
     for (const [label, value] of pairs) {
+      const val = value ?? "—";
+      // Keep each label and its value together: measure the row and break
+      // BEFORE it when it will not fit, rather than drawing the label first
+      // and letting PDFKit auto-paginate mid-pair (which stranded a single
+      // cell — e.g. "Transit/mode reduction" — alone on its own page).
+      doc.font("body").fontSize(10);
+      const rowH = Math.max(
+        doc.heightOfString(label, { width: labelW }),
+        doc.heightOfString(val, { width: valueW }),
+      );
+      if (doc.y + rowH > doc.page.height - PAGE_MARGIN) doc.addPage();
       const y = doc.y;
-      doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(label, PAGE_MARGIN, y, { width: labelW });
-      doc.font("body").fontSize(10).fillColor("black").text(value ?? "—", PAGE_MARGIN + labelW + 10, y, { width: valueW });
+      doc.fillColor(TEXT_GRAY).text(label, PAGE_MARGIN, y, { width: labelW });
+      doc.fillColor("black").text(val, PAGE_MARGIN + labelW + 10, y, { width: valueW });
+      doc.y = y + rowH;
       doc.moveDown(0.05);
     }
     doc.x = PAGE_MARGIN;
