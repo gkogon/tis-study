@@ -991,7 +991,9 @@ function dispatchTisRender(
       // distribution → mode choice → BPR assignment), then the
       // per-intersection capacity worksheets.
       renderFourStepSection(doc, result);
-      renderCapacityAppendix(doc, intersections, periods);
+      renderCapacityAppendix(doc, intersections, periods,
+        Number(result.intersectionsInStudyArea) || intersections.length,
+        Number(result.studyRadiusMi) || 0.5);
     }
   } finally {
     velocityPaletteActive = false;
@@ -8082,6 +8084,8 @@ function renderCapacityAppendix(
   doc: PDFKit.PDFDocument,
   intersections: any[],
   periods: any[],
+  inStudyArea?: number,
+  studyRadiusMi?: number,
 ) {
   doc.addPage();
   gaSection(doc, "APPENDIX — INTERSECTION CAPACITY ANALYSIS WORKSHEETS");
@@ -8092,6 +8096,19 @@ function renderCapacityAppendix(
     + "back-of-queue (ft) are reported for the Existing (No-Build) and Build conditions.",
     { paragraphGap: 4 },
   );
+  // Scope transparency: state how many signals are in the study area vs. how many
+  // were analyzed, and why, when the impact-significance scope trimmed the set.
+  const analyzed = intersections.length;
+  if (inStudyArea && inStudyArea > analyzed) {
+    const radius = studyRadiusMi && studyRadiusMi > 0 ? studyRadiusMi : 0.5;
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+      `Study scope: ${inStudyArea} signalized intersections lie within the ${radius}-mile study area; `
+      + `${analyzed} are carried as study intersections — the site frontage/adjacent intersections plus those the `
+      + `project materially impacts. The remainder receive net new site traffic below the impact-significance `
+      + `threshold (de-minimis, per ITE MTIASD §2.2) and are not analyzed individually.`,
+      { paragraphGap: 8 },
+    );
+  }
   doc.font("body").fontSize(9).fillColor("#b45309").text(
     "Turning-movement volumes are distributed from each approach total using an estimated 15/70/15 (Left/Through/"
     + "Right) split — the screening engine resolves volumes at the approach level. Replace with measured "
