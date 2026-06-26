@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { regionCodeToSlug } from "./regional-intersections";
+import { lruSet } from "./bounded-cache";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -39,7 +40,7 @@ function loadRoadFile(slug: string): RoadFile | null {
   if (!path) { cache.set(slug, null); return null; }
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8")) as RoadFile;
-    cache.set(slug, parsed);
+    lruSet(cache, slug, parsed);
     return parsed;
   } catch {
     cache.set(slug, null);
