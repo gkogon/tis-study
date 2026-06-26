@@ -11,8 +11,8 @@ import { generateRateLimiter } from "../lib/security";
 import { saveProject } from "../lib/tis-projects";
 import {
   getOrCreateFirmForUser,
-  canGenerateStudy,
-  incrementStudyUsage,
+  reserveStudySlot,
+  releaseStudySlot,
 } from "../lib/firms";
 import { logEvent } from "../lib/events";
 
@@ -90,7 +90,7 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
     lastName: user.lastName,
   });
 
-  const quota = canGenerateStudy(firm, { email: user.email });
+  const quota = await reserveStudySlot(firm, { email: user.email });
   if (!quota.ok) {
     res.status(402).json({
       error:
@@ -117,10 +117,10 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
     const projectName =
       (parsed.data as { projectName?: string }).projectName?.trim()
       || `${validated.tripGeneration.landUseName} @ ${parsed.data.latitude.toFixed(4)}, ${parsed.data.longitude.toFixed(4)}`;
-    // Persist FIRST, then charge quota. Honors the pricing-page promise
-    // that "if a generation errors out, it doesn't count" — a silent
-    // save failure used to bump quota without leaving a row in
-    // /projects, so users retried and burned through their trial early.
+    // The quota slot was already reserved above (atomic, race-safe). Persist
+    // the study; if the save fails we refund the slot below, honoring the
+    // pricing-page promise that "if a generation errors out, it doesn't
+    // count" — without ever letting two concurrent runs share the last slot.
     const saved = await saveProject({
       userId: user.id,
       firmId: firm.id,
@@ -134,12 +134,12 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
       result: validated,
     });
     if (!saved) {
+      await releaseStudySlot(firm, { email: user.email });
       res.status(500).json({
         error: "Generated the study but couldn't save it to your history. Please retry — this attempt didn't count toward your quota.",
       });
       return;
     }
-    await incrementStudyUsage(firm.id);
     logEvent("study_generated", {
       firmId: firm.id,
       userId: user.id,
@@ -147,6 +147,7 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
     });
     res.json(validated);
   } catch (e) {
+    await releaseStudySlot(firm, { email: user.email });
     req.log.error({ err: e }, "tis-generate failed");
     const msg = e instanceof Error ? e.message : String(e);
     const isUpstream = /analyzer/i.test(msg);

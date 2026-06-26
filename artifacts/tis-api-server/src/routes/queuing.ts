@@ -13,8 +13,8 @@ import { generateRateLimiter } from "../lib/security";
 import { saveProject } from "../lib/tis-projects";
 import {
   getOrCreateFirmForUser,
-  canGenerateStudy,
-  incrementStudyUsage,
+  reserveStudySlot,
+  releaseStudySlot,
 } from "../lib/firms";
 import { logEvent } from "../lib/events";
 
@@ -43,7 +43,7 @@ router.post(
       lastName: user.lastName,
     });
 
-    const quota = canGenerateStudy(firm, { email: user.email });
+    const quota = await reserveStudySlot(firm, { email: user.email });
     if (!quota.ok) {
       res.status(402).json({
         error:
@@ -58,7 +58,7 @@ router.post(
     try {
       const report = runQueuingAnalysis(parsed.data);
       const validated = GenerateQueuingResponse.parse(report);
-      // Persist FIRST, then charge quota — see TIS route note.
+      // Quota slot reserved above; refunded on failure — see TIS route note.
       const saved = await saveProject({
         userId: user.id,
         firmId: firm.id,
@@ -72,12 +72,12 @@ router.post(
         result: validated,
       });
       if (!saved) {
+        await releaseStudySlot(firm, { email: user.email });
         res.status(500).json({
           error: "Generated the study but couldn't save it to your history. Please retry — this attempt didn't count toward your quota.",
         });
         return;
       }
-      await incrementStudyUsage(firm.id);
       logEvent("study_generated", {
         firmId: firm.id,
         userId: user.id,
@@ -85,6 +85,7 @@ router.post(
       });
       res.json(validated);
     } catch (e) {
+      await releaseStudySlot(firm, { email: user.email });
       req.log.error({ err: e }, "queuing-generate failed");
       const msg = e instanceof Error ? e.message : String(e);
       res.status(400).json({ error: msg });
