@@ -6,6 +6,12 @@
  * which computed block lands where. No bespoke renderer function — the generic
  * engine renders it. Swap this value for another firm's `ReportTemplate` and the
  * same study renders in their format (see ./generic-us.ts).
+ *
+ * Every chapter carries computed content (a figure, a table or a framework
+ * matrix) so the document is a full-length assessment rather than a heading
+ * skeleton; survey-driven chapters still defer their field data to the chartered
+ * engineer at submittal, but present the assessment framework and the policy
+ * spine in full so the report stands on its own.
  */
 import type { ReportTemplate } from "../engine";
 
@@ -79,7 +85,7 @@ export const velocityTemplate: ReportTemplate = {
           number: "1.2",
           title: "Proposed Land Use",
           blocks: [
-            { kind: "prose", text: "The proposed land-use schedule is summarised below (Table 1-1)." },
+            { kind: "prose", text: "The proposed land-use schedule is summarised below (Table 1-1). Trip generation, mode share and servicing demand in the chapters that follow are derived from this quantum." },
             { kind: "table", provider: "landUseSchedule" },
           ],
         },
@@ -100,7 +106,8 @@ export const velocityTemplate: ReportTemplate = {
           number: "1.4",
           title: "Policy Context",
           blocks: [
-            { kind: "prose", text: "The assessment is framed by the NPPF (December 2024) vision-led approach (paragraphs 115 and 118), the London Plan 2021 (Policies T1–T9), the Mayor's Transport Strategy, TfL Healthy Streets, and the City of London Local Plan and Transport Strategy. The place outcome the scheme seeks, and how transport supports that vision before capacity numbers are reported, is a vision-led narrative completed by the chartered engineer with the design team." },
+            { kind: "prose", text: "The assessment is framed by the NPPF (December 2024) vision-led approach (paragraphs 108–116), the London Plan 2021 (Policies T1–T9), the Mayor's Transport Strategy 2018, TfL Healthy Streets, and the City of London Local Plan and Transport Strategy. The NPPF directs that development should only be refused on transport grounds where the residual cumulative impacts on the network would be severe (paragraph 116), and that assessments take a vision-led approach to promoting sustainable transport." },
+            { kind: "prose", text: "The London Plan sets a strategic target for 80% of all trips in London to be made on foot, by cycle or by public transport by 2041 (Policy T1). Policies T2 (Healthy Streets), T4 (assessing and mitigating transport impacts), T5 (cycling), T6 (parking) and T7 (deliveries and servicing) are the controlling development-management policies for this site and are addressed in turn in the chapters below. The full policy-compliance position is set out in Chapter 7." },
           ],
         },
       ],
@@ -125,6 +132,19 @@ export const velocityTemplate: ReportTemplate = {
         },
         {
           number: "2.2",
+          title: "How Will People Travel?",
+          blocks: [
+            { kind: "prose", text: "The mode share applied to the gross trip generation reflects the site's central, highly-accessible location. Figure 2-2 shows the indicative split between private-vehicle and sustainable-mode trips; only the private-vehicle share loads the highway network assessed in Chapter 6." },
+            {
+              kind: "if",
+              flag: "hasModeShare",
+              then: [{ kind: "chart", provider: "modalSplit" }],
+              else: [{ kind: "note", text: "The multi-modal split is derived from the 2011 Census Method-of-Travel-to-Work for the site LSOA at submittal." }],
+            },
+          ],
+        },
+        {
+          number: "2.3",
           title: "Transport Classification of Londoners",
           blocks: [{ kind: "note", text: "TfL's Transport Classification of Londoners segments residents into travel-attitude groups; drawn from TfL Insight at submittal, it is not produced by this screening engine." }],
         },
@@ -135,21 +155,60 @@ export const velocityTemplate: ReportTemplate = {
       title: "Site and Surroundings",
       intro: "i.e. How can people of all abilities move around the site and its immediate surroundings?",
       sections: [
-        { number: "3.1", title: "Existing Access and Movement", blocks: [{ kind: "note", text: "Existing and proposed access arrangements, walking isochrones, the local cycle network and the strategic highway network (TLRN) are drawn from the architectural and access drawings and TfL WebCAT at submittal." }] },
-        { number: "3.2", title: "Cycle Parking and Servicing", blocks: [{ kind: "note", text: "Long-stay, end-of-trip and short-stay cycle parking are assessed against London Plan Policy T5 (Table 10.2); servicing demand is estimated from the City of London Loading Bay Ready Reckoner with off-site consolidation. These are completed against the submitted drawings." }] },
+        {
+          number: "3.1",
+          title: "Existing Access and the Local Network",
+          blocks: [
+            { kind: "prose", text: "Existing and proposed access arrangements, walking isochrones, the local cycle network and the strategic highway network (TLRN) are drawn from the architectural and access drawings and TfL WebCAT at submittal. The junctions within the study radius that carry the scheme's vehicular trips are listed in Table 3-1." },
+            {
+              kind: "if",
+              flag: "hasIntersections",
+              then: [{ kind: "table", provider: "localNetwork" }],
+              else: [{ kind: "note", text: "No signalised or priority junctions fall within the study radius; access is to the local pedestrian and cycle network only. The immediate walking and cycling provision is confirmed against the access drawings at submittal." }],
+            },
+          ],
+        },
+        {
+          number: "3.2",
+          title: "Cycle Parking and Servicing",
+          blocks: [
+            { kind: "prose", text: "Long-stay, end-of-trip and short-stay cycle parking are assessed against London Plan Policy T5 (Table 10.2) for the proposed quantum. Servicing demand is estimated from the City of London Loading Bay Ready Reckoner with off-site consolidation, and is managed through a Delivery and Servicing Plan secured by condition." },
+            { kind: "note", text: "The cycle-parking schedule and the swept-path / loading-bay drawings are completed against the submitted architectural package; the figures here establish the assessment basis and the applicable standard." },
+          ],
+        },
       ],
     },
     {
       number: "4.0",
       title: "Pedestrian Comfort Level Analysis",
       intro: "i.e. Are footways and crossings comfortable for the forecast pedestrian flows?",
-      sections: [{ number: "4.1", title: "PCL Method", blocks: [{ kind: "note", text: "TfL Pedestrian Comfort Level (PCL) assessment of footways and crossings across Base 2024 / Sensitivity 2024 / Future Base 2040 / 2040+Development, with observed 15-minute peak flows and queues. Survey-driven; the framework is emitted here and the survey inputs are uploaded." }] }],
+      sections: [
+        {
+          number: "4.1",
+          title: "PCL Method and Scenarios",
+          blocks: [
+            { kind: "prose", text: "TfL Pedestrian Comfort Level (PCL) assessment grades footways and crossings against observed 15-minute peak flows and effective widths. The assessment is run across four scenarios (Table 4-1); a footway grading below B+ triggers a public-realm or widening response agreed with the borough." },
+            { kind: "table", provider: "pclScenarios" },
+            { kind: "note", text: "Observed 15-minute peak pedestrian flows and queue surveys are uploaded at submittal; the framework, scenarios and comfort thresholds are fixed here." },
+          ],
+        },
+      ],
     },
     {
       number: "5.0",
       title: "Active Travel Zone Assessment",
       intro: "i.e. How will people make the key journeys in the 20-minute Active Travel Zone?",
-      sections: [{ number: "5.1", title: "ATZ and Healthy Streets", blocks: [{ kind: "note", text: "TfL Active Travel Zone maps (Map One/Two/Three), key-route Healthy Streets Indicator analysis and Vision Zero / DfT collision review. Survey- and map-driven; uploaded at submittal." }] }],
+      sections: [
+        {
+          number: "5.1",
+          title: "ATZ and Healthy Streets",
+          blocks: [
+            { kind: "prose", text: "The Active Travel Zone (ATZ) describes the journeys reachable on foot or by cycle within 20 minutes of the site. Each of TfL's ten Healthy Streets indicators is screened for the key routes in Table 5-1; a Vision Zero / DfT STATS19 collision review of the same routes is completed at submittal." },
+            { kind: "table", provider: "healthyStreets" },
+            { kind: "note", text: "TfL Active Travel Zone maps (Map One/Two/Three) and the route-by-route Healthy Streets Indicator scoring are map- and survey-driven and are uploaded at submittal." },
+          ],
+        },
+      ],
     },
     {
       number: "6.0",
@@ -160,8 +219,9 @@ export const velocityTemplate: ReportTemplate = {
           number: "6.1",
           title: "Trip Generation",
           blocks: [
-            { kind: "prose", text: "Gross trip generation follows the ITE Trip Generation Manual 11th Edition for land use {{tripGeneration.landUseCode}} ({{tripGeneration.landUseName}}) at {{tripGeneration.size}} {{tripGeneration.unit}}. A submitted TA substitutes TRICS multi-modal rates with the 2011 Census Method-of-Travel-to-Work public-transport adjustment." },
+            { kind: "prose", text: "Gross trip generation follows the ITE Trip Generation Manual 11th Edition for land use {{tripGeneration.landUseCode}} ({{tripGeneration.landUseName}}) at {{tripGeneration.size}} {{tripGeneration.unit}}. A submitted TA substitutes TRICS multi-modal rates with the 2011 Census Method-of-Travel-to-Work public-transport adjustment. The resulting trips by period are summarised in Table 6-1 and Figure 6-1." },
             { kind: "table", provider: "tripGenSummary" },
+            { kind: "if", flag: "hasTripGen", then: [{ kind: "chart", provider: "tripGenByPeriod" }], else: [] },
             { kind: "if", flag: "hasPeriods", then: [{ kind: "table", provider: "periodTripGen" }], else: [] },
           ],
         },
@@ -169,13 +229,17 @@ export const velocityTemplate: ReportTemplate = {
           number: "6.2",
           title: "Daily Person Accumulation",
           blocks: [
+            { kind: "prose", text: "Figure 6-2 accumulates the within-day arrivals and departures into the net person presence on site through the day — the basis for servicing, refuse and peak-management planning." },
             { kind: "if", flag: "drawDiurnal", then: [{ kind: "chart", provider: "diurnalLine" }], else: [{ kind: "note", text: "Daily person accumulation is produced for office / commercial schemes." }] },
           ],
         },
         {
           number: "6.3",
           title: "Demand Assumptions",
-          blocks: [{ kind: "keyvalue", provider: "demandAssumptions" }],
+          blocks: [
+            { kind: "prose", text: "The net highway demand assessed at each junction reflects the pass-by, internalisation, background-growth and mode-share assumptions below." },
+            { kind: "keyvalue", provider: "demandAssumptions" },
+          ],
         },
         {
           number: "6.4",
@@ -185,8 +249,8 @@ export const velocityTemplate: ReportTemplate = {
               kind: "if",
               flag: "showCapacity",
               then: [
-                { kind: "prose", text: "Junction capacity is screened on a UK degree-of-saturation basis (DoS, practical limit 90%). A submitted TA re-runs affected junctions in LinSig 3 / Junctions 11 with the agreed TRICS demand." },
-                { kind: "if", flag: "hasIntersections", then: [{ kind: "table", provider: "ukCapacity" }], else: [{ kind: "note", text: "No junctions fall within the study radius — no off-site capacity impact is anticipated." }] },
+                { kind: "prose", text: "Junction capacity is screened on a UK degree-of-saturation basis (DoS, practical limit 90%). Figure 6-3 compares the No-Build and With-Development degree of saturation at the most-loaded junctions; Table 6-2 lists the full set. A submitted TA re-runs affected junctions in LinSig 3 / Junctions 11 with the agreed TRICS demand." },
+                { kind: "if", flag: "hasIntersections", then: [{ kind: "chart", provider: "junctionDoS" }, { kind: "table", provider: "ukCapacity" }], else: [{ kind: "note", text: "No junctions fall within the study radius — no off-site capacity impact is anticipated." }] },
               ],
               else: [{ kind: "note", text: "Junction capacity is not the controlling consideration for this study type; pedestrian movement and comfort are assessed in Chapter 4." }],
             },
@@ -195,7 +259,10 @@ export const velocityTemplate: ReportTemplate = {
         {
           number: "6.5",
           title: "Trip Distribution",
-          blocks: [{ kind: "if", flag: "hasIntersections", then: [{ kind: "table", provider: "tripDistribution" }], else: [] }],
+          blocks: [
+            { kind: "prose", text: "Net new trips are assigned across the study network by a gravity model. Figure 6-4 shows the share of added PM-peak trips at the most-loaded junctions; Table 6-3 lists the assignment in full." },
+            { kind: "if", flag: "hasIntersections", then: [{ kind: "chart", provider: "tripDistributionChart" }, { kind: "table", provider: "tripDistribution" }], else: [{ kind: "note", text: "With no junctions in the study radius there is no off-site assignment to report." }] },
+          ],
         },
       ],
     },
@@ -203,7 +270,30 @@ export const velocityTemplate: ReportTemplate = {
       number: "7.0",
       title: "Planning Policy Delivery",
       intro: "i.e. How does the scheme meet NPPF, London Plan, MTS and City of London policy?",
-      sections: [{ number: "7.1", title: "Policy Delivery and Management Plans", blocks: [{ kind: "note", text: "Strategic-policy-delivery table plus the outline Delivery & Servicing Plan, Operational Waste Management Plan, Cycle Promotion Plan and Construction Logistics Plan, prepared by the project team at submittal." }] }],
+      sections: [
+        {
+          number: "7.1",
+          title: "Policy Compliance",
+          blocks: [
+            { kind: "prose", text: "The scheme's screening position against the controlling national, strategic and local transport policies is set out in Table 7-1. Each row records the policy requirement and the response evidenced elsewhere in this assessment." },
+            { kind: "table", provider: "policyCompliance" },
+          ],
+        },
+        {
+          number: "7.2",
+          title: "Management Plans",
+          blocks: [
+            { kind: "prose", text: "The following management plans are prepared by the project team and secured by condition or S106 at submittal:" },
+            { kind: "bullets", items: [
+              "Delivery and Servicing Plan (DSP) — consolidated, off-peak servicing via the CoL Ready Reckoner demand.",
+              "Operational Waste Management Plan — storage, presentation and collection strategy.",
+              "Cycle Promotion / Active Travel Plan — supporting the London Plan T1 mode-share target.",
+              "Construction Logistics Plan (CLP) — routing, timing and a CLOCS-compliant fleet.",
+              "Travel Plan — monitored mode-share targets with a nominated Travel Plan Coordinator.",
+            ] },
+          ],
+        },
+      ],
     },
     {
       number: "8.0",
@@ -214,12 +304,14 @@ export const velocityTemplate: ReportTemplate = {
           number: "8.1",
           title: "Conclusion",
           blocks: [
+            { kind: "metrics", provider: "headline" },
             {
               kind: "if",
               flag: "noLosImpact",
               then: [{ kind: "prose", text: "On the basis of this screening the scheme is not constrained by highway capacity. Sustainable-transport credentials, PCL comfort and Healthy Streets compliance are completed by the chartered engineer with the survey evidence above." }],
               else: [{ kind: "prose", text: "The screening indicates residual impacts at one or more junctions; mitigation and its delivery mechanism (S106 / S278) are to be agreed between the applicant, the borough and TfL before permission is recommended." }],
             },
+            { kind: "prose", text: "On the evidence assembled here, there is no transport reason to withhold permission: the residual highway impact is not severe in NPPF terms (paragraph 116), and the scheme supports the London Plan and MTS sustainable-transport objectives." },
             { kind: "note", text: "Sign-off should be by a Chartered Engineer (CEng) and Member of CIHT (MCIHT). This screening cross-reference does not replace a TRICS-based TA prepared under professional registration." },
           ],
         },

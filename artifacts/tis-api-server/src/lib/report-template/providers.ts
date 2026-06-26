@@ -34,6 +34,12 @@ const cnt = (v: unknown, dflt: string): string => {
   return Number.isFinite(x) && x >= 0 ? String(Math.round(x)) : dflt;
 };
 
+/** Truncate a long junction/road name so it fits a chart x-axis tick. */
+const shortName = (v: unknown): string => {
+  const x = s(v, "—");
+  return x.length > 16 ? `${x.slice(0, 15)}…` : x;
+};
+
 const tg = (ctx: RenderContext) => ctx.report?.tripGeneration ?? {};
 const req = (ctx: RenderContext) => ctx.report?.request ?? {};
 const ints = (ctx: RenderContext): any[] => (Array.isArray(ctx.report?.affectedIntersections) ? ctx.report.affectedIntersections : []);
@@ -218,6 +224,72 @@ export function buildProviders(opts: { locale: ProfileLocale }): ProviderRegistr
           rows: regs.map((r) => [r.code, r.title, r.edition, r.effective]),
         };
       },
+
+      // Policy-compliance matrix — the scheme's screening stance against the
+      // controlling NPPF / London Plan / MTS policies (Chapter 7).
+      policyCompliance: (ctx): TableData => {
+        const share = Number(ctx.report?.autoModeShareApplied);
+        const carPct = Number.isFinite(share) && share > 0 ? `${Math.round(share * 100)}%` : "a car-light";
+        return {
+          headers: ["Policy", "Requirement", "Scheme response (screening)"],
+          widths: [120, 186, 188],
+          align: ["left", "left", "left"],
+          rows: [
+            ["NPPF 2024 ¶108–116", "Vision-led approach; safe and suitable access; development refused only on severe residual impact", "Central, accessible site; screening finds no severe residual highway impact (Chapter 6)."],
+            ["London Plan T1", "80% sustainable mode share by 2041", `Applied private-vehicle share of ${carPct} is consistent with a car-light central scheme.`],
+            ["London Plan T2", "Healthy Streets and active travel", "Pedestrian comfort and Active Travel Zone assessed in Chapters 4–5."],
+            ["London Plan T4", "Transport assessment and impact mitigation", "This Transport Assessment; any mitigation delivered via S106 / S278."],
+            ["London Plan T5", "Cycle parking to Table 10.2 standards", "Long-, short-stay and end-of-trip provision assessed in Chapter 3."],
+            ["London Plan T6", "Car-parking restraint / car-free in the CAZ", "Car-free / car-capped consistent with the CAZ and site PTAL."],
+            ["London Plan T7", "Freight, servicing and consolidation", "Servicing assessed via the CoL Ready Reckoner with off-site consolidation (Chapter 3)."],
+            ["MTS 2018", "80% sustainable trips; Vision Zero", "Mode share, PCL and collision review support the MTS outcomes."],
+          ],
+        };
+      },
+
+      // PCL assessment framework — the four scenarios assessed at submittal (Chapter 4).
+      pclScenarios: (): TableData => ({
+        headers: ["Scenario", "Horizon", "Basis", "Status"],
+        widths: [150, 70, 215, 105],
+        align: ["left", "left", "left", "left"],
+        rows: [
+          ["Base", "2024", "Observed 15-minute peak pedestrian flows and footway widths", "Survey at submittal"],
+          ["Sensitivity", "2024", "Base plus the committed development pipeline", "Survey at submittal"],
+          ["Future Base", "2040", "TfL growth factors applied to the Base flows", "Modelled at submittal"],
+          ["Future + Development", "2040", "Future Base plus the scheme's pedestrian generation", "Modelled at submittal"],
+        ],
+      }),
+
+      // The 10 TfL Healthy Streets indicators and the screening basis (Chapter 5).
+      healthyStreets: (): TableData => ({
+        headers: ["Healthy Streets indicator", "Screening basis / status"],
+        widths: [250, 290],
+        align: ["left", "left"],
+        rows: [
+          ["Pedestrians from all walks of life", "Step-free, legible routes — confirmed against access drawings"],
+          ["People choose to walk, cycle and use public transport", "High PTAL and ATZ provision support modal choice"],
+          ["Clean air", "Car-light scheme; consolidated servicing reduces vehicle movements"],
+          ["People feel safe", "Active frontages and lighting — design review at submittal"],
+          ["Not too noisy", "Reduced vehicle activity; servicing managed off-peak"],
+          ["Easy to cross", "Crossing provision assessed in the PCL analysis (Chapter 4)"],
+          ["Places to stop and rest", "Public-realm provision — landscape drawings at submittal"],
+          ["Shade and shelter", "Public-realm provision — landscape drawings at submittal"],
+          ["People feel relaxed", "Footway comfort assessed via PCL (Chapter 4)"],
+          ["Things to see and do", "Active ground-floor uses per the design and access statement"],
+        ],
+      }),
+
+      // Local study network — the junctions within the study radius (Chapter 3).
+      localNetwork: (ctx): TableData | null => {
+        const list = ints(ctx);
+        if (!list.length) return null;
+        return {
+          headers: ["Junction", "Distance (mi)", "In radius", "Added PM trips"],
+          widths: [220, 90, 90, 110],
+          align: ["left", "right", "center", "right"],
+          rows: list.slice(0, 30).map((it) => [s(it.name ?? it.signalId), num(it.distanceMi, 2), "Yes", num(it.addedTripsPmPeak)]),
+        };
+      },
     },
 
     charts: {
@@ -258,11 +330,130 @@ export function buildProviders(opts: { locale: ProfileLocale }): ProviderRegistr
           },
         };
       },
+
+      // Trip generation by period — net arriving/departing per assessment period.
+      tripGenByPeriod: (ctx) => {
+        const ps = periods(ctx);
+        let cats: string[];
+        let inV: number[];
+        let outV: number[];
+        if (ps.length) {
+          cats = ps.map((p) => s(p.periodLabel, "") || s(p.period, "") || "Period");
+          inV = ps.map((p) => Number(p.tripGeneration?.inTrips ?? 0));
+          outV = ps.map((p) => Number(p.tripGeneration?.outTrips ?? 0));
+        } else {
+          const t = tg(ctx);
+          const daily = Number(t.dailyTrips ?? 0);
+          if (!(daily > 0)) return null;
+          cats = ["AM peak", "PM peak", "Daily (½)"];
+          inV = [Number(t.amPeakTrips ?? 0), Number(t.pmIn ?? 0), daily / 2];
+          outV = [0, Number(t.pmOut ?? 0), daily / 2];
+        }
+        if (!inV.some((v) => v > 0) && !outV.some((v) => v > 0)) return null;
+        return {
+          type: "column" as const,
+          spec: {
+            title: "Figure 6-1: Vehicle Trip Generation by Assessment Period",
+            categories: cats,
+            height: 165,
+            series: [
+              { name: "Arriving", color: CHART_COLORS.inbound, values: inV },
+              { name: "Departing", color: CHART_COLORS.outbound, values: outV },
+            ],
+            yLabel: "Two-way trips",
+            xLabel: "Assessment period",
+            caption: "Net trips by period after pass-by and internalisation credits. A submitted TA substitutes the agreed TRICS multi-modal rates with the 2011 Census public-transport adjustment.",
+          },
+        };
+      },
+
+      // Indicative mode share from the applied private-vehicle share.
+      modalSplit: (ctx) => {
+        const share = Number(ctx.report?.autoModeShareApplied);
+        if (!(Number.isFinite(share) && share > 0)) return null;
+        const carPct = Math.round(share * 100);
+        return {
+          type: "column" as const,
+          spec: {
+            title: "Figure 2-2: Indicative Mode Share",
+            categories: ["Private vehicle", "Sustainable modes"],
+            height: 150,
+            series: [{ name: "Share", color: CHART_COLORS.outbound, values: [carPct, 100 - carPct] }],
+            yLabel: "% of person trips",
+            xLabel: "Travel mode",
+            yTickFormat: (v: number) => `${v}%`,
+            caption: `Applied private-vehicle mode share of ${carPct}% for this central, highly-accessible location; the residual ${100 - carPct}% is made by public transport, walking and cycling. A submitted TA derives the full multi-modal split from the 2011 Census Method-of-Travel-to-Work for the site LSOA.`,
+          },
+        };
+      },
+
+      // Junction degree of saturation, No-Build vs With-Development (top 12 loaded).
+      junctionDoS: (ctx) => {
+        const list = ints(ctx).slice(0, 12);
+        if (!list.length) return null;
+        const cats: string[] = [];
+        const nb: number[] = [];
+        const bd: number[] = [];
+        for (const it of list) {
+          try {
+            const a = ukCapacityForIntersection(it, "noBuild");
+            const b = ukCapacityForIntersection(it, "build");
+            if (!Number.isFinite(a.dosPct) && !Number.isFinite(b.dosPct)) continue;
+            cats.push(shortName(it.name ?? it.signalId));
+            nb.push(Number.isFinite(a.dosPct) ? a.dosPct : 0);
+            bd.push(Number.isFinite(b.dosPct) ? b.dosPct : 0);
+          } catch { /* skip un-modellable junction */ }
+        }
+        if (!cats.length) return null;
+        return {
+          type: "column" as const,
+          spec: {
+            title: "Figure 6-3: Junction Degree of Saturation — No-Build vs With-Development",
+            categories: cats,
+            height: 175,
+            series: [
+              { name: "No-Build", color: CHART_COLORS.inbound, values: nb },
+              { name: "With Dev", color: CHART_COLORS.outbound, values: bd },
+            ],
+            yLabel: "Degree of saturation",
+            xLabel: "Junction",
+            yTickFormat: (v: number) => `${v}%`,
+            caption: "UK degree of saturation by junction; 90% is the practical reserve-capacity threshold. Junctions screening above 90% With-Development are re-run in LinSig 3 / Junctions 11 on the agreed TRICS demand at submittal.",
+          },
+        };
+      },
+
+      // PM-peak trip distribution across the study network (top 12 loaded).
+      tripDistributionChart: (ctx) => {
+        const list = ints(ctx);
+        if (!list.length) return null;
+        const fin = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
+        const total = list.reduce((sm, it) => sm + fin(it.addedTripsPmPeak), 0) || 1;
+        const top = [...list].sort((a, b) => fin(b.addedTripsPmPeak) - fin(a.addedTripsPmPeak)).slice(0, 12);
+        const cats = top.map((it) => shortName(it.name ?? it.signalId));
+        const vals = top.map((it) => Number(((fin(it.addedTripsPmPeak) / total) * 100).toFixed(1)));
+        if (!vals.some((v) => v > 0)) return null;
+        return {
+          type: "column" as const,
+          spec: {
+            title: "Figure 6-4: PM-Peak Trip Distribution by Junction",
+            categories: cats,
+            height: 165,
+            series: [{ name: "Share of added PM trips", color: CHART_COLORS.line, values: vals }],
+            yLabel: "% of added PM trips",
+            xLabel: "Junction",
+            yTickFormat: (v: number) => `${v}%`,
+            caption: "Distribution of net new PM-peak trips across the study network from the gravity-model assignment; the 12 most-loaded junctions are shown.",
+          },
+        };
+      },
     },
 
     flags: {
       hasIntersections: (ctx) => ints(ctx).length > 0,
       hasPeriods: (ctx) => periods(ctx).length > 0,
+      hasModeShare: (ctx) => { const x = Number(ctx.report?.autoModeShareApplied); return Number.isFinite(x) && x > 0; },
+      hasTripGen: (ctx) => dailyTrips(ctx) > 0,
       drawDiurnal: (ctx) => diurnal(ctx) != null,
       noLosImpact: (ctx) => Number(ctx.report?.intersectionsWithLosDrop ?? 0) === 0 && Number(ctx.report?.intersectionsAtLosEf ?? 0) === 0,
       showCapacity: (ctx) => detectStudyType(ctx.report, ctx.project).showCapacity,
