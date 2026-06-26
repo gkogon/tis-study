@@ -52,6 +52,16 @@ import {
   asFdotContextClass,
   type FdotFacility,
 } from "./fdot-gsvt";
+import {
+  MTIASD_CITATION, controllingImpactParadigm,
+  STUDY_THRESHOLD_DEFAULT, STUDY_TRIGGER_SAMPLING, LAND_USE_SIZE_THRESHOLDS, resolveStudyLimitTier,
+  estimatePersonTripsByMode, PERSON_TRIP_UPLIFT,
+  MULTIMODAL_QOS_FRAMEWORK, TRANSIT_PROXIMITY_THRESHOLDS, TRANSIT_QOS_KEY_INDICATORS,
+  NEIGHBORHOOD_MAX_DAILY_VOLUMES, NEIGHBORHOOD_PROTECTION_CRITERIA, BICYCLE_LTS_TARGET,
+  ACTIVE_MODE_QUALITATIVE_CHECKLIST,
+  TDM_TECHNIQUES, TDM_MODIFIED_SCHEDULE_MAX_REDUCTION_PCT, TDM_EFFECTIVENESS_PROCEDURE,
+  psdTerminologyForState, PSD_WHEN_TO_CONSIDER, PSD_ESSENTIAL_FACTORS, VMT_GUIDANCE,
+} from "./mtiasd";
 
 type StoredProject = {
   id: string;
@@ -993,9 +1003,163 @@ function dispatchTisRender(
       renderFourStepSection(doc, result);
       renderCapacityAppendix(doc, intersections, periods);
     }
+
+    // 3. MTIASD multimodal methodology chapter (US/Canada) — study thresholds,
+    //    person-trips by mode, multimodal Q/LOS, TDM, pro-rata share + VMT.
+    renderMtiasdMultimodalMethodology(doc, result, project);
   } finally {
     velocityPaletteActive = false;
   }
+}
+
+/**
+ * MTIASD Multimodal Methodology chapter — the deep build from the 2023 ITE
+ * Recommended Practice (RP-020G-E): study thresholds & extent (§2), person trips
+ * by mode (§5.1), multimodal Q/LOS (§7.2–7.8), Travel Demand Management (§7.9),
+ * and proactive planning — pro-rata share districts + VMT (§11). Gated to US /
+ * Canada (the RP scope); UK / template formats render through their own path.
+ * Self-contained on ./mtiasd. State variation is explicit: the controlling impact
+ * metric (LOS vs VMT) and the pro-rata-share statutory name resolve per jurisdiction.
+ */
+function renderMtiasdMultimodalMethodology(doc: PDFKit.PDFDocument, r: any, project?: StoredProject) {
+  const region = project ? detectRegion(project) : undefined;
+  const country = (region as any)?.country ?? "US";
+  const stateCode = (region as any)?.stateCode as string | undefined;
+  // RP scope is US + Canada. Render only there; other locales use their own format.
+  if (country !== "US" && country !== "CA") return;
+  const isUS = country === "US";
+
+  const tg = r.tripGeneration ?? {};
+  let pmTwoWay = Number(tg.pmPeakTrips ?? (Number(tg.pmIn ?? 0) + Number(tg.pmOut ?? 0)));
+  if (!Number.isFinite(pmTwoWay) || pmTwoWay < 0) pmTwoWay = 0;
+
+  // States whose dedicated renderer already emits locally-adopted multimodal /
+  // TDM methodology — for them this national chapter is explicitly the
+  // superseded baseline, so the two treatments don't read as conflicting.
+  const hasLocalMethodology = isUS && !!stateCode && new Set(["FL", "IL", "TX", "CA"]).has(stateCode);
+
+  doc.addPage();
+  section(doc, "Multimodal Methodology (ITE MTIASD)");
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    `This chapter applies the current national Recommended Practice — ${MTIASD_CITATION} — which evaluates transportation impact as person trips across all modes (auto, pedestrian, bicycle, transit), not vehicle trips alone. ${hasLocalMethodology ? "It is the national baseline only: the jurisdiction-specific sections above reflect the locally adopted practice and GOVERN wherever they differ from the thresholds, metrics, or programs below." : "It is a guideline for local consideration; where the reviewing jurisdiction has adopted different thresholds or metrics, those govern."}`,
+    { paragraphGap: 8 },
+  );
+  doc.fillColor("black");
+
+  const sub = (t: string) => {
+    doc.x = PAGE_MARGIN;
+    doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(t);
+    doc.moveDown(0.2);
+    doc.x = PAGE_MARGIN;
+  };
+  const para = (t: string, gap = 6) => {
+    doc.x = PAGE_MARGIN;
+    doc.font("body").fontSize(10).fillColor("black").text(t, { paragraphGap: gap });
+    doc.x = PAGE_MARGIN;
+  };
+  const bullets = (items: ReadonlyArray<string>, gap = 2) => {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+    for (const it of items) doc.text("• " + it, { paragraphGap: gap });
+    doc.fillColor("black");
+    doc.x = PAGE_MARGIN;
+  };
+
+  // ── §2 Study thresholds & extent ──────────────────────────────────────────
+  sub("Study Thresholds & Extent (§2)");
+  para(
+    `${STUDY_THRESHOLD_DEFAULT.basis} ITE's collected sampling places common daily triggers at ${STUDY_TRIGGER_SAMPLING.dailyVehicleTrips.min.toLocaleString()}–${STUDY_TRIGGER_SAMPLING.dailyVehicleTrips.max.toLocaleString()} veh/day (most common ${STUDY_TRIGGER_SAMPLING.dailyVehicleTrips.common.toLocaleString()}) and peak-hour triggers at ${STUDY_TRIGGER_SAMPLING.peakHourTrips.min}–${STUDY_TRIGGER_SAMPLING.peakHourTrips.max} trips (most common ${STUDY_TRIGGER_SAMPLING.peakHourTrips.common}–${STUDY_TRIGGER_SAMPLING.peakHourTrips.commonUpper}).`,
+  );
+  const limitTier = resolveStudyLimitTier(pmTwoWay);
+  para(
+    `This project generates approximately ${Math.round(pmTwoWay)} PM-peak-hour vehicle trips. Per the RP Table 3 study-limit guidance, the suggested study extent is: ${limitTier.studyExtent}`,
+  );
+  para("RP Table 2 — development size generating ≈50 peak-hour vehicle trips (the suggested study trigger):", 4);
+  table(doc, {
+    headers: ["Land Use", "Size ≈ 50 PH veh trips"],
+    widths: [320, 180],
+    rows: LAND_USE_SIZE_THRESHOLDS.map((l) => [l.landUse, `${l.size.toLocaleString()} ${l.unit}`]),
+  });
+  doc.moveDown(0.4);
+
+  // ── §5.1 Person trips by mode ─────────────────────────────────────────────
+  sub("Person Trips by Mode (§5.1)");
+  const luCode = String(tg.landUseCode ?? "");
+  const isRetail = /^[89]/.test(luCode); // ITE 800-series retail, 900-series services
+  const upMin = isRetail ? PERSON_TRIP_UPLIFT.retail.pct : PERSON_TRIP_UPLIFT.residentialOffice.minPct;
+  const upMax = isRetail ? PERSON_TRIP_UPLIFT.retail.pct : PERSON_TRIP_UPLIFT.residentialOffice.maxPct;
+  para(
+    `A peak-hour vehicle count understates demand because it ignores people who walk, bike, or ride transit. For typical residential/office uses, peak-hour person trips run ${PERSON_TRIP_UPLIFT.residentialOffice.minPct}–${PERSON_TRIP_UPLIFT.residentialOffice.maxPct}% above vehicle trips; for retail, ~${PERSON_TRIP_UPLIFT.retail.pct}% above.`,
+  );
+  if (pmTwoWay > 0) {
+    const lo = Math.round(pmTwoWay * (1 + upMin / 100));
+    const hi = Math.round(pmTwoWay * (1 + upMax / 100));
+    para(
+      `For this ${isRetail ? "retail/service" : "residential/office"} use${luCode ? ` (ITE ${luCode})` : ""} generating ~${Math.round(pmTwoWay)} PM-peak-hour vehicle trips, total person trips are estimated at ${lo === hi ? lo : `${lo}–${hi}`} (a +${upMin === upMax ? upMin : `${upMin}–${upMax}`}% uplift).`,
+    );
+  }
+  const ex = estimatePersonTripsByMode(100); // RP Table 6 illustration (national baseline)
+  para(
+    `Disaggregation by mode follows the RP's three-step method (Table 6): expand vehicle trips to persons via NHTS average vehicle occupancy and national mode shares, re-balance to the locally observed transit share, then apply any site-specific TDM modal shift. RP illustration — 100 vehicle trips → ${ex.step1Baseline.totalPersons} person trips (${ex.step1Baseline.autoDriver} auto-driver, ${ex.step1Baseline.autoPassenger} auto-passenger, ${ex.step1Baseline.transit} transit, ${ex.step1Baseline.nonMotorized} non-motorized at the NHTS baseline). Apply the local observed mode shares at the methodology meeting.`,
+    4,
+  );
+  doc.moveDown(0.2);
+
+  // ── §7.2–7.8 Multimodal Quality / Level of Service ────────────────────────
+  sub("Multimodal Quality / Level of Service (§7)");
+  const paradigm = controllingImpactParadigm(isUS ? stateCode : undefined);
+  para(
+    paradigm.primaryMetric === "VMT"
+      ? `Controlling metric in this jurisdiction: Vehicle Miles Traveled (VMT). ${paradigm.basis} Q/LOS for all modes is still evaluated below for operational review.`
+      : `Controlling metric in this jurisdiction: Level of Service / Quality of Service per HCM 7th Ed. Most jurisdictions apply an LOS "D" design standard, allowing LOS E/F in dense cores. Q/LOS is evaluated for every mode present:`,
+  );
+  for (const m of MULTIMODAL_QOS_FRAMEWORK) {
+    doc.font("bold").fontSize(10).fillColor("black").text(m.mode + ":", { continued: false });
+    bullets(m.considerations, 1);
+    doc.moveDown(0.15);
+  }
+  para("Transit access — document stops/stations within the RP Table 14 radius by mode, then disclose the two key Q/LOS indicators (frequency + transit-to-auto travel-time ratio) vs. the adopted local standard (TCQSM where none exists):", 4);
+  table(doc, {
+    headers: ["Transit mode", "Document within"],
+    widths: [320, 180],
+    rows: TRANSIT_PROXIMITY_THRESHOLDS.map((t) => [t.mode, `${t.distanceMi} mi`]),
+  });
+  bullets(TRANSIT_QOS_KEY_INDICATORS);
+  doc.moveDown(0.2);
+  para(`Pedestrian & bicycle Q/LOS is quantified (HCM 7th Ed.) where active-travel demand approaches capacity or the site generates high active travel; otherwise a qualitative adequacy check applies. Bicycle mitigation: ${BICYCLE_LTS_TARGET.basis}`, 4);
+  bullets(ACTIVE_MODE_QUALITATIVE_CHECKLIST, 1);
+  doc.moveDown(0.2);
+  para("Neighborhood protection (§7.5) — even where vehicular Q/LOS is met, a study addresses cut-through and intrusion onto sensitive local streets. Example maximum desirable daily volumes on local/neighborhood residential streets:", 4);
+  table(doc, {
+    headers: ["Jurisdiction", "Street type", "Max desirable ADT"],
+    widths: [150, 230, 120],
+    align: ["left", "left", "right"],
+    rows: NEIGHBORHOOD_MAX_DAILY_VOLUMES.map((n) => [n.jurisdiction, n.streetType, n.maxAdt]),
+  });
+  bullets(NEIGHBORHOOD_PROTECTION_CRITERIA);
+  doc.moveDown(0.3);
+
+  // ── §7.9 Travel Demand Management ─────────────────────────────────────────
+  sub("Travel Demand Management (§7.9)");
+  para(
+    `Where mitigation or trip reduction relies on TDM, the RP requires the base (no-TDM) condition be documented and contrasted with the TDM outcome. Modified work schedules / flextime alone can reduce peak-hour vehicle traffic by up to ~${TDM_MODIFIED_SCHEDULE_MAX_REDUCTION_PCT}% where many employees share identical schedules. Candidate techniques:`,
+  );
+  bullets(TDM_TECHNIQUES.map((t) => `[${t.category}] ${t.technique}`), 1);
+  doc.moveDown(0.2);
+  para("Estimating and documenting TDM effectiveness (§7.9.3) — a defensible reduction follows this procedure (do not double-count across measures):", 4);
+  bullets(TDM_EFFECTIVENESS_PROCEDURE.map((s, i) => `${i + 1}. ${s}`), 1);
+  doc.moveDown(0.3);
+
+  // ── §11 Proactive planning: pro-rata share + VMT ──────────────────────────
+  sub("Proactive Planning — Pro-Rata Share & VMT (§11)");
+  const psdName = psdTerminologyForState(isUS ? stateCode : undefined);
+  para(
+    `Where individual studies cannot achieve needed improvements, the RP describes a ${psdName}: a defined area where developers pay toward improvements in proportion to the need they create (rational nexus), distinct from a tax-based special assessment. Consider one when:`,
+  );
+  bullets(PSD_WHEN_TO_CONSIDER, 1);
+  para("Four essential factors in establishing such a district:", 4);
+  bullets(PSD_ESSENTIAL_FACTORS, 1);
+  doc.moveDown(0.2);
+  para(`Vehicle Miles Traveled (§11.3): ${VMT_GUIDANCE.definition} ${paradigm.primaryMetric === "VMT" ? VMT_GUIDANCE.caThreshold + " Safety still triggers review where: " + VMT_GUIDANCE.safetyTriggers.join("; ") + "." : "VMT is an emerging (not yet recommended) development-review metric; it is the controlling CEQA metric only in California (SB 743). It is reported here for context, not as the significance test in this jurisdiction."}`, 4);
 }
 
 function selectRegionalTisRenderer(
@@ -8452,6 +8616,14 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
 
   let y = doc.y;
   const headerH = measureRow(headers, true);
+  // Keep the header with its first data row: if the header would land at the
+  // bottom of the page with no room for a row, break first so it isn't
+  // stranded alone (which otherwise cascades into empty pages).
+  const firstRowH = dataRows.length ? measureRow(dataRows[0]!, false) : 0;
+  if (y + headerH + firstRowH > doc.page.height - PAGE_MARGIN - 40) {
+    doc.addPage();
+    y = doc.y;
+  }
   drawRow(headers, y, true, headerH);
   y += headerH;
 
