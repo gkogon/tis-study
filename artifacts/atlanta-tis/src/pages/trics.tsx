@@ -37,6 +37,101 @@ const LONDON_SITES: LondonSite[] = [
 
 type LandUse = { code: string; name: string; unit?: string };
 
+// Shown until the /tis-api/land-uses fetch resolves, and as an offline fallback
+// when the API isn't reachable (e.g. in a preview). Carries the unit so the
+// size label and dropdown never render the generic "units" placeholder.
+const FALLBACK_LAND_USES: LandUse[] = [
+  { code: "210", name: "Single-Family Detached Housing", unit: "Dwelling Units" },
+  { code: "215", name: "Single-Family Attached Housing", unit: "Dwelling Units" },
+  { code: "220", name: "Multifamily Housing (Low-Rise)", unit: "Dwelling Units" },
+  { code: "221", name: "Multifamily Housing (Mid-Rise)", unit: "Dwelling Units" },
+  { code: "222", name: "Multifamily Housing (High-Rise)", unit: "Dwelling Units" },
+  { code: "230", name: "Residential Condominium / Townhouse", unit: "Dwelling Units" },
+  { code: "240", name: "Mobile Home Park", unit: "Occupied Dwelling Units" },
+  { code: "251", name: "Senior Adult Housing — Detached", unit: "Dwelling Units" },
+  { code: "252", name: "Senior Adult Housing — Attached", unit: "Dwelling Units" },
+  { code: "253", name: "Congregate Care Facility", unit: "Occupied Units" },
+  { code: "254", name: "Assisted Living", unit: "Beds" },
+  { code: "310", name: "Hotel", unit: "Rooms" },
+  { code: "311", name: "All Suites Hotel", unit: "Rooms" },
+  { code: "320", name: "Motel", unit: "Rooms" },
+  { code: "330", name: "Resort Hotel", unit: "Rooms" },
+  { code: "415", name: "Public Park", unit: "Acres" },
+  { code: "430", name: "Golf Course", unit: "Holes" },
+  { code: "444", name: "Movie Theater", unit: "Screens" },
+  { code: "445", name: "Live Theater", unit: "Seats" },
+  { code: "480", name: "Amusement Park / Theme Park", unit: "Acres" },
+  { code: "481", name: "Zoo", unit: "Acres" },
+  { code: "482", name: "Aquarium", unit: "1,000 sqft GFA" },
+  { code: "488", name: "Soccer Complex", unit: "Fields" },
+  { code: "491", name: "Racquet / Tennis Club", unit: "Courts" },
+  { code: "492", name: "Health / Fitness Club", unit: "1,000 sqft GFA" },
+  { code: "493", name: "Athletic Club", unit: "1,000 sqft GFA" },
+  { code: "495", name: "Recreational Community Center", unit: "1,000 sqft GFA" },
+  { code: "520", name: "Public Elementary School", unit: "Students" },
+  { code: "522", name: "Middle School / Junior High", unit: "Students" },
+  { code: "530", name: "High School", unit: "Students" },
+  { code: "540", name: "Junior / Community College", unit: "Students" },
+  { code: "550", name: "University / College", unit: "Students" },
+  { code: "560", name: "Church", unit: "1,000 sqft GFA" },
+  { code: "565", name: "Day Care Center", unit: "Students" },
+  { code: "580", name: "Museum", unit: "1,000 sqft GFA" },
+  { code: "590", name: "Library", unit: "1,000 sqft GFA" },
+  { code: "591", name: "Lodge / Fraternal Organization", unit: "1,000 sqft GFA" },
+  { code: "610", name: "Hospital", unit: "Beds" },
+  { code: "620", name: "Nursing Home", unit: "Beds" },
+  { code: "630", name: "Clinic", unit: "1,000 sqft GFA" },
+  { code: "710", name: "General Office", unit: "1,000 sqft GFA" },
+  { code: "712", name: "Small Office Building", unit: "1,000 sqft GFA" },
+  { code: "715", name: "Single Tenant Office Building", unit: "1,000 sqft GFA" },
+  { code: "720", name: "Medical / Dental Office", unit: "1,000 sqft GFA" },
+  { code: "730", name: "Government Office Building", unit: "1,000 sqft GFA" },
+  { code: "750", name: "Office Park", unit: "1,000 sqft GFA" },
+  { code: "760", name: "Research & Development Center", unit: "1,000 sqft GFA" },
+  { code: "770", name: "Business Park", unit: "1,000 sqft GFA" },
+  { code: "820", name: "Shopping Center (≤100 ksf)", unit: "1,000 sqft GLA" },
+  { code: "821", name: "Shopping Plaza (40–150 ksf)", unit: "1,000 sqft GLA" },
+  { code: "822", name: "Strip Retail Plaza (<40 ksf)", unit: "1,000 sqft GLA" },
+  { code: "840", name: "Automobile Sales (New)", unit: "1,000 sqft GFA" },
+  { code: "841", name: "Automobile Sales (Used)", unit: "1,000 sqft GFA" },
+  { code: "843", name: "Auto Parts Sales", unit: "1,000 sqft GFA" },
+  { code: "848", name: "Tire Store", unit: "1,000 sqft GFA" },
+  { code: "850", name: "Supermarket", unit: "1,000 sqft GFA" },
+  { code: "851", name: "Convenience Market", unit: "1,000 sqft GFA" },
+  { code: "857", name: "Discount Club", unit: "1,000 sqft GFA" },
+  { code: "862", name: "Home Improvement Superstore", unit: "1,000 sqft GFA" },
+  { code: "863", name: "Electronics Superstore", unit: "1,000 sqft GFA" },
+  { code: "866", name: "Pet Supply Superstore", unit: "1,000 sqft GFA" },
+  { code: "867", name: "Office Supply Superstore", unit: "1,000 sqft GFA" },
+  { code: "868", name: "Book Superstore", unit: "1,000 sqft GFA" },
+  { code: "870", name: "Apparel Store", unit: "1,000 sqft GFA" },
+  { code: "875", name: "Department Store", unit: "1,000 sqft GFA" },
+  { code: "880", name: "Pharmacy w/o Drive-Through", unit: "1,000 sqft GFA" },
+  { code: "881", name: "Pharmacy w/ Drive-Through", unit: "1,000 sqft GFA" },
+  { code: "890", name: "Furniture Store", unit: "1,000 sqft GFA" },
+  { code: "911", name: "Walk-In Bank", unit: "1,000 sqft GFA" },
+  { code: "912", name: "Drive-In Bank", unit: "1,000 sqft GFA" },
+  { code: "925", name: "Drinking Place / Tavern", unit: "1,000 sqft GFA" },
+  { code: "930", name: "Fast Casual Restaurant", unit: "1,000 sqft GFA" },
+  { code: "931", name: "Quality Restaurant", unit: "1,000 sqft GFA" },
+  { code: "932", name: "High-Turnover (Sit-Down) Restaurant", unit: "1,000 sqft GFA" },
+  { code: "933", name: "Fast-Food Restaurant w/o Drive-Through", unit: "1,000 sqft GFA" },
+  { code: "934", name: "Fast-Food Restaurant w/ Drive-Through", unit: "1,000 sqft GFA" },
+  { code: "935", name: "Coffee/Donut Shop w/ Drive-Through", unit: "1,000 sqft GFA" },
+  { code: "936", name: "Coffee/Donut Shop w/o Drive-Through", unit: "1,000 sqft GFA" },
+  { code: "941", name: "Quick Lubrication Vehicle Shop", unit: "Service Positions" },
+  { code: "942", name: "Automobile Care Center", unit: "1,000 sqft GFA" },
+  { code: "944", name: "Gas Station (no C-store)", unit: "Vehicle Fueling Positions" },
+  { code: "945", name: "Gas Station / Convenience Store", unit: "Vehicle Fueling Positions" },
+  { code: "947", name: "Self-Service Car Wash", unit: "Wash Stalls" },
+  { code: "948", name: "Automated Car Wash", unit: "1,000 sqft GFA" },
+  { code: "110", name: "Light Industrial", unit: "1,000 sqft GFA" },
+  { code: "130", name: "Industrial Park", unit: "1,000 sqft GFA" },
+  { code: "140", name: "Manufacturing", unit: "1,000 sqft GFA" },
+  { code: "150", name: "Warehousing", unit: "1,000 sqft GFA" },
+  { code: "151", name: "Mini-Warehouse / Self-Storage", unit: "1,000 sqft GFA" },
+];
+
 const ALL_PERIODS: { id: string; label: string }[] = [
   { id: "am_peak", label: "AM peak" },
   { id: "pm_peak", label: "PM peak" },
@@ -103,8 +198,9 @@ function Generator() {
   }, []);
 
   const site = useMemo(() => LONDON_SITES.find((s) => s.id === siteId) ?? LONDON_SITES[0]!, [siteId]);
-  const landUseName = landUses.find((l) => l.code === landUseCode)?.name ?? landUseCode;
-  const landUseUnit = landUses.find((l) => l.code === landUseCode)?.unit ?? "units";
+  const effectiveLandUses = landUses.length ? landUses : FALLBACK_LAND_USES;
+  const landUseName = effectiveLandUses.find((l) => l.code === landUseCode)?.name ?? landUseCode;
+  const landUseUnit = effectiveLandUses.find((l) => l.code === landUseCode)?.unit ?? "units";
   const togglePeriod = (p: string) =>
     setPeriods((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
 
@@ -228,7 +324,7 @@ function Generator() {
               <Select value={landUseCode} onValueChange={setLandUseCode}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent className="max-h-72">
-                  {(landUses.length ? landUses : [{ code: "710", name: "General Office" }]).map((l) => (
+                  {effectiveLandUses.map((l) => (
                     <SelectItem key={l.code} value={l.code}>{l.code} — {l.name}</SelectItem>
                   ))}
                 </SelectContent>
