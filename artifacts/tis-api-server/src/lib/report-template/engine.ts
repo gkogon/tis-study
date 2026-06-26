@@ -252,14 +252,37 @@ function drawDocControl(doc: PDFKit.PDFDocument, t: ReportTemplate, ctx: RenderC
     ["Client", interp("{{firm.name}}", ctx)],
   ];
   drawKeyValues(doc, rows, b);
-  doc.moveDown(0.5);
-  doc.font("body").fontSize(8).fillColor(b.palette.muted).text(`© ${interp(b.firmName, ctx)} — extracts may be reproduced provided the source is acknowledged.`);
+  doc.moveDown(0.9);
+
+  // Issue / revision record — fills the control sheet the way a filed TA does,
+  // rather than leaving most of the page blank under six key-value rows.
+  doc.fillColor(b.palette.primary).font("bold").fontSize(12).text("Issue Record", PAGE_MARGIN, doc.y);
+  doc.moveDown(0.35);
+  const today = interp("{{project.dateLabel}}", ctx);
+  drawTable(
+    doc,
+    {
+      headers: ["Rev", "Date", "Description", "Prepared", "Checked", "Approved"],
+      widths: [38, 92, 150, 78, 78, 76],
+      align: ["left", "left", "left", "left", "left", "left"],
+      rows: [
+        ["P01", today, "Draft screening assessment for comment", interp(b.firmName, ctx).split(" ")[0] || "VTP", "—", "—"],
+        ["—", "—", "Issued for planning", "—", "—", "—"],
+        ["—", "—", "—", "—", "—", "—"],
+      ],
+    },
+    b,
+  );
+  doc.moveDown(0.7);
+  doc.font("body").fontSize(8).fillColor(b.palette.muted).text(`© ${interp(b.firmName, ctx)} — extracts may be reproduced provided the source is acknowledged. This document is issued in draft for review and seal by a chartered engineer (CEng MCIHT).`, PAGE_MARGIN, doc.y, { width: doc.page.width - PAGE_MARGIN * 2 });
   doc.fillColor(b.palette.text);
   doc.addPage();
 }
 
 function drawChapterHeading(doc: PDFKit.PDFDocument, c: Chapter, b: Brand): void {
-  ensureSpace(doc, 60);
+  // Reserve enough for the heading, its rule and the first line of intro/section
+  // so a chapter title is never stranded alone at the foot of a page.
+  ensureSpace(doc, 104);
   doc.x = PAGE_MARGIN;
   const label = [c.number, c.title.toUpperCase()].filter(Boolean).join("  ");
   doc.font("bold").fontSize(17).fillColor(b.palette.primary).text(label, { characterSpacing: 0.3 });
@@ -270,7 +293,8 @@ function drawChapterHeading(doc: PDFKit.PDFDocument, c: Chapter, b: Brand): void
 }
 
 function drawSectionHeading(doc: PDFKit.PDFDocument, s: Section, b: Brand): void {
-  ensureSpace(doc, 34);
+  // Keep a section heading with at least its first line of content.
+  ensureSpace(doc, 56);
   doc.x = PAGE_MARGIN;
   const label = [s.number, s.title].filter(Boolean).join("  ");
   doc.font("bold").fontSize(11.5).fillColor(b.palette.text).text(label);
@@ -452,12 +476,22 @@ function renderBlocks(
 function stampFooters(doc: PDFKit.PDFDocument, t: ReportTemplate, ctx: RenderContext): void {
   const b = t.brand;
   const range = doc.bufferedPageRange();
+  // Front matter (cover + optional Document Control Sheet) is unnumbered.
+  const frontMatter = b.docControl ? 2 : 1;
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
-    if (i === range.start) continue; // skip the cover
+    const pageIdx = i - range.start;
+    if (pageIdx < frontMatter) continue; // no footer on cover / control sheet
+    const logicalPage = pageIdx - frontMatter + 1;
     const y = doc.page.height - PAGE_MARGIN + 8;
+    // Draw into the bottom margin WITHOUT triggering PDFKit auto-pagination: a
+    // text position past the bottom margin otherwise spawns a blank page per
+    // stamp (which the pre-captured page range can't number → "Page 1" blanks).
+    const savedBottom = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
     doc.font("body").fontSize(7.5).fillColor(b.palette.muted);
-    doc.text(interp(b.footer, ctx, i), PAGE_MARGIN, y, { width: doc.page.width - PAGE_MARGIN * 2, align: "center", lineBreak: false });
+    doc.text(interp(b.footer, ctx, logicalPage), PAGE_MARGIN, y, { width: doc.page.width - PAGE_MARGIN * 2, align: "center", lineBreak: false });
+    doc.page.margins.bottom = savedBottom;
   }
 }
 
