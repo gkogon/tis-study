@@ -30,6 +30,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { lruSet } from "./bounded-cache";
 import type { IntersectionSummary, Severity } from "./atlanta-analysis";
 import { getSignalNamesForRegion } from "./regional-signal-naming";
 import { neighborhoodFor } from "./regional-zones";
@@ -64,7 +65,7 @@ function loadAadtForRegion(slug: string): AadtMap {
   } catch {
     // No AADT for this region yet — caller falls back to road-class baseline.
   }
-  aadtCache.set(slug, map);
+  lruSet(aadtCache, slug, map);
   return map;
 }
 
@@ -580,7 +581,7 @@ export function loadRegionalIntersections(regionCode: string): IntersectionSumma
     };
   });
 
-  cache.set(regionCode, summaries);
+  lruSet(cache, regionCode, summaries);
   return summaries;
 }
 

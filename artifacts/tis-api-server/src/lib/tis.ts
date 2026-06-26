@@ -278,7 +278,13 @@ const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8
 // from the new region-aware /intersections?regionCode=... endpoint.
 const intersectionCache = new Map<string, AnalyzerIntersection[]>();
 const inFlightByRegion = new Map<string, Promise<AnalyzerIntersection[]>>();
-const ANALYZER_FETCH_TIMEOUT_MS = 5000;
+// Large metros (NY, LA, SF, Seattle…) and freshly-loaded regions can take well
+// over 5s to serve their intersection inventory on a cold analyzer cache, which
+// failed the study outright. Default to 30s and allow tuning via env.
+const ANALYZER_FETCH_TIMEOUT_MS = Math.max(
+  1000,
+  Number(process.env["ANALYZER_FETCH_TIMEOUT_MS"]) || 30000,
+);
 
 async function fetchIntersections(regionCode: string = "atlanta_metro"): Promise<AnalyzerIntersection[]> {
   const cached = intersectionCache.get(regionCode);
