@@ -512,14 +512,23 @@ export async function renderStudyPdf(
 function drawPageFooter(doc: PDFKit.PDFDocument) {
   const y = doc.page.height - 32;
   const w = doc.page.width - PAGE_MARGIN * 2;
+  // The footer sits in the bottom margin band, below `page.maxY()`. PDFKit's
+  // text() runs an end-of-page check — `doc.y + lineHeight > maxY` — AFTER it
+  // draws the line, and when tripped it appends a fresh page. `lineBreak:
+  // false` only disables horizontal wrapping, NOT that vertical check, so the
+  // footer fired it once per stamped page and produced a run of trailing
+  // footer-only blank pages. Temporarily dropping the bottom margin lifts maxY
+  // above the footer line so the check never trips. (Stamped by the buffered-
+  // page footer loop in renderStudyPdf.)
+  const savedBottom = doc.page.margins.bottom;
+  doc.page.margins.bottom = 0;
   doc.save();
-  // `lineBreak: false` is critical: without it the footer text can
-  // auto-paginate, which re-fires `pageAdded` and infinitely recurses.
   doc.font("body").fontSize(7).fillColor("#9ca3af").text(
     "Screening estimate — not for design submittal without independent verification by a licensed PE.   |   See /legal/disclaimer.",
     PAGE_MARGIN, y, { width: w, align: "center", lineBreak: false },
   );
   doc.restore();
+  doc.page.margins.bottom = savedBottom;
 }
 
 // --- Velocity Transport Planning furniture (London / City-of-London) ----
@@ -744,6 +753,11 @@ function drawVelocityDocControlSheet(
 function drawVelocityPageFooter(doc: PDFKit.PDFDocument, meta: VelocityMeta, pageNum: number) {
   const W = doc.page.width;
   const y = doc.page.height - 30;
+  // Drop the bottom margin while stamping: the footer line sits below
+  // page.maxY(), and PDFKit's post-draw end-of-page check would otherwise
+  // append a fresh page per stamp (see drawPageFooter for the full mechanism).
+  const savedBottom = doc.page.margins.bottom;
+  doc.page.margins.bottom = 0;
   doc.save();
   // Green rule above the footer (brand), grey footer text below it.
   doc.strokeColor(VELOCITY_GREEN).lineWidth(0.75)
@@ -761,13 +775,14 @@ function drawVelocityPageFooter(doc: PDFKit.PDFDocument, meta: VelocityMeta, pag
     } catch { /* fall through to text-only footer */ }
   }
   const w = textRight - PAGE_MARGIN;
-  // `lineBreak: false` is critical: without it the footer text can
-  // auto-paginate, which re-fires `pageAdded` and infinitely recurses.
+  // `lineBreak: false` disables horizontal wrapping only; the bottom-margin
+  // drop above is what stops the vertical end-of-page check from paginating.
   doc.font("body").fontSize(7).fillColor("#6b7280").text(
     `${VELOCITY_NAME_LIMITED} | Transport Assessment | Project No ${meta.projectNo} Doc No ${meta.docNo} | ${meta.site} | Page ${pageNum} | ${meta.monthYear}`,
     PAGE_MARGIN, y, { width: w, align: "left", lineBreak: false },
   );
   doc.restore();
+  doc.page.margins.bottom = savedBottom;
 }
 
 // --- Cover color helpers ------------------------------------------------
@@ -8381,9 +8396,23 @@ function rows(doc: PDFKit.PDFDocument, pairs: [string, string | undefined][]) {
   doc.x = startX;
   const valueW = doc.page.width - startX - labelW - PAGE_MARGIN - 10;
   for (const [label, value] of pairs) {
+    const val = value ?? "—";
+    // Measure the row before drawing so the label and its value stay on the
+    // same page. Drawing the label first and letting PDFKit auto-paginate
+    // mid-pair stranded the label (or value) alone on its own page; reserve
+    // the row's height and break BEFORE it when it will not fit.
+    doc.font("body").fontSize(10);
+    const rowH = Math.max(
+      doc.heightOfString(label, { width: labelW }),
+      doc.heightOfString(val, { width: valueW }),
+    );
+    if (doc.y + rowH > doc.page.height - PAGE_MARGIN) doc.addPage();
     const y = doc.y;
-    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(label, startX, y, { width: labelW, continued: false });
-    doc.font("body").fontSize(10).fillColor("black").text(value ?? "—", startX + labelW + 10, y, { width: valueW });
+    doc.fillColor(TEXT_GRAY).text(label, startX, y, { width: labelW, continued: false });
+    doc.fillColor("black").text(val, startX + labelW + 10, y, { width: valueW });
+    // Anchor the cursor to the taller cell so a wrapped label/value never
+    // overlaps the next row.
+    doc.y = y + rowH;
     doc.moveDown(0.05);
   }
   doc.x = PAGE_MARGIN;
