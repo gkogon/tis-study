@@ -84,9 +84,11 @@ export async function createCheckoutSession(args: {
     // Lets a card stored in the firm's customer be reused for the
     // Customer Portal without re-prompting.
     payment_method_collection: "always",
-    // 14-day free trial — matches the marketing copy on /pricing.
+    // 14-day free trial on the capped tiers. Enterprise is EXCLUDED: it has
+    // unlimited studies, so a free trial would be an unlimited-free-studies
+    // farming hole — enterprise pays from day one.
     subscription_data: {
-      trial_period_days: 14,
+      ...(args.plan === "enterprise" ? {} : { trial_period_days: 14 }),
       metadata: { firmId: args.firm.id, plan: args.plan, cadence },
     },
     metadata: { firmId: args.firm.id, plan: args.plan, cadence },

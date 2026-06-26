@@ -7,12 +7,14 @@
  * (~16.7% discount) to lock in ARR.
  *
  * Tier limits applied on subscription activation:
- *   - Starter: 3 seats, 10 studies / month
- *   - Growth:  unlimited seats, 30 studies / month
+ *   - Starter:    3 seats, 5 studies / month
+ *   - Growth:     unlimited seats, 15 studies / month
+ *   - Enterprise: unlimited seats, unlimited studies (flat-priced)
  *
- * Enterprise is metered (per-study) and not represented in this
- * registry — it's wired separately because it doesn't fit a fixed
- * "Price ID → limits" mapping.
+ * Enterprise is a flat tier (NOT per-study metered): its studyLimit is the
+ * 0 = "unlimited" sentinel, so isUnlimitedStudies() never meters it. Because
+ * it's uncapped, its checkout skips the free trial (see billing.ts) to avoid
+ * an unlimited-free-studies farming hole.
  *
  * The webhook handler ([routes/stripe-webhook.ts]) translates Stripe
  * lifecycle events into firm state mutations. The checkout-session
@@ -38,7 +40,7 @@ export const stripe: Stripe | null = process.env.STRIPE_SECRET_KEY
     })
   : null;
 
-export type PaidPlanId = "starter" | "growth";
+export type PaidPlanId = "starter" | "growth" | "enterprise";
 export type BillingCadence = "monthly" | "annual";
 
 // 999 is the "unlimited" sentinel for seat caps — high enough that no
@@ -71,7 +73,7 @@ export const PLANS: Record<PaidPlanId, PlanConfig> = {
       legacyMonthly: "STRIPE_PRICE_STARTER",
     },
     seatLimit: 3,
-    studyLimit: 10,
+    studyLimit: 5,
   },
   growth: {
     id: "growth",
@@ -82,7 +84,20 @@ export const PLANS: Record<PaidPlanId, PlanConfig> = {
       legacyMonthly: "STRIPE_PRICE_GROWTH",
     },
     seatLimit: SEAT_UNLIMITED,
-    studyLimit: 30,
+    studyLimit: 15,
+  },
+  enterprise: {
+    id: "enterprise",
+    name: "Enterprise",
+    priceEnvs: {
+      monthly: "STRIPE_PRICE_ENTERPRISE_MONTHLY",
+      annual: "STRIPE_PRICE_ENTERPRISE_ANNUAL",
+    },
+    seatLimit: SEAT_UNLIMITED,
+    // 0 = the documented "unlimited studies" sentinel (studyLimit <= 0).
+    // Enterprise is flat-priced with no per-period cap; isUnlimitedStudies()
+    // honors this so reserveStudySlot never meters an enterprise firm.
+    studyLimit: 0,
   },
 };
 
