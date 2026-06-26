@@ -594,6 +594,49 @@ export type TisReport = {
 
 const CURRENT_YEAR = new Date().getUTCFullYear();
 
+// ---------- Study-intersection scoping (MTIASD study-limit / de-minimis) ----------
+//
+// findAffectedIntersections returns EVERY signalized intersection within the
+// study radius. In a dense urban grid that is dozens (downtown Chicago ≈ 98,
+// Midtown ≈ 132 within 0.5 mi), which is not a screening study — a TIS analyzes
+// the site-adjacent intersections plus those the site materially impacts, not
+// every signal in a circle (ITE MTIASD §2.2, Table 3; the de-minimis rule:
+// traffic below ~a handful of added peak-hour trips is not a study intersection).
+//
+// We keep: (1) the nearest few (site access + adjacent + first signalized in
+// each direction), always; plus (2) any intersection the four-step model assigns
+// at least STUDY_MIN_PM_SITE_TRIPS PM-peak site trips; capped at
+// STUDY_MAX_INTERSECTIONS (highest-assigned win). The scope therefore scales with
+// the project's trip-making — small project → few intersections, large project →
+// more — which is exactly the MTIASD Table 3 intent, instead of scaling with how
+// dense the surrounding grid happens to be.
+// Tunable screening defaults (calibrate against real studies as the corpus grows).
+const STUDY_NEAREST_FLOOR = 5;        // immediate study area: site-adjacent + ~first signalized each direction
+const STUDY_MIN_PM_SITE_TRIPS = 8;    // de-minimis screening floor: site must assign ≥8 PM-peak trips
+const STUDY_MAX_INTERSECTIONS = 15;   // hard cap so pathologically dense grids can't explode the report
+
+/**
+ * Indices (into a nearest-first `candidates` array) of the study intersections.
+ * `weights` is the four-step distribution; `pmExternalAutoTrips` the PM-peak
+ * auto trips those weights distribute. Pure + deterministic.
+ */
+function selectStudyIntersectionIdx(weights: number[], pmExternalAutoTrips: number, n: number): number[] {
+  const assigned = (i: number): number => (weights[i] ?? 0) * pmExternalAutoTrips;
+  let idx: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (i < STUDY_NEAREST_FLOOR || assigned(i) >= STUDY_MIN_PM_SITE_TRIPS) idx.push(i);
+  }
+  if (idx.length > STUDY_MAX_INTERSECTIONS) {
+    const near = idx.filter((i) => i < STUDY_NEAREST_FLOOR);
+    const rest = idx
+      .filter((i) => i >= STUDY_NEAREST_FLOOR)
+      .sort((a, b) => assigned(b) - assigned(a))
+      .slice(0, Math.max(0, STUDY_MAX_INTERSECTIONS - near.length));
+    idx = [...near, ...rest].sort((a, b) => a - b);
+  }
+  return idx;
+}
+
 async function findAffectedIntersections(
   lat: number, lon: number, radiusMi: number, regionCode: string,
 ): Promise<Array<{ sig: AnalyzerIntersection; distanceMi: number }>> {
@@ -1267,6 +1310,13 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const fourStep = distributeAndAssign(demandZones, pmExternalAutoForAssign, { gamma: GAMMA_FRICTION.hbw });
   const weights = fourStep.weights;
 
+  // Scope the STUDY intersections (worksheets / affectedIntersections) to the
+  // site-adjacent + materially-impacted set — not every signal in the radius.
+  // The four-step distribution above still runs over all candidates (correct
+  // demand model); this only bounds what gets analyzed + reported.
+  const studyIdx = selectStudyIntersectionIdx(weights, pmExternalAutoForAssign, candidates.length);
+  const studySet = new Set(studyIdx);
+
   // Step 4 (network) — best-effort road-network route assignment. Loads the
   // PM-peak project trips onto the actual road corridors via shortest-path
   // + BPR equilibrium. Additive: per-signal trip totals are unchanged; this
@@ -1328,7 +1378,8 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
           buildAffectedRow(c, weights[i] ?? 0, project, params, calibrationMap.get(c.sig.id)),
         );
 
-    const rows = allRows;
+    // Report only the study intersections (site-adjacent + materially impacted).
+    const rows = allRows.filter((_, i) => studySet.has(i));
 
     const dropCount = rows.filter((r) => r.losChanged).length;
     const efCount = rows.filter((r) => r.futureLos === "E" || r.futureLos === "F").length;
@@ -1361,7 +1412,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // synthesize it for the back-compat fields so downstream consumers don't
   // crash.
   const pmReport = periodReports.find((p) => p.period === "pm_peak")
-    ?? (await synthesizePmReport(lu, req, candidates, weights, project, growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates));
+    ?? (await synthesizePmReport(lu, req, candidates, weights, project, growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates, studySet));
 
   // Top-level back-compat trip-generation summary uses ORIGINAL (non-credited)
   // PM trips so the existing UI labels keep their meaning. Rates come from
@@ -1475,6 +1526,7 @@ async function synthesizePmReport(
   passByPct: number,
   internalCapturePct: number,
   rates: ResolvedRates,
+  studySet: Set<number>,
 ): Promise<PeriodReport> {
   const raw = periodRawTrips(lu, req.size, "pm_peak", rates);
   const passByCredit = raw * (passByPct / 100);
@@ -1486,7 +1538,7 @@ async function synthesizePmReport(
   const allRows = candidates.map((c, i) =>
     buildAffectedRow(c, weights[i] ?? 0, project, params, calibrationMap.get(c.sig.id)),
   );
-  const rows = allRows;
+  const rows = allRows.filter((_, i) => studySet.has(i));
   return {
     period: "pm_peak",
     periodLabel: PERIOD_LABEL.pm_peak,
