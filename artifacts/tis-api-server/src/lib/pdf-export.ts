@@ -8204,6 +8204,11 @@ function renderCapacityAppendix(
       const fx = PAGE_MARGIN + col * (dw + gap);
       drawTurningMovementDiagram(doc, fx, rowY, dw, dh, f.rec, f.scenario, f.title);
     });
+    // drawTurningMovementDiagram leaves the text cursor at the last (rightmost)
+    // diagram's internal x. Restore the left margin before flowing the caption /
+    // per-approach table, or they wrap into a narrow right-hand column and spill
+    // off the bottom of every worksheet page.
+    doc.x = PAGE_MARGIN;
     doc.y = rowY + dh + 14;
     if (multiPeriod) {
       doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
