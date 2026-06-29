@@ -253,3 +253,31 @@ export const analyzerProxyRateLimiter = rateLimit({
   store: makeRateLimitStore("rl:analyzer:"),
   passOnStoreError: true,
 });
+
+// Per-IP rate limit on the public /calibration/activity aggregate that
+// powers the homepage "self-calibrating" counter. Every visitor's tab
+// polls it on load and then on an interval, so — exactly like the
+// analyzer-proxy widgets above — it needs a budget sized for *polling*,
+// not for a once-per-human action.
+//
+// It previously borrowed `unsubscribeRateLimiter` (20 / 10 min, sized for
+// "an honest user hits unsubscribe once"), which real homepage traffic
+// blew past: the Redis store keys by IP, so every visitor and every tab
+// behind a shared NAT / CGNAT / office / mobile-carrier IP aggregates onto
+// one counter and tripped the 20-request cap — intermittently 429-ing the
+// marketing widget for legitimate first-time visitors.
+//
+// The endpoint is a read-only public aggregate (table row counts; no per-
+// user or per-firm data), so a generous cap is safe. 120/min per IP leaves
+// room for ~120 concurrent tabs behind a single shared IP while still
+// capping a scraper at 2 req/s — orders of magnitude below what grinding
+// the endpoint would require. Sizing mirrors analyzerProxyRateLimiter.
+export const calibrationActivityRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please slow down." },
+  store: makeRateLimitStore("rl:calib-activity:"),
+  passOnStoreError: true,
+});

@@ -7,8 +7,11 @@
  * data, the component renders nothing rather than showing a broken
  * widget on the marketing page.
  *
- * Polls every 60s. The underlying worker runs hourly, so the numbers
- * only move once an hour — the poll just keeps a long-open tab fresh.
+ * Polls every 5 min. The underlying worker runs hourly and GDOT snapshots
+ * tick every ~10 min, so the numbers barely move between polls — the
+ * interval just keeps a long-open tab fresh. (It was 60s, which fanned far
+ * more requests at the shared per-IP rate limiter than the slow-moving
+ * data warranted; see the server-side calibrationActivityRateLimiter.)
  */
 import { useEffect, useState } from "react";
 import { Activity } from "lucide-react";
@@ -37,7 +40,7 @@ export function CalibrationActivity({ variant = "strip" }: { variant?: "strip" |
       }
     }
     poll();
-    const t = setInterval(poll, 60_000);
+    const t = setInterval(poll, 300_000);
     return () => { cancelled = true; clearInterval(t); };
   }, []);
 
