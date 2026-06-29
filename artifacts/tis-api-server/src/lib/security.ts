@@ -23,12 +23,18 @@ function parseAllowedOrigins(): string[] {
     .filter(Boolean)
     .flatMap((host) => (host.startsWith("http") ? [host] : [`https://${host}`, `http://${host}`]));
   // Common local-dev ports: 80 / 5000 / 5173 (Vite default) / 8090.
-  const local = [
-    "http://localhost:80",
-    "http://localhost:5000",
-    "http://localhost:5173",
-    "http://localhost:8090",
-  ];
+  // Only trust localhost in non-production. In prod these must NOT be
+  // accepted for credentialed CORS — they'd let a page served from
+  // http://localhost on one of these ports call the API with cookies.
+  const isDev = process.env.NODE_ENV !== "production";
+  const local = isDev
+    ? [
+        "http://localhost:80",
+        "http://localhost:5000",
+        "http://localhost:5173",
+        "http://localhost:8090",
+      ]
+    : [];
   return [...new Set([...fromEnv, ...local])];
 }
 
@@ -72,6 +78,28 @@ export const generateRateLimiter = rateLimit({
   message: { error: "Too many TIS generations. Please slow down." },
   store: makeRateLimitStore("rl:generate:"),
   passOnStoreError: true,
+});
+
+// Per-IP rate limit for the public-by-URL /trics London-TA demo. Unlike
+// the authenticated /generate (metered by firm quota), /trics is
+// anonymous and runs the full engine + a multi-page PDF render, so this
+// limiter is its ONLY abuse control. Capped tight — 3/day/IP, matching the
+// /demo cap — so a cold prospect can try a couple of London sites but a
+// competitor cannot farm the deliverable or grind our compute. Admins and
+// dev-auth sessions are exempt so the operator can demo freely.
+export const tricsRateLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 3,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "You've used your free TRICS demo runs for today. Please try again tomorrow." },
+  store: makeRateLimitStore("rl:trics:"),
+  passOnStoreError: true,
+  skip: (req) => {
+    if (process.env.DEV_AUTH_ENABLED === "true") return true;
+    const email = req.user?.email;
+    return !!email && isAdminEmail(email);
+  },
 });
 
 // Per-IP brute-force protection for /auth/login. A real attacker

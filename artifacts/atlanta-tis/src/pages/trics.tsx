@@ -1,15 +1,20 @@
 /**
- * /trics — PRIVATE, UNLIMITED, London-only TA generator.
+ * /trics — PUBLIC-BY-URL, London-only TA generator (pitch/demo surface).
  *
- * Generates UK Transport Assessment reports in the London ("TRICS")
- * format with no rate limit and no quota, for live/repeat demos. Locked
- * down hard: the page fetches /tis-api/auth/admin-status and renders the
- * 404 page for anyone who is neither an ADMIN_EMAILS operator nor a
- * signed-in dev-auth session — so to the public the route does not exist.
- * The backing endpoints (/tis-api/trics/generate, /tis-api/trics/pdf)
- * enforce the SAME gate server-side and return a bare 404 to anyone else,
- * and reject any coordinate outside Greater London. Nothing here is
- * reachable or abusable by the public even if the URL leaks.
+ * NOT access-controlled. The route is simply not linked anywhere in the
+ * site nav, so it is reachable only by someone who knows the URL
+ * ("unlisted public") — anyone with the link can run it. The backing
+ * endpoints (/tis-api/trics/generate, /tis-api/trics/pdf) save nothing,
+ * charge no quota, hard-restrict coordinates to Greater London, and are
+ * capped at 3 requests/day per IP (tricsRateLimiter, admins/dev-auth
+ * exempt) so the deliverable can't be farmed. Anonymous PDF renders carry
+ * a neutral "Demo Preview" stamp.
+ *
+ * NOTE: the client capacity math in @/lib/trcs ships in the public bundle
+ * (the app has no code-splitting). It is published UK methodology
+ * (Webster / Kimber-ARCADY / PICADY), NOT the proprietary engine — but the
+ * clean long-term fix is to render server-computed results here and delete
+ * @/lib/trcs so no capacity logic reaches the browser at all.
  *
  * Temporary pitch surface — delete this file, the /trics route in
  * App.tsx, and the /trics/* endpoints in tis-api-server/src/routes/tis.ts
