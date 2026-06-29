@@ -7,7 +7,7 @@ import {
 import { generateTisReport, LAND_USES } from "../lib/tis";
 import { regionForCoordinate, REGIONS } from "../lib/regions";
 import { renderStudyPdf } from "../lib/pdf-export";
-import { generateRateLimiter } from "../lib/security";
+import { generateRateLimiter, tricsRateLimiter } from "../lib/security";
 import { saveProject } from "../lib/tis-projects";
 import {
   getOrCreateFirmForUser,
@@ -242,10 +242,12 @@ router.post("/generate/pdf", generateRateLimiter, async (req, res): Promise<void
 // access-controlled. Unlike the authenticated /generate (charges quota +
 // saves a project), these endpoints save nothing and charge no quota; but
 // because they are public AND run the full engine + a multi-page PDF
-// render, they carry the shared `generateRateLimiter` (10 requests/hour
-// per IP) so the uncapped generation cannot be abused as a DoS / cost
-// vector. Coordinates are hard-restricted to the Greater London metro.
-router.post("/trics/generate", generateRateLimiter, async (req, res): Promise<void> => {
+// render, they carry a dedicated `tricsRateLimiter` (3 requests/day per
+// IP, admins/dev-auth exempt) so a prospect can try a couple of London
+// sites but a competitor cannot farm the deliverable or grind our compute.
+// Coordinates are hard-restricted to the Greater London metro, and
+// anonymous renders get a neutral "Demo Preview" stamp (see /trics/pdf).
+router.post("/trics/generate", tricsRateLimiter, async (req, res): Promise<void> => {
   const parsed = GenerateTisBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid TIS request" });
@@ -270,7 +272,7 @@ router.post("/trics/generate", generateRateLimiter, async (req, res): Promise<vo
   }
 });
 
-router.post("/trics/pdf", generateRateLimiter, async (req, res): Promise<void> => {
+router.post("/trics/pdf", tricsRateLimiter, async (req, res): Promise<void> => {
   const parsed = GenerateTisBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid TIS request" });
