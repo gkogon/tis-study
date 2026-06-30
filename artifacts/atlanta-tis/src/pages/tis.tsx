@@ -371,7 +371,7 @@ function TisFormSection({
         <CardTitle className="text-base">Project inputs</CardTitle>
         <CardDescription>
           Provide the candidate site and the deployed land use. We'll estimate trip generation
-          (ITE 11th Edition) and run a screening-level capacity analysis on every signalized
+          (public-data screening rates) and run a screening-level capacity analysis on every signalized
           intersection within the study radius.
         </CardDescription>
       </CardHeader>
@@ -510,7 +510,7 @@ function TisFormSection({
             />
           </label>
           <label className="space-y-1 md:col-span-2">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">ITE land-use code</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Land-use code</span>
             <select
               required
               className="w-full px-3 py-2 rounded-md border bg-background text-sm"
@@ -719,7 +719,7 @@ function ResultHeader({ report }: { report: TisReport }) {
       </p>
       <div className="flex flex-wrap items-center gap-2 mt-4 text-xs text-muted-foreground">
         <Badge variant="outline" className="font-mono">
-          ITE {report.tripGeneration.landUseCode} · {report.tripGeneration.landUseName}
+          LU {report.tripGeneration.landUseCode} · {report.tripGeneration.landUseName}
         </Badge>
         <Badge variant="outline" className="font-mono">
           {report.tripGeneration.size} {report.tripGeneration.unit}
@@ -746,10 +746,10 @@ function TripGenCard({ report }: { report: TisReport }) {
         <div className="flex items-center gap-2">
           <Car className="w-4 h-4 text-muted-foreground" />
           <CardTitle className="text-base">
-            Trip generation<CitationRef tags={["ITE_TG_11", "ITE_TG_11_LU"]} />
+            Trip generation<CitationRef tags={["SANDAG_2002", "NHTS_2017", "NCHRP_716"]} />
           </CardTitle>
         </div>
-        <CardDescription>ITE Trip Generation Manual 11th Edition average weekday rates.</CardDescription>
+        <CardDescription>Public-data screening rates (SANDAG 2002 / NHTS 2017 / NCHRP 716) average weekday.</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1596,7 +1596,7 @@ export default function TisPage() {
           <h1 className="text-3xl md:text-4xl font-bold">Traffic Impact Study generator</h1>
           <p className="text-muted-foreground max-w-3xl">
             Enter a candidate site and we'll produce a screening-level Traffic Impact Study —
-            ITE trip generation, affected-intersection capacity analysis, LOS before/after, and
+            public-data trip generation, affected-intersection capacity analysis, LOS before/after, and
             mitigation recommendations — in under five seconds. Print to PDF for a branded,
             PE-stampable deliverable with full methodology &amp; references appendix.
           </p>

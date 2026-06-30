@@ -1,31 +1,26 @@
 /**
- * Parking Demand Study endpoints.
+ * Parking Demand Study endpoints — TEMPORARILY DISABLED.
  *
- *   GET  /parking/land-uses        registry of ITE PG land uses + Atlanta code minimums
- *   POST /parking/generate         body: GenerateParkingBody → GenerateParkingResponse
+ *   GET  /parking/land-uses        returns an empty registry while the
+ *                                  feature migrates to a public zoning-code
+ *                                  basis (the proprietary parking-generation
+ *                                  rate table was removed).
+ *   POST /parking/generate         returns HTTP 503 + migration message; it
+ *                                  does NOT consume a study-quota slot and
+ *                                  does NOT crash.
  *
- * Shares quota + firm scoping with the TIS engine — every successful
- * generate counts against `firms.studies_used_this_period`.
+ * When a public zoning-code parking table is wired into `../lib/parking`,
+ * restore the full generate flow (quota reservation + saveProject) below.
  */
 import { Router, type IRouter } from "express";
-import {
-  GenerateParkingBody,
-  GenerateParkingResponse,
-  ListParkingLandUsesResponse,
-} from "@workspace/tis-api-zod";
-import { generateParkingReport, PARKING_LAND_USES } from "../lib/parking";
+import { ListParkingLandUsesResponse } from "@workspace/tis-api-zod";
+import { PARKING_LAND_USES, PARKING_MIGRATION_MESSAGE } from "../lib/parking";
 import { generateRateLimiter } from "../lib/security";
-import { saveProject } from "../lib/tis-projects";
-import {
-  getOrCreateFirmForUser,
-  reserveStudySlot,
-  releaseStudySlot,
-} from "../lib/firms";
-import { logEvent } from "../lib/events";
 
 const router: IRouter = Router();
 
 router.get("/parking/land-uses", (_req, res): void => {
+  // Registry is intentionally empty during the public-data migration.
   res.json(ListParkingLandUsesResponse.parse(PARKING_LAND_USES));
 });
 
@@ -34,72 +29,13 @@ router.post("/parking/generate", generateRateLimiter, async (req, res): Promise<
     res.status(401).json({ error: "Sign in to generate a parking study." });
     return;
   }
-  const user = req.user!;
-
-  const parsed = GenerateParkingBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid parking request" });
-    req.log.warn({ issues: parsed.error.issues }, "parking-generate.invalid_body");
-    return;
-  }
-
-  const { firm } = await getOrCreateFirmForUser(user.id, {
-    email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
+  // Parking demand is disabled while it migrates to a public zoning-code
+  // basis. Answer with a clear 503 (Service Unavailable) and DO NOT reserve
+  // a quota slot, save a project, or throw — the feature is gated cleanly.
+  res.status(503).json({
+    error: PARKING_MIGRATION_MESSAGE,
+    status: "feature_migrating",
   });
-
-  const quota = await reserveStudySlot(firm, { email: user.email });
-  if (!quota.ok) {
-    res.status(402).json({
-      error:
-        "Your firm has used all studies in this billing period. Upgrade or add overage credits in Settings → Billing.",
-      reason: quota.reason,
-      limit: quota.limit,
-      planTier: firm.planTier,
-    });
-    return;
-  }
-
-  try {
-    const report = generateParkingReport(parsed.data);
-    const validated = GenerateParkingResponse.parse(report);
-    const projectName =
-      parsed.data.projectName?.trim()
-      || `${validated.landUse.name} — ${parsed.data.size} ${validated.landUse.unit}`;
-
-    // Quota slot reserved above; refunded on failure — see TIS route note.
-    const saved = await saveProject({
-      userId: user.id,
-      firmId: firm.id,
-      studyType: "parking",
-      projectName,
-      landUseCode: parsed.data.landUseCode,
-      landUseSize: parsed.data.size,
-      siteLat: parsed.data.latitude ?? null,
-      siteLon: parsed.data.longitude ?? null,
-      request: parsed.data,
-      result: validated,
-    });
-    if (!saved) {
-      await releaseStudySlot(firm, { email: user.email });
-      res.status(500).json({
-        error: "Generated the study but couldn't save it to your history. Please retry — this attempt didn't count toward your quota.",
-      });
-      return;
-    }
-    logEvent("study_generated", {
-      firmId: firm.id,
-      userId: user.id,
-      metadata: { studyType: "parking" },
-    });
-    res.json(validated);
-  } catch (e) {
-    await releaseStudySlot(firm, { email: user.email });
-    req.log.error({ err: e }, "parking-generate failed");
-    const msg = e instanceof Error ? e.message : String(e);
-    res.status(400).json({ error: msg });
-  }
 });
 
 export default router;

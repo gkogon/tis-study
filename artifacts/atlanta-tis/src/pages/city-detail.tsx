@@ -45,7 +45,7 @@ export default function CityDetailPage() {
   usePageMeta({
     title: m ? `Traffic impact studies in ${m.shortName}, ${m.state}` : "Cities",
     description: m
-      ? `Defensible screening-level TIS, parking, signal-warrant, sight-distance, queuing and road-diet studies for ${m.longName}. ${m.signals.toLocaleString()} signalized intersections indexed.${aadtPhrase} HCM 6th, ITE 11th, MUTCD.`
+      ? `Defensible screening-level TIS, parking, signal-warrant, sight-distance, queuing and road-diet studies for ${m.longName}. ${m.signals.toLocaleString()} signalized intersections indexed.${aadtPhrase} HCM 6th, public trip-generation data, MUTCD.`
       : undefined,
     canonical: m ? `https://simpleimpactstudies.com/cities/${m.slug}` : undefined,
   });

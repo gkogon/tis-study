@@ -2,7 +2,7 @@
  * Parking Demand Study generator. Lets the engineer pick a land use,
  * enter project size + proposed supply (+ optional jurisdictional code
  * override and shared-use reduction), runs the engine, and renders:
- *   - the ITE-derived peak demand
+ *   - the screening-level peak demand
  *   - the local code minimum
  *   - the governing comparison (which constraint binds) and surplus/deficit
  *   - a 24-hour weekday/Saturday profile
@@ -114,7 +114,7 @@ export default function ParkingStudyPage() {
           </div>
           <h1 className="text-3xl font-bold">Peak demand vs. code vs. proposed</h1>
           <p className="text-muted-foreground">
-            ITE Parking Generation 5th Ed. rates applied to your land use & size,
+            Public zoning-code parking minimums applied to your land use & size,
             compared against the City of Atlanta minimum (or your jurisdictional
             override) and the proposed supply.
           </p>
@@ -144,7 +144,7 @@ export default function ParkingStudyPage() {
                 data-testid="input-parking-name"
               />
             </Field>
-            <Field label="Land use (ITE)">
+            <Field label="Land use">
               <select
                 value={landUseCode}
                 onChange={(e) => setLandUseCode(e.target.value)}

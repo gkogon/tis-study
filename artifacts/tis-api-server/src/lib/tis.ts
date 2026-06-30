@@ -6,13 +6,14 @@
 //   - Background-growth multiplier on existing volume to opening year.
 //   - Weather adjustment (HCM Ch. 11) on capacity (rain/snow severity).
 //   - Pass-by + internal-capture credits before off-site assignment
-//     (ITE Pass-By Trip Generation Manual; ULI Mixed-Use Internal Capture).
+//     (standard pass-by methodology; ULI Mixed-Use Internal Capture).
 //   - Monte-Carlo sensitivity analysis (100 iterations) over trip-rate and
 //     existing-volume uncertainty.
 //   - Project templates (frontend; engine just needs the LU rates).
 //
-// All math remains transparent. Constants are either published ITE rates,
-// HCM thresholds, or clearly-stated engineering assumptions.
+// All math remains transparent. Constants are either public-data average trip
+// rates (SANDAG 2002 / NHTS 2017 / NCHRP 716), HCM thresholds, or
+// clearly-stated engineering assumptions.
 
 import { logger } from "./logger";
 import { getAutoModeShare, getAutoModeShareSource, getLondonAutoModeShare, type PTALBand } from "./mode-share";
@@ -23,13 +24,13 @@ import { fetchLocalRoads, assignRoutes, type RouteAssignment } from "./network-a
 import { getTransitContext } from "./transit-routes";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
 import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSource } from "./regional-growth-rates";
-// Canonical land-use registry (ITE 11th Ed.) lives in one place so the
-// Parking engine and TIS engine stay in sync. Re-exported below for any
-// downstream callers that imported `LAND_USES` from this module.
-import { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates } from "./land-uses";
+// Canonical public-data land-use registry (SANDAG 2002 / NHTS 2017 /
+// NCHRP 716) lives in one place. Re-exported below for any downstream
+// callers that imported `LAND_USES` from this module.
+import { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence } from "./land-uses";
 import { screenTurboCandidate, turboLaneScreening, type TurboLaneScreening } from "./turbo-lane";
 
-export { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates };
+export { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence };
 
 export function getLandUse(code: string): LandUse | undefined {
   return LAND_USES.find((l) => l.code === code);
@@ -483,13 +484,17 @@ export type TripGenerationSummary = {
   /** Short label for the chosen independent variable (e.g. "ksf", "emp"). */
   unitShort: string;
   /**
-   * Which variable's rates the screening actually used. "ite_published"
-   * means the primary ITE 11th Ed. rate; "interpolated" means a secondary
-   * derived from a defensible engineering ratio (also surfaced via the
-   * legal disclaimer). PDF renderers display this in §4 so a reviewing PE
-   * can verify the assumption.
+   * Provenance of the rate the screening actually used:
+   *   - "sandag_2002"  SANDAG 2002 vehicular traffic-generation guide.
+   *   - "nhts_2017"    FHWA NHTS 2017 trend table.
+   *   - "nchrp_716"    NCHRP Report 716 per-employee/HH parameter table.
+   *   - "blended_mpo"  Blended MPO screening guidance (rough — disclosed).
+   *   - "interpolated" Derived from a defensible engineering ratio (also
+   *                    surfaced via the legal disclaimer).
+   * PDF renderers display this in §4 so a reviewing PE can verify the
+   * assumption.
    */
-  variableConfidence: "ite_published" | "interpolated";
+  variableConfidence: RateConfidence;
   /** Optional engineering note for the chosen variable. */
   variableNote?: string;
   dailyTrips: number;
@@ -957,7 +962,7 @@ function plainFindings(
   );
   if (passByPct > 0 || internalCapPct > 0) {
     out.push(
-      `Pass-by credit ${passByPct.toFixed(0)}% and internal-capture credit ${internalCapPct.toFixed(0)}% applied at the PM peak before off-site assignment (ITE Pass-By Trip Generation Manual; ULI Internal Capture).`,
+      `Pass-by credit ${passByPct.toFixed(0)}% and internal-capture credit ${internalCapPct.toFixed(0)}% applied at the PM peak before off-site assignment (standard pass-by methodology; ULI Internal Capture).`,
     );
   }
   if (autoModeShare < 0.95) {
@@ -1014,24 +1019,24 @@ function plainFindings(
   // been retired per standard TIA practice — engine output retained for
   // demo-mode diagnostics but not surfaced in deliverable findings).
   out.push(
-    `Conclusions are reported at the applied screening assumptions. Discrete-scenario sensitivity at the formal TIA scoping meeting should test: trip-generation method (rate vs. equation per ITE Trip Generation Handbook Fig. 4.2); internal capture and pass-by credit variants; and a ±0.5%/yr background growth band around the applied value.`,
+    `Conclusions are reported at the applied screening assumptions. Discrete-scenario sensitivity at the formal TIA scoping meeting should test: trip-generation method (rate vs. fitted-curve equation); internal capture and pass-by credit variants; and a ±0.5%/yr background growth band around the applied value.`,
   );
   return out;
 }
 
 const TIS_METHODOLOGY = [
-  "Trip generation uses ITE Trip Generation Manual 11th-Edition average rates for the selected land-use code, computed for AM peak, PM peak, Saturday midday, and daily totals. Saturday-midday rates are estimated as a published industry multiple of the PM peak rate by land-use category.",
-  "Pass-by and internal-capture credits are applied at the PM peak per ITE's Pass-By Trip Generation Manual (3rd Edition) and ULI Mixed-Use Internal Capture defaults; only the residual external trips are assigned to off-site intersections.",
+  "Trip generation uses public-data average rates (SANDAG 2002, corroborated by NHTS 2017 / NCHRP 716) for the selected land-use code, computed for AM peak, PM peak, Saturday midday, and daily totals. Saturday-midday rates are estimated as a published industry multiple of the PM peak rate by land-use category.",
+  "Pass-by and internal-capture credits are applied at the PM peak per standard pass-by screening methodology and ULI Mixed-Use Internal Capture defaults; only the residual external trips are assigned to off-site intersections.",
   "Existing intersection volumes are grown to the opening-year horizon at the user-supplied annual growth rate (default 1.5%/yr) before the capacity analysis.",
   "Weather adjustment follows HCM 6th-Edition Ch. 11 (rain/snow capacity reduction): clear 1.00, light rain 0.95, heavy rain 0.86, light snow 0.86, heavy snow 0.70. The factor multiplies the saturation flow at every intersection.",
-  "Off-site impact is screened for all signalized intersections within the study radius (default 0.5 mi) using the four-step travel demand model (FHWA; NCHRP Report 716). Step 1 Trip Generation: ITE rates give the site's external (post pass-by / internal-capture) productions. Step 2 Trip Distribution: a production-constrained gravity model T_j = P · (A_j·F_j) / Σ(A_x·F_x) allocates trips to surrounding signals, where attractiveness A_j is the signal's through-volume and the friction factor F_j is the NCHRP-716 gamma function F = a·t^b·e^(c·t) (home-based-work coefficients a=28507, b=-0.02, c=-0.123) on the travel time t to each signal. Step 3 Mode Choice: a binary logit P(auto)=1/(1+e^-(ASC−λ·ΔGC)) calibrated to the metro's measured auto-mode share (ACS B08301) and shifted by site urbanity (a density proxy from surrounding through-volumes) so denser, more transit-served sites split further from auto; only the resulting vehicle trips load the network. Step 4 Route Assignment: a capacity-constrained assignment using the BPR volume-delay function t = t0·[1 + 0.15·(v/c)^4] iteratively shifts trips away from over-capacity signals toward less-congested alternatives. Signals lacking AADT data fall back to a constant 5,000 vpd attraction.",
+  "Off-site impact is screened for all signalized intersections within the study radius (default 0.5 mi) using the four-step travel demand model (FHWA; NCHRP Report 716). Step 1 Trip Generation: public-data average rates (SANDAG 2002 / NHTS 2017 / NCHRP 716) give the site's external (post pass-by / internal-capture) productions. Step 2 Trip Distribution: a production-constrained gravity model T_j = P · (A_j·F_j) / Σ(A_x·F_x) allocates trips to surrounding signals, where attractiveness A_j is the signal's through-volume and the friction factor F_j is the NCHRP-716 gamma function F = a·t^b·e^(c·t) (home-based-work coefficients a=28507, b=-0.02, c=-0.123) on the travel time t to each signal. Step 3 Mode Choice: a binary logit P(auto)=1/(1+e^-(ASC−λ·ΔGC)) calibrated to the metro's measured auto-mode share (ACS B08301) and shifted by site urbanity (a density proxy from surrounding through-volumes) so denser, more transit-served sites split further from auto; only the resulting vehicle trips load the network. Step 4 Route Assignment: a capacity-constrained assignment using the BPR volume-delay function t = t0·[1 + 0.15·(v/c)^4] iteratively shifts trips away from over-capacity signals toward less-congested alternatives. Signals lacking AADT data fall back to a constant 5,000 vpd attraction.",
   "After assignment, all signalized intersections within the study radius are reported in the affected-intersections table. Project-added trips, v/c ratio change, control delay change, LOS change, and 95th-percentile queue are reported for each intersection so the reviewer can assess relative impact. Intersections beyond the study radius are excluded from analysis.",
   "Auto-mode share is applied per metro before assignment. Suburban-US metros default to 90% auto (ACS 5-Year B08301 median); transit-heavy metros use measured auto-mode share (e.g., NYC 32%, Tokyo 30%, London 38%, San Francisco 47%). Non-auto trips (transit, walking, cycling) do not load the off-site roadway. This is a screening-level adjustment; a real TIS submittal in a transit-heavy market should refine with project-specific TAZ data.",
   "Candidate signals are de-duplicated within a 45m clustering threshold to prevent OSM divided-arterial splits and way-record artifacts from double-counting a single physical intersection.",
   "Intersection-level control delay uses the HCM signalized-intersection model d = d1 + d2 (Webster uniform delay + Akçelik/HCM incremental-delay term) with a 90s cycle, g/C = 0.45, 1,800 vphpl saturation flow (× weather factor), 15-minute peak analysis period (T = 0.25 hr) and pretimed-signal incremental-delay factor k = 0.5.",
   "Approach-level analysis splits each signal's inflow across NB/SB/EB/WB approaches (deterministic per-signal allocation perturbed ±15% from a 30/25/25/20 base) and assigns added trips to each approach by cosine-similarity to the bearing of the project relative to the signal. Per-approach v/c, control delay, LOS, and 95th-percentile back-of-queue length (HCM Eq. 19-50, Q95 ≈ Q1 × 1.65 × 25 ft/veh) are reported.",
   "Level of Service is assigned from HCM 6th-Edition signalized-intersection control-delay thresholds (Exhibit 19-8): A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s.",
-  "Sensitivity is reported in narrative form per standard TIA practice: trip-generation method (rate vs. equation per ITE Trip Generation Handbook Fig. 4.2), discrete internal capture and pass-by credit variants, and a ±0.5%/yr growth-rate band around the applied value. The engine retains an internal stochastic-sensitivity routine (Box-Muller-perturbed trip rate and existing volume) for demo-mode diagnostics; it is not surfaced in the deliverable because TIA sensitivity is conducted through discrete scoping-agreed scenario variants, not statistical perturbation of unmeasured distributions.",
+  "Sensitivity is reported in narrative form per standard TIA practice: trip-generation method (rate vs. fitted-curve equation), discrete internal capture and pass-by credit variants, and a ±0.5%/yr growth-rate band around the applied value. The engine retains an internal stochastic-sensitivity routine (Box-Muller-perturbed trip rate and existing volume) for demo-mode diagnostics; it is not surfaced in the deliverable because TIA sensitivity is conducted through discrete scoping-agreed scenario variants, not statistical perturbation of unmeasured distributions.",
   "Mitigations are screening-level recommendations sized to the projected delay change, not full Synchro/SimTraffic optimization runs. A formal TIS submittal should validate these recommendations with detailed traffic counts and signal-timing analysis.",
   "Turbo-lane (continuous-green-T) screening flags signalized 3-leg T-intersections where one or more main-street through lanes could flow continuously while the minor-street left turn merges in the median — recovering the green time the through movement would otherwise lose to the signal. Candidacy requires measured 3-leg geometry, an arterial-class main street, and a detected median (divided carriageway), all derived from the OpenStreetMap road network. Approach-capacity gain is computed as (turbo lanes / approach lanes) × (1 − g/C) / (g/C), with the main-street through g/C derived from the modeled main-vs-minor critical-flow split; the result is reported within the study's documented +7%…+173% envelope (Miami-Dade MPO / David Plummer & Associates, Adding Turbo Lanes to T-Intersections, 2010; FDOT District 6, Design Guidelines for the Development of Continuous Green Intersections, 1997). Lane counts and signal timing must be field-verified before design.",
 ];
@@ -1116,7 +1121,7 @@ function runSensitivityAnalysis(
 export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const lu = getLandUse(req.landUseCode);
   if (!lu) {
-    throw new Error(`Unknown ITE land-use code: ${req.landUseCode}`);
+    throw new Error(`Unknown land-use code: ${req.landUseCode}`);
   }
   if (!Number.isFinite(req.size) || req.size <= 0) {
     throw new Error("size must be a positive number");

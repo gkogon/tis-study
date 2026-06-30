@@ -37,15 +37,25 @@ export function buildAccuracyReport(report: any, opts: { asOf?: string } = {}): 
       ? "—"
       : String(tg.landUseCode);
 
-  // Trip generation — High when an ITE-published rate was used directly.
-  const tgPublished = tg.variableConfidence === "ite_published";
+  // Trip generation — High when a clean public-data rate (SANDAG 2002 /
+  // NHTS 2017 / NCHRP 716) was used directly; Medium when the rate is
+  // blended MPO guidance or interpolated from a secondary variable.
+  const tgSolid =
+    tg.variableConfidence === "sandag_2002" ||
+    tg.variableConfidence === "nhts_2017" ||
+    tg.variableConfidence === "nchrp_716";
+  const PUBLIC_BASIS_LABEL: Record<string, string> = {
+    sandag_2002: "SANDAG 2002 vehicular trip-generation guide",
+    nhts_2017: "FHWA NHTS 2017 trend table",
+    nchrp_716: "NCHRP Report 716 parameter table",
+  };
   items.push({
     component: "Trip generation",
-    grade: tgPublished ? "High" : "Medium",
-    basis: tgPublished
-      ? `ITE Trip Generation Manual 11th Ed. published rate for land use ${codeStr}.`
-      : "Interpolated / secondary-variable rate — no directly published ITE rate for the chosen variable.",
-    toSubmit: tgPublished ? undefined : "Confirm the rate against a TRICS/ITE site set agreed in scoping.",
+    grade: tgSolid ? "High" : "Medium",
+    basis: tgSolid
+      ? `Public-data rate (${PUBLIC_BASIS_LABEL[tg.variableConfidence] ?? "public source"}) for land use ${codeStr}.`
+      : "Blended MPO guidance or interpolated secondary-variable rate — verify against a jurisdiction-approved trip-generation source.",
+    toSubmit: tgSolid ? undefined : "Confirm the rate against a TRICS or jurisdiction-approved site set agreed in scoping.",
   });
 
   // Existing volumes — this engine models them; it does not field-count.

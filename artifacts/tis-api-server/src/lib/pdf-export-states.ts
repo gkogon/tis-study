@@ -64,7 +64,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "Growth rate derived from historical AADT trends at ALDOT count stations. No statewide default rate published; project-specific derivation from ≥3 years of count data required.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "Pre-application meeting with the ALDOT District Transportation Planning Engineer is required before commencing data collection. Scope, study area, and horizon years are agreed at this meeting.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition (current). ITE Handbook of Transportation Engineering for land uses not in the manual.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Supplement with a jurisdiction-approved local source for land uses not covered.",
     softwareNote: "HCM (via HCS) and Synchro/SimTraffic are standard. ALDOT accepts outputs from current FHWA-approved software.",
     peStatuteRef: "Ala. Code § 34-11-1 et seq. (Alabama Engineering Practice Act); Ala. Admin. Code r. 930-X-1",
     peStatuteName: "Alabama Engineering Practice Act",
@@ -89,7 +89,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "Derived from ADOT&PF Traffic Monitoring station data and regional growth projections from the applicable MPO (Anchorage Metropolitan Area Transportation Solutions — AMATS) or rural planning body.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "Coordinate with ADOT&PF Central Region (Anchorage) or Northern Region (Fairbanks) Traffic and Safety staff before data collection. Wildlife-related access and seasonal traffic patterns (summer peak, winter operations) must be addressed in scope.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. Local vehicle generation data (particularly for resource extraction or remote facilities) may be required.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Local vehicle generation data (particularly for resource extraction or remote facilities) may be required.",
     peStatuteRef: "Alaska Stat. § 08.48 (Architects, Engineers, and Land Surveyors)",
     peStatuteName: "Alaska Engineering Registration Act",
     specialRequirements: [
@@ -114,7 +114,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "ADOT Traffic Monitoring count data; MAG Travel Demand Model (Phoenix metro) or PAG model (Tucson metro) for larger projects. Growth rates derived from ≥5 years of counts on the study corridor.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "ADOT access permits require a pre-application meeting with ADOT District Traffic Engineer. City of Phoenix and City of Tucson require separate scoping with their traffic engineering staff.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. Phoenix and Pima County may require local trip rate studies for specific land uses.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Phoenix and Pima County may require local trip rate studies for specific land uses.",
     peStatuteRef: "A.R.S. § 32-121 et seq. (Engineering); A.A.C. R4-30-101 et seq.",
     peStatuteName: "Arizona Engineering Practice Act",
     specialRequirements: [
@@ -138,7 +138,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "ArDOT traffic count data (Traffic Analysis & Information System); project-specific trend analysis for ≥3 years on the study corridor.",
     methodologyMeetingRequired: false,
     methodologyMeetingNote: "Pre-application coordination with ArDOT District Traffic Engineer is recommended but not formally required before data collection for most projects.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "Ark. Code Ann. § 17-30-101 et seq. (Engineering Practice Act)",
     peStatuteName: "Arkansas Engineering Practice Act",
   },
@@ -159,7 +159,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "CDOT Traffic Data Explorer for historical AADT counts; DRCOG Regional Travel Demand Model (Denver metro) or applicable MPO model. Growth rate from ≥5 years of CDOT count data.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "Access permit applications under 2 CCR 601-1 require a pre-application conference with the CDOT Region Access Manager before data collection. Scope, study area, and methodology must be approved in writing.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. Colorado local trip characteristics studies may supplement for mixed-use or transit-oriented developments in Denver metro.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Colorado local trip characteristics studies may supplement for mixed-use or transit-oriented developments in Denver metro.",
     softwareNote: "Synchro/SimTraffic and HCS are standard. CDOT Region 1 (Denver metro) may require separate VISSIM simulation for complex corridors.",
     peStatuteRef: "C.R.S. § 12-120-102 et seq. (Colorado Professional Engineering Practice); 4 CCR 729-1",
     peStatuteName: "Colorado Professional Engineering Practice Act",
@@ -184,7 +184,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "ConnDOT counts from the Traffic Monitoring Program; CTDOT Travel Demand Model for corridor-level growth projections in the Hartford and New Haven metros.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "Mandatory pre-application meeting with ConnDOT District Traffic Engineering Unit before data collection for any project requiring a state highway access permit.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "Conn. Gen. Stat. § 20-300 et seq. (Engineering Practice Act)",
     peStatuteName: "Connecticut Engineering Practice Act",
     specialRequirements: [
@@ -207,7 +207,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "DelDOT Traffic Section historical AADT data; WILMAPCO or Dover/Kent MPO travel demand model for corridor growth where available.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "Pre-application meeting with DelDOT Traffic Section required. Delaware uses a development review process through the Office of State Planning Coordination (OSPC); all projects above the TIS threshold must be coordinated through OSPC prior to local approval.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "24 Del. C. § 2801 et seq. (Delaware Professional Engineers Practice Act)",
     peStatuteName: "Delaware Professional Engineers Practice Act",
     specialRequirements: [
@@ -231,7 +231,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "HDOT Traffic Volume Data (HI-6300 series count reports); Oahu Regional Transportation Plan (ORTP) travel demand model for O'ahu projects; neighbor-island growth from HDOT traffic counts.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "Pre-application scoping with HDOT Highways Division Planning Branch required. For O'ahu projects, additional scoping with the City and County of Honolulu Department of Planning and Permitting (DPP) is required.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. Local Hawaii-specific resort/hotel data available through HDOT or prior approved studies.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Local Hawaii-specific resort/hotel data available through HDOT or prior approved studies.",
     peStatuteRef: "Haw. Rev. Stat. § 464-1 et seq. (Engineers, Architects, Surveyors, and Landscape Architects)",
     peStatuteName: "Hawaii Professional Engineering Practice",
     specialRequirements: [
@@ -255,7 +255,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "ITD Transportation Data historical counts; applicable metropolitan planning organization (COMPASS — Boise metro) travel demand model for urban projects.",
     methodologyMeetingRequired: false,
     methodologyMeetingNote: "Coordinate with ITD District Engineer before data collection for projects requiring state highway access.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "Idaho Code § 54-1201 et seq. (Professional Engineers Practice Act)",
     peStatuteName: "Idaho Professional Engineers Practice Act",
   },
@@ -274,7 +274,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "INDOT Traffic Data (count stations statewide via INDOT Office of Traffic Safety and Technology); IRTIP/MPO travel demand model for Indianapolis metro (MPO) projects.",
     methodologyMeetingRequired: false,
     methodologyMeetingNote: "Coordinate with INDOT District Office for state-highway access projects. Local MPO scoping may also be required.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "Ind. Code § 25-31-1-1 et seq. (Engineering Practice Act); 864 IAC 1",
     peStatuteName: "Indiana Engineering Practice Act",
     specialRequirements: [
@@ -295,7 +295,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 20-year design horizon per Iowa DOT Location and Design Manual.",
     growthRateNote: "Iowa DOT traffic count data (published annual AADT reports by route); applicable MPO travel demand model (DMAMPO — Des Moines, JCCOG — Iowa City, etc.).",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "Iowa Code § 542B.1 et seq. (Engineering Practice Act)",
     peStatuteName: "Iowa Engineering Practice Act",
   },
@@ -313,7 +313,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 20-year design horizon per KDOT Design Manual.",
     growthRateNote: "KDOT annual traffic count data (Kansas Traffic Observation System — KTOS); applicable MPO model (MARC — Kansas City metro; WAMPO — Wichita).",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "K.S.A. § 74-7001 et seq. (Kansas Professional Engineering Practice Act)",
     peStatuteName: "Kansas Professional Engineering Practice Act",
   },
@@ -331,7 +331,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 10-year design horizon minimum. 20-year horizon for major developments.",
     growthRateNote: "KYTC Traffic Analysis Branch count data; applicable MPO model (OKI — Cincinnati metro; KIPDA — Louisville metro).",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "KRS § 322.010 et seq. (Kentucky Engineering Practice Act); 201 KAR 18",
     peStatuteName: "Kentucky Engineering Practice Act",
   },
@@ -351,7 +351,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "LADOTD count data from the Traffic Operations Center (TOC); applicable MPO model (LRMTS — New Orleans, Capital Region Planning Commission — Baton Rouge).",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "Pre-application coordination with the LADOTD District Traffic Engineer is required for state highway access permits. Scope and methodology letter are required before data collection.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "La. R.S. § 37:681 et seq. (Engineering Practice Act); LAC 46:LXI.101",
     peStatuteName: "Louisiana Engineering Practice Act",
     specialRequirements: [
@@ -374,7 +374,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "MaineDOT traffic count data (ATR network statewide); applicable metropolitan area (Greater Portland Council of Governments) model where available.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "Pre-application meeting with MaineDOT Bureau of Planning required for TMP applications. Chapter 301 sets mandatory process steps including a scoping letter before data collection.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "32 M.R.S.A. § 1251 et seq. (Professional Engineers Practice Act)",
     peStatuteName: "Maine Professional Engineers Practice Act",
     specialRequirements: [
@@ -398,7 +398,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "SHA traffic count database (State Roads Commission historical AADT); BMC (Baltimore Metropolitan Council) travel demand model for Baltimore metro; MWCOG model for Washington suburban jurisdictions.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "SHA requires a pre-application scope meeting. Montgomery and Howard Counties additionally require county-level TIS scope approval before data collection.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "Md. Business Occupations and Professions Code § 14-101 et seq.; COMAR 09.23.01",
     peStatuteName: "Maryland Engineering Practice Act",
     specialRequirements: [
@@ -422,7 +422,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "MassDOT traffic count data (District Traffic Engineering); CTPS (Central Transportation Planning Staff) regional model for Boston metro; MPO models for Springfield/Pittsfield metros.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "Pre-application scope meeting with MassDOT District Traffic Engineering required. For MEPA projects, concurrent scoping with MEPA is required before data collection begins.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. Boston metro projects may use CTPS disaggregate trip rate data for transit-accessible sites.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Boston metro projects may use CTPS disaggregate trip rate data for transit-accessible sites.",
     peStatuteRef: "M.G.L. c. 112, § 81D et seq. (Engineering Practice); 250 CMR 5.00",
     peStatuteName: "Massachusetts Engineering Practice Act",
     specialRequirements: [
@@ -446,7 +446,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "MDOT traffic count data (statewide ATR network); applicable MPO model (SEMCOG — Detroit metro; GVMC — Grand Rapids; Tri-County Regional Planning — Lansing).",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "Pre-application meeting with MDOT Region Planning staff required for projects generating ≥500 peak-hour trips. Methodology letter on file before data collection.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "MCL § 339.2001 et seq. (Michigan Engineering Practice Act); R 339.2301",
     peStatuteName: "Michigan Engineering Practice Act",
     specialRequirements: [
@@ -469,7 +469,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "MnDOT traffic count data (AMP — Automatic Machine Placement); Metropolitan Council travel demand model (Twin Cities metro); Greater Minnesota MPO models.",
     methodologyMeetingRequired: false,
     methodologyMeetingNote: "Pre-application coordination with MnDOT District Permits is recommended. Metropolitan Council review may also be required in the seven-county Twin Cities metro.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     softwareNote: "Synchro/SimTraffic and HCS standard. MnDOT may require VISSIM for complex interchange analyses.",
     peStatuteRef: "Minn. Stat. § 326.10 et seq. (Engineering Practice Act); Minn. R. 1800",
     peStatuteName: "Minnesota Engineering Practice Act",
@@ -492,7 +492,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 20-year design horizon.",
     growthRateNote: "MDOT traffic count data (published AADT volumes by route); applicable MPO model (Central Mississippi Planning and Development District — Jackson metro).",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "Miss. Code Ann. § 73-13-1 et seq. (Engineering Practice Act)",
     peStatuteName: "Mississippi Engineering Practice Act",
   },
@@ -510,7 +510,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 20-year design horizon per MoDOT Engineering Policy Guide.",
     growthRateNote: "MoDOT traffic count data (statewide ATC count stations); MARC (Kansas City metro) or East-West Gateway COG (St. Louis metro) travel demand models.",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "Mo. Rev. Stat. § 327.011 et seq. (Engineering Practice Act); 20 CSR 2030",
     peStatuteName: "Missouri Engineering Practice Act",
   },
@@ -529,7 +529,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 20-year design horizon per MDT Road Design Manual.",
     growthRateNote: "MDT traffic count data (Montana Traffic Monitoring System). Low-volume rural corridors may use 10-year historical trend.",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. Rural generator types (agriculture, resource extraction, resort) may require project-specific trip rate studies.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Rural generator types (agriculture, resource extraction, resort) may require project-specific trip rate studies.",
     peStatuteRef: "Mont. Code Ann. § 37-67-101 et seq. (Engineering Practice Act)",
     peStatuteName: "Montana Engineering Practice Act",
   },
@@ -547,7 +547,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 20-year design horizon.",
     growthRateNote: "NDOT traffic count data (Traffic Monitoring System); MAPA (Omaha metro) travel demand model for Omaha projects.",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "Neb. Rev. Stat. § 81-3401 et seq. (Engineering Practice Act)",
     peStatuteName: "Nebraska Engineering Practice Act",
   },
@@ -567,7 +567,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "NDOT traffic count data; RTC Southern Nevada travel demand model (Las Vegas metro); RTC Washoe model (Reno metro).",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "Clark County TIS Review requires pre-application scoping with Clark County DPW Traffic Engineering before data collection. NDOT access permits require separate coordination.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. Clark County has some Las Vegas-specific casino/resort trip rate experience; confirm with DPW.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Clark County has some Las Vegas-specific casino/resort trip rate experience; confirm with DPW.",
     peStatuteRef: "Nev. Rev. Stat. § 625.010 et seq. (Engineering Practice Act); NAC Chapter 625",
     peStatuteName: "Nevada Engineering Practice Act",
     specialRequirements: [
@@ -589,7 +589,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "NHDOT traffic count data (Traffic Monitoring System); Southern New Hampshire Planning Commission or Nashua Regional Planning Commission models for southern NH projects.",
     methodologyMeetingRequired: false,
     methodologyMeetingNote: "Coordinate with NHDOT Bureau of Traffic for state highway access permits.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "RSA 310-A:1 et seq. (Engineering Practice Act); Env-A 1101",
     peStatuteName: "New Hampshire Engineering Practice Act",
   },
@@ -609,7 +609,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "NJDOT traffic count data (Traffic Monitoring Unit); NJTPA (North Jersey), DVRPC (Delaware Valley), or SJTPO (South Jersey) travel demand models per applicable MPO.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "NJDOT access permits require pre-application coordination with the NJDOT Bureau of Access Permits. Site Impact Evaluation scope must be agreed in writing before field data collection.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. NJDOT has published New Jersey-specific trip generation rates for some land uses — check the NJDOT Traffic Engineering section library before defaulting to ITE.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). NJDOT has published New Jersey-specific trip generation rates for some land uses — check the NJDOT Traffic Engineering section library before defaulting to ITE.",
     softwareNote: "Synchro/SimTraffic and HCS standard. NJDOT may require CORSIM or VISSIM for complex interchange analyses on state routes.",
     peStatuteRef: "N.J.S.A. 45:8-27 et seq. (Engineering Practice Act); N.J.A.C. 13:40",
     peStatuteName: "New Jersey Engineering Practice Act",
@@ -633,7 +633,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 20-year design horizon per NMDOT Road Design Manual.",
     growthRateNote: "NMDOT traffic count data; MRCOG (Albuquerque metro) travel demand model for Albuquerque projects.",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "NMSA § 61-23-1 et seq. (Engineering Practice Act); NMAC 16.38",
     peStatuteName: "New Mexico Engineering Practice Act",
   },
@@ -653,7 +653,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "NCDOT traffic count data (Traffic Survey Group AADT database); applicable MPO model (CAMPO — Triangle; CRTPO — Charlotte; Greensboro; Wilmington) for urban projects.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "NCDOT TIA Program requires a Traffic Impact Analysis Study Agreement (TIASA) signed by the developer before data collection. The TIA scope is established in writing at the outset. NCDOT charges a review fee.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. NCDOT may accept local NC-specific trip data for specific land uses (e.g., Chick-fil-A, Duke University medical) from prior approved studies.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). NCDOT may accept local NC-specific trip data for specific land uses (e.g., Chick-fil-A, Duke University medical) from prior approved studies.",
     peStatuteRef: "N.C. Gen. Stat. § 89C-1 et seq. (Engineering Practice Act); 21 NCAC 56",
     peStatuteName: "North Carolina Engineering Practice Act",
     specialRequirements: [
@@ -676,7 +676,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 20-year design horizon.",
     growthRateNote: "NDDOT traffic count data; energy-sector projects must account for temporary construction-phase truck traffic volume (often exceeds long-term peak).",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. Heavy-truck land uses (grain elevator, oilfield service) require project-specific trip rates.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Heavy-truck land uses (grain elevator, oilfield service) require project-specific trip rates.",
     peStatuteRef: "N.D. Cent. Code § 43-19.1-01 et seq. (Engineering Practice Act)",
     peStatuteName: "North Dakota Engineering Practice Act",
   },
@@ -695,7 +695,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "ODOT traffic count data (statewide count program); applicable MPO model (MORPC — Columbus; NOACA — Cleveland; OKI — Cincinnati; TMACOG — Toledo).",
     methodologyMeetingRequired: false,
     methodologyMeetingNote: "Coordinate with ODOT District Traffic Engineer for state-highway access. Ohio Facilities Construction Commission (OFCC) requirements may apply for public projects.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "Ohio Rev. Code § 4733.01 et seq. (Engineering Practice Act); OAC § 4733",
     peStatuteName: "Ohio Engineering Practice Act",
     specialRequirements: [
@@ -717,7 +717,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 20-year design horizon.",
     growthRateNote: "ODOT traffic count data; ACOG (Oklahoma City metro) or INCOG (Tulsa metro) travel demand models.",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "59 O.S. § 475.1 et seq. (Engineering Practice Act); OAC 245:15",
     peStatuteName: "Oklahoma Engineering Practice Act",
   },
@@ -738,7 +738,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "ODOT traffic count data (statewide ATR and short-count network); applicable MPO model (Metro — Portland; RVMPO — Medford; LCOG — Eugene; ODOT Statewide Transportation Improvement Program for rural corridors).",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "ODOT requires a pre-application conference for Approach Road Permits under OAR 734-051-0045. OAR 660-012-0045 TPR analyses require coordination with DLCD (Department of Land Conservation and Development).",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     softwareNote: "Synchro/SimTraffic and HCS standard. ODOT Region 1 (Portland) may require VISSIM for complex analyses.",
     peStatuteRef: "ORS Chapter 672 (Engineering Practice Act); OAR 820-010",
     peStatuteName: "Oregon Engineering Practice Act",
@@ -766,7 +766,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "PennDOT traffic count data (PENNDOT Count Data — online count station database); DVRPC (Philadelphia metro), SPC (Pittsburgh metro), LVPC (Lehigh Valley), or applicable MPO travel demand model.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "PennDOT Pub 282 requires a scoping meeting with the PennDOT District Traffic Unit before data collection. A written scope confirmation must be received before commencing counts.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. PennDOT Pub 282 explicitly references ITE.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). PennDOT Pub 282 explicitly references ITE.",
     softwareNote: "Synchro/SimTraffic and HCS standard per PennDOT Pub 282. PennDOT District 6 (Philadelphia) may require VISSIM for signalized corridor studies.",
     peStatuteRef: "63 Pa. C.S. § 21 et seq. (Engineering Practice Act); 49 Pa. Code Ch. 37",
     peStatuteName: "Pennsylvania Engineering Practice Act",
@@ -791,7 +791,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 10-year design horizon.",
     growthRateNote: "RIDOT traffic count data; STPP (State Transportation Planning Program) / RIPTA travel demand model for Providence metro.",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "R.I. Gen. Laws § 5-8-1 et seq. (Engineering Practice Act)",
     peStatuteName: "Rhode Island Engineering Practice Act",
   },
@@ -810,7 +810,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "SCDOT traffic count data; CHATS (Charleston metro), COATS (Columbia metro), or Greenville-Spartanburg MPO travel demand models.",
     methodologyMeetingRequired: false,
     methodologyMeetingNote: "Coordinate with SCDOT District Traffic Engineer for state-highway access permits.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "S.C. Code Ann. § 40-22-10 et seq. (Engineering Practice Act); 49 S.C. Code Ann. Regs. 49-",
     peStatuteName: "South Carolina Engineering Practice Act",
     specialRequirements: [
@@ -831,7 +831,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 20-year design horizon.",
     growthRateNote: "SDDOT traffic count data; applicable MPO (SECOG — Sioux Falls; BHRTS — Rapid City) travel demand model.",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "S.D. Codified Laws § 36-18A-1 et seq. (Engineering Practice Act)",
     peStatuteName: "South Dakota Engineering Practice Act",
   },
@@ -850,7 +850,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "TDOT traffic count data; MPO travel demand models (NERPC — Nashville; Memphis MPO; Knoxville Transportation Planning Organization).",
     methodologyMeetingRequired: false,
     methodologyMeetingNote: "Pre-application coordination with TDOT Regional Traffic Engineer recommended.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "Tenn. Code Ann. § 62-2-101 et seq. (Engineering Practice Act); Tenn. Comp. R. & Regs. 0120-02",
     peStatuteName: "Tennessee Engineering Practice Act",
     specialRequirements: [
@@ -873,7 +873,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "UDOT traffic count data (statewide ATR network); Wasatch Front Regional Council (WFRC) travel demand model for Salt Lake/Davis/Weber/Tooele Counties; Dixie MPO model for St. George area.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "UDOT Access Permit requires a pre-application meeting with the UDOT Region Traffic Engineer under R930-6. Scope and methodology must be agreed before data collection.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "Utah Code § 58-22-101 et seq. (Engineering Practice Act); Utah Admin. Code R156-22",
     peStatuteName: "Utah Engineering Practice Act",
     specialRequirements: [
@@ -894,7 +894,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 10-year design horizon. Act 250 analyses may require longer-range assessment.",
     growthRateNote: "VTrans traffic count data; CCRPC (Chittenden County — Burlington metro) or applicable Regional Planning Commission travel demand data.",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "26 V.S.A. § 1101 et seq. (Engineering Practice Act)",
     peStatuteName: "Vermont Engineering Practice Act",
     specialRequirements: [
@@ -919,7 +919,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "VDOT Traffic Engineering Division historical AADT (VDOT Traffic Count Database); applicable MPO model (TPB — Northern Virginia; HRTPO — Hampton Roads; RRTPO — Richmond; Metropolitan Planning District Commission — Roanoke).",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "24VAC30-155 requires a mandatory pre-application meeting with VDOT District Planning Engineer before any TIA data collection. The scope, study area, analysis methodology, and horizon years must all be agreed in writing (TIA Scope Agreement) before field work begins.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. VDOT may accept local Virginia-specific data from prior approved studies for specific land uses.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). VDOT may accept local Virginia-specific data from prior approved studies for specific land uses.",
     softwareNote: "Synchro/SimTraffic and HCS standard per VDOT Road Design Manual. VISSIM required for some VDOT District 9 (NOVA) interchange studies.",
     peStatuteRef: "Code of Virginia § 54.1-400 et seq. (Engineering Practice Act); 18VAC10-20",
     peStatuteName: "Virginia Engineering Practice Act",
@@ -946,7 +946,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "WSDOT traffic count data (statewide ATR network); PSRC (Puget Sound Regional Council) travel demand model for Central Puget Sound; BFCOG (Tri-Cities), SCog (Spokane), and applicable regional transportation plans for eastern Washington.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "WSDOT Development Services requires a pre-application meeting with the WSDOT Region Development Services staff before data collection. Local GMA jurisdictions may have additional concurrency scoping requirements.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. Seattle has published Seattle-specific trip generation data for some downtown land uses — confirm with SDOT for Seattle projects.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Seattle has published Seattle-specific trip generation data for some downtown land uses — confirm with SDOT for Seattle projects.",
     softwareNote: "Synchro/SimTraffic and HCS standard. WSDOT Region 1 (Puget Sound) may require VISSIM for complex interchange analyses.",
     peStatuteRef: "RCW 18.43.010 et seq. (Engineering Practice Act); WAC 196-26",
     peStatuteName: "Washington Engineering Practice Act",
@@ -970,7 +970,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 20-year design horizon.",
     growthRateNote: "WVDOH traffic count data; applicable MPO (Huntington WV-KY-OH; Morgantown) travel demand model.",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "W. Va. Code § 30-13-1 et seq. (Engineering Practice Act)",
     peStatuteName: "West Virginia Engineering Practice Act",
   },
@@ -989,7 +989,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "WisDOT traffic count data (statewide ATR network); applicable MPO model (SEWRPC — Milwaukee metro; Dane County MPO — Madison; Green Bay MPO).",
     methodologyMeetingRequired: false,
     methodologyMeetingNote: "Coordinate with WisDOT Region Transportation Planning staff for state-highway access.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "Wis. Stat. § 443.01 et seq. (Engineering Practice Act); Wis. Admin. Code A-E 3",
     peStatuteName: "Wisconsin Engineering Practice Act",
     specialRequirements: [
@@ -1010,7 +1010,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     horizons: "Existing + opening year + 20-year design horizon.",
     growthRateNote: "WYDOT traffic count data; energy-sector projects (oil/gas, coal) must account for construction-phase heavy-truck volumes that may far exceed long-term operational traffic.",
     methodologyMeetingRequired: false,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. Energy/extraction land uses require project-specific trip rates.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Energy/extraction land uses require project-specific trip rates.",
     peStatuteRef: "Wyo. Stat. § 33-29-101 et seq. (Engineering Practice Act)",
     peStatuteName: "Wyoming Engineering Practice Act",
   },
@@ -1030,7 +1030,7 @@ const CONFIGS: Record<string, StateTisConfig> = {
     growthRateNote: "DDOT traffic count data; MWCOG (Metropolitan Washington Council of Governments) Travel Demand Model for the Washington metro area.",
     methodologyMeetingRequired: true,
     methodologyMeetingNote: "DDOT requires a pre-application meeting with DDOT Transportation Planning staff before data collection. For PUDs, the Office of Planning coordinates a separate transportation scoping meeting.",
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition. DDOT may require DC-specific mode-share adjustments reflecting high transit use; consult WMATA ridership data and MWCOG model for trip-by-mode estimates.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). DDOT may require DC-specific mode-share adjustments reflecting high transit use; consult WMATA ridership data and MWCOG model for trip-by-mode estimates.",
     softwareNote: "Synchro/SimTraffic and HCS standard. DDOT may require VISSIM for complex multi-modal intersection analyses.",
     peStatuteRef: "D.C. Code § 47-2853.131 et seq. (Engineering Practice); 17 DCMR § 5400",
     peStatuteName: "DC Engineering Practice Act",
@@ -1167,7 +1167,7 @@ function renderTisState(
   // ─── §1 EXECUTIVE SUMMARY ───────────────────────────────────────────────
   stateSection("1.0 EXECUTIVE SUMMARY");
 
-  const execSummary = `This ${cfg.processName} evaluates the transportation impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, ${cfg.stateName}. Analysis follows ${cfg.primaryDoc}${cfg.primaryDocYear ? ` (${cfg.primaryDocYear})` : ""} and applicable ${cfg.agencyAbbrev} standards. The study area encompasses ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmt(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile radius from the site, analyzed for ITE Land Use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) with a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
+  const execSummary = `This ${cfg.processName} evaluates the transportation impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, ${cfg.stateName}. Analysis follows ${cfg.primaryDoc}${cfg.primaryDocYear ? ` (${cfg.primaryDocYear})` : ""} and applicable ${cfg.agencyAbbrev} standards. The study area encompasses ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmt(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile radius from the site, analyzed for Land Use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) with a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
   body(execSummary);
 
   body("Key Findings:", { paragraphGap: 2 });
@@ -1194,7 +1194,7 @@ function renderTisState(
   stateSection("2.0 PROJECT DESCRIPTION");
   kv([
     ["Project name", project.projectName || "—"],
-    ["Land use (ITE)", `${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Land use", `${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°N, ${Math.abs(Number(req.longitude)).toFixed(4)}°W` : "—"],
     ["Jurisdiction", region.displayName],
@@ -1236,7 +1236,7 @@ function renderTisState(
   doc.fillColor("black").moveDown(0.3);
 
   stateSub("3.5 Trip Generation");
-  body(`Trip generation is calculated using the ITE Trip Generation Manual, 11th Edition (${cfg.tripGenSource}), the current edition used in ${cfg.stateName} practice. The ITE rate or equation for Land Use Code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) is applied to a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Pass-by credit of ${fmt(r.passByPctApplied ?? 0)}% and internal capture of ${fmt(r.internalCapturePctApplied ?? 0)}% are applied per ITE Handbook procedures and agreed in the methodology meeting.`);
+  body(`Trip generation is calculated using ${cfg.tripGenSource}, as used in ${cfg.stateName} screening practice. The published rate or equation for Land Use Code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) is applied to a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Pass-by credit of ${fmt(r.passByPctApplied ?? 0)}% and internal capture of ${fmt(r.internalCapturePctApplied ?? 0)}% are applied per standard screening procedures and agreed in the methodology meeting.`);
   doc.moveDown(0.3);
 
   stateSub("3.6 Background Growth Rate");
@@ -1284,11 +1284,11 @@ function renderTisState(
 
   // ─── §5 TRIP GENERATION ──────────────────────────────────────────────────
   stateSection("5.0 TRIP GENERATION ANALYSIS");
-  body(`Trip generation for the proposed ${project.projectName || "development"} was estimated using the ITE Trip Generation Manual, 11th Edition, for ITE Land Use Code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}). A ${fmt(r.passByPctApplied ?? 0)}% pass-by credit and ${fmt(r.internalCapturePctApplied ?? 0)}% internal capture credit are applied per methodology meeting agreement, yielding the following net new external trips:`);
+  body(`Trip generation for the proposed ${project.projectName || "development"} was estimated using public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for Land Use Code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}). A ${fmt(r.passByPctApplied ?? 0)}% pass-by credit and ${fmt(r.internalCapturePctApplied ?? 0)}% internal capture credit are applied per methodology meeting agreement, yielding the following net new external trips:`);
   doc.moveDown(0.3);
 
   kv([
-    ["ITE Land Use Code", `${tg.landUseCode ?? "—"} — ${tg.landUseName ?? "—"}`],
+    ["Land Use Code", `${tg.landUseCode ?? "—"} — ${tg.landUseName ?? "—"}`],
     ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Weekday daily (gross)", fmt(tg.dailyTrips)],
     ["AM peak hour (net new)", `${fmt(tg.amPeakTrips)} trips (${fmt(tg.amIn)} in / ${fmt(tg.amOut)} out)`],
@@ -1480,7 +1480,7 @@ function renderTisState(
   stateSub("Appendices (referenced — not auto-generated)");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
   doc.text("• Appendix A — Methodology Meeting Notes / Scope Letter", { paragraphGap: 2 });
-  doc.text("• Appendix B — Trip Generation Worksheets (ITE 11th Ed.)", { paragraphGap: 2 });
+  doc.text("• Appendix B — Trip Generation Worksheets (public-data rates)", { paragraphGap: 2 });
   doc.text("• Appendix C — Traffic Count Data", { paragraphGap: 2 });
   doc.text("• Appendix D — Intersection Capacity Analysis Output (HCS / Synchro)", { paragraphGap: 2 });
   doc.text("• Appendix E — Signal Warrant Analyses (where applicable)", { paragraphGap: 2 });
@@ -1495,14 +1495,14 @@ function fallbackConfig(region: Region): StateTisConfig {
     agency: "State Department of Transportation",
     agencyAbbrev: "State DOT",
     processName: "Traffic Impact Study (TIS)",
-    primaryDoc: "ITE Trip Generation Manual (11th Ed.); HCM (current edition); AASHTO Policy on Geometric Design of Highways and Streets",
+    primaryDoc: "Public trip-generation data (NHTS 2017 / SANDAG 2002 / NCHRP 716); HCM (current edition); AASHTO Policy on Geometric Design of Highways and Streets",
     losUrban: "D",
     losRural: "C",
     tripThresholdNote: "Confirm applicable threshold with the reviewing agency at the pre-application methodology meeting.",
     horizons: "Existing + opening year + design year (confirm horizon with reviewing agency).",
     growthRateNote: "Derived from historical AADT at state DOT count stations on study-corridor roads.",
     methodologyMeetingRequired: true,
-    tripGenSource: "ITE Trip Generation Manual, 11th Edition.",
+    tripGenSource: "Public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716).",
     peStatuteRef: "State Professional Engineering Practice Act (confirm applicable statute with the state PE licensing board)",
     peStatuteName: "State Professional Engineering Practice Act",
   };

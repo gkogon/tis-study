@@ -108,7 +108,7 @@ export function buildProviders(opts: { locale: ProfileLocale }): ProviderRegistr
 
     tables: {
       landUseSchedule: (ctx): TableData => ({
-        headers: ["Land use", "ITE code", "Size", "Unit"],
+        headers: ["Land use", "Land use code", "Size", "Unit"],
         widths: [240, 80, 90, 90],
         align: ["left", "left", "right", "left"],
         rows: [[s(tg(ctx).landUseName), s(tg(ctx).landUseCode), num(tg(ctx).size), s(tg(ctx).unit)]],

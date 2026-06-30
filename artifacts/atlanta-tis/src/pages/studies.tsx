@@ -26,20 +26,20 @@ const STUDIES: Study[] = [
     href: "/tis",
     title: "Traffic Impact Study",
     blurb:
-      "Screening-level TIS for a candidate site — ITE trip generation, signalized-intersection capacity, recommended mitigations.",
+      "Screening-level TIS for a candidate site — public-data trip generation, signalized-intersection capacity, recommended mitigations.",
     icon: MapPin,
     status: "live",
-    citation: "ITE 11th Ed. · HCM 6th Ed. · MUTCD",
+    citation: "NHTS 2017 / SANDAG 2002 / NCHRP 716 · HCM 6th Ed. · MUTCD",
   },
   {
     id: "parking",
     href: "/studies/parking",
     title: "Parking Demand Study",
     blurb:
-      "Peak parking demand vs. local code minimum vs. proposed supply, with weekday/Saturday hourly profile.",
+      "Being migrated to a public zoning-code basis — temporarily unavailable.",
     icon: ParkingCircle,
-    status: "live",
-    citation: "ITE Parking Generation 5th Ed. · Atlanta Zoning Art. 10",
+    status: "coming-soon",
+    citation: "Public zoning-code minimums (in progress)",
   },
   {
     id: "warrants",

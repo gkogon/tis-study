@@ -46,7 +46,8 @@ export function TisLimitations() {
               counts were used.
             </li>
             <li>
-              Trip generation: ITE Trip Generation Manual, 11th Edition, average weekday rates.
+              Trip generation: public-data average weekday rates (SANDAG 2002, corroborated by
+              NHTS 2017 and NCHRP 716).
             </li>
             <li>
               Capacity analysis: Highway Capacity Manual, 6th Edition, Chapter 19 (signalized
@@ -68,8 +69,8 @@ export function TisLimitations() {
             </li>
             <li>
               No internal capture, pass-by, or mode-shift credits have been applied to project
-              trips. A formal TIS should apply ITE-recommended credits where land-use mix and
-              proximity to transit support them.
+              trips. A formal TIS should apply the controlling agency's recommended credits where
+              land-use mix and proximity to transit support them.
             </li>
             <li>
               All affected intersections are assumed to operate under their existing signal

@@ -19,8 +19,8 @@ export default function LegalTermsPage() {
         The Service is a screening-level traffic-engineering toolset for
         licensed engineering firms operating in the Atlanta MSA. It
         generates outputs based on published industry references including
-        but not limited to ITE Trip Generation Manual 11th Ed., ITE Parking
-        Generation Manual 5th Ed., HCM 6th Ed., MUTCD 2009 (with 2024
+        but not limited to public trip-generation data (NHTS 2017 / SANDAG 2002
+        / NCHRP 716), HCM 6th Ed., MUTCD 2009 (with 2024
         amendments), and AASHTO Green Book 7th Ed. The Service is a
         decision-support tool. Outputs are not stamped engineering
         deliverables and are not certified for submittal to any

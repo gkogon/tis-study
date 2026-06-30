@@ -2,8 +2,8 @@
  * Multi-page methodology + references appendix attached to every printed
  * TIS report. This is what makes the deliverable PE-stampable: every figure
  * in the body of the report is traceable to a numbered section here, and
- * every section here cites a published authority (HCM / ITE / MUTCD /
- * AASHTO / GDOT / NCHRP).
+ * every section here cites a published authority (HCM / NHTS / SANDAG /
+ * NCHRP / MUTCD / AASHTO / GDOT).
  */
 import type { TisReport } from "@workspace/tis-api-client-react";
 import { CITATIONS } from "../lib/tis-citations";
@@ -26,22 +26,26 @@ export function TisMethodologyAppendix({ report }: { report: TisReport }) {
       <CardContent className="space-y-6 text-sm leading-relaxed">
         <Section number="A.1" title="Trip Generation">
           <p>
-            Trip generation rates were taken from the <Cite t="ITE_TG_11" /> for ITE Land Use Code{" "}
+            Trip generation rates are drawn from public, openly-published data sets — primarily the{" "}
+            <Cite t="SANDAG_2002" /> guide, with the residential daily rate corroborated by the{" "}
+            <Cite t="NHTS_2017" /> (5.11 vehicle-trips per household per day) and a per-employee
+            office backstop from <Cite t="NCHRP_716" /> — for land use code{" "}
             <span className="font-mono">{report.tripGeneration.landUseCode}</span> ({report.tripGeneration.landUseName}).
             Daily, AM peak hour, and PM peak hour trips were computed using the average weekday rate
             for the proposed development size of{" "}
             <span className="font-mono">{report.tripGeneration.size} {report.tripGeneration.unit}</span>.
-            Inbound / outbound directional splits at the PM peak hour follow the published
-            ITE distributions for this land-use category <Cite t="ITE_TG_11_LU" />.
+            A few retail/supermarket/bank rates are blended MPO screening guidance; restaurant and
+            fast-food uses are not offered because no clean free rate is available for them.
           </p>
           <Formula>
             T<sub>daily</sub> = R<sub>daily</sub> × Size<br/>
-            T<sub>PM</sub> = R<sub>PM</sub> × Size, split by ITE-published in/out percentages
+            T<sub>PM</sub> = R<sub>PM</sub> × Size, split by published in/out percentages
           </Formula>
           <p className="text-xs text-muted-foreground">
             Trip-generation rates assume a stand-alone, single-use site without internal capture
-            credit, pass-by reductions, or transit / pedestrian mode shifts. A formal TIS would
-            apply ITE-recommended internal capture and pass-by credits per <Cite t="ITE_TG_11" />.
+            credit, pass-by reductions, or transit / pedestrian mode shifts. A formal TIS should
+            confirm rates against the jurisdiction-approved trip-generation source and apply
+            internal-capture and pass-by credits per the controlling agency's methodology.
           </p>
         </Section>
 

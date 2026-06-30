@@ -233,7 +233,10 @@ export type TisTripGenerationVariableConfidence =
   (typeof TisTripGenerationVariableConfidence)[keyof typeof TisTripGenerationVariableConfidence];
 
 export const TisTripGenerationVariableConfidence = {
-  ite_published: "ite_published",
+  nhts_2017: "nhts_2017",
+  sandag_2002: "sandag_2002",
+  nchrp_716: "nchrp_716",
+  blended_mpo: "blended_mpo",
   interpolated: "interpolated",
 } as const;
 

@@ -33,7 +33,7 @@ export default function CitiesPage() {
 
   usePageMeta({
     title: `Cities we cover — ${TOTAL_METROS} metros, ${TOTAL_SIGNALS.toLocaleString()} signals indexed`,
-    description: `Simple Impact Studies indexes every signalized intersection in ${TOTAL_METROS} metros across ${COUNTRIES_COVERED} countries on ${CONTINENTS_COVERED} continents. HCM 6th, ITE 11th, MUTCD. ${tierACount} metros have measured state-DOT AADT calibration.`,
+    description: `Simple Impact Studies indexes every signalized intersection in ${TOTAL_METROS} metros across ${COUNTRIES_COVERED} countries on ${CONTINENTS_COVERED} continents. HCM 6th, public trip-generation data, MUTCD. ${tierACount} metros have measured state-DOT AADT calibration.`,
     canonical: "https://simpleimpactstudies.com/cities",
   });
 
@@ -50,7 +50,7 @@ export default function CitiesPage() {
             Every metro indexed.
           </h1>
           <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl leading-relaxed">
-            Same TIS engine, same HCM / ITE / MUTCD math, every region below.
+            Same TIS engine, same HCM / NHTS / MUTCD math, every region below.
             Click any metro to jump to its detail row.
           </p>
           <div className="pt-2 max-w-xl">

@@ -109,6 +109,28 @@ const PAGE_MARGIN = 50;
 const BRAND_BLUE = "#2563eb";
 const TEXT_GRAY = "#6b7280";
 
+// Human-readable label for a trip-generation rate's provenance. The
+// screening engine sources rates from public data (SANDAG 2002 / NHTS 2017
+// / NCHRP 716); a few retail rates are blended MPO guidance, and secondary
+// independent variables may be interpolated from a defensible ratio. The
+// renderer surfaces this so a reviewing PE can verify the basis.
+function rateConfidenceLabel(c: unknown, note?: string): string | null {
+  switch (c) {
+    case "interpolated":
+      return `Interpolated${note ? ` — ${note}` : ""}`;
+    case "sandag_2002":
+      return "Public data — SANDAG 2002 vehicular trip-generation guide";
+    case "nhts_2017":
+      return "Public data — FHWA NHTS 2017 trend table";
+    case "nchrp_716":
+      return "Public data — NCHRP Report 716 parameter table";
+    case "blended_mpo":
+      return "Blended MPO screening guidance (rough — verify against a jurisdiction-approved rate)";
+    default:
+      return null;
+  }
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // In prod __dirname is dist/, so ../data/fonts works (same convention as
 // atlanta-leads.ts). In tsx/test runs __dirname is src/lib/ so we need
@@ -1114,20 +1136,16 @@ function renderTis(doc: PDFKit.PDFDocument, r: any) {
   doc.moveDown(1);
 
   // PM peak trip generation summary. Independent-variable label is recorded
-  // here so a reviewing PE can verify which ITE 11th rate set the screening
-  // used — primary vs. one of the alternate variables (employees, occupied
-  // rooms, weekly attendees, etc.) added by the multi-variable pass.
+  // here so a reviewing PE can verify which public-data rate set the
+  // screening used — primary vs. one of the alternate variables (employees,
+  // etc.) added by the multi-variable pass.
   section(doc, "PM Peak Trip Generation");
   const tgRowsTop: Array<[string, string]> = [
     ["Independent variable", `${tg.unit ?? "—"} (${tg.unitShort ?? "—"})`],
   ];
-  if (tg.variableConfidence === "interpolated") {
-    tgRowsTop.push([
-      "Rate confidence",
-      `Interpolated${tg.variableNote ? ` — ${tg.variableNote}` : ""}`,
-    ]);
-  } else if (tg.variableConfidence === "ite_published") {
-    tgRowsTop.push(["Rate confidence", "ITE 11th Ed. published"]);
+  {
+    const label = rateConfidenceLabel(tg.variableConfidence, tg.variableNote);
+    if (label) tgRowsTop.push(["Rate basis", label]);
   }
   rows(doc, [
     ...tgRowsTop,
@@ -1220,7 +1238,7 @@ function renderTis(doc: PDFKit.PDFDocument, r: any) {
     { paragraphGap: 4 },
   );
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
-  doc.text(`• Trip-generation method (rate vs. equation per ITE Trip Generation Handbook Fig. 4.2) — equation preferred when the ITE plot has ≥ 20 data points or R² ≥ 0.75 with the fitted curve falling within the data cluster.`, { paragraphGap: 2 });
+  doc.text(`• Trip-generation method (rate vs. equation per standard fitted-curve-vs-average screening methodology) — equation preferred when the rate plot has ≥ 20 data points or R² ≥ 0.75 with the fitted curve falling within the data cluster.`, { paragraphGap: 2 });
   doc.text(`• Internal capture credit: ${r.internalCapturePctApplied ?? 0}% applied. Removing the credit increases assigned external trips at the affected intersections; confirm internal capture % at the scoping methodology meeting.`, { paragraphGap: 2 });
   doc.text(`• Pass-by credit: ${r.passByPctApplied ?? 0}% applied. Removing the credit increases assigned external trips proportionally; confirm at scoping. (Florida sites: pass-by cannot exceed 10% of adjacent peak-hour two-way street traffic per MTSIH 2024 §4.6.6.6.)`, { paragraphGap: 2 });
   doc.text(`• Background growth rate: ${r.growthAppliedPct ?? "—"}%/yr applied. A ±0.5%/yr variation would shift buildout-year volumes proportionally; the LOS-deficient list is expected to be stable within that band when v/c margins at the worst-impact location exceed 0.05.`, { paragraphGap: 6 });
@@ -1317,7 +1335,7 @@ function renderTisGeorgia(
   doc.font("body").fontSize(10).fillColor("black");
   const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
   const losEf = Number(r.intersectionsAtLosEf ?? 0);
-  const summary = `This report presents the analysis of anticipated traffic impacts associated with the proposed ${project.projectName || "development"} located within ${region.displayName}, Georgia. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius using methodology consistent with the Highway Capacity Manual 6th Edition and Institute of Transportation Engineers' Trip Generation Manual 11th Edition. Trip generation is calculated for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
+  const summary = `This report presents the analysis of anticipated traffic impacts associated with the proposed ${project.projectName || "development"} located within ${region.displayName}, Georgia. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius using methodology consistent with the Highway Capacity Manual 6th Edition and public-data trip-generation screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Trip generation is calculated for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
   doc.text(summary, { paragraphGap: 6 });
 
   doc.font("body").fontSize(10).fillColor("black").text("Findings:", { paragraphGap: 2 });
@@ -1352,7 +1370,7 @@ function renderTisGeorgia(
   gaSubsection(doc, "1.2 Site Plan Review");
   rows(doc, [
     ["Project name", project.projectName || "—"],
-    ["Land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
     ["Opening year", String(req.openingYear ?? "—")],
@@ -1438,7 +1456,7 @@ function renderTisGeorgia(
 
   gaSubsection(doc, "3.1 Gross Trip Generation");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Gross trip generation is calculated per the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Average rates are used where ITE-published equations are not available.`,
+    `Gross trip generation is calculated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Average rates are used where fitted-curve equations are not available.`,
     { paragraphGap: 6 },
   );
   table(doc, {
@@ -1498,23 +1516,19 @@ function renderTisGeorgia(
   // --- §4 Trip Generation (detailed) -------------------------------------
   gaSection(doc, "4.0 TRIP GENERATION");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Net new trips applied to the study network are calculated by subtracting pass-by capture and internal capture from the gross trip generation, per the ITE Trip Generation Handbook (current edition).",
+    "Net new trips applied to the study network are calculated by subtracting pass-by capture and internal capture from the gross trip generation. Gross trip rates are drawn from public data (SANDAG 2002 / NHTS 2017 / NCHRP 716); a submittal-grade study should confirm rates against the jurisdiction-approved source.",
     { paragraphGap: 6 },
   );
-  // Surface which ITE 11th independent variable the screening used so the
+  // Surface which public-data independent variable the screening used so the
   // reviewing engineer can verify the assumption (GRTA reviewers ask for
-  // this explicitly). Interpolated secondaries are flagged so the
-  // submittal-grade study can re-run against the primary if needed.
+  // this explicitly). Interpolated/blended secondaries are flagged so the
+  // submittal-grade study can re-run against an approved rate if needed.
   const gaTopRows: Array<[string, string]> = [
     ["Independent variable", `${tg.unit ?? "—"} (${tg.unitShort ?? "—"})`],
   ];
-  if (tg.variableConfidence === "interpolated") {
-    gaTopRows.push([
-      "Rate confidence",
-      `Interpolated${tg.variableNote ? ` — ${tg.variableNote}` : ""}`,
-    ]);
-  } else if (tg.variableConfidence === "ite_published") {
-    gaTopRows.push(["Rate confidence", "ITE 11th Ed. published"]);
+  {
+    const label = rateConfidenceLabel(tg.variableConfidence, tg.variableNote);
+    if (label) gaTopRows.push(["Rate basis", label]);
   }
   rows(doc, [
     ...gaTopRows,
@@ -1523,10 +1537,10 @@ function renderTisGeorgia(
     ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
     ["Weather condition", String(r.weather ?? req.weather ?? "clear")],
   ]);
-  if (tg.variableConfidence === "interpolated") {
+  if (tg.variableConfidence === "interpolated" || tg.variableConfidence === "blended_mpo") {
     doc.moveDown(0.3);
     doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
-      "Note: trip rate for the chosen independent variable was derived from a defensible engineering ratio rather than transcribed directly from the ITE 11th Edition tables. A submittal-grade study should verify this assumption against the primary published variable for this code.",
+      "Note: the trip rate for the chosen independent variable was derived from a defensible engineering ratio or blended MPO screening guidance rather than a single jurisdiction-approved published rate. A submittal-grade study should verify this assumption against the controlling agency's approved trip-generation source for this land use.",
       { paragraphGap: 4 },
     );
     doc.fillColor("black");
@@ -1998,7 +2012,7 @@ function statusLabel(s: ScreeningCriterionStatus): string {
 /**
  * OPR § E.1 six-criteria boolean cascade. Auto-determines the
  * criteria the engine can evaluate from project metadata
- * (trip count, ITE land-use code, size). Flags GIS-dependent
+ * (trip count, land-use code, size). Flags GIS-dependent
  * criteria (TPA, low-VMT map, redevelopment baseline) as
  * "Requires verification" with the data source named.
  */
@@ -2039,26 +2053,26 @@ function caVmtScreening(
     note: "Consult the host jurisdiction's published low-VMT screening map (e.g., SCAG HELPR 3.0; SANDAG SB 743 portal; LADOT VMT Calculator zone lookup; Fresno COG screening tool). Auto-screening from project lat/lon not implemented in this Phase-2 slice.",
   });
 
-  // (4) Locally-serving retail <50 ksf — auto-evaluable when ITE codes a retail use
+  // (4) Locally-serving retail <50 ksf — auto-evaluable when the land-use code is a retail use
   if (isRetail) {
     if (Number.isFinite(sizeKsf)) {
       results.push({
         label: "Locally-serving retail <50,000 sf (LA County / OPR convention)",
         status: sizeKsf < 50 ? "screened_out" : "not_screened_out",
-        note: `Project is ITE land use ${luCode} (retail category) at ${sizeKsf} ksf. Threshold: 50 ksf.`,
+        note: `Project is land use ${luCode} (retail category) at ${sizeKsf} ksf. Threshold: 50 ksf.`,
       });
     } else {
       results.push({
         label: "Locally-serving retail <50,000 sf",
         status: "requires_verification",
-        note: `Project is ITE land use ${luCode} (retail) but size unit (${unit || "—"}) is not in ksf; cannot auto-compare. Convert to ksf and reapply.`,
+        note: `Project is land use ${luCode} (retail) but size unit (${unit || "—"}) is not in ksf; cannot auto-compare. Convert to ksf and reapply.`,
       });
     }
   } else {
     results.push({
       label: "Locally-serving retail <50,000 sf",
       status: "not_applicable",
-      note: `Project is ITE land use ${luCode}${isResidential ? " (residential)" : ""}, not a retail category. This criterion applies only to local-serving retail uses.`,
+      note: `Project is land use ${luCode}${isResidential ? " (residential)" : ""}, not a retail category. This criterion applies only to local-serving retail uses.`,
     });
   }
 
@@ -2067,13 +2081,13 @@ function caVmtScreening(
     results.push({
       label: "100% affordable residential infill (OPR Tech Advisory p. 14–15)",
       status: "requires_verification",
-      note: "Project is ITE residential. Applicant must attest to 100% affordable unit mix + infill-location qualification. Not auto-determined from ITE land use alone.",
+      note: "Project is residential. Applicant must attest to 100% affordable unit mix + infill-location qualification. Not auto-determined from land use alone.",
     });
   } else {
     results.push({
       label: "100% affordable residential infill",
       status: "not_applicable",
-      note: `Project is ITE land use ${luCode}, not residential.`,
+      note: `Project is land use ${luCode}, not residential.`,
     });
   }
 
@@ -2181,7 +2195,7 @@ function renderTisCalifornia(
   caSubsection(doc, "1.2 Project Summary");
   rows(doc, [
     ["Project name", project.projectName || "—"],
-    ["Land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
     ["Opening year", String(req.openingYear ?? "—")],
@@ -2262,7 +2276,7 @@ function renderTisCalifornia(
 
   caSubsection(doc, "3.3 Auto-Screening Cascade (OPR § E.1, p. 12–14)");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `The six OPR screening criteria below are auto-evaluated against project metadata where the engine has the inputs (daily trip count, ITE land-use category, project size). Criteria that require GIS layers the engine does not yet ingest (Transit Priority Area, low-VMT TAZ map, prior-use VMT for redevelopment) are flagged "Requires verification" with the data source named. If ANY criterion resolves to "Screened out," the project is presumed less-than-significant for CEQA-VMT purposes and a full VMT impact analysis is not required.`,
+    `The six OPR screening criteria below are auto-evaluated against project metadata where the engine has the inputs (daily trip count, land-use category, project size). Criteria that require GIS layers the engine does not yet ingest (Transit Priority Area, low-VMT TAZ map, prior-use VMT for redevelopment) are flagged "Requires verification" with the data source named. If ANY criterion resolves to "Screened out," the project is presumed less-than-significant for CEQA-VMT purposes and a full VMT impact analysis is not required.`,
     { paragraphGap: 6 },
   );
 
@@ -2395,12 +2409,12 @@ function renderTisCalifornia(
   caSubsection(doc, "4.2 Trip Generation");
   if (r.growthSource) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Gross trip generation is calculated per the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Background traffic growth is applied at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from measured per-segment compound annual growth at Caltrans count stations within the study metro. Source: ${r.growthSource}. Pass-by capture applied: ${r.passByPctApplied ?? 0}%; internal capture applied: ${r.internalCapturePctApplied ?? 0}%.`,
+      `Gross trip generation is calculated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Background traffic growth is applied at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from measured per-segment compound annual growth at Caltrans count stations within the study metro. Source: ${r.growthSource}. Pass-by capture applied: ${r.passByPctApplied ?? 0}%; internal capture applied: ${r.internalCapturePctApplied ?? 0}%.`,
       { paragraphGap: 6 },
     );
   } else {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Gross trip generation is calculated per the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Background traffic growth is applied at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. Pass-by capture applied: ${r.passByPctApplied ?? 0}%; internal capture applied: ${r.internalCapturePctApplied ?? 0}%.`,
+      `Gross trip generation is calculated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Background traffic growth is applied at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. Pass-by capture applied: ${r.passByPctApplied ?? 0}%; internal capture applied: ${r.internalCapturePctApplied ?? 0}%.`,
       { paragraphGap: 6 },
     );
   }
@@ -2674,7 +2688,7 @@ function renderTisCaliforniaWorksheet(
   );
   rows(doc, [
     ["Project name", project.projectName || "—"],
-    ["Land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
     ["Opening year", String(req.openingYear ?? "—")],
@@ -2789,7 +2803,7 @@ function renderTisGeorgiaWorksheet(
   // --- §2 Existing / Proposed Land Use ---------------------------------
   gaSection(doc, "2.0 EXISTING AND PROPOSED LAND USE");
   rows(doc, [
-    ["Proposed ITE land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Proposed land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Proposed development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Existing land use", "Subject to site verification (Gwinnett Level 1 does not require existing-use trip credit)"],
   ]);
@@ -2798,7 +2812,7 @@ function renderTisGeorgiaWorksheet(
   // --- §3 Trip Generation Estimate -------------------------------------
   gaSection(doc, "3.0 TRIP GENERATION ESTIMATE");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Trip generation is estimated per the ITE Trip Generation Manual (current edition) for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. No pass-by or internal capture credits have been applied at this screening tier (Gwinnett Level 1 explicitly excludes those from the worksheet scope).`,
+    `Trip generation is estimated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. No pass-by or internal capture credits have been applied at this screening tier (Gwinnett Level 1 explicitly excludes those from the worksheet scope).`,
     { paragraphGap: 6 },
   );
   table(doc, {
@@ -2915,7 +2929,7 @@ function renderTisGeorgiaAbbreviated(
   // --- §2 Existing and Proposed Land Use --------------------------------
   gaSection(doc, "2.0 EXISTING AND PROPOSED LAND USE");
   rows(doc, [
-    ["Proposed ITE land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Proposed land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Proposed development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Existing land use", "Subject to site verification (existing-use trip credit may apply at this tier; confirm with reviewing agency)"],
   ]);
@@ -2924,19 +2938,15 @@ function renderTisGeorgiaAbbreviated(
   // --- §3 Trip Generation Estimate --------------------------------------
   gaSection(doc, "3.0 TRIP GENERATION ESTIMATE");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Trip generation is estimated per the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`,
+    `Trip generation is estimated from public-data screening rates (SANDAG 2002 / NHTS 2017 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`,
     { paragraphGap: 6 },
   );
   const gaAbbrTopRows: Array<[string, string]> = [
     ["Independent variable", `${tg.unit ?? "—"} (${tg.unitShort ?? "—"})`],
   ];
-  if (tg.variableConfidence === "interpolated") {
-    gaAbbrTopRows.push([
-      "Rate confidence",
-      `Interpolated${tg.variableNote ? ` — ${tg.variableNote}` : ""}`,
-    ]);
-  } else if (tg.variableConfidence === "ite_published") {
-    gaAbbrTopRows.push(["Rate confidence", "ITE 11th Ed. published"]);
+  {
+    const label = rateConfidenceLabel(tg.variableConfidence, tg.variableNote);
+    if (label) gaAbbrTopRows.push(["Rate basis", label]);
   }
   rows(doc, gaAbbrTopRows);
   doc.moveDown(0.3);
@@ -3091,7 +3101,7 @@ function renderTisGeorgiaAbbreviated(
   }
   doc.moveDown(0.3);
   doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
-    "Pass-by and internal capture rates follow the ITE Trip Generation Handbook (current edition) for the applicable land use. Where the screened rate exceeds the ITE Handbook 85th-percentile value, the reduction is held back to the 85th percentile.",
+    "Pass-by and internal capture rates follow standard pass-by / internal-capture screening methodology for the applicable land use. Where the screened rate exceeds the published 85th-percentile screening value, the reduction is held back to the 85th percentile.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
@@ -3374,8 +3384,9 @@ function renderTisLondon(
   // Within-day office trip profile for the Fig 2-1 / Fig 6-2 figures. The London
   // renderer uses the LTDS/Velocity (TfL LTDS 2019) office shape via locale "uk"
   // — the only renderer permitted to print that provenance; profileForLandUse
-  // gates it (US renderers get the ITE TGM shape). distributeDaily spreads the
-  // engine's gross daily ITE trip generation across the published office curve.
+  // gates it (US renderers ship no office shape and omit the office figure).
+  // distributeDaily spreads the engine's gross daily screening trip generation
+  // across the published office curve.
   const diurnalSel = profileForLandUse(code, (req as any).tripProfile, "uk");
   const drawDiurnal = diurnalSel.matched && Number.isFinite(Number(tg.dailyTrips)) && Number(tg.dailyTrips) > 0;
   const diurnalHourly = drawDiurnal ? distributeDaily(Number(tg.dailyTrips ?? 0), diurnalSel.profile) : null;
@@ -3592,7 +3603,7 @@ function renderTisLondon(
   );
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
   doc.text("• Capacity is reported using the UK signalised method (TRL RR67 / OSCADY–LinSig) per DMRB CD 123, NOT the Highway Capacity Manual: §5.4 gives Degree of Saturation (DoS), Practical Reserve Capacity (PRC = (0.9/DoS − 1)·100) and Mean Maximum Queue (MMQ) in PCU. Because the screening engine models every junction as signalised, the DoS is the engine's calibrated saturation ratio (its v/c) — a faithful UK signalised result, not an HCM cross-reference. Two limits remain for a submitted TA: (a) any junction that is in fact a roundabout or priority junction must be re-run in ARCADY (Kimber LR942, per DMRB CD 116) or PICADY (gap-acceptance) — both models are implemented and route automatically once junction control type is supplied, but until then are evaluated against DMRB default geometry and report Ratio of Flow to Capacity (RFC); and (b) a formal submission validates the signalised arms in LinSig 3 / TRANSYT 16 / Junctions 11 with the site's measured lane geometry, stage/phase diagram and saturation-flow survey rather than the engine's 1,900 PCU/h RR67 base and 0.45 green ratio.", { paragraphGap: 4 });
-  doc.text("• Trip generation uses the ITE Trip Generation Manual 11th Edition — NOT TRICS. UK reviewers do not accept ITE rates for TA work. The required source is the TRICS multi-modal database (currently TRICS 8 generation, base release March 2025, with the TRICS Good Practice Guide 2025 and Multi-Modal Methodology 2025 as the governing methodology, and the TRICS Decide & Provide Guidance Note 2021 for vision-led applications). The 85th-percentile rate remains the conventional UK starting point in TA practice, cited from DfT 2007 §4.62 (withdrawn October 2014 but still the de-facto reference); TRICS itself is methodologically neutral on which percentile to use and recommends ≥ 20 surveys in the rank-order list before 85th-percentile figures are quoted (TRICS Good Practice Guide 2025 §14.5–14.7). The scenario filter recorded for reviewer audit is date band, TRICS Main Location Type, day type, parking provision, GFA range, and any survey-day inclusion/exclusion decision on COVID-restriction surveys (which TRICS flags in the database but does not auto-exclude — user judgement, reason for any exclusion stated in the report, per Good Practice Guide §16.6). \"Region\" alone is no longer recommended as an exclusion criterion (Good Practice Guide §5.5–5.7) and TRICS 8 no longer allows exclusion on the basis of region or area alone. Three reporting-discipline elements must accompany any TRICS rates cited in a submitted TA: (i) the TRICS Calculation Reference code and licensee TRICS licence number, both auto-printed on every page of the TRICS PDF output (GPG §13.8 + §22.7) — reports lacking either are inadmissible per TRICS T&Cs; (ii) Cross Test results (mean vs median trip-rate variation %, GPG §14.8) reported alongside the rates so the reviewer can assess weighting/bias in the selected set; and (iii) where Vision-Led / Decide & Provide factoring has been applied to the TRICS-generated rates, the raw TRICS data is presented first and the factored data second, with the factoring method and reasoning explicit (GPG §10.7) — factored figures are not TRICS data. Per the 19 May 2026 TRICS licence-monitoring notice, TRICS will contact the LPA to advise that TRICS data is to be rejected as void if cited by a non-licensed organisation; the submitting consultancy's TRICS licence and produced-by attestation must be in the report.", { paragraphGap: 4 });
+  doc.text("• Trip generation uses US public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) — NOT TRICS. UK reviewers do not accept US screening rates for TA work. The required source is the TRICS multi-modal database (currently TRICS 8 generation, base release March 2025, with the TRICS Good Practice Guide 2025 and Multi-Modal Methodology 2025 as the governing methodology, and the TRICS Decide & Provide Guidance Note 2021 for vision-led applications). The 85th-percentile rate remains the conventional UK starting point in TA practice, cited from DfT 2007 §4.62 (withdrawn October 2014 but still the de-facto reference); TRICS itself is methodologically neutral on which percentile to use and recommends ≥ 20 surveys in the rank-order list before 85th-percentile figures are quoted (TRICS Good Practice Guide 2025 §14.5–14.7). The scenario filter recorded for reviewer audit is date band, TRICS Main Location Type, day type, parking provision, GFA range, and any survey-day inclusion/exclusion decision on COVID-restriction surveys (which TRICS flags in the database but does not auto-exclude — user judgement, reason for any exclusion stated in the report, per Good Practice Guide §16.6). \"Region\" alone is no longer recommended as an exclusion criterion (Good Practice Guide §5.5–5.7) and TRICS 8 no longer allows exclusion on the basis of region or area alone. Three reporting-discipline elements must accompany any TRICS rates cited in a submitted TA: (i) the TRICS Calculation Reference code and licensee TRICS licence number, both auto-printed on every page of the TRICS PDF output (GPG §13.8 + §22.7) — reports lacking either are inadmissible per TRICS T&Cs; (ii) Cross Test results (mean vs median trip-rate variation %, GPG §14.8) reported alongside the rates so the reviewer can assess weighting/bias in the selected set; and (iii) where Vision-Led / Decide & Provide factoring has been applied to the TRICS-generated rates, the raw TRICS data is presented first and the factored data second, with the factoring method and reasoning explicit (GPG §10.7) — factored figures are not TRICS data. Per the 19 May 2026 TRICS licence-monitoring notice, TRICS will contact the LPA to advise that TRICS data is to be rejected as void if cited by a non-licensed organisation; the submitting consultancy's TRICS licence and produced-by attestation must be in the report.", { paragraphGap: 4 });
   doc.text("• Level of Service is reported as letters A–F against the HCM Exhibit 19-8 control-delay thresholds (A ≤ 10 s, B ≤ 20 s, C ≤ 35 s, D ≤ 55 s, E ≤ 80 s, F > 80 s of average control delay per vehicle). LOS letters are not used in UK TA practice; the thresholds are given here so a UK reviewer can map them informally to the delay categories they recognise.", { paragraphGap: 4 });
   {
     const appliedShare = Number(r.autoModeShareApplied);
@@ -3603,7 +3614,7 @@ function renderTisLondon(
     const ptalClause = band
       ? `driven by the supplied PTAL ${band} band (engine PTAL-band lookup against the curve calibrated to TfL Travel in London plus three published London TAs — Holloway PTAL 6a 985-unit car-free, Registry Beckenham PTAL 5 134-unit with parking, Hyde Estate PTAL 2 115-unit with parking)`
       : `no PTAL band was supplied for this run so the flat London-wide average has been applied (TfL Travel in London), which materially over-states car-mode demand at inner-London high-PTAL sites — the run should be re-issued with the site's PTAL band`;
-    doc.text(`• Sustainable-mode demand is approximated through a metro-specific auto-mode-share factor (${sharePct} applied for London, per the engine's mode-share configuration sourced from TfL Travel in London). The external-trip totals shown below already reflect that ${sharePct} reduction from the gross ITE rate — ${ptalClause}. This is a screening-level approximation in place of the full multi-modal split (walking / cycling / bus / rail / car / taxi / motorcycle / LGV / HGV) that a UK TA is required to demonstrate under NPPF paragraph 115.`, { paragraphGap: 4 });
+    doc.text(`• Sustainable-mode demand is approximated through a metro-specific auto-mode-share factor (${sharePct} applied for London, per the engine's mode-share configuration sourced from TfL Travel in London). The external-trip totals shown below already reflect that ${sharePct} reduction from the gross screening rate — ${ptalClause}. This is a screening-level approximation in place of the full multi-modal split (walking / cycling / bus / rail / car / taxi / motorcycle / LGV / HGV) that a UK TA is required to demonstrate under NPPF paragraph 115.`, { paragraphGap: 4 });
   }
   doc.text("• Geometric design citations in the engine's output are HCM and AASHTO; UK chartered review would substitute DMRB CD 109 / CD 116 / CD 122 / CD 123 (trunk) and Manual for Streets / Manual for Streets 2 (urban / residential).", { paragraphGap: 4 });
   doc.text("• Units are metric where derivable; some engine-generated fields remain in imperial (queue 95th-percentile reported in feet rather than MMQ in PCUs) and are flagged inline.", { paragraphGap: 4 });
@@ -3690,7 +3701,7 @@ function renderTisLondon(
   ldnSubsection(doc, "3.1 Introduction");
   rows(doc, [
     ["Scheme", project.projectName || "—"],
-    ["Land use (ITE proxy)", `${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Land use (public-data proxy)", `${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
     ["Opening year", String(req.openingYear ?? "—")],
@@ -3910,7 +3921,7 @@ function renderTisLondon(
       : "Any trips generated by the site's existing / most-recent lawful use should be netted from the proposed demand below (set TisRequest.priorUse to surface this).");
   }
 
-  ldnSubsection(doc, isLondon ? "6.5 Travel Demand / Trip Generation (TRICS proxy — engine ITE 11th Edition)" : "5.3 Residential Travel Demand (TRICS proxy — engine ITE 11th Edition)");
+  ldnSubsection(doc, isLondon ? "6.5 Travel Demand / Trip Generation (TRICS proxy — engine uses US public-data rates)" : "5.3 Residential Travel Demand (TRICS proxy — engine uses US public-data rates)");
   {
     const appliedShare = Number(r.autoModeShareApplied);
     const sharePct = Number.isFinite(appliedShare) && appliedShare > 0
@@ -3921,7 +3932,7 @@ function renderTisLondon(
       ? `the PTAL ${band}–specific London auto-mode-share factor of ${sharePct}`
       : `the flat London-wide ${sharePct} auto-mode-share factor (no PTAL band supplied — band-specific share would refine this materially at high-PTAL inner-London sites)`;
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Gross trip generation in this report is calculated per the ITE Trip Generation Manual 11th Edition for land-use code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. The TRICS-equivalent multi-modal table — person-trips by mode (Cars, Taxis, Motor Cycles, LGVs, OGVs, PSVs, Cyclists, Scooters, Pedestrians, plus the London public-transport split into Bus, Tram, Underground, Overground, National Rail, DLR and Water Service Passengers), linked PT trips, mean and 85th-percentile rate against the agreed TRICS filter — is not produced by this engine and must be prepared separately for any submitted TA. The figures below represent the engine's car-mode estimate after ${bandClause} has been applied to net out walking, cycling, bus, rail and other modes.`,
+      `Gross trip generation in this report is calculated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land-use code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. The TRICS-equivalent multi-modal table — person-trips by mode (Cars, Taxis, Motor Cycles, LGVs, OGVs, PSVs, Cyclists, Scooters, Pedestrians, plus the London public-transport split into Bus, Tram, Underground, Overground, National Rail, DLR and Water Service Passengers), linked PT trips, mean and 85th-percentile rate against the agreed TRICS filter — is not produced by this engine and must be prepared separately for any submitted TA. The figures below represent the engine's car-mode estimate after ${bandClause} has been applied to net out walking, cycling, bus, rail and other modes.`,
       { paragraphGap: 6 },
     );
     if (isLondon) {
@@ -4625,7 +4636,7 @@ function renderLondonTransportStatement(
 
   ldnSubsection(doc, "1.2 Methodology Cross-Reference and Disclosure");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "The analysis is generated by a screening engine calibrated to United States standards and is presented as a cross-reference to UK methodology, not as a substitute for it. Capacity analysis uses the HCM 6th Edition (Ch. 19, signalised junctions) rather than DMRB CD 116 / CD 123; trip generation uses the ITE Trip Generation Manual 11th Edition rather than TRICS 8; LOS letters A–F are reported against the HCM Exhibit 19-8 control-delay thresholds. A chartered engineer preparing a submittable TS should re-run the affected junctions in LinSig 3 / Junctions 11 with TRICS multi-modal trip rates filtered per the TRICS Good Practice Guide 2025.",
+    "The analysis is generated by a screening engine calibrated to United States standards and is presented as a cross-reference to UK methodology, not as a substitute for it. Capacity analysis uses the HCM 6th Edition (Ch. 19, signalised junctions) rather than DMRB CD 116 / CD 123; trip generation uses US public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) rather than TRICS 8; LOS letters A–F are reported against the HCM Exhibit 19-8 control-delay thresholds. A chartered engineer preparing a submittable TS should re-run the affected junctions in LinSig 3 / Junctions 11 with TRICS multi-modal trip rates filtered per the TRICS Good Practice Guide 2025.",
     { paragraphGap: 6 },
   );
   doc.moveDown(0.3);
@@ -4634,7 +4645,7 @@ function renderLondonTransportStatement(
   ldnSubsection(doc, "2.1 Site Identification");
   rows(doc, [
     ["Scheme", project.projectName || "—"],
-    ["Land use (ITE proxy)", `${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Land use (public-data proxy)", `${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
     ["Opening year", String(req.openingYear ?? "—")],
@@ -4656,7 +4667,7 @@ function renderLondonTransportStatement(
 
   ldnSection(doc, "3.0 PROPOSED DEVELOPMENT");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `The proposed scheme is a ${tg.landUseName ?? "—"} (ITE land use ${tg.landUseCode ?? "—"}) of ${tg.size ?? "—"} ${tg.unit ?? ""} at the address above. The scheme size sits within the Appendix B TS band for the use class (${sizeRule}). Access, servicing arrangements and any Travel Plan commitments are bespoke to the planning submission and should be drawn from the architectural and access drawings at the chartered-engineer stage.`,
+    `The proposed scheme is a ${tg.landUseName ?? "—"} (land use ${tg.landUseCode ?? "—"}) of ${tg.size ?? "—"} ${tg.unit ?? ""} at the address above. The scheme size sits within the Appendix B TS band for the use class (${sizeRule}). Access, servicing arrangements and any Travel Plan commitments are bespoke to the planning submission and should be drawn from the architectural and access drawings at the chartered-engineer stage.`,
     { paragraphGap: 6 },
   );
   if (req.priorUse) {
@@ -4670,7 +4681,7 @@ function renderLondonTransportStatement(
 
   ldnSection(doc, "4.0 TRIP GENERATION");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Gross trip generation is calculated per the ITE Trip Generation Manual 11th Edition for land-use code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. A submittable TS would substitute TRICS 8 multi-modal rates filtered per the TRICS Good Practice Guide 2025; the figures below are screening-level estimates after the London 38% auto-mode-share factor has been applied.`,
+    `Gross trip generation is calculated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land-use code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. A submittable TS would substitute TRICS 8 multi-modal rates filtered per the TRICS Good Practice Guide 2025; the figures below are screening-level estimates after the London 38% auto-mode-share factor has been applied.`,
     { paragraphGap: 6 },
   );
   table(doc, {
@@ -4959,7 +4970,7 @@ function renderTisTexasWorksheet(
   // --- §2 Existing / Proposed Land Use ---------------------------------
   gaSection(doc, "2.0 EXISTING AND PROPOSED LAND USE");
   rows(doc, [
-    ["Proposed ITE land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Proposed land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Proposed development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Existing land use", "Subject to site verification — no existing-use trip credit applied at the worksheet tier."],
   ]);
@@ -4968,7 +4979,7 @@ function renderTisTexasWorksheet(
   // --- §3 Trip Generation Estimate -------------------------------------
   gaSection(doc, "3.0 TRIP GENERATION ESTIMATE");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Trip generation is estimated per the ITE Trip Generation Manual 11th Ed. for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. No pass-by or internal capture credits are applied at the worksheet tier — those reductions belong in the formal Full TIA where one is required.`,
+    `Trip generation is estimated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. No pass-by or internal capture credits are applied at the worksheet tier — those reductions belong in the formal Full TIA where one is required.`,
     { paragraphGap: 6 },
   );
   table(doc, {
@@ -5008,7 +5019,7 @@ function renderTisTexasWorksheet(
     houston: "Per Houston IDM Ch. 15, the Access Management Data Summary Form (embedded in IDM pp. 15-5 to 15-8) is required for all commercial site driveways regardless of TIA tier — driveway spacing, throat depth, and turn-lane assessment must be submitted as a companion to this worksheet. CPC 101 Form is also required per the OCE TIA Content Guide p. 3. Where any site frontage is on a TxDOT route (IH / US / SH / FM / RM / BU / BS / SL / SS), a parallel DAP application is required.",
     austin: "Per Transportation Criteria Manual §10, even at the Determination Worksheet tier the consultant should verify the adjacent transit/bike network against the Austin Strategic Mobility Plan, fronting-street classification against the Future Land Use Map, and any AISD school-zone overlays. The City of Austin TIA Guidelines (June 2022) Sustainable Modes Analysis is not required at this tier but should be summarized informally.",
     dallas: "Per Development Code §51A-4.803, the Site Plan Review tracks the substantive engineering items even when a TIS is waived: adjacent access spacing, intersection sight distance, sidewalk continuity, and any Connect Dallas multimodal corridors abutting the site. The TIS Waiver form should be filed concurrently with the engineering site plan via ProjectDox.",
-    fortworth: "Per the FW Transportation Engineering Manual (June 2019), the TIA Worksheet requires: (a) trip generation table; (b) site access geometry against the Master Thoroughfare Plan classification; (c) ITE pass-by/internal-capture justification (often n/a at this tier); (d) any NCTCOG Regional Thoroughfare Plan corridors abutting the site; (e) driveway sight distance and posted-speed verification. The full set should be carried into the formal submittal.",
+    fortworth: "Per the FW Transportation Engineering Manual (June 2019), the TIA Worksheet requires: (a) trip generation table; (b) site access geometry against the Master Thoroughfare Plan classification; (c) pass-by/internal-capture justification (often n/a at this tier); (d) any NCTCOG Regional Thoroughfare Plan corridors abutting the site; (e) driveway sight distance and posted-speed verification. The full set should be carried into the formal submittal.",
     sanantonio: "Per UDC §35-502, the Peak Hour Trip Generation Form pairs with a Turn Lane Assessment evaluating right-turn deceleration and left-turn warrant on each fronting roadway. The pre-submittal scoping meeting with TCI + Public Works + Planning is mandatory regardless of TIA tier; this worksheet is the input to that meeting.",
     txdot: "Per ACM Ch. 2 §3 (Table 2-2 connection spacing) and ACM Ch. 2 §4 (driveway permits), driveway spacing, geometry, and auxiliary lanes are reviewed at the DAP stage on any state-system frontage. Roadway Design Manual Ch. 16 (driveways) and Ch. 2 (sight distance) govern the geometric design.",
   }[juris];
@@ -5112,7 +5123,7 @@ function renderTisTexasAbbreviated(
   // --- §2 Existing / Proposed Land Use ---------------------------------
   gaSection(doc, "2.0 EXISTING AND PROPOSED LAND USE");
   rows(doc, [
-    ["Proposed ITE land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Proposed land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Proposed development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Existing land use", "Subject to site verification — abbreviated-tier credit handled per the host jurisdiction's TIA standard."],
   ]);
@@ -5121,7 +5132,7 @@ function renderTisTexasAbbreviated(
   // --- §3 Trip Generation ---------------------------------------------
   gaSection(doc, "3.0 TRIP GENERATION ESTIMATE");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Trip generation is estimated per the ITE Trip Generation Manual 11th Ed. for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. At the abbreviated tier, pass-by and internal-capture credits per ITE Trip Generation Handbook 3rd Ed. Fig. 4.2 are applied where supported by the land use and adjacent network context.`,
+    `Trip generation is estimated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. At the abbreviated tier, pass-by and internal-capture credits per standard pass-by / internal-capture screening methodology are applied where supported by the land use and adjacent network context.`,
     { paragraphGap: 6 },
   );
   table(doc, {
@@ -5365,7 +5376,7 @@ function renderTisTexas(
   doc.font("body").fontSize(10).fillColor("black");
   const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
   const losEf = Number(r.intersectionsAtLosEf ?? 0);
-  const summary = `This Traffic Impact Analysis (TIA) presents the anticipated traffic impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Texas. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius. The report follows the outline in TxDOT Traffic and Safety Analysis Procedures Manual (TSP) Chapter 16 Appendix Q, with capacity analysis per the Highway Capacity Manual (HCM) latest edition and trip generation per the ITE Trip Generation Manual latest edition. The development generates a determining peak-hour trip count of ${determiningPht.toFixed(0)} ${determiningPht === 1 ? "vehicle" : "vehicles"}, classifying it as ${catLabel} under TSP §16.2.1 Table 16-1.`;
+  const summary = `This Traffic Impact Analysis (TIA) presents the anticipated traffic impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Texas. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius. The report follows the outline in TxDOT Traffic and Safety Analysis Procedures Manual (TSP) Chapter 16 Appendix Q, with capacity analysis per the Highway Capacity Manual (HCM) latest edition and trip generation per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). The development generates a determining peak-hour trip count of ${determiningPht.toFixed(0)} ${determiningPht === 1 ? "vehicle" : "vehicles"}, classifying it as ${catLabel} under TSP §16.2.1 Table 16-1.`;
   doc.text(summary, { paragraphGap: 6 });
 
   doc.font("body").fontSize(10).fillColor("black").text(`Reviewing authority: ${cityName}.`, { paragraphGap: 2 });
@@ -5462,7 +5473,7 @@ function renderTisTexas(
   gaSubsection(doc, "2.1 Site Plan");
   rows(doc, [
     ["Project name", project.projectName || "—"],
-    ["Land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Site coordinates", Number.isFinite(lat) && Number.isFinite(lon) ? `${lat.toFixed(4)}°, ${lon.toFixed(4)}°` : "—"],
     ["Host jurisdiction", cityName],
@@ -5549,7 +5560,7 @@ function renderTisTexas(
   gaSection(doc, "5.0 PROJECTED TRAFFIC");
   gaSubsection(doc, "5.1 Site Generated Traffic");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Trip generation is calculated per the ITE Trip Generation Manual latest edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Per TSP §16.3.3, the fitted curve equation is preferred when the data plot contains at least 20 data points or has an R² of at least 0.75; otherwise average rates apply. Daily, AM peak, and PM peak hour trips are reported below.`,
+    `Trip generation is calculated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Per TSP §16.3.3, the fitted curve equation is preferred when the data plot contains at least 20 data points or has an R² of at least 0.75; otherwise average rates apply. Daily, AM peak, and PM peak hour trips are reported below.`,
     { paragraphGap: 6 },
   );
   table(doc, {
@@ -5770,7 +5781,7 @@ function renderTisTexas(
   // --- §10 Appendices ----------------------------------------------------
   gaSection(doc, "10.0 APPENDICES");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "The formal submittal appendices, per the Appendix Q outline, should include: scoping correspondence with the TxDOT District; site plan figures; TMC count sheets with date, weather, observer; ITE worksheets with rate/equation selection rationale; HCS / Synchro / Vissim / Vistro output; signal warrant analyses citing the TMUTCD (2025 edition, effective Jan 18, 2026); auxiliary-lane and sight-distance worksheets; CRIS crash data summary; and the host-jurisdiction's submission forms (Houston Access Management Data Summary Form + CPC 101 Form / Austin TIA Determination + Scope / Dallas TIS Waiver / Fort Worth TIA Worksheet / San Antonio TIA Threshold Worksheet + Rough Proportionality calculation).",
+    "The formal submittal appendices, per the Appendix Q outline, should include: scoping correspondence with the TxDOT District; site plan figures; TMC count sheets with date, weather, observer; Trip-generation worksheets with rate/equation selection rationale; HCS / Synchro / Vissim / Vistro output; signal warrant analyses citing the TMUTCD (2025 edition, effective Jan 18, 2026); auxiliary-lane and sight-distance worksheets; CRIS crash data summary; and the host-jurisdiction's submission forms (Houston Access Management Data Summary Form + CPC 101 Form / Austin TIA Determination + Scope / Dallas TIS Waiver / Fort Worth TIA Worksheet / San Antonio TIA Threshold Worksheet + Rough Proportionality calculation).",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
@@ -6129,7 +6140,7 @@ function renderTisIllinois(
   doc.font("body").fontSize(10).fillColor("black");
   const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
   const losEf = Number(r.intersectionsAtLosEf ?? 0);
-  const summary = `This Traffic Impact Study (TIS) presents the anticipated traffic impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Illinois. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius using methodology consistent with the Highway Capacity Manual current edition and the ITE Trip Generation Manual current edition. Trip generation is calculated for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
+  const summary = `This Traffic Impact Study (TIS) presents the anticipated traffic impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Illinois. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius using methodology consistent with the Highway Capacity Manual current edition and the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Trip generation is calculated for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
   doc.text(summary, { paragraphGap: 6 });
 
   doc.font("body").fontSize(10).fillColor("black").text(`Reviewing authority: ${jurisName[juris]}.`, { paragraphGap: 2 });
@@ -6186,7 +6197,7 @@ function renderTisIllinois(
   gaSection(doc, "2.0 PROJECT DESCRIPTION");
   rows(doc, [
     ["Project name", project.projectName || "—"],
-    ["Land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Site coordinates", Number.isFinite(lat) && Number.isFinite(lon) ? `${lat.toFixed(4)}°, ${lon.toFixed(4)}°` : "—"],
     ["Opening year", String(req.openingYear ?? "—")],
@@ -6230,7 +6241,7 @@ function renderTisIllinois(
   // --- §4 Trip Generation -------------------------------------------------
   gaSection(doc, "4.0 TRIP GENERATION");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Trip generation is calculated per the ITE Trip Generation Manual current edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Per IDOT District 8 Appendix A, "the current edition of the ITE Trip Generation Manual shall be used" — no edition pin. Pass-by and internal-capture credits are taken from the ITE Trip Generation Handbook and applied only against the external trips assigned to the study network. Supplemental sources are allowed for land uses not represented in ITE, with District permission.`,
+    `Trip generation is calculated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. IDOT District 8 Appendix A requires "the current edition of the ITE Trip Generation Manual" for a submitted study; the figures here are public-data screening estimates (NHTS 2017 / SANDAG 2002 / NCHRP 716) and must be re-run with the jurisdiction-required source before submittal. Pass-by and internal-capture credits are taken from standard screening methodology and applied only against the external trips assigned to the study network. Supplemental sources are allowed for land uses not represented in ITE, with District permission.`,
     { paragraphGap: 6 },
   );
   table(doc, {
@@ -6252,7 +6263,7 @@ function renderTisIllinois(
 
   if (juris === "chicago_cdot") {
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-      "Chicago additional reductions (TDM context, not auto-applied): Connected Communities Ordinance transit-served-location reduction (½-mi rule from CTA/Metra rail station entrance per §17-3-0308 / §17-4-0301), pedestrian-network density credits, and P-street designation effects on access geometry. The site's transit-served eligibility and TDM Measures Matrix commitments determine the final trip-reduction figure used in the TDM deliverable; this screening report shows the ITE-base trip generation only.",
+      "Chicago additional reductions (TDM context, not auto-applied): Connected Communities Ordinance transit-served-location reduction (½-mi rule from CTA/Metra rail station entrance per §17-3-0308 / §17-4-0301), pedestrian-network density credits, and P-street designation effects on access geometry. The site's transit-served eligibility and TDM Measures Matrix commitments determine the final trip-reduction figure used in the TDM deliverable; this screening report shows the screening-base trip generation only.",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
@@ -6502,9 +6513,9 @@ function renderTisIllinoisCdotWorksheet(
     ["Region", region.displayName],
     ["Host jurisdiction", "City of Chicago (CDOT)"],
     ["Opening year", String(req.openingYear ?? "—")],
-    ["Proposed ITE land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Proposed land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Proposed development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
-    ["Screened daily / PM-peak trips (ITE base)", `${fmtNum(tierInput.dailyTrips)} / ${fmtNum(tierInput.pmPeakTrips)}`],
+    ["Screened daily / PM-peak trips (screening base)", `${fmtNum(tierInput.dailyTrips)} / ${fmtNum(tierInput.pmPeakTrips)}`],
   ]);
   doc.moveDown(0.3);
   doc.font("body").fontSize(10).fillColor("black").text(
@@ -6548,7 +6559,7 @@ function renderTisIllinoisCdotWorksheet(
 
   gaSection(doc, "6.0 TIER ESCALATION");
   doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
-    `If CDOT PRC requests additional analysis — e.g., the project triggers a Planned Development designation, the site fronts an IDOT state route requiring co-review, or the project crosses a CCO size threshold during design refinement — regenerate this report with Tier = Abbreviated (Tier 2 TDM Memo) or Full (Tier 3 TDM Study + Plan). The dwelling-unit count screening for residential land uses (ITE 220-series): Tier 1 = 20–50 DU, Tier 2 = 51–175 DU, Tier 3 = >175 DU. The screened project size of ${tg.size ?? "—"} ${tg.unit ?? ""} falls within the Tier 1 band.`,
+    `If CDOT PRC requests additional analysis — e.g., the project triggers a Planned Development designation, the site fronts an IDOT state route requiring co-review, or the project crosses a CCO size threshold during design refinement — regenerate this report with Tier = Abbreviated (Tier 2 TDM Memo) or Full (Tier 3 TDM Study + Plan). The dwelling-unit count screening for residential land uses (land-use 220-series): Tier 1 = 20–50 DU, Tier 2 = 51–175 DU, Tier 3 = >175 DU. The screened project size of ${tg.size ?? "—"} ${tg.unit ?? ""} falls within the Tier 1 band.`,
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
@@ -6600,11 +6611,11 @@ function renderTisIllinoisCdotAbbreviated(
     ["Site coordinates", Number.isFinite(lat) && Number.isFinite(lon) ? `${lat.toFixed(4)}°, ${lon.toFixed(4)}°` : "—"],
     ["Region", region.displayName],
     ["Host jurisdiction", "City of Chicago (CDOT)"],
-    ["Proposed ITE land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Proposed land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Proposed development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Opening year", String(req.openingYear ?? "—")],
     ["Tier (CDOT TDM Guidelines v1.1)", "Tier 2 — TDM Memo (residential 51–175 DU, or equivalent threshold per use class)"],
-    ["Screened daily / PM-peak trips (ITE base)", `${fmtNum(tierInput.dailyTrips)} / ${fmtNum(tierInput.pmPeakTrips)}`],
+    ["Screened daily / PM-peak trips (screening base)", `${fmtNum(tierInput.dailyTrips)} / ${fmtNum(tierInput.pmPeakTrips)}`],
   ]);
   doc.moveDown(0.3);
 
@@ -6629,11 +6640,11 @@ function renderTisIllinoisCdotAbbreviated(
 
   gaSection(doc, "5.0 SOV-TRIP MINIMIZATION APPROACH");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Baseline ITE trip generation is calculated per the ITE Trip Generation Manual current edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. The Tier 2 TDM Memo's primary performance metric is the projected single-occupancy-vehicle (SOV) trip share AFTER the selected TDM strategies are applied. CDOT's baseline goal is that the project demonstrate an SOV share ≤ 50% of total trips. Reductions from the ITE base are claimed against the modal hierarchy: pedestrian trips (walk-up from transit-served-location density), transit trips (CTA / Metra catchment), bicycle trips (PBL network connectivity + Divvy access), shared-vehicle trips (carpool / vanpool, TNC), and trip elimination (work-from-home, mixed-use internal capture).`,
+    `Baseline trip generation is calculated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at a proposed size of ${tg.size ?? "—"} ${tg.unit ?? ""}. The Tier 2 TDM Memo's primary performance metric is the projected single-occupancy-vehicle (SOV) trip share AFTER the selected TDM strategies are applied. CDOT's baseline goal is that the project demonstrate an SOV share ≤ 50% of total trips. Reductions from the screening base are claimed against the modal hierarchy: pedestrian trips (walk-up from transit-served-location density), transit trips (CTA / Metra catchment), bicycle trips (PBL network connectivity + Divvy access), shared-vehicle trips (carpool / vanpool, TNC), and trip elimination (work-from-home, mixed-use internal capture).`,
     { paragraphGap: 6 },
   );
   table(doc, {
-    headers: ["Period", "ITE base", "After TDM (target)", "SOV share goal"],
+    headers: ["Period", "Screening base", "After TDM (target)", "SOV share goal"],
     widths: [140, 90, 110, 100],
     align: ["left", "right", "right", "right"],
     rows: [
@@ -6698,7 +6709,7 @@ function renderTisIllinoisCdotAbbreviated(
 
   gaSection(doc, "10.0 BASELINE SOV REDUCTION GOAL");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "CDOT's baseline performance goal for a Tier 2 TDM Memo is that the project demonstrate ≤50% single-occupancy-vehicle (SOV) share of total daily trips after the selected TDM strategies are applied. SOV share is computed against the ITE-base daily trip count, net of mode-shift, internal-capture, and trip-elimination credits, with documented source rates. Projects in transit-served locations with strong walk-up density commonly exceed the 50%-reduction goal; suburban-style projects (limited transit catchment + high parking ratios) may fail this gate and trigger escalation to a Tier 3 TDM Study + Plan.",
+    "CDOT's baseline performance goal for a Tier 2 TDM Memo is that the project demonstrate ≤50% single-occupancy-vehicle (SOV) share of total daily trips after the selected TDM strategies are applied. SOV share is computed against the screening-base daily trip count, net of mode-shift, internal-capture, and trip-elimination credits, with documented source rates. Projects in transit-served locations with strong walk-up density commonly exceed the 50%-reduction goal; suburban-style projects (limited transit catchment + high parking ratios) may fail this gate and trigger escalation to a Tier 3 TDM Study + Plan.",
     { paragraphGap: 6 },
   );
 
@@ -6800,7 +6811,7 @@ function renderTisGeorgiaDriSections(
   const grossVmt = dailyRaw * avgTripLen;
   const netVmt = dailyExternalAuto * avgTripLen;
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Daily VMT is estimated as the product of net external auto-mode trips and an assumed average trip length of ${avgTripLen.toFixed(0)} miles for ITE land use ${luCode} (${luName}). This trip-length assumption is conservative and reflects Atlanta-region NHTS/ARC regional-travel-survey literature for the land-use category; the formal DRI submittal should substitute a project-specific value from the ARC Activity-Based Model where available.`,
+    `Daily VMT is estimated as the product of net external auto-mode trips and an assumed average trip length of ${avgTripLen.toFixed(0)} miles for land use ${luCode} (${luName}). This trip-length assumption is conservative and reflects Atlanta-region NHTS/ARC regional-travel-survey literature for the land-use category; the formal DRI submittal should substitute a project-specific value from the ARC Activity-Based Model where available.`,
     { paragraphGap: 6 },
   );
   table(doc, {
@@ -6817,7 +6828,7 @@ function renderTisGeorgiaDriSections(
   });
   doc.moveDown(0.3);
   doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
-    `Reduction sources: pass-by per ITE Trip Generation Handbook; internal capture per ULI Mixed-Use Internal Capture defaults; alternative-mode share from ACS B08301 for ${region.displayName} (${(autoModeShare * 100).toFixed(0)}% auto). Assumed average trip length is a screening input — not a calibrated AOI-specific value.`,
+    `Reduction sources: pass-by per standard screening methodology; internal capture per ULI Mixed-Use Internal Capture defaults; alternative-mode share from ACS B08301 for ${region.displayName} (${(autoModeShare * 100).toFixed(0)}% auto). Assumed average trip length is a screening input — not a calibrated AOI-specific value.`,
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
@@ -6950,7 +6961,7 @@ function renderTisGeorgiaDriSections(
         luIsMixedUseCandidate ? "Requires verification" : "Not eligible",
         luIsMixedUseCandidate
           ? "Single land use coded; mixed-use status requires site-plan confirmation"
-          : "ITE land use does not indicate mixed-use programming",
+          : "land use does not indicate mixed-use programming",
       ],
       [
         "Internal capture credit (mixed-use)",
@@ -6960,7 +6971,7 @@ function renderTisGeorgiaDriSections(
       [
         "Pass-by trip credit",
         passByCredit ? "Eligible — auto-computed" : "Not claimed",
-        passByCredit ? `${fmtNum(passByPct, 0)}% credit applied per ITE Pass-By Handbook` : "No pass-by credit applied",
+        passByCredit ? `${fmtNum(passByPct, 0)}% credit applied per standard pass-by screening methodology` : "No pass-by credit applied",
       ],
       [
         "Alternative-mode share (transit/walk/bike)",
@@ -7132,7 +7143,7 @@ function floridaJurisdiction(lat: number, lon: number): FloridaJurisdiction {
       certificationFrontMatter: false,
       threeTrackEndChapters: false,
       feeMethodologyNote: "The Hillsborough mobility fee schedule blends ITE 10th Edition (2017) rates with the Florida Trip Characteristics Studies Database — a PROPRIETARY Tindale Oliver / Stantec corpus, NOT an FDOT public asset (no public URL, no API). Vehicle occupancy 1.40 persons/vehicle per Tampa Bay Regional Planning Model. ITE is on 11th Ed. for FDOT-wide MTIA work; the Hillsborough fee schedule has not yet migrated.",
-      extraNote: "Trip generation for the mobility-fee calculation should be prepared in parallel using the published Hillsborough fee schedule; the trip generation reported in this analysis follows ITE 11th Edition per MTSIH 2024 §3.5.",
+      extraNote: "Trip generation for the mobility-fee calculation should be prepared in parallel using the published Hillsborough fee schedule; the trip generation reported in this analysis follows public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) per MTSIH 2024 §3.5.",
     };
   }
   if (inBox(28.34, 28.78, -81.66, -80.87)) {
@@ -7243,7 +7254,7 @@ function renderTisFlorida(
   doc.font("body").fontSize(10).fillColor("black");
   const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
   const losEf = Number(r.intersectionsAtLosEf ?? 0);
-  const summary = `This Multimodal Transportation Impact Assessment (MTIA) evaluates the anticipated transportation impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Florida. The host controlling jurisdiction is ${jur.name} (${jur.fdotDistrict}); review framework: ${jur.framework}. Analysis follows the FDOT Multimodal Transportation Site Impact Handbook (MTSIH, March 25, 2024) and the FDOT Quality/Level of Service Handbook v6.0 (August 2025). Capacity analysis follows the Highway Capacity Manual 6th Edition consistent with FDOT Traffic Analysis Handbook §4.1. The study covers ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study area for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
+  const summary = `This Multimodal Transportation Impact Assessment (MTIA) evaluates the anticipated transportation impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Florida. The host controlling jurisdiction is ${jur.name} (${jur.fdotDistrict}); review framework: ${jur.framework}. Analysis follows the FDOT Multimodal Transportation Site Impact Handbook (MTSIH, March 25, 2024) and the FDOT Quality/Level of Service Handbook v6.0 (August 2025). Capacity analysis follows the Highway Capacity Manual 6th Edition consistent with FDOT Traffic Analysis Handbook §4.1. The study covers ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study area for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
   doc.text(summary, { paragraphGap: 6 });
 
   doc.font("body").fontSize(10).fillColor("black").text("Findings:", { paragraphGap: 2 });
@@ -7270,7 +7281,7 @@ function renderTisFlorida(
   gaSection(doc, "2.0 PROJECT DESCRIPTION");
   rows(doc, [
     ["Project name", project.projectName || "—"],
-    ["Land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
     ["Region", region.displayName],
@@ -7577,7 +7588,7 @@ function renderTisFlorida(
   // --- 5.0 Trip Generation ----------------------------------------------
   gaSection(doc, "5.0 TRIP GENERATION");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Trip generation follows the ITE Trip Generation Manual 11th Edition for ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Net new external trips are calculated by applying pass-by and internal capture credits to gross trip generation per the ITE Trip Generation Handbook (current edition). Per MTSIH 2024 §4.6.4, the fitted-curve equation is preferred when ≥20 data points are available, or when R² ≥ 0.75 with the fitted curve falling within the data cluster and weighted standard deviation > 55% of the weighted average rate; otherwise the weighted average rate applies. Per MTSIH 2024 §4.6.6.6, pass-by trips at a site driveway cannot exceed 10% of the adjacent peak-hour two-way street traffic — this reasonableness check applies per roadway when the site fronts multiple streets and should be verified against the adjacent-street counts at submittal time.`,
+    `Trip generation follows the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Net new external trips are calculated by applying pass-by and internal capture credits to gross trip generation per standard pass-by / internal-capture screening methodology. Per MTSIH 2024 §4.6.4, the fitted-curve equation is preferred when ≥20 data points are available, or when R² ≥ 0.75 with the fitted curve falling within the data cluster and weighted standard deviation > 55% of the weighted average rate; otherwise the weighted average rate applies. Per MTSIH 2024 §4.6.6.6, pass-by trips at a site driveway cannot exceed 10% of the adjacent peak-hour two-way street traffic — this reasonableness check applies per roadway when the site fronts multiple streets and should be verified against the adjacent-street counts at submittal time.`,
     { paragraphGap: 6 },
   );
   if (jur.feeMethodologyNote) {
@@ -7589,7 +7600,7 @@ function renderTisFlorida(
   }
   rows(doc, [
     ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
-    ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}% (MTSIH 2024 §4.6.9 sets no statewide numeric cap; rate negotiated at the methodology meeting per NCHRP 684 / ITE Trip Generation Handbook)`],
+    ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}% (MTSIH 2024 §4.6.9 sets no statewide numeric cap; rate negotiated at the methodology meeting per NCHRP 684 / standard screening methodology)`],
     ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
     [`${jur.name} TIA threshold`, jur.tripThreshold],
     ["Weather condition", String(r.weather ?? req.weather ?? "clear")],
@@ -7997,11 +8008,11 @@ function renderFourStepSection(
   // Step 1 — Trip Generation
   gaSubsection(doc, "Step 1 — Trip Generation");
   doc.font("body").fontSize(9.5).fillColor(TEXT_GRAY).text(
-    "ITE Trip Generation (11th Ed.) rates applied to the proposed land use give the site's productions.",
+    "Public-data screening trip rates (SANDAG 2002, corroborated by NHTS 2017 / NCHRP 716) applied to the proposed land use give the site's productions.",
     { paragraphGap: 3 });
   doc.fillColor("black");
   rows(doc, [
-    ["Land use", `ITE ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
     ["Size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Daily trips (productions)", fmtNum(tg.dailyTrips)],
     ["PM peak-hour trips", `${fmtNum(tg.pmPeakTrips)} (${fmtNum(tg.pmIn)} in / ${fmtNum(tg.pmOut)} out)`],
@@ -8277,7 +8288,7 @@ function renderParking(doc: PDFKit.PDFDocument, r: any) {
   rows(doc, [
     ["Code minimum (Atlanta default)", `${r.codeRequired?.total} spaces (${r.codeRequired?.perUnit} per unit)`],
     ["Proposed supply", `${r.proposedSpaces} spaces`],
-    ["Verdict — vs ITE-adjusted demand", String(r.iteVerdict)],
+    ["Verdict — vs screening-adjusted demand", String(r.iteVerdict)],
     ["Verdict — vs code minimum", String(r.codeVerdict)],
     ["Governing margin", `${r.governingDelta >= 0 ? "+" : ""}${r.governingDelta} spaces`],
   ]);
@@ -8486,6 +8497,18 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
 
   let y = doc.y;
   const headerH = measureRow(headers, true);
+  // Keep-together: never strand the header at the bottom of a page. The
+  // per-row loop below breaks pages and re-draws the header, but the INITIAL
+  // header was drawn unconditionally at doc.y — so a table starting low on a
+  // page (e.g. right after the §6.5 TRICS narrative) printed its header at the
+  // very bottom, then row 1's break pushed the body to the next page, leaving
+  // an orphaned header behind. If the header plus the first data row won't fit,
+  // start the table on a fresh page instead.
+  const firstRowH = dataRows.length > 0 ? measureRow(dataRows[0], false) : 0;
+  if (y + headerH + firstRowH > doc.page.height - PAGE_MARGIN - 40) {
+    doc.addPage();
+    y = doc.y;
+  }
   drawRow(headers, y, true, headerH);
   y += headerH;
 

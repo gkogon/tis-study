@@ -35,17 +35,23 @@ export const CITATIONS: Record<string, Citation> = {
     fullCitation:
       "Transportation Research Board. Highway Capacity Manual, 6th Edition, Exhibit 19-8: LOS Criteria for Signalized Intersections. National Academies of Sciences, Engineering, and Medicine, 2016.",
   },
-  ITE_TG_11: {
-    tag: "ITE-TG-11",
-    shortLabel: "ITE Trip Generation Manual, 11th Ed.",
+  NHTS_2017: {
+    tag: "NHTS-2017",
+    shortLabel: "FHWA NHTS 2017, Summary of Travel Trends",
     fullCitation:
-      "Institute of Transportation Engineers. Trip Generation Manual, 11th Edition. ITE, Washington, D.C., 2021.",
+      "Federal Highway Administration. 2017 National Household Travel Survey, Summary of Travel Trends (Table 3a: 5.11 vehicle-trips per household per day). U.S. Department of Transportation, Washington, D.C., 2018.",
   },
-  ITE_TG_11_LU: {
-    tag: "ITE-TG-LU",
-    shortLabel: "ITE Trip Generation 11th Ed., Land Use Code",
+  SANDAG_2002: {
+    tag: "SANDAG-2002",
+    shortLabel: "SANDAG 2002 Vehicular Traffic Generation Rates",
     fullCitation:
-      "Institute of Transportation Engineers. Trip Generation Manual, 11th Edition, Land Use Codes. ITE, Washington, D.C., 2021.",
+      "San Diego Association of Governments. (Not So) Brief Guide of Vehicular Traffic Generation Rates for the San Diego Region. SANDAG, San Diego, CA, April 2002.",
+  },
+  NCHRP_716: {
+    tag: "NCHRP-716",
+    shortLabel: "NCHRP Report 716 (trip-generation parameters)",
+    fullCitation:
+      "Transportation Research Board. NCHRP Report 716: Travel Demand Forecasting: Parameters and Techniques. National Academies of Sciences, Engineering, and Medicine, 2012.",
   },
   MUTCD_2009: {
     tag: "MUTCD-2009",

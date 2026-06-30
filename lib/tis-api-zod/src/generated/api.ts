@@ -290,7 +290,15 @@ export const GenerateTisResponse = zod.object({
     size: zod.number(),
     unit: zod.string(),
     unitShort: zod.string().optional(),
-    variableConfidence: zod.enum(["ite_published", "interpolated"]).optional(),
+    variableConfidence: zod
+      .enum([
+        "nhts_2017",
+        "sandag_2002",
+        "nchrp_716",
+        "blended_mpo",
+        "interpolated",
+      ])
+      .optional(),
     variableNote: zod.string().optional(),
     dailyTrips: zod.number(),
     amPeakTrips: zod.number(),
@@ -859,7 +867,13 @@ export const GetTisProjectResponse = zod
         unit: zod.string(),
         unitShort: zod.string().optional(),
         variableConfidence: zod
-          .enum(["ite_published", "interpolated"])
+          .enum([
+            "nhts_2017",
+            "sandag_2002",
+            "nchrp_716",
+            "blended_mpo",
+            "interpolated",
+          ])
           .optional(),
         variableNote: zod.string().optional(),
         dailyTrips: zod.number(),
