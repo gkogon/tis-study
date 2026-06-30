@@ -201,14 +201,21 @@ function nysdotRegion(lat: number, lon: number, region: Region): NysdotRegion {
 }
 
 /**
- * HCM 2010 LOS-threshold tables. Shell §3 requires these three blocks
- * (signalized / unsignalized / freeway) so a reviewer can verify the
- * engine is calibrated against the same thresholds NYSDOT reviewers
- * use. Cited verbatim per HCM 2010 Exhibits 18-4, 19-1, 20-2, 21-1,
- * 10-7.
+ * LOS-threshold reference tables (signalized / unsignalized / freeway).
+ * Shell §3 includes these three blocks so a reviewer can confirm the
+ * engine is calibrated against the same control-delay / density LOS
+ * breakpoints NYSDOT reviewers use. These are the standard HCM-methodology
+ * LOS thresholds; the specific values are attributed to FREE public-domain
+ * republications (FHWA / state-DOT), not reproduced from the licensed HCM:
+ *   - Signalized: FHWA Signalized Intersections Informational Guide
+ *     (FHWA-HRT-04-091, 2004), Ch. 7, Table 33.
+ *   - Unsignalized: HCM control-delay LOS criteria as published in public
+ *     state-DOT LOS guidance (e.g. VDOT LOS Definition, HCM-2016-based).
+ *   - Freeway density: FHWA Simplified Highway Capacity Method for HPMS
+ *     (FHWA-PL-18-003, 2017), Ch. 3, Table 11.
  */
 function nyLosThresholdTables(doc: PDFKit.PDFDocument) {
-  doc.font("bold").fontSize(10).fillColor("black").text("Signalized intersections (HCM 2010 Exhibit 18-4, p. 18-6) — control delay sec/veh; any v/c > 1.0 is F.");
+  doc.font("bold").fontSize(10).fillColor("black").text("Signalized intersections — control delay sec/veh (FHWA-HRT-04-091, Table 33); any v/c > 1.0 is F.");
   doc.moveDown(0.2);
   nyTable(doc, {
     headers: ["LOS", "A", "B", "C", "D", "E", "F"],
@@ -218,7 +225,7 @@ function nyLosThresholdTables(doc: PDFKit.PDFDocument) {
   });
   doc.moveDown(0.3);
 
-  doc.font("bold").fontSize(10).fillColor("black").text("Unsignalized — 2-way stop / all-way stop / roundabout (HCM 2010 Exhibits 19-1, 20-2, 21-1) — sec/veh; any v/c > 1.0 is F.");
+  doc.font("bold").fontSize(10).fillColor("black").text("Unsignalized — 2-way / all-way stop / roundabout — control delay sec/veh (HCM LOS criteria per public state-DOT LOS guidance); any v/c > 1.0 is F.");
   doc.moveDown(0.2);
   nyTable(doc, {
     headers: ["LOS", "A", "B", "C", "D", "E", "F"],
@@ -228,7 +235,7 @@ function nyLosThresholdTables(doc: PDFKit.PDFDocument) {
   });
   doc.moveDown(0.3);
 
-  doc.font("bold").fontSize(10).fillColor("black").text("Freeway basic / weaving / merge-diverge (HCM 2010 Exhibit 10-7, p. 10-9) — density pc/mi/ln; any component vd/c > 1.00 is F.");
+  doc.font("bold").fontSize(10).fillColor("black").text("Freeway basic / weaving / merge-diverge — density pc/mi/ln (FHWA-PL-18-003, Table 11); any component vd/c > 1.00 is F.");
   doc.moveDown(0.2);
   nyTable(doc, {
     headers: ["LOS", "A", "B", "C", "D", "E", "F"],

@@ -15,15 +15,18 @@
  *     Techniques," TRB 2012) — ~9.5–10 person-trips per household per day
  *     and per-employee office rates, used as an independent backstop.
  *
- * A small number of retail/service rates (shopping center, supermarket,
- * bank) are BLENDED MPO screening guidance rather than a single
- * provably-clean public source; those are tagged `blended_mpo` and
- * disclosed as rough in the methodology + legal disclaimer.
+ * The retail/service rates (shopping center, supermarket, bank) are taken
+ * directly from the SANDAG 2002 guide's own published rows (Community
+ * Shopping Center, Supermarket, Walk-In Bank) — a free public source, not
+ * a blended/proprietary input. Verified against the official SANDAG table:
+ * https://www.sandiegocounty.gov/content/dam/sdc/pds/ceqa/LehmanTPM/38%20Appendix%20T9_SANDAG%20Trip%20Generation%20Rates.pdf
  *
- * Restaurant / fast-food land uses are intentionally NOT offered: there is
- * no clean free replacement rate for them and the screening engine should
- * not guess. A reviewing PE should supply a site-specific or
- * jurisdiction-approved rate for those uses.
+ * Restaurant / fast-food rates ARE now offered (codes 930–934), sourced
+ * from SANDAG 2002's own MEASURED "San Diego Traffic Generators" rows —
+ * re-enabling a category previously gated as "no clean free source" now
+ * that a verified free measured source is confirmed. Restaurant trip-gen
+ * is highly site-specific, so a reviewing PE should still verify against a
+ * local / jurisdiction-approved rate before submittal.
  *
  * The screening engine may apply locale-specific calibration multipliers
  * from `intersection_calibration` to refine a result.
@@ -105,8 +108,6 @@ export type LandUse = {
 // (not a proprietary rate) and use sensible screening-level defaults.
 const SANDAG_2002 =
   "SANDAG 2002 “(Not So) Brief Guide of Vehicular Traffic Generation Rates for the San Diego Region”";
-const SANDAG_2002_BLENDED =
-  "SANDAG 2002 guide + blended MPO screening guidance (rough — not provably free of proprietary inputs)";
 const NCHRP_716 = "NCHRP Report 716 (TRB 2012) per-employee parameter table";
 
 export const LAND_USES: LandUse[] = [
@@ -133,9 +134,9 @@ export const LAND_USES: LandUse[] = [
 
   // ---------- Retail / Commercial ----------
   // 820 / 850 / 912 — blended MPO screening guidance; disclosed as rough.
-  { code: "820", name: "Shopping Center / Retail",                unit: "1,000 sqft GLA",        unitShort: "ksf",      dailyRate: 80.0, amRate: 3.20, pmRate: 8.00, confidence: "blended_mpo", source: SANDAG_2002_BLENDED, directionalSplitPm: { in: 0.48, out: 0.52 }, amDirectionalIn: 0.61, satMultiplier: 1.10, passByPctPm: 25, internalCapturePctPm: 0 },
-  { code: "850", name: "Supermarket",                             unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 150.0, amRate: 6.00, pmRate: 15.0, confidence: "blended_mpo", source: SANDAG_2002_BLENDED, directionalSplitPm: { in: 0.51, out: 0.49 }, amDirectionalIn: 0.62, satMultiplier: 1.20, passByPctPm: 36, internalCapturePctPm: 0 },
-  { code: "912", name: "Bank",                                    unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 150.0, amRate: 6.00, pmRate: 12.0, confidence: "blended_mpo", source: SANDAG_2002_BLENDED, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.55, satMultiplier: 0.40, passByPctPm: 35, internalCapturePctPm: 0 },
+  { code: "820", name: "Shopping Center / Retail",                unit: "1,000 sqft GLA",        unitShort: "ksf",      dailyRate: 80.0, amRate: 3.20, pmRate: 8.00, confidence: "sandag_2002", source: `${SANDAG_2002} — Community Shopping Center (daily 80/ksf; PM pass-by 30%)`, directionalSplitPm: { in: 0.48, out: 0.52 }, amDirectionalIn: 0.61, satMultiplier: 1.10, passByPctPm: 30, internalCapturePctPm: 0 },
+  { code: "850", name: "Supermarket",                             unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 150.0, amRate: 6.00, pmRate: 15.0, confidence: "sandag_2002", source: `${SANDAG_2002} — Supermarket (daily 150/ksf; PM pass-by 40%)`, directionalSplitPm: { in: 0.51, out: 0.49 }, amDirectionalIn: 0.62, satMultiplier: 1.20, passByPctPm: 40, internalCapturePctPm: 0 },
+  { code: "912", name: "Bank",                                    unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 150.0, amRate: 6.00, pmRate: 12.0, confidence: "sandag_2002", source: `${SANDAG_2002} — Bank, Walk-In (daily 150/ksf; PM pass-by 25%); drive-through banks run higher (≈200/ksf), PE selects per project`, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.55, satMultiplier: 0.40, passByPctPm: 25, internalCapturePctPm: 0 },
 
   // ---------- Industrial / Warehouse ----------
   // 110 / 130 / 140 / 150 share the SANDAG industrial-park rate (clean).
@@ -143,6 +144,29 @@ export const LAND_USES: LandUse[] = [
   { code: "130", name: "Industrial Park",                         unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate:  8.0, amRate: 0.88, pmRate: 0.96, confidence: "sandag_2002", source: `${SANDAG_2002} — industrial park`, directionalSplitPm: { in: 0.21, out: 0.79 }, amDirectionalIn: 0.81, satMultiplier: 0.15, passByPctPm: 0, internalCapturePctPm: 0 },
   { code: "140", name: "Manufacturing",                           unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate:  8.0, amRate: 0.88, pmRate: 0.96, confidence: "sandag_2002", source: `${SANDAG_2002} — industrial park`, directionalSplitPm: { in: 0.36, out: 0.64 }, amDirectionalIn: 0.78, satMultiplier: 0.15, passByPctPm: 0, internalCapturePctPm: 0 },
   { code: "150", name: "Warehousing",                             unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate:  8.0, amRate: 0.88, pmRate: 0.96, confidence: "sandag_2002", source: `${SANDAG_2002} — industrial park`, directionalSplitPm: { in: 0.27, out: 0.73 }, amDirectionalIn: 0.78, satMultiplier: 0.15, passByPctPm: 0, internalCapturePctPm: 0 },
+
+  // ---------- Food / Beverage ----------
+  // SANDAG 2002 MEASURED "San Diego Traffic Generators" rows (primary `*`).
+  // Daily/AM/PM rates are the published values; directional splits, Sat
+  // multipliers and pass-by % are screening-level pattern defaults (header).
+  { code: "931", name: "Restaurant — Quality / Sit-Down",         unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 100.0, amRate: 1.00, pmRate: 8.00, confidence: "sandag_2002", source: `${SANDAG_2002} — Quality Restaurant, measured (daily 100/ksf; PM pass-by 10%)`, directionalSplitPm: { in: 0.55, out: 0.45 }, amDirectionalIn: 0.55, satMultiplier: 1.20, passByPctPm: 10, internalCapturePctPm: 0 },
+  { code: "932", name: "Restaurant — High-Turnover Sit-Down",     unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 160.0, amRate: 12.80, pmRate: 12.80, confidence: "sandag_2002", source: `${SANDAG_2002} — Sit-Down High-Turnover Restaurant, measured (daily 160/ksf; PM pass-by 20%)`, directionalSplitPm: { in: 0.52, out: 0.48 }, amDirectionalIn: 0.55, satMultiplier: 1.20, passByPctPm: 20, internalCapturePctPm: 0 },
+  { code: "934", name: "Fast Food w/ Drive-Through",              unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 650.0, amRate: 45.50, pmRate: 45.50, confidence: "sandag_2002", source: `${SANDAG_2002} — Fast Food w/ Drive-Through, measured (daily 650/ksf; PM pass-by 40%)`, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.52, satMultiplier: 1.10, passByPctPm: 40, internalCapturePctPm: 0 },
+  { code: "930", name: "Delicatessen (breakfast / lunch)",        unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 150.0, amRate: 13.50, pmRate: 4.50, confidence: "sandag_2002", source: `${SANDAG_2002} — Delicatessen 7a–4p, measured (daily 150/ksf)`, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.60, satMultiplier: 0.50, passByPctPm: 0, internalCapturePctPm: 0 },
+
+  // ---------- Auto / Fuel ----------
+  { code: "944", name: "Gas / Service Station",                   unit: "Fueling Positions",     unitShort: "VFP",      dailyRate: 150.0, amRate: 10.50, pmRate: 13.50, confidence: "sandag_2002", source: `${SANDAG_2002} — Older Service Station Design, measured (daily 150/fueling position; PM pass-by 50%)`, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.50, satMultiplier: 0.90, passByPctPm: 50, internalCapturePctPm: 0 },
+  { code: "841", name: "Auto Sales (Dealer & Repair)",            unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 50.0, amRate: 2.50, pmRate: 4.00, confidence: "sandag_2002", source: `${SANDAG_2002} — Auto Sales Dealer & Repair, measured (daily 50/ksf)`, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.60, satMultiplier: 1.10, passByPctPm: 0, internalCapturePctPm: 0 },
+  { code: "942", name: "Auto Repair Center",                      unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 20.0, amRate: 1.60, pmRate: 2.20, confidence: "sandag_2002", source: `${SANDAG_2002} — Auto Repair Center, measured (daily 20/ksf)`, directionalSplitPm: { in: 0.45, out: 0.55 }, amDirectionalIn: 0.70, satMultiplier: 0.50, passByPctPm: 0, internalCapturePctPm: 0 },
+
+  // ---------- Recreation / Civic ----------
+  { code: "492", name: "Health / Racquetball Club",               unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 30.0, amRate: 1.20, pmRate: 2.70, confidence: "sandag_2002", source: `${SANDAG_2002} — Racquetball / Health Club, measured (daily 30/ksf)`, directionalSplitPm: { in: 0.55, out: 0.45 }, amDirectionalIn: 0.55, satMultiplier: 0.90, passByPctPm: 0, internalCapturePctPm: 0 },
+  { code: "444", name: "Movie Theater (Multiplex)",               unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 80.0, amRate: 0.26, pmRate: 6.40, confidence: "sandag_2002", source: `${SANDAG_2002} — Multiplex Theater w/ Matinee, measured (daily 80/ksf; AM negligible — PM/evening use)`, directionalSplitPm: { in: 0.65, out: 0.35 }, amDirectionalIn: 0.50, satMultiplier: 1.40, passByPctPm: 0, internalCapturePctPm: 0 },
+  { code: "430", name: "Golf Course",                             unit: "Acres",                 unitShort: "ac",       dailyRate: 7.0, amRate: 0.49, pmRate: 0.63, confidence: "sandag_2002", source: `${SANDAG_2002} — Golf Course, measured (daily 7/acre)`, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.60, satMultiplier: 1.40, passByPctPm: 0, internalCapturePctPm: 0 },
+
+  // ---------- Retail / Storage (measured additions) ----------
+  { code: "857", name: "Discount / Warehouse Club",               unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 60.0, amRate: 0.60, pmRate: 5.40, confidence: "sandag_2002", source: `${SANDAG_2002} — Discount Club, measured (daily 60/ksf; PM pass-by 30%)`, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.60, satMultiplier: 1.20, passByPctPm: 30, internalCapturePctPm: 0 },
+  { code: "151", name: "Mini-Warehouse / Self-Storage",           unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 2.0, amRate: 0.12, pmRate: 0.18, confidence: "sandag_2002", source: `${SANDAG_2002} — Storage / Mini-Warehouse, measured (daily 2/ksf)`, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.50, satMultiplier: 0.90, passByPctPm: 0, internalCapturePctPm: 0 },
 ];
 
 /**

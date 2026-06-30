@@ -7,7 +7,9 @@
  *
  *   1. Trip Generation  — how many trips a zone produces/attracts. For a
  *      TIS the site is the production zone; productions = the period's
- *      external (post pass-by / internal-capture) trips from ITE rates.
+ *      external (post pass-by / internal-capture) trips from the engine's
+ *      public-data trip rates (SANDAG 2002 / NHTS 2017 / NCHRP 716; see
+ *      land-uses.ts) — NOT ITE rates.
  *   2. Trip Distribution — where the trips go, via the GRAVITY MODEL:
  *          T_ij = P_i · (A_j · F_ij · K_ij) / Σ_x (A_x · F_ix · K_ix)
  *      where A_j is zone j's attractiveness, F_ij the friction factor
