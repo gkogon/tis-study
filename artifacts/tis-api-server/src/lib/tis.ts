@@ -29,6 +29,7 @@ import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSo
 // callers that imported `LAND_USES` from this module.
 import { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence } from "./land-uses";
 import { screenTurboCandidate, turboLaneScreening, type TurboLaneScreening } from "./turbo-lane";
+import { logTripGenSample } from "./trip-gen-samples";
 
 export { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence };
 
@@ -1386,6 +1387,24 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     pmIn,
     pmOut,
   };
+
+  // Flywheel (ITE 2.0): capture this study's trip-gen as a data point for
+  // the owned, ITE-independent trip-rate dataset. Fire-and-forget — never
+  // awaited, never affects the response. See lib/trip-gen-samples.ts.
+  logTripGenSample({
+    landUseCode: lu.code,
+    landUseName: lu.name,
+    unit: rates.unit,
+    size: req.size,
+    latitude: req.latitude,
+    longitude: req.longitude,
+    regionCode: region.code,
+    dailyTrips,
+    amTrips,
+    pmTrips,
+    rateConfidence: rates.confidence,
+    rateSource: rates.source,
+  });
 
   // Sensitivity analysis (PM peak external trips).
   const sens = req.runSensitivity
