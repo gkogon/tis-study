@@ -8486,6 +8486,18 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
 
   let y = doc.y;
   const headerH = measureRow(headers, true);
+  // Keep-together: never strand the header at the bottom of a page. The
+  // per-row loop below breaks pages and re-draws the header, but the INITIAL
+  // header was drawn unconditionally at doc.y — so a table starting low on a
+  // page (e.g. right after the §6.5 TRICS narrative) printed its header at the
+  // very bottom, then row 1's break pushed the body to the next page, leaving
+  // an orphaned header behind. If the header plus the first data row won't fit,
+  // start the table on a fresh page instead.
+  const firstRowH = dataRows.length > 0 ? measureRow(dataRows[0], false) : 0;
+  if (y + headerH + firstRowH > doc.page.height - PAGE_MARGIN - 40) {
+    doc.addPage();
+    y = doc.y;
+  }
   drawRow(headers, y, true, headerH);
   y += headerH;
 
