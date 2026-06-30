@@ -38,11 +38,11 @@ const FIRM_FEATURES = [
 
 const REPORT_CONTENTS: Array<[string, string]> = [
   ["Cover page", "Your firm's logo, project number, client, opening year, and a PE stamp / signature block."],
-  ["ITE Trip Generation", "Proposed land-use code with daily, AM peak, and PM peak trip counts and directional split."],
+  ["Trip Generation", "Proposed land-use code with daily, AM peak, and PM peak trip counts and directional split."],
   ["Off-site impact summary", "Affected intersections, LOS drops, worst delay delta, with confidence intervals."],
   ["Affected-intersection map", "Color-coded by post-build LOS, plus a sortable capacity table for every signal in the radius."],
   ["Recommended mitigations", "Sized to projected delay impact — re-time, dedicated turn lane, warrants analysis, geometric."],
-  ["Appendix A — Methodology", "Full formulas, tables, and numbered references to HCM 6th Ed., ITE 11th Ed., MUTCD, AASHTO."],
+  ["Appendix A — Methodology", "Full formulas, tables, and numbered references to HCM 6th Ed., NHTS 2017 / SANDAG 2002 / NCHRP 716, MUTCD, AASHTO."],
   ["Appendix B — Limitations", "Assumptions and the conditions under which the report is no longer valid."],
 ];
 
@@ -72,7 +72,7 @@ export default function ForFirmsPage() {
             <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
               A screening TIS your team can take to a project kickoff.
               White-labeled with your firm's branding. Every page footnoted
-              to HCM, ITE, and the MUTCD. Same math your senior reviewers
+              to HCM, NHTS, and the MUTCD. Same math your senior reviewers
               expect. The 40 hours of junior-PE labor per site, gone.
             </p>
             <div className="flex flex-wrap items-center gap-3 pt-2">

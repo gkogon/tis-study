@@ -12,7 +12,7 @@
  *   - Coordinates must fall inside the bounding box of one of our
  *     300 active regions (regionForCoordinate). Outside that the
  *     engine has no signal/intersection data to study against.
- *   - Land-use code must be a known ITE 11th Ed. code from LAND_USES.
+ *   - Land-use code must be a known public-data land-use code from LAND_USES.
  *   - Size capped at 10,000 (DU / ksf / rooms / beds, depending on
  *     the land use) to defeat probing for absurd impact reports.
  *   - studyRadiusMi capped at 1.5 mi for demo runs (vs the 6.5 mi
@@ -49,18 +49,18 @@ const SIZE_MAX = 10_000;
 const PRESETS = {
   multifamily: {
     label: "Multifamily — 240-unit mid-rise (Midtown)",
-    blurb: "ITE 221 · 240 dwelling units",
+    blurb: "LU 220 · 240 dwelling units",
     prefill: {
       projectName: "Demo: Midtown Multifamily — 240 DU",
       latitude: 33.7858,
       longitude: -84.3848,
-      landUseCode: "221",
+      landUseCode: "220",
       size: 240,
     },
   },
   office: {
     label: "Office — 50,000 sqft Class A (Buckhead)",
-    blurb: "ITE 710 · 50,000 sqft GFA",
+    blurb: "LU 710 · 50,000 sqft GFA",
     prefill: {
       projectName: "Demo: Buckhead Office — 50 ksf",
       latitude: 33.8390,
@@ -71,7 +71,7 @@ const PRESETS = {
   },
   retail: {
     label: "Retail — 75,000 sqft shopping center",
-    blurb: "ITE 820 · 75,000 sqft GLA · pass-by applied",
+    blurb: "LU 820 · 75,000 sqft GLA · pass-by applied",
     prefill: {
       projectName: "Demo: West Midtown Retail — 75 ksf",
       latitude: 33.7889,
@@ -80,20 +80,9 @@ const PRESETS = {
       size: 75,
     },
   },
-  drivethrough: {
-    label: "Drive-Through Restaurant — 4,000 sqft (Cumberland)",
-    blurb: "ITE 934 · 4,000 sqft GFA",
-    prefill: {
-      projectName: "Demo: Drive-Thru Restaurant",
-      latitude: 33.8728,
-      longitude: -84.4644,
-      landUseCode: "934",
-      size: 4,
-    },
-  },
   subdivision: {
     label: "Single-Family Subdivision — 160 lots (Buckhead)",
-    blurb: "ITE 210 · 160 dwelling units",
+    blurb: "LU 210 · 160 dwelling units",
     prefill: {
       projectName: "Demo: Buckhead Subdivision — 160 lots",
       latitude: 33.8095,
@@ -104,7 +93,7 @@ const PRESETS = {
   },
   hotel: {
     label: "Hotel — 240-room full-service (Midtown)",
-    blurb: "ITE 310 · 240 rooms",
+    blurb: "LU 310 · 240 rooms",
     prefill: {
       projectName: "Demo: Midtown Hotel — 240 rooms",
       latitude: 33.7866,
@@ -115,7 +104,7 @@ const PRESETS = {
   },
   medical: {
     label: "Medical Office — 65,000 sqft (Midtown)",
-    blurb: "ITE 720 · 65,000 sqft GFA",
+    blurb: "LU 720 · 65,000 sqft GFA",
     prefill: {
       projectName: "Demo: Midtown Medical Office — 65 ksf",
       latitude: 33.7825,
@@ -126,7 +115,7 @@ const PRESETS = {
   },
   supermarket: {
     label: "Supermarket — 65,000 sqft grocery anchor",
-    blurb: "ITE 850 · 65,000 sqft GFA",
+    blurb: "LU 850 · 65,000 sqft GFA",
     prefill: {
       projectName: "Demo: West Midtown Supermarket — 65 ksf",
       latitude: 33.7892,
@@ -135,22 +124,11 @@ const PRESETS = {
       size: 65,
     },
   },
-  restaurant: {
-    label: "Sit-Down Restaurant — 11,000 sqft (Buckhead)",
-    blurb: "ITE 932 · 11,000 sqft GFA",
-    prefill: {
-      projectName: "Demo: Buckhead Restaurant — 11 ksf",
-      latitude: 33.8422,
-      longitude: -84.3698,
-      landUseCode: "932",
-      size: 11,
-    },
-  },
   // Global examples — one per continent. Useful to demonstrate that
   // the same engine runs anywhere in our 300-metro footprint.
   global_paris: {
     label: "Office — 50,000 sqft Paris (Le Marais)",
-    blurb: "ITE 710 · 50 ksf · Paris Open Data + synthetic AADT",
+    blurb: "LU 710 · 50 ksf · Paris Open Data + synthetic AADT",
     prefill: {
       projectName: "Demo: Paris Office — 50 ksf",
       latitude: 48.8566,
@@ -161,18 +139,18 @@ const PRESETS = {
   },
   global_london: {
     label: "Multifamily — 200 units London (Shoreditch)",
-    blurb: "ITE 221 · 200 DU · DfT calibrated counts",
+    blurb: "LU 220 · 200 DU · DfT calibrated counts",
     prefill: {
       projectName: "Demo: London Multifamily — 200 DU",
       latitude: 51.5238,
       longitude: -0.0772,
-      landUseCode: "221",
+      landUseCode: "220",
       size: 200,
     },
   },
   global_tokyo: {
     label: "Retail — 75,000 sqft Tokyo (Shibuya)",
-    blurb: "ITE 820 · 75 ksf · synthetic AADT (OSM road-class baseline)",
+    blurb: "LU 820 · 75 ksf · synthetic AADT (OSM road-class baseline)",
     prefill: {
       projectName: "Demo: Tokyo Retail — 75 ksf",
       latitude: 35.6595,
@@ -183,7 +161,7 @@ const PRESETS = {
   },
   global_sydney: {
     label: "Hotel — 240 rooms Sydney (CBD)",
-    blurb: "ITE 310 · 240 rooms · synthetic AADT",
+    blurb: "LU 310 · 240 rooms · synthetic AADT",
     prefill: {
       projectName: "Demo: Sydney Hotel — 240 rooms",
       latitude: -33.8688,
@@ -196,7 +174,7 @@ const PRESETS = {
 
 router.get("/demo/landuses", (_req, res) => {
   // Surface secondaryVariables so the demo form can render the unit picker
-  // for codes that accept more than one independent variable (ITE TGM 11th).
+  // for codes that accept more than one independent variable.
   // Each variable carries enough metadata (unit label, short label, confidence
   // tier, engineering note) that the form can show "Did you mean per-employee?"
   // and the PDF can later record exactly which assumption shipped.
@@ -216,11 +194,11 @@ router.get("/demo/landuses", (_req, res) => {
   });
 });
 
-// Quick-fill demo land uses (ITE codes) for the localized presets.
+// Quick-fill demo land uses (land-use codes) for the localized presets.
 // Picked to span the four most-pitched site types in cold-outreach
 // conversations: residential density, office, retail, hospitality.
 const LOCALIZED_LAND_USES: Array<{ code: string; sizeUnitsLabel: string; size: number; verb: string; icon: string }> = [
-  { code: "221", sizeUnitsLabel: "DU", size: 200, verb: "Multifamily", icon: "multifamily" },
+  { code: "220", sizeUnitsLabel: "DU", size: 200, verb: "Multifamily", icon: "multifamily" },
   { code: "710", sizeUnitsLabel: "ksf", size: 50, verb: "Office", icon: "office" },
   { code: "820", sizeUnitsLabel: "ksf", size: 75, verb: "Retail", icon: "retail" },
   { code: "310", sizeUnitsLabel: "rooms", size: 200, verb: "Hotel", icon: "hotel" },
@@ -250,7 +228,7 @@ function buildLocalizedPresets(region: Region): Array<{ id: string; label: strin
     return {
       id: `local_${region.code}_${lu.icon}`,
       label: `${lu.verb} — ${lu.size.toLocaleString()} ${lu.sizeUnitsLabel} in ${region.displayName}`,
-      blurb: `ITE ${lu.code} · ${lu.size} ${lu.sizeUnitsLabel} · resolved from your IP`,
+      blurb: `LU ${lu.code} · ${lu.size} ${lu.sizeUnitsLabel} · resolved from your IP`,
       prefill: {
         projectName: `Demo: ${region.displayName} ${lu.verb} — ${lu.size} ${lu.sizeUnitsLabel}`,
         latitude: Math.round((c.lat + o.dLat) * 10000) / 10000,
@@ -355,7 +333,7 @@ function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
   }
   const landUse = LAND_USES.find((lu) => lu.code === landUseCode);
   if (!landUse) {
-    return { ok: false, status: 400, error: `Unknown ITE land-use code: "${landUseCode}".` };
+    return { ok: false, status: 400, error: `Unknown land-use code: "${landUseCode}".` };
   }
   // Validate the chosen independent variable against the land use. Must
   // match either the primary `unitShort` or one of the secondaryVariables'
@@ -371,7 +349,7 @@ function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
       return {
         ok: false,
         status: 400,
-        error: `"${independentVariableRaw}" is not a valid independent variable for ITE ${landUse.code}. Valid: ${[...validUnits].join(", ")}.`,
+        error: `"${independentVariableRaw}" is not a valid independent variable for LU ${landUse.code}. Valid: ${[...validUnits].join(", ")}.`,
       };
     }
     // Only thread through when it's a secondary; primary is the default.

@@ -23,7 +23,7 @@ export const genericUsTemplate: ReportTemplate = {
       tableHeader: "#E8EEF6",
       rule: "#D8DEE6",
     },
-    cover: { style: "band", tagline: "Prepared in accordance with ITE / HCM methodology" },
+    cover: { style: "band", tagline: "Prepared in accordance with HCM screening methodology" },
     footer: "{{firm.name}}  ·  Traffic Impact Study  ·  {{project.projectName}}  ·  Page {{page}}",
     docControl: false,
   },
@@ -36,7 +36,7 @@ export const genericUsTemplate: ReportTemplate = {
           number: "1.1",
           title: "Project Description",
           blocks: [
-            { kind: "prose", text: "This Traffic Impact Study evaluates the transportation effects of the proposed development at {{project.address}}. The analysis covers {{report.intersectionsStudied|num}} study intersections within a {{report.studyRadiusMi|num2}}-mile radius and follows the ITE Trip Generation Manual (11th Edition) and the Highway Capacity Manual." },
+            { kind: "prose", text: "This Traffic Impact Study evaluates the transportation effects of the proposed development at {{project.address}}. The analysis covers {{report.intersectionsStudied|num}} study intersections within a {{report.studyRadiusMi|num2}}-mile radius and follows public-data trip-generation screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) and the Highway Capacity Manual." },
             { kind: "keyvalue", provider: "schemeSummary" },
           ],
         },
@@ -62,7 +62,7 @@ export const genericUsTemplate: ReportTemplate = {
           number: "2.1",
           title: "Trip Generation Estimate",
           blocks: [
-            { kind: "prose", text: "Trip generation for ITE land use {{tripGeneration.landUseCode}} ({{tripGeneration.landUseName}}) at {{tripGeneration.size}} {{tripGeneration.unit}} is summarized below, with pass-by and internal-capture credits applied per the ITE Trip Generation Handbook." },
+            { kind: "prose", text: "Trip generation for land use {{tripGeneration.landUseCode}} ({{tripGeneration.landUseName}}) at {{tripGeneration.size}} {{tripGeneration.unit}} is summarized below, with pass-by and internal-capture credits applied per standard screening methodology." },
             { kind: "table", provider: "tripGenSummary" },
             { kind: "if", flag: "hasPeriods", then: [{ kind: "table", provider: "periodTripGen" }], else: [] },
             { kind: "keyvalue", provider: "demandAssumptions" },

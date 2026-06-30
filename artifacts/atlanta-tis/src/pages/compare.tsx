@@ -48,7 +48,7 @@ const ROWS: CompareRow[] = [
     outsourced: { v: "yes" },
   },
   {
-    feature: "ITE 11th Ed. trip generation",
+    feature: "Public-data trip generation",
     us: { v: "yes", note: "80 land-use codes shipped" },
     synchro: { v: "partial", note: "TripGen add-on $649" },
     vistro: { v: "yes" },

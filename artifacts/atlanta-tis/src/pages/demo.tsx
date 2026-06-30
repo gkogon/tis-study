@@ -38,7 +38,7 @@ type Preset = {
 type SecondaryVariable = {
   unit: string;
   unitShort: string;
-  confidence: "ite_published" | "interpolated";
+  confidence: "nhts_2017" | "sandag_2002" | "nchrp_716" | "blended_mpo" | "interpolated";
   note?: string;
 };
 
@@ -221,59 +221,46 @@ const SEVERITY_CHIP: Record<string, string> = {
 };
 
 /**
- * Project-name keyword → suggested ITE land-use code(s). When the user types
+ * Project-name keyword → suggested land-use code(s). When the user types
  * a recognizable project name ("Marriott Buckhead", "240-unit apartment
  * tower", "shopping plaza") the form surfaces a pill above the dropdown
  * suggesting the most likely code. Conservative match list: only codes
  * where the mapping is unambiguous from a single keyword. Misses are
  * cheap (no pill); false-positives would teach the engineer to ignore
  * the hint, so we tune for precision over recall.
+ *
+ * Codes here are limited to the public-data land uses the engine actually
+ * ships (210/220/310/520/530/710/720/820/850/912/110/130/140/150) so an
+ * accepted hint always resolves on /generate. Land uses with no clean free
+ * rate (restaurant, fast-food) are deliberately not suggested.
  */
 const PROJECT_NAME_HINTS: Array<{ pattern: RegExp; code: string; label: string }> = [
   // Lodging
-  { pattern: /\b(?:hotel|inn|marriott|hilton|hyatt|sheraton|westin|four\s*seasons)\b/i, code: "310", label: "Hotel" },
-  { pattern: /\b(?:motel|extended[\s-]?stay)\b/i, code: "320", label: "Motel" },
-  { pattern: /\bresort\b/i, code: "330", label: "Resort Hotel" },
+  { pattern: /\b(?:hotel|inn|marriott|hilton|hyatt|sheraton|westin|four\s*seasons|motel|resort|extended[\s-]?stay)\b/i, code: "310", label: "Hotel" },
   // Residential
-  { pattern: /\b(?:apartments?|apt|multifamily|mid[\s-]?rise|tower)\b/i, code: "221", label: "Multifamily Mid-Rise" },
-  { pattern: /\b(?:condos?|condominiums?|townhomes?|townhouses?)\b/i, code: "230", label: "Condo / Townhouse" },
+  { pattern: /\b(?:apartments?|apt|multifamily|condos?|condominiums?|townhomes?|townhouses?|mid[\s-]?rise|tower)\b/i, code: "220", label: "Multifamily / Apartment" },
   { pattern: /\b(?:subdivision|single[\s-]?family|sfd|homes?\s*subdivision)\b/i, code: "210", label: "Single-Family Detached" },
-  { pattern: /\b(?:senior|55\+|retirement)\b/i, code: "252", label: "Senior Adult Housing" },
   // Office
   { pattern: /\b(?:medical\s+office|dental|mob)\b/i, code: "720", label: "Medical/Dental Office" },
-  { pattern: /\b(?:office\s+tower|office\s+park|office\s+building|class\s*[ab])\b/i, code: "710", label: "General Office" },
-  { pattern: /\b(?:business\s+park|biz\s+park)\b/i, code: "770", label: "Business Park" },
+  { pattern: /\b(?:office\s+tower|office\s+park|office\s+building|business\s+park|class\s*[ab])\b/i, code: "710", label: "General Office" },
   // Retail
-  { pattern: /\b(?:shopping\s+center|shopping\s+mall|mall|plaza)\b/i, code: "820", label: "Shopping Center" },
+  { pattern: /\b(?:shopping\s+center|shopping\s+mall|mall|plaza|retail)\b/i, code: "820", label: "Shopping Center / Retail" },
   { pattern: /\b(?:supermarket|grocery)\b/i, code: "850", label: "Supermarket" },
-  { pattern: /\b(?:pharmacy|drugstore|cvs|walgreens)\b/i, code: "880", label: "Pharmacy" },
-  // Food
-  { pattern: /\b(?:drive[\s-]?thru|drive[\s-]?through|qsr|chick[\s-]?fil[\s-]?a|chipotle)\b/i, code: "934", label: "Fast-Food w/ Drive-Through" },
-  { pattern: /\b(?:coffee|starbucks|dunkin)\b/i, code: "935", label: "Coffee Shop w/ Drive-Through" },
-  { pattern: /\b(?:restaurant|dining|cafe|bistro)\b/i, code: "932", label: "Sit-Down Restaurant" },
+  { pattern: /\b(?:bank|credit\s+union)\b/i, code: "912", label: "Bank" },
   // Institutional
-  { pattern: /\b(?:elementary)\b/i, code: "520", label: "Public Elementary School" },
-  { pattern: /\b(?:middle\s+school|junior\s+high)\b/i, code: "522", label: "Middle School" },
+  { pattern: /\b(?:elementary|primary\s+school)\b/i, code: "520", label: "Elementary / Primary School" },
   { pattern: /\b(?:high\s+school)\b/i, code: "530", label: "High School" },
-  { pattern: /\b(?:church|chapel|synagogue|mosque|temple|cathedral)\b/i, code: "560", label: "Church" },
-  { pattern: /\b(?:day\s*care|daycare|preschool)\b/i, code: "565", label: "Day Care Center" },
-  { pattern: /\b(?:hospital|medical\s+center)\b/i, code: "610", label: "Hospital" },
-  { pattern: /\b(?:clinic|urgent\s+care)\b/i, code: "630", label: "Clinic" },
-  // Entertainment / recreation
-  { pattern: /\b(?:movie\s+theater|cineplex|cinema)\b/i, code: "444", label: "Movie Theater" },
-  { pattern: /\b(?:theater|playhouse|opera)\b/i, code: "445", label: "Live Theater" },
-  { pattern: /\b(?:gym|fitness|health\s+club)\b/i, code: "492", label: "Health Club" },
   // Industrial
-  { pattern: /\b(?:warehouse|fulfillment\s+center)\b/i, code: "150", label: "Warehousing" },
-  { pattern: /\b(?:self[\s-]?storage|mini[\s-]?storage)\b/i, code: "151", label: "Self-Storage" },
+  { pattern: /\b(?:warehouse|fulfillment\s+center|distribution\s+center)\b/i, code: "150", label: "Warehousing" },
   { pattern: /\b(?:manufacturing|factory|plant)\b/i, code: "140", label: "Manufacturing" },
+  { pattern: /\b(?:light\s+industrial|industrial|flex)\b/i, code: "110", label: "Light Industrial" },
 ];
 
 /**
- * Suggest the first ITE land-use code whose keyword pattern hits in the
+ * Suggest the first land-use code whose keyword pattern hits in the
  * project name. Returns null when nothing matches the name reads as
  * generic ("Project Phase 1" etc.). Caller uses this to surface a
- * "Did you mean ITE X?" pill above the dropdown.
+ * "Did you mean …?" pill above the dropdown.
  */
 function suggestIteCodeForName(name: string): { code: string; label: string } | null {
   const trimmed = name.trim();
@@ -287,7 +274,7 @@ function suggestIteCodeForName(name: string): { code: string; label: string } | 
 /**
  * Suggest 2–3 quick-pick sizes for the user's land use + chosen unit. The
  * sizes are the "what does a typical project look like" sizes a developer
- * is likely to be sketching — for ITE 221 mid-rise MF: 120 / 200 / 400 DU.
+ * is likely to be sketching — e.g. for multifamily: 80 / 160 / 320 DU.
  * Tuned to span small / medium / large for each code so the chip strip is
  * useful regardless of project scale. Falls back to a generic 50/100/200
  * scheme for codes without a custom entry.
@@ -467,46 +454,32 @@ export default function DemoPage() {
   // empty (network issue, ad-blocker, slow API rollout, etc.). Without
   // this, the user lands on a form with a disabled land-use button and
   // no error message — they bounce. With it, the form is always usable;
-  // the live API is just an upgrade path. List covers the 10 most-used
-  // ITE codes to keep the demo functional for ~80% of project types.
+  // the live API is just an upgrade path. List mirrors the public-data
+  // land-use codes the live engine actually ships, so a fallback selection
+  // always resolves on /generate.
   const FALLBACK_LAND_USES: LandUse[] = [
     { code: "210", name: "Single-Family Detached Housing", unit: "Dwelling Units", unitShort: "DU" },
-    { code: "220", name: "Multifamily Housing (Low-Rise)", unit: "Dwelling Units", unitShort: "DU" },
-    { code: "221", name: "Multifamily Housing (Mid-Rise)", unit: "Dwelling Units", unitShort: "DU" },
-    { code: "222", name: "Multifamily Housing (High-Rise)", unit: "Dwelling Units", unitShort: "DU" },
-    { code: "310", name: "Hotel", unit: "Rooms", unitShort: "rooms" },
-    { code: "710", name: "General Office", unit: "1,000 sqft GFA", unitShort: "ksf" },
-    { code: "820", name: "Shopping Center (≤100 ksf)", unit: "1,000 sqft GFA", unitShort: "ksf" },
+    { code: "220", name: "Multifamily Housing / Apartment", unit: "Dwelling Units", unitShort: "DU" },
+    { code: "310", name: "Hotel", unit: "Occupied Rooms", unitShort: "rooms" },
+    { code: "520", name: "Elementary / Primary School", unit: "1,000 sqft GFA", unitShort: "ksf" },
+    { code: "530", name: "High School", unit: "1,000 sqft GFA", unitShort: "ksf" },
     {
-      code: "932",
-      name: "High-Turnover (Sit-Down) Restaurant",
+      code: "710",
+      name: "General Office",
       unit: "1,000 sqft GFA",
       unitShort: "ksf",
       // Keep the unit picker working on the fallback path too. Mirrors
-      // the live land-uses.ts payload for these codes.
+      // the live land-uses.ts payload for this code.
       secondaryVariables: [
-        { unit: "Seats", unitShort: "seats", confidence: "ite_published" },
+        { unit: "Employees", unitShort: "emp", confidence: "nchrp_716", note: "NCHRP 716 per-employee backstop" },
       ],
     },
-    {
-      code: "934",
-      name: "Fast-Food Restaurant w/ Drive-Through",
-      unit: "1,000 sqft GFA",
-      unitShort: "ksf",
-      secondaryVariables: [
-        { unit: "Seats", unitShort: "seats", confidence: "ite_published" },
-      ],
-    },
-    {
-      code: "560",
-      name: "Church",
-      unit: "1,000 sqft GFA",
-      unitShort: "ksf",
-      secondaryVariables: [
-        { unit: "Seats", unitShort: "seats", confidence: "ite_published" },
-        { unit: "Weekly Attendees", unitShort: "att", confidence: "interpolated" },
-      ],
-    },
+    { code: "720", name: "Medical / Dental Office", unit: "1,000 sqft GFA", unitShort: "ksf" },
+    { code: "820", name: "Shopping Center / Retail", unit: "1,000 sqft GLA", unitShort: "ksf" },
+    { code: "850", name: "Supermarket", unit: "1,000 sqft GFA", unitShort: "ksf" },
+    { code: "912", name: "Bank", unit: "1,000 sqft GFA", unitShort: "ksf" },
+    { code: "110", name: "Light Industrial", unit: "1,000 sqft GFA", unitShort: "ksf" },
+    { code: "150", name: "Warehousing", unit: "1,000 sqft GFA", unitShort: "ksf" },
   ];
 
   const [landUsesError, setLandUsesError] = useState<string | null>(null);
@@ -531,7 +504,7 @@ export default function DemoPage() {
         // the hardcoded list and tell the user, so they can still run
         // the demo on the common codes.
         setLandUses(FALLBACK_LAND_USES);
-        setLandUsesError("Couldn't load the full ITE land-use library. Using a fallback list of the 10 most-used codes — refresh to retry.");
+        setLandUsesError("Couldn't load the full land-use library. Using a fallback list of the most-used codes — refresh to retry.");
       } else {
         setLandUses(fetched);
       }
@@ -539,7 +512,7 @@ export default function DemoPage() {
       if (cancelled) return;
       // Network / parse failure. Same fallback path.
       setLandUses(FALLBACK_LAND_USES);
-      setLandUsesError("Couldn't load the full ITE land-use library. Using a fallback list of the 10 most-used codes — refresh to retry.");
+      setLandUsesError("Couldn't load the full land-use library. Using a fallback list of the most-used codes — refresh to retry.");
     });
     return () => { cancelled = true; };
   }, [reloadTick]);
@@ -654,7 +627,7 @@ export default function DemoPage() {
  *     the backend re-validates against the canonical regions registry
  *     and returns a clear error if the site is outside coverage.
  *   - size in (0, 10000]
- *   - landUseCode must match a published ITE 11th Ed. row
+ *   - landUseCode must match a published public-data land-use row
  */
 
 function DemoForm({
@@ -704,7 +677,7 @@ function DemoForm({
   const [studyTier, setStudyTier] = useState<StudyTier>(persisted?.studyTier ?? "auto");
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Land-use combobox state. The dropdown has 80+ ITE codes; without a
+  // Land-use combobox state. The dropdown has the public-data codes; without a
   // search box, an engineer landing from cold outreach has to scroll
   // through everything from Single-Family Housing to Mini-Warehouse to
   // find Museum or Live Theater. Typeahead filters on code, name, and
@@ -786,9 +759,9 @@ function DemoForm({
     return activeLandUse.secondaryVariables?.find((v) => v.unitShort === independentVariable) ?? null;
   }, [activeLandUse, independentVariable]);
 
-  // Project-name → ITE-code hint. Only surfaces when the matched code is
+  // Project-name → land-use-code hint. Only surfaces when the matched code is
   // DIFFERENT from the current selection — no point telling the user "did
-  // you mean ITE 310 Hotel?" if they already picked 310.
+  // you mean 310 Hotel?" if they already picked 310.
   const nameHint = useMemo(() => {
     const h = suggestIteCodeForName(projectName);
     if (!h) return null;
@@ -900,7 +873,7 @@ function DemoForm({
       return;
     }
     if (!landUseCode || !landUses?.some((lu) => lu.code === landUseCode)) {
-      setFormError("Pick an ITE land use.");
+      setFormError("Pick a land use.");
       return;
     }
     if (!Number.isFinite(sz) || sz <= 0 || sz > 10000) {
@@ -1209,7 +1182,7 @@ function DemoForm({
             </p>
           </div>
 
-          {/* Project name → ITE-code hint. Surfaced as a small pill above the
+          {/* Project name → land-use-code hint. Surfaced as a small pill above the
               dropdown when the user's project name unambiguously points to a
               specific code and they haven't picked that code yet. */}
           {nameHint && (
@@ -1220,7 +1193,7 @@ function DemoForm({
               data-testid="button-name-hint"
             >
               <Sparkles className="w-3 h-3" />
-              Did you mean <span className="font-mono">ITE {nameHint.code}</span>{" "}
+              Did you mean <span className="font-mono">LU {nameHint.code}</span>{" "}
               <span className="font-semibold">{nameHint.label}</span>?
             </button>
           )}
@@ -1229,7 +1202,7 @@ function DemoForm({
           <div className="grid sm:grid-cols-12 gap-4">
             <div className="sm:col-span-6 relative">
               <label htmlFor="demo-landuse" className={labelCls}>
-                ITE land use {landUses === null && <span className="text-muted-foreground/60">(loading…)</span>}
+                Land use {landUses === null && <span className="text-muted-foreground/60">(loading…)</span>}
                 {landUsesError && (
                   <button type="button" onClick={onReload} className="ml-2 normal-case text-amber-600 underline hover:no-underline">
                     {landUsesError.includes("fallback") ? "Using fallback list · retry" : "retry"}
@@ -1322,7 +1295,7 @@ function DemoForm({
                   </div>
                 </>
               )}
-              {/* Unit picker — surfaces when ITE 11th publishes (or our
+              {/* Unit picker — surfaces when a code publishes (or our
                   table derives) more than one independent variable for the
                   chosen code. Sizing a hotel by occupied rooms instead of
                   rooms, an office by employees instead of ksf, a church by
@@ -1472,7 +1445,7 @@ function LoadingState({ projectName }: { projectName: string | null }) {
   const stages = useMemo(
     () => [
       "Pulling live GDOT signal data",
-      "Calculating ITE-11th-Ed. trip generation",
+      "Calculating public-data trip generation",
       "Running HCM 6th-Ed. capacity analysis",
       "Computing Monte-Carlo sensitivity",
       "Drafting findings + methodology",
@@ -1668,11 +1641,11 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
         <p className="text-sm text-muted-foreground font-mono">
           {response.latitude.toFixed(4)}, {response.longitude.toFixed(4)}
           {response.regionName ? ` · ${response.regionName}` : ""} ·{" "}
-          {response.landUseName} (ITE {response.landUseCode}) ·{" "}
+          {response.landUseName} (LU {response.landUseCode}) ·{" "}
           {response.size.toLocaleString()} {response.landUseUnitShort}
         </p>
         <p className="text-sm text-muted-foreground">
-          Generated against indexed regional traffic data · ITE 11th Ed. · HCM 6th Ed. · MUTCD
+          Generated against indexed regional traffic data · NHTS 2017 / SANDAG 2002 / NCHRP 716 · HCM 6th Ed. · MUTCD
         </p>
       </div>
 
@@ -1693,7 +1666,7 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
         <SectionHead
           step="Trip generation"
           title="Trips by analysis period"
-          note={`${tg.landUseName} (ITE ${tg.landUseCode}) · ${tg.size.toLocaleString()} ${tg.unit}`}
+          note={`${tg.landUseName} (LU ${tg.landUseCode}) · ${tg.size.toLocaleString()} ${tg.unit}`}
         />
         <PeriodTripGenTable periods={r.periodReports} dailyTrips={tg.dailyTrips} />
       </section>
@@ -1871,7 +1844,7 @@ function PeriodTripGenTable({
       </div>
       <div className="px-4 py-2 text-xs text-muted-foreground border-t border-border bg-muted/20">
         Daily two-way trips: {Math.round(dailyTrips).toLocaleString()}. External trips are
-        what gets assigned to off-site intersections after ITE pass-by and ULI
+        what gets assigned to off-site intersections after pass-by and ULI
         internal-capture credits.
       </div>
     </div>

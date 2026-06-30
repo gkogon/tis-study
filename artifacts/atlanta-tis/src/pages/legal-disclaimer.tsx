@@ -22,8 +22,8 @@ export default function LegalDisclaimerPage() {
         engineering reference at a screening-grade level of fidelity:
       </p>
       <ul>
-        <li>The Traffic Impact Study engine implements Webster-style capacity analysis with HCM 6th Ed. delay tables, ITE 11th Ed. trip generation, and pass-by / internal-capture adjustments.</li>
-        <li>The Parking Demand engine implements ITE Parking Generation 5th Ed. peak rates and Atlanta Article 10 code minimums.</li>
+        <li>The Traffic Impact Study engine implements Webster-style capacity analysis with HCM 6th Ed. delay tables, public-data trip generation (NHTS 2017 / SANDAG 2002 / NCHRP 716), and pass-by / internal-capture adjustments.</li>
+        <li>The Parking Demand engine is being migrated to a public zoning-code basis and is temporarily unavailable.</li>
         <li>The Signal Warrants engine implements MUTCD Ch. 4C Warrants 1A, 1B, 3 (volume-only proxy), and 7 (crash-experience).</li>
         <li>The Sight Distance engine implements AASHTO Green Book SSD (Eq. 3-2) and ISD (Eq. 9-1) with maneuver- and vehicle-class adjustments.</li>
         <li>The Queuing Analysis engine implements an HCM Ch. 31 95th-percentile back-of-queue approximation with oversaturation queue growth.</li>
@@ -63,33 +63,40 @@ export default function LegalDisclaimerPage() {
 
       <h2>Land-use rate uncertainty</h2>
       <p>
-        The Service ships with approximately 80 ITE land-use rate entries
-        spanning residential, lodging, recreational, institutional, office,
-        retail, services, and industrial categories. For commonly studied
-        codes (e.g., 210, 220, 710, 820, 932, 934) the rates are
-        transcribed directly from the published ITE Trip Generation Manual
-        11th Ed. tables. For less-common codes, some rates are interpolated
-        from published curves or fitted equations. Engineers using the
-        Service for an unusual land use should verify the rate against
-        the ITE manual before relying on the output.
+        Trip-generation rates in the Service are drawn from public, openly-
+        published data sets, not from any proprietary trip-generation manual:
+        the <strong>SANDAG 2002 "(Not So) Brief Guide of Vehicular Traffic
+        Generation Rates for the San Diego Region"</strong> is the primary
+        per-land-use rate source; the residential daily rate is corroborated
+        by the <strong>FHWA National Household Travel Survey (NHTS) 2017</strong>{" "}
+        Summary of Travel Trends (Table 3a, 5.11 vehicle-trips per household
+        per day), and a per-employee office backstop is taken from{" "}
+        <strong>NCHRP Report 716</strong> (TRB, 2012).
       </p>
       <p>
-        Several ITE 11th Ed. codes accept more than one independent
-        variable — e.g., Hotel (310) can be sized by Rooms <em>or</em>
-        Occupied Rooms <em>or</em> Employees; Church (560) by 1,000 sqft
-        GFA <em>or</em> Seats <em>or</em> Weekly Attendees; Office (710) by
-        ksf <em>or</em> Employees. The Service surfaces these alternates in
-        the demo form and records the variable that was actually used in
-        every generated study (PDF §4 Trip Generation, "Independent
-        variable" row), so the reviewing engineer can verify the assumption.
-        Where ITE publishes a rate for the secondary variable it is
-        transcribed directly; where ITE publishes only the primary, the
-        Service derives a defensible engineering ratio (e.g., office at
-        ~250 sqft per employee → 4 employees per ksf). Derived rates are
-        explicitly flagged in the report as <em>interpolated</em> alongside
-        the engineering ratio used; the reviewing engineer should re-run a
-        submittal-grade study against the primary published variable
-        before relying on a derived rate.
+        Some of the retail rates carry more uncertainty than others. The
+        Shopping Center / Retail (820), Supermarket (850), and Bank (912)
+        rates are <strong>blended MPO screening guidance</strong> rather than
+        a single provably-clean public source, and are flagged as rough in
+        the generated report; an engineer should confirm these against a
+        jurisdiction-approved rate before relying on the output.
+      </p>
+      <p>
+        Restaurant and fast-food land uses are <strong>not offered</strong>{" "}
+        by the Service, because no clean free trip-generation rate is
+        available for them; an engineer studying those uses should supply a
+        site-specific or jurisdiction-approved rate.
+      </p>
+      <p>
+        Where a land use accepts more than one independent variable — e.g.,
+        General Office (710) by 1,000 sqft GFA <em>or</em> by Employees — the
+        Service records the variable that was actually used in every
+        generated study (PDF §4 Trip Generation, "Independent variable" row),
+        so the reviewing engineer can verify the assumption. Secondary rates
+        derived from a defensible engineering ratio are explicitly flagged in
+        the report as <em>interpolated</em> alongside the ratio used; the
+        reviewing engineer should re-run a submittal-grade study against a
+        jurisdiction-approved source before relying on a derived rate.
       </p>
 
       <h2>Real-time data sources</h2>

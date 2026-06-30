@@ -225,7 +225,7 @@ export default function ProjectsPage() {
                   <div className="min-w-0">
                     <div className="font-medium truncate">{p.projectName}</div>
                     <div className="text-xs text-muted-foreground flex items-center gap-3 mt-0.5">
-                      <span>{p.studyType === "warrants" ? `Lane config ${p.landUseCode}` : `ITE ${p.landUseCode}`}</span>
+                      <span>{p.studyType === "warrants" ? `Lane config ${p.landUseCode}` : `LU ${p.landUseCode}`}</span>
                       {p.siteLat && p.siteLon && (
                         <span className="inline-flex items-center gap-1">
                           <MapPin className="w-3 h-3" />

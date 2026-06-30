@@ -43,7 +43,7 @@ export function ParkingReport({ report }: { report: ParkingReportT }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Metric
-          label="ITE peak demand"
+          label="Peak parking demand"
           value={`${report.demand.adjustedDemand} spaces`}
           sub={`${report.demand.governingPeriod} peak${
             report.demand.sharedUseReductionPct > 0
@@ -104,7 +104,7 @@ function VerdictBanner({
         <div>
           <div className="font-semibold text-green-800 dark:text-green-200">Proposed supply exceeds governing requirement</div>
           <div className="text-sm text-green-700 dark:text-green-300">
-            Surplus of {delta} spaces vs. the higher of code minimum and ITE-adjusted demand.
+            Surplus of {delta} spaces vs. the higher of code minimum and screening demand estimate.
           </div>
         </div>
       </div>

@@ -432,7 +432,7 @@ components:
         size: { type: number }
         unit: { type: string }
         unitShort: { type: string }
-        variableConfidence: { type: string, enum: [ite_published, interpolated] }
+        variableConfidence: { type: string, enum: [nhts_2017, sandag_2002, nchrp_716, blended_mpo, interpolated] }
         variableNote: { type: string }
         dailyTrips: { type: integer }
         amPeakTrips: { type: integer }

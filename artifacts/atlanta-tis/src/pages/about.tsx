@@ -11,13 +11,13 @@ import { Marker } from "../components/section-marker";
 
 const PRINCIPLES: Array<[string, string]> = [
   ["Mission", "Cut the screening tax. Free PE hours for the work where engineering judgment actually matters."],
-  ["Methodology", "Every figure cited inline. ITE 11th Ed., HCM 6th Ed., MUTCD, AASHTO Green Book, FHWA."],
+  ["Methodology", "Every figure cited inline. NHTS 2017 / SANDAG 2002 / NCHRP 716, HCM 6th Ed., MUTCD, AASHTO Green Book, FHWA."],
   ["Defensibility", "Screening-grade outputs ship with explicit limitations and assumption appendices on every report."],
 ];
 
 const ENGINES: Array<{ title: string; tag: string; body: string }> = [
-  { title: "Traffic Impact Study", tag: "ITE · HCM", body: "Trip generation, capacity, recommended mitigations." },
-  { title: "Parking Demand", tag: "ITE PG", body: "Code-min vs. ITE-adjusted demand vs. proposed supply." },
+  { title: "Traffic Impact Study", tag: "HCM · NHTS", body: "Trip generation, capacity, recommended mitigations." },
+  { title: "Parking Demand", tag: "Parking", body: "Code-min vs. screening demand estimate vs. proposed supply." },
   { title: "Signal Warrants", tag: "MUTCD Ch. 4C", body: "Warrants 1A, 1B, 3, 7 against your 24-hr volume profile." },
   { title: "Sight Distance", tag: "AASHTO", body: "Stopping + intersection sight distance per Green Book." },
   { title: "Queuing", tag: "HCM Ch. 31", body: "95th-percentile back-of-queue, storage adequacy check." },
@@ -49,7 +49,7 @@ export default function AboutPage() {
             Simple Impact Studies runs screening-level traffic studies for
             engineering firms in metro Atlanta. The screening pass that used
             to cost a junior engineer 20 to 60 hours now takes about a
-            minute. Every figure still traces to HCM, ITE, MUTCD, and
+            minute. Every figure still traces to HCM, NHTS, MUTCD, and
             AASHTO. A PE can sign it.
           </p>
         </div>

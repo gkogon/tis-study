@@ -160,7 +160,7 @@ export const velocityTemplate: ReportTemplate = {
           number: "6.1",
           title: "Trip Generation",
           blocks: [
-            { kind: "prose", text: "Gross trip generation follows the ITE Trip Generation Manual 11th Edition for land use {{tripGeneration.landUseCode}} ({{tripGeneration.landUseName}}) at {{tripGeneration.size}} {{tripGeneration.unit}}. A submitted TA substitutes TRICS multi-modal rates with the 2011 Census Method-of-Travel-to-Work public-transport adjustment." },
+            { kind: "prose", text: "Gross trip generation follows public-data US screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use {{tripGeneration.landUseCode}} ({{tripGeneration.landUseName}}) at {{tripGeneration.size}} {{tripGeneration.unit}}. A submitted TA substitutes TRICS multi-modal rates with the 2011 Census Method-of-Travel-to-Work public-transport adjustment." },
             { kind: "table", provider: "tripGenSummary" },
             { kind: "if", flag: "hasPeriods", then: [{ kind: "table", provider: "periodTripGen" }], else: [] },
           ],

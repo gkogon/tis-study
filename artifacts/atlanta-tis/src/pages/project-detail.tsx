@@ -124,7 +124,7 @@ export default function ProjectDetailPage() {
           </div>
           <div className="text-xs text-muted-foreground flex items-center gap-3 flex-wrap">
             <span>
-              {project.studyType === "warrants" ? "Lane config" : "ITE"} {project.landUseCode}
+              {project.studyType === "warrants" ? "Lane config" : "LU"} {project.landUseCode}
             </span>
             {project.siteLat && project.siteLon && (
               <span className="inline-flex items-center gap-1">

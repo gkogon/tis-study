@@ -350,17 +350,18 @@ const fmtCount = (n: unknown): string => Math.round(Number(n) || 0).toLocaleStri
  * Shared within-day trip-distribution charts, usable by every regional renderer:
  * a stacked inbound/outbound-by-hour bar chart and a daily accumulation line,
  * derived by distributing the engine's gross daily trip generation across the
- * use-class within-day profile (office from ITE TGM 11th Ed. LU 710 time-of-day
- * data; residential / retail / school from standard US NHTS/ITE distributions).
- * Self-skips when the use class has no defensible profile or daily trips are
- * zero, so callers drop one unconditional call into their trip-generation
- * section. A consultant `tripProfile` override on the request takes precedence
- * over the use-class default. Requires the host doc to have registered
- * "body"/"bold" fonts (renderStudyPdf does).
+ * use-class within-day profile (residential / retail / school from standard US
+ * NHTS 2022 distributions). Office land uses ship NO US within-day shape, so the
+ * office figure is omitted under the US locale. Self-skips when the use class has
+ * no defensible profile or daily trips are zero, so callers drop one
+ * unconditional call into their trip-generation section. A consultant
+ * `tripProfile` override on the request takes precedence over the use-class
+ * default. Requires the host doc to have registered "body"/"bold" fonts
+ * (renderStudyPdf does).
  *
  * `locale` defaults to "us" — the only value the US DOT renderers pass — so the
- * office shape is ITE-sourced and no TfL/LTDS provenance line can be printed.
- * The London renderer prints its own LTDS figures directly and does not call this.
+ * office figure is omitted and no TfL/LTDS provenance line can be printed. The
+ * London renderer prints its own LTDS figures directly and does not call this.
  */
 export function renderDiurnalCharts(doc: PDFKit.PDFDocument, r: any, locale: ProfileLocale = "us"): void {
   const tg = r?.tripGeneration ?? {};

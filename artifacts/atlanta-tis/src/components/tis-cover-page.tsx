@@ -65,9 +65,10 @@ export function TisCoverPage({ report, firm, meta }: Props) {
       <PeStampBlock firm={firm} />
 
       <footer className="mt-6 pt-3 border-t text-[10px] text-gray-500 text-center">
-        This screening-level Traffic Impact Study was prepared in accordance with the
-        Highway Capacity Manual (6th Ed.), ITE Trip Generation Manual (11th Ed.), and the
-        MUTCD (2009, Rev. 3). See "Methodology &amp; References" appendix for details.
+        This screening-level Traffic Impact Study was prepared using Highway Capacity
+        Manual (6th Ed.) methods, public-data trip generation (NHTS 2017 / SANDAG 2002 /
+        NCHRP 716), and the MUTCD (2009, Rev. 3). See "Methodology &amp; References"
+        appendix for details.
       </footer>
     </section>
   );

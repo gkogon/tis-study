@@ -19,7 +19,7 @@ import { TOTAL_METROS, TOTAL_SIGNALS, COUNTRIES_COVERED, CONTINENTS_COVERED } fr
 export default function HomePage() {
   usePageMeta({
     title: "Simple Impact Studies — Defensible TIS without the week of engineer time",
-    description: `Screening-level Traffic Impact Studies for engineering firms across ${TOTAL_METROS} cities in ${COUNTRIES_COVERED} countries on ${CONTINENTS_COVERED} continents (${TOTAL_SIGNALS.toLocaleString()} signals indexed). HCM 6th, ITE 11th, MUTCD, AASHTO — the math your reviewer expects, in about a minute.`,
+    description: `Screening-level Traffic Impact Studies for engineering firms across ${TOTAL_METROS} cities in ${COUNTRIES_COVERED} countries on ${CONTINENTS_COVERED} continents (${TOTAL_SIGNALS.toLocaleString()} signals indexed). HCM 6th, public trip-generation data, MUTCD, AASHTO — the math your reviewer expects, in about a minute.`,
     canonical: "https://simpleimpactstudies.com/",
   });
 
@@ -70,7 +70,7 @@ function HeroSection() {
         </h1>
         <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-xl">
           TIS, parking, signal warrants, sight distance, queuing, road diet.
-          Every figure footnoted to HCM, ITE, MUTCD, or AASHTO. A junior PE
+          Every figure footnoted to HCM, NHTS, MUTCD, or AASHTO. A junior PE
           spends 20 to 40 hours on a screening pass. Here it runs in about a minute.
         </p>
         <div className="flex flex-wrap items-center gap-3 pt-1">
@@ -141,7 +141,7 @@ function ProductPreview() {
         </div>
         <div className="text-lg font-bold">Peachtree Multifamily — 240 DU</div>
         <div className="text-xs text-muted-foreground font-mono">
-          ITE 221 · Sample (Atlanta MSA) · Opening year 2027
+          LU 220 · Sample (Atlanta MSA) · Opening year 2027
         </div>
       </div>
 
@@ -262,20 +262,20 @@ const MATH_STATS: Array<{ value: string; unit?: string; label: string; sub: stri
   },
   {
     value: "80",
-    label: "ITE trip-generation curves",
+    label: "Trip-generation rate sets",
     sub: "Daily / AM / PM peak rates, per land use",
   },
   {
-    value: "8",
+    value: "6",
     label: "Reference standards",
-    sub: "HCM · ITE TGM · ITE PG · MUTCD · AASHTO · FHWA",
+    sub: "HCM · NHTS · SANDAG · MUTCD · AASHTO · FHWA",
   },
 ];
 
 const MECHANICS: Array<[string, string]> = [
   ["State-DOT data pre-indexed", `Signal counts, intersection inventory, and live incident feeds stay loaded in-process. We did the import once, for all ${TOTAL_SIGNALS.toLocaleString()} signals across ${TOTAL_METROS} metros.`],
   ["HCM equations in parallel", "Eq. 19-13 (control delay) and Eq. 19-50 (95th-percentile queue) run concurrently across every intersection in the radius."],
-  ["ITE rates from one table", "80 land-use codes as a typed lookup, not flipped page-by-page. Pass-by and internal capture applied per ITE TGM Appendix B."],
+  ["Trip rates from one table", "80 land-use codes as a typed lookup, not flipped page-by-page. Public-data average rates (SANDAG 2002 / NHTS 2017 / NCHRP 716), with pass-by and internal-capture credits applied before off-site assignment."],
   ["No GUI overhead", "No model setup, no scenario manager, no project file. The form is the model; generation streams straight to a structured report."],
 ];
 
@@ -287,9 +287,10 @@ function MathSection() {
         Real HCM math. We just took the week out.
       </h2>
       <p className="text-muted-foreground text-lg leading-relaxed max-w-2xl mt-3">
-        Every figure comes from the same HCM, ITE, and MUTCD tables a senior
-        reviewer would reach for. Nothing is estimated past the point a
-        published equation can carry it.
+        Every figure comes from the same public-data sources a senior
+        reviewer would reach for — HCM capacity methods, NHTS / SANDAG /
+        NCHRP trip rates, and MUTCD / AASHTO / FHWA standards. Nothing is
+        estimated past the point a published equation can carry it.
       </p>
 
       {/* Computational scale — the beefy numbers. */}
@@ -347,10 +348,11 @@ function MathSection() {
             </div>
             <div className="p-6 space-y-4">
               <p className="font-mono text-xs leading-relaxed border-l-2 border-blue-600 pl-4 py-1 text-muted-foreground">
-                PM peak trip generation derived from ITE TGM 11th Ed., land
-                use 220 (Multifamily Housing — Low-Rise), fitted curve T =
-                0.51(X) + 9.78 where X = dwelling units (n=42, R² = 0.93).
-                17% pass-by capture per ITE TGM Appendix B.
+                PM peak trip generation from public-data average rates
+                (SANDAG 2002, corroborated by NHTS 2017 / NCHRP 716) for land
+                use 220 (Multifamily — Low-Rise): 0.56 PM-peak vehicle trips
+                per dwelling unit × 240 DU. Residual external trips after
+                internal-capture and pass-by credits assigned off-site.
               </p>
               <p className="font-mono text-xs leading-relaxed border-l-2 border-blue-600 pl-4 py-1 text-muted-foreground">
                 Intersection control delay per HCM Ch. 19 Eq. 19-13. Cycle
@@ -389,7 +391,7 @@ function FlagshipSection() {
             engine can carry where the data exists.
           </p>
           <p className="text-xs text-muted-foreground/80 leading-relaxed font-mono">
-            The other 170 metros run the same HCM/ITE/MUTCD math against
+            The other 170 metros run the same HCM/NHTS/MUTCD math against
             the OSM signal graph + measured AADT from each state DOT (where
             published). See the per-metro coverage table above for what's
             wired where.
@@ -452,9 +454,9 @@ function EconomicsSection() {
           </div>
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             Methodology: 40 hours saved per screening at $125/hr is the
-            midpoint of the ITE-typical 20–60 hr range and the 2026 US
-            junior-PE billable rate. Savings shown are gross labor cost
-            recovered. Enterprise is flat $10,000/mo — unlimited studies.
+            midpoint of the typical 20–60 hr manual-screening range and the
+            2026 US junior-PE billable rate. Savings shown are gross labor
+            cost recovered. Enterprise is flat $10,000/mo — unlimited studies.
           </p>
         </div>
       </div>
@@ -508,7 +510,7 @@ function RoiRow({
 /* ----- §03 — From inputs to report ------------------------------------- */
 const STEPS: Array<[string, string]> = [
   ["Drop a pin", `Site coordinates anywhere in any of our ${TOTAL_METROS} covered metros. The generator pulls state-DOT counts and signal data for every intersection in the radius — up to 6.5 mi.`],
-  ["Pick a land use", "ITE 11th Ed. codes for 80 use types. Enter the size; trip generation and pass-by capture are computed for you."],
+  ["Pick a land use", "Public-data land-use codes. Enter the size; trip generation and pass-by capture are computed for you."],
   ["Download the PDF", "Cover page, executive summary, intersection table, mitigations, methodology and limitations appendices. Ready for PE review."],
 ];
 

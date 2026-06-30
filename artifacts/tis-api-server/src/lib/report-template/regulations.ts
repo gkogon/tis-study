@@ -27,11 +27,12 @@ export type Regulation = {
  */
 export const REGULATIONS: Regulation[] = [
   // US national
-  { code: "ITE TGM", title: "ITE Trip Generation Manual", edition: "11th Edition", effective: "2021-09", jurisdiction: "US", appliesTo: ["vehicular", "parking"] },
+  { code: "SANDAG 2002", title: "SANDAG (Not So) Brief Guide of Vehicular Traffic Generation Rates", edition: "April 2002", effective: "2002-04", jurisdiction: "US", appliesTo: ["vehicular"] },
+  { code: "NHTS 2017", title: "FHWA National Household Travel Survey — Summary of Travel Trends", edition: "2017", effective: "2018", jurisdiction: "US", appliesTo: ["vehicular"] },
+  { code: "NCHRP 716", title: "NCHRP Report 716: Travel Demand Forecasting Parameters and Techniques", edition: "2012", effective: "2012", jurisdiction: "US", appliesTo: ["vehicular"] },
   { code: "HCM", title: "Highway Capacity Manual", edition: "6th Edition", effective: "2016", jurisdiction: "US", appliesTo: ["vehicular"] },
   { code: "MUTCD", title: "Manual on Uniform Traffic Control Devices", edition: "11th Edition", effective: "2023-12", jurisdiction: "US", appliesTo: ["vehicular"] },
   { code: "AASHTO", title: "A Policy on Geometric Design of Highways and Streets (Green Book)", edition: "7th Edition", effective: "2018", jurisdiction: "US", appliesTo: ["vehicular"] },
-  { code: "ITE PGD", title: "ITE Parking Generation Manual", edition: "5th Edition", effective: "2019", jurisdiction: "US", appliesTo: ["parking"] },
   // US state examples
   { code: "FDM", title: "FDOT Design Manual", edition: "2026", effective: "2026-01-01", jurisdiction: "US-FL", appliesTo: ["vehicular"] },
   { code: "FDOT Q/LOS", title: "FDOT Quality/Level of Service Handbook", edition: "v6.0 (Aug 2025)", effective: "2025-08", jurisdiction: "US-FL", appliesTo: ["vehicular"] },

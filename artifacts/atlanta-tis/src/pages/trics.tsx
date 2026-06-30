@@ -229,7 +229,7 @@ function Generator() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Land use (ITE proxy)</label>
+              <label className="text-xs font-medium text-muted-foreground">Land use</label>
               <Select value={landUseCode} onValueChange={setLandUseCode}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent className="max-h-72">
