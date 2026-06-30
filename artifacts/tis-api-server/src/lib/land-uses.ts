@@ -15,10 +15,11 @@
  *     Techniques," TRB 2012) — ~9.5–10 person-trips per household per day
  *     and per-employee office rates, used as an independent backstop.
  *
- * A small number of retail/service rates (shopping center, supermarket,
- * bank) are BLENDED MPO screening guidance rather than a single
- * provably-clean public source; those are tagged `blended_mpo` and
- * disclosed as rough in the methodology + legal disclaimer.
+ * The retail/service rates (shopping center, supermarket, bank) are taken
+ * directly from the SANDAG 2002 guide's own published rows (Community
+ * Shopping Center, Supermarket, Walk-In Bank) — a free public source, not
+ * a blended/proprietary input. Verified against the official SANDAG table:
+ * https://www.sandiegocounty.gov/content/dam/sdc/pds/ceqa/LehmanTPM/38%20Appendix%20T9_SANDAG%20Trip%20Generation%20Rates.pdf
  *
  * Restaurant / fast-food land uses are intentionally NOT offered: there is
  * no clean free replacement rate for them and the screening engine should
@@ -105,8 +106,6 @@ export type LandUse = {
 // (not a proprietary rate) and use sensible screening-level defaults.
 const SANDAG_2002 =
   "SANDAG 2002 “(Not So) Brief Guide of Vehicular Traffic Generation Rates for the San Diego Region”";
-const SANDAG_2002_BLENDED =
-  "SANDAG 2002 guide + blended MPO screening guidance (rough — not provably free of proprietary inputs)";
 const NCHRP_716 = "NCHRP Report 716 (TRB 2012) per-employee parameter table";
 
 export const LAND_USES: LandUse[] = [
@@ -133,9 +132,9 @@ export const LAND_USES: LandUse[] = [
 
   // ---------- Retail / Commercial ----------
   // 820 / 850 / 912 — blended MPO screening guidance; disclosed as rough.
-  { code: "820", name: "Shopping Center / Retail",                unit: "1,000 sqft GLA",        unitShort: "ksf",      dailyRate: 80.0, amRate: 3.20, pmRate: 8.00, confidence: "blended_mpo", source: SANDAG_2002_BLENDED, directionalSplitPm: { in: 0.48, out: 0.52 }, amDirectionalIn: 0.61, satMultiplier: 1.10, passByPctPm: 25, internalCapturePctPm: 0 },
-  { code: "850", name: "Supermarket",                             unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 150.0, amRate: 6.00, pmRate: 15.0, confidence: "blended_mpo", source: SANDAG_2002_BLENDED, directionalSplitPm: { in: 0.51, out: 0.49 }, amDirectionalIn: 0.62, satMultiplier: 1.20, passByPctPm: 36, internalCapturePctPm: 0 },
-  { code: "912", name: "Bank",                                    unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 150.0, amRate: 6.00, pmRate: 12.0, confidence: "blended_mpo", source: SANDAG_2002_BLENDED, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.55, satMultiplier: 0.40, passByPctPm: 35, internalCapturePctPm: 0 },
+  { code: "820", name: "Shopping Center / Retail",                unit: "1,000 sqft GLA",        unitShort: "ksf",      dailyRate: 80.0, amRate: 3.20, pmRate: 8.00, confidence: "sandag_2002", source: `${SANDAG_2002} — Community Shopping Center (daily 80/ksf; PM pass-by 30%)`, directionalSplitPm: { in: 0.48, out: 0.52 }, amDirectionalIn: 0.61, satMultiplier: 1.10, passByPctPm: 30, internalCapturePctPm: 0 },
+  { code: "850", name: "Supermarket",                             unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 150.0, amRate: 6.00, pmRate: 15.0, confidence: "sandag_2002", source: `${SANDAG_2002} — Supermarket (daily 150/ksf; PM pass-by 40%)`, directionalSplitPm: { in: 0.51, out: 0.49 }, amDirectionalIn: 0.62, satMultiplier: 1.20, passByPctPm: 40, internalCapturePctPm: 0 },
+  { code: "912", name: "Bank",                                    unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 150.0, amRate: 6.00, pmRate: 12.0, confidence: "sandag_2002", source: `${SANDAG_2002} — Bank, Walk-In (daily 150/ksf; PM pass-by 25%); drive-through banks run higher (≈200/ksf), PE selects per project`, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.55, satMultiplier: 0.40, passByPctPm: 25, internalCapturePctPm: 0 },
 
   // ---------- Industrial / Warehouse ----------
   // 110 / 130 / 140 / 150 share the SANDAG industrial-park rate (clean).

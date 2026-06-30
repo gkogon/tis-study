@@ -1,23 +1,28 @@
 /**
- * AASHTO Green Book 7th Ed. — Sight Distance engine.
+ * Sight Distance engine (standard AASHTO-procedure SSD / ISD).
  *
  * Implements the two checks engineers run during a driveway-location or
- * intersection-feasibility study:
+ * intersection-feasibility study. The methods follow the standard AASHTO
+ * SSD/ISD procedure (the equations are uncopyrightable); the specific
+ * time-gap VALUES are taken from the FREE, public TxDOT Roadway Design
+ * Manual §13-5 (Tables 13-2 / 13-3), which restates the standard ISD
+ * gap-time criteria — NOT reproduced from the licensed AASHTO Green Book.
  *
- *   Stopping Sight Distance (SSD), Eq. 3-2:
+ *   Stopping Sight Distance (SSD):
  *     SSD = 1.47 · V · t + V² / (30 · (a/g ± G))
  *   where V = mph, t = perception-reaction (s), a/g = friction (default
  *   0.35 from 11.2 ft/s²), G = grade as decimal. Returns feet.
  *
- *   Intersection Sight Distance (ISD), Eq. 9-1:
+ *   Intersection Sight Distance (ISD):
  *     ISD = 1.47 · V_major · t_gap
- *   where t_gap is the time-gap criterion from AASHTO Table 9-5
- *   (passenger car: 7.5 s left, 6.5 s right, 6.5 s crossing). Added
- *   0.5 s per additional lane the minor driver must cross.
+ *   where t_gap is the standard passenger-car time gap (TxDOT RDM §13-5:
+ *   7.5 s left, 6.5 s right, 6.5 s crossing). Added 0.5 s per additional
+ *   lane the minor driver must cross.
  *
- *   Truck adjustments per AASHTO Section 9.5.3:
- *     - Single-unit truck: +1 s on time gap
- *     - Combination truck: +1.5 s on time gap
+ *   Truck adjustment — SCREENING approximation (see note at the constant
+ *   below): the engine adds +1.0 s (single-unit) / +1.5 s (combination).
+ *   These are SMALLER than the published TxDOT/AASHTO truck gaps; a
+ *   design-level truck ISD must use the full vehicle-specific values.
  */
 import type {
   GenerateSightDistanceBodyT,
@@ -28,13 +33,20 @@ const DEFAULT_PR_TIME_SEC = 2.5;
 const DEFAULT_DECEL_FT_S2 = 11.2;
 const G_FT_S2 = 32.2;
 
-// AASHTO Table 9-5 base time gaps (passenger car) in seconds.
+// Base passenger-car ISD time gaps (s) — TxDOT Roadway Design Manual
+// §13-5, Tables 13-2/13-3 (a free public restatement of the standard
+// ISD gap-time criteria; not reproduced from the licensed AASHTO Green Book).
 const TIME_GAP_BASE_SEC: Record<string, number> = {
   left_from_minor: 7.5,
   right_from_minor: 6.5,
   crossing_from_minor: 6.5,
 };
 
+// SCREENING approximation ONLY. These truck adders are SMALLER than the
+// published TxDOT/AASHTO truck time gaps (≈ +2.0 s single-unit, +4.0 s
+// combination, per TxDOT RDM Tables 13-2/13-3) — i.e. the engine currently
+// UNDER-states truck ISD. A design-level truck check must use the full
+// vehicle-specific gaps. Flagged for an accuracy fix (separate from cite work).
 const VEHICLE_TIME_GAP_ADD_SEC: Record<string, number> = {
   passenger_car: 0,
   single_unit_truck: 1.0,
