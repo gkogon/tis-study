@@ -8,7 +8,8 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check:diurnal-provenance": "node ./scripts/verify-diurnal-provenance.mjs"
+    "check:diurnal-provenance": "node ./scripts/verify-diurnal-provenance.mjs",
+    "check:isd-truck-gaps": "node ./scripts/verify-isd-truck-gaps.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",

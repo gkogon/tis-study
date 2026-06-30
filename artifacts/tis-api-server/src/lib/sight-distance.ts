@@ -1,23 +1,30 @@
 /**
- * AASHTO Green Book 7th Ed. — Sight Distance engine.
+ * Sight Distance engine (standard AASHTO-procedure SSD / ISD).
  *
  * Implements the two checks engineers run during a driveway-location or
- * intersection-feasibility study:
+ * intersection-feasibility study. The methods follow the standard AASHTO
+ * SSD/ISD procedure (the equations are uncopyrightable); the specific
+ * time-gap VALUES are taken from the FREE, public TxDOT Roadway Design
+ * Manual §13-5 (Tables 13-2 / 13-3), which restates the standard ISD
+ * gap-time criteria — NOT reproduced from the licensed AASHTO Green Book.
  *
- *   Stopping Sight Distance (SSD), Eq. 3-2:
+ *   Stopping Sight Distance (SSD):
  *     SSD = 1.47 · V · t + V² / (30 · (a/g ± G))
  *   where V = mph, t = perception-reaction (s), a/g = friction (default
  *   0.35 from 11.2 ft/s²), G = grade as decimal. Returns feet.
  *
- *   Intersection Sight Distance (ISD), Eq. 9-1:
+ *   Intersection Sight Distance (ISD):
  *     ISD = 1.47 · V_major · t_gap
- *   where t_gap is the time-gap criterion from AASHTO Table 9-5
- *   (passenger car: 7.5 s left, 6.5 s right, 6.5 s crossing). Added
- *   0.5 s per additional lane the minor driver must cross.
+ *   where t_gap is the base passenger-car time gap (TxDOT RDM §13-5:
+ *   7.5 s left, 6.5 s right, 6.5 s crossing), plus a per-additional-lane
+ *   increment of 0.5 s (passenger car) / 0.7 s (truck) for each lane the
+ *   minor driver must cross.
  *
- *   Truck adjustments per AASHTO Section 9.5.3:
- *     - Single-unit truck: +1 s on time gap
- *     - Combination truck: +1.5 s on time gap
+ *   Truck adjustment — TxDOT RDM §13-5 (Tables 13-2/13-3): the design-vehicle
+ *   gap adds +2.0 s (single-unit) / +4.0 s (combination) to the passenger-car
+ *   gap. This adder is UNIFORM across maneuver (only the base gap varies by
+ *   maneuver), so a single per-class constant is exact. Left turn: 7.5/9.5/11.5
+ *   s; right & crossing: 6.5/8.5/10.5 s (passenger / single-unit / combination).
  */
 import type {
   GenerateSightDistanceBodyT,
@@ -28,18 +35,30 @@ const DEFAULT_PR_TIME_SEC = 2.5;
 const DEFAULT_DECEL_FT_S2 = 11.2;
 const G_FT_S2 = 32.2;
 
-// AASHTO Table 9-5 base time gaps (passenger car) in seconds.
+// Base passenger-car ISD time gaps (s) — TxDOT Roadway Design Manual
+// §13-5, Tables 13-2/13-3 (a free public restatement of the standard
+// ISD gap-time criteria; not reproduced from the licensed AASHTO Green Book).
 const TIME_GAP_BASE_SEC: Record<string, number> = {
   left_from_minor: 7.5,
   right_from_minor: 6.5,
   crossing_from_minor: 6.5,
 };
 
+// Design-vehicle time-gap adders (s), added to the base passenger-car gap —
+// TxDOT Roadway Design Manual §13-5, Tables 13-2/13-3 (a free public restatement
+// of the standard Case-B ISD criteria; not reproduced from the licensed AASHTO
+// Green Book). The adder is the same for every maneuver — left turn 7.5→9.5→11.5
+// s, right/crossing 6.5→8.5→10.5 s — so a single per-class constant is exact;
+// only the base gap (above) is per-maneuver.
 const VEHICLE_TIME_GAP_ADD_SEC: Record<string, number> = {
   passenger_car: 0,
-  single_unit_truck: 1.0,
-  combination_truck: 1.5,
+  single_unit_truck: 2.0,
+  combination_truck: 4.0,
 };
+
+// TxDOT RDM §13-5 multilane adjustment: time added per ADDITIONAL through lane
+// the minor-road driver must cross — 0.5 s for passenger cars, 0.7 s for trucks.
+const LANE_ADD_PER_LANE_SEC = { passenger_car: 0.5, truck: 0.7 } as const;
 
 export class SightDistanceEngineError extends Error {}
 
@@ -86,7 +105,10 @@ export function runSightDistanceAnalysis(
   // ---------- ISD ----------
   const baseGap = TIME_GAP_BASE_SEC[body.maneuver] ?? 6.5;
   const vehicleAdd = VEHICLE_TIME_GAP_ADD_SEC[vehicleClass] ?? 0;
-  const laneAdd = 0.5 * lanesToCross;
+  const isTruck =
+    vehicleClass === "single_unit_truck" || vehicleClass === "combination_truck";
+  const perLaneSec = isTruck ? LANE_ADD_PER_LANE_SEC.truck : LANE_ADD_PER_LANE_SEC.passenger_car;
+  const laneAdd = perLaneSec * lanesToCross;
   const isdTimeGap = baseGap + vehicleAdd + laneAdd;
   const isdRequiredFt = Math.round(1.47 * speed * isdTimeGap);
 
@@ -95,7 +117,7 @@ export function runSightDistanceAnalysis(
   const isdMargin = isdAvail !== null ? isdAvail - isdRequiredFt : null;
   const isdNotes: string[] = [];
   isdNotes.push(
-    `Time-gap criterion: ${isdTimeGap.toFixed(1)} s — base ${baseGap.toFixed(1)} s for ${labelManeuver(body.maneuver)}${vehicleAdd > 0 ? ` plus ${vehicleAdd.toFixed(1)} s ${labelVehicle(vehicleClass)} adjustment` : ""}${laneAdd > 0 ? ` plus ${laneAdd.toFixed(1)} s for ${lanesToCross} additional lane${lanesToCross === 1 ? "" : "s"} to cross` : ""}.`,
+    `Time-gap criterion: ${isdTimeGap.toFixed(1)} s — base ${baseGap.toFixed(1)} s for ${labelManeuver(body.maneuver)}${vehicleAdd > 0 ? ` plus ${vehicleAdd.toFixed(1)} s ${labelVehicle(vehicleClass)} adjustment` : ""}${laneAdd > 0 ? ` plus ${laneAdd.toFixed(1)} s for ${lanesToCross} additional lane${lanesToCross === 1 ? "" : "s"} to cross (${perLaneSec.toFixed(1)} s/lane)` : ""}.`,
   );
   if (isdAvail === null) {
     isdNotes.push("No measured ISD provided. Stand at the minor-approach decision point with a steel tape or wheel and measure to the first obstruction.");
@@ -137,10 +159,10 @@ export function runSightDistanceAnalysis(
       notes: isdNotes,
     },
     citations: [
-      "AASHTO Policy on Geometric Design of Highways and Streets, 7th Ed. (Green Book).",
-      "Green Book Eq. 3-2 — Stopping Sight Distance.",
-      "Green Book Table 9-5 — Time Gap criteria for intersection sight distance.",
-      "Green Book Section 9.5.3 — Truck and combination-vehicle adjustments to ISD.",
+      "TxDOT Roadway Design Manual §13-5 (Tables 13-2/13-3) — free, public restatement of the standard intersection sight distance criteria used here; not reproduced from the licensed AASHTO Green Book.",
+      "Stopping Sight Distance: SSD = 1.47·V·t + V²/(30·(a/g ± G)) — the standard perception-reaction-plus-braking-distance equation, which is uncopyrightable.",
+      "TxDOT Roadway Design Manual §13-5 (Tables 13-2/13-3) — base intersection-sight-distance time gaps (left 7.5 s; right & crossing 6.5 s) plus the per-additional-lane increment of +0.5 s (passenger car) / +0.7 s (truck).",
+      "TxDOT Roadway Design Manual §13-5 (Tables 13-2/13-3) — design-vehicle gap adders relative to the passenger-car gap: +2.0 s (single-unit truck) / +4.0 s (combination truck).",
     ],
   };
 }
