@@ -389,14 +389,15 @@ function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
       studyRadiusMi,
       growthRatePct: 1.5,
       weather: "clear",
-      runSensitivity: true,
+      // A TIS analyzes every signalized intersection in the study area, so the
+      // demo does too (scopeStudyIntersections defaults false → analyze-all).
+      // The 100-iteration Monte-Carlo is OFF here: it re-runs the whole
+      // analysis N times, so at all-lights × a downtown radius it would blow
+      // the demo's 30s analyzer budget. Sensitivity isn't what a cold teaser
+      // needs; the authenticated product still offers it via runSensitivity.
+      runSensitivity: false,
       independentVariable,
       studyTier,
-      // Public demo stays MTIASD-scoped: it's a rate-limited teaser and a
-      // downtown radius holds 100+ signals — analyzing every one under a
-      // 100-iteration Monte-Carlo would be slow and produce a 178-page PDF.
-      // The authenticated product defaults to analyze-all (radius = scope).
-      scopeStudyIntersections: true,
     },
   };
 }
