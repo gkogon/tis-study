@@ -84,6 +84,15 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
     return;
   }
 
+  // Driveway validation is a pure client-input check (no I/O) — run it before
+  // reserving a quota slot so a malformed driveway request never burns a paid
+  // study credit.
+  const drivewayErr = validateDriveways((parsed.data as any).driveways);
+  if (drivewayErr) {
+    res.status(422).json({ error: drivewayErr });
+    return;
+  }
+
   // Resolve user → firm (auto-creates personal firm on first hit).
   const { firm } = await getOrCreateFirmForUser(user.id, {
     email: user.email,
@@ -109,12 +118,6 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
       userId: user.id,
       metadata: { studyType: "tis", limit: quota.limit, planTier: firm.planTier },
     });
-    return;
-  }
-
-  const drivewayErr = validateDriveways((parsed.data as any).driveways);
-  if (drivewayErr) {
-    res.status(422).json({ error: drivewayErr });
     return;
   }
 
