@@ -612,7 +612,13 @@ function selectStudyIntersectionIdx(weights: number[], pmExternalAutoTrips: numb
 // So when the radius comes up empty we fall back to the nearest
 // NEAREST_FALLBACK_N signals and flag them as beyond-radius, so the report
 // analyzes real junctions and says plainly that they sit past the radius.
+// A hard mileage ceiling (NEAREST_FALLBACK_MAX_MI) keeps the fallback from
+// reaching a signal so far away it isn't a credible study intersection — a
+// truly remote pad has no off-site impact, and that's the honest answer.
+// Beyond the ceiling the fallback returns FEWER than N (or none, falling
+// back to the original empty-study finding).
 const NEAREST_FALLBACK_N = 5;
+const NEAREST_FALLBACK_MAX_MI = 3;
 
 type SignalCandidate = {
   sig: AnalyzerIntersection;
@@ -648,6 +654,7 @@ async function findAffectedIntersections(
       distanceMi: haversineM({ lat, lon }, { lat: s.latitude, lon: s.longitude }) / M_PER_MI,
       beyondRadius: true,
     }))
+    .filter((c) => c.distanceMi <= NEAREST_FALLBACK_MAX_MI)
     .sort((a, b) => a.distanceMi - b.distanceMi);
   // dedupCloseSignals is O(n²); never hand it the full metro inventory
   // (Miami ≈ 10k signals). The nearest few are already distance-sorted, so a
