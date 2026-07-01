@@ -5399,24 +5399,6 @@
       "4": 0
     }
   },
-  "havana_metro": {
-    "method": "group_scaled",
-    "provenance": "latin_america baseline × 0.40 (country motorization 47/1000 vs latin_america reference 250/1000)",
-    "baseline": {
-      "0": 20000,
-      "1": 10400,
-      "2": 5200,
-      "3": 3200,
-      "4": 1800
-    },
-    "measuredN": {
-      "0": 0,
-      "1": 0,
-      "2": 0,
-      "3": 0,
-      "4": 0
-    }
-  },
   "dhaka_metro": {
     "method": "group_scaled",
     "provenance": "south_se_asia baseline × 0.40 (country motorization 5/1000 vs south_se_asia reference 100/1000)",

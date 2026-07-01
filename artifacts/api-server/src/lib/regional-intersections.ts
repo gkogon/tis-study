@@ -459,10 +459,9 @@ const REGION_INFO: Record<string, RegionBoundsInfo> = {
   wellington_metro: { displayName: "Wellington", bounds: { latMin: -41.35, latMax: -41.18, lonMin: 174.72, lonMax: 174.92 } },
   // Eastern Europe (1) — Russia removed.
   kyiv_metro: { displayName: "Kyiv (Київ)", bounds: { latMin: 50.30, latMax: 50.55, lonMin: 30.30, lonMax: 30.78 } },
-  // Central America / Caribbean (3)
+  // Central America / Caribbean (2) — Havana (Cuba) removed: OFAC-sanctioned / Stripe-prohibited.
   panama_city_metro: { displayName: "Panama City", bounds: { latMin: 8.85, latMax: 9.10, lonMin: -79.65, lonMax: -79.40 } },
   san_jose_cr_metro: { displayName: "San José (CR)", bounds: { latMin: 9.85, latMax: 10.05, lonMin: -84.20, lonMax: -83.95 } },
-  havana_metro: { displayName: "La Habana (Havana)", bounds: { latMin: 22.95, latMax: 23.20, lonMin: -82.55, lonMax: -82.27 } },
 };
 
 /** Compass-quadrant zone label relative to the region centroid.

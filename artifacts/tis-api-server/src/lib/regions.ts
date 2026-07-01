@@ -249,8 +249,8 @@ export type RegionCode =
   | "auckland_metro" | "wellington_metro"
   // Eastern Europe (1) — Russia removed (censorship + non-trivial customer-go-to-market risk).
   | "kyiv_metro"
-  // Central America / Caribbean (3)
-  | "panama_city_metro" | "san_jose_cr_metro" | "havana_metro"
+  // Central America / Caribbean (2) — Havana (Cuba) removed: OFAC-sanctioned / Stripe-prohibited.
+  | "panama_city_metro" | "san_jose_cr_metro"
   // Tier-11 (2026-05-31): 12 new countries — light OSM coverage
   | "dhaka_metro" | "addis_ababa_metro" | "dar_es_salaam_metro" | "almaty_metro"
   | "kuwait_city_metro" | "muscat_metro" | "tunis_metro" | "dakar_metro"
@@ -2218,7 +2218,6 @@ export const REGIONS: Record<RegionCode, Region> = {
   // Central America / Caribbean (3)
   panama_city_metro: { code: "panama_city_metro", displayName: "Panama City", bounds: { latMin: 8.85, latMax: 9.10, lonMin: -79.65, lonMax: -79.40 }, stateCode: "PAN", country: "PA", jurisdiction: { dotName: "Autoridad del Tránsito y Transporte Terrestre (ATTT) — Panamá", planningOfficeName: "Municipio de Panamá — Dirección de Planificación Urbana", parkingCodeCitation: "Reglamento de Urbanizaciones — Municipio de Panamá, Capítulo Estacionamientos." }, dataSourceId: "osm_only", active: true },
   san_jose_cr_metro: { code: "san_jose_cr_metro", displayName: "San José (CR)", bounds: { latMin: 9.85, latMax: 10.05, lonMin: -84.20, lonMax: -83.95 }, stateCode: "CR", country: "CR", jurisdiction: { dotName: "Ministerio de Obras Públicas y Transportes (MOPT) — Costa Rica", planningOfficeName: "Instituto Nacional de Vivienda y Urbanismo (INVU) — Costa Rica", parkingCodeCitation: "Reglamento de Construcciones de Costa Rica — Estacionamientos." }, dataSourceId: "osm_only", active: true },
-  havana_metro: { code: "havana_metro", displayName: "La Habana (Havana)", bounds: { latMin: 22.95, latMax: 23.20, lonMin: -82.55, lonMax: -82.27 }, stateCode: "CU", country: "CU", jurisdiction: { dotName: "Dirección Provincial de Transporte de La Habana", planningOfficeName: "Dirección Provincial de Planificación Física — La Habana", parkingCodeCitation: "Regulaciones urbanísticas de La Habana — Provisiones de estacionamiento." }, dataSourceId: "osm_only", active: true },
 
   // Tier-11 (2026-05-31): 12 new countries — light OSM coverage. Jurisdiction copy source-verified (real authorities + named parking instruments).
   dhaka_metro: { code: "dhaka_metro", displayName: "Dhaka (ঢাকা)", bounds: { latMin: 23.68, latMax: 23.90, lonMin: 90.32, lonMax: 90.50 }, stateCode: "BD", country: "BD", jurisdiction: { dotName: "Dhaka Transport Coordination Authority (DTCA) — ঢাকা পরিবহন সমন্বয় কর্তৃপক্ষ", planningOfficeName: "Rajdhani Unnayan Kartripakkha (RAJUK) — Capital Development Authority", parkingCodeCitation: "Dhaka Imarat Nirman Bidhimala 2008 (Dhaka Building Construction Rules) — off-street parking provisions." }, dataSourceId: "osm_only", active: true },
