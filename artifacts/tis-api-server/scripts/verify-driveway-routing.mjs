@@ -24,6 +24,12 @@ ok(g.links.length === before.links + 2, `split adds 2 links net (1 split→2 + a
 ok(g.nodeLat.length >= before.nodes + 1, `driveway node added`);
 ok((g.adj[ins.drivewayNode] ?? []).length >= 3, `driveway node connects to both split halves + access link (got ${(g.adj[ins.drivewayNode]||[]).length})`);
 ok((g.adj[siteNode] ?? []).includes(ins.accessLink), `site connects to the driveway via the access link`);
+// Verify orig.b adj is self-consistent after the split: snap.li (link 0) was reshaped
+// to a→dn and no longer connects orig.b, so adj[orig.b] must not contain snap.li
+// (unless the link still actually touches orig.b, which it doesn't after reshape).
+const orig_b_adj = g.adj[1] ?? []; // orig.b = node 1 (the lon=0.01 end of the original segment)
+ok(orig_b_adj.every(li => g.links[li].a === 1 || g.links[li].b === 1),
+  `adj[orig.b] contains only links that still touch orig.b after split (stale-adj guard)`);
 
 const { assignWithDriveways } = m;
 // Cross road: an east–west street through the site + a north–south street to the east

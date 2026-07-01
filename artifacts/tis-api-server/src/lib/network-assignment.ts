@@ -194,6 +194,9 @@ export function insertDriveway(g: Graph, siteNode: number, lat: number, lon: num
   const halfB = { ...orig, a: dn, lenMi: orig.lenMi * (1 - snap.t), freeMin: orig.freeMin * (1 - snap.t), vol: 0 };
   g.links[snap.li] = halfA;                 // reuse the slot for a→dn
   const bLink = g.links.length; g.links.push(halfB);
+  // orig.b previously had snap.li in its adjacency list; snap.li now goes a→dn
+  // (no longer touches orig.b), so remove that stale entry.
+  if (g.adj[orig.b]) g.adj[orig.b] = g.adj[orig.b].filter(li => li !== snap.li);
   addAdj(dn, snap.li); addAdj(dn, bLink); addAdj(orig.b, bLink);
   // Access link site→driveway (short, high-capacity, uncongested).
   const al = g.links.length;
