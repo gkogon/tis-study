@@ -16,6 +16,11 @@
 // clearly-stated engineering assumptions.
 
 import { logger } from "./logger";
+import {
+  intersectionsWithinRadius,
+  coverageWarningForCandidates,
+  type CoverageWarning,
+} from "./intersection-coverage";
 import { getAutoModeShare, getAutoModeShareSource, getLondonAutoModeShare, type PTALBand } from "./mode-share";
 import { lookupLondonPtal } from "./tfl-ptal";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
@@ -145,8 +150,6 @@ function bearingDeg(a: { lat: number; lon: number }, b: { lat: number; lon: numb
   const θ = Math.atan2(y, x);
   return ((θ * 180) / Math.PI + 360) % 360;
 }
-
-const M_PER_MI = 1609.34;
 
 // ---------- Deterministic per-signal hash + PRNG ----------
 
@@ -554,6 +557,13 @@ export type TisReport = {
    *  earns headline placement (true) or is demoted to a screening
    *  appendix behind a trip-comparison narrative (false). */
   junctionImpactSignificant: boolean;
+  /** Set ONLY when the study radius contained no signalized intersection to
+   *  analyze — almost always a bad geocode (the coordinate resolved to open
+   *  water or an area outside our signal coverage) rather than a real finding.
+   *  Absent on every normal study. Routes surface this as a 422 so a user or a
+   *  live demo sees a "verify the site location" message instead of a
+   *  silently-empty report. See `intersection-coverage.ts`. */
+  coverageWarning?: CoverageWarning;
 };
 
 // ---------- Implementation ----------
@@ -606,17 +616,13 @@ function selectStudyIntersectionIdx(weights: number[], pmExternalAutoTrips: numb
 async function findAffectedIntersections(
   lat: number, lon: number, radiusMi: number, regionCode: string,
 ): Promise<Array<{ sig: AnalyzerIntersection; distanceMi: number }>> {
-  const radiusM = radiusMi * M_PER_MI;
   const inventory = await fetchIntersections(regionCode);
-  const out: Array<{ sig: AnalyzerIntersection; distanceMi: number }> = [];
-  for (const s of inventory) {
-    const dM = haversineM({ lat, lon }, { lat: s.latitude, lon: s.longitude });
-    if (dM <= radiusM) {
-      out.push({ sig: s, distanceMi: dM / M_PER_MI });
-    }
-  }
-  out.sort((a, b) => a.distanceMi - b.distanceMi);
-  return dedupCloseSignals(out);
+  // Radius filter + nearest-first sort lives in the dependency-free
+  // `intersection-coverage` leaf module so the same logic can be unit-checked
+  // with plain node and reused by the coverage-warning path. Dedup (with its
+  // telemetry) stays here.
+  const within = intersectionsWithinRadius(inventory, lat, lon, radiusMi);
+  return dedupCloseSignals(within);
 }
 
 /**
@@ -1198,6 +1204,19 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const designGrowthMultiplier = Math.pow(1 + growthRatePct / 100, designYears);
 
   const candidates = await findAffectedIntersections(req.latitude, req.longitude, radiusMi, region.code);
+  // No signal within the study radius → almost certainly a bad geocode (open
+  // water / outside our signal coverage), not a real "0-impact" finding. Flag
+  // it on the report so the routes can answer with a clear message instead of
+  // a silently-empty study. The rest of the pipeline still runs (trip
+  // generation etc. are coordinate-independent), so a caller that ignores the
+  // warning gets the same report as before — nothing regresses.
+  const coverageWarning = coverageWarningForCandidates(candidates.length, radiusMi);
+  if (coverageWarning) {
+    logger.info(
+      { lat: req.latitude, lon: req.longitude, radiusMi, region: region.code },
+      "tis.no_signals_in_radius",
+    );
+  }
   const project = { lat: req.latitude, lon: req.longitude };
   const calibrationMap = await loadCalibrationMap();
 
@@ -1491,6 +1510,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     ...(resolvedPtalBand ? { resolvedPtalBand } : {}),
     sensitivity: sens,
     junctionImpactSignificant,
+    ...(coverageWarning ? { coverageWarning } : {}),
   };
 }
 
