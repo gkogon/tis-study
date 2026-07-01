@@ -354,6 +354,31 @@ components:
         passByPctPm: { type: number }
         internalCapturePctPm: { type: number }
       required: [code, name, unit, unitShort, dailyRate, amRate, pmRate]
+    DrivewayAccessType:
+      type: string
+      enum: [full, riro, three_quarter, entrance_only, exit_only, custom]
+      description: >-
+        Preset access type. All except "custom" expand server-side to a fixed
+        movements set; "custom" uses the movements object verbatim.
+    DrivewayMovements:
+      type: object
+      description: Allowed turning movements, relative to the fronting street.
+      required: [inLeft, inRight, outLeft, outRight]
+      properties:
+        inLeft:  { type: boolean, description: Left turn into the site }
+        inRight: { type: boolean, description: Right turn into the site }
+        outLeft: { type: boolean, description: Left turn out onto the street }
+        outRight: { type: boolean, description: Right turn out onto the street }
+    Driveway:
+      type: object
+      required: [id, latitude, longitude, accessType, movements]
+      properties:
+        id: { type: string, minLength: 1 }
+        latitude:  { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        label: { type: string }
+        accessType: { $ref: '#/components/schemas/DrivewayAccessType' }
+        movements: { $ref: '#/components/schemas/DrivewayMovements' }
     TisRequest:
       type: object
       properties:
@@ -406,6 +431,14 @@ components:
             signalized intersection within the study radius — the radius is the
             stated study scope. Shorten a report with a smaller radius, not by
             scoping within it.
+        driveways:
+          type: array
+          maxItems: 12
+          description: >-
+            Site access points with per-movement turn restrictions. When present,
+            project trips route through these driveways and forbidden movements
+            reroute onto the network. Absent ⇒ single-site behavior (unchanged).
+          items: { $ref: '#/components/schemas/Driveway' }
       required: [projectName, address, latitude, longitude, landUseCode, size, openingYear]
     TisTripProfile:
       type: object

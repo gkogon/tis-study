@@ -154,6 +154,53 @@ export interface TisLandUse {
 }
 
 /**
+ * Preset access type. All except "custom" expand server-side to a fixed movements set; "custom" uses the movements object verbatim.
+ */
+export type DrivewayAccessType =
+  (typeof DrivewayAccessType)[keyof typeof DrivewayAccessType];
+
+export const DrivewayAccessType = {
+  full: "full",
+  riro: "riro",
+  three_quarter: "three_quarter",
+  entrance_only: "entrance_only",
+  exit_only: "exit_only",
+  custom: "custom",
+} as const;
+
+/**
+ * Allowed turning movements, relative to the fronting street.
+ */
+export interface DrivewayMovements {
+  /** Left turn into the site */
+  inLeft: boolean;
+  /** Right turn into the site */
+  inRight: boolean;
+  /** Left turn out onto the street */
+  outLeft: boolean;
+  /** Right turn out onto the street */
+  outRight: boolean;
+}
+
+export interface Driveway {
+  /** @minLength 1 */
+  id: string;
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+  label?: string;
+  accessType: DrivewayAccessType;
+  movements: DrivewayMovements;
+}
+
+/**
  * Optional consultant-supplied within-day arrival/departure distribution that overrides the engine's default office distribution for the inbound/outbound-by-start-time and on-site-accumulation charts. Each array holds 24 non-negative values (clock hours 0–23); the renderer normalises each to sum to 1, so only relative magnitudes matter. Supplying this also unlocks the figures for non-office use classes.
  */
 export interface TisTripProfile {
@@ -229,6 +276,11 @@ export interface TisRequest {
   tripProfile?: TisTripProfile;
   /** When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it. */
   scopeStudyIntersections?: boolean;
+  /**
+   * Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).
+   * @maxItems 12
+   */
+  driveways?: Driveway[];
 }
 
 export type TisTripGenerationVariableConfidence =
