@@ -31,5 +31,11 @@ ok(classifyMovement(90, south, 270, false) === "outLeft", `to west out of south-
 // Outbound trip TO THE EAST (destination 90°): right turn out.
 ok(classifyMovement(90, south, 90, false) === "outRight", `to east out of south-side driveway = outRight (got ${classifyMovement(90, south, 90, false)})`);
 
+const { validateDriveways } = m;
+ok(validateDriveways(undefined) === null, "undefined driveways is valid (opt-in)");
+ok(validateDriveways([]) === null, "empty driveways is valid");
+ok(validateDriveways([{ id: "a", latitude: 25.7, longitude: -80.2, accessType: "riro", movements: { inLeft: false, inRight: true, outLeft: false, outRight: true } }]) === null, "a RIRO driveway is valid");
+ok(typeof validateDriveways([{ id: "b", latitude: 25.7, longitude: -80.2, accessType: "custom", movements: { inLeft: false, inRight: false, outLeft: false, outRight: false } }]) === "string", "a fully-closed custom driveway is rejected");
+
 console.log(""); console.log(fails === 0 ? "ALL PASS" : `${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);

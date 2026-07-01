@@ -92,3 +92,15 @@ export function classifyMovement(
   const travel = dot(fwd, od) >= dot(back, od) ? fwd : back;
   return cross(vec(siteToDriveway), travel) > 0 ? "outLeft" : "outRight";
 }
+
+/** Business-rule validation beyond the zod structural checks. */
+export function validateDriveways(driveways: Driveway[] | undefined): string | null {
+  if (!driveways || driveways.length === 0) return null;
+  for (const d of driveways) {
+    const mv = resolveMovements(d);
+    if (!mv.inLeft && !mv.inRight && !mv.outLeft && !mv.outRight) {
+      return `Driveway ${d.label ?? d.id} allows no movements; enable at least one.`;
+    }
+  }
+  return null;
+}

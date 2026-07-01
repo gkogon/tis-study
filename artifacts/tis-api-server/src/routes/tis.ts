@@ -5,6 +5,7 @@ import {
   ListTisLandUsesResponse,
 } from "@workspace/tis-api-zod";
 import { generateTisReport, LAND_USES } from "../lib/tis";
+import { validateDriveways } from "../lib/driveways";
 import { regionForCoordinate, REGIONS } from "../lib/regions";
 import { renderStudyPdf } from "../lib/pdf-export";
 import { generateRateLimiter, tricsRateLimiter } from "../lib/security";
@@ -108,6 +109,12 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
       userId: user.id,
       metadata: { studyType: "tis", limit: quota.limit, planTier: firm.planTier },
     });
+    return;
+  }
+
+  const drivewayErr = validateDriveways((parsed.data as any).driveways);
+  if (drivewayErr) {
+    res.status(422).json({ error: drivewayErr });
     return;
   }
 
