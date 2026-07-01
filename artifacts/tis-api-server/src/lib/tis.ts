@@ -44,6 +44,7 @@ import {
   PER_INTERSECTION_CAPACITY_VPH,
   APPROACH_CAPACITY_VPH,
 } from "./signal-delay";
+import { intersectionLoadFraction } from "./trip-loading";
 
 export { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence };
 // Re-export the delay model for back-compat (turbo-lane.ts / uk-capacity.ts and
@@ -591,13 +592,19 @@ const STUDY_NEAREST_FLOOR = 5;        // immediate study area: site-adjacent + ~
 const STUDY_MIN_PM_SITE_TRIPS = 8;    // de-minimis screening floor: site must assign ≥8 PM-peak trips
 const STUDY_MAX_INTERSECTIONS = 15;   // hard cap so pathologically dense grids can't explode the report
 
+// Per-intersection project-trip loading (distance decay). Distinct from the
+// gravity DISTRIBUTION (weights): impact/scoping load concentrates at the site
+// access, distribution/route-assignment stay gravity-based. See trip-loading.ts.
+
 /**
  * Indices (into a nearest-first `candidates` array) of the study intersections.
- * `weights` is the four-step distribution; `pmExternalAutoTrips` the PM-peak
- * auto trips those weights distribute. Pure + deterministic.
+ * `loadFractions` is the per-intersection project-trip loading (see
+ * intersectionLoadFraction); `pmExternalAutoTrips` the PM-peak auto trips it
+ * loads. An intersection is studied if it carries ≥ STUDY_MIN_PM_SITE_TRIPS
+ * project trips, plus the nearest-floor always. Pure + deterministic.
  */
-function selectStudyIntersectionIdx(weights: number[], pmExternalAutoTrips: number, n: number): number[] {
-  const assigned = (i: number): number => (weights[i] ?? 0) * pmExternalAutoTrips;
+function selectStudyIntersectionIdx(loadFractions: number[], pmExternalAutoTrips: number, n: number): number[] {
+  const assigned = (i: number): number => (loadFractions[i] ?? 0) * pmExternalAutoTrips;
   let idx: number[] = [];
   for (let i = 0; i < n; i++) {
     if (i < STUDY_NEAREST_FLOOR || assigned(i) >= STUDY_MIN_PM_SITE_TRIPS) idx.push(i);
@@ -1107,7 +1114,7 @@ function runSensitivityAnalysis(
     let dropCount = 0;
     let efCount = 0;
     candidates.forEach((c, idx) => {
-      const w = weights[idx] ?? 0;
+      const w = intersectionLoadFraction(c.distanceMi);
       const grownVol = c.sig.totalVolume * growthMultiplier * volPerturb;
       const beforeCrit = grownVol * CRITICAL_MOVEMENT_FRACTION;
       const beforeVc = beforeCrit / capacityVph;
@@ -1313,7 +1320,8 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // site-adjacent + materially-impacted set — not every signal in the radius.
   // The four-step distribution above still runs over all candidates (correct
   // demand model); this only bounds what gets analyzed + reported.
-  const studyIdx = selectStudyIntersectionIdx(weights, pmExternalAutoForAssign, candidates.length);
+  const studyLoads = candidates.map((c) => intersectionLoadFraction(c.distanceMi));
+  const studyIdx = selectStudyIntersectionIdx(studyLoads, pmExternalAutoForAssign, candidates.length);
   const studySet = new Set(studyIdx);
 
   // Step 4 (network) — best-effort road-network route assignment. Loads the
@@ -1374,7 +1382,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     const allRows = period === "daily"
       ? []
       : candidates.map((c, i) =>
-          buildAffectedRow(c, weights[i] ?? 0, project, params, calibrationMap.get(c.sig.id)),
+          buildAffectedRow(c, intersectionLoadFraction(c.distanceMi), project, params, calibrationMap.get(c.sig.id)),
         );
 
     // Report only the study intersections (site-adjacent + materially impacted).
@@ -1537,7 +1545,7 @@ async function synthesizePmReport(
   const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak };
   const calibrationMap = await loadCalibrationMap();
   const allRows = candidates.map((c, i) =>
-    buildAffectedRow(c, weights[i] ?? 0, project, params, calibrationMap.get(c.sig.id)),
+    buildAffectedRow(c, intersectionLoadFraction(c.distanceMi), project, params, calibrationMap.get(c.sig.id)),
   );
   const rows = allRows.filter((_, i) => studySet.has(i));
   return {
