@@ -18,5 +18,18 @@ ok(eqM(resolveMovements({ accessType: "custom", movements: { outLeft: true } }),
 // preset ignores any supplied movements
 ok(eqM(resolveMovements({ accessType: "riro", movements: { inLeft: true } }), expandAccessType("riro")), "preset overrides supplied movements");
 
+const { classifyMovement, sideOfStreet } = m;
+// East–west street (bearing 90°), site on the SOUTH side. driveway→site points south (bearing 180°).
+const south = sideOfStreet(90, 180); // site south of an eastbound street = driver's right = -1
+ok(south === -1, `south-side of E-W street = right side (got ${south})`);
+// Inbound trip FROM THE WEST (origin bearing 270°): travels east, site on the right ⇒ right turn in.
+ok(classifyMovement(90, south, 270, true) === "inRight", `from west into south-side driveway = inRight (got ${classifyMovement(90, south, 270, true)})`);
+// Inbound trip FROM THE EAST (origin bearing 90°): travels west, site on the left ⇒ left turn in.
+ok(classifyMovement(90, south, 90, true) === "inLeft", `from east into south-side driveway = inLeft (got ${classifyMovement(90, south, 90, true)})`);
+// Outbound trip TO THE WEST (destination 270°): departs heading west; leaving a south-side driveway to go west = left turn out.
+ok(classifyMovement(90, south, 270, false) === "outLeft", `to west out of south-side driveway = outLeft (got ${classifyMovement(90, south, 270, false)})`);
+// Outbound trip TO THE EAST (destination 90°): right turn out.
+ok(classifyMovement(90, south, 90, false) === "outRight", `to east out of south-side driveway = outRight (got ${classifyMovement(90, south, 90, false)})`);
+
 console.log(""); console.log(fails === 0 ? "ALL PASS" : `${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);
