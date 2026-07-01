@@ -498,6 +498,21 @@ router.post("/demo/generate", demoRateLimiter, async (req, res): Promise<void> =
 
   try {
     const report = await generateTisReport(request);
+    // Bad-geocode guard: no signalized intersection within the study radius
+    // (the coordinate resolved to water / outside our signal coverage). A live
+    // demo showing an empty "0 intersections" report reads as a broken
+    // product — return a clear "verify the site location" message instead.
+    if (report.coverageWarning) {
+      req.log.info(
+        { landUseCode, regionName, lat: latitude.toFixed(4), lon: longitude.toFixed(4) },
+        "demo.no_signals_in_radius",
+      );
+      res.status(422).json({
+        error: report.coverageWarning.message,
+        code: report.coverageWarning.code,
+      });
+      return;
+    }
     req.log.info(
       { landUseCode, regionName, intersectionCount: report.intersectionsStudied },
       "demo.completed",
@@ -567,6 +582,14 @@ router.post("/demo/pdf", demoRateLimiter, async (req, res): Promise<void> => {
 
   try {
     const report = await generateTisReport(request);
+    // Don't render an empty PDF for a bad geocode — surface the reason instead.
+    if (report.coverageWarning) {
+      res.status(422).json({
+        error: report.coverageWarning.message,
+        code: report.coverageWarning.code,
+      });
+      return;
+    }
     logEvent("demo_pdf_download", {
       metadata: {
         landUseCode: landUse.code,
