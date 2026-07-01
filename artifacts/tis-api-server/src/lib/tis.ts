@@ -362,6 +362,14 @@ export type TisRequest = {
   //     do not. Mirrors the Appendix B Table 1 escalator language.
   ptaInsideAqma?: boolean;
   infrastructureAdequacy?: "adequate" | "inadequate" | "unknown";
+  // Study-intersection scoping. DEFAULT (unset/false): analyze EVERY signalized
+  // intersection within `studyRadiusMi` — the radius is the user's stated study
+  // scope, honored literally. When true: apply the MTIASD impact scoping
+  // (nearest-STUDY_NEAREST_FLOOR + any ≥STUDY_MIN_PM_SITE_TRIPS, capped at
+  // STUDY_MAX_INTERSECTIONS) to trim the study to the materially-impacted set —
+  // the opt-in lean report. To shorten a report the lever is a smaller radius,
+  // not silent scoping within the chosen radius.
+  scopeStudyIntersections?: boolean;
 };
 
 export type StudyTier = "auto" | "worksheet" | "abbreviated" | "full";
@@ -1316,12 +1324,16 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const fourStep = distributeAndAssign(demandZones, pmExternalAutoForAssign, { gamma: GAMMA_FRICTION.hbw });
   const weights = fourStep.weights;
 
-  // Scope the STUDY intersections (worksheets / affectedIntersections) to the
-  // site-adjacent + materially-impacted set — not every signal in the radius.
-  // The four-step distribution above still runs over all candidates (correct
+  // Study-intersection set. DEFAULT: every signalized intersection within the
+  // chosen radius is studied — the radius is the user's stated scope, honored
+  // literally. OPT-IN (req.scopeStudyIntersections): apply the MTIASD impact
+  // scoping to trim to the site-adjacent + materially-impacted set. Either way
+  // the four-step distribution above still runs over ALL candidates (correct
   // demand model); this only bounds what gets analyzed + reported.
   const studyLoads = candidates.map((c) => intersectionLoadFraction(c.distanceMi));
-  const studyIdx = selectStudyIntersectionIdx(studyLoads, pmExternalAutoForAssign, candidates.length);
+  const studyIdx = req.scopeStudyIntersections
+    ? selectStudyIntersectionIdx(studyLoads, pmExternalAutoForAssign, candidates.length)
+    : candidates.map((_, i) => i);
   const studySet = new Set(studyIdx);
 
   // Step 4 (network) — best-effort road-network route assignment. Loads the

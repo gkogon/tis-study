@@ -392,6 +392,11 @@ function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
       runSensitivity: true,
       independentVariable,
       studyTier,
+      // Public demo stays MTIASD-scoped: it's a rate-limited teaser and a
+      // downtown radius holds 100+ signals — analyzing every one under a
+      // 100-iteration Monte-Carlo would be slow and produce a 178-page PDF.
+      // The authenticated product defaults to analyze-all (radius = scope).
+      scopeStudyIntersections: true,
     },
   };
 }

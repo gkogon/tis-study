@@ -655,6 +655,20 @@ function TisFormSection({
                   Run Monte-Carlo sensitivity (100 iterations, ±10% trip-rate / ±15% existing-volume)
                 </span>
               </label>
+              <label className="md:col-span-2 flex items-start gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  checked={!!form.scopeStudyIntersections}
+                  onChange={(e) => setForm({ ...form, scopeStudyIntersections: e.target.checked })}
+                  data-testid="checkbox-scope-intersections"
+                />
+                <span className="text-sm">
+                  Scope to materially-impacted intersections (MTIASD)
+                  <span className="block text-xs text-muted-foreground">
+                    Off by default — every signalized intersection within the study radius is analyzed. Check to trim to the nearest site-adjacent junctions plus those carrying ≥8 PM-peak project trips. To shorten a report, prefer a smaller radius.
+                  </span>
+                </span>
+              </label>
             </div>
           )}
           <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-2 border-t">
@@ -669,6 +683,7 @@ function TisFormSection({
             <span className="text-xs text-muted-foreground">
               {periods.length} period{periods.length === 1 ? "" : "s"}
               {form.runSensitivity ? " · sensitivity ON" : ""}
+              {form.scopeStudyIntersections ? " · scoped (MTIASD)" : " · all intersections in radius"}
               {form.weather && form.weather !== "clear" ? ` · ${form.weather.replace("_", " ")}` : ""}
             </span>
           </div>
