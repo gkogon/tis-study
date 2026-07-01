@@ -15,11 +15,11 @@
  * trip totals are unchanged — this layer adds the corridor loading and
  * link-level v/c that a reviewer expects from a route-assignment step.
  */
-import { bprTime } from "./four-step-model";
+import { bprTime } from "./four-step-model.ts";
 
 const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8080";
 
-type RoadSegment = [number, number, number, number, number, number | null, number | null];
+export type RoadSegment = [number, number, number, number, number, number | null, number | null];
 
 export type RouteDestination = { lat: number; lon: number; trips: number };
 
@@ -85,7 +85,121 @@ function distMi(la1: number, lo1: number, la2: number, lo2: number): number {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-type Link = { a: number; b: number; lenMi: number; freeMin: number; capVph: number; cls: number; baseVc: number; vol: number };
+export type Link = { a: number; b: number; lenMi: number; freeMin: number; capVph: number; cls: number; baseVc: number; vol: number };
+
+export type Graph = {
+  links: Link[];
+  adj: number[][];
+  nodeLat: number[];
+  nodeLon: number[];
+  nodeOf: (la: number, lo: number) => number;
+  nearestNode: (la: number, lo: number) => number;
+};
+
+export function buildGraph(segments: RoadSegment[], volumeRefs: VolumeRef[] = []): Graph {
+  const nodeIdx = new Map<string, number>();
+  const nodeLat: number[] = [];
+  const nodeLon: number[] = [];
+  const key = (la: number, lo: number) => `${la.toFixed(5)},${lo.toFixed(5)}`;
+  const nodeOf = (la: number, lo: number): number => {
+    const k = key(la, lo);
+    let i = nodeIdx.get(k);
+    if (i === undefined) { i = nodeLat.length; nodeIdx.set(k, i); nodeLat.push(la); nodeLon.push(lo); }
+    return i;
+  };
+  const seedBaseVc = (midLat: number, midLon: number, cls: number, capVph: number): number => {
+    if (volumeRefs.length === 0) return CLASS_BASE_VC[cls] ?? 0.5;
+    let best = -1, bestD = Infinity;
+    for (let i = 0; i < volumeRefs.length; i++) {
+      const d = distMi(midLat, midLon, volumeRefs[i]!.lat, volumeRefs[i]!.lon);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (best < 0 || bestD > 0.6 || !(volumeRefs[best]!.aadt > 0)) return CLASS_BASE_VC[cls] ?? 0.5;
+    const peakVph = volumeRefs[best]!.aadt * K_FACTOR;
+    return Math.min(1.2, Math.max(0.15, peakVph / capVph));
+  };
+  const links: Link[] = [];
+  const adj: number[][] = [];
+  const addAdj = (n: number, li: number) => { (adj[n] ??= []).push(li); };
+  for (const s of segments) {
+    const cls = Math.min(4, Math.max(0, s[0]));
+    const a = nodeOf(s[1], s[2]);
+    const b = nodeOf(s[3], s[4]);
+    if (a === b) continue;
+    const lenMi = distMi(s[1], s[2], s[3], s[4]);
+    if (lenMi <= 0) continue;
+    const mph = (typeof s[6] === "number" && s[6]! > 0) ? s[6]! : CLASS_FREE_MPH[cls]!;
+    const lanesPerDir = (typeof s[5] === "number" && s[5]! > 0) ? Math.max(1, Math.round(s[5]! / 2)) : CLASS_LANES_PER_DIR[cls]!;
+    const li = links.length;
+    const capVph = lanesPerDir * PER_LANE_CAP_VPH;
+    const baseVc = seedBaseVc((s[1] + s[3]) / 2, (s[2] + s[4]) / 2, cls, capVph);
+    links.push({ a, b, lenMi, freeMin: (lenMi / mph) * 60, capVph, cls, baseVc, vol: 0 });
+    addAdj(a, li); addAdj(b, li);
+  }
+  const nearestNode = (la: number, lo: number): number => {
+    let best = -1, bestD = Infinity;
+    for (let i = 0; i < nodeLat.length; i++) {
+      const d = distMi(la, lo, nodeLat[i]!, nodeLon[i]!);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  };
+  return { links, adj, nodeLat, nodeLon, nodeOf, nearestNode };
+}
+
+/** Nearest point on any link to (lat,lon); t = fractional position a→b. */
+export function nearestLinkPoint(g: Graph, lat: number, lon: number) {
+  let best = { li: -1, t: 0, lat, lon, distMi: Infinity };
+  for (let li = 0; li < g.links.length; li++) {
+    const lk = g.links[li]!;
+    const ax = g.nodeLon[lk.a]!, ay = g.nodeLat[lk.a]!, bx = g.nodeLon[lk.b]!, by = g.nodeLat[lk.b]!;
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy || 1e-12;
+    let t = ((lon - ax) * dx + (lat - ay) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const px = ax + t * dx, py = ay + t * dy;
+    const d = distMi(lat, lon, py, px);
+    if (d < best.distMi) best = { li, t, lat: py, lon: px, distMi: d };
+  }
+  return best;
+}
+
+/** Compass bearing (deg) from node `a` to node `b`. */
+function nodeBearing(g: Graph, a: number, b: number): number {
+  const φ1 = (g.nodeLat[a]! * Math.PI) / 180, φ2 = (g.nodeLat[b]! * Math.PI) / 180;
+  const Δλ = ((g.nodeLon[b]! - g.nodeLon[a]!) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/** Split the nearest link at the driveway's snap point; add a site→driveway access link. */
+export function insertDriveway(g: Graph, siteNode: number, lat: number, lon: number): { drivewayNode: number; accessLink: number; streetBearing: number } {
+  const snap = nearestLinkPoint(g, lat, lon);
+  const addAdj = (n: number, li: number) => { (g.adj[n] ??= []).push(li); };
+  if (snap.li < 0) {
+    // No links: connect the driveway directly to the site.
+    const dn = g.nodeOf(snap.lat, snap.lon);
+    const al = g.links.length;
+    g.links.push({ a: siteNode, b: dn, lenMi: 0.02, freeMin: 0.1, capVph: 2000, cls: 4, baseVc: 0, vol: 0 });
+    addAdj(siteNode, al); addAdj(dn, al);
+    return { drivewayNode: dn, accessLink: al, streetBearing: 0 };
+  }
+  const orig = g.links[snap.li]!;
+  const streetBearing = nodeBearing(g, orig.a, orig.b); // fronting-street bearing (capture before reshape)
+  const dn = g.nodeOf(snap.lat, snap.lon);
+  // Reshape the original link to a→dn; add a second link dn→b (split).
+  const halfA = { ...orig, b: dn, lenMi: orig.lenMi * snap.t, freeMin: orig.freeMin * snap.t, vol: 0 };
+  const halfB = { ...orig, a: dn, lenMi: orig.lenMi * (1 - snap.t), freeMin: orig.freeMin * (1 - snap.t), vol: 0 };
+  g.links[snap.li] = halfA;                 // reuse the slot for a→dn
+  const bLink = g.links.length; g.links.push(halfB);
+  addAdj(dn, snap.li); addAdj(dn, bLink); addAdj(orig.b, bLink);
+  // Access link site→driveway (short, high-capacity, uncongested).
+  const al = g.links.length;
+  g.links.push({ a: siteNode, b: dn, lenMi: Math.max(0.01, distMi(g.nodeLat[siteNode]!, g.nodeLon[siteNode]!, snap.lat, snap.lon)), freeMin: 0.1, capVph: 2000, cls: 4, baseVc: 0, vol: 0 });
+  addAdj(siteNode, al); addAdj(dn, al);
+  return { drivewayNode: dn, accessLink: al, streetBearing };
+}
 
 /**
  * Build the graph, run an MSA user-equilibrium assignment of the
@@ -106,64 +220,14 @@ export function assignRoutes(
   };
   if (segments.length === 0 || destinations.length === 0) return empty;
 
-  // --- Build graph: nodes keyed by 5-dp coord; links from segments. ---
-  const nodeIdx = new Map<string, number>();
-  const nodeLat: number[] = [];
-  const nodeLon: number[] = [];
-  const key = (la: number, lo: number) => `${la.toFixed(5)},${lo.toFixed(5)}`;
-  const nodeOf = (la: number, lo: number): number => {
-    const k = key(la, lo);
-    let i = nodeIdx.get(k);
-    if (i === undefined) { i = nodeLat.length; nodeIdx.set(k, i); nodeLat.push(la); nodeLon.push(lo); }
-    return i;
-  };
-  // Existing per-link utilization. When measured volume references are
-  // supplied (counted signals/segments), seed a link's v/c from the
-  // nearest reference's AADT (→ peak hour via K) over the link capacity;
-  // otherwise fall back to the functional-class default.
-  const seedBaseVc = (midLat: number, midLon: number, cls: number, capVph: number): number => {
-    if (volumeRefs.length === 0) return CLASS_BASE_VC[cls] ?? 0.5;
-    let best = -1, bestD = Infinity;
-    for (let i = 0; i < volumeRefs.length; i++) {
-      const d = distMi(midLat, midLon, volumeRefs[i]!.lat, volumeRefs[i]!.lon);
-      if (d < bestD) { bestD = d; best = i; }
-    }
-    if (best < 0 || bestD > 0.6 || !(volumeRefs[best]!.aadt > 0)) return CLASS_BASE_VC[cls] ?? 0.5;
-    const peakVph = volumeRefs[best]!.aadt * K_FACTOR;
-    return Math.min(1.2, Math.max(0.15, peakVph / capVph));
-  };
-
-  const links: Link[] = [];
-  const adj: number[][] = []; // node → link indices (undirected: traverse either way)
-  const addAdj = (n: number, li: number) => { (adj[n] ??= []).push(li); };
-  for (const s of segments) {
-    const cls = Math.min(4, Math.max(0, s[0]));
-    const a = nodeOf(s[1], s[2]);
-    const b = nodeOf(s[3], s[4]);
-    if (a === b) continue;
-    const lenMi = distMi(s[1], s[2], s[3], s[4]);
-    if (lenMi <= 0) continue;
-    const mph = (typeof s[6] === "number" && s[6]! > 0) ? s[6]! : CLASS_FREE_MPH[cls]!;
-    const lanesPerDir = (typeof s[5] === "number" && s[5]! > 0) ? Math.max(1, Math.round(s[5]! / 2)) : CLASS_LANES_PER_DIR[cls]!;
-    const li = links.length;
-    const capVph = lanesPerDir * PER_LANE_CAP_VPH;
-    const baseVc = seedBaseVc((s[1] + s[3]) / 2, (s[2] + s[4]) / 2, cls, capVph);
-    links.push({ a, b, lenMi, freeMin: (lenMi / mph) * 60, capVph, cls, baseVc, vol: 0 });
-    addAdj(a, li); addAdj(b, li);
-  }
+  // --- Build graph using the shared buildGraph helper. ---
+  const g = buildGraph(segments, volumeRefs);
+  const { links, adj, nodeLat, nodeLon } = g;
   if (links.length === 0) return empty;
 
   // Snap site + destinations to nearest node (scan — graph is bounded).
-  const nearestNode = (la: number, lo: number): number => {
-    let best = -1, bestD = Infinity;
-    for (let i = 0; i < nodeLat.length; i++) {
-      const d = distMi(la, lo, nodeLat[i]!, nodeLon[i]!);
-      if (d < bestD) { bestD = d; best = i; }
-    }
-    return best;
-  };
-  const siteNode = nearestNode(site.lat, site.lon);
-  const destNodes = destinations.map((d) => ({ node: nearestNode(d.lat, d.lon), trips: d.trips }));
+  const siteNode = g.nearestNode(site.lat, site.lon);
+  const destNodes = destinations.map((d) => ({ node: g.nearestNode(d.lat, d.lon), trips: d.trips }));
 
   // Dijkstra from the site over current congested link times → shortest-
   // path tree (predecessor link per node). Returns dist[] + predLink[].
