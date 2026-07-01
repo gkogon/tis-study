@@ -118,6 +118,8 @@ const PBC_11 =
   "Palm Beach County Trip Generation Rates (ITE 11th ed, free public republication) — ITE-derived, verify for submittal";
 const NJDOT_10 =
   "NJDOT trip-gen rates (ITE 10th ed, free public republication) — ITE-derived, verify for submittal";
+const ITE_LOWERED =
+  "Corrected to current ITE via free public republication (Palm Beach 11th / NJDOT 10th ed) — SANDAG's 2002 measured rate ran high vs current ITE (telework/e-commerce); verify for submittal";
 
 export const LAND_USES: LandUse[] = [
   // ---------- Residential ----------
@@ -135,24 +137,25 @@ export const LAND_USES: LandUse[] = [
 
   // ---------- Office ----------
   // 710 — SANDAG per-ksf primary; NCHRP 716 per-employee backstop.
-  { code: "710", name: "General Office",                          unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 20.0, amRate: 2.80, pmRate: 2.60, confidence: "sandag_2002", source: `${SANDAG_2002}; per-employee backstop from ${NCHRP_716}`, directionalSplitPm: { in: 0.17, out: 0.83 }, amDirectionalIn: 0.86, satMultiplier: 0.10, passByPctPm: 0, internalCapturePctPm: 0,
+  { code: "710", name: "General Office",                          unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 11.0, amRate: 1.54, pmRate: 1.43, confidence: "blended_mpo", source: `${ITE_LOWERED} (office 710 ≈10.84/ksf PBC 11th; per-employee backstop ${NCHRP_716})`, directionalSplitPm: { in: 0.17, out: 0.83 }, amDirectionalIn: 0.86, satMultiplier: 0.10, passByPctPm: 0, internalCapturePctPm: 0,
     secondaryVariables: [
       { unit: "Employees",         unitShort: "emp",   dailyRate:  3.50, amRate: 0.49, pmRate: 0.46, confidence: "nchrp_716", source: NCHRP_716, note: "NCHRP 716 general-office per-employee daily rate (~3.5 veh-trips/employee)" },
     ] },
-  { code: "720", name: "Medical / Dental Office",                 unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 50.0, amRate: 3.00, pmRate: 5.50, confidence: "sandag_2002", source: SANDAG_2002, directionalSplitPm: { in: 0.28, out: 0.72 }, amDirectionalIn: 0.79, satMultiplier: 0.20, passByPctPm: 0, internalCapturePctPm: 0 },
+  { code: "720", name: "Medical / Dental Office",                 unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 34.0, amRate: 2.04, pmRate: 3.74, confidence: "blended_mpo", source: `${ITE_LOWERED} (medical 720 ≈34.8/ksf NJDOT)`, directionalSplitPm: { in: 0.28, out: 0.72 }, amDirectionalIn: 0.79, satMultiplier: 0.20, passByPctPm: 0, internalCapturePctPm: 0 },
 
   // ---------- Retail / Commercial ----------
   // 820 / 850 / 912 — blended MPO screening guidance; disclosed as rough.
   { code: "820", name: "Shopping Center / Retail",                unit: "1,000 sqft GLA",        unitShort: "ksf",      dailyRate: 80.0, amRate: 3.20, pmRate: 8.00, confidence: "sandag_2002", source: `${SANDAG_2002} — Community Shopping Center (daily 80/ksf; PM pass-by 30%)`, directionalSplitPm: { in: 0.48, out: 0.52 }, amDirectionalIn: 0.61, satMultiplier: 1.10, passByPctPm: 30, internalCapturePctPm: 0 },
-  { code: "850", name: "Supermarket",                             unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 150.0, amRate: 6.00, pmRate: 15.0, confidence: "sandag_2002", source: `${SANDAG_2002} — Supermarket (daily 150/ksf; PM pass-by 40%)`, directionalSplitPm: { in: 0.51, out: 0.49 }, amDirectionalIn: 0.62, satMultiplier: 1.20, passByPctPm: 40, internalCapturePctPm: 0 },
+  { code: "850", name: "Supermarket",                             unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 104.0, amRate: 4.16, pmRate: 10.4, confidence: "blended_mpo", source: `${ITE_LOWERED} (supermarket 850 ≈104/ksf NJDOT/DuPont; PM pass-by 40%)`, directionalSplitPm: { in: 0.51, out: 0.49 }, amDirectionalIn: 0.62, satMultiplier: 1.20, passByPctPm: 40, internalCapturePctPm: 0 },
   { code: "912", name: "Bank",                                    unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 150.0, amRate: 6.00, pmRate: 12.0, confidence: "sandag_2002", source: `${SANDAG_2002} — Bank, Walk-In (daily 150/ksf; PM pass-by 25%); drive-through banks run higher (≈200/ksf), PE selects per project`, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.55, satMultiplier: 0.40, passByPctPm: 25, internalCapturePctPm: 0 },
 
   // ---------- Industrial / Warehouse ----------
-  // 110 / 130 / 140 / 150 share the SANDAG industrial-park rate (clean).
-  { code: "110", name: "Light Industrial",                        unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate:  8.0, amRate: 0.88, pmRate: 0.96, confidence: "sandag_2002", source: `${SANDAG_2002} — industrial park`, directionalSplitPm: { in: 0.19, out: 0.81 }, amDirectionalIn: 0.81, satMultiplier: 0.15, passByPctPm: 0, internalCapturePctPm: 0 },
-  { code: "130", name: "Industrial Park",                         unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate:  8.0, amRate: 0.88, pmRate: 0.96, confidence: "sandag_2002", source: `${SANDAG_2002} — industrial park`, directionalSplitPm: { in: 0.21, out: 0.79 }, amDirectionalIn: 0.81, satMultiplier: 0.15, passByPctPm: 0, internalCapturePctPm: 0 },
-  { code: "140", name: "Manufacturing",                           unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate:  8.0, amRate: 0.88, pmRate: 0.96, confidence: "sandag_2002", source: `${SANDAG_2002} — industrial park`, directionalSplitPm: { in: 0.36, out: 0.64 }, amDirectionalIn: 0.78, satMultiplier: 0.15, passByPctPm: 0, internalCapturePctPm: 0 },
-  { code: "150", name: "Warehousing",                             unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate:  8.0, amRate: 0.88, pmRate: 0.96, confidence: "sandag_2002", source: `${SANDAG_2002} — industrial park`, directionalSplitPm: { in: 0.27, out: 0.73 }, amDirectionalIn: 0.78, satMultiplier: 0.15, passByPctPm: 0, internalCapturePctPm: 0 },
+  // 110 / 130 / 140 / 150 — split to current-ITE values (via free public
+  // republications); warehouse (150) is far below the others (~1.7 vs ~5).
+  { code: "110", name: "Light Industrial",                        unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 4.9, amRate: 0.54, pmRate: 0.59, confidence: "blended_mpo", source: `${ITE_LOWERED} (light-industrial 110 ≈4.9/ksf PBC 11th)`, directionalSplitPm: { in: 0.19, out: 0.81 }, amDirectionalIn: 0.81, satMultiplier: 0.15, passByPctPm: 0, internalCapturePctPm: 0 },
+  { code: "130", name: "Industrial Park",                         unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 5.0, amRate: 0.55, pmRate: 0.60, confidence: "blended_mpo", source: `${ITE_LOWERED} (industrial-park 130 ≈3.4–6.8/ksf; ~5 mid)`, directionalSplitPm: { in: 0.21, out: 0.79 }, amDirectionalIn: 0.81, satMultiplier: 0.15, passByPctPm: 0, internalCapturePctPm: 0 },
+  { code: "140", name: "Manufacturing",                           unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 4.0, amRate: 0.44, pmRate: 0.48, confidence: "blended_mpo", source: `${ITE_LOWERED} (manufacturing 140 ≈4/ksf PBC/DuPont)`, directionalSplitPm: { in: 0.36, out: 0.64 }, amDirectionalIn: 0.78, satMultiplier: 0.15, passByPctPm: 0, internalCapturePctPm: 0 },
+  { code: "150", name: "Warehousing",                             unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 1.8, amRate: 0.17, pmRate: 0.19, confidence: "blended_mpo", source: `${ITE_LOWERED} (warehouse 150 ≈1.71/ksf PBC 11th — modern warehouse is far below industrial-park)`, directionalSplitPm: { in: 0.27, out: 0.73 }, amDirectionalIn: 0.78, satMultiplier: 0.15, passByPctPm: 0, internalCapturePctPm: 0 },
 
   // ---------- Food / Beverage ----------
   // SANDAG 2002 MEASURED "San Diego Traffic Generators" rows (primary `*`).
@@ -165,7 +168,7 @@ export const LAND_USES: LandUse[] = [
 
   // ---------- Auto / Fuel ----------
   { code: "944", name: "Gas / Service Station",                   unit: "Fueling Positions",     unitShort: "VFP",      dailyRate: 150.0, amRate: 10.50, pmRate: 13.50, confidence: "sandag_2002", source: `${SANDAG_2002} — Older Service Station Design, measured (daily 150/fueling position; PM pass-by 50%)`, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.50, satMultiplier: 0.90, passByPctPm: 50, internalCapturePctPm: 0 },
-  { code: "841", name: "Auto Sales (Dealer & Repair)",            unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 50.0, amRate: 2.50, pmRate: 4.00, confidence: "sandag_2002", source: `${SANDAG_2002} — Auto Sales Dealer & Repair, measured (daily 50/ksf)`, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.60, satMultiplier: 1.10, passByPctPm: 0, internalCapturePctPm: 0 },
+  { code: "841", name: "Auto Sales (New Car Dealership)",         unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 30.0, amRate: 1.50, pmRate: 2.40, confidence: "blended_mpo", source: `${ITE_LOWERED} (auto-sales 840/841 ≈28–32/ksf; SANDAG's 50 bundled repair traffic)`, directionalSplitPm: { in: 0.50, out: 0.50 }, amDirectionalIn: 0.60, satMultiplier: 1.10, passByPctPm: 0, internalCapturePctPm: 0 },
   { code: "942", name: "Auto Repair Center",                      unit: "1,000 sqft GFA",        unitShort: "ksf",      dailyRate: 20.0, amRate: 1.60, pmRate: 2.20, confidence: "sandag_2002", source: `${SANDAG_2002} — Auto Repair Center, measured (daily 20/ksf)`, directionalSplitPm: { in: 0.45, out: 0.55 }, amDirectionalIn: 0.70, satMultiplier: 0.50, passByPctPm: 0, internalCapturePctPm: 0 },
 
   // ---------- Recreation / Civic ----------
