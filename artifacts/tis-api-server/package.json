@@ -12,7 +12,8 @@
     "check:isd-truck-gaps": "node ./scripts/verify-isd-truck-gaps.mjs",
     "check:screening-clamp": "node ./scripts/verify-screening-clamp.mjs",
     "check:trip-loading": "node ./scripts/verify-trip-loading.mjs",
-    "check:coverage-warning": "node ./scripts/verify-coverage-warning.mjs"
+    "check:coverage-warning": "node ./scripts/verify-coverage-warning.mjs",
+    "check:name-dedup": "node ./scripts/verify-name-dedup.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",
