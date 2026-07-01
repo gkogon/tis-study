@@ -603,12 +603,31 @@ function selectStudyIntersectionIdx(weights: number[], pmExternalAutoTrips: numb
   return idx;
 }
 
+// When the nominal study radius contains NO signalized intersections
+// (isolated exurban sites, edge-of-metro parcels, a site out near the
+// Everglades / urban-growth boundary), a fixed-radius search returns an
+// empty study — which reads as broken in a deliverable even though it is
+// technically "correct." Standard TIS practice is to extend the study area
+// to the nearest signalized intersections regardless of the nominal radius.
+// So when the radius comes up empty we fall back to the nearest
+// NEAREST_FALLBACK_N signals and flag them as beyond-radius, so the report
+// analyzes real junctions and says plainly that they sit past the radius.
+const NEAREST_FALLBACK_N = 5;
+
+type SignalCandidate = {
+  sig: AnalyzerIntersection;
+  distanceMi: number;
+  /** True when this signal lies beyond the nominal study radius and was
+   *  pulled in by the nearest-N fallback because the radius was empty. */
+  beyondRadius?: boolean;
+};
+
 async function findAffectedIntersections(
   lat: number, lon: number, radiusMi: number, regionCode: string,
-): Promise<Array<{ sig: AnalyzerIntersection; distanceMi: number }>> {
+): Promise<SignalCandidate[]> {
   const radiusM = radiusMi * M_PER_MI;
   const inventory = await fetchIntersections(regionCode);
-  const out: Array<{ sig: AnalyzerIntersection; distanceMi: number }> = [];
+  const out: SignalCandidate[] = [];
   for (const s of inventory) {
     const dM = haversineM({ lat, lon }, { lat: s.latitude, lon: s.longitude });
     if (dM <= radiusM) {
@@ -616,7 +635,36 @@ async function findAffectedIntersections(
     }
   }
   out.sort((a, b) => a.distanceMi - b.distanceMi);
-  return dedupCloseSignals(out);
+  const inRadius = dedupCloseSignals(out);
+  if (inRadius.length > 0) return inRadius;
+
+  // Radius came up empty: rank the WHOLE inventory by distance, dedup, and
+  // carry the nearest N as beyond-radius study intersections. This turns an
+  // isolated site from "empty study" into a real analysis of the nearest
+  // signals — and fixes every sparse site, not just one coordinate.
+  const ranked: SignalCandidate[] = inventory
+    .map((s) => ({
+      sig: s,
+      distanceMi: haversineM({ lat, lon }, { lat: s.latitude, lon: s.longitude }) / M_PER_MI,
+      beyondRadius: true,
+    }))
+    .sort((a, b) => a.distanceMi - b.distanceMi);
+  // dedupCloseSignals is O(n²); never hand it the full metro inventory
+  // (Miami ≈ 10k signals). The nearest few are already distance-sorted, so a
+  // small window (4× the target) comfortably contains N distinct clusters
+  // even with divided-arterial duplicate pairs.
+  const window = ranked.slice(0, NEAREST_FALLBACK_N * 4);
+  const nearest = dedupCloseSignals(window).slice(0, NEAREST_FALLBACK_N);
+  if (nearest.length > 0) {
+    logger.debug({
+      region: regionCode,
+      radiusMi,
+      count: nearest.length,
+      nearestMi: round2(nearest[0].distanceMi),
+      farthestMi: round2(nearest[nearest.length - 1].distanceMi),
+    }, "tis.nearest-fallback");
+  }
+  return nearest;
 }
 
 /**
@@ -656,8 +704,8 @@ function sameSignalName(a: string | null | undefined, b: string | null | undefin
 }
 
 function dedupCloseSignals(
-  candidates: Array<{ sig: AnalyzerIntersection; distanceMi: number }>,
-): Array<{ sig: AnalyzerIntersection; distanceMi: number }> {
+  candidates: SignalCandidate[],
+): SignalCandidate[] {
   const DEDUP_THRESHOLD_M = 45;
   // Candidates are already sorted by distance-to-site ascending. Walk in
   // order so the first record in each cluster (= closest to project) wins.
@@ -978,6 +1026,7 @@ function plainFindings(
   sens: SensitivityResult | undefined,
   region: Region,
   autoModeShare: number,
+  nearestFallback: { used: boolean; radiusMi: number } = { used: false, radiusMi: 0 },
 ): string[] {
   const out: string[] = [];
   out.push(
@@ -1011,9 +1060,17 @@ function plainFindings(
   }
   const dropped = rows.filter((r) => r.losChanged).length;
   const ef = rows.filter((r) => r.futureLos === "E" || r.futureLos === "F").length;
-  out.push(
-    `${rows.length} signalized intersection${rows.length === 1 ? "" : "s"} fall within the study area; ${dropped} are projected to drop at least one LOS grade after build-out.`,
-  );
+  if (nearestFallback.used) {
+    // Radius was empty; these are the nearest signals pulled in beyond it.
+    const farthest = rows.reduce((m, r) => Math.max(m, r.distanceMi), 0);
+    out.push(
+      `No signalized intersections lie within the ${nearestFallback.radiusMi.toFixed(2)}-mile study radius (isolated site). Per standard TIS practice the study area was extended to the nearest ${rows.length} signalized intersection${rows.length === 1 ? "" : "s"} — out to ${farthest.toFixed(2)} mi — which are carried as the study intersections; ${dropped} of these are projected to drop at least one LOS grade after build-out.`,
+    );
+  } else {
+    out.push(
+      `${rows.length} signalized intersection${rows.length === 1 ? "" : "s"} fall within the study area; ${dropped} are projected to drop at least one LOS grade after build-out.`,
+    );
+  }
   if (ef > 0) {
     out.push(`${ef} intersection${ef === 1 ? " is" : "s are"} projected to operate at LOS E or F under the build condition and require formal mitigation per ${region.jurisdiction.dotName} TIS guidance.`);
   } else {
@@ -1198,6 +1255,10 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const designGrowthMultiplier = Math.pow(1 + growthRatePct / 100, designYears);
 
   const candidates = await findAffectedIntersections(req.latitude, req.longitude, radiusMi, region.code);
+  // Nearest-N fallback fired iff every returned signal is flagged beyond the
+  // nominal radius (findAffectedIntersections only does this when the radius
+  // itself was empty). Drives the explanatory finding below.
+  const usedNearestFallback = candidates.length > 0 && candidates.every((c) => c.beyondRadius);
   const project = { lat: req.latitude, lon: req.longitude };
   const calibrationMap = await loadCalibrationMap();
 
@@ -1444,6 +1505,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     sens,
     region,
     autoModeShare,
+    { used: usedNearestFallback, radiusMi },
   );
 
   const mitigationSummary = buildSummaryMitigations(pmReport.affectedIntersections, region);
