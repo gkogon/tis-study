@@ -25,5 +25,34 @@ ok(g.nodeLat.length >= before.nodes + 1, `driveway node added`);
 ok((g.adj[ins.drivewayNode] ?? []).length >= 3, `driveway node connects to both split halves + access link (got ${(g.adj[ins.drivewayNode]||[]).length})`);
 ok((g.adj[siteNode] ?? []).includes(ins.accessLink), `site connects to the driveway via the access link`);
 
+const { assignWithDriveways } = m;
+// Cross road: an east–west street through the site + a north–south street to the east
+// with a signal (destination) at the NE corner. Site at (0, 0).
+const segsX = [
+  [3, 0, -0.01, 0, 0.01, null, null],   // E-W street through the site latitude
+  [3, -0.005, 0.008, 0.005, 0.008, null, null], // N-S street to the east (x≈0.008)
+];
+const site = { lat: -0.0003, lon: 0.0 };       // just south of the E-W street
+const dests = [
+  { lat: 0.0, lon: 0.008, trips: 100 },        // signal to the EAST (odBearing ≈ 90°)
+  { lat: 0.0, lon: -0.008, trips: 100 },       // signal to the WEST (odBearing ≈ 270°)
+];
+// Full-access driveway on the E-W street just north of the site.
+const full = [{ id: "dwA", latitude: -0.00005, longitude: 0.0, accessType: "full", movements: { inLeft: true, inRight: true, outLeft: true, outRight: true } }];
+const rFull = assignWithDriveways(site, dests, segsX, full, {});
+ok(rFull.available, "full-access assignment available");
+const totFull = rFull.perDestinationAddedTrips.reduce((s, v) => s + v, 0);
+ok(Math.abs(totFull - 200) < 1e-6, `full access conserves trips (got ${totFull})`);
+ok(rFull.reroutes.length === 0, "full access ⇒ no reroutes");
+
+// RIRO driveway: forbids out-left. Trips exiting to the WEST (a left turn out of a
+// south-side driveway) can't leave directly ⇒ must reroute (U-turn).
+const riro = [{ id: "dwA", latitude: -0.00005, longitude: 0.0, accessType: "riro", movements: { inLeft: false, inRight: true, outLeft: false, outRight: true } }];
+const rRiro = assignWithDriveways(site, dests, segsX, riro, {});
+ok(rRiro.reroutes.length > 0, "RIRO driveway forces at least one reroute");
+ok(rRiro.driveways[0].reroutedTrips > 0, "the RIRO driveway records rerouted trips");
+const totRiro = rRiro.perDestinationAddedTrips.reduce((s, v) => s + v, 0);
+ok(Math.abs(totRiro - 200) < 1e-6, `reroute conserves total trips (got ${totRiro})`);
+
 console.log(""); console.log(fails === 0 ? "ALL PASS" : `${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);

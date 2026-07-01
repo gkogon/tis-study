@@ -16,6 +16,7 @@
  * link-level v/c that a reviewer expects from a route-assignment step.
  */
 import { bprTime } from "./four-step-model.ts";
+import { classifyMovement, sideOfStreet, resolveMovements, type Driveway } from "./driveways.ts";
 
 const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8080";
 
@@ -316,5 +317,97 @@ export function assignRoutes(
     onNetworkPct: Math.round((routed / Math.max(1, destinations.length)) * 1000) / 10,
     worstLinkVoverC: Math.round(worstVc * 1000) / 1000,
     corridors,
+  };
+}
+
+function bearingBetween(la1: number, lo1: number, la2: number, lo2: number): number {
+  const φ1 = (la1 * Math.PI) / 180, φ2 = (la2 * Math.PI) / 180, Δλ = ((lo2 - lo1) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+export type DrivewayResult = {
+  drivewayNode: number; label: string;
+  enterByMovement: { inLeft: number; inRight: number };
+  exitByMovement: { outLeft: number; outRight: number };
+  reroutedTrips: number;
+};
+export type DrivewayAssignment = {
+  available: boolean;
+  perDestinationAddedTrips: number[];
+  driveways: DrivewayResult[];
+  reroutes: { destIndex: number; trips: number }[];
+};
+
+export function assignWithDriveways(
+  site: { lat: number; lon: number },
+  destinations: RouteDestination[],
+  segments: RoadSegment[],
+  driveways: Driveway[],
+  opts: { volumeRefs?: VolumeRef[] } = {},
+): DrivewayAssignment {
+  const perDest = destinations.map(() => 0);
+  const empty: DrivewayAssignment = { available: false, perDestinationAddedTrips: perDest, driveways: [], reroutes: [] };
+  if (segments.length === 0 || destinations.length === 0 || driveways.length === 0) return empty;
+
+  const g = buildGraph(segments, opts.volumeRefs ?? []);
+  if (g.links.length === 0) return empty;
+  const siteNode = g.nodeOf(site.lat, site.lon);
+
+  // Insert driveways, capturing fronting-street bearing + site side per driveway.
+  type DW = { node: number; label: string; streetBearing: number; side: 1 | -1; mv: ReturnType<typeof resolveMovements>;
+             enterByMovement: { inLeft: number; inRight: number }; exitByMovement: { outLeft: number; outRight: number }; rerouted: number };
+  const dws: DW[] = driveways.map((d) => {
+    const { drivewayNode, streetBearing } = insertDriveway(g, siteNode, d.latitude, d.longitude);
+    const drivewayToSite = bearingBetween(d.latitude, d.longitude, site.lat, site.lon);
+    const side = sideOfStreet(streetBearing, drivewayToSite);
+    return { node: drivewayNode, label: d.label ?? d.id, streetBearing, side, mv: resolveMovements(d),
+             enterByMovement: { inLeft: 0, inRight: 0 }, exitByMovement: { outLeft: 0, outRight: 0 }, rerouted: 0 };
+  });
+
+  const nearestDestTo = (node: number): number => {
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < destinations.length; i++) {
+      const d = distMi(g.nodeLat[node]!, g.nodeLon[node]!, destinations[i]!.lat, destinations[i]!.lon);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  };
+  const reroutes: { destIndex: number; trips: number }[] = [];
+
+  for (let i = 0; i < destinations.length; i++) {
+    const d = destinations[i]!;
+    const odBearing = bearingBetween(site.lat, site.lon, d.lat, d.lon);
+    // Outbound leg: which driveways can serve a trip leaving toward this destination?
+    const eligible = dws.filter((dw) => {
+      const mvNeeded = classifyMovement(dw.streetBearing, dw.side, odBearing, false); // "outLeft" | "outRight"
+      return dw.mv[mvNeeded];
+    });
+    if (eligible.length > 0) {
+      // Nearest eligible driveway carries the trip; count its exit movement.
+      const dw = eligible.reduce((a, b) =>
+        distMi(g.nodeLat[a.node]!, g.nodeLon[a.node]!, d.lat, d.lon) <= distMi(g.nodeLat[b.node]!, g.nodeLon[b.node]!, d.lat, d.lon) ? a : b);
+      const mv = classifyMovement(dw.streetBearing, dw.side, odBearing, false) as "outLeft" | "outRight";
+      dw.exitByMovement[mv] += d.trips;
+      perDest[i]! += d.trips;
+    } else {
+      // Forbidden everywhere ⇒ reroute via the nearest driveway + U-turn.
+      const dw = dws.reduce((a, b) =>
+        distMi(g.nodeLat[a.node]!, g.nodeLon[a.node]!, d.lat, d.lon) <= distMi(g.nodeLat[b.node]!, g.nodeLon[b.node]!, d.lat, d.lon) ? a : b);
+      dw.rerouted += d.trips;
+      // The U-turn happens at the nearest downstream node to the driveway; its
+      // added turning volume lands on the destination nearest that node.
+      const uturnDest = nearestDestTo(dw.node);
+      perDest[uturnDest]! += d.trips;
+      reroutes.push({ destIndex: uturnDest, trips: d.trips });
+    }
+  }
+
+  return {
+    available: true,
+    perDestinationAddedTrips: perDest,
+    driveways: dws.map((dw) => ({ drivewayNode: dw.node, label: dw.label, enterByMovement: dw.enterByMovement, exitByMovement: dw.exitByMovement, reroutedTrips: dw.rerouted })),
+    reroutes,
   };
 }
