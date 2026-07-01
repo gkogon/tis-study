@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check:diurnal-provenance": "node ./scripts/verify-diurnal-provenance.mjs",
     "check:isd-truck-gaps": "node ./scripts/verify-isd-truck-gaps.mjs",
-    "check:screening-clamp": "node ./scripts/verify-screening-clamp.mjs"
+    "check:screening-clamp": "node ./scripts/verify-screening-clamp.mjs",
+    "check:trip-loading": "node ./scripts/verify-trip-loading.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",
