@@ -72,7 +72,7 @@ router.post(
         result: validated,
       });
       if (!saved) {
-        await releaseStudySlot(firm, { email: user.email });
+        await releaseStudySlot(firm, { email: user.email, source: quota.source });
         res.status(500).json({
           error: "Generated the study but couldn't save it to your history. Please retry — this attempt didn't count toward your quota.",
         });
@@ -85,7 +85,7 @@ router.post(
       });
       res.json(validated);
     } catch (e) {
-      await releaseStudySlot(firm, { email: user.email });
+      await releaseStudySlot(firm, { email: user.email, source: quota.source });
       req.log.error({ err: e }, "road-diet-generate failed");
       const msg = e instanceof Error ? e.message : String(e);
       res.status(400).json({ error: msg });

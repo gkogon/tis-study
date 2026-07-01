@@ -110,8 +110,23 @@ export async function getOrCreateFirmForUser(
   }
 }
 
+/**
+ * Which bucket a reserved study was charged against, so a later
+ * `releaseStudySlot` refunds the correct one:
+ *   - "unlimited" — never charged (dev-auth / sentinel / admin); release no-ops.
+ *   - "period"    — the per-billing-period subscription/trial quota.
+ *   - "credit"    — a purchased pay-per-study credit.
+ */
+export type QuotaSource = "unlimited" | "period" | "credit";
+
 export type QuotaCheck =
-  | { ok: true; firmId: string; remaining: number; unlimited: boolean }
+  | {
+      ok: true;
+      firmId: string;
+      remaining: number;
+      unlimited: boolean;
+      source: QuotaSource;
+    }
   | {
       ok: false;
       reason: "quota_exceeded" | "subscription_delinquent";
@@ -208,53 +223,83 @@ export async function reserveStudySlot(
       firmId: firm.id,
       remaining: Number.POSITIVE_INFINITY,
       unlimited: true,
+      source: "unlimited",
     };
   }
-  // Revenue integrity (PR #33 gate, folded into the atomic path per its note):
-  // a firm whose subscription has definitively lapsed (payment failed after
-  // retries, first payment never completed, or canceled) must not keep drawing
-  // down paid quota. Checked AFTER the unlimited short-circuit (so admin / dev
-  // / comped accounts are never gated) and BEFORE reserving a slot.
-  if (isSubscriptionDelinquent(firm)) {
-    return {
-      ok: false,
-      reason: "subscription_delinquent",
-      firmId: firm.id,
-      limit: firm.studyLimit,
-    };
+
+  // (1) Period quota first — it's use-it-or-lose-it, so spend it before the
+  // permanent purchased credits. Revenue-integrity gate (PR #33): a firm whose
+  // subscription has definitively lapsed (payment failed after retries, first
+  // payment never completed, or canceled) may NOT draw down paid period quota.
+  // It can still spend prepaid credits, though (step 2) — those aren't
+  // subscription access. Conditional increment: the WHERE is re-evaluated under
+  // the row lock, so only one of N concurrent callers at `used = limit − 1`
+  // gets a row back; the rest see zero rows updated and fall through.
+  const delinquent = isSubscriptionDelinquent(firm);
+  if (!delinquent) {
+    const [row] = await db
+      .update(firmsTable)
+      .set({
+        studiesUsedThisPeriod: sql`${firmsTable.studiesUsedThisPeriod} + 1`,
+      })
+      .where(
+        and(
+          eq(firmsTable.id, firm.id),
+          sql`${firmsTable.studiesUsedThisPeriod} < ${firmsTable.studyLimit}`,
+        ),
+      )
+      .returning({ used: firmsTable.studiesUsedThisPeriod });
+    if (row) {
+      return {
+        ok: true,
+        firmId: firm.id,
+        remaining: Math.max(firm.studyLimit - row.used, 0),
+        unlimited: false,
+        source: "period",
+      };
+    }
   }
-  // Conditional increment: the WHERE is re-evaluated under the row lock, so
-  // only one of N concurrent callers at `used = limit − 1` gets a row back —
-  // the rest see zero rows updated and are correctly rejected. (Unlimited
-  // firms — studyLimit <= 0 — are short-circuited above, so `used < limit`
-  // here only runs for genuinely metered firms.)
-  const [row] = await db
+
+  // (2) Fall back to a purchased pay-per-study credit. Same atomic conditional
+  // pattern as the period quota: only one concurrent caller can claim the last
+  // credit. Spendable even when the subscription is delinquent.
+  const [creditRow] = await db
     .update(firmsTable)
     .set({
-      studiesUsedThisPeriod: sql`${firmsTable.studiesUsedThisPeriod} + 1`,
+      studyCreditsRemaining: sql`${firmsTable.studyCreditsRemaining} - 1`,
     })
     .where(
       and(
         eq(firmsTable.id, firm.id),
-        sql`${firmsTable.studiesUsedThisPeriod} < ${firmsTable.studyLimit}`,
+        sql`${firmsTable.studyCreditsRemaining} > 0`,
       ),
     )
-    .returning({ used: firmsTable.studiesUsedThisPeriod });
-
-  if (!row) {
+    .returning({ credits: firmsTable.studyCreditsRemaining });
+  if (creditRow) {
     return {
-      ok: false,
-      reason: "quota_exceeded",
+      ok: true,
       firmId: firm.id,
-      limit: firm.studyLimit,
+      remaining: creditRow.credits,
+      unlimited: false,
+      source: "credit",
     };
   }
-  return {
-    ok: true,
-    firmId: firm.id,
-    remaining: Math.max(firm.studyLimit - row.used, 0),
-    unlimited: false,
-  };
+
+  // (3) Nothing left. Delinquency takes precedence in the reason so the UI can
+  // prompt "update your card" rather than "buy more studies".
+  return delinquent
+    ? {
+        ok: false,
+        reason: "subscription_delinquent",
+        firmId: firm.id,
+        limit: firm.studyLimit,
+      }
+    : {
+        ok: false,
+        reason: "quota_exceeded",
+        firmId: firm.id,
+        limit: firm.studyLimit,
+      };
 }
 
 /**
@@ -266,10 +311,26 @@ export async function reserveStudySlot(
  */
 export async function releaseStudySlot(
   firm: Firm,
-  opts?: { email?: string | null },
+  opts?: { email?: string | null; source?: QuotaSource },
 ): Promise<void> {
   if (isUnlimitedStudies(firm, opts?.email)) return;
+  // Nothing was charged for an unlimited reservation.
+  if (opts?.source === "unlimited") return;
   try {
+    if (opts?.source === "credit") {
+      // Return the purchased credit that was consumed. Note we do NOT touch
+      // studiesPurchasedLifetime — the purchase genuinely happened; only the
+      // spend is being reversed, so the intro/standard rate is unaffected.
+      await db
+        .update(firmsTable)
+        .set({
+          studyCreditsRemaining: sql`${firmsTable.studyCreditsRemaining} + 1`,
+        })
+        .where(eq(firmsTable.id, firm.id));
+      return;
+    }
+    // Default (and explicit "period"): refund the per-period counter. GREATEST
+    // floors at zero so a stray double-release can't drive usage negative.
     await db
       .update(firmsTable)
       .set({

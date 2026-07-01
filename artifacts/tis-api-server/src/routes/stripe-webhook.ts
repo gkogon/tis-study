@@ -18,7 +18,7 @@
  */
 import { Router, type IRouter } from "express";
 import express from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type Stripe from "stripe";
 import { db, firmsTable, stripeWebhookEventsTable } from "@workspace/db";
 import { stripe, getWebhookSecret, resolvePlanFromPriceId } from "../lib/stripe";
@@ -169,8 +169,6 @@ async function onCheckoutCompleted(session: Stripe.Checkout.Session): Promise<vo
   const firmId = (session.metadata?.firmId as string | undefined) ?? null;
   const customerId =
     typeof session.customer === "string" ? session.customer : null;
-  const subscriptionId =
-    typeof session.subscription === "string" ? session.subscription : null;
 
   const firm = await findFirmByMetadataOrCustomer({
     metadataFirmId: firmId,
@@ -184,6 +182,42 @@ async function onCheckoutCompleted(session: Stripe.Checkout.Session): Promise<vo
     return;
   }
 
+  // A one-time pay-per-study purchase (mode: "payment"), NOT a subscription.
+  // Bank the paid study credits and bump the lifetime counter (which selects
+  // the intro vs standard rate on the next purchase). Critically this does
+  // NOT touch stripeSubscriptionId — a study purchase must never clobber an
+  // existing subscription. Double-granting on webhook replay is already
+  // prevented by the event-id idempotency guard above.
+  if (session.mode === "payment") {
+    const credits = Number(session.metadata?.credits ?? 0);
+    if (!Number.isFinite(credits) || credits <= 0) {
+      logger.warn(
+        { firmId: firm.id, sessionId: session.id, credits: session.metadata?.credits },
+        "stripe-webhook.study_purchase_bad_credits",
+      );
+      return;
+    }
+    await db
+      .update(firmsTable)
+      .set({
+        stripeCustomerId: customerId ?? firm.stripeCustomerId,
+        studyCreditsRemaining: sql`${firmsTable.studyCreditsRemaining} + ${credits}`,
+        studiesPurchasedLifetime: sql`${firmsTable.studiesPurchasedLifetime} + ${credits}`,
+      })
+      .where(eq(firmsTable.id, firm.id));
+
+    logger.info(
+      { firmId: firm.id, credits, sessionId: session.id },
+      "stripe-webhook.study_purchase_granted",
+    );
+    return;
+  }
+
+  // Subscription checkout: link the subscription to the firm. The follow-up
+  // `customer.subscription.created` event sets plan tier, limits, and status —
+  // that logic stays in one place (onSubscriptionChanged).
+  const subscriptionId =
+    typeof session.subscription === "string" ? session.subscription : null;
   await db
     .update(firmsTable)
     .set({
@@ -196,8 +230,6 @@ async function onCheckoutCompleted(session: Stripe.Checkout.Session): Promise<vo
     { firmId: firm.id, subscriptionId, sessionId: session.id },
     "stripe-webhook.checkout_completed",
   );
-  // The follow-up `customer.subscription.created` event will set plan
-  // tier, limits, and status — keep that logic in one place.
 }
 
 async function onSubscriptionChanged(sub: Stripe.Subscription): Promise<void> {

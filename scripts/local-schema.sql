@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS firms (
   seat_limit                  INTEGER NOT NULL DEFAULT 3,
   study_limit                 INTEGER NOT NULL DEFAULT 3,
   studies_used_this_period    INTEGER NOT NULL DEFAULT 0,
+  study_credits_remaining     INTEGER NOT NULL DEFAULT 0,
+  studies_purchased_lifetime  INTEGER NOT NULL DEFAULT 0,
   current_period_start        TIMESTAMPTZ,
   current_period_end          TIMESTAMPTZ,
   region_code                 VARCHAR(32) NOT NULL DEFAULT 'atlanta_metro',
@@ -50,6 +52,9 @@ CREATE TABLE IF NOT EXISTS firms (
 );
 -- Multi-region rollout: backfill column on a pre-existing firms table.
 ALTER TABLE firms ADD COLUMN IF NOT EXISTS region_code VARCHAR(32) NOT NULL DEFAULT 'atlanta_metro';
+-- Pay-per-study credits: backfill on a pre-existing firms table.
+ALTER TABLE firms ADD COLUMN IF NOT EXISTS study_credits_remaining INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE firms ADD COLUMN IF NOT EXISTS studies_purchased_lifetime INTEGER NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS firm_members (
   firm_id              UUID NOT NULL REFERENCES firms(id) ON DELETE CASCADE,

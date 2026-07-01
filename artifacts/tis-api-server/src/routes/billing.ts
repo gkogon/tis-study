@@ -20,10 +20,16 @@ import { Router, type IRouter } from "express";
 import { getOrCreateFirmForUser, getMembership, isUnlimitedStudies } from "../lib/firms";
 import {
   createCheckoutSession,
+  createStudyPurchaseCheckout,
   createPortalSession,
   BillingDisabledError,
 } from "../lib/billing";
-import { PLANS, type PaidPlanId, type BillingCadence } from "../lib/stripe";
+import {
+  PLANS,
+  studyRateForPurchased,
+  type PaidPlanId,
+  type BillingCadence,
+} from "../lib/stripe";
 import { logEvent } from "../lib/events";
 
 const router: IRouter = Router();
@@ -73,6 +79,39 @@ router.post("/billing/checkout-session", async (req, res): Promise<void> => {
     }
     req.log.error({ err }, "billing.checkout_failed");
     res.status(500).json({ error: "Failed to start checkout." });
+  }
+});
+
+router.post("/billing/study-purchase-session", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Sign in to buy a study." });
+    return;
+  }
+  const user = req.user!;
+  try {
+    const { firm, role } = await getOrCreateFirmForUser(user.id, {
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    });
+    if (role !== "owner" && role !== "admin") {
+      res.status(403).json({ error: "Only firm owners or admins can manage billing." });
+      return;
+    }
+    const session = await createStudyPurchaseCheckout({ firm, email: user.email });
+    logEvent("study_purchase_started", {
+      firmId: firm.id,
+      userId: user.id,
+      metadata: { rate: session.rate },
+    });
+    res.json({ url: session.url });
+  } catch (err) {
+    if (err instanceof BillingDisabledError) {
+      res.status(503).json({ error: err.message });
+      return;
+    }
+    req.log.error({ err }, "billing.study_purchase_failed");
+    res.status(500).json({ error: "Failed to start study purchase." });
   }
 });
 
@@ -138,6 +177,12 @@ router.get("/billing/summary", async (req, res): Promise<void> => {
         seatLimit: firm.seatLimit,
         studyLimit: unlimited ? 0 : firm.studyLimit,
         studiesUsedThisPeriod: firm.studiesUsedThisPeriod,
+        // Pay-per-study state: banked prepaid credits, and the rate the next
+        // à-la-carte purchase will bill at (intro for the first few, then
+        // standard) so the buy UI can label the button with the right price.
+        studyCreditsRemaining: firm.studyCreditsRemaining,
+        studiesPurchasedLifetime: firm.studiesPurchasedLifetime,
+        nextStudyRate: studyRateForPurchased(firm.studiesPurchasedLifetime),
         unlimited,
         currentPeriodEnd: firm.currentPeriodEnd?.toISOString() ?? null,
         currentPeriodStart: firm.currentPeriodStart?.toISOString() ?? null,
