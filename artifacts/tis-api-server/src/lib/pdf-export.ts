@@ -7738,7 +7738,7 @@ function renderTisFlorida(
   // --- 6.0 Scenario 3 — Future Conditions Build -------------------------
   gaSection(doc, `6.0 SCENARIO 3 — FUTURE CONDITIONS BUILD (${openingYear})`);
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Scenario 3 represents future Build conditions at the opening year ${openingYear}: the Scenario 2 No-Build network plus the proposed development's net new external trips at the assigned distribution. Per FDOT TAH §2.7, trip distribution and assignment should use the adopted regional MPO/TPO travel-demand model${jur.mpoName ? ` (${jur.mpoName})` : ""}, with model version, base year, and horizon year identified in the methodology letter. This screening analysis assigns net new external trips by inverse-distance weighting to signalized intersections within the study area; for formal submittal, distribution percentages and the TDM run identifier should be agreed upon during the methodology meeting.`,
+    `Scenario 3 represents future Build conditions at the opening year ${openingYear}: the Scenario 2 No-Build network plus the proposed development's net new external trips at the assigned distribution. Per FDOT TAH §2.7, trip distribution and assignment should use the adopted regional MPO/TPO travel-demand model${jur.mpoName ? ` (${jur.mpoName})` : ""}, with model version, base year, and horizon year identified in the methodology letter. This screening analysis distributes net new external trips to study-area zones with the Caltran gravity model (mass ÷ distance; see §6.1) and assigns them to signalized intersections within the study area; for formal submittal, distribution percentages and the TDM run identifier should be agreed upon during the methodology meeting.`,
     { paragraphGap: 6 },
   );
   if (jur.studyAreaNote) {
@@ -7756,22 +7756,96 @@ function renderTisFlorida(
     doc.fillColor("black");
   }
 
-  gaSubsection(doc, "6.1 Project Trip Assignment");
+  // --- 6.1 Trip Distribution — Caltran gravity model --------------------
+  const flg = r.flGravity;
+  const QUADRANT_LABEL: Record<string, string> = {
+    "NNE+ENE": "Northeast (NNE + ENE)",
+    "ESE+SSE": "Southeast (ESE + SSE)",
+    "SSW+WSW": "Southwest (SSW + WSW)",
+    "WNW+NNW": "Northwest (WNW + NNW)",
+  };
+  if (flg && Array.isArray(flg.zones) && flg.zones.length > 0) {
+    gaSubsection(doc, "6.1 Trip Distribution — Gravity Model");
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Project trips are distributed to the surrounding study-area zones with the gravity model used in the Caltran Engineering HCA Westside reference TIS, adopted here as the Florida distribution standard. Each zone attracts trips in proportion to its mass and inversely with its distance from the site — term = M / (d^${flg.betaExponent} · d_site) — normalized so the zone shares sum to 100%. Zone mass M is the ${flg.massBasis}; d_site (the site zone's own distance normalizer) is 1. The resulting shares set the directional distribution below and drive the project-trip assignment in §6.2.`,
+      { paragraphGap: 6 },
+    );
+
+    // Directional distribution — the four quadrant sectors on the aerial figure.
+    const sectorRows = Object.entries(flg.sectors ?? {}).map(([k, v]) => [
+      QUADRANT_LABEL[k] ?? k,
+      `${(Number(v) || 0).toFixed(0)}%`,
+    ]);
+    if (sectorRows.length > 0) {
+      table(doc, {
+        headers: ["Directional sector", "Share of project trips"],
+        widths: [300, 180],
+        align: ["left", "right"],
+        rows: sectorRows,
+      });
+      doc.moveDown(0.2);
+    }
+
+    // Gravity worksheet — one row per study-area zone (capped for readability).
+    const WORKSHEET_CAP = 20;
+    const wsZones = flg.zones.slice(0, WORKSHEET_CAP);
+    table(doc, {
+      headers: ["Study-area zone", "Dir.", "Distance (mi)", "Mass (M)", "Gravity term", "Trip share"],
+      widths: [190, 45, 75, 75, 75, 65],
+      align: ["left", "center", "right", "right", "right", "right"],
+      rows: wsZones.map((z: any) => [
+        z.name ?? z.id ?? "—",
+        String(z.cardinal ?? "—"),
+        fmtNum(z.distanceMi, 2),
+        fmtNum(Math.round(Number(z.mass) || 0)),
+        fmtNum(Number(z.term) || 0, 1),
+        `${(Number(z.sharePct) || 0).toFixed(2)}%`,
+      ]),
+    });
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      `Screening-grade gravity distribution over ${flg.zones.length} study-area zone${flg.zones.length === 1 ? "" : "s"}${flg.zones.length > WORKSHEET_CAP ? ` (top ${WORKSHEET_CAP} by trip share shown)` : ""}. For formal submittal the adopted regional MPO/TPO travel-demand-model distribution and the run identifier are confirmed at the methodology meeting per FDOT TAH §2.7; this gravity worksheet documents the screening basis.`,
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- 6.2 Project Trip Assignment (AM/PM, gravity-driven) --------------
+  gaSubsection(doc, flg ? "6.2 Project Trip Assignment" : "6.1 Project Trip Assignment");
   const assignRows = intersections.filter((it) => Number.isFinite(Number(it.addedTripsPmPeak)));
   if (assignRows.length > 0) {
     const totalPm = assignRows.reduce((s, it) => s + (Number(it.addedTripsPmPeak) || 0), 0) || 1;
+    const amRep = periods.find((p) => p.period === "am_peak");
+    const amBySig = new Map<string, number>(
+      (Array.isArray(amRep?.affectedIntersections) ? amRep.affectedIntersections : []).map(
+        (it: any) => [String(it.signalId), Number(it.addedTripsPmPeak) || 0],
+      ),
+    );
+    const dirBySig = new Map<string, string>(
+      (flg?.zones ?? []).map((z: any) => [String(z.id), String(z.cardinal ?? "—")]),
+    );
     table(doc, {
-      headers: ["Study intersection", "Distance (mi)", "Added PM trips", "Share of project"],
-      widths: [230, 80, 90, 90],
-      align: ["left", "right", "right", "right"],
-      rows: assignRows.map((it) => {
+      headers: ["Study intersection", "Dir.", "Distance (mi)", "AM trips", "PM trips", "Share of project"],
+      widths: [190, 45, 75, 65, 65, 80],
+      align: ["left", "center", "right", "right", "right", "right"],
+      rows: assignRows.map((it: any) => {
         const pm = Number(it.addedTripsPmPeak) || 0;
-        return [it.name ?? it.signalId ?? "—", fmtNum(it.distanceMi, 2), fmtNum(pm), `${((pm / totalPm) * 100).toFixed(1)}%`];
+        const am = amBySig.get(String(it.signalId));
+        return [
+          it.name ?? it.signalId ?? "—",
+          dirBySig.get(String(it.signalId)) ?? "—",
+          fmtNum(it.distanceMi, 2),
+          am == null ? "—" : fmtNum(am),
+          fmtNum(pm),
+          `${((pm / totalPm) * 100).toFixed(1)}%`,
+        ];
       }),
     });
     doc.moveDown(0.2);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "PM-peak project trips assigned to each study intersection by inverse-distance weighting of the net new external trips. Directional (AM/PM, entering/exiting) assignment figures and the daily project-trip assignment are prepared from the methodology-letter distribution at submittal.",
+      flg
+        ? "AM- and PM-peak project trips assigned to each study intersection from the §6.1 gravity distribution: the directional shares orient the loading toward the high-share sectors, while distance-decay from the site sets the magnitude that passes through each intersection. Entering/exiting splits at each intersection follow the site's period directional split."
+        : "PM-peak project trips assigned to each study intersection by inverse-distance weighting of the net new external trips. Directional (AM/PM, entering/exiting) assignment figures and the daily project-trip assignment are prepared from the methodology-letter distribution at submittal.",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
@@ -8357,12 +8431,18 @@ function renderFourStepSection(
   ]);
   doc.moveDown(0.4);
 
-  // Step 2 — Trip Distribution (gravity model)
+  // Step 2 — Trip Distribution (gravity model). Florida uses the Caltran
+  // mass/distance form (see the regional renderer's §6.1); all other regions
+  // use the NCHRP-716 gamma-friction gravity model.
   gaSubsection(doc, "Step 2 — Trip Distribution (Gravity Model)");
   doc.font("body").fontSize(9.5).fillColor(TEXT_GRAY).text(
-    "A production-constrained gravity model allocates trips to surrounding signals:  T_j = P · (A_j · F_j) / Σ (A_x · F_x).  "
-    + "Attractiveness A_j is each signal's through-volume; the friction factor F_j is the NCHRP-716 gamma function "
-    + "F = a·t^b·e^(c·t) (home-based-work: a=28507, b=-0.02, c=-0.123) on the travel time t to the signal.",
+    (result as any).flGravity
+      ? "The Caltran mass/distance gravity model (the Florida distribution standard, §6.1) allocates trips to surrounding zones:  "
+        + "T_j = (M_j / (d_j · d_site)) / Σ (M_x / (d_x · d_site)).  Zone mass M_j is each signal's through-volume "
+        + "(destination-activity proxy) and d_j its distance from the site (d_site = 1). The shares below are the §6.1 distribution."
+      : "A production-constrained gravity model allocates trips to surrounding signals:  T_j = P · (A_j · F_j) / Σ (A_x · F_x).  "
+        + "Attractiveness A_j is each signal's through-volume; the friction factor F_j is the NCHRP-716 gamma function "
+        + "F = a·t^b·e^(c·t) (home-based-work: a=28507, b=-0.02, c=-0.123) on the travel time t to the signal.",
     { paragraphGap: 4 });
   doc.fillColor("black");
   const totalAdded = intersections.reduce((s, r) => s + (Number(r.addedTripsPmPeak) || 0), 0) || 1;
