@@ -14,7 +14,8 @@
     "check:trip-loading": "node ./scripts/verify-trip-loading.mjs",
     "check:caltran-gravity": "node ./scripts/verify-caltran-gravity.mjs",
     "check:coverage-warning": "node ./scripts/verify-coverage-warning.mjs",
-    "check:name-dedup": "node ./scripts/verify-name-dedup.mjs"
+    "check:name-dedup": "node ./scripts/verify-name-dedup.mjs",
+    "check:driveways": "node ./scripts/verify-driveways.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",
