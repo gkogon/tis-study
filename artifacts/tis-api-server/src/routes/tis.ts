@@ -113,6 +113,22 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
 
   try {
     const report = await generateTisReport(parsed.data);
+    // Bad-geocode guard: no signalized intersection within the study radius
+    // (coordinate resolved to water / outside our signal coverage). Refund the
+    // reserved slot — a study that couldn't be analyzed must not count toward
+    // quota — and return a clear message instead of saving an empty report.
+    if (report.coverageWarning) {
+      await releaseStudySlot(firm, { email: user.email });
+      res.status(422).json({
+        error: report.coverageWarning.message,
+        code: report.coverageWarning.code,
+      });
+      req.log.info(
+        { lat: parsed.data.latitude, lon: parsed.data.longitude },
+        "tis-generate.no_signals_in_radius",
+      );
+      return;
+    }
     const validated = GenerateTisResponse.parse(report);
     const projectName =
       (parsed.data as { projectName?: string }).projectName?.trim()
@@ -194,6 +210,14 @@ router.post("/generate/pdf", generateRateLimiter, async (req, res): Promise<void
 
   try {
     const report = await generateTisReport(parsed.data);
+    // Don't render an empty PDF for a bad geocode — surface the reason instead.
+    if (report.coverageWarning) {
+      res.status(422).json({
+        error: report.coverageWarning.message,
+        code: report.coverageWarning.code,
+      });
+      return;
+    }
     const validated = GenerateTisResponse.parse(report);
     const projectName =
       (parsed.data as { projectName?: string }).projectName?.trim()
@@ -262,6 +286,13 @@ router.post("/trics/generate", tricsRateLimiter, async (req, res): Promise<void>
   }
   try {
     const report = await generateTisReport(parsed.data);
+    if (report.coverageWarning) {
+      res.status(422).json({
+        error: report.coverageWarning.message,
+        code: report.coverageWarning.code,
+      });
+      return;
+    }
     const validated = GenerateTisResponse.parse(report);
     res.json(validated);
   } catch (e) {
@@ -308,6 +339,13 @@ router.post("/trics/pdf", tricsRateLimiter, async (req, res): Promise<void> => {
   }
   try {
     const report = await generateTisReport(parsed.data);
+    if (report.coverageWarning) {
+      res.status(422).json({
+        error: report.coverageWarning.message,
+        code: report.coverageWarning.code,
+      });
+      return;
+    }
     const validated = GenerateTisResponse.parse(report);
     const projectName =
       (parsed.data as { projectName?: string }).projectName?.trim()
