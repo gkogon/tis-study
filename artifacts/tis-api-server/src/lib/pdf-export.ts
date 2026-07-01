@@ -37,7 +37,7 @@ import { loadTemplate } from "./report-template/registry";
 import { buildProviders } from "./report-template/providers";
 import { loadFirmTemplate } from "./report-template/store";
 import { getTransitContext, type TransitContext } from "./transit-routes";
-import { enrichFdotIntersections, fetchFdotSiteSnapshot, decodeFdotFunClass, decodeFdotAccessClass, type FdotSegmentSnapshot } from "./fdot-live-data";
+import { enrichFdotIntersections, enrichSerpmIntersections, fetchFdotSiteSnapshot, decodeFdotFunClass, decodeFdotAccessClass, SERPM_BASE_YEAR, SERPM_FUTURE_YEAR, type FdotSegmentSnapshot } from "./fdot-live-data";
 import { enrichGdotIntersections, fetchGdotSiteSnapshot } from "./gdot-live-data";
 import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite, getGml239Status, getCbdtpStatus } from "./nysdot-data";
 import { getNycTransitContext } from "./nyc-transit-data";
@@ -428,6 +428,10 @@ export async function renderStudyPdf(
         const fdotIntersectionsTask = intersections.length > 0
           ? enrichFdotIntersections(intersections as any).catch(() => 0)
           : Promise.resolve(0);
+        // SERPM regional-model link volumes per study intersection (SE-FL D4/D6).
+        const serpmTask = intersections.length > 0
+          ? enrichSerpmIntersections(intersections as any).catch(() => 0)
+          : Promise.resolve(0);
         const fdotSiteTask = fetchFdotSiteSnapshot(lat, lon).then((snap) => {
           if (snap && result && typeof result === "object") {
             (result as Record<string, unknown>).fdotSiteSnapshot = snap;
@@ -438,7 +442,7 @@ export async function renderStudyPdf(
             (result as Record<string, unknown>).transitContext = ctx;
           }
         }).catch(() => {});
-        await Promise.all([flCrashTask, fdotIntersectionsTask, fdotSiteTask, transitTask]);
+        await Promise.all([flCrashTask, fdotIntersectionsTask, serpmTask, fdotSiteTask, transitTask]);
       }
       // GA — ARC AADT enrich for Atlanta-metro intersections + transit
       // context (MARTA / CCT / Gwinnett County Transit via Transit.land /
@@ -7251,13 +7255,38 @@ function renderTisFlorida(
     ? floridaJurisdiction(lat, lon)
     : floridaJurisdiction(27.7663, -82.6404);
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Florida TIS — canonical section structure mirrors the Caltran Engineering
+  // Group, Inc. FDOT-District format (validated against the HCA Florida
+  // Westside Hospital Re-development TIS, City of Plantation / Broward County,
+  // 2026): 1.0 Executive Summary · 2.0 Analysis Methodology · 3.0 Introduction
+  // · 4.0 Scenario 1 (Existing) · 5.0 Scenario 2 (No-Build) · 6.0 Scenario 3
+  // (Build) · 7.0 Level of Service Analysis · 8.0 Queue Analysis · 9.0 Turn
+  // Lane Evaluation · 10.0 Concurrency Analysis · 11.0 Transit and Mobility ·
+  // 12.0 Crash Analysis · 13.0 Preliminary Signal Warrant Analysis · 14.0
+  // Conclusions and Recommendations. Firm-neutral (white-label) — the running
+  // firm's brand is applied on the cover by renderStudyPdf, not here.
+  // ─────────────────────────────────────────────────────────────────────
+  const openingYear = req.openingYear ?? "—";
+  const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
+  const losEf = Number(r.intersectionsAtLosEf ?? 0);
+
   // --- 1.0 Executive Summary --------------------------------------------
   gaSection(doc, "1.0 EXECUTIVE SUMMARY");
   doc.font("body").fontSize(10).fillColor("black");
-  const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
-  const losEf = Number(r.intersectionsAtLosEf ?? 0);
-  const summary = `This Multimodal Transportation Impact Assessment (MTIA) evaluates the anticipated transportation impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Florida. The host controlling jurisdiction is ${jur.name} (${jur.fdotDistrict}); review framework: ${jur.framework}. Analysis follows the FDOT Multimodal Transportation Site Impact Handbook (MTSIH, March 25, 2024) and the FDOT Quality/Level of Service Handbook v6.0 (August 2025). Capacity analysis follows the Highway Capacity Manual 6th Edition consistent with FDOT Traffic Analysis Handbook §4.1. The study covers ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study area for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
-  doc.text(summary, { paragraphGap: 6 });
+  doc.text(
+    `This Traffic Impact Study has been prepared to evaluate the potential traffic impact, identify short-term roadway and circulation needs, determine potential mitigation strategies, and identify critical traffic issues that should be addressed during the planning process of the proposed ${project.projectName || "development"}, located at ${req.address ?? (project as any).address ?? region.displayName}, within ${jur.name}, Florida. The host controlling jurisdiction is ${jur.name} (${jur.fdotDistrict}); the applicable review framework is ${jur.framework}. Analysis follows the FDOT Multimodal Transportation Site Impact Handbook (MTSIH, March 25, 2024) and the FDOT Quality/Level of Service Handbook v6.0 (August 2025); capacity analysis follows the Highway Capacity Manual 6th Edition consistent with FDOT Traffic Analysis Handbook §4.1. The study covers ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study area for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`,
+    { paragraphGap: 6 },
+  );
+  doc.text("As part of this Traffic Impact Study, the following assignments were prepared consistent with the FDOT-approved methodology:", { paragraphGap: 2 });
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+  doc.text("•  Existing geometric conditions and assessment of the study impact area.", { paragraphGap: 2, indent: 6 });
+  doc.text("•  Traffic data collection — daily volume counts and turning-movement counts at the critical study intersections and site driveways.", { paragraphGap: 2, indent: 6 });
+  doc.text("•  Evaluation of existing traffic operations — Level of Service (LOS) and concurrency analysis.", { paragraphGap: 2, indent: 6 });
+  doc.text("•  Traffic growth analysis, including committed-development assessment.", { paragraphGap: 2, indent: 6 });
+  doc.text(`•  Simulation of existing (current-year) and future conditions (opening year ${openingYear}) across three scenarios.`, { paragraphGap: 2, indent: 6 });
+  doc.text("•  Queue, turn-lane, and preliminary signal-warrant evaluation of the impacted network.", { paragraphGap: 4, indent: 6 });
+  doc.fillColor("black");
 
   doc.font("body").fontSize(10).fillColor("black").text("Findings:", { paragraphGap: 2 });
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
@@ -7279,60 +7308,8 @@ function renderTisFlorida(
   ]);
   doc.moveDown(0.8);
 
-  // --- 2.0 Project Description ------------------------------------------
-  gaSection(doc, "2.0 PROJECT DESCRIPTION");
-  rows(doc, [
-    ["Project name", project.projectName || "—"],
-    ["Land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
-    ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
-    ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
-    ["Region", region.displayName],
-    ["Host jurisdiction", jur.name],
-    ["FDOT District", jur.fdotDistrict],
-    ["Review framework", jur.framework],
-    ["Controlling document(s)", jur.frameworkDoc],
-    ["Regional MPO / TPO", jur.mpoName ?? "Per controlling local government"],
-    ["Opening year", String(req.openingYear ?? "—")],
-  ]);
-  doc.moveDown(0.3);
-  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Surrounding land use, site plan figures, and detailed land-use description are dependent on the final site plan and are not produced by this screening tool. Final submittal should incorporate site plan figures and a written project description per MTSIH 2024.",
-    { paragraphGap: 6 },
-  );
-  doc.fillColor("black");
-
-  if (jur.certificationFrontMatter) {
-    doc.moveDown(0.2);
-    doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
-      `STRUCTURE NOTE — ${jur.name.toUpperCase()} CONVENTION`,
-      { paragraphGap: 2 },
-    );
-    doc.font("body").fontSize(10).fillColor("black").text(
-      `Miami-Dade CDMP-amendment submittals conventionally place the Engineer's Certification page as the FIRST section of the report (before the Executive Summary), and place the Methodology Letter at Appendix ${jur.methodologyLetterAppendix} rather than the canonical Appendix A. Confirm the Engineer of Record's seal and the Methodology Letter placement against the most recent submittal expectations before delivering.`,
-      { paragraphGap: 4 },
-    );
-    if (jur.threeTrackEndChapters) {
-      doc.font("body").fontSize(10).fillColor("black").text(
-        "Miami-Dade large-CDMP reports additionally conclude with three parallel-track end-chapters (Concurrency Analysis / CDMP Analysis / Zoning Analysis, each independently numbered 1.0–3.0). This screening tool does not auto-generate the three-track parallel content; sections 12.0 below identifies the inputs required.",
-        { paragraphGap: 6 },
-      );
-    }
-    doc.fillColor("black");
-  } else if (jur.key === "palm_beach") {
-    doc.moveDown(0.2);
-    doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
-      "STRUCTURE NOTE — PALM BEACH COUNTY CONVENTION",
-      { paragraphGap: 2 },
-    );
-    doc.font("body").fontSize(10).fillColor("black").text(
-      "Palm Beach review type determines structure. A full ULDC Article 12 TPS report uses named \"Test 1\" + \"Test 2\" subsections at site-plan stage; a Future Land Use Atlas (FLUA) amendment uses a deliberately thinner 6-section variant (Project Description / Current FLU / Proposed FLU / Traffic Impact / Traffic Analysis [5.1 Test 2 + 5.2 Long Range] / Conclusion). The 1.0–13.0 structure used by this renderer is the MTSIH-aligned default; substitute the applicable Palm Beach variant at submittal time.",
-      { paragraphGap: 6 },
-    );
-    doc.fillColor("black");
-  }
-
-  // --- 3.0 Methodology --------------------------------------------------
-  gaSection(doc, "3.0 METHODOLOGY");
+  // --- 2.0 Analysis Methodology -----------------------------------------
+  gaSection(doc, "2.0 ANALYSIS METHODOLOGY");
   {
     const appendixLetter = jur.methodologyLetterAppendix;
     const meetingClause = jur.preStudyMeetingRequired
@@ -7351,34 +7328,90 @@ function renderTisFlorida(
     }
   }
 
-  gaSubsection(doc, "3.1 Controlling Guidance");
+  gaSubsection(doc, "2.1 Controlling Guidance");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Primary references: FDOT Multimodal Transportation Site Impact Handbook (MTSIH), March 25, 2024; FDOT Multimodal Transportation Site Impact Applications Guide, June 5, 2024; FDOT Quality/Level of Service Handbook v6.0, August 2025; FDOT Policy 000-525-006 (Level of Service Targets for the State Highway System); FDOT Procedure 525-030-120 (project traffic forecasting); FDOT Traffic Analysis Handbook (TAH), October 2025.",
     { paragraphGap: 6 },
   );
 
-  gaSubsection(doc, "3.2 Analysis Software");
+  gaSubsection(doc, "2.2 Analysis Software");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Per FDOT TAH §4.1, approved analysis tools are HCS, Synchro / SimTraffic, SIDRA INTERSECTION (roundabouts), CORSIM, and Vissim. This screening analysis applies the HCM 6th Edition signalized-intersection model consistent with HCS output formatting. Vistro is not included in the FDOT TAH tool inventory; formal submittal output should be prepared in HCS or Synchro.",
     { paragraphGap: 6 },
   );
 
-  gaSubsection(doc, "3.3 Traffic Data Collection");
+  gaSubsection(doc, "2.3 Traffic Data Collection");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Per MTSIH 2024, roadway-segment counts should be 72 consecutive hours (Monday afternoon through Friday morning) in urbanized, transitioning, and urban area classes, and 7 days in rural areas, in 15-minute increments on typical weekdays excluding holiday weeks. The default analysis peak per MTSIH 2024 §2.3.1 is the Weekday PM Peak Hour of Adjacent Street Traffic (one hour between 4–6 PM); MTSIH 2024 imposes no blanket Saturday-peak requirement for retail or restaurant land uses — midday, Saturday, or other special peaks are added only where site characteristics warrant (the Applications Guide fast-food case study analyzes AM + PM + midday). For turning-movement counts, MTSIH 2024 Appendix A (p. A-3) requires AM and PM TMCs covering trucks, pedestrians, and bicycles but does not prescribe duration or bin size; both are agreed at the pre-application methodology meeting. The Applications Guide Case Study 2 (§3.4.3) uses 8-hour TMCs (3 hr AM + 2 hr midday + 3 hr PM) as a worked example, while 2-hr AM and 2-hr PM in 15-minute bins is common Florida practice.",
     { paragraphGap: 6 },
   );
 
-  gaSubsection(doc, "3.4 Time Horizons");
+  gaSubsection(doc, "2.4 Analysis Scenarios and Time Horizons");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Per MTSIH 2024 §4.3, minimum analysis years are: Existing, Future Background (No-Build), Future Build, and Future Build with Mitigation. Opening year is canonical; there is no fixed +5 horizon for concurrency or connection-permit work. Each year must be explicitly labeled. For a Comprehensive Plan Amendment (CPA) review, the analysis must include Existing, short-term (5-year), and long-term (10-year minimum) horizons. ${jur.name} convention: ${jur.horizonConvention}. This analysis evaluates Existing (current-year), No-Build (opening year ${req.openingYear ?? "—"}), and Build (opening year ${req.openingYear ?? "—"}) scenarios.`,
+    `Per MTSIH 2024 §4.3, minimum analysis years are: Existing, Future Background (No-Build), Future Build, and Future Build with Mitigation. This study is organized around three scenarios consistent with FDOT District practice: Scenario 1 — Existing Conditions (current-year); Scenario 2 — Future Conditions No-Build (opening year ${openingYear}); and Scenario 3 — Future Conditions Build (opening year ${openingYear}). Opening year is canonical; there is no fixed +5 horizon for concurrency or connection-permit work. Each year is explicitly labeled. For a Comprehensive Plan Amendment (CPA) review, the analysis must additionally include short-term (5-year) and long-term (10-year minimum) horizons. ${jur.name} convention: ${jur.horizonConvention}.`,
     { paragraphGap: 6 },
   );
 
-  gaSubsection(doc, "3.5 Growth Rate");
+  gaSubsection(doc, "2.5 Trip Generation");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Trip generation follows the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Net new external trips are calculated by applying pass-by and internal capture credits to gross trip generation per standard pass-by / internal-capture screening methodology. Per MTSIH 2024 §4.6.4, the fitted-curve equation is preferred when ≥20 data points are available, or when R² ≥ 0.75 with the fitted curve falling within the data cluster and weighted standard deviation > 55% of the weighted average rate; otherwise the weighted average rate applies. Per MTSIH 2024 §4.6.6.6, pass-by trips at a site driveway cannot exceed 10% of the adjacent peak-hour two-way street traffic — this reasonableness check applies per roadway when the site fronts multiple streets and should be verified against the adjacent-street counts at submittal time.`,
+    { paragraphGap: 6 },
+  );
+  if (jur.feeMethodologyNote) {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      `${jur.name} fee methodology: ${jur.feeMethodologyNote}`,
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  rows(doc, [
+    ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
+    ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}% (MTSIH 2024 §4.6.9 sets no statewide numeric cap; rate negotiated at the methodology meeting per NCHRP 684 / standard screening methodology)`],
+    ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
+    [`${jur.name} TIA threshold`, jur.tripThreshold],
+    ["Weather condition", String(r.weather ?? req.weather ?? "clear")],
+  ]);
+  doc.moveDown(0.3);
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text("Table: Site Trip Generation Summary", { paragraphGap: 2 });
+  doc.fillColor("black");
+  table(doc, {
+    headers: ["Period", "Entering trips", "Exiting trips"],
+    widths: [180, 100, 100],
+    align: ["left", "right", "right"],
+    rows: [
+      ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
+      ["AM peak hour", fmtNum(tg.amPeakTrips), "—"],
+      ["PM peak hour", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
+    ],
+  });
+  doc.moveDown(0.3);
+  if (periods.length > 0) {
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text("Table: Trip Generation by Period (raw → pass-by / internal capture → net external)", { paragraphGap: 2 });
+    doc.fillColor("black");
+    table(doc, {
+      headers: ["Period", "Raw", "Pass-by", "Int. cap.", "External", "In", "Out"],
+      widths: [100, 50, 60, 60, 70, 50, 50],
+      align: ["left", "right", "right", "right", "right", "right", "right"],
+      rows: periods.map((p) => {
+        const t = p.tripGeneration ?? {};
+        return [
+          String(p.periodLabel ?? p.period ?? ""),
+          fmtNum(t.rawTrips),
+          fmtNum(t.passByCredit),
+          fmtNum(t.internalCaptureCredit),
+          fmtNum(t.externalTrips),
+          fmtNum(t.inTrips),
+          fmtNum(t.outTrips),
+        ];
+      }),
+    });
+    doc.moveDown(0.3);
+  }
+
+  gaSubsection(doc, "2.6 Growth Rate");
   if (r.growthSource) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Per FDOT TAH §2.7, demand projections should use the adopted regional MPO/TPO travel-demand model (TDM); where TDM use is not warranted, historical AADT trend growth from Florida Traffic Online (FTO) is the FDOT-wide convention. Background traffic is grown at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from the measured per-segment compound annual growth rate across the FDOT TDA Annual_Average_Daily_Traffic_Historical layer. Source: ${r.growthSource}. The metro-level median is published here for transparency; for formal submittal, the FDOT D-pertinent District / FTO segment-level trend on the affected facilities is the authoritative input and should be confirmed at the methodology meeting.`,
+      `Per FDOT TAH §2.7, demand projections should use the adopted regional MPO/TPO travel-demand model (TDM); where TDM use is not warranted, historical AADT trend growth from Florida Traffic Online (FTO) is the FDOT-wide convention. Background traffic is grown at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from the measured per-segment compound annual growth rate across the FDOT TDA Annual_Average_Daily_Traffic_Historical layer. Source: ${r.growthSource}. The metro-level median is published here for transparency; for formal submittal, the FDOT District / FTO segment-level trend on the affected facilities is the authoritative input and should be confirmed at the methodology meeting.`,
       { paragraphGap: 6 },
     );
   } else {
@@ -7388,23 +7421,102 @@ function renderTisFlorida(
     );
   }
 
-  gaSubsection(doc, "3.6 Level of Service Standards");
+  gaSubsection(doc, "2.7 Level of Service Standards");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Per FDOT Policy 000-525-006, the peak-hour automobile-mode LOS standard on the State Highway System is LOS D in urbanized areas and LOS C in rural and transitioning areas. Constrained or backlogged facilities maintain their facility-specific designation. Roadway segment LOS reporting uses the FDOT Q/LOS Handbook v6.0 Generalized Service Volume Tables (GSVTs). Intersection LOS uses HCM 6th Edition Chapter 19 (signalized intersections), Exhibit 19-8 thresholds: A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s of average control delay per vehicle.",
     { paragraphGap: 6 },
   );
 
-  gaSubsection(doc, "3.7 Context Classification");
+  gaSubsection(doc, "2.8 Context Classification");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Per FDOT Q/LOS v6.0 (which replaced \"complete streets\" terminology with \"context-based solutions\") and FDM Chapter 200 §200.4 (Table 200.4.1), the study network's context classification (C1 Natural, C2 Rural, C2T Rural Town, C3R Suburban Residential, C3C Suburban Commercial, C4 Urban General, C5 Urban Center, C6 Urban Core) calibrates mode treatments and design standards; cross-section and lane widths follow FDM Table 210.2.1. The controlling context class should be confirmed against the FDOT Preliminary Context Classification mapping during the methodology meeting.",
     { paragraphGap: 6 },
   );
 
-  // --- 4.0 Existing Conditions ------------------------------------------
-  gaSection(doc, "4.0 EXISTING CONDITIONS");
+  // --- 3.0 Introduction -------------------------------------------------
+  gaSection(doc, "3.0 INTRODUCTION");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `The proposed ${project.projectName || "development"} is located at ${req.address ?? (project as any).address ?? "the study site"} within ${jur.name}, in the ${region.displayName} area. The project consists of ${tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "the proposed program"} under ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}), and is anticipated to be completed by the opening year ${openingYear}.`,
+    { paragraphGap: 6 },
+  );
+  rows(doc, [
+    ["Project name", project.projectName || "—"],
+    ["Land use", `LU ${tg.landUseCode ?? "—"} — ${tg.landUseName ?? ""}`.trim()],
+    ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
+    ["Site coordinates", req.latitude && req.longitude ? `${Number(req.latitude).toFixed(4)}°, ${Number(req.longitude).toFixed(4)}°` : "—"],
+    ["Region", region.displayName],
+    ["Host jurisdiction", jur.name],
+    ["FDOT District", jur.fdotDistrict],
+    ["Review framework", jur.framework],
+    ["Controlling document(s)", jur.frameworkDoc],
+    ["Regional MPO / TPO", jur.mpoName ?? "Per controlling local government"],
+    ["Opening year", String(openingYear)],
+  ]);
+  doc.moveDown(0.3);
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Surrounding land use, site plan figures, and detailed land-use description are dependent on the final site plan and are not produced by this screening tool. Final submittal should incorporate site plan figures (surrounding intersections and studied area) and a written project description per MTSIH 2024.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  gaSubsection(doc, "3.1 Study Area");
+  if (intersections.length > 0) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `The study area comprises the ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} listed below, selected for their proximity to the site and their share of project-generated traffic. Existing lane geometry and traffic control at each location are shown in the Scenario 1 figures (see the turning-movement appendix).`,
+      { paragraphGap: 4 },
+    );
+    table(doc, {
+      headers: ["#", "Study intersection", "Distance (mi)"],
+      widths: [30, 320, 90],
+      align: ["right", "left", "right"],
+      rows: intersections.map((it, i) => [String(i + 1), it.name ?? it.signalId ?? "—", fmtNum(it.distanceMi, 2)]),
+    });
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "No signalized intersections were identified within the study radius. Off-site capacity impact is not anticipated; the study area is limited to the site driveways.",
+      { paragraphGap: 4 },
+    );
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.3);
+
+  if (jur.certificationFrontMatter) {
+    doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
+      `STRUCTURE NOTE — ${jur.name.toUpperCase()} CONVENTION`,
+      { paragraphGap: 2 },
+    );
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Miami-Dade CDMP-amendment submittals conventionally place the Engineer's Certification page as the FIRST section of the report (before the Executive Summary), and place the Methodology Letter at Appendix ${jur.methodologyLetterAppendix} rather than the canonical Appendix A. Confirm the Engineer of Record's seal and the Methodology Letter placement against the most recent submittal expectations before delivering.`,
+      { paragraphGap: 4 },
+    );
+    if (jur.threeTrackEndChapters) {
+      doc.font("body").fontSize(10).fillColor("black").text(
+        "Miami-Dade large-CDMP reports additionally conclude with three parallel-track end-chapters (Concurrency Analysis / CDMP Analysis / Zoning Analysis, each independently numbered 1.0–3.0). This screening tool does not auto-generate the three-track parallel content; §10.0 below identifies the concurrency inputs required.",
+        { paragraphGap: 6 },
+      );
+    }
+    doc.fillColor("black");
+  } else if (jur.key === "palm_beach") {
+    doc.font("bold").fontSize(10).fillColor(BRAND_BLUE).text(
+      "STRUCTURE NOTE — PALM BEACH COUNTY CONVENTION",
+      { paragraphGap: 2 },
+    );
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "Palm Beach review type determines structure. A full ULDC Article 12 TPS report uses named \"Test 1\" + \"Test 2\" subsections at site-plan stage; a Future Land Use Atlas (FLUA) amendment uses a deliberately thinner 6-section variant (Project Description / Current FLU / Proposed FLU / Traffic Impact / Traffic Analysis [5.1 Test 2 + 5.2 Long Range] / Conclusion). The scenario-based structure used by this renderer is the MTSIH-aligned default; substitute the applicable Palm Beach variant at submittal time.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- 4.0 Scenario 1 — Existing Conditions -----------------------------
+  gaSection(doc, "4.0 SCENARIO 1 — EXISTING CONDITIONS");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Scenario 1 establishes existing (current-year) conditions from the collected daily and turning-movement counts at the study intersections. Existing Level of Service and control delay are summarized below; existing lane geometry and traffic control are shown in the Scenario 1 turning-movement figures (appendix).",
+    { paragraphGap: 6 },
+  );
   if (intersections.length > 0) {
     table(doc, {
-      headers: ["Affected intersection", "Distance (mi)", "Existing LOS", "Existing delay (s)"],
+      headers: ["Study intersection", "Distance (mi)", "Existing LOS", "Existing delay (s)"],
       widths: [240, 70, 70, 90],
       align: ["left", "right", "center", "right"],
       rows: intersections.map((it) => [
@@ -7423,17 +7535,14 @@ function renderTisFlorida(
   }
   doc.moveDown(0.3);
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Existing AADT counts and functional classification are seeded from a live query of the FDOT Transportation Data and Analytics (TDA) ArcGIS REST services (gis.fdot.gov RCI_Layers FeatureServer 0/3/15 + Access_Management_TDA) within an 80-meter buffer of each intersection. Where the live extract returns a row, the in-table AADT, AADT year, and access-management class reflect the FDOT-published value at render time. Where no segment is matched (off-SHS local-road intersections, or radii beyond 80 m), values fall back to the engine estimate and must be confirmed against Florida Traffic Online (https://tdaappsprod.dot.state.fl.us/fto/). Existing turn-lane storage length must be field-supplied as `existingStorageFt` on each intersection record to enable the §9 storage-bay-adequacy comparison; the renderer surfaces a deficit calculation only when that field is present.",
+    "Existing AADT counts and functional classification are seeded from a live query of the FDOT Transportation Data and Analytics (TDA) ArcGIS REST services (gis.fdot.gov RCI_Layers FeatureServer 0/3/15 + Access_Management_TDA) within an 80-meter buffer of each intersection. Where the live extract returns a row, the in-table AADT, AADT year, and access-management class reflect the FDOT-published value at render time. Where no segment is matched (off-SHS local-road intersections, or radii beyond 80 m), values fall back to the engine estimate and must be confirmed against Florida Traffic Online (https://tdaappsprod.dot.state.fl.us/fto/). Existing turn-lane storage length must be field-supplied as `existingStorageFt` on each intersection record to enable the §9.0 storage-bay-adequacy comparison; the renderer surfaces a deficit calculation only when that field is present.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
 
-  // FDOT live site snapshot — emit a small "site context" card whenever the
-  // RCI lookup returned anything (helps the reviewer cross-check against
-  // FTO at scoping). Silent when the snapshot is missing.
   const fdotSite = (r as any).fdotSiteSnapshot as FdotSegmentSnapshot | undefined;
   if (fdotSite) {
-    gaSubsection(doc, "4.0a FDOT TDA Site Snapshot (live)");
+    gaSubsection(doc, "4.1 FDOT TDA Site Snapshot (live)");
     rows(doc, [
       ["RCI roadway ID", fdotSite.roadway ?? "—"],
       ["Begin/end mileposts", fdotSite.beginPost != null && fdotSite.endPost != null ? `${fdotSite.beginPost.toFixed(3)} → ${fdotSite.endPost.toFixed(3)}` : "—"],
@@ -7462,10 +7571,387 @@ function renderTisFlorida(
       );
     }
     doc.fillColor("black");
+  } else {
+    gaSubsection(doc, "4.1 FDOT TDA Site Snapshot");
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "The live FDOT Transportation Data and Analytics (TDA) RCI query returned no segment snapshot at render time (off-SHS local-road site, a coordinate beyond the 80-meter match buffer, or the service was unavailable). Existing AADT, K/D factors, functional class, and access-management class for the study facilities are therefore unconfirmed by this run and must be retrieved from Florida Traffic Online (https://tdaappsprod.dot.state.fl.us/fto/) and the FDOT RCI before submittal.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
   }
 
-  // --- 4.1 Roadway Segment Capacity (GSVT, Q/LOS v6.0) ------------------
-  gaSubsection(doc, "4.1 Roadway Segment Capacity — Generalized Service Volumes");
+  // --- 4.2 Roadway Segments Configuration (FDOT RCI, per-intersection) ---
+  const flCfgRows = intersections.filter((it: any) => it.fdotSnapshot || it.existingAadt != null || it.aadt != null);
+  if (flCfgRows.length > 0) {
+    gaSubsection(doc, "4.2 Roadway Segments Configuration");
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "Physical and operational characteristics of each study segment from a live FDOT Transportation Data and Analytics (TDA) Roadway Characteristics Inventory (RCI) query at render time. Through-lane count and median type are RCI flat-file attributes not returned by this point query and must be confirmed from the RCI or a field inventory at submittal.",
+      { paragraphGap: 6 },
+    );
+    table(doc, {
+      headers: ["Study segment", "RCI roadway", "Functional class", "SHS", "Access cls", "K", "D"],
+      widths: [150, 70, 120, 35, 55, 42, 42],
+      align: ["left", "left", "left", "center", "center", "right", "right"],
+      rows: flCfgRows.map((it: any) => {
+        const snap = it.fdotSnapshot as FdotSegmentSnapshot | undefined;
+        return [
+          it.name ?? it.signalId ?? "—",
+          snap?.roadway ?? "—",
+          decodeFdotFunClass(snap?.funClassCode ?? null) ?? "—",
+          snap?.onShs == null ? "—" : (snap.onShs ? "Yes" : "No"),
+          snap?.accessClass ?? it.accessClass ?? "—",
+          snap?.kFactor != null ? snap.kFactor.toFixed(3) : "—",
+          snap?.dFactor != null ? snap.dFactor.toFixed(3) : "—",
+        ];
+      }),
+    });
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "Live extract from gis.fdot.gov RCI_Layers FeatureServer. Access-management class per Rule 14-97 F.A.C.; functional classification per RCI Feature 121. Confirm lane count, median type, and posted speed from the RCI flat file or a field inventory before submittal.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- 5.0 Scenario 2 — Future Conditions No Build ----------------------
+  gaSection(doc, `5.0 SCENARIO 2 — FUTURE CONDITIONS NO BUILD (${openingYear})`);
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Scenario 2 represents future background (No-Build) conditions at the opening year ${openingYear}: existing volumes grown to the opening year without the proposed project. Background traffic is grown at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}, and any committed developments in the study area should be added to the No-Build network. The methodology and derivation of the applied growth rate are described in §2.6; the resulting No-Build Level of Service at each study intersection is reported in §7.0 alongside the Existing and Build scenarios.`,
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Where the reviewing agency requires a travel-demand-model forecast (e.g., SERPM for Southeast Florida, or the controlling MPO/TPO model), the No-Build volumes should be reconciled against the adopted model run; the model version, base year, and horizon year are identified in the methodology letter. This screening analysis applies historical-AADT trend growth per FDOT TAH §2.7 in lieu of a model run.",
+    { paragraphGap: 6 },
+  );
+  if (r.growthSource) {
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(`Growth source: ${r.growthSource}.`, { paragraphGap: 6 });
+  }
+  doc.fillColor("black");
+
+  // --- 5.1 AADT Growth Projection ---------------------------------------
+  const flGrowthPct = Number(r.growthAppliedPct);
+  const flAadtRows = intersections.filter((it: any) => Number(it.fdotSnapshot?.aadt ?? it.existingAadt ?? it.aadt) > 0);
+  if (flAadtRows.length > 0 && Number.isFinite(flGrowthPct) && flGrowthPct > 0) {
+    const g = flGrowthPct / 100;
+    const oy = Number(req.openingYear);
+    const dy = Number(r.designYear ?? NaN);
+    const hasDy = Number.isFinite(dy) && dy > 0;
+    gaSubsection(doc, "5.1 AADT Growth Projection");
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Current-year segment AADT (live FDOT RCI, §4.2) is projected to the No-Build horizon${hasDy ? "s" : ""} at the applied ${flGrowthPct.toFixed(2)}%/yr compound growth rate derived from the FDOT historical-AADT trend (§2.6). These are screening-level trend projections; the adopted MPO/TPO travel-demand model volumes govern at formal submittal.`,
+      { paragraphGap: 6 },
+    );
+    table(doc, {
+      headers: hasDy
+        ? ["Study segment", "Current AADT (yr)", "CAGR", `No-Build AADT (${Number.isFinite(oy) ? oy : "opening"})`, `Design AADT (${dy})`]
+        : ["Study segment", "Current AADT (yr)", "CAGR", `No-Build AADT (${Number.isFinite(oy) ? oy : "opening"})`],
+      widths: hasDy ? [160, 100, 55, 110, 100] : [210, 130, 65, 120],
+      align: hasDy ? ["left", "right", "right", "right", "right"] : ["left", "right", "right", "right"],
+      rows: flAadtRows.map((it: any) => {
+        const snap = it.fdotSnapshot as FdotSegmentSnapshot | undefined;
+        const aadt = Number(snap?.aadt ?? it.existingAadt ?? it.aadt);
+        const yr = Number(snap?.aadtYear ?? it.aadtYear ?? NaN);
+        const baseYr = Number.isFinite(yr) ? yr : (Number.isFinite(oy) ? oy - (Number(r.growthYears) || 1) : NaN);
+        const oyAadt = Number.isFinite(oy) && Number.isFinite(baseYr) ? aadt * Math.pow(1 + g, Math.max(0, oy - baseYr)) : null;
+        const dyAadt = hasDy && Number.isFinite(baseYr) ? aadt * Math.pow(1 + g, Math.max(0, dy - baseYr)) : null;
+        const base = [
+          it.name ?? it.signalId ?? "—",
+          `${fmtNum(aadt)}${Number.isFinite(yr) ? ` (${yr})` : ""}`,
+          `${flGrowthPct.toFixed(2)}%`,
+          oyAadt == null ? "—" : fmtNum(oyAadt),
+        ];
+        return hasDy ? [...base, dyAadt == null ? "—" : fmtNum(dyAadt)] : base;
+      }),
+    });
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "Projection = current AADT × (1 + CAGR)^(horizon − count year). Where the live RCI count year is unavailable, the applied growth-years span is used. For submittal, use the per-segment FDOT historical AADT series (Florida Traffic Online) and, where required, the adopted MPO/TPO model volumes.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- 5.2 SERPM Projected Model Volumes (Caltran Table 6) --------------
+  const flSerpmRows = intersections.filter((it: any) => it.serpm && (it.serpm.baseDaily != null || it.serpm.futureDaily != null));
+  if (flSerpmRows.length > 0) {
+    gaSubsection(doc, "5.2 SERPM Projected Model Volumes");
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Regional travel-demand-model volumes for the study corridors from the adopted Southeast Florida Regional Planning Model (SERPM 9.62, FDOT District 4), fetched at render time from the published FDOT D4 loaded-network layers. Values are the nearest model link's base-year (${SERPM_BASE_YEAR}) and horizon-year (${SERPM_FUTURE_YEAR}) daily and PM-peak volumes; confirm link-node correspondence to the specific study segments against the adopted model at submittal.`,
+      { paragraphGap: 6 },
+    );
+    table(doc, {
+      headers: ["Study segment", `Base ${SERPM_BASE_YEAR} daily`, "Base PM", `Future ${SERPM_FUTURE_YEAR} daily`, "Future PM"],
+      widths: [200, 90, 70, 100, 70],
+      align: ["left", "right", "right", "right", "right"],
+      rows: flSerpmRows.map((it: any) => [
+        it.name ?? it.signalId ?? "—",
+        it.serpm.baseDaily == null ? "—" : fmtNum(it.serpm.baseDaily),
+        it.serpm.basePm == null ? "—" : fmtNum(it.serpm.basePm),
+        it.serpm.futureDaily == null ? "—" : fmtNum(it.serpm.futureDaily),
+        it.serpm.futurePm == null ? "—" : fmtNum(it.serpm.futurePm),
+      ]),
+    });
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "Source: FDOT D4 SERPM loaded networks (services1.arcgis.com … D4_Travel_Demand_Models, layers 0 and 7), nearest link within 200 m by highest daily volume. The SERPM horizon volumes are the authoritative No-Build growth basis where the reviewing agency requires a model forecast in lieu of historical-trend growth (§2.6 / §5.1).",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- 6.0 Scenario 3 — Future Conditions Build -------------------------
+  gaSection(doc, `6.0 SCENARIO 3 — FUTURE CONDITIONS BUILD (${openingYear})`);
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Scenario 3 represents future Build conditions at the opening year ${openingYear}: the Scenario 2 No-Build network plus the proposed development's net new external trips at the assigned distribution. Per FDOT TAH §2.7, trip distribution and assignment should use the adopted regional MPO/TPO travel-demand model${jur.mpoName ? ` (${jur.mpoName})` : ""}, with model version, base year, and horizon year identified in the methodology letter. This screening analysis assigns net new external trips by inverse-distance weighting to signalized intersections within the study area; for formal submittal, distribution percentages and the TDM run identifier should be agreed upon during the methodology meeting.`,
+    { paragraphGap: 6 },
+  );
+  if (jur.studyAreaNote) {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      `${jur.name} study-area convention: ${jur.studyAreaNote}. The renderer-applied study radius (${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)} mi) should be reconciled against this convention at submittal time.`,
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  if (jur.key === "orange") {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Orange County STAMP additionally publishes standardized county-specific pass-by reductions by land use; the renderer-applied pass-by capture should be reconciled against the STAMP pass-by table at submittal time.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  gaSubsection(doc, "6.1 Project Trip Assignment");
+  const assignRows = intersections.filter((it) => Number.isFinite(Number(it.addedTripsPmPeak)));
+  if (assignRows.length > 0) {
+    const totalPm = assignRows.reduce((s, it) => s + (Number(it.addedTripsPmPeak) || 0), 0) || 1;
+    table(doc, {
+      headers: ["Study intersection", "Distance (mi)", "Added PM trips", "Share of project"],
+      widths: [230, 80, 90, 90],
+      align: ["left", "right", "right", "right"],
+      rows: assignRows.map((it) => {
+        const pm = Number(it.addedTripsPmPeak) || 0;
+        return [it.name ?? it.signalId ?? "—", fmtNum(it.distanceMi, 2), fmtNum(pm), `${((pm / totalPm) * 100).toFixed(1)}%`];
+      }),
+    });
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "PM-peak project trips assigned to each study intersection by inverse-distance weighting of the net new external trips. Directional (AM/PM, entering/exiting) assignment figures and the daily project-trip assignment are prepared from the methodology-letter distribution at submittal.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  renderDiurnalCharts(doc, r);
+
+  // --- 7.0 Level of Service Analysis ------------------------------------
+  gaSection(doc, "7.0 LEVEL OF SERVICE ANALYSIS");
+  const flHasDesignYear = intersections.some(
+    (it) => it.designNoBuildLos != null || it.designBuildLos != null,
+  );
+  const flDesignYr = r.designYear ?? (req.openingYear ? Number(req.openingYear) + 20 : null);
+  if (flHasDesignYear) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Intersection Level of Service is reported across the analysis scenarios per HCM 6th Edition Chapter 19 (Exhibit 19-8 control-delay thresholds). Four horizons are evaluated: (1) Existing — Scenario 1 current-year volumes; (2) No-Build — Scenario 2 at opening year ${openingYear}; (3) Build — Scenario 3 at opening year ${openingYear}; and (4) 20-Year Long-Range (${flDesignYr ?? "—"}) No-Build and Build. A ▲ flag marks any intersection projected to drop a LOS grade under Build conditions.`,
+      { paragraphGap: 6 },
+    );
+    table(doc, {
+      headers: ["Intersection", "Existing", "Opening NB", "Opening Bld", "Design NB", "Design Bld", "Δ delay (s)"],
+      widths: [180, 55, 65, 65, 55, 55, 55],
+      align: ["left", "center", "center", "center", "center", "center", "right"],
+      rows: intersections.map((it) => {
+        const losChanged = it.losChanged === true;
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const noBuildLos = it.existingLos ?? "—";
+        const buildLos = it.futureLos ?? "—";
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(currentLos),
+          String(noBuildLos),
+          (losChanged ? "▲ " : "") + String(buildLos),
+          String(it.designNoBuildLos ?? "—"),
+          String(it.designBuildLos ?? "—"),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+        ];
+      }),
+    });
+  } else if (intersections.length > 0) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Intersection Level of Service is reported across the three analysis scenarios per HCM 6th Edition Chapter 19 (Exhibit 19-8 control-delay thresholds): Scenario 1 Existing, Scenario 2 No-Build (opening year ${openingYear}), and Scenario 3 Build (opening year ${openingYear}). A ▲ flag marks any intersection projected to drop a LOS grade under Build conditions.`,
+      { paragraphGap: 6 },
+    );
+    table(doc, {
+      headers: ["Intersection", "Existing LOS", "No-Build LOS", "Build LOS", "Δ delay (s)", "Q95 (ft)"],
+      widths: [200, 65, 75, 65, 70, 60],
+      align: ["left", "center", "center", "center", "right", "right"],
+      rows: intersections.map((it) => {
+        const losChanged = it.losChanged === true;
+        const currentLos = it.currentLos ?? it.existingLos ?? "—";
+        const noBuildLos = it.existingLos ?? "—";
+        const buildLos = it.futureLos ?? "—";
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(currentLos),
+          String(noBuildLos),
+          (losChanged ? "▲ " : "") + String(buildLos),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+          fmtNum(it.queue95thFt),
+        ];
+      }),
+    });
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "No signalized study intersections were identified; intersection Level of Service analysis is not applicable. Driveway operations should be evaluated at the site-access points per §9.0.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.3);
+
+  // 7.1 Improvement Alternatives / Mitigation (Caltran "Alternative LOS")
+  const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
+  gaSubsection(doc, "7.1 Improvement Alternatives");
+  if (needMitigation.length > 0) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "The following intersection improvement alternatives are recommended to address projected Build-condition LOS impacts. Geometric mitigation should be designed to FDOT Design Manual (FDM 2026, Topic No. 625-000-002, dated January 1, 2026) standards — turn-lane warrants, deceleration / storage / taper lengths, intersection sight distance, and median-opening design per FDM Chapter 212; roundabouts per FDM Chapter 213. Proportionate-share, mobility-fee, or developer-contribution amounts for jurisdictions that retain concurrency (e.g., Miami-Dade Chapter 33-G) or operate mobility-fee programs (e.g., Hillsborough, Jacksonville/Duval Chapter 655, Miami-Dade Chapter 33E) should be calculated separately based on the controlling local-government ordinance.",
+      { paragraphGap: 6 },
+    );
+    for (const it of needMitigation) {
+      const sev = String(it.mitigationSeverity ?? "").toUpperCase();
+      doc.font("bold").fontSize(10).fillColor("black").text(`${it.name ?? it.signalId} `, { continued: true });
+      doc.font("body").fillColor(TEXT_GRAY).text(`[${sev}]`, { continued: false });
+      doc.font("body").fillColor("black").text("  " + it.mitigation);
+      doc.moveDown(0.3);
+    }
+  } else {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "No intersection improvement alternatives are required to maintain the FDOT SHS LOS standard within the study network under Build conditions. Proportionate-share and mobility-fee calculations (where applicable per the controlling local-government ordinance) are not produced by this screening tool.",
+      { paragraphGap: 6 },
+    );
+  }
+
+  // 7.2 Alternative (with-improvement) LOS — Caltran Table 13
+  if (needMitigation.length > 0) {
+    gaSubsection(doc, "7.2 Alternative Intersection LOS (with improvement)");
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "The improvement alternatives in §7.1 are sized to mitigate the project's incremental impact and restore each affected intersection to approximately its No-Build (without-project) Level of Service. The table below states the with-improvement objective per location; the achieved Level of Service must be confirmed by a detailed HCS / Synchro analysis of the specific improvement at submittal.",
+      { paragraphGap: 6 },
+    );
+    table(doc, {
+      headers: ["Intersection", "Build LOS", "Δ delay (s)", "Improvement class", "Target LOS (improved)"],
+      widths: [175, 55, 60, 110, 110],
+      align: ["left", "center", "right", "left", "center"],
+      rows: needMitigation.map((it: any) => {
+        const target = it.existingLos ?? it.currentLos ?? "—"; // No-Build target
+        const sev = String(it.mitigationSeverity ?? "").toLowerCase();
+        const cls = sev === "major" ? "Major (geometry + signal)" : sev === "moderate" ? "Moderate (phasing)" : "Minor (retiming)";
+        const targetLabel = sev === "major" ? `${target} (verify — may remain constrained)` : String(target);
+        return [
+          it.name ?? it.signalId ?? "—",
+          String(it.futureLos ?? "—"),
+          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+          cls,
+          targetLabel,
+        ];
+      }),
+    });
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "Target LOS is the No-Build (without-project) grade the improvement is sized to restore, not a re-run HCM result. Confirm the achieved delay / LOS with a detailed HCS / Synchro analysis of the specific geometry and signal timing at submittal.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- 8.0 Queue Analysis -----------------------------------------------
+  gaSection(doc, `8.0 QUEUE ANALYSIS (${openingYear})`);
+  const queueRows = intersections.filter((it) => Number.isFinite(Number(it.queue95thFt)));
+  if (queueRows.length > 0) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "The 95th-percentile back-of-queue at each study intersection under Build conditions is summarized below (worst-approach basis). Queues are estimated from the HCM 6th Edition signalized-intersection model; a formal submittal should report per-lane-group queues from a Synchro / SimTraffic run and compare them to the available turn-lane storage evaluated in §9.0.",
+      { paragraphGap: 6 },
+    );
+    table(doc, {
+      headers: ["Intersection", "Critical movement", "Build Q95 (ft)"],
+      widths: [250, 150, 90],
+      align: ["left", "left", "right"],
+      rows: queueRows.map((it) => [
+        it.name ?? it.signalId ?? "—",
+        it.criticalMovement ?? it.storageMovement ?? "Worst approach",
+        fmtNum(it.queue95thFt),
+      ]),
+    });
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "No per-intersection 95th-percentile queue estimates are available for this run (no signalized study intersections, or queue outputs not populated). A formal submittal should include per-lane-group queue reporting from a Synchro / SimTraffic analysis.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- 9.0 Turn Lane Evaluation -----------------------------------------
+  gaSection(doc, `9.0 TURN LANE EVALUATION (${openingYear})`);
+  const storageRows = intersections.filter((it: any) => Number.isFinite(Number(it.existingStorageFt)) && Number.isFinite(Number(it.queue95thFt)));
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Turn-lane evaluation proceeds in two steps per FDM Chapter 212: first whether a turn lane is warranted at each affected approach (a function of the turning volume, opposing/through volume, and speed), and second — where a bay is warranted or already exists — whether its storage length is adequate for the projected queue.",
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "9.1 Turn-Lane Warrants");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `A turn-lane warrant is a movement-level screen: an exclusive left-turn lane is evaluated against the FDM Chapter 212 / NCHRP 745 left-turn-lane guidelines (a function of advancing volume, opposing volume, and posted speed), and an exclusive right-turn lane is conventionally warranted where the peak-hour right-turn volume exceeds roughly 40–60 vph (or the applicable local threshold, e.g., ${jur.name} land-development code). The proposed development adds approximately ${fmtNum(tg.pmIn)} inbound and ${fmtNum(tg.pmOut)} outbound trips in the PM peak hour, distributed to the site driveways and adjacent intersections; the by-movement turning volumes required to apply the warrant thresholds are established from the AM/PM turning-movement counts and the approved trip-distribution at the methodology meeting. This screening tool does not decompose approach volumes into left/through/right movements, so a definitive turn-lane warrant determination — particularly at the site driveways connecting to the SHS — is deferred to the sealed submittal against the counted and assigned movement volumes.`,
+    { paragraphGap: 6 },
+  );
+
+  gaSubsection(doc, "9.2 Storage-Bay Adequacy");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    "Where a turn bay is warranted or already present, its storage length must contain the Build-scenario 95th-percentile queue without spill-back into the adjacent through lane; a deficit indicates the bay is shorter than the projected queue and requires either a bay extension (where adjacent infrastructure permits) or a documented engineering finding that the spill-back is acceptable. Deceleration and taper lengths follow FDM Chapter 212.",
+    { paragraphGap: 6 },
+  );
+  if (storageRows.length > 0) {
+    table(doc, {
+      headers: ["Intersection", "Movement", "Existing bay (ft)", "Q95 Build (ft)", "Required (ft)", "Deficit (ft)"],
+      widths: [165, 80, 80, 70, 70, 70],
+      align: ["left", "left", "right", "right", "right", "right"],
+      rows: storageRows.map((it: any) => {
+        const existing = Number(it.existingStorageFt);
+        const q95 = Number(it.queue95thFt);
+        const required = q95;
+        const deficit = Math.max(0, required - existing);
+        return [
+          it.name ?? it.signalId ?? "—",
+          it.criticalMovement ?? it.storageMovement ?? "Left-turn (verify)",
+          fmtNum(existing),
+          fmtNum(q95),
+          fmtNum(required),
+          deficit > 0 ? fmtNum(deficit) : "Adequate",
+        ];
+      }),
+    });
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "Required storage = Build-scenario 95th-percentile queue per FDM Chapter 212. Where the deficit is small relative to project contribution, a proportionate-share allocation per the controlling local-government formula is the conventional path; where adjacent infrastructure precludes bay extension, an engineering finding documenting acceptable spill-back is required.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Storage-bay adequacy: no intersection carries a field-measured existing storage length (`existingStorageFt`). Supply that field on each affected intersection record to enable the Required-vs-Existing-vs-Deficit turn-lane table per FDM Chapter 212 storage / taper standards. Turn-lane warrants at the site driveways must be evaluated against the assigned turning volumes at submittal.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- 10.0 Concurrency Analysis ----------------------------------------
+  gaSection(doc, "10.0 CONCURRENCY ANALYSIS");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Transportation concurrency was made optional statewide by HB 7207 (2011). For new development, the Development of Regional Impact (DRI) review track was further curtailed by SB 1216 / Ch. 2015-30 (which added F.S. 380.06(30) routing otherwise-DRI projects through the State Coordinated Review Process at F.S. 163.3184(4) in lieu of DRI), with cleanup completed by CS/CS/HB 1151 / Ch. 2018-158 — DRI is now a legacy branch retained only for amendments/abandonments of existing DRIs. ${jur.name} review framework: ${jur.framework}. Controlling document(s): ${jur.frameworkDoc}. LOS standard: ${jur.losStandardNote}. Per Florida Statutes §163.3180(5)(h)1.a., local governments must consult with FDOT whenever a Strategic Intermodal System (SIS) facility is expected to be impacted by a comprehensive-plan amendment.`,
+    { paragraphGap: 6 },
+  );
+  if (jur.extraNote) {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(`Note. ${jur.extraNote}`, { paragraphGap: 6 });
+    doc.fillColor("black");
+  }
+
+  gaSubsection(doc, "10.1 Roadway Segment Capacity — Generalized Service Volumes");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Roadway-segment level of service is screened against the FDOT Quality/Level of Service Handbook v6.0 (August 2025) Generalized Service Volume Tables (GSVTs). Per Q/LOS v6.0 the peak-hour two-way service volume is keyed to FDM Chapter 200 context class (C1–C6, C2T) and through-lane count, with D = 0.55 statewide. The applicable context class and lane count for each segment are FDOT Roadway Characteristics Inventory (RCI) attributes (Feature 126 context class; lane count from the RCI flat file) and must be confirmed during the methodology meeting. This screening tool selects the GSVT row only where those inputs are supplied and otherwise defers the segment v/c rather than assume a class.",
     { paragraphGap: 6 },
@@ -7493,8 +7979,6 @@ function renderTisFlorida(
   );
   doc.fillColor("black");
 
-  // Per-segment v/c only where context class + lane count are supplied —
-  // never assume a class/lane count (would fabricate the capacity side).
   const flCtx = asFdotContextClass((req as any).contextClass ?? (r as any).contextClass);
   const flLanes = Number((req as any).segmentLanes ?? (req as any).throughLanes ?? NaN);
   const flFacility: FdotFacility =
@@ -7535,8 +8019,73 @@ function renderTisFlorida(
     doc.fillColor("black");
   }
 
-  // --- 4.2 Crash History (FDOT public crash extract) --------------------
-  gaSubsection(doc, "4.2 Crash History");
+  gaSubsection(doc, "10.2 Site Access / Ingress-Egress");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Per MTSIH 2024 §3.2 Table 5, driveway TIA-scoping is keyed to gross trips per day (including pass-by): Category A 1–20 vpd (single-family); B 21–600 (small multifamily / very small commercial); C 601–1,500 (small-mid retail / small office); D 1,501–4,000 (mid retail / mid office); E 4,001–15,000 (large retail / mixed-use); F 15,001–30,000 (very large mixed-use / mall); G ≥30,001 (regional mall). Pre-application meeting + traffic study are required for Categories C–G (>600 vpd including pass-by). A connection-permit change-of-use is additionally triggered per F.S. 335.182(3)(b) when trip generation increases by >25% AND >100 vpd vs. the existing use. Connection to the FDOT State Highway System requires a connection permit per Rule 14-96 F.A.C. (last amended April 2, 2023). Driveway spacing, median-opening spacing, and signal spacing are governed by the access-management class (Classes 1–7) assigned to the impacted SHS segment per Rule 14-97 F.A.C. and FDOT Procedure 525-030-155; the class is stored in the RCI as Feature 146 / ACMANCLS (codes 00–07; 99 = unclassified, interim standards in Rule 14-97.004(1) apply until assignment). Driveway geometry (W, R, F, Y, G, Driveway Length, S, I; Categories A–D in FDM Chapter 214, Categories E–F–G punt to FDM Chapter 212), turn-lane warrants, deceleration-lane length, and intersection sight distance must be designed to FDOT Design Manual (FDM 2026) standards; off-SHS connections on city/county facilities follow the Florida Greenbook. The access-management class for the impacted SHS facility should be confirmed against the FDOT-published Access Management TDA layer.",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+  if (jur.threeTrackEndChapters) {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Three-track end-chapter convention (Miami-Dade): the formal CDMP-amendment submittal should additionally provide three parallel-track end-chapters (Concurrency Analysis / CDMP Analysis / Zoning Analysis), each independently numbered 1.0–3.0. The Concurrency track is reviewed against Code Ch. 33-G + Admin. Order 4-85; the CDMP track is reviewed against the adopted Transportation Element; the Zoning track is reviewed against the host municipal zoning ordinance. This screening tool does not auto-generate the three-track parallel content; the inputs required for each track must be coordinated with the Miami-Dade TPO and Miami-Dade County DTPW prior to submittal.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- 11.0 Transit and Mobility ----------------------------------------
+  gaSection(doc, "11.0 TRANSIT AND MOBILITY");
+  gaSubsection(doc, "11.1 Transit Service");
+  const transitCtx = (r as any).transitContext as TransitContext | undefined;
+  if (transitCtx && transitCtx.stops.length > 0) {
+    const sourceLabel = transitCtx.source === "transit_land" ? "Transit.land v2" : "OSM Overpass";
+    const agencyEntries = Object.entries(transitCtx.routesByAgency).filter(([, refs]) => refs.length > 0);
+    const agencyPhrase = agencyEntries.length > 0
+      ? agencyEntries.map(([agency, refs]) => `${agency} route${refs.length === 1 ? "" : "s"} ${refs.join(", ")}`).join("; ")
+      : null;
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `Within ${transitCtx.radiusMi.toFixed(2)} mi of the site (live ${sourceLabel} extract at render time): ${transitCtx.stops.length} transit stop${transitCtx.stops.length === 1 ? "" : "s"}${agencyPhrase ? ` served by ${agencyPhrase}` : ""}. The applicant should coordinate with the controlling transit agency to confirm route frequency, ridership at the affected stops, and any planned bus stop / shelter upgrades concurrent with the project.`,
+      { paragraphGap: 6 },
+    );
+    const nearest = transitCtx.stops.slice(0, 5);
+    table(doc, {
+      headers: ["Stop", "Agency", "Mode", "Routes", "Distance (mi)"],
+      widths: [180, 110, 60, 100, 75],
+      align: ["left", "left", "left", "left", "right"],
+      rows: nearest.map((s) => [
+        s.stopName,
+        s.agency ?? "—",
+        s.mode,
+        s.routeRefs.length > 0 ? s.routeRefs.join(", ") : "Verify",
+        s.distanceMi.toFixed(2),
+      ]),
+    });
+    if (transitCtx.source === "osm_overpass") {
+      doc.moveDown(0.2);
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        "Source: OpenStreetMap Overpass API — route_ref tags are crowdsourced and may be incomplete. Confirm exact route numbers against the controlling transit agency's GTFS feed (or set TRANSIT_LAND_API_KEY to use the Transit.land v2 GTFS-derived source primarily) before submittal.",
+        { paragraphGap: 6 },
+      );
+      doc.fillColor("black");
+    }
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "No transit stops detected within 0.25 mi of the site via the live Transit.land / OSM Overpass query. Verify against the controlling transit agency's published GTFS feed (e.g., Broward County Transit, Miami-Dade Transit, MARTA, LYNX, JTA, HART) at the methodology meeting. If transit-mode reduction is applied to trip generation, the supporting service must be cited and an alternative-mode trip reduction memo retained in the methodology letter (Appendix A or C per jurisdiction).",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+  doc.moveDown(0.3);
+
+  gaSubsection(doc, "11.2 Internal Circulation and Multimodal");
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "Internal site circulation, parking access, and service-vehicle pathways depend on the final site plan and are not included in this screening-level analysis. Internal queuing at the principal driveway should be evaluated for adequate storage between the SHS edge of pavement and the first internal conflict point per FDM guidance. Pedestrian and bicycle connectivity to the surrounding network and to the transit stops above should be confirmed against FDM Chapter 222/223 (sidewalk / bicycle facilities).",
+    { paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+
+  // --- 12.0 Crash Analysis ----------------------------------------------
+  gaSection(doc, "12.0 CRASH ANALYSIS");
   const flCrash = (r as any).flCrashSummary as
     | {
         windowYears: number;
@@ -7583,338 +8132,89 @@ function renderTisFlorida(
     doc.fillColor("black");
   }
   doc.moveDown(0.3);
+  renderFarsKBlock(doc, r, { subsection: "12.1 NHTSA FARS Fatal Crash Supplement" });
 
-  // --- 4.3 NHTSA FARS Fatal Crash Supplement -----------------------------
-  renderFarsKBlock(doc, r, { subsection: "4.3 NHTSA FARS Fatal Crash Supplement" });
-
-  // --- 5.0 Trip Generation ----------------------------------------------
-  gaSection(doc, "5.0 TRIP GENERATION");
+  // --- 13.0 Preliminary Signal Warrant Analysis -------------------------
+  gaSection(doc, "13.0 PRELIMINARY SIGNAL WARRANT ANALYSIS");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Trip generation follows the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Net new external trips are calculated by applying pass-by and internal capture credits to gross trip generation per standard pass-by / internal-capture screening methodology. Per MTSIH 2024 §4.6.4, the fitted-curve equation is preferred when ≥20 data points are available, or when R² ≥ 0.75 with the fitted curve falling within the data cluster and weighted standard deviation > 55% of the weighted average rate; otherwise the weighted average rate applies. Per MTSIH 2024 §4.6.6.6, pass-by trips at a site driveway cannot exceed 10% of the adjacent peak-hour two-way street traffic — this reasonableness check applies per roadway when the site fronts multiple streets and should be verified against the adjacent-street counts at submittal time.`,
+    "A preliminary traffic-signal warrant screening is performed against the MUTCD (2009 Edition, FDOT-adopted per the Florida Traffic Engineering Manual) warrants — Warrant 1 (Eight-Hour Vehicular Volume), Warrant 2 (Four-Hour Vehicular Volume), Warrant 3 (Peak Hour), Warrant 4 (Pedestrian), Warrant 5 (School Crossing), Warrant 6 (Coordinated Signal System), Warrant 7 (Crash Experience), and Warrant 8 (Roadway Network). A definitive warrant determination requires the full 8-hour approach-volume counts and the applicable engineering study; a signal is not justified on any single warrant alone without an engineering study demonstrating that a signal will improve the overall safety and/or operation of the intersection.",
     { paragraphGap: 6 },
   );
-  if (jur.feeMethodologyNote) {
-    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-      `${jur.name} fee methodology: ${jur.feeMethodologyNote}`,
-      { paragraphGap: 6 },
-    );
-    doc.fillColor("black");
-  }
-  rows(doc, [
-    ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
-    ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}% (MTSIH 2024 §4.6.9 sets no statewide numeric cap; rate negotiated at the methodology meeting per NCHRP 684 / standard screening methodology)`],
-    ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
-    [`${jur.name} TIA threshold`, jur.tripThreshold],
-    ["Weather condition", String(r.weather ?? req.weather ?? "clear")],
-  ]);
-  doc.moveDown(0.3);
-  table(doc, {
-    headers: ["Period", "Entering trips", "Exiting trips"],
-    widths: [180, 100, 100],
-    align: ["left", "right", "right"],
-    rows: [
-      ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
-      ["AM peak hour", fmtNum(tg.amPeakTrips), "—"],
-      ["PM peak hour", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
-    ],
+  const warrantCandidates = intersections.filter((it) => {
+    const efBuild = String(it.futureLos ?? "").toUpperCase();
+    return it.losChanged === true || efBuild === "E" || efBuild === "F";
   });
-  doc.moveDown(0.3);
-
-  if (periods.length > 0) {
-    table(doc, {
-      headers: ["Period", "Raw", "Pass-by", "Int. cap.", "External", "In", "Out"],
-      widths: [100, 50, 60, 60, 70, 50, 50],
-      align: ["left", "right", "right", "right", "right", "right", "right"],
-      rows: periods.map((p) => {
-        const t = p.tripGeneration ?? {};
-        return [
-          String(p.periodLabel ?? p.period ?? ""),
-          fmtNum(t.rawTrips),
-          fmtNum(t.passByCredit),
-          fmtNum(t.internalCaptureCredit),
-          fmtNum(t.externalTrips),
-          fmtNum(t.inTrips),
-          fmtNum(t.outTrips),
-        ];
-      }),
-    });
-    doc.moveDown(0.3);
-  }
-
-  // --- 6.0 Trip Distribution and Assignment ------------------------------
-  renderDiurnalCharts(doc, r);
-
-  gaSection(doc, "6.0 TRIP DISTRIBUTION AND ASSIGNMENT");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `Per FDOT TAH §2.7, trip distribution and assignment should use the adopted regional MPO/TPO travel-demand model${jur.mpoName ? ` (${jur.mpoName})` : ""}, with model version, base year, and horizon year identified in the methodology letter. This screening analysis assigns net new external trips by inverse-distance weighting to signalized intersections within the study area; for formal submittal, distribution percentages and the TDM run identifier should be agreed upon during the methodology meeting.`,
-    { paragraphGap: 6 },
-  );
-  if (jur.studyAreaNote) {
-    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-      `${jur.name} study-area convention: ${jur.studyAreaNote}. The renderer-applied study radius (${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)} mi) should be reconciled against this convention at submittal time.`,
-      { paragraphGap: 6 },
-    );
-    doc.fillColor("black");
-  }
-  if (jur.key === "orange") {
-    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-      "Orange County STAMP additionally publishes standardized county-specific pass-by reductions by land use; the renderer-applied pass-by capture should be reconciled against the STAMP pass-by table at submittal time.",
-      { paragraphGap: 6 },
-    );
-    doc.fillColor("black");
-  }
-
-  // --- 7.0 / 8.0 Future (No-Build) and Future (Build) -------------------
-  gaSection(doc, "7.0 / 8.0 FUTURE (NO-BUILD) AND FUTURE (BUILD) TRAFFIC ANALYSIS");
-  const flHasDesignYear = intersections.some(
-    (it) => it.designNoBuildLos != null || it.designBuildLos != null,
-  );
-  const flDesignYr = r.designYear ?? (req.openingYear ? Number(req.openingYear) + 20 : null);
-  if (flHasDesignYear) {
+  if (warrantCandidates.length > 0) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Four scenarios are evaluated at each affected intersection per FDOT MTSIH 2024 long-range planning analysis: (1) Existing — current-year background volumes; (2) Future Background / No-Build at opening year ${req.openingYear ?? "—"} — existing grown at ${r.growthAppliedPct ?? "—"}%/yr; (3) Future Build at opening year ${req.openingYear ?? "—"} — No-Build plus project external trips; (4) 20-Year Long-Range Year (${flDesignYr ?? "—"}) No-Build and Build — opening volumes compounded another 20 years, project trips at full build-out unchanged.`,
-      { paragraphGap: 6 },
-    );
-  } else {
-    doc.font("body").fontSize(10).fillColor("black").text(
-      `Three scenarios are evaluated at each affected intersection: (1) Existing — current-year background volumes; (2) Future Background / No-Build (opening year ${req.openingYear ?? "—"}) — existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"} without project trips; (3) Future Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the proposed development's net new external trips at the assigned distribution.`,
-      { paragraphGap: 6 },
-    );
-  }
-
-  if (intersections.length > 0 && flHasDesignYear) {
-    table(doc, {
-      headers: ["Intersection", "Existing", "Opening NB", "Opening Bld", "Design NB", "Design Bld", "Δ delay (s)"],
-      widths: [180, 55, 65, 65, 55, 55, 55],
-      align: ["left", "center", "center", "center", "center", "center", "right"],
-      rows: intersections.map((it) => {
-        const losChanged = it.losChanged === true;
-        const currentLos = it.currentLos ?? it.existingLos ?? "—";
-        const noBuildLos = it.existingLos ?? "—";
-        const buildLos = it.futureLos ?? "—";
-        return [
-          it.name ?? it.signalId ?? "—",
-          String(currentLos),
-          String(noBuildLos),
-          (losChanged ? "▲ " : "") + String(buildLos),
-          String(it.designNoBuildLos ?? "—"),
-          String(it.designBuildLos ?? "—"),
-          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
-        ];
-      }),
-    });
-  } else if (intersections.length > 0) {
-    table(doc, {
-      headers: ["Intersection", "Existing LOS", "No-Build LOS", "Build LOS", "Δ delay (s)", "Q95 (ft)"],
-      widths: [200, 65, 75, 65, 70, 60],
-      align: ["left", "center", "center", "center", "right", "right"],
-      rows: intersections.map((it) => {
-        const losChanged = it.losChanged === true;
-        const currentLos = it.currentLos ?? it.existingLos ?? "—";
-        const noBuildLos = it.existingLos ?? "—";
-        const buildLos = it.futureLos ?? "—";
-        return [
-          it.name ?? it.signalId ?? "—",
-          String(currentLos),
-          String(noBuildLos),
-          (losChanged ? "▲ " : "") + String(buildLos),
-          fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
-          fmtNum(it.queue95thFt),
-        ];
-      }),
-    });
-  }
-  doc.moveDown(0.3);
-
-  // --- 9.0 Mitigation Analysis ------------------------------------------
-  gaSection(doc, "9.0 MITIGATION ANALYSIS");
-  const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
-  if (needMitigation.length > 0) {
-    doc.font("body").fontSize(10).fillColor("black").text(
-      "The following intersection mitigations are recommended to address projected Build-condition impacts. Geometric mitigation should be designed to FDOT Design Manual (FDM 2026, Topic No. 625-000-002, dated January 1, 2026) standards — turn-lane warrants, deceleration / storage / taper lengths, intersection sight distance, and median-opening design per FDM Chapter 212; roundabouts per FDM Chapter 213. Proportionate-share, mobility-fee, or developer contribution amounts for jurisdictions that retain concurrency (e.g., Miami-Dade Chapter 33-G) or operate mobility-fee programs (e.g., Hillsborough, Jacksonville/Duval Chapter 655, Miami-Dade Chapter 33E) should be calculated separately based on the controlling local-government ordinance.",
-      { paragraphGap: 6 },
-    );
-    for (const it of needMitigation) {
-      const sev = String(it.mitigationSeverity ?? "").toUpperCase();
-      doc.font("bold").fontSize(10).fillColor("black").text(`${it.name ?? it.signalId} `, { continued: true });
-      doc.font("body").fillColor(TEXT_GRAY).text(`[${sev}]`, { continued: false });
-      doc.font("body").fillColor("black").text("  " + it.mitigation);
-      doc.moveDown(0.3);
-    }
-  } else {
-    doc.font("body").fontSize(10).fillColor("black").text(
-      "No mitigation is required to maintain the FDOT SHS LOS standard within the study network under Build conditions. Proportionate-share and mobility-fee calculations (where applicable per the controlling local-government ordinance) are not produced by this screening tool.",
-      { paragraphGap: 6 },
-    );
-  }
-
-  // --- 9.1 Left-Turn Storage Bay Adequacy --------------------------------
-  // Emit Caltran-style "Required X ft / Existing Y ft / Deficit Z ft" rows
-  // for any intersection whose payload carries `existingStorageFt`. Quiet
-  // when no intersection supplies the field — keeps screening-tier
-  // submittals clean without inventing storage lengths.
-  const storageRows = intersections.filter((it: any) => Number.isFinite(Number(it.existingStorageFt)) && Number.isFinite(Number(it.queue95thFt)));
-  if (storageRows.length > 0) {
-    gaSubsection(doc, "9.1 Left-Turn Storage Bay Adequacy");
-    doc.font("body").fontSize(10).fillColor("black").text(
-      `Existing turn-lane storage bay length at each affected intersection is compared to the 95th-percentile Build-scenario queue. Storage bay design and deceleration / taper lengths follow FDM Chapter 212 (turn-lane warrants, storage / taper). A "deficit" indicates that the existing bay length is shorter than the projected Build-scenario 95th-percentile queue — those locations require either a bay extension (where adjacent infrastructure permits) or a documented engineering finding that the spill-back is acceptable and does not impede the through movement.`,
-      { paragraphGap: 6 },
+      "Based on the projected Build-condition operations, the following study locations should carry a full signal / control-modification warrant analysis (Warrants 1–3 with 8-hour counts, plus Warrant 7 where the §12.0 crash review indicates a correctable pattern) at submittal:",
+      { paragraphGap: 4 },
     );
     table(doc, {
-      headers: ["Intersection", "Movement", "Existing bay (ft)", "Q95 Build (ft)", "Required (ft)", "Deficit (ft)"],
-      widths: [165, 80, 80, 70, 70, 70],
-      align: ["left", "left", "right", "right", "right", "right"],
-      rows: storageRows.map((it: any) => {
-        const existing = Number(it.existingStorageFt);
-        const q95 = Number(it.queue95thFt);
-        // "Required" follows the FDM 212 convention: storage to contain
-        // the 95th-percentile queue without spillback. We use Q95 as the
-        // required length and report `max(0, required - existing)` as
-        // the deficit (zero when adequate).
-        const required = q95;
-        const deficit = Math.max(0, required - existing);
-        return [
-          it.name ?? it.signalId ?? "—",
-          it.criticalMovement ?? it.storageMovement ?? "Left-turn (verify)",
-          fmtNum(existing),
-          fmtNum(q95),
-          fmtNum(required),
-          deficit > 0 ? fmtNum(deficit) : "Adequate",
-        ];
-      }),
+      headers: ["Study location", "Build LOS", "Δ delay (s)", "Preliminary indication"],
+      widths: [220, 60, 70, 130],
+      align: ["left", "center", "right", "left"],
+      rows: warrantCandidates.map((it) => [
+        it.name ?? it.signalId ?? "—",
+        String(it.futureLos ?? "—"),
+        fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
+        it.losChanged ? "Operational review warranted" : "At/over LOS E — monitor",
+      ]),
     });
     doc.moveDown(0.2);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "Required storage = Build-scenario 95th-percentile queue per FDM Chapter 212. Where the deficit is small relative to project contribution, a proportionate-share allocation per the controlling local-government formula is the conventional path; where adjacent infrastructure precludes bay extension, an engineering finding documenting acceptable spill-back is required.",
+      "Preliminary indication is a screening flag from projected LOS/delay only, not a warrant determination. The site driveways connecting to the SHS must additionally be evaluated for signalization / turn-lane control against the assigned turning volumes and the access-management class per Rule 14-97 F.A.C.",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
   } else {
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-      "Storage-bay adequacy: no intersection carries a field-measured existing storage length (`existingStorageFt`). Supply that field on each affected intersection record to enable the Caltran-style Required-vs-Existing-vs-Deficit table per FDM Chapter 212 storage / taper standards.",
+      "No study intersection exhibits a Build-condition LOS drop or LOS E/F operation that would preliminarily indicate a signal or control modification. The site driveways connecting to the SHS should nonetheless be evaluated for turn-lane control and, where volumes warrant, signalization against the access-management class per Rule 14-97 F.A.C. at submittal.",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
   }
 
-  // --- 10.0 Site Access / Ingress-Egress --------------------------------
-  gaSection(doc, "10.0 SITE ACCESS / INGRESS-EGRESS");
-  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Per MTSIH 2024 §3.2 Table 5, driveway TIA-scoping is keyed to gross trips per day (including pass-by): Category A 1–20 vpd (single-family); B 21–600 (small multifamily / very small commercial); C 601–1,500 (small-mid retail / small office); D 1,501–4,000 (mid retail / mid office); E 4,001–15,000 (large retail / mixed-use); F 15,001–30,000 (very large mixed-use / mall); G ≥30,001 (regional mall). Pre-application meeting + traffic study are required for Categories C–G (>600 vpd including pass-by). A connection-permit change-of-use is additionally triggered per F.S. 335.182(3)(b) when trip generation increases by >25% AND >100 vpd vs. the existing use. Connection to the FDOT State Highway System requires a connection permit per Rule 14-96 F.A.C. (last amended April 2, 2023). Driveway spacing, median-opening spacing, and signal spacing are governed by the access-management class (Classes 1–7) assigned to the impacted SHS segment per Rule 14-97 F.A.C. and FDOT Procedure 525-030-155; the class is stored in the RCI as Feature 146 / ACMANCLS (codes 00–07; 99 = unclassified, interim standards in Rule 14-97.004(1) apply until assignment). Driveway geometry (W, R, F, Y, G, Driveway Length, S, I; Categories A–D in FDM Chapter 214, Categories E–F–G punt to FDM Chapter 212), turn-lane warrants, deceleration-lane length, and intersection sight distance must be designed to FDOT Design Manual (FDM 2026) standards; off-SHS connections on city/county facilities follow the Florida Greenbook. The access-management class for the impacted SHS facility should be confirmed against the FDOT-published Access Management TDA layer.",
-    { paragraphGap: 6 },
-  );
-  doc.fillColor("black");
-
-  // --- 11.0 Multimodal & Internal Circulation ---------------------------
-  gaSection(doc, "11.0 MULTIMODAL & INTERNAL CIRCULATION");
-
-  gaSubsection(doc, "11.1 Transit Service");
-  const transitCtx = (r as any).transitContext as TransitContext | undefined;
-  if (transitCtx && transitCtx.stops.length > 0) {
-    const sourceLabel = transitCtx.source === "transit_land" ? "Transit.land v2" : "OSM Overpass";
-    const agencyEntries = Object.entries(transitCtx.routesByAgency).filter(([, refs]) => refs.length > 0);
-    const agencyPhrase = agencyEntries.length > 0
-      ? agencyEntries.map(([agency, refs]) => `${agency} route${refs.length === 1 ? "" : "s"} ${refs.join(", ")}`).join("; ")
-      : null;
+  // --- 14.0 Conclusions and Recommendations -----------------------------
+  gaSection(doc, "14.0 CONCLUSIONS AND RECOMMENDATIONS");
+  if (losDrops === 0 && losEf === 0) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Within ${transitCtx.radiusMi.toFixed(2)} mi of the site (live ${sourceLabel} extract at render time): ${transitCtx.stops.length} transit stop${transitCtx.stops.length === 1 ? "" : "s"}${agencyPhrase ? ` served by ${agencyPhrase}` : ""}. The applicant should coordinate with the controlling transit agency to confirm route frequency, ridership at the affected stops, and any planned bus stop / shelter upgrades concurrent with the project.`,
+      `The proposed ${project.projectName || "development"} is projected to generate ${fmtNum(tg.dailyTrips)} daily trips (${fmtNum(tg.pmIn)} in / ${fmtNum(tg.pmOut)} out in the PM peak hour) at full build-out. Under Build (Scenario 3) conditions at opening year ${openingYear}, no study intersection is projected to drop a Level of Service grade and no location operates at LOS E or F; the project maintains the applicable FDOT SHS LOS standard within the study network without off-site capacity mitigation. Site-access geometry, turn-lane warrants, and connection permitting must still be designed and permitted per FDM 2026 and Rule 14-96/14-97 F.A.C.`,
       { paragraphGap: 6 },
     );
-    // Nearest 5 stops in tabular form for the methodology meeting.
-    const nearest = transitCtx.stops.slice(0, 5);
-    table(doc, {
-      headers: ["Stop", "Agency", "Mode", "Routes", "Distance (mi)"],
-      widths: [180, 110, 60, 100, 75],
-      align: ["left", "left", "left", "left", "right"],
-      rows: nearest.map((s) => [
-        s.stopName,
-        s.agency ?? "—",
-        s.mode,
-        s.routeRefs.length > 0 ? s.routeRefs.join(", ") : "Verify",
-        s.distanceMi.toFixed(2),
-      ]),
-    });
-    if (transitCtx.source === "osm_overpass") {
-      doc.moveDown(0.2);
-      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-        "Source: OpenStreetMap Overpass API — route_ref tags are crowdsourced and may be incomplete. Confirm exact route numbers against the controlling transit agency's GTFS feed (or set TRANSIT_LAND_API_KEY to use the Transit.land v2 GTFS-derived source primarily) before submittal.",
-        { paragraphGap: 6 },
-      );
-      doc.fillColor("black");
-    }
   } else {
-    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-      "No transit stops detected within 0.25 mi of the site via the live Transit.land / OSM Overpass query. Verify against the controlling transit agency's published GTFS feed (e.g., Broward County Transit, Miami-Dade Transit, MARTA, LYNX, JTA, HART) at the methodology meeting. If transit-mode reduction is applied to trip generation, the supporting service must be cited and an alternative-mode trip reduction memo retained in the methodology letter (Appendix A or C per jurisdiction).",
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `The proposed ${project.projectName || "development"} is projected to generate ${fmtNum(tg.dailyTrips)} daily trips (${fmtNum(tg.pmIn)} in / ${fmtNum(tg.pmOut)} out in the PM peak hour) at full build-out. Under Build (Scenario 3) conditions at opening year ${openingYear}, ${losDrops} study intersection${losDrops === 1 ? "" : "s"} project to drop a Level of Service grade and ${losEf} operate${losEf === 1 ? "s" : ""} at LOS E or F. The improvement alternatives identified in §7.1 should be advanced, and the applicable proportionate-share / mobility-fee obligation should be calculated per the controlling ${jur.name} ordinance to maintain the FDOT SHS LOS standard within the study network.`,
       { paragraphGap: 6 },
     );
-    doc.fillColor("black");
   }
-  doc.moveDown(0.3);
 
-  gaSubsection(doc, "11.2 Internal Circulation");
-  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Internal site circulation, parking access, and service-vehicle pathways depend on the final site plan and are not included in this screening-level analysis. Internal queuing at the principal driveway should be evaluated for adequate storage between the SHS edge of pavement and the first internal conflict point per FDM guidance.",
-    { paragraphGap: 6 },
-  );
-  doc.fillColor("black");
-
-  // --- 12.0 Comprehensive Plan / Concurrency Consistency ----------------
-  gaSection(doc, "12.0 COMPREHENSIVE PLAN / CONCURRENCY CONSISTENCY");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `Transportation concurrency was made optional statewide by HB 7207 (2011). For new development, the Development of Regional Impact (DRI) review track was further curtailed by SB 1216 / Ch. 2015-30 (which added F.S. 380.06(30) routing otherwise-DRI projects through the State Coordinated Review Process at F.S. 163.3184(4) in lieu of DRI), with cleanup completed by CS/CS/HB 1151 / Ch. 2018-158 — DRI is now a legacy branch retained only for amendments/abandonments of existing DRIs. ${jur.name} review framework: ${jur.framework}. Controlling document(s): ${jur.frameworkDoc}. LOS standard: ${jur.losStandardNote}. Per Florida Statutes §163.3180(5)(h)1.a., local governments must consult with FDOT whenever a Strategic Intermodal System (SIS) facility is expected to be impacted by a comprehensive-plan amendment.`,
-    { paragraphGap: 6 },
-  );
-  if (jur.extraNote) {
-    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-      `Note. ${jur.extraNote}`,
-      { paragraphGap: 6 },
-    );
-    doc.fillColor("black");
+  const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
+  if (findings.length > 0) {
+    gaSubsection(doc, "14.1 Findings");
+    doc.font("body").fontSize(10).fillColor("black");
+    for (const f of findings) doc.text("• " + f, { paragraphGap: 4 });
+    doc.moveDown(0.3);
   }
-  if (jur.threeTrackEndChapters) {
-    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-      "Three-track end-chapter convention (Miami-Dade): the formal CDMP-amendment submittal should additionally provide three parallel-track end-chapters (Concurrency Analysis / CDMP Analysis / Zoning Analysis), each independently numbered 1.0–3.0. The Concurrency track is reviewed against Code Ch. 33-G + Admin. Order 4-85; the CDMP track is reviewed against the adopted Transportation Element; the Zoning track is reviewed against the host municipal zoning ordinance. This screening tool does not auto-generate the three-track parallel content; the inputs required for each track must be coordinated with the Miami-Dade TPO and Miami-Dade County DTPW prior to submittal.",
-      { paragraphGap: 6 },
-    );
-    doc.fillColor("black");
-  }
-  doc.fillColor("black");
 
-  // --- 13.0 Programmed Projects -----------------------------------------
-  gaSection(doc, "13.0 PROGRAMMED PROJECTS");
+  gaSubsection(doc, "14.2 Programmed Projects");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "Committed-projects review should consult the FDOT Five-Year Work Program (https://www.fdot.gov/workprogram) and the controlling MPO/TPO Transportation Improvement Program (TIP) and Long Range Transportation Plan (LRTP). Programmed roadway and intersection improvements within the study area should be incorporated into the No-Build network. This screening analysis does not automatically integrate Work Program data; manual review is recommended for any submittal.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
 
-  // --- 14.0 Professional Engineer Certification -------------------------
-  gaSection(doc, "14.0 PROFESSIONAL ENGINEER CERTIFICATION");
+  gaSubsection(doc, "14.3 Professional Engineer Certification");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "A Florida TIS / MTIA deliverable must be signed and sealed by a Florida-licensed Professional Engineer per Florida Statutes Chapter 471 and Florida Administrative Code Rule 61G15-23.001. The cover and signature page of the formal submittal must bear the seal, signature, and date of the Engineer of Record.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
 
-  // --- Findings + Methodology (engine output preserved) ------------------
-  const findings: string[] = Array.isArray(r.findings) ? r.findings : [];
-  if (findings.length > 0) {
-    doc.moveDown(0.3);
-    gaSection(doc, "FINDINGS");
-    doc.font("body").fontSize(10).fillColor("black");
-    for (const f of findings) {
-      doc.text("• " + f, { paragraphGap: 4 });
-    }
-    doc.moveDown(0.3);
-  }
-
   const methodology: string[] = Array.isArray(r.methodology) ? r.methodology : [];
   if (methodology.length > 0) {
-    gaSection(doc, "METHODOLOGY NOTES");
+    gaSubsection(doc, "14.4 Methodology Notes");
     doc.font("body").fontSize(9).fillColor(TEXT_GRAY);
-    for (const m of methodology) {
-      doc.text("• " + m, { paragraphGap: 4 });
-    }
+    for (const m of methodology) doc.text("• " + m, { paragraphGap: 4 });
     doc.fillColor("black");
   }
 

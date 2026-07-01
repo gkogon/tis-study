@@ -269,6 +269,126 @@ function asStr(v: unknown): string | null {
   return s.length > 0 ? s : null;
 }
 
+// ─── SERPM regional travel-demand-model volumes ─────────────────────────────
+// FDOT District 4 SERPM (Southeast Florida Regional Planning Model) loaded
+// networks, published as PUBLIC ArcGIS FeatureServer layers (endpoint + fields
+// verified live 2026-07-01). Layer 0 = base-year network, Layer 7 = future-year
+// network; each carries link-level daily + peak-hour volumes (VOL_DA / VOL_AM /
+// VOL_PM …) as polylines. Covers the Palm Beach / Broward / Miami-Dade D4-D6
+// region. No auth, no licensed model run — the published loaded network itself.
+const SERPM_BASE_URL =
+  "https://services1.arcgis.com/O1JpcwDW8sjYuddV/arcgis/rest/services/D4_Travel_Demand_Models/FeatureServer/0/query";
+const SERPM_FUTURE_URL =
+  "https://services1.arcgis.com/O1JpcwDW8sjYuddV/arcgis/rest/services/D4_Travel_Demand_Models/FeatureServer/7/query";
+/** Adopted SERPM 9.62 network years (base / horizon). */
+export const SERPM_BASE_YEAR = 2020;
+export const SERPM_FUTURE_YEAR = 2050;
+
+export type SerpmVolumes = {
+  baseDaily: number | null;
+  basePm: number | null;
+  futureDaily: number | null;
+  futurePm: number | null;
+};
+
+/** Nearest primary SERPM link within `radiusM` of the point (highest daily
+ * volume in the buffer = the through arterial). Returns null on any error. */
+async function querySerpmLink(
+  url: string,
+  lat: number,
+  lon: number,
+  radiusM: number,
+): Promise<{ da: number | null; pm: number | null } | null> {
+  const params = new URLSearchParams({
+    where: "VOL_DA>0",
+    geometry: JSON.stringify({ x: lon, y: lat, spatialReference: { wkid: 4326 } }),
+    geometryType: "esriGeometryPoint",
+    inSR: "4326",
+    spatialRel: "esriSpatialRelIntersects",
+    distance: String(radiusM),
+    units: "esriSRUnit_Meter",
+    outFields: "VOL_DA,VOL_PM",
+    returnGeometry: "false",
+    f: "json",
+    resultRecordCount: "10",
+  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch(`${url}?${params.toString()}`, { signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!resp.ok) return null;
+  const json = (await resp.json()) as { features?: ArcGisFeature[]; error?: unknown };
+  if (json.error) return null;
+  const features = json.features ?? [];
+  if (features.length === 0) return null;
+  let best = features[0]?.attributes ?? null;
+  let bestDa = asNum(best?.VOL_DA) ?? -1;
+  for (let i = 1; i < features.length; i++) {
+    const a = features[i].attributes ?? null;
+    const v = asNum(a?.VOL_DA) ?? -1;
+    if (v > bestDa) { best = a; bestDa = v; }
+  }
+  if (!best) return null;
+  return { da: asNum(best.VOL_DA), pm: asNum(best.VOL_PM) };
+}
+
+/** Base + horizon SERPM model volumes for the nearest link to a coordinate. */
+export async function fetchSerpmVolumes(lat: number, lon: number): Promise<SerpmVolumes | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const RADIUS_M = 200;
+  try {
+    const [base, future] = await Promise.all([
+      querySerpmLink(SERPM_BASE_URL, lat, lon, RADIUS_M).catch(() => null),
+      querySerpmLink(SERPM_FUTURE_URL, lat, lon, RADIUS_M).catch(() => null),
+    ]);
+    if (!base && !future) return null;
+    return {
+      baseDaily: base?.da ?? null,
+      basePm: base?.pm ?? null,
+      futureDaily: future?.da ?? null,
+      futurePm: future?.pm ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Enrich each study intersection with its nearest SERPM link volumes.
+ * Mutates the array (sets `it.serpm`); returns the count enriched. Fail-open,
+ * concurrency- and time-budget-bounded exactly like enrichFdotIntersections. */
+export async function enrichSerpmIntersections(intersections: Intersection[]): Promise<number> {
+  if (!intersections.length) return 0;
+  const start = Date.now();
+  let enriched = 0;
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < intersections.length) {
+      if (Date.now() - start > TOTAL_BUDGET_MS) return;
+      const idx = cursor++;
+      const it = intersections[idx];
+      const lat = Number(it.latitude ?? NaN);
+      const lon = Number(it.longitude ?? NaN);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      try {
+        const v = await fetchSerpmVolumes(lat, lon);
+        if (v && (v.baseDaily != null || v.futureDaily != null)) {
+          (it as unknown as Record<string, unknown>).serpm = v;
+          enriched++;
+        }
+      } catch {
+        // fail-open: leave the intersection unchanged
+      }
+    }
+  };
+  const workers = Array.from({ length: Math.min(MAX_CONCURRENT, intersections.length) }, () => worker());
+  await Promise.all(workers);
+  return enriched;
+}
+
 /**
  * Decode the FUNCLASS code (RCI Feature 121) into a human label for the
  * FL renderer prose. Codes per FDOT RCI Handbook Feature 121.
