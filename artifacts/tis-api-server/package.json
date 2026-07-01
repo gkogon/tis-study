@@ -12,6 +12,7 @@
     "check:isd-truck-gaps": "node ./scripts/verify-isd-truck-gaps.mjs",
     "check:screening-clamp": "node ./scripts/verify-screening-clamp.mjs",
     "check:trip-loading": "node ./scripts/verify-trip-loading.mjs",
+    "check:caltran-gravity": "node ./scripts/verify-caltran-gravity.mjs",
     "check:coverage-warning": "node ./scripts/verify-coverage-warning.mjs",
     "check:name-dedup": "node ./scripts/verify-name-dedup.mjs"
   },

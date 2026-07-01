@@ -26,6 +26,15 @@ import { getAutoModeShare, getAutoModeShareSource, getLondonAutoModeShare, type 
 import { lookupLondonPtal } from "./tfl-ptal";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
 import { distributeAndAssign, modeChoiceLogit, GAMMA_FRICTION, type DemandZone } from "./four-step-model";
+import {
+  caltranGravityShares,
+  directionalMultipliers,
+  rollupByCardinal,
+  sectorPairs,
+  bearingToCardinal,
+  CALTRAN_GRAVITY_BETA,
+  type CardinalDir,
+} from "./caltran-gravity";
 import { fetchLocalRoads, assignRoutes, type RouteAssignment } from "./network-assignment";
 import { getTransitContext } from "./transit-routes";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
@@ -564,9 +573,49 @@ export type TisReport = {
    *  live demo sees a "verify the site location" message instead of a
    *  silently-empty report. See `intersection-coverage.ts`. */
   coverageWarning?: CoverageWarning;
+  /** Florida standard: the Caltran mass/distance gravity model + directional
+   *  trip distribution. Present ONLY for Florida studies (every other region
+   *  keeps the NCHRP-716 gamma distribution and leaves this absent). Drives the
+   *  FL renderer's gravity worksheet, directional-distribution figure, and
+   *  project-trip assignment. See caltran-gravity.ts. */
+  flGravity?: FlGravitySummary;
+};
+
+/** One zone (study-area intersection) row of the Caltran gravity worksheet. */
+export type FlGravityZone = {
+  id: string;
+  name: string;
+  distanceMi: number;
+  bearingDeg: number;
+  cardinal: CardinalDir;
+  /** Gross attraction proxy M (see `FlGravitySummary.massBasis`). */
+  mass: number;
+  /** M / (d^β · d_site) — the un-normalized gravity pull. */
+  term: number;
+  /** Percent of project trips distributed to this zone (Σ = 100). */
+  sharePct: number;
+};
+
+/** Caltran gravity model + directional distribution for a Florida study. */
+export type FlGravitySummary = {
+  /** Distance decay exponent β used (1 = the Caltran worksheet's linear form). */
+  betaExponent: number;
+  /** Human-readable description of what the zone mass M represents. */
+  massBasis: string;
+  /** Every study-area zone, sorted by trip share descending. */
+  zones: FlGravityZone[];
+  /** Percent of project trips by compass wedge (Σ = 100). */
+  byDirection: Record<CardinalDir, number>;
+  /** The four aerial-figure quadrant pairs (NNE+ENE, ESE+SSE, SSW+WSW, WNW+NNW). */
+  sectors: Record<string, number>;
 };
 
 // ---------- Implementation ----------
+
+/** Florida (US) — where the Caltran gravity model is the distribution standard. */
+function isFloridaRegion(region: Region): boolean {
+  return region.stateCode === "FL" && (region.country ?? "US") === "US";
+}
 
 const CURRENT_YEAR = new Date().getUTCFullYear();
 
@@ -1013,6 +1062,25 @@ const TIS_METHODOLOGY = [
   "Turbo-lane (continuous-green-T) screening flags signalized 3-leg T-intersections where one or more main-street through lanes could flow continuously while the minor-street left turn merges in the median — recovering the green time the through movement would otherwise lose to the signal. Candidacy requires measured 3-leg geometry, an arterial-class main street, and a detected median (divided carriageway), all derived from the OpenStreetMap road network. Approach-capacity gain is computed as (turbo lanes / approach lanes) × (1 − g/C) / (g/C), with the main-street through g/C derived from the modeled main-vs-minor critical-flow split; the result is reported within the study's documented +7%…+173% envelope (Miami-Dade MPO / David Plummer & Associates, Adding Turbo Lanes to T-Intersections, 2010; FDOT District 6, Design Guidelines for the Development of Continuous Green Intersections, 1997). Lane counts and signal timing must be field-verified before design.",
 ];
 
+// Florida distribution standard: swap the four-step methodology's Step-2 clause
+// from the NCHRP-716 gamma-friction gravity model to the Caltran mass/distance
+// gravity model, so the methodology narrative matches the FL renderer's §6.1
+// gravity worksheet. Every other region keeps the gamma description.
+const CALTRAN_STEP2_CLAUSE =
+  "Step 2 Trip Distribution: the Caltran mass/distance gravity model — the Florida distribution standard (Caltran Engineering HCA Westside TIS) — allocates trips to surrounding zones by T_j = (M_j / (d_j · d_site)) / Σ(M_x / (d_x · d_site)), where mass M_j is each signal's through-volume (destination-activity attraction proxy) and d_j is its straight-line distance from the site (site-zone distance normalizer d_site = 1). The normalized zone shares set the directional distribution and drive the project-trip assignment.";
+
+function tisMethodologyForRegion(region: Region): string[] {
+  if (!isFloridaRegion(region)) return TIS_METHODOLOGY;
+  return TIS_METHODOLOGY.map((m) =>
+    m.includes("NCHRP-716 gamma function")
+      ? m.replace(
+          /Step 2 Trip Distribution:.*?on the travel time t to each signal\./,
+          CALTRAN_STEP2_CLAUSE,
+        )
+      : m,
+  );
+}
+
 // ---------- Monte Carlo sensitivity (Box-Muller, deterministic seed) ----------
 
 function gaussian(rng: () => number): number {
@@ -1029,7 +1097,7 @@ function percentile(sorted: number[], p: number): number {
 
 function runSensitivityAnalysis(
   candidates: Array<{ sig: AnalyzerIntersection; distanceMi: number }>,
-  weights: number[],
+  loadWeights: number[],
   baseExternalTrips: number,
   capacityVph: number,
   growthMultiplier: number,
@@ -1050,7 +1118,7 @@ function runSensitivityAnalysis(
     let dropCount = 0;
     let efCount = 0;
     candidates.forEach((c, idx) => {
-      const w = intersectionLoadFraction(c.distanceMi);
+      const w = loadWeights[idx]!;
       const grownVol = c.sig.totalVolume * growthMultiplier * volPerturb;
       const beforeCrit = grownVol * CRITICAL_MOVEMENT_FRACTION;
       const beforeVc = beforeCrit / capacityVph;
@@ -1250,7 +1318,61 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const pmInternalForAssign = (pmRawForAssign - pmPassByForAssign) * (internalCapturePct / 100);
   const pmExternalAutoForAssign = Math.max(0, pmRawForAssign - pmPassByForAssign - pmInternalForAssign) * autoModeShare;
   const fourStep = distributeAndAssign(demandZones, pmExternalAutoForAssign, { gamma: GAMMA_FRICTION.hbw });
-  const weights = fourStep.weights;
+  // FLORIDA STANDARD — the Caltran mass/distance gravity model replaces the
+  // NCHRP-716 gamma distribution for Florida studies (Caltran Engineering's HCA
+  // Westside TIS is the FL reference format). It sets both the trip DISTRIBUTION
+  // (Σ=1 shares that drive route assignment + the reported directional split)
+  // and, via a mean-1 directional multiplier, RE-ORIENTS per-intersection
+  // loading toward the high-share directions without disturbing the distance-
+  // decay near-site concentration that trip-loading.ts deliberately preserves.
+  // Every other region keeps the gamma model untouched. See caltran-gravity.ts.
+  let weights = fourStep.weights;
+  let flGravity: FlGravitySummary | undefined;
+  const flLoadMultiplier = new Array<number>(candidates.length).fill(1);
+  if (isFloridaRegion(region)) {
+    const gravityZones = candidates.map((c) => ({
+      id: c.sig.id,
+      // Zone mass M: the intersection's through-volume (AADT × K) is the
+      // destination-activity attraction proxy the engine already uses.
+      mass: c.sig.totalVolume > 0 ? c.sig.totalVolume : FALLBACK_VOLUME,
+      distanceMi: c.distanceMi,
+      bearingDeg: bearingDeg(
+        { lat: req.latitude, lon: req.longitude },
+        { lat: c.sig.latitude, lon: c.sig.longitude },
+      ),
+    }));
+    const gShares = caltranGravityShares(gravityZones);
+    const gMults = directionalMultipliers(gravityZones);
+    weights = gShares.map((s) => s.share);
+    for (let i = 0; i < gMults.length; i++) flLoadMultiplier[i] = gMults[i]!.multiplier;
+    const byDirection = rollupByCardinal(gShares);
+    const zones: FlGravityZone[] = gShares
+      .map((s, i) => ({
+        id: s.id,
+        name: candidates[i]!.sig.name,
+        distanceMi: s.distanceMi,
+        bearingDeg: s.bearingDeg ?? 0,
+        cardinal: bearingToCardinal(s.bearingDeg ?? 0),
+        mass: s.mass,
+        term: s.term,
+        sharePct: s.sharePct,
+      }))
+      .sort((a, b) => b.sharePct - a.sharePct);
+    flGravity = {
+      betaExponent: CALTRAN_GRAVITY_BETA,
+      massBasis: "intersection through-volume (AADT × K-factor) as the destination-activity attraction proxy",
+      zones,
+      byDirection,
+      sectors: sectorPairs(byDirection),
+    };
+  }
+  // Per-intersection project-trip load fraction: distance-decay concentration
+  // (trip-loading.ts), re-oriented by the Florida gravity multiplier (= 1 for
+  // every non-FL region), clamped so no intersection can carry more than the
+  // full project volume.
+  const loadWeights = candidates.map((c, i) =>
+    clamp(intersectionLoadFraction(c.distanceMi) * flLoadMultiplier[i]!, 0, 1),
+  );
 
   // Study-intersection set. DEFAULT: every signalized intersection within the
   // chosen radius is studied — the radius is the user's stated scope, honored
@@ -1322,7 +1444,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     const allRows = period === "daily"
       ? []
       : candidates.map((c, i) =>
-          buildAffectedRow(c, intersectionLoadFraction(c.distanceMi), project, params, calibrationMap.get(c.sig.id)),
+          buildAffectedRow(c, loadWeights[i]!, project, params, calibrationMap.get(c.sig.id)),
         );
 
     // Report only the study intersections (site-adjacent + materially impacted).
@@ -1359,7 +1481,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // synthesize it for the back-compat fields so downstream consumers don't
   // crash.
   const pmReport = periodReports.find((p) => p.period === "pm_peak")
-    ?? (await synthesizePmReport(lu, req, candidates, weights, project, growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates, studySet));
+    ?? (await synthesizePmReport(lu, req, candidates, loadWeights, project, growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates, studySet));
 
   // Top-level back-compat trip-generation summary uses ORIGINAL (non-credited)
   // PM trips so the existing UI labels keep their meaning. Rates come from
@@ -1389,7 +1511,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const sens = req.runSensitivity
     ? runSensitivityAnalysis(
         candidates,
-        weights,
+        loadWeights,
         pmReport.tripGeneration.externalTrips,
         capacityVph,
         growthMultiplier,
@@ -1438,7 +1560,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     worstDelayDeltaSec: pmReport.worstDelayDeltaSec,
     mitigationSummary,
     findings,
-    methodology: TIS_METHODOLOGY,
+    methodology: tisMethodologyForRegion(region),
     periodReports,
     growthAppliedPct: growthRatePct,
     growthYears,
@@ -1459,6 +1581,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     sensitivity: sens,
     junctionImpactSignificant,
     ...(coverageWarning ? { coverageWarning } : {}),
+    ...(flGravity ? { flGravity } : {}),
   };
 }
 
@@ -1466,7 +1589,7 @@ async function synthesizePmReport(
   lu: LandUse,
   req: TisRequest,
   candidates: Array<{ sig: AnalyzerIntersection; distanceMi: number }>,
-  weights: number[],
+  loadWeights: number[],
   project: { lat: number; lon: number },
   growthMultiplier: number,
   designGrowthMultiplier: number,
@@ -1485,7 +1608,7 @@ async function synthesizePmReport(
   const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak };
   const calibrationMap = await loadCalibrationMap();
   const allRows = candidates.map((c, i) =>
-    buildAffectedRow(c, intersectionLoadFraction(c.distanceMi), project, params, calibrationMap.get(c.sig.id)),
+    buildAffectedRow(c, loadWeights[i]!, project, params, calibrationMap.get(c.sig.id)),
   );
   const rows = allRows.filter((_, i) => studySet.has(i));
   return {
