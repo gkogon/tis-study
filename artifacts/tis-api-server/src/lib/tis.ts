@@ -29,38 +29,29 @@ import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSo
 // callers that imported `LAND_USES` from this module.
 import { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence } from "./land-uses";
 import { screenTurboCandidate, turboLaneScreening, type TurboLaneScreening } from "./turbo-lane";
+// Pure HCM delay / LOS / queue math (dependency-free leaf, unit-tested there).
+import {
+  type Los,
+  delayToLos,
+  vcToDelay,
+  queue95Ft,
+  CRITICAL_MOVEMENT_FRACTION,
+  PER_INTERSECTION_CAPACITY_VPH,
+  APPROACH_CAPACITY_VPH,
+} from "./signal-delay";
 
 export { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence };
+// Re-export the delay model for back-compat (turbo-lane.ts / uk-capacity.ts and
+// any other consumer that imported these from "./tis").
+export { delayToLos, vcToDelay, queue95Ft };
+export type { Los };
 
 export function getLandUse(code: string): LandUse | undefined {
   return LAND_USES.find((l) => l.code === code);
 }
 
-// ---------- HCM LOS thresholds (HCM 6th Ed, Ex. 19-8) ----------
-
-export type Los = "A" | "B" | "C" | "D" | "E" | "F";
-
-const LOS_THRESHOLDS: Array<{ los: Los; maxDelay: number }> = [
-  { los: "A", maxDelay: 10 },
-  { los: "B", maxDelay: 20 },
-  { los: "C", maxDelay: 35 },
-  { los: "D", maxDelay: 55 },
-  { los: "E", maxDelay: 80 },
-  { los: "F", maxDelay: Infinity },
-];
-
-export function delayToLos(delaySec: number): Los {
-  for (const t of LOS_THRESHOLDS) if (delaySec <= t.maxDelay) return t.los;
-  return "F";
-}
-
-const CYCLE_LEN = 90;
-const G_OVER_C = 0.45;
-const SATURATION_FLOW_VPH = 1800;
-const CRITICAL_MOVEMENT_FRACTION = 0.45;
-const PER_INTERSECTION_CAPACITY_VPH = SATURATION_FLOW_VPH * G_OVER_C;
-const APPROACH_CAPACITY_VPH = PER_INTERSECTION_CAPACITY_VPH; // 1 critical lane per approach
-const VEH_LENGTH_FT = 25;
+// HCM LOS thresholds, capacity constants, and the delay/queue model live in
+// ./signal-delay (imported + re-exported above).
 
 // Net PM-peak car-mode external-trip count below which renderers are
 // expected to demote junction-capacity analysis to a screening appendix
@@ -131,34 +122,6 @@ const APPROACH_ORIGIN_BEARING: Record<Direction, number> = {
   NB: 180, SB: 0, EB: 270, WB: 90,
 };
 
-// ---------- HCM signalized-intersection delay (Ex. 19-18) ----------
-
-export function vcToDelay(vc: number, capacityVph: number = PER_INTERSECTION_CAPACITY_VPH): number {
-  const x = Math.max(0, vc);
-  const xForD1 = Math.min(0.99, x);
-  const d1 = (0.5 * CYCLE_LEN * Math.pow(1 - G_OVER_C, 2)) / (1 - xForD1 * G_OVER_C);
-
-  const T = 0.25;
-  const k = 0.5;
-  const d2 = x > 0
-    ? 900 * T * ((x - 1) + Math.sqrt(Math.pow(x - 1, 2) + (8 * k * x) / (capacityVph * T)))
-    : 0;
-
-  return d1 + d2;
-}
-
-// 95th-percentile back-of-queue length per HCM 6th Ed. Eq. 19-50, simplified.
-//   Q1 (avg vehicles per cycle queued) = (vph/3600) * C * (1 - g/C) / (1 - x*g/C)
-//   Q95 ≈ Q1 * 1.65  (Poisson incremental factor, undersaturated)
-//   length_ft = Q95 * VEH_LENGTH_FT
-export function queue95Ft(approachVph: number, capacityVph: number): number {
-  if (approachVph <= 0) return 0;
-  const x = Math.min(0.99, approachVph / capacityVph);
-  const arrPerSec = approachVph / 3600;
-  const q1 = (arrPerSec * CYCLE_LEN * (1 - G_OVER_C)) / Math.max(0.05, 1 - x * G_OVER_C);
-  const q95 = q1 * 1.65;
-  return q95 * VEH_LENGTH_FT;
-}
 
 // ---------- Geo helpers ----------
 
@@ -634,6 +597,18 @@ async function findAffectedIntersections(
  * Caltran flagged the dupe-road behavior in their meeting feedback;
  * this is the fix.
  */
+// Two signals are the "same" intersection for dedup purposes when they carry an
+// identical, non-empty name. The analyzer's OSM-derived block-style names
+// ("NW 33 St @ NW 8950 Blk") can repeat on distinct nodes that sit just beyond
+// the 45 m distance threshold, which otherwise surfaces one junction twice.
+function normalizeSignalName(name: string | null | undefined): string {
+  return (name ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+function sameSignalName(a: string | null | undefined, b: string | null | undefined): boolean {
+  const na = normalizeSignalName(a);
+  return na.length > 0 && na === normalizeSignalName(b);
+}
+
 function dedupCloseSignals(
   candidates: Array<{ sig: AnalyzerIntersection; distanceMi: number }>,
 ): Array<{ sig: AnalyzerIntersection; distanceMi: number }> {
@@ -649,7 +624,9 @@ function dedupCloseSignals(
         { lat: c.sig.latitude, lon: c.sig.longitude },
         { lat: k.sig.latitude, lon: k.sig.longitude },
       );
-      if (dM <= DEDUP_THRESHOLD_M) {
+      // Absorb when physically co-located OR sharing an identical name with an
+      // already-kept (closer) signal.
+      if (dM <= DEDUP_THRESHOLD_M || sameSignalName(c.sig.name, k.sig.name)) {
         absorbedInto = k;
         break;
       }
@@ -1033,7 +1010,7 @@ const TIS_METHODOLOGY = [
   "After assignment, all signalized intersections within the study radius are reported in the affected-intersections table. Project-added trips, v/c ratio change, control delay change, LOS change, and 95th-percentile queue are reported for each intersection so the reviewer can assess relative impact. Intersections beyond the study radius are excluded from analysis.",
   "Auto-mode share is applied per metro before assignment. Suburban-US metros default to 90% auto (ACS 5-Year B08301 median); transit-heavy metros use measured auto-mode share (e.g., NYC 32%, Tokyo 30%, London 38%, San Francisco 47%). Non-auto trips (transit, walking, cycling) do not load the off-site roadway. This is a screening-level adjustment; a real TIS submittal in a transit-heavy market should refine with project-specific TAZ data.",
   "Candidate signals are de-duplicated within a 45m clustering threshold to prevent OSM divided-arterial splits and way-record artifacts from double-counting a single physical intersection.",
-  "Intersection-level control delay uses the HCM signalized-intersection model d = d1 + d2 (Webster uniform delay + Akçelik/HCM incremental-delay term) with a 90s cycle, g/C = 0.45, 1,800 vphpl saturation flow (× weather factor), 15-minute peak analysis period (T = 0.25 hr) and pretimed-signal incremental-delay factor k = 0.5.",
+  "Intersection-level control delay uses the HCM signalized-intersection model d = d1 + d2 (Webster uniform delay + Akçelik/HCM incremental-delay term) with a 90s cycle, g/C = 0.45, 1,800 vphpl saturation flow (× weather factor), 15-minute peak analysis period (T = 0.25 hr) and pretimed-signal incremental-delay factor k = 0.5. Reported control delay is capped at 120 s (LOS F) for screening reliability — the incremental-delay term is not calibrated far above capacity, so oversaturated approaches are reported as LOS F rather than an implausible delay figure; a calibrated design-level analysis (HCS / Synchro) supersedes this screen.",
   "Approach-level analysis splits each signal's inflow across NB/SB/EB/WB approaches (deterministic per-signal allocation perturbed ±15% from a 30/25/25/20 base) and assigns added trips to each approach by cosine-similarity to the bearing of the project relative to the signal. Per-approach v/c, control delay, LOS, and 95th-percentile back-of-queue length (HCM Eq. 19-50, Q95 ≈ Q1 × 1.65 × 25 ft/veh) are reported.",
   "Level of Service is assigned from HCM 6th-Edition signalized-intersection control-delay thresholds (Exhibit 19-8): A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s.",
   "Sensitivity is reported in narrative form per standard TIA practice: trip-generation method (rate vs. fitted-curve equation), discrete internal capture and pass-by credit variants, and a ±0.5%/yr growth-rate band around the applied value. The engine retains an internal stochastic-sensitivity routine (Box-Muller-perturbed trip rate and existing volume) for demo-mode diagnostics; it is not surfaced in the deliverable because TIA sensitivity is conducted through discrete scoping-agreed scenario variants, not statistical perturbation of unmeasured distributions.",
