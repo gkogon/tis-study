@@ -227,6 +227,8 @@ export interface TisRequest {
   /** Optional ITE TGM 11th Ed. alternate independent variable (matches a `unitShort` from the land use's `secondaryVariables`). Defaults to the primary published variable. */
   independentVariable?: string;
   tripProfile?: TisTripProfile;
+  /** When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it. */
+  scopeStudyIntersections?: boolean;
 }
 
 export type TisTripGenerationVariableConfidence =

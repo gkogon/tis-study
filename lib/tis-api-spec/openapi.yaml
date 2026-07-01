@@ -397,6 +397,15 @@ components:
             primary published variable.
         tripProfile:
           $ref: "#/components/schemas/TisTripProfile"
+        scopeStudyIntersections:
+          type: boolean
+          description: >-
+            When true, trim the study to the MTIASD materially-impacted set
+            (nearest-few site-adjacent intersections plus any carrying >=8
+            PM-peak project trips, capped). Default false: analyze EVERY
+            signalized intersection within the study radius — the radius is the
+            stated study scope. Shorten a report with a smaller radius, not by
+            scoping within it.
       required: [projectName, address, latitude, longitude, landUseCode, size, openingYear]
     TisTripProfile:
       type: object

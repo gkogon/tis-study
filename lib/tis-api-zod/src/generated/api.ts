@@ -147,6 +147,12 @@ export const GenerateTisBody = zod.object({
     .describe(
       "Optional consultant-supplied within-day arrival\/departure distribution that overrides the engine's default office distribution for the inbound\/outbound-by-start-time and on-site-accumulation charts. Each array holds 24 non-negative values (clock hours 0–23); the renderer normalises each to sum to 1, so only relative magnitudes matter. Supplying this also unlocks the figures for non-office use classes.",
     ),
+  scopeStudyIntersections: zod
+    .boolean()
+    .optional()
+    .describe(
+      "When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it.",
+    ),
 });
 
 export const generateTisResponseRequestLatitudeMin = -90;
@@ -281,6 +287,12 @@ export const GenerateTisResponse = zod.object({
       .optional()
       .describe(
         "Optional consultant-supplied within-day arrival\/departure distribution that overrides the engine's default office distribution for the inbound\/outbound-by-start-time and on-site-accumulation charts. Each array holds 24 non-negative values (clock hours 0–23); the renderer normalises each to sum to 1, so only relative magnitudes matter. Supplying this also unlocks the figures for non-office use classes.",
+      ),
+    scopeStudyIntersections: zod
+      .boolean()
+      .optional()
+      .describe(
+        "When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it.",
       ),
   }),
   studyRadiusMi: zod.number(),
@@ -744,6 +756,12 @@ export const GetTisProjectResponse = zod
             .describe(
               "Optional consultant-supplied within-day arrival\/departure distribution that overrides the engine's default office distribution for the inbound\/outbound-by-start-time and on-site-accumulation charts. Each array holds 24 non-negative values (clock hours 0–23); the renderer normalises each to sum to 1, so only relative magnitudes matter. Supplying this also unlocks the figures for non-office use classes.",
             ),
+          scopeStudyIntersections: zod
+            .boolean()
+            .optional()
+            .describe(
+              "When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it.",
+            ),
         }),
         zod.record(zod.string(), zod.unknown()),
       ])
@@ -857,6 +875,12 @@ export const GetTisProjectResponse = zod
           .optional()
           .describe(
             "Optional consultant-supplied within-day arrival\/departure distribution that overrides the engine's default office distribution for the inbound\/outbound-by-start-time and on-site-accumulation charts. Each array holds 24 non-negative values (clock hours 0–23); the renderer normalises each to sum to 1, so only relative magnitudes matter. Supplying this also unlocks the figures for non-office use classes.",
+          ),
+        scopeStudyIntersections: zod
+          .boolean()
+          .optional()
+          .describe(
+            "When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it.",
           ),
       }),
       studyRadiusMi: zod.number(),
