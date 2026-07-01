@@ -35,7 +35,8 @@ import {
   CALTRAN_GRAVITY_BETA,
   type CardinalDir,
 } from "./caltran-gravity";
-import { fetchLocalRoads, assignRoutes, type RouteAssignment } from "./network-assignment";
+import { fetchLocalRoads, assignRoutes, assignWithDriveways, type RouteAssignment, type DrivewayAssignment, type DrivewayResult } from "./network-assignment";
+import { type Driveway } from "./driveways";
 import { getTransitContext } from "./transit-routes";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
 import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSource } from "./regional-growth-rates";
@@ -370,6 +371,11 @@ export type TisRequest = {
   // the opt-in lean report. To shorten a report the lever is a smaller radius,
   // not silent scoping within the chosen radius.
   scopeStudyIntersections?: boolean;
+  /** Site access points with per-movement turn restrictions. When present,
+   *  project trips route through these driveways and forbidden movements
+   *  reroute onto the network (U-turns). Absent or empty ⇒ single-site
+   *  behavior, byte-identical to today. Max 12 driveways. */
+  driveways?: Driveway[];
 };
 
 export type StudyTier = "auto" | "worksheet" | "abbreviated" | "full";
@@ -579,6 +585,13 @@ export type TisReport = {
    *  FL renderer's gravity worksheet, directional-distribution figure, and
    *  project-trip assignment. See caltran-gravity.ts. */
   flGravity?: FlGravitySummary;
+  /** Driveway access assignment result. Present only when `request.driveways`
+   *  was supplied and non-empty AND a road network was available to route
+   *  through. Absent ⇒ no driveways or roads unavailable (base LOS unchanged). */
+  driveways?: {
+    driveways: DrivewayResult[];
+    reroutes: { destIndex: number; trips: number }[];
+  };
 };
 
 /** One zone (study-area intersection) row of the Caltran gravity worksheet. */
@@ -1392,6 +1405,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // reports which roads carry the trips. Falls back silently (undefined)
   // when the region has no road network available.
   let routeAssignment: RouteAssignment | undefined;
+  let drivewayAssignment: DrivewayAssignment | undefined;
   try {
     const segs = await fetchLocalRoads(region.code, req.latitude, req.longitude, radiusMi);
     if (segs) {
@@ -1406,10 +1420,49 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
         .filter((c) => c.sig.totalVolume > 0)
         .map((c) => ({ lat: c.sig.latitude, lon: c.sig.longitude, aadt: c.sig.totalVolume }));
       routeAssignment = assignRoutes({ lat: req.latitude, lon: req.longitude }, dests, segs, { volumeRefs });
+      // Driveway-aware assignment: when driveways are supplied, route through
+      // them and record per-destination added trips. Opt-in: absent/empty ⇒
+      // byte-identical to today (no loadWeights change, no driveways payload).
+      if (Array.isArray(req.driveways) && req.driveways.length > 0) {
+        const dwDests = candidates.map((c) => ({
+          lat: c.sig.latitude,
+          lon: c.sig.longitude,
+          trips: 1, // uniform — we care about shares, not absolute volumes here
+        }));
+        drivewayAssignment = assignWithDriveways(
+          { lat: req.latitude, lon: req.longitude },
+          dwDests,
+          segs,
+          req.driveways,
+          { volumeRefs },
+        );
+      }
     }
   } catch {
     /* network roads unavailable — gravity assignment stands on its own */
   }
+
+  // When driveways are present and routing succeeded, derive per-intersection
+  // load shares from the driveway assignment's per-destination added trips.
+  // Normalize to a share (Σ = 1), then scale by the existing near-site decay
+  // so magnitude stays consistent with the base loading. When driveways are
+  // absent or the assignment failed, dwShare is null and we fall through to
+  // the original loadWeights (opt-in guard: byte-identical to today).
+  const dwShare: number[] | null =
+    drivewayAssignment?.available && candidates.length > 0
+      ? (() => {
+          const tot =
+            drivewayAssignment.perDestinationAddedTrips.reduce((s, v) => s + v, 0) || 1;
+          return drivewayAssignment.perDestinationAddedTrips.map(
+            (v, i) =>
+              clamp(
+                (v / tot) * candidates.length * intersectionLoadFraction(candidates[i]!.distanceMi),
+                0,
+                1,
+              ),
+          );
+        })()
+      : null;
 
   // Per-period analyses.
   const periodReports: PeriodReport[] = [];
@@ -1444,7 +1497,13 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     const allRows = period === "daily"
       ? []
       : candidates.map((c, i) =>
-          buildAffectedRow(c, loadWeights[i]!, project, params, calibrationMap.get(c.sig.id)),
+          buildAffectedRow(
+            c,
+            dwShare ? dwShare[i]! : loadWeights[i]!,
+            project,
+            params,
+            calibrationMap.get(c.sig.id),
+          ),
         );
 
     // Report only the study intersections (site-adjacent + materially impacted).
@@ -1582,6 +1641,14 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     junctionImpactSignificant,
     ...(coverageWarning ? { coverageWarning } : {}),
     ...(flGravity ? { flGravity } : {}),
+    ...(drivewayAssignment?.available
+      ? {
+          driveways: {
+            driveways: drivewayAssignment.driveways,
+            reroutes: drivewayAssignment.reroutes,
+          },
+        }
+      : {}),
   };
 }
 
