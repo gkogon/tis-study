@@ -382,20 +382,21 @@ export function assignWithDriveways(
   for (let i = 0; i < destinations.length; i++) {
     const d = destinations[i]!;
     const odBearing = bearingBetween(site.lat, site.lon, d.lat, d.lon);
+
     // Outbound leg: which driveways can serve a trip leaving toward this destination?
-    const eligible = dws.filter((dw) => {
+    const eligibleOut = dws.filter((dw) => {
       const mvNeeded = classifyMovement(dw.streetBearing, dw.side, odBearing, false); // "outLeft" | "outRight"
       return dw.mv[mvNeeded];
     });
-    if (eligible.length > 0) {
-      // Nearest eligible driveway carries the trip; count its exit movement.
-      const dw = eligible.reduce((a, b) =>
+    if (eligibleOut.length > 0) {
+      // Nearest eligible driveway carries the outbound trip; count its exit movement.
+      const dw = eligibleOut.reduce((a, b) =>
         distMi(g.nodeLat[a.node]!, g.nodeLon[a.node]!, d.lat, d.lon) <= distMi(g.nodeLat[b.node]!, g.nodeLon[b.node]!, d.lat, d.lon) ? a : b);
       const mv = classifyMovement(dw.streetBearing, dw.side, odBearing, false) as "outLeft" | "outRight";
       dw.exitByMovement[mv] += d.trips;
       perDest[i]! += d.trips;
     } else {
-      // Forbidden everywhere ⇒ reroute via the nearest driveway + U-turn.
+      // Outbound forbidden everywhere ⇒ reroute via the nearest driveway + U-turn.
       const dw = dws.reduce((a, b) =>
         distMi(g.nodeLat[a.node]!, g.nodeLon[a.node]!, d.lat, d.lon) <= distMi(g.nodeLat[b.node]!, g.nodeLon[b.node]!, d.lat, d.lon) ? a : b);
       dw.rerouted += d.trips;
@@ -404,6 +405,27 @@ export function assignWithDriveways(
       const uturnDest = nearestDestTo(dw.node);
       perDest[uturnDest]! += d.trips;
       reroutes.push({ destIndex: uturnDest, trips: d.trips });
+    }
+
+    // Inbound leg: which driveways can serve a trip arriving from this destination?
+    // (vehicles travelling FROM odBearing TO the site — inbound = true)
+    const eligibleIn = dws.filter((dw) => {
+      const mvNeeded = classifyMovement(dw.streetBearing, dw.side, odBearing, true); // "inLeft" | "inRight"
+      return dw.mv[mvNeeded];
+    });
+    if (eligibleIn.length > 0) {
+      // Nearest eligible driveway carries the inbound trip; credit its enter movement.
+      const dw = eligibleIn.reduce((a, b) =>
+        distMi(g.nodeLat[a.node]!, g.nodeLon[a.node]!, d.lat, d.lon) <= distMi(g.nodeLat[b.node]!, g.nodeLon[b.node]!, d.lat, d.lon) ? a : b);
+      const mv = classifyMovement(dw.streetBearing, dw.side, odBearing, true) as "inLeft" | "inRight";
+      dw.enterByMovement[mv] += d.trips;
+    } else {
+      // Inbound forbidden everywhere: the entering trip is still rerouted.
+      // Use the nearest driveway that allows ANY inbound movement; fall back to nearest overall.
+      const anyIn = dws.find((dw) => dw.mv.inLeft || dw.mv.inRight);
+      const dw = anyIn ?? dws.reduce((a, b) =>
+        distMi(g.nodeLat[a.node]!, g.nodeLon[a.node]!, d.lat, d.lon) <= distMi(g.nodeLat[b.node]!, g.nodeLon[b.node]!, d.lat, d.lon) ? a : b);
+      dw.rerouted += d.trips;
     }
   }
 
