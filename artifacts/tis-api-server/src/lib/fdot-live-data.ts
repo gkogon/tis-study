@@ -389,6 +389,136 @@ export async function enrichSerpmIntersections(intersections: Intersection[]): P
   return enriched;
 }
 
+// ─── FDOT TMSCOUNT continuous / short count-station hourly volumes ───────────
+// Measured per-direction hourly counts at FDOT telemetered + short-count sites,
+// published PUBLIC (endpoint + fields verified live 2026-07-01). One row per
+// station (COSITE) + direction (DIR) + count date (BEGDATE) carrying HR1..HR24
+// hourly volumes, TOTVOL, PEAKHR/PEAKVOL, TRUCKS. Gives the real COLLECTED
+// peak-hour + daily volumes on the study roadways (Caltran Table 4) where a
+// count station falls near a study segment. Coverage = monitored segments, not
+// every signalized intersection.
+const TMSCOUNT_URL =
+  "https://services1.arcgis.com/O1JpcwDW8sjYuddV/arcgis/rest/services/Traffic_TMSCOUNT_TDA/FeatureServer/0/query";
+
+export type TmsCountVolumes = {
+  cosite: string | null;
+  countYear: number | null;
+  amPeak2way: number | null; // 08:00 hour, summed across the station's directions
+  pmPeak2way: number | null; // 17:00 hour, summed across the station's directions
+  daily2way: number | null; // sum of the station's directional day totals
+  directions: number; // directional records rolled up
+};
+
+/** Nearest count station within `radiusM`: the station (COSITE) with the
+ * highest daily total in the buffer, summed across its directional rows. */
+async function queryTmsCountStation(lat: number, lon: number, radiusM: number): Promise<TmsCountVolumes | null> {
+  const params = new URLSearchParams({
+    where: "1=1",
+    geometry: JSON.stringify({ x: lon, y: lat, spatialReference: { wkid: 4326 } }),
+    geometryType: "esriGeometryPoint",
+    inSR: "4326",
+    spatialRel: "esriSpatialRelIntersects",
+    distance: String(radiusM),
+    units: "esriSRUnit_Meter",
+    outFields: "COSITE,DIR,HR8,HR17,TOTVOL,BEGDATE",
+    returnGeometry: "false",
+    orderByFields: "BEGDATE DESC",
+    f: "json",
+    resultRecordCount: "50",
+  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch(`${TMSCOUNT_URL}?${params.toString()}`, { signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!resp.ok) return null;
+  const json = (await resp.json()) as { features?: ArcGisFeature[]; error?: unknown };
+  if (json.error) return null;
+  const feats = json.features ?? [];
+  if (feats.length === 0) return null;
+  // Group directional rows by station; keep the most recent count per (COSITE,
+  // DIR) since orderBy BEGDATE DESC puts newest first.
+  const byStation = new Map<string, Record<string, unknown>[]>();
+  const seenDir = new Set<string>();
+  for (const f of feats) {
+    const a = f.attributes ?? {};
+    const cosite = asStr(a.COSITE);
+    if (!cosite) continue;
+    const dirKey = `${cosite}|${asStr(a.DIR) ?? ""}`;
+    if (seenDir.has(dirKey)) continue; // newest count for this direction already taken
+    seenDir.add(dirKey);
+    let arr = byStation.get(cosite);
+    if (!arr) { arr = []; byStation.set(cosite, arr); }
+    arr.push(a);
+  }
+  let best: { cosite: string; rows: Record<string, unknown>[]; total: number } | null = null;
+  for (const [cosite, rows] of byStation) {
+    const total = rows.reduce((s, a) => s + (asNum(a.TOTVOL) ?? 0), 0);
+    if (!best || total > best.total) best = { cosite, rows, total };
+  }
+  if (!best) return null;
+  const am = best.rows.reduce((s, a) => s + (asNum(a.HR8) ?? 0), 0);
+  const pm = best.rows.reduce((s, a) => s + (asNum(a.HR17) ?? 0), 0);
+  const beg = asNum(best.rows[0]?.BEGDATE);
+  const yr = beg != null ? new Date(beg).getUTCFullYear() : NaN;
+  return {
+    cosite: best.cosite,
+    countYear: Number.isFinite(yr) ? yr : null,
+    amPeak2way: am > 0 ? am : null,
+    pmPeak2way: pm > 0 ? pm : null,
+    daily2way: best.total > 0 ? best.total : null,
+    directions: best.rows.length,
+  };
+}
+
+/** Collected peak-hour + daily volumes at the nearest FDOT count station. */
+export async function fetchTmsCount(lat: number, lon: number): Promise<TmsCountVolumes | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  for (const radius of [400, 800, 1600]) {
+    try {
+      const v = await queryTmsCountStation(lat, lon, radius);
+      if (v) return v;
+    } catch {
+      // widen and retry
+    }
+  }
+  return null;
+}
+
+/** Enrich each study intersection with its nearest FDOT count-station volumes.
+ * Mutates the array (sets `it.tmscount`); fail-open, budget-bounded. */
+export async function enrichTmsCountIntersections(intersections: Intersection[]): Promise<number> {
+  if (!intersections.length) return 0;
+  const start = Date.now();
+  let enriched = 0;
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < intersections.length) {
+      if (Date.now() - start > TOTAL_BUDGET_MS) return;
+      const idx = cursor++;
+      const it = intersections[idx];
+      const lat = Number(it.latitude ?? NaN);
+      const lon = Number(it.longitude ?? NaN);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      try {
+        const v = await fetchTmsCount(lat, lon);
+        if (v && (v.daily2way != null || v.pmPeak2way != null)) {
+          (it as unknown as Record<string, unknown>).tmscount = v;
+          enriched++;
+        }
+      } catch {
+        // fail-open
+      }
+    }
+  };
+  const workers = Array.from({ length: Math.min(MAX_CONCURRENT, intersections.length) }, () => worker());
+  await Promise.all(workers);
+  return enriched;
+}
+
 /**
  * Decode the FUNCLASS code (RCI Feature 121) into a human label for the
  * FL renderer prose. Codes per FDOT RCI Handbook Feature 121.

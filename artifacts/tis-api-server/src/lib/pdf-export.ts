@@ -37,7 +37,7 @@ import { loadTemplate } from "./report-template/registry";
 import { buildProviders } from "./report-template/providers";
 import { loadFirmTemplate } from "./report-template/store";
 import { getTransitContext, type TransitContext } from "./transit-routes";
-import { enrichFdotIntersections, enrichSerpmIntersections, fetchFdotSiteSnapshot, decodeFdotFunClass, decodeFdotAccessClass, SERPM_BASE_YEAR, SERPM_FUTURE_YEAR, type FdotSegmentSnapshot } from "./fdot-live-data";
+import { enrichFdotIntersections, enrichSerpmIntersections, enrichTmsCountIntersections, fetchFdotSiteSnapshot, decodeFdotFunClass, decodeFdotAccessClass, SERPM_BASE_YEAR, SERPM_FUTURE_YEAR, type FdotSegmentSnapshot } from "./fdot-live-data";
 import { enrichGdotIntersections, fetchGdotSiteSnapshot } from "./gdot-live-data";
 import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite, getGml239Status, getCbdtpStatus } from "./nysdot-data";
 import { getNycTransitContext } from "./nyc-transit-data";
@@ -432,6 +432,10 @@ export async function renderStudyPdf(
         const serpmTask = intersections.length > 0
           ? enrichSerpmIntersections(intersections as any).catch(() => 0)
           : Promise.resolve(0);
+        // FDOT count-station collected peak-hour + daily volumes per intersection.
+        const tmsTask = intersections.length > 0
+          ? enrichTmsCountIntersections(intersections as any).catch(() => 0)
+          : Promise.resolve(0);
         const fdotSiteTask = fetchFdotSiteSnapshot(lat, lon).then((snap) => {
           if (snap && result && typeof result === "object") {
             (result as Record<string, unknown>).fdotSiteSnapshot = snap;
@@ -442,7 +446,7 @@ export async function renderStudyPdf(
             (result as Record<string, unknown>).transitContext = ctx;
           }
         }).catch(() => {});
-        await Promise.all([flCrashTask, fdotIntersectionsTask, serpmTask, fdotSiteTask, transitTask]);
+        await Promise.all([flCrashTask, fdotIntersectionsTask, serpmTask, tmsTask, fdotSiteTask, transitTask]);
       }
       // GA — ARC AADT enrich for Atlanta-metro intersections + transit
       // context (MARTA / CCT / Gwinnett County Transit via Transit.land /
@@ -7608,6 +7612,38 @@ function renderTisFlorida(
     doc.moveDown(0.2);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
       "Live extract from gis.fdot.gov RCI_Layers FeatureServer. Access-management class per Rule 14-97 F.A.C.; functional classification per RCI Feature 121. Confirm lane count, median type, and posted speed from the RCI flat file or a field inventory before submittal.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+  }
+
+  // --- 4.3 Daily Peak-Hour Traffic Volumes (collected counts, T4) --------
+  const flTmsRows = intersections.filter((it: any) => it.tmscount && (it.tmscount.daily2way != null || it.tmscount.pmPeak2way != null));
+  if (flTmsRows.length > 0) {
+    gaSubsection(doc, "4.3 Daily Peak-Hour Traffic Volumes (Collected Counts)");
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "Collected daily and peak-hour volumes at the nearest FDOT continuous / short-count monitoring station to each study segment, from a live query of the FDOT TMSCOUNT (Transportation Data & Analytics) service at render time. Volumes are two-way (summed across the station's counted directions); AM = the 08:00 hour and PM = the 17:00 hour of the station's directional hourly counts. A count station is not present at every study intersection; where none falls within range the row is omitted and project-specific counts are required at submittal.",
+      { paragraphGap: 6 },
+    );
+    table(doc, {
+      headers: ["Study segment", "Count station", "Count yr", "AM peak (2-way)", "PM peak (2-way)", "Daily (2-way)"],
+      widths: [145, 70, 48, 83, 83, 83],
+      align: ["left", "left", "center", "right", "right", "right"],
+      rows: flTmsRows.map((it: any) => {
+        const t = it.tmscount;
+        return [
+          it.name ?? it.signalId ?? "—",
+          t.cosite ?? "—",
+          t.countYear != null ? String(t.countYear) : "—",
+          t.amPeak2way == null ? "—" : fmtNum(t.amPeak2way),
+          t.pmPeak2way == null ? "—" : fmtNum(t.pmPeak2way),
+          t.daily2way == null ? "—" : fmtNum(t.daily2way),
+        ];
+      }),
+    });
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "Source: FDOT TMSCOUNT TDA FeatureServer (services1.arcgis.com … Traffic_TMSCOUNT_TDA), nearest station within 1,600 m by highest daily total. These are corridor mid-block monitoring counts, not intersection turning-movement counts; a formal submittal requires AM/PM turning-movement counts at the study intersections and site driveways per MTSIH 2024 Appendix A.",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
