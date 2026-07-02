@@ -5,6 +5,7 @@
  * TIS (Traffic Impact Study) API specification — engineering-firm product surface.
  * OpenAPI spec version: 0.1.0
  */
+import type { DrivewayRouteResult } from "./drivewayRouteResult";
 import type { TisAffectedIntersection } from "./tisAffectedIntersection";
 import type { TisPeriodReport } from "./tisPeriodReport";
 import type { TisRequest } from "./tisRequest";
@@ -36,4 +37,5 @@ export interface TisReport {
   autoModeShareApplied?: number;
   routeAssignment?: TisRouteAssignment;
   sensitivity?: TisSensitivityResult;
+  driveways?: DrivewayRouteResult;
 }
