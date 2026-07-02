@@ -1,11 +1,30 @@
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 const here = path.dirname(fileURLToPath(import.meta.url));
-const m = await import(path.resolve(here, "../src/lib/network-assignment.ts"));
-const { buildGraph, insertDriveway, nearestLinkPoint } = m;
 
+// ─── Schema sentinel (Task 7 schema-first constraint) ────────────────────────
+// Global constraint: "Schema is source of truth — change openapi.yaml then run
+// codegen; never hand-edit generated files." The TisReport.driveways field MUST
+// be present in the generated zod schema BEFORE tis.ts returns it; otherwise
+// GenerateTisResponse.parse(report) silently strips the payload at the HTTP
+// boundary. This assertion would fail if openapi.yaml/codegen were not updated
+// first (it caught the ordering violation in commit 5690b2d→a0b821c).
+//
+// TDD intent (Task 7 Step 1): this block is the "fail-first" checkpoint for the
+// schema constraint. Add these assertions before implementing tis.ts wiring,
+// run them to confirm failure, then implement + run codegen to make them pass.
+const zodPath = path.resolve(here, "../../../lib/tis-api-zod/src/generated/api.ts");
+const { GenerateTisResponse } = await import(zodPath);
 let fails = 0;
 const ok = (c, msg) => { console.log(`${c ? "PASS" : "FAIL"}  ${msg}`); if (!c) fails++; };
+
+ok("driveways" in GenerateTisResponse.shape,
+  "GenerateTisResponse zod schema has a driveways field (schema-first constraint — openapi.yaml updated + codegen run before wiring tis.ts)");
+ok(GenerateTisResponse.shape.driveways?.isOptional?.() === true,
+  "GenerateTisResponse.driveways is optional (absent when no driveways supplied = opt-in guard at schema level)");
+
+const m = await import(path.resolve(here, "../src/lib/network-assignment.ts"));
+const { buildGraph, insertDriveway, nearestLinkPoint } = m;
 
 // A single east–west segment (class 3) from (0,0)→(0,0.01) [~0.69 mi of lon at equator-ish].
 const segs = [[3, 0, 0, 0, 0.01, null, null]];
