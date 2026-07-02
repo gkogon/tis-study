@@ -343,6 +343,72 @@ export type DrivewayAssignment = {
   reroutes: { destIndex: number; trips: number }[];
 };
 
+/**
+ * Auto-detect candidate driveway access points on the streets fronting a site.
+ * Snaps the site to the nearest point on each nearby road segment, then greedily
+ * accepts points that sit at a distinct BEARING from the site — so several
+ * segments of one street (or parallel streets farther out) collapse to a single
+ * frontage candidate, while genuinely different fronting streets (e.g. a corner
+ * lot's two streets) each yield one. Street names aren't in the road data, so
+ * labels are generic ("Driveway A/B/…"); every candidate defaults to full access
+ * and the user repositions / edits / deletes. Returns [] when no roads are near.
+ */
+export function findDrivewayCandidates(
+  segments: RoadSegment[],
+  site: { lat: number; lon: number },
+  opts: { maxCandidates?: number; maxDistMi?: number; minSepDeg?: number } = {},
+): Driveway[] {
+  const maxCandidates = opts.maxCandidates ?? 4;
+  const maxDistMi = opts.maxDistMi ?? 0.12;
+  const minSepDeg = opts.minSepDeg ?? 30;
+  if (segments.length === 0) return [];
+  const g = buildGraph(segments, []);
+  if (g.links.length === 0) return [];
+  const bearing = (lat: number, lon: number): number => {
+    const φ1 = (site.lat * Math.PI) / 180, φ2 = (lat * Math.PI) / 180;
+    const Δλ = ((lon - site.lon) * Math.PI) / 180;
+    const y = Math.sin(Δλ) * Math.cos(φ2);
+    const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+    return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+  };
+  const pts: { lat: number; lon: number; distMi: number; brg: number }[] = [];
+  for (let li = 0; li < g.links.length; li++) {
+    const lk = g.links[li]!;
+    const ax = g.nodeLon[lk.a]!, ay = g.nodeLat[lk.a]!, bx = g.nodeLon[lk.b]!, by = g.nodeLat[lk.b]!;
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy || 1e-12;
+    let t = ((site.lon - ax) * dx + (site.lat - ay) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const plat = ay + t * dy, plon = ax + t * dx;
+    pts.push({ lat: plat, lon: plon, distMi: distMi(site.lat, site.lon, plat, plon), brg: bearing(plat, plon) });
+  }
+  pts.sort((a, b) => a.distMi - b.distMi);
+  const accepted: { lat: number; lon: number }[] = [];
+  const acceptedBrg: number[] = [];
+  for (const p of pts) {
+    if (p.distMi > maxDistMi) break;
+    const clash = acceptedBrg.some((q) => {
+      let d = Math.abs(p.brg - q) % 360;
+      if (d > 180) d = 360 - d;
+      return d < minSepDeg;
+    });
+    if (clash) continue;
+    accepted.push({ lat: p.lat, lon: p.lon });
+    acceptedBrg.push(p.brg);
+    if (accepted.length >= maxCandidates) break;
+  }
+  const round4 = (n: number) => Math.round(n * 1e4) / 1e4;
+  const LETTERS = "ABCDEFGHIJKL";
+  return accepted.map((p, i) => ({
+    id: `dw-${i + 1}`,
+    latitude: round4(p.lat),
+    longitude: round4(p.lon),
+    label: `Driveway ${LETTERS[i] ?? String(i + 1)}`,
+    accessType: "full",
+    movements: { inLeft: true, inRight: true, outLeft: true, outRight: true },
+  }));
+}
+
 export function assignWithDriveways(
   site: { lat: number; lon: number },
   destinations: RouteDestination[],

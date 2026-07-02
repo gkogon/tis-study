@@ -92,7 +92,7 @@ const orig_b_adj = g.adj[1] ?? []; // orig.b = node 1 (the lon=0.01 end of the o
 ok(orig_b_adj.every(li => g.links[li].a === 1 || g.links[li].b === 1),
   `adj[orig.b] contains only links that still touch orig.b after split (stale-adj guard)`);
 
-const { assignWithDriveways } = m;
+const { assignWithDriveways, findDrivewayCandidates } = m;
 // Cross road: an east–west street through the site + a north–south street to the east
 // with a signal (destination) at the NE corner. Site at (0, 0).
 const segsX = [
@@ -127,6 +127,34 @@ ok(Math.abs(totRiro - 200) < 1e-6, `reroute conserves total trips (got ${totRiro
 const sumReroutesList = rRiro.reroutes.reduce((s, r) => s + r.trips, 0);
 const sumReroutedTrips = rRiro.driveways.reduce((s, d) => s + d.reroutedTrips, 0);
 ok(Math.abs(sumReroutesList - sumReroutedTrips) < 1e-6, `reroutes[] total (${sumReroutesList}) == reroutedTrips total (${sumReroutedTrips})`);
+
+// ─── findDrivewayCandidates (Phase 2 auto-detect) ────────────────────────────
+// Empty road network ⇒ no candidates (UI falls back to manual placement).
+ok(findDrivewayCandidates([], { lat: 0, lon: 0 }).length === 0, "no segments ⇒ no candidates");
+// A single E-W street just north of the site ⇒ exactly one candidate, snapped
+// onto the street, full access by default, with an id + label.
+const oneStreet = [[3, 0.0002, -0.01, 0.0002, 0.01, null, null]];
+const c1 = findDrivewayCandidates(oneStreet, { lat: 0, lon: 0 });
+ok(c1.length === 1, `single street ⇒ 1 candidate (got ${c1.length})`);
+ok(c1[0].accessType === "full" && c1[0].movements.inLeft && c1[0].movements.outLeft, "candidate defaults to full access");
+ok(typeof c1[0].id === "string" && c1[0].id.length > 0 && typeof c1[0].label === "string" && c1[0].label.length > 0, "candidate has id + label");
+ok(Math.abs(c1[0].latitude - 0.0002) < 1e-3 && Math.abs(c1[0].longitude - 0) < 1e-3, "candidate snaps onto the street near the site");
+// Two roads on different sides (N street + E street) ⇒ two distinct candidates.
+const twoRoads = [
+  [3, 0.0002, -0.01, 0.0002, 0.01, null, null], // E-W street to the north
+  [3, -0.01, 0.0002, 0.01, 0.0002, null, null], // N-S street to the east
+];
+const c2 = findDrivewayCandidates(twoRoads, { lat: 0, lon: 0 });
+ok(c2.length === 2, `two separated roads ⇒ 2 candidates (got ${c2.length})`);
+// Colinear segments forming one street ⇒ deduped to a single candidate by minSep.
+const colinear = [
+  [3, 0.0002, -0.01, 0.0002, 0.0, null, null],
+  [3, 0.0002, 0.0, 0.0002, 0.01, null, null],
+];
+ok(findDrivewayCandidates(colinear, { lat: 0, lon: 0 }).length === 1, "colinear segments of one street ⇒ 1 candidate (minSep dedup)");
+// Cap respected.
+const manyRoads = Array.from({ length: 10 }, (_, k) => [3, 0.0002 + k * 0.001, -0.01, 0.0002 + k * 0.001, 0.01, null, null]);
+ok(findDrivewayCandidates(manyRoads, { lat: 0, lon: 0 }, { maxCandidates: 4, maxDistMi: 5 }).length <= 4, "maxCandidates cap respected");
 
 // ─── E2E: verify tis.ts driveway wiring via generateTisReport ────────────────
 // tis.ts uses bundler-resolution imports (no .ts extensions) that Node's native
