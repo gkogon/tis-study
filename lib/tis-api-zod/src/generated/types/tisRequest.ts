@@ -5,6 +5,7 @@
  * TIS (Traffic Impact Study) API specification — engineering-firm product surface.
  * OpenAPI spec version: 0.1.0
  */
+import type { Driveway } from "./driveway";
 import type { TisAnalysisPeriod } from "./tisAnalysisPeriod";
 import type { TisDistributionMethod } from "./tisDistributionMethod";
 import type { TisTripProfile } from "./tisTripProfile";
@@ -67,4 +68,9 @@ export interface TisRequest {
   /** When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it. */
   scopeStudyIntersections?: boolean;
   distributionMethod?: TisDistributionMethod;
+  /**
+   * Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).
+   * @maxItems 12
+   */
+  driveways?: Driveway[];
 }

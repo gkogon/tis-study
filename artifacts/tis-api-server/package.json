@@ -16,7 +16,9 @@
     "check:trip-distribution": "node ./scripts/verify-trip-distribution.mjs",
     "smoke:distribution-pdf": "node ./scripts/smoke-distribution-pdf.mjs",
     "check:coverage-warning": "node ./scripts/verify-coverage-warning.mjs",
-    "check:name-dedup": "node ./scripts/verify-name-dedup.mjs"
+    "check:name-dedup": "node ./scripts/verify-name-dedup.mjs",
+    "check:driveways": "node ./scripts/verify-driveways.mjs",
+    "check:driveway-routing": "node ./scripts/verify-driveway-routing.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",

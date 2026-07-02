@@ -61,6 +61,14 @@ export const generateTisBodyTripProfileDeparturesItemMin = 0;
 export const generateTisBodyTripProfileDeparturesMin = 24;
 export const generateTisBodyTripProfileDeparturesMax = 24;
 
+export const generateTisBodyDrivewaysItemLatitudeMin = -90;
+export const generateTisBodyDrivewaysItemLatitudeMax = 90;
+
+export const generateTisBodyDrivewaysItemLongitudeMin = -180;
+export const generateTisBodyDrivewaysItemLongitudeMax = 180;
+
+export const generateTisBodyDrivewaysMax = 12;
+
 export const GenerateTisBody = zod.object({
   projectName: zod.string().min(1),
   address: zod.string(),
@@ -159,6 +167,48 @@ export const GenerateTisBody = zod.object({
     .describe(
       "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
     ),
+  driveways: zod
+    .array(
+      zod.object({
+        id: zod.string().min(1),
+        latitude: zod
+          .number()
+          .min(generateTisBodyDrivewaysItemLatitudeMin)
+          .max(generateTisBodyDrivewaysItemLatitudeMax),
+        longitude: zod
+          .number()
+          .min(generateTisBodyDrivewaysItemLongitudeMin)
+          .max(generateTisBodyDrivewaysItemLongitudeMax),
+        label: zod.string().optional(),
+        accessType: zod
+          .enum([
+            "full",
+            "riro",
+            "three_quarter",
+            "entrance_only",
+            "exit_only",
+            "custom",
+          ])
+          .describe(
+            'Preset access type. All except \"custom\" expand server-side to a fixed movements set; \"custom\" uses the movements object verbatim.',
+          ),
+        movements: zod
+          .object({
+            inLeft: zod.boolean().describe("Left turn into the site"),
+            inRight: zod.boolean().describe("Right turn into the site"),
+            outLeft: zod.boolean().describe("Left turn out onto the street"),
+            outRight: zod.boolean().describe("Right turn out onto the street"),
+          })
+          .describe(
+            "Allowed turning movements, relative to the fronting street.",
+          ),
+      }),
+    )
+    .max(generateTisBodyDrivewaysMax)
+    .optional()
+    .describe(
+      "Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).",
+    ),
 });
 
 export const generateTisResponseRequestLatitudeMin = -90;
@@ -195,6 +245,14 @@ export const generateTisResponseRequestTripProfileDeparturesItemMin = 0;
 
 export const generateTisResponseRequestTripProfileDeparturesMin = 24;
 export const generateTisResponseRequestTripProfileDeparturesMax = 24;
+
+export const generateTisResponseRequestDrivewaysItemLatitudeMin = -90;
+export const generateTisResponseRequestDrivewaysItemLatitudeMax = 90;
+
+export const generateTisResponseRequestDrivewaysItemLongitudeMin = -180;
+export const generateTisResponseRequestDrivewaysItemLongitudeMax = 180;
+
+export const generateTisResponseRequestDrivewaysMax = 12;
 
 export const GenerateTisResponse = zod.object({
   generatedAt: zod.string(),
@@ -305,6 +363,50 @@ export const GenerateTisResponse = zod.object({
       .optional()
       .describe(
         "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
+      ),
+    driveways: zod
+      .array(
+        zod.object({
+          id: zod.string().min(1),
+          latitude: zod
+            .number()
+            .min(generateTisResponseRequestDrivewaysItemLatitudeMin)
+            .max(generateTisResponseRequestDrivewaysItemLatitudeMax),
+          longitude: zod
+            .number()
+            .min(generateTisResponseRequestDrivewaysItemLongitudeMin)
+            .max(generateTisResponseRequestDrivewaysItemLongitudeMax),
+          label: zod.string().optional(),
+          accessType: zod
+            .enum([
+              "full",
+              "riro",
+              "three_quarter",
+              "entrance_only",
+              "exit_only",
+              "custom",
+            ])
+            .describe(
+              'Preset access type. All except \"custom\" expand server-side to a fixed movements set; \"custom\" uses the movements object verbatim.',
+            ),
+          movements: zod
+            .object({
+              inLeft: zod.boolean().describe("Left turn into the site"),
+              inRight: zod.boolean().describe("Right turn into the site"),
+              outLeft: zod.boolean().describe("Left turn out onto the street"),
+              outRight: zod
+                .boolean()
+                .describe("Right turn out onto the street"),
+            })
+            .describe(
+              "Allowed turning movements, relative to the fronting street.",
+            ),
+        }),
+      )
+      .max(generateTisResponseRequestDrivewaysMax)
+      .optional()
+      .describe(
+        "Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).",
       ),
   }),
   studyRadiusMi: zod.number(),
@@ -523,6 +625,54 @@ export const GenerateTisResponse = zod.object({
     })
     .optional()
     .describe("Region-agnostic trip-distribution summary for the study."),
+  driveways: zod
+    .object({
+      driveways: zod.array(
+        zod
+          .object({
+            drivewayNode: zod
+              .number()
+              .describe(
+                "Internal graph node index for the driveway snap point.",
+              ),
+            label: zod
+              .string()
+              .describe("Driveway label (falls back to the driveway id)."),
+            enterByMovement: zod.object({
+              inLeft: zod.number().describe("Trips entering via left turn."),
+              inRight: zod.number().describe("Trips entering via right turn."),
+            }),
+            exitByMovement: zod.object({
+              outLeft: zod.number().describe("Trips exiting via left turn."),
+              outRight: zod.number().describe("Trips exiting via right turn."),
+            }),
+            reroutedTrips: zod
+              .number()
+              .describe(
+                "Trips that could not leave directly and rerouted as U-turns.",
+              ),
+          })
+          .describe(
+            "Per-driveway assignment summary from a driveway-routed TIS.",
+          ),
+      ),
+      reroutes: zod.array(
+        zod.object({
+          destIndex: zod
+            .number()
+            .describe(
+              "Index into the destination list (candidate intersection) where the U-turn volume was credited.",
+            ),
+          trips: zod
+            .number()
+            .describe("Number of trips rerouted via this U-turn."),
+        }),
+      ),
+    })
+    .optional()
+    .describe(
+      "Driveway access assignment result. Present only when `request.driveways` was supplied and non-empty AND a road network was available to route through. Absent ⇒ no driveways or roads unavailable (base LOS unchanged).",
+    ),
 });
 
 /**
@@ -643,6 +793,14 @@ export const getTisProjectResponseRequestOneTripProfileDeparturesItemMin = 0;
 export const getTisProjectResponseRequestOneTripProfileDeparturesMin = 24;
 export const getTisProjectResponseRequestOneTripProfileDeparturesMax = 24;
 
+export const getTisProjectResponseRequestOneDrivewaysItemLatitudeMin = -90;
+export const getTisProjectResponseRequestOneDrivewaysItemLatitudeMax = 90;
+
+export const getTisProjectResponseRequestOneDrivewaysItemLongitudeMin = -180;
+export const getTisProjectResponseRequestOneDrivewaysItemLongitudeMax = 180;
+
+export const getTisProjectResponseRequestOneDrivewaysMax = 12;
+
 export const getTisProjectResponseResultRequestLatitudeMin = -90;
 export const getTisProjectResponseResultRequestLatitudeMax = 90;
 
@@ -677,6 +835,14 @@ export const getTisProjectResponseResultRequestTripProfileDeparturesItemMin = 0;
 
 export const getTisProjectResponseResultRequestTripProfileDeparturesMin = 24;
 export const getTisProjectResponseResultRequestTripProfileDeparturesMax = 24;
+
+export const getTisProjectResponseResultRequestDrivewaysItemLatitudeMin = -90;
+export const getTisProjectResponseResultRequestDrivewaysItemLatitudeMax = 90;
+
+export const getTisProjectResponseResultRequestDrivewaysItemLongitudeMin = -180;
+export const getTisProjectResponseResultRequestDrivewaysItemLongitudeMax = 180;
+
+export const getTisProjectResponseResultRequestDrivewaysMax = 12;
 
 export const GetTisProjectResponse = zod
   .object({
@@ -811,6 +977,54 @@ export const GetTisProjectResponse = zod
             .describe(
               "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
             ),
+          driveways: zod
+            .array(
+              zod.object({
+                id: zod.string().min(1),
+                latitude: zod
+                  .number()
+                  .min(getTisProjectResponseRequestOneDrivewaysItemLatitudeMin)
+                  .max(getTisProjectResponseRequestOneDrivewaysItemLatitudeMax),
+                longitude: zod
+                  .number()
+                  .min(getTisProjectResponseRequestOneDrivewaysItemLongitudeMin)
+                  .max(
+                    getTisProjectResponseRequestOneDrivewaysItemLongitudeMax,
+                  ),
+                label: zod.string().optional(),
+                accessType: zod
+                  .enum([
+                    "full",
+                    "riro",
+                    "three_quarter",
+                    "entrance_only",
+                    "exit_only",
+                    "custom",
+                  ])
+                  .describe(
+                    'Preset access type. All except \"custom\" expand server-side to a fixed movements set; \"custom\" uses the movements object verbatim.',
+                  ),
+                movements: zod
+                  .object({
+                    inLeft: zod.boolean().describe("Left turn into the site"),
+                    inRight: zod.boolean().describe("Right turn into the site"),
+                    outLeft: zod
+                      .boolean()
+                      .describe("Left turn out onto the street"),
+                    outRight: zod
+                      .boolean()
+                      .describe("Right turn out onto the street"),
+                  })
+                  .describe(
+                    "Allowed turning movements, relative to the fronting street.",
+                  ),
+              }),
+            )
+            .max(getTisProjectResponseRequestOneDrivewaysMax)
+            .optional()
+            .describe(
+              "Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).",
+            ),
         }),
         zod.record(zod.string(), zod.unknown()),
       ])
@@ -936,6 +1150,58 @@ export const GetTisProjectResponse = zod
           .optional()
           .describe(
             "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
+          ),
+        driveways: zod
+          .array(
+            zod.object({
+              id: zod.string().min(1),
+              latitude: zod
+                .number()
+                .min(getTisProjectResponseResultRequestDrivewaysItemLatitudeMin)
+                .max(
+                  getTisProjectResponseResultRequestDrivewaysItemLatitudeMax,
+                ),
+              longitude: zod
+                .number()
+                .min(
+                  getTisProjectResponseResultRequestDrivewaysItemLongitudeMin,
+                )
+                .max(
+                  getTisProjectResponseResultRequestDrivewaysItemLongitudeMax,
+                ),
+              label: zod.string().optional(),
+              accessType: zod
+                .enum([
+                  "full",
+                  "riro",
+                  "three_quarter",
+                  "entrance_only",
+                  "exit_only",
+                  "custom",
+                ])
+                .describe(
+                  'Preset access type. All except \"custom\" expand server-side to a fixed movements set; \"custom\" uses the movements object verbatim.',
+                ),
+              movements: zod
+                .object({
+                  inLeft: zod.boolean().describe("Left turn into the site"),
+                  inRight: zod.boolean().describe("Right turn into the site"),
+                  outLeft: zod
+                    .boolean()
+                    .describe("Left turn out onto the street"),
+                  outRight: zod
+                    .boolean()
+                    .describe("Right turn out onto the street"),
+                })
+                .describe(
+                  "Allowed turning movements, relative to the fronting street.",
+                ),
+            }),
+          )
+          .max(getTisProjectResponseResultRequestDrivewaysMax)
+          .optional()
+          .describe(
+            "Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).",
           ),
       }),
       studyRadiusMi: zod.number(),
@@ -1164,6 +1430,62 @@ export const GetTisProjectResponse = zod
         })
         .optional()
         .describe("Region-agnostic trip-distribution summary for the study."),
+      driveways: zod
+        .object({
+          driveways: zod.array(
+            zod
+              .object({
+                drivewayNode: zod
+                  .number()
+                  .describe(
+                    "Internal graph node index for the driveway snap point.",
+                  ),
+                label: zod
+                  .string()
+                  .describe("Driveway label (falls back to the driveway id)."),
+                enterByMovement: zod.object({
+                  inLeft: zod
+                    .number()
+                    .describe("Trips entering via left turn."),
+                  inRight: zod
+                    .number()
+                    .describe("Trips entering via right turn."),
+                }),
+                exitByMovement: zod.object({
+                  outLeft: zod
+                    .number()
+                    .describe("Trips exiting via left turn."),
+                  outRight: zod
+                    .number()
+                    .describe("Trips exiting via right turn."),
+                }),
+                reroutedTrips: zod
+                  .number()
+                  .describe(
+                    "Trips that could not leave directly and rerouted as U-turns.",
+                  ),
+              })
+              .describe(
+                "Per-driveway assignment summary from a driveway-routed TIS.",
+              ),
+          ),
+          reroutes: zod.array(
+            zod.object({
+              destIndex: zod
+                .number()
+                .describe(
+                  "Index into the destination list (candidate intersection) where the U-turn volume was credited.",
+                ),
+              trips: zod
+                .number()
+                .describe("Number of trips rerouted via this U-turn."),
+            }),
+          ),
+        })
+        .optional()
+        .describe(
+          "Driveway access assignment result. Present only when `request.driveways` was supplied and non-empty AND a road network was available to route through. Absent ⇒ no driveways or roads unavailable (base LOS unchanged).",
+        ),
     }),
   })
   .describe(

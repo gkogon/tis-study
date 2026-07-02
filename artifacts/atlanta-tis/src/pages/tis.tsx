@@ -17,6 +17,7 @@ import { MapContainer, TileLayer, CircleMarker, Marker, Tooltip as LeafletToolti
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { DrivewayEditor } from "@/components/driveway-editor";
 import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, Printer, Building2, MapPin, Car, Activity, ChevronDown, ChevronRight,
@@ -692,6 +693,18 @@ function TisFormSection({
                   </span>
                 </span>
               </label>
+            </div>
+          )}
+          {Number.isFinite(Number(form.latitude)) && Number.isFinite(Number(form.longitude)) &&
+            Number(form.latitude) !== 0 && Number(form.longitude) !== 0 && (
+            <div className="md:col-span-2 pt-2 border-t">
+              <DrivewayEditor
+                site={{ latitude: Number(form.latitude), longitude: Number(form.longitude) }}
+                driveways={form.driveways ?? []}
+                onChange={(driveways) =>
+                  setForm((f) => ({ ...f, driveways: driveways.length > 0 ? driveways : undefined }))
+                }
+              />
             </div>
           )}
           <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-2 border-t">

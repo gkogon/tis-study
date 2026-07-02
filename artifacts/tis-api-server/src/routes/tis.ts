@@ -5,6 +5,7 @@ import {
   ListTisLandUsesResponse,
 } from "@workspace/tis-api-zod";
 import { generateTisReport, LAND_USES } from "../lib/tis";
+import { validateDriveways } from "../lib/driveways";
 import { regionForCoordinate, REGIONS } from "../lib/regions";
 import { renderStudyPdf } from "../lib/pdf-export";
 import { generateRateLimiter, tricsRateLimiter } from "../lib/security";
@@ -80,6 +81,15 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
       { lat: parsed.data.latitude, lon: parsed.data.longitude },
       "tis-generate.out_of_coverage",
     );
+    return;
+  }
+
+  // Driveway validation is a pure client-input check (no I/O) — run it before
+  // reserving a quota slot so a malformed driveway request never burns a paid
+  // study credit.
+  const drivewayErr = validateDriveways((parsed.data as any).driveways);
+  if (drivewayErr) {
+    res.status(422).json({ error: drivewayErr });
     return;
   }
 

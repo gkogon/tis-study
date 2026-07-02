@@ -1007,6 +1007,123 @@ function drawBody(doc: PDFKit.PDFDocument, project: StoredProject) {
  *   - UK / London (DfT + TfL Transport Assessment)
  *   - CA (Caltrans + SB 743 VMT — paradigm shift, may require engine work)
  */
+/**
+ * Site-access figure (Phase 3): a north-up schematic of the site with its
+ * driveways placed by their real bearing from the site, each labelled with its
+ * access type and entering / exiting AM (PM) project volumes — the Caltran HCA
+ * site-plan inset style. Volumes scale each driveway's share of the entering /
+ * exiting movement to the AM and PM period external in / out trips. Rendered
+ * only when `result.driveways` is present (opt-in). Best-effort: if the request
+ * driveway coordinates are missing it silently skips (the table still prints).
+ */
+type DrivewayFigureRow = { label: string; access: string; inAm: number; inPm: number; outAm: number; outPm: number; forcesReroute: boolean };
+
+function renderDrivewayFigure(doc: PDFKit.PDFDocument, result: Record<string, unknown>): DrivewayFigureRow[] {
+  const dw = (result as any).driveways;
+  const req = (result as any).request ?? {};
+  const reqDws: any[] = Array.isArray(req.driveways) ? req.driveways : [];
+  const resDws: any[] = dw && Array.isArray(dw.driveways) ? dw.driveways : [];
+  if (reqDws.length === 0 || resDws.length === 0) return [];
+  const site = { lat: Number(req.latitude), lon: Number(req.longitude) };
+  const canDraw = Number.isFinite(site.lat) && Number.isFinite(site.lon);
+
+  // Period in/out totals for the AM (PM) labels.
+  const periods: any[] = Array.isArray((result as any).periodReports) ? (result as any).periodReports : [];
+  const per = (p: string) => periods.find((x) => x.period === p)?.tripGeneration ?? null;
+  const am = per("am_peak");
+  const pm = per("pm_peak") ?? per("saturday_midday");
+  const amIn = Number(am?.inTrips) || 0, amOut = Number(am?.outTrips) || 0;
+  const pmIn = Number(pm?.inTrips) || 0, pmOut = Number(pm?.outTrips) || 0;
+
+  const enterShare = resDws.map((d) => (Number(d.enterByMovement?.inLeft) || 0) + (Number(d.enterByMovement?.inRight) || 0));
+  const exitShare = resDws.map((d) => (Number(d.exitByMovement?.outLeft) || 0) + (Number(d.exitByMovement?.outRight) || 0));
+  const sumEnter = enterShare.reduce((s, v) => s + v, 0) || 1;
+  const sumExit = exitShare.reduce((s, v) => s + v, 0) || 1;
+  const scale = (share: number, sum: number, total: number) => Math.round((share / sum) * total);
+
+  const bearing = (lat: number, lon: number): number => {
+    const φ1 = (site.lat * Math.PI) / 180, φ2 = (lat * Math.PI) / 180;
+    const Δλ = ((lon - site.lon) * Math.PI) / 180;
+    const y = Math.sin(Δλ) * Math.cos(φ2);
+    const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+    return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+  };
+  const ACCESS_LABEL: Record<string, string> = {
+    full: "Full", riro: "RIRO", three_quarter: "¾ access", entrance_only: "Entry only", exit_only: "Exit only", custom: "Custom",
+  };
+
+  // Row data (always computed — drives both the figure and the table below).
+  const n = Math.min(reqDws.length, resDws.length);
+  const rows: DrivewayFigureRow[] = [];
+  for (let i = 0; i < n; i++) {
+    const rq = reqDws[i], rs = resDws[i];
+    rows.push({
+      label: String(rs.label ?? rq.label ?? `Driveway ${String.fromCharCode(65 + i)}`),
+      access: ACCESS_LABEL[String(rq.accessType)] ?? String(rq.accessType ?? ""),
+      inAm: scale(enterShare[i]!, sumEnter, amIn), inPm: scale(enterShare[i]!, sumEnter, pmIn),
+      outAm: scale(exitShare[i]!, sumExit, amOut), outPm: scale(exitShare[i]!, sumExit, pmOut),
+      forcesReroute: (Number(rs.reroutedTrips) || 0) > 1e-4,
+    });
+  }
+
+  if (canDraw) {
+    const W = doc.page.width;
+    const figW = W - 2 * PAGE_MARGIN;
+    const figH = 340;
+    const x0 = PAGE_MARGIN, y0 = doc.y;
+    const cx = x0 + figW / 2, cy = y0 + figH / 2;
+    const R = Math.max(78, Math.min(figW / 2 - 150, figH / 2 - 58)); // marker ring radius (room for labels)
+
+    doc.save();
+    // Frame + north arrow.
+    doc.lineWidth(0.75).strokeColor("#d1d5db").rect(x0, y0, figW, figH).stroke();
+    doc.fillColor(TEXT_GRAY).font("body").fontSize(8).text("N", x0 + figW - 22, y0 + 10, { lineBreak: false });
+    doc.save().fillColor(TEXT_GRAY).moveTo(x0 + figW - 16, y0 + 9).lineTo(x0 + figW - 20, y0 + 18).lineTo(x0 + figW - 12, y0 + 18).closePath().fill().restore();
+
+    // Site box.
+    const sw = 104, sh = 62;
+    doc.save().fillColor("#fde68a").opacity(0.55).rect(cx - sw / 2, cy - sh / 2, sw, sh).fill().opacity(1).restore();
+    doc.lineWidth(1).strokeColor("#b45309").rect(cx - sw / 2, cy - sh / 2, sw, sh).stroke();
+    doc.fillColor("black").font("bold").fontSize(8.5).text("PROPOSED SITE", cx - sw / 2 + 4, cy - 12, { width: sw - 8, align: "center", lineBreak: false });
+    const projName = String((result as any).request?.projectName ?? "").slice(0, 22);
+    if (projName) doc.font("body").fontSize(7).fillColor(TEXT_GRAY).text(projName, cx - sw / 2 + 4, cy + 1, { width: sw - 8, align: "center", lineBreak: false });
+
+    // Driveways placed by bearing.
+    for (let i = 0; i < n; i++) {
+      const rq = reqDws[i], r = rows[i]!;
+      const lat = Number(rq.latitude), lon = Number(rq.longitude);
+      const brg = (Number.isFinite(lat) && Number.isFinite(lon) && (lat !== site.lat || lon !== site.lon))
+        ? bearing(lat, lon) : (i / Math.max(1, n)) * 360;
+      const rad = (brg * Math.PI) / 180;
+      const mx = cx + R * Math.sin(rad), my = cy - R * Math.cos(rad);
+      // Connector from just outside the site box (64pt > box half-diagonal) to the marker.
+      const sx = cx + 64 * Math.sin(rad), sy = cy - 64 * Math.cos(rad);
+      doc.save().lineWidth(0.75).strokeColor("#9ca3af").moveTo(sx, sy).lineTo(mx, my).stroke().restore();
+      // Marker.
+      doc.save().fillColor("#F2A20C").rect(mx - 9, my - 9, 18, 18).fill().restore();
+      doc.fillColor("#1a1a1a").font("bold").fontSize(9).text(String.fromCharCode(65 + i), mx - 9, my - 6, { width: 18, align: "center", lineBreak: false });
+      // Label block (side depends on which half of the figure the marker sits in).
+      const rawTitle = `${r.label.slice(0, 16)} · ${r.access}`;
+      const title = rawTitle.length > 26 ? rawTitle.slice(0, 25) + "…" : rawTitle;
+      const right = mx >= cx;
+      const tw = 128;
+      const tx = right ? Math.min(mx + 13, x0 + figW - tw - 4) : Math.max(mx - 13 - tw, x0 + 4);
+      const align: "left" | "right" = right ? "left" : "right";
+      doc.font("bold").fontSize(7.5).fillColor("black").text(title, tx, my - 17, { width: tw, align, lineBreak: false, ellipsis: true });
+      doc.font("body").fontSize(7).fillColor("#1d4ed8").text(`In  ${r.inAm} (${r.inPm})`, tx, my - 5, { width: tw, align, lineBreak: false });
+      doc.fillColor("#b91c1c").text(`Out ${r.outAm} (${r.outPm})`, tx, my + 5, { width: tw, align, lineBreak: false });
+    }
+    doc.restore();
+    doc.y = y0 + figH + 6;
+    doc.font("body").fontSize(7.5).fillColor(TEXT_GRAY).text(
+      "Site-access schematic (not to scale). Driveways placed by bearing from the site; volumes are net new project trips as AM (PM), In = entering / Out = exiting, scaled from each driveway's share of the allowed movements.",
+      x0, doc.y, { width: figW, align: "left" });
+    doc.fillColor("black");
+    doc.moveDown(0.5);
+  }
+  return rows;
+}
+
 function dispatchTisRender(
   doc: PDFKit.PDFDocument,
   result: Record<string, unknown>,
@@ -1023,6 +1140,32 @@ function dispatchTisRender(
   try {
     // 1. Run the region-specific body renderer (GA/FL/NY/CA/TX/IL/UK/…).
     selectRegionalTisRenderer(doc, result, project);
+
+    // 1b. Driveway access table — rendered when result.driveways is present
+    //     (opt-in: absent or empty driveways ⇒ this block is skipped entirely,
+    //     so output is byte-identical to today).
+    const dw = (result as any).driveways;
+    if (dw && Array.isArray(dw.driveways) && dw.driveways.length > 0) {
+      // Reserve room so the heading + ~340pt figure stay on one page.
+      if (doc.y + 400 > doc.page.height - PAGE_MARGIN) doc.addPage();
+      gaSubsection(doc, "Site Access — Driveways");
+      const figRows = renderDrivewayFigure(doc, result);
+      if (figRows.length > 0) {
+        table(doc, {
+          headers: ["Driveway", "Access", "In AM (PM)", "Out AM (PM)"],
+          widths: [200, 100, 105, 105],
+          align: ["left", "left", "right", "right"],
+          rows: figRows.map((r) => [r.label, r.access, `${r.inAm} (${r.inPm})`, `${r.outAm} (${r.outPm})`]),
+        });
+        const rerouters = figRows.filter((r) => r.forcesReroute).map((r) => r.label);
+        if (rerouters.length > 0) {
+          doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+            `${rerouters.join(", ")}: forbidden movements reroute as U-turns at the nearest signal, adding turning volume there (reflected in the affected intersections' LOS).`,
+            { paragraphGap: 6 });
+          doc.fillColor("black");
+        }
+      }
+    }
 
     // 2. Append the shared per-intersection capacity appendix for EVERY
     //    region — turning-movement diagrams per analyzed peak period + the
