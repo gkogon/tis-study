@@ -88,6 +88,7 @@ export type DrivewayEditorProps = {
 export function DrivewayEditor({ site, driveways, onChange }: DrivewayEditorProps) {
   const [detecting, setDetecting] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [basemap, setBasemap] = useState<"satellite" | "street">("satellite");
   const center: [number, number] = [site.latitude, site.longitude];
 
   function update(id: string, patch: Partial<Driveway>) {
@@ -149,13 +150,42 @@ export function DrivewayEditor({ site, driveways, onChange }: DrivewayEditorProp
         </button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Turn restrictions here reroute project trips onto the network and change the affected intersections' LOS.
-        Click the map to add a driveway; drag a marker to reposition.
+        Click the aerial to drop a driveway pin where you want site access; drag a pin to reposition.
+        Turn restrictions you set reroute project trips onto the network and change the affected intersections' LOS.
       </p>
 
-      <div style={{ height: 300, width: "100%" }} className="rounded overflow-hidden border">
-        <MapContainer key={`${site.latitude},${site.longitude}`} center={center} zoom={16} style={{ height: "100%", width: "100%" }}>
-          <TileLayer attribution="&copy; OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      <div className="flex items-center gap-1 text-xs">
+        <span className="text-muted-foreground mr-1">View:</span>
+        <button type="button" onClick={() => setBasemap("satellite")}
+          className={`rounded border px-2 py-0.5 ${basemap === "satellite" ? "bg-foreground text-background" : "hover:bg-muted"}`}>
+          Satellite
+        </button>
+        <button type="button" onClick={() => setBasemap("street")}
+          className={`rounded border px-2 py-0.5 ${basemap === "street" ? "bg-foreground text-background" : "hover:bg-muted"}`}>
+          Street
+        </button>
+      </div>
+
+      <div style={{ height: 340, width: "100%" }} className="rounded overflow-hidden border">
+        <MapContainer key={`${site.latitude},${site.longitude}`} center={center} zoom={18} maxZoom={20} style={{ height: "100%", width: "100%" }}>
+          {basemap === "satellite" ? (
+            <>
+              <TileLayer
+                attribution="Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics"
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                maxNativeZoom={19}
+                maxZoom={20}
+              />
+              <TileLayer
+                attribution=""
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+                maxNativeZoom={19}
+                maxZoom={20}
+              />
+            </>
+          ) : (
+            <TileLayer attribution="&copy; OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxZoom={20} />
+          )}
           <MapClickHandler onAdd={addAt} />
           <Marker position={center} icon={siteIcon()}>
             <LeafletTooltip direction="top" offset={[0, -26]}>Site</LeafletTooltip>
