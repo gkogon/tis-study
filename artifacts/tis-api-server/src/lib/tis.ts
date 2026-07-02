@@ -365,10 +365,10 @@ export type TisRequest = {
   // Study-intersection scoping. DEFAULT (unset/false): analyze EVERY signalized
   // intersection within `studyRadiusMi` — the radius is the user's stated study
   // scope, honored literally. When true: apply the MTIASD impact scoping
-  // (nearest-STUDY_NEAREST_FLOOR + any ≥STUDY_MIN_PM_SITE_TRIPS, capped at
-  // STUDY_MAX_INTERSECTIONS) to trim the study to the materially-impacted set —
-  // the opt-in lean report. To shorten a report the lever is a smaller radius,
-  // not silent scoping within the chosen radius.
+  // (nearest-STUDY_NEAREST_FLOOR + any ≥STUDY_MIN_PM_SITE_TRIPS, no upper cap) to
+  // trim the study to the materially-impacted set — the opt-in lean report. To
+  // shorten a report the lever is a smaller radius, not silent scoping within the
+  // chosen radius.
   scopeStudyIntersections?: boolean;
 };
 
@@ -630,15 +630,15 @@ const CURRENT_YEAR = new Date().getUTCFullYear();
 //
 // We keep: (1) the nearest few (site access + adjacent + first signalized in
 // each direction), always; plus (2) any intersection the four-step model assigns
-// at least STUDY_MIN_PM_SITE_TRIPS PM-peak site trips; capped at
-// STUDY_MAX_INTERSECTIONS (highest-assigned win). The scope therefore scales with
-// the project's trip-making — small project → few intersections, large project →
-// more — which is exactly the MTIASD Table 3 intent, instead of scaling with how
-// dense the surrounding grid happens to be.
+// at least STUDY_MIN_PM_SITE_TRIPS PM-peak site trips. The scope therefore scales
+// with the project's trip-making — small project → few intersections, large
+// project → more — which is exactly the MTIASD Table 3 intent, instead of scaling
+// with how dense the surrounding grid happens to be. There is deliberately no
+// hard upper cap: within an opted-in scope, every materially-impacted signal is
+// carried (the radius is the user's scope; see the "every light" product rule).
 // Tunable screening defaults (calibrate against real studies as the corpus grows).
 const STUDY_NEAREST_FLOOR = 5;        // immediate study area: site-adjacent + ~first signalized each direction
 const STUDY_MIN_PM_SITE_TRIPS = 8;    // de-minimis screening floor: site must assign ≥8 PM-peak trips
-const STUDY_MAX_INTERSECTIONS = 15;   // hard cap so pathologically dense grids can't explode the report
 
 // Per-intersection project-trip loading (distance decay). Distinct from the
 // gravity DISTRIBUTION (weights): impact/scoping load concentrates at the site
@@ -653,17 +653,9 @@ const STUDY_MAX_INTERSECTIONS = 15;   // hard cap so pathologically dense grids 
  */
 function selectStudyIntersectionIdx(loadFractions: number[], pmExternalAutoTrips: number, n: number): number[] {
   const assigned = (i: number): number => (loadFractions[i] ?? 0) * pmExternalAutoTrips;
-  let idx: number[] = [];
+  const idx: number[] = [];
   for (let i = 0; i < n; i++) {
     if (i < STUDY_NEAREST_FLOOR || assigned(i) >= STUDY_MIN_PM_SITE_TRIPS) idx.push(i);
-  }
-  if (idx.length > STUDY_MAX_INTERSECTIONS) {
-    const near = idx.filter((i) => i < STUDY_NEAREST_FLOOR);
-    const rest = idx
-      .filter((i) => i >= STUDY_NEAREST_FLOOR)
-      .sort((a, b) => assigned(b) - assigned(a))
-      .slice(0, Math.max(0, STUDY_MAX_INTERSECTIONS - near.length));
-    idx = [...near, ...rest].sort((a, b) => a - b);
   }
   return idx;
 }
