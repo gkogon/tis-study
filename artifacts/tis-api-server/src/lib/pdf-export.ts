@@ -2472,13 +2472,22 @@ function renderTisCalifornia(
 
   renderDiurnalCharts(doc, r);
 
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "4.3",
+    assignmentNumber: "4.4",
+    headingFn: caSubsection,
+    cap: 20,
+    intersections,
+    periods,
+  });
+
   const caHasDesignYear = intersections.some(
     (it) => it.designNoBuildLos != null || it.designBuildLos != null,
   );
   const caDesignYr = r.designYear ?? (req.openingYear ? Number(req.openingYear) + 20 : null);
   caSubsection(doc, caHasDesignYear
-    ? "4.3 Affected Intersections — Existing / Opening / 20-Year Design"
-    : "4.3 Affected Intersections — Existing / No-Build / Build");
+    ? "4.5 Affected Intersections — Existing / Opening / 20-Year Design"
+    : "4.5 Affected Intersections — Existing / No-Build / Build");
   if (caHasDesignYear) {
     doc.font("body").fontSize(10).fillColor("black").text(
       `Four scenarios are evaluated at each affected intersection per Caltrans / local-jurisdiction operational-analysis convention (LOS-only context, not CEQA-VMT): (1) Existing — current-year volumes, no growth; (2) Opening-Year No-Build (${req.openingYear ?? "—"}) — existing grown at ${r.growthAppliedPct ?? "—"}%/yr; (3) Opening-Year Build — No-Build plus project external trips; (4) 20-Year Design Year (${caDesignYr ?? "—"}) No-Build and Build — opening volumes compounded another 20 years, project trips at full build-out unchanged.`,
@@ -2535,7 +2544,7 @@ function renderTisCalifornia(
   }
   if (intersections.length > 0) {
 
-    caSubsection(doc, "4.4 Recommended Operational Improvements (Non-CEQA)");
+    caSubsection(doc, "4.6 Recommended Operational Improvements (Non-CEQA)");
     const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
     if (needMitigation.length > 0) {
       doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
@@ -6317,6 +6326,15 @@ function renderTisIllinois(
   }
 
   renderDiurnalCharts(doc, r);
+
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "4.1",
+    assignmentNumber: "4.2",
+    headingFn: gaSubsection,
+    cap: 20,
+    intersections,
+    periods,
+  });
 
   // --- §5 Background Growth ----------------------------------------------
   gaSection(doc, "5.0 BACKGROUND GROWTH");
