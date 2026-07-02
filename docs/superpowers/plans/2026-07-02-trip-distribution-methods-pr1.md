@@ -16,7 +16,7 @@
 - Deploy = squash-merge PR (do not merge in this plan; PR creation is out of scope for PR1 execution unless the user asks).
 - **Byte-identical invariant (precise, three clauses):**
   - **(i) Numeric identity, all regions.** With `distributionMethod` unset, the **LOADING** (`weights[]`, `loadWeights[]`, `flLoadMultiplier[]`), the **per-intersection added trips**, **LOS**, and **queue** numbers must be byte-identical to origin/main for every region. This is guaranteed by construction: `tis.ts` builds `demandZones`/`gravityZones`/`refVolume` exactly as today and the leaf module consumes them without re-derivation.
-  - **(ii) FL PDF identity.** FL's §6.1/§6.2 PDF output — prose, captions (including the FDOT TAH §2.7 caption), table columns/widths/alignments, and every `doc.moveDown(...)` spacing call — must be byte-identical after the refactor **for any FL study with ≥1 study-area zone** (i.e. every real report). The shared `renderTripDistributionSection` MUST parameterize narrative/caption strings and, when rendering FL, reproduce FL's exact prose + `doc.moveDown(0.2)` calls. KNOWN BENIGN EDGE: the shared renderer early-returns on an empty zone set, whereas origin/main would still emit a bare "§6.2 Project Trip Assignment" heading with no table. This path is unreachable for rendered FL reports because a zero-signal study returns HTTP 422 (coverage warning, PR #53) BEFORE PDF render, so no empty-zone FL report is ever produced — the divergence cannot occur in practice. Do not add code to reproduce the bare-heading case.
+  - **(ii) FL PDF identity.** FL's §6.1/§6.2 PDF output — prose, captions (including the FDOT TAH §2.7 caption), table columns/widths/alignments, and every `doc.moveDown(...)` spacing call — must be byte-identical after the refactor **for any FL study with ≥1 study-area zone** (i.e. every real report). The shared `renderTripDistributionSection` MUST parameterize narrative/caption strings and, when rendering FL, reproduce FL's exact prose + `doc.moveDown(0.2)` calls. KNOWN BENIGN EDGE: the shared renderer early-returns on an empty zone set, whereas origin/main would still emit a bare "§6.2 Project Trip Assignment" heading with no table. This path is unreachable for rendered FL reports because a zero-signal study returns HTTP 422 (coverage warning, PR #53) BEFORE PDF render, so no empty-zone FL report is ever produced — the divergence cannot occur in practice. Do not add code to reproduce the bare-heading case. **CHARTS EXEMPTION (Task 8B, user requirement "show all the graphs, lengthen the document"):** Task 8B ADDITIVELY appends distribution charts (compass rose + zone-share bars + distance-decay curve) to the shared section for ALL US flavors INCLUDING FL. This intentionally changes FL's §6 output by appending figures AFTER the existing prose/tables. Clause (ii)'s byte-identity therefore applies to the existing FL prose/tables/captions/spacing (which Task 6 must still reproduce exactly, and which Task 6's smoke verifies BEFORE Task 8B lands); the appended charts are an intended addition, not a regression. This is why Task 8B runs AFTER Task 6's byte-identical refactor is proven.
   - **(iii) Non-FL US reports INTENTIONALLY gain the new section.** GA/TX/CA/IL/NY/generic reports gain the trip-distribution section they lack today. This is the feature, NOT a regression — clause (i) applies to the loading/LOS *numbers*, not to the presence of the new PDF section.
 - London/UK is EXCLUDED — never add the shared distribution section to `renderTisLondon` (span **[3357, 4919]**; next fn `renderTisTexasWorksheet` at 4920).
 - No ITE-copyright content — PR1 only re-homes existing gravity math; no ITE tables introduced.
@@ -1255,6 +1255,180 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
 )"
 ```
+
+---
+
+## Task 8B — Distribution charts (compass rose + zone-share bars + distance-decay curve)
+
+**Goal:** Satisfy the user requirement "wire in gravity and distribution to show all the graphs on the generated pdf — this should lengthen the document." Add THREE graphs to the shared trip-distribution section, rendered for EVERY US flavor (GA/TX/CA/IL/NY/generic **and FL**): (1) a directional-distribution **compass rose** (8 octants), (2) a **per-zone gravity-share bar chart** (top-N zones), (3) a **share-vs-distance decay line chart**. Reuse the tested primitives in `pdf-charts.ts` (`drawColumnChart`, `drawLineChart`, `ensureSpace`, `fin`, `CHART_COLORS`) and add ONE new primitive (`drawCompassRose`). These are ADDITIVE — appended after the existing tables — so FL's existing prose/tables (Task 6) stay byte-identical and the report gets longer, as requested.
+
+**Files:**
+- Modify: `/Users/geraldkogon/tis-wt-tripdist/artifacts/tis-api-server/src/lib/pdf-charts.ts` (add `drawCompassRose` + its spec type)
+- Modify: `/Users/geraldkogon/tis-wt-tripdist/artifacts/tis-api-server/src/lib/pdf-export-distribution.ts` (import chart fns; append the 3 charts inside `renderTripDistributionSection` after the worksheet table, before the assignment sub-block)
+- Modify: `/Users/geraldkogon/tis-wt-tripdist/artifacts/tis-api-server/scripts/verify-trip-distribution.mjs` (add a pure assertion that the chart-input arrays derived from a summary are finite + correctly sized — see Step 8B.1)
+
+**Interfaces:**
+- Consumes (from `./pdf-charts`): `drawColumnChart(doc, spec)`, `drawLineChart(doc, spec)`, and the NEW `drawCompassRose(doc, spec)`; `CHART_COLORS`.
+- Consumes (from the summary built in Task 2): `TripDistributionSummary.byDirection: Record<CardinalDir, number>` (Σ=100), `TripDistributionSummary.zones: DistZone[]` (share-sorted; each has `name`, `distanceMi`, `sharePct`), and `CARDINALS` (from `./caltran-gravity`, clockwise-from-north order `["NNE","ENE","ESE","SSE","SSW","WSW","WNW","NNW"]`).
+- Produces: no new exported types beyond `CompassRoseSpec`; `renderTripDistributionSection` now emits 3 figures.
+
+- [ ] 8B.1 Write the failing check-script assertions FIRST. Append to `verify-trip-distribution.mjs` (after the existing gravity assertions), using the already-imported `computeTripDistribution` and the same 4-candidate `ctx`:
+
+```js
+// --- chart-input invariants (Task 8B) ---
+import { CARDINALS } from "../src/lib/caltran-gravity.ts";
+const gg = computeTripDistribution("gravity", ctx);
+const roseVals = CARDINALS.map((c) => gg.byDirection[c] ?? 0);
+ok(roseVals.length === 8, "compass rose has 8 octant values");
+ok(roseVals.every((v) => Number.isFinite(v) && v >= 0), "rose values finite non-negative");
+ok(Math.abs(roseVals.reduce((s, v) => s + v, 0) - 100) <= 0.5, "rose values (byDirection) sum to ~100");
+const shareVals = gg.zones.map((z) => z.sharePct);
+ok(shareVals.length === gg.zones.length && shareVals.every((v) => Number.isFinite(v) && v >= 0), "zone share values finite non-negative");
+const distVals = gg.zones.map((z) => z.distanceMi);
+ok(distVals.every((v) => Number.isFinite(v) && v >= 0), "zone distance values finite non-negative");
+```
+
+- [ ] 8B.2 Run to confirm the new assertions FAIL or the file errors on the missing import path only if applicable: `cd /Users/geraldkogon/tis-wt-tripdist/artifacts/tis-api-server && pnpm run check:trip-distribution`. Expected: the new lines are present; if `byDirection`/`zones` are already implemented from Task 2 they will PASS (that is fine — this step guards the chart INPUTS, which must hold before drawing). Do not proceed if any of the 5 new assertions fail.
+
+- [ ] 8B.3 Add `drawCompassRose` to `pdf-charts.ts`. Place it after `drawLineChart` (near line ~340, before `fmtTick`), reusing the module-scope `PAGE_MARGIN`, `TEXT_GRAY`, `CHART_COLORS`, `ensureSpace`, `fin` already defined in this file. Complete code:
+
+```ts
+export type CompassRoseSpec = {
+  title: string;
+  /** Octant labels in clockwise-from-north order (length 8). */
+  labels: readonly string[];
+  /** Values aligned 1:1 to labels (percent, 0..100). */
+  values: number[];
+  caption?: string;
+  color?: string;
+};
+
+/**
+ * Radial "compass rose": one colored spoke per octant, length ∝ value.
+ * Self-contained; page-breaks via ensureSpace; leaves the y-cursor below the figure.
+ */
+export function drawCompassRose(doc: PDFKit.PDFDocument, spec: CompassRoseSpec): void {
+  const size = 210; // square figure height in points
+  ensureSpace(doc, size + 46);
+  const startY = doc.y;
+  doc.font("bold").fontSize(9.5).fillColor(CHART_COLORS.caption).text(spec.title, PAGE_MARGIN, startY);
+  const top = doc.y + 6;
+  const cx = doc.page.width / 2;
+  const cy = top + size / 2;
+  const rMax = size / 2 - 22; // leave room for edge labels
+  const vals = spec.values.map(fin);
+  const maxV = Math.max(1e-9, ...vals);
+  const color = spec.color || CHART_COLORS.outbound;
+  const n = spec.labels.length;
+  // reference rings
+  doc.lineWidth(0.5).strokeColor(CHART_COLORS.grid);
+  doc.circle(cx, cy, rMax).stroke();
+  doc.circle(cx, cy, rMax * 0.5).stroke();
+  for (let i = 0; i < n; i++) {
+    const bearing = (i * 360) / n + 360 / (2 * n); // octant midpoints: 22.5,67.5,...
+    const ang = ((bearing - 90) * Math.PI) / 180;  // screen coords: 0deg=up, y grows down
+    const fx = cx + rMax * Math.cos(ang);
+    const fy = cy + rMax * Math.sin(ang);
+    // faint full-length spoke
+    doc.lineWidth(0.4).strokeColor(CHART_COLORS.grid).moveTo(cx, cy).lineTo(fx, fy).stroke();
+    // value spoke
+    const r = rMax * (vals[i]! / maxV);
+    const x = cx + r * Math.cos(ang);
+    const y = cy + r * Math.sin(ang);
+    doc.lineWidth(3).strokeColor(color).moveTo(cx, cy).lineTo(x, y).stroke();
+    doc.circle(x, y, 2.2).fill(color);
+    // edge label
+    const lx = cx + (rMax + 12) * Math.cos(ang);
+    const ly = cy + (rMax + 12) * Math.sin(ang);
+    doc.font("body").fontSize(7).fillColor(CHART_COLORS.axis)
+      .text(`${spec.labels[i]} ${Math.round(vals[i]!)}%`, lx - 20, ly - 4, { width: 40, align: "center" });
+  }
+  doc.y = cy + size / 2 + 8;
+  doc.x = PAGE_MARGIN;
+  if (spec.caption) {
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY)
+      .text(spec.caption, PAGE_MARGIN, doc.y, { width: doc.page.width - PAGE_MARGIN * 2, paragraphGap: 6 });
+    doc.x = PAGE_MARGIN;
+  }
+}
+```
+
+- [ ] 8B.4 Isolated typecheck of the chart module: `cd /Users/geraldkogon/tis-wt-tripdist/artifacts/tis-api-server && pnpm run typecheck`. Expected: no errors. (If `PDFKit` global namespace isn't resolved in isolation, the package typecheck still validates it in context.)
+
+- [ ] 8B.5 In `pdf-export-distribution.ts`, add the chart imports at the top (next to the existing imports):
+
+```ts
+import { drawColumnChart, drawLineChart, drawCompassRose, CHART_COLORS } from "./pdf-charts";
+import { CARDINALS } from "./caltran-gravity";
+```
+
+- [ ] 8B.6 In `renderTripDistributionSection`, AFTER the worksheet table is drawn and BEFORE the assignment sub-block (`if (opts.assignmentNumber && ...)`), append the three figures. `td` is the `TripDistributionSummary` already in scope (the same object the tables were built from). Complete code:
+
+```ts
+  // ---- Distribution graphs (Task 8B): appended for every US flavor, incl. FL ----
+  // (1) Directional distribution — compass rose over the eight octants.
+  drawCompassRose(doc, {
+    title: "Figure — Directional Distribution of Project Trips",
+    labels: CARDINALS,
+    values: CARDINALS.map((c) => fin2(td.byDirection?.[c])),
+    caption:
+      "Screening-grade directional distribution of net new project trips by compass octant " +
+      "(spoke length ∝ percent of project trips). Derived from the " +
+      `${td.methodLabel} distribution.`,
+    color: CHART_COLORS.outbound,
+  });
+  // (2) Per-zone gravity share — top zones by trip share.
+  {
+    const top = td.zones.slice(0, Math.min(12, td.zones.length));
+    if (top.length > 0) {
+      drawColumnChart(doc, {
+        title: "Figure — Project Trip Share by Study-Area Zone",
+        categories: top.map((z, i) => shortZoneLabel(z.name, i)),
+        series: [{ name: "Trip share (%)", color: CHART_COLORS.outbound, values: top.map((z) => fin2(z.sharePct)) }],
+        yLabel: "% of project trips",
+        height: 190,
+      });
+    }
+  }
+  // (3) Distance decay — trip share vs. distance from site.
+  {
+    const byDist = [...td.zones].sort((a, b) => a.distanceMi - b.distanceMi);
+    if (byDist.length > 1) {
+      drawLineChart(doc, {
+        title: "Figure — Trip Share vs. Distance from Site (Gravity Decay)",
+        categories: byDist.map((z) => `${z.distanceMi.toFixed(2)}`),
+        values: byDist.map((z) => fin2(z.sharePct)),
+        color: CHART_COLORS.line,
+        yLabel: "% of project trips",
+        xLabel: "distance from site (mi)",
+        height: 190,
+      });
+    }
+  }
+```
+
+- [ ] 8B.7 Add the two tiny local helpers used above near the top of `pdf-export-distribution.ts` (module scope, once). If a `fin`-style guard already exists in this file from Task 5, reuse it and skip `fin2`; otherwise add:
+
+```ts
+const fin2 = (x: unknown): number => (typeof x === "number" && Number.isFinite(x) ? x : 0);
+const shortZoneLabel = (name: string, i: number): string => {
+  const s = (name || `Zone ${i + 1}`).replace(/\s+/g, " ").trim();
+  return s.length > 16 ? s.slice(0, 15) + "…" : s;
+};
+```
+
+- [ ] 8B.8 Package typecheck: `cd /Users/geraldkogon/tis-wt-tripdist/artifacts/tis-api-server && pnpm run typecheck`. Expected: no errors.
+
+- [ ] 8B.9 Re-run the leaf check-script to confirm chart-input invariants hold: `pnpm run check:trip-distribution`. Expected: `ALL PASS`.
+
+- [ ] 8B.10 Commit:
+
+```bash
+git -C /Users/geraldkogon/tis-wt-tripdist add artifacts/tis-api-server/src/lib/pdf-charts.ts artifacts/tis-api-server/src/lib/pdf-export-distribution.ts artifacts/tis-api-server/scripts/verify-trip-distribution.mjs
+git -C /Users/geraldkogon/tis-wt-tripdist commit -m "Add distribution graphs (compass rose + zone-share bars + decay curve) to the shared section"
+```
+
+NOTE for the reviewer: these charts are ADDITIVE and INTENTIONAL (user requirement). They lengthen every US report (incl. FL) — this is desired, not a byte-identity regression. Task 6 already proved FL's existing prose/tables are byte-identical; Task 8B appends figures after them.
 
 ---
 
