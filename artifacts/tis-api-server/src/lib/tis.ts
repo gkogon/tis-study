@@ -55,6 +55,14 @@ import {
   APPROACH_CAPACITY_VPH,
 } from "./signal-delay";
 import { intersectionLoadFraction } from "./trip-loading";
+import {
+  computeTripDistribution,
+  type DistributionMethod,
+  type TripDistributionSummary,
+  type TripDistributionCtx,
+  type GravityZoneInput,
+  type DistributionCandidateMeta,
+} from "./trip-distribution";
 
 export { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence };
 // Re-export the delay model for back-compat (turbo-lane.ts / uk-capacity.ts and
@@ -370,10 +378,12 @@ export type TisRequest = {
   // shorten a report the lever is a smaller radius, not silent scoping within the
   // chosen radius.
   scopeStudyIntersections?: boolean;
+  distributionMethod?: DistributionMethod;
 };
 
 export type StudyTier = "auto" | "worksheet" | "abbreviated" | "full";
 export type ResolvedStudyTier = Exclude<StudyTier, "auto">;
+export type { DistributionMethod } from "./trip-distribution";
 
 export type ApproachImpact = {
   direction: Direction;
@@ -579,6 +589,8 @@ export type TisReport = {
    *  FL renderer's gravity worksheet, directional-distribution figure, and
    *  project-trip assignment. See caltran-gravity.ts. */
   flGravity?: FlGravitySummary;
+  /** Region-agnostic trip-distribution summary (all regions). */
+  tripDistribution?: TripDistributionSummary;
 };
 
 /** One zone (study-area intersection) row of the Caltran gravity worksheet. */
@@ -1294,70 +1306,71 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     FALLBACK_VOLUME,
     ...candidates.map((c) => (c.sig.totalVolume > 0 ? c.sig.totalVolume : 0)),
   );
-  const demandZones: DemandZone[] = candidates.map((c) => ({
-    id: c.sig.id,
-    attraction: c.sig.totalVolume > 0 ? c.sig.totalVolume : FALLBACK_VOLUME,
-    distanceMi: c.distanceMi,
-    // Existing congestion proxy for BPR feedback: a zone's through-volume
-    // relative to the busiest study signal (screening normalization, since
-    // absolute per-movement capacity isn't resolved at this stage).
-    baseVoverC: clamp((c.sig.totalVolume > 0 ? c.sig.totalVolume : FALLBACK_VOLUME) / refVolume, 0.05, 1.0),
-  }));
   // PM-peak external auto trips drive the BPR loading (the controlling
   // period); the resulting shares apply to every period.
   const pmRawForAssign = periodRawTrips(lu, req.size, "pm_peak", rates);
   const pmPassByForAssign = pmRawForAssign * (passByPct / 100);
   const pmInternalForAssign = (pmRawForAssign - pmPassByForAssign) * (internalCapturePct / 100);
   const pmExternalAutoForAssign = Math.max(0, pmRawForAssign - pmPassByForAssign - pmInternalForAssign) * autoModeShare;
-  const fourStep = distributeAndAssign(demandZones, pmExternalAutoForAssign, { gamma: GAMMA_FRICTION.hbw });
-  // FLORIDA STANDARD — the Caltran mass/distance gravity model replaces the
-  // NCHRP-716 gamma distribution for Florida studies (Caltran Engineering's HCA
-  // Westside TIS is the FL reference format). It sets both the trip DISTRIBUTION
-  // (Σ=1 shares that drive route assignment + the reported directional split)
-  // and, via a mean-1 directional multiplier, RE-ORIENTS per-intersection
-  // loading toward the high-share directions without disturbing the distance-
-  // decay near-site concentration that trip-loading.ts deliberately preserves.
-  // Every other region keeps the gamma model untouched. See caltran-gravity.ts.
-  let weights = fourStep.weights;
-  let flGravity: FlGravitySummary | undefined;
-  const flLoadMultiplier = new Array<number>(candidates.length).fill(1);
-  if (isFloridaRegion(region)) {
-    const gravityZones = candidates.map((c) => ({
-      id: c.sig.id,
-      // Zone mass M: the intersection's through-volume (AADT × K) is the
-      // destination-activity attraction proxy the engine already uses.
-      mass: c.sig.totalVolume > 0 ? c.sig.totalVolume : FALLBACK_VOLUME,
-      distanceMi: c.distanceMi,
-      bearingDeg: bearingDeg(
-        { lat: req.latitude, lon: req.longitude },
-        { lat: c.sig.latitude, lon: c.sig.longitude },
-      ),
-    }));
-    const gShares = caltranGravityShares(gravityZones);
-    const gMults = directionalMultipliers(gravityZones);
-    weights = gShares.map((s) => s.share);
-    for (let i = 0; i < gMults.length; i++) flLoadMultiplier[i] = gMults[i]!.multiplier;
-    const byDirection = rollupByCardinal(gShares);
-    const zones: FlGravityZone[] = gShares
-      .map((s, i) => ({
-        id: s.id,
-        name: candidates[i]!.sig.name,
-        distanceMi: s.distanceMi,
-        bearingDeg: s.bearingDeg ?? 0,
-        cardinal: bearingToCardinal(s.bearingDeg ?? 0),
-        mass: s.mass,
-        term: s.term,
-        sharePct: s.sharePct,
-      }))
-      .sort((a, b) => b.sharePct - a.sharePct);
-    flGravity = {
-      betaExponent: CALTRAN_GRAVITY_BETA,
-      massBasis: "intersection through-volume (AADT × K-factor) as the destination-activity attraction proxy",
-      zones,
-      byDirection,
-      sectors: sectorPairs(byDirection),
-    };
-  }
+  // Build the four-step demand zones EXACTLY as before (refVolume-normalized
+  // baseVoverC) so the unified layer reproduces origin/main weights byte-for-byte.
+  const demandZones: DemandZone[] = candidates.map((c) => ({
+    id: c.sig.id,
+    attraction: c.sig.totalVolume > 0 ? c.sig.totalVolume : FALLBACK_VOLUME,
+    distanceMi: c.distanceMi,
+    baseVoverC: clamp((c.sig.totalVolume > 0 ? c.sig.totalVolume : FALLBACK_VOLUME) / refVolume, 0.05, 1.0),
+  }));
+  // Caltran gravity zones (mass + bearing) built exactly as the FL branch did.
+  const gravityZones: GravityZoneInput[] = candidates.map((c) => ({
+    id: c.sig.id,
+    mass: c.sig.totalVolume > 0 ? c.sig.totalVolume : FALLBACK_VOLUME,
+    distanceMi: c.distanceMi,
+    bearingDeg: bearingDeg(
+      { lat: req.latitude, lon: req.longitude },
+      { lat: c.sig.latitude, lon: c.sig.longitude },
+    ),
+  }));
+  const distMeta: DistributionCandidateMeta[] = candidates.map((c, i) => ({
+    id: c.sig.id,
+    name: c.sig.name,
+    distanceMi: c.distanceMi,
+    bearingDeg: gravityZones[i]!.bearingDeg,
+    mass: gravityZones[i]!.mass,
+  }));
+  // Unified trip-distribution layer. Default (unset method) resolves to the
+  // gravity strategy — four-step for most regions, Caltran mass/distance for
+  // FL — producing byte-identical weights/loadMultipliers/flGravity to the
+  // prior inline path (the leaf consumes the pre-built zones above).
+  const distCtx: TripDistributionCtx = {
+    meta: distMeta,
+    demandZones,
+    gravityZones,
+    pmExternalAutoTrips: pmExternalAutoForAssign,
+    isFlorida: isFloridaRegion(region),
+  };
+  const dist = computeTripDistribution(req.distributionMethod, distCtx);
+  let weights = dist.weights;
+  const flLoadMultiplier = dist.loadMultipliers;
+  // Preserve the FL renderer's flGravity contract from the unified summary
+  // (share-sorted zones, matching origin/main).
+  const flGravity: FlGravitySummary | undefined = isFloridaRegion(region)
+    ? {
+        betaExponent: dist.betaExponent,
+        massBasis: dist.massBasis,
+        zones: dist.zones.map((z) => ({
+          id: z.id,
+          name: z.name,
+          distanceMi: z.distanceMi,
+          bearingDeg: z.bearingDeg,
+          cardinal: z.cardinal,
+          mass: z.mass,
+          term: z.term,
+          sharePct: z.sharePct,
+        })),
+        byDirection: dist.byDirection,
+        sectors: dist.sectors,
+      }
+    : undefined;
   // Per-intersection project-trip load fraction: distance-decay concentration
   // (trip-loading.ts), re-oriented by the Florida gravity multiplier (= 1 for
   // every non-FL region), clamped so no intersection can carry more than the
@@ -1574,6 +1587,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     junctionImpactSignificant,
     ...(coverageWarning ? { coverageWarning } : {}),
     ...(flGravity ? { flGravity } : {}),
+    tripDistribution: dist,
   };
 }
 
