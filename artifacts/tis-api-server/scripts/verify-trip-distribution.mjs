@@ -132,5 +132,17 @@ ok(close(z.weights.reduce((s, w) => s + w, 0), 1, 0.01) || z.weights.every((w) =
 const empty = computeTripDistribution("gravity", { meta: [], demandZones: [], gravityZones: [], pmExternalAutoTrips: 0, isFlorida: false });
 ok(empty.weights.length === 0 && empty.zones.length === 0, "empty ctx yields empty summary, no throw");
 
+// --- chart-input invariants (Task 8B) ---
+const { CARDINALS } = cg;
+const gg = computeTripDistribution("gravity", ctx);
+const roseVals = CARDINALS.map((c) => gg.byDirection[c] ?? 0);
+ok(roseVals.length === 8, "compass rose has 8 octant values");
+ok(roseVals.every((v) => Number.isFinite(v) && v >= 0), "rose values finite non-negative");
+ok(Math.abs(roseVals.reduce((s, v) => s + v, 0) - 100) <= 0.5, "rose values (byDirection) sum to ~100");
+const shareVals = gg.zones.map((z) => z.sharePct);
+ok(shareVals.length === gg.zones.length && shareVals.every((v) => Number.isFinite(v) && v >= 0), "zone share values finite non-negative");
+const distVals = gg.zones.map((z) => z.distanceMi);
+ok(distVals.every((v) => Number.isFinite(v) && v >= 0), "zone distance values finite non-negative");
+
 console.log(fails === 0 ? "ALL PASS" : `${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);

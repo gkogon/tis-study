@@ -7,6 +7,8 @@
 // prose, captions (incl. FDOT TAH §2.7), and doc.moveDown(0.2) spacing so the
 // refactored FL section is byte-identical to origin/main.
 import type { TripDistributionSummary } from "./trip-distribution";
+import { drawColumnChart, drawLineChart, drawCompassRose, CHART_COLORS } from "./pdf-charts";
+import { CARDINALS } from "./caltran-gravity";
 
 // ---- primitives table() closes over (copied per Path A) ----
 const PAGE_MARGIN = 50;
@@ -15,6 +17,12 @@ const velocityPaletteActive = false as boolean;
 const VELOCITY_FILL = "#ECF5E9";
 const VELOCITY_GREEN = "#8EC57C";
 const TEXT_GRAY = "#6b7280";
+
+const fin2 = (x: unknown): number => (typeof x === "number" && Number.isFinite(x) ? x : 0);
+const shortZoneLabel = (name: string, i: number): string => {
+  const s = (name || `Zone ${i + 1}`).replace(/\s+/g, " ").trim();
+  return s.length > 16 ? s.slice(0, 15) + "…" : s;
+};
 
 type TableSpec = {
   headers: string[];
@@ -219,6 +227,47 @@ export function renderTripDistributionSection(
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
+
+  // ---- Distribution graphs (Task 8B): appended for every US flavor, incl. FL ----
+  // (1) Directional distribution — compass rose over the eight octants.
+  drawCompassRose(doc, {
+    title: "Figure — Directional Distribution of Project Trips",
+    labels: CARDINALS,
+    values: CARDINALS.map((c) => fin2(td.byDirection?.[c])),
+    caption:
+      "Screening-grade directional distribution of net new project trips by compass octant " +
+      "(spoke length ∝ percent of project trips). Derived from the " +
+      `${td.methodLabel} distribution.`,
+    color: CHART_COLORS.outbound,
+  });
+  // (2) Per-zone gravity share — top zones by trip share.
+  {
+    const top = td.zones.slice(0, Math.min(12, td.zones.length));
+    if (top.length > 0) {
+      drawColumnChart(doc, {
+        title: "Figure — Project Trip Share by Study-Area Zone",
+        categories: top.map((z, i) => shortZoneLabel(z.name, i)),
+        series: [{ name: "Trip share (%)", color: CHART_COLORS.outbound, values: top.map((z) => fin2(z.sharePct)) }],
+        yLabel: "% of project trips",
+        height: 190,
+      });
+    }
+  }
+  // (3) Distance decay — trip share vs. distance from site.
+  {
+    const byDist = [...td.zones].sort((a, b) => a.distanceMi - b.distanceMi);
+    if (byDist.length > 1) {
+      drawLineChart(doc, {
+        title: "Figure — Trip Share vs. Distance from Site (Gravity Decay)",
+        categories: byDist.map((z) => `${z.distanceMi.toFixed(2)}`),
+        values: byDist.map((z) => fin2(z.sharePct)),
+        color: CHART_COLORS.line,
+        yLabel: "% of project trips",
+        xLabel: "distance from site (mi)",
+        height: 190,
+      });
+    }
+  }
 
   // --- Assignment sub-block (only when assignmentNumber is provided) ---
   const intersections: any[] = opts.intersections ?? result?.affectedIntersections ?? [];
