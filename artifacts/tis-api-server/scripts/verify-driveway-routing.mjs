@@ -133,7 +133,11 @@ ok(Math.abs(totRiro - 200) < 1e-6, `reroute conserves total trips (got ${totRiro
 //   (b) driveways: [] is byte-identical to the no-driveways baseline.
 
 import { build as esbuild } from "../node_modules/esbuild/lib/main.js";
-import { writeFile, unlink } from "node:fs/promises";
+import { writeFile, unlink, mkdtemp } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import os from "node:os";
+const execFileAsync = promisify(execFile);
 
 // Set a dummy DATABASE_URL before bundling/importing tis.ts so the db module
 // doesn't throw at module-evaluation time. tis-calibration.ts connects lazily
@@ -143,15 +147,19 @@ if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = "postgres://localhost/tis_e2e_stub_db";
 }
 
-// Bundle tis.ts (+ its dependency tree) into a temp file INSIDE the project
-// so node can resolve externals (pino, pdfkit…) from the local node_modules.
-const bundlePath = path.resolve(here, "../.tis-bundle-e2e.mjs");
+// Bundle tis.ts (+ its dependency tree) into a temp file at src/lib/ so that
+// pdf-export.ts's ../../data/fonts path resolves correctly (fonts are at
+// artifacts/tis-api-server/data/fonts; from src/lib, ../../data/fonts works).
+const bundlePath = path.resolve(here, "../src/lib/.tis-bundle-e2e.mjs");
 
 // Thin entry that re-exports only what the test needs.
 const entryContent = `export { generateTisReport } from ${JSON.stringify(
   path.resolve(here, "../src/lib/tis.ts")
+)};
+export { renderStudyPdf } from ${JSON.stringify(
+  path.resolve(here, "../src/lib/pdf-export.ts")
 )};`;
-const entryPath = path.resolve(here, "../.tis-bundle-entry.ts");
+const entryPath = path.resolve(here, "../src/lib/.tis-bundle-entry.ts");
 await writeFile(entryPath, entryContent, "utf8");
 
 let bundleOk = false;
@@ -284,6 +292,48 @@ if (bundleOk) {
       const riroAdded = (riroReport.affectedIntersections ?? []).map((r) => r.addedTripsPmPeak ?? 0);
       ok(riroAdded.some((v) => v > 0),
         `RIRO report has at least one intersection with addedTripsPmPeak > 0 (got [${riroAdded.join(",")}])`);
+
+      // ─── Task 8: PDF driveway access table ───────────────────────────────────
+      // Render the RIRO-driveway report to a PDF and assert pdftotext output
+      // contains "Site Access — Driveways" and the driveway label.
+      const { renderStudyPdf } = tisModule;
+      let pdfBuf;
+      try {
+        const riroProject = {
+          id: "driveway-e2e",
+          studyType: "tis",
+          projectName: "E2E Driveway Test",
+          landUseCode: "220",
+          siteLat: String(E2E_LAT),
+          siteLon: String(E2E_LON),
+          version: 1,
+          createdAt: new Date(),
+          requestPayload: { ...baseReq, driveways: [RIRO_DRIVEWAY] },
+          resultPayload: riroReport,
+        };
+        pdfBuf = await renderStudyPdf(riroProject, { name: "Test Firm", logoUrl: null });
+      } catch (e) {
+        console.error("PDF render threw:", e.message ?? e);
+      }
+      ok(Buffer.isBuffer(pdfBuf) && pdfBuf.subarray(0, 5).toString() === "%PDF-",
+        `PDF renders without throwing (${pdfBuf?.length ?? 0} bytes)`);
+      if (Buffer.isBuffer(pdfBuf)) {
+        // Use pdftotext to extract text and assert on "Site Access" + driveway label.
+        let pdfText = "";
+        try {
+          const tmpDir = await mkdtemp(path.join(os.tmpdir(), "tis-dw-pdf-"));
+          const tmpPdf = path.join(tmpDir, "driveway-test.pdf");
+          await writeFile(tmpPdf, pdfBuf);
+          const { stdout } = await execFileAsync("pdftotext", [tmpPdf, "-"], { maxBuffer: 10 * 1024 * 1024 });
+          pdfText = stdout;
+        } catch (e) {
+          console.error("pdftotext failed:", e.message ?? e);
+        }
+        ok(pdfText.includes("Site Access"),
+          `PDF contains "Site Access" driveway section heading`);
+        ok(pdfText.includes(RIRO_DRIVEWAY.label),
+          `PDF contains driveway label "${RIRO_DRIVEWAY.label}"`);
+      }
     }
   }
 

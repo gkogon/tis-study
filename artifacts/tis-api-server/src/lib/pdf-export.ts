@@ -1023,6 +1023,31 @@ function dispatchTisRender(
     // 1. Run the region-specific body renderer (GA/FL/NY/CA/TX/IL/UK/…).
     selectRegionalTisRenderer(doc, result, project);
 
+    // 1b. Driveway access table — rendered when result.driveways is present
+    //     (opt-in: absent or empty driveways ⇒ this block is skipped entirely,
+    //     so output is byte-identical to today).
+    const dw = (result as any).driveways;
+    if (dw && Array.isArray(dw.driveways) && dw.driveways.length > 0) {
+      gaSubsection(doc, "Site Access — Driveways");
+      table(doc, {
+        headers: ["Driveway", "Enter L / R", "Exit L / R", "Rerouted"],
+        widths: [220, 110, 110, 80],
+        align: ["left", "right", "right", "right"],
+        rows: dw.driveways.map((d: any) => [
+          String(d.label ?? "—"),
+          `${Math.round(d.enterByMovement?.inLeft ?? 0)} / ${Math.round(d.enterByMovement?.inRight ?? 0)}`,
+          `${Math.round(d.exitByMovement?.outLeft ?? 0)} / ${Math.round(d.exitByMovement?.outRight ?? 0)}`,
+          String(Math.round(d.reroutedTrips ?? 0)),
+        ]),
+      });
+      if (Array.isArray(dw.reroutes) && dw.reroutes.length > 0) {
+        doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+          `${dw.reroutes.reduce((s: number, r: any) => s + (r.trips || 0), 0)} project trips reroute as U-turns where a driveway forbids the required movement.`,
+          { paragraphGap: 6 });
+        doc.fillColor("black");
+      }
+    }
+
     // 2. Append the shared per-intersection capacity appendix for EVERY
     //    region — turning-movement diagrams per analyzed peak period + the
     //    per-approach HCM capacity table. This was previously FL-only, which
