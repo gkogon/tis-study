@@ -1352,6 +1352,8 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     gravityZones,
     pmExternalAutoTrips: pmExternalAutoForAssign,
     isFlorida: isFloridaRegion(region),
+    landUseCode: req.landUseCode,
+    densityIndex,
   };
   const dist = computeTripDistribution(req.distributionMethod, distCtx);
   let weights = dist.weights;
