@@ -34,6 +34,7 @@ import { demoRateLimiter, geocodeRateLimiter } from "../lib/security";
 import { logEvent } from "../lib/events";
 import { renderStudyPdf } from "../lib/pdf-export";
 import { regionForCoordinate, nearestRegionForCoordinate, type Region } from "../lib/regions";
+import { fetchLocalRoads, findDrivewayCandidates } from "../lib/network-assignment";
 import { clientIpFromRequest, geolocateIp } from "../lib/ip-geolocate";
 
 const router: IRouter = Router();
@@ -490,6 +491,33 @@ router.post("/demo/geocode", geocodeRateLimiter, async (req, res): Promise<void>
     // AbortError, network error, or upstream JSON parse failure — all
     // map to the same recoverable surface.
     res.status(502).json({ error: "Address lookup is temporarily unavailable. Try again or paste coordinates directly." });
+  }
+});
+
+/**
+ * POST /demo/driveway-candidates — auto-detect candidate driveway access points
+ * on the streets fronting a site, to seed the map editor. Best-effort: bad input
+ * ⇒ 400, but no roads / any failure ⇒ { candidates: [] } so the UI simply falls
+ * back to manual placement rather than erroring.
+ */
+router.post("/demo/driveway-candidates", geocodeRateLimiter, async (req, res): Promise<void> => {
+  const b = (req.body ?? {}) as { latitude?: unknown; longitude?: unknown; radiusMi?: unknown };
+  const lat = Number(b.latitude);
+  const lon = Number(b.longitude);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lon) || lon < -180 || lon > 180) {
+    res.status(400).json({ error: "Valid latitude and longitude are required." });
+    return;
+  }
+  const radiusMi = Number.isFinite(Number(b.radiusMi))
+    ? Math.min(0.5, Math.max(0.05, Number(b.radiusMi)))
+    : 0.15;
+  try {
+    const region = regionForCoordinate(lat, lon) ?? nearestRegionForCoordinate(lat, lon);
+    const segs = region ? await fetchLocalRoads(region.code, lat, lon, radiusMi) : null;
+    const candidates = segs ? findDrivewayCandidates(segs, { lat, lon }) : [];
+    res.json({ candidates });
+  } catch {
+    res.json({ candidates: [] });
   }
 });
 
