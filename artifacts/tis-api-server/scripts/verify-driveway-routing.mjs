@@ -60,5 +60,176 @@ ok(rRiro.driveways[0].reroutedTrips > 0, "the RIRO driveway records rerouted tri
 const totRiro = rRiro.perDestinationAddedTrips.reduce((s, v) => s + v, 0);
 ok(Math.abs(totRiro - 200) < 1e-6, `reroute conserves total trips (got ${totRiro})`);
 
+// ─── E2E: verify tis.ts driveway wiring via generateTisReport ────────────────
+// tis.ts uses bundler-resolution imports (no .ts extensions) that Node's native
+// type-strip cannot resolve directly. Bundle tis.ts with esbuild into a temp
+// file first, then import the bundle — the same approach the production build
+// uses, but scoped to the engine module only.
+//
+// Assertions:
+//   (a) A RIRO-driveway request yields at least one intersection whose
+//       addedTripsPmPeak is non-zero and the result carries a driveways payload.
+//   (b) driveways: [] is byte-identical to the no-driveways baseline.
+
+import { build as esbuild } from "../node_modules/esbuild/lib/main.js";
+import { writeFile, unlink } from "node:fs/promises";
+
+// Set a dummy DATABASE_URL before bundling/importing tis.ts so the db module
+// doesn't throw at module-evaluation time. tis-calibration.ts connects lazily
+// (the pool is created at module level but queries only run on function call);
+// generateTisReport falls back to an empty calibration map when the DB is down.
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = "postgres://localhost/tis_e2e_stub_db";
+}
+
+// Bundle tis.ts (+ its dependency tree) into a temp file INSIDE the project
+// so node can resolve externals (pino, pdfkit…) from the local node_modules.
+const bundlePath = path.resolve(here, "../.tis-bundle-e2e.mjs");
+
+// Thin entry that re-exports only what the test needs.
+const entryContent = `export { generateTisReport } from ${JSON.stringify(
+  path.resolve(here, "../src/lib/tis.ts")
+)};`;
+const entryPath = path.resolve(here, "../.tis-bundle-entry.ts");
+await writeFile(entryPath, entryContent, "utf8");
+
+let bundleOk = false;
+try {
+  await esbuild({
+    entryPoints: [entryPath],
+    platform: "node",
+    bundle: true,
+    format: "esm",
+    outfile: bundlePath,
+    logLevel: "silent",
+    // Keep node built-ins external; also keep pdfkit + pino external (native
+    // loaders, same as production build) so the bundle doesn't choke.
+    external: [
+      "*.node", "pdfkit", "fontkit", "pino", "pino-pretty",
+      "esbuild-plugin-pino", "argon2", "bcrypt", "better-sqlite3",
+      "pg-native", "canvas", "sharp", "ioredis",
+    ],
+    // Suppress the "Direct eval" warning from pino (not a real issue here).
+    banner: {
+      js: `import { createRequire as __cr } from 'node:module';
+globalThis.require = __cr(import.meta.url);`,
+    },
+  });
+  bundleOk = true;
+} catch (buildErr) {
+  console.error("esbuild failed:", buildErr.message ?? buildErr);
+  fails++;
+}
+
+if (bundleOk) {
+  // Site just west of Atlanta CBD, Atlanta region.
+  const E2E_LAT = 33.749;
+  const E2E_LON = -84.3880;
+
+  // Two intersections: one EAST, one WEST (~0.008°lon ≈ 0.4 mi).
+  const MOCK_INTS = [
+    { id: "sig-E", name: "E Signal", zone: "ATL", latitude: E2E_LAT, longitude: E2E_LON + 0.008, totalVolume: 8000 },
+    { id: "sig-W", name: "W Signal", zone: "ATL", latitude: E2E_LAT, longitude: E2E_LON - 0.008, totalVolume: 7000 },
+  ];
+
+  // A short E-W road segment through the site.
+  const MOCK_ROADS = {
+    available: true,
+    segments: [[3, E2E_LAT, E2E_LON - 0.015, E2E_LAT, E2E_LON + 0.015, null, null]],
+  };
+
+  // RIRO driveway just north of the site on the E-W road.
+  const RIRO_DRIVEWAY = {
+    id: "dw1", label: "Main Driveway",
+    latitude: E2E_LAT + 0.00005, longitude: E2E_LON,
+    accessType: "riro",
+    movements: { inLeft: false, inRight: true, outLeft: false, outRight: true },
+  };
+
+  // Mock global fetch BEFORE importing the bundle so the module-level
+  // intersection cache in tis.ts is seeded by our mock on first call.
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes("/api/atlanta/intersections") || u.includes("/api/intersections")) {
+      return new Response(JSON.stringify(MOCK_INTS), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (u.includes("/api/roads")) {
+      return new Response(JSON.stringify(MOCK_ROADS), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("not found", { status: 404 });
+  };
+
+  let tisModule;
+  try {
+    tisModule = await import(bundlePath);
+  } catch (e) {
+    console.error("FATAL: failed to import bundle:", e.message);
+    fails++;
+  }
+
+  if (tisModule) {
+    const { generateTisReport } = tisModule;
+    const baseReq = {
+      projectName: "E2E Driveway Test",
+      address: "Atlanta, GA",
+      latitude: E2E_LAT,
+      longitude: E2E_LON,
+      landUseCode: "220",
+      size: 100,
+      openingYear: 2027,
+      analysisPeriods: ["pm_peak"],
+    };
+
+    let baseReport, emptyReport, riroReport;
+    try {
+      baseReport  = await generateTisReport({ ...baseReq });
+      emptyReport = await generateTisReport({ ...baseReq, driveways: [] });
+      riroReport  = await generateTisReport({ ...baseReq, driveways: [RIRO_DRIVEWAY] });
+    } catch (e) {
+      console.error("FATAL: generateTisReport threw:", e.message);
+      console.error(e.stack?.slice(0, 800));
+      fails++;
+    }
+
+    globalThis.fetch = origFetch;
+
+    if (baseReport && emptyReport && riroReport) {
+      // (b) driveways: [] opt-in guard: result carries no driveways payload and
+      // intersection scores are unchanged vs the no-driveways baseline.
+      // (The request echo differs: driveways:[] serializes into req, which is
+      // expected and fine — the guard is about *computed* output being unchanged.)
+      ok(emptyReport.driveways == null,
+        "driveways:[] does NOT produce a driveways result payload (opt-in guard)");
+      const baseScores  = JSON.stringify((baseReport.affectedIntersections ?? []).map((r) => ({ id: r.signalId, vc: r.currentVc, added: r.addedTripsPmPeak })));
+      const emptyScores = JSON.stringify((emptyReport.affectedIntersections ?? []).map((r) => ({ id: r.signalId, vc: r.currentVc, added: r.addedTripsPmPeak })));
+      ok(baseScores === emptyScores,
+        "driveways:[] intersection scores are identical to no-driveways baseline");
+
+      // (a) RIRO report carries a driveways payload.
+      ok(riroReport.driveways != null,
+        "RIRO report carries a driveways result payload");
+      ok(Array.isArray(riroReport.driveways?.driveways) && riroReport.driveways.driveways.length > 0,
+        "driveways payload has at least one driveway result");
+      ok(Array.isArray(riroReport.driveways?.reroutes) && riroReport.driveways.reroutes.length > 0,
+        "RIRO report driveways.reroutes is non-empty (U-turn reroutes recorded)");
+
+      // At least one intersection should have a non-zero addedTripsPmPeak
+      // (the driveway assignment channels trips through intersections).
+      const riroAdded = (riroReport.affectedIntersections ?? []).map((r) => r.addedTripsPmPeak ?? 0);
+      ok(riroAdded.some((v) => v > 0),
+        `RIRO report has at least one intersection with addedTripsPmPeak > 0 (got [${riroAdded.join(",")}])`);
+    }
+  }
+
+  // Clean up temp bundle files.
+  await unlink(bundlePath).catch(() => {});
+  await unlink(entryPath).catch(() => {});
+}
+
 console.log(""); console.log(fails === 0 ? "ALL PASS" : `${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);

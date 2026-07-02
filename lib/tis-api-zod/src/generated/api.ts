@@ -582,6 +582,54 @@ export const GenerateTisResponse = zod.object({
       expectedLosDrops: zod.number(),
     })
     .optional(),
+  driveways: zod
+    .object({
+      driveways: zod.array(
+        zod
+          .object({
+            drivewayNode: zod
+              .number()
+              .describe(
+                "Internal graph node index for the driveway snap point.",
+              ),
+            label: zod
+              .string()
+              .describe("Driveway label (falls back to the driveway id)."),
+            enterByMovement: zod.object({
+              inLeft: zod.number().describe("Trips entering via left turn."),
+              inRight: zod.number().describe("Trips entering via right turn."),
+            }),
+            exitByMovement: zod.object({
+              outLeft: zod.number().describe("Trips exiting via left turn."),
+              outRight: zod.number().describe("Trips exiting via right turn."),
+            }),
+            reroutedTrips: zod
+              .number()
+              .describe(
+                "Trips that could not leave directly and rerouted as U-turns.",
+              ),
+          })
+          .describe(
+            "Per-driveway assignment summary from a driveway-routed TIS.",
+          ),
+      ),
+      reroutes: zod.array(
+        zod.object({
+          destIndex: zod
+            .number()
+            .describe(
+              "Index into the destination list (candidate intersection) where the U-turn volume was credited.",
+            ),
+          trips: zod
+            .number()
+            .describe("Number of trips rerouted via this U-turn."),
+        }),
+      ),
+    })
+    .optional()
+    .describe(
+      "Driveway access assignment result. Present only when `request.driveways` was supplied and non-empty AND a road network was available to route through. Absent ⇒ no driveways or roads unavailable (base LOS unchanged).",
+    ),
 });
 
 /**
@@ -1296,6 +1344,62 @@ export const GetTisProjectResponse = zod
           expectedLosDrops: zod.number(),
         })
         .optional(),
+      driveways: zod
+        .object({
+          driveways: zod.array(
+            zod
+              .object({
+                drivewayNode: zod
+                  .number()
+                  .describe(
+                    "Internal graph node index for the driveway snap point.",
+                  ),
+                label: zod
+                  .string()
+                  .describe("Driveway label (falls back to the driveway id)."),
+                enterByMovement: zod.object({
+                  inLeft: zod
+                    .number()
+                    .describe("Trips entering via left turn."),
+                  inRight: zod
+                    .number()
+                    .describe("Trips entering via right turn."),
+                }),
+                exitByMovement: zod.object({
+                  outLeft: zod
+                    .number()
+                    .describe("Trips exiting via left turn."),
+                  outRight: zod
+                    .number()
+                    .describe("Trips exiting via right turn."),
+                }),
+                reroutedTrips: zod
+                  .number()
+                  .describe(
+                    "Trips that could not leave directly and rerouted as U-turns.",
+                  ),
+              })
+              .describe(
+                "Per-driveway assignment summary from a driveway-routed TIS.",
+              ),
+          ),
+          reroutes: zod.array(
+            zod.object({
+              destIndex: zod
+                .number()
+                .describe(
+                  "Index into the destination list (candidate intersection) where the U-turn volume was credited.",
+                ),
+              trips: zod
+                .number()
+                .describe("Number of trips rerouted via this U-turn."),
+            }),
+          ),
+        })
+        .optional()
+        .describe(
+          "Driveway access assignment result. Present only when `request.driveways` was supplied and non-empty AND a road network was available to route through. Absent ⇒ no driveways or roads unavailable (base LOS unchanged).",
+        ),
     }),
   })
   .describe(

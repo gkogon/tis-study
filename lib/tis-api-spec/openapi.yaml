@@ -662,6 +662,45 @@ components:
         - probAnyLosDrop
         - probAnyLosEf
         - expectedLosDrops
+    DrivewayResultItem:
+      type: object
+      description: Per-driveway assignment summary from a driveway-routed TIS.
+      required: [drivewayNode, label, enterByMovement, exitByMovement, reroutedTrips]
+      properties:
+        drivewayNode: { type: integer, description: Internal graph node index for the driveway snap point. }
+        label: { type: string, description: Driveway label (falls back to the driveway id). }
+        enterByMovement:
+          type: object
+          required: [inLeft, inRight]
+          properties:
+            inLeft:  { type: number, description: Trips entering via left turn. }
+            inRight: { type: number, description: Trips entering via right turn. }
+        exitByMovement:
+          type: object
+          required: [outLeft, outRight]
+          properties:
+            outLeft:  { type: number, description: Trips exiting via left turn. }
+            outRight: { type: number, description: Trips exiting via right turn. }
+        reroutedTrips: { type: number, description: Trips that could not leave directly and rerouted as U-turns. }
+    DrivewayRouteResult:
+      type: object
+      description: >-
+        Driveway access assignment result. Present only when `request.driveways`
+        was supplied and non-empty AND a road network was available to route
+        through. Absent ⇒ no driveways or roads unavailable (base LOS unchanged).
+      required: [driveways, reroutes]
+      properties:
+        driveways:
+          type: array
+          items: { $ref: '#/components/schemas/DrivewayResultItem' }
+        reroutes:
+          type: array
+          items:
+            type: object
+            required: [destIndex, trips]
+            properties:
+              destIndex: { type: integer, description: Index into the destination list (candidate intersection) where the U-turn volume was credited. }
+              trips: { type: number, description: Number of trips rerouted via this U-turn. }
     TisRouteAssignment:
       type: object
       properties:
@@ -729,6 +768,7 @@ components:
         autoModeShareApplied: { type: number }
         routeAssignment: { $ref: "#/components/schemas/TisRouteAssignment" }
         sensitivity: { $ref: "#/components/schemas/TisSensitivityResult" }
+        driveways: { $ref: "#/components/schemas/DrivewayRouteResult" }
       required:
         - generatedAt
         - request

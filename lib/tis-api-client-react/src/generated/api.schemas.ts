@@ -480,6 +480,49 @@ export interface TisSensitivityResult {
   expectedLosDrops: number;
 }
 
+export type DrivewayResultItemEnterByMovement = {
+  /** Trips entering via left turn. */
+  inLeft: number;
+  /** Trips entering via right turn. */
+  inRight: number;
+};
+
+export type DrivewayResultItemExitByMovement = {
+  /** Trips exiting via left turn. */
+  outLeft: number;
+  /** Trips exiting via right turn. */
+  outRight: number;
+};
+
+/**
+ * Per-driveway assignment summary from a driveway-routed TIS.
+ */
+export interface DrivewayResultItem {
+  /** Internal graph node index for the driveway snap point. */
+  drivewayNode: number;
+  /** Driveway label (falls back to the driveway id). */
+  label: string;
+  enterByMovement: DrivewayResultItemEnterByMovement;
+  exitByMovement: DrivewayResultItemExitByMovement;
+  /** Trips that could not leave directly and rerouted as U-turns. */
+  reroutedTrips: number;
+}
+
+export type DrivewayRouteResultReroutesItem = {
+  /** Index into the destination list (candidate intersection) where the U-turn volume was credited. */
+  destIndex: number;
+  /** Number of trips rerouted via this U-turn. */
+  trips: number;
+};
+
+/**
+ * Driveway access assignment result. Present only when `request.driveways` was supplied and non-empty AND a road network was available to route through. Absent ⇒ no driveways or roads unavailable (base LOS unchanged).
+ */
+export interface DrivewayRouteResult {
+  driveways: DrivewayResultItem[];
+  reroutes: DrivewayRouteResultReroutesItem[];
+}
+
 export interface TisReport {
   generatedAt: string;
   request: TisRequest;
@@ -503,6 +546,7 @@ export interface TisReport {
   autoModeShareApplied?: number;
   routeAssignment?: TisRouteAssignment;
   sensitivity?: TisSensitivityResult;
+  driveways?: DrivewayRouteResult;
 }
 
 /**
