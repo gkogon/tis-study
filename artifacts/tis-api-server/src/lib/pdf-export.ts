@@ -1585,6 +1585,14 @@ function renderTisGeorgia(
     "Net new trips are assigned to the study network proportionally to signal proximity and approach geometry. The per-intersection trip allocation for each affected signal is reflected in the Section 6.0 Traffic Analysis tables below.",
     { paragraphGap: 6 },
   );
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "5.1",
+    assignmentNumber: "5.2",
+    headingFn: gaSubsection,
+    cap: 20,
+    intersections,
+    periods,
+  });
 
   // --- §6 Traffic Analysis -----------------------------------------------
   gaSection(doc, "6.0 TRAFFIC ANALYSIS");
@@ -5655,6 +5663,13 @@ function renderTisTexas(
     });
     doc.moveDown(0.4);
   }
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "5.6",
+    headingFn: gaSubsection,
+    cap: 20,
+    intersections,
+    periods,
+  });
 
   // --- §6 Traffic and Improvement Analysis -------------------------------
   gaSection(doc, "6.0 TRAFFIC AND IMPROVEMENT ANALYSIS");
