@@ -120,6 +120,13 @@ ok(rRiro.reroutes.length > 0, "RIRO driveway forces at least one reroute");
 ok(rRiro.driveways[0].reroutedTrips > 0, "the RIRO driveway records rerouted trips");
 const totRiro = rRiro.perDestinationAddedTrips.reduce((s, v) => s + v, 0);
 ok(Math.abs(totRiro - 200) < 1e-6, `reroute conserves total trips (got ${totRiro})`);
+// Reroute-accounting invariant: every rerouted trip is recorded in BOTH the
+// per-driveway reroutedTrips totals AND the reroutes[] list. Before the fix the
+// inbound-forbidden branch bumped reroutedTrips without pushing to reroutes[],
+// so these totals disagreed for a RIRO driveway (which forbids inbound-left too).
+const sumReroutesList = rRiro.reroutes.reduce((s, r) => s + r.trips, 0);
+const sumReroutedTrips = rRiro.driveways.reduce((s, d) => s + d.reroutedTrips, 0);
+ok(Math.abs(sumReroutesList - sumReroutedTrips) < 1e-6, `reroutes[] total (${sumReroutesList}) == reroutedTrips total (${sumReroutedTrips})`);
 
 // ─── E2E: verify tis.ts driveway wiring via generateTisReport ────────────────
 // tis.ts uses bundler-resolution imports (no .ts extensions) that Node's native
@@ -320,6 +327,7 @@ if (bundleOk) {
       if (Buffer.isBuffer(pdfBuf)) {
         // Use pdftotext to extract text and assert on "Site Access" + driveway label.
         let pdfText = "";
+        let pdftotextMissing = false;
         try {
           const tmpDir = await mkdtemp(path.join(os.tmpdir(), "tis-dw-pdf-"));
           const tmpPdf = path.join(tmpDir, "driveway-test.pdf");
@@ -327,12 +335,19 @@ if (bundleOk) {
           const { stdout } = await execFileAsync("pdftotext", [tmpPdf, "-"], { maxBuffer: 10 * 1024 * 1024 });
           pdfText = stdout;
         } catch (e) {
-          console.error("pdftotext failed:", e.message ?? e);
+          // Poppler not installed (ENOENT) → skip the text assertions rather than
+          // fail on a CI machine without poppler. Any other failure is a real error.
+          if (e && e.code === "ENOENT") pdftotextMissing = true;
+          else console.error("pdftotext failed:", e.message ?? e);
         }
-        ok(pdfText.includes("Site Access"),
-          `PDF contains "Site Access" driveway section heading`);
-        ok(pdfText.includes(RIRO_DRIVEWAY.label),
-          `PDF contains driveway label "${RIRO_DRIVEWAY.label}"`);
+        if (pdftotextMissing) {
+          console.log('SKIP  pdftotext not installed — skipping PDF text assertions (PDF bytes were rendered OK)');
+        } else {
+          ok(pdfText.includes("Site Access"),
+            `PDF contains "Site Access" driveway section heading`);
+          ok(pdfText.includes(RIRO_DRIVEWAY.label),
+            `PDF contains driveway label "${RIRO_DRIVEWAY.label}"`);
+        }
       }
     }
   }

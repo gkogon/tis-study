@@ -1464,6 +1464,13 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
         })()
       : null;
 
+  // Effective per-intersection load weight: the driveway routing share when a
+  // driveway assignment was produced, else the base distance-decay loadWeights.
+  // Used by EVERY loading path — the period rows, the synthesized PM report, and
+  // the sensitivity Monte Carlo — so driveway routing is reflected consistently
+  // (dwShare is null when no driveways ⇒ byte-identical to today).
+  const effectiveWeights = candidates.map((_, i) => (dwShare ? dwShare[i]! : loadWeights[i]!));
+
   // Per-period analyses.
   const periodReports: PeriodReport[] = [];
   for (const period of periods) {
@@ -1499,7 +1506,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       : candidates.map((c, i) =>
           buildAffectedRow(
             c,
-            dwShare ? dwShare[i]! : loadWeights[i]!,
+            effectiveWeights[i]!,
             project,
             params,
             calibrationMap.get(c.sig.id),
@@ -1540,7 +1547,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // synthesize it for the back-compat fields so downstream consumers don't
   // crash.
   const pmReport = periodReports.find((p) => p.period === "pm_peak")
-    ?? (await synthesizePmReport(lu, req, candidates, loadWeights, project, growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates, studySet));
+    ?? (await synthesizePmReport(lu, req, candidates, effectiveWeights, project, growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates, studySet));
 
   // Top-level back-compat trip-generation summary uses ORIGINAL (non-credited)
   // PM trips so the existing UI labels keep their meaning. Rates come from
@@ -1570,7 +1577,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const sens = req.runSensitivity
     ? runSensitivityAnalysis(
         candidates,
-        loadWeights,
+        effectiveWeights,
         pmReport.tripGeneration.externalTrips,
         capacityVph,
         growthMultiplier,

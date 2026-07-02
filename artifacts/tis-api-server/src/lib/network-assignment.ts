@@ -383,6 +383,14 @@ export function assignWithDriveways(
     const d = destinations[i]!;
     const odBearing = bearingBetween(site.lat, site.lon, d.lat, d.lon);
 
+    // A destination's directional demand splits evenly between the OUTBOUND
+    // (departing) and INBOUND (arriving) legs. Both legs load the intersection
+    // and either can be rerouted, so per-intersection LOS and the reroute
+    // accounting reflect the full access picture. The even split keeps the
+    // total project load conserved (Σ legs = d.trips) while normalization
+    // downstream (dwShare) makes only the relative distribution matter.
+    const legTrips = d.trips / 2;
+
     // Outbound leg: which driveways can serve a trip leaving toward this destination?
     const eligibleOut = dws.filter((dw) => {
       const mvNeeded = classifyMovement(dw.streetBearing, dw.side, odBearing, false); // "outLeft" | "outRight"
@@ -393,18 +401,18 @@ export function assignWithDriveways(
       const dw = eligibleOut.reduce((a, b) =>
         distMi(g.nodeLat[a.node]!, g.nodeLon[a.node]!, d.lat, d.lon) <= distMi(g.nodeLat[b.node]!, g.nodeLon[b.node]!, d.lat, d.lon) ? a : b);
       const mv = classifyMovement(dw.streetBearing, dw.side, odBearing, false) as "outLeft" | "outRight";
-      dw.exitByMovement[mv] += d.trips;
-      perDest[i]! += d.trips;
+      dw.exitByMovement[mv] += legTrips;
+      perDest[i]! += legTrips;
     } else {
       // Outbound forbidden everywhere ⇒ reroute via the nearest driveway + U-turn.
       const dw = dws.reduce((a, b) =>
         distMi(g.nodeLat[a.node]!, g.nodeLon[a.node]!, d.lat, d.lon) <= distMi(g.nodeLat[b.node]!, g.nodeLon[b.node]!, d.lat, d.lon) ? a : b);
-      dw.rerouted += d.trips;
+      dw.rerouted += legTrips;
       // The U-turn happens at the nearest downstream node to the driveway; its
       // added turning volume lands on the destination nearest that node.
       const uturnDest = nearestDestTo(dw.node);
-      perDest[uturnDest]! += d.trips;
-      reroutes.push({ destIndex: uturnDest, trips: d.trips });
+      perDest[uturnDest]! += legTrips;
+      reroutes.push({ destIndex: uturnDest, trips: legTrips });
     }
 
     // Inbound leg: which driveways can serve a trip arriving from this destination?
@@ -414,18 +422,24 @@ export function assignWithDriveways(
       return dw.mv[mvNeeded];
     });
     if (eligibleIn.length > 0) {
-      // Nearest eligible driveway carries the inbound trip; credit its enter movement.
+      // Nearest eligible driveway carries the inbound trip; credit its enter
+      // movement AND load the intersection (arrivals pass through it too).
       const dw = eligibleIn.reduce((a, b) =>
         distMi(g.nodeLat[a.node]!, g.nodeLon[a.node]!, d.lat, d.lon) <= distMi(g.nodeLat[b.node]!, g.nodeLon[b.node]!, d.lat, d.lon) ? a : b);
       const mv = classifyMovement(dw.streetBearing, dw.side, odBearing, true) as "inLeft" | "inRight";
-      dw.enterByMovement[mv] += d.trips;
+      dw.enterByMovement[mv] += legTrips;
+      perDest[i]! += legTrips;
     } else {
-      // Inbound forbidden everywhere: the entering trip is still rerouted.
-      // Use the nearest driveway that allows ANY inbound movement; fall back to nearest overall.
+      // Inbound forbidden everywhere ⇒ the entering trip reroutes via a driveway
+      // that allows ANY inbound movement (fallback: nearest), then U-turns.
+      // Symmetric with the outbound branch: load LOS and record in reroutes[].
       const anyIn = dws.find((dw) => dw.mv.inLeft || dw.mv.inRight);
       const dw = anyIn ?? dws.reduce((a, b) =>
         distMi(g.nodeLat[a.node]!, g.nodeLon[a.node]!, d.lat, d.lon) <= distMi(g.nodeLat[b.node]!, g.nodeLon[b.node]!, d.lat, d.lon) ? a : b);
-      dw.rerouted += d.trips;
+      dw.rerouted += legTrips;
+      const uturnDest = nearestDestTo(dw.node);
+      perDest[uturnDest]! += legTrips;
+      reroutes.push({ destIndex: uturnDest, trips: legTrips });
     }
   }
 
