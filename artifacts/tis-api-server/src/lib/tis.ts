@@ -25,16 +25,8 @@ import {
 import { getAutoModeShare, getAutoModeShareSource, getLondonAutoModeShare, type PTALBand } from "./mode-share";
 import { lookupLondonPtal } from "./tfl-ptal";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
-import { distributeAndAssign, modeChoiceLogit, GAMMA_FRICTION, type DemandZone } from "./four-step-model";
-import {
-  caltranGravityShares,
-  directionalMultipliers,
-  rollupByCardinal,
-  sectorPairs,
-  bearingToCardinal,
-  CALTRAN_GRAVITY_BETA,
-  type CardinalDir,
-} from "./caltran-gravity";
+import { modeChoiceLogit, type DemandZone } from "./four-step-model";
+import { type CardinalDir } from "./caltran-gravity";
 import { fetchLocalRoads, assignRoutes, type RouteAssignment } from "./network-assignment";
 import { getTransitContext } from "./transit-routes";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
