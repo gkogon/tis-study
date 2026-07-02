@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { TisAnalysisPeriod } from "./tisAnalysisPeriod";
+import type { TisDistributionMethod } from "./tisDistributionMethod";
 import type { TisTripProfile } from "./tisTripProfile";
 import type { TisWeather } from "./tisWeather";
 
@@ -65,4 +66,5 @@ export interface TisRequest {
   tripProfile?: TisTripProfile;
   /** When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it. */
   scopeStudyIntersections?: boolean;
+  distributionMethod?: TisDistributionMethod;
 }

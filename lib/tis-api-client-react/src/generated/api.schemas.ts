@@ -127,6 +127,50 @@ export const TisWeather = {
   heavy_snow: "heavy_snow",
 } as const;
 
+/**
+ * Directional trip-distribution method. gravity = mass/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.
+ */
+export type TisDistributionMethod =
+  (typeof TisDistributionMethod)[keyof typeof TisDistributionMethod];
+
+export const TisDistributionMethod = {
+  gravity: "gravity",
+  analogy: "analogy",
+  surrogate: "surrogate",
+} as const;
+
+export interface TisTripDistributionZone {
+  id: string;
+  name: string;
+  distanceMi: number;
+  bearingDeg: number;
+  cardinal: string;
+  mass: number;
+  term: number;
+  weight: number;
+  sharePct: number;
+}
+
+export type TisTripDistributionByDirection = { [key: string]: number };
+
+export type TisTripDistributionSectors = { [key: string]: number };
+
+/**
+ * Region-agnostic trip-distribution summary for the study.
+ */
+export interface TisTripDistribution {
+  method: TisDistributionMethod;
+  methodLabel: string;
+  basis: string;
+  betaExponent: number;
+  massBasis: string;
+  weights: number[];
+  loadMultipliers: number[];
+  byDirection: TisTripDistributionByDirection;
+  sectors: TisTripDistributionSectors;
+  zones: TisTripDistributionZone[];
+}
+
 export type TisDirection = (typeof TisDirection)[keyof typeof TisDirection];
 
 export const TisDirection = {
@@ -229,6 +273,7 @@ export interface TisRequest {
   tripProfile?: TisTripProfile;
   /** When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it. */
   scopeStudyIntersections?: boolean;
+  distributionMethod?: TisDistributionMethod;
 }
 
 export type TisTripGenerationVariableConfidence =
@@ -451,6 +496,7 @@ export interface TisReport {
   autoModeShareApplied?: number;
   routeAssignment?: TisRouteAssignment;
   sensitivity?: TisSensitivityResult;
+  tripDistribution?: TisTripDistribution;
 }
 
 /**
