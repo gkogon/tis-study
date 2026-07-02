@@ -182,6 +182,23 @@ for (const [label, lat, lon, flavor] of REGIONS) {
     const buf = await renderSection(label, result, flavor);
     ok(buf.length > 5000, `${label}: non-empty PDF (${buf.length} bytes)`);
     ok(hasTripDistributionEvidence(buf), `${label}: contains "Trip Distribution" (CMap evidence)`);
+
+    // A/B byte-count comparison: render an identical fixture but with an
+    // empty zones array so the renderer early-returns after the guard at
+    //   if (!td || !Array.isArray(td.zones) || td.zones.length === 0) return;
+    // The real render must be strictly larger, proving the distribution section
+    // + 3 charts (compass rose, zone-share bars, distance-decay) were actually
+    // emitted and were not silently skipped by the td.zones.length === 0 guard.
+    const emptyResult = {
+      ...result,
+      tripDistribution: { ...result.tripDistribution, zones: [] },
+    };
+    const emptyBuf = await renderSection(label, emptyResult, flavor);
+    ok(
+      buf.length > emptyBuf.length,
+      `${label}: distribution+charts add bytes vs no-distribution baseline (${buf.length} > ${emptyBuf.length})`,
+    );
+
     fs.writeFileSync(path.join(outDir, `${label}.pdf`), buf);
   } catch (e) {
     ok(false, `${label}: threw ${e && e.stack ? e.stack : e}`);
