@@ -338,6 +338,65 @@ export function drawLineChart(doc: PDFKit.PDFDocument, spec: LineChartSpec): voi
   finish(doc, layout, spec.xLabel, spec.caption);
 }
 
+export type CompassRoseSpec = {
+  title: string;
+  /** Octant labels in clockwise-from-north order (length 8). */
+  labels: readonly string[];
+  /** Values aligned 1:1 to labels (percent, 0..100). */
+  values: number[];
+  caption?: string;
+  color?: string;
+};
+
+/**
+ * Radial "compass rose": one colored spoke per octant, length ∝ value.
+ * Self-contained; page-breaks via ensureSpace; leaves the y-cursor below the figure.
+ */
+export function drawCompassRose(doc: PDFKit.PDFDocument, spec: CompassRoseSpec): void {
+  const size = 210; // square figure height in points
+  ensureSpace(doc, size + 46);
+  const startY = doc.y;
+  doc.font("bold").fontSize(9.5).fillColor(CHART_COLORS.caption).text(spec.title, PAGE_MARGIN, startY);
+  const top = doc.y + 6;
+  const cx = doc.page.width / 2;
+  const cy = top + size / 2;
+  const rMax = size / 2 - 22; // leave room for edge labels
+  const vals = spec.values.map(fin);
+  const maxV = Math.max(1e-9, ...vals);
+  const color = spec.color || CHART_COLORS.outbound;
+  const n = spec.labels.length;
+  // reference rings
+  doc.lineWidth(0.5).strokeColor(CHART_COLORS.grid);
+  doc.circle(cx, cy, rMax).stroke();
+  doc.circle(cx, cy, rMax * 0.5).stroke();
+  for (let i = 0; i < n; i++) {
+    const bearing = (i * 360) / n + 360 / (2 * n); // octant midpoints: 22.5,67.5,...
+    const ang = ((bearing - 90) * Math.PI) / 180;  // screen coords: 0deg=up, y grows down
+    const fx = cx + rMax * Math.cos(ang);
+    const fy = cy + rMax * Math.sin(ang);
+    // faint full-length spoke
+    doc.lineWidth(0.4).strokeColor(CHART_COLORS.grid).moveTo(cx, cy).lineTo(fx, fy).stroke();
+    // value spoke
+    const r = rMax * (vals[i]! / maxV);
+    const x = cx + r * Math.cos(ang);
+    const y = cy + r * Math.sin(ang);
+    doc.lineWidth(3).strokeColor(color).moveTo(cx, cy).lineTo(x, y).stroke();
+    doc.circle(x, y, 2.2).fill(color);
+    // edge label
+    const lx = cx + (rMax + 12) * Math.cos(ang);
+    const ly = cy + (rMax + 12) * Math.sin(ang);
+    doc.font("body").fontSize(7).fillColor(CHART_COLORS.axis)
+      .text(`${spec.labels[i]} ${Math.round(vals[i]!)}%`, lx - 20, ly - 4, { width: 40, align: "center" });
+  }
+  doc.y = cy + size / 2 + 8;
+  doc.x = PAGE_MARGIN;
+  if (spec.caption) {
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY)
+      .text(spec.caption, PAGE_MARGIN, doc.y, { width: doc.page.width - PAGE_MARGIN * 2, paragraphGap: 6 });
+    doc.x = PAGE_MARGIN;
+  }
+}
+
 /** Compact tick formatter: 1,250 → "1,250"; 0.5 → "0.5". */
 function fmtTick(v: number): string {
   if (Number.isInteger(v)) return v.toLocaleString();

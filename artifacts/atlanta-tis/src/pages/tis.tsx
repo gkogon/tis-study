@@ -11,6 +11,7 @@ import {
   type TisAnalysisPeriod,
   type TisWeather,
   type TisLandUse,
+  type TisDistributionMethod,
 } from "@workspace/tis-api-client-react";
 import { MapContainer, TileLayer, CircleMarker, Marker, Tooltip as LeafletTooltip } from "react-leaflet";
 import L from "leaflet";
@@ -219,6 +220,11 @@ const WEATHER_OPTIONS: Array<{ value: TisWeather; label: string; cap: number }> 
   { value: "heavy_rain", label: "Heavy rain", cap: 0.86 },
   { value: "light_snow", label: "Light snow", cap: 0.86 },
   { value: "heavy_snow", label: "Heavy snow", cap: 0.70 },
+];
+const DISTRIBUTION_METHOD_OPTIONS: Array<{ value: TisDistributionMethod; label: string }> = [
+  { value: "gravity", label: "Gravity model (mass / distance)" },
+  { value: "analogy", label: "Analogous-site distribution (coming soon)" },
+  { value: "surrogate", label: "Surrogate / market-area (coming soon)" },
 ];
 
 function TisFormSection({
@@ -617,6 +623,23 @@ function TisFormSection({
                     <option key={w.value} value={w.value}>
                       {w.label} (capacity ×{w.cap.toFixed(2)})
                     </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Trip-distribution method
+                </span>
+                <select
+                  className="w-full px-3 py-2 rounded-md border bg-background text-sm"
+                  value={form.distributionMethod ?? "gravity"}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, distributionMethod: e.target.value as TisDistributionMethod }))
+                  }
+                  data-testid="select-distribution-method"
+                >
+                  {DISTRIBUTION_METHOD_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
               </label>

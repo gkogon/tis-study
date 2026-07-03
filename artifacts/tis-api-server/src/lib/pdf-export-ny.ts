@@ -27,6 +27,7 @@ import { renderDiurnalCharts } from "./pdf-charts";
 import { getCbdtpStatus, type CbdtpStatus, type Gml239Status } from "./nysdot-data";
 import type { NycTransitContext } from "./nyc-transit-data";
 import { getMeasuredGrowthRate } from "./regional-growth-rates";
+import { renderTripDistributionSection } from "./pdf-export-distribution";
 
 type StoredProject = {
   id: string;
@@ -318,6 +319,8 @@ export function renderTisNewYork(
     ["       3.4  Capacity Analysis for Existing No-Build Condition", ""],
     ["       3.5  Capacity Analysis for Proposed Build Condition", ""],
     ["       3.6  Capacity Improvement Measures", ""],
+    ["       3.7  Trip Distribution and Assignment", ""],
+    ["       3.8  Project Trip Assignment", ""],
     ["4.0  Crash Analysis", ""],
     ["Appendix A — Existing Volume Report", ""],
     ["Appendix B — Existing Condition Capacity Analysis Output", ""],
@@ -848,6 +851,13 @@ export function renderTisNewYork(
     );
   }
   doc.moveDown(0.5);
+
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "3.7",
+    assignmentNumber: "3.8",
+    headingFn: nySubsection,
+    cap: 20,
+  });
 
   // --- §4.0 Crash Analysis -----------------------------------------------
   nySection(doc, "4.0 CRASH ANALYSIS");

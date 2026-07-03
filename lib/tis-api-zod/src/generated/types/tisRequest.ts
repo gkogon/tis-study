@@ -7,6 +7,7 @@
  */
 import type { Driveway } from "./driveway";
 import type { TisAnalysisPeriod } from "./tisAnalysisPeriod";
+import type { TisDistributionMethod } from "./tisDistributionMethod";
 import type { TisTripProfile } from "./tisTripProfile";
 import type { TisWeather } from "./tisWeather";
 
@@ -66,6 +67,7 @@ export interface TisRequest {
   tripProfile?: TisTripProfile;
   /** When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it. */
   scopeStudyIntersections?: boolean;
+  distributionMethod?: TisDistributionMethod;
   /**
    * Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).
    * @maxItems 12

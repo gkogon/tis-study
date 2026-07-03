@@ -16,6 +16,7 @@
 
 import type { Region } from "./regions";
 import { renderDiurnalCharts } from "./pdf-charts";
+import { renderTripDistributionSection } from "./pdf-export-distribution";
 
 // Re-export for use in pdf-export.ts dispatch
 export { renderTisState };
@@ -1331,6 +1332,12 @@ function renderTisState(
     ["Assignment method", r.assignmentMethod ?? "Site-access-proportional; confirmed at methodology meeting"],
   ]);
   note("Directional distribution percentages and trip assignment maps should be verified at the methodology meeting with the reviewing agency and attached as Appendix B.");
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "6.1",
+    assignmentNumber: "6.2",
+    headingFn: (_doc, title) => stateSub(title),
+    cap: 20,
+  });
   doc.moveDown(0.8);
 
   // ─── §7 FUTURE NO-BUILD CONDITIONS ──────────────────────────────────────

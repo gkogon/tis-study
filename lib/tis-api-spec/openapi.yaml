@@ -335,6 +335,52 @@ components:
     TisWeather:
       type: string
       enum: [clear, light_rain, heavy_rain, light_snow, heavy_snow]
+    TisDistributionMethod:
+      type: string
+      enum: [gravity, analogy, surrogate]
+      description: >-
+        Directional trip-distribution method. gravity = mass/distance or
+        gamma-friction gravity model; analogy = analogous-site distribution
+        (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3).
+        Defaults to gravity.
+    TisTripDistributionZone:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        distanceMi: { type: number }
+        bearingDeg: { type: number }
+        cardinal: { type: string }
+        mass: { type: number }
+        term: { type: number }
+        weight: { type: number }
+        sharePct: { type: number }
+      required: [id, name, distanceMi, bearingDeg, cardinal, mass, term, weight, sharePct]
+    TisTripDistribution:
+      type: object
+      description: Region-agnostic trip-distribution summary for the study.
+      properties:
+        method: { $ref: "#/components/schemas/TisDistributionMethod" }
+        methodLabel: { type: string }
+        basis: { type: string }
+        betaExponent: { type: number }
+        massBasis: { type: string }
+        weights:
+          type: array
+          items: { type: number }
+        loadMultipliers:
+          type: array
+          items: { type: number }
+        byDirection:
+          type: object
+          additionalProperties: { type: number }
+        sectors:
+          type: object
+          additionalProperties: { type: number }
+        zones:
+          type: array
+          items: { $ref: "#/components/schemas/TisTripDistributionZone" }
+      required: [method, methodLabel, basis, betaExponent, massBasis, weights, loadMultipliers, byDirection, sectors, zones]
     TisDirection:
       type: string
       enum: [NB, SB, EB, WB]
@@ -431,6 +477,8 @@ components:
             signalized intersection within the study radius — the radius is the
             stated study scope. Shorten a report with a smaller radius, not by
             scoping within it.
+        distributionMethod:
+          $ref: "#/components/schemas/TisDistributionMethod"
         driveways:
           type: array
           maxItems: 12
@@ -768,6 +816,8 @@ components:
         autoModeShareApplied: { type: number }
         routeAssignment: { $ref: "#/components/schemas/TisRouteAssignment" }
         sensitivity: { $ref: "#/components/schemas/TisSensitivityResult" }
+        tripDistribution:
+          $ref: "#/components/schemas/TisTripDistribution"
         driveways: { $ref: "#/components/schemas/DrivewayRouteResult" }
       required:
         - generatedAt

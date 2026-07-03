@@ -31,6 +31,7 @@ import { ukCapacityForIntersection, type UkCapacityResult } from "./uk-capacity"
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { renderTisState } from "./pdf-export-states";
 import { renderDiurnalCharts, drawColumnChart, drawLineChart, CHART_COLORS } from "./pdf-charts";
+import { renderTripDistributionSection } from "./pdf-export-distribution";
 import { profileForLandUse, distributeDaily, type ProfileLocale } from "./office-diurnal";
 import { renderTemplatePdf, type RenderContext, type ReportTemplate } from "./report-template/engine";
 import { loadTemplate } from "./report-template/registry";
@@ -1727,6 +1728,14 @@ function renderTisGeorgia(
     "Net new trips are assigned to the study network proportionally to signal proximity and approach geometry. The per-intersection trip allocation for each affected signal is reflected in the Section 6.0 Traffic Analysis tables below.",
     { paragraphGap: 6 },
   );
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "5.1",
+    assignmentNumber: "5.2",
+    headingFn: gaSubsection,
+    cap: 20,
+    intersections,
+    periods,
+  });
 
   // --- §6 Traffic Analysis -----------------------------------------------
   gaSection(doc, "6.0 TRAFFIC ANALYSIS");
@@ -2606,13 +2615,22 @@ function renderTisCalifornia(
 
   renderDiurnalCharts(doc, r);
 
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "4.3",
+    assignmentNumber: "4.4",
+    headingFn: caSubsection,
+    cap: 20,
+    intersections,
+    periods,
+  });
+
   const caHasDesignYear = intersections.some(
     (it) => it.designNoBuildLos != null || it.designBuildLos != null,
   );
   const caDesignYr = r.designYear ?? (req.openingYear ? Number(req.openingYear) + 20 : null);
   caSubsection(doc, caHasDesignYear
-    ? "4.3 Affected Intersections — Existing / Opening / 20-Year Design"
-    : "4.3 Affected Intersections — Existing / No-Build / Build");
+    ? "4.5 Affected Intersections — Existing / Opening / 20-Year Design"
+    : "4.5 Affected Intersections — Existing / No-Build / Build");
   if (caHasDesignYear) {
     doc.font("body").fontSize(10).fillColor("black").text(
       `Four scenarios are evaluated at each affected intersection per Caltrans / local-jurisdiction operational-analysis convention (LOS-only context, not CEQA-VMT): (1) Existing — current-year volumes, no growth; (2) Opening-Year No-Build (${req.openingYear ?? "—"}) — existing grown at ${r.growthAppliedPct ?? "—"}%/yr; (3) Opening-Year Build — No-Build plus project external trips; (4) 20-Year Design Year (${caDesignYr ?? "—"}) No-Build and Build — opening volumes compounded another 20 years, project trips at full build-out unchanged.`,
@@ -2669,7 +2687,7 @@ function renderTisCalifornia(
   }
   if (intersections.length > 0) {
 
-    caSubsection(doc, "4.4 Recommended Operational Improvements (Non-CEQA)");
+    caSubsection(doc, "4.6 Recommended Operational Improvements (Non-CEQA)");
     const needMitigation = intersections.filter((it) => it.mitigation && it.mitigationSeverity && it.mitigationSeverity !== "none");
     if (needMitigation.length > 0) {
       doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
@@ -5797,6 +5815,13 @@ function renderTisTexas(
     });
     doc.moveDown(0.4);
   }
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "5.6",
+    headingFn: gaSubsection,
+    cap: 20,
+    intersections,
+    periods,
+  });
 
   // --- §6 Traffic and Improvement Analysis -------------------------------
   gaSection(doc, "6.0 TRAFFIC AND IMPROVEMENT ANALYSIS");
@@ -6444,6 +6469,15 @@ function renderTisIllinois(
   }
 
   renderDiurnalCharts(doc, r);
+
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "4.1",
+    assignmentNumber: "4.2",
+    headingFn: gaSubsection,
+    cap: 20,
+    intersections,
+    periods,
+  });
 
   // --- §5 Background Growth ----------------------------------------------
   gaSection(doc, "5.0 BACKGROUND GROWTH");
@@ -7899,100 +7933,18 @@ function renderTisFlorida(
     doc.fillColor("black");
   }
 
-  // --- 6.1 Trip Distribution — Caltran gravity model --------------------
-  const flg = r.flGravity;
-  const QUADRANT_LABEL: Record<string, string> = {
-    "NNE+ENE": "Northeast (NNE + ENE)",
-    "ESE+SSE": "Southeast (ESE + SSE)",
-    "SSW+WSW": "Southwest (SSW + WSW)",
-    "WNW+NNW": "Northwest (WNW + NNW)",
-  };
-  if (flg && Array.isArray(flg.zones) && flg.zones.length > 0) {
-    gaSubsection(doc, "6.1 Trip Distribution — Gravity Model");
-    doc.font("body").fontSize(10).fillColor("black").text(
-      `Project trips are distributed to the surrounding study-area zones with the gravity model used in the Caltran Engineering HCA Westside reference TIS, adopted here as the Florida distribution standard. Each zone attracts trips in proportion to its mass and inversely with its distance from the site — term = M / (d^${flg.betaExponent} · d_site) — normalized so the zone shares sum to 100%. Zone mass M is the ${flg.massBasis}; d_site (the site zone's own distance normalizer) is 1. The resulting shares set the directional distribution below and drive the project-trip assignment in §6.2.`,
-      { paragraphGap: 6 },
-    );
-
-    // Directional distribution — the four quadrant sectors on the aerial figure.
-    const sectorRows = Object.entries(flg.sectors ?? {}).map(([k, v]) => [
-      QUADRANT_LABEL[k] ?? k,
-      `${(Number(v) || 0).toFixed(0)}%`,
-    ]);
-    if (sectorRows.length > 0) {
-      table(doc, {
-        headers: ["Directional sector", "Share of project trips"],
-        widths: [300, 180],
-        align: ["left", "right"],
-        rows: sectorRows,
-      });
-      doc.moveDown(0.2);
-    }
-
-    // Gravity worksheet — one row per study-area zone (capped for readability).
-    const WORKSHEET_CAP = 20;
-    const wsZones = flg.zones.slice(0, WORKSHEET_CAP);
-    table(doc, {
-      headers: ["Study-area zone", "Dir.", "Distance (mi)", "Mass (M)", "Gravity term", "Trip share"],
-      widths: [190, 45, 75, 75, 75, 65],
-      align: ["left", "center", "right", "right", "right", "right"],
-      rows: wsZones.map((z: any) => [
-        z.name ?? z.id ?? "—",
-        String(z.cardinal ?? "—"),
-        fmtNum(z.distanceMi, 2),
-        fmtNum(Math.round(Number(z.mass) || 0)),
-        fmtNum(Number(z.term) || 0, 1),
-        `${(Number(z.sharePct) || 0).toFixed(2)}%`,
-      ]),
-    });
-    doc.moveDown(0.2);
-    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      `Screening-grade gravity distribution over ${flg.zones.length} study-area zone${flg.zones.length === 1 ? "" : "s"}${flg.zones.length > WORKSHEET_CAP ? ` (top ${WORKSHEET_CAP} by trip share shown)` : ""}. For formal submittal the adopted regional MPO/TPO travel-demand-model distribution and the run identifier are confirmed at the methodology meeting per FDOT TAH §2.7; this gravity worksheet documents the screening basis.`,
-      { paragraphGap: 6 },
-    );
-    doc.fillColor("black");
-  }
-
-  // --- 6.2 Project Trip Assignment (AM/PM, gravity-driven) --------------
-  gaSubsection(doc, flg ? "6.2 Project Trip Assignment" : "6.1 Project Trip Assignment");
-  const assignRows = intersections.filter((it) => Number.isFinite(Number(it.addedTripsPmPeak)));
-  if (assignRows.length > 0) {
-    const totalPm = assignRows.reduce((s, it) => s + (Number(it.addedTripsPmPeak) || 0), 0) || 1;
-    const amRep = periods.find((p) => p.period === "am_peak");
-    const amBySig = new Map<string, number>(
-      (Array.isArray(amRep?.affectedIntersections) ? amRep.affectedIntersections : []).map(
-        (it: any) => [String(it.signalId), Number(it.addedTripsPmPeak) || 0],
-      ),
-    );
-    const dirBySig = new Map<string, string>(
-      (flg?.zones ?? []).map((z: any) => [String(z.id), String(z.cardinal ?? "—")]),
-    );
-    table(doc, {
-      headers: ["Study intersection", "Dir.", "Distance (mi)", "AM trips", "PM trips", "Share of project"],
-      widths: [190, 45, 75, 65, 65, 80],
-      align: ["left", "center", "right", "right", "right", "right"],
-      rows: assignRows.map((it: any) => {
-        const pm = Number(it.addedTripsPmPeak) || 0;
-        const am = amBySig.get(String(it.signalId));
-        return [
-          it.name ?? it.signalId ?? "—",
-          dirBySig.get(String(it.signalId)) ?? "—",
-          fmtNum(it.distanceMi, 2),
-          am == null ? "—" : fmtNum(am),
-          fmtNum(pm),
-          `${((pm / totalPm) * 100).toFixed(1)}%`,
-        ];
-      }),
-    });
-    doc.moveDown(0.2);
-    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      flg
-        ? "AM- and PM-peak project trips assigned to each study intersection from the §6.1 gravity distribution: the directional shares orient the loading toward the high-share sectors, while distance-decay from the site sets the magnitude that passes through each intersection. Entering/exiting splits at each intersection follow the site's period directional split."
-        : "PM-peak project trips assigned to each study intersection by inverse-distance weighting of the net new external trips. Directional (AM/PM, entering/exiting) assignment figures and the daily project-trip assignment are prepared from the methodology-letter distribution at submittal.",
-      { paragraphGap: 6 },
-    );
-    doc.fillColor("black");
-  }
+  // §6.1/§6.2 Trip Distribution + Assignment via the shared unified renderer.
+  // flavor "fl" reproduces Florida's exact prose, captions (FDOT TAH §2.7),
+  // and moveDown spacing so the section is byte-identical to origin/main.
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "6.1",
+    assignmentNumber: "6.2",
+    headingFn: gaSubsection,
+    cap: 20,
+    intersections,
+    periods,
+    flavor: "fl",
+  });
   renderDiurnalCharts(doc, r);
 
   // --- 7.0 Level of Service Analysis ------------------------------------

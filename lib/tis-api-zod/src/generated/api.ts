@@ -161,6 +161,12 @@ export const GenerateTisBody = zod.object({
     .describe(
       "When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it.",
     ),
+  distributionMethod: zod
+    .enum(["gravity", "analogy", "surrogate"])
+    .optional()
+    .describe(
+      "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
+    ),
   driveways: zod
     .array(
       zod.object({
@@ -351,6 +357,12 @@ export const GenerateTisResponse = zod.object({
       .optional()
       .describe(
         "When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it.",
+      ),
+    distributionMethod: zod
+      .enum(["gravity", "analogy", "surrogate"])
+      .optional()
+      .describe(
+        "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
       ),
     driveways: zod
       .array(
@@ -582,6 +594,37 @@ export const GenerateTisResponse = zod.object({
       expectedLosDrops: zod.number(),
     })
     .optional(),
+  tripDistribution: zod
+    .object({
+      method: zod
+        .enum(["gravity", "analogy", "surrogate"])
+        .describe(
+          "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
+        ),
+      methodLabel: zod.string(),
+      basis: zod.string(),
+      betaExponent: zod.number(),
+      massBasis: zod.string(),
+      weights: zod.array(zod.number()),
+      loadMultipliers: zod.array(zod.number()),
+      byDirection: zod.record(zod.string(), zod.number()),
+      sectors: zod.record(zod.string(), zod.number()),
+      zones: zod.array(
+        zod.object({
+          id: zod.string(),
+          name: zod.string(),
+          distanceMi: zod.number(),
+          bearingDeg: zod.number(),
+          cardinal: zod.string(),
+          mass: zod.number(),
+          term: zod.number(),
+          weight: zod.number(),
+          sharePct: zod.number(),
+        }),
+      ),
+    })
+    .optional()
+    .describe("Region-agnostic trip-distribution summary for the study."),
   driveways: zod
     .object({
       driveways: zod.array(
@@ -928,6 +971,12 @@ export const GetTisProjectResponse = zod
             .describe(
               "When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it.",
             ),
+          distributionMethod: zod
+            .enum(["gravity", "analogy", "surrogate"])
+            .optional()
+            .describe(
+              "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
+            ),
           driveways: zod
             .array(
               zod.object({
@@ -1095,6 +1144,12 @@ export const GetTisProjectResponse = zod
           .optional()
           .describe(
             "When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it.",
+          ),
+        distributionMethod: zod
+          .enum(["gravity", "analogy", "surrogate"])
+          .optional()
+          .describe(
+            "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
           ),
         driveways: zod
           .array(
@@ -1344,6 +1399,37 @@ export const GetTisProjectResponse = zod
           expectedLosDrops: zod.number(),
         })
         .optional(),
+      tripDistribution: zod
+        .object({
+          method: zod
+            .enum(["gravity", "analogy", "surrogate"])
+            .describe(
+              "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
+            ),
+          methodLabel: zod.string(),
+          basis: zod.string(),
+          betaExponent: zod.number(),
+          massBasis: zod.string(),
+          weights: zod.array(zod.number()),
+          loadMultipliers: zod.array(zod.number()),
+          byDirection: zod.record(zod.string(), zod.number()),
+          sectors: zod.record(zod.string(), zod.number()),
+          zones: zod.array(
+            zod.object({
+              id: zod.string(),
+              name: zod.string(),
+              distanceMi: zod.number(),
+              bearingDeg: zod.number(),
+              cardinal: zod.string(),
+              mass: zod.number(),
+              term: zod.number(),
+              weight: zod.number(),
+              sharePct: zod.number(),
+            }),
+          ),
+        })
+        .optional()
+        .describe("Region-agnostic trip-distribution summary for the study."),
       driveways: zod
         .object({
           driveways: zod.array(

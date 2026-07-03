@@ -11,6 +11,7 @@ import type { TisPeriodReport } from "./tisPeriodReport";
 import type { TisRequest } from "./tisRequest";
 import type { TisRouteAssignment } from "./tisRouteAssignment";
 import type { TisSensitivityResult } from "./tisSensitivityResult";
+import type { TisTripDistribution } from "./tisTripDistribution";
 import type { TisTripGeneration } from "./tisTripGeneration";
 import type { TisWeather } from "./tisWeather";
 
@@ -37,5 +38,6 @@ export interface TisReport {
   autoModeShareApplied?: number;
   routeAssignment?: TisRouteAssignment;
   sensitivity?: TisSensitivityResult;
+  tripDistribution?: TisTripDistribution;
   driveways?: DrivewayRouteResult;
 }
