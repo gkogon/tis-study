@@ -179,10 +179,18 @@ export function renderTripDistributionSection(
   doc.font("body").fontSize(10).fillColor("black").text(
     isFl
       ? flDistributionNarrative(td)
-      : `The trip distribution uses the ${td.methodLabel.toLowerCase()} ` +
-          `(term = M / (d^${td.betaExponent} · d_site); mass basis: ${td.massBasis}). ` +
-          `Shares are normalized to 100% of project trips and drive the trip ` +
-          `assignment below. Basis: ${td.basis}`,
+      : td.method === "analogy"
+        ? `The trip distribution uses the ${td.methodLabel.toLowerCase()} ` +
+            `(raw pull = orientation_profile[octant_offset] × exp(−λ × distanceMi), where the ` +
+            `orientation profile is a screening-grade directional-concentration shape oriented to ` +
+            `the site's primary access corridor and λ is a land-use-family distance-decay rate — a ` +
+            `higher λ means a shorter trip-length catchment). ` +
+            `Shares are normalized to 100% of project trips and drive the trip ` +
+            `assignment below. Basis: ${td.basis}`
+        : `The trip distribution uses the ${td.methodLabel.toLowerCase()} ` +
+            `(term = M / (d^${td.betaExponent} · d_site); mass basis: ${td.massBasis}). ` +
+            `Shares are normalized to 100% of project trips and drive the trip ` +
+            `assignment below. Basis: ${td.basis}`,
     { paragraphGap: 6 },
   );
 
@@ -203,7 +211,7 @@ export function renderTripDistributionSection(
   // --- Gravity worksheet table (top-N by share) ---
   const wsZones = td.zones.slice(0, cap);
   table(doc, {
-    headers: ["Study-area zone", "Dir.", "Distance (mi)", "Mass (M)", "Gravity term", "Trip share"],
+    headers: ["Study-area zone", "Dir.", "Distance (mi)", td.method === "analogy" ? "Vol. (orient.)" : "Mass (M)", td.method === "analogy" ? "Pull term" : "Gravity term", "Trip share"],
     widths: [190, 45, 75, 75, 75, 65],
     align: ["left", "center", "right", "right", "right", "right"],
     rows: wsZones.map((z) => [
@@ -258,7 +266,9 @@ export function renderTripDistributionSection(
     const byDist = [...td.zones].sort((a, b) => a.distanceMi - b.distanceMi);
     if (byDist.length > 1) {
       drawLineChart(doc, {
-        title: "Figure — Trip Share vs. Distance from Site (Gravity Decay)",
+        title: td.method === "analogy"
+          ? "Figure — Trip Share vs. Distance from Site (Analogy Decay)"
+          : "Figure — Trip Share vs. Distance from Site (Gravity Decay)",
         categories: byDist.map((z) => `${z.distanceMi.toFixed(2)}`),
         values: byDist.map((z) => fin2(z.sharePct)),
         color: CHART_COLORS.line,

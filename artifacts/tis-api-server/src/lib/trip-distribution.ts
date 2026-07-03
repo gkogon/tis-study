@@ -1,7 +1,8 @@
 // Region-agnostic trip-distribution layer.
 // PR1: fully implements the "gravity" strategy (wrapping four-step for most
-// regions and Caltran mass/distance for Florida). "analogy" and "surrogate"
-// are stubs that fall back to gravity (built in PR2/PR3).
+// regions and Caltran mass/distance for Florida). PR2 implements "analogy"
+// (curated ComparableSource reference library). "surrogate" remains a stub
+// (PR3).
 //
 // BYTE-IDENTITY CONTRACT: the caller (tis.ts) builds the EXACT demandZones and
 // gravityZones it builds today — including refVolume and the
@@ -23,10 +24,16 @@ import {
   rollupByCardinal,
   sectorPairs,
   bearingToCardinal,
+  CARDINALS,
   CALTRAN_GRAVITY_BETA,
   type CardinalDir,
   type GravityShare,
 } from "./caltran-gravity";
+import {
+  REFERENCE_LIBRARY,
+  landUseFamily,
+  areaTypeFromDensity,
+} from "./analogy-reference";
 
 export type DistributionMethod = "gravity" | "analogy" | "surrogate";
 
@@ -89,6 +96,10 @@ export type TripDistributionCtx = {
   gravityZones: GravityZoneInput[];
   pmExternalAutoTrips: number;
   isFlorida: boolean;
+  /** ITE-style land-use code string (e.g. "820", "710"). Used by analogyCore. */
+  landUseCode: string;
+  /** Density index 0–1 (medianVol / 30 k). Used by analogyCore. */
+  densityIndex: number;
 };
 
 const METHOD_LABEL: Record<DistributionMethod, string> = {
@@ -198,11 +209,181 @@ function gravityCore(ctx: TripDistributionCtx): {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Analogy core — curated ComparableSource reference library
+// ---------------------------------------------------------------------------
+
+/**
+ * Distribute trips using the analogous-site method.
+ *
+ * Orientation logic:
+ *   1. Find the "dominant" candidate zone — the one with the largest mass
+ *      (ties broken by smallest distanceMi; all-zero-mass → nearest by
+ *      distanceMi).
+ *   2. Look up the dominant zone's compass octant in CARDINALS (index 0–7,
+ *      clockwise from NNE).
+ *   3. For every candidate, compute its octant offset relative to the dominant
+ *      octant: offset = (candidateOctant − dominantOctant + 8) % 8.
+ *   4. raw_i = profile[offset] × exp(−decayPerMile × distanceMi_i).
+ *   5. Normalize to weights Σ = 1 (uniform 1/n fallback if Σ ≤ 0).
+ *
+ * The curated AnalogyPattern captures the planning rationale: denser settings
+ * produce a flatter distribution (trips arrive from all directions) while
+ * sparser settings concentrate trips along the primary access corridor.
+ * The distance-decay term further penalizes attraction from far-flung zones,
+ * mimicking observed trip-length distributions by land-use type.
+ *
+ * Returns gravityCore-compatible fields PLUS provenance (source + matched).
+ */
+function analogyCore(ctx: TripDistributionCtx): {
+  weights: number[];
+  loadMultipliers: number[];
+  terms: number[];
+  masses: number[];
+  betaExponent: number;
+  massBasis: string;
+  provenance: { source: string; matched: string };
+  basisFromPattern: string;
+} {
+  const n = ctx.meta.length;
+  const masses = ctx.meta.map((c) => c.mass);
+
+  // Resolve land-use family and area type from context.
+  const family = landUseFamily(ctx.landUseCode);
+  const areaType = areaTypeFromDensity(ctx.densityIndex);
+  const match = REFERENCE_LIBRARY.find(family, areaType)!; // never null for valid inputs
+
+  if (n === 0) {
+    return {
+      weights: [],
+      loadMultipliers: [],
+      terms: [],
+      masses,
+      betaExponent: 1,
+      massBasis: "analogous-site directional concentration (screening-grade), oriented to the site's primary access corridor",
+      provenance: {
+        source: "curated reference library (land-use family × area-type); library-now/DB-later",
+        matched: match.matched,
+      },
+      basisFromPattern: match.pattern.basis,
+    };
+  }
+
+  const { profile, decayPerMile } = match.pattern;
+
+  // ---- Identify dominant octant ----
+  // Primary sort: largest mass. Tie-break: smallest distanceMi.
+  // All-zero-mass fallback: nearest by distanceMi.
+  let domIdx = 0;
+  const allZeroMass = masses.every((m) => !(m > 0));
+  if (allZeroMass) {
+    // Nearest by distanceMi.
+    for (let i = 1; i < n; i++) {
+      if (ctx.meta[i]!.distanceMi < ctx.meta[domIdx]!.distanceMi) domIdx = i;
+    }
+  } else {
+    for (let i = 1; i < n; i++) {
+      const mi = masses[i] ?? 0;
+      const md = ctx.meta[i]!.distanceMi;
+      const mdom = masses[domIdx] ?? 0;
+      const ddom = ctx.meta[domIdx]!.distanceMi;
+      if (mi > mdom || (mi === mdom && md < ddom)) domIdx = i;
+    }
+  }
+
+  // Dominant candidate's octant index in CARDINALS (0–7).
+  const domOctant = CARDINALS.indexOf(bearingToCardinal(ctx.meta[domIdx]!.bearingDeg));
+
+  // ---- Compute raw pulls ----
+  const raw: number[] = ctx.meta.map((c) => {
+    const candOctant = CARDINALS.indexOf(bearingToCardinal(c.bearingDeg));
+    const offset = ((candOctant - domOctant) + 8) % 8;
+    const profileWeight = profile[offset] ?? 1;
+    const decay = Math.exp(-decayPerMile * c.distanceMi);
+    const r = profileWeight * decay;
+    return Number.isFinite(r) ? r : 0;
+  });
+
+  // ---- Normalize to Σ = 1 ----
+  const rawSum = raw.reduce((s, v) => s + v, 0);
+  const weights = rawSum > 0
+    ? raw.map((r) => r / rawSum)
+    : new Array<number>(n).fill(1 / n);
+
+  return {
+    weights,
+    loadMultipliers: new Array<number>(n).fill(1),
+    terms: raw,
+    masses,
+    betaExponent: 1,
+    massBasis: "analogous-site directional concentration (screening-grade), oriented to the site's primary access corridor",
+    provenance: {
+      source: "curated reference library (land-use family × area-type); library-now/DB-later",
+      matched: match.matched,
+    },
+    basisFromPattern: match.pattern.basis,
+  };
+}
+
 export function computeTripDistribution(
   method: DistributionMethod | undefined,
   ctx: TripDistributionCtx,
 ): TripDistributionSummary {
   const requested: DistributionMethod = method ?? "gravity";
+
+  // ---- Florida override ----
+  // Florida uses the adopted Caltran mass/distance gravity model as its
+  // distribution standard, and the FL renderer documents Caltran gravity
+  // verbatim. Running analogy/surrogate weights under a FL report would make the
+  // document internally contradictory (gravity narrative, non-gravity weights).
+  // So for FL, a non-gravity selection is overridden back to gravity, with a
+  // transparent note. (method === "gravity"/unset never enters here → byte-
+  // identity preserved.)
+  if (ctx.isFlorida && requested !== "gravity") {
+    const core = gravityCore(ctx);
+    const { zones, byDirection, sectors } = buildZones(ctx, core.weights, core.terms, core.masses);
+    return {
+      method: "gravity",
+      methodLabel: METHOD_LABEL.gravity,
+      basis:
+        "Caltran mass/distance gravity model over study-area attraction zones. " +
+        `(Florida uses the adopted Caltran gravity distribution standard; the selected ${METHOD_LABEL[requested]} does not apply to Florida studies.)`,
+      betaExponent: core.betaExponent,
+      massBasis: core.massBasis,
+      weights: core.weights,
+      loadMultipliers: core.loadMultipliers,
+      zones,
+      byDirection,
+      sectors,
+    };
+  }
+
+  // ---- Analogy path (PR2) ----
+  if (requested === "analogy") {
+    const core = analogyCore(ctx);
+    const { zones, byDirection, sectors } = buildZones(
+      ctx,
+      core.weights,
+      core.terms,
+      core.masses,
+    );
+    return {
+      method: requested,
+      methodLabel: METHOD_LABEL[requested],
+      basis: core.basisFromPattern,
+      betaExponent: core.betaExponent,
+      massBasis: core.massBasis,
+      weights: core.weights,
+      loadMultipliers: core.loadMultipliers,
+      zones,
+      byDirection,
+      sectors,
+      provenance: core.provenance,
+    };
+  }
+
+  // ---- Gravity path (PR1) — UNCHANGED; byte-identity preserved ----
+  // "surrogate" stub also falls through here (PR3).
   const core = gravityCore(ctx);
   const { zones, byDirection, sectors } = buildZones(
     ctx,
@@ -217,6 +398,7 @@ export function computeTripDistribution(
       ? "Caltran mass/distance gravity model over study-area attraction zones."
       : "NCHRP-716 gamma-friction gravity model (production-constrained) over study-area attraction zones.";
   } else {
+    // "surrogate" stub (PR3)
     basis =
       `${METHOD_LABEL[requested]} is not yet implemented (PR2/PR3); ` +
       `falling back to the gravity model for this study.`;
