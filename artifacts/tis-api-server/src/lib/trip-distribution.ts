@@ -331,6 +331,33 @@ export function computeTripDistribution(
 ): TripDistributionSummary {
   const requested: DistributionMethod = method ?? "gravity";
 
+  // ---- Florida override ----
+  // Florida uses the adopted Caltran mass/distance gravity model as its
+  // distribution standard, and the FL renderer documents Caltran gravity
+  // verbatim. Running analogy/surrogate weights under a FL report would make the
+  // document internally contradictory (gravity narrative, non-gravity weights).
+  // So for FL, a non-gravity selection is overridden back to gravity, with a
+  // transparent note. (method === "gravity"/unset never enters here → byte-
+  // identity preserved.)
+  if (ctx.isFlorida && requested !== "gravity") {
+    const core = gravityCore(ctx);
+    const { zones, byDirection, sectors } = buildZones(ctx, core.weights, core.terms, core.masses);
+    return {
+      method: "gravity",
+      methodLabel: METHOD_LABEL.gravity,
+      basis:
+        "Caltran mass/distance gravity model over study-area attraction zones. " +
+        `(Florida uses the adopted Caltran gravity distribution standard; the selected ${METHOD_LABEL[requested]} does not apply to Florida studies.)`,
+      betaExponent: core.betaExponent,
+      massBasis: core.massBasis,
+      weights: core.weights,
+      loadMultipliers: core.loadMultipliers,
+      zones,
+      byDirection,
+      sectors,
+    };
+  }
+
   // ---- Analogy path (PR2) ----
   if (requested === "analogy") {
     const core = analogyCore(ctx);

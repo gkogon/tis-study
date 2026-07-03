@@ -232,5 +232,16 @@ const emptyAnl = computeTripDistribution("analogy", { meta: [], demandZones: [],
 ok(emptyAnl.weights.length === 0 && emptyAnl.zones.length === 0, "analogy empty ctx: no throw, empty arrays");
 ok(emptyAnl.provenance != null && typeof emptyAnl.provenance.matched === "string", "analogy empty ctx: provenance still set");
 
+// --- FL override: a non-gravity method on a Florida study is forced back to
+//     gravity (Caltran) so the FL report stays coherent (gravity narrative +
+//     gravity weights). Also confirms FL gravity weights are unchanged. ---
+const flAnl = computeTripDistribution("analogy", flCtx);
+ok(flAnl.method === "gravity", "FL + analogy → method forced to gravity");
+ok(/Florida|Caltran/.test(flAnl.basis), "FL override basis notes the Caltran/Florida standard");
+const flGrav = computeTripDistribution("gravity", flCtx);
+ok(flAnl.weights.every((w, i) => close(w, flGrav.weights[i])), "FL + analogy weights == FL gravity weights (byte-identical)");
+const flSur = computeTripDistribution("surrogate", flCtx);
+ok(flSur.method === "gravity", "FL + surrogate → method forced to gravity");
+
 console.log(fails === 0 ? "ALL PASS" : `${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);

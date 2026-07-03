@@ -181,8 +181,10 @@ export function renderTripDistributionSection(
       ? flDistributionNarrative(td)
       : td.method === "analogy"
         ? `The trip distribution uses the ${td.methodLabel.toLowerCase()} ` +
-            `(raw pull = orientation_profile[octant_offset] × exp(−λ × distanceMi); ` +
-            `decay rate λ reflects the ${td.massBasis}). ` +
+            `(raw pull = orientation_profile[octant_offset] × exp(−λ × distanceMi), where the ` +
+            `orientation profile is a screening-grade directional-concentration shape oriented to ` +
+            `the site's primary access corridor and λ is a land-use-family distance-decay rate — a ` +
+            `higher λ means a shorter trip-length catchment). ` +
             `Shares are normalized to 100% of project trips and drive the trip ` +
             `assignment below. Basis: ${td.basis}`
         : `The trip distribution uses the ${td.methodLabel.toLowerCase()} ` +
@@ -209,7 +211,7 @@ export function renderTripDistributionSection(
   // --- Gravity worksheet table (top-N by share) ---
   const wsZones = td.zones.slice(0, cap);
   table(doc, {
-    headers: ["Study-area zone", "Dir.", "Distance (mi)", "Mass (M)", td.method === "analogy" ? "Pull term" : "Gravity term", "Trip share"],
+    headers: ["Study-area zone", "Dir.", "Distance (mi)", td.method === "analogy" ? "Vol. (orient.)" : "Mass (M)", td.method === "analogy" ? "Pull term" : "Gravity term", "Trip share"],
     widths: [190, 45, 75, 75, 75, 65],
     align: ["left", "center", "right", "right", "right", "right"],
     rows: wsZones.map((z) => [
