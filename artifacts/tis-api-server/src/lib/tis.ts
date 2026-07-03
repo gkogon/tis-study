@@ -56,6 +56,9 @@ import {
   type GravityZoneInput,
   type DistributionCandidateMeta,
 } from "./trip-distribution";
+// Lazy: the module import is cheap; blockGroupAt() parses the ~12 MB national
+// TAZ asset only on first call, which happens only for surrogate-method studies.
+import { blockGroupAt, nationalTazAvailable } from "./national-block-group-taz";
 
 export { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence };
 // Re-export the delay model for back-compat (turbo-lane.ts / uk-capacity.ts and
@@ -1342,6 +1345,18 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     bearingDeg: gravityZones[i]!.bearingDeg,
     mass: gravityZones[i]!.mass,
   }));
+  // Surrogate (market-area) activity mass, computed only when the surrogate
+  // method is requested for a non-FL study (FL always uses Caltran gravity, so
+  // the block-group lookup — which lazily parses the 12 MB national TAZ asset on
+  // first call — is skipped for every other study). Each candidate's mass is the
+  // surrounding block-group population + employment (Census 2020 + LODES8).
+  let activityMass: number[] | undefined;
+  if (req.distributionMethod === "surrogate" && !isFloridaRegion(region) && nationalTazAvailable()) {
+    activityMass = candidates.map((c) => {
+      const bg = blockGroupAt(c.sig.latitude, c.sig.longitude);
+      return bg ? bg.population + bg.jobsShopping + bg.jobsCommerce + bg.jobsWorking : 0;
+    });
+  }
   // Unified trip-distribution layer. Default (unset method) resolves to the
   // gravity strategy — four-step for most regions, Caltran mass/distance for
   // FL — producing byte-identical weights/loadMultipliers/flGravity to the
@@ -1354,6 +1369,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     isFlorida: isFloridaRegion(region),
     landUseCode: req.landUseCode,
     densityIndex,
+    ...(activityMass ? { activityMass } : {}),
   };
   const dist = computeTripDistribution(req.distributionMethod, distCtx);
   let weights = dist.weights;

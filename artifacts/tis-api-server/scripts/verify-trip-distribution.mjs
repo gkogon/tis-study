@@ -110,13 +110,12 @@ ok(fl.loadMultipliers.every((x, i) => close(x, refMults[i])), "FL loadMultiplier
 ok(fl.zones.every((z, i) => i === 0 || fl.zones[i - 1].sharePct >= z.sharePct - 1e-12),
    "FL zones sorted by sharePct descending (matches origin/main flGravity.zones)");
 
-// --- surrogate stub falls back to gravity ---
-// (analogy is now real; surrogate is still the PR3 stub)
-for (const method of ["surrogate"]) {
-  const s = computeTripDistribution(method, ctx);
-  ok(s.weights.every((w, i) => close(w, g.weights[i])), `${method} stub weights fall back to gravity`);
-  ok(/not yet implemented/i.test(s.basis), `${method} stub basis notes not-yet-implemented`);
-  ok(s.method === method, `${method} stub preserves requested method label`);
+// --- surrogate is now a real method (PR3): distinct from gravity, honest basis ---
+{
+  const s = computeTripDistribution("surrogate", ctx); // ctx has no activityMass → road-only market-area
+  ok(s.method === "surrogate", "surrogate preserves requested method label");
+  ok(/market-area/i.test(s.basis) && /screening-grade/i.test(s.basis), "surrogate basis is the real market-area screening-grade note (not a stub)");
+  ok(!/not yet implemented/i.test(s.basis), "surrogate basis no longer says not-yet-implemented");
 }
 
 // --- default (undefined) resolves gravity for non-FL, Caltran for FL ---
@@ -242,6 +241,23 @@ const flGrav = computeTripDistribution("gravity", flCtx);
 ok(flAnl.weights.every((w, i) => close(w, flGrav.weights[i])), "FL + analogy weights == FL gravity weights (byte-identical)");
 const flSur = computeTripDistribution("surrogate", flCtx);
 ok(flSur.method === "gravity", "FL + surrogate → method forced to gravity");
+
+// --- surrogate (market-area) method ---
+// Road-only fallback: no activityMass on the ctx → pop/emp weight 0.
+const surRoad = computeTripDistribution("surrogate", anlCtx);
+ok(surRoad.method === "surrogate", "surrogate: method is surrogate");
+ok(close(surRoad.weights.reduce((s, w) => s + w, 0), 1), "surrogate road-only: weights sum to 1");
+ok(surRoad.weights.every((w) => Number.isFinite(w) && w >= 0), "surrogate road-only: weights finite non-negative");
+ok(surRoad.provenance && surRoad.provenance.blendWeights.population_employment === 0, "surrogate road-only: pop/emp blend weight 0");
+ok(surRoad.provenance.blendWeights.road_volume === 1, "surrogate road-only: road blend weight 1");
+// Blended: supply per-candidate activity mass, concentrated on the LAST candidate
+// (which carries little road volume) → the blend must visibly differ from road-only.
+const actMass = anlCtx.meta.map((_, i) => (i === anlCtx.meta.length - 1 ? 100000 : 100));
+const surBlend = computeTripDistribution("surrogate", { ...anlCtx, activityMass: actMass });
+ok(close(surBlend.weights.reduce((s, w) => s + w, 0), 1), "surrogate blended: weights sum to 1");
+ok(surBlend.provenance.blendWeights.population_employment === 0.5, "surrogate blended: pop/emp blend weight 0.5");
+ok(!surBlend.weights.every((w, i) => close(w, surRoad.weights[i])), "surrogate blended differs from road-only when activity present");
+ok(close(Object.values(surBlend.byDirection).reduce((s, v) => s + Number(v), 0), 100), "surrogate blended: byDirection sums to 100");
 
 console.log(fails === 0 ? "ALL PASS" : `${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);
