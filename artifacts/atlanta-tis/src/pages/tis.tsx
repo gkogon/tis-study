@@ -224,7 +224,7 @@ const WEATHER_OPTIONS: Array<{ value: TisWeather; label: string; cap: number }> 
 const DISTRIBUTION_METHOD_OPTIONS: Array<{ value: TisDistributionMethod; label: string }> = [
   { value: "gravity", label: "Gravity model (mass / distance)" },
   { value: "analogy", label: "Analogous-site distribution" },
-  { value: "surrogate", label: "Surrogate / market-area (coming soon)" },
+  { value: "surrogate", label: "Surrogate / market-area (population + employment)" },
 ];
 
 function TisFormSection({

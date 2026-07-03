@@ -187,10 +187,15 @@ export function renderTripDistributionSection(
             `higher λ means a shorter trip-length catchment). ` +
             `Shares are normalized to 100% of project trips and drive the trip ` +
             `assignment below. Basis: ${td.basis}`
-        : `The trip distribution uses the ${td.methodLabel.toLowerCase()} ` +
-            `(term = M / (d^${td.betaExponent} · d_site); mass basis: ${td.massBasis}). ` +
-            `Shares are normalized to 100% of project trips and drive the trip ` +
-            `assignment below. Basis: ${td.basis}`,
+        : td.method === "surrogate"
+          ? `The trip distribution uses the ${td.methodLabel.toLowerCase()} ` +
+              `(raw pull = market-area mass × exp(−λ × distanceMi); market-area mass is ${td.massBasis}). ` +
+              `Shares are normalized to 100% of project trips and drive the trip ` +
+              `assignment below. Basis: ${td.basis}`
+          : `The trip distribution uses the ${td.methodLabel.toLowerCase()} ` +
+              `(term = M / (d^${td.betaExponent} · d_site); mass basis: ${td.massBasis}). ` +
+              `Shares are normalized to 100% of project trips and drive the trip ` +
+              `assignment below. Basis: ${td.basis}`,
     { paragraphGap: 6 },
   );
 
@@ -211,7 +216,7 @@ export function renderTripDistributionSection(
   // --- Gravity worksheet table (top-N by share) ---
   const wsZones = td.zones.slice(0, cap);
   table(doc, {
-    headers: ["Study-area zone", "Dir.", "Distance (mi)", td.method === "analogy" ? "Vol. (orient.)" : "Mass (M)", td.method === "analogy" ? "Pull term" : "Gravity term", "Trip share"],
+    headers: ["Study-area zone", "Dir.", "Distance (mi)", td.method === "analogy" ? "Vol. (orient.)" : td.method === "surrogate" ? "Mkt. mass" : "Mass (M)", td.method === "analogy" ? "Pull term" : td.method === "surrogate" ? "Market term" : "Gravity term", "Trip share"],
     widths: [190, 45, 75, 75, 75, 65],
     align: ["left", "center", "right", "right", "right", "right"],
     rows: wsZones.map((z) => [

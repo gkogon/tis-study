@@ -100,6 +100,11 @@ export type TripDistributionCtx = {
   landUseCode: string;
   /** Density index 0–1 (medianVol / 30 k). Used by analogyCore. */
   densityIndex: number;
+  /** Candidate-ordered surrounding population+employment activity mass
+   *  (Census 2020 + LODES8), computed by the caller (tis.ts) via a lazy
+   *  block-group lookup. Used by surrogateCore. Absent/empty ⇒ surrogate
+   *  degrades to a road-through-volume-only market-area distribution. */
+  activityMass?: number[];
 };
 
 const METHOD_LABEL: Record<DistributionMethod, string> = {
@@ -325,6 +330,73 @@ function analogyCore(ctx: TripDistributionCtx): {
   };
 }
 
+// ---- Surrogate (market-area) core (PR3) ----
+// Allocates project trips in proportion to a blend of surrounding land-use
+// activity (block-group population + employment, Census 2020 + LODES8) and road
+// through-volume, distance-decayed. Pure: the caller (tis.ts) supplies the
+// per-candidate activity mass via ctx.activityMass (lazy block-group lookup);
+// this module never touches the 12 MB TAZ asset. When activity mass is absent
+// (non-US, offshore, or the asset is unavailable in the deployment) it degrades
+// gracefully to a road-through-volume-only market-area distribution.
+const SURROGATE_DECAY_PER_MI = 0.6; // market-area distance decay (gentler than gravity friction)
+const SURROGATE_W_ACTIVITY = 0.5;
+const SURROGATE_W_VOLUME = 0.5;
+
+function surrogateCore(ctx: TripDistributionCtx): {
+  weights: number[];
+  loadMultipliers: number[];
+  terms: number[];
+  masses: number[];
+  betaExponent: number;
+  massBasis: string;
+  basis: string;
+  provenance: { source: string; blendWeights: Record<string, number> };
+} {
+  const n = ctx.meta.length;
+  const roadMass = ctx.meta.map((c) => (Number.isFinite(c.mass) && c.mass > 0 ? c.mass : 0));
+  const activity =
+    ctx.activityMass && ctx.activityMass.length === n
+      ? ctx.activityMass.map((v) => (Number.isFinite(v) && v > 0 ? v : 0))
+      : null;
+  const sumRoad = roadMass.reduce((s, v) => s + v, 0);
+  const sumAct = activity ? activity.reduce((s, v) => s + v, 0) : 0;
+  const hasActivity = activity != null && sumAct > 0;
+  const wAct = hasActivity ? SURROGATE_W_ACTIVITY : 0;
+  const wVol = hasActivity ? SURROGATE_W_VOLUME : 1; // road-only fallback
+
+  const raw = ctx.meta.map((c, i) => {
+    const normVol = sumRoad > 0 ? roadMass[i]! / sumRoad : (n ? 1 / n : 0);
+    const normAct = hasActivity ? activity![i]! / sumAct : 0;
+    const blended = wVol * normVol + wAct * normAct;
+    const decay = Math.exp(-SURROGATE_DECAY_PER_MI * c.distanceMi);
+    const r = blended * decay;
+    return Number.isFinite(r) ? r : 0;
+  });
+  const rawSum = raw.reduce((s, v) => s + v, 0);
+  const weights = rawSum > 0 ? raw.map((r) => r / rawSum) : new Array<number>(n).fill(n ? 1 / n : 0);
+
+  return {
+    weights,
+    loadMultipliers: new Array<number>(n).fill(1),
+    terms: raw,
+    // Display the market-area activity mass when available, else the road mass.
+    masses: activity ?? roadMass,
+    betaExponent: 1,
+    massBasis: hasActivity
+      ? "market-area attraction: surrounding block-group population + employment (Census 2020 Centers of Population + LEHD LODES8) blended 50/50 with road through-volume, distance-decayed"
+      : "market-area attraction from road through-volume (Census population/employment layer unavailable for this site), distance-decayed",
+    basis: hasActivity
+      ? "Surrogate market-area distribution: net project trips allocated in proportion to a 50/50 blend of surrounding population + employment (Census 2020 + LEHD LODES8) and road through-volume, with distance decay. Screening-grade; replace with a calibrated regional travel-demand model or an O-D study before formal submittal."
+      : "Surrogate market-area distribution from road through-volume (the Census population/employment layer was unavailable for this site), with distance decay. Screening-grade; replace with a calibrated regional model or an O-D study before formal submittal.",
+    provenance: {
+      source: hasActivity
+        ? "surrogate market-area (Census block-group population+employment × road through-volume)"
+        : "surrogate market-area (road through-volume only; Census population/employment layer unavailable)",
+      blendWeights: { population_employment: wAct, road_volume: wVol },
+    },
+  };
+}
+
 export function computeTripDistribution(
   method: DistributionMethod | undefined,
   ctx: TripDistributionCtx,
@@ -382,8 +454,31 @@ export function computeTripDistribution(
     };
   }
 
+  // ---- Surrogate (market-area) path (PR3) ----
+  if (requested === "surrogate") {
+    const core = surrogateCore(ctx);
+    const { zones, byDirection, sectors } = buildZones(
+      ctx,
+      core.weights,
+      core.terms,
+      core.masses,
+    );
+    return {
+      method: requested,
+      methodLabel: METHOD_LABEL[requested],
+      basis: core.basis,
+      betaExponent: core.betaExponent,
+      massBasis: core.massBasis,
+      weights: core.weights,
+      loadMultipliers: core.loadMultipliers,
+      zones,
+      byDirection,
+      sectors,
+      provenance: core.provenance,
+    };
+  }
+
   // ---- Gravity path (PR1) — UNCHANGED; byte-identity preserved ----
-  // "surrogate" stub also falls through here (PR3).
   const core = gravityCore(ctx);
   const { zones, byDirection, sectors } = buildZones(
     ctx,
@@ -392,17 +487,9 @@ export function computeTripDistribution(
     core.masses,
   );
 
-  let basis: string;
-  if (requested === "gravity") {
-    basis = ctx.isFlorida
-      ? "Caltran mass/distance gravity model over study-area attraction zones."
-      : "NCHRP-716 gamma-friction gravity model (production-constrained) over study-area attraction zones.";
-  } else {
-    // "surrogate" stub (PR3)
-    basis =
-      `${METHOD_LABEL[requested]} is not yet implemented (PR2/PR3); ` +
-      `falling back to the gravity model for this study.`;
-  }
+  const basis = ctx.isFlorida
+    ? "Caltran mass/distance gravity model over study-area attraction zones."
+    : "NCHRP-716 gamma-friction gravity model (production-constrained) over study-area attraction zones.";
 
   return {
     method: requested,
