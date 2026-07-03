@@ -273,7 +273,9 @@ export function renderTripDistributionSection(
       drawLineChart(doc, {
         title: td.method === "analogy"
           ? "Figure — Trip Share vs. Distance from Site (Analogy Decay)"
-          : "Figure — Trip Share vs. Distance from Site (Gravity Decay)",
+          : td.method === "surrogate"
+            ? "Figure — Trip Share vs. Distance from Site (Market-Area Decay)"
+            : "Figure — Trip Share vs. Distance from Site (Gravity Decay)",
         categories: byDist.map((z) => `${z.distanceMi.toFixed(2)}`),
         values: byDist.map((z) => fin2(z.sharePct)),
         color: CHART_COLORS.line,

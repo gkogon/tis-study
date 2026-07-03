@@ -94,7 +94,10 @@ function load(): LoadedAsset | null {
     }
     cache = { records, grid, meta: parsed.meta ?? {} };
     return cache;
-  } catch {
+  } catch (err) {
+    // Corrupt/unreadable asset → graceful road-only fallback for surrogate, but
+    // log it so a Railway deploy shows why the Census layer went dark.
+    console.error(`[national-taz] failed to load asset at ${ASSET_PATH}:`, err);
     cache = null;
     return null;
   }
