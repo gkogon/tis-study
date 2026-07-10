@@ -12,8 +12,10 @@ import { CARDINALS } from "./caltran-gravity";
 
 // ---- primitives table() closes over (copied per Path A) ----
 const PAGE_MARGIN = 50;
-// The shared section is NEVER used in London, so the Velocity palette is off.
-const velocityPaletteActive = false as boolean;
+// Off for US renderers; renderTripDistributionSection flips this on for the
+// duration of a UK (flavor "uk") render so the shared tables adopt the Velocity
+// green palette that the rest of the London TA uses, then resets it in a finally.
+let velocityPaletteActive = false as boolean;
 const VELOCITY_FILL = "#ECF5E9";
 const VELOCITY_GREEN = "#8EC57C";
 const TEXT_GRAY = "#6b7280";
@@ -134,9 +136,23 @@ export type TripDistributionSectionOpts = {
   /** periodReports, to pull the am_peak column. */
   periods?: any[];
   /** "fl" → reproduce Florida's exact prose/captions/spacing (byte-identical);
+   *  "uk" → UK narrative (WebTAG/DMRB/TRICS/Census WU03EW) + Velocity palette;
    *  "generic" (default) → the region-neutral wording for the new sections. */
-  flavor?: "fl" | "generic";
+  flavor?: "fl" | "uk" | "generic";
 };
+
+// UK method-mechanic one-liner, appended after the method label in the narrative.
+function ukMethodMechanic(td: TripDistributionSummary): string {
+  switch (td.method) {
+    case "surrogate":
+      return `The site MSOA's 2011 Census journey-to-work commuter flows are projected onto each study junction's bearing from the site and distance-decayed (${td.massBasis}).`;
+    case "analogy":
+      return "A screening-grade directional pattern by land-use family and area type is oriented to the site's primary access corridor and distance-decayed; for a submitted TA it is replaced by a TRICS multi-modal comparable site.";
+    case "gravity":
+    default:
+      return "Net car trips are assigned to the study network in proportion to junction proximity (volume × distance⁻¹·⁵).";
+  }
+}
 
 // -- FL VERBATIM narrative (pdf-export.ts:7770), templated on the summary fields
 //    the original read off flg (betaExponent, massBasis). --
@@ -168,6 +184,12 @@ export function renderTripDistributionSection(
 
   const cap = opts.cap ?? WORKSHEET_CAP;
   const isFl = opts.flavor === "fl";
+  const isUk = opts.flavor === "uk";
+  // UK: adopt the Velocity green palette for the shared tables for the duration
+  // of this section (reset in the finally), matching the rest of the London TA.
+  const prevVelocity = velocityPaletteActive;
+  if (isUk) velocityPaletteActive = true;
+  try {
 
   // --- Distribution heading + method/basis narrative ---
   opts.headingFn(
@@ -179,6 +201,10 @@ export function renderTripDistributionSection(
   doc.font("body").fontSize(10).fillColor("black").text(
     isFl
       ? flDistributionNarrative(td)
+      : isUk
+        ? `The trip distribution uses the ${td.methodLabel} method. ${ukMethodMechanic(td)} ` +
+            `Shares are normalized to 100% of the net car project trips and drive the assignment onto the ` +
+            `study junctions below. Basis: ${td.basis}`
       : td.method === "analogy"
         ? `The trip distribution uses the ${td.methodLabel.toLowerCase()} ` +
             `(raw pull = orientation_profile[octant_offset] × exp(−λ × distanceMi), where the ` +
@@ -337,5 +363,10 @@ export function renderTripDistributionSection(
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
+  }
+  } finally {
+    // Always restore the palette flag so a UK render never leaks the Velocity
+    // green into a subsequent non-UK section rendered by the same process.
+    velocityPaletteActive = prevVelocity;
   }
 }

@@ -1018,7 +1018,7 @@ function drawBody(doc: PDFKit.PDFDocument, project: StoredProject) {
  */
 type DrivewayFigureRow = { label: string; access: string; inAm: number; inPm: number; outAm: number; outPm: number; forcesReroute: boolean };
 
-function renderDrivewayFigure(doc: PDFKit.PDFDocument, result: Record<string, unknown>): DrivewayFigureRow[] {
+function renderDrivewayFigure(doc: PDFKit.PDFDocument, result: Record<string, unknown>, uk = false): DrivewayFigureRow[] {
   const dw = (result as any).driveways;
   const req = (result as any).request ?? {};
   const reqDws: any[] = Array.isArray(req.driveways) ? req.driveways : [];
@@ -1051,6 +1051,13 @@ function renderDrivewayFigure(doc: PDFKit.PDFDocument, result: Record<string, un
   const ACCESS_LABEL: Record<string, string> = {
     full: "Full", riro: "RIRO", three_quarter: "¾ access", entrance_only: "Entry only", exit_only: "Exit only", custom: "Custom",
   };
+  // UK access terminology (DMRB CD 123 / Manual for Streets). Britain drives on
+  // the left, so the US near-side RIRO restriction is left-in/left-out here; a
+  // full access is a priority junction; a ¾ access is a ghost-island right-turn.
+  const ACCESS_LABEL_UK: Record<string, string> = {
+    full: "All movements (priority)", riro: "LILO (left-in/left-out)", three_quarter: "¾ (ghost-island)", entrance_only: "Entry only", exit_only: "Exit only", custom: "Bespoke",
+  };
+  const labelMap = uk ? ACCESS_LABEL_UK : ACCESS_LABEL;
 
   // Row data (always computed — drives both the figure and the table below).
   const n = Math.min(reqDws.length, resDws.length);
@@ -1058,8 +1065,8 @@ function renderDrivewayFigure(doc: PDFKit.PDFDocument, result: Record<string, un
   for (let i = 0; i < n; i++) {
     const rq = reqDws[i], rs = resDws[i];
     rows.push({
-      label: String(rs.label ?? rq.label ?? `Driveway ${String.fromCharCode(65 + i)}`),
-      access: ACCESS_LABEL[String(rq.accessType)] ?? String(rq.accessType ?? ""),
+      label: String(rs.label ?? rq.label ?? `${uk ? "Access" : "Driveway"} ${String.fromCharCode(65 + i)}`),
+      access: labelMap[String(rq.accessType)] ?? String(rq.accessType ?? ""),
       inAm: scale(enterShare[i]!, sumEnter, amIn), inPm: scale(enterShare[i]!, sumEnter, pmIn),
       outAm: scale(exitShare[i]!, sumExit, amOut), outPm: scale(exitShare[i]!, sumExit, pmOut),
       forcesReroute: (Number(rs.reroutedTrips) || 0) > 1e-4,
@@ -1116,7 +1123,9 @@ function renderDrivewayFigure(doc: PDFKit.PDFDocument, result: Record<string, un
     doc.restore();
     doc.y = y0 + figH + 6;
     doc.font("body").fontSize(7.5).fillColor(TEXT_GRAY).text(
-      "Site-access schematic (not to scale). Driveways placed by bearing from the site; volumes are net new project trips as AM (PM), In = entering / Out = exiting, scaled from each driveway's share of the allowed movements.",
+      uk
+        ? "Site-access schematic (not to scale). Vehicular accesses placed by bearing from the site; volumes are net new project trips as AM (PM), In = entering / Out = exiting, scaled from each access's share of the permitted movements (arrangement per DMRB CD 123 / Manual for Streets)."
+        : "Site-access schematic (not to scale). Driveways placed by bearing from the site; volumes are net new project trips as AM (PM), In = entering / Out = exiting, scaled from each driveway's share of the allowed movements.",
       x0, doc.y, { width: figW, align: "left" });
     doc.fillColor("black");
     doc.moveDown(0.5);
@@ -1146,13 +1155,19 @@ function dispatchTisRender(
     //     so output is byte-identical to today).
     const dw = (result as any).driveways;
     if (dw && Array.isArray(dw.driveways) && dw.driveways.length > 0) {
+      // UK studies use UK access terminology (DMRB CD 123 / Manual for Streets);
+      // US output is byte-identical (guarded on country). No routing/behaviour
+      // change — only the headings, access-type labels and note copy differ.
+      const ukAccess = (region?.country ?? "US") === "UK";
       // Reserve room so the heading + ~340pt figure stay on one page.
       if (doc.y + 400 > doc.page.height - PAGE_MARGIN) doc.addPage();
-      gaSubsection(doc, "Site Access — Driveways");
-      const figRows = renderDrivewayFigure(doc, result);
+      gaSubsection(doc, ukAccess ? "Vehicular Access Arrangements" : "Site Access — Driveways");
+      const figRows = renderDrivewayFigure(doc, result, ukAccess);
       if (figRows.length > 0) {
         table(doc, {
-          headers: ["Driveway", "Access", "In AM (PM)", "Out AM (PM)"],
+          headers: ukAccess
+            ? ["Access", "Arrangement", "In AM (PM)", "Out AM (PM)"]
+            : ["Driveway", "Access", "In AM (PM)", "Out AM (PM)"],
           widths: [200, 100, 105, 105],
           align: ["left", "left", "right", "right"],
           rows: figRows.map((r) => [r.label, r.access, `${r.inAm} (${r.inPm})`, `${r.outAm} (${r.outPm})`]),
@@ -1160,7 +1175,9 @@ function dispatchTisRender(
         const rerouters = figRows.filter((r) => r.forcesReroute).map((r) => r.label);
         if (rerouters.length > 0) {
           doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-            `${rerouters.join(", ")}: forbidden movements reroute as U-turns at the nearest signal, adding turning volume there (reflected in the affected intersections' LOS).`,
+            ukAccess
+              ? `${rerouters.join(", ")}: turns banned by the access arrangement (per DMRB CD 123 / Manual for Streets access design) re-route to the nearest signal-controlled junction, adding turning volume there (reflected in the assessed junctions' capacity results).`
+              : `${rerouters.join(", ")}: forbidden movements reroute as U-turns at the nearest signal, adding turning volume there (reflected in the affected intersections' LOS).`,
             { paragraphGap: 6 });
           doc.fillColor("black");
         }
@@ -4191,12 +4208,25 @@ function renderTisLondon(
   ldnSubsection(doc, isLondon ? "6.10 Servicing Accumulation Profile" : "5.8 Servicing Accumulation Profile");
   ldnNote(doc, "The hourly accumulation of servicing / delivery vehicles (to size on-site servicing bays and confirm no overspill to the highway) is a Delivery and Servicing Plan output; not produced by the engine.");
 
-  ldnSubsection(doc, isLondon ? "6.11 Trip Distribution Methodology" : "5.9 Trip Distribution Methodology");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    "Net car trips are assigned to the study network proportionally to junction proximity (gravity-model assignment, volume × distance⁻¹·⁵). For a submitted TA, distribution should be agreed in the scoping note signed by the LPA and (in London) TfL; for major schemes affecting the TLRN, TfL's strategic models (MoTiON for demand, LoHAM and the sub-regional HAMs for highway assignment, Railplan for PT) would be referenced and may need to be run under TfL's Model Auditing Process (MAP v4).",
-    { paragraphGap: 6 },
-  );
+  // §6.11 (London) / §5.9 (UK): the method-aware trip-distribution section — the
+  // same shared renderer the US reports use, in its UK flavor (WebTAG M2 / DMRB
+  // gravity, TRICS-comparable analogy, or the 2011 Census WU03EW journey-to-work
+  // catchment surrogate). The selected method already drove the per-junction
+  // loading above; here it is documented with the directional sector table,
+  // per-zone worksheet and distribution charts. The former single prose paragraph
+  // (proximity gravity + TfL MoTiON/LoHAM/MAP references) is now carried in the
+  // method-aware basis narrative. The per-junction km assignment table below is
+  // retained as the London-convention (metric) assignment view.
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: isLondon ? "6.11" : "5.9",
+    headingFn: ldnSubsection,
+    flavor: "uk",
+    cap: 20,
+    intersections,
+    periods,
+  });
   if (intersections.length > 0) {
+    ldnSubsection(doc, isLondon ? "6.11.1 Project Trip Assignment — Study Junctions" : "5.9.1 Project Trip Assignment — Study Junctions");
     const amPeriodD = periods.find((p) => p.period === "am_peak");
     const amIntsD: any[] = Array.isArray(amPeriodD?.affectedIntersections) ? amPeriodD.affectedIntersections : [];
     const amBySignalD = new Map<string, any>(amIntsD.map((a) => [String(a.signalId ?? a.name), a]));
@@ -4221,10 +4251,18 @@ function renderTisLondon(
       ? { headers: ["Junction", distHeader, "Added trips AM", "Added trips PM", "Share of added PM"], widths: [175, 60, 90, 90, 90], align: ["left", "right", "right", "right", "right"], rows: distRows }
       : { headers: ["Junction", distHeader, "Added trips PM", "Share of added PM"], widths: [220, 70, 110, 100], align: ["left", "right", "right", "right"], rows: distRows });
     doc.moveDown(0.3);
+    // Name the actual selected distribution method so this footnote matches the
+    // §6.11 method narrative above (not always "gravity" — surrogate/analogy also
+    // drive the assignment).
+    const distMethod = String((r as any)?.tripDistribution?.method ?? "gravity");
+    const methodDesc =
+      distMethod === "surrogate" ? "Census journey-to-work catchment"
+      : distMethod === "analogy" ? "analogous-site distribution"
+      : "gravity-model";
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
       isLondon
-        ? "Net car trips assigned per junction (engine gravity-model assignment). Bus / Underground / rail person-trip distribution is not produced by the engine — see §6.12–§6.14."
-        : "Net car trips assigned per junction (engine gravity-model assignment). Bus / Underground / rail person-trip distribution is not produced by the engine — see §5.10–§5.12.",
+        ? `Net car trips assigned per junction (engine ${methodDesc} assignment). Bus / Underground / rail person-trip distribution is not produced by the engine — see §6.12–§6.14.`
+        : `Net car trips assigned per junction (engine ${methodDesc} assignment). Bus / Underground / rail person-trip distribution is not produced by the engine — see §5.10–§5.12.`,
       { paragraphGap: 4 },
     );
     doc.fillColor("black");
