@@ -294,6 +294,11 @@ router.post("/trics/generate", tricsRateLimiter, async (req, res): Promise<void>
     });
     return;
   }
+  const drivewayErr = validateDriveways((parsed.data as any).driveways);
+  if (drivewayErr) {
+    res.status(422).json({ error: drivewayErr });
+    return;
+  }
   try {
     const report = await generateTisReport(parsed.data);
     if (report.coverageWarning) {
@@ -324,6 +329,11 @@ router.post("/trics/pdf", tricsRateLimiter, async (req, res): Promise<void> => {
     res.status(422).json({
       error: "The TRICS generator is London-only. Pick a site within Greater London.",
     });
+    return;
+  }
+  const drivewayErr = validateDriveways((parsed.data as any).driveways);
+  if (drivewayErr) {
+    res.status(422).json({ error: drivewayErr });
     return;
   }
   // Signed-in users get their firm branding; anonymous public users get the

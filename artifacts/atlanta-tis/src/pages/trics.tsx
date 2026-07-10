@@ -29,6 +29,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { signalCapacity, fmt, prcStr } from "@/lib/trcs";
+import { DrivewayEditor } from "@/components/driveway-editor";
+import type { Driveway, TisDistributionMethod } from "@workspace/tis-api-client-react";
 
 type LondonSite = { id: string; label: string; lat: number; lon: number };
 const LONDON_SITES: LondonSite[] = [
@@ -54,6 +56,14 @@ const WEATHER_OPTIONS: { value: string; label: string; cap: number }[] = [
   { value: "heavy_rain", label: "Heavy rain", cap: 0.86 },
   { value: "light_snow", label: "Light snow", cap: 0.86 },
   { value: "heavy_snow", label: "Heavy snow", cap: 0.70 },
+];
+// UK-flavoured labels for the three selectable distribution methods. Gravity is
+// the default (byte-identical to today); "surrogate" is the genuine UK-data
+// method — the 2011 Census WU03EW journey-to-work catchment for the site MSOA.
+const UK_DISTRIBUTION_METHOD_OPTIONS: { value: TisDistributionMethod; label: string }[] = [
+  { value: "gravity", label: "Gravity model (WebTAG M2 / DMRB)" },
+  { value: "surrogate", label: "Census journey-to-work catchment (2011 WU03EW)" },
+  { value: "analogy", label: "Analogous-site distribution (TRICS-comparable)" },
 ];
 
 type TisReport = {
@@ -87,6 +97,8 @@ function Generator() {
   const [passByPct, setPassByPct] = useState<number>(0);
   const [internalCapturePct, setInternalCapturePct] = useState<number>(0);
   const [runSensitivity, setRunSensitivity] = useState<boolean>(false);
+  const [distributionMethod, setDistributionMethod] = useState<TisDistributionMethod>("gravity");
+  const [driveways, setDriveways] = useState<Driveway[]>([]);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
 
   const [report, setReport] = useState<TisReport | null>(null);
@@ -129,6 +141,8 @@ function Generator() {
       passByPct,
       internalCapturePct,
       runSensitivity,
+      distributionMethod,
+      ...(driveways.length > 0 ? { driveways } : {}),
     };
   }
 
@@ -307,6 +321,28 @@ function Generator() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Trip-distribution method</label>
+                  <Select value={distributionMethod} onValueChange={(v) => setDistributionMethod(v as TisDistributionMethod)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {UK_DISTRIBUTION_METHOD_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Drives the assignment onto the study junctions. Surrogate uses the site MSOA's 2011 Census journey-to-work flows (Greater London).
+                  </p>
+                </div>
+                <div className="space-y-1.5 border-t pt-3">
+                  <label className="text-xs font-medium text-muted-foreground">Vehicular accesses (optional)</label>
+                  <DrivewayEditor
+                    site={{ latitude: site.lat, longitude: site.lon }}
+                    driveways={driveways}
+                    onChange={setDriveways}
+                  />
                 </div>
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={runSensitivity} onChange={(e) => setRunSensitivity(e.target.checked)} />
