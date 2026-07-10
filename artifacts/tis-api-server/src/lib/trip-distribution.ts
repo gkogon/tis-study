@@ -103,8 +103,27 @@ export type TripDistributionCtx = {
   /** Candidate-ordered surrounding population+employment activity mass
    *  (Census 2020 + LODES8), computed by the caller (tis.ts) via a lazy
    *  block-group lookup. Used by surrogateCore. Absent/empty ⇒ surrogate
-   *  degrades to a road-through-volume-only market-area distribution. */
+   *  degrades to a road-through-volume-only market-area distribution.
+   *  For UK studies this instead carries the WU03EW OD directional affinity. */
   activityMass?: number[];
+  /** True when the study region is in the UK. Switches every method's basis /
+   *  label to UK references (WebTAG M2 / DMRB gravity, TRICS-comparable analogy,
+   *  Census WU03EW journey-to-work catchment) without changing the maths. */
+  isUk?: boolean;
+  /** Present for a UK surrogate study with Greater-London OD coverage. The
+   *  candidate-ordered affinity is supplied via `activityMass`; these fields
+   *  carry the provenance the renderer prints. Absent ⇒ UK surrogate degrades to
+   *  the road-through-volume market-area distribution (with a UK basis). */
+  ukOd?: {
+    /** Resolved site MSOA, e.g. "Camden 028 (E02000186)". */
+    matched: string;
+    /** "outbound" (residential) | "inbound" (employment) | "workplace-mass". */
+    direction: string;
+    /** True when real OD flows drove the projection (vs. the mass fallback). */
+    hasFlows: boolean;
+    /** WU03EW attribution string (source + OGL licence). */
+    source: string;
+  };
 };
 
 const METHOD_LABEL: Record<DistributionMethod, string> = {
@@ -112,6 +131,31 @@ const METHOD_LABEL: Record<DistributionMethod, string> = {
   analogy: "Analogous-Site Distribution",
   surrogate: "Surrogate (Market-Area) Distribution",
 };
+
+// UK-facing method labels + basis strings. Selected when ctx.isUk. The maths is
+// unchanged; only the citation/framing differs so a UK reviewer reads the correct
+// standard (WebTAG / DMRB / TRICS / Census WU03EW) instead of the US sources.
+const METHOD_LABEL_UK: Record<DistributionMethod, string> = {
+  gravity: "Gravity Model (WebTAG M2 / DMRB)",
+  analogy: "Analogous-Site Distribution (TRICS-comparable)",
+  surrogate: "Census Journey-to-Work Catchment (2011 WU03EW)",
+};
+
+const UK_GRAVITY_BASIS =
+  "WebTAG Unit M2 gravity distribution: net car trips are assigned to the study " +
+  "network in proportion to junction proximity (volume × distance⁻¹·⁵) over the " +
+  "study-area attraction zones. For a submitted Transport Assessment the " +
+  "distribution is agreed in the scoping note with the LPA (and TfL in London — " +
+  "for schemes affecting the TLRN, TfL's strategic models MoTiON/LoHAM would be " +
+  "referenced under the Model Auditing Process).";
+
+const UK_ANALOGY_BASIS =
+  "Analogous-site directional distribution: a screening-grade directional-" +
+  "concentration pattern by land-use family and area type, oriented to the site's " +
+  "primary access corridor. For a submitted UK TA this is replaced by the observed " +
+  "distribution of a TRICS multi-modal comparable site (or agreed in the scoping " +
+  "note). The pattern used here is publicly derivable by area type and is NOT " +
+  "TRICS data (TRICS is licensed and is not redistributed).";
 
 const GRAVITY_MASS_BASIS =
   "intersection through-volume (AADT × K-factor) as the destination-activity attraction proxy";
@@ -441,8 +485,8 @@ export function computeTripDistribution(
     );
     return {
       method: requested,
-      methodLabel: METHOD_LABEL[requested],
-      basis: core.basisFromPattern,
+      methodLabel: ctx.isUk ? METHOD_LABEL_UK[requested] : METHOD_LABEL[requested],
+      basis: ctx.isUk ? UK_ANALOGY_BASIS : core.basisFromPattern,
       betaExponent: core.betaExponent,
       massBasis: core.massBasis,
       weights: core.weights,
@@ -450,11 +494,13 @@ export function computeTripDistribution(
       zones,
       byDirection,
       sectors,
-      provenance: core.provenance,
+      provenance: ctx.isUk
+        ? { source: "publicly-derivable directional pattern by land-use × area-type (NOT TRICS data); replace with a TRICS comparable site at submittal", matched: core.provenance.matched }
+        : core.provenance,
     };
   }
 
-  // ---- Surrogate (market-area) path (PR3) ----
+  // ---- Surrogate (market-area) path (PR3; UK → Census journey-to-work catchment) ----
   if (requested === "surrogate") {
     const core = surrogateCore(ctx);
     const { zones, byDirection, sectors } = buildZones(
@@ -463,6 +509,37 @@ export function computeTripDistribution(
       core.terms,
       core.masses,
     );
+    // UK: the surrogate is the Census journey-to-work catchment. When Greater-
+    // London OD coverage resolved (ctx.ukOd), the candidate affinity supplied via
+    // ctx.activityMass is the WU03EW commuter-flow projection; otherwise UK
+    // degrades to the road-through-volume market-area distribution.
+    if (ctx.isUk) {
+      const od = ctx.ukOd;
+      const ukMassBasis = od && od.hasFlows
+        ? `2011 Census WU03EW ${od.direction} commuter flows for the site MSOA (${od.matched}), car mode, projected onto each study-intersection bearing and distance-decayed`
+        : "market-area attraction from road through-volume (the Census journey-to-work catchment was unavailable for this site — outside Greater London coverage), distance-decayed";
+      const ukBasis = od && od.hasFlows
+        ? `Census journey-to-work catchment: net car trips are allocated using the 2011 Census WU03EW commuter flows for the site MSOA (${od.matched}, ${od.direction} flows), projected onto the study intersections and distance-decayed. Screening-grade; for a submitted TA the distribution is agreed in the scoping note (and, in London, informed by TfL gateline / model data). Source: ${od.source}.`
+        : "Census journey-to-work catchment unavailable for this site (outside Greater London coverage); the market-area distribution falls back to road through-volume with distance decay. Screening-grade; agree the distribution in the TA scoping note.";
+      return {
+        method: requested,
+        methodLabel: METHOD_LABEL_UK[requested],
+        basis: ukBasis,
+        betaExponent: core.betaExponent,
+        massBasis: ukMassBasis,
+        weights: core.weights,
+        loadMultipliers: core.loadMultipliers,
+        zones,
+        byDirection,
+        sectors,
+        provenance: {
+          source: od && od.hasFlows
+            ? "ONS 2011 Census WU03EW journey-to-work origin-destination (nomis NM_1208_1), Greater London"
+            : "road through-volume market-area (Census journey-to-work catchment unavailable — outside Greater London)",
+          ...(od ? { matched: od.matched } : {}),
+        },
+      };
+    }
     return {
       method: requested,
       methodLabel: METHOD_LABEL[requested],
@@ -487,13 +564,15 @@ export function computeTripDistribution(
     core.masses,
   );
 
-  const basis = ctx.isFlorida
-    ? "Caltran mass/distance gravity model over study-area attraction zones."
-    : "NCHRP-716 gamma-friction gravity model (production-constrained) over study-area attraction zones.";
+  const basis = ctx.isUk
+    ? UK_GRAVITY_BASIS
+    : ctx.isFlorida
+      ? "Caltran mass/distance gravity model over study-area attraction zones."
+      : "NCHRP-716 gamma-friction gravity model (production-constrained) over study-area attraction zones.";
 
   return {
     method: requested,
-    methodLabel: METHOD_LABEL[requested],
+    methodLabel: ctx.isUk ? METHOD_LABEL_UK[requested] : METHOD_LABEL[requested],
     basis,
     betaExponent: core.betaExponent,
     massBasis: core.massBasis,

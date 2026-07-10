@@ -59,6 +59,9 @@ import {
 // Lazy: the module import is cheap; blockGroupAt() parses the ~12 MB national
 // TAZ asset only on first call, which happens only for surrogate-method studies.
 import { blockGroupAt, nationalTazAvailable } from "./national-block-group-taz";
+// UK Census journey-to-work OD (2011 WU03EW, Greater London). Lazy: the asset is
+// parsed on first computeOdAffinity() call, only for UK surrogate-method studies.
+import { computeOdAffinity, ukOdAvailable } from "./greater-london-msoa-od";
 
 export { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence };
 // Re-export the delay model for back-compat (turbo-lane.ts / uk-capacity.ts and
@@ -635,6 +638,11 @@ export type FlGravitySummary = {
 /** Florida (US) — where the Caltran gravity model is the distribution standard. */
 function isFloridaRegion(region: Region): boolean {
   return region.stateCode === "FL" && (region.country ?? "US") === "US";
+}
+
+/** UK — distribution methods use UK references (WebTAG/DMRB, TRICS, Census WU03EW). */
+function isUkRegion(region: Region): boolean {
+  return (region.country ?? "US") === "UK";
 }
 
 const CURRENT_YEAR = new Date().getUTCFullYear();
@@ -1351,11 +1359,27 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // first call — is skipped for every other study). Each candidate's mass is the
   // surrounding block-group population + employment (Census 2020 + LODES8).
   let activityMass: number[] | undefined;
-  if (req.distributionMethod === "surrogate" && !isFloridaRegion(region) && nationalTazAvailable()) {
+  const uk = isUkRegion(region);
+  let ukOd: TripDistributionCtx["ukOd"] | undefined;
+  if (req.distributionMethod === "surrogate" && !isFloridaRegion(region) && !uk && nationalTazAvailable()) {
+    // US surrogate: block-group population + employment (Census 2020 + LODES8).
     activityMass = candidates.map((c) => {
       const bg = blockGroupAt(c.sig.latitude, c.sig.longitude);
       return bg ? bg.population + bg.jobsShopping + bg.jobsCommerce + bg.jobsWorking : 0;
     });
+  } else if (req.distributionMethod === "surrogate" && uk && ukOdAvailable()) {
+    // UK surrogate = Census journey-to-work catchment: project the site MSOA's
+    // 2011 WU03EW commuter flows onto each candidate's bearing from the site.
+    const od = computeOdAffinity({
+      siteLat: req.latitude,
+      siteLon: req.longitude,
+      candidateBearings: gravityZones.map((g) => g.bearingDeg),
+      landUseCode: req.landUseCode,
+    });
+    if (od && od.hasFlows) {
+      activityMass = od.affinity;
+      ukOd = { matched: od.matched, direction: od.direction, hasFlows: od.hasFlows, source: od.source };
+    }
   }
   // Unified trip-distribution layer. Default (unset method) resolves to the
   // gravity strategy — four-step for most regions, Caltran mass/distance for
@@ -1369,7 +1393,9 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     isFlorida: isFloridaRegion(region),
     landUseCode: req.landUseCode,
     densityIndex,
+    ...(uk ? { isUk: true } : {}),
     ...(activityMass ? { activityMass } : {}),
+    ...(ukOd ? { ukOd } : {}),
   };
   const dist = computeTripDistribution(req.distributionMethod, distCtx);
   let weights = dist.weights;

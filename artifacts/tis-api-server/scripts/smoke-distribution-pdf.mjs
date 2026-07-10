@@ -144,6 +144,7 @@ const REGIONS = [
   ["NY", 40.7128, -74.006, "generic"],  // NYC — generic US
   ["FL", 25.7617, -80.1918, "fl"],       // Miami — FL flavor
   ["OH", 39.9612, -82.9988, "generic"], // Columbus — generic US (renderTisState)
+  ["UK", 51.5074, -0.1278, "uk"],        // London — UK flavor (Velocity palette + WU03EW narrative)
 ];
 
 // PDFKit uses CID-encoded fonts (embedded DejaVu Sans), so text in content
@@ -179,6 +180,13 @@ const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "tis-dist-smoke-"));
 for (const [label, lat, lon, flavor] of REGIONS) {
   try {
     const result = buildResult(lat, lon);
+    if (flavor === "uk") {
+      // Exercise the UK surrogate (Census journey-to-work) narrative + label branch.
+      result.tripDistribution.method = "surrogate";
+      result.tripDistribution.methodLabel = "Census Journey-to-Work Catchment (2011 WU03EW)";
+      result.tripDistribution.massBasis =
+        "2011 Census WU03EW outbound commuter flows for the site MSOA, car mode, projected onto each study-intersection bearing and distance-decayed";
+    }
     const buf = await renderSection(label, result, flavor);
     ok(buf.length > 5000, `${label}: non-empty PDF (${buf.length} bytes)`);
     ok(hasTripDistributionEvidence(buf), `${label}: contains "Trip Distribution" (CMap evidence)`);
