@@ -20,8 +20,8 @@
  * App.tsx, and the /trics/* endpoints in tis-api-server/src/routes/tis.ts
  * when no longer needed.
  */
-import { useEffect, useMemo, useState } from "react";
-import { Beaker, Loader2, Download, AlertCircle, MapPin, Play, ChevronDown, ChevronRight, Sliders, TrendingUp, CloudRain } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Beaker, Loader2, Download, AlertCircle, MapPin, Play, ChevronDown, ChevronRight, Sliders, TrendingUp, CloudRain, Search } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -41,6 +41,14 @@ const LONDON_SITES: LondonSite[] = [
   { id: "canarywharf", label: "Canary Wharf, Tower Hamlets", lat: 51.5054, lon: -0.0235 },
   { id: "hammersmith", label: "Hammersmith & Fulham", lat: 51.4927, lon: -0.2240 },
 ];
+
+// The capacity engine reads coordinates at 4-decimal precision (~11 m); extra
+// geocoder/paste digits are noise. Round every coordinate the form emits.
+const round4 = (n: number) => Math.round(n * 1e4) / 1e4;
+// london_metro region bounds (regions.ts) — Greater London + its metro / commuter
+// belt. A geocoded address must land inside this box; the /trics endpoints reject
+// anything outside london_metro, so we validate here for an immediate, friendly error.
+const LONDON_METRO_BOUNDS = { latMin: 51.28, latMax: 51.69, lonMin: -0.51, lonMax: 0.33 };
 
 type LandUse = { code: string; name: string; unit?: string };
 
@@ -86,6 +94,13 @@ export default function TricsPage() {
 function Generator() {
   const [landUses, setLandUses] = useState<LandUse[]>([]);
   const [siteId, setSiteId] = useState<string>(LONDON_SITES[0]!.id);
+  // Site coordinates come from EITHER a quick-pick preset OR a geocoded address.
+  const [lat, setLat] = useState<number>(LONDON_SITES[0]!.lat);
+  const [lon, setLon] = useState<number>(LONDON_SITES[0]!.lon);
+  const [siteLabel, setSiteLabel] = useState<string>(LONDON_SITES[0]!.label);
+  const [address, setAddress] = useState<string>("");
+  const [geocoding, setGeocoding] = useState<boolean>(false);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
   const [landUseCode, setLandUseCode] = useState<string>("710");
   const [size, setSize] = useState<number>(180);
   const [openingYear, setOpeningYear] = useState<number>(2028);
@@ -119,18 +134,73 @@ function Generator() {
       .catch(() => { /* hardcoded default code still works */ });
   }, []);
 
-  const site = useMemo(() => LONDON_SITES.find((s) => s.id === siteId) ?? LONDON_SITES[0]!, [siteId]);
   const landUseName = landUses.find((l) => l.code === landUseCode)?.name ?? landUseCode;
   const landUseUnit = landUses.find((l) => l.code === landUseCode)?.unit ?? "units";
   const togglePeriod = (p: string) =>
     setPeriods((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
 
+  // Quick-pick a preset London site → set the coordinates + label.
+  function selectPreset(id: string) {
+    const s = LONDON_SITES.find((x) => x.id === id);
+    if (!s) return;
+    setSiteId(id);
+    setLat(s.lat);
+    setLon(s.lon);
+    setSiteLabel(s.label);
+    setAddress("");
+    setGeocodeError(null);
+  }
+
+  // Type any street/address → geocode to 4-decimal coordinates. Reuses the public
+  // Nominatim-backed /demo/geocode endpoint, biased to London, and validated
+  // against the london_metro box so anything outside London + metro is caught
+  // here rather than as a 422 at generate time.
+  async function resolveAddress() {
+    const q = address.trim();
+    if (q.length < 3) {
+      setGeocodeError("Type at least a few characters of an address.");
+      return;
+    }
+    setGeocoding(true);
+    setGeocodeError(null);
+    try {
+      const biased = /london|england|united kingdom|\buk\b/i.test(q) ? q : `${q}, London, UK`;
+      const r = await fetch("/tis-api/demo/geocode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: biased }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setGeocodeError(String(data?.error ?? "Couldn't look that up."));
+        return;
+      }
+      const glat = round4(Number(data.latitude));
+      const glon = round4(Number(data.longitude));
+      const b = LONDON_METRO_BOUNDS;
+      const inBox = Number.isFinite(glat) && Number.isFinite(glon)
+        && glat >= b.latMin && glat <= b.latMax && glon >= b.lonMin && glon <= b.lonMax;
+      if (!inBox) {
+        setGeocodeError("That address is outside Greater London and its metro area — this tool is London-only.");
+        return;
+      }
+      setLat(glat);
+      setLon(glon);
+      setSiteLabel(String(data.displayName ?? q).split(",").slice(0, 2).join(",").trim() || q);
+      setSiteId(""); // custom coordinates — clear the preset selection
+    } catch {
+      setGeocodeError("Couldn't reach the address lookup. Try again or pick a site above.");
+    } finally {
+      setGeocoding(false);
+    }
+  }
+
   function payload() {
     return {
-      projectName: `${landUseName} — ${site.label} (TRICS demo)`,
-      address: site.label,
-      latitude: site.lat,
-      longitude: site.lon,
+      projectName: `${landUseName} — ${siteLabel} (TRICS demo)`,
+      address: siteLabel,
+      latitude: lat,
+      longitude: lon,
       landUseCode,
       size,
       openingYear,
@@ -230,15 +300,38 @@ function Generator() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">London site</label>
-              <Select value={siteId} onValueChange={setSiteId}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <label className="text-xs font-medium text-muted-foreground">Search any London / metro address</label>
+              <div className="flex gap-2">
+                <Input
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); resolveAddress(); } }}
+                  placeholder="e.g. 60 Gracechurch Street, EC3"
+                  data-testid="input-trics-address"
+                />
+                <Button type="button" variant="outline" onClick={resolveAddress} disabled={geocoding} className="shrink-0 gap-1.5">
+                  {geocoding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  Find
+                </Button>
+              </div>
+              {geocodeError && (
+                <p className="text-[11px] text-red-600 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> {geocodeError}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Or quick-pick a London site</label>
+              <Select value={siteId} onValueChange={selectPreset}>
+                <SelectTrigger><SelectValue placeholder="Custom location" /></SelectTrigger>
                 <SelectContent>
                   {LONDON_SITES.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                <MapPin className="w-3 h-3" /> {site.lat.toFixed(4)}, {site.lon.toFixed(4)}
+              <p className="text-[11px] text-muted-foreground flex items-start gap-1">
+                <MapPin className="w-3 h-3 mt-0.5 shrink-0" />
+                <span><span className="tabular-nums">{lat.toFixed(4)}, {lon.toFixed(4)}</span> · <span className="text-foreground/70">{siteLabel}</span></span>
               </p>
             </div>
 
@@ -339,7 +432,7 @@ function Generator() {
                 <div className="space-y-1.5 border-t pt-3">
                   <label className="text-xs font-medium text-muted-foreground">Vehicular accesses (optional)</label>
                   <DrivewayEditor
-                    site={{ latitude: site.lat, longitude: site.lon }}
+                    site={{ latitude: lat, longitude: lon }}
                     driveways={driveways}
                     onChange={setDriveways}
                   />
@@ -368,7 +461,7 @@ function Generator() {
           <CardHeader>
             <CardTitle className="text-base">Result</CardTitle>
             <CardDescription>
-              {report ? `${report.tripGeneration?.landUseName ?? landUseName} · ${site.label}` : "Generate to see DoS / PRC / MMQ and download the TA PDF."}
+              {report ? `${report.tripGeneration?.landUseName ?? landUseName} · ${siteLabel}` : "Generate to see DoS / PRC / MMQ and download the TA PDF."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
