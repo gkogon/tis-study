@@ -47,6 +47,11 @@ import { atrSegmentsNearPoint } from "./atr-counts";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
 import {
+  ANALYSIS_LEVELS, resolveAnalysisLevel, STANDARD_TRIP_REDUCTION_CAPS,
+  STANDARD_ANALYSIS_SCENARIOS, STANDARD_MOES, STANDARD_DATA_REQUIREMENTS,
+  STANDARD_CONDITIONS, STANDARD_METHODOLOGY_SOURCE,
+} from "./standard-methodology";
+import {
   FDOT_ARTERIAL_GSVT,
   floridaGsvtServiceVolume,
   floridaRepresentativeK,
@@ -1204,6 +1209,90 @@ function dispatchTisRender(
   } finally {
     velocityPaletteActive = false;
   }
+
+  // 3. Standard methodology framework — the universal baseline (Levels of
+  //    Analysis, trip-reduction caps, scenarios, MOEs, de-minimis) applied to
+  //    EVERY location on top of the region-specific sections above.
+  renderStandardMethodologyFramework(doc, result);
+}
+
+/**
+ * Standard Methodology Framework appendix — rendered for every study,
+ * regardless of jurisdiction, from standard-methodology.ts. The region-specific
+ * sections above govern where they differ; this is the common national-practice
+ * baseline (Levels of Analysis keyed to net new peak-hour trips, standard
+ * trip-reduction caps, the three analysis scenarios, MOEs, data requirements,
+ * and the de-minimis / methodology-meeting conditions).
+ */
+function renderStandardMethodologyFramework(doc: PDFKit.PDFDocument, r: any) {
+  const tg = r.tripGeneration ?? {};
+  const netPhTrips = Number(
+    tg.pmPeakTrips ?? (Number(tg.pmIn ?? 0) + Number(tg.pmOut ?? 0)),
+  ) || 0;
+  const level = resolveAnalysisLevel(netPhTrips);
+
+  doc.addPage();
+  section(doc, "Standard Methodology Framework");
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+    `Applied to every study regardless of jurisdiction; where the region-specific sections above impose a different rule, that rule governs. Source: ${STANDARD_METHODOLOGY_SOURCE}`,
+    { paragraphGap: 8 },
+  );
+  doc.fillColor("black");
+
+  const sub = (t: string) => {
+    doc.x = PAGE_MARGIN;
+    doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(t);
+    doc.moveDown(0.2);
+    doc.x = PAGE_MARGIN;
+  };
+  const bullets = (items: ReadonlyArray<string>, gap = 2) => {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
+    for (const it of items) doc.text("• " + it, { paragraphGap: gap });
+    doc.fillColor("black");
+    doc.x = PAGE_MARGIN;
+  };
+
+  // Levels of Analysis — with this project's determination.
+  sub("Levels of Analysis");
+  doc.font("body").fontSize(10).fillColor("black").text(
+    `Study depth is scaled to net new peak-hour trips on the adjacent street. This project generates approximately ${Math.round(netPhTrips)} net new PM-peak-hour trips, placing it in ${level.label} (${level.rangeLabel}). Required components at this level:`,
+    { paragraphGap: 4 },
+  );
+  bullets(level.components);
+  doc.moveDown(0.2);
+  doc.font("body").fontSize(9).fillColor(TEXT_GRAY);
+  for (const lvl of ANALYSIS_LEVELS) {
+    doc.text(`${lvl.label}: ${lvl.rangeLabel}.`, { paragraphGap: 1 });
+  }
+  doc.fillColor("black").moveDown(0.5);
+
+  // Trip-reduction caps.
+  sub("Project Trip-Reduction Caps");
+  bullets([
+    `Internal capture ≤ ${STANDARD_TRIP_REDUCTION_CAPS.internalCaptureMaxPctOfTotal}% of total trip generation.`,
+    `Pass-by (retail/commercial land uses only) ≤ ${STANDARD_TRIP_REDUCTION_CAPS.passByMaxPctOfAdjacentStreet}% of the adjacent street's peak-hour two-way volume.`,
+    "Mode-split reductions from census journey-to-work data; transit-oriented sites may justify a project-specific reduction at the methodology meeting.",
+  ]);
+  doc.moveDown(0.5);
+
+  // Analysis scenarios.
+  sub("Analysis Scenarios");
+  bullets(STANDARD_ANALYSIS_SCENARIOS.map((s) => `${s.label} — ${s.description}`));
+  doc.moveDown(0.5);
+
+  // Measures of effectiveness.
+  sub("Measures of Effectiveness");
+  bullets(STANDARD_MOES);
+  doc.moveDown(0.5);
+
+  // Data requirements.
+  sub("Data Requirements");
+  bullets(STANDARD_DATA_REQUIREMENTS, 1);
+  doc.moveDown(0.5);
+
+  // Conditions applicable to all levels.
+  sub("Conditions Applicable to All Levels");
+  bullets(STANDARD_CONDITIONS);
 }
 
 function selectRegionalTisRenderer(
