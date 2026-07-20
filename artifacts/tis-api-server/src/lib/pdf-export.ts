@@ -1133,6 +1133,63 @@ function renderDrivewayFigure(doc: PDFKit.PDFDocument, result: Record<string, un
   return rows;
 }
 
+// Set true by renderDrivewayAccessBlock when it renders, and reset to false at
+// the top of each dispatchTisRender. Lets a state renderer place the driveway
+// figure inside its own Site Access section (GA/CA/TX/FL) while the generic
+// wrapper fallback skips it — no double-render, and renderers without a Site
+// Access section (IL, generic, worksheet/abbreviated tiers, London) still get
+// the fallback block. Single-threaded render, so a module flag is safe here.
+let drivewayBlockRendered = false;
+
+/**
+ * Site-access driveway figure + turn-restriction table + reroute note.
+ *
+ * Opt-in: absent/empty `result.driveways` ⇒ renders nothing and returns false,
+ * so every report without driveways is byte-identical to today. UK regions get
+ * UK access terminology (DMRB CD 123 / Manual for Streets); US output unchanged.
+ *
+ * Call from within a state renderer's Site Access section (pass that section's
+ * heading fn + a heading), or from the generic wrapper fallback. Sets the
+ * module `drivewayBlockRendered` flag so the fallback never double-renders.
+ */
+function renderDrivewayAccessBlock(
+  doc: PDFKit.PDFDocument,
+  result: Record<string, unknown>,
+  region: Region | null,
+  headingFn: (doc: PDFKit.PDFDocument, title: string) => void,
+  headingText: string,
+): boolean {
+  const dw = (result as any).driveways;
+  if (!dw || !Array.isArray(dw.driveways) || dw.driveways.length === 0) return false;
+  // UK studies use UK access terminology; US output is byte-identical.
+  const ukAccess = (region?.country ?? "US") === "UK";
+  // Reserve room so the heading + ~340pt figure stay on one page.
+  if (doc.y + 400 > doc.page.height - PAGE_MARGIN) doc.addPage();
+  headingFn(doc, headingText);
+  const figRows = renderDrivewayFigure(doc, result, ukAccess);
+  if (figRows.length > 0) {
+    table(doc, {
+      headers: ukAccess
+        ? ["Access", "Arrangement", "In AM (PM)", "Out AM (PM)"]
+        : ["Driveway", "Access", "In AM (PM)", "Out AM (PM)"],
+      widths: [200, 100, 105, 105],
+      align: ["left", "left", "right", "right"],
+      rows: figRows.map((r) => [r.label, r.access, `${r.inAm} (${r.inPm})`, `${r.outAm} (${r.outPm})`]),
+    });
+    const rerouters = figRows.filter((r) => r.forcesReroute).map((r) => r.label);
+    if (rerouters.length > 0) {
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        ukAccess
+          ? `${rerouters.join(", ")}: turns banned by the access arrangement (per DMRB CD 123 / Manual for Streets access design) re-route to the nearest signal-controlled junction, adding turning volume there (reflected in the assessed junctions' capacity results).`
+          : `${rerouters.join(", ")}: forbidden movements reroute as U-turns at the nearest signal, adding turning volume there (reflected in the affected intersections' LOS).`,
+        { paragraphGap: 6 });
+      doc.fillColor("black");
+    }
+  }
+  drivewayBlockRendered = true;
+  return true;
+}
+
 function dispatchTisRender(
   doc: PDFKit.PDFDocument,
   result: Record<string, unknown>,
@@ -1146,42 +1203,22 @@ function dispatchTisRender(
   const region = project.studyType === "tis" ? detectRegion(project) : null;
   const isVelocityLondon = region?.code === "london_metro";
   if (isVelocityLondon) velocityPaletteActive = true;
+  drivewayBlockRendered = false;
   try {
-    // 1. Run the region-specific body renderer (GA/FL/NY/CA/TX/IL/UK/…).
+    // 1. Run the region-specific body renderer (GA/FL/NY/CA/TX/IL/UK/…). The
+    //    full-tier US renderers (GA/CA/TX/FL) place the driveway figure inside
+    //    their own numbered Site Access section via renderDrivewayAccessBlock,
+    //    which sets drivewayBlockRendered.
     selectRegionalTisRenderer(doc, result, project);
 
-    // 1b. Driveway access table — rendered when result.driveways is present
-    //     (opt-in: absent or empty driveways ⇒ this block is skipped entirely,
-    //     so output is byte-identical to today).
-    const dw = (result as any).driveways;
-    if (dw && Array.isArray(dw.driveways) && dw.driveways.length > 0) {
-      // UK studies use UK access terminology (DMRB CD 123 / Manual for Streets);
-      // US output is byte-identical (guarded on country). No routing/behaviour
-      // change — only the headings, access-type labels and note copy differ.
+    // 1b. Driveway access fallback — for renderers that did NOT integrate the
+    //     figure into their own Site Access section (IL, generic, worksheet /
+    //     abbreviated tiers, and the UK/London renderer), place it here. Opt-in:
+    //     absent/empty driveways ⇒ nothing renders (byte-identical to today).
+    if (!drivewayBlockRendered) {
       const ukAccess = (region?.country ?? "US") === "UK";
-      // Reserve room so the heading + ~340pt figure stay on one page.
-      if (doc.y + 400 > doc.page.height - PAGE_MARGIN) doc.addPage();
-      gaSubsection(doc, ukAccess ? "Vehicular Access Arrangements" : "Site Access — Driveways");
-      const figRows = renderDrivewayFigure(doc, result, ukAccess);
-      if (figRows.length > 0) {
-        table(doc, {
-          headers: ukAccess
-            ? ["Access", "Arrangement", "In AM (PM)", "Out AM (PM)"]
-            : ["Driveway", "Access", "In AM (PM)", "Out AM (PM)"],
-          widths: [200, 100, 105, 105],
-          align: ["left", "left", "right", "right"],
-          rows: figRows.map((r) => [r.label, r.access, `${r.inAm} (${r.inPm})`, `${r.outAm} (${r.outPm})`]),
-        });
-        const rerouters = figRows.filter((r) => r.forcesReroute).map((r) => r.label);
-        if (rerouters.length > 0) {
-          doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-            ukAccess
-              ? `${rerouters.join(", ")}: turns banned by the access arrangement (per DMRB CD 123 / Manual for Streets access design) re-route to the nearest signal-controlled junction, adding turning volume there (reflected in the assessed junctions' capacity results).`
-              : `${rerouters.join(", ")}: forbidden movements reroute as U-turns at the nearest signal, adding turning volume there (reflected in the affected intersections' LOS).`,
-            { paragraphGap: 6 });
-          doc.fillColor("black");
-        }
-      }
+      renderDrivewayAccessBlock(doc, result, region,
+        gaSubsection, ukAccess ? "Vehicular Access Arrangements" : "Site Access — Driveways");
     }
 
     // 2. Append the shared per-intersection capacity appendix for EVERY
@@ -1550,10 +1587,18 @@ function renderTisGeorgia(
   doc.moveDown(0.5);
 
   gaSubsection(doc, "1.3 Site Access");
-  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Site access analysis for proposed driveways is not included in this screening-level analysis. Driveway-level ingress/egress evaluation per GRTA Site Plan Guidelines should be prepared separately based on the final site plan.",
-    { paragraphGap: 6 },
-  );
+  if ((r.driveways?.driveways?.length ?? 0) > 0) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "The proposed site driveways and their permitted turning movements are modeled below. Movements banned at a driveway are re-routed onto the surrounding network, and the resulting turning volumes are carried into the intersection LOS analysis. Final driveway geometry and sight-distance evaluation per GRTA Site Plan Guidelines should be confirmed against the final site plan.",
+      { paragraphGap: 6 });
+    doc.fillColor("black");
+    renderDrivewayAccessBlock(doc, r, region, gaSubsection, "Proposed Site Driveways");
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Site access analysis for proposed driveways is not included in this screening-level analysis. Driveway-level ingress/egress evaluation per GRTA Site Plan Guidelines should be prepared separately based on the final site plan.",
+      { paragraphGap: 6 },
+    );
+  }
 
   gaSubsection(doc, "1.4 Bicycle and Pedestrian Facilities");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
@@ -2384,12 +2429,21 @@ function renderTisCalifornia(
   doc.moveDown(0.5);
 
   caSubsection(doc, "1.3 Site Access and Multimodal Context");
-  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Driveway-level ingress/egress, internal circulation, bicycle/pedestrian network connectivity, and transit access detail are dependent on the final site plan and are not produced by this screening tool. Site-plan-stage analysis is recommended for any formal submittal.",
-    { paragraphGap: 6 },
-  );
-  doc.fillColor("black");
-  doc.moveDown(0.3);
+  if ((r.driveways?.driveways?.length ?? 0) > 0) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      "The proposed site driveways and their permitted turning movements are modeled below; movements banned at a driveway re-route onto the surrounding network and the added turning volumes are carried into the intersection analysis. Internal circulation, bicycle/pedestrian connectivity and transit-access detail remain dependent on the final site plan and are recommended for site-plan-stage analysis at formal submittal.",
+      { paragraphGap: 6 });
+    doc.fillColor("black");
+    renderDrivewayAccessBlock(doc, r, region, caSubsection, "Proposed Site Driveways");
+    doc.moveDown(0.3);
+  } else {
+    doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+      "Driveway-level ingress/egress, internal circulation, bicycle/pedestrian network connectivity, and transit access detail are dependent on the final site plan and are not produced by this screening tool. Site-plan-stage analysis is recommended for any formal submittal.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
+    doc.moveDown(0.3);
+  }
 
   // --- §2 Regulatory Framework -------------------------------------------
   caSection(doc, "2.0 REGULATORY FRAMEWORK");
@@ -5877,6 +5931,10 @@ function renderTisTexas(
     doc.fillColor("black");
   }
 
+  // Proposed site driveways (opt-in) — integrated into the §6.1 Site Access
+  // section; renders only when driveways are supplied (byte-identical otherwise).
+  renderDrivewayAccessBlock(doc, r, region, gaSubsection, "Proposed Site Driveways");
+
   gaSubsection(doc, "6.2 Auxiliary Lane and Sight Distance Analysis");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "Auxiliary lane warrants (right-turn deceleration, left-turn) per ACM Chapter 2 §4 and Roadway Design Manual Chapter 16 should be checked against the project's access geometry. Intersection sight distance per RDW Ch. 2 should be verified at every proposed driveway. This screening report does not perform per-driveway sight-distance or auxiliary-lane warrant calculations [placeholder — requires final driveway geometry].",
@@ -8275,6 +8333,10 @@ function renderTisFlorida(
     );
     doc.fillColor("black");
   }
+
+  // Proposed site driveways (opt-in) — integrated into the §10.2 Site Access /
+  // Ingress-Egress section; renders only when driveways are supplied.
+  renderDrivewayAccessBlock(doc, r, region, gaSubsection, "Proposed Site Driveways");
 
   // --- 11.0 Transit and Mobility ----------------------------------------
   gaSection(doc, "11.0 TRANSIT AND MOBILITY");
