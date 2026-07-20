@@ -13,9 +13,12 @@ import { db, firmsTable, type Firm } from "@workspace/db";
 import {
   stripe,
   resolvePriceId,
+  resolveStudyPriceId,
+  studyRateForPurchased,
   getPublicAppOrigin,
   type PaidPlanId,
   type BillingCadence,
+  type StudyRate,
 } from "./stripe";
 import { logger } from "./logger";
 
@@ -100,6 +103,56 @@ export async function createCheckoutSession(args: {
     throw new Error("Stripe returned a checkout session without a URL.");
   }
   return { url: session.url };
+}
+
+export type StudyPurchaseResult = { url: string; rate: StudyRate };
+
+/**
+ * One-time Checkout for a single pay-per-study credit. Unlike
+ * createCheckoutSession this uses `mode: "payment"` (not subscription): the
+ * firm pays once and the webhook banks one study credit. The rate (intro vs
+ * standard) is derived from how many studies the firm has purchased over its
+ * lifetime, so the intro price only applies to the first few.
+ *
+ * Works for trial firms with no subscription — that's the intended trial→paid
+ * path. The credit count and rate are stamped into session metadata so the
+ * webhook can grant exactly what was paid for.
+ */
+export async function createStudyPurchaseCheckout(args: {
+  firm: Firm;
+  email: string | null;
+}): Promise<StudyPurchaseResult> {
+  const s = requireStripe();
+  const rate = studyRateForPurchased(args.firm.studiesPurchasedLifetime);
+  const priceId = resolveStudyPriceId(rate);
+  if (!priceId) {
+    throw new Error(
+      `Pay-per-study (${rate}) is not provisioned — set STRIPE_PRICE_STUDY_${rate.toUpperCase()}.`,
+    );
+  }
+
+  const customerId = await ensureStripeCustomer(args.firm, args.email);
+  const origin = getPublicAppOrigin();
+
+  const session = await s.checkout.sessions.create({
+    mode: "payment",
+    customer: customerId,
+    line_items: [{ price: priceId, quantity: 1 }],
+    // Stripe requires the customer's email for one-time payment receipts.
+    // metadata drives the webhook grant; `credits` is the number of study
+    // credits to bank (one per purchase here).
+    payment_intent_data: {
+      metadata: { firmId: args.firm.id, kind: "study_purchase", credits: "1", rate },
+    },
+    metadata: { firmId: args.firm.id, kind: "study_purchase", credits: "1", rate },
+    success_url: `${origin}/settings/billing?purchase=success`,
+    cancel_url: `${origin}/settings/billing?purchase=cancelled`,
+  });
+
+  if (!session.url) {
+    throw new Error("Stripe returned a study-purchase session without a URL.");
+  }
+  return { url: session.url, rate };
 }
 
 export async function createPortalSession(args: {

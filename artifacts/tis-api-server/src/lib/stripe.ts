@@ -144,6 +144,32 @@ export function resolvePlanFromPriceId(priceId: string): PlanConfig | null {
   return null;
 }
 
+/**
+ * Pay-per-study (à-la-carte) pricing. Sold one study at a time as a
+ * one-time Stripe payment — NOT a subscription. A firm's first
+ * STUDY_INTRO_THRESHOLD *purchased* studies get the intro price; every
+ * study after that gets the standard price. The standard price is set high
+ * (an anchor) so a volume buyer converts to a monthly subscription instead.
+ *
+ * As with PLANS, the dollar amounts live in Stripe (Price IDs via env), so
+ * the intro/standard prices can be retuned without a code change. Both must
+ * be created as ONE-TIME prices (not recurring) in the Stripe dashboard.
+ */
+export type StudyRate = "intro" | "standard";
+
+// First 5 lifetime purchases bill at the intro rate; the 6th onward standard.
+export const STUDY_INTRO_THRESHOLD = 5;
+
+export function studyRateForPurchased(purchasedLifetime: number): StudyRate {
+  return purchasedLifetime < STUDY_INTRO_THRESHOLD ? "intro" : "standard";
+}
+
+export function resolveStudyPriceId(rate: StudyRate): string | null {
+  return rate === "intro"
+    ? process.env.STRIPE_PRICE_STUDY_INTRO ?? null
+    : process.env.STRIPE_PRICE_STUDY_STANDARD ?? null;
+}
+
 export function getWebhookSecret(): string | null {
   return process.env.STRIPE_WEBHOOK_SECRET ?? null;
 }

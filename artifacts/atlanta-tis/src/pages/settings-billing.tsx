@@ -25,6 +25,9 @@ type Summary = {
     seatLimit: number;
     studyLimit: number;
     studiesUsedThisPeriod: number;
+    studyCreditsRemaining: number;
+    studiesPurchasedLifetime: number;
+    nextStudyRate: "intro" | "standard";
     unlimited?: boolean;
     currentPeriodEnd: string | null;
     currentPeriodStart: string | null;
@@ -40,18 +43,31 @@ const TIER_LABEL: Record<string, string> = {
   enterprise: "Enterprise",
 };
 
+// Display labels for the pay-per-study rates. These MUST match the dollar
+// amounts configured on STRIPE_PRICE_STUDY_INTRO / STRIPE_PRICE_STUDY_STANDARD
+// in Stripe (same convention as the hardcoded plan prices below).
+const STUDY_PRICE_LABEL: Record<"intro" | "standard", string> = {
+  intro: "$150",
+  standard: "$350",
+};
+// Number of lifetime purchases billed at the intro rate — keep in sync with
+// STUDY_INTRO_THRESHOLD in the API's stripe.ts.
+const STUDY_INTRO_COUNT = 5;
+
 export default function SettingsBillingPage() {
   const { isAuthenticated, isLoading: authLoading, login } = useAuth();
   const [, navigate] = useLocation();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [actioning, setActioning] = useState<"checkout" | "portal" | null>(null);
+  const [actioning, setActioning] = useState<"checkout" | "portal" | "study" | null>(null);
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
+  const [showPurchaseBanner, setShowPurchaseBanner] = useState(false);
   const [cadence, setCadence] = useState<"monthly" | "annual">("monthly");
 
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     if (sp.get("checkout") === "success") setShowSuccessBanner(true);
+    if (sp.get("purchase") === "success") setShowPurchaseBanner(true);
   }, []);
 
   useEffect(() => {
@@ -83,6 +99,23 @@ export default function SettingsBillingPage() {
       window.location.href = data.url;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start checkout.");
+      setActioning(null);
+    }
+  }
+
+  async function startStudyPurchase() {
+    setError(null);
+    setActioning("study");
+    try {
+      const r = await fetch("/tis-api/billing/study-purchase-session", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await r.json();
+      if (!r.ok || !data?.url) throw new Error(data?.error ?? `HTTP ${r.status}`);
+      window.location.href = data.url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start study purchase.");
       setActioning(null);
     }
   }
@@ -171,6 +204,20 @@ export default function SettingsBillingPage() {
           </div>
         )}
 
+        {showPurchaseBanner && (
+          <div className="rounded-md border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-900 px-4 py-3 text-sm flex gap-2">
+            <CheckCircle2 className="w-4 h-4 text-green-700 dark:text-green-300 mt-0.5" />
+            <div>
+              <div className="font-semibold text-green-800 dark:text-green-200">
+                Study credit added.
+              </div>
+              <div className="text-green-700 dark:text-green-300 text-xs">
+                It may take a few seconds to appear below — refresh if needed.
+              </div>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="rounded-md border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900 px-4 py-3 text-sm flex gap-2">
             <AlertCircle className="w-4 h-4 text-red-700 dark:text-red-300 mt-0.5" />
@@ -248,6 +295,49 @@ export default function SettingsBillingPage() {
             </Stat>
           </div>
         </section>
+
+        {!unlimited && (
+          <section className="border rounded-xl p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="max-w-xl">
+                <h2 className="text-xl font-bold">Buy studies as you go</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  No subscription required. Each study you buy is a credit that
+                  never expires and is used automatically once your plan's
+                  studies for this period run out.
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Credits
+                </div>
+                <div className="text-3xl font-bold">{firm.studyCreditsRemaining}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap pt-3 border-t">
+              <button
+                type="button"
+                onClick={startStudyPurchase}
+                disabled={!canManage || actioning !== null}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                data-testid="button-buy-study"
+              >
+                {actioning === "study" && <Loader2 className="w-4 h-4 animate-spin" />}
+                Buy one study — {STUDY_PRICE_LABEL[firm.nextStudyRate]}
+              </button>
+              <span className="text-xs text-muted-foreground">
+                {firm.nextStudyRate === "intro"
+                  ? `Intro rate for your first ${STUDY_INTRO_COUNT} studies, then ${STUDY_PRICE_LABEL.standard} each.`
+                  : "Running a few a month? A monthly plan works out cheaper per study."}
+              </span>
+            </div>
+            {!canManage && (
+              <p className="text-xs text-muted-foreground">
+                Only the firm owner or an admin can buy studies.
+              </p>
+            )}
+          </section>
+        )}
 
         {firm.planTier === "trial" && (
           <section className="border rounded-xl p-6 space-y-4 bg-muted/30">

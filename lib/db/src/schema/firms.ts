@@ -45,6 +45,18 @@ export const firmsTable = pgTable("firms", {
   studiesUsedThisPeriod: integer("studies_used_this_period")
     .notNull()
     .default(0),
+  // Pay-per-study credits. `studyCreditsRemaining` is banked prepaid studies:
+  // permanent (never reset by a billing period), stacks on top of any plan or
+  // trial quota, and is consumed by reserveStudySlot only after the period
+  // quota is exhausted. `studiesPurchasedLifetime` is a monotonic counter that
+  // decides the à-la-carte rate at checkout (intro price for the first N
+  // purchased, standard price after). See lib/billing.ts / lib/stripe.ts.
+  studyCreditsRemaining: integer("study_credits_remaining")
+    .notNull()
+    .default(0),
+  studiesPurchasedLifetime: integer("studies_purchased_lifetime")
+    .notNull()
+    .default(0),
   // Period bounds copied from the active Stripe subscription. Null
   // during trial.
   currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),

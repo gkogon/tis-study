@@ -14,6 +14,7 @@ export type EventType =
   | "signup"
   | "study_generated"
   | "checkout_started"
+  | "study_purchase_started"
   | "quota_hit";
 
 /**
