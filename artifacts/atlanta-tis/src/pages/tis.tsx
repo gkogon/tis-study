@@ -18,6 +18,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DrivewayEditor } from "@/components/driveway-editor";
+import { StudyIntersectionsEditor } from "@/components/study-intersections-editor";
 import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, Printer, Building2, MapPin, Car, Activity, ChevronDown, ChevronRight,
@@ -707,6 +708,24 @@ function TisFormSection({
               />
             </div>
           )}
+          {Number.isFinite(Number(form.latitude)) && Number.isFinite(Number(form.longitude)) &&
+            Number(form.latitude) !== 0 && Number(form.longitude) !== 0 && (
+            <div className="md:col-span-2 pt-2 border-t">
+              <StudyIntersectionsEditor
+                site={{ latitude: Number(form.latitude), longitude: Number(form.longitude) }}
+                studyRadiusMi={form.studyRadiusMi ?? 0.5}
+                points={form.additionalStudyPoints ?? []}
+                signalIds={form.studyIntersectionIds ?? []}
+                onChange={({ points, signalIds }) =>
+                  setForm((f) => ({
+                    ...f,
+                    additionalStudyPoints: points.length > 0 ? points : undefined,
+                    studyIntersectionIds: signalIds.length > 0 ? signalIds : undefined,
+                  }))
+                }
+              />
+            </div>
+          )}
           <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-2 border-t">
             <button
               type="submit" disabled={busy}
@@ -720,6 +739,9 @@ function TisFormSection({
               {periods.length} period{periods.length === 1 ? "" : "s"}
               {form.runSensitivity ? " · sensitivity ON" : ""}
               {form.scopeStudyIntersections ? " · scoped (MTIASD)" : " · all intersections in radius"}
+              {(form.additionalStudyPoints?.length ?? 0) + (form.studyIntersectionIds?.length ?? 0) > 0
+                ? ` · +${(form.additionalStudyPoints?.length ?? 0) + (form.studyIntersectionIds?.length ?? 0)} forced`
+                : ""}
               {form.weather && form.weather !== "clear" ? ` · ${form.weather.replace("_", " ")}` : ""}
             </span>
           </div>
