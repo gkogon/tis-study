@@ -8,6 +8,7 @@
 import type { Driveway } from "./driveway";
 import type { TisAnalysisPeriod } from "./tisAnalysisPeriod";
 import type { TisDistributionMethod } from "./tisDistributionMethod";
+import type { TisRequestAdditionalStudyPointsItem } from "./tisRequestAdditionalStudyPointsItem";
 import type { TisTripProfile } from "./tisTripProfile";
 import type { TisWeather } from "./tisWeather";
 
@@ -67,6 +68,16 @@ export interface TisRequest {
   tripProfile?: TisTripProfile;
   /** When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it. */
   scopeStudyIntersections?: boolean;
+  /**
+   * Analyzer signal IDs to force-include as study intersections regardless of studyRadiusMi — a reviewer's agreed corridor scope (e.g. an arterial's signals spanning beyond a default 0.5-mi radius). Purely additive: unioned with the radius set, never removes a signal the radius found, and protected from the scopeStudyIntersections trim. Unknown IDs are ignored.
+   * @maxItems 60
+   */
+  studyIntersectionIds?: string[];
+  /**
+   * Reviewer-scoped intersection coordinates (pasted or map-clicked), each snapped to the nearest inventory signal within ~0.35 mi and force-included regardless of studyRadiusMi. Additive, like studyIntersectionIds; robust when a signal's name is unknown. Points with no nearby signal are ignored.
+   * @maxItems 60
+   */
+  additionalStudyPoints?: TisRequestAdditionalStudyPointsItem[];
   distributionMethod?: TisDistributionMethod;
   /**
    * Optional existing (prior) land use occupying the site today, for a redevelopment trip-generation credit. Its trips are computed the same way as the proposed use and subtracted, so the report shows net new external trips (gross − internal capture − pass-by − existing-use credit). Absent ⇒ greenfield behavior (no credit, unchanged output).

@@ -61,6 +61,16 @@ export const generateTisBodyTripProfileDeparturesItemMin = 0;
 export const generateTisBodyTripProfileDeparturesMin = 24;
 export const generateTisBodyTripProfileDeparturesMax = 24;
 
+export const generateTisBodyStudyIntersectionIdsMax = 60;
+
+export const generateTisBodyAdditionalStudyPointsItemLatitudeMin = -90;
+export const generateTisBodyAdditionalStudyPointsItemLatitudeMax = 90;
+
+export const generateTisBodyAdditionalStudyPointsItemLongitudeMin = -180;
+export const generateTisBodyAdditionalStudyPointsItemLongitudeMax = 180;
+
+export const generateTisBodyAdditionalStudyPointsMax = 60;
+
 export const generateTisBodyExistingLandUseCodeMin = 2;
 
 export const generateTisBodyExistingSizeMin = 0;
@@ -165,6 +175,31 @@ export const GenerateTisBody = zod.object({
     .describe(
       "When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it.",
     ),
+  studyIntersectionIds: zod
+    .array(zod.string().min(1))
+    .max(generateTisBodyStudyIntersectionIdsMax)
+    .optional()
+    .describe(
+      "Analyzer signal IDs to force-include as study intersections regardless of studyRadiusMi — a reviewer's agreed corridor scope (e.g. an arterial's signals spanning beyond a default 0.5-mi radius). Purely additive: unioned with the radius set, never removes a signal the radius found, and protected from the scopeStudyIntersections trim. Unknown IDs are ignored.",
+    ),
+  additionalStudyPoints: zod
+    .array(
+      zod.object({
+        latitude: zod
+          .number()
+          .min(generateTisBodyAdditionalStudyPointsItemLatitudeMin)
+          .max(generateTisBodyAdditionalStudyPointsItemLatitudeMax),
+        longitude: zod
+          .number()
+          .min(generateTisBodyAdditionalStudyPointsItemLongitudeMin)
+          .max(generateTisBodyAdditionalStudyPointsItemLongitudeMax),
+      }),
+    )
+    .max(generateTisBodyAdditionalStudyPointsMax)
+    .optional()
+    .describe(
+      "Reviewer-scoped intersection coordinates (pasted or map-clicked), each snapped to the nearest inventory signal within ~0.35 mi and force-included regardless of studyRadiusMi. Additive, like studyIntersectionIds; robust when a signal's name is unknown. Points with no nearby signal are ignored.",
+    ),
   distributionMethod: zod
     .enum(["gravity", "analogy", "surrogate"])
     .optional()
@@ -263,6 +298,18 @@ export const generateTisResponseRequestTripProfileDeparturesItemMin = 0;
 
 export const generateTisResponseRequestTripProfileDeparturesMin = 24;
 export const generateTisResponseRequestTripProfileDeparturesMax = 24;
+
+export const generateTisResponseRequestStudyIntersectionIdsMax = 60;
+
+export const generateTisResponseRequestAdditionalStudyPointsItemLatitudeMin =
+  -90;
+export const generateTisResponseRequestAdditionalStudyPointsItemLatitudeMax = 90;
+
+export const generateTisResponseRequestAdditionalStudyPointsItemLongitudeMin =
+  -180;
+export const generateTisResponseRequestAdditionalStudyPointsItemLongitudeMax = 180;
+
+export const generateTisResponseRequestAdditionalStudyPointsMax = 60;
 
 export const generateTisResponseRequestExistingLandUseCodeMin = 2;
 
@@ -379,6 +426,37 @@ export const GenerateTisResponse = zod.object({
       .optional()
       .describe(
         "When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it.",
+      ),
+    studyIntersectionIds: zod
+      .array(zod.string().min(1))
+      .max(generateTisResponseRequestStudyIntersectionIdsMax)
+      .optional()
+      .describe(
+        "Analyzer signal IDs to force-include as study intersections regardless of studyRadiusMi — a reviewer's agreed corridor scope (e.g. an arterial's signals spanning beyond a default 0.5-mi radius). Purely additive: unioned with the radius set, never removes a signal the radius found, and protected from the scopeStudyIntersections trim. Unknown IDs are ignored.",
+      ),
+    additionalStudyPoints: zod
+      .array(
+        zod.object({
+          latitude: zod
+            .number()
+            .min(generateTisResponseRequestAdditionalStudyPointsItemLatitudeMin)
+            .max(
+              generateTisResponseRequestAdditionalStudyPointsItemLatitudeMax,
+            ),
+          longitude: zod
+            .number()
+            .min(
+              generateTisResponseRequestAdditionalStudyPointsItemLongitudeMin,
+            )
+            .max(
+              generateTisResponseRequestAdditionalStudyPointsItemLongitudeMax,
+            ),
+        }),
+      )
+      .max(generateTisResponseRequestAdditionalStudyPointsMax)
+      .optional()
+      .describe(
+        "Reviewer-scoped intersection coordinates (pasted or map-clicked), each snapped to the nearest inventory signal within ~0.35 mi and force-included regardless of studyRadiusMi. Additive, like studyIntersectionIds; robust when a signal's name is unknown. Points with no nearby signal are ignored.",
       ),
     distributionMethod: zod
       .enum(["gravity", "analogy", "surrogate"])
@@ -883,6 +961,18 @@ export const getTisProjectResponseRequestOneTripProfileDeparturesItemMin = 0;
 export const getTisProjectResponseRequestOneTripProfileDeparturesMin = 24;
 export const getTisProjectResponseRequestOneTripProfileDeparturesMax = 24;
 
+export const getTisProjectResponseRequestOneStudyIntersectionIdsMax = 60;
+
+export const getTisProjectResponseRequestOneAdditionalStudyPointsItemLatitudeMin =
+  -90;
+export const getTisProjectResponseRequestOneAdditionalStudyPointsItemLatitudeMax = 90;
+
+export const getTisProjectResponseRequestOneAdditionalStudyPointsItemLongitudeMin =
+  -180;
+export const getTisProjectResponseRequestOneAdditionalStudyPointsItemLongitudeMax = 180;
+
+export const getTisProjectResponseRequestOneAdditionalStudyPointsMax = 60;
+
 export const getTisProjectResponseRequestOneExistingLandUseCodeMin = 2;
 
 export const getTisProjectResponseRequestOneExistingSizeMin = 0;
@@ -929,6 +1019,18 @@ export const getTisProjectResponseResultRequestTripProfileDeparturesItemMin = 0;
 
 export const getTisProjectResponseResultRequestTripProfileDeparturesMin = 24;
 export const getTisProjectResponseResultRequestTripProfileDeparturesMax = 24;
+
+export const getTisProjectResponseResultRequestStudyIntersectionIdsMax = 60;
+
+export const getTisProjectResponseResultRequestAdditionalStudyPointsItemLatitudeMin =
+  -90;
+export const getTisProjectResponseResultRequestAdditionalStudyPointsItemLatitudeMax = 90;
+
+export const getTisProjectResponseResultRequestAdditionalStudyPointsItemLongitudeMin =
+  -180;
+export const getTisProjectResponseResultRequestAdditionalStudyPointsItemLongitudeMax = 180;
+
+export const getTisProjectResponseResultRequestAdditionalStudyPointsMax = 60;
 
 export const getTisProjectResponseResultRequestExistingLandUseCodeMin = 2;
 
@@ -1068,6 +1170,39 @@ export const GetTisProjectResponse = zod
             .optional()
             .describe(
               "When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it.",
+            ),
+          studyIntersectionIds: zod
+            .array(zod.string().min(1))
+            .max(getTisProjectResponseRequestOneStudyIntersectionIdsMax)
+            .optional()
+            .describe(
+              "Analyzer signal IDs to force-include as study intersections regardless of studyRadiusMi — a reviewer's agreed corridor scope (e.g. an arterial's signals spanning beyond a default 0.5-mi radius). Purely additive: unioned with the radius set, never removes a signal the radius found, and protected from the scopeStudyIntersections trim. Unknown IDs are ignored.",
+            ),
+          additionalStudyPoints: zod
+            .array(
+              zod.object({
+                latitude: zod
+                  .number()
+                  .min(
+                    getTisProjectResponseRequestOneAdditionalStudyPointsItemLatitudeMin,
+                  )
+                  .max(
+                    getTisProjectResponseRequestOneAdditionalStudyPointsItemLatitudeMax,
+                  ),
+                longitude: zod
+                  .number()
+                  .min(
+                    getTisProjectResponseRequestOneAdditionalStudyPointsItemLongitudeMin,
+                  )
+                  .max(
+                    getTisProjectResponseRequestOneAdditionalStudyPointsItemLongitudeMax,
+                  ),
+              }),
+            )
+            .max(getTisProjectResponseRequestOneAdditionalStudyPointsMax)
+            .optional()
+            .describe(
+              "Reviewer-scoped intersection coordinates (pasted or map-clicked), each snapped to the nearest inventory signal within ~0.35 mi and force-included regardless of studyRadiusMi. Additive, like studyIntersectionIds; robust when a signal's name is unknown. Points with no nearby signal are ignored.",
             ),
           distributionMethod: zod
             .enum(["gravity", "analogy", "surrogate"])
@@ -1256,6 +1391,39 @@ export const GetTisProjectResponse = zod
           .optional()
           .describe(
             "When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it.",
+          ),
+        studyIntersectionIds: zod
+          .array(zod.string().min(1))
+          .max(getTisProjectResponseResultRequestStudyIntersectionIdsMax)
+          .optional()
+          .describe(
+            "Analyzer signal IDs to force-include as study intersections regardless of studyRadiusMi — a reviewer's agreed corridor scope (e.g. an arterial's signals spanning beyond a default 0.5-mi radius). Purely additive: unioned with the radius set, never removes a signal the radius found, and protected from the scopeStudyIntersections trim. Unknown IDs are ignored.",
+          ),
+        additionalStudyPoints: zod
+          .array(
+            zod.object({
+              latitude: zod
+                .number()
+                .min(
+                  getTisProjectResponseResultRequestAdditionalStudyPointsItemLatitudeMin,
+                )
+                .max(
+                  getTisProjectResponseResultRequestAdditionalStudyPointsItemLatitudeMax,
+                ),
+              longitude: zod
+                .number()
+                .min(
+                  getTisProjectResponseResultRequestAdditionalStudyPointsItemLongitudeMin,
+                )
+                .max(
+                  getTisProjectResponseResultRequestAdditionalStudyPointsItemLongitudeMax,
+                ),
+            }),
+          )
+          .max(getTisProjectResponseResultRequestAdditionalStudyPointsMax)
+          .optional()
+          .describe(
+            "Reviewer-scoped intersection coordinates (pasted or map-clicked), each snapped to the nearest inventory signal within ~0.35 mi and force-included regardless of studyRadiusMi. Additive, like studyIntersectionIds; robust when a signal's name is unknown. Points with no nearby signal are ignored.",
           ),
         distributionMethod: zod
           .enum(["gravity", "analogy", "surrogate"])
