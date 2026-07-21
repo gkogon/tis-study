@@ -80,9 +80,10 @@ export const generateRateLimiter = rateLimit({
   passOnStoreError: true,
 });
 
-// Per-IP rate limit for the public-by-URL /trics London-TA demo. Unlike
-// the authenticated /generate (metered by firm quota), /trics is
-// anonymous and runs the full engine + a multi-page PDF render, so this
+// Per-IP rate limit for the public-by-URL /london-ta London-TA demo
+// (legacy /trics alias shares this limiter, so both paths draw from one
+// budget). Unlike the authenticated /generate (metered by firm quota), it
+// is anonymous and runs the full engine + a multi-page PDF render, so this
 // limiter is its ONLY abuse control. Capped tight — 3/day/IP, matching the
 // /demo cap — so a cold prospect can try a couple of London sites but a
 // competitor cannot farm the deliverable or grind our compute. Admins and
@@ -92,7 +93,7 @@ export const tricsRateLimiter = rateLimit({
   limit: 3,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  message: { error: "You've used your free TRICS demo runs for today. Please try again tomorrow." },
+  message: { error: "You've used your free London TA demo runs for today. Please try again tomorrow." },
   store: makeRateLimitStore("rl:trics:"),
   passOnStoreError: true,
   skip: (req) => {

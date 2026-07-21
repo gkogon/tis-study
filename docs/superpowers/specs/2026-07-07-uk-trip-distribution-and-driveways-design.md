@@ -16,7 +16,7 @@ not backed by UK data**:
    loading→LOS, but `renderTisLondon` never calls `renderTripDistributionSection`
    — the UK PDF gets prose §6.11 (`volume × distance⁻¹·⁵`), never the method-aware
    directional table + per-zone worksheet US reports get.
-2. The three methods cite **US sources** (NCHRP-716 gravity, ITE-family analogy,
+2. The three methods cite **US sources** (NCHRP-716 gravity, screening-pattern analogy,
    US Census-block-group TAZ surrogate). None reads as UK-standard, and the
    surrogate's TAZ asset is US-only (UK degrades to road-volume).
 3. Driveways work end-to-end for UK, but are labelled with US "driveway" terms,

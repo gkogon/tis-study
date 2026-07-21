@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Redirect, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -86,7 +86,13 @@ function Router() {
       <Route path="/help" component={HelpPage} />
       <Route path="/demo" component={DemoPage} />
       <Route path="/trcs-demo" component={TrcsDemoPage} />
-      <Route path="/trics" component={TricsPage} />
+      <Route path="/london-ta" component={TricsPage} />
+      {/* Legacy alias — outbound cold-email links point at /trics. Keep it
+          working forever, but land visitors on the canonical /london-ta.
+          ("TRICS" is TRICS Consortium Ltd's mark; not our product name.) */}
+      <Route path="/trics">
+        <Redirect to="/london-ta" replace />
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );

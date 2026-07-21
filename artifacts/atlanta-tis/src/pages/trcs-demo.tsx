@@ -312,7 +312,8 @@ function SampleReport() {
             Capacity is reported using the UK signalised method (TRL RR67 / OSCADY–LinSig) per DMRB CD 123,
             <span className="text-foreground font-medium"> not</span> the Highway Capacity Manual. Roundabout and
             priority arms route to ARCADY (Kimber LR942, DMRB CD 116) and PICADY (gap-acceptance) — both
-            implemented — and trip generation is the only remaining piece pending a TRICS rate set.
+            implemented — and trip generation is the only remaining piece pending a licensed TRICS rate set
+            (we do not redistribute TRICS data).
           </p>
           <div>
             <Button onClick={generatePdf} disabled={pdfLoading} className="gap-2">

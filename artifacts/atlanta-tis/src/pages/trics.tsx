@@ -1,14 +1,22 @@
 /**
- * /trics — PUBLIC-BY-URL, London-only TA generator (pitch/demo surface).
+ * /london-ta (legacy alias /trics) — PUBLIC-BY-URL, London-only TA
+ * generator (pitch/demo surface).
  *
  * NOT access-controlled. The route is simply not linked anywhere in the
  * site nav, so it is reachable only by someone who knows the URL
  * ("unlisted public") — anyone with the link can run it. The backing
- * endpoints (/tis-api/trics/generate, /tis-api/trics/pdf) save nothing,
+ * endpoints (/tis-api/london-ta/generate, /tis-api/london-ta/pdf; legacy
+ * /tis-api/trics/* aliases kept for old links) save nothing,
  * charge no quota, hard-restrict coordinates to Greater London, and are
  * capped at 3 requests/day per IP (tricsRateLimiter, admins/dev-auth
  * exempt) so the deliverable can't be farmed. Anonymous PDF renders carry
  * a neutral "Demo Preview" stamp.
+ *
+ * NAMING: "TRICS" is TRICS Consortium Ltd's trademarked trip database.
+ * We do not redistribute TRICS data and this product is not TRICS —
+ * keep the mark out of product identity (titles, headings, filenames,
+ * route names). Nominative references ("a submitted TA would use
+ * licensed TRICS rates") are fine and intentional.
  *
  * NOTE: the client capacity math in @/lib/trcs ships in the public bundle
  * (the app has no code-splitting). It is published UK methodology
@@ -16,9 +24,9 @@
  * clean long-term fix is to render server-computed results here and delete
  * @/lib/trcs so no capacity logic reaches the browser at all.
  *
- * Temporary pitch surface — delete this file, the /trics route in
- * App.tsx, and the /trics/* endpoints in tis-api-server/src/routes/tis.ts
- * when no longer needed.
+ * Temporary pitch surface — delete this file, the /london-ta + /trics
+ * routes in App.tsx, and the /london-ta/* + /trics/* endpoints in
+ * tis-api-server/src/routes/tis.ts when no longer needed.
  */
 import { useEffect, useState } from "react";
 import { Beaker, Loader2, Download, AlertCircle, MapPin, Play, ChevronDown, ChevronRight, Sliders, TrendingUp, CloudRain, Search } from "lucide-react";
@@ -46,7 +54,7 @@ const LONDON_SITES: LondonSite[] = [
 // geocoder/paste digits are noise. Round every coordinate the form emits.
 const round4 = (n: number) => Math.round(n * 1e4) / 1e4;
 // london_metro region bounds (regions.ts) — Greater London + its metro / commuter
-// belt. A geocoded address must land inside this box; the /trics endpoints reject
+// belt. A geocoded address must land inside this box; the /london-ta endpoints reject
 // anything outside london_metro, so we validate here for an immediate, friendly error.
 const LONDON_METRO_BOUNDS = { latMin: 51.28, latMax: 51.69, lonMin: -0.51, lonMax: 0.33 };
 
@@ -71,7 +79,7 @@ const WEATHER_OPTIONS: { value: string; label: string; cap: number }[] = [
 const UK_DISTRIBUTION_METHOD_OPTIONS: { value: TisDistributionMethod; label: string }[] = [
   { value: "gravity", label: "Gravity model (WebTAG M2 / DMRB)" },
   { value: "surrogate", label: "Census journey-to-work catchment (2011 WU03EW)" },
-  { value: "analogy", label: "Analogous-site distribution (TRICS-comparable)" },
+  { value: "analogy", label: "Analogous-site distribution" },
 ];
 
 type TisReport = {
@@ -86,8 +94,9 @@ type TisReport = {
 
 export default function TricsPage() {
   // Public-by-URL: not linked anywhere in the site nav, so it is reachable
-  // only by typing /trics directly — but it is NOT access-controlled. The
-  // backing /trics/* endpoints are public + rate-limited (see tis.ts).
+  // only by typing /london-ta (or the legacy /trics alias) directly — but it
+  // is NOT access-controlled. The backing /london-ta/* endpoints are public
+  // + rate-limited (see tis.ts).
   return <Generator />;
 }
 
@@ -197,7 +206,7 @@ function Generator() {
 
   function payload() {
     return {
-      projectName: `${landUseName} — ${siteLabel} (TRICS demo)`,
+      projectName: `${landUseName} — ${siteLabel} (London TA demo)`,
       address: siteLabel,
       latitude: lat,
       longitude: lon,
@@ -221,7 +230,7 @@ function Generator() {
     setLoading(true);
     setReport(null);
     try {
-      const res = await fetch("/tis-api/trics/generate", {
+      const res = await fetch("/tis-api/london-ta/generate", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -244,7 +253,7 @@ function Generator() {
     setError(null);
     setPdfLoading(true);
     try {
-      const res = await fetch("/tis-api/trics/pdf", {
+      const res = await fetch("/tis-api/london-ta/pdf", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -284,10 +293,10 @@ function Generator() {
         )}
       </div>
       <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">TRICS — London TA generator</h1>
+        <h1 className="text-3xl font-bold tracking-tight">London TA generator</h1>
         <p className="text-muted-foreground max-w-3xl">
-          Generate a UK Transport Assessment (London "TRICS" format) for any Greater London site — DMRB / TRL
-          capacity (DoS, PRC, MMQ) on-screen, full TA as a PDF. Public preview, rate-limited to 10 reports/hour.
+          Generate a UK Transport Assessment (London TA format) for any Greater London site — DMRB / TRL
+          capacity (DoS, PRC, MMQ) on-screen, full TA as a PDF. Public preview, limited to 3 free demo runs per day.
         </p>
       </div>
 
@@ -540,7 +549,7 @@ function Generator() {
       </div>
 
       <p className="text-[11px] text-muted-foreground pt-4 border-t">
-        Public preview — London-only, rate-limited (10 reports/hour). Numbers come from the live engine
+        Public preview — London-only, limited to 3 free demo runs per day. Numbers come from the live engine
         (<code>uk-capacity.ts</code>); on-screen capacity mirrors it via <code>lib/trcs.ts</code>.
       </p>
     </div>
