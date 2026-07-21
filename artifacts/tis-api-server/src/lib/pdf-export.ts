@@ -3563,8 +3563,9 @@ function londonCapacityHeadline(intersections: any[]): {
  * Assessment terminology following the TfL Healthy Streets TA
  * Recommended Contents & Chapters TOC (8 chapters).
  *
- * Honest framing: the engine computes HCM 6 Ch.19 capacity from ITE
- * 11th Edition trip rates. A defensible UK TA requires TRICS multi-modal
+ * Honest framing: the engine computes HCM 6 Ch.19 capacity from its
+ * public-data screening trip rates (SANDAG 2002 / NHTS 2017 / NCHRP
+ * 716). A defensible UK TA requires TRICS multi-modal
  * rates + DMRB CD 116/123 capacity + PTAL + ATZ + Healthy Streets Check
  * — none of which the engine produces today. This renderer is a
  * screening-level cross-reference to UK methodology and names that
