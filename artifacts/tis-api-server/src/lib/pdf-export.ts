@@ -8859,7 +8859,7 @@ function renderCapacityAppendix(
     doc.moveDown(0.4);
     if (addedNegligible) {
       doc.font("body").fontSize(8.5).fillColor(TEXT_GRAY).text(
-        "The development distributes fewer than one net PM peak car trip to this junction, so the Existing (No-Build) and Build conditions are numerically identical. The junction is reproduced here for completeness; the scheme's net car-mode trip generation is below the level at which junction capacity governs.",
+        "The development distributes fewer than one net PM peak car trip to this junction, so the Existing (No-Build) and Build conditions are numerically identical at reporting precision. The junction is reproduced here for completeness; the scheme's net car-mode trip generation is below the level at which junction capacity governs.",
         { paragraphGap: 4 },
       );
       doc.fillColor("black");
@@ -8930,7 +8930,11 @@ function renderCapacityAppendix(
       rows: approaches.map((a) => [
         String(a.direction ?? "—"),
         fmtNum(a.existingVolumeVph),
-        addedNegligible ? "< 1" : fmtNum(a.addedTripsPeak),
+        // Sub-1-trip junction: only the approaches the geometry actually
+        // loads show "< 1"; a zero-load approach reads 0, not "< 1".
+        addedNegligible
+          ? (Number(a.futureVolumeVph) > Number(a.existingVolumeVph) ? "< 1" : "0")
+          : fmtNum(a.addedTripsPeak),
         fmtNum(a.futureVolumeVph),
         `${fmtNum(a.existingVc, 2)} → ${fmtNum(a.futureVc, 2)}`,
         `${fmtNum(a.existingDelaySec, 1)} → ${fmtNum(a.futureDelaySec, 1)}`,
@@ -8965,8 +8969,22 @@ function renderCapacityAppendix(
           ]),
         });
         doc.moveDown(0.15);
+        // Stored studies re-render through this path: a payload generated
+        // before the movement-derived loading shipped still carries the legacy
+        // floor-smeared +Trips split next to this movements table — the very
+        // mismatch the disclosure wording below covers. Verify the
+        // reconciliation instead of asserting it, and keep the disclosure for
+        // payloads where the columns don't cross-foot.
+        const reconciled = approaches.every((a) => {
+          const mvSum = mv.reduce(
+            (s, m) => s + (m.approach === a.direction ? (Number(m.trips) || 0) : 0), 0,
+          );
+          return Math.round(Number(a.addedTripsPeak) || 0) === mvSum;
+        });
         doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-          "Movement loads are derived from the study's directional trip distribution and the site's bearing from this intersection (outbound trips enter from the site leg and turn toward their destination sector; inbound trips mirror). U-turns are folded into the left-turn movement. The same assignment drives the per-approach capacity loading above, so the movement rows cross-foot with the junction's added project trips in total and with the +Trips column approach-by-approach (each trip is counted on its entering approach). The turning-movement diagrams show TOTAL approach volumes under the screening 15/70/15 split, not the project increment. Screening-level: replace with measured turning-movement counts and the site's access-point routing at submittal.",
+          reconciled
+            ? "Movement loads are derived from the study's directional trip distribution and the site's bearing from this intersection (outbound trips enter from the site leg and turn toward their destination sector; inbound trips mirror). U-turns are folded into the left-turn movement. The same assignment drives the per-approach capacity loading above, so the movement rows cross-foot with the junction's added project trips in total and with the +Trips column approach-by-approach (each trip is counted on its entering approach). The turning-movement diagrams show TOTAL approach volumes under the screening 15/70/15 split, not the project increment. Screening-level: replace with measured turning-movement counts and the site's access-point routing at submittal."
+            : "Movement loads are derived from the study's directional trip distribution and the site's bearing from this intersection (outbound trips enter from the site leg and turn toward their destination sector; inbound trips mirror). U-turns are folded into the left-turn movement. Totals cross-foot with the junction's added project trips — but NOT approach-by-approach with the +Trips column above: this study was generated before the per-approach loading derived from the movement assignment (that column used a smoothed directional spread with a floor share on every leg), while the movement rows are named by entering approach only. Re-generate the study to reconcile the two. Likewise the turning-movement diagrams show TOTAL approach volumes under the screening 15/70/15 split, not the project increment. Screening-level: replace with measured turning-movement counts and the site's access-point routing at submittal.",
           { paragraphGap: 6 },
         );
         doc.fillColor("black");
