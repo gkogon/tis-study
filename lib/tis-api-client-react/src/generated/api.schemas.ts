@@ -496,6 +496,31 @@ export const TisAffectedIntersectionMitigationSeverity = {
 
 export type TisAffectedIntersectionTurboLane = { [key: string]: unknown };
 
+export type TisAffectedIntersectionMovementsItemApproach =
+  (typeof TisAffectedIntersectionMovementsItemApproach)[keyof typeof TisAffectedIntersectionMovementsItemApproach];
+
+export const TisAffectedIntersectionMovementsItemApproach = {
+  NB: "NB",
+  SB: "SB",
+  EB: "EB",
+  WB: "WB",
+} as const;
+
+export type TisAffectedIntersectionMovementsItemMovement =
+  (typeof TisAffectedIntersectionMovementsItemMovement)[keyof typeof TisAffectedIntersectionMovementsItemMovement];
+
+export const TisAffectedIntersectionMovementsItemMovement = {
+  L: "L",
+  T: "T",
+  R: "R",
+} as const;
+
+export type TisAffectedIntersectionMovementsItem = {
+  approach: TisAffectedIntersectionMovementsItemApproach;
+  movement: TisAffectedIntersectionMovementsItemMovement;
+  trips: number;
+};
+
 /**
  * Per-intersection calibration metadata when ground-truth observations exist for this signal.
  */
@@ -535,6 +560,7 @@ export interface TisAffectedIntersection {
   queue95thFt: number;
   calibration?: TisIntersectionCalibration;
   turboLane?: TisAffectedIntersectionTurboLane;
+  movements?: TisAffectedIntersectionMovementsItem[];
 }
 
 /**

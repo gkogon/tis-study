@@ -8807,9 +8807,10 @@ function renderCapacityAppendix(
     );
   }
   doc.font("body").fontSize(9).fillColor("#b45309").text(
-    "Turning-movement volumes are distributed from each approach total using an estimated 15/70/15 (Left/Through/"
-    + "Right) split — the screening engine resolves volumes at the approach level. Replace with measured "
-    + "turning-movement counts (TMCs) before a formal submittal.",
+    "Background turning-movement volumes in the diagrams are distributed from each approach total using an "
+    + "estimated 15/70/15 (Left/Through/Right) split. Project-trip movements are assigned geometrically from "
+    + "the study's directional trip distribution (see each worksheet's Affected movements table). Replace both "
+    + "with measured turning-movement counts (TMCs) before a formal submittal.",
     { paragraphGap: 8 },
   );
   doc.fillColor("black");
@@ -8938,33 +8939,59 @@ function renderCapacityAppendix(
       ]),
     });
 
-    // Affected movements: name the approach(es) carrying the project's added
-    // trips and estimate the movement split. The engine resolves added trips at
-    // the approach level (see buildAffectedRow); the L/T/R breakdown below is the
-    // screening 15/70/15 split disclosed in the appendix header — replace with
-    // measured turning-movement counts at submittal. Surfacing this answers the
-    // reviewer's "which movements are affected?" without fabricating an OD path.
+    // Affected movements: which turning movements the project's trips load.
+    // Preferred source is the engine's geometric movement assignment
+    // (ix.movements — outbound trips enter on the site leg and turn toward
+    // their destination sector, inbound the mirror; see movement-assignment.ts),
+    // whose integer trips cross-foot with the junction's added-trip count.
+    // Fallback for older payloads without `movements`: the flat 15/70/15
+    // approach-level estimate. Either way this is screening-level — measured
+    // turning-movement counts govern at submittal.
     if (!addedNegligible) {
-      const loaded = approaches
-        .filter((a) => Math.round(Number(a.addedTripsPeak) || 0) > 0)
-        .sort((a, b) => (Number(b.addedTripsPeak) || 0) - (Number(a.addedTripsPeak) || 0));
-      if (loaded.length > 0) {
+      const mv: any[] = Array.isArray(ix.movements) ? ix.movements : [];
+      if (mv.length > 0) {
         doc.moveDown(0.3);
-        doc.font("bold").fontSize(9).fillColor("black").text("Affected movements (PM peak project trips)", { paragraphGap: 2 });
-        const parts = loaded.map((a) => {
-          const dir = String(a.direction ?? "").toUpperCase();
-          const added = Math.round(Number(a.addedTripsPeak) || 0);
-          const thru = Math.round(added * 0.70);
-          const left = Math.round(added * 0.15);
-          const right = added - thru - left;
-          return `${dir} approach +${added} (≈ ${dir}-Thru ${thru} / ${dir}-Left ${left} / ${dir}-Right ${right})`;
+        doc.font("bold").fontSize(9).fillColor("black").text("Affected movements (PM peak project trips)", { paragraphGap: 3 });
+        const MOVE_NAME: Record<string, string> = { L: "Left", T: "Through", R: "Right" };
+        const totalMv = mv.reduce((s, m) => s + (Number(m.trips) || 0), 0) || 1;
+        table(doc, {
+          headers: ["Movement", "Project trips", "% of project trips"],
+          widths: [190, 100, 120],
+          align: ["left", "right", "right"],
+          rows: mv.map((m) => [
+            `${m.approach} ${MOVE_NAME[String(m.movement)] ?? m.movement}`,
+            fmtNum(m.trips),
+            `${((Number(m.trips) || 0) / totalMv * 100).toFixed(0)}%`,
+          ]),
         });
-        doc.font("body").fontSize(8.5).fillColor(TEXT_GRAY).text(parts.join(";  ") + ".", { paragraphGap: 3 });
+        doc.moveDown(0.15);
         doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-          "Project trips are resolved at the approach level; the Left/Through/Right split shown is the screening 15/70/15 estimate and should be replaced with measured turning-movement counts and the site's access-point directional routing at submittal.",
+          "Movement loads are derived from the study's directional trip distribution and the site's bearing from this intersection (outbound trips enter from the site leg and turn toward their destination sector; inbound trips mirror). U-turns are folded into the left-turn movement. Totals cross-foot with the junction's added project trips — but NOT approach-by-approach with the +Trips column above: that column lumps entering and exiting project volume per leg using a smoothed directional spread (every leg carries a floor share, a deliberately conservative capacity loading), while the movement rows are named by entering approach only. Likewise the turning-movement diagrams show TOTAL approach volumes under the screening 15/70/15 split, not the project increment. Screening-level: replace with measured turning-movement counts and the site's access-point routing at submittal.",
           { paragraphGap: 6 },
         );
         doc.fillColor("black");
+      } else {
+        const loaded = approaches
+          .filter((a) => Math.round(Number(a.addedTripsPeak) || 0) > 0)
+          .sort((a, b) => (Number(b.addedTripsPeak) || 0) - (Number(a.addedTripsPeak) || 0));
+        if (loaded.length > 0) {
+          doc.moveDown(0.3);
+          doc.font("bold").fontSize(9).fillColor("black").text("Affected movements (PM peak project trips)", { paragraphGap: 2 });
+          const parts = loaded.map((a) => {
+            const dir = String(a.direction ?? "").toUpperCase();
+            const added = Math.round(Number(a.addedTripsPeak) || 0);
+            const thru = Math.round(added * 0.70);
+            const left = Math.round(added * 0.15);
+            const right = added - thru - left;
+            return `${dir} approach +${added} (≈ ${dir}-Thru ${thru} / ${dir}-Left ${left} / ${dir}-Right ${right})`;
+          });
+          doc.font("body").fontSize(8.5).fillColor(TEXT_GRAY).text(parts.join(";  ") + ".", { paragraphGap: 3 });
+          doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+            "Project trips are resolved at the approach level; the Left/Through/Right split shown is the screening 15/70/15 estimate and should be replaced with measured turning-movement counts and the site's access-point directional routing at submittal.",
+            { paragraphGap: 6 },
+          );
+          doc.fillColor("black");
+        }
       }
     }
 

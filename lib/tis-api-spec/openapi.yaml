@@ -645,6 +645,22 @@ components:
         turboLane:
           type: object
           additionalProperties: true
+        # Per-turning-movement breakdown of the added project trips (NB-L/T/R…),
+        # derived from the directional trip distribution + the site's bearing
+        # from this intersection. Integer trips cross-foot with addedTripsPmPeak.
+        movements:
+          type: array
+          items:
+            type: object
+            properties:
+              approach:
+                type: string
+                enum: [NB, SB, EB, WB]
+              movement:
+                type: string
+                enum: [L, T, R]
+              trips: { type: integer }
+            required: [approach, movement, trips]
       required:
         - signalId
         - name

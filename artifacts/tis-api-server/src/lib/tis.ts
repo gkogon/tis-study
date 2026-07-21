@@ -37,6 +37,7 @@ import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSo
 // callers that imported `LAND_USES` from this module.
 import { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence } from "./land-uses";
 import { screenTurboCandidate, turboLaneScreening, type TurboLaneScreening } from "./turbo-lane";
+import { assignMovements, type MovementLoad } from "./movement-assignment";
 // Pure HCM delay / LOS / queue math (dependency-free leaf, unit-tested there).
 import {
   type Los,
@@ -471,6 +472,12 @@ export type AffectedIntersection = {
   // a genuine 3-leg T-intersection candidate. Reported for every candidate in
   // the study area regardless of LOS (screening-study convention).
   turboLane?: TurboLaneScreening;
+  /** Per-turning-movement breakdown of the added project trips (NB-L/T/R …),
+   *  derived from the study's directional trip distribution and the site's
+   *  bearing from this intersection (assignMovements). Integer trips that
+   *  cross-foot with addedTripsPmPeak. Present when a distribution ran and the
+   *  intersection receives ≥1 rounded trip. */
+  movements?: MovementLoad[];
 };
 
 export type TripGenerationSummary = {
@@ -805,6 +812,11 @@ type ScenarioParams = {
    *  this period (PERIOD_VOLUME_FACTOR). Optional; defaults to 1.0 so any
    *  caller that omits it keeps the prior design-hour behaviour. */
   periodVolumeFactor?: number;
+  /** Directional trip-distribution octant shares (NNE…NNW, Σ≈100) from the
+   *  study's distribution step. When present, each affected-intersection row
+   *  gains a per-turning-movement breakdown of its added project trips
+   *  (assignMovements). Optional → omitted = no movements field, unchanged. */
+  distributionOctants?: Record<string, number>;
 };
 
 function buildAffectedRow(
@@ -926,6 +938,23 @@ function buildAffectedRow(
   });
 
   const worstQueue = approaches.reduce((m, a) => Math.max(m, a.queue95thFt), 0);
+
+  // Turning-movement breakdown of the added trips: geometry from the site
+  // bearing + the study's distribution octants (see movement-assignment.ts).
+  // Omitted when no distribution ran or the rounded junction load is zero, so
+  // pre-distribution payloads and negligible-impact junctions are unchanged.
+  const movements: MovementLoad[] | undefined = params.distributionOctants
+    ? assignMovements(
+        bearingDeg(
+          { lat: c.sig.latitude, lon: c.sig.longitude },
+          { lat: project.lat, lon: project.lon },
+        ),
+        params.distributionOctants,
+        addedTripsExact,
+        params.inFraction,
+      )
+    : undefined;
+
   let mit = recommendMitigation(afterDelay - beforeDelay, afterLos);
 
   // Turbo-lane (continuous-green-T) screening. Computed for every candidate
@@ -998,6 +1027,7 @@ function buildAffectedRow(
         }
       : undefined,
     turboLane,
+    ...(movements && movements.length > 0 ? { movements } : {}),
   };
 }
 
@@ -1599,6 +1629,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       externalTrips: netNewExternal,
       inFraction,
       periodVolumeFactor: PERIOD_VOLUME_FACTOR[period] ?? 1,
+      distributionOctants: dist.byDirection,
     };
 
     // For "daily" we don't run an intersection-level analysis (HCM control
@@ -1655,7 +1686,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // synthesize it for the back-compat fields so downstream consumers don't
   // crash.
   const pmReport = periodReports.find((p) => p.period === "pm_peak")
-    ?? (await synthesizePmReport(lu, req, candidates, effectiveWeights, project, growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates, studySet));
+    ?? (await synthesizePmReport(lu, req, candidates, effectiveWeights, project, growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates, studySet, dist.byDirection));
 
   // Top-level back-compat trip-generation summary uses ORIGINAL (non-credited)
   // PM trips so the existing UI labels keep their meaning. Rates come from
@@ -1793,13 +1824,14 @@ async function synthesizePmReport(
   internalCapturePct: number,
   rates: ResolvedRates,
   studySet: Set<number>,
+  distributionOctants?: Record<string, number>,
 ): Promise<PeriodReport> {
   const raw = periodRawTrips(lu, req.size, "pm_peak", rates);
   const passByCredit = raw * (passByPct / 100);
   const internalCredit = (raw - passByCredit) * (internalCapturePct / 100);
   const externalTrips = Math.max(0, raw - passByCredit - internalCredit);
   const inFraction = lu.directionalSplitPm.in;
-  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak };
+  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak, ...(distributionOctants ? { distributionOctants } : {}) };
   const calibrationMap = await loadCalibrationMap();
   const allRows = candidates.map((c, i) =>
     buildAffectedRow(c, loadWeights[i]!, project, params, calibrationMap.get(c.sig.id)),

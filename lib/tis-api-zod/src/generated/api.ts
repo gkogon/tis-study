@@ -532,6 +532,15 @@ export const GenerateTisResponse = zod.object({
           "Per-intersection calibration metadata when ground-truth observations exist for this signal.",
         ),
       turboLane: zod.record(zod.string(), zod.unknown()).optional(),
+      movements: zod
+        .array(
+          zod.object({
+            approach: zod.enum(["NB", "SB", "EB", "WB"]),
+            movement: zod.enum(["L", "T", "R"]),
+            trips: zod.number(),
+          }),
+        )
+        .optional(),
     }),
   ),
   intersectionsStudied: zod.number(),
@@ -615,6 +624,15 @@ export const GenerateTisResponse = zod.object({
               "Per-intersection calibration metadata when ground-truth observations exist for this signal.",
             ),
           turboLane: zod.record(zod.string(), zod.unknown()).optional(),
+          movements: zod
+            .array(
+              zod.object({
+                approach: zod.enum(["NB", "SB", "EB", "WB"]),
+                movement: zod.enum(["L", "T", "R"]),
+                trips: zod.number(),
+              }),
+            )
+            .optional(),
         }),
       ),
       intersectionsWithLosDrop: zod.number(),
@@ -1399,6 +1417,15 @@ export const GetTisProjectResponse = zod
               "Per-intersection calibration metadata when ground-truth observations exist for this signal.",
             ),
           turboLane: zod.record(zod.string(), zod.unknown()).optional(),
+          movements: zod
+            .array(
+              zod.object({
+                approach: zod.enum(["NB", "SB", "EB", "WB"]),
+                movement: zod.enum(["L", "T", "R"]),
+                trips: zod.number(),
+              }),
+            )
+            .optional(),
         }),
       ),
       intersectionsStudied: zod.number(),
@@ -1498,6 +1525,15 @@ export const GetTisProjectResponse = zod
                   "Per-intersection calibration metadata when ground-truth observations exist for this signal.",
                 ),
               turboLane: zod.record(zod.string(), zod.unknown()).optional(),
+              movements: zod
+                .array(
+                  zod.object({
+                    approach: zod.enum(["NB", "SB", "EB", "WB"]),
+                    movement: zod.enum(["L", "T", "R"]),
+                    trips: zod.number(),
+                  }),
+                )
+                .optional(),
             }),
           ),
           intersectionsWithLosDrop: zod.number(),
