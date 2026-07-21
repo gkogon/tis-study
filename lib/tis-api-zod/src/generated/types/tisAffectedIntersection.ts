@@ -5,9 +5,13 @@
  * TIS (Traffic Impact Study) API specification — engineering-firm product surface.
  * OpenAPI spec version: 0.1.0
  */
+import type { TisAffectedIntersectionCurrentLos } from "./tisAffectedIntersectionCurrentLos";
+import type { TisAffectedIntersectionDesignBuildLos } from "./tisAffectedIntersectionDesignBuildLos";
+import type { TisAffectedIntersectionDesignNoBuildLos } from "./tisAffectedIntersectionDesignNoBuildLos";
 import type { TisAffectedIntersectionExistingLos } from "./tisAffectedIntersectionExistingLos";
 import type { TisAffectedIntersectionFutureLos } from "./tisAffectedIntersectionFutureLos";
 import type { TisAffectedIntersectionMitigationSeverity } from "./tisAffectedIntersectionMitigationSeverity";
+import type { TisAffectedIntersectionTurboLane } from "./tisAffectedIntersectionTurboLane";
 import type { TisApproachImpact } from "./tisApproachImpact";
 import type { TisIntersectionCalibration } from "./tisIntersectionCalibration";
 
@@ -25,10 +29,20 @@ export interface TisAffectedIntersection {
   futureDelaySec: number;
   existingLos: TisAffectedIntersectionExistingLos;
   futureLos: TisAffectedIntersectionFutureLos;
+  currentVc?: number;
+  currentDelaySec?: number;
+  currentLos?: TisAffectedIntersectionCurrentLos;
+  designNoBuildVc?: number;
+  designNoBuildDelaySec?: number;
+  designNoBuildLos?: TisAffectedIntersectionDesignNoBuildLos;
+  designBuildVc?: number;
+  designBuildDelaySec?: number;
+  designBuildLos?: TisAffectedIntersectionDesignBuildLos;
   losChanged: boolean;
   mitigation: string;
   mitigationSeverity: TisAffectedIntersectionMitigationSeverity;
   approaches: TisApproachImpact[];
   queue95thFt: number;
   calibration?: TisIntersectionCalibration;
+  turboLane?: TisAffectedIntersectionTurboLane;
 }

@@ -544,6 +544,11 @@ components:
         existingLos: { type: string, enum: [A, B, C, D, E, F] }
         futureLos: { type: string, enum: [A, B, C, D, E, F] }
         queue95thFt: { type: number }
+        # True current-year baseline for this approach (no growth). Optional.
+        currentVolumeVph: { type: number }
+        currentVc: { type: number }
+        currentDelaySec: { type: number }
+        currentLos: { type: string, enum: [A, B, C, D, E, F] }
       required:
         - direction
         - existingVolumeVph
@@ -576,6 +581,27 @@ components:
         futureLos:
           type: string
           enum: [A, B, C, D, E, F]
+        # True current-year baseline (existing volumes, no growth). Optional so
+        # pre-scenario-refactor saved payloads still validate. These were being
+        # silently stripped at the response boundary, which (a) collapsed the
+        # "Existing" scenario column to No-Build values and (b) forced every
+        # design-year 4-scenario table to fall back to the 3-scenario table.
+        currentVc: { type: number }
+        currentDelaySec: { type: number }
+        currentLos:
+          type: string
+          enum: [A, B, C, D, E, F]
+        # Design-year (long-range) No-Build and Build scenarios. Optional.
+        designNoBuildVc: { type: number }
+        designNoBuildDelaySec: { type: number }
+        designNoBuildLos:
+          type: string
+          enum: [A, B, C, D, E, F]
+        designBuildVc: { type: number }
+        designBuildDelaySec: { type: number }
+        designBuildLos:
+          type: string
+          enum: [A, B, C, D, E, F]
         losChanged: { type: boolean }
         mitigation: { type: string }
         mitigationSeverity:
@@ -587,6 +613,13 @@ components:
         queue95thFt: { type: number }
         calibration:
           $ref: "#/components/schemas/TisIntersectionCalibration"
+        # Turbo-lane (continuous-green-T) screening result, present only for
+        # genuine 3-leg T candidates. Passthrough object — the renderer reads
+        # its fields directly; typing it fully here isn't necessary and it was
+        # previously being stripped (dropping the turbo-lane appendix).
+        turboLane:
+          type: object
+          additionalProperties: true
       required:
         - signalId
         - name

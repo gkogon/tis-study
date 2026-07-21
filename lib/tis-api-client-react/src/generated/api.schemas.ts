@@ -378,6 +378,18 @@ export const TisApproachImpactFutureLos = {
   F: "F",
 } as const;
 
+export type TisApproachImpactCurrentLos =
+  (typeof TisApproachImpactCurrentLos)[keyof typeof TisApproachImpactCurrentLos];
+
+export const TisApproachImpactCurrentLos = {
+  A: "A",
+  B: "B",
+  C: "C",
+  D: "D",
+  E: "E",
+  F: "F",
+} as const;
+
 export interface TisApproachImpact {
   direction: TisDirection;
   existingVolumeVph: number;
@@ -390,6 +402,10 @@ export interface TisApproachImpact {
   existingLos: TisApproachImpactExistingLos;
   futureLos: TisApproachImpactFutureLos;
   queue95thFt: number;
+  currentVolumeVph?: number;
+  currentVc?: number;
+  currentDelaySec?: number;
+  currentLos?: TisApproachImpactCurrentLos;
 }
 
 export type TisAffectedIntersectionExistingLos =
@@ -416,6 +432,42 @@ export const TisAffectedIntersectionFutureLos = {
   F: "F",
 } as const;
 
+export type TisAffectedIntersectionCurrentLos =
+  (typeof TisAffectedIntersectionCurrentLos)[keyof typeof TisAffectedIntersectionCurrentLos];
+
+export const TisAffectedIntersectionCurrentLos = {
+  A: "A",
+  B: "B",
+  C: "C",
+  D: "D",
+  E: "E",
+  F: "F",
+} as const;
+
+export type TisAffectedIntersectionDesignNoBuildLos =
+  (typeof TisAffectedIntersectionDesignNoBuildLos)[keyof typeof TisAffectedIntersectionDesignNoBuildLos];
+
+export const TisAffectedIntersectionDesignNoBuildLos = {
+  A: "A",
+  B: "B",
+  C: "C",
+  D: "D",
+  E: "E",
+  F: "F",
+} as const;
+
+export type TisAffectedIntersectionDesignBuildLos =
+  (typeof TisAffectedIntersectionDesignBuildLos)[keyof typeof TisAffectedIntersectionDesignBuildLos];
+
+export const TisAffectedIntersectionDesignBuildLos = {
+  A: "A",
+  B: "B",
+  C: "C",
+  D: "D",
+  E: "E",
+  F: "F",
+} as const;
+
 export type TisAffectedIntersectionMitigationSeverity =
   (typeof TisAffectedIntersectionMitigationSeverity)[keyof typeof TisAffectedIntersectionMitigationSeverity];
 
@@ -425,6 +477,8 @@ export const TisAffectedIntersectionMitigationSeverity = {
   moderate: "moderate",
   major: "major",
 } as const;
+
+export type TisAffectedIntersectionTurboLane = { [key: string]: unknown };
 
 /**
  * Per-intersection calibration metadata when ground-truth observations exist for this signal.
@@ -449,12 +503,22 @@ export interface TisAffectedIntersection {
   futureDelaySec: number;
   existingLos: TisAffectedIntersectionExistingLos;
   futureLos: TisAffectedIntersectionFutureLos;
+  currentVc?: number;
+  currentDelaySec?: number;
+  currentLos?: TisAffectedIntersectionCurrentLos;
+  designNoBuildVc?: number;
+  designNoBuildDelaySec?: number;
+  designNoBuildLos?: TisAffectedIntersectionDesignNoBuildLos;
+  designBuildVc?: number;
+  designBuildDelaySec?: number;
+  designBuildLos?: TisAffectedIntersectionDesignBuildLos;
   losChanged: boolean;
   mitigation: string;
   mitigationSeverity: TisAffectedIntersectionMitigationSeverity;
   approaches: TisApproachImpact[];
   queue95thFt: number;
   calibration?: TisIntersectionCalibration;
+  turboLane?: TisAffectedIntersectionTurboLane;
 }
 
 /**

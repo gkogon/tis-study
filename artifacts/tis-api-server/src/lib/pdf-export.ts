@@ -8045,6 +8045,17 @@ function renderTisFlorida(
 
   // --- 7.0 Level of Service Analysis ------------------------------------
   gaSection(doc, "7.0 LEVEL OF SERVICE ANALYSIS");
+  // Each scenario cell shows the LOS grade AND the absolute average control
+  // delay (s/veh) so an LOS F at 82 s reads differently from an LOS F at 155 s
+  // — the project-induced Δ delay alone hides the severity of a pre-existing
+  // failure. Delay is rounded to whole seconds to keep the narrow columns
+  // legible; the Δ-delay column retains one decimal.
+  const losDelayCell = (los: any, delaySec: any): string => {
+    const g = los ?? "—";
+    return delaySec == null || Number.isNaN(Number(delaySec))
+      ? String(g)
+      : `${g} / ${Math.round(Number(delaySec))}`;
+  };
   const flHasDesignYear = intersections.some(
     (it) => it.designNoBuildLos != null || it.designBuildLos != null,
   );
@@ -8056,48 +8067,54 @@ function renderTisFlorida(
     );
     table(doc, {
       headers: ["Intersection", "Existing", "Opening NB", "Opening Bld", "Design NB", "Design Bld", "Δ delay (s)"],
-      widths: [180, 55, 65, 65, 55, 55, 55],
+      widths: [150, 58, 66, 66, 58, 58, 54],
       align: ["left", "center", "center", "center", "center", "center", "right"],
       rows: intersections.map((it) => {
         const losChanged = it.losChanged === true;
-        const currentLos = it.currentLos ?? it.existingLos ?? "—";
-        const noBuildLos = it.existingLos ?? "—";
-        const buildLos = it.futureLos ?? "—";
         return [
           it.name ?? it.signalId ?? "—",
-          String(currentLos),
-          String(noBuildLos),
-          (losChanged ? "▲ " : "") + String(buildLos),
-          String(it.designNoBuildLos ?? "—"),
-          String(it.designBuildLos ?? "—"),
+          losDelayCell(it.currentLos ?? it.existingLos, it.currentDelaySec ?? it.existingDelaySec),
+          losDelayCell(it.existingLos, it.existingDelaySec),
+          (losChanged ? "▲ " : "") + losDelayCell(it.futureLos, it.futureDelaySec),
+          losDelayCell(it.designNoBuildLos, it.designNoBuildDelaySec),
+          losDelayCell(it.designBuildLos, it.designBuildDelaySec),
           fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
         ];
       }),
     });
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "Each scenario cell shows LOS grade / average control delay (s/veh) per HCM 6th Ed. Ex. 19-8 (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). Screening delays use a generic signal model (90 s cycle, g/C 0.45, 1,800 pc/h/ln, one critical lane per approach) and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
   } else if (intersections.length > 0) {
     doc.font("body").fontSize(10).fillColor("black").text(
       `Intersection Level of Service is reported across the three analysis scenarios per HCM 6th Edition Chapter 19 (Exhibit 19-8 control-delay thresholds): Scenario 1 Existing, Scenario 2 No-Build (opening year ${openingYear}), and Scenario 3 Build (opening year ${openingYear}). A ▲ flag marks any intersection projected to drop a LOS grade under Build conditions.`,
       { paragraphGap: 6 },
     );
     table(doc, {
-      headers: ["Intersection", "Existing LOS", "No-Build LOS", "Build LOS", "Δ delay (s)", "Q95 (ft)"],
-      widths: [200, 65, 75, 65, 70, 60],
+      headers: ["Intersection", "Existing", "No-Build", "Build", "Δ delay (s)", "Q95 (ft)"],
+      widths: [175, 72, 72, 72, 66, 58],
       align: ["left", "center", "center", "center", "right", "right"],
       rows: intersections.map((it) => {
         const losChanged = it.losChanged === true;
-        const currentLos = it.currentLos ?? it.existingLos ?? "—";
-        const noBuildLos = it.existingLos ?? "—";
-        const buildLos = it.futureLos ?? "—";
         return [
           it.name ?? it.signalId ?? "—",
-          String(currentLos),
-          String(noBuildLos),
-          (losChanged ? "▲ " : "") + String(buildLos),
+          losDelayCell(it.currentLos ?? it.existingLos, it.currentDelaySec ?? it.existingDelaySec),
+          losDelayCell(it.existingLos, it.existingDelaySec),
+          (losChanged ? "▲ " : "") + losDelayCell(it.futureLos, it.futureDelaySec),
           fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
           fmtNum(it.queue95thFt),
         ];
       }),
     });
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "Each scenario cell shows LOS grade / average control delay (s/veh) per HCM 6th Ed. Ex. 19-8 (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). Screening delays use a generic signal model (90 s cycle, g/C 0.45, 1,800 pc/h/ln, one critical lane per approach) and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
   } else {
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
       "No signalized study intersections were identified; intersection Level of Service analysis is not applicable. Driveway operations should be evaluated at the site-access points per §9.0.",
