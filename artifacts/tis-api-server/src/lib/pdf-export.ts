@@ -8895,6 +8895,36 @@ function renderCapacityAppendix(
       ]),
     });
 
+    // Affected movements: name the approach(es) carrying the project's added
+    // trips and estimate the movement split. The engine resolves added trips at
+    // the approach level (see buildAffectedRow); the L/T/R breakdown below is the
+    // screening 15/70/15 split disclosed in the appendix header — replace with
+    // measured turning-movement counts at submittal. Surfacing this answers the
+    // reviewer's "which movements are affected?" without fabricating an OD path.
+    if (!addedNegligible) {
+      const loaded = approaches
+        .filter((a) => Math.round(Number(a.addedTripsPeak) || 0) > 0)
+        .sort((a, b) => (Number(b.addedTripsPeak) || 0) - (Number(a.addedTripsPeak) || 0));
+      if (loaded.length > 0) {
+        doc.moveDown(0.3);
+        doc.font("bold").fontSize(9).fillColor("black").text("Affected movements (PM peak project trips)", { paragraphGap: 2 });
+        const parts = loaded.map((a) => {
+          const dir = String(a.direction ?? "").toUpperCase();
+          const added = Math.round(Number(a.addedTripsPeak) || 0);
+          const thru = Math.round(added * 0.70);
+          const left = Math.round(added * 0.15);
+          const right = added - thru - left;
+          return `${dir} approach +${added} (≈ ${dir}-Thru ${thru} / ${dir}-Left ${left} / ${dir}-Right ${right})`;
+        });
+        doc.font("body").fontSize(8.5).fillColor(TEXT_GRAY).text(parts.join(";  ") + ".", { paragraphGap: 3 });
+        doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+          "Project trips are resolved at the approach level; the Left/Through/Right split shown is the screening 15/70/15 estimate and should be replaced with measured turning-movement counts and the site's access-point directional routing at submittal.",
+          { paragraphGap: 6 },
+        );
+        doc.fillColor("black");
+      }
+    }
+
     // Turbo-lane (continuous-green-T) screening — shown for every candidate
     // 3-leg T-intersection regardless of LOS (screening-study convention).
     const tl = ix.turboLane;
