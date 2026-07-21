@@ -17,6 +17,12 @@
 // down-weighted by cosine alignment — a trip only passes through this
 // intersection when its zone lies beyond it along the site→intersection axis.
 //
+// This assignment is the single source of truth for project loading at a study
+// intersection: the printed Affected-movements table uses the integer view
+// (assignMovements) and the per-approach capacity math in buildAffectedRow
+// uses the exact fractional view aggregated by entering approach
+// (approachAddedTripsFromMovements), so the two always reconcile.
+//
 // Dependency-free so the movement geometry can be regression-tested with plain
 // node (no logger/db imports), like signal-delay.ts and intersection-coverage.ts.
 
@@ -30,6 +36,16 @@ export type MovementLoad = {
   /** Integer project trips on this movement for the analyzed peak. Largest-
    *  remainder allocation, so Σ trips === round(addedTrips) exactly. */
   trips: number;
+};
+
+export type MovementLoadExact = {
+  /** Entering approach, named by travel direction (HCM convention). */
+  approach: MovementDirection;
+  movement: Movement;
+  /** Exact (fractional) project trips on this movement — Σ === addedTrips.
+   *  Carried unrounded so sub-1-trip junction loads (high-PTAL London sites)
+   *  still perturb the capacity math instead of collapsing to zero. */
+  exact: number;
 };
 
 // Octant centers matching caltran-gravity's bearingToCardinal (floor(b/45)):
@@ -59,7 +75,10 @@ function classify(enterDir: number, exitDir: number): Movement {
 }
 
 /**
- * Assign a study intersection's added project trips to turning movements.
+ * Exact (fractional) movement loads for a study intersection's added project
+ * trips. Same geometry as `assignMovements`, but ungated on the rounded trip
+ * count and unrounded: this is what the per-approach capacity math consumes,
+ * so a junction receiving < 0.5 trips still carries its fractional load.
  *
  * @param bearingIntersectionToSite  degrees from north, intersection → site
  * @param octantSharesPct            directional distribution (NNE…NNW, Σ≈100)
@@ -67,14 +86,13 @@ function classify(enterDir: number, exitDir: number): Movement {
  *                                   intersection for the analyzed peak
  * @param inFraction                 share of trips inbound to the site (0..1)
  */
-export function assignMovements(
+export function assignMovementLoadsExact(
   bearingIntersectionToSite: number,
   octantSharesPct: Record<string, number>,
   addedTrips: number,
   inFraction: number,
-): MovementLoad[] {
-  const total = Math.round(addedTrips);
-  if (!(addedTrips > 0) || total <= 0) return [];
+): MovementLoadExact[] {
+  if (!(addedTrips > 0)) return [];
 
   // Direction from the site toward (and past) this intersection — the compass
   // side whose zones route through it.
@@ -125,9 +143,55 @@ export function assignMovements(
     add(cardinal4(z.centerDeg + 180), siteLegDir, addedTrips * inShare * zoneFrac);
   }
 
+  return [...loads.values()]
+    .map((r) => ({ approach: r.approach, movement: r.movement, exact: r.exact }))
+    .sort((a, b) => b.exact - a.exact);
+}
+
+/**
+ * Exact added project trips per approach row, aggregated from the geometric
+ * movement assignment by ENTERING approach: inbound trips load the approach
+ * they enter the intersection on (from their origin octant); outbound trips
+ * enter on the site-facing leg traveling away from the site and load that
+ * travel-direction row. Every trip is counted exactly once, so the four
+ * loads sum to `addedTrips` and — after the integer allocation — reconcile
+ * with the Affected-movements table approach-by-approach.
+ */
+export function approachAddedTripsFromMovements(
+  bearingIntersectionToSite: number,
+  octantSharesPct: Record<string, number>,
+  addedTrips: number,
+  inFraction: number,
+): Record<MovementDirection, number> {
+  const byApproach: Record<MovementDirection, number> = { NB: 0, SB: 0, EB: 0, WB: 0 };
+  for (const l of assignMovementLoadsExact(bearingIntersectionToSite, octantSharesPct, addedTrips, inFraction)) {
+    byApproach[l.approach] += l.exact;
+  }
+  return byApproach;
+}
+
+/**
+ * Assign a study intersection's added project trips to turning movements.
+ * Integer view of `assignMovementLoadsExact` for the printed Affected-
+ * movements table; parameters as there.
+ */
+export function assignMovements(
+  bearingIntersectionToSite: number,
+  octantSharesPct: Record<string, number>,
+  addedTrips: number,
+  inFraction: number,
+): MovementLoad[] {
+  const total = Math.round(addedTrips);
+  if (!(addedTrips > 0) || total <= 0) return [];
+
   // Largest-remainder integer allocation so the movement trips cross-foot with
   // the intersection's reported added-trip count exactly.
-  const rows = [...loads.values()].sort((a, b) => b.exact - a.exact);
+  const rows = assignMovementLoadsExact(
+    bearingIntersectionToSite,
+    octantSharesPct,
+    addedTrips,
+    inFraction,
+  );
   const floors = rows.map((r) => Math.floor(r.exact * (total / addedTrips)));
   let assigned = floors.reduce((s, v) => s + v, 0);
   const remainders = rows

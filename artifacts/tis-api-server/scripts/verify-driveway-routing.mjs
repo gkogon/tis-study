@@ -328,6 +328,24 @@ if (bundleOk) {
       ok(riroAdded.some((v) => v > 0),
         `RIRO report has at least one intersection with addedTripsPmPeak > 0 (got [${riroAdded.join(",")}])`);
 
+      // Movement-derived loading reconciliation (payload level): for every
+      // intersection that carries a movements table, the +Trips column is its
+      // per-approach sum by entering approach, and the column cross-foots with
+      // the junction's added-trip count (see buildAffectedRow).
+      for (const [label, rep] of [["base", baseReport], ["riro", riroReport]]) {
+        const withMv = (rep.affectedIntersections ?? [])
+          .filter((r) => Array.isArray(r.movements) && r.movements.length > 0);
+        ok(withMv.length > 0, `${label}: at least one intersection carries a movements table`);
+        for (const r of withMv) {
+          const byDir = { NB: 0, SB: 0, EB: 0, WB: 0 };
+          for (const m of r.movements) byDir[m.approach] += m.trips;
+          const perApproach = (r.approaches ?? []).every((a) => a.addedTripsPeak === byDir[a.direction]);
+          const sumTrips = (r.approaches ?? []).reduce((s, a) => s + a.addedTripsPeak, 0);
+          ok(perApproach && sumTrips === r.addedTripsPmPeak,
+            `${label} ${r.signalId}: +Trips reconciles with movements per approach and in total (Σ=${sumTrips}, junction=${r.addedTripsPmPeak})`);
+        }
+      }
+
       // ─── Task 8: PDF driveway access table ───────────────────────────────────
       // Render the RIRO-driveway report to a PDF and assert pdftotext output
       // contains "Site Access — Driveways" and the driveway label.

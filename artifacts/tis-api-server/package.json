@@ -20,7 +20,9 @@
     "check:name-dedup": "node ./scripts/verify-name-dedup.mjs",
     "check:driveways": "node ./scripts/verify-driveways.mjs",
     "check:driveway-routing": "node ./scripts/verify-driveway-routing.mjs",
-    "check:force-include": "node ./scripts/verify-force-include.mjs"
+    "check:force-include": "node ./scripts/verify-force-include.mjs",
+    "check:movement-assignment": "node ./scripts/verify-movement-assignment.mjs",
+    "check:movement-loading": "node ./scripts/verify-movement-loading.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",
