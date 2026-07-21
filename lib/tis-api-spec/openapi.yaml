@@ -505,6 +505,22 @@ components:
               longitude: { type: number, minimum: -180, maximum: 180 }
         distributionMethod:
           $ref: "#/components/schemas/TisDistributionMethod"
+        existingLandUseCode:
+          type: string
+          minLength: 2
+          description: >-
+            Optional existing (prior) land use occupying the site today, for a
+            redevelopment trip-generation credit. Its trips are computed the same
+            way as the proposed use and subtracted, so the report shows net new
+            external trips (gross − internal capture − pass-by − existing-use
+            credit). Absent ⇒ greenfield behavior (no credit, unchanged output).
+        existingSize:
+          type: number
+          minimum: 0
+          description: >-
+            Size of the existing land use in that use's primary unit. Required
+            (and must be > 0) for the existing-use credit to apply; ignored when
+            existingLandUseCode is absent.
         driveways:
           type: array
           maxItems: 12
@@ -555,6 +571,15 @@ components:
         pmPeakTrips: { type: integer }
         pmIn: { type: integer }
         pmOut: { type: integer }
+        # Existing (prior) land-use redevelopment credit — present only when the
+        # request supplied existingLandUseCode. All optional so greenfield runs
+        # are unchanged.
+        existingLandUseCode: { type: string }
+        existingLandUseName: { type: string }
+        existingSize: { type: number }
+        existingUnit: { type: string }
+        existingUseCreditPm: { type: integer }
+        netNewExternalPm: { type: integer }
       required: [landUseCode, landUseName, size, unit, dailyTrips, amPeakTrips, pmPeakTrips, pmIn, pmOut]
     TisApproachImpact:
       type: object
@@ -570,6 +595,11 @@ components:
         existingLos: { type: string, enum: [A, B, C, D, E, F] }
         futureLos: { type: string, enum: [A, B, C, D, E, F] }
         queue95thFt: { type: number }
+        # True current-year baseline for this approach (no growth). Optional.
+        currentVolumeVph: { type: number }
+        currentVc: { type: number }
+        currentDelaySec: { type: number }
+        currentLos: { type: string, enum: [A, B, C, D, E, F] }
       required:
         - direction
         - existingVolumeVph
@@ -602,6 +632,27 @@ components:
         futureLos:
           type: string
           enum: [A, B, C, D, E, F]
+        # True current-year baseline (existing volumes, no growth). Optional so
+        # pre-scenario-refactor saved payloads still validate. These were being
+        # silently stripped at the response boundary, which (a) collapsed the
+        # "Existing" scenario column to No-Build values and (b) forced every
+        # design-year 4-scenario table to fall back to the 3-scenario table.
+        currentVc: { type: number }
+        currentDelaySec: { type: number }
+        currentLos:
+          type: string
+          enum: [A, B, C, D, E, F]
+        # Design-year (long-range) No-Build and Build scenarios. Optional.
+        designNoBuildVc: { type: number }
+        designNoBuildDelaySec: { type: number }
+        designNoBuildLos:
+          type: string
+          enum: [A, B, C, D, E, F]
+        designBuildVc: { type: number }
+        designBuildDelaySec: { type: number }
+        designBuildLos:
+          type: string
+          enum: [A, B, C, D, E, F]
         losChanged: { type: boolean }
         mitigation: { type: string }
         mitigationSeverity:
@@ -613,6 +664,29 @@ components:
         queue95thFt: { type: number }
         calibration:
           $ref: "#/components/schemas/TisIntersectionCalibration"
+        # Turbo-lane (continuous-green-T) screening result, present only for
+        # genuine 3-leg T candidates. Passthrough object — the renderer reads
+        # its fields directly; typing it fully here isn't necessary and it was
+        # previously being stripped (dropping the turbo-lane appendix).
+        turboLane:
+          type: object
+          additionalProperties: true
+        # Per-turning-movement breakdown of the added project trips (NB-L/T/R…),
+        # derived from the directional trip distribution + the site's bearing
+        # from this intersection. Integer trips cross-foot with addedTripsPmPeak.
+        movements:
+          type: array
+          items:
+            type: object
+            properties:
+              approach:
+                type: string
+                enum: [NB, SB, EB, WB]
+              movement:
+                type: string
+                enum: [L, T, R]
+              trips: { type: integer }
+            required: [approach, movement, trips]
       required:
         - signalId
         - name
@@ -687,6 +761,12 @@ components:
         externalTrips: { type: integer }
         inTrips: { type: integer }
         outTrips: { type: integer }
+        # Redevelopment credit for this period — present only when the request
+        # supplied an existing land use. externalTrips stays the proposed use's
+        # external trips; netNewExternalTrips is what is actually assigned to the
+        # network (externalTrips − existingUseCredit, floored at 0).
+        existingUseCredit: { type: integer }
+        netNewExternalTrips: { type: integer }
       required:
         - period
         - periodLabel

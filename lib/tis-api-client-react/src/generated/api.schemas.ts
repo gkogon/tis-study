@@ -345,6 +345,16 @@ export interface TisRequest {
   additionalStudyPoints?: TisRequestAdditionalStudyPointsItem[];
   distributionMethod?: TisDistributionMethod;
   /**
+   * Optional existing (prior) land use occupying the site today, for a redevelopment trip-generation credit. Its trips are computed the same way as the proposed use and subtracted, so the report shows net new external trips (gross − internal capture − pass-by − existing-use credit). Absent ⇒ greenfield behavior (no credit, unchanged output).
+   * @minLength 2
+   */
+  existingLandUseCode?: string;
+  /**
+   * Size of the existing land use in that use's primary unit. Required (and must be > 0) for the existing-use credit to apply; ignored when existingLandUseCode is absent.
+   * @minimum 0
+   */
+  existingSize?: number;
+  /**
    * Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).
    * @maxItems 12
    */
@@ -375,6 +385,12 @@ export interface TisTripGeneration {
   pmPeakTrips: number;
   pmIn: number;
   pmOut: number;
+  existingLandUseCode?: string;
+  existingLandUseName?: string;
+  existingSize?: number;
+  existingUnit?: string;
+  existingUseCreditPm?: number;
+  netNewExternalPm?: number;
 }
 
 export type TisApproachImpactExistingLos =
@@ -401,6 +417,18 @@ export const TisApproachImpactFutureLos = {
   F: "F",
 } as const;
 
+export type TisApproachImpactCurrentLos =
+  (typeof TisApproachImpactCurrentLos)[keyof typeof TisApproachImpactCurrentLos];
+
+export const TisApproachImpactCurrentLos = {
+  A: "A",
+  B: "B",
+  C: "C",
+  D: "D",
+  E: "E",
+  F: "F",
+} as const;
+
 export interface TisApproachImpact {
   direction: TisDirection;
   existingVolumeVph: number;
@@ -413,6 +441,10 @@ export interface TisApproachImpact {
   existingLos: TisApproachImpactExistingLos;
   futureLos: TisApproachImpactFutureLos;
   queue95thFt: number;
+  currentVolumeVph?: number;
+  currentVc?: number;
+  currentDelaySec?: number;
+  currentLos?: TisApproachImpactCurrentLos;
 }
 
 export type TisAffectedIntersectionExistingLos =
@@ -439,6 +471,42 @@ export const TisAffectedIntersectionFutureLos = {
   F: "F",
 } as const;
 
+export type TisAffectedIntersectionCurrentLos =
+  (typeof TisAffectedIntersectionCurrentLos)[keyof typeof TisAffectedIntersectionCurrentLos];
+
+export const TisAffectedIntersectionCurrentLos = {
+  A: "A",
+  B: "B",
+  C: "C",
+  D: "D",
+  E: "E",
+  F: "F",
+} as const;
+
+export type TisAffectedIntersectionDesignNoBuildLos =
+  (typeof TisAffectedIntersectionDesignNoBuildLos)[keyof typeof TisAffectedIntersectionDesignNoBuildLos];
+
+export const TisAffectedIntersectionDesignNoBuildLos = {
+  A: "A",
+  B: "B",
+  C: "C",
+  D: "D",
+  E: "E",
+  F: "F",
+} as const;
+
+export type TisAffectedIntersectionDesignBuildLos =
+  (typeof TisAffectedIntersectionDesignBuildLos)[keyof typeof TisAffectedIntersectionDesignBuildLos];
+
+export const TisAffectedIntersectionDesignBuildLos = {
+  A: "A",
+  B: "B",
+  C: "C",
+  D: "D",
+  E: "E",
+  F: "F",
+} as const;
+
 export type TisAffectedIntersectionMitigationSeverity =
   (typeof TisAffectedIntersectionMitigationSeverity)[keyof typeof TisAffectedIntersectionMitigationSeverity];
 
@@ -448,6 +516,33 @@ export const TisAffectedIntersectionMitigationSeverity = {
   moderate: "moderate",
   major: "major",
 } as const;
+
+export type TisAffectedIntersectionTurboLane = { [key: string]: unknown };
+
+export type TisAffectedIntersectionMovementsItemApproach =
+  (typeof TisAffectedIntersectionMovementsItemApproach)[keyof typeof TisAffectedIntersectionMovementsItemApproach];
+
+export const TisAffectedIntersectionMovementsItemApproach = {
+  NB: "NB",
+  SB: "SB",
+  EB: "EB",
+  WB: "WB",
+} as const;
+
+export type TisAffectedIntersectionMovementsItemMovement =
+  (typeof TisAffectedIntersectionMovementsItemMovement)[keyof typeof TisAffectedIntersectionMovementsItemMovement];
+
+export const TisAffectedIntersectionMovementsItemMovement = {
+  L: "L",
+  T: "T",
+  R: "R",
+} as const;
+
+export type TisAffectedIntersectionMovementsItem = {
+  approach: TisAffectedIntersectionMovementsItemApproach;
+  movement: TisAffectedIntersectionMovementsItemMovement;
+  trips: number;
+};
 
 /**
  * Per-intersection calibration metadata when ground-truth observations exist for this signal.
@@ -472,12 +567,23 @@ export interface TisAffectedIntersection {
   futureDelaySec: number;
   existingLos: TisAffectedIntersectionExistingLos;
   futureLos: TisAffectedIntersectionFutureLos;
+  currentVc?: number;
+  currentDelaySec?: number;
+  currentLos?: TisAffectedIntersectionCurrentLos;
+  designNoBuildVc?: number;
+  designNoBuildDelaySec?: number;
+  designNoBuildLos?: TisAffectedIntersectionDesignNoBuildLos;
+  designBuildVc?: number;
+  designBuildDelaySec?: number;
+  designBuildLos?: TisAffectedIntersectionDesignBuildLos;
   losChanged: boolean;
   mitigation: string;
   mitigationSeverity: TisAffectedIntersectionMitigationSeverity;
   approaches: TisApproachImpact[];
   queue95thFt: number;
   calibration?: TisIntersectionCalibration;
+  turboLane?: TisAffectedIntersectionTurboLane;
+  movements?: TisAffectedIntersectionMovementsItem[];
 }
 
 /**
@@ -507,6 +613,8 @@ export interface TisPeriodTripGen {
   externalTrips: number;
   inTrips: number;
   outTrips: number;
+  existingUseCredit?: number;
+  netNewExternalTrips?: number;
 }
 
 export interface TisPeriodReport {
