@@ -39,7 +39,7 @@ import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSo
 // callers that imported `LAND_USES` from this module.
 import { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence } from "./land-uses";
 import { screenTurboCandidate, turboLaneScreening, type TurboLaneScreening } from "./turbo-lane";
-import { assignMovements, type MovementLoad } from "./movement-assignment";
+import { assignMovements, approachAddedTripsFromMovements, type MovementLoad } from "./movement-assignment";
 // Pure HCM delay / LOS / queue math (dependency-free leaf, unit-tested there).
 import {
   type Los,
@@ -201,10 +201,13 @@ function approachVolumeShares(signalId: string): Record<Direction, number> {
   return raw;
 }
 
-// Distribute added project trips to the four approaches, weighted by the
-// cosine similarity between (a) the approach's origin bearing and (b) the
-// bearing from the signal back to the project site. Floor of 0.10 each so
-// every approach gets at least some trips.
+// LEGACY fallback: distribute added project trips to the four approaches,
+// weighted by the cosine similarity between (a) the approach's origin bearing
+// and (b) the bearing from the signal back to the project site. Floor of 0.10
+// each so every approach gets at least some trips. Used only when no
+// directional distribution ran — with distribution octants, buildAffectedRow
+// derives the per-approach loading from the geometric movement assignment
+// instead (approachAddedTripsFromMovements), which has no floor.
 function approachAddedTripShares(
   signal: { latitude: number; longitude: number },
   project: { lat: number; lon: number },
@@ -491,8 +494,10 @@ export type AffectedIntersection = {
   /** Per-turning-movement breakdown of the added project trips (NB-L/T/R …),
    *  derived from the study's directional trip distribution and the site's
    *  bearing from this intersection (assignMovements). Integer trips that
-   *  cross-foot with addedTripsPmPeak. Present when a distribution ran and the
-   *  intersection receives ≥1 rounded trip. */
+   *  cross-foot with addedTripsPmPeak AND, approach-by-approach, with the
+   *  approaches' addedTripsPeak (both derive from the same geometric
+   *  assignment). Present when a distribution ran and the intersection
+   *  receives ≥1 rounded trip. */
   movements?: MovementLoad[];
 };
 
@@ -880,7 +885,10 @@ type ScenarioParams = {
   /** Directional trip-distribution octant shares (NNE…NNW, Σ≈100) from the
    *  study's distribution step. When present, each affected-intersection row
    *  gains a per-turning-movement breakdown of its added project trips
-   *  (assignMovements). Optional → omitted = no movements field, unchanged. */
+   *  (assignMovements) AND the per-approach loading (futureVol / v/c / delay /
+   *  LOS / queue / +Trips) derives from that same geometric assignment.
+   *  Optional → omitted = no movements field and the legacy cosine+0.10-floor
+   *  approach split, unchanged. */
   distributionOctants?: Record<string, number>;
 };
 
@@ -955,13 +963,47 @@ function buildAffectedRow(
   const designNoBuildLos = hasDesignYear ? delayToLos(designNoBuildDelay) : undefined;
   const designBuildLos = hasDesignYear ? delayToLos(designBuildDelay) : undefined;
 
+  // Turning-movement assignment of the added trips: geometry from the site
+  // bearing + the study's distribution octants (see movement-assignment.ts).
+  // Computed BEFORE the approach split because it is the single source of
+  // truth for where the project loads this intersection: `movements` is the
+  // integer view for the printed Affected-movements table, and the exact
+  // fractional view (aggregated by entering approach) drives the per-approach
+  // capacity loading below, so the two always reconcile. `movements` is
+  // omitted when no distribution ran or the rounded junction load is zero, so
+  // pre-distribution payloads and negligible-impact junctions are unchanged.
+  const bearingIntersectionToSite = bearingDeg(
+    { lat: c.sig.latitude, lon: c.sig.longitude },
+    { lat: project.lat, lon: project.lon },
+  );
+  const movements: MovementLoad[] | undefined = params.distributionOctants
+    ? assignMovements(
+        bearingIntersectionToSite,
+        params.distributionOctants,
+        addedTripsExact,
+        params.inFraction,
+      )
+    : undefined;
+  // Exact per-approach project load, by ENTERING approach: inbound trips load
+  // the approach they enter on from their origin octant; outbound trips enter
+  // on the site-facing leg traveling away from the site and load that
+  // travel-direction row. Geometry decides the split — no floor share — so an
+  // approach the distribution never routes through carries zero project trips.
+  const movementAdded: Record<Direction, number> | undefined = params.distributionOctants
+    ? approachAddedTripsFromMovements(
+        bearingIntersectionToSite,
+        params.distributionOctants,
+        addedTripsExact,
+        params.inFraction,
+      )
+    : undefined;
+
   // Approach split.
   const volShares = approachVolumeShares(c.sig.id);
-  const tripShares = approachAddedTripShares(c.sig, project);
-  // Note: added trips arrive at the signal from outside, so each approach
-  // gains (in-fraction × addedTrips × tripShares[d]); the out-flow leaves on
-  // the opposite approach. For peak-hour delay we model both as a directional
-  // load using the inbound share + outbound share split per direction.
+  // Legacy fallback (no distribution octants): cosine-similarity split with a
+  // 0.10 floor on every approach; the out-flow leaves on the approach opposite
+  // the inbound origin. Kept only for payloads where no distribution ran.
+  const tripShares = movementAdded ? undefined : approachAddedTripShares(c.sig, project);
   const approaches: ApproachImpact[] = DIRECTIONS.map((d) => {
     // Current-year baseline (no growth) for this approach.
     const currentVolByApproach = currentVolume * volShares[d];
@@ -970,14 +1012,21 @@ function buildAffectedRow(
 
     // No-Build (existing-grown-to-opening-year).
     const baseVol = grownVolume * volShares[d];
-    // Distribute the EXACT junction load across approaches (see note above) —
-    // distributing the pre-rounded integer double-rounded the split and could
-    // zero out every approach on a sub-vehicle junction load.
-    const inOnApproach = addedTripsExact * params.inFraction * tripShares[d];
-    // Outbound trips depart on the approach opposite the inbound origin.
-    const oppositeShare = tripShares[oppositeDir(d)];
-    const outOnApproach = addedTripsExact * (1 - params.inFraction) * oppositeShare;
-    const futureVol = baseVol + inOnApproach + outOnApproach;
+    // Distribute the EXACT junction load across approaches — distributing the
+    // pre-rounded integer double-rounded the split and could zero out every
+    // approach on a sub-vehicle junction load (high-PTAL London schemes).
+    const addedOnApproach = movementAdded
+      ? movementAdded[d]
+      : addedTripsExact * params.inFraction * tripShares![d]
+        + addedTripsExact * (1 - params.inFraction) * tripShares![oppositeDir(d)];
+    const futureVol = baseVol + addedOnApproach;
+
+    // Printed +Trips: when the movements table is printed alongside, sum ITS
+    // integer rows for this approach so the two columns cross-foot exactly
+    // (independent rounding could drift ±1); otherwise round the exact load.
+    const addedTripsPeak = movements && movements.length > 0
+      ? movements.reduce((s, m) => s + (m.approach === d ? m.trips : 0), 0)
+      : Math.round(addedOnApproach);
 
     const exVc = (baseVol * 1.0) / params.approachCapacityVph;
     const fuVc = (futureVol * 1.0) / params.approachCapacityVph;
@@ -990,7 +1039,7 @@ function buildAffectedRow(
       currentDelaySec: round1(currentDelayByApproach),
       currentLos: delayToLos(currentDelayByApproach),
       existingVolumeVph: round1(baseVol),
-      addedTripsPeak: Math.round(inOnApproach + outOnApproach),
+      addedTripsPeak,
       futureVolumeVph: round1(futureVol),
       existingVc: round2(exVc),
       futureVc: round2(fuVc),
@@ -1003,22 +1052,6 @@ function buildAffectedRow(
   });
 
   const worstQueue = approaches.reduce((m, a) => Math.max(m, a.queue95thFt), 0);
-
-  // Turning-movement breakdown of the added trips: geometry from the site
-  // bearing + the study's distribution octants (see movement-assignment.ts).
-  // Omitted when no distribution ran or the rounded junction load is zero, so
-  // pre-distribution payloads and negligible-impact junctions are unchanged.
-  const movements: MovementLoad[] | undefined = params.distributionOctants
-    ? assignMovements(
-        bearingDeg(
-          { lat: c.sig.latitude, lon: c.sig.longitude },
-          { lat: project.lat, lon: project.lon },
-        ),
-        params.distributionOctants,
-        addedTripsExact,
-        params.inFraction,
-      )
-    : undefined;
 
   let mit = recommendMitigation(afterDelay - beforeDelay, afterLos);
 
