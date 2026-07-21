@@ -16,4 +16,6 @@ export interface TisPeriodTripGen {
   externalTrips: number;
   inTrips: number;
   outTrips: number;
+  existingUseCredit?: number;
+  netNewExternalTrips?: number;
 }

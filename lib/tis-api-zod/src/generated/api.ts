@@ -61,6 +61,10 @@ export const generateTisBodyTripProfileDeparturesItemMin = 0;
 export const generateTisBodyTripProfileDeparturesMin = 24;
 export const generateTisBodyTripProfileDeparturesMax = 24;
 
+export const generateTisBodyExistingLandUseCodeMin = 2;
+
+export const generateTisBodyExistingSizeMin = 0;
+
 export const generateTisBodyDrivewaysItemLatitudeMin = -90;
 export const generateTisBodyDrivewaysItemLatitudeMax = 90;
 
@@ -167,6 +171,20 @@ export const GenerateTisBody = zod.object({
     .describe(
       "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
     ),
+  existingLandUseCode: zod
+    .string()
+    .min(generateTisBodyExistingLandUseCodeMin)
+    .optional()
+    .describe(
+      "Optional existing (prior) land use occupying the site today, for a redevelopment trip-generation credit. Its trips are computed the same way as the proposed use and subtracted, so the report shows net new external trips (gross − internal capture − pass-by − existing-use credit). Absent ⇒ greenfield behavior (no credit, unchanged output).",
+    ),
+  existingSize: zod
+    .number()
+    .min(generateTisBodyExistingSizeMin)
+    .optional()
+    .describe(
+      "Size of the existing land use in that use's primary unit. Required (and must be > 0) for the existing-use credit to apply; ignored when existingLandUseCode is absent.",
+    ),
   driveways: zod
     .array(
       zod.object({
@@ -245,6 +263,10 @@ export const generateTisResponseRequestTripProfileDeparturesItemMin = 0;
 
 export const generateTisResponseRequestTripProfileDeparturesMin = 24;
 export const generateTisResponseRequestTripProfileDeparturesMax = 24;
+
+export const generateTisResponseRequestExistingLandUseCodeMin = 2;
+
+export const generateTisResponseRequestExistingSizeMin = 0;
 
 export const generateTisResponseRequestDrivewaysItemLatitudeMin = -90;
 export const generateTisResponseRequestDrivewaysItemLatitudeMax = 90;
@@ -364,6 +386,20 @@ export const GenerateTisResponse = zod.object({
       .describe(
         "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
       ),
+    existingLandUseCode: zod
+      .string()
+      .min(generateTisResponseRequestExistingLandUseCodeMin)
+      .optional()
+      .describe(
+        "Optional existing (prior) land use occupying the site today, for a redevelopment trip-generation credit. Its trips are computed the same way as the proposed use and subtracted, so the report shows net new external trips (gross − internal capture − pass-by − existing-use credit). Absent ⇒ greenfield behavior (no credit, unchanged output).",
+      ),
+    existingSize: zod
+      .number()
+      .min(generateTisResponseRequestExistingSizeMin)
+      .optional()
+      .describe(
+        "Size of the existing land use in that use's primary unit. Required (and must be > 0) for the existing-use credit to apply; ignored when existingLandUseCode is absent.",
+      ),
     driveways: zod
       .array(
         zod.object({
@@ -431,6 +467,12 @@ export const GenerateTisResponse = zod.object({
     pmPeakTrips: zod.number(),
     pmIn: zod.number(),
     pmOut: zod.number(),
+    existingLandUseCode: zod.string().optional(),
+    existingLandUseName: zod.string().optional(),
+    existingSize: zod.number().optional(),
+    existingUnit: zod.string().optional(),
+    existingUseCreditPm: zod.number().optional(),
+    netNewExternalPm: zod.number().optional(),
   }),
   affectedIntersections: zod.array(
     zod.object({
@@ -512,6 +554,8 @@ export const GenerateTisResponse = zod.object({
         externalTrips: zod.number(),
         inTrips: zod.number(),
         outTrips: zod.number(),
+        existingUseCredit: zod.number().optional(),
+        netNewExternalTrips: zod.number().optional(),
       }),
       affectedIntersections: zod.array(
         zod.object({
@@ -821,6 +865,10 @@ export const getTisProjectResponseRequestOneTripProfileDeparturesItemMin = 0;
 export const getTisProjectResponseRequestOneTripProfileDeparturesMin = 24;
 export const getTisProjectResponseRequestOneTripProfileDeparturesMax = 24;
 
+export const getTisProjectResponseRequestOneExistingLandUseCodeMin = 2;
+
+export const getTisProjectResponseRequestOneExistingSizeMin = 0;
+
 export const getTisProjectResponseRequestOneDrivewaysItemLatitudeMin = -90;
 export const getTisProjectResponseRequestOneDrivewaysItemLatitudeMax = 90;
 
@@ -863,6 +911,10 @@ export const getTisProjectResponseResultRequestTripProfileDeparturesItemMin = 0;
 
 export const getTisProjectResponseResultRequestTripProfileDeparturesMin = 24;
 export const getTisProjectResponseResultRequestTripProfileDeparturesMax = 24;
+
+export const getTisProjectResponseResultRequestExistingLandUseCodeMin = 2;
+
+export const getTisProjectResponseResultRequestExistingSizeMin = 0;
 
 export const getTisProjectResponseResultRequestDrivewaysItemLatitudeMin = -90;
 export const getTisProjectResponseResultRequestDrivewaysItemLatitudeMax = 90;
@@ -1004,6 +1056,20 @@ export const GetTisProjectResponse = zod
             .optional()
             .describe(
               "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
+            ),
+          existingLandUseCode: zod
+            .string()
+            .min(getTisProjectResponseRequestOneExistingLandUseCodeMin)
+            .optional()
+            .describe(
+              "Optional existing (prior) land use occupying the site today, for a redevelopment trip-generation credit. Its trips are computed the same way as the proposed use and subtracted, so the report shows net new external trips (gross − internal capture − pass-by − existing-use credit). Absent ⇒ greenfield behavior (no credit, unchanged output).",
+            ),
+          existingSize: zod
+            .number()
+            .min(getTisProjectResponseRequestOneExistingSizeMin)
+            .optional()
+            .describe(
+              "Size of the existing land use in that use's primary unit. Required (and must be > 0) for the existing-use credit to apply; ignored when existingLandUseCode is absent.",
             ),
           driveways: zod
             .array(
@@ -1179,6 +1245,20 @@ export const GetTisProjectResponse = zod
           .describe(
             "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
           ),
+        existingLandUseCode: zod
+          .string()
+          .min(getTisProjectResponseResultRequestExistingLandUseCodeMin)
+          .optional()
+          .describe(
+            "Optional existing (prior) land use occupying the site today, for a redevelopment trip-generation credit. Its trips are computed the same way as the proposed use and subtracted, so the report shows net new external trips (gross − internal capture − pass-by − existing-use credit). Absent ⇒ greenfield behavior (no credit, unchanged output).",
+          ),
+        existingSize: zod
+          .number()
+          .min(getTisProjectResponseResultRequestExistingSizeMin)
+          .optional()
+          .describe(
+            "Size of the existing land use in that use's primary unit. Required (and must be > 0) for the existing-use credit to apply; ignored when existingLandUseCode is absent.",
+          ),
         driveways: zod
           .array(
             zod.object({
@@ -1254,6 +1334,12 @@ export const GetTisProjectResponse = zod
         pmPeakTrips: zod.number(),
         pmIn: zod.number(),
         pmOut: zod.number(),
+        existingLandUseCode: zod.string().optional(),
+        existingLandUseName: zod.string().optional(),
+        existingSize: zod.number().optional(),
+        existingUnit: zod.string().optional(),
+        existingUseCreditPm: zod.number().optional(),
+        netNewExternalPm: zod.number().optional(),
       }),
       affectedIntersections: zod.array(
         zod.object({
@@ -1340,6 +1426,8 @@ export const GetTisProjectResponse = zod
             externalTrips: zod.number(),
             inTrips: zod.number(),
             outTrips: zod.number(),
+            existingUseCredit: zod.number().optional(),
+            netNewExternalTrips: zod.number().optional(),
           }),
           affectedIntersections: zod.array(
             zod.object({

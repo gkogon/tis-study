@@ -20,4 +20,10 @@ export interface TisTripGeneration {
   pmPeakTrips: number;
   pmIn: number;
   pmOut: number;
+  existingLandUseCode?: string;
+  existingLandUseName?: string;
+  existingSize?: number;
+  existingUnit?: string;
+  existingUseCreditPm?: number;
+  netNewExternalPm?: number;
 }

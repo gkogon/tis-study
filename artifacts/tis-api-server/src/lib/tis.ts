@@ -378,6 +378,14 @@ export type TisRequest = {
   // chosen radius.
   scopeStudyIntersections?: boolean;
   distributionMethod?: DistributionMethod;
+  /** Existing (prior) land use occupying the site today, for a redevelopment
+   *  trip-generation credit. Structured (a LAND_USES code + size), distinct from
+   *  the free-text `priorUse` used by the London narrative. When set with a
+   *  positive `existingSize`, the existing use's external trips are computed with
+   *  the same pipeline and credited against the proposed use, so the report shows
+   *  net new external trips. Absent ⇒ greenfield, output unchanged. */
+  existingLandUseCode?: string;
+  existingSize?: number;
   /** Site access points with per-movement turn restrictions. When present,
    *  project trips route through these driveways and forbidden movements
    *  reroute onto the network (U-turns). Absent or empty ⇒ single-site
@@ -491,6 +499,19 @@ export type TripGenerationSummary = {
   pmPeakTrips: number;
   pmIn: number;
   pmOut: number;
+  /**
+   * Existing (prior) land-use redevelopment credit — present only when the
+   * request supplied `existingLandUseCode`. `existingUseCreditPm` is the
+   * existing use's PM-peak external trips credited against the proposed use;
+   * `netNewExternalPm` is the PM-peak net new external trips actually assigned
+   * (proposed external − credit, floored at 0).
+   */
+  existingLandUseCode?: string;
+  existingLandUseName?: string;
+  existingSize?: number;
+  existingUnit?: string;
+  existingUseCreditPm?: number;
+  netNewExternalPm?: number;
 };
 
 export type PeriodTripGen = {
@@ -502,6 +523,11 @@ export type PeriodTripGen = {
   externalTrips: number;
   inTrips: number;
   outTrips: number;
+  /** Redevelopment credit — present only when the request supplied an existing
+   *  land use. `netNewExternalTrips` = externalTrips − existingUseCredit (≥ 0)
+   *  and is the count actually assigned to the network. */
+  existingUseCredit?: number;
+  netNewExternalTrips?: number;
 };
 
 export type PeriodReport = {
@@ -1206,6 +1232,23 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // metadata so the report surfaces which assumption was used.
   const rates = resolveRatesForVariable(lu, req.independentVariable);
 
+  // Optional existing (prior) land use → redevelopment trip-generation credit.
+  // Resolved once; its per-period trips are computed with the same pipeline as
+  // the proposed use (raw → pass-by → internal capture → auto-mode) and its own
+  // registry defaults, then subtracted from the proposed external trips. Absent
+  // or zero-size ⇒ existingUse is null and every downstream path is unchanged.
+  const existingLuRaw = req.existingLandUseCode ? getLandUse(req.existingLandUseCode) : null;
+  const existingSize = Math.max(0, Number(req.existingSize) || 0);
+  const existingUse = existingLuRaw && existingSize > 0
+    ? {
+        lu: existingLuRaw,
+        size: existingSize,
+        rates: resolveRatesForVariable(existingLuRaw, undefined),
+        passByPct: clamp(existingLuRaw.passByPctPm, 0, 70),
+        internalCapturePct: clamp(existingLuRaw.internalCapturePctPm, 0, 50),
+      }
+    : null;
+
   // Resolve region once from the project coordinate. Region-scoped cache
   // means a Charlotte project won't accidentally see Atlanta signals.
   // Fall back to Atlanta if outside every active region (belt-and-braces;
@@ -1526,16 +1569,34 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     // Mode-split: only the auto-mode share lands on the off-site roadway.
     // Walk / transit / cycle trips don't contribute to intersection v/c.
     const externalTrips = externalTripsAllModes * autoModeShare;
+
+    // Redevelopment credit: the existing use's external trips already on the
+    // network are credited against the proposed use's, so only the net new
+    // external trips are distributed and assigned. Same pipeline + the existing
+    // use's own pass-by/internal defaults; floored at 0 (a shrinking
+    // redevelopment adds no net load rather than removing background traffic).
+    let existingCredit = 0;
+    if (existingUse) {
+      const exRaw = periodRawTrips(existingUse.lu, existingUse.size, period, existingUse.rates);
+      const exPassBy = exRaw * (existingUse.passByPct / 100) * creditScale;
+      const exInternal = (exRaw - exPassBy) * (existingUse.internalCapturePct / 100) * creditScale;
+      const exExternalAllModes = Math.max(0, exRaw - exPassBy - exInternal);
+      existingCredit = exExternalAllModes * autoModeShare;
+    }
+    const netNewExternal = Math.max(0, externalTrips - existingCredit);
+
     const inFraction = periodDirectionalIn(lu, period);
-    const inTrips = Math.round(externalTrips * inFraction);
-    const outTrips = Math.round(externalTrips) - inTrips;
+    // In/out split reflects what is actually assigned — the net new external
+    // trips (identical to externalTrips when there is no existing use).
+    const inTrips = Math.round(netNewExternal * inFraction);
+    const outTrips = Math.round(netNewExternal) - inTrips;
 
     const params: ScenarioParams = {
       growthMultiplier,
       designGrowthMultiplier,
       capacityVph,
       approachCapacityVph,
-      externalTrips,
+      externalTrips: netNewExternal,
       inFraction,
       periodVolumeFactor: PERIOD_VOLUME_FACTOR[period] ?? 1,
     };
@@ -1576,6 +1637,12 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
         externalTrips: Math.round(externalTrips),
         inTrips,
         outTrips,
+        ...(existingUse
+          ? {
+              existingUseCredit: Math.round(existingCredit),
+              netNewExternalTrips: Math.round(netNewExternal),
+            }
+          : {}),
       },
       affectedIntersections: rows,
       intersectionsWithLosDrop: dropCount,
@@ -1612,6 +1679,17 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     pmPeakTrips: pmTrips,
     pmIn,
     pmOut,
+    ...(existingUse
+      ? {
+          existingLandUseCode: existingUse.lu.code,
+          existingLandUseName: existingUse.lu.name,
+          existingSize: existingUse.size,
+          existingUnit: existingUse.rates.unit,
+          existingUseCreditPm: (pmReport.tripGeneration as { existingUseCredit?: number }).existingUseCredit ?? 0,
+          netNewExternalPm: (pmReport.tripGeneration as { netNewExternalTrips?: number }).netNewExternalTrips
+            ?? pmReport.tripGeneration.externalTrips,
+        }
+      : {}),
   };
 
   // Sensitivity analysis (PM peak external trips).

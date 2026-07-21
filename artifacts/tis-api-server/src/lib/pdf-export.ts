@@ -7644,6 +7644,13 @@ function renderTisFlorida(
   rows(doc, [
     ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
     ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}% (MTSIH 2024 §4.6.9 sets no statewide numeric cap; rate negotiated at the methodology meeting per NCHRP 684 / standard screening methodology)`],
+    ...(tg.existingLandUseCode
+      ? [
+          ["Existing on-site use (credit)", `LU ${tg.existingLandUseCode} — ${tg.existingLandUseName ?? ""} · ${tg.existingSize ?? "—"} ${tg.existingUnit ?? ""}`.trim()],
+          ["Existing-use credit (PM peak)", `−${fmtNum(tg.existingUseCreditPm ?? 0)} external trips`],
+          ["Net new external (PM peak)", `${fmtNum(tg.netNewExternalPm ?? tg.pmPeakTrips)} trips`],
+        ] as [string, string][]
+      : []),
     ["Background growth applied", `${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s)`],
     [`${jur.name} TIA threshold`, jur.tripThreshold],
     ["Weather condition", String(r.weather ?? req.weather ?? "clear")],
@@ -7663,25 +7670,61 @@ function renderTisFlorida(
   });
   doc.moveDown(0.3);
   if (periods.length > 0) {
-    doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text("Table: Trip Generation by Period (raw → pass-by / internal capture → net external)", { paragraphGap: 2 });
-    doc.fillColor("black");
-    table(doc, {
-      headers: ["Period", "Raw", "Pass-by", "Int. cap.", "External", "In", "Out"],
-      widths: [100, 50, 60, 60, 70, 50, 50],
-      align: ["left", "right", "right", "right", "right", "right", "right"],
-      rows: periods.map((p) => {
-        const t = p.tripGeneration ?? {};
-        return [
-          String(p.periodLabel ?? p.period ?? ""),
-          fmtNum(t.rawTrips),
-          fmtNum(t.passByCredit),
-          fmtNum(t.internalCaptureCredit),
-          fmtNum(t.externalTrips),
-          fmtNum(t.inTrips),
-          fmtNum(t.outTrips),
-        ];
-      }),
-    });
+    // When a prior on-site use is supplied, show the full redevelopment table
+    // (gross → internal capture → pass-by → existing-use credit → net new
+    // external). Otherwise keep the greenfield columns (byte-identical output).
+    const hasCredit = periods.some((p) => (p.tripGeneration ?? {}).existingUseCredit != null);
+    if (hasCredit) {
+      doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+        `Table: Trip Generation by Period (gross → pass-by / internal capture → external → existing-use credit → net new external). Existing-use credit is for the prior ${tg.existingLandUseName ?? "on-site use"} (LU ${tg.existingLandUseCode ?? "—"}, ${tg.existingSize ?? "—"} ${tg.existingUnit ?? ""}), computed on the same basis and credited per the FDOT redevelopment / change-of-use convention.`,
+        { paragraphGap: 2 });
+      doc.fillColor("black");
+      table(doc, {
+        headers: ["Period", "Raw", "Pass-by", "Int. cap.", "External", "Exist. credit", "Net new", "In", "Out"],
+        widths: [86, 46, 50, 50, 56, 66, 56, 44, 44],
+        align: ["left", "right", "right", "right", "right", "right", "right", "right", "right"],
+        rows: periods.map((p) => {
+          const t = p.tripGeneration ?? {};
+          const net = t.netNewExternalTrips ?? t.externalTrips;
+          return [
+            String(p.periodLabel ?? p.period ?? ""),
+            fmtNum(t.rawTrips),
+            fmtNum(t.passByCredit),
+            fmtNum(t.internalCaptureCredit),
+            fmtNum(t.externalTrips),
+            `−${fmtNum(t.existingUseCredit ?? 0)}`,
+            fmtNum(net),
+            fmtNum(t.inTrips),
+            fmtNum(t.outTrips),
+          ];
+        }),
+      });
+      doc.moveDown(0.15);
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        "In / Out are the directional split of the net new external trips (what is assigned to the network). The existing-use credit is floored so a smaller redevelopment yields zero net new trips rather than a reduction to background volumes; confirm the prior-use trip basis and any FDOT change-of-use thresholds (F.S. 335.182) at the methodology meeting.",
+        { paragraphGap: 6 });
+      doc.fillColor("black");
+    } else {
+      doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text("Table: Trip Generation by Period (raw → pass-by / internal capture → net external)", { paragraphGap: 2 });
+      doc.fillColor("black");
+      table(doc, {
+        headers: ["Period", "Raw", "Pass-by", "Int. cap.", "External", "In", "Out"],
+        widths: [100, 50, 60, 60, 70, 50, 50],
+        align: ["left", "right", "right", "right", "right", "right", "right"],
+        rows: periods.map((p) => {
+          const t = p.tripGeneration ?? {};
+          return [
+            String(p.periodLabel ?? p.period ?? ""),
+            fmtNum(t.rawTrips),
+            fmtNum(t.passByCredit),
+            fmtNum(t.internalCaptureCredit),
+            fmtNum(t.externalTrips),
+            fmtNum(t.inTrips),
+            fmtNum(t.outTrips),
+          ];
+        }),
+      });
+    }
     doc.moveDown(0.3);
   }
 
