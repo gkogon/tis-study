@@ -43,6 +43,7 @@ export * from "./tisProjectDetailRequest";
 export * from "./tisProjectSummary";
 export * from "./tisReport";
 export * from "./tisRequest";
+export * from "./tisRequestAdditionalStudyPointsItem";
 export * from "./tisRouteAssignment";
 export * from "./tisRouteAssignmentCorridorsItem";
 export * from "./tisSensitivityResult";

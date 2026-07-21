@@ -477,6 +477,32 @@ components:
             signalized intersection within the study radius — the radius is the
             stated study scope. Shorten a report with a smaller radius, not by
             scoping within it.
+        studyIntersectionIds:
+          type: array
+          maxItems: 60
+          items: { type: string, minLength: 1 }
+          description: >-
+            Analyzer signal IDs to force-include as study intersections
+            regardless of studyRadiusMi — a reviewer's agreed corridor scope
+            (e.g. an arterial's signals spanning beyond a default 0.5-mi
+            radius). Purely additive: unioned with the radius set, never removes
+            a signal the radius found, and protected from the
+            scopeStudyIntersections trim. Unknown IDs are ignored.
+        additionalStudyPoints:
+          type: array
+          maxItems: 60
+          description: >-
+            Reviewer-scoped intersection coordinates (pasted or map-clicked),
+            each snapped to the nearest inventory signal within ~0.35 mi and
+            force-included regardless of studyRadiusMi. Additive, like
+            studyIntersectionIds; robust when a signal's name is unknown. Points
+            with no nearby signal are ignored.
+          items:
+            type: object
+            required: [latitude, longitude]
+            properties:
+              latitude:  { type: number, minimum: -90, maximum: 90 }
+              longitude: { type: number, minimum: -180, maximum: 180 }
         distributionMethod:
           $ref: "#/components/schemas/TisDistributionMethod"
         driveways:

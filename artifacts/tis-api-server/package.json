@@ -19,7 +19,8 @@
     "check:coverage-warning": "node ./scripts/verify-coverage-warning.mjs",
     "check:name-dedup": "node ./scripts/verify-name-dedup.mjs",
     "check:driveways": "node ./scripts/verify-driveways.mjs",
-    "check:driveway-routing": "node ./scripts/verify-driveway-routing.mjs"
+    "check:driveway-routing": "node ./scripts/verify-driveway-routing.mjs",
+    "check:force-include": "node ./scripts/verify-force-include.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",

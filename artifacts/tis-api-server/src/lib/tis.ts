@@ -19,7 +19,9 @@ import { logger } from "./logger";
 import {
   intersectionsWithinRadius,
   dedupCloseSignals,
+  forceIncludeIntersections,
   coverageWarningForCandidates,
+  type ForceIncludeInput,
   type CoverageWarning,
 } from "./intersection-coverage";
 import { getAutoModeShare, getAutoModeShareSource, getLondonAutoModeShare, type PTALBand } from "./mode-share";
@@ -377,6 +379,20 @@ export type TisRequest = {
   // shorten a report the lever is a smaller radius, not silent scoping within the
   // chosen radius.
   scopeStudyIntersections?: boolean;
+  // Force-include specific study intersections regardless of `studyRadiusMi` —
+  // a reviewer's agreed corridor scope (e.g. an arterial's signals spanning
+  // beyond a default 0.5-mi radius). PURELY ADDITIVE: these are UNIONed with the
+  // radius set, never removing a signal the radius found, and they survive the
+  // opt-in `scopeStudyIntersections` trim. Absent/empty ⇒ byte-identical to
+  // today. See findAffectedIntersections + forceIncludeIntersections.
+  //   - studyIntersectionIds: analyzer signal ids, matched exactly (unknown
+  //     ids are ignored).
+  //   - additionalStudyPoints: free coordinates (pasted/map-clicked), each
+  //     snapped to the nearest inventory signal within ~0.35 mi. Robust when a
+  //     signal's name is unknown (many inventory names are null); points with
+  //     no nearby signal are ignored.
+  studyIntersectionIds?: string[];
+  additionalStudyPoints?: Array<{ latitude: number; longitude: number }>;
   distributionMethod?: DistributionMethod;
   /** Site access points with per-movement turn restrictions. When present,
    *  project trips route through these driveways and forbidden movements
@@ -688,16 +704,27 @@ function selectStudyIntersectionIdx(loadFractions: number[], pmExternalAutoTrips
   return idx;
 }
 
+// A study-intersection candidate. `forced` marks a signal pulled in by the
+// additive force-include inputs (see forceInclude below) rather than by the
+// radius — it is analyzed even when beyond `radiusMi` and is protected from the
+// opt-in `scopeStudyIntersections` trim.
+type StudyCandidate = { sig: AnalyzerIntersection; distanceMi: number; forced?: boolean };
+
 async function findAffectedIntersections(
   lat: number, lon: number, radiusMi: number, regionCode: string,
-): Promise<Array<{ sig: AnalyzerIntersection; distanceMi: number }>> {
+  forceInclude?: ForceIncludeInput,
+): Promise<Array<StudyCandidate>> {
   const inventory = await fetchIntersections(regionCode);
   // Radius filter + nearest-first sort and the same-junction dedup both live in
   // the dependency-free `intersection-coverage` leaf module so the distance
   // ceilings can be regression-tested with plain node. Telemetry (its only
   // dependency on `logger`) stays here.
   const within = intersectionsWithinRadius(inventory, lat, lon, radiusMi);
-  const { kept, merged, nameAbsorbedBeyond45m } = dedupCloseSignals(within);
+  const dedup = dedupCloseSignals(within);
+  const { merged, nameAbsorbedBeyond45m } = dedup;
+  // Typed to allow the additive `forced` flag below; absent-force path returns
+  // these radius signals unchanged.
+  const kept: StudyCandidate[] = dedup.kept;
   // Log the dedup outcome so production shows whether the threshold is catching
   // what we expect. `nameAbsorbedBeyond45m` isolates the name-rule merges beyond
   // the 45 m distance threshold — the ones the NAME_DEDUP_MAX_M ceiling bounds —
@@ -710,7 +737,45 @@ async function findAffectedIntersections(
       merged: merged.map((m) => ({ id: m.sig.id, name: m.sig.name })),
     }, "tis.intersection-dedup");
   }
-  return kept;
+
+  // Force-include (ADDITIVE): union reviewer-scoped intersections that the
+  // radius missed. Never removes anything the radius found; when no ids/points
+  // are supplied this whole block is skipped and the output is byte-identical.
+  const hasForce =
+    forceInclude != null &&
+    ((forceInclude.ids?.length ?? 0) > 0 || (forceInclude.points?.length ?? 0) > 0);
+  if (!hasForce) return kept;
+
+  const { included, unmatchedIds, unsnappedPoints } = forceIncludeIntersections(
+    inventory, lat, lon, forceInclude,
+  );
+  if (unmatchedIds.length > 0 || unsnappedPoints.length > 0) {
+    logger.warn(
+      { regionCode, unmatchedIds, unsnappedPoints },
+      "tis.force_include_unresolved",
+    );
+  }
+
+  // Mark force-included signals that are ALREADY inside the radius so they
+  // survive the opt-in scoping trim; append the ones the radius missed. The
+  // append set is deduped by id against the radius set here, then the whole
+  // union is re-run through dedupCloseSignals so a beyond-radius record for the
+  // SAME physical junction as an in-radius signal (OSM way-split) collapses.
+  const forcedIds = new Set(included.map((e) => e.sig.id));
+  for (const k of kept) if (forcedIds.has(k.sig.id)) k.forced = true;
+  const keptIds = new Set(kept.map((k) => k.sig.id));
+  const extras: StudyCandidate[] = included
+    .filter((e) => !keptIds.has(e.sig.id))
+    .map((e) => ({ sig: e.sig, distanceMi: e.distanceMi, forced: true }));
+  if (extras.length === 0) return kept;
+
+  const combined = [...kept, ...extras].sort((a, b) => a.distanceMi - b.distanceMi);
+  const deduped = dedupCloseSignals(combined);
+  logger.info(
+    { regionCode, radiusMi, radiusCount: kept.length, forcedAdded: deduped.kept.length - kept.length },
+    "tis.force_include",
+  );
+  return deduped.kept;
 }
 
 function periodRawTrips(lu: LandUse, size: number, period: AnalysisPeriod, rates?: ResolvedRates): number {
@@ -1234,7 +1299,10 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const designYears = Math.max(0, designYear - CURRENT_YEAR);
   const designGrowthMultiplier = Math.pow(1 + growthRatePct / 100, designYears);
 
-  const candidates = await findAffectedIntersections(req.latitude, req.longitude, radiusMi, region.code);
+  const candidates = await findAffectedIntersections(
+    req.latitude, req.longitude, radiusMi, region.code,
+    { ids: req.studyIntersectionIds, points: req.additionalStudyPoints },
+  );
   // No signal within the study radius → almost certainly a bad geocode (open
   // water / outside our signal coverage), not a real "0-impact" finding. Flag
   // it on the report so the routes can answer with a clear message instead of
@@ -1435,8 +1503,15 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // the four-step distribution above still runs over ALL candidates (correct
   // demand model); this only bounds what gets analyzed + reported.
   const studyLoads = candidates.map((c) => intersectionLoadFraction(c.distanceMi));
+  // Force-included intersections (req.studyIntersectionIds / additionalStudyPoints)
+  // are always studied — they survive the opt-in trim even if the MTIASD screen
+  // wouldn't have kept them. Under the default (no scoping) this is a no-op.
+  const forcedIdx = candidates.flatMap((c, i) => (c.forced ? [i] : []));
   const studyIdx = req.scopeStudyIntersections
-    ? selectStudyIntersectionIdx(studyLoads, pmExternalAutoForAssign, candidates.length)
+    ? [...new Set([
+        ...selectStudyIntersectionIdx(studyLoads, pmExternalAutoForAssign, candidates.length),
+        ...forcedIdx,
+      ])].sort((a, b) => a - b)
     : candidates.map((_, i) => i);
   const studySet = new Set(studyIdx);
 

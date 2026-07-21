@@ -244,6 +244,19 @@ export interface Driveway {
   movements: DrivewayMovements;
 }
 
+export type TisRequestAdditionalStudyPointsItem = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+};
+
 /**
  * Optional consultant-supplied within-day arrival/departure distribution that overrides the engine's default office distribution for the inbound/outbound-by-start-time and on-site-accumulation charts. Each array holds 24 non-negative values (clock hours 0–23); the renderer normalises each to sum to 1, so only relative magnitudes matter. Supplying this also unlocks the figures for non-office use classes.
  */
@@ -320,6 +333,16 @@ export interface TisRequest {
   tripProfile?: TisTripProfile;
   /** When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it. */
   scopeStudyIntersections?: boolean;
+  /**
+   * Analyzer signal IDs to force-include as study intersections regardless of studyRadiusMi — a reviewer's agreed corridor scope (e.g. an arterial's signals spanning beyond a default 0.5-mi radius). Purely additive: unioned with the radius set, never removes a signal the radius found, and protected from the scopeStudyIntersections trim. Unknown IDs are ignored.
+   * @maxItems 60
+   */
+  studyIntersectionIds?: string[];
+  /**
+   * Reviewer-scoped intersection coordinates (pasted or map-clicked), each snapped to the nearest inventory signal within ~0.35 mi and force-included regardless of studyRadiusMi. Additive, like studyIntersectionIds; robust when a signal's name is unknown. Points with no nearby signal are ignored.
+   * @maxItems 60
+   */
+  additionalStudyPoints?: TisRequestAdditionalStudyPointsItem[];
   distributionMethod?: TisDistributionMethod;
   /**
    * Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).

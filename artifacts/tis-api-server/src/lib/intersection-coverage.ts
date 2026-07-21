@@ -54,6 +54,91 @@ export function intersectionsWithinRadius<T extends { latitude: number; longitud
 }
 
 /**
+ * Furthest an `additionalStudyPoints` coordinate may sit from an inventory
+ * signal and still snap to it. A pasted/clicked point beyond this from every
+ * signal is treated as "no match" (skipped) rather than snapping to an
+ * unrelated junction far away. ~0.35 mi comfortably covers a coordinate typed
+ * to 4 decimals or clicked near — but not on — a junction, while staying well
+ * under typical adjacent-signal spacing on an arterial.
+ */
+export const SNAP_MAX_MI = 0.35;
+
+/** Inputs that force specific study intersections into scope regardless of the
+ *  study radius (a reviewer's agreed corridor list). Purely additive. */
+export type ForceIncludeInput = {
+  /** Analyzer signal IDs to include, matched exactly against inventory `id`. */
+  ids?: string[];
+  /** Free coordinates snapped to the nearest inventory signal within `snapMaxMi`. */
+  points?: Array<{ latitude: number; longitude: number }>;
+};
+
+export type ForceIncludeResult<T> = {
+  /** Resolved signals, tagged with distance from the SITE, sorted nearest-first.
+   *  De-duplicated by signal id (an id and a point that resolve to the same
+   *  signal yield one entry). */
+  included: Array<{ sig: T; distanceMi: number }>;
+  /** Requested ids with no matching signal in the inventory. */
+  unmatchedIds: string[];
+  /** Points with no inventory signal within `snapMaxMi` (nothing to snap to). */
+  unsnappedPoints: Array<{ latitude: number; longitude: number }>;
+};
+
+/**
+ * Resolve force-include inputs (explicit signal ids + free coordinates) against
+ * an intersection inventory, tagging each with its distance from the study site.
+ *
+ * Pure + deterministic, no fetch/logging — so it can be node-checked and shares
+ * the engine's exact haversine. The engine (`findAffectedIntersections`) unions
+ * the result with the radius set; this function neither filters by radius nor
+ * removes anything, so an empty input yields an empty result and the radius
+ * behavior is untouched. Points snap to the single nearest signal within
+ * `snapMaxMi`; ids match exactly (analyzer ids are strings). Same-junction
+ * collapse against the radius set is left to the engine's `dedupCloseSignals`.
+ */
+export function forceIncludeIntersections<T extends { id: string; latitude: number; longitude: number }>(
+  inventory: T[],
+  siteLat: number,
+  siteLon: number,
+  input: ForceIncludeInput,
+  snapMaxMi: number = SNAP_MAX_MI,
+): ForceIncludeResult<T> {
+  const byId = new Map<string, T>();
+  for (const s of inventory) byId.set(s.id, s);
+
+  const picked = new Set<string>();
+  const included: Array<{ sig: T; distanceMi: number }> = [];
+  const add = (sig: T): void => {
+    if (picked.has(sig.id)) return;
+    picked.add(sig.id);
+    const dM = haversineMeters(siteLat, siteLon, sig.latitude, sig.longitude);
+    included.push({ sig, distanceMi: dM / M_PER_MI });
+  };
+
+  const unmatchedIds: string[] = [];
+  for (const id of input.ids ?? []) {
+    const sig = byId.get(id);
+    if (sig) add(sig);
+    else unmatchedIds.push(id);
+  }
+
+  const snapMaxM = snapMaxMi * M_PER_MI;
+  const unsnappedPoints: Array<{ latitude: number; longitude: number }> = [];
+  for (const p of input.points ?? []) {
+    let best: T | null = null;
+    let bestM = Infinity;
+    for (const s of inventory) {
+      const dM = haversineMeters(p.latitude, p.longitude, s.latitude, s.longitude);
+      if (dM < bestM) { bestM = dM; best = s; }
+    }
+    if (best && bestM <= snapMaxM) add(best);
+    else unsnappedPoints.push(p);
+  }
+
+  included.sort((a, b) => a.distanceMi - b.distanceMi);
+  return { included, unmatchedIds, unsnappedPoints };
+}
+
+/**
  * Signals this close are treated as the SAME physical junction regardless of
  * name (divided-arterial carriageway crossings, OSM way-splits, big-junction
  * node boxes typically sit 5–45 m apart).
