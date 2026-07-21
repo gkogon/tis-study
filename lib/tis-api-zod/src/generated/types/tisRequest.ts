@@ -69,6 +69,16 @@ export interface TisRequest {
   scopeStudyIntersections?: boolean;
   distributionMethod?: TisDistributionMethod;
   /**
+   * Optional existing (prior) land use occupying the site today, for a redevelopment trip-generation credit. Its trips are computed the same way as the proposed use and subtracted, so the report shows net new external trips (gross − internal capture − pass-by − existing-use credit). Absent ⇒ greenfield behavior (no credit, unchanged output).
+   * @minLength 2
+   */
+  existingLandUseCode?: string;
+  /**
+   * Size of the existing land use in that use's primary unit. Required (and must be > 0) for the existing-use credit to apply; ignored when existingLandUseCode is absent.
+   * @minimum 0
+   */
+  existingSize?: number;
+  /**
    * Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).
    * @maxItems 12
    */

@@ -1272,7 +1272,7 @@ function renderTisState(
       it.control ?? "Signal",
       fmt(it.distanceMi, 2),
       it.currentLos ?? it.existingLos ?? "—",
-      fmt(it.existingDelaySecVeh, 1),
+      fmt(it.currentDelaySec ?? it.existingDelaySec, 1),
     ]);
     tbl(
       ["Intersection", "Control", "Dist (mi)", "Exist LOS", "Delay (s/veh)"],
@@ -1369,7 +1369,7 @@ function renderTisState(
         it.currentLos ?? it.existingLos ?? "—",
         it.existingLos ?? "—",
         it.futureLos ?? "—",
-        fmt(it.delayDelta ?? it.worstDelayDeltaSec, 1),
+        fmt((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
         fmt(it.queue95thFt),
       ]),
     );

@@ -5,6 +5,7 @@
  * TIS (Traffic Impact Study) API specification — engineering-firm product surface.
  * OpenAPI spec version: 0.1.0
  */
+import type { TisApproachImpactCurrentLos } from "./tisApproachImpactCurrentLos";
 import type { TisApproachImpactExistingLos } from "./tisApproachImpactExistingLos";
 import type { TisApproachImpactFutureLos } from "./tisApproachImpactFutureLos";
 import type { TisDirection } from "./tisDirection";
@@ -21,4 +22,8 @@ export interface TisApproachImpact {
   existingLos: TisApproachImpactExistingLos;
   futureLos: TisApproachImpactFutureLos;
   queue95thFt: number;
+  currentVolumeVph?: number;
+  currentVc?: number;
+  currentDelaySec?: number;
+  currentLos?: TisApproachImpactCurrentLos;
 }
