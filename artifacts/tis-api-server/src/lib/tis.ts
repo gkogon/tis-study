@@ -525,6 +525,8 @@ export type TripGenerationSummary = {
   dailyTrips: number;
   amPeakTrips: number;
   pmPeakTrips: number;
+  amIn: number;
+  amOut: number;
   pmIn: number;
   pmOut: number;
   /**
@@ -1157,7 +1159,7 @@ function plainFindings(
   );
   if (passByPct > 0 || internalCapPct > 0) {
     out.push(
-      `Pass-by credit ${passByPct.toFixed(0)}% and internal-capture credit ${internalCapPct.toFixed(0)}% applied at the PM peak before off-site assignment (standard pass-by methodology; ULI Internal Capture).`,
+      `Pass-by credit ${passByPct.toFixed(0)}% and internal-capture credit ${internalCapPct.toFixed(0)}% applied at the PM peak (25% of that credit at the AM and Saturday-midday periods, per the industry rule of thumb that off-peak shopping diverts less) before off-site assignment (standard pass-by methodology; ULI Internal Capture).`,
     );
   }
   if (autoModeShare < 0.95) {
@@ -1221,7 +1223,7 @@ function plainFindings(
 
 const TIS_METHODOLOGY = [
   "Trip generation uses public-data average rates (SANDAG 2002, corroborated by NHTS 2017 / NCHRP 716) for the selected land-use code, computed for AM peak, PM peak, Saturday midday, and daily totals. Saturday-midday rates are estimated as a published industry multiple of the PM peak rate by land-use category.",
-  "Pass-by and internal-capture credits are applied at the PM peak per standard pass-by screening methodology and ULI Mixed-Use Internal Capture defaults; only the residual external trips are assigned to off-site intersections.",
+  "Pass-by and internal-capture credits are applied in full at the PM peak (and at 25% of that credit fraction for the AM and Saturday-midday periods) per standard pass-by screening methodology and ULI Mixed-Use Internal Capture defaults; only the residual external vehicle trips are assigned to off-site intersections.",
   "Existing intersection volumes are grown to the opening-year horizon at the user-supplied annual growth rate (default 1.5%/yr) before the capacity analysis.",
   "Weather adjustment follows HCM 6th-Edition Ch. 11 (rain/snow capacity reduction): clear 1.00, light rain 0.95, heavy rain 0.86, light snow 0.86, heavy snow 0.70. The factor multiplies the saturation flow at every intersection.",
   "Off-site impact is screened for all signalized intersections within the study radius (default 0.5 mi) using the four-step travel demand model (FHWA; NCHRP Report 716). Step 1 Trip Generation: public-data average rates (SANDAG 2002 / NHTS 2017 / NCHRP 716) give the site's external (post pass-by / internal-capture) productions. Step 2 Trip Distribution: a production-constrained gravity model T_j = P · (A_j·F_j) / Σ(A_x·F_x) allocates trips to surrounding signals, where attractiveness A_j is the signal's through-volume and the friction factor F_j is the NCHRP-716 gamma function F = a·t^b·e^(c·t) (home-based-work coefficients a=28507, b=-0.02, c=-0.123) on the travel time t to each signal. Step 3 Mode Choice: a binary logit P(auto)=1/(1+e^-(ASC−λ·ΔGC)) calibrated to the metro's measured auto-mode share (ACS B08301) and shifted by site urbanity (a density proxy from surrounding through-volumes) so denser, more transit-served sites split further from auto; only the resulting vehicle trips load the network. Step 4 Route Assignment: a capacity-constrained assignment using the BPR volume-delay function t = t0·[1 + 0.15·(v/c)^4] iteratively shifts trips away from over-capacity signals toward less-congested alternatives. Signals lacking AADT data fall back to a constant 5,000 vpd attraction.",
@@ -1233,7 +1235,7 @@ const TIS_METHODOLOGY = [
   "Level of Service is assigned from HCM 6th-Edition signalized-intersection control-delay thresholds (Exhibit 19-8): A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s.",
   "Sensitivity is reported in narrative form per standard TIA practice: trip-generation method (rate vs. fitted-curve equation), discrete internal capture and pass-by credit variants, and a ±0.5%/yr growth-rate band around the applied value. The engine retains an internal stochastic-sensitivity routine (Box-Muller-perturbed trip rate and existing volume) for demo-mode diagnostics; it is not surfaced in the deliverable because TIA sensitivity is conducted through discrete scoping-agreed scenario variants, not statistical perturbation of unmeasured distributions.",
   "Mitigations are screening-level recommendations sized to the projected delay change, not full Synchro/SimTraffic optimization runs. A formal TIS submittal should validate these recommendations with detailed traffic counts and signal-timing analysis.",
-  "Turbo-lane (continuous-green-T) screening flags signalized 3-leg T-intersections where one or more main-street through lanes could flow continuously while the minor-street left turn merges in the median — recovering the green time the through movement would otherwise lose to the signal. Candidacy requires measured 3-leg geometry, an arterial-class main street, and a detected median (divided carriageway), all derived from the OpenStreetMap road network. Approach-capacity gain is computed as (turbo lanes / approach lanes) × (1 − g/C) / (g/C), with the main-street through g/C derived from the modeled main-vs-minor critical-flow split; the result is reported within the study's documented +7%…+173% envelope (Miami-Dade MPO / David Plummer & Associates, Adding Turbo Lanes to T-Intersections, 2010; FDOT District 6, Design Guidelines for the Development of Continuous Green Intersections, 1997). Lane counts and signal timing must be field-verified before design.",
+  "Turbo-lane (continuous-green-T) screening flags signalized 3-leg T-intersections where one or more main-street through lanes could flow continuously while the minor-street left turn merges in the median — recovering the green time the through movement would otherwise lose to the signal. Candidacy requires measured 3-leg geometry, an arterial-class main street, and a detected median (divided carriageway), all derived from the OpenStreetMap road network. Approach-capacity gain is computed as (turbo lanes / approach lanes) × (1 − g/C) / (g/C), with the main-street through g/C derived from the modeled main-vs-minor critical-flow split; the result is reported within the +7%…+173% envelope documented in the continuous-green-T design literature — the standard national references for this geometry (David Plummer & Associates, Adding Turbo Lanes to T-Intersections, 2010; and the Design Guidelines for the Development of Continuous Green Intersections, 1997). Lane counts and signal timing must be field-verified before design.",
 ];
 
 // Florida distribution standard: swap the four-step methodology's Step-2 clause
@@ -1805,6 +1807,11 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const pmTrips = Math.round(rates.pmRate * req.size);
   const pmIn = Math.round(pmTrips * lu.directionalSplitPm.in);
   const pmOut = pmTrips - pmIn;
+  // AM directional split mirrors the PM convention (gross entering/exiting
+  // split of the summary trips) so the summary trip-generation table shows a
+  // real AM split instead of a total-and-dash. Uses the land use's AM in-share.
+  const amIn = Math.round(amTrips * lu.amDirectionalIn);
+  const amOut = amTrips - amIn;
   const tripGeneration: TripGenerationSummary = {
     landUseCode: lu.code,
     landUseName: lu.name,
@@ -1816,6 +1823,8 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     dailyTrips,
     amPeakTrips: amTrips,
     pmPeakTrips: pmTrips,
+    amIn,
+    amOut,
     pmIn,
     pmOut,
     ...(existingUse
