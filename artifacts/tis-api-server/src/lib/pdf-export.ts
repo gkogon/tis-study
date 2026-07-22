@@ -110,6 +110,31 @@ const PAGE_MARGIN = 50;
 const BRAND_BLUE = "#2563eb";
 const TEXT_GRAY = "#6b7280";
 
+// Reconciliation note for the per-period trip-generation table. The "External"
+// column is net-new VEHICLE trips = (Raw − Pass-by − Internal capture) × the
+// per-metro auto-mode share, so a reviewer hand-summing Raw − Pass-by − Int.
+// cap. won't land on External unless the mode-split step is stated. Surfacing
+// the share (derived from the emitted values, so it always cross-foots) lets
+// every number in the table be checked.
+function tripGenExternalNote(doc: PDFKit.PDFDocument, periods: any[]): void {
+  const p = (periods ?? []).find((x) => Number(x?.tripGeneration?.rawTrips) > 0);
+  if (!p) return;
+  const t = p.tripGeneration ?? {};
+  const allModes =
+    Number(t.rawTrips) - Number(t.passByCredit) - Number(t.internalCaptureCredit);
+  if (!(allModes > 0)) return;
+  const pct = Math.round((Number(t.externalTrips) / allModes) * 1000) / 10;
+  doc
+    .font("body")
+    .fontSize(8)
+    .fillColor(TEXT_GRAY)
+    .text(
+      `External = net-new vehicle trips assigned to the roadway = (Raw − Pass-by − Internal capture) × auto-mode share (${pct}% for this metro). Walk / bike / transit person-trips are excluded from off-site assignment, so In + Out = External.`,
+      { paragraphGap: 6 },
+    );
+  doc.fillColor("black");
+}
+
 // Human-readable label for a trip-generation rate's provenance. The
 // screening engine sources rates from public data (SANDAG 2002 / NHTS 2017
 // / NCHRP 716); a few retail rates are blended MPO guidance, and secondary
@@ -875,10 +900,10 @@ function drawCover(
       doc.rect(0, photoTop, W, photoH).fill(shade(brand, 1.6));
     }
   } else {
-    // No photo: a soft brand-tint band keeps the cover composed.
+    // No photo: a soft brand-tint band keeps the cover composed. No
+    // placeholder text — an empty labelled box reads as unfinished on a
+    // client-facing cover; a clean tint band does not.
     doc.rect(0, photoTop, W, photoH).fill(shade(brand, 1.7));
-    doc.fillColor(shade(brand, 1.2)).font("body").fontSize(9)
-      .text("Site imagery available with a configured map key", 0, photoTop + photoH / 2 - 6, { width: W, align: "center" });
   }
 
   // 2) Top-right diagonal brand accent (over the white top zone + photo).
@@ -1384,6 +1409,7 @@ function renderTis(doc: PDFKit.PDFDocument, r: any) {
         ];
       }),
     });
+    tripGenExternalNote(doc, periods);
     doc.moveDown(1);
   }
 
@@ -1681,7 +1707,7 @@ function renderTisGeorgia(
     align: ["left", "right", "right"],
     rows: [
       ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
-      ["AM peak hour", fmtNum(tg.amPeakTrips), "—"],
+      ["AM peak hour", fmtNum(tg.amIn), fmtNum(tg.amOut)],
       ["PM peak hour", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
     ],
   });
@@ -2657,7 +2683,7 @@ function renderTisCalifornia(
     align: ["left", "right", "right"],
     rows: [
       ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
-      ["AM peak hour", fmtNum(tg.amPeakTrips), "—"],
+      ["AM peak hour", fmtNum(tg.amIn), fmtNum(tg.amOut)],
       ["PM peak hour", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
     ],
   });
@@ -2681,6 +2707,7 @@ function renderTisCalifornia(
         ];
       }),
     });
+    tripGenExternalNote(doc, periods);
     doc.moveDown(0.5);
   }
 
@@ -4191,7 +4218,7 @@ function renderTisLondon(
     align: ["left", "right", "right"],
     rows: [
       ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
-      ["AM peak hour (08:00–09:00)", fmtNum(tg.amPeakTrips), "—"],
+      ["AM peak hour (08:00–09:00)", fmtNum(tg.amIn), fmtNum(tg.amOut)],
       ["PM peak hour (17:00–18:00)", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
     ],
   });
@@ -4954,7 +4981,7 @@ function renderLondonTransportStatement(
     align: ["left", "right", "right"],
     rows: [
       ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
-      ["AM peak hour (08:00–09:00)", fmtNum(tg.amPeakTrips), "—"],
+      ["AM peak hour (08:00–09:00)", fmtNum(tg.amIn), fmtNum(tg.amOut)],
       ["PM peak hour (17:00–18:00)", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
     ],
   });
@@ -5833,7 +5860,7 @@ function renderTisTexas(
     align: ["left", "right", "right"],
     rows: [
       ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
-      ["AM peak hour", fmtNum(tg.amPeakTrips), "—"],
+      ["AM peak hour", fmtNum(tg.amIn), fmtNum(tg.amOut)],
       ["PM peak hour", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
     ],
   });
@@ -6525,7 +6552,7 @@ function renderTisIllinois(
     align: ["left", "right", "right"],
     rows: [
       ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
-      ["AM peak hour", fmtNum(tg.amPeakTrips), "—"],
+      ["AM peak hour", fmtNum(tg.amIn), fmtNum(tg.amOut)],
       ["PM peak hour", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
     ],
   });
@@ -6562,6 +6589,7 @@ function renderTisIllinois(
         ];
       }),
     });
+    tripGenExternalNote(doc, periods);
     doc.moveDown(0.5);
   }
 
@@ -6933,7 +6961,7 @@ function renderTisIllinoisCdotAbbreviated(
     align: ["left", "right", "right", "right"],
     rows: [
       ["Daily", fmtNum(tierInput.dailyTrips), "—", "≤ 50%"],
-      ["AM peak hour", fmtNum(tg.amPeakTrips), "—", "≤ 50%"],
+      ["AM peak hour", fmtNum(tg.amIn), fmtNum(tg.amOut), "≤ 50%"],
       ["PM peak hour", fmtNum(tierInput.pmPeakTrips), "—", "≤ 50%"],
     ],
   });
@@ -7665,7 +7693,7 @@ function renderTisFlorida(
     align: ["left", "right", "right"],
     rows: [
       ["Daily", fmtNum(((tg.dailyTrips ?? 0) as number) / 2), fmtNum(((tg.dailyTrips ?? 0) as number) / 2)],
-      ["AM peak hour", fmtNum(tg.amPeakTrips), "—"],
+      ["AM peak hour", fmtNum(tg.amIn), fmtNum(tg.amOut)],
       ["PM peak hour", fmtNum(tg.pmIn), fmtNum(tg.pmOut)],
     ],
   });
@@ -8925,7 +8953,7 @@ function renderCapacityAppendix(
 
     doc.font("bold").fontSize(9.5).fillColor("black").text("Per-Approach Capacity (PM Peak)", { paragraphGap: 4 });
     table(doc, {
-      headers: ["Appr.", "Exist vph", "+Trips", "Build vph", "v/c E→B", "Delay E→B", "LOS E→B", "Q95 ft"],
+      headers: ["Appr.", "Exist vph", "+Trips", "Build vph", "v/c Ex→Bld", "Delay Ex→Bld", "LOS Ex→Bld", "Q95 ft"],
       widths: [52, 64, 44, 64, 70, 84, 60, 54],
       align: ["left", "right", "right", "right", "center", "center", "center", "right"],
       rows: approaches.map((a) => [
