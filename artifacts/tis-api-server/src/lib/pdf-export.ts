@@ -116,7 +116,7 @@ const TEXT_GRAY = "#6b7280";
 // cap. won't land on External unless the mode-split step is stated. Surfacing
 // the share (derived from the emitted values, so it always cross-foots) lets
 // every number in the table be checked.
-function tripGenExternalNote(doc: PDFKit.PDFDocument, periods: any[]): void {
+export function tripGenExternalNote(doc: PDFKit.PDFDocument, periods: any[]): void {
   const p = (periods ?? []).find((x) => Number(x?.tripGeneration?.rawTrips) > 0);
   if (!p) return;
   const t = p.tripGeneration ?? {};
@@ -129,7 +129,7 @@ function tripGenExternalNote(doc: PDFKit.PDFDocument, periods: any[]): void {
     .fontSize(8)
     .fillColor(TEXT_GRAY)
     .text(
-      `External = net-new vehicle trips assigned to the roadway = (Raw − Pass-by − Internal capture) × auto-mode share (${pct}% for this metro). Walk / bike / transit person-trips are excluded from off-site assignment, so In + Out = External.`,
+      `The external / net-external column is net-new vehicle trips assigned to the roadway = (gross − pass-by − internal-capture) × auto-mode share (${pct}% for this metro). Walk / bike / transit person-trips are excluded from off-site assignment, so In + Out equals the external column.`,
       { paragraphGap: 6 },
     );
   doc.fillColor("black");
