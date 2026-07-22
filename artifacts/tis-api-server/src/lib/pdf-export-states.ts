@@ -17,6 +17,7 @@
 import type { Region } from "./regions";
 import { renderDiurnalCharts } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
+import { tripGenExternalNote } from "./pdf-export";
 
 // Re-export for use in pdf-export.ts dispatch
 export { renderTisState };
@@ -1319,6 +1320,7 @@ function renderTisState(
         ];
       }),
     );
+    tripGenExternalNote(doc, periods);
   }
   doc.moveDown(0.8);
 
