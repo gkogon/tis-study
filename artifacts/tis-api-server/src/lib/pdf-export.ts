@@ -124,14 +124,22 @@ export function tripGenExternalNote(doc: PDFKit.PDFDocument, periods: any[]): vo
     Number(t.rawTrips) - Number(t.passByCredit) - Number(t.internalCaptureCredit);
   if (!(allModes > 0)) return;
   const pct = Math.round((Number(t.externalTrips) / allModes) * 1000) / 10;
+  // When a prior on-site use supplies an existing-use credit, some renderers
+  // (e.g. Florida) print a separate "Net new" column and split In / Out off
+  // net-new external, not off external. Reference the right column so the note
+  // never contradicts the table. Greenfield (credit = 0) keeps the original
+  // wording byte-for-byte.
+  const hasCredit = (periods ?? []).some(
+    (x) => Number(x?.tripGeneration?.existingUseCredit) > 0,
+  );
+  const msg = hasCredit
+    ? `The external column is gross vehicle trips = (gross − pass-by − internal-capture) × auto-mode share (${pct}% for this metro); the net-new external column then deducts the existing-use credit. Walk / bike / transit person-trips are excluded from off-site assignment, so In + Out equals the net-new external column.`
+    : `The external / net-external column is net-new vehicle trips assigned to the roadway = (gross − pass-by − internal-capture) × auto-mode share (${pct}% for this metro). Walk / bike / transit person-trips are excluded from off-site assignment, so In + Out equals the external column.`;
   doc
     .font("body")
     .fontSize(8)
     .fillColor(TEXT_GRAY)
-    .text(
-      `The external / net-external column is net-new vehicle trips assigned to the roadway = (gross − pass-by − internal-capture) × auto-mode share (${pct}% for this metro). Walk / bike / transit person-trips are excluded from off-site assignment, so In + Out equals the external column.`,
-      { paragraphGap: 6 },
-    );
+    .text(msg, { paragraphGap: 6 });
   doc.fillColor("black");
 }
 
@@ -1807,6 +1815,7 @@ function renderTisGeorgia(
         ];
       }),
     });
+    tripGenExternalNote(doc, periods);
     doc.moveDown(0.5);
   }
 
@@ -3367,6 +3376,7 @@ function renderTisGeorgiaAbbreviated(
         ];
       }),
     });
+    tripGenExternalNote(doc, periods);
   }
   doc.moveDown(0.3);
   doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
@@ -5933,6 +5943,7 @@ function renderTisTexas(
         ];
       }),
     });
+    tripGenExternalNote(doc, periods);
     doc.moveDown(0.4);
   }
   renderTripDistributionSection(doc, r as any, {
@@ -7728,6 +7739,7 @@ function renderTisFlorida(
           ];
         }),
       });
+      tripGenExternalNote(doc, periods);
       doc.moveDown(0.15);
       doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
         "In / Out are the directional split of the net new external trips (what is assigned to the network). The existing-use credit is floored so a smaller redevelopment yields zero net new trips rather than a reduction to background volumes; confirm the prior-use trip basis and any FDOT change-of-use thresholds (F.S. 335.182) at the methodology meeting.",
@@ -7753,6 +7765,7 @@ function renderTisFlorida(
           ];
         }),
       });
+      tripGenExternalNote(doc, periods);
     }
     doc.moveDown(0.3);
   }
