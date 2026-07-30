@@ -22,7 +22,8 @@
     "check:driveway-routing": "node ./scripts/verify-driveway-routing.mjs",
     "check:force-include": "node ./scripts/verify-force-include.mjs",
     "check:movement-assignment": "node ./scripts/verify-movement-assignment.mjs",
-    "check:movement-loading": "node ./scripts/verify-movement-loading.mjs"
+    "check:movement-loading": "node ./scripts/verify-movement-loading.mjs",
+    "check:state-dispatch": "node ./scripts/verify-state-dispatch.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",

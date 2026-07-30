@@ -20,6 +20,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { regionForCoordinate, type Region } from "./regions";
+import { stateForCoordinate } from "./state-boundaries";
 import { fetchStreetViewImage } from "./streetview";
 import {
   getAutoModeShare,
@@ -274,7 +275,10 @@ async function renderTemplateReport(
 ): Promise<Buffer> {
   const lat = Number(project.siteLat ?? NaN);
   const lon = Number(project.siteLon ?? NaN);
-  const region = regionForCoordinate(lat, lon);
+  // Same cross-state-line correction as the hand-coded renderer dispatch —
+  // ctx.region drives jurisdictionTags(), so an uncorrected stateCode selects
+  // the neighbouring state's standards for a template-rendered study.
+  const region = regionWithSiteState(regionForCoordinate(lat, lon), project);
   const report = (project.resultPayload ?? {}) as any;
   const address = report?.request?.address ?? project.projectName ?? "";
   const dateLabel = project.createdAt
@@ -1281,7 +1285,16 @@ function selectRegionalTisRenderer(
   result: Record<string, unknown>,
   project: StoredProject,
 ) {
-  const region = detectRegion(project);
+  const metroRegion = detectRegion(project);
+  // A metro bbox can straddle state lines (new_york_metro covers Bergen NJ,
+  // philadelphia_metro covers Camden NJ, washington_dc_metro covers NoVA and
+  // suburban MD), so the metro's stateCode is not the site's state. Every
+  // decision below is jurisdictional — which shell, which agency, which PE
+  // statute — so it has to key off the coordinate. `region` keeps the metro's
+  // code/displayName, so data inventory and growth rates are unaffected;
+  // only stateCode is corrected. Null (non-US, offshore, asset missing) falls
+  // back to the metro's stateCode, i.e. the previous behaviour.
+  const region = regionWithSiteState(metroRegion, project);
   if (region?.stateCode === "FL" && (region?.country ?? "US") === "US") {
     renderTisFlorida(doc, result, project, region);
     return;
@@ -1334,6 +1347,29 @@ function selectRegionalTisRenderer(
   }
 
   renderTis(doc, result);
+}
+
+/**
+ * The metro region with `stateCode` corrected to the state the site
+ * coordinate actually falls in.
+ *
+ * Only `stateCode` is overridden — `code`, `displayName`, `bounds` and
+ * `jurisdiction` stay the metro's, because signal inventory, AADT, growth
+ * rates and mode share are all keyed on `region.code` and a Bergen County
+ * site really does belong to the New York metro inventory.
+ *
+ * Non-US regions are returned untouched: `stateForCoordinate` only knows US
+ * boundaries, and Region.stateCode doubles as a country/subdivision code
+ * outside the US (notably "DE" = Germany, which collides with Delaware).
+ */
+function regionWithSiteState(region: Region | null, project: StoredProject): Region | null {
+  if (!region) return null;
+  if ((region.country ?? "US") !== "US") return region;
+  const lat = project.siteLat ? Number(project.siteLat) : NaN;
+  const lon = project.siteLon ? Number(project.siteLon) : NaN;
+  const siteState = stateForCoordinate(lat, lon);
+  if (!siteState || siteState === region.stateCode) return region;
+  return { ...region, stateCode: siteState as Region["stateCode"] };
 }
 
 function detectRegion(project: StoredProject): Region | null {
