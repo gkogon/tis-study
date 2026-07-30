@@ -160,11 +160,11 @@ Other metros fall back to compass quadrants (Central / NW / NE / SW / SE
 | Savannah | 722 | 98.9% | — | (synth) | ❌ | — |
 | Augusta | 519 | 99.4% | — | (synth) | ❌ | — |
 | Macon-Bibb | 815 | 94.7% | — | (synth) | ❌ | — |
-| Washington DC | 2,741 | 99.7% | — | (synth, DDOT probe pending) | ❌ | — |
+| Washington DC | 10,752 | 99.6% | — | (synth, DDOT probe pending) | ❌ | — |
 | Baltimore | 4,770 | 99.7% | — | (synth, MDOT-SHA probe pending) | ❌ | — |
-| Philadelphia | 8,449 | 96.5% | — | (synth, PennDOT probe pending) | ❌ | — |
+| Philadelphia | 8,924 | 96.7% | — | (synth, PennDOT probe pending) | ❌ | — |
 | Pittsburgh | 2,973 | 99.2% | — | (synth, PennDOT probe pending) | ❌ | — |
-| New York | 24,004 | 90.7% | — | (synth, NYSDOT TDV pending) | ❌ | — |
+| New York | 30,601 | 91.9% | — | (synth, NYSDOT TDV pending) | ❌ | — |
 | Boston | 7,815 | 99.8% | — | (synth, MassDOT probe pending) | ❌ | — |
 | Chicago | 13,305 | 99.0% | — | (synth, IDOT pending) | ❌ | — |
 | Detroit | 7,041 | 98.7% | — | (synth, MDOT pending) | ❌ | — |
@@ -284,6 +284,16 @@ done
 # 2. Re-extract signals + roads per metro (uses osmium)
 pnpm --filter @workspace/scripts exec tsx \
   scripts/src/fetch-from-geofabrik-pbf.ts
+
+# 2b. ⚠ fetch-from-geofabrik-pbf.ts writes each metro from ONE state's PBF
+# (last state wins), so multi-state metros lose their out-of-state side.
+# new_york_metro (NJ side), washington_dc_metro (NoVA + suburban MD), and
+# philadelphia_metro (South Jersey) are extended by an APPEND pass that
+# preserves existing tuple ids (the AADT join key). Re-run it after any
+# full re-extraction of those three metros, then the AADT supplements:
+pnpm --filter @workspace/scripts exec tsx scripts/src/extend-region-coverage.ts
+pnpm --filter @workspace/scripts exec tsx scripts/src/fetch-aadt-by-signal.ts \
+  --supplement-only new-york philadelphia washington-dc
 
 # 3. Refresh per-metro counts in atlanta-tis/src/data/metro-coverage.ts
 pnpm --filter @workspace/scripts exec tsx \

@@ -832,8 +832,9 @@ export const REGIONS: Record<RegionCode, Region> = {
   washington_dc_metro: {
     code: "washington_dc_metro",
     displayName: "Washington-Arlington-Alexandria MSA",
-    // DC + surrounding NoVA/MD. Bbox crosses DC/VA/MD; we use DC PBF + VA
-    // PBF; MD coverage comes from a separate MD pull.
+    // DC + surrounding NoVA (Fairfax/Loudoun/Prince William) + suburban MD
+    // (Montgomery/PG). Signals/roads cover the whole bbox via the VA/MD
+    // append pass (extend-region-coverage.ts), not just the District.
     bounds: { latMin: 38.6, latMax: 39.2, lonMin: -77.6, lonMax: -76.7 },
     stateCode: "DC",
     jurisdiction: {
@@ -860,8 +861,9 @@ export const REGIONS: Record<RegionCode, Region> = {
   philadelphia_metro: {
     code: "philadelphia_metro",
     displayName: "Philadelphia MSA",
-    // Philadelphia-Camden-Wilmington — primary state PA (Camden NJ + Wilmington DE
-    // edges underserved until we pull those PBFs). East edge clipped at -74.95
+    // Philadelphia-Camden-Wilmington. Signals/roads cover the whole bbox via
+    // the NJ append pass (extend-region-coverage.ts), so the South Jersey
+    // side (Camden/Cherry Hill/Deptford orbit) is covered. East edge clipped at -74.95
     // to avoid overlapping Trenton MSA (Trenton starts at -74.9).
     bounds: { latMin: 39.7, latMax: 40.4, lonMin: -75.5, lonMax: -74.95 },
     stateCode: "PA",
@@ -889,9 +891,16 @@ export const REGIONS: Record<RegionCode, Region> = {
   new_york_metro: {
     code: "new_york_metro",
     displayName: "New York-Newark-Jersey City MSA",
-    // NYC core within NY-only PBF. NJ/CT portions come up underserved until
-    // we pull those PBFs separately.
-    bounds: { latMin: 40.5, latMax: 41.2, lonMin: -74.3, lonMax: -73.4 },
+    // Full MSA footprint: NYC + NJ side (Bergen/Essex/Union/Hudson/Passaic,
+    // plus Middlesex/Monmouth via the 40.2/-74.5 southwest extent) + lower
+    // Westchester/Rockland. The NJ side is filled by the append pass
+    // (extend-region-coverage.ts), so the old NY-only-PBF caveat no longer
+    // applies.
+    // lonMin -74.5 abuts trenton_metro's lonMax exactly (no overlap). The
+    // CT corner (Stamford/Norwalk) also falls in this bbox, but
+    // regionForCoordinate resolves it to bridgeport_metro (smaller bbox
+    // wins), whose inventory carries the CT signals.
+    bounds: { latMin: 40.2, latMax: 41.2, lonMin: -74.5, lonMax: -73.4 },
     stateCode: "NY",
     jurisdiction: {
       dotName: "New York City Department of Transportation (NYC DOT)",
@@ -2274,14 +2283,25 @@ export function regionForCoordinate(
   lat: number,
   lon: number,
 ): Region | null {
+  // When bounding boxes overlap (e.g. bridgeport_metro sits inside the
+  // corner of new_york_metro's bbox), prefer the MOST SPECIFIC region —
+  // the one with the smallest bbox area. First-match-by-declaration-order
+  // used to send Stamford/Norwalk CT to new_york_metro, whose inventory
+  // has no CT signals. Ties (equal area) keep declaration order.
+  let best: Region | null = null;
+  let bestArea = Infinity;
   for (const region of Object.values(REGIONS)) {
     if (!region.active) continue;
     const b = region.bounds;
     if (lat >= b.latMin && lat <= b.latMax && lon >= b.lonMin && lon <= b.lonMax) {
-      return region;
+      const area = (b.latMax - b.latMin) * (b.lonMax - b.lonMin);
+      if (area < bestArea) {
+        best = region;
+        bestArea = area;
+      }
     }
   }
-  return null;
+  return best;
 }
 
 /**

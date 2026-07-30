@@ -196,6 +196,15 @@ type RegionConfig = {
   pointConfig?: PointBboxConfig;
   /** Display label for log lines + DATA_SOURCES.md (e.g. "TxDOT 2025"). */
   sourceLabel?: string;
+  /**
+   * Supplement mode: load the existing `<slug>-aadt.json`, snap ONLY signals
+   * that have no record yet, and merge on write. Used for multi-state metros
+   * where a second DOT covers the out-of-state side of the bbox (NJDOT for
+   * new_york/philadelphia NJ suburbs, VDOT + MDOT-SHA for washington-dc) —
+   * the primary DOT's records stay byte-identical. Run via --supplement-only
+   * so the primary full-rebuild configs for the same slug don't re-run.
+   */
+  supplement?: boolean;
 };
 
 const REGIONS: RegionConfig[] = [
@@ -724,6 +733,87 @@ const REGIONS: RegionConfig[] = [
       yearExtractor: { kind: "field_int", field: "CURRENT_YE" },
       snapM: 200,
       sourceTag: "njdot",
+    },
+  },
+
+  // ── Multi-state metro SUPPLEMENTS (2026-07-30 northeast coverage fix) ──
+  // These fill AADT for the out-of-state signals appended by
+  // extend-region-signals.ts. Run with --supplement-only so the primary
+  // full-rebuild configs for the same slugs don't re-run. Each pass only
+  // touches signals with no existing record, so primary-DOT records stay
+  // byte-identical and pass order (array order) fills gaps progressively.
+  {
+    // NJ side of the NYC MSA (Bergen/Essex/Union/Hudson/Middlesex/Monmouth).
+    slug: "new-york",
+    source: "polyline_bbox",
+    counties: [],
+    bbox: { latMin: 40.2, latMax: 41.2, lonMin: -74.5, lonMax: -73.4 },
+    sourceLabel: "NJDOT current AADT (NYC-MSA supplement)",
+    supplement: true,
+    polylineConfig: {
+      url: "https://services.arcgis.com/HggmsDF7UJsNN1FK/arcgis/rest/services/New_jersey_Annual_Average_Daily_Traffic_2017/FeatureServer/0",
+      aadtField: "CURRENT_AA",
+      yearExtractor: { kind: "field_int", field: "CURRENT_YE" },
+      snapM: 200,
+      sourceTag: "njdot",
+    },
+  },
+  {
+    // NY-side signals appended since the 2026-05 PBF snapshot (OSM churn).
+    slug: "new-york",
+    source: "polyline_bbox",
+    counties: [],
+    bbox: { latMin: 40.2, latMax: 41.2, lonMin: -74.5, lonMax: -73.4 },
+    sourceLabel: "NYSDOT Traffic Monitoring (appended-signal supplement)",
+    supplement: true,
+    polylineConfig: {
+      url: "https://gisportalny.dot.ny.gov/hostingny/rest/services/Roadways/Traffic_Monitoring/FeatureServer/1",
+      aadtField: "AADTLastAct",
+      yearExtractor: { kind: "field_int", field: "YearLastAct" },
+      snapM: 200,
+      sourceTag: "nysdot",
+    },
+  },
+  {
+    // South Jersey side of the Philadelphia MSA (Camden/Cherry Hill/Deptford).
+    slug: "philadelphia",
+    source: "polyline_bbox",
+    counties: [],
+    bbox: { latMin: 39.7, latMax: 40.4, lonMin: -75.5, lonMax: -74.95 },
+    sourceLabel: "NJDOT current AADT (Philly-MSA supplement)",
+    supplement: true,
+    polylineConfig: {
+      url: "https://services.arcgis.com/HggmsDF7UJsNN1FK/arcgis/rest/services/New_jersey_Annual_Average_Daily_Traffic_2017/FeatureServer/0",
+      aadtField: "CURRENT_AA",
+      yearExtractor: { kind: "field_int", field: "CURRENT_YE" },
+      snapM: 200,
+      sourceTag: "njdot",
+    },
+  },
+  {
+    // NoVA side of the DC MSA (Fairfax/Loudoun/Prince William). VDOT layer
+    // only carries VA geometry, so the full DC bbox is safe.
+    slug: "washington-dc",
+    source: "vdot",
+    counties: [],
+    bbox: { latMin: 38.6, latMax: 39.2, lonMin: -77.6, lonMax: -76.7 },
+    supplement: true,
+  },
+  {
+    // Suburban-MD side of the DC MSA (Montgomery/PG). Same MDOT-SHA layer
+    // as the baltimore config; runs after the VDOT pass (array order).
+    slug: "washington-dc",
+    source: "polyline_bbox",
+    counties: [],
+    bbox: { latMin: 38.6, latMax: 39.2, lonMin: -77.6, lonMax: -76.7 },
+    sourceLabel: "MDOT-SHA 2023 AADT (DC-MSA supplement)",
+    supplement: true,
+    polylineConfig: {
+      url: "https://services.arcgis.com/njFNhDsUCentVYJW/ArcGIS/rest/services/MDOT_SHA_Annual_Average_Daily_Traffic/FeatureServer/1",
+      aadtField: "AADT",
+      yearExtractor: { kind: "static", year: 2023 },
+      snapM: 200,
+      sourceTag: "mdot_md",
     },
   },
 
@@ -1403,6 +1493,10 @@ async function processRegion(cfg: RegionConfig): Promise<void> {
   if (cfg.source === "fdot" && cfg.slug === "miami-dade" && existsSync(existingPath)) {
     // Don't load existing — FDOT pass starts fresh, MDC pass merges after.
   }
+  if (cfg.supplement && existsSync(existingPath)) {
+    existing = JSON.parse(readFileSync(existingPath, "utf8")) as Record<string, AadtRecord>;
+    console.log(`  Supplement mode: ${Object.keys(existing).length} existing records kept as-is`);
+  }
 
   // ── VDOT path (polyline AADT, no county field — use bbox filter) ────
   if (cfg.source === "vdot") {
@@ -1447,6 +1541,7 @@ async function processRegion(cfg: RegionConfig): Promise<void> {
     let snapped = 0;
     const distances: number[] = [];
     for (const [sid, lat, lon] of signals) {
+      if (existing[String(sid)]) continue; // supplement mode: primary DOT's record wins
       const latCell = Math.floor(lat / 0.005);
       const lonCell = Math.floor(lon / 0.005);
       let best: { f: VdotFeature; d: number } | null = null;
@@ -1468,7 +1563,7 @@ async function processRegion(cfg: RegionConfig): Promise<void> {
           year,
           kFactor: DEFAULT_K_FACTOR_PCT,
           distM: Math.round(best.d),
-          source: "fdot", // re-using fdot tag since consumer doesn't branch
+          source: "vdot",
         };
         snapped++;
         distances.push(best.d);
@@ -1478,7 +1573,7 @@ async function processRegion(cfg: RegionConfig): Promise<void> {
     const p50 = Math.round(distances[Math.floor(distances.length / 2)] ?? 0);
     const p90 = Math.round(distances[Math.floor(distances.length * 0.9)] ?? 0);
     const outPath = path.resolve(dataDir, `${cfg.slug}-aadt.json`);
-    writeFileSync(outPath, JSON.stringify(result));
+    writeFileSync(outPath, JSON.stringify({ ...existing, ...result }));
     console.log(`  Snapped ${snapped} / ${signals.length} (${((snapped / signals.length) * 100).toFixed(1)}%) signals to VDOT ADT`);
     console.log(`  Snap distance p50=${p50}m p90=${p90}m`);
     console.log(`  → ${outPath}`);
@@ -1536,6 +1631,7 @@ async function processRegion(cfg: RegionConfig): Promise<void> {
     let snapped = 0;
     const distances: number[] = [];
     for (const [sid, lat, lon] of signals) {
+      if (existing[String(sid)]) continue; // supplement mode: primary DOT's record wins
       const latCell = Math.floor(lat / 0.005);
       const lonCell = Math.floor(lon / 0.005);
       let best: { f: PolylineFeature; d: number } | null = null;
@@ -1579,7 +1675,7 @@ async function processRegion(cfg: RegionConfig): Promise<void> {
     const p50 = Math.round(distances[Math.floor(distances.length / 2)] ?? 0);
     const p90 = Math.round(distances[Math.floor(distances.length * 0.9)] ?? 0);
     const outPath = path.resolve(dataDir, `${cfg.slug}-aadt.json`);
-    writeFileSync(outPath, JSON.stringify(result));
+    writeFileSync(outPath, JSON.stringify({ ...existing, ...result }));
     console.log(`  Snapped ${snapped} / ${signals.length} (${((snapped / signals.length) * 100).toFixed(1)}%) signals to ${cfg.sourceLabel ?? cfg.slug}`);
     console.log(`  Snap distance p50=${p50}m p90=${p90}m`);
     console.log(`  → ${outPath}`);
@@ -1645,6 +1741,7 @@ async function processRegion(cfg: RegionConfig): Promise<void> {
     let snapped = 0;
     const distances: number[] = [];
     for (const [sid, lat, lon] of signals) {
+      if (existing[String(sid)]) continue; // supplement mode: primary DOT's record wins
       const latCell = Math.floor(lat / 0.005);
       const lonCell = Math.floor(lon / 0.005);
       let best: { f: Pt; d: number } | null = null;
@@ -1691,7 +1788,7 @@ async function processRegion(cfg: RegionConfig): Promise<void> {
     const p50 = Math.round(distances[Math.floor(distances.length / 2)] ?? 0);
     const p90 = Math.round(distances[Math.floor(distances.length * 0.9)] ?? 0);
     const outPath = path.resolve(dataDir, `${cfg.slug}-aadt.json`);
-    writeFileSync(outPath, JSON.stringify(result));
+    writeFileSync(outPath, JSON.stringify({ ...existing, ...result }));
     console.log(`  Snapped ${snapped} / ${signals.length} (${((snapped / signals.length) * 100).toFixed(1)}%) signals to ${cfg.sourceLabel ?? cfg.slug}`);
     console.log(`  Snap distance p50=${p50}m p90=${p90}m`);
     console.log(`  → ${outPath}`);
@@ -2037,11 +2134,18 @@ async function supplementWithMdc(): Promise<void> {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const wantAll = args.includes("--all");
+  const supplementOnly = args.includes("--supplement-only");
   const requested = args.filter((a) => !a.startsWith("--"));
-  const regions = wantAll ? REGIONS : REGIONS.filter((r) => requested.includes(r.slug));
+  const regions = (wantAll ? REGIONS : REGIONS.filter((r) => requested.includes(r.slug)))
+    .filter((r) => !supplementOnly || r.supplement === true)
+    // Supplements must run AFTER any primary full-rebuild for the same slug
+    // (a rebuild overwrites the file; a supplement only fills gaps). Stable
+    // sort keeps declaration order within each group.
+    .sort((a, b) => Number(a.supplement === true) - Number(b.supplement === true));
   if (regions.length === 0) {
     console.error("Usage: tsx src/fetch-aadt-by-signal.ts <slug> [<slug>...]");
     console.error("       tsx src/fetch-aadt-by-signal.ts --all");
+    console.error("       tsx src/fetch-aadt-by-signal.ts --supplement-only <slug> [<slug>...]");
     console.error(`Available: ${REGIONS.map((r) => r.slug).join(", ")}`);
     process.exit(2);
   }
