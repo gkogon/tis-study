@@ -1,6 +1,7 @@
 /**
- * Public pricing page. Four tiers — Free Trial, Starter, Growth,
- * Enterprise — targeted at Atlanta engineering firms. CTAs route to
+ * Public pricing page. Four subscription tiers — Free Trial, Starter,
+ * Growth, Enterprise — plus the pay-per-study path (single-study
+ * credits bought from Settings → Billing after signup). CTAs route to
  * /signup with the plan + cadence preselected; the signup page hands
  * off to Stripe Checkout once the firm record exists.
  *
@@ -10,6 +11,11 @@
  *
  * All four tiers — including Enterprise, now a flat $10K/mo tier — route
  * through the same /signup → Stripe Checkout flow.
+ *
+ * Pay-per-study dollar labels MUST match the amounts configured on
+ * STRIPE_PRICE_STUDY_INTRO / STRIPE_PRICE_STUDY_STANDARD (same
+ * convention as settings-billing.tsx); the intro count mirrors
+ * STUDY_INTRO_THRESHOLD in the API's stripe.ts.
  */
 import { useState } from "react";
 import { Link } from "wouter";
@@ -18,6 +24,13 @@ import { SiteFooter } from "../components/site-footer";
 import { Marker } from "../components/section-marker";
 
 const ENTERPRISE_EMAIL = "gkogon@simpleimpactstudies.com";
+
+// Pay-per-study rates. Keep in sync with the Stripe Prices behind
+// STRIPE_PRICE_STUDY_INTRO / STRIPE_PRICE_STUDY_STANDARD and with
+// STUDY_INTRO_THRESHOLD in the API's stripe.ts.
+const STUDY_INTRO_PRICE = "$150";
+const STUDY_STANDARD_PRICE = "$350";
+const STUDY_INTRO_COUNT = 5;
 
 type TierId = "trial" | "starter" | "growth" | "enterprise";
 type Cadence = "monthly" | "annual";
@@ -136,7 +149,9 @@ export default function PricingPage() {
             <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
               14-day trial on Starter and Growth. No credit card to start.
               Cancel anytime — you keep access until the end of your billing
-              period. Annual billing saves about 17%.
+              period. Annual billing saves about 17%. Not ready for a
+              subscription? Buy studies one at a time — {STUDY_INTRO_PRICE} each
+              for your first {STUDY_INTRO_COUNT}.
             </p>
             <CadenceToggle value={cadence} onChange={setCadence} />
           </section>
@@ -151,7 +166,62 @@ export default function PricingPage() {
         </section>
 
         <section>
-          <Marker n="01" label="Fair use" />
+          <Marker n="01" label="Pay per study" />
+          <div className="border border-border">
+            <div className="p-6 sm:p-8 space-y-3 border-b border-border">
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+                No subscription? Buy studies one at a time.
+              </h2>
+              <p className="text-muted-foreground leading-relaxed max-w-2xl">
+                Sign up free, run your trial studies, then buy exactly as many
+                as the project needs — one Stripe checkout per study, no
+                monthly commitment. The monthly plans above are the volume
+                discount: on Starter a study works out to $300, on Growth
+                $333. Pay-per-study is how you start; a subscription is how
+                you scale.
+              </p>
+            </div>
+            <div className="grid sm:grid-cols-3 gap-px bg-border">
+              <div className="bg-background p-6 space-y-1">
+                <div className="flex items-baseline gap-1">
+                  <span className="font-mono text-4xl font-bold tabular-nums tracking-tight">{STUDY_INTRO_PRICE}</span>
+                  <span className="text-muted-foreground text-sm font-mono">/study</span>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Intro rate — your first {STUDY_INTRO_COUNT} studies, ever.
+                </p>
+              </div>
+              <div className="bg-background p-6 space-y-1">
+                <div className="flex items-baseline gap-1">
+                  <span className="font-mono text-4xl font-bold tabular-nums tracking-tight">{STUDY_STANDARD_PRICE}</span>
+                  <span className="text-muted-foreground text-sm font-mono">/study</span>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  After that. Every study is the full deliverable — same PDF,
+                  same citations, no tier gating.
+                </p>
+              </div>
+              <div className="bg-background p-6 flex flex-col justify-between gap-4">
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Credits never expire and stay spendable with no active
+                  subscription. On a plan, they're used automatically once the
+                  month's studies run out. Buy from Settings&nbsp;→&nbsp;Billing
+                  once you're signed in.
+                </p>
+                <Link
+                  href="/signup?plan=trial"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-semibold rounded-lg border border-border hover:bg-accent transition-colors"
+                  data-testid="link-cta-pay-per-study"
+                >
+                  Start free, buy as you go
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <Marker n="02" label="Fair use" />
           <div className="grid sm:grid-cols-2 gap-px bg-border border border-border">
             <div className="bg-background p-6 space-y-2">
               <h2 className="text-lg font-bold tracking-tight">What counts as a study?</h2>
@@ -166,18 +236,19 @@ export default function PricingPage() {
             <div className="bg-background p-6 space-y-2">
               <h2 className="text-lg font-bold tracking-tight">What if we hit our cap?</h2>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Generation is blocked until the next billing period or you
-                upgrade. We show a warning before your last study and a clear
-                block message after. Upgrade from Settings → Billing and the
-                new cap takes effect immediately. No surprise overage fees on
-                Starter or Growth.
+                Any pay-per-study credits on the account are used
+                automatically. No credits? Buy one from Settings → Billing,
+                upgrade (the new cap takes effect immediately), or wait for
+                the next billing period. We show a warning before your last
+                study and a clear message after — never a surprise overage
+                fee.
               </p>
             </div>
           </div>
         </section>
 
         <section>
-          <Marker n="02" label="Common questions" />
+          <Marker n="03" label="Common questions" />
           <div className="divide-y divide-border border-y border-border">
             {FAQ.map((f) => (
               <details key={f.q} className="group py-4">
@@ -195,15 +266,26 @@ export default function PricingPage() {
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Not sure which tier?</h2>
           <p className="text-muted-foreground leading-relaxed max-w-xl">
             Start the Growth trial — it's our default for engineering firms.
-            You can downgrade before the trial ends if it's more than you need.
+            You can downgrade before the trial ends if it's more than you
+            need. Or skip the subscription question entirely and pay per
+            study until the volume math says otherwise.
           </p>
-          <Link
-            href={`/signup?plan=growth&cadence=${cadence}`}
-            className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
-            data-testid="link-default-trial"
-          >
-            Start 14-day Growth trial
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href={`/signup?plan=growth&cadence=${cadence}`}
+              className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
+              data-testid="link-default-trial"
+            >
+              Start 14-day Growth trial
+            </Link>
+            <Link
+              href="/signup?plan=trial"
+              className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-lg border border-border hover:bg-accent transition-colors"
+              data-testid="link-pay-per-study-fallback"
+            >
+              Pay per study instead
+            </Link>
+          </div>
         </section>
       </div>
       <SiteFooter />
@@ -215,6 +297,10 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
   {
     q: "Is this a substitute for a stamped engineering deliverable?",
     a: <>No. Outputs are screening-grade and meant to support — not replace — a licensed PE's analytical workflow. See the <a href="/legal/disclaimer" className="text-blue-700 hover:underline">Engineering Disclaimer</a> for the full scope.</>,
+  },
+  {
+    q: "Can we pay without a subscription?",
+    a: `Yes. After the free trial, buy studies one at a time from Settings → Billing: ${STUDY_INTRO_PRICE} each for your first ${STUDY_INTRO_COUNT} purchases, then ${STUDY_STANDARD_PRICE} each. Each purchase is a credit on your firm — credits never expire and keep working even if you never subscribe or a subscription lapses. If you're running several studies a month, a monthly plan is cheaper per study.`,
   },
   {
     q: "Can multiple engineers in my firm use one account?",
@@ -234,7 +320,7 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What happens if we run out of studies in a billing period?",
-    a: "On Starter and Growth, generation is blocked until the next period or you upgrade — no surprise overage fees. On Enterprise, there's no cap — it's flat monthly, so you just keep generating.",
+    a: "On Starter and Growth, any pay-per-study credits on the account are used automatically; with no credits, generation pauses until you buy one, upgrade, or the next period starts — no surprise overage fees. On Enterprise, there's no cap — it's flat monthly, so you just keep generating.",
   },
   {
     q: "Can we cancel anytime?",
