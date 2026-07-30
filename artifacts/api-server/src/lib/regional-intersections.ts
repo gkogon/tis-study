@@ -182,7 +182,7 @@ const REGION_INFO: Record<string, RegionBoundsInfo> = {
   baltimore_metro: { displayName: "Baltimore-Columbia-Towson MSA", bounds: { latMin: 39.0, latMax: 39.7, lonMin: -77.0, lonMax: -76.2 } },
   philadelphia_metro: { displayName: "Philadelphia MSA", bounds: { latMin: 39.7, latMax: 40.4, lonMin: -75.5, lonMax: -74.95 } },
   pittsburgh_metro: { displayName: "Pittsburgh MSA", bounds: { latMin: 40.2, latMax: 40.7, lonMin: -80.4, lonMax: -79.6 } },
-  new_york_metro: { displayName: "New York-Newark-Jersey City MSA", bounds: { latMin: 40.5, latMax: 41.2, lonMin: -74.3, lonMax: -73.4 } },
+  new_york_metro: { displayName: "New York-Newark-Jersey City MSA", bounds: { latMin: 40.2, latMax: 41.2, lonMin: -74.5, lonMax: -73.4 } },
   boston_metro: { displayName: "Boston-Cambridge-Newton MSA", bounds: { latMin: 42.1, latMax: 42.7, lonMin: -71.5, lonMax: -70.7 } },
   chicago_metro: { displayName: "Chicago-Naperville-Elgin MSA", bounds: { latMin: 41.4, latMax: 42.3, lonMin: -88.5, lonMax: -87.3 } },
   detroit_metro: { displayName: "Detroit-Warren-Dearborn MSA", bounds: { latMin: 42.0, latMax: 42.8, lonMin: -83.7, lonMax: -82.6 } },

@@ -222,7 +222,7 @@ export const METROS: MetroCoverage[] = [
 
   // ── Tier-4: Coast + Midwest + Westward (signal counts pending extraction) ──
   // DC
-  { code: "washington_dc_metro", slug: "washington-dc", shortName: "Washington DC", longName: "Washington-Arlington-Alexandria MSA", state: "DC", signals: 2741, namedPct: 99.7, aadtPct: 99.3, liveSource: null, aadtSource: "DDOT 2023 Traffic Volume",
+  { code: "washington_dc_metro", slug: "washington-dc", shortName: "Washington DC", longName: "Washington-Arlington-Alexandria MSA", state: "DC", signals: 10752, namedPct: 99.6, aadtPct: 95.1, liveSource: null, aadtSource: "DDOT 2023 + VDOT + MDOT-SHA AADT",
     dotName: "District Department of Transportation (DDOT)", planningOfficeName: "DC Office of Planning",
     parkingCodeCitation: "DC Zoning Regulations, Subtitle C, Chapter 7 — Off-Street Parking." },
   // MD
@@ -230,17 +230,17 @@ export const METROS: MetroCoverage[] = [
     dotName: "Baltimore City DOT", planningOfficeName: "Baltimore Department of Planning",
     parkingCodeCitation: "Baltimore City Zoning Code, Title 16 — Parking and Loading." },
   // PA
-  { code: "philadelphia_metro", slug: "philadelphia", shortName: "Philadelphia", longName: "Philadelphia MSA", state: "PA", signals: 8449, namedPct: 96.5, aadtPct: 93.1, liveSource: null, aadtSource: "PennDOT RMS Traffic Volumes",
+  { code: "philadelphia_metro", slug: "philadelphia", shortName: "Philadelphia", longName: "Philadelphia MSA", state: "PA", signals: 8924, namedPct: 96.7, aadtPct: 92.6, liveSource: null, aadtSource: "PennDOT RMS + NJDOT AADT",
     dotName: "Philadelphia Streets Department", planningOfficeName: "Philadelphia City Planning Commission",
     parkingCodeCitation: "Philadelphia Zoning Code, Chapter 14-800 — Parking and Loading." },
   { code: "pittsburgh_metro", slug: "pittsburgh", shortName: "Pittsburgh", longName: "Pittsburgh MSA", state: "PA", signals: 2973, namedPct: 99.2, aadtPct: 93.7, liveSource: null, aadtSource: "PennDOT RMS Traffic Volumes",
     dotName: "Pittsburgh Department of Mobility and Infrastructure (DOMI)", planningOfficeName: "Pittsburgh Department of City Planning",
     parkingCodeCitation: "Pittsburgh Zoning Code, Chapter 914 — Parking, Loading and Access." },
   // NY
-  { code: "new_york_metro", slug: "new-york", shortName: "New York", longName: "New York-Newark-Jersey City MSA", state: "NY", signals: 24004, namedPct: 90.7, aadtPct: 97.8, liveSource: null,
+  { code: "new_york_metro", slug: "new-york", shortName: "New York", longName: "New York-Newark-Jersey City MSA", state: "NY", signals: 30601, namedPct: 91.9, aadtPct: 82.1, liveSource: null,
     dotName: "New York City Department of Transportation (NYC DOT)", planningOfficeName: "NYC Department of City Planning",
     parkingCodeCitation: "NYC Zoning Resolution, Article I, Chapter 3 — Off-Street Parking.",
-    aadtSource: "NYSDOT TDV AADT 2019 (per-borough)" },
+    aadtSource: "NYSDOT TDV + NJDOT AADT" },
   // MA
   { code: "boston_metro", slug: "boston", shortName: "Boston", longName: "Boston-Cambridge-Newton MSA", state: "MA", signals: 7815, namedPct: 99.8, aadtPct: 96.9, liveSource: null, aadtSource: "MassDOT 2024 Traffic Inventory",
     dotName: "Boston Transportation Department (BTD)", planningOfficeName: "Boston Planning & Development Agency (BPDA)",
