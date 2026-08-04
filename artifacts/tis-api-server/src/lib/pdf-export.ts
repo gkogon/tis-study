@@ -7389,6 +7389,8 @@ type FloridaJurisdictionKey =
   | "miami_dade"
   | "broward"
   | "palm_beach"
+  | "pinellas"
+  | "pasco"
   | "hillsborough"
   | "orange"
   | "duval"
@@ -7486,7 +7488,61 @@ function floridaJurisdiction(lat: number, lon: number): FloridaJurisdiction {
       extraNote: "Palm Beach review type drives section structure: a full ULDC Art. 12 TPS report uses named \"Test 1\" + \"Test 2\" subsections at site-plan stage; an FLUA (Future Land Use Atlas) amendment uses a deliberately thin 6-section variant (Project Description / Current FLU / Proposed FLU / Traffic Impact / Traffic Analysis [5.1 Test 2 + 5.2 Long Range] / Conclusion). The renderer's default 1.0–13.0 structure should be substituted with the applicable PBC variant at submittal time.",
     };
   }
-  if (inBox(27.57, 28.18, -82.74, -82.05)) {
+  // Tampa Bay: Pinellas and Pasco are checked BEFORE Hillsborough —
+  // same precedence pattern as the Stamford fix (PR #82). The old
+  // Hillsborough box (lonMin -82.74) reached across Old Tampa Bay and
+  // swallowed nearly all of Pinellas, so Clearwater/St. Pete sites were
+  // rendered with Hillsborough's mobility-fee ordinance and MPO.
+  //
+  // Pinellas = peninsula box + north-county box. The split keeps
+  // Oldsmar (28.03, -82.66 — Hillsborough) out of the Pinellas match
+  // while capturing Palm Harbor / Tarpon Springs (lon ≤ -82.70).
+  if (
+    inBox(27.57, 28.02, -82.95, -82.58) ||
+    inBox(28.02, 28.18, -82.95, -82.70)
+  ) {
+    return {
+      key: "pinellas",
+      name: "Pinellas County",
+      fdotDistrict: "FDOT District 7 (Tampa)",
+      framework: "Countywide Mobility Plan + Multimodal Impact Fee (transportation concurrency retired countywide)",
+      frameworkDoc: "Pinellas County Multimodal Impact Fee Ordinance — Pinellas County Code Ch. 150 Art. II, fee schedule at Sec. 150-40 — administered countywide under the Forward Pinellas Mobility Plan. Ordinance update in progress: Phase 1 complete Aug 2025; Phase 2A (administrative) targeted Jun 2026; Phase 2B technical fee study anticipated fall/winter 2027.",
+      losStandardNote: "Mobility-fee jurisdiction — no countywide vehicle LOS pass/fail; SHS LOS D urbanized per FDOT Policy 000-525-006 applies on State Highway System frontage for connection-permit review",
+      tripThreshold: "Per the controlling municipality's site-plan review procedures (Clearwater, St. Petersburg, Largo, and unincorporated Pinellas each administer review locally under the countywide Mobility Plan); multimodal impact fee assessed at permit",
+      horizonConvention: "Per local site-plan review under the countywide Mobility Plan; fee applies at permit (no horizon-year LOS test)",
+      mpoName: "Forward Pinellas (unified MPO + Pinellas Planning Council — countywide land-use and transportation authority)",
+      preStudyMeetingRequired: false,
+      methodologyLetterAppendix: "A",
+      certificationFrontMatter: false,
+      threeTrackEndChapters: false,
+      extraNote: "Pinellas review is municipality-led: confirm the controlling city's own transportation-analysis submittal requirements (e.g., City of Clearwater or City of St. Petersburg development review) in addition to the countywide multimodal impact fee. Countywide plan amendments are analyzed by Forward Pinellas staff (MAX Index); applicant-prepared TIS work concentrates in municipal site cases.",
+    };
+  }
+  // Pasco: north of the Hillsborough county line (~28.17), south of
+  // Hernando (~28.44).
+  if (inBox(28.17, 28.44, -82.90, -82.05)) {
+    return {
+      key: "pasco",
+      name: "Pasco County",
+      fdotDistrict: "FDOT District 7 (Tampa)",
+      framework: "Multimodal mobility fee (Florida's first county mobility fee, adopted 2011; replaced transportation impact fees)",
+      frameworkDoc: "Pasco County LDC §1302.2 (Mobility Fees), adopted July 12, 2011 under §§163.3180(5)(f),(i) F.S.; current fee schedule per Ordinance 26-19 (adopted 5/19/2026, schedule effective 7/1/2026; ordinance requires re-study every 3 years).",
+      losStandardNote: "Mobility-fee jurisdiction — no vehicle LOS pass/fail; SHS LOS D urbanized per FDOT Policy 000-525-006 applies on State Highway System frontage for connection-permit review",
+      tripThreshold: "Per Pasco County TIS Guidelines (BCC Res. adopted 12/18/2007) and LDC §402.1.B application requirements; MPUD rezonings that increase density/intensity require a county-approved Timing & Phasing analysis before Board scheduling",
+      horizonConvention: "Timing & Phasing conditions tie permitted density/intensity to facility availability and capacity; mobility fee applies at permit",
+      mpoName: "Pasco County MPO",
+      preStudyMeetingRequired: false,
+      methodologyLetterAppendix: "A",
+      certificationFrontMatter: false,
+      threeTrackEndChapters: false,
+      extraNote: "Pasco requires a consultant-prepared, county-approved Timing & Phasing (T&P) analysis for MPUD density/intensity increases (application per LDC §402.1.B; related roadway standards at LDC §§901.1 Collector Spacing, 901.2 Substandard Road Review, 901.3 Access Management). The fee schedule now in force derives from the county's 2026 Multi-Modal Mobility Fee Update Study.",
+    };
+  }
+  // Hillsborough proper: west edge pulled back from -82.74 to -82.70 so
+  // the box keeps Oldsmar (-82.66) but no longer captures Safety Harbor
+  // (-82.69) or the rest of Pinellas; north edge meets the Pasco box at
+  // the county line (28.17, was 28.18).
+  if (inBox(27.57, 28.17, -82.70, -82.05)) {
     return {
       key: "hillsborough",
       name: "Hillsborough County (Tampa)",
