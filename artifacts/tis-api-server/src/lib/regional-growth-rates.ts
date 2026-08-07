@@ -57,6 +57,7 @@ const STATE_BY_METRO: Record<string, string> = {
   tampa_metro: "FL", orlando_metro: "FL", miami_dade_metro: "FL", jacksonville_metro: "FL",
   fort_lauderdale_metro: "FL", west_palm_beach_metro: "FL", daytona_beach_metro: "FL",
   lakeland_metro: "FL", tallahassee_metro: "FL", fort_myers_metro: "FL", pensacola_metro: "FL",
+  sarasota_metro: "FL",
   // GA
   atlanta_metro: "GA", savannah_metro: "GA", augusta_metro: "GA", columbus_ga_metro: "GA", macon_metro: "GA",
   // TX (only DFW + McAllen wired — others below n≥100 confidence floor)
@@ -149,6 +150,7 @@ const RATES: Record<string, MeasuredGrowthRate> = {
   tallahassee_metro:     { growthPct:  0.73, yearFrom: 2021, yearTo: 2025, stations:  414, p25Pct: -0.79, p75Pct: 2.93 },
   fort_myers_metro:      { growthPct:  2.48, yearFrom: 2021, yearTo: 2025, stations:  445, p25Pct:  0.90, p75Pct: 5.82 },
   pensacola_metro:       { growthPct:  0.30, yearFrom: 2021, yearTo: 2025, stations:  555, p25Pct: -1.98, p75Pct: 2.78 },
+  sarasota_metro:        { growthPct:  2.86, yearFrom: 2021, yearTo: 2025, stations:  623, p25Pct:  0.78, p75Pct: 5.83 },
 };
 
 export function getMeasuredGrowthRate(regionCode: string): MeasuredGrowthRate | undefined {

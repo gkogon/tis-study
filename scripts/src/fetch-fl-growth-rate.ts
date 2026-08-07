@@ -48,6 +48,7 @@ const METROS: Array<{ code: string; name: string; bbox: Bbox }> = [
   { code: "tallahassee_metro",    name: "Tallahassee MSA",           bbox: { latMin: 30.2, latMax: 30.7, lonMin: -84.5, lonMax: -84.0 } },
   { code: "fort_myers_metro",     name: "Cape Coral-Fort Myers MSA", bbox: { latMin: 26.4, latMax: 26.8, lonMin: -82.1, lonMax: -81.7 } },
   { code: "pensacola_metro",      name: "Pensacola MSA",             bbox: { latMin: 30.3, latMax: 30.7, lonMin: -87.5, lonMax: -86.9 } },
+  { code: "sarasota_metro",       name: "North Port-Sarasota-Bradenton MSA", bbox: { latMin: 26.95, latMax: 27.60, lonMin: -82.80, lonMax: -82.05 } },
 ];
 
 type Feature = {

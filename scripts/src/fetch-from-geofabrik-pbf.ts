@@ -32,7 +32,7 @@ const PBF_DIR = "/tmp/geofabrik_pbf";
 // roads outside the primary state are silently missing — those edge areas
 // of the metro will have lower coverage.
 const STATES: Record<string, RegionCode[]> = {
-  florida: ["jacksonville_metro", "pensacola_metro", "fort_lauderdale_metro", "west_palm_beach_metro", "daytona_beach_metro", "lakeland_metro", "tallahassee_metro", "fort_myers_metro"],
+  florida: ["jacksonville_metro", "pensacola_metro", "fort_lauderdale_metro", "west_palm_beach_metro", "daytona_beach_metro", "lakeland_metro", "tallahassee_metro", "fort_myers_metro", "sarasota_metro"],
   georgia: ["savannah_metro", "augusta_metro", "macon_metro"],
   tennessee: ["memphis_metro", "knoxville_metro", "chattanooga_metro"],
   "north-carolina": ["asheville_metro", "wilmington_metro", "triad_metro", "fayetteville_metro", "greenville_nc_metro"],
@@ -112,6 +112,31 @@ type GeoJsonFeature = {
   geometry: { type: "Point" | "LineString" | "MultiLineString"; coordinates: number[] | number[][] | number[][][] };
   properties: Record<string, unknown>;
 };
+
+/** OSM `lanes` is total both-directions; values like "2", "3", "2;3" occur.
+ *  Take the max of any ;-separated list. Returns null when untagged/unparseable.
+ *  (Same semantics as fetch-osm-roads.ts.) */
+function parseLanes(raw: string | undefined): number | null {
+  if (!raw) return null;
+  let best: number | null = null;
+  for (const part of raw.split(";")) {
+    const n = Number.parseInt(part.trim(), 10);
+    if (Number.isFinite(n) && n > 0 && n < 30 && (best === null || n > best)) best = n;
+  }
+  return best;
+}
+
+/** OSM `maxspeed` → km/h. Handles "50", "50 mph", "50 km/h"; null for zone
+ *  refs ("RU:urban"), "none", "walk", or anything non-numeric. */
+function parseMaxspeedKmh(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const m = raw.trim().toLowerCase().match(/^(\d+(?:\.\d+)?)\s*(mph|km\/h|kmh|kph)?$/);
+  if (!m) return null;
+  const val = Number.parseFloat(m[1]!);
+  if (!Number.isFinite(val) || val <= 0) return null;
+  const kmh = m[2] === "mph" ? val * 1.60934 : val;
+  return Math.round(kmh);
+}
 
 function osmium(args: string): void {
   const cmd = `osmium ${args}`;
@@ -244,7 +269,9 @@ function processState(state: string, metros: RegionCode[]): void {
     writeFileSync(sigPath, JSON.stringify(sigOut));
     console.log(`  ✔ ${slug}: ${sigOut.length} signals → ${sigPath}`);
 
-    // Roads → {classes, ways} format with named ways only
+    // Roads → {classes, ways} format with named ways only. Length-5
+    // tuples [code, name, polyline, lanes|null, maxspeedKmh|null] —
+    // same shape fetch-osm-roads.ts writes; readers accept length ≥ 3.
     const ways: unknown[] = [];
     const byClass: Record<string, number> = {};
     for (const f of roadFeatures) {
@@ -255,6 +282,8 @@ function processState(state: string, metros: RegionCode[]): void {
       const baseClass = highway.endsWith("_link") ? highway.slice(0, -5) : highway;
       const code = ROAD_CLASS_CODE.get(baseClass);
       if (code === undefined) continue;
+      const lanes = parseLanes(f.properties.lanes as string | undefined);
+      const maxspeed = parseMaxspeedKmh(f.properties.maxspeed as string | undefined);
 
       // Geometry: could be LineString or MultiLineString
       const geoms: number[][][] = [];
@@ -274,7 +303,7 @@ function processState(state: string, metros: RegionCode[]): void {
           Math.round((lat as number) * 1e5) / 1e5,
           Math.round((lon as number) * 1e5) / 1e5,
         ]);
-        ways.push([code, name, polyline]);
+        ways.push([code, name, polyline, lanes, maxspeed]);
         byClass[baseClass] = (byClass[baseClass] ?? 0) + 1;
       }
     }
@@ -286,9 +315,21 @@ function processState(state: string, metros: RegionCode[]): void {
 }
 
 function main(): void {
-  // Verify all PBFs are downloaded
+  // Optional CLI filter: metro codes. When given, only those metros are
+  // written and only their states' PBFs are required — a full-state run
+  // would otherwise rebuild every sibling metro's signals/roads files,
+  // breaking the tuple-id keying their <slug>-aadt.json depends on
+  // (append-only invariant, cf. PR #82).
+  const wanted = new Set(process.argv.slice(2) as RegionCode[]);
+  const states: Array<[string, RegionCode[]]> = [];
+  for (const [state, metros] of Object.entries(STATES)) {
+    const filtered = wanted.size > 0 ? metros.filter((m) => wanted.has(m)) : metros;
+    if (filtered.length > 0) states.push([state, filtered]);
+  }
+
+  // Verify the needed PBFs are downloaded
   const missing: string[] = [];
-  for (const state of Object.keys(STATES)) {
+  for (const [state] of states) {
     const pbf = path.join(PBF_DIR, `${state}.osm.pbf`);
     if (!existsSync(pbf)) missing.push(state);
   }
@@ -298,7 +339,7 @@ function main(): void {
     process.exit(1);
   }
 
-  for (const [state, metros] of Object.entries(STATES)) {
+  for (const [state, metros] of states) {
     try {
       processState(state, metros);
     } catch (e) {
