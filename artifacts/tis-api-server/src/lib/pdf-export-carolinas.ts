@@ -65,9 +65,18 @@ function carRows(doc: PDFKit.PDFDocument, pairs: [string, string | undefined][])
   doc.x = startX;
   const valueW = doc.page.width - startX - labelW - PAGE_MARGIN - 10;
   for (const [label, value] of pairs) {
+    // Long wrapped values advance doc.y past the page bottom; without
+    // this guard the next label lands off-page and pdfkit emits an
+    // orphaned near-blank page (seen on the first real-data NC render).
+    const estH = doc.font("body").fontSize(10).heightOfString(value ?? "—", { width: valueW });
+    if (doc.y + Math.max(estH, 14) > doc.page.height - PAGE_MARGIN - 40) {
+      doc.addPage();
+      doc.x = startX;
+    }
     const y = doc.y;
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(label, startX, y, { width: labelW, continued: false });
     doc.font("body").fontSize(10).fillColor("black").text(value ?? "—", startX + labelW + 10, y, { width: valueW });
+    doc.y = Math.max(doc.y, y + estH) + 2;
     doc.moveDown(0.05);
   }
   doc.x = PAGE_MARGIN;
