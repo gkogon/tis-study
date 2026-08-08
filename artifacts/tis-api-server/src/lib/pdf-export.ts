@@ -30,6 +30,7 @@ import {
 } from "./mode-share";
 import { ukCapacityForIntersection, type UkCapacityResult } from "./uk-capacity";
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
+import { renderTisNorthCarolina, renderTisSouthCarolina } from "./pdf-export-carolinas";
 import { renderTisState } from "./pdf-export-states";
 import { renderDiurnalCharts, drawColumnChart, drawLineChart, CHART_COLORS } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
@@ -1320,6 +1321,14 @@ function selectRegionalTisRenderer(
   }
   if (region?.stateCode === "CA" && (region?.country ?? "US") === "US") {
     renderTisCalifornia(doc, result, project, region);
+    return;
+  }
+  if (region?.stateCode === "NC" && (region?.country ?? "US") === "US") {
+    renderTisNorthCarolina(doc, result, project, region);
+    return;
+  }
+  if (region?.stateCode === "SC" && (region?.country ?? "US") === "US") {
+    renderTisSouthCarolina(doc, result, project, region);
     return;
   }
   if (region?.stateCode === "NY" && (region?.country ?? "US") === "US") {
