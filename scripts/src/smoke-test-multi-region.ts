@@ -185,6 +185,10 @@ const PROBES: Probe[] = [
   { regionCode: "lakeland_metro", lat: 28.0395, lon: -81.9498, expectDotIncludes: "Lakeland" },
   { regionCode: "tallahassee_metro", lat: 30.4383, lon: -84.2807, expectDotIncludes: "Tallahassee" },
   { regionCode: "fort_myers_metro", lat: 26.6406, lon: -81.8723, expectDotIncludes: "Fort Myers" },
+  // US-41 & Bee Ridge Rd, Sarasota. Also exercises the tampa_metro
+  // overlap strip: Palmetto (27.52, -82.57) must resolve here, not Tampa.
+  { regionCode: "sarasota_metro", lat: 27.2990, lon: -82.5310, expectDotIncludes: "Sarasota" },
+  { regionCode: "sarasota_metro", lat: 27.5214, lon: -82.5723, expectDotIncludes: "Sarasota" },
   { regionCode: "roanoke_metro", lat: 37.2710, lon: -79.9414, expectDotIncludes: "Roanoke" },
   { regionCode: "charlottesville_metro", lat: 38.0293, lon: -78.4767, expectDotIncludes: "Charlottesville" },
   { regionCode: "springfield_mo_metro", lat: 37.2090, lon: -93.2923, expectDotIncludes: "Springfield" },

@@ -7392,6 +7392,8 @@ type FloridaJurisdictionKey =
   | "pinellas"
   | "pasco"
   | "hillsborough"
+  | "sarasota"
+  | "manatee"
   | "orange"
   | "duval"
   | "district_default";
@@ -7486,6 +7488,47 @@ function floridaJurisdiction(lat: number, lon: number): FloridaJurisdiction {
       certificationFrontMatter: false,
       threeTrackEndChapters: false,
       extraNote: "Palm Beach review type drives section structure: a full ULDC Art. 12 TPS report uses named \"Test 1\" + \"Test 2\" subsections at site-plan stage; an FLUA (Future Land Use Atlas) amendment uses a deliberately thin 6-section variant (Project Description / Current FLU / Proposed FLU / Traffic Impact / Traffic Analysis [5.1 Test 2 + 5.2 Long Range] / Conclusion). The renderer's default 1.0–13.0 structure should be substituted with the applicable PBC variant at submittal time.",
+    };
+  }
+  // Sarasota-Bradenton: Manatee is checked BEFORE Hillsborough because
+  // the Hillsborough box floor (27.57) dips below the true county line
+  // (~27.64) — Parrish/north-river Manatee sits in that strip. Sarasota
+  // and Manatee split at the county line along University Parkway
+  // (~27.39).
+  if (inBox(26.90, 27.39, -82.80, -82.05)) {
+    return {
+      key: "sarasota",
+      name: "Sarasota County",
+      fdotDistrict: "FDOT District 1 (Bartow)",
+      framework: "Countywide Mobility Plan + mobility fee (replaced road impact fees; transportation concurrency retired)",
+      frameworkDoc: "Sarasota County Mobility Fee — Ordinance No. 2015-051 (adopted September 8, 2015), which replaced the county road impact fee program with mobility fees collected and expended by mobility fee service district. Rates index annually, capped at 3%/yr (most recent adjustment effective February 1, 2026).",
+      losStandardNote: "Mobility-fee jurisdiction — no countywide vehicle LOS pass/fail; SHS LOS D urbanized per FDOT Policy 000-525-006 applies on State Highway System frontage for connection-permit review",
+      tripThreshold: "Per Sarasota County Unified Development Code (County Code Ch. 124) development review procedures (Art. 5); transportation study scope confirmed with Sarasota County Transportation Planning at pre-application; mobility fee assessed at permit",
+      horizonConvention: "Per county development review under the Mobility Plan; fee applies at permit (no horizon-year LOS test)",
+      mpoName: "Sarasota/Manatee MPO",
+      preStudyMeetingRequired: false,
+      methodologyLetterAppendix: "A",
+      certificationFrontMatter: false,
+      threeTrackEndChapters: false,
+      extraNote: "Municipal sites (City of Sarasota, Venice, North Port) are reviewed under the controlling city's own site-plan procedures in addition to the county mobility fee — City of Sarasota parking per Zoning Code Art. VII Div. 2. Confirm the applicable mobility fee service district and current fee schedule with Sarasota County Planning and Development Services at pre-application.",
+    };
+  }
+  if (inBox(27.39, 27.64, -82.80, -82.05)) {
+    return {
+      key: "manatee",
+      name: "Manatee County",
+      fdotDistrict: "FDOT District 1 (Bartow)",
+      framework: "Multimodal transportation impact fee (four benefit districts; optional transportation concurrency removed from the LDC)",
+      frameworkDoc: "Manatee County multimodal transportation impact fee — Manatee County Land Development Code Ch. 3 (references to optional transportation concurrency deleted in favor of the multimodal funding system); current schedule per the county's Impact Fee Update Study cycle (2015 study adopted 2016; update studies April 2023 and May 2025). Fees are collected and expended within four Multimodal Transportation Benefit Districts.",
+      losStandardNote: "Impact-fee jurisdiction — no vehicle LOS concurrency pass/fail; SHS LOS D urbanized per FDOT Policy 000-525-006 applies on State Highway System frontage for connection-permit review",
+      tripThreshold: "Per Manatee County LDC Ch. 3 development review; multimodal transportation impact fee assessed at permit within the applicable benefit district",
+      horizonConvention: "Per county development review; fee applies at permit (no horizon-year LOS test)",
+      mpoName: "Sarasota/Manatee MPO",
+      preStudyMeetingRequired: false,
+      methodologyLetterAppendix: "A",
+      certificationFrontMatter: false,
+      threeTrackEndChapters: false,
+      extraNote: "Confirm the site's Multimodal Transportation Benefit District (the county publishes a district lookup) and the fee schedule in force at permit — the May 2025 Impact Fee Update Study revises rates. Bradenton and Palmetto administer their own municipal site-plan review in addition to county fees.",
     };
   }
   // Tampa Bay: Pinellas and Pasco are checked BEFORE Hillsborough —

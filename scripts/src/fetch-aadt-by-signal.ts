@@ -211,6 +211,7 @@ const REGIONS: RegionConfig[] = [
   { slug: "tampa", source: "fdot", counties: ["HILLSBOROUGH", "PINELLAS", "PASCO", "HERNANDO"] },
   { slug: "orlando", source: "fdot", counties: ["ORANGE", "SEMINOLE", "LAKE", "OSCEOLA"] },
   { slug: "miami-dade", source: "fdot", counties: ["MIAMI-DADE"] },
+  { slug: "sarasota", source: "fdot", counties: ["SARASOTA", "MANATEE"] },
   { slug: "charlotte", source: "ncdot", counties: ["Mecklenburg", "Union", "Cabarrus", "Iredell", "Gaston", "Lincoln", "Rowan"] },
   { slug: "raleigh-durham", source: "ncdot", counties: ["Wake", "Durham", "Orange", "Chatham", "Franklin", "Johnston", "Granville", "Person", "Vance"] },
   {

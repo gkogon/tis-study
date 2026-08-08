@@ -2495,12 +2495,14 @@
     "slug": "washington-dc",
     "country": null,
     "dataSourceId": "ddot_dc",
-    "total": 2721,
-    "measured": 2721,
+    "total": 10222,
+    "measured": 10222,
     "measuredPct": 100,
     "synthetic": 0,
     "sourceCounts": {
-      "ddot_dc": 2721
+      "ddot_dc": 2721,
+      "mdot_md": 2933,
+      "vdot": 4568
     }
   },
   {
@@ -2521,12 +2523,13 @@
     "slug": "philadelphia",
     "country": null,
     "dataSourceId": "penndot",
-    "total": 7870,
-    "measured": 7870,
+    "total": 8265,
+    "measured": 8265,
     "measuredPct": 100,
     "synthetic": 0,
     "sourceCounts": {
-      "penndot": 7870
+      "penndot": 7870,
+      "njdot": 395
     }
   },
   {
@@ -2547,12 +2550,13 @@
     "slug": "new-york",
     "country": null,
     "dataSourceId": "nysdot",
-    "total": 23464,
-    "measured": 23464,
+    "total": 25130,
+    "measured": 25130,
     "measuredPct": 100,
     "synthetic": 0,
     "sourceCounts": {
-      "nysdot": 23464
+      "nysdot": 23464,
+      "njdot": 1666
     }
   },
   {
@@ -4047,6 +4051,19 @@
     "synthetic": 0,
     "sourceCounts": {
       "fdot": 920
+    }
+  },
+  {
+    "code": "sarasota_metro",
+    "slug": "sarasota",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 1028,
+    "measured": 1028,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fdot": 1028
     }
   },
   {

@@ -541,20 +541,20 @@
   },
   "washington_dc_metro": {
     "method": "direct",
-    "provenance": "direct calibration: n=281/411/1396/485/146 per class",
+    "provenance": "direct calibration: n=792/1622/5030/2219/534 per class",
     "baseline": {
-      "0": 15291,
-      "1": 15291,
-      "2": 15291,
-      "3": 7815,
-      "4": 6826
+      "0": 19444,
+      "1": 19444,
+      "2": 19444,
+      "3": 9259,
+      "4": 7603
     },
     "measuredN": {
-      "0": 281,
-      "1": 411,
-      "2": 1396,
-      "3": 485,
-      "4": 146
+      "0": 792,
+      "1": 1622,
+      "2": 5030,
+      "3": 2219,
+      "4": 534
     }
   },
   "baltimore_metro": {
@@ -577,20 +577,20 @@
   },
   "philadelphia_metro": {
     "method": "direct",
-    "provenance": "direct calibration: n=566/1266/3230/1265/905 per class",
+    "provenance": "direct calibration: n=607/1447/3359/1289/918 per class",
     "baseline": {
-      "0": 10458,
-      "1": 10458,
-      "2": 9543,
+      "0": 11490,
+      "1": 11490,
+      "2": 9744,
       "3": 8247,
-      "4": 8232
+      "4": 8247
     },
     "measuredN": {
-      "0": 566,
-      "1": 1266,
-      "2": 3230,
-      "3": 1265,
-      "4": 905
+      "0": 607,
+      "1": 1447,
+      "2": 3359,
+      "3": 1289,
+      "4": 918
     }
   },
   "pittsburgh_metro": {
@@ -613,20 +613,20 @@
   },
   "new_york_metro": {
     "method": "direct",
-    "provenance": "direct calibration: n=2839/1127/8643/6181/2634 per class",
+    "provenance": "direct calibration: n=3028/1373/9198/6555/2865 per class",
     "baseline": {
-      "0": 11036,
-      "1": 11036,
-      "2": 10261,
-      "3": 7316,
-      "4": 4963
+      "0": 16645,
+      "1": 16645,
+      "2": 10996,
+      "3": 7652,
+      "4": 5392
     },
     "measuredN": {
-      "0": 2839,
-      "1": 1127,
-      "2": 8643,
-      "3": 6181,
-      "4": 2634
+      "0": 3028,
+      "1": 1373,
+      "2": 9198,
+      "3": 6555,
+      "4": 2865
     }
   },
   "boston_metro": {
@@ -2985,6 +2985,24 @@
       "2": 646,
       "3": 117,
       "4": 39
+    }
+  },
+  "sarasota_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 3 classes; 2 thin-sample classes filled from north_america × 1.00 motorization scalar",
+    "baseline": {
+      "0": 60000,
+      "1": 30083,
+      "2": 30083,
+      "3": 18400,
+      "4": 11852
+    },
+    "measuredN": {
+      "0": 0,
+      "1": 38,
+      "2": 550,
+      "3": 324,
+      "4": 105
     }
   },
   "roanoke_metro": {

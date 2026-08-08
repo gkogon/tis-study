@@ -173,7 +173,7 @@ export type RegionCode =
   | "provo_metro" | "ogden_metro"
   | "rochester_mn_metro" | "duluth_metro"
   | "fort_lauderdale_metro" | "west_palm_beach_metro" | "daytona_beach_metro"
-  | "lakeland_metro" | "tallahassee_metro" | "fort_myers_metro"
+  | "lakeland_metro" | "tallahassee_metro" | "fort_myers_metro" | "sarasota_metro"
   | "roanoke_metro" | "charlottesville_metro"
   | "springfield_mo_metro" | "columbia_mo_metro"
   | "cedar_rapids_metro"
@@ -2058,6 +2058,12 @@ export const REGIONS: Record<RegionCode, Region> = {
   lakeland_metro: { code: "lakeland_metro", displayName: "Lakeland-Winter Haven MSA", bounds: { latMin: 27.9, latMax: 28.2, lonMin: -82.1, lonMax: -81.7 }, stateCode: "FL", jurisdiction: { dotName: "Lakeland Public Works Department", planningOfficeName: "Polk County Land Development Division", parkingCodeCitation: "Lakeland Land Development Code, Article 7 — Off-Street Parking." }, dataSourceId: "fdot", active: true },
   tallahassee_metro: { code: "tallahassee_metro", displayName: "Tallahassee MSA", bounds: { latMin: 30.2, latMax: 30.7, lonMin: -84.5, lonMax: -84.0 }, stateCode: "FL", jurisdiction: { dotName: "Tallahassee Underground Utilities and Public Infrastructure", planningOfficeName: "Tallahassee-Leon County Planning Department", parkingCodeCitation: "Tallahassee Land Development Code, Chapter 10, Section 10-256 — Parking." }, dataSourceId: "fdot", active: true },
   fort_myers_metro: { code: "fort_myers_metro", displayName: "Cape Coral-Fort Myers MSA", bounds: { latMin: 26.4, latMax: 26.8, lonMin: -82.1, lonMax: -81.7 }, stateCode: "FL", jurisdiction: { dotName: "Fort Myers Public Works Department", planningOfficeName: "Lee County Department of Community Development", parkingCodeCitation: "Fort Myers Land Development Code, Section 86-191 — Off-Street Parking." }, dataSourceId: "fdot", active: true },
+  // North Port-Sarasota-Bradenton MSA: Sarasota + Manatee counties.
+  // latMax 27.60 deliberately overlaps tampa_metro's latMin 27.5 —
+  // regionForCoordinate's smallest-bbox-wins precedence resolves
+  // Palmetto/Ellenton/Parrish (north Manatee, lat 27.5–27.58) here, not
+  // Tampa. Southward, fort_myers_metro stops at latMax 26.8 — no overlap.
+  sarasota_metro: { code: "sarasota_metro", displayName: "North Port-Sarasota-Bradenton MSA", bounds: { latMin: 26.95, latMax: 27.60, lonMin: -82.80, lonMax: -82.05 }, stateCode: "FL", jurisdiction: { dotName: "Sarasota County Public Works — Transportation Planning Division", planningOfficeName: "Sarasota County Planning and Development Services", parkingCodeCitation: "City of Sarasota Zoning Code, Article VII, Division 2 — Off-Street Parking and Loading." }, dataSourceId: "fdot", active: true },
   // VA (2) — VDOT
   roanoke_metro: { code: "roanoke_metro", displayName: "Roanoke MSA", bounds: { latMin: 37.1, latMax: 37.4, lonMin: -80.1, lonMax: -79.7 }, stateCode: "VA", jurisdiction: { dotName: "Roanoke Transportation Division", planningOfficeName: "Roanoke Planning, Building, and Development Department", parkingCodeCitation: "Roanoke Zoning Ordinance, Section 36.2-652 — Parking." }, dataSourceId: "vdot", active: true },
   charlottesville_metro: { code: "charlottesville_metro", displayName: "Charlottesville MSA", bounds: { latMin: 37.9, latMax: 38.2, lonMin: -78.6, lonMax: -78.3 }, stateCode: "VA", jurisdiction: { dotName: "Charlottesville Public Works Department", planningOfficeName: "Charlottesville Department of Neighborhood Development Services", parkingCodeCitation: "Charlottesville Zoning Ordinance, Article 8 — Parking and Loading." }, dataSourceId: "vdot", active: true },
