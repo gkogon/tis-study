@@ -22,6 +22,10 @@ import {
 const router: IRouter = Router();
 
 function devAuthEnabled(): boolean {
+  // Hard fail-safe: dev-login is NEVER available in production, regardless of
+  // how DEV_AUTH_ENABLED is set — a misconfigured flag must not become an
+  // any-email account + admin takeover.
+  if (process.env.NODE_ENV === "production") return false;
   return process.env.DEV_AUTH_ENABLED === "true";
 }
 

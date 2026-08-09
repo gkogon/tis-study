@@ -306,6 +306,19 @@ async function onInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
   const customerId =
     typeof invoice.customer === "string" ? invoice.customer : null;
   if (!customerId) return;
+
+  // ONLY a true new billing cycle re-grants the period's study quota. The $0
+  // trial invoice, the initial subscription invoice, and proration/upgrade
+  // invoices all fire `invoice.paid` too — resetting on those lets a firm farm
+  // free studies by re-subscribing or triggering a proration.
+  if (invoice.billing_reason !== "subscription_cycle") {
+    logger.info(
+      { invoiceId: invoice.id, billingReason: invoice.billing_reason },
+      "stripe-webhook.invoice_paid_skipped_non_cycle",
+    );
+    return;
+  }
+
   const firm = await findFirmByStripeCustomerId(customerId);
   if (!firm) return;
 
