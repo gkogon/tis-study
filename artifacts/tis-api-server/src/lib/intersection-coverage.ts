@@ -162,9 +162,19 @@ export const DEDUP_DISTANCE_M = 45;
  */
 export const NAME_DEDUP_MAX_M = 150;
 
-/** Normalize a signal name for equality: trim, collapse internal whitespace, lowercase. */
+/**
+ * Normalize a signal name for equality: trim, collapse internal whitespace,
+ * lowercase, and sort the "&"-separated cross-street parts so the label order
+ * doesn't matter. The analyzer's auto-naming orders each label by whichever
+ * road segment is closest to that node, so the nodes of one divided-highway
+ * box junction can carry BOTH "Little Road & State Road 54" AND the flipped
+ * "State Road 54 & Little Road" (SR-54 & Little Rd, Pasco County FL). The two
+ * labels name the same road pair, hence the same junction.
+ */
 export function normalizeSignalName(name: string | null | undefined): string {
-  return (name ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+  const flat = (name ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+  if (!flat.includes(" & ")) return flat;
+  return flat.split(" & ").sort().join(" & ");
 }
 
 /** Two signals share the "same" name when both carry an identical, non-empty normalized name. */

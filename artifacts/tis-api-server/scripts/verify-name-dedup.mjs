@@ -50,9 +50,11 @@ ok(DEDUP_DISTANCE_M === 45, `DEDUP_DISTANCE_M is 45 (got ${DEDUP_DISTANCE_M})`);
 ok(NAME_DEDUP_MAX_M === 150, `NAME_DEDUP_MAX_M is 150 (got ${NAME_DEDUP_MAX_M})`);
 ok(NAME_DEDUP_MAX_M > DEDUP_DISTANCE_M, `name ceiling sits above the distance threshold`);
 
-// --- name equality is order-sensitive and empty-safe ---
+// --- name equality is street-pair-order-insensitive and empty-safe ---
 ok(sameSignalName("A & B", "a  &  b") === true, `sameSignalName normalizes case + whitespace`);
-ok(sameSignalName("A & B", "B & A") === false, `sameSignalName is order-sensitive ("A & B" ≠ "B & A")`);
+ok(sameSignalName("A & B", "B & A") === true, `sameSignalName ignores street order ("A & B" = "B & A")`);
+ok(sameSignalName("A & B", "A & C") === false, `different street pairs never match`);
+ok(sameSignalName("Near A", "A & B") === false, `"Near X" block names don't match cross-street pairs`);
 ok(sameSignalName("", "") === false && sameSignalName(null, null) === false, `empty/missing names never match`);
 
 // --- 1. divided-arterial twins ~60 m apart, same name → MERGE (name rule, >45 m) ---
@@ -133,6 +135,27 @@ ok(sameSignalName("", "") === false && sameSignalName(null, null) === false, `em
     return kept;
   };
   ok(oldDedup(candidatesFrom(site, trio)).length === 1, `(old behavior collapsed all 3 to 1 — the bug this fixes)`);
+}
+
+// --- 6. the real Pasco County case: SR-54 & Little Rd (divided × divided box) ---
+// OSM models this junction as FOUR signal nodes. The analyzer's cross-street
+// naming orders each label by whichever road segment is closest to that node,
+// so the box carries BOTH "Little Road & State Road 54" AND the flipped
+// "State Road 54 & Little Road". One node sits 49 m from the nearest-kept node
+// — beyond the 45 m distance rule — so with order-SENSITIVE name matching the
+// study listed the same junction twice (identical LOS both rows). Real node
+// coordinates + synthesized names from the Tampa inventory; site 28.2078,-82.6698.
+{
+  const box = [
+    { id: "8611650344", name: "Little Road & State Road 54", latitude: 28.20631, longitude: -82.66623 },
+    { id: "8611650345", name: "State Road 54 & Little Road", latitude: 28.20592, longitude: -82.66621 },
+    { id: "8611650343", name: "State Road 54 & Little Road", latitude: 28.20609, longitude: -82.66579 },
+    { id: "8611650346", name: "Little Road & State Road 54", latitude: 28.20568, longitude: -82.66603 },
+  ];
+  const site = { lat: 28.2078, lon: -82.6698 };
+  const r = dedupCloseSignals(candidatesFrom(site, box));
+  ok(r.kept.length === 1, `SR-54 & Little Rd: all 4 box nodes collapse to 1 junction (kept ${r.kept.length})`);
+  ok(r.kept[0]?.sig.id === "8611650344", `the node nearest the site survives (kept ${r.kept[0]?.sig.id})`);
 }
 
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);
