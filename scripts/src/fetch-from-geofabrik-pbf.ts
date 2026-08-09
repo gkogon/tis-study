@@ -36,7 +36,7 @@ const STATES: Record<string, RegionCode[]> = {
   georgia: ["savannah_metro", "augusta_metro", "macon_metro"],
   tennessee: ["memphis_metro", "knoxville_metro", "chattanooga_metro"],
   "north-carolina": ["asheville_metro", "wilmington_metro", "triad_metro", "fayetteville_metro", "greenville_nc_metro"],
-  "south-carolina": ["charleston_sc_metro", "columbia_sc_metro"],
+  "south-carolina": ["charleston_sc_metro", "columbia_sc_metro", "greenville_spartanburg_metro"],
   alabama: ["birmingham_metro", "mobile_metro", "huntsville_metro"],
   virginia: ["hampton_roads_metro", "richmond_metro", "roanoke_metro", "charlottesville_metro"],
   kentucky: ["louisville_metro", "lexington_metro"],

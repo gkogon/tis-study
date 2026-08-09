@@ -253,6 +253,11 @@ const REGIONS: RegionConfig[] = [
     source: "scdot",
     counties: ["Richland", "Lexington", "Calhoun", "Fairfield", "Kershaw", "Saluda"],
   },
+  {
+    slug: "greenville-spartanburg",
+    source: "scdot",
+    counties: ["Greenville", "Spartanburg", "Pickens"],
+  },
   // ── Tier-3 (metros where the state DOT pull works) ─────────────────
   { slug: "pensacola", source: "fdot", counties: ["ESCAMBIA", "SANTA ROSA"] },
   { slug: "fayetteville", source: "ncdot", counties: ["Cumberland", "Harnett", "Hoke"] },

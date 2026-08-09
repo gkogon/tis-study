@@ -826,6 +826,17 @@
       "fallbackPct": 0.9
     },
     {
+      "code": "greenville_spartanburg_metro",
+      "n": 838,
+      "mdape": 0.02,
+      "accuracy": 0.98,
+      "within10": 60.4,
+      "within20": 67.2,
+      "within30": 72.3,
+      "within50": 78,
+      "fallbackPct": 1.3
+    },
+    {
       "code": "knoxville_metro",
       "n": 1460,
       "mdape": 0.022,
@@ -2004,8 +2015,8 @@
     }
   ],
   "globalRollup": {
-    "regions": 182,
-    "totalMeasuredSignals": 452086,
+    "regions": 183,
+    "totalMeasuredSignals": 452924,
     "mdape": 0.099,
     "accuracy": 0.901,
     "within10": 60.8,

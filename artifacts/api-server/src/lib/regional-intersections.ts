@@ -321,6 +321,7 @@ const REGION_INFO: Record<string, RegionBoundsInfo> = {
   tallahassee_metro: { displayName: "Tallahassee MSA", bounds: { latMin: 30.2, latMax: 30.7, lonMin: -84.5, lonMax: -84.0 } },
   fort_myers_metro: { displayName: "Cape Coral-Fort Myers MSA", bounds: { latMin: 26.4, latMax: 26.8, lonMin: -82.1, lonMax: -81.7 } },
   sarasota_metro: { displayName: "North Port-Sarasota-Bradenton MSA", bounds: { latMin: 26.95, latMax: 27.60, lonMin: -82.80, lonMax: -82.05 } },
+  greenville_spartanburg_metro: { displayName: "Greenville-Spartanburg (SC)", bounds: { latMin: 34.5, latMax: 35.1, lonMin: -82.6, lonMax: -81.8 } },
   roanoke_metro: { displayName: "Roanoke MSA", bounds: { latMin: 37.1, latMax: 37.4, lonMin: -80.1, lonMax: -79.7 } },
   charlottesville_metro: { displayName: "Charlottesville MSA", bounds: { latMin: 37.9, latMax: 38.2, lonMin: -78.6, lonMax: -78.3 } },
   springfield_mo_metro: { displayName: "Springfield (MO) MSA", bounds: { latMin: 37.0, latMax: 37.3, lonMin: -93.4, lonMax: -93.1 } },

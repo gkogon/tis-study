@@ -255,8 +255,8 @@ export type RegionCode =
   | "dhaka_metro" | "addis_ababa_metro" | "dar_es_salaam_metro" | "almaty_metro"
   | "kuwait_city_metro" | "muscat_metro" | "tunis_metro" | "dakar_metro"
   | "belgrade_metro" | "sofia_metro" | "zagreb_metro" | "vilnius_metro"
-  // Reserved (planned but not yet wired).
-  | "greenville_metro";
+  // SC upstate (wired 2026-08-08 — Greenville-metro slice of the SC wave).
+  | "greenville_spartanburg_metro";
 
 export type LatLonBox = {
   latMin: number;
@@ -2073,20 +2073,25 @@ export const REGIONS: Record<RegionCode, Region> = {
   // IA (1) — Iowa DOT
   cedar_rapids_metro: { code: "cedar_rapids_metro", displayName: "Cedar Rapids MSA", bounds: { latMin: 41.9, latMax: 42.1, lonMin: -91.8, lonMax: -91.5 }, stateCode: "IA", jurisdiction: { dotName: "Cedar Rapids Public Works Department", planningOfficeName: "Cedar Rapids Community Development Department", parkingCodeCitation: "Cedar Rapids Municipal Code, Chapter 32 — Zoning, Article 5 — Off-Street Parking." }, dataSourceId: "iadot", active: true },
 
-  // ── Reserved (not yet wired) ────────────────────────────────────────
-  greenville_metro: {
-    code: "greenville_metro",
-    displayName: "Greenville MSA",
-    bounds: { latMin: 34.5, latMax: 35.3, lonMin: -82.7, lonMax: -82.0 },
+  // ── SC upstate — SCDOT ──────────────────────────────────────────────
+  greenville_spartanburg_metro: {
+    code: "greenville_spartanburg_metro",
+    displayName: "Greenville-Spartanburg (SC)",
+    // Upstate SC: Greenville + Spartanburg + Pickens counties
+    // (Greenville/Mauldin/Greer/Spartanburg). TIS triggers per Greenville
+    // County LDR Article 9 (Apr 2018) with UDO Sec. 22.8 carrying the
+    // 100-PHT trigger forward — see REGIONAL-SPECS/sc-tis-spec.md §7.
+    bounds: { latMin: 34.5, latMax: 35.1, lonMin: -82.6, lonMax: -81.8 },
     stateCode: "SC",
     jurisdiction: {
-      dotName: "City of Greenville Public Works",
-      planningOfficeName: "Greenville Planning Department",
+      dotName: "Greenville County Public Works",
+      planningOfficeName:
+        "Greenville-Pickens Area Transportation Study (GPATS)",
       parkingCodeCitation:
-        "City of Greenville Land Management Ordinance, Article 19 — Parking.",
+        "Greenville County Land Development Regulations, Article 9; County UDO Sec. 22.8 (TIS trigger).",
     },
     dataSourceId: "scdot",
-    active: false,
+    active: true,
   },
 
   // ── Tier-10 global expansion (OSM-only — signals + roads, no DOT AADT) ────
