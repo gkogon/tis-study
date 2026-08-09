@@ -1521,19 +1521,6 @@
     }
   },
   {
-    "code": "havana_metro",
-    "slug": "havana",
-    "country": "CU",
-    "dataSourceId": "osm_only",
-    "total": 490,
-    "measured": 0,
-    "measuredPct": 0,
-    "synthetic": 490,
-    "sourceCounts": {
-      "synthetic_osm_class": 490
-    }
-  },
-  {
     "code": "dhaka_metro",
     "slug": "dhaka",
     "country": "BD",
