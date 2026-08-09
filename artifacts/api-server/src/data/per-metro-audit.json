@@ -1958,6 +1958,20 @@
     }
   },
   {
+    "code": "sarasota_metro",
+    "slug": "sarasota",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 1345,
+    "measured": 1028,
+    "measuredPct": 76.4,
+    "synthetic": 317,
+    "sourceCounts": {
+      "synthetic_osm_class": 317,
+      "fdot": 1028
+    }
+  },
+  {
     "code": "lyon_metro",
     "slug": "lyon",
     "country": "FR",
@@ -4054,19 +4068,6 @@
     }
   },
   {
-    "code": "sarasota_metro",
-    "slug": "sarasota",
-    "country": null,
-    "dataSourceId": "fdot",
-    "total": 1028,
-    "measured": 1028,
-    "measuredPct": 100,
-    "synthetic": 0,
-    "sourceCounts": {
-      "fdot": 1028
-    }
-  },
-  {
     "code": "roanoke_metro",
     "slug": "roanoke",
     "country": null,
@@ -4131,6 +4132,19 @@
     "synthetic": 0,
     "sourceCounts": {
       "iadot": 363
+    }
+  },
+  {
+    "code": "greenville_spartanburg_metro",
+    "slug": "greenville-spartanburg",
+    "country": null,
+    "dataSourceId": "scdot",
+    "total": 852,
+    "measured": 852,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "ncdot": 852
     }
   }
 ]

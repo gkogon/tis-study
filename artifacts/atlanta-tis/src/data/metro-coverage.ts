@@ -198,6 +198,9 @@ export const METROS: MetroCoverage[] = [
   { code: "columbia_sc_metro", slug: "columbia-sc", shortName: "Columbia", longName: "Columbia (SC) MSA", state: "SC", signals: 976, namedPct: 99.4, aadtPct: 80.9, liveSource: null, aadtSource: "SCDOT 2017 counts",
     dotName: "City of Columbia Engineering Services", planningOfficeName: "Central Midlands Council of Governments (CMCOG)",
     parkingCodeCitation: "Columbia Land Development Code, Section 17-265 — Parking." },
+  { code: "greenville_spartanburg_metro", slug: "greenville-spartanburg", shortName: "Greenville", longName: "Greenville-Spartanburg (SC)", state: "SC", signals: 1204, namedPct: 99.4, aadtPct: 70.8, liveSource: null, aadtSource: "SCDOT 2017 counts",
+    dotName: "Greenville County Public Works", planningOfficeName: "Greenville-Pickens Area Transportation Study (GPATS)",
+    parkingCodeCitation: "Greenville County Land Development Regulations, Article 9; County UDO Sec. 22.8 (TIS trigger)." },
 
   // VA
   { code: "hampton_roads_metro", slug: "hampton-roads", shortName: "Hampton Roads", longName: "Hampton Roads MSA", state: "VA", signals: 4676, namedPct: 99.6, aadtPct: 94.2, liveSource: null, aadtSource: "VDOT 2024 Bidirectional ADT",

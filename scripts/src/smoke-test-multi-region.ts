@@ -61,6 +61,8 @@ const PROBES: Probe[] = [
   { regionCode: "richmond_metro", lat: 37.5407, lon: -77.4360, expectDotIncludes: "Richmond" },
   { regionCode: "charleston_sc_metro", lat: 32.7765, lon: -79.9311, expectDotIncludes: "Charleston" },
   { regionCode: "columbia_sc_metro", lat: 34.0007, lon: -81.0348, expectDotIncludes: "Columbia" },
+  { regionCode: "greenville_spartanburg_metro", lat: 34.8290, lon: -82.3510, expectDotIncludes: "Greenville" }, // Woodruff Rd corridor
+  { regionCode: "greenville_spartanburg_metro", lat: 34.9496, lon: -81.9320, expectDotIncludes: "Greenville" }, // downtown Spartanburg
   { regionCode: "louisville_metro", lat: 38.2527, lon: -85.7585, expectDotIncludes: "Louisville" },
   { regionCode: "new_orleans_metro", lat: 29.9511, lon: -90.0715, expectDotIncludes: "New Orleans" },
   // Tier-3

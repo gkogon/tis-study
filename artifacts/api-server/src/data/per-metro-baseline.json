@@ -3095,22 +3095,22 @@
       "4": 21
     }
   },
-  "greenville_metro": {
-    "method": "group",
-    "provenance": "north_america baseline (no measured signals, no motorization data)",
+  "greenville_spartanburg_metro": {
+    "method": "direct+group_fill",
+    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from north_america × 1.00 motorization scalar",
     "baseline": {
       "0": 60000,
-      "1": 30000,
-      "2": 15000,
-      "3": 8000,
-      "4": 4000
+      "1": 12635,
+      "2": 12231,
+      "3": 9006,
+      "4": 5500
     },
     "measuredN": {
-      "0": 0,
-      "1": 0,
-      "2": 0,
-      "3": 0,
-      "4": 0
+      "0": 27,
+      "1": 133,
+      "2": 305,
+      "3": 258,
+      "4": 126
     }
   },
   "berlin_metro": {
