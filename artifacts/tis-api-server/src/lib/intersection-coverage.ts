@@ -244,6 +244,83 @@ export function dedupCloseSignals<T extends { name: string; latitude: number; lo
 }
 
 /**
+ * Sparse-site fallback: when the study radius contains NO signalized
+ * intersection, the engine widens to the nearest {@link NEAREST_FALLBACK_N}
+ * signals within {@link NEAREST_FALLBACK_MAX_MI} instead of failing the study.
+ * Rural/exurban sites between metro cores routinely sit >1 mi from the nearest
+ * signal; the reviewer-meaningful screening set there is the nearest town's
+ * junctions, not an empty report. The radius default (analyze EVERYTHING inside
+ * the radius) is untouched — the fallback fires only on an empty radius set.
+ * 15 mi comfortably reaches the nearest incorporated town's main crossroads in
+ * the sparsest covered counties while still refusing genuinely-offshore
+ * geocodes (which keep the hard `no_signals_in_radius` 422).
+ */
+export const NEAREST_FALLBACK_N = 5;
+export const NEAREST_FALLBACK_MAX_MI = 15;
+
+/**
+ * The nearest `n` inventory signals within `maxMi` of the site, tagged with
+ * distance and sorted nearest-first. Pure — same haversine as the radius
+ * filter so distances are engine-identical.
+ */
+export function nearestNIntersections<T extends { latitude: number; longitude: number }>(
+  inventory: T[],
+  lat: number,
+  lon: number,
+  n: number = NEAREST_FALLBACK_N,
+  maxMi: number = NEAREST_FALLBACK_MAX_MI,
+): Array<{ sig: T; distanceMi: number }> {
+  const maxM = maxMi * M_PER_MI;
+  const all: Array<{ sig: T; distanceMi: number }> = [];
+  for (const s of inventory) {
+    const dM = haversineMeters(lat, lon, s.latitude, s.longitude);
+    if (dM <= maxM) all.push({ sig: s, distanceMi: dM / M_PER_MI });
+  }
+  all.sort((a, b) => a.distanceMi - b.distanceMi);
+  return all.slice(0, n);
+}
+
+/**
+ * Disclosure carried on a report whose study set came from the nearest-N
+ * fallback rather than the radius. Distinct from {@link CoverageWarning}: the
+ * study SUCCEEDED, but every analyzed intersection sits beyond the stated
+ * radius and the report must say so.
+ */
+export type CoverageNote = {
+  code: "nearest_n_fallback";
+  /** The study radius that contained no signals. */
+  radiusMi: number;
+  /** How many fallback intersections were analyzed. */
+  usedCount: number;
+  /** Distance to the nearest analyzed intersection, in miles. */
+  nearestDistanceMi: number;
+  /** Distance to the farthest analyzed intersection, in miles. */
+  farthestDistanceMi: number;
+  /** User-facing, screening-appropriate disclosure. */
+  message: string;
+};
+
+/** Build the fallback disclosure from the fallback set actually analyzed. */
+export function nearestFallbackNote(
+  radiusMi: number,
+  used: Array<{ distanceMi: number }>,
+): CoverageNote {
+  const nearest = used[0]?.distanceMi ?? 0;
+  const farthest = used[used.length - 1]?.distanceMi ?? 0;
+  return {
+    code: "nearest_n_fallback",
+    radiusMi,
+    usedCount: used.length,
+    nearestDistanceMi: Math.round(nearest * 100) / 100,
+    farthestDistanceMi: Math.round(farthest * 100) / 100,
+    message:
+      `No signalized intersections exist within the ${radiusMi} mi study radius of this site; ` +
+      `the ${used.length} nearest signalized intersection${used.length === 1 ? "" : "s"} ` +
+      `(${nearest.toFixed(1)}–${farthest.toFixed(1)} mi away) are analyzed for screening context instead.`,
+  };
+}
+
+/**
  * A study whose site had no signalized intersection within the study radius —
  * almost always a bad geocode (open water or an uncovered area) rather than a
  * real finding. Carried on the report and surfaced by the routes as a 422.

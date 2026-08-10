@@ -699,6 +699,25 @@ export interface DrivewayRouteResult {
   reroutes: DrivewayRouteResultReroutesItem[];
 }
 
+export type TisReportCoverageNoteCode =
+  (typeof TisReportCoverageNoteCode)[keyof typeof TisReportCoverageNoteCode];
+
+export const TisReportCoverageNoteCode = {
+  nearest_n_fallback: "nearest_n_fallback",
+} as const;
+
+/**
+ * Present ONLY when the study radius contained no signalized intersection and the engine widened to the nearest-N fallback set (sparse rural/exurban site). The study succeeded; this discloses that every analyzed intersection sits beyond the stated radius.
+ */
+export type TisReportCoverageNote = {
+  code: TisReportCoverageNoteCode;
+  radiusMi: number;
+  usedCount: number;
+  nearestDistanceMi: number;
+  farthestDistanceMi: number;
+  message: string;
+};
+
 export interface TisReport {
   generatedAt: string;
   request: TisRequest;
@@ -724,6 +743,8 @@ export interface TisReport {
   sensitivity?: TisSensitivityResult;
   tripDistribution?: TisTripDistribution;
   driveways?: DrivewayRouteResult;
+  /** Present ONLY when the study radius contained no signalized intersection and the engine widened to the nearest-N fallback set (sparse rural/exurban site). The study succeeded; this discloses that every analyzed intersection sits beyond the stated radius. */
+  coverageNote?: TisReportCoverageNote;
 }
 
 /**

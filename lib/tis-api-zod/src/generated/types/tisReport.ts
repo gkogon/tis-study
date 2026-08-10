@@ -8,6 +8,7 @@
 import type { DrivewayRouteResult } from "./drivewayRouteResult";
 import type { TisAffectedIntersection } from "./tisAffectedIntersection";
 import type { TisPeriodReport } from "./tisPeriodReport";
+import type { TisReportCoverageNote } from "./tisReportCoverageNote";
 import type { TisRequest } from "./tisRequest";
 import type { TisRouteAssignment } from "./tisRouteAssignment";
 import type { TisSensitivityResult } from "./tisSensitivityResult";
@@ -40,4 +41,6 @@ export interface TisReport {
   sensitivity?: TisSensitivityResult;
   tripDistribution?: TisTripDistribution;
   driveways?: DrivewayRouteResult;
+  /** Present ONLY when the study radius contained no signalized intersection and the engine widened to the nearest-N fallback set (sparse rural/exurban site). The study succeeded; this discloses that every analyzed intersection sits beyond the stated radius. */
+  coverageNote?: TisReportCoverageNote;
 }

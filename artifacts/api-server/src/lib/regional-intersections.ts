@@ -322,6 +322,11 @@ const REGION_INFO: Record<string, RegionBoundsInfo> = {
   fort_myers_metro: { displayName: "Cape Coral-Fort Myers MSA", bounds: { latMin: 26.4, latMax: 26.8, lonMin: -82.1, lonMax: -81.7 } },
   sarasota_metro: { displayName: "North Port-Sarasota-Bradenton MSA", bounds: { latMin: 26.95, latMax: 27.60, lonMin: -82.80, lonMax: -82.05 } },
   greenville_spartanburg_metro: { displayName: "Greenville-Spartanburg (SC)", bounds: { latMin: 34.5, latMax: 35.1, lonMin: -82.6, lonMax: -81.8 } },
+  // Statewide fallback tier (bbox here is for zone labeling only — exact
+  // state assignment happens in tis-api-server regionForCoordinate).
+  south_carolina_statewide: { displayName: "South Carolina (statewide)", bounds: { latMin: 32.0, latMax: 35.25, lonMin: -83.36, lonMax: -78.5 } },
+  florida_statewide: { displayName: "Florida (statewide)", bounds: { latMin: 24.5, latMax: 31.01, lonMin: -87.64, lonMax: -80.02 } },
+  georgia_statewide: { displayName: "Georgia (statewide)", bounds: { latMin: 30.35, latMax: 35.01, lonMin: -85.62, lonMax: -80.78 } },
   roanoke_metro: { displayName: "Roanoke MSA", bounds: { latMin: 37.1, latMax: 37.4, lonMin: -80.1, lonMax: -79.7 } },
   charlottesville_metro: { displayName: "Charlottesville MSA", bounds: { latMin: 37.9, latMax: 38.2, lonMin: -78.6, lonMax: -78.3 } },
   springfield_mo_metro: { displayName: "Springfield (MO) MSA", bounds: { latMin: 37.0, latMax: 37.3, lonMin: -93.4, lonMax: -93.1 } },

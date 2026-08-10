@@ -258,6 +258,34 @@ const REGIONS: RegionConfig[] = [
     source: "scdot",
     counties: ["Greenville", "Spartanburg", "Pickens"],
   },
+  // ── Statewide fallback tier (SC/FL/GA pilot) ────────────────────────
+  // County rosters queried verbatim from each layer's distinct values
+  // (returnDistinctValues on County_Nam / COUNTY, 2026-08-09) so no
+  // spelling drift can silently zero a county.
+  {
+    slug: "south-carolina-statewide",
+    source: "scdot",
+    counties: ["Abbeville", "Aiken", "Allendale", "Anderson", "Bamberg", "Barnwell", "Beaufort", "Berkeley", "Calhoun", "Charleston", "Cherokee", "Chester", "Chesterfield", "Clarendon", "Colleton", "Darlington", "Dillon", "Dorchester", "Edgefield", "Fairfield", "Florence", "Georgetown", "Greenville", "Greenwood", "Hampton", "Horry", "Jasper", "Kershaw", "Lancaster", "Laurens", "Lee", "Lexington", "Marion", "Marlboro", "McCormick", "Newberry", "Oconee", "Orangeburg", "Pickens", "Richland", "Saluda", "Spartanburg", "Sumter", "Union", "Williamsburg", "York"],
+  },
+  {
+    slug: "florida-statewide",
+    source: "fdot",
+    counties: ["Alachua", "Baker", "Bay", "Bradford", "Brevard", "Broward", "Calhoun", "Charlotte", "Citrus", "Clay", "Collier", "Columbia", "Desoto", "Dixie", "Duval", "Escambia", "Flagler", "Franklin", "Gadsden", "Gilchrist", "Glades", "Gulf", "Hamilton", "Hardee", "Hendry", "Hernando", "Highlands", "Hillsborough", "Holmes", "Indian River", "Jackson", "Jefferson", "Lafayette", "Lake", "Lee", "Leon", "Levy", "Liberty", "Madison", "Manatee", "Marion", "Martin", "Miami-Dade", "Monroe", "Nassau", "Okaloosa", "Okeechobee", "Orange", "Osceola", "Palm Beach", "Pasco", "Pinellas", "Polk", "Putnam", "Santa Rosa", "Sarasota", "Seminole", "St. Johns", "St. Lucie", "Sumter", "Suwannee", "Taylor", "Union", "Volusia", "Wakulla", "Walton", "Washington"],
+  },
+  {
+    slug: "georgia-statewide",
+    source: "point_bbox",
+    counties: [],
+    bbox: { latMin: 30.35, latMax: 35.01, lonMin: -85.62, lonMax: -80.78 },
+    sourceLabel: "GDOT AADT (DeKalbGIS ingest)",
+    pointConfig: {
+      url: "https://services2.arcgis.com/IxVN2oUE9EYLSnPE/arcgis/rest/services/GDOT_AADT/FeatureServer/1",
+      aadtField: "aadt",
+      yearExtractor: { kind: "static", year: 2024 },
+      snapM: 500,
+      sourceTag: "gdot_511",
+    },
+  },
   // ── Tier-3 (metros where the state DOT pull works) ─────────────────
   { slug: "pensacola", source: "fdot", counties: ["ESCAMBIA", "SANTA ROSA"] },
   { slug: "fayetteville", source: "ncdot", counties: ["Cumberland", "Harnett", "Hoke"] },
@@ -1702,31 +1730,45 @@ async function processRegion(cfg: RegionConfig): Promise<void> {
     const yearField = pc.yearExtractor.kind !== "static" ? pc.yearExtractor.field : null;
     // Skip OBJECTID — see polyline_bbox note.
     const fields = [pc.aadtField, pc.aadtFieldAlt, yearField].filter(Boolean).join(",");
-    const envelope = `${b.lonMin},${b.latMin},${b.lonMax},${b.latMax}`;
-    console.log(`  Fetching ${cfg.sourceLabel ?? cfg.slug} points for bbox ${envelope}...`);
+    console.log(`  Fetching ${cfg.sourceLabel ?? cfg.slug} points for bbox ${b.lonMin},${b.latMin},${b.lonMax},${b.latMax}...`);
 
     type Pt = { attributes: Record<string, unknown>; geometry?: { x: number; y: number } };
+    // Tile large bboxes (statewide pulls): a single envelope over a whole
+    // state fails at the network/service layer. ≤1.2° per axis per query;
+    // metro-sized boxes stay a single tile, so their behavior is unchanged.
+    const TILE_DEG = 1.2;
+    const lonSteps = Math.max(1, Math.ceil((b.lonMax - b.lonMin) / TILE_DEG));
+    const latSteps = Math.max(1, Math.ceil((b.latMax - b.latMin) / TILE_DEG));
     const out: Pt[] = [];
-    let offset = 0;
-    while (true) {
-      const url =
-        `${pc.url}/query` +
-        `?where=${encodeURIComponent(where)}` +
-        `&outFields=${encodeURIComponent(fields)}` +
-        `&outSR=4326` +
-        `&returnGeometry=true` +
-        `&geometry=${encodeURIComponent(envelope)}` +
-        `&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects` +
-        `&resultRecordCount=${PAGE_SIZE}` +
-        `&resultOffset=${offset}` +
-        `&f=json`;
-      const res = await fetch(url, { headers: { "User-Agent": "tis-study/1.0" } });
-      if (!res.ok) throw new Error(`${cfg.slug} query failed at offset ${offset}: ${res.status} ${res.statusText}`);
-      const json = (await res.json()) as { features?: Pt[]; exceededTransferLimit?: boolean };
-      const features = json.features ?? [];
-      out.push(...features);
-      if (!json.exceededTransferLimit || features.length === 0) break;
-      offset += features.length;
+    for (let li = 0; li < lonSteps; li++) {
+      for (let ti = 0; ti < latSteps; ti++) {
+        const lonMin = b.lonMin + (li * (b.lonMax - b.lonMin)) / lonSteps;
+        const lonMax = b.lonMin + ((li + 1) * (b.lonMax - b.lonMin)) / lonSteps;
+        const latMin = b.latMin + (ti * (b.latMax - b.latMin)) / latSteps;
+        const latMax = b.latMin + ((ti + 1) * (b.latMax - b.latMin)) / latSteps;
+        const envelope = `${lonMin},${latMin},${lonMax},${latMax}`;
+        let offset = 0;
+        while (true) {
+          const url =
+            `${pc.url}/query` +
+            `?where=${encodeURIComponent(where)}` +
+            `&outFields=${encodeURIComponent(fields)}` +
+            `&outSR=4326` +
+            `&returnGeometry=true` +
+            `&geometry=${encodeURIComponent(envelope)}` +
+            `&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects` +
+            `&resultRecordCount=${PAGE_SIZE}` +
+            `&resultOffset=${offset}` +
+            `&f=json`;
+          const res = await fetch(url, { headers: { "User-Agent": "tis-study/1.0" } });
+          if (!res.ok) throw new Error(`${cfg.slug} query failed at offset ${offset}: ${res.status} ${res.statusText}`);
+          const json = (await res.json()) as { features?: Pt[]; exceededTransferLimit?: boolean };
+          const features = json.features ?? [];
+          out.push(...features);
+          if (!json.exceededTransferLimit || features.length === 0) break;
+          offset += features.length;
+        }
+      }
     }
     console.log(`  Fetched ${out.length} points`);
 
@@ -1866,12 +1908,24 @@ async function processRegion(cfg: RegionConfig): Promise<void> {
 
   // ── FDOT path ────────────────────────────────────────────────────────
   if (cfg.source === "fdot") {
-    const countyClause = `COUNTY IN (${cfg.counties.map((c) => `'${c}'`).join(",")})`;
-    // Only pull the LATEST year per segment (FDOT has historicals too — we want current).
-    const where = `${countyClause} AND AADT IS NOT NULL AND AADT > 0`;
-    const fields = "YEAR_,AADT,KFCTR,COUNTY";
+    // Chunk the county IN-clause: the statewide 67-county pull fails as a
+    // single query (payload/timeout), and per-chunk queries are also gentler
+    // on the metro configs. Feature accumulation is order-independent.
+    const features: FdotFeature[] = [];
+    const CHUNK = 8;
     console.log(`  Fetching FDOT AADT segments for ${cfg.counties.length} counties...`);
-    const features = await fetchAll<FdotFeature>(FDOT_URL, where, fields, "esriGeometryPolyline");
+    for (let i = 0; i < cfg.counties.length; i += CHUNK) {
+      const chunk = cfg.counties.slice(i, i + CHUNK);
+      const countyClause = `COUNTY IN (${chunk.map((c) => `'${c}'`).join(",")})`;
+      // Only pull the LATEST year per segment (FDOT has historicals too — we want current).
+      const where = `${countyClause} AND AADT IS NOT NULL AND AADT > 0`;
+      const fields = "YEAR_,AADT,KFCTR,COUNTY";
+      const got = await fetchAll<FdotFeature>(FDOT_URL, where, fields, "esriGeometryPolyline");
+      features.push(...got);
+      if (cfg.counties.length > CHUNK) {
+        console.log(`    counties ${i + 1}-${Math.min(i + CHUNK, cfg.counties.length)}: +${got.length} (total ${features.length})`);
+      }
+    }
     console.log(`  Fetched ${features.length} AADT segments`);
 
     const grid = buildGrid<FdotFeature>(features, fdotRepPoint);

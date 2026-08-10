@@ -209,6 +209,12 @@ router.post("/generate/pdf", generateRateLimiter, async (req, res): Promise<void
         `Coordinates (${parsed.data.latitude.toFixed(4)}, ${parsed.data.longitude.toFixed(4)}) ` +
         `fall outside our covered metros.`,
     });
+    // Demand map for coverage expansion: every rejected coordinate is a
+    // prospect telling us where to wire next. Mirrors tis-generate above.
+    req.log.info(
+      { lat: parsed.data.latitude, lon: parsed.data.longitude },
+      "tis-project.out_of_coverage",
+    );
     return;
   }
 

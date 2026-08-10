@@ -50,6 +50,8 @@ export * from "./tisProjectDetail";
 export * from "./tisProjectDetailRequest";
 export * from "./tisProjectSummary";
 export * from "./tisReport";
+export * from "./tisReportCoverageNote";
+export * from "./tisReportCoverageNoteCode";
 export * from "./tisRequest";
 export * from "./tisRequestAdditionalStudyPointsItem";
 export * from "./tisRouteAssignment";

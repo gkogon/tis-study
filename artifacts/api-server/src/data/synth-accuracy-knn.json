@@ -573,6 +573,17 @@
       "fallbackPct": 0.1
     },
     {
+      "code": "georgia_statewide",
+      "n": 9837,
+      "mdape": 0.002,
+      "accuracy": 0.998,
+      "within10": 71,
+      "within20": 75.4,
+      "within30": 79,
+      "within50": 83.9,
+      "fallbackPct": 1.4
+    },
+    {
       "code": "toulouse_metro",
       "n": 520,
       "mdape": 0.002,
@@ -727,6 +738,17 @@
       "fallbackPct": 0.2
     },
     {
+      "code": "south_carolina_statewide",
+      "n": 4105,
+      "mdape": 0.007,
+      "accuracy": 0.993,
+      "within10": 65,
+      "within20": 70.3,
+      "within30": 74.5,
+      "within50": 79.6,
+      "fallbackPct": 2.4
+    },
+    {
       "code": "miami_dade_metro",
       "n": 8642,
       "mdape": 0.008,
@@ -824,6 +846,17 @@
       "within30": 72.8,
       "within50": 80.6,
       "fallbackPct": 0.9
+    },
+    {
+      "code": "florida_statewide",
+      "n": 32977,
+      "mdape": 0.019,
+      "accuracy": 0.981,
+      "within10": 58.8,
+      "within20": 65.4,
+      "within30": 70.8,
+      "within50": 78.8,
+      "fallbackPct": 0.8
     },
     {
       "code": "greenville_spartanburg_metro",
@@ -2015,13 +2048,13 @@
     }
   ],
   "globalRollup": {
-    "regions": 183,
-    "totalMeasuredSignals": 452924,
-    "mdape": 0.099,
-    "accuracy": 0.901,
-    "within10": 60.8,
-    "within20": 67.3,
-    "within30": 72.1,
+    "regions": 186,
+    "totalMeasuredSignals": 499843,
+    "mdape": 0.091,
+    "accuracy": 0.909,
+    "within10": 60.9,
+    "within20": 67.4,
+    "within30": 72.2,
     "within50": 79.4
   }
 }

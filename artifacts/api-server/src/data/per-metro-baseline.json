@@ -3113,6 +3113,60 @@
       "4": 126
     }
   },
+  "south_carolina_statewide": {
+    "method": "direct",
+    "provenance": "direct calibration: n=127/924/1591/1140/424 per class",
+    "baseline": {
+      "0": 20765,
+      "1": 13432,
+      "2": 10830,
+      "3": 8661,
+      "4": 6400
+    },
+    "measuredN": {
+      "0": 127,
+      "1": 924,
+      "2": 1591,
+      "3": 1140,
+      "4": 424
+    }
+  },
+  "florida_statewide": {
+    "method": "direct",
+    "provenance": "direct calibration: n=1830/3894/14553/9360/3594 per class",
+    "baseline": {
+      "0": 31123,
+      "1": 31123,
+      "2": 30493,
+      "3": 14988,
+      "4": 10000
+    },
+    "measuredN": {
+      "0": 1830,
+      "1": 3894,
+      "2": 14553,
+      "3": 9360,
+      "4": 3594
+    }
+  },
+  "georgia_statewide": {
+    "method": "direct",
+    "provenance": "direct calibration: n=1184/1950/3451/2744/652 per class",
+    "baseline": {
+      "0": 17148,
+      "1": 17148,
+      "2": 14864,
+      "3": 8926,
+      "4": 7018
+    },
+    "measuredN": {
+      "0": 1184,
+      "1": 1950,
+      "2": 3451,
+      "3": 2744,
+      "4": 652
+    }
+  },
   "berlin_metro": {
     "method": "direct+group_fill",
     "provenance": "direct calibration on 2 classes; 3 thin-sample classes filled from europe × 1.00 motorization scalar",

@@ -63,6 +63,14 @@ const PROBES: Probe[] = [
   { regionCode: "columbia_sc_metro", lat: 34.0007, lon: -81.0348, expectDotIncludes: "Columbia" },
   { regionCode: "greenville_spartanburg_metro", lat: 34.8290, lon: -82.3510, expectDotIncludes: "Greenville" }, // Woodruff Rd corridor
   { regionCode: "greenville_spartanburg_metro", lat: 34.9496, lon: -81.9320, expectDotIncludes: "Greenville" }, // downtown Spartanburg
+  // Statewide fallback tier — sites between metro boxes resolve to the state
+  // region; border towns must land on the RIGHT side of the state polygon.
+  { regionCode: "south_carolina_statewide", lat: 32.9052, lon: -80.6670, expectDotIncludes: "SCDOT" }, // Walterboro
+  { regionCode: "south_carolina_statewide", lat: 33.4918, lon: -80.8556, expectDotIncludes: "SCDOT" }, // Orangeburg
+  { regionCode: "florida_statewide", lat: 27.2439, lon: -80.8298, expectDotIncludes: "FDOT" }, // Okeechobee
+  { regionCode: "florida_statewide", lat: 30.7741, lon: -85.2272, expectDotIncludes: "FDOT" }, // Marianna (GA/FL border band)
+  { regionCode: "georgia_statewide", lat: 31.4505, lon: -83.5085, expectDotIncludes: "GDOT" }, // Tifton
+  { regionCode: "georgia_statewide", lat: 32.4488, lon: -81.7832, expectDotIncludes: "GDOT" }, // Statesboro (SC/GA border band)
   { regionCode: "louisville_metro", lat: 38.2527, lon: -85.7585, expectDotIncludes: "Louisville" },
   { regionCode: "new_orleans_metro", lat: 29.9511, lon: -90.0715, expectDotIncludes: "New Orleans" },
   // Tier-3

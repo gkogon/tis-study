@@ -1900,6 +1900,20 @@
     }
   },
   {
+    "code": "greenville_spartanburg_metro",
+    "slug": "greenville-spartanburg",
+    "country": null,
+    "dataSourceId": "scdot",
+    "total": 1200,
+    "measured": 852,
+    "measuredPct": 71,
+    "synthetic": 348,
+    "sourceCounts": {
+      "synthetic_osm_class": 348,
+      "ncdot": 852
+    }
+  },
+  {
     "code": "osaka_metro",
     "slug": "osaka",
     "country": "JP",
@@ -4135,16 +4149,42 @@
     }
   },
   {
-    "code": "greenville_spartanburg_metro",
-    "slug": "greenville-spartanburg",
+    "code": "south_carolina_statewide",
+    "slug": "south-carolina-statewide",
     "country": null,
     "dataSourceId": "scdot",
-    "total": 852,
-    "measured": 852,
+    "total": 4247,
+    "measured": 4247,
     "measuredPct": 100,
     "synthetic": 0,
     "sourceCounts": {
-      "ncdot": 852
+      "ncdot": 4247
+    }
+  },
+  {
+    "code": "florida_statewide",
+    "slug": "florida-statewide",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 33917,
+    "measured": 33917,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "fdot": 33917
+    }
+  },
+  {
+    "code": "georgia_statewide",
+    "slug": "georgia-statewide",
+    "country": null,
+    "dataSourceId": "gdot_511",
+    "total": 10120,
+    "measured": 10120,
+    "measuredPct": 100,
+    "synthetic": 0,
+    "sourceCounts": {
+      "gdot_511": 10120
     }
   }
 ]
