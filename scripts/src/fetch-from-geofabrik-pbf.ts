@@ -32,11 +32,11 @@ const PBF_DIR = "/tmp/geofabrik_pbf";
 // roads outside the primary state are silently missing — those edge areas
 // of the metro will have lower coverage.
 const STATES: Record<string, RegionCode[]> = {
-  florida: ["jacksonville_metro", "pensacola_metro", "fort_lauderdale_metro", "west_palm_beach_metro", "daytona_beach_metro", "lakeland_metro", "tallahassee_metro", "fort_myers_metro", "sarasota_metro"],
-  georgia: ["savannah_metro", "augusta_metro", "macon_metro"],
+  florida: ["jacksonville_metro", "pensacola_metro", "fort_lauderdale_metro", "west_palm_beach_metro", "daytona_beach_metro", "lakeland_metro", "tallahassee_metro", "fort_myers_metro", "sarasota_metro", "florida_statewide"],
+  georgia: ["savannah_metro", "augusta_metro", "macon_metro", "georgia_statewide"],
   tennessee: ["memphis_metro", "knoxville_metro", "chattanooga_metro"],
   "north-carolina": ["asheville_metro", "wilmington_metro", "triad_metro", "fayetteville_metro", "greenville_nc_metro"],
-  "south-carolina": ["charleston_sc_metro", "columbia_sc_metro", "greenville_spartanburg_metro"],
+  "south-carolina": ["charleston_sc_metro", "columbia_sc_metro", "greenville_spartanburg_metro", "south_carolina_statewide"],
   alabama: ["birmingham_metro", "mobile_metro", "huntsville_metro"],
   virginia: ["hampton_roads_metro", "richmond_metro", "roanoke_metro", "charlottesville_metro"],
   kentucky: ["louisville_metro", "lexington_metro"],

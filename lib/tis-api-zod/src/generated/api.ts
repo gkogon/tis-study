@@ -841,6 +841,19 @@ export const GenerateTisResponse = zod.object({
     .describe(
       "Driveway access assignment result. Present only when `request.driveways` was supplied and non-empty AND a road network was available to route through. Absent ⇒ no driveways or roads unavailable (base LOS unchanged).",
     ),
+  coverageNote: zod
+    .object({
+      code: zod.enum(["nearest_n_fallback"]),
+      radiusMi: zod.number(),
+      usedCount: zod.number(),
+      nearestDistanceMi: zod.number(),
+      farthestDistanceMi: zod.number(),
+      message: zod.string(),
+    })
+    .optional()
+    .describe(
+      "Present ONLY when the study radius contained no signalized intersection and the engine widened to the nearest-N fallback set (sparse rural\/exurban site). The study succeeded; this discloses that every analyzed intersection sits beyond the stated radius.",
+    ),
 });
 
 /**
@@ -1839,6 +1852,19 @@ export const GetTisProjectResponse = zod
         .optional()
         .describe(
           "Driveway access assignment result. Present only when `request.driveways` was supplied and non-empty AND a road network was available to route through. Absent ⇒ no driveways or roads unavailable (base LOS unchanged).",
+        ),
+      coverageNote: zod
+        .object({
+          code: zod.enum(["nearest_n_fallback"]),
+          radiusMi: zod.number(),
+          usedCount: zod.number(),
+          nearestDistanceMi: zod.number(),
+          farthestDistanceMi: zod.number(),
+          message: zod.string(),
+        })
+        .optional()
+        .describe(
+          "Present ONLY when the study radius contained no signalized intersection and the engine widened to the nearest-N fallback set (sparse rural\/exurban site). The study succeeded; this discloses that every analyzed intersection sits beyond the stated radius.",
         ),
     }),
   })

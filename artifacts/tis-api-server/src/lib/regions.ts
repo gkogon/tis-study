@@ -31,6 +31,8 @@
  * See REGIONS.md at the repo root for the full expansion playbook.
  */
 
+import { stateForCoordinate } from "./state-boundaries";
+
 export type RegionCode =
   | "atlanta_metro"
   // Tier-0 (first expansion wave — already shipping).
@@ -256,7 +258,11 @@ export type RegionCode =
   | "kuwait_city_metro" | "muscat_metro" | "tunis_metro" | "dakar_metro"
   | "belgrade_metro" | "sofia_metro" | "zagreb_metro" | "vilnius_metro"
   // SC upstate (wired 2026-08-08 — Greenville-metro slice of the SC wave).
-  | "greenville_spartanburg_metro";
+  | "greenville_spartanburg_metro"
+  // Statewide fallback tier (2026-08-09): catches sites between metro
+  // boxes in states whose DOT AADT layer is statewide anyway. Exact
+  // state-polygon assignment; metro boxes always win (smaller bbox).
+  | "south_carolina_statewide" | "florida_statewide" | "georgia_statewide";
 
 export type LatLonBox = {
   latMin: number;
@@ -319,6 +325,16 @@ export type Region = {
     /** "City of Atlanta Zoning Ordinance, Article 10 — Off-Street Parking and Loading." — parking citation. */
     parkingCodeCitation: string;
   };
+  /**
+   * Statewide fallback regions set this: their rectangle spans neighboring
+   * states' border territory (the SC/GA Savannah River diagonal, the GA/FL
+   * Ellicott line), so `regionForCoordinate` additionally requires
+   * `stateForCoordinate(lat, lon)` (the PR #83 Census boundary asset) to
+   * equal `stateCode` before the region may claim a point. Metro regions
+   * omit it and keep pure-bbox behavior — their boxes deliberately straddle
+   * state lines for data-inventory reasons.
+   */
+  exactStateBoundary?: true;
   /** Identifier the analyzer service uses to pick the right DOT fetcher. */
   dataSourceId: "gdot_511" | "ncdot" | "tdot" | "aldot" | "fdot" | "scdot" | "vdot" | "kytc" | "ladotd"
     | "ddot_dc" | "mdot_md" | "penndot" | "nysdot" | "massdot"
@@ -2094,6 +2110,59 @@ export const REGIONS: Record<RegionCode, Region> = {
     active: true,
   },
 
+  // ── Statewide fallback tier (SC/FL/GA pilot, 2026-08-09) ───────────────
+  // Serves ONLY coordinates outside every metro box (smallest-bbox-wins) and
+  // inside the true state polygon (boundaryPolygon — rectangles would swallow
+  // neighboring states' border towns). Full statewide signal/road inventories;
+  // AADT from the same statewide DOT layers the metros already use. The
+  // nearest-N sparse-site fallback (intersection-coverage.ts) is what makes
+  // rural sites here return a meaningful study instead of an empty one.
+  south_carolina_statewide: {
+    code: "south_carolina_statewide",
+    displayName: "South Carolina (statewide)",
+    bounds: { latMin: 32.0, latMax: 35.25, lonMin: -83.36, lonMax: -78.5 },
+    exactStateBoundary: true,
+    stateCode: "SC",
+    jurisdiction: {
+      dotName: "South Carolina Department of Transportation (SCDOT)",
+      planningOfficeName: "Controlling MPO/COG per site location",
+      parkingCodeCitation:
+        "Off-street parking per the controlling municipal or county zoning ordinance for the site.",
+    },
+    dataSourceId: "scdot",
+    active: true,
+  },
+  florida_statewide: {
+    code: "florida_statewide",
+    displayName: "Florida (statewide)",
+    bounds: { latMin: 24.5, latMax: 31.01, lonMin: -87.64, lonMax: -80.02 },
+    exactStateBoundary: true,
+    stateCode: "FL",
+    jurisdiction: {
+      dotName: "Florida Department of Transportation (FDOT)",
+      planningOfficeName: "Controlling MPO/TPO per site location",
+      parkingCodeCitation:
+        "Off-street parking per the controlling municipal or county land development code for the site.",
+    },
+    dataSourceId: "fdot",
+    active: true,
+  },
+  georgia_statewide: {
+    code: "georgia_statewide",
+    displayName: "Georgia (statewide)",
+    bounds: { latMin: 30.35, latMax: 35.01, lonMin: -85.62, lonMax: -80.78 },
+    exactStateBoundary: true,
+    stateCode: "GA",
+    jurisdiction: {
+      dotName: "Georgia Department of Transportation (GDOT)",
+      planningOfficeName: "Controlling MPO/RC per site location",
+      parkingCodeCitation:
+        "Off-street parking per the controlling municipal or county zoning ordinance for the site.",
+    },
+    dataSourceId: "gdot_511",
+    active: true,
+  },
+
   // ── Tier-10 global expansion (OSM-only — signals + roads, no DOT AADT) ────
   // Europe (50)
   berlin_metro: { code: "berlin_metro", displayName: "Berlin", bounds: { latMin: 52.34, latMax: 52.68, lonMin: 13.08, lonMax: 13.76 }, stateCode: "DE", country: "DE", jurisdiction: { dotName: "Senatsverwaltung für Mobilität, Verkehr, Klimaschutz und Umwelt (SenMVKU)", planningOfficeName: "Senatsverwaltung für Stadtentwicklung, Bauen und Wohnen", parkingCodeCitation: "Bauordnung für Berlin (BauO Bln) § 49 — Stellplätze und Fahrradabstellplätze." }, dataSourceId: "osm_only", active: true },
@@ -2304,6 +2373,14 @@ export function regionForCoordinate(
     if (!region.active) continue;
     const b = region.bounds;
     if (lat >= b.latMin && lat <= b.latMax && lon >= b.lonMin && lon <= b.lonMax) {
+      // Statewide regions require exact state assignment: their rectangle
+      // spans neighboring states' border territory (Savannah River /
+      // Ellicott line), so the bbox alone must not claim the point. A null
+      // resolution (offshore / asset missing) is treated as NOT matching —
+      // a wrong-state submittal is worse than an honest not-covered.
+      if (region.exactStateBoundary && stateForCoordinate(lat, lon) !== region.stateCode) {
+        continue;
+      }
       const area = (b.latMax - b.latMin) * (b.lonMax - b.lonMin);
       if (area < bestArea) {
         best = region;

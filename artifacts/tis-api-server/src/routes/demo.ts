@@ -293,7 +293,11 @@ router.get("/demo/presets", async (req, res) => {
  */
 type DemoRequestParse =
   | { ok: true; request: TisRequest; landUse: typeof LAND_USES[number]; projectName: string; regionName: string }
-  | { ok: false; status: number; error: string };
+  | { ok: false; status: number; error: string;
+      /** Set on the out-of-coverage rejection so callers can log the requested
+       *  coordinate — every rejection is a prospect telling us where to wire
+       *  coverage next (the demand map for statewide/gap expansion). */
+      outOfCoverage?: { lat: number; lon: number } };
 
 function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
   const latitude = Number(body.latitude);
@@ -330,6 +334,7 @@ function parseDemoRequest(body: Record<string, unknown>): DemoRequestParse {
       ok: false,
       status: 400,
       error: `Coordinates (${latitude.toFixed(4)}, ${longitude.toFixed(4)}) fall outside our 300 covered metros. Try a different site, or see /cities for the full list.`,
+      outOfCoverage: { lat: latitude, lon: longitude },
     };
   }
   const landUse = LAND_USES.find((lu) => lu.code === landUseCode);
@@ -524,6 +529,9 @@ router.post("/demo/driveway-candidates", geocodeRateLimiter, async (req, res): P
 router.post("/demo/generate", demoRateLimiter, async (req, res): Promise<void> => {
   const parsed = parseDemoRequest((req.body ?? {}) as Record<string, unknown>);
   if (!parsed.ok) {
+    if (parsed.outOfCoverage) {
+      req.log.info(parsed.outOfCoverage, "demo.out_of_coverage");
+    }
     res.status(parsed.status).json({ error: parsed.error });
     return;
   }
@@ -609,6 +617,9 @@ router.post("/demo/generate", demoRateLimiter, async (req, res): Promise<void> =
 router.post("/demo/pdf", demoRateLimiter, async (req, res): Promise<void> => {
   const parsed = parseDemoRequest((req.body ?? {}) as Record<string, unknown>);
   if (!parsed.ok) {
+    if (parsed.outOfCoverage) {
+      req.log.info(parsed.outOfCoverage, "demo.out_of_coverage");
+    }
     res.status(parsed.status).json({ error: parsed.error });
     return;
   }

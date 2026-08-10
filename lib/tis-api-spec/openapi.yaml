@@ -925,6 +925,21 @@ components:
         tripDistribution:
           $ref: "#/components/schemas/TisTripDistribution"
         driveways: { $ref: "#/components/schemas/DrivewayRouteResult" }
+        coverageNote:
+          type: object
+          description: >-
+            Present ONLY when the study radius contained no signalized
+            intersection and the engine widened to the nearest-N fallback set
+            (sparse rural/exurban site). The study succeeded; this discloses
+            that every analyzed intersection sits beyond the stated radius.
+          properties:
+            code: { type: string, enum: [nearest_n_fallback] }
+            radiusMi: { type: number }
+            usedCount: { type: integer }
+            nearestDistanceMi: { type: number }
+            farthestDistanceMi: { type: number }
+            message: { type: string }
+          required: [code, radiusMi, usedCount, nearestDistanceMi, farthestDistanceMi, message]
       required:
         - generatedAt
         - request

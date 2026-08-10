@@ -18,11 +18,14 @@
 import { logger } from "./logger";
 import {
   intersectionsWithinRadius,
+  nearestNIntersections,
+  nearestFallbackNote,
   dedupCloseSignals,
   forceIncludeIntersections,
   coverageWarningForCandidates,
   type ForceIncludeInput,
   type CoverageWarning,
+  type CoverageNote,
 } from "./intersection-coverage";
 import { getAutoModeShare, getAutoModeShareSource, getLondonAutoModeShare, type PTALBand } from "./mode-share";
 import { lookupLondonPtal } from "./tfl-ptal";
@@ -643,6 +646,12 @@ export type TisReport = {
    *  live demo sees a "verify the site location" message instead of a
    *  silently-empty report. See `intersection-coverage.ts`. */
   coverageWarning?: CoverageWarning;
+  /** Set ONLY when the study radius contained no signals and the engine fell
+   *  back to the nearest-N set (sparse rural/exurban site). The study
+   *  succeeded; this is the disclosure that every analyzed intersection sits
+   *  beyond the stated radius. Also echoed into `methodology` so every
+   *  renderer that prints the methodology list discloses it in the PDF. */
+  coverageNote?: CoverageNote;
   /** Florida standard: the Caltran mass/distance gravity model + directional
    *  trip distribution. Present ONLY for Florida studies (every other region
    *  keeps the NCHRP-716 gamma distribution and leaves this absent). Drives the
@@ -753,13 +762,33 @@ type StudyCandidate = { sig: AnalyzerIntersection; distanceMi: number; forced?: 
 async function findAffectedIntersections(
   lat: number, lon: number, radiusMi: number, regionCode: string,
   forceInclude?: ForceIncludeInput,
-): Promise<Array<StudyCandidate>> {
+): Promise<{ candidates: Array<StudyCandidate>; coverageNote?: CoverageNote }> {
   const inventory = await fetchIntersections(regionCode);
   // Radius filter + nearest-first sort and the same-junction dedup both live in
   // the dependency-free `intersection-coverage` leaf module so the distance
   // ceilings can be regression-tested with plain node. Telemetry (its only
   // dependency on `logger`) stays here.
-  const within = intersectionsWithinRadius(inventory, lat, lon, radiusMi);
+  let within = intersectionsWithinRadius(inventory, lat, lon, radiusMi);
+  // Sparse-site fallback: an empty radius set on a rural/exurban site would
+  // otherwise fail the whole study (no_signals_in_radius 422) even though the
+  // nearest town's junctions are exactly what a reviewer scopes there. Widen to
+  // the nearest N within the ceiling and carry a disclosure note; the radius
+  // default (analyze EVERYTHING inside it) is untouched for any site with at
+  // least one in-radius signal. A site with nothing inside the ceiling either
+  // keeps the hard warning — that's water or truly uncovered ground.
+  let coverageNote: CoverageNote | undefined;
+  if (within.length === 0) {
+    const fallback = nearestNIntersections(inventory, lat, lon);
+    if (fallback.length > 0) {
+      within = fallback;
+      coverageNote = nearestFallbackNote(radiusMi, fallback);
+      logger.info(
+        { lat, lon, radiusMi, region: regionCode, usedCount: fallback.length,
+          nearestMi: coverageNote.nearestDistanceMi, farthestMi: coverageNote.farthestDistanceMi },
+        "tis.nearest_n_fallback",
+      );
+    }
+  }
   const dedup = dedupCloseSignals(within);
   const { merged, nameAbsorbedBeyond45m } = dedup;
   // Typed to allow the additive `forced` flag below; absent-force path returns
@@ -784,7 +813,7 @@ async function findAffectedIntersections(
   const hasForce =
     forceInclude != null &&
     ((forceInclude.ids?.length ?? 0) > 0 || (forceInclude.points?.length ?? 0) > 0);
-  if (!hasForce) return kept;
+  if (!hasForce) return { candidates: kept, coverageNote };
 
   const { included, unmatchedIds, unsnappedPoints } = forceIncludeIntersections(
     inventory, lat, lon, forceInclude,
@@ -807,7 +836,7 @@ async function findAffectedIntersections(
   const extras: StudyCandidate[] = included
     .filter((e) => !keptIds.has(e.sig.id))
     .map((e) => ({ sig: e.sig, distanceMi: e.distanceMi, forced: true }));
-  if (extras.length === 0) return kept;
+  if (extras.length === 0) return { candidates: kept, coverageNote };
 
   const combined = [...kept, ...extras].sort((a, b) => a.distanceMi - b.distanceMi);
   const deduped = dedupCloseSignals(combined);
@@ -815,7 +844,7 @@ async function findAffectedIntersections(
     { regionCode, radiusMi, radiusCount: kept.length, forcedAdded: deduped.kept.length - kept.length },
     "tis.force_include",
   );
-  return deduped.kept;
+  return { candidates: deduped.kept, coverageNote };
 }
 
 function periodRawTrips(lu: LandUse, size: number, period: AnalysisPeriod, rates?: ResolvedRates): number {
@@ -1407,7 +1436,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const designYears = Math.max(0, designYear - CURRENT_YEAR);
   const designGrowthMultiplier = Math.pow(1 + growthRatePct / 100, designYears);
 
-  const candidates = await findAffectedIntersections(
+  const { candidates, coverageNote } = await findAffectedIntersections(
     req.latitude, req.longitude, radiusMi, region.code,
     { ids: req.studyIntersectionIds, points: req.additionalStudyPoints },
   );
@@ -1883,7 +1912,15 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   return {
     generatedAt: new Date().toISOString(),
     request: req,
-    studyRadiusMi: radiusMi,
+    // On a nearest-N fallback study the ACTUAL study area is the fallback
+    // reach, not the requested radius. Renderers print "N study
+    // intersections within a X-mile radius" from this field — reporting the
+    // widened distance keeps every PDF factually true without per-renderer
+    // changes (the requested radius survives in request.studyRadiusMi and
+    // coverageNote.radiusMi).
+    studyRadiusMi: coverageNote
+      ? Math.ceil(coverageNote.farthestDistanceMi * 10) / 10
+      : radiusMi,
     tripGeneration,
     affectedIntersections: pmReport.affectedIntersections,
     intersectionsStudied: pmReport.affectedIntersections.length,
@@ -1893,7 +1930,12 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     worstDelayDeltaSec: pmReport.worstDelayDeltaSec,
     mitigationSummary,
     findings,
-    methodology: tisMethodologyForRegion(region),
+    // The fallback disclosure rides the methodology list so every renderer
+    // that prints methodology discloses the widened study set in the PDF
+    // without per-renderer changes.
+    methodology: coverageNote
+      ? [coverageNote.message, ...tisMethodologyForRegion(region)]
+      : tisMethodologyForRegion(region),
     periodReports,
     growthAppliedPct: growthRatePct,
     growthYears,
@@ -1914,6 +1956,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     sensitivity: sens,
     junctionImpactSignificant,
     ...(coverageWarning ? { coverageWarning } : {}),
+    ...(coverageNote ? { coverageNote } : {}),
     ...(flGravity ? { flGravity } : {}),
     tripDistribution: dist,
     ...(drivewayAssignment?.available
