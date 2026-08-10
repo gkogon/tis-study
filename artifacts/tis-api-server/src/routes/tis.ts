@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import {
   GenerateTisBody,
   GenerateTisResponse,
@@ -269,9 +269,16 @@ router.post("/generate/pdf", generateRateLimiter, async (req, res): Promise<void
 });
 
 // ---------------------------------------------------------------------------
-// TRICS — public-by-URL, London-only TA generator (`/trics` page).
+// London TA — public-by-URL, London-only TA generator (`/london-ta` page).
 //
-// Open to anyone who navigates to /trics. It is NOT linked from the site
+// Canonical paths are /london-ta/generate + /london-ta/pdf; the original
+// /trics/* paths are kept as legacy aliases (same handlers registered on
+// both) because sent cold emails link them. "TRICS" is TRICS Consortium
+// Ltd's trademarked trip database — it must not be used as product
+// identity, only nominatively ("a submitted TA would use licensed TRICS
+// rates — we do not redistribute TRICS data").
+//
+// Open to anyone who navigates to the page. It is NOT linked from the site
 // nav, so it is reachable only by typing the URL — "unlisted public", not
 // access-controlled. Unlike the authenticated /generate (charges quota +
 // saves a project), these endpoints save nothing and charge no quota; but
@@ -280,8 +287,9 @@ router.post("/generate/pdf", generateRateLimiter, async (req, res): Promise<void
 // IP, admins/dev-auth exempt) so a prospect can try a couple of London
 // sites but a competitor cannot farm the deliverable or grind our compute.
 // Coordinates are hard-restricted to the Greater London metro, and
-// anonymous renders get a neutral "Demo Preview" stamp (see /trics/pdf).
-router.post("/trics/generate", tricsRateLimiter, async (req, res): Promise<void> => {
+// anonymous renders get a neutral "Demo Preview" stamp (see the pdf
+// handler below).
+const londonTaGenerateHandler = async (req: Request, res: Response): Promise<void> => {
   const parsed = GenerateTisBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid TIS request" });
@@ -290,7 +298,7 @@ router.post("/trics/generate", tricsRateLimiter, async (req, res): Promise<void>
   const region = regionForCoordinate(parsed.data.latitude, parsed.data.longitude);
   if (!region || region.code !== "london_metro") {
     res.status(422).json({
-      error: "The TRICS generator is London-only. Pick a site within Greater London.",
+      error: "The London TA generator is London-only. Pick a site within Greater London.",
     });
     return;
   }
@@ -311,14 +319,14 @@ router.post("/trics/generate", tricsRateLimiter, async (req, res): Promise<void>
     const validated = GenerateTisResponse.parse(report);
     res.json(validated);
   } catch (e) {
-    req.log.error({ err: e }, "trics-generate failed");
+    req.log.error({ err: e }, "london-ta-generate failed");
     const msg = e instanceof Error ? e.message : String(e);
     const isUpstream = /analyzer/i.test(msg);
     res.status(isUpstream ? 503 : 400).json({ error: msg });
   }
-});
+};
 
-router.post("/trics/pdf", tricsRateLimiter, async (req, res): Promise<void> => {
+const londonTaPdfHandler = async (req: Request, res: Response): Promise<void> => {
   const parsed = GenerateTisBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid TIS request" });
@@ -327,7 +335,7 @@ router.post("/trics/pdf", tricsRateLimiter, async (req, res): Promise<void> => {
   const region = regionForCoordinate(parsed.data.latitude, parsed.data.longitude);
   if (!region || region.code !== "london_metro") {
     res.status(422).json({
-      error: "The TRICS generator is London-only. Pick a site within Greater London.",
+      error: "The London TA generator is London-only. Pick a site within Greater London.",
     });
     return;
   }
@@ -372,7 +380,7 @@ router.post("/trics/pdf", tricsRateLimiter, async (req, res): Promise<void> => {
       || `London TA @ ${parsed.data.latitude.toFixed(4)}, ${parsed.data.longitude.toFixed(4)}`;
     const pdf = await renderStudyPdf(
       {
-        id: `trics-${Date.now()}`,
+        id: `london-ta-${Date.now()}`,
         studyType: "tis",
         projectName,
         landUseCode: parsed.data.landUseCode,
@@ -391,11 +399,19 @@ router.post("/trics/pdf", tricsRateLimiter, async (req, res): Promise<void> => {
     res.setHeader("Content-Length", String(pdf.length));
     res.send(pdf);
   } catch (e) {
-    req.log.error({ err: e }, "trics-pdf failed");
+    req.log.error({ err: e }, "london-ta-pdf failed");
     const msg = e instanceof Error ? e.message : String(e);
     const isUpstream = /analyzer/i.test(msg);
     res.status(isUpstream ? 503 : 400).json({ error: msg });
   }
-});
+};
+
+// Canonical routes + legacy /trics/* aliases (old outbound links must keep
+// working). Same handlers, same rate limiter — the limiter keys on IP, so
+// hitting the alias and the canonical path draws from the same 3/day budget.
+router.post("/london-ta/generate", tricsRateLimiter, londonTaGenerateHandler);
+router.post("/trics/generate", tricsRateLimiter, londonTaGenerateHandler);
+router.post("/london-ta/pdf", tricsRateLimiter, londonTaPdfHandler);
+router.post("/trics/pdf", tricsRateLimiter, londonTaPdfHandler);
 
 export default router;

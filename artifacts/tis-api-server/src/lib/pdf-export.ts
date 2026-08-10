@@ -4279,7 +4279,7 @@ function renderTisLondon(
   });
   doc.moveDown(0.4);
 
-  ldnSubsection(doc, isLondon ? "6.6 Non-Residential Travel Demand (TRICS)" : "5.4 Non-Residential Travel Demand (TRICS)");
+  ldnSubsection(doc, isLondon ? "6.6 Non-Residential Travel Demand (TRICS — to be prepared at submittal)" : "5.4 Non-Residential Travel Demand (TRICS — to be prepared at submittal)");
   ldnNote(doc, "Where the scheme includes non-residential floorspace (retail, office, community), its TRICS multi-modal demand is assessed separately and added to the residential demand. The engine models a single primary land use; any mix should be assessed at submittal.");
 
   ldnSubsection(doc, isLondon ? "6.7 Total Travel Demand (Net Change)" : "5.5 Total Travel Demand");
