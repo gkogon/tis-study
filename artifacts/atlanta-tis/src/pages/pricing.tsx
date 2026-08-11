@@ -1,9 +1,10 @@
 /**
- * Public pricing page. Four subscription tiers — Free Trial, Starter,
- * Growth, Enterprise — plus the pay-per-study path (single-study
- * credits bought from Settings → Billing after signup). CTAs route to
- * /signup with the plan + cadence preselected; the signup page hands
- * off to Stripe Checkout once the firm record exists.
+ * Public pricing page. Pay-per-study is the headline offer (single-study
+ * credits bought from Settings → Billing after signup); the four
+ * subscription tiers — Free Trial, Starter, Growth, Enterprise — sit
+ * below it as the volume-discount option. CTAs route to /signup with
+ * the plan + cadence preselected; the signup page hands off to Stripe
+ * Checkout once the firm record exists.
  *
  * Monthly/annual toggle drives both the displayed prices and the
  * cadence query param attached to the upgrade CTAs. Annual is priced
@@ -144,78 +145,93 @@ export default function PricingPage() {
               <div className="h-px w-full bg-border" />
             </div>
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.04] text-slate-900 dark:text-slate-50">
-              One subscription per firm. Every engineer included.
+              Pay per study. Your first {STUDY_INTRO_COUNT} are {STUDY_INTRO_PRICE} each.
             </h1>
             <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
-              14-day trial on Starter and Growth. No credit card to start.
-              Cancel anytime — you keep access until the end of your billing
-              period. Annual billing saves about 17%. Not ready for a
-              subscription? Buy studies one at a time — {STUDY_INTRO_PRICE} each
-              for your first {STUDY_INTRO_COUNT}.
+              Sign up free and run ten studies on the house — no credit card.
+              After that, buy exactly as many as the project needs:
+              {" "}{STUDY_STANDARD_PRICE} a study, credits never expire, no
+              subscription required. Firms shipping studies every week can
+              subscribe below and bring the per-study cost down.
             </p>
-            <CadenceToggle value={cadence} onChange={setCadence} />
           </section>
         </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-20 space-y-20">
-        <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-border border border-border items-stretch">
-          {TIERS.map((t) => (
-            <TierCard key={t.id} tier={t} cadence={cadence} />
-          ))}
-        </section>
-
         <section>
-          <Marker n="01" label="Pay per study" />
           <div className="border border-border">
             <div className="p-6 sm:p-8 space-y-3 border-b border-border">
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
-                No subscription? Buy studies one at a time.
+                Buy studies one at a time.
               </h2>
               <p className="text-muted-foreground leading-relaxed max-w-2xl">
-                Sign up free, run your trial studies, then buy exactly as many
-                as the project needs — one Stripe checkout per study, no
-                monthly commitment. The monthly plans above are the volume
-                discount: on Starter a study works out to $300, on Growth
-                $333. Pay-per-study is how you start; a subscription is how
-                you scale.
+                One Stripe checkout per study, no monthly commitment. Every
+                study is the full deliverable — same PDF, same citations, no
+                tier gating. Buy from Settings&nbsp;→&nbsp;Billing once
+                you're signed in.
               </p>
             </div>
             <div className="grid sm:grid-cols-3 gap-px bg-border">
-              <div className="bg-background p-6 space-y-1">
+              <div className="bg-background p-6 sm:p-8 space-y-2">
                 <div className="flex items-baseline gap-1">
-                  <span className="font-mono text-4xl font-bold tabular-nums tracking-tight">{STUDY_INTRO_PRICE}</span>
+                  <span className="font-mono text-5xl sm:text-6xl font-bold tabular-nums tracking-tight">{STUDY_INTRO_PRICE}</span>
                   <span className="text-muted-foreground text-sm font-mono">/study</span>
                 </div>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   Intro rate — your first {STUDY_INTRO_COUNT} studies, ever.
                 </p>
               </div>
-              <div className="bg-background p-6 space-y-1">
+              <div className="bg-background p-6 sm:p-8 space-y-2">
                 <div className="flex items-baseline gap-1">
-                  <span className="font-mono text-4xl font-bold tabular-nums tracking-tight">{STUDY_STANDARD_PRICE}</span>
+                  <span className="font-mono text-5xl sm:text-6xl font-bold tabular-nums tracking-tight">{STUDY_STANDARD_PRICE}</span>
                   <span className="text-muted-foreground text-sm font-mono">/study</span>
                 </div>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  After that. Every study is the full deliverable — same PDF,
-                  same citations, no tier gating.
+                  After that — flat, forever. No subscription required.
                 </p>
               </div>
-              <div className="bg-background p-6 flex flex-col justify-between gap-4">
+              <div className="bg-background p-6 sm:p-8 flex flex-col justify-between gap-4">
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   Credits never expire and stay spendable with no active
                   subscription. On a plan, they're used automatically once the
-                  month's studies run out. Buy from Settings&nbsp;→&nbsp;Billing
-                  once you're signed in.
+                  month's studies run out.
                 </p>
                 <Link
                   href="/signup?plan=trial"
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-semibold rounded-lg border border-border hover:bg-accent transition-colors"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
                   data-testid="link-cta-pay-per-study"
                 >
                   Start free, buy as you go
                 </Link>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <Marker n="01" label="Volume plans" />
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div className="space-y-3 max-w-2xl">
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+                  Shipping studies every week? Subscribe.
+                </h2>
+                <p className="text-muted-foreground leading-relaxed">
+                  Pay-per-study is how you start; a plan is the volume
+                  discount once the math says so — on Starter a study works
+                  out to $300, on Growth $333, and every engineer at the firm
+                  is included. 14-day trial on Starter and Growth. Cancel
+                  anytime — you keep access until the end of your billing
+                  period. Annual billing saves about 17%.
+                </p>
+              </div>
+              <CadenceToggle value={cadence} onChange={setCadence} />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-border border border-border items-stretch">
+              {TIERS.map((t) => (
+                <TierCard key={t.id} tier={t} cadence={cadence} />
+              ))}
             </div>
           </div>
         </section>
@@ -263,27 +279,27 @@ export default function PricingPage() {
         </section>
 
         <section className="border border-border bg-slate-50 dark:bg-slate-950/40 px-6 sm:px-10 py-10 space-y-4">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Not sure which tier?</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Not sure where to start?</h2>
           <p className="text-muted-foreground leading-relaxed max-w-xl">
-            Start the Growth trial — it's our default for engineering firms.
-            You can downgrade before the trial ends if it's more than you
-            need. Or skip the subscription question entirely and pay per
-            study until the volume math says otherwise.
+            Start free and pay per study — your first {STUDY_INTRO_COUNT} are
+            {" "}{STUDY_INTRO_PRICE} each, and the volume math will tell you
+            when a plan makes sense. Firms already shipping studies every week
+            can jump straight to the 14-day Growth trial.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <Link
-              href={`/signup?plan=growth&cadence=${cadence}`}
+              href="/signup?plan=trial"
               className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
+              data-testid="link-pay-per-study-fallback"
+            >
+              Start free, pay per study
+            </Link>
+            <Link
+              href={`/signup?plan=growth&cadence=${cadence}`}
+              className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-lg border border-border hover:bg-accent transition-colors"
               data-testid="link-default-trial"
             >
               Start 14-day Growth trial
-            </Link>
-            <Link
-              href="/signup?plan=trial"
-              className="inline-flex items-center gap-1.5 px-5 py-3 text-sm font-semibold rounded-lg border border-border hover:bg-accent transition-colors"
-              data-testid="link-pay-per-study-fallback"
-            >
-              Pay per study instead
             </Link>
           </div>
         </section>
@@ -295,12 +311,12 @@ export default function PricingPage() {
 
 const FAQ: { q: string; a: React.ReactNode }[] = [
   {
-    q: "Is this a substitute for a stamped engineering deliverable?",
-    a: <>No. Outputs are screening-grade and meant to support — not replace — a licensed PE's analytical workflow. See the <a href="/legal/disclaimer" className="text-blue-700 hover:underline">Engineering Disclaimer</a> for the full scope.</>,
+    q: "Do we need a subscription?",
+    a: `No — pay-per-study is the default. After the free trial, buy studies one at a time from Settings → Billing: ${STUDY_INTRO_PRICE} each for your first ${STUDY_INTRO_COUNT} purchases, then ${STUDY_STANDARD_PRICE} each. Each purchase is a credit on your firm — credits never expire and keep working even if you never subscribe or a subscription lapses. If you're running several studies a month, a volume plan is cheaper per study.`,
   },
   {
-    q: "Can we pay without a subscription?",
-    a: `Yes. After the free trial, buy studies one at a time from Settings → Billing: ${STUDY_INTRO_PRICE} each for your first ${STUDY_INTRO_COUNT} purchases, then ${STUDY_STANDARD_PRICE} each. Each purchase is a credit on your firm — credits never expire and keep working even if you never subscribe or a subscription lapses. If you're running several studies a month, a monthly plan is cheaper per study.`,
+    q: "Is this a substitute for a stamped engineering deliverable?",
+    a: <>No. Outputs are screening-grade and meant to support — not replace — a licensed PE's analytical workflow. See the <a href="/legal/disclaimer" className="text-blue-700 hover:underline">Engineering Disclaimer</a> for the full scope.</>,
   },
   {
     q: "Can multiple engineers in my firm use one account?",
