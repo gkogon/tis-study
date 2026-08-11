@@ -93,12 +93,23 @@ function carTable(doc: PDFKit.PDFDocument, spec: CarTableSpec) {
   const { headers, widths, rows: dataRows } = spec;
   const align = spec.align ?? headers.map(() => "left" as const);
   const startX = PAGE_MARGIN;
-  const rowH = 16;
-  const headerH = 18;
-  const drawRow = (cells: string[], y: number, isHeader: boolean) => {
+  const padY = 3;
+  // Rows grow to fit wrapped cell text: pdfkit wraps long cells at the
+  // column width regardless of lineBreak/ellipsis, so a fixed row height
+  // lets wrapped lines bleed into the row below.
+  const rowHeightFor = (cells: string[], isHeader: boolean): number => {
+    doc.font(isHeader ? "bold" : "body").fontSize(9);
+    let textH = 0;
+    for (let i = 0; i < cells.length; i++) {
+      const w = (widths[i] ?? 60) - 8;
+      textH = Math.max(textH, doc.heightOfString(cells[i] ?? "", { width: w, align: align[i] ?? "left" }));
+    }
+    return Math.max(isHeader ? 18 : 16, textH + padY * 2);
+  };
+  const drawRow = (cells: string[], y: number, isHeader: boolean, h: number) => {
     let x = startX;
     if (isHeader) {
-      doc.rect(startX, y, widths.reduce((s, w) => s + w, 0), headerH).fill("#f3f4f6");
+      doc.rect(startX, y, widths.reduce((s, w) => s + w, 0), h).fill("#f3f4f6");
     }
     for (let i = 0; i < cells.length; i++) {
       const w = widths[i] ?? 60;
@@ -106,26 +117,27 @@ function carTable(doc: PDFKit.PDFDocument, spec: CarTableSpec) {
       doc.font(isHeader ? "bold" : "body")
         .fontSize(9)
         .fillColor("black")
-        .text(cells[i] ?? "", x + 4, y + (isHeader ? 5 : 3), {
+        .text(cells[i] ?? "", x + 4, y + padY + (isHeader ? 2 : 0), {
           width: w - 8,
           align: a,
-          lineBreak: false,
-          ellipsis: true,
         });
       x += w;
     }
   };
   let y = doc.y;
-  drawRow(headers, y, true);
+  const headerH = rowHeightFor(headers, true);
+  drawRow(headers, y, true, headerH);
   y += headerH;
   for (const r of dataRows) {
+    const rowH = rowHeightFor(r, false);
     if (y + rowH > doc.page.height - PAGE_MARGIN - 40) {
       doc.addPage();
       y = doc.y;
-      drawRow(headers, y, true);
-      y += headerH;
+      const hh = rowHeightFor(headers, true);
+      drawRow(headers, y, true, hh);
+      y += hh;
     }
-    drawRow(r, y, false);
+    drawRow(r, y, false, rowH);
     doc.strokeColor("#e5e7eb").lineWidth(0.5)
       .moveTo(startX, y + rowH).lineTo(startX + widths.reduce((s, w) => s + w, 0), y + rowH).stroke();
     y += rowH;
