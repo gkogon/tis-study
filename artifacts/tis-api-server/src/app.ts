@@ -84,7 +84,17 @@ app.use(
     logger,
     serializers: {
       req(req) {
-        return { id: req.id, method: req.method, url: req.url?.split("?")[0] };
+        // Railway fronts the app with a proxy, so the client IP lives in
+        // x-forwarded-for (first hop), not on the socket.
+        const fwd = req.headers["x-forwarded-for"];
+        return {
+          id: req.id,
+          method: req.method,
+          url: req.url?.split("?")[0],
+          ip: (Array.isArray(fwd) ? fwd[0] : fwd)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress,
+          ua: req.headers["user-agent"],
+          ref: req.headers["referer"],
+        };
       },
       res(res) {
         return { statusCode: res.statusCode };
