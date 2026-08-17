@@ -23,6 +23,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { generateTisReport } from "../../artifacts/tis-api-server/src/lib/tis";
 import { renderStudyPdf } from "../../artifacts/tis-api-server/src/lib/pdf-export";
+import { regionForCoordinate } from "../../artifacts/tis-api-server/src/lib/regions";
 
 // NHTS 2017-derived relative shopping-trip profile (clock hours 0-23).
 // Renderer normalizes each array; only relative magnitudes matter.
@@ -52,6 +53,12 @@ const COUNTIES: County[] = [
   { key: "tarrant",      src: "master-tarrant.json",       out: "tarrant-county.pdf",      radius: 0.75 },
   { key: "travis",       src: "master-travis.json",        out: "travis-county.pdf",       radius: 0.75 },
   { key: "wake",         src: "master-wake.json",          out: "wake-county.pdf",         radius: 1.0 },
+  // GA (3) — added with the Georgia county-sample wave. All three sit in the
+  // Atlanta MSA; Walton only began resolving there once atlanta_metro grew to
+  // cover all 29 counties, which is why its saved master still says statewide.
+  { key: "bartow",       src: "master-bartow.json",        out: "bartow-county.pdf",       radius: 1.25 },
+  { key: "douglas",      src: "master-douglas.json",       out: "douglas-county.pdf",      radius: 1.25 },
+  { key: "walton",       src: "master-walton.json",        out: "walton-county.pdf",       radius: 1.25 },
 ];
 
 function arg(name: string): string {
@@ -79,11 +86,28 @@ for (const c of COUNTIES) {
   const baseReq = savedReport.request ?? {};
   const origStudied = savedReport.intersectionsStudied ?? "?";
 
+  // Resolve the region from the coordinate rather than trusting the saved
+  // master. A master captured before a region's bounds changed carries the OLD
+  // name in two places -- `regionName` and the derived "Custom site (lat, lon),
+  // <region>" address -- and `address` rides along inside the request, so a
+  // plain re-run reprints the stale name no matter how the engine now resolves
+  // the site. That is what left the Walton sample reading "Georgia
+  // (statewide)" after the county moved into the Atlanta MSA.
+  const region = regionForCoordinate(saved.latitude, saved.longitude);
+  const regionName = region?.displayName ?? saved.regionName;
+  const address = typeof baseReq.address === "string" && /^Custom site \(/.test(baseReq.address)
+    ? `Custom site (${saved.latitude}, ${saved.longitude}), ${regionName}`
+    : baseReq.address;
+  if (regionName !== saved.regionName) {
+    console.log(`${c.key.padEnd(13)} region ${JSON.stringify(saved.regionName)} -> ${JSON.stringify(regionName)}`);
+  }
+
   let radius = c.radius;
   let report: any;
   for (;;) {
     const req: any = {
       ...baseReq,
+      address,
       studyRadiusMi: radius,
       tripProfile: { arrivals: RETAIL_ARRIVALS, departures: RETAIL_DEPARTURES, source: PROFILE_SOURCE },
     };
@@ -97,7 +121,7 @@ for (const c of COUNTIES) {
     projectName: saved.projectName, latitude: saved.latitude, longitude: saved.longitude,
     landUseCode: saved.landUseCode, landUseName: saved.landUseName, landUseUnitShort: saved.landUseUnitShort,
     size: saved.size, openingYear: saved.openingYear, studyRadiusMi: radius,
-    regionName: saved.regionName, report,
+    regionName, report,
   };
   writeFileSync(join(outMasters, `master-${c.key}.json`), JSON.stringify(master, null, 1));
 
