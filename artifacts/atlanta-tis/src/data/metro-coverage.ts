@@ -101,7 +101,7 @@ export type MetroCoverage = {
  *  ships. */
 export const METROS: MetroCoverage[] = [
   // GA
-  { code: "atlanta_metro", slug: "atlanta", shortName: "Atlanta", longName: "Atlanta MSA", state: "GA", signals: 7393, namedPct: 82.6, aadtPct: 100, liveSource: "GDOT 511", aadtSource: "GDOT calibrated counts",
+  { code: "atlanta_metro", slug: "atlanta", shortName: "Atlanta", longName: "Atlanta MSA", state: "GA", signals: 7958, namedPct: 90.3, aadtPct: 100, liveSource: "GDOT 511", aadtSource: "GDOT calibrated counts",
     dotName: "City of Atlanta DOT", planningOfficeName: "City of Atlanta Office of Mobility Planning",
     parkingCodeCitation: "City of Atlanta Zoning Ordinance, Article 10 — Off-Street Parking and Loading." },
   { code: "augusta_metro", slug: "augusta", shortName: "Augusta", longName: "Augusta MSA", state: "GA", signals: 519, namedPct: 99.4, aadtPct: 75.1, liveSource: null, aadtSource: "GDOT AADT (DeKalbGIS ingest)",

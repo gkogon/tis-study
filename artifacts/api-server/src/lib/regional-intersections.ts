@@ -144,7 +144,10 @@ type RegionBoundsInfo = {
 };
 const REGION_INFO: Record<string, RegionBoundsInfo> = {
   // Tier-0
-  atlanta_metro: { displayName: "Atlanta MSA", bounds: { latMin: 33.4, latMax: 34.2, lonMin: -84.9, lonMax: -83.9 } },
+  // Envelope of ATLANTA_METRO.coverageBoxes (the 29-county MSA). Used here
+  // only for the zone-label centroid; Atlanta's own intersections are zoned by
+  // the hand-curated polygons in atlanta-data.ts, not by this table.
+  atlanta_metro: { displayName: "Atlanta MSA", bounds: { latMin: 32.82, latMax: 34.63, lonMin: -85.39, lonMax: -83.28 } },
   charlotte_metro: { displayName: "Charlotte MSA", bounds: { latMin: 34.5, latMax: 35.7, lonMin: -81.4, lonMax: -80.3 } },
   nashville_metro: { displayName: "Nashville MSA", bounds: { latMin: 35.7, latMax: 36.7, lonMin: -87.5, lonMax: -85.9 } },
   tampa_metro: { displayName: "Tampa MSA", bounds: { latMin: 27.5, latMax: 28.7, lonMin: -83.0, lonMax: -82.0 } },

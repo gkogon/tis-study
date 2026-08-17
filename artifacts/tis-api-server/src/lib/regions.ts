@@ -275,8 +275,24 @@ export type Region = {
   code: RegionCode;
   /** Human-readable name for UI + PDF copy. */
   displayName: string;
-  /** Geographic bounding box for project-site coordinates. */
+  /**
+   * Geographic bounding box for project-site coordinates. When
+   * `coverageBoxes` is set this is the *envelope* of those boxes — it stays
+   * the value used for centroid math (`nearestRegionForCoordinate`, the
+   * api-server zone labeler) but no longer decides membership on its own.
+   */
   bounds: LatLonBox;
+  /**
+   * Optional union of rectangles that defines membership more tightly than
+   * `bounds` can. A single rectangle around a non-rectangular MSA either
+   * under-covers its outer counties or over-claims its neighbors' — for the
+   * 29-county Atlanta MSA one box cannot include Meriwether, Morgan and
+   * Haralson without also swallowing Athens, Rome, Gainesville and LaGrange,
+   * each of which is a *different* MSA. When present, `regionForCoordinate`
+   * requires the point to fall in at least one of these boxes, and ranks
+   * specificity by their summed area instead of the envelope's.
+   */
+  coverageBoxes?: LatLonBox[];
   /** State the metro is in — drives DOT lookup. */
   stateCode: "GA" | "NC" | "TN" | "AL" | "FL" | "SC" | "VA" | "KY" | "LA"
     | "DC" | "MD" | "PA" | "NY" | "MA" | "IL" | "MI" | "MN" | "OH"
@@ -353,12 +369,51 @@ export type Region = {
 export const ATLANTA_METRO: Region = {
   code: "atlanta_metro",
   displayName: "Atlanta MSA",
+  // Envelope of `coverageBoxes` below. The old single box (33.4–34.2 /
+  // -84.9..-83.9) covered only 11 of the MSA's 29 counties: Walton, Newton,
+  // Barrow, Morgan, Jasper, Butts, Spalding, Lamar, Pike, Meriwether, Heard,
+  // Haralson, Carroll, Dawson, Pickens and part of Coweta all fell through to
+  // georgia_statewide, so their sample PDFs read "located within Georgia
+  // (statewide), Georgia" — understating coverage in the home market.
   bounds: {
-    latMin: 33.4,
-    latMax: 34.2,
-    lonMin: -84.9,
-    lonMax: -83.9,
+    latMin: 32.82,
+    latMax: 34.63,
+    lonMin: -85.39,
+    lonMax: -83.28,
   },
+  // The 29-county Atlanta-Sandy Springs-Roswell MSA as a union of rectangles.
+  // Each box is drawn to the counties it names and stops short of the
+  // neighboring MSAs listed with it; the negative controls are asserted in
+  // scripts/verify-atlanta-msa-coverage.mjs.
+  coverageBoxes: [
+    // Core: Fulton, DeKalb, Cobb, Gwinnett, Clayton, Cherokee, Forsyth,
+    // Douglas, Fayette, Henry, Rockdale, Paulding, Bartow, Butts, Spalding,
+    // Coweta, north Newton. lonMax -83.95 keeps Hall County (Gainesville MSA)
+    // and its Lake Lanier shore out; east Gwinnett is picked up by `east`.
+    { latMin: 33.20, latMax: 34.35, lonMin: -85.00, lonMax: -83.95 },
+    // North: Pickens + Dawson + north Cherokee/Forsyth. lonMin -84.75 excludes
+    // Gordon (Calhoun), lonMax -84.00 excludes Lumpkin (Dahlonega), latMax
+    // 34.63 excludes Gilmer (Ellijay).
+    { latMin: 34.30, latMax: 34.63, lonMin: -84.75, lonMax: -84.00 },
+    // Meriwether. lonMin -85.00 stops at Troup (LaGrange, micropolitan);
+    // lonMax -84.40 keeps Thomaston (Upson) out.
+    { latMin: 32.82, latMax: 33.28, lonMin: -85.00, lonMax: -84.40 },
+    // Pike + Lamar + south Spalding. latMin 32.95 clears Thomaston (Upson);
+    // lonMax -83.98 leaves Monroe County GA to macon_metro.
+    { latMin: 32.95, latMax: 33.25, lonMin: -84.55, lonMax: -83.98 },
+    // Carroll + Haralson + Heard. lonMin -85.39 hugs the Alabama line;
+    // latMax 33.94 stops below Polk (Cedartown/Rockmart) and Floyd (Rome);
+    // latMin 33.16 stops above Troup (LaGrange).
+    { latMin: 33.16, latMax: 33.94, lonMin: -85.39, lonMax: -84.85 },
+    // Walton + Barrow + Newton + east Gwinnett. lonMax -83.55 excludes Clarke
+    // and Oconee (Athens MSA); latMax 34.10 excludes Jackson (Jefferson).
+    { latMin: 33.40, latMax: 34.10, lonMin: -84.00, lonMax: -83.55 },
+    // Morgan. latMin 33.42 clears Putnam (Eatonton), lonMax -83.28 clears
+    // Greene (Greensboro), latMax 33.78 clears Oconee (Watkinsville).
+    { latMin: 33.42, latMax: 33.78, lonMin: -83.72, lonMax: -83.28 },
+    // Jasper. lonMax -83.55 keeps Putnam out on the east.
+    { latMin: 33.15, latMax: 33.48, lonMin: -83.95, lonMax: -83.55 },
+  ],
   stateCode: "GA",
   jurisdiction: {
     dotName: "City of Atlanta DOT",
@@ -2371,21 +2426,30 @@ export function regionForCoordinate(
   let bestArea = Infinity;
   for (const region of Object.values(REGIONS)) {
     if (!region.active) continue;
-    const b = region.bounds;
-    if (lat >= b.latMin && lat <= b.latMax && lon >= b.lonMin && lon <= b.lonMax) {
-      // Statewide regions require exact state assignment: their rectangle
-      // spans neighboring states' border territory (Savannah River /
-      // Ellicott line), so the bbox alone must not claim the point. A null
-      // resolution (offshore / asset missing) is treated as NOT matching —
-      // a wrong-state submittal is worse than an honest not-covered.
-      if (region.exactStateBoundary && stateForCoordinate(lat, lon) !== region.stateCode) {
-        continue;
-      }
-      const area = (b.latMax - b.latMin) * (b.lonMax - b.lonMin);
-      if (area < bestArea) {
-        best = region;
-        bestArea = area;
-      }
+    // A region with `coverageBoxes` is the union of those rectangles; its
+    // `bounds` is only their envelope and must not claim a point on its own
+    // (the Atlanta envelope spans Athens, Rome and LaGrange, none of which
+    // are in the MSA). Regions without them keep pure single-bbox behavior.
+    const boxes = region.coverageBoxes ?? [region.bounds];
+    if (!boxes.some((b) => lat >= b.latMin && lat <= b.latMax && lon >= b.lonMin && lon <= b.lonMax)) {
+      continue;
+    }
+    // Statewide regions require exact state assignment: their rectangle
+    // spans neighboring states' border territory (Savannah River /
+    // Ellicott line), so the bbox alone must not claim the point. A null
+    // resolution (offshore / asset missing) is treated as NOT matching —
+    // a wrong-state submittal is worse than an honest not-covered.
+    if (region.exactStateBoundary && stateForCoordinate(lat, lon) !== region.stateCode) {
+      continue;
+    }
+    // Summed box area, so a multi-box region competes on the territory it
+    // actually claims rather than on its (much larger) envelope. Atlanta's
+    // 2.93 deg² still loses to macon_metro's 0.49 where they touch and beats
+    // georgia_statewide's 22.55 everywhere.
+    const area = boxes.reduce((s, b) => s + (b.latMax - b.latMin) * (b.lonMax - b.lonMin), 0);
+    if (area < bestArea) {
+      best = region;
+      bestArea = area;
     }
   }
   return best;
