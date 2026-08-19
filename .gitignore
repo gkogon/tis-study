@@ -71,3 +71,20 @@ COLD_EMAIL_DEVELOPERS.md
 SOLO_PES.md
 GDOT_PREQUAL.md
 *.xlsx
+
+# Pre-extend snapshots written by scripts/src/extend-region-coverage.ts
+# (large, regenerable from the source PBFs)
+artifacts/api-server/src/data/_osm-archive/
+
+# Ruflo/agent scratch state — never belongs in a commit (swept into a commit
+# on 2026-08-19 despite explicit `git add` of unrelated paths).
+ruvector.db
+agentdb.rvf
+agentdb.rvf.lock
+.swarm/
+.claude-flow/
+**/ruvector.db
+**/agentdb.rvf
+**/agentdb.rvf.lock
+**/.swarm/
+**/.claude-flow/

@@ -677,7 +677,9 @@ const REGIONS: RegionConfig[] = [
     slug: "new-york",
     source: "polyline_bbox",
     counties: [],
-    // Envelope of new_york_metro's coverage boxes. NOT run as part of the
+    // Covers new_york_metro's coverage boxes (latMax 41.3 is slightly above
+    // the 41.2 envelope — a harmless superset carried over from the original
+    // entry). NOT run as part of the
     // Suffolk wire — this config is a full REBUILD and would drop the njdot
     // supplement records. Widened so a future --all run is not clipped.
     bbox: { latMin: 40.2, latMax: 41.3, lonMin: -74.5, lonMax: -71.85 },

@@ -185,9 +185,16 @@ const REGION_INFO: Record<string, RegionBoundsInfo> = {
   baltimore_metro: { displayName: "Baltimore-Columbia-Towson MSA", bounds: { latMin: 39.0, latMax: 39.7, lonMin: -77.0, lonMax: -76.2 } },
   philadelphia_metro: { displayName: "Philadelphia MSA", bounds: { latMin: 39.7, latMax: 40.4, lonMin: -75.5, lonMax: -74.95 } },
   pittsburgh_metro: { displayName: "Pittsburgh MSA", bounds: { latMin: 40.2, latMax: 40.7, lonMin: -80.4, lonMax: -79.6 } },
-  // bounds is the ENVELOPE of new_york_metro's three coverage boxes (see
-  // regions.ts) — used here only for zone labeling, not for membership.
-  new_york_metro: { displayName: "New York-Newark-Jersey City MSA", bounds: { latMin: 40.2, latMax: 41.2, lonMin: -74.5, lonMax: -71.85 } },
+  // Deliberately box A of new_york_metro's three coverage boxes, NOT the
+  // envelope. `bounds` is consumed here by exactly one caller — computeZone,
+  // which takes its midpoint as the zone-label origin — so widening it to the
+  // Suffolk envelope would drag the centroid ~65 km east into the Great South
+  // Bay and relabel 19,290 of the 30,601 pre-Suffolk signals ("Central New
+  // York-Newark-Jersey City" would empty out entirely). Membership is decided
+  // by regionForCoordinate against the real coverage boxes; this record only
+  // answers "which compass quadrant of the metro is this in", and for that the
+  // historical NYC-core box is the right and stable origin.
+  new_york_metro: { displayName: "New York-Newark-Jersey City MSA", bounds: { latMin: 40.2, latMax: 41.2, lonMin: -74.5, lonMax: -73.4 } },
   boston_metro: { displayName: "Boston-Cambridge-Newton MSA", bounds: { latMin: 42.1, latMax: 42.7, lonMin: -71.5, lonMax: -70.7 } },
   chicago_metro: { displayName: "Chicago-Naperville-Elgin MSA", bounds: { latMin: 41.4, latMax: 42.3, lonMin: -88.5, lonMax: -87.3 } },
   detroit_metro: { displayName: "Detroit-Warren-Dearborn MSA", bounds: { latMin: 42.0, latMax: 42.8, lonMin: -83.7, lonMax: -82.6 } },

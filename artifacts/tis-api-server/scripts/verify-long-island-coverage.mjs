@@ -19,6 +19,7 @@
  */
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { register } from "node:module";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -35,7 +36,26 @@ const ok = (c, msg) => { console.log(`${c ? "PASS" : "FAIL"}  ${msg}`); if (!c) 
 const NY = REGIONS["new_york_metro"];
 
 // ── Suffolk + Nassau must resolve to new_york_metro ───────────────────────
+// Split by whether the site actually has local signal inventory, because
+// "resolves to a region" and "can be studied" are different claims and the
+// PR should not smuggle the second in behind the first. Densities are
+// measured at 1 mi, the study radius the hosted county samples use.
 // Hauppauge is the coordinate reported as broken on 2026-08-18.
+const MIN_LOCAL_SIGNALS = 3;
+const STUDY_RADIUS_MI = 1;
+const NEAREST_N_CEILING_MI = 15; // beyond this the engine 422s outright
+
+const signals = JSON.parse(
+  readFileSync(path.resolve(here, "../../api-server/src/data/new-york-signals.json"), "utf8"),
+);
+const miBetween = (aLat, aLon, bLat, bLon) =>
+  Math.hypot((aLat - bLat) * 69.0, (aLon - bLon) * 69.0 * Math.cos((aLat * Math.PI) / 180));
+const countWithin = (lat, lon, r) =>
+  signals.reduce((n, t) => n + (miBetween(lat, lon, t[1], t[2]) <= r ? 1 : 0), 0);
+const nearestMi = (lat, lon) =>
+  signals.reduce((m, t) => Math.min(m, miBetween(lat, lon, t[1], t[2])), Infinity);
+
+// Tier 1 — resolve AND carry real local inventory. These are studyable.
 const COVERED = [
   ["Hauppauge (reported)", 40.8176, -73.0776],
   ["Huntington",           40.8681, -73.4257],
@@ -49,20 +69,62 @@ const COVERED = [
   ["Westhampton",          40.8243, -72.6432],
   ["Southampton",          40.8843, -72.3898],
   ["East Hampton",         40.9634, -72.1848],
-  ["Montauk",              41.0359, -71.9445],
-  ["Montauk Point",        41.0712, -71.8573],
-  ["Greenport",            41.1032, -72.3620],
-  ["Orient Point",         41.1631, -72.2384],
-  ["Shelter Island",       41.0690, -72.3454],
   ["Mattituck",            40.9931, -72.5342],
+  ["Greenport",            41.1032, -72.3620],
   ["Nassau: Hempstead",    40.7062, -73.6187],
   ["Nassau: Hicksville",   40.7684, -73.5251],
 ];
 
-console.log("── Long Island coverage ──");
+// Tier 2 — resolve, but have NO signal inside the study radius, so the engine
+// serves them off the nearest-N fallback with its explicit disclosure note.
+// Asserted as fallback cases so the limitation stays visible in CI rather than
+// hiding behind a green "covered" checkmark.
+const COVERED_VIA_FALLBACK = [
+  ["Shelter Island", 41.0690, -72.3454],
+  ["Orient Point",   41.1631, -72.2384],
+  ["Montauk",        41.0359, -71.9445],
+];
+
+// Tier 3 — resolve, but the nearest signal is beyond the nearest-N ceiling, so
+// a study request 422s. Box C claims this territory and cannot serve it. This
+// is a KNOWN, DELIBERATE limitation of the -71.85 eastern bound; it is pinned
+// here so it cannot regress silently or be forgotten.
+const UNSERVABLE = [
+  ["Montauk Point", 41.0712, -71.8573],
+];
+
+console.log("── Long Island coverage (resolution + local inventory) ──");
 for (const [name, lat, lon] of COVERED) {
   const r = regionForCoordinate(lat, lon);
-  ok(r?.code === "new_york_metro", `${name} (${lat}, ${lon}) → new_york_metro (got ${r?.code ?? "null"})`);
+  const n = countWithin(lat, lon, STUDY_RADIUS_MI);
+  ok(
+    r?.code === "new_york_metro" && n >= MIN_LOCAL_SIGNALS,
+    `${name} → new_york_metro with ${n} signals within ${STUDY_RADIUS_MI} mi ` +
+      `(got ${r?.code ?? "null"}, need >= ${MIN_LOCAL_SIGNALS})`,
+  );
+}
+
+console.log("\n── Resolve but served by nearest-N fallback (known thin) ──");
+for (const [name, lat, lon] of COVERED_VIA_FALLBACK) {
+  const r = regionForCoordinate(lat, lon);
+  const n = countWithin(lat, lon, STUDY_RADIUS_MI);
+  const d = nearestMi(lat, lon);
+  ok(
+    r?.code === "new_york_metro" && n === 0 && d < NEAREST_N_CEILING_MI,
+    `${name} → new_york_metro, 0 within ${STUDY_RADIUS_MI} mi, nearest ${d.toFixed(1)} mi ` +
+      `(under the ${NEAREST_N_CEILING_MI} mi fallback ceiling)`,
+  );
+}
+
+console.log("\n── Resolve but CANNOT be studied (documented limitation) ──");
+for (const [name, lat, lon] of UNSERVABLE) {
+  const r = regionForCoordinate(lat, lon);
+  const d = nearestMi(lat, lon);
+  ok(
+    r?.code === "new_york_metro" && d > NEAREST_N_CEILING_MI,
+    `${name} → new_york_metro but nearest signal ${d.toFixed(1)} mi > ${NEAREST_N_CEILING_MI} mi ` +
+      `ceiling: a study request 422s. Deliberate limit of the -71.85 bound.`,
+  );
 }
 
 // ── Across the Sound: must NOT be claimed by new_york_metro ───────────────
