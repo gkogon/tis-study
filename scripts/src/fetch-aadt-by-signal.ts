@@ -677,7 +677,10 @@ const REGIONS: RegionConfig[] = [
     slug: "new-york",
     source: "polyline_bbox",
     counties: [],
-    bbox: { latMin: 40.4, latMax: 41.3, lonMin: -74.5, lonMax: -73.4 },
+    // Envelope of new_york_metro's coverage boxes. NOT run as part of the
+    // Suffolk wire — this config is a full REBUILD and would drop the njdot
+    // supplement records. Widened so a future --all run is not clipped.
+    bbox: { latMin: 40.2, latMax: 41.3, lonMin: -74.5, lonMax: -71.85 },
     sourceLabel: "NYSDOT Traffic Monitoring (per-segment latest)",
     polylineConfig: {
       url: "https://gisportalny.dot.ny.gov/hostingny/rest/services/Roadways/Traffic_Monitoring/FeatureServer/1",
@@ -793,11 +796,14 @@ const REGIONS: RegionConfig[] = [
     },
   },
   {
-    // NY-side signals appended since the 2026-05 PBF snapshot (OSM churn).
+    // NY-side signals appended since the 2026-05 PBF snapshot (OSM churn),
+    // plus the Suffolk County inventory appended 2026-08-18. lonMax -71.85
+    // reaches Montauk Point; NYSDOT's Traffic Monitoring layer is statewide,
+    // so the only thing that was ever missing here was the bbox.
     slug: "new-york",
     source: "polyline_bbox",
     counties: [],
-    bbox: { latMin: 40.2, latMax: 41.2, lonMin: -74.5, lonMax: -73.4 },
+    bbox: { latMin: 40.2, latMax: 41.2, lonMin: -74.5, lonMax: -71.85 },
     sourceLabel: "NYSDOT Traffic Monitoring (appended-signal supplement)",
     supplement: true,
     polylineConfig: {
