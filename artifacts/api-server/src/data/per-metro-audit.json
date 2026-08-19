@@ -1901,6 +1901,20 @@
     }
   },
   {
+    "code": "south_carolina_statewide",
+    "slug": "south-carolina-statewide",
+    "country": null,
+    "dataSourceId": "scdot",
+    "total": 5753,
+    "measured": 4247,
+    "measuredPct": 73.8,
+    "synthetic": 1506,
+    "sourceCounts": {
+      "ncdot": 4247,
+      "synthetic_osm_class": 1506
+    }
+  },
+  {
     "code": "osaka_metro",
     "slug": "osaka",
     "country": "JP",
@@ -1970,6 +1984,20 @@
     "sourceCounts": {
       "synthetic_osm_class": 317,
       "fdot": 1028
+    }
+  },
+  {
+    "code": "georgia_statewide",
+    "slug": "georgia-statewide",
+    "country": null,
+    "dataSourceId": "gdot_511",
+    "total": 13146,
+    "measured": 10120,
+    "measuredPct": 77,
+    "synthetic": 3026,
+    "sourceCounts": {
+      "synthetic_osm_class": 3026,
+      "gdot_511": 10120
     }
   },
   {
@@ -2072,6 +2100,20 @@
     "sourceCounts": {
       "synthetic_osm_class": 124,
       "bologna_spire_2024": 896
+    }
+  },
+  {
+    "code": "florida_statewide",
+    "slug": "florida-statewide",
+    "country": null,
+    "dataSourceId": "fdot",
+    "total": 38391,
+    "measured": 33917,
+    "measuredPct": 88.3,
+    "synthetic": 4474,
+    "sourceCounts": {
+      "fdot": 33917,
+      "synthetic_osm_class": 4474
     }
   },
   {
@@ -2565,13 +2607,13 @@
     "slug": "new-york",
     "country": null,
     "dataSourceId": "nysdot",
-    "total": 25130,
-    "measured": 25130,
+    "total": 27964,
+    "measured": 27964,
     "measuredPct": 100,
     "synthetic": 0,
     "sourceCounts": {
-      "nysdot": 23464,
-      "njdot": 1666
+      "nysdot": 26283,
+      "njdot": 1681
     }
   },
   {
@@ -4133,45 +4175,6 @@
     "synthetic": 0,
     "sourceCounts": {
       "iadot": 363
-    }
-  },
-  {
-    "code": "south_carolina_statewide",
-    "slug": "south-carolina-statewide",
-    "country": null,
-    "dataSourceId": "scdot",
-    "total": 4247,
-    "measured": 4247,
-    "measuredPct": 100,
-    "synthetic": 0,
-    "sourceCounts": {
-      "ncdot": 4247
-    }
-  },
-  {
-    "code": "florida_statewide",
-    "slug": "florida-statewide",
-    "country": null,
-    "dataSourceId": "fdot",
-    "total": 33917,
-    "measured": 33917,
-    "measuredPct": 100,
-    "synthetic": 0,
-    "sourceCounts": {
-      "fdot": 33917
-    }
-  },
-  {
-    "code": "georgia_statewide",
-    "slug": "georgia-statewide",
-    "country": null,
-    "dataSourceId": "gdot_511",
-    "total": 10120,
-    "measured": 10120,
-    "measuredPct": 100,
-    "synthetic": 0,
-    "sourceCounts": {
-      "gdot_511": 10120
     }
   }
 ]
