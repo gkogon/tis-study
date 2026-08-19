@@ -88,6 +88,10 @@ const PROBES: Probe[] = [
   { regionCode: "philadelphia_metro", lat: 39.9526, lon: -75.1652, expectDotIncludes: "Philadelphia" },
   { regionCode: "pittsburgh_metro", lat: 40.4406, lon: -79.9959, expectDotIncludes: "Pittsburgh" },
   { regionCode: "new_york_metro", lat: 40.7128, lon: -74.0060, expectDotIncludes: "NYC" },
+  // Long Island (2026-08-18): Suffolk was outside every region until the
+  // coverage boxes landed. Hauppauge is the coordinate reported as broken.
+  { regionCode: "new_york_metro", lat: 40.8176, lon: -73.0776, expectDotIncludes: "NYC" },
+  { regionCode: "new_york_metro", lat: 40.9170, lon: -72.6620, expectDotIncludes: "NYC" },
   { regionCode: "boston_metro", lat: 42.3601, lon: -71.0589, expectDotIncludes: "Boston" },
   { regionCode: "chicago_metro", lat: 41.8781, lon: -87.6298, expectDotIncludes: "Chicago" },
   { regionCode: "detroit_metro", lat: 42.3314, lon: -83.0458, expectDotIncludes: "Detroit" },

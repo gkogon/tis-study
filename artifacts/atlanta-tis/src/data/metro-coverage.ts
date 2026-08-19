@@ -246,7 +246,7 @@ export const METROS: MetroCoverage[] = [
     dotName: "Pittsburgh Department of Mobility and Infrastructure (DOMI)", planningOfficeName: "Pittsburgh Department of City Planning",
     parkingCodeCitation: "Pittsburgh Zoning Code, Chapter 914 — Parking, Loading and Access." },
   // NY
-  { code: "new_york_metro", slug: "new-york", shortName: "New York", longName: "New York-Newark-Jersey City MSA", state: "NY", signals: 30601, namedPct: 91.9, aadtPct: 82.1, liveSource: null,
+  { code: "new_york_metro", slug: "new-york", shortName: "New York", longName: "New York-Newark-Jersey City MSA", state: "NY", signals: 33626, namedPct: 92.5, aadtPct: 83.2, liveSource: null,
     dotName: "New York City Department of Transportation (NYC DOT)", planningOfficeName: "NYC Department of City Planning",
     parkingCodeCitation: "NYC Zoning Resolution, Article I, Chapter 3 — Off-Street Parking.",
     aadtSource: "NYSDOT TDV + NJDOT AADT" },
