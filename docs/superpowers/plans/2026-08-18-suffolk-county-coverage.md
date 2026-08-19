@@ -20,6 +20,24 @@
 - **Branch from `origin/main`.** The local `main` checkout is a known junk drawer.
 - **Repo test idiom:** there is no vitest/jest and no `*.test.ts`. Tests are `verify-*.mjs` scripts under `artifacts/tis-api-server/scripts/`, run via `pnpm run check:*`. Follow that pattern; do not introduce a test framework.
 - **Report measured numbers, never predicted ones.** Snap rates, signal counts, and accuracy figures go in the PR body only after the pipeline has produced them.
+- **Typecheck gate — `pnpm run typecheck` is NOT expected to be clean.** Measured on `origin/main` @ `88e33a7` before any change:
+  - `tis-api-server`, `api-server`, `atlanta-tis` → **CLEAN**. These must stay clean; any error is a regression.
+  - `scripts` → **196 pre-existing errors**, all in scraper/debug files (`gdot-debug-*`, `gdot-filter-probe*`, `ncdot-probe`, `fetch-*-prequalified`, `fetch-hpms-aadt`, `demo-london-tis`, `deepen-county-samples`, `test-utdf`, `update-calibration`). Unrelated to this work; **do not fix them**.
+  - **None** of the three files this plan touches (`extend-region-coverage.ts`, `fetch-aadt-by-signal.ts`, `smoke-test-multi-region.ts`) appears in that baseline, so they must typecheck clean.
+
+  The gate for every task is therefore:
+
+  ```bash
+  pnpm --filter @workspace/tis-api-server --filter @workspace/api-server --filter @workspace/atlanta-tis run typecheck
+  ```
+
+  must pass, and when a task touches `scripts/`:
+
+  ```bash
+  pnpm --filter @workspace/scripts run typecheck 2>&1 | grep -c "error TS"
+  ```
+
+  must still print `196`, with no new filename appearing in the output.
 
 ## File Structure
 
@@ -342,10 +360,10 @@ Expected: PASS on every line, ending `All Long Island coverage checks passed.`
 - [ ] **Step 7: Typecheck**
 
 ```bash
-pnpm run typecheck
+pnpm --filter @workspace/tis-api-server --filter @workspace/api-server --filter @workspace/atlanta-tis run typecheck
 ```
 
-Expected: clean across `tis-api-server`, `api-server`, `atlanta-tis`, `scripts`.
+Expected: all three CLEAN. Do NOT run the bare `pnpm run typecheck` and expect success — `scripts` carries 196 pre-existing errors (see Global Constraints).
 
 - [ ] **Step 8: Commit**
 
@@ -503,10 +521,11 @@ Expected: Hauppauge and Montauk `union: true`; Sound mid-water and Milford CT `u
 - [ ] **Step 6: Typecheck**
 
 ```bash
-pnpm run typecheck
+pnpm --filter @workspace/tis-api-server --filter @workspace/api-server --filter @workspace/atlanta-tis run typecheck
+pnpm --filter @workspace/scripts run typecheck 2>&1 | grep -c "error TS"
 ```
 
-Expected: clean.
+Expected: the three artifact packages CLEAN, and the scripts error count still exactly `196` with no new filename in the output (see Global Constraints).
 
 - [ ] **Step 7: Commit**
 
@@ -889,10 +908,11 @@ Expected: PASS on every line including all twelve region-label rows.
 - [ ] **Step 6: Typecheck**
 
 ```bash
-pnpm run typecheck
+pnpm --filter @workspace/tis-api-server --filter @workspace/api-server --filter @workspace/atlanta-tis run typecheck
+pnpm --filter @workspace/scripts run typecheck 2>&1 | grep -c "error TS"
 ```
 
-Expected: clean.
+Expected: the three artifact packages CLEAN, and the scripts error count still exactly `196` with no new filename in the output (see Global Constraints).
 
 - [ ] **Step 7: Commit**
 
@@ -956,7 +976,7 @@ Expected: all probes pass, at a total exactly two higher than the run before thi
 - [ ] **Step 5: Run the full check suite**
 
 ```bash
-pnpm run typecheck
+pnpm --filter @workspace/tis-api-server --filter @workspace/api-server --filter @workspace/atlanta-tis run typecheck
 pnpm --filter @workspace/tis-api-server run check:long-island-coverage
 pnpm --filter @workspace/tis-api-server run check:atlanta-msa-coverage
 pnpm --filter @workspace/tis-api-server run check:coverage-warning
