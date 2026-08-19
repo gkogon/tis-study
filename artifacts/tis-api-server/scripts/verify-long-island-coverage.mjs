@@ -164,5 +164,33 @@ const flipped = Object.values(REGIONS).filter((r) => {
 });
 ok(flipped.length === 0, `no region flips precedence over box A (candidates: ${flipped.map((r) => r.code).join(", ") || "none"})`);
 
+// ── NYSDOT region labeling (pdf-export-ny.ts nysdotRegion) ────────────────
+// Region 10 is Nassau + Suffolk. Region 11 is the five boroughs. The
+// Queens/Nassau line runs near -73.70 in the north and -73.74 in the south,
+// so a single vertical test cannot be exact — but -73.83 was far enough west
+// to put five substantial Queens neighborhoods on Long Island.
+console.log("\n── NYSDOT region labeling ──");
+const { nysdotRegion } = await import(path.resolve(here, "../src/lib/pdf-export-ny.ts"));
+for (const [name, lat, lon, want] of [
+  // Queens — must be Region 11.
+  ["Jamaica, Queens",         40.7027, -73.7907, 11],
+  ["St. Albans, Queens",      40.6901, -73.7654, 11],
+  ["Queens Village",          40.7154, -73.7415, 11],
+  ["Cambria Heights, Queens", 40.6924, -73.7357, 11],
+  ["Rosedale, Queens",        40.6659, -73.7365, 11],
+  // Nassau + Suffolk — must be Region 10.
+  ["Great Neck (Nassau)",     40.7868, -73.7285, 10],
+  ["Hempstead (Nassau)",      40.7062, -73.6187, 10],
+  ["Hicksville (Nassau)",     40.7684, -73.5251, 10],
+  ["Hauppauge (Suffolk)",     40.8176, -73.0776, 10],
+  ["Islip (Suffolk)",         40.7298, -73.2104, 10],
+  // Hudson Valley — Region 8 still wins above 40.92.
+  ["White Plains",            41.0340, -73.7629, 8],
+  ["Rye",                     40.9807, -73.6837, 8],
+]) {
+  const got = nysdotRegion(lat, lon, NY).num;
+  ok(got === want, `${name} → NYSDOT Region ${want} (got ${got})`);
+}
+
 console.log(fails === 0 ? "\nAll Long Island coverage checks passed." : `\n${fails} check(s) failed.`);
 process.exit(fails === 0 ? 0 : 1);

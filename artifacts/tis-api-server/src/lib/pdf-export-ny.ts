@@ -156,7 +156,7 @@ function fmtNum(n: any, decimals: number = 0): string {
 
 // ---- NYSDOT-Region resolver ----------------------------------------------
 
-type NysdotRegion = {
+export type NysdotRegion = {
   num: number;
   /** "Region 11 — New York City" — for cover and §3.1 prose. */
   label: string;
@@ -172,7 +172,9 @@ type NysdotRegion = {
  * all other roads 2%/yr per Regional Planning Group). Bounding boxes
  * are rough — accurate enough for prose adaptation; not authoritative.
  */
-function nysdotRegion(lat: number, lon: number, region: Region): NysdotRegion {
+// Exported for scripts/verify-long-island-coverage.mjs — the Queens/Nassau
+// line is asserted against the real implementation, not a copy of the rule.
+export function nysdotRegion(lat: number, lon: number, region: Region): NysdotRegion {
   const code = region.code;
   if (code === "buffalo_metro") return { num: 5, label: "Region 5 — Buffalo / Western New York", planningGroup: "GBNRTC (Greater Buffalo-Niagara Regional Transportation Council)" };
   if (code === "rochester_ny_metro") return { num: 4, label: "Region 4 — Rochester / Genesee Valley", planningGroup: "GTC (Genesee Transportation Council)" };
@@ -190,9 +192,17 @@ function nysdotRegion(lat: number, lon: number, region: Region): NysdotRegion {
     if (lat >= 40.92) {
       return { num: 8, label: "Region 8 — Hudson Valley", planningGroup: "NYMTC (New York Metropolitan Transportation Council)" };
     }
-    // Region 10 (Long Island) — Nassau + Suffolk. East of Brooklyn
-    // (lon > -73.83) below the Westchester line.
-    if (lon > -73.83) {
+    // Region 10 (Long Island) — Nassau + Suffolk, below the Westchester
+    // line. The Queens/Nassau border runs near -73.70 in the north (Elmont,
+    // Floral Park) and -73.74 in the south (Valley Stream), so no single
+    // vertical line is exact; -73.73 is the best constant fit. The old
+    // -73.83 was far enough west to label Jamaica, St. Albans, Queens
+    // Village, Cambria Heights and Rosedale as Long Island when NYSDOT puts
+    // all five in Region 11. Residual error is a ~0.015 deg sliver of
+    // easternmost Queens (Bellerose, Glen Oaks), which the border genuinely
+    // interleaves with Nassau — see the note above: these boxes are rough,
+    // accurate enough for prose adaptation, not authoritative.
+    if (lon > -73.73) {
       return { num: 10, label: "Region 10 — Long Island", planningGroup: "NYMTC (New York Metropolitan Transportation Council)" };
     }
     // Default: Region 11 (NYC five boroughs).
