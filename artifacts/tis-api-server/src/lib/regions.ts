@@ -967,11 +967,38 @@ export const REGIONS: Record<RegionCode, Region> = {
     // Westchester/Rockland. The NJ side is filled by the append pass
     // (extend-region-coverage.ts), so the old NY-only-PBF caveat no longer
     // applies.
+    // Envelope of `coverageBoxes` below. The old single box (40.2–41.2 /
+    // -74.5..-73.4) stopped just past Nassau, so Suffolk County — ~1.5M
+    // people, the eastern two-thirds of Long Island — fell outside every
+    // active region and returned "outside our 300 covered metros".
+    //
     // lonMin -74.5 abuts trenton_metro's lonMax exactly (no overlap). The
-    // CT corner (Stamford/Norwalk) also falls in this bbox, but
-    // regionForCoordinate resolves it to bridgeport_metro (smaller bbox
-    // wins), whose inventory carries the CT signals.
-    bounds: { latMin: 40.2, latMax: 41.2, lonMin: -74.5, lonMax: -73.4 },
+    // CT corner (Stamford/Norwalk) falls in box A, but regionForCoordinate
+    // resolves it to bridgeport_metro (smaller summed area wins), whose
+    // inventory carries the CT signals.
+    bounds: { latMin: 40.2, latMax: 41.2, lonMin: -74.5, lonMax: -71.85 },
+    // Long Island as a union of rectangles. One box cannot describe this:
+    // a rectangle wide enough for Montauk (-71.85) at latMax 41.2 also
+    // swallows Bridgeport (41.179), Milford (41.222) and New Haven (41.308)
+    // across the Sound. Boxes B and C hug the island's latitude range
+    // instead, which excludes the Connecticut shoreline geometrically.
+    // Negative controls are asserted in scripts/verify-long-island-coverage.mjs.
+    coverageBoxes: [
+      // A — NYC, the NJ side, Nassau, lower Westchester. Byte-identical to
+      // the pre-Suffolk bounds so no coordinate that resolves today moves.
+      { latMin: 40.2, latMax: 41.2, lonMin: -74.5, lonMax: -73.4 },
+      // B — western + central Suffolk: Huntington, Babylon, Islip,
+      // Smithtown, Brookhaven, Riverhead. latMax 41.00 clears Port
+      // Jefferson (40.947) while staying south of Bridgeport (41.179).
+      { latMin: 40.57, latMax: 41.00, lonMin: -73.42, lonMax: -72.60 },
+      // C — the forks: North Fork to Orient Point, South Fork to Montauk,
+      // Shelter Island. latMax 41.20 is the tight constraint — Orient Point
+      // is 41.163, Old Saybrook CT is 41.291. That 0.13° gap is what keeps
+      // the CT shoreline out. It also excludes Fishers Island (41.271),
+      // legally Southold but ~230 residents and zero signals; reaching it
+      // would narrow the margin against Stonington CT (41.336) to 0.04°.
+      { latMin: 40.78, latMax: 41.20, lonMin: -72.65, lonMax: -71.85 },
+    ],
     stateCode: "NY",
     jurisdiction: {
       dotName: "New York City Department of Transportation (NYC DOT)",
