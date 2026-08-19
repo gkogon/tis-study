@@ -45,11 +45,21 @@ import { REGIONS, type RegionCode } from "../../artifacts/tis-api-server/src/lib
 
 const PBF_DIR = process.env["GEOFABRIK_DIR"] ?? "/tmp/geofabrik_pbf";
 
-/** Which state PBFs fill which metros' missing side. */
+/**
+ * Which state PBFs fill which metros' missing side.
+ *
+ * "new-york" was added 2026-08-18 for Suffolk County: the 2026-05 extraction
+ * clipped new-york-signals.json to the then-current bbox (extent matched it
+ * to four decimals, zero signals east of -73.4), so the Suffolk coverage
+ * boxes added in regions.ts would otherwise claim territory with no
+ * inventory — dropping every Suffolk site onto the 15-mile nearest-N
+ * fallback, a WORSE answer than the honest "not covered" it replaced.
+ */
 const STATE_TARGETS: Record<string, RegionCode[]> = {
   "new-jersey": ["new_york_metro", "philadelphia_metro"],
   virginia: ["washington_dc_metro"],
   maryland: ["washington_dc_metro"],
+  "new-york": ["new_york_metro"],
 };
 
 const MATCH_RADIUS_M = 15;
@@ -151,6 +161,25 @@ function lineIntersectsBbox(coords: number[][], b: Bounds): boolean {
   return !(latHi < b.latMin || latLo > b.latMax || lonHi < b.lonMin || lonLo > b.lonMax);
 }
 
+/**
+ * Membership boxes for a metro: the coverage union when declared, else the
+ * single bbox. Mirrors regionForCoordinate — a region with coverageBoxes has
+ * a `bounds` that is only the envelope, and the envelope must not decide
+ * what gets appended (new_york_metro's spans Long Island Sound).
+ */
+function metroBoxes(metro: RegionCode): Bounds[] {
+  const r = REGIONS[metro]!;
+  return r.coverageBoxes ?? [r.bounds];
+}
+
+function inAnyBbox(lat: number, lon: number, boxes: Bounds[]): boolean {
+  return boxes.some((b) => inBbox(lat, lon, b));
+}
+
+function lineIntersectsAnyBbox(coords: number[][], boxes: Bounds[]): boolean {
+  return boxes.some((b) => lineIntersectsBbox(coords, b));
+}
+
 function distMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const M_PER_DEG_LAT = 111_320;
   const midLat = (lat1 + lat2) / 2;
@@ -226,7 +255,7 @@ function appendSignals(metro: RegionCode, features: GeoJsonFeature[], state: str
   archiveOnce(p, `${slug}-signals.pre-extend.json`);
 
   const existing = JSON.parse(readFileSync(p, "utf8")) as SignalTuple[];
-  const b = REGIONS[metro]!.bounds;
+  const boxes = metroBoxes(metro);
   const idx = buildIndex(existing);
   const usedIds = new Set<number>(existing.map((t) => t[0]));
   const appended: SignalTuple[] = [];
@@ -236,7 +265,7 @@ function appendSignals(metro: RegionCode, features: GeoJsonFeature[], state: str
   for (const f of features) {
     if (f.geometry.type !== "Point") continue;
     const [lon, lat] = f.geometry.coordinates as [number, number];
-    if (!inBbox(lat, lon, b)) continue;
+    if (!inAnyBbox(lat, lon, boxes)) continue;
     if (hasNeighbor(existing, idx, lat, lon)) { dup++; continue; }
     let id = Number.parseInt(String(f.properties["@id"] ?? f.properties["id"] ?? ""), 10);
     if (!Number.isFinite(id) || id <= 0) continue;
@@ -265,7 +294,7 @@ function appendRoads(metro: RegionCode, features: GeoJsonFeature[], state: strin
   archiveOnce(p, `${slug}-roads.pre-extend.json`);
 
   const road = JSON.parse(readFileSync(p, "utf8")) as { classes: string[]; ways: unknown[] };
-  const b = REGIONS[metro]!.bounds;
+  const boxes = metroBoxes(metro);
 
   // Idempotency key: class|name|first vertex. Appends come from states the
   // file never covered, so collisions only occur on a re-run.
@@ -298,7 +327,7 @@ function appendRoads(metro: RegionCode, features: GeoJsonFeature[], state: strin
 
     for (const g of geoms) {
       if (g.length < 2) continue;
-      if (!lineIntersectsBbox(g, b)) continue;
+      if (!lineIntersectsAnyBbox(g, boxes)) continue;
       const polyline = g.map(([lon, lat]) => [
         Math.round((lat as number) * 1e5) / 1e5,
         Math.round((lon as number) * 1e5) / 1e5,
