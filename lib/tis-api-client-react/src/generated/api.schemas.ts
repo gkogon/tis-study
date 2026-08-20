@@ -180,8 +180,19 @@ export const TisDirection = {
   WB: "WB",
 } as const;
 
+export type TisLandUseConfidence =
+  (typeof TisLandUseConfidence)[keyof typeof TisLandUseConfidence];
+
+export const TisLandUseConfidence = {
+  nhts_2017: "nhts_2017",
+  sandag_2002: "sandag_2002",
+  nchrp_716: "nchrp_716",
+  blended_mpo: "blended_mpo",
+  interpolated: "interpolated",
+} as const;
+
 /**
- * One ITE land-use entry supported by the TIS generator.
+ * One land-use entry supported by the TIS generator. Rates are derived from free public sources (SANDAG 2002 / FHWA NHTS 2017 / NCHRP 716); the land-use code follows the numbering convention the industry shares, but the rates are NOT reproduced from any licensed manual.
  */
 export interface TisLandUse {
   code: string;
@@ -195,6 +206,8 @@ export interface TisLandUse {
   satMultiplier?: number;
   passByPctPm?: number;
   internalCapturePctPm?: number;
+  confidence?: TisLandUseConfidence;
+  source?: string;
 }
 
 /**
@@ -380,6 +393,10 @@ export interface TisTripGeneration {
   unitShort?: string;
   variableConfidence?: TisTripGenerationVariableConfidence;
   variableNote?: string;
+  dailyRate?: number;
+  amRate?: number;
+  pmRate?: number;
+  variableSource?: string;
   dailyTrips: number;
   amPeakTrips: number;
   pmPeakTrips: number;

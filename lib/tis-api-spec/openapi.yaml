@@ -386,7 +386,11 @@ components:
       enum: [NB, SB, EB, WB]
     TisLandUse:
       type: object
-      description: One ITE land-use entry supported by the TIS generator.
+      description: >-
+        One land-use entry supported by the TIS generator. Rates are derived
+        from free public sources (SANDAG 2002 / FHWA NHTS 2017 / NCHRP 716);
+        the land-use code follows the numbering convention the industry shares,
+        but the rates are NOT reproduced from any licensed manual.
       properties:
         code: { type: string }
         name: { type: string }
@@ -399,6 +403,11 @@ components:
         satMultiplier: { type: number }
         passByPctPm: { type: number }
         internalCapturePctPm: { type: number }
+        # Provenance, so the picker can show where a rate came from before the
+        # engineer commits to it — same auditability goal as the report's
+        # "Rate source" row.
+        confidence: { type: string, enum: [nhts_2017, sandag_2002, nchrp_716, blended_mpo, interpolated] }
+        source: { type: string }
       required: [code, name, unit, unitShort, dailyRate, amRate, pmRate]
     DrivewayAccessType:
       type: string
@@ -566,6 +575,13 @@ components:
         unitShort: { type: string }
         variableConfidence: { type: string, enum: [nhts_2017, sandag_2002, nchrp_716, blended_mpo, interpolated] }
         variableNote: { type: string }
+        # Applied rates + citation, so a reviewing PE can audit rate × size ≈
+        # trips rather than taking the totals on faith. Optional: payloads
+        # stored before these shipped must still parse and re-render.
+        dailyRate: { type: number }
+        amRate: { type: number }
+        pmRate: { type: number }
+        variableSource: { type: string }
         dailyTrips: { type: integer }
         amPeakTrips: { type: integer }
         pmPeakTrips: { type: integer }

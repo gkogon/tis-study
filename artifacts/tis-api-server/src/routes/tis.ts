@@ -41,12 +41,18 @@ router.get("/regions", (_req, res): void => {
 });
 
 router.get("/land-uses", (_req, res): void => {
+  // `confidence` + `source` ride along so the land-use picker can show where a
+  // rate came from. They used to be projected away here, which meant the one
+  // screen where an engineer chooses a rate was also the one screen that hid
+  // its provenance.
   const out = LAND_USES.map(({
     code, name, unit, unitShort, dailyRate, amRate, pmRate,
     amDirectionalIn, satMultiplier, passByPctPm, internalCapturePctPm,
+    confidence, source,
   }) => ({
     code, name, unit, unitShort, dailyRate, amRate, pmRate,
     amDirectionalIn, satMultiplier, passByPctPm, internalCapturePctPm,
+    confidence, source,
   }));
   res.json(ListTisLandUsesResponse.parse(out));
 });

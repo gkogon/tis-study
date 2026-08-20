@@ -359,7 +359,7 @@ export function renderTripDistributionSection(
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
       isFl
         ? FL_ASSIGNMENT_CAPTION
-        : "Project trips assigned to each study intersection from the distribution shares above: the directional shares orient the loading toward the high-share sectors, distance-decayed to each approach.",
+        : "Project trips assigned to each study intersection from the distribution shares above: a four-step gravity model sets the share reaching each intersection from its attraction mass and its distance from the site. Directional load multipliers are a Florida (Caltran) refinement and are not applied in this region — each intersection's loading is taken directly from the gravity weights above.",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");

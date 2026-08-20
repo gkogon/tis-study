@@ -525,6 +525,21 @@ export type TripGenerationSummary = {
   variableConfidence: RateConfidence;
   /** Optional engineering note for the chosen variable. */
   variableNote?: string;
+  /**
+   * The trip-generation rates actually applied, per unit of the chosen
+   * independent variable, plus the free-source provenance string behind them.
+   *
+   * These exist so a reviewing PE can audit the arithmetic — rate × size ≈
+   * trips — instead of taking the trip totals on faith. Before this, the
+   * report printed the totals and a provenance TAG but never the rate itself,
+   * which made the single most basic check a reviewer performs impossible.
+   * Optional so payloads stored before this shipped still parse.
+   */
+  dailyRate?: number;
+  amRate?: number;
+  pmRate?: number;
+  /** Free-source citation for the applied rate (e.g. the SANDAG 2002 guide). */
+  variableSource?: string;
   dailyTrips: number;
   amPeakTrips: number;
   pmPeakTrips: number;
@@ -1849,6 +1864,10 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     unitShort: rates.unitShort,
     variableConfidence: rates.confidence,
     variableNote: rates.note,
+    dailyRate: rates.dailyRate,
+    amRate: rates.amRate,
+    pmRate: rates.pmRate,
+    variableSource: rates.source,
     dailyTrips,
     amPeakTrips: amTrips,
     pmPeakTrips: pmTrips,
