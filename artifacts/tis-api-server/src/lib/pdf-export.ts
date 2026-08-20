@@ -1628,7 +1628,7 @@ function renderTisGeorgia(
   doc.font("body").fontSize(10).fillColor("black");
   const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
   const losEf = Number(r.intersectionsAtLosEf ?? 0);
-  const summary = `This report presents the analysis of anticipated traffic impacts associated with the proposed ${project.projectName || "development"} located within ${region.displayName}, Georgia. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius using methodology consistent with the Highway Capacity Manual 6th Edition and public-data trip-generation screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Trip generation is calculated for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
+  const summary = `This report presents the analysis of anticipated traffic impacts associated with the proposed ${project.projectName || "development"} located within ${region.displayName}, Georgia. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius using an openly-published signalized control-delay method (Webster 1958 uniform delay with an Akcelik overflow term) and public-data trip-generation screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Trip generation is calculated for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
   doc.text(summary, { paragraphGap: 6 });
 
   doc.font("body").fontSize(10).fillColor("black").text("Findings:", { paragraphGap: 2 });
@@ -1748,7 +1748,7 @@ function renderTisGeorgia(
 
   gaSubsection(doc, "2.3 Detailed Intersection Analysis");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Level of Service (LOS) is calculated per the Highway Capacity Manual 6th Edition, Chapter 19 (Signalized Intersections), Equation 19-13 (control delay) and Equation 19-50 (95th-percentile queue). LOS is reported for each affected intersection per HCM 6th Ed. Exhibit 19-8 thresholds: A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F >80s of average control delay per vehicle.",
+    "Level of Service (LOS) is calculated from average control delay per vehicle: Webster's uniform-delay equation (F. V. Webster, Traffic Signal Settings, Road Research Technical Paper No. 39, Road Research Laboratory / HMSO, London, 1958) plus Akcelik's time-dependent overflow term, with a standard undersaturated cyclic back-of-queue relation at the 95th percentile. LOS is reported for each affected intersection against the conventional US signalized control-delay bands republished in state DOT traffic-engineering manuals: A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F >80s of average control delay per vehicle.",
     { paragraphGap: 6 },
   );
 
@@ -2736,7 +2736,7 @@ function renderTisCalifornia(
 
   caSubsection(doc, "4.1 Methodology");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Level of Service (LOS) is calculated per the Highway Capacity Manual 6th Edition, Chapter 19 (Signalized Intersections), Equation 19-13 (control delay) and Equation 19-50 (95th-percentile queue). LOS thresholds (HCM 6th Ed. Exhibit 19-8): A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F >80s of average control delay per vehicle. Caltrans Highway Design Manual (HDM, 7th Edition) Topic 102 + Ch. 400 governs LOS-based design capacity for SHS facilities. CA MUTCD 2026 Part 4C governs signal-warrant analyses.",
+    "Level of Service (LOS) is calculated from average control delay per vehicle: Webster's uniform-delay equation (F. V. Webster, Traffic Signal Settings, Road Research Technical Paper No. 39, Road Research Laboratory / HMSO, London, 1958) plus Akcelik's time-dependent overflow term, with a standard undersaturated cyclic back-of-queue relation at the 95th percentile. Control-delay bands (as republished in state DOT traffic-engineering manuals): A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F >80s of average control delay per vehicle. Caltrans Highway Design Manual (HDM, 7th Edition) Topic 102 + Ch. 400 governs LOS-based design capacity for SHS facilities. CA MUTCD 2026 Part 4C governs signal-warrant analyses.",
     { paragraphGap: 6 },
   );
 
@@ -3458,7 +3458,7 @@ function renderTisGeorgiaAbbreviated(
   // scenario and the Δ-delay comparison against No-Build are Level 3+.
   gaSection(doc, "7.0 TRAFFIC OPERATION ANALYSIS");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Level of Service (LOS) is calculated per the Highway Capacity Manual 6th Edition, Chapter 19 (Signalized Intersections), Equation 19-13 (control delay) and Equation 19-50 (95th-percentile queue). LOS is reported per HCM 6th Ed. Exhibit 19-8 thresholds: A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F >80s of average control delay per vehicle. Per Gwinnett DOT Level 2 scope, Existing and Future-with-Project conditions are reported; comparative No-Build vs. Build scenario analysis is a Level 3 (Full TIS) requirement and is not included here.",
+    "Level of Service (LOS) is calculated from average control delay per vehicle: Webster's uniform-delay equation (F. V. Webster, Traffic Signal Settings, Road Research Technical Paper No. 39, Road Research Laboratory / HMSO, London, 1958) plus Akcelik's time-dependent overflow term, with a standard undersaturated cyclic back-of-queue relation at the 95th percentile. LOS is reported against the conventional US signalized control-delay bands republished in state DOT traffic-engineering manuals: A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F >80s of average control delay per vehicle. Per Gwinnett DOT Level 2 scope, Existing and Future-with-Project conditions are reported; comparative No-Build vs. Build scenario analysis is a Level 3 (Full TIS) requirement and is not included here.",
     { paragraphGap: 6 },
   );
 
@@ -3951,7 +3951,7 @@ function renderTisLondon(
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
   doc.text("• Capacity is reported using the UK signalised method (TRL RR67 / OSCADY–LinSig) per DMRB CD 123, NOT the Highway Capacity Manual: §5.4 gives Degree of Saturation (DoS), Practical Reserve Capacity (PRC = (0.9/DoS − 1)·100) and Mean Maximum Queue (MMQ) in PCU. Because the screening engine models every junction as signalised, the DoS is the engine's calibrated saturation ratio (its v/c) — a faithful UK signalised result, not an HCM cross-reference. Two limits remain for a submitted TA: (a) any junction that is in fact a roundabout or priority junction must be re-run in ARCADY (Kimber LR942, per DMRB CD 116) or PICADY (gap-acceptance) — both models are implemented and route automatically once junction control type is supplied, but until then are evaluated against DMRB default geometry and report Ratio of Flow to Capacity (RFC); and (b) a formal submission validates the signalised arms in LinSig 3 / TRANSYT 16 / Junctions 11 with the site's measured lane geometry, stage/phase diagram and saturation-flow survey rather than the engine's 1,900 PCU/h RR67 base and 0.45 green ratio.", { paragraphGap: 4 });
   doc.text("• Trip generation uses US public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) — NOT TRICS. UK reviewers do not accept US screening rates for TA work. The required source is the TRICS multi-modal database (currently TRICS 8 generation, base release March 2025, with the TRICS Good Practice Guide 2025 and Multi-Modal Methodology 2025 as the governing methodology, and the TRICS Decide & Provide Guidance Note 2021 for vision-led applications). The 85th-percentile rate remains the conventional UK starting point in TA practice, cited from DfT 2007 §4.62 (withdrawn October 2014 but still the de-facto reference); TRICS itself is methodologically neutral on which percentile to use and recommends ≥ 20 surveys in the rank-order list before 85th-percentile figures are quoted (TRICS Good Practice Guide 2025 §14.5–14.7). The scenario filter recorded for reviewer audit is date band, TRICS Main Location Type, day type, parking provision, GFA range, and any survey-day inclusion/exclusion decision on COVID-restriction surveys (which TRICS flags in the database but does not auto-exclude — user judgement, reason for any exclusion stated in the report, per Good Practice Guide §16.6). \"Region\" alone is no longer recommended as an exclusion criterion (Good Practice Guide §5.5–5.7) and TRICS 8 no longer allows exclusion on the basis of region or area alone. Three reporting-discipline elements must accompany any TRICS rates cited in a submitted TA: (i) the TRICS Calculation Reference code and licensee TRICS licence number, both auto-printed on every page of the TRICS PDF output (GPG §13.8 + §22.7) — reports lacking either are inadmissible per TRICS T&Cs; (ii) Cross Test results (mean vs median trip-rate variation %, GPG §14.8) reported alongside the rates so the reviewer can assess weighting/bias in the selected set; and (iii) where Vision-Led / Decide & Provide factoring has been applied to the TRICS-generated rates, the raw TRICS data is presented first and the factored data second, with the factoring method and reasoning explicit (GPG §10.7) — factored figures are not TRICS data. Per the 19 May 2026 TRICS licence-monitoring notice, TRICS will contact the LPA to advise that TRICS data is to be rejected as void if cited by a non-licensed organisation; the submitting consultancy's TRICS licence and produced-by attestation must be in the report.", { paragraphGap: 4 });
-  doc.text("• Level of Service is reported as letters A–F against the HCM Exhibit 19-8 control-delay thresholds (A ≤ 10 s, B ≤ 20 s, C ≤ 35 s, D ≤ 55 s, E ≤ 80 s, F > 80 s of average control delay per vehicle). LOS letters are not used in UK TA practice; the thresholds are given here so a UK reviewer can map them informally to the delay categories they recognise.", { paragraphGap: 4 });
+  doc.text("• Level of Service is reported as letters A–F against the conventional US control-delay bands (A ≤ 10 s, B ≤ 20 s, C ≤ 35 s, D ≤ 55 s, E ≤ 80 s, F > 80 s of average control delay per vehicle). LOS letters are not used in UK TA practice; the thresholds are given here so a UK reviewer can map them informally to the delay categories they recognise.", { paragraphGap: 4 });
   {
     const appliedShare = Number(r.autoModeShareApplied);
     const sharePct = Number.isFinite(appliedShare) && appliedShare > 0
@@ -5007,7 +5007,7 @@ function renderLondonTransportStatement(
 
   ldnSubsection(doc, "1.2 Methodology Cross-Reference and Disclosure");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "The analysis is generated by a screening engine calibrated to United States standards and is presented as a cross-reference to UK methodology, not as a substitute for it. Capacity analysis uses the HCM 6th Edition (Ch. 19, signalised junctions) rather than DMRB CD 116 / CD 123; trip generation uses US public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) rather than TRICS 8; LOS letters A–F are reported against the HCM Exhibit 19-8 control-delay thresholds. A chartered engineer preparing a submittable TS should re-run the affected junctions in LinSig 3 / Junctions 11 with TRICS multi-modal trip rates filtered per the TRICS Good Practice Guide 2025.",
+    "The analysis is generated by a screening engine calibrated to United States standards and is presented as a cross-reference to UK methodology, not as a substitute for it. Capacity analysis uses the US screening control-delay method (Webster/Akcelik) rather than DMRB CD 116 / CD 123; trip generation uses US public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) rather than TRICS 8; LOS letters A–F are reported against the conventional US control-delay bands. A chartered engineer preparing a submittable TS should re-run the affected junctions in LinSig 3 / Junctions 11 with TRICS multi-modal trip rates filtered per the TRICS Good Practice Guide 2025.",
     { paragraphGap: 6 },
   );
   doc.moveDown(0.3);
@@ -5747,7 +5747,7 @@ function renderTisTexas(
   doc.font("body").fontSize(10).fillColor("black");
   const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
   const losEf = Number(r.intersectionsAtLosEf ?? 0);
-  const summary = `This Traffic Impact Analysis (TIA) presents the anticipated traffic impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Texas. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius. The report follows the outline in TxDOT Traffic and Safety Analysis Procedures Manual (TSP) Chapter 16 Appendix Q, with capacity analysis per the Highway Capacity Manual (HCM) latest edition and trip generation per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). The development generates a determining peak-hour trip count of ${determiningPht.toFixed(0)} ${determiningPht === 1 ? "vehicle" : "vehicles"}, classifying it as ${catLabel} under TSP §16.2.1 Table 16-1.`;
+  const summary = `This Traffic Impact Analysis (TIA) presents the anticipated traffic impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Texas. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius. The report follows the outline in TxDOT Traffic and Safety Analysis Procedures Manual (TSP) Chapter 16 Appendix Q, with capacity analysis by the openly-published Webster/Akcelik signalized control-delay method that the TSP capacity procedures are built on, and trip generation per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). The development generates a determining peak-hour trip count of ${determiningPht.toFixed(0)} ${determiningPht === 1 ? "vehicle" : "vehicles"}, classifying it as ${catLabel} under TSP §16.2.1 Table 16-1.`;
   doc.text(summary, { paragraphGap: 6 });
 
   doc.font("body").fontSize(10).fillColor("black").text(`Reviewing authority: ${cityName}.`, { paragraphGap: 2 });
@@ -6523,7 +6523,7 @@ function renderTisIllinois(
   doc.font("body").fontSize(10).fillColor("black");
   const losDrops = Number(r.intersectionsWithLosDrop ?? 0);
   const losEf = Number(r.intersectionsAtLosEf ?? 0);
-  const summary = `This Traffic Impact Study (TIS) presents the anticipated traffic impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Illinois. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius using methodology consistent with the Highway Capacity Manual current edition and the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Trip generation is calculated for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
+  const summary = `This Traffic Impact Study (TIS) presents the anticipated traffic impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, Illinois. The study evaluates ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study radius using an openly-published signalized control-delay method (Webster 1958 uniform delay with an Akcelik overflow term) and the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716). Trip generation is calculated for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
   doc.text(summary, { paragraphGap: 6 });
 
   doc.font("body").fontSize(10).fillColor("black").text(`Reviewing authority: ${jurisName[juris]}.`, { paragraphGap: 2 });
@@ -7771,7 +7771,7 @@ function renderTisFlorida(
   gaSection(doc, "1.0 EXECUTIVE SUMMARY");
   doc.font("body").fontSize(10).fillColor("black");
   doc.text(
-    `This Traffic Impact Study has been prepared to evaluate the potential traffic impact, identify short-term roadway and circulation needs, determine potential mitigation strategies, and identify critical traffic issues that should be addressed during the planning process of the proposed ${project.projectName || "development"}, located at ${req.address ?? (project as any).address ?? region.displayName}, within ${jur.name}, Florida. The host controlling jurisdiction is ${jur.name} (${jur.fdotDistrict}); the applicable review framework is ${jur.framework}. Analysis follows the FDOT Multimodal Transportation Site Impact Handbook (MTSIH, March 25, 2024) and the FDOT Quality/Level of Service Handbook v6.0 (August 2025); capacity analysis follows the Highway Capacity Manual 6th Edition consistent with FDOT Traffic Analysis Handbook §4.1. The study covers ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study area for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`,
+    `This Traffic Impact Study has been prepared to evaluate the potential traffic impact, identify short-term roadway and circulation needs, determine potential mitigation strategies, and identify critical traffic issues that should be addressed during the planning process of the proposed ${project.projectName || "development"}, located at ${req.address ?? (project as any).address ?? region.displayName}, within ${jur.name}, Florida. The host controlling jurisdiction is ${jur.name} (${jur.fdotDistrict}); the applicable review framework is ${jur.framework}. Analysis follows the FDOT Multimodal Transportation Site Impact Handbook (MTSIH, March 25, 2024) and the FDOT Quality/Level of Service Handbook v6.0 (August 2025); capacity analysis computes signalized control delay by the openly-published Webster (1958) uniform-delay formulation with an Akcelik overflow term — the basis of the capacity procedures FDOT Traffic Analysis Handbook §4.1 requires, which a submittal-grade study re-runs in licensed capacity software. The study covers ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study area for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`,
     { paragraphGap: 6 },
   );
   doc.text("As part of this Traffic Impact Study, the following assignments were prepared consistent with the FDOT-approved methodology:", { paragraphGap: 2 });
@@ -8327,7 +8327,7 @@ function renderTisFlorida(
   const flDesignYr = r.designYear ?? (req.openingYear ? Number(req.openingYear) + 20 : null);
   if (flHasDesignYear) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Intersection Level of Service is reported across the analysis scenarios per HCM 6th Edition Chapter 19 (Exhibit 19-8 control-delay thresholds). Four horizons are evaluated: (1) Existing — Scenario 1 current-year volumes; (2) No-Build — Scenario 2 at opening year ${openingYear}; (3) Build — Scenario 3 at opening year ${openingYear}; and (4) 20-Year Long-Range (${flDesignYr ?? "—"}) No-Build and Build. A ▲ flag marks any intersection projected to drop a LOS grade under Build conditions.`,
+      `Intersection Level of Service is reported across the analysis scenarios against the conventional US signalized control-delay bands republished in state DOT traffic-engineering manuals. Four horizons are evaluated: (1) Existing — Scenario 1 current-year volumes; (2) No-Build — Scenario 2 at opening year ${openingYear}; (3) Build — Scenario 3 at opening year ${openingYear}; and (4) 20-Year Long-Range (${flDesignYr ?? "—"}) No-Build and Build. A ▲ flag marks any intersection projected to drop a LOS grade under Build conditions.`,
       { paragraphGap: 6 },
     );
     table(doc, {
@@ -8349,13 +8349,13 @@ function renderTisFlorida(
     });
     doc.moveDown(0.2);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "Each scenario cell shows LOS grade / average control delay (s/veh) per HCM 6th Ed. Ex. 19-8 (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). Screening delays use a generic signal model (90 s cycle, g/C 0.45, 1,800 pc/h/ln, one critical lane per approach) and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal.",
+      "Each scenario cell shows LOS grade / average control delay (s/veh) against the conventional US control-delay bands (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). Screening delays use a generic signal model (90 s cycle, g/C 0.45, 1,800 pc/h/ln, one critical lane per approach) and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal.",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
   } else if (intersections.length > 0) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Intersection Level of Service is reported across the three analysis scenarios per HCM 6th Edition Chapter 19 (Exhibit 19-8 control-delay thresholds): Scenario 1 Existing, Scenario 2 No-Build (opening year ${openingYear}), and Scenario 3 Build (opening year ${openingYear}). A ▲ flag marks any intersection projected to drop a LOS grade under Build conditions.`,
+      `Intersection Level of Service is reported across the three analysis scenarios against the conventional US signalized control-delay bands republished in state DOT traffic-engineering manuals: Scenario 1 Existing, Scenario 2 No-Build (opening year ${openingYear}), and Scenario 3 Build (opening year ${openingYear}). A ▲ flag marks any intersection projected to drop a LOS grade under Build conditions.`,
       { paragraphGap: 6 },
     );
     table(doc, {
@@ -8376,7 +8376,7 @@ function renderTisFlorida(
     });
     doc.moveDown(0.2);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "Each scenario cell shows LOS grade / average control delay (s/veh) per HCM 6th Ed. Ex. 19-8 (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). Screening delays use a generic signal model (90 s cycle, g/C 0.45, 1,800 pc/h/ln, one critical lane per approach) and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal.",
+      "Each scenario cell shows LOS grade / average control delay (s/veh) against the conventional US control-delay bands (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). Screening delays use a generic signal model (90 s cycle, g/C 0.45, 1,800 pc/h/ln, one critical lane per approach) and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal.",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
@@ -9026,8 +9026,8 @@ function renderCapacityAppendix(
   gaSection(doc, "APPENDIX — INTERSECTION CAPACITY ANALYSIS WORKSHEETS");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "One worksheet per study intersection: a turning-movement diagram for each analyzed peak period plus "
-    + "the per-approach HCM capacity table. Analysis follows the Highway Capacity Manual 6th Edition "
-    + "signalized-intersection method; v/c, control delay (sec/veh), Level of Service, and 95th-percentile "
+    + "the per-approach capacity table. Analysis uses the openly-published Webster/Akcelik "
+    + "signalized control-delay method; v/c, control delay (sec/veh), Level of Service, and 95th-percentile "
     + "back-of-queue (ft) are reported for the Existing (No-Build) and Build conditions.",
     { paragraphGap: 4 },
   );

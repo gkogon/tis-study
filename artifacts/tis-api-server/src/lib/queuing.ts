@@ -1,9 +1,12 @@
 /**
- * HCM 6th Ed. Chapter 31 — Signalized Intersections, 95th-percentile
- * back-of-queue engine (screening fidelity).
+ * Signalized-intersection 95th-percentile back-of-queue engine
+ * (screening fidelity).
+ *
+ * Built on the openly-published cyclic-queue relations (Webster 1958 arrival/
+ * discharge form); no proprietary capacity-manual tables or text reproduced.
  *
  * Formulae:
- *   Capacity per lane         c_l = s × g / C            (HCM 19-8)
+ *   Capacity per lane         c_l = s × g / C
  *   v/c ratio                 X   = v / c
  *   Average queue at end of red:
  *     Q_avg = v × (C − g) / 3600       (vehicles)
@@ -15,7 +18,7 @@
  *
  *   Q_95 in feet = Q_95 vehicles × vehicle spacing.
  *
- * For full HCM rigor (random arrival, progression-quality PF, incremental
+ * For full design-level rigor (random arrival, progression-quality PF, incremental
  * delay d2 and oversaturation queue growth), engineers run HCS / Synchro.
  * This engine is a defensible screening estimate.
  */
@@ -150,7 +153,7 @@ export function runQueuingAnalysis(
     notes,
     citations: [
       "HCM 6th Edition Chapter 31 — Signalized Intersections: Supplemental.",
-      "HCM Eq. 19-8 — Capacity of a signalized lane group.",
+      "Capacity of a signalized lane group: c = s × g/C.",
       "HCM Eq. 31-6 — Queue length and storage ratio.",
     ],
   };
