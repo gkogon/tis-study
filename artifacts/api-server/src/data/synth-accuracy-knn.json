@@ -1080,13 +1080,13 @@
     },
     {
       "code": "new_york_metro",
-      "n": 23012,
+      "n": 25814,
       "mdape": 0.086,
       "accuracy": 0.914,
       "within10": 51.6,
-      "within20": 60.6,
-      "within30": 66.8,
-      "within50": 75.6,
+      "within20": 60.4,
+      "within30": 66.5,
+      "within50": 75.4,
       "fallbackPct": 0
     },
     {
@@ -2049,12 +2049,12 @@
   ],
   "globalRollup": {
     "regions": 186,
-    "totalMeasuredSignals": 499843,
+    "totalMeasuredSignals": 502645,
     "mdape": 0.091,
     "accuracy": 0.909,
     "within10": 60.9,
-    "within20": 67.4,
-    "within30": 72.2,
+    "within20": 67.3,
+    "within30": 72.1,
     "within50": 79.4
   }
 }
