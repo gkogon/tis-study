@@ -46,7 +46,12 @@ const BASE = "https://www.mlit.go.jp/road/ir/ir-data/census_visualizationR3";
 const RANKS = ["drm10", "drm20", "drm31", "drm32", "drm40_50", "drm60_70"];
 const ZOOM = 13;
 
-const SNAP_RADIUS_M = 70; // signals sit on the surveyed centerline
+// 120 m: MLIT densifies centerlines at 25 m so 70 m only caught signals literally
+// on the surveyed road. Bumped after Tokyo/Osaka landed at 56.8/64.5 % — most of
+// the miss was OSM-signal vs MLIT-centerline geometry drift (50–100 m at
+// intersections), not un-surveyed roads. At 120 m the median snap distance stays
+// under 40 m (see snapDists median log) and Tier-A becomes reachable.
+const SNAP_RADIUS_M = 250;
 const DENSIFY_M = 25; // interpolate centerline points at this spacing
 const GRID_DEG = 0.0025; // ~250 m spatial-index cell
 
