@@ -180,6 +180,31 @@ export const TisDirection = {
   WB: "WB",
 } as const;
 
+export interface UtdfParseRequest {
+  /**
+   * Raw UTDF file text (client reads the file; no multipart).
+   * @minLength 1
+   * @maxLength 2000000
+   */
+  content: string;
+}
+
+export type UtdfParseResultNodesItem = {
+  intId: number;
+  name: string;
+  latitude?: number;
+  longitude?: number;
+  hasVolumes?: boolean;
+};
+
+export interface UtdfParseResult {
+  nodes: UtdfParseResultNodesItem[];
+  volumeIntersections: number;
+  laneIntersections: number;
+  timingIntersections: number;
+  warnings: string[];
+}
+
 export type TisLandUseConfidence =
   (typeof TisLandUseConfidence)[keyof typeof TisLandUseConfidence];
 

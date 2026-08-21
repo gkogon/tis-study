@@ -69,3 +69,6 @@ export * from "./tisTripGeneration";
 export * from "./tisTripGenerationVariableConfidence";
 export * from "./tisTripProfile";
 export * from "./tisWeather";
+export * from "./utdfParseRequest";
+export * from "./utdfParseResult";
+export * from "./utdfParseResultNodesItem";

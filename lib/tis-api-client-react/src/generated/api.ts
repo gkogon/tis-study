@@ -29,6 +29,8 @@ import type {
   TisProjectSummary,
   TisReport,
   TisRequest,
+  UtdfParseRequest,
+  UtdfParseResult,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -117,9 +119,10 @@ export function useHealthCheck<
 }
 
 /**
- * Given a candidate development site (lat/lon + ITE land-use code + size),
-estimates trip generation using ITE Trip Generation Manual 11th-Edition
-rates, finds affected signalized intersections within the study radius,
+ * Given a candidate development site (lat/lon + land-use code + size),
+estimates trip generation using public-source rates (SANDAG 2002 /
+FHWA NHTS 2017 / NCHRP 716 — no licensed-manual data),
+finds affected signalized intersections within the study radius,
 runs a Webster-style capacity analysis combining each signal's existing
 peak-hour stress with the assigned new trips, and recommends mitigations
 sized to the projected LOS impact.
@@ -207,6 +210,101 @@ export const useGenerateTis = <
   TContext
 > => {
   return useMutation(getGenerateTisMutationOptions(options));
+};
+
+/**
+ * Accepts the raw text of a UTDF (Universal Traffic Data Format) file —
+the export Synchro produces via File → Transfer → Write UTDF — and
+returns the parsed nodes, per-movement volume/lane/timing counts, and
+any sections the parser skipped (named, never silent). Both known
+layouts parse: the row layout this API's own UTDF export writes, and
+Synchro's RECORDNAME matrix layout. The parsed node coordinates are
+directly usable as additionalStudyPoints on a TIS request, so an
+engineer's existing Synchro network defines the study scope.
+
+ * @summary Parse a Synchro UTDF file into structured intersections
+ */
+export const getParseUtdfFileUrl = () => {
+  return `/tis-api/utdf/parse`;
+};
+
+export const parseUtdfFile = async (
+  utdfParseRequest: UtdfParseRequest,
+  options?: RequestInit,
+): Promise<UtdfParseResult> => {
+  return customFetch<UtdfParseResult>(getParseUtdfFileUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(utdfParseRequest),
+  });
+};
+
+export const getParseUtdfFileMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof parseUtdfFile>>,
+    TError,
+    { data: BodyType<UtdfParseRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof parseUtdfFile>>,
+  TError,
+  { data: BodyType<UtdfParseRequest> },
+  TContext
+> => {
+  const mutationKey = ["parseUtdfFile"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof parseUtdfFile>>,
+    { data: BodyType<UtdfParseRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return parseUtdfFile(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ParseUtdfFileMutationResult = NonNullable<
+  Awaited<ReturnType<typeof parseUtdfFile>>
+>;
+export type ParseUtdfFileMutationBody = BodyType<UtdfParseRequest>;
+export type ParseUtdfFileMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Parse a Synchro UTDF file into structured intersections
+ */
+export const useParseUtdfFile = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof parseUtdfFile>>,
+    TError,
+    { data: BodyType<UtdfParseRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof parseUtdfFile>>,
+  TError,
+  { data: BodyType<UtdfParseRequest> },
+  TContext
+> => {
+  return useMutation(getParseUtdfFileMutationOptions(options));
 };
 
 /**

@@ -16,9 +16,10 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
- * Given a candidate development site (lat/lon + ITE land-use code + size),
-estimates trip generation using ITE Trip Generation Manual 11th-Edition
-rates, finds affected signalized intersections within the study radius,
+ * Given a candidate development site (lat/lon + land-use code + size),
+estimates trip generation using public-source rates (SANDAG 2002 /
+FHWA NHTS 2017 / NCHRP 716 — no licensed-manual data),
+finds affected signalized intersections within the study radius,
 runs a Webster-style capacity analysis combining each signal's existing
 peak-hour stress with the assigned new trips, and recommends mitigations
 sized to the projected LOS impact.
@@ -899,6 +900,44 @@ export const GenerateTisResponse = zod.object({
     .describe(
       "Present ONLY when the study radius contained no signalized intersection and the engine widened to the nearest-N fallback set (sparse rural\/exurban site). The study succeeded; this discloses that every analyzed intersection sits beyond the stated radius.",
     ),
+});
+
+/**
+ * Accepts the raw text of a UTDF (Universal Traffic Data Format) file —
+the export Synchro produces via File → Transfer → Write UTDF — and
+returns the parsed nodes, per-movement volume/lane/timing counts, and
+any sections the parser skipped (named, never silent). Both known
+layouts parse: the row layout this API's own UTDF export writes, and
+Synchro's RECORDNAME matrix layout. The parsed node coordinates are
+directly usable as additionalStudyPoints on a TIS request, so an
+engineer's existing Synchro network defines the study scope.
+
+ * @summary Parse a Synchro UTDF file into structured intersections
+ */
+export const parseUtdfFileBodyContentMax = 2000000;
+
+export const ParseUtdfFileBody = zod.object({
+  content: zod
+    .string()
+    .min(1)
+    .max(parseUtdfFileBodyContentMax)
+    .describe("Raw UTDF file text (client reads the file; no multipart)."),
+});
+
+export const ParseUtdfFileResponse = zod.object({
+  nodes: zod.array(
+    zod.object({
+      intId: zod.number(),
+      name: zod.string(),
+      latitude: zod.number().optional(),
+      longitude: zod.number().optional(),
+      hasVolumes: zod.boolean().optional(),
+    }),
+  ),
+  volumeIntersections: zod.number(),
+  laneIntersections: zod.number(),
+  timingIntersections: zod.number(),
+  warnings: zod.array(zod.string()),
 });
 
 /**

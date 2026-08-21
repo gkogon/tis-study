@@ -252,6 +252,8 @@ function TisFormSection({
   // by hand or pre-select a city. Reuses the public Nominatim-backed
   // /demo/geocode endpoint (no auth required, rate-limited + cached).
   const [geocoding, setGeocoding] = useState(false);
+  // UTDF import status line (Synchro network → forced study intersections).
+  const [utdfNote, setUtdfNote] = useState<string | null>(null);
   const [geocodeError, setGeocodeError] = useState<string | null>(null);
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
 
@@ -797,6 +799,87 @@ function TisFormSection({
                   }))
                 }
               />
+              {/* Synchro import: the engineer's existing UTDF network defines
+                  the study scope. FileReader → /tis-api/utdf/parse → parsed
+                  node coordinates merge into additionalStudyPoints (the same
+                  force-include machinery as map clicks and pasted lat/lons). */}
+              <div className="mt-2 space-y-1">
+                <label className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground">
+                  <FileText className="w-3.5 h-3.5" />
+                  Import study intersections from Synchro (UTDF)
+                  <input
+                    type="file"
+                    accept=".csv,.txt,.utdf,text/plain,text/csv"
+                    className="hidden"
+                    data-testid="input-utdf-file"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = ""; // allow re-selecting the same file
+                      if (!file) return;
+                      if (file.size > 2_000_000) {
+                        setUtdfNote("File exceeds the 2 MB UTDF limit.");
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = async () => {
+                        try {
+                          const r = await fetch("/tis-api/utdf/parse", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ content: String(reader.result ?? "") }),
+                          });
+                          if (!r.ok) {
+                            setUtdfNote(r.status === 401
+                              ? "Sign in to import a UTDF file."
+                              : "Could not parse that file as UTDF.");
+                            return;
+                          }
+                          const parsed = await r.json() as {
+                            nodes: Array<{ intId: number; name: string; latitude?: number; longitude?: number; hasVolumes?: boolean }>;
+                            volumeIntersections: number;
+                            warnings: string[];
+                          };
+                          const coords = parsed.nodes
+                            .filter((n) => Number.isFinite(n.latitude) && Number.isFinite(n.longitude))
+                            .map((n) => ({
+                              latitude: Math.round((n.latitude as number) * 1e4) / 1e4,
+                              longitude: Math.round((n.longitude as number) * 1e4) / 1e4,
+                            }));
+                          if (coords.length === 0) {
+                            // Real Synchro exports often carry planar X/Y only —
+                            // say so instead of silently importing nothing.
+                            setUtdfNote(
+                              `Parsed ${parsed.nodes.length} intersections but the file carries no lat/lon `
+                              + `(Synchro X/Y only). Re-export with coordinates, or add points on the map.`,
+                            );
+                            return;
+                          }
+                          setForm((f) => {
+                            const existing = f.additionalStudyPoints ?? [];
+                            const seen = new Set(existing.map((pt) => `${pt.latitude},${pt.longitude}`));
+                            const merged = [
+                              ...existing,
+                              ...coords.filter((pt) => !seen.has(`${pt.latitude},${pt.longitude}`)),
+                            ].slice(0, 60);
+                            return { ...f, additionalStudyPoints: merged.length > 0 ? merged : undefined };
+                          });
+                          setUtdfNote(
+                            `Imported ${coords.length} intersection${coords.length === 1 ? "" : "s"} from ${file.name}`
+                            + (parsed.volumeIntersections > 0 ? ` (${parsed.volumeIntersections} with volumes)` : "")
+                            + (parsed.warnings.length > 0 ? ` — ${parsed.warnings.length} section(s) skipped` : ""),
+                          );
+                        } catch {
+                          setUtdfNote("Could not reach the UTDF parser.");
+                        }
+                      };
+                      reader.readAsText(file);
+                    }}
+                  />
+                </label>
+                {utdfNote && (
+                  <p className="text-xs text-muted-foreground" data-testid="text-utdf-note">{utdfNote}</p>
+                )}
+              </div>
             </div>
           )}
           <div className="md:col-span-2 flex flex-wrap items-center gap-2 pt-2 border-t">
