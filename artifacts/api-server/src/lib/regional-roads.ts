@@ -29,7 +29,21 @@ function findData(filename: string): string | null {
   return null;
 }
 
-type RoadWay = [number, Array<[number, number]>, (number | null)?, (number | null)?];
+/**
+ * A way tuple as it actually appears in the shipped `<slug>-roads.json` files.
+ * Two shapes are in circulation and BOTH must be handled:
+ *
+ *   legacy   [classCode, polyline, lanes?, maxspeed?]
+ *   current  [classCode, name, polyline, lanes?, maxspeed?]
+ *
+ * The type used to declare only the legacy shape, which is why the parser was
+ * written to read `way[1]` as the polyline. 315 of the 316 shipped files are
+ * current-format, so that read silently discarded nearly every road in the
+ * product. Keeping both arms in the type is what stops that regressing.
+ */
+type RoadWayLegacy = [number, Array<[number, number]>, (number | null)?, (number | null)?];
+type RoadWayNamed = [number, string, Array<[number, number]>, (number | null)?, (number | null)?];
+type RoadWay = RoadWayLegacy | RoadWayNamed;
 type RoadFile = { classes: string[]; ways: RoadWay[] };
 
 const cache = new Map<string, RoadFile | null>();
@@ -79,10 +93,29 @@ export function roadSegmentsNear(
   const out: RoadSegment[] = [];
   for (const way of road.ways) {
     const cls = typeof way[0] === "number" ? way[0] : 99;
-    const pts = way[1];
+    // Way tuples ship in TWO shapes and this loop only ever understood one:
+    //   legacy  [classCode, polyline, lanes?, maxspeed?]
+    //   current [classCode, name, polyline, lanes?, maxspeed?]
+    // Reading way[1] unconditionally meant every current-format way hit a
+    // string, failed the Array.isArray guard, and was skipped — so
+    // roadSegmentsNear returned [], /api/roads reported no segments,
+    // fetchLocalRoads returned null, and tis.ts silently skipped route
+    // assignment as "region has no road network". 315 of 316 shipped road
+    // files are current-format (Miami-Dade: 0 of 31,592 ways parsed); Atlanta
+    // is the lone mixed file and only 31% of its ways got through.
+    //
+    // Locate the polyline by shape rather than by index, and read lanes /
+    // maxspeed from the two slots AFTER it so both shapes keep their metadata
+    // (current-format files do carry lanes/maxspeed — they were unreachable).
+    const named = !Array.isArray(way[1]);
+    const pts = named ? way[2] : way[1];
     if (!Array.isArray(pts) || pts.length < 2) continue;
-    const lanes = typeof way[2] === "number" ? way[2] : null;
-    const maxspeed = typeof way[3] === "number" ? way[3] : null;
+    // Read through locals typed as unknown: a computed tuple index widens the
+    // element type back to the full union and defeats the typeof guard.
+    const lanesRaw: unknown = named ? way[3] : way[2];
+    const maxspeedRaw: unknown = named ? way[4] : way[3];
+    const lanes = typeof lanesRaw === "number" ? lanesRaw : null;
+    const maxspeed = typeof maxspeedRaw === "number" ? maxspeedRaw : null;
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i]!, b = pts[i + 1]!;
       // Keep the segment if either endpoint is within the radius.

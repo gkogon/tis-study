@@ -8,7 +8,8 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "preprocess:accidents": "node ./scripts/fetch-accidents.mjs"
+    "preprocess:accidents": "node ./scripts/fetch-accidents.mjs",
+    "check:road-parser": "node ./scripts/verify-road-parser.mjs"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
