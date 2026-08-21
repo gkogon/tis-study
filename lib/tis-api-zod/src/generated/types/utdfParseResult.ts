@@ -5,6 +5,7 @@
  * TIS (Traffic Impact Study) API specification — engineering-firm product surface.
  * OpenAPI spec version: 0.1.0
  */
+import type { UtdfIntersectionData } from "./utdfIntersectionData";
 import type { UtdfParseResultNodesItem } from "./utdfParseResultNodesItem";
 
 export interface UtdfParseResult {
@@ -12,5 +13,6 @@ export interface UtdfParseResult {
   volumeIntersections: number;
   laneIntersections: number;
   timingIntersections: number;
+  utdfIntersections?: UtdfIntersectionData[];
   warnings: string[];
 }

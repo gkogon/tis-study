@@ -50,10 +50,20 @@ export const SCREENING_MAX_DELAY_SEC = 300;
 
 // ---------- HCM signalized-intersection delay (Ex. 19-18) ----------
 
-export function vcToDelay(vc: number, capacityVph: number = PER_INTERSECTION_CAPACITY_VPH): number {
+// `cycleLenS` / `gOverC` default to the screening constants, so every existing
+// call site is byte-identical. A caller with a MEASURED cycle length (e.g. a
+// Synchro UTDF import) passes it to sharpen the Webster uniform-delay term for
+// that intersection; the screening capacity (saturation flow × g/C) is
+// deliberately NOT re-derived from it — cycle length enters d1 only.
+export function vcToDelay(
+  vc: number,
+  capacityVph: number = PER_INTERSECTION_CAPACITY_VPH,
+  cycleLenS: number = CYCLE_LEN,
+  gOverC: number = G_OVER_C,
+): number {
   const x = Math.max(0, vc);
   const xForD1 = Math.min(0.99, x);
-  const d1 = (0.5 * CYCLE_LEN * Math.pow(1 - G_OVER_C, 2)) / (1 - xForD1 * G_OVER_C);
+  const d1 = (0.5 * cycleLenS * Math.pow(1 - gOverC, 2)) / (1 - xForD1 * gOverC);
 
   const T = 0.25;
   const k = 0.5;
@@ -71,11 +81,16 @@ export function vcToDelay(vc: number, capacityVph: number = PER_INTERSECTION_CAP
 //   Q1 (avg vehicles per cycle queued) = (vph/3600) * C * (1 - g/C) / (1 - x*g/C)
 //   Q95 ≈ Q1 * 1.65  (Poisson incremental factor, undersaturated)
 //   length_ft = Q95 * VEH_LENGTH_FT
-export function queue95Ft(approachVph: number, capacityVph: number): number {
+export function queue95Ft(
+  approachVph: number,
+  capacityVph: number,
+  cycleLenS: number = CYCLE_LEN,
+  gOverC: number = G_OVER_C,
+): number {
   if (approachVph <= 0) return 0;
   const x = Math.min(0.99, approachVph / capacityVph);
   const arrPerSec = approachVph / 3600;
-  const q1 = (arrPerSec * CYCLE_LEN * (1 - G_OVER_C)) / Math.max(0.05, 1 - x * G_OVER_C);
+  const q1 = (arrPerSec * cycleLenS * (1 - gOverC)) / Math.max(0.05, 1 - x * gOverC);
   const q95 = q1 * 1.65;
   return q95 * VEH_LENGTH_FT;
 }

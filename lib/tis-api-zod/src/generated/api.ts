@@ -72,6 +72,71 @@ export const generateTisBodyAdditionalStudyPointsItemLongitudeMax = 180;
 
 export const generateTisBodyAdditionalStudyPointsMax = 60;
 
+export const generateTisBodyUtdfIntersectionsItemLatitudeMin = -90;
+export const generateTisBodyUtdfIntersectionsItemLatitudeMax = 90;
+
+export const generateTisBodyUtdfIntersectionsItemLongitudeMin = -180;
+export const generateTisBodyUtdfIntersectionsItemLongitudeMax = 180;
+
+export const generateTisBodyUtdfIntersectionsItemVolumesNBLMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemVolumesNBTMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemVolumesNBRMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemVolumesSBLMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemVolumesSBTMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemVolumesSBRMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemVolumesEBLMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemVolumesEBTMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemVolumesEBRMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemVolumesWBLMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemVolumesWBTMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemVolumesWBRMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemPhfMin = 0.25;
+export const generateTisBodyUtdfIntersectionsItemPhfMax = 1;
+
+export const generateTisBodyUtdfIntersectionsItemHvPctMin = 0;
+export const generateTisBodyUtdfIntersectionsItemHvPctMax = 100;
+
+export const generateTisBodyUtdfIntersectionsItemStorageFtNBLMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemStorageFtNBTMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemStorageFtNBRMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemStorageFtSBLMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemStorageFtSBTMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemStorageFtSBRMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemStorageFtEBLMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemStorageFtEBTMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemStorageFtEBRMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemStorageFtWBLMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemStorageFtWBTMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemStorageFtWBRMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemCycleLenSecMin = 30;
+export const generateTisBodyUtdfIntersectionsItemCycleLenSecMax = 300;
+
+export const generateTisBodyUtdfIntersectionsMax = 60;
+
 export const generateTisBodyExistingLandUseCodeMin = 2;
 
 export const generateTisBodyExistingSizeMin = 0;
@@ -202,6 +267,166 @@ export const GenerateTisBody = zod.object({
     .describe(
       "Reviewer-scoped intersection coordinates (pasted or map-clicked), each snapped to the nearest inventory signal within ~0.35 mi and force-included regardless of studyRadiusMi. Additive, like studyIntersectionIds; robust when a signal's name is unknown. Points with no nearby signal are ignored.",
     ),
+  utdfIntersections: zod
+    .array(
+      zod
+        .object({
+          intId: zod
+            .number()
+            .optional()
+            .describe("Synchro INTID from the source file (provenance only)."),
+          name: zod.string().optional(),
+          latitude: zod
+            .number()
+            .min(generateTisBodyUtdfIntersectionsItemLatitudeMin)
+            .max(generateTisBodyUtdfIntersectionsItemLatitudeMax),
+          longitude: zod
+            .number()
+            .min(generateTisBodyUtdfIntersectionsItemLongitudeMin)
+            .max(generateTisBodyUtdfIntersectionsItemLongitudeMax),
+          volumes: zod
+            .object({
+              NBL: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemVolumesNBLMin)
+                .optional(),
+              NBT: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemVolumesNBTMin)
+                .optional(),
+              NBR: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemVolumesNBRMin)
+                .optional(),
+              SBL: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemVolumesSBLMin)
+                .optional(),
+              SBT: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemVolumesSBTMin)
+                .optional(),
+              SBR: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemVolumesSBRMin)
+                .optional(),
+              EBL: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemVolumesEBLMin)
+                .optional(),
+              EBT: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemVolumesEBTMin)
+                .optional(),
+              EBR: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemVolumesEBRMin)
+                .optional(),
+              WBL: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemVolumesWBLMin)
+                .optional(),
+              WBT: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemVolumesWBTMin)
+                .optional(),
+              WBR: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemVolumesWBRMin)
+                .optional(),
+            })
+            .describe(
+              "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+            ),
+          phf: zod
+            .number()
+            .min(generateTisBodyUtdfIntersectionsItemPhfMin)
+            .max(generateTisBodyUtdfIntersectionsItemPhfMax)
+            .optional()
+            .describe(
+              "Representative peak-hour factor (volume-weighted mean of the file's per-movement PHF records). Carried for provenance\/auditability; the screening capacity model has no PHF input today.",
+            ),
+          hvPct: zod
+            .number()
+            .min(generateTisBodyUtdfIntersectionsItemHvPctMin)
+            .max(generateTisBodyUtdfIntersectionsItemHvPctMax)
+            .optional()
+            .describe(
+              "Representative heavy-vehicle % (volume-weighted mean of the file's per-movement records). Carried for provenance\/auditability; the screening capacity model has no heavy-vehicle input today.",
+            ),
+          storageFt: zod
+            .object({
+              NBL: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemStorageFtNBLMin)
+                .optional(),
+              NBT: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemStorageFtNBTMin)
+                .optional(),
+              NBR: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemStorageFtNBRMin)
+                .optional(),
+              SBL: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemStorageFtSBLMin)
+                .optional(),
+              SBT: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemStorageFtSBTMin)
+                .optional(),
+              SBR: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemStorageFtSBRMin)
+                .optional(),
+              EBL: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemStorageFtEBLMin)
+                .optional(),
+              EBT: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemStorageFtEBTMin)
+                .optional(),
+              EBR: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemStorageFtEBRMin)
+                .optional(),
+              WBL: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemStorageFtWBLMin)
+                .optional(),
+              WBT: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemStorageFtWBTMin)
+                .optional(),
+              WBR: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemStorageFtWBRMin)
+                .optional(),
+            })
+            .optional()
+            .describe(
+              "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+            ),
+          cycleLenSec: zod
+            .number()
+            .min(generateTisBodyUtdfIntersectionsItemCycleLenSecMin)
+            .max(generateTisBodyUtdfIntersectionsItemCycleLenSecMax)
+            .optional()
+            .describe(
+              "Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.",
+            ),
+        })
+        .describe(
+          "Measured data for ONE intersection imported from a Synchro UTDF file — the structured record the \/utdf\/parse endpoint emits and a TIS request attaches as `utdfIntersections`. Coordinates are rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Raw UTDF text is deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
+        ),
+    )
+    .max(generateTisBodyUtdfIntersectionsMax)
+    .optional()
+    .describe(
+      "Measured turning-movement data imported from a Synchro UTDF file (the structured records \/utdf\/parse emits). Each record is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); at matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.",
+    ),
   distributionMethod: zod
     .enum(["gravity", "analogy", "surrogate"])
     .optional()
@@ -318,6 +543,71 @@ export const generateTisResponseRequestAdditionalStudyPointsItemLongitudeMin =
 export const generateTisResponseRequestAdditionalStudyPointsItemLongitudeMax = 180;
 
 export const generateTisResponseRequestAdditionalStudyPointsMax = 60;
+
+export const generateTisResponseRequestUtdfIntersectionsItemLatitudeMin = -90;
+export const generateTisResponseRequestUtdfIntersectionsItemLatitudeMax = 90;
+
+export const generateTisResponseRequestUtdfIntersectionsItemLongitudeMin = -180;
+export const generateTisResponseRequestUtdfIntersectionsItemLongitudeMax = 180;
+
+export const generateTisResponseRequestUtdfIntersectionsItemVolumesNBLMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemVolumesNBTMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemVolumesNBRMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemVolumesSBLMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemVolumesSBTMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemVolumesSBRMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemVolumesEBLMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemVolumesEBTMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemVolumesEBRMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemVolumesWBLMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemVolumesWBTMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemVolumesWBRMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemPhfMin = 0.25;
+export const generateTisResponseRequestUtdfIntersectionsItemPhfMax = 1;
+
+export const generateTisResponseRequestUtdfIntersectionsItemHvPctMin = 0;
+export const generateTisResponseRequestUtdfIntersectionsItemHvPctMax = 100;
+
+export const generateTisResponseRequestUtdfIntersectionsItemStorageFtNBLMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemStorageFtNBTMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemStorageFtNBRMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemStorageFtSBLMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemStorageFtSBTMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemStorageFtSBRMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemStorageFtEBLMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemStorageFtEBTMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemStorageFtEBRMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemStorageFtWBLMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemStorageFtWBTMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemStorageFtWBRMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemCycleLenSecMin = 30;
+export const generateTisResponseRequestUtdfIntersectionsItemCycleLenSecMax = 300;
+
+export const generateTisResponseRequestUtdfIntersectionsMax = 60;
 
 export const generateTisResponseRequestExistingLandUseCodeMin = 2;
 
@@ -466,6 +756,220 @@ export const GenerateTisResponse = zod.object({
       .optional()
       .describe(
         "Reviewer-scoped intersection coordinates (pasted or map-clicked), each snapped to the nearest inventory signal within ~0.35 mi and force-included regardless of studyRadiusMi. Additive, like studyIntersectionIds; robust when a signal's name is unknown. Points with no nearby signal are ignored.",
+      ),
+    utdfIntersections: zod
+      .array(
+        zod
+          .object({
+            intId: zod
+              .number()
+              .optional()
+              .describe(
+                "Synchro INTID from the source file (provenance only).",
+              ),
+            name: zod.string().optional(),
+            latitude: zod
+              .number()
+              .min(generateTisResponseRequestUtdfIntersectionsItemLatitudeMin)
+              .max(generateTisResponseRequestUtdfIntersectionsItemLatitudeMax),
+            longitude: zod
+              .number()
+              .min(generateTisResponseRequestUtdfIntersectionsItemLongitudeMin)
+              .max(generateTisResponseRequestUtdfIntersectionsItemLongitudeMax),
+            volumes: zod
+              .object({
+                NBL: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemVolumesNBLMin,
+                  )
+                  .optional(),
+                NBT: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemVolumesNBTMin,
+                  )
+                  .optional(),
+                NBR: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemVolumesNBRMin,
+                  )
+                  .optional(),
+                SBL: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemVolumesSBLMin,
+                  )
+                  .optional(),
+                SBT: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemVolumesSBTMin,
+                  )
+                  .optional(),
+                SBR: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemVolumesSBRMin,
+                  )
+                  .optional(),
+                EBL: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemVolumesEBLMin,
+                  )
+                  .optional(),
+                EBT: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemVolumesEBTMin,
+                  )
+                  .optional(),
+                EBR: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemVolumesEBRMin,
+                  )
+                  .optional(),
+                WBL: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemVolumesWBLMin,
+                  )
+                  .optional(),
+                WBT: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemVolumesWBTMin,
+                  )
+                  .optional(),
+                WBR: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemVolumesWBRMin,
+                  )
+                  .optional(),
+              })
+              .describe(
+                "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+              ),
+            phf: zod
+              .number()
+              .min(generateTisResponseRequestUtdfIntersectionsItemPhfMin)
+              .max(generateTisResponseRequestUtdfIntersectionsItemPhfMax)
+              .optional()
+              .describe(
+                "Representative peak-hour factor (volume-weighted mean of the file's per-movement PHF records). Carried for provenance\/auditability; the screening capacity model has no PHF input today.",
+              ),
+            hvPct: zod
+              .number()
+              .min(generateTisResponseRequestUtdfIntersectionsItemHvPctMin)
+              .max(generateTisResponseRequestUtdfIntersectionsItemHvPctMax)
+              .optional()
+              .describe(
+                "Representative heavy-vehicle % (volume-weighted mean of the file's per-movement records). Carried for provenance\/auditability; the screening capacity model has no heavy-vehicle input today.",
+              ),
+            storageFt: zod
+              .object({
+                NBL: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemStorageFtNBLMin,
+                  )
+                  .optional(),
+                NBT: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemStorageFtNBTMin,
+                  )
+                  .optional(),
+                NBR: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemStorageFtNBRMin,
+                  )
+                  .optional(),
+                SBL: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemStorageFtSBLMin,
+                  )
+                  .optional(),
+                SBT: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemStorageFtSBTMin,
+                  )
+                  .optional(),
+                SBR: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemStorageFtSBRMin,
+                  )
+                  .optional(),
+                EBL: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemStorageFtEBLMin,
+                  )
+                  .optional(),
+                EBT: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemStorageFtEBTMin,
+                  )
+                  .optional(),
+                EBR: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemStorageFtEBRMin,
+                  )
+                  .optional(),
+                WBL: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemStorageFtWBLMin,
+                  )
+                  .optional(),
+                WBT: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemStorageFtWBTMin,
+                  )
+                  .optional(),
+                WBR: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemStorageFtWBRMin,
+                  )
+                  .optional(),
+              })
+              .optional()
+              .describe(
+                "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+              ),
+            cycleLenSec: zod
+              .number()
+              .min(
+                generateTisResponseRequestUtdfIntersectionsItemCycleLenSecMin,
+              )
+              .max(
+                generateTisResponseRequestUtdfIntersectionsItemCycleLenSecMax,
+              )
+              .optional()
+              .describe(
+                "Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.",
+              ),
+          })
+          .describe(
+            "Measured data for ONE intersection imported from a Synchro UTDF file — the structured record the \/utdf\/parse endpoint emits and a TIS request attaches as `utdfIntersections`. Coordinates are rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Raw UTDF text is deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
+          ),
+      )
+      .max(generateTisResponseRequestUtdfIntersectionsMax)
+      .optional()
+      .describe(
+        "Measured turning-movement data imported from a Synchro UTDF file (the structured records \/utdf\/parse emits). Each record is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); at matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.",
       ),
     distributionMethod: zod
       .enum(["gravity", "analogy", "surrogate"])
@@ -644,6 +1148,10 @@ export const GenerateTisResponse = zod.object({
           }),
         )
         .optional(),
+      volumeSource: zod.enum(["utdf_tmc"]).optional(),
+      existingStorageFt: zod.number().optional(),
+      storageMovement: zod.string().optional(),
+      utdfCycleLenSec: zod.number().optional(),
     }),
   ),
   intersectionsStudied: zod.number(),
@@ -742,6 +1250,10 @@ export const GenerateTisResponse = zod.object({
               }),
             )
             .optional(),
+          volumeSource: zod.enum(["utdf_tmc"]).optional(),
+          existingStorageFt: zod.number().optional(),
+          storageMovement: zod.string().optional(),
+          utdfCycleLenSec: zod.number().optional(),
         }),
       ),
       intersectionsWithLosDrop: zod.number(),
@@ -926,6 +1438,69 @@ export const ParseUtdfFileBody = zod.object({
     .describe("Raw UTDF file text (client reads the file; no multipart)."),
 });
 
+export const parseUtdfFileResponseUtdfIntersectionsItemLatitudeMin = -90;
+export const parseUtdfFileResponseUtdfIntersectionsItemLatitudeMax = 90;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemLongitudeMin = -180;
+export const parseUtdfFileResponseUtdfIntersectionsItemLongitudeMax = 180;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemVolumesNBLMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemVolumesNBTMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemVolumesNBRMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemVolumesSBLMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemVolumesSBTMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemVolumesSBRMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemVolumesEBLMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemVolumesEBTMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemVolumesEBRMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemVolumesWBLMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemVolumesWBTMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemVolumesWBRMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemPhfMin = 0.25;
+export const parseUtdfFileResponseUtdfIntersectionsItemPhfMax = 1;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemHvPctMin = 0;
+export const parseUtdfFileResponseUtdfIntersectionsItemHvPctMax = 100;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemStorageFtNBLMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemStorageFtNBTMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemStorageFtNBRMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemStorageFtSBLMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemStorageFtSBTMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemStorageFtSBRMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemStorageFtEBLMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemStorageFtEBTMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemStorageFtEBRMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemStorageFtWBLMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemStorageFtWBTMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemStorageFtWBRMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemCycleLenSecMin = 30;
+export const parseUtdfFileResponseUtdfIntersectionsItemCycleLenSecMax = 300;
+
 export const ParseUtdfFileResponse = zod.object({
   nodes: zod.array(
     zod.object({
@@ -939,6 +1514,162 @@ export const ParseUtdfFileResponse = zod.object({
   volumeIntersections: zod.number(),
   laneIntersections: zod.number(),
   timingIntersections: zod.number(),
+  utdfIntersections: zod
+    .array(
+      zod
+        .object({
+          intId: zod
+            .number()
+            .optional()
+            .describe("Synchro INTID from the source file (provenance only)."),
+          name: zod.string().optional(),
+          latitude: zod
+            .number()
+            .min(parseUtdfFileResponseUtdfIntersectionsItemLatitudeMin)
+            .max(parseUtdfFileResponseUtdfIntersectionsItemLatitudeMax),
+          longitude: zod
+            .number()
+            .min(parseUtdfFileResponseUtdfIntersectionsItemLongitudeMin)
+            .max(parseUtdfFileResponseUtdfIntersectionsItemLongitudeMax),
+          volumes: zod
+            .object({
+              NBL: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemVolumesNBLMin)
+                .optional(),
+              NBT: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemVolumesNBTMin)
+                .optional(),
+              NBR: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemVolumesNBRMin)
+                .optional(),
+              SBL: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemVolumesSBLMin)
+                .optional(),
+              SBT: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemVolumesSBTMin)
+                .optional(),
+              SBR: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemVolumesSBRMin)
+                .optional(),
+              EBL: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemVolumesEBLMin)
+                .optional(),
+              EBT: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemVolumesEBTMin)
+                .optional(),
+              EBR: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemVolumesEBRMin)
+                .optional(),
+              WBL: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemVolumesWBLMin)
+                .optional(),
+              WBT: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemVolumesWBTMin)
+                .optional(),
+              WBR: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemVolumesWBRMin)
+                .optional(),
+            })
+            .describe(
+              "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+            ),
+          phf: zod
+            .number()
+            .min(parseUtdfFileResponseUtdfIntersectionsItemPhfMin)
+            .max(parseUtdfFileResponseUtdfIntersectionsItemPhfMax)
+            .optional()
+            .describe(
+              "Representative peak-hour factor (volume-weighted mean of the file's per-movement PHF records). Carried for provenance\/auditability; the screening capacity model has no PHF input today.",
+            ),
+          hvPct: zod
+            .number()
+            .min(parseUtdfFileResponseUtdfIntersectionsItemHvPctMin)
+            .max(parseUtdfFileResponseUtdfIntersectionsItemHvPctMax)
+            .optional()
+            .describe(
+              "Representative heavy-vehicle % (volume-weighted mean of the file's per-movement records). Carried for provenance\/auditability; the screening capacity model has no heavy-vehicle input today.",
+            ),
+          storageFt: zod
+            .object({
+              NBL: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemStorageFtNBLMin)
+                .optional(),
+              NBT: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemStorageFtNBTMin)
+                .optional(),
+              NBR: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemStorageFtNBRMin)
+                .optional(),
+              SBL: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemStorageFtSBLMin)
+                .optional(),
+              SBT: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemStorageFtSBTMin)
+                .optional(),
+              SBR: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemStorageFtSBRMin)
+                .optional(),
+              EBL: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemStorageFtEBLMin)
+                .optional(),
+              EBT: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemStorageFtEBTMin)
+                .optional(),
+              EBR: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemStorageFtEBRMin)
+                .optional(),
+              WBL: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemStorageFtWBLMin)
+                .optional(),
+              WBT: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemStorageFtWBTMin)
+                .optional(),
+              WBR: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemStorageFtWBRMin)
+                .optional(),
+            })
+            .optional()
+            .describe(
+              "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+            ),
+          cycleLenSec: zod
+            .number()
+            .min(parseUtdfFileResponseUtdfIntersectionsItemCycleLenSecMin)
+            .max(parseUtdfFileResponseUtdfIntersectionsItemCycleLenSecMax)
+            .optional()
+            .describe(
+              "Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.",
+            ),
+        })
+        .describe(
+          "Measured data for ONE intersection imported from a Synchro UTDF file — the structured record the \/utdf\/parse endpoint emits and a TIS request attaches as `utdfIntersections`. Coordinates are rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Raw UTDF text is deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
+        ),
+    )
+    .optional(),
   warnings: zod.array(zod.string()),
 });
 
@@ -1084,6 +1815,73 @@ export const getTisProjectResponseRequestOneAdditionalStudyPointsItemLongitudeMa
 
 export const getTisProjectResponseRequestOneAdditionalStudyPointsMax = 60;
 
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLatitudeMin =
+  -90;
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLatitudeMax = 90;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLongitudeMin =
+  -180;
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLongitudeMax = 180;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesNBLMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesNBTMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesNBRMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesSBLMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesSBTMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesSBRMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesEBLMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesEBTMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesEBRMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesWBLMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesWBTMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesWBRMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemPhfMin = 0.25;
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemPhfMax = 1;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemHvPctMin = 0;
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemHvPctMax = 100;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtNBLMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtNBTMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtNBRMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtSBLMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtSBTMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtSBRMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtEBLMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtEBTMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtEBRMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtWBLMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtWBTMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtWBRMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemCycleLenSecMin = 30;
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemCycleLenSecMax = 300;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsMax = 60;
+
 export const getTisProjectResponseRequestOneExistingLandUseCodeMin = 2;
 
 export const getTisProjectResponseRequestOneExistingSizeMin = 0;
@@ -1143,6 +1941,73 @@ export const getTisProjectResponseResultRequestAdditionalStudyPointsItemLongitud
 export const getTisProjectResponseResultRequestAdditionalStudyPointsItemLongitudeMax = 180;
 
 export const getTisProjectResponseResultRequestAdditionalStudyPointsMax = 60;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLatitudeMin =
+  -90;
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLatitudeMax = 90;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLongitudeMin =
+  -180;
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLongitudeMax = 180;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesNBLMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesNBTMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesNBRMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesSBLMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesSBTMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesSBRMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesEBLMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesEBTMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesEBRMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesWBLMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesWBTMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesWBRMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemPhfMin = 0.25;
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemPhfMax = 1;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemHvPctMin = 0;
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemHvPctMax = 100;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtNBLMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtNBTMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtNBRMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtSBLMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtSBTMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtSBRMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtEBLMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtEBTMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtEBRMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtWBLMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtWBTMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtWBRMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemCycleLenSecMin = 30;
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemCycleLenSecMax = 300;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsMax = 60;
 
 export const getTisProjectResponseResultRequestExistingLandUseCodeMin = 2;
 
@@ -1316,6 +2181,236 @@ export const GetTisProjectResponse = zod
             .optional()
             .describe(
               "Reviewer-scoped intersection coordinates (pasted or map-clicked), each snapped to the nearest inventory signal within ~0.35 mi and force-included regardless of studyRadiusMi. Additive, like studyIntersectionIds; robust when a signal's name is unknown. Points with no nearby signal are ignored.",
+            ),
+          utdfIntersections: zod
+            .array(
+              zod
+                .object({
+                  intId: zod
+                    .number()
+                    .optional()
+                    .describe(
+                      "Synchro INTID from the source file (provenance only).",
+                    ),
+                  name: zod.string().optional(),
+                  latitude: zod
+                    .number()
+                    .min(
+                      getTisProjectResponseRequestOneUtdfIntersectionsItemLatitudeMin,
+                    )
+                    .max(
+                      getTisProjectResponseRequestOneUtdfIntersectionsItemLatitudeMax,
+                    ),
+                  longitude: zod
+                    .number()
+                    .min(
+                      getTisProjectResponseRequestOneUtdfIntersectionsItemLongitudeMin,
+                    )
+                    .max(
+                      getTisProjectResponseRequestOneUtdfIntersectionsItemLongitudeMax,
+                    ),
+                  volumes: zod
+                    .object({
+                      NBL: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesNBLMin,
+                        )
+                        .optional(),
+                      NBT: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesNBTMin,
+                        )
+                        .optional(),
+                      NBR: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesNBRMin,
+                        )
+                        .optional(),
+                      SBL: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesSBLMin,
+                        )
+                        .optional(),
+                      SBT: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesSBTMin,
+                        )
+                        .optional(),
+                      SBR: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesSBRMin,
+                        )
+                        .optional(),
+                      EBL: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesEBLMin,
+                        )
+                        .optional(),
+                      EBT: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesEBTMin,
+                        )
+                        .optional(),
+                      EBR: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesEBRMin,
+                        )
+                        .optional(),
+                      WBL: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesWBLMin,
+                        )
+                        .optional(),
+                      WBT: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesWBTMin,
+                        )
+                        .optional(),
+                      WBR: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemVolumesWBRMin,
+                        )
+                        .optional(),
+                    })
+                    .describe(
+                      "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+                    ),
+                  phf: zod
+                    .number()
+                    .min(
+                      getTisProjectResponseRequestOneUtdfIntersectionsItemPhfMin,
+                    )
+                    .max(
+                      getTisProjectResponseRequestOneUtdfIntersectionsItemPhfMax,
+                    )
+                    .optional()
+                    .describe(
+                      "Representative peak-hour factor (volume-weighted mean of the file's per-movement PHF records). Carried for provenance\/auditability; the screening capacity model has no PHF input today.",
+                    ),
+                  hvPct: zod
+                    .number()
+                    .min(
+                      getTisProjectResponseRequestOneUtdfIntersectionsItemHvPctMin,
+                    )
+                    .max(
+                      getTisProjectResponseRequestOneUtdfIntersectionsItemHvPctMax,
+                    )
+                    .optional()
+                    .describe(
+                      "Representative heavy-vehicle % (volume-weighted mean of the file's per-movement records). Carried for provenance\/auditability; the screening capacity model has no heavy-vehicle input today.",
+                    ),
+                  storageFt: zod
+                    .object({
+                      NBL: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtNBLMin,
+                        )
+                        .optional(),
+                      NBT: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtNBTMin,
+                        )
+                        .optional(),
+                      NBR: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtNBRMin,
+                        )
+                        .optional(),
+                      SBL: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtSBLMin,
+                        )
+                        .optional(),
+                      SBT: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtSBTMin,
+                        )
+                        .optional(),
+                      SBR: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtSBRMin,
+                        )
+                        .optional(),
+                      EBL: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtEBLMin,
+                        )
+                        .optional(),
+                      EBT: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtEBTMin,
+                        )
+                        .optional(),
+                      EBR: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtEBRMin,
+                        )
+                        .optional(),
+                      WBL: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtWBLMin,
+                        )
+                        .optional(),
+                      WBT: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtWBTMin,
+                        )
+                        .optional(),
+                      WBR: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtWBRMin,
+                        )
+                        .optional(),
+                    })
+                    .optional()
+                    .describe(
+                      "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+                    ),
+                  cycleLenSec: zod
+                    .number()
+                    .min(
+                      getTisProjectResponseRequestOneUtdfIntersectionsItemCycleLenSecMin,
+                    )
+                    .max(
+                      getTisProjectResponseRequestOneUtdfIntersectionsItemCycleLenSecMax,
+                    )
+                    .optional()
+                    .describe(
+                      "Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.",
+                    ),
+                })
+                .describe(
+                  "Measured data for ONE intersection imported from a Synchro UTDF file — the structured record the \/utdf\/parse endpoint emits and a TIS request attaches as `utdfIntersections`. Coordinates are rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Raw UTDF text is deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
+                ),
+            )
+            .max(getTisProjectResponseRequestOneUtdfIntersectionsMax)
+            .optional()
+            .describe(
+              "Measured turning-movement data imported from a Synchro UTDF file (the structured records \/utdf\/parse emits). Each record is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); at matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.",
             ),
           distributionMethod: zod
             .enum(["gravity", "analogy", "surrogate"])
@@ -1544,6 +2639,236 @@ export const GetTisProjectResponse = zod
           .describe(
             "Reviewer-scoped intersection coordinates (pasted or map-clicked), each snapped to the nearest inventory signal within ~0.35 mi and force-included regardless of studyRadiusMi. Additive, like studyIntersectionIds; robust when a signal's name is unknown. Points with no nearby signal are ignored.",
           ),
+        utdfIntersections: zod
+          .array(
+            zod
+              .object({
+                intId: zod
+                  .number()
+                  .optional()
+                  .describe(
+                    "Synchro INTID from the source file (provenance only).",
+                  ),
+                name: zod.string().optional(),
+                latitude: zod
+                  .number()
+                  .min(
+                    getTisProjectResponseResultRequestUtdfIntersectionsItemLatitudeMin,
+                  )
+                  .max(
+                    getTisProjectResponseResultRequestUtdfIntersectionsItemLatitudeMax,
+                  ),
+                longitude: zod
+                  .number()
+                  .min(
+                    getTisProjectResponseResultRequestUtdfIntersectionsItemLongitudeMin,
+                  )
+                  .max(
+                    getTisProjectResponseResultRequestUtdfIntersectionsItemLongitudeMax,
+                  ),
+                volumes: zod
+                  .object({
+                    NBL: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesNBLMin,
+                      )
+                      .optional(),
+                    NBT: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesNBTMin,
+                      )
+                      .optional(),
+                    NBR: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesNBRMin,
+                      )
+                      .optional(),
+                    SBL: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesSBLMin,
+                      )
+                      .optional(),
+                    SBT: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesSBTMin,
+                      )
+                      .optional(),
+                    SBR: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesSBRMin,
+                      )
+                      .optional(),
+                    EBL: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesEBLMin,
+                      )
+                      .optional(),
+                    EBT: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesEBTMin,
+                      )
+                      .optional(),
+                    EBR: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesEBRMin,
+                      )
+                      .optional(),
+                    WBL: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesWBLMin,
+                      )
+                      .optional(),
+                    WBT: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesWBTMin,
+                      )
+                      .optional(),
+                    WBR: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemVolumesWBRMin,
+                      )
+                      .optional(),
+                  })
+                  .describe(
+                    "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+                  ),
+                phf: zod
+                  .number()
+                  .min(
+                    getTisProjectResponseResultRequestUtdfIntersectionsItemPhfMin,
+                  )
+                  .max(
+                    getTisProjectResponseResultRequestUtdfIntersectionsItemPhfMax,
+                  )
+                  .optional()
+                  .describe(
+                    "Representative peak-hour factor (volume-weighted mean of the file's per-movement PHF records). Carried for provenance\/auditability; the screening capacity model has no PHF input today.",
+                  ),
+                hvPct: zod
+                  .number()
+                  .min(
+                    getTisProjectResponseResultRequestUtdfIntersectionsItemHvPctMin,
+                  )
+                  .max(
+                    getTisProjectResponseResultRequestUtdfIntersectionsItemHvPctMax,
+                  )
+                  .optional()
+                  .describe(
+                    "Representative heavy-vehicle % (volume-weighted mean of the file's per-movement records). Carried for provenance\/auditability; the screening capacity model has no heavy-vehicle input today.",
+                  ),
+                storageFt: zod
+                  .object({
+                    NBL: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtNBLMin,
+                      )
+                      .optional(),
+                    NBT: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtNBTMin,
+                      )
+                      .optional(),
+                    NBR: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtNBRMin,
+                      )
+                      .optional(),
+                    SBL: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtSBLMin,
+                      )
+                      .optional(),
+                    SBT: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtSBTMin,
+                      )
+                      .optional(),
+                    SBR: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtSBRMin,
+                      )
+                      .optional(),
+                    EBL: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtEBLMin,
+                      )
+                      .optional(),
+                    EBT: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtEBTMin,
+                      )
+                      .optional(),
+                    EBR: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtEBRMin,
+                      )
+                      .optional(),
+                    WBL: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtWBLMin,
+                      )
+                      .optional(),
+                    WBT: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtWBTMin,
+                      )
+                      .optional(),
+                    WBR: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtWBRMin,
+                      )
+                      .optional(),
+                  })
+                  .optional()
+                  .describe(
+                    "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+                  ),
+                cycleLenSec: zod
+                  .number()
+                  .min(
+                    getTisProjectResponseResultRequestUtdfIntersectionsItemCycleLenSecMin,
+                  )
+                  .max(
+                    getTisProjectResponseResultRequestUtdfIntersectionsItemCycleLenSecMax,
+                  )
+                  .optional()
+                  .describe(
+                    "Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.",
+                  ),
+              })
+              .describe(
+                "Measured data for ONE intersection imported from a Synchro UTDF file — the structured record the \/utdf\/parse endpoint emits and a TIS request attaches as `utdfIntersections`. Coordinates are rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Raw UTDF text is deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
+              ),
+          )
+          .max(getTisProjectResponseResultRequestUtdfIntersectionsMax)
+          .optional()
+          .describe(
+            "Measured turning-movement data imported from a Synchro UTDF file (the structured records \/utdf\/parse emits). Each record is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); at matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.",
+          ),
         distributionMethod: zod
           .enum(["gravity", "analogy", "surrogate"])
           .optional()
@@ -1729,6 +3054,10 @@ export const GetTisProjectResponse = zod
               }),
             )
             .optional(),
+          volumeSource: zod.enum(["utdf_tmc"]).optional(),
+          existingStorageFt: zod.number().optional(),
+          storageMovement: zod.string().optional(),
+          utdfCycleLenSec: zod.number().optional(),
         }),
       ),
       intersectionsStudied: zod.number(),
@@ -1843,6 +3172,10 @@ export const GetTisProjectResponse = zod
                   }),
                 )
                 .optional(),
+              volumeSource: zod.enum(["utdf_tmc"]).optional(),
+              existingStorageFt: zod.number().optional(),
+              storageMovement: zod.string().optional(),
+              utdfCycleLenSec: zod.number().optional(),
             }),
           ),
           intersectionsWithLosDrop: zod.number(),

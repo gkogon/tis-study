@@ -11,6 +11,7 @@ import type { TisDistributionMethod } from "./tisDistributionMethod";
 import type { TisRequestAdditionalStudyPointsItem } from "./tisRequestAdditionalStudyPointsItem";
 import type { TisTripProfile } from "./tisTripProfile";
 import type { TisWeather } from "./tisWeather";
+import type { UtdfIntersectionData } from "./utdfIntersectionData";
 
 export interface TisRequest {
   /** @minLength 1 */
@@ -78,6 +79,11 @@ export interface TisRequest {
    * @maxItems 60
    */
   additionalStudyPoints?: TisRequestAdditionalStudyPointsItem[];
+  /**
+   * Measured turning-movement data imported from a Synchro UTDF file (the structured records /utdf/parse emits). Each record is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); at matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.
+   * @maxItems 60
+   */
+  utdfIntersections?: UtdfIntersectionData[];
   distributionMethod?: TisDistributionMethod;
   /**
    * Optional existing (prior) land use occupying the site today, for a redevelopment trip-generation credit. Its trips are computed the same way as the proposed use and subtracted, so the report shows net new external trips (gross − internal capture − pass-by − existing-use credit). Absent ⇒ greenfield behavior (no credit, unchanged output).

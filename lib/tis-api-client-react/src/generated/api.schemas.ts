@@ -189,6 +189,75 @@ export interface UtdfParseRequest {
   content: string;
 }
 
+/**
+ * Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.
+ */
+export interface UtdfMovementValues {
+  /** @minimum 0 */
+  NBL?: number;
+  /** @minimum 0 */
+  NBT?: number;
+  /** @minimum 0 */
+  NBR?: number;
+  /** @minimum 0 */
+  SBL?: number;
+  /** @minimum 0 */
+  SBT?: number;
+  /** @minimum 0 */
+  SBR?: number;
+  /** @minimum 0 */
+  EBL?: number;
+  /** @minimum 0 */
+  EBT?: number;
+  /** @minimum 0 */
+  EBR?: number;
+  /** @minimum 0 */
+  WBL?: number;
+  /** @minimum 0 */
+  WBT?: number;
+  /** @minimum 0 */
+  WBR?: number;
+}
+
+/**
+ * Measured data for ONE intersection imported from a Synchro UTDF file — the structured record the /utdf/parse endpoint emits and a TIS request attaches as `utdfIntersections`. Coordinates are rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Raw UTDF text is deliberately NOT carried on the generate request (reports echo the request into stored payloads).
+ */
+export interface UtdfIntersectionData {
+  /** Synchro INTID from the source file (provenance only). */
+  intId?: number;
+  name?: string;
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+  volumes: UtdfMovementValues;
+  /**
+   * Representative peak-hour factor (volume-weighted mean of the file's per-movement PHF records). Carried for provenance/auditability; the screening capacity model has no PHF input today.
+   * @minimum 0.25
+   * @maximum 1
+   */
+  phf?: number;
+  /**
+   * Representative heavy-vehicle % (volume-weighted mean of the file's per-movement records). Carried for provenance/auditability; the screening capacity model has no heavy-vehicle input today.
+   * @minimum 0
+   * @maximum 100
+   */
+  hvPct?: number;
+  storageFt?: UtdfMovementValues;
+  /**
+   * Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.
+   * @minimum 30
+   * @maximum 300
+   */
+  cycleLenSec?: number;
+}
+
 export type UtdfParseResultNodesItem = {
   intId: number;
   name: string;
@@ -202,6 +271,7 @@ export interface UtdfParseResult {
   volumeIntersections: number;
   laneIntersections: number;
   timingIntersections: number;
+  utdfIntersections?: UtdfIntersectionData[];
   warnings: string[];
 }
 
@@ -381,6 +451,11 @@ export interface TisRequest {
    * @maxItems 60
    */
   additionalStudyPoints?: TisRequestAdditionalStudyPointsItem[];
+  /**
+   * Measured turning-movement data imported from a Synchro UTDF file (the structured records /utdf/parse emits). Each record is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); at matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.
+   * @maxItems 60
+   */
+  utdfIntersections?: UtdfIntersectionData[];
   distributionMethod?: TisDistributionMethod;
   /**
    * Optional existing (prior) land use occupying the site today, for a redevelopment trip-generation credit. Its trips are computed the same way as the proposed use and subtracted, so the report shows net new external trips (gross − internal capture − pass-by − existing-use credit). Absent ⇒ greenfield behavior (no credit, unchanged output).
@@ -599,6 +674,13 @@ export type TisAffectedIntersectionMovementsItem = {
   trips: number;
 };
 
+export type TisAffectedIntersectionVolumeSource =
+  (typeof TisAffectedIntersectionVolumeSource)[keyof typeof TisAffectedIntersectionVolumeSource];
+
+export const TisAffectedIntersectionVolumeSource = {
+  utdf_tmc: "utdf_tmc",
+} as const;
+
 /**
  * Per-intersection calibration metadata when ground-truth observations exist for this signal.
  */
@@ -641,6 +723,10 @@ export interface TisAffectedIntersection {
   /** Where the movements table came from. "path" = derived from the routed paths through this junction (conserved assignment); "octant" = the geometric octant model. Absent on pre-flag payloads. */
   movementSource?: TisAffectedIntersectionMovementSource;
   movements?: TisAffectedIntersectionMovementsItem[];
+  volumeSource?: TisAffectedIntersectionVolumeSource;
+  existingStorageFt?: number;
+  storageMovement?: string;
+  utdfCycleLenSec?: number;
 }
 
 /**
