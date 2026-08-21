@@ -169,5 +169,42 @@ const ok = (cond, msg) => { if (!cond) { console.error("FAIL:", msg); fails++; }
   ok(junk.warnings.length >= 1 && junk.volumes.length === 0, "non-UTDF text → warning, no data");
 }
 
+// ---------------------------------------------------------------------------
+// 4. Endpoint contract: the route's response mapping survives the generated
+//    zod schema (the strip trap, applied to /utdf/parse).
+// ---------------------------------------------------------------------------
+{
+  const { ParseUtdfFileBody, ParseUtdfFileResponse } = await import(
+    path.resolve(here, "../../../lib/tis-api-zod/src/generated/api.ts")
+  );
+  const sample = generateUtdf({
+    request: { projectName: "x", latitude: 25.84, longitude: -80.21 },
+    affectedIntersections: [{
+      signalId: "s", name: "A & B", latitude: 25.84, longitude: -80.21,
+      approaches: [{ direction: "NB", futureVolumeVph: 500, futureVc: 0.5 }],
+    }],
+  });
+  ok(ParseUtdfFileBody.safeParse({ content: sample }).success, "endpoint: body schema accepts a real file");
+  const doc = parseUtdf(sample);
+  const withVolumes = new Set(doc.volumes.map((v) => v.intId));
+  const mapped = {
+    nodes: doc.nodes.map((n) => ({
+      intId: n.intId, name: n.name,
+      ...(n.latitude !== undefined ? { latitude: n.latitude } : {}),
+      ...(n.longitude !== undefined ? { longitude: n.longitude } : {}),
+      hasVolumes: withVolumes.has(n.intId),
+    })),
+    volumeIntersections: doc.volumes.length,
+    laneIntersections: doc.lanes.length,
+    timingIntersections: doc.timings.length,
+    warnings: doc.warnings,
+  };
+  const parsed = ParseUtdfFileResponse.safeParse(mapped);
+  ok(parsed.success && parsed.data.nodes[0]?.latitude === 25.84,
+    "endpoint: route mapping survives ParseUtdfFileResponse (lat/lon not stripped)");
+  ok(parsed.success && parsed.data.nodes[0]?.hasVolumes === true,
+    "endpoint: hasVolumes flag survives");
+}
+
 console.log(fails === 0 ? "\nALL PASS" : `\n${fails} FAILURES`);
 process.exit(fails === 0 ? 0 : 1);

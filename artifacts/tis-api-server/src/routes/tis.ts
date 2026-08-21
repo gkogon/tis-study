@@ -3,8 +3,11 @@ import {
   GenerateTisBody,
   GenerateTisResponse,
   ListTisLandUsesResponse,
+  ParseUtdfFileBody,
+  ParseUtdfFileResponse,
 } from "@workspace/tis-api-zod";
 import { generateTisReport, LAND_USES } from "../lib/tis";
+import { parseUtdf } from "../lib/utdf-import";
 import { validateDriveways } from "../lib/driveways";
 import { regionForCoordinate, REGIONS } from "../lib/regions";
 import { renderStudyPdf } from "../lib/pdf-export";
@@ -55,6 +58,39 @@ router.get("/land-uses", (_req, res): void => {
     confidence, source,
   }));
   res.json(ListTisLandUsesResponse.parse(out));
+});
+
+// Parse a Synchro UTDF file into structured intersections. The client reads
+// the file with FileReader and posts its text (files are small — a corridor
+// model is tens of KB; the schema caps at 2 MB), so no multipart machinery.
+// The parsed node coordinates slot directly into additionalStudyPoints on a
+// TIS request — the engineer's existing Synchro network defines the study
+// scope via the force-include machinery that already ships.
+router.post("/utdf/parse", (req, res): void => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Sign in to import a UTDF file." });
+    return;
+  }
+  const body = ParseUtdfFileBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: "Provide the UTDF file text as { content }." });
+    return;
+  }
+  const doc = parseUtdf(body.data.content);
+  const withVolumes = new Set(doc.volumes.map((v) => v.intId));
+  res.json(ParseUtdfFileResponse.parse({
+    nodes: doc.nodes.map((n) => ({
+      intId: n.intId,
+      name: n.name,
+      ...(n.latitude !== undefined ? { latitude: n.latitude } : {}),
+      ...(n.longitude !== undefined ? { longitude: n.longitude } : {}),
+      hasVolumes: withVolumes.has(n.intId),
+    })),
+    volumeIntersections: doc.volumes.length,
+    laneIntersections: doc.lanes.length,
+    timingIntersections: doc.timings.length,
+    warnings: doc.warnings,
+  }));
 });
 
 router.post("/generate", generateRateLimiter, async (req, res): Promise<void> => {

@@ -36,9 +36,10 @@ paths:
       tags: [tis]
       summary: Generate a screening-level Traffic Impact Study (TIS) for a candidate site
       description: |
-        Given a candidate development site (lat/lon + ITE land-use code + size),
-        estimates trip generation using ITE Trip Generation Manual 11th-Edition
-        rates, finds affected signalized intersections within the study radius,
+        Given a candidate development site (lat/lon + land-use code + size),
+        estimates trip generation using public-source rates (SANDAG 2002 /
+        FHWA NHTS 2017 / NCHRP 716 — no licensed-manual data),
+        finds affected signalized intersections within the study radius,
         runs a Webster-style capacity analysis combining each signal's existing
         peak-hour stress with the assigned new trips, and recommends mitigations
         sized to the projected LOS impact.
@@ -55,6 +56,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TisReport"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /utdf/parse:
+    post:
+      operationId: parseUtdfFile
+      tags: [tis]
+      summary: Parse a Synchro UTDF file into structured intersections
+      description: |
+        Accepts the raw text of a UTDF (Universal Traffic Data Format) file —
+        the export Synchro produces via File → Transfer → Write UTDF — and
+        returns the parsed nodes, per-movement volume/lane/timing counts, and
+        any sections the parser skipped (named, never silent). Both known
+        layouts parse: the row layout this API's own UTDF export writes, and
+        Synchro's RECORDNAME matrix layout. The parsed node coordinates are
+        directly usable as additionalStudyPoints on a TIS request, so an
+        engineer's existing Synchro network defines the study scope.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UtdfParseRequest"
+      responses:
+        "200":
+          description: Parsed UTDF summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UtdfParseResult"
         "400":
           description: Invalid request
           content:
@@ -384,6 +418,38 @@ components:
     TisDirection:
       type: string
       enum: [NB, SB, EB, WB]
+    UtdfParseRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000000
+          description: Raw UTDF file text (client reads the file; no multipart).
+    UtdfParseResult:
+      type: object
+      required: [nodes, volumeIntersections, laneIntersections, timingIntersections, warnings]
+      properties:
+        nodes:
+          type: array
+          items:
+            type: object
+            required: [intId, name]
+            properties:
+              intId: { type: integer }
+              name: { type: string }
+              latitude: { type: number }
+              longitude: { type: number }
+              # True when a [Volumes] record exists for this node — the signal
+              # the engineer actually modeled, vs. geometry-only entries.
+              hasVolumes: { type: boolean }
+        volumeIntersections: { type: integer }
+        laneIntersections: { type: integer }
+        timingIntersections: { type: integer }
+        warnings:
+          type: array
+          items: { type: string }
     TisLandUse:
       type: object
       description: >-
