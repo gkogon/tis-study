@@ -68,7 +68,8 @@ const betaTwo = caltranGravityShares([{ id: "Z", mass: 400, distanceMi: 4 }], { 
 ok(close(betaTwo[0].term, 25, 1e-9), `beta=2 (M/d²): term = 25 (got ${betaTwo[0].term})`);
 
 // ---------------------------------------------------------------------------
-// 4) Site-zone distance floor: d=0 must not divide by zero — floored to d_site.
+// 4) Singularity guard: d=0 must not divide by zero — floored to
+//    MIN_ZONE_DISTANCE_MI (0.1 mi), NOT to d_site any more.
 // ---------------------------------------------------------------------------
 const atSite = caltranGravityShares([
   { id: "site", mass: 100, distanceMi: 0 },
@@ -129,6 +130,57 @@ const bySkew = Object.fromEntries(skewed.map((z) => [z.id, z.multiplier]));
 ok(close(mean(skewed.map((z) => z.multiplier)), 1, 1e-9), "skewed surroundings ⇒ mean multiplier = 1 (scale preserved)");
 ok(bySkew.sse > 1 && bySkew.nne < 1, `dominant SSE loads more (×${bySkew.sse.toFixed(2)}), weak NNE less (×${bySkew.nne.toFixed(2)})`);
 ok(close(bySkew.sse, 1.5, 1e-6) && close(bySkew.nne, 0.75, 1e-6), "multipliers = dirShare / mean(dirShare) exactly");
+
+// ---------------------------------------------------------------------------
+// 7) Sub-mile distance decay — the floor regression. Historically zone
+//    distances were floored at d_site (1 mi), so at the default 0.5 mi study
+//    radius EVERY zone was floor-bound and the shares collapsed to pure mass
+//    ratios (zero distance decay). The floor is now MIN_ZONE_DISTANCE_MI
+//    (0.1 mi), a pure singularity guard, so sub-mile distances decay for real.
+// ---------------------------------------------------------------------------
+const { MIN_ZONE_DISTANCE_MI } = m;
+ok(MIN_ZONE_DISTANCE_MI > 0 && MIN_ZONE_DISTANCE_MI <= 1,
+  `MIN_ZONE_DISTANCE_MI in (0, 1] so the d≥1 worksheet rows above stay exact (got ${MIN_ZONE_DISTANCE_MI})`);
+
+// (a) Equal-mass zones spread 0.2–0.9 mi ⇒ strictly monotone-DECREASING
+//     shares with distance. Under the old 1-mi floor all eight shares were
+//     identical (12.5% each).
+const subMileDs = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+const subMile = caltranGravityShares(
+  subMileDs.map((d, i) => ({ id: `d${d}`, mass: 100, distanceMi: d, bearingDeg: i * 45 })),
+);
+let strictlyDecreasing = true;
+for (let i = 1; i < subMile.length; i++) {
+  if (!(subMile[i].sharePct < subMile[i - 1].sharePct)) strictlyDecreasing = false;
+}
+ok(strictlyDecreasing,
+  `equal masses 0.2–0.9 mi ⇒ strictly decreasing shares (${subMile.map((z) => z.sharePct.toFixed(2)).join(" > ")})`);
+ok(close(subMile.reduce((s, z) => s + z.sharePct, 0), 100, 0.01), "sub-mile shares still sum to 100%");
+
+// (b) The sub-mile term is the real gravity quotient: M/(d·d_site) with the
+//     true distance, not the floored one. mass=100, d=0.5 ⇒ term = 200.
+const half = caltranGravityShares([{ id: "half", mass: 100, distanceMi: 0.5 }]);
+ok(close(half[0].term, 200, 1e-9), `d=0.5 term = 100/(0.5·1) = 200 (got ${half[0].term})`);
+
+// (c) The guard still binds below it: d=0 and d=0.05 both clamp to the floor,
+//     capping a coincident zone's pull at M/MIN_ZONE_DISTANCE_MI.
+const clamped = caltranGravityShares([
+  { id: "zero", mass: 100, distanceMi: 0 },
+  { id: "tiny", mass: 100, distanceMi: 0.05 },
+]);
+ok(close(clamped[0].term, 100 / MIN_ZONE_DISTANCE_MI, 1e-9) && close(clamped[1].term, 100 / MIN_ZONE_DISTANCE_MI, 1e-9),
+  `d below the guard clamps to M/${MIN_ZONE_DISTANCE_MI} (got ${clamped[0].term}, ${clamped[1].term})`);
+
+// (d) Mean-1 multiplier guard is structural — it must hold under sub-mile
+//     inputs too (the normalization divides by the mean share, so the mean
+//     multiplier is exactly 1 for ANY share vector).
+const subMileMults = directionalMultipliers(
+  subMileDs.map((d, i) => ({ id: `d${d}`, mass: 100 + i * 40, distanceMi: d, bearingDeg: i * 45 })),
+);
+ok(close(mean(subMileMults.map((z) => z.multiplier)), 1, 1e-9),
+  "sub-mile skewed zones ⇒ mean loading multiplier stays exactly 1 (scope-collapse guard intact)");
+ok(subMileMults.some((z) => z.multiplier > 1) && subMileMults.some((z) => z.multiplier < 1),
+  "sub-mile decay actually re-orients loading (multipliers spread around 1)");
 
 console.log("");
 console.log(fails === 0 ? "ALL PASS" : `${fails} FAILURE(S)`);
