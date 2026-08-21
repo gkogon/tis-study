@@ -9038,6 +9038,12 @@ function renderCapacityAppendix(
     return ad - aa;
   });
 
+  // Studies carrying an imported UTDF payload label EVERY worksheet's
+  // existing-volume provenance ("measured TMC" vs "AADT-derived"), so the
+  // measured/estimated boundary is explicit per intersection. Studies without
+  // UTDF data print no label at all — byte-identical to before the feature.
+  const anyUtdfProvenance = intersections.some((x: any) => x?.volumeSource === "utdf_tmc");
+
   // Peak periods to draw a diagram for (skip the daily total).
   const peakPeriods = (Array.isArray(periods) ? periods : []).filter((p) => p && p.period !== "daily");
 
@@ -9063,6 +9069,36 @@ function renderCapacityAppendix(
       ["Mitigation", ix.mitigation ? String(ix.mitigation) : "None required at screening level"],
     ]);
     doc.moveDown(0.4);
+    // Existing-volume provenance, printed ONLY on studies that carried an
+    // imported UTDF payload (anyUtdfProvenance) so every other study renders
+    // byte-identically. On those studies EVERY worksheet is labeled — the
+    // measured/estimated boundary is exactly what a reviewer must see.
+    if (ix.volumeSource === "utdf_tmc") {
+      const extras: string[] = [];
+      if (Number.isFinite(Number(ix.utdfCycleLenSec))) {
+        extras.push(`the imported ${fmtNum(ix.utdfCycleLenSec)} s cycle length replaces the 90 s screening default in the Webster uniform-delay term`);
+      }
+      if (Number.isFinite(Number(ix.existingStorageFt))) {
+        extras.push(`the imported ${ix.storageMovement ?? "turn-bay"} storage length (${fmtNum(ix.existingStorageFt)} ft) feeds the storage-bay adequacy comparison`);
+      }
+      doc.font("body").fontSize(8.5).fillColor(TEXT_GRAY).text(
+        "Existing volumes: measured turning-movement counts (UTDF import from the engineer's Synchro model). "
+        + "The measured intersection total and per-approach split replace the AADT-derived design-hour estimate as the existing condition; "
+        + "background growth is applied on top. The measurement anchors the PM peak hour; other analysis periods scale it by the documented period factors"
+        + (extras.length > 0 ? `; ${extras.join("; ")}` : "")
+        + ".",
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+      doc.moveDown(0.2);
+    } else if (anyUtdfProvenance) {
+      doc.font("body").fontSize(8.5).fillColor(TEXT_GRAY).text(
+        "Existing volumes: AADT-derived design-hour estimate (no measured turning-movement record in the imported UTDF file matched this intersection).",
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+      doc.moveDown(0.2);
+    }
     if (addedNegligible) {
       doc.font("body").fontSize(8.5).fillColor(TEXT_GRAY).text(
         "The development distributes fewer than one net PM peak car trip to this junction, so the Existing (No-Build) and Build conditions are numerically identical at reporting precision. The junction is reproduced here for completeness; the scheme's net car-mode trip generation is below the level at which junction capacity governs.",
@@ -9118,7 +9154,12 @@ function renderCapacityAppendix(
     doc.y = rowY + dh + 14;
     if (multiPeriod) {
       doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-        "Background turning-movement volumes vary by period: the stored design-hour count (AADT × K-factor, ≈ the PM peak) is carried at 100% for the PM peak and at screening-level shares of the design hour for the AM peak (90%) and Saturday midday (80%), reflecting that the network is not equally loaded across the day. A submitted study replaces these with measured per-period turning-movement counts.",
+        ix.volumeSource === "utdf_tmc"
+          // Measured-existing variant: the AADT×K sentence would be false here.
+          // Presence-gated on volumeSource so non-UTDF studies keep the exact
+          // legacy caption byte-for-byte.
+          ? "Background turning-movement volumes vary by period: the measured turning-movement total (UTDF import, ≈ the PM peak hour) is carried at 100% for the PM peak and at screening-level shares of the measured hour for the AM peak (90%) and Saturday midday (80%), reflecting that the network is not equally loaded across the day. Only the PM peak is directly measured; a submitted study supplies measured AM/Saturday counts."
+          : "Background turning-movement volumes vary by period: the stored design-hour count (AADT × K-factor, ≈ the PM peak) is carried at 100% for the PM peak and at screening-level shares of the design hour for the AM peak (90%) and Saturday midday (80%), reflecting that the network is not equally loaded across the day. A submitted study replaces these with measured per-period turning-movement counts.",
         { paragraphGap: 4 },
       );
       doc.fillColor("black");
