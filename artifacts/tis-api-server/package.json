@@ -27,6 +27,7 @@
     "check:movement-loading": "node ./scripts/verify-movement-loading.mjs",
     "check:rate-auditability": "node ./scripts/verify-rate-auditability.mjs",
     "check:turn-ledger": "node ./scripts/verify-turn-ledger.mjs",
+    "check:oneway-routing": "node ./scripts/verify-oneway-routing.mjs",
     "check:cordon-gateways": "node ./scripts/verify-cordon-gateways.mjs",
     "check:utdf-import": "node ./scripts/verify-utdf-import.mjs",
     "check:utdf-vigorous": "node ./scripts/verify-utdf-vigorous.mjs",
