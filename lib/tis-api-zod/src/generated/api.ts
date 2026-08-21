@@ -76,6 +76,7 @@ export const generateTisBodyExistingLandUseCodeMin = 2;
 
 export const generateTisBodyExistingSizeMin = 0;
 
+export const generateTisBodyConservedAssignmentDefault = true;
 export const generateTisBodyDrivewaysItemLatitudeMin = -90;
 export const generateTisBodyDrivewaysItemLatitudeMax = 90;
 
@@ -223,9 +224,9 @@ export const GenerateTisBody = zod.object({
     ),
   conservedAssignment: zod
     .boolean()
-    .optional()
+    .default(generateTisBodyConservedAssignmentDefault)
     .describe(
-      "Opt-in conserved path assignment. Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Absent\/false = legacy behavior, byte-identical output.",
+      "Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output.",
     ),
   driveways: zod
     .array(
@@ -322,6 +323,7 @@ export const generateTisResponseRequestExistingLandUseCodeMin = 2;
 
 export const generateTisResponseRequestExistingSizeMin = 0;
 
+export const generateTisResponseRequestConservedAssignmentDefault = true;
 export const generateTisResponseRequestDrivewaysItemLatitudeMin = -90;
 export const generateTisResponseRequestDrivewaysItemLatitudeMax = 90;
 
@@ -487,9 +489,9 @@ export const GenerateTisResponse = zod.object({
       ),
     conservedAssignment: zod
       .boolean()
-      .optional()
+      .default(generateTisResponseRequestConservedAssignmentDefault)
       .describe(
-        "Opt-in conserved path assignment. Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Absent\/false = legacy behavior, byte-identical output.",
+        "Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output.",
       ),
     driveways: zod
       .array(
@@ -1086,6 +1088,7 @@ export const getTisProjectResponseRequestOneExistingLandUseCodeMin = 2;
 
 export const getTisProjectResponseRequestOneExistingSizeMin = 0;
 
+export const getTisProjectResponseRequestOneConservedAssignmentDefault = true;
 export const getTisProjectResponseRequestOneDrivewaysItemLatitudeMin = -90;
 export const getTisProjectResponseRequestOneDrivewaysItemLatitudeMax = 90;
 
@@ -1145,6 +1148,7 @@ export const getTisProjectResponseResultRequestExistingLandUseCodeMin = 2;
 
 export const getTisProjectResponseResultRequestExistingSizeMin = 0;
 
+export const getTisProjectResponseResultRequestConservedAssignmentDefault = true;
 export const getTisProjectResponseResultRequestDrivewaysItemLatitudeMin = -90;
 export const getTisProjectResponseResultRequestDrivewaysItemLatitudeMax = 90;
 
@@ -1335,9 +1339,9 @@ export const GetTisProjectResponse = zod
             ),
           conservedAssignment: zod
             .boolean()
-            .optional()
+            .default(getTisProjectResponseRequestOneConservedAssignmentDefault)
             .describe(
-              "Opt-in conserved path assignment. Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Absent\/false = legacy behavior, byte-identical output.",
+              "Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output.",
             ),
           driveways: zod
             .array(
@@ -1562,9 +1566,9 @@ export const GetTisProjectResponse = zod
           ),
         conservedAssignment: zod
           .boolean()
-          .optional()
+          .default(getTisProjectResponseResultRequestConservedAssignmentDefault)
           .describe(
-            "Opt-in conserved path assignment. Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Absent\/false = legacy behavior, byte-identical output.",
+            "Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output.",
           ),
         driveways: zod
           .array(

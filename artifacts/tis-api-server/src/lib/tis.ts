@@ -410,14 +410,15 @@ export type TisRequest = {
    *  net new external trips. Absent ⇒ greenfield, output unchanged. */
   existingLandUseCode?: string;
   existingSize?: number;
-  /** Opt-in conserved path assignment: destinations become cordon gateways on
-   *  the study boundary (weighted by the printed directional distribution),
-   *  project trips are routed through the network, and each resolvable study
-   *  intersection's turning movements + approach loading derive from the
-   *  actual paths through it — so flow is conserved between adjacent
-   *  intersections. Changes v/c, delay and LOS at resolved intersections
-   *  (the legacy loading is deliberately un-normalized). Absent/false ⇒
-   *  byte-identical to today. */
+  /** Conserved path assignment (DEFAULT ON): destinations become cordon
+   *  gateways on the study boundary (weighted by the printed directional
+   *  distribution), project trips are routed through the network, and each
+   *  resolvable study intersection's turning movements + approach loading
+   *  derive from the actual paths through it — so flow is conserved between
+   *  adjacent intersections. Changes v/c, delay and LOS at resolved
+   *  intersections (the legacy loading is deliberately un-normalized).
+   *  Omitted/true ⇒ conserved assignment runs. Explicit false ⇒ legacy
+   *  octant behavior, byte-identical to the old default output. */
   conservedAssignment?: boolean;
   /** Site access points with per-movement turn restrictions. When present,
    *  project trips route through these driveways and forbidden movements
@@ -1783,7 +1784,12 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // (dwShare is null when no driveways ⇒ byte-identical to today).
   const effectiveWeights = candidates.map((_, i) => (dwShare ? dwShare[i]! : loadWeights[i]!));
 
-  // ---- Conserved path assignment (opt-in, req.conservedAssignment) --------
+  // ---- Conserved path assignment (DEFAULT ON; req.conservedAssignment) ----
+  // The gate below normalizes the flag engine-side (`!== false`) so the
+  // default covers EVERY entry path — /generate, /generate/pdf, the London TA
+  // handlers AND the demo routes, whose parseDemoRequest whitelist never
+  // passes the flag through. Explicit false is the only way to get the
+  // legacy octant-only loading.
   // Destinations become cordon gateways on the study boundary, weighted by the
   // SAME byDirection the report prints in its distribution section. Project
   // trips are routed through the network with the turn ledger retained; every
@@ -1805,7 +1811,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
         conservation: ConservationReport;
       }
     | undefined;
-  if (req.conservedAssignment && segsForConserved && segsForConserved.length > 0) {
+  if (req.conservedAssignment !== false && segsForConserved && segsForConserved.length > 0) {
     try {
       const cg = buildGraph(segsForConserved, conservedVolumeRefs);
       const cordon = selectCordonGateways(
