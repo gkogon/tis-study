@@ -161,13 +161,42 @@ function col(header: string[], name: string): number {
   return header.findIndex((h) => h.toLowerCase() === lower);
 }
 
-function movementColumns(header: string[]): Array<{ idx: number; mv: UtdfMovement }> {
-  const out: Array<{ idx: number; mv: UtdfMovement }> = [];
+/**
+ * Classify every header column: the 12 standard movements we consume, U-turn
+ * columns (NBU/SBU/EBU/WBU — folded into the corresponding left movement, the
+ * same convention the engine's classify() uses), and movement-SHAPED columns
+ * we cannot map onto a 4-leg model: diagonal legs (NEL/NET/NER, SW…, common in
+ * real Synchro networks) and second-movement columns (NBL2). Those must be
+ * reported loudly — a diagonal leg carries real vehicles, and dropping it
+ * without a word is exactly the silent-skip failure mode this module exists
+ * to prevent.
+ */
+function movementColumns(header: string[]): {
+  std: Array<{ idx: number; mv: UtdfMovement }>;
+  uturns: Array<{ idx: number; foldInto: UtdfMovement; label: string }>;
+  unmapped: string[];
+} {
+  const std: Array<{ idx: number; mv: UtdfMovement }> = [];
+  const uturns: Array<{ idx: number; foldInto: UtdfMovement; label: string }> = [];
+  const unmapped: string[] = [];
   header.forEach((h, idx) => {
-    const u = h.trim().toUpperCase() as UtdfMovement;
-    if ((UTDF_MOVEMENTS as readonly string[]).includes(u)) out.push({ idx, mv: u });
+    const u = h.trim().toUpperCase();
+    if ((UTDF_MOVEMENTS as readonly string[]).includes(u)) {
+      std.push({ idx, mv: u as UtdfMovement });
+      return;
+    }
+    const ut = u.match(/^(NB|SB|EB|WB)U\d?$/);
+    if (ut) {
+      uturns.push({ idx, foldInto: `${ut[1]}L` as UtdfMovement, label: u });
+      return;
+    }
+    // Diagonal legs and numbered second movements: NE/NW/SE/SW + L/T/R,
+    // or a standard movement with a trailing digit (NBL2).
+    if (/^(NE|NW|SE|SW)[LTRU]\d?$/.test(u) || /^(NB|SB|EB|WB)[LTR]\d$/.test(u)) {
+      unmapped.push(u);
+    }
   });
-  return out;
+  return { std, uturns, unmapped };
 }
 
 // ---------------------------------------------------------------------------
@@ -238,11 +267,16 @@ function slot<T extends { intId: number }>(arr: T[], intId: number, make: (id: n
 }
 
 function parseVolumes(sec: Section, doc: UtdfDocument): void {
-  const mvCols = movementColumns(sec.header);
-  if (mvCols.length === 0) { doc.warnings.push("[Volumes] has no movement columns — skipped"); return; }
+  const cols = movementColumns(sec.header);
+  if (cols.std.length === 0) { doc.warnings.push("[Volumes] has no movement columns — skipped"); return; }
   const iRec = col(sec.header, "RECORDNAME");
   const iId = col(sec.header, "INTID");
   if (iId < 0) { doc.warnings.push("[Volumes] missing INTID column — skipped"); return; }
+
+  // Track what the unmapped columns actually carried, so the warning states
+  // the stakes ("dropped 340 vph") instead of just naming a header.
+  let unmappedVph = 0;
+  let foldedUturns = false;
 
   for (const r of sec.rows) {
     const intId = num(r[iId]);
@@ -258,20 +292,52 @@ function parseVolumes(sec: Section, doc: UtdfDocument): void {
       doc.warnings.push(`[Volumes] record "${r[iRec]}" at INTID ${intId} not consumed`);
       continue;
     }
-    for (const { idx, mv } of mvCols) {
+    for (const { idx, mv } of cols.std) {
       const v = num(r[idx]);
       if (v !== undefined) target[mv] = v;
     }
+    if (record === "volume") {
+      // U-turn volumes fold into the corresponding left movement — the same
+      // convention the engine's movement classifier uses (U → L). Vehicles
+      // are preserved, and the fold is disclosed.
+      for (const { idx, foldInto } of cols.uturns) {
+        const v = num(r[idx]);
+        if (v !== undefined && v > 0) {
+          target[foldInto] = (target[foldInto] ?? 0) + v;
+          foldedUturns = true;
+        }
+      }
+      for (const u of cols.unmapped) {
+        const idx = sec.header.findIndex((h) => h.trim().toUpperCase() === u);
+        const v = num(r[idx]);
+        if (v !== undefined) unmappedVph += v;
+      }
+    }
+  }
+  if (foldedUturns) {
+    doc.warnings.push(
+      `[Volumes] U-turn columns (${cols.uturns.map((c) => c.label).join(", ")}) folded into the corresponding left movement (engine convention)`,
+    );
+  }
+  if (cols.unmapped.length > 0) {
+    doc.warnings.push(
+      `[Volumes] ${cols.unmapped.length} movement column(s) not mappable to a 4-leg model (${cols.unmapped.join(", ")}) — ${Math.round(unmappedVph)} vph NOT imported. Diagonal approaches need manual entry.`,
+    );
   }
 }
 
 function parseLanes(sec: Section, doc: UtdfDocument): void {
   const iId = col(sec.header, "INTID");
   if (iId < 0) { doc.warnings.push("[Lanes] missing INTID column — skipped"); return; }
-  const mvCols = movementColumns(sec.header);
+  const cols = movementColumns(sec.header);
   const iRec = col(sec.header, "RECORDNAME");
+  if (cols.unmapped.length > 0) {
+    doc.warnings.push(
+      `[Lanes] movement column(s) not mappable to a 4-leg model: ${cols.unmapped.join(", ")}`,
+    );
+  }
 
-  if (mvCols.length > 0 && iRec >= 0) {
+  if (cols.std.length > 0 && iRec >= 0) {
     // Matrix layout: RECORDNAME,INTID,NBL,... with rows Lanes/Storage/Width/...
     for (const r of sec.rows) {
       const intId = num(r[iId]);
@@ -284,7 +350,7 @@ function parseLanes(sec: Section, doc: UtdfDocument): void {
         : record === "width" ? "widthFt"
         : null;
       if (!field) continue; // Shared, Grade, Phase1... — real but unconsumed
-      for (const { idx, mv } of mvCols) {
+      for (const { idx, mv } of cols.std) {
         const v = num(r[idx]);
         if (v === undefined) continue;
         const info = (entry.movements[mv] ??= {});
