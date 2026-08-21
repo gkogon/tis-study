@@ -14,6 +14,7 @@ import type { TisAffectedIntersectionMitigationSeverity } from "./tisAffectedInt
 import type { TisAffectedIntersectionMovementsItem } from "./tisAffectedIntersectionMovementsItem";
 import type { TisAffectedIntersectionMovementSource } from "./tisAffectedIntersectionMovementSource";
 import type { TisAffectedIntersectionTurboLane } from "./tisAffectedIntersectionTurboLane";
+import type { TisAffectedIntersectionVolumeSource } from "./tisAffectedIntersectionVolumeSource";
 import type { TisApproachImpact } from "./tisApproachImpact";
 import type { TisIntersectionCalibration } from "./tisIntersectionCalibration";
 
@@ -50,4 +51,8 @@ export interface TisAffectedIntersection {
   /** Where the movements table came from. "path" = derived from the routed paths through this junction (conserved assignment); "octant" = the geometric octant model. Absent on pre-flag payloads. */
   movementSource?: TisAffectedIntersectionMovementSource;
   movements?: TisAffectedIntersectionMovementsItem[];
+  volumeSource?: TisAffectedIntersectionVolumeSource;
+  existingStorageFt?: number;
+  storageMovement?: string;
+  utdfCycleLenSec?: number;
 }
