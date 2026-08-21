@@ -14,8 +14,13 @@
  *   M_i    = the zone's gross attraction (population + employment + dwelling
  *            units) × its net developable fraction  (see `zoneMass`),
  *   d_i    = straight-line distance from the site to the zone (miles),
- *   d_site = the site zone's own distance normalizer (= 1 in the worksheet;
- *            also the floor applied to d_i so the site zone never divides by 0),
+ *            floored at MIN_ZONE_DISTANCE_MI (0.1 mi) purely as a singularity
+ *            guard, so a zone coincident with the site never divides by zero.
+ *            The worked worksheet only exercises d_i ≥ 1, so the guard is
+ *            outside its domain and cannot move any worksheet value.
+ *   d_site = the site zone's own distance normalizer (= 1 in the worksheet).
+ *            It is a constant factor in every term, so it cancels out of the
+ *            normalized shares; it is kept for worksheet fidelity only.
  *   β      = the distance decay exponent. Conceptually gravity is M / d²
  *            (Newtonian); the worked Caltran worksheet uses the linear product
  *            d_i · d_site, i.e. β = 1. β = 1 is the default here so the module
@@ -113,10 +118,24 @@ export const CALTRAN_GRAVITY_BETA = 1;
 export const SITE_ZONE_DISTANCE_MI = 1;
 
 /**
+ * Singularity guard on zone distances (miles). Historically the floor was
+ * `siteDistanceMi` (1 mi) — but at the default 0.5 mi study radius EVERY zone
+ * sits below 1 mi, so the floor bound on all of them and the "gravity" shares
+ * collapsed to pure mass ratios with zero distance decay. 0.1 mi keeps the
+ * decay real across sub-mile study areas while capping the pull of a zone
+ * pasted directly on the site coordinate at 10× a 1-mile zone (term ≤ M/0.1).
+ * It also matches the API's minimum studyRadiusMi (0.1). The hand-worked
+ * Caltran worksheet only uses distances ≥ 1 mi, so any floor in (0, 1] leaves
+ * its printed values byte-exact — see verify-caltran-gravity.mjs.
+ */
+export const MIN_ZONE_DISTANCE_MI = 0.1;
+
+/**
  * Distribute a development's trips across surrounding zones by the Caltran
  * gravity model. Returns each zone with its gravity term and normalized share.
- * Zone distances are floored at `siteDistanceMi` so a zone coincident with the
- * site (d = 0) never divides by zero.
+ * Zone distances are floored at `MIN_ZONE_DISTANCE_MI` so a zone coincident
+ * with the site (d = 0) never divides by zero; `siteDistanceMi` stays the
+ * worksheet's constant denominator (it cancels in share normalization).
  */
 export function caltranGravityShares(
   zones: GravityZone[],
@@ -125,7 +144,7 @@ export function caltranGravityShares(
   const beta = opts.beta ?? CALTRAN_GRAVITY_BETA;
   const dSite = opts.siteDistanceMi ?? SITE_ZONE_DISTANCE_MI;
   const rows = zones.map((z) => {
-    const d = Math.max(dSite, z.distanceMi);
+    const d = Math.max(MIN_ZONE_DISTANCE_MI, z.distanceMi);
     const term = Math.max(0, z.mass) / (Math.pow(d, beta) * dSite);
     return { ...z, term };
   });
