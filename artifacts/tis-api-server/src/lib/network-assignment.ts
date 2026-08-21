@@ -116,7 +116,14 @@ function distMi(la1: number, lo1: number, la2: number, lo2: number): number {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export type Link = { a: number; b: number; lenMi: number; freeMin: number; capVph: number; cls: number; baseVc: number; vol: number };
+/**
+ * `dir` is the one-way constraint from OSM (RoadSegment[8]):
+ *   0 = two-way, 1 = a→b only, -1 = b→a only.
+ * Enforced at ADJACENCY-BUILD time, so Dijkstra, the MSA loading, the turn
+ * ledger and the driveway router all inherit it without any of them knowing
+ * one-way exists: a forbidden direction simply is not an edge.
+ */
+export type Link = { a: number; b: number; lenMi: number; freeMin: number; capVph: number; cls: number; baseVc: number; vol: number; dir: 0 | 1 | -1 };
 
 export type Graph = {
   links: Link[];
@@ -164,8 +171,18 @@ export function buildGraph(segments: RoadSegment[], volumeRefs: VolumeRef[] = []
     const li = links.length;
     const capVph = lanesPerDir * PER_LANE_CAP_VPH;
     const baseVc = seedBaseVc((s[1] + s[3]) / 2, (s[2] + s[4]) / 2, cls, capVph);
-    links.push({ a, b, lenMi, freeMin: (lenMi / mph) * 60, capVph, cls, baseVc, vol: 0 });
-    addAdj(a, li); addAdj(b, li);
+    // One-way capture (RoadSegment[8], present on post-2026-08 road files).
+    // Absent or 0 = two-way, which is exactly the old behaviour — so every
+    // pre-rollout region routes byte-identically.
+    const rawDir: unknown = s[8];
+    const dir: 0 | 1 | -1 = rawDir === 1 ? 1 : rawDir === -1 ? -1 : 0;
+    links.push({ a, b, lenMi, freeMin: (lenMi / mph) * 60, capVph, cls, baseVc, vol: 0, dir });
+    // Travelling a→b is legal unless the way is b→a-only, and vice versa. A
+    // one-way link appears in ONE node's adjacency, so the router cannot even
+    // consider the illegal direction — no penalty tuning, no special cases in
+    // Dijkstra, the backward walk, or the driveway insertion.
+    if (dir !== -1) addAdj(a, li);
+    if (dir !== 1) addAdj(b, li);
   }
   const nearestNode = (la: number, lo: number): number => {
     let best = -1, bestD = Infinity;
@@ -212,7 +229,7 @@ export function insertDriveway(g: Graph, siteNode: number, lat: number, lon: num
     // No links: connect the driveway directly to the site.
     const dn = g.nodeOf(snap.lat, snap.lon);
     const al = g.links.length;
-    g.links.push({ a: siteNode, b: dn, lenMi: 0.02, freeMin: 0.1, capVph: 2000, cls: 4, baseVc: 0, vol: 0 });
+    g.links.push({ a: siteNode, b: dn, lenMi: 0.02, freeMin: 0.1, capVph: 2000, cls: 4, baseVc: 0, vol: 0, dir: 0 });
     addAdj(siteNode, al); addAdj(dn, al);
     return { drivewayNode: dn, accessLink: al, streetBearing: 0 };
   }
@@ -227,10 +244,15 @@ export function insertDriveway(g: Graph, siteNode: number, lat: number, lon: num
   // orig.b previously had snap.li in its adjacency list; snap.li now goes a→dn
   // (no longer touches orig.b), so remove that stale entry.
   if (g.adj[orig.b]) g.adj[orig.b] = g.adj[orig.b].filter(li => li !== snap.li);
-  addAdj(dn, snap.li); addAdj(dn, bLink); addAdj(orig.b, bLink);
+  // Direction-aware rewiring: on a one-way a→b street (dir=1), travel dn→a and
+  // b→dn are illegal, so those adjacency entries must not exist — otherwise the
+  // driveway split would quietly re-open the forbidden direction on both halves.
+  if (orig.dir !== 1) addAdj(dn, snap.li);   // dn→a legal unless a→b-only
+  if (orig.dir !== -1) addAdj(dn, bLink);    // dn→b legal unless b→a-only
+  if (orig.dir !== 1) addAdj(orig.b, bLink); // b→dn legal unless a→b-only
   // Access link site→driveway (short, high-capacity, uncongested).
   const al = g.links.length;
-  g.links.push({ a: siteNode, b: dn, lenMi: Math.max(0.01, distMi(g.nodeLat[siteNode]!, g.nodeLon[siteNode]!, snap.lat, snap.lon)), freeMin: 0.1, capVph: 2000, cls: 4, baseVc: 0, vol: 0 });
+  g.links.push({ a: siteNode, b: dn, lenMi: Math.max(0.01, distMi(g.nodeLat[siteNode]!, g.nodeLon[siteNode]!, snap.lat, snap.lon)), freeMin: 0.1, capVph: 2000, cls: 4, baseVc: 0, vol: 0, dir: 0 });
   addAdj(siteNode, al); addAdj(dn, al);
   return { drivewayNode: dn, accessLink: al, streetBearing };
 }
