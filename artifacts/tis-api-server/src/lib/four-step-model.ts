@@ -22,11 +22,13 @@
  *      trips away from congested destinations toward less-congested
  *      alternatives (Wardrop-style equilibrium behavior).
  *
- * Friction factor — NCHRP 716 / 365 recommend the GAMMA function
+ * Friction factor — NCHRP 716 recommends the GAMMA functional form
  *      F(t) = a · t^b · e^(c·t)
- * with home-based-work coefficients a=28507, b=-0.02, c=-0.123 (peak-hour
- * TIS trips are work-dominated). This is a true impedance-decay friction
- * factor, not a bare inverse-power.
+ * for gravity-model impedance. The home-based-work shape parameters used
+ * here (b=-0.02, c=-0.123) match a sampled medium-MPO row of NCHRP 716
+ * Table 4.5; the scale constant a cancels in the production-constrained
+ * share normalization (peak-hour TIS trips are work-dominated). This is a
+ * true impedance-decay friction factor, not a bare inverse-power.
  *
  * BPR volume-delay (route assignment) — t = t0 · [1 + α·(v/c)^β], the
  * Bureau of Public Roads function with the standard α=0.15, β=4.
@@ -39,14 +41,14 @@
  * O-D survey or network skim.
  */
 
-/** NCHRP 365/716 gamma friction-factor coefficients by trip purpose. */
+/**
+ * Gamma friction-factor coefficients (form per NCHRP 716). The HBW shape
+ * pair b/c matches NCHRP 716 Table 4.5's sampled MPO gravity parameters;
+ * the scale constant a cancels in the share normalization.
+ */
 export const GAMMA_FRICTION = {
   // Home-Based Work — the default for peak-hour TIS analysis.
   hbw: { a: 28507, b: -0.02, c: -0.123 },
-  // Home-Based Other.
-  hbo: { a: 139173, b: -1.285, c: -0.094 },
-  // Non-Home-Based.
-  nhb: { a: 219113, b: -1.332, c: -0.100 },
 } as const;
 
 export type GammaCoeffs = { a: number; b: number; c: number };
