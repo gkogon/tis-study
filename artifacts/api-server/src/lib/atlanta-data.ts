@@ -1,6 +1,4 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { readDataJson } from "./data-files";
 
 // SignalTuple v2: [osm_id, lat, lon, name|null, roadClass]
 // roadClass: 0=motorway, 1=trunk, 2=primary, 3=secondary, 4=other
@@ -11,37 +9,17 @@ export type RoadNetwork = {
   ways: unknown[];
 };
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-function findData(filename: string): string {
-  // In dev (tsx) __dirname = src/lib, so ../data hits src/data.
-  // In prod (esbuild bundled dist/index.mjs) __dirname = dist/, so data/
-  // is the sibling we copy from build.mjs.
-  const candidates = [
-    resolve(__dirname, `data/${filename}`),
-    resolve(__dirname, `../data/${filename}`),
-    resolve(process.cwd(), `artifacts/api-server/dist/data/${filename}`),
-    resolve(process.cwd(), `artifacts/api-server/src/data/${filename}`),
-  ];
-  for (const path of candidates) {
-    try {
-      // existence probe — caller will read it for real anyway, but we want to
-      // surface clear errors here rather than half-decoded JSON downstream.
-      readFileSync(path, "utf8").length;
-      return path;
-    } catch {
-      // try next
-    }
-  }
-  throw new Error(`${filename} not found in any candidate path`);
-}
+// Path resolution + gzip-aware reads live in data-files.ts (shared with
+// regional-roads.ts and regional-signal-naming.ts): a `.json.gz` twin is
+// preferred over the raw `.json`, so Atlanta keeps working when its road
+// file is converted alongside the other 315 regions. Throws when a file is
+// missing everywhere — same behaviour the local findData copy had.
 
 let cachedSignals: SignalTuple[] | null = null;
 
 export function loadSignals(): SignalTuple[] {
   if (cachedSignals) return cachedSignals;
-  const text = readFileSync(findData("atlanta-signals.json"), "utf8");
-  cachedSignals = JSON.parse(text) as SignalTuple[];
+  cachedSignals = readDataJson<SignalTuple[]>("atlanta-signals.json");
   return cachedSignals;
 }
 
@@ -49,8 +27,7 @@ let cachedRoads: RoadNetwork | null = null;
 
 export function loadRoadNetwork(): RoadNetwork {
   if (cachedRoads) return cachedRoads;
-  const text = readFileSync(findData("atlanta-roads.json"), "utf8");
-  cachedRoads = JSON.parse(text) as RoadNetwork;
+  cachedRoads = readDataJson<RoadNetwork>("atlanta-roads.json");
   return cachedRoads;
 }
 
@@ -89,8 +66,7 @@ export function loadAccidents(): AccidentDataset | null {
   if (accidentsLoadAttempted) return null;
   accidentsLoadAttempted = true;
   try {
-    const text = readFileSync(findData("atlanta-accidents.json"), "utf8");
-    cachedAccidents = JSON.parse(text) as AccidentDataset;
+    cachedAccidents = readDataJson<AccidentDataset>("atlanta-accidents.json");
     return cachedAccidents;
   } catch {
     return null;

@@ -23,6 +23,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { REGIONS } from "../../artifacts/tis-api-server/src/lib/regions";
 import { regionGroup, uncoveredCountries, type RegionGroup } from "./region-groups";
+import { resolveRoadFile, readJsonMaybeGz } from "./road-file-io";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve(__dirname, "../../artifacts/api-server/src/data");
@@ -96,11 +97,11 @@ type Row = { group: RegionGroup; classCode: number; lanes: number | null; maxspe
 
 function collect(slug: string, group: RegionGroup, measuredSrcPrefixes: string[]): Row[] {
   const sigPath = path.resolve(DATA_DIR, `${slug}-signals.json`);
-  const roadPath = path.resolve(DATA_DIR, `${slug}-roads.json`);
+  const roadPath = resolveRoadFile(DATA_DIR, slug); // .json.gz preferred, .json fallback
   const aadtPath = path.resolve(DATA_DIR, `${slug}-aadt.json`);
-  if (!existsSync(sigPath) || !existsSync(roadPath) || !existsSync(aadtPath)) return [];
+  if (!existsSync(sigPath) || !roadPath || !existsSync(aadtPath)) return [];
   const signals: Array<[number, number, number]> = JSON.parse(readFileSync(sigPath, "utf8"));
-  const road: RoadNetwork = JSON.parse(readFileSync(roadPath, "utf8"));
+  const road: RoadNetwork = readJsonMaybeGz(roadPath);
   const aadt: Record<string, { aadt: number; source: string }> = JSON.parse(readFileSync(aadtPath, "utf8"));
   const coords = new Map<number, [number, number]>();
   for (const [id, lat, lon] of signals) coords.set(id, [lat, lon]);

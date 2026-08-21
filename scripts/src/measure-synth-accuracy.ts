@@ -16,6 +16,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { REGIONS, type Region } from "../../artifacts/tis-api-server/src/lib/regions";
+import { resolveRoadFile, readJsonMaybeGz } from "./road-file-io";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve(__dirname, "../../artifacts/api-server/src/data");
@@ -124,15 +125,15 @@ type RegionAccuracy = {
 function measureRegion(region: Region, baselines: Record<string, BaselineEntry>): RegionAccuracy | null {
   const slug = regionSlug(region.code);
   const sigPath = path.resolve(DATA_DIR, `${slug}-signals.json`);
-  const roadPath = path.resolve(DATA_DIR, `${slug}-roads.json`);
+  const roadPath = resolveRoadFile(DATA_DIR, slug); // .json.gz preferred, .json fallback
   const aadtPath = path.resolve(DATA_DIR, `${slug}-aadt.json`);
-  if (!existsSync(sigPath) || !existsSync(roadPath) || !existsSync(aadtPath)) return null;
+  if (!existsSync(sigPath) || !roadPath || !existsSync(aadtPath)) return null;
   let signals: Array<[number, number, number]>;
   let road: RoadNetwork;
   let aadt: Record<string, AadtRec>;
   try {
     signals = JSON.parse(readFileSync(sigPath, "utf8"));
-    road = JSON.parse(readFileSync(roadPath, "utf8"));
+    road = readJsonMaybeGz(roadPath);
     aadt = JSON.parse(readFileSync(aadtPath, "utf8"));
   } catch {
     return null;
