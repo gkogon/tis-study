@@ -8,6 +8,7 @@
 import type { DrivewayRouteResult } from "./drivewayRouteResult";
 import type { TisAffectedIntersection } from "./tisAffectedIntersection";
 import type { TisPeriodReport } from "./tisPeriodReport";
+import type { TisReportConservedAssignment } from "./tisReportConservedAssignment";
 import type { TisReportCoverageNote } from "./tisReportCoverageNote";
 import type { TisRequest } from "./tisRequest";
 import type { TisRouteAssignment } from "./tisRouteAssignment";
@@ -38,6 +39,7 @@ export interface TisReport {
   internalCapturePctApplied: number;
   autoModeShareApplied?: number;
   routeAssignment?: TisRouteAssignment;
+  conservedAssignment?: TisReportConservedAssignment;
   sensitivity?: TisSensitivityResult;
   tripDistribution?: TisTripDistribution;
   driveways?: DrivewayRouteResult;

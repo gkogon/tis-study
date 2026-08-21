@@ -367,6 +367,8 @@ export interface TisRequest {
    * @minimum 0
    */
   existingSize?: number;
+  /** Opt-in conserved path assignment. Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v/c, delay and LOS at resolved intersections. Absent/false = legacy behavior, byte-identical output. */
+  conservedAssignment?: boolean;
   /**
    * Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).
    * @maxItems 12
@@ -536,6 +538,17 @@ export const TisAffectedIntersectionMitigationSeverity = {
 
 export type TisAffectedIntersectionTurboLane = { [key: string]: unknown };
 
+/**
+ * Where the movements table came from. "path" = derived from the routed paths through this junction (conserved assignment); "octant" = the geometric octant model. Absent on pre-flag payloads.
+ */
+export type TisAffectedIntersectionMovementSource =
+  (typeof TisAffectedIntersectionMovementSource)[keyof typeof TisAffectedIntersectionMovementSource];
+
+export const TisAffectedIntersectionMovementSource = {
+  path: "path",
+  octant: "octant",
+} as const;
+
 export type TisAffectedIntersectionMovementsItemApproach =
   (typeof TisAffectedIntersectionMovementsItemApproach)[keyof typeof TisAffectedIntersectionMovementsItemApproach];
 
@@ -600,6 +613,8 @@ export interface TisAffectedIntersection {
   queue95thFt: number;
   calibration?: TisIntersectionCalibration;
   turboLane?: TisAffectedIntersectionTurboLane;
+  /** Where the movements table came from. "path" = derived from the routed paths through this junction (conserved assignment); "octant" = the geometric octant model. Absent on pre-flag payloads. */
+  movementSource?: TisAffectedIntersectionMovementSource;
   movements?: TisAffectedIntersectionMovementsItem[];
 }
 
@@ -723,6 +738,22 @@ export const TisReportCoverageNoteCode = {
   nearest_n_fallback: "nearest_n_fallback",
 } as const;
 
+export type TisReportConservedAssignmentConservation = {
+  nodesChecked?: number;
+  maxImbalance?: number;
+  balanced?: boolean;
+};
+
+export type TisReportConservedAssignment = {
+  enabled?: boolean;
+  gatewayCount?: number;
+  classCeiling?: number;
+  emptyOctants?: string[];
+  resolvedIntersections?: number;
+  octantFallbacks?: number;
+  conservation?: TisReportConservedAssignmentConservation;
+};
+
 /**
  * Present ONLY when the study radius contained no signalized intersection and the engine widened to the nearest-N fallback set (sparse rural/exurban site). The study succeeded; this discloses that every analyzed intersection sits beyond the stated radius.
  */
@@ -757,6 +788,7 @@ export interface TisReport {
   internalCapturePctApplied: number;
   autoModeShareApplied?: number;
   routeAssignment?: TisRouteAssignment;
+  conservedAssignment?: TisReportConservedAssignment;
   sensitivity?: TisSensitivityResult;
   tripDistribution?: TisTripDistribution;
   driveways?: DrivewayRouteResult;

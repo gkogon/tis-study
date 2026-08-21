@@ -530,6 +530,17 @@ components:
             Size of the existing land use in that use's primary unit. Required
             (and must be > 0) for the existing-use credit to apply; ignored when
             existingLandUseCode is absent.
+        conservedAssignment:
+          type: boolean
+          description: >-
+            Opt-in conserved path assignment. Project trips are routed through
+            the road network to cordon gateways on the study boundary (weighted
+            by the printed directional distribution); each study intersection
+            that resolves to a network junction gets its turning movements AND
+            approach loading from the actual paths through it, so flow is
+            conserved between adjacent resolved intersections. Changes v/c,
+            delay and LOS at resolved intersections. Absent/false = legacy
+            behavior, byte-identical output.
         driveways:
           type: array
           maxItems: 12
@@ -690,6 +701,13 @@ components:
         # Per-turning-movement breakdown of the added project trips (NB-L/T/R…),
         # derived from the directional trip distribution + the site's bearing
         # from this intersection. Integer trips cross-foot with addedTripsPmPeak.
+        movementSource:
+          type: string
+          enum: [path, octant]
+          description: >-
+            Where the movements table came from. "path" = derived from the
+            routed paths through this junction (conserved assignment); "octant"
+            = the geometric octant model. Absent on pre-flag payloads.
         movements:
           type: array
           items:
@@ -937,6 +955,27 @@ components:
         internalCapturePctApplied: { type: number }
         autoModeShareApplied: { type: number }
         routeAssignment: { $ref: "#/components/schemas/TisRouteAssignment" }
+        # Present only when the request opted into conservedAssignment AND a
+        # cordon could be built. Diagnostics a reviewer needs to judge the
+        # method: how many intersections actually resolved to path-derived
+        # movements, and the measured node-balance of the assignment.
+        conservedAssignment:
+          type: object
+          properties:
+            enabled: { type: boolean }
+            gatewayCount: { type: integer }
+            classCeiling: { type: integer }
+            emptyOctants:
+              type: array
+              items: { type: string }
+            resolvedIntersections: { type: integer }
+            octantFallbacks: { type: integer }
+            conservation:
+              type: object
+              properties:
+                nodesChecked: { type: integer }
+                maxImbalance: { type: number }
+                balanced: { type: boolean }
         sensitivity: { $ref: "#/components/schemas/TisSensitivityResult" }
         tripDistribution:
           $ref: "#/components/schemas/TisTripDistribution"

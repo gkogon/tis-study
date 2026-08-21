@@ -220,6 +220,12 @@ export const GenerateTisBody = zod.object({
     .describe(
       "Size of the existing land use in that use's primary unit. Required (and must be > 0) for the existing-use credit to apply; ignored when existingLandUseCode is absent.",
     ),
+  conservedAssignment: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Opt-in conserved path assignment. Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Absent\/false = legacy behavior, byte-identical output.",
+    ),
   driveways: zod
     .array(
       zod.object({
@@ -478,6 +484,12 @@ export const GenerateTisResponse = zod.object({
       .describe(
         "Size of the existing land use in that use's primary unit. Required (and must be > 0) for the existing-use credit to apply; ignored when existingLandUseCode is absent.",
       ),
+    conservedAssignment: zod
+      .boolean()
+      .optional()
+      .describe(
+        "Opt-in conserved path assignment. Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Absent\/false = legacy behavior, byte-identical output.",
+      ),
     driveways: zod
       .array(
         zod.object({
@@ -614,6 +626,12 @@ export const GenerateTisResponse = zod.object({
           "Per-intersection calibration metadata when ground-truth observations exist for this signal.",
         ),
       turboLane: zod.record(zod.string(), zod.unknown()).optional(),
+      movementSource: zod
+        .enum(["path", "octant"])
+        .optional()
+        .describe(
+          'Where the movements table came from. \"path\" = derived from the routed paths through this junction (conserved assignment); \"octant\" = the geometric octant model. Absent on pre-flag payloads.',
+        ),
       movements: zod
         .array(
           zod.object({
@@ -706,6 +724,12 @@ export const GenerateTisResponse = zod.object({
               "Per-intersection calibration metadata when ground-truth observations exist for this signal.",
             ),
           turboLane: zod.record(zod.string(), zod.unknown()).optional(),
+          movementSource: zod
+            .enum(["path", "octant"])
+            .optional()
+            .describe(
+              'Where the movements table came from. \"path\" = derived from the routed paths through this junction (conserved assignment); \"octant\" = the geometric octant model. Absent on pre-flag payloads.',
+            ),
           movements: zod
             .array(
               zod.object({
@@ -752,6 +776,23 @@ export const GenerateTisResponse = zod.object({
           vOverC: zod.number(),
         }),
       ),
+    })
+    .optional(),
+  conservedAssignment: zod
+    .object({
+      enabled: zod.boolean().optional(),
+      gatewayCount: zod.number().optional(),
+      classCeiling: zod.number().optional(),
+      emptyOctants: zod.array(zod.string()).optional(),
+      resolvedIntersections: zod.number().optional(),
+      octantFallbacks: zod.number().optional(),
+      conservation: zod
+        .object({
+          nodesChecked: zod.number().optional(),
+          maxImbalance: zod.number().optional(),
+          balanced: zod.boolean().optional(),
+        })
+        .optional(),
     })
     .optional(),
   sensitivity: zod
@@ -1253,6 +1294,12 @@ export const GetTisProjectResponse = zod
             .describe(
               "Size of the existing land use in that use's primary unit. Required (and must be > 0) for the existing-use credit to apply; ignored when existingLandUseCode is absent.",
             ),
+          conservedAssignment: zod
+            .boolean()
+            .optional()
+            .describe(
+              "Opt-in conserved path assignment. Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Absent\/false = legacy behavior, byte-identical output.",
+            ),
           driveways: zod
             .array(
               zod.object({
@@ -1474,6 +1521,12 @@ export const GetTisProjectResponse = zod
           .describe(
             "Size of the existing land use in that use's primary unit. Required (and must be > 0) for the existing-use credit to apply; ignored when existingLandUseCode is absent.",
           ),
+        conservedAssignment: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Opt-in conserved path assignment. Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Absent\/false = legacy behavior, byte-identical output.",
+          ),
         driveways: zod
           .array(
             zod.object({
@@ -1618,6 +1671,12 @@ export const GetTisProjectResponse = zod
               "Per-intersection calibration metadata when ground-truth observations exist for this signal.",
             ),
           turboLane: zod.record(zod.string(), zod.unknown()).optional(),
+          movementSource: zod
+            .enum(["path", "octant"])
+            .optional()
+            .describe(
+              'Where the movements table came from. \"path\" = derived from the routed paths through this junction (conserved assignment); \"octant\" = the geometric octant model. Absent on pre-flag payloads.',
+            ),
           movements: zod
             .array(
               zod.object({
@@ -1726,6 +1785,12 @@ export const GetTisProjectResponse = zod
                   "Per-intersection calibration metadata when ground-truth observations exist for this signal.",
                 ),
               turboLane: zod.record(zod.string(), zod.unknown()).optional(),
+              movementSource: zod
+                .enum(["path", "octant"])
+                .optional()
+                .describe(
+                  'Where the movements table came from. \"path\" = derived from the routed paths through this junction (conserved assignment); \"octant\" = the geometric octant model. Absent on pre-flag payloads.',
+                ),
               movements: zod
                 .array(
                   zod.object({
@@ -1772,6 +1837,23 @@ export const GetTisProjectResponse = zod
               vOverC: zod.number(),
             }),
           ),
+        })
+        .optional(),
+      conservedAssignment: zod
+        .object({
+          enabled: zod.boolean().optional(),
+          gatewayCount: zod.number().optional(),
+          classCeiling: zod.number().optional(),
+          emptyOctants: zod.array(zod.string()).optional(),
+          resolvedIntersections: zod.number().optional(),
+          octantFallbacks: zod.number().optional(),
+          conservation: zod
+            .object({
+              nodesChecked: zod.number().optional(),
+              maxImbalance: zod.number().optional(),
+              balanced: zod.boolean().optional(),
+            })
+            .optional(),
         })
         .optional(),
       sensitivity: zod
