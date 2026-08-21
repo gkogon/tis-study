@@ -2,13 +2,14 @@
  * Generic OSM road-network fetcher, keyed off a region in the registry.
  *
  * For a given region code, queries OpenStreetMap (Overpass API) for every
- * named highway way (motorway through tertiary, plus _link subtypes) inside
- * the region's bounding box. Output mirrors atlanta-roads.json:
+ * named highway way in CLASSES (motorway through unclassified, plus _link
+ * subtypes) inside the region's bounding box. Output mirrors atlanta-roads.json:
  *
  *   {
- *     "classes": ["motorway","trunk","primary","secondary","tertiary"],
+ *     "classes": ["motorway","trunk","primary","secondary","tertiary",
+ *                 "residential","unclassified"],
  *     "ways": [
- *       [classCode, "Way Name", [[lat,lon], ...], lanes|null, maxspeedKmh|null],
+ *       [classCode, "Way Name", [[lat,lon], ...], lanes|null, maxspeedKmh|null, oneway],
  *     ]
  *   }
  *
@@ -16,9 +17,14 @@
  * for signals in that region. Without it, signals show as "Signal #<osmId>".
  *
  * Trailing `lanes` + `maxspeedKmh` (both null when untagged in OSM) feed the
- * per-road AADT modulation in precompute-tier10-synthetic-aadt.ts. Readers that
- * only need geometry/name (runtime naming, the naming precompute) ignore the
- * trailing fields — they read indices 0..2 and tolerate any tuple length >= 3.
+ * per-road AADT modulation in precompute-tier10-synthetic-aadt.ts, and `oneway`
+ * feeds route assignment. Readers that only need geometry/name (runtime naming,
+ * the naming precompute) ignore the trailing fields — they read indices 0..2 and
+ * tolerate any tuple length >= 3.
+ *
+ * NOTE: files shipped before 2026-08 carry only 5 classes and no `oneway`;
+ * roadSegmentsNear tolerates both vintages, so regions can be re-fetched
+ * incrementally rather than in one flag day.
  *
  * Run:
  *   pnpm --filter @workspace/scripts exec tsx src/fetch-osm-roads.ts charlotte_metro
@@ -57,10 +63,32 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 type OverpassWay = {
   type: "way";
   id: number;
-  tags?: { highway?: string; name?: string; lanes?: string; maxspeed?: string };
+  tags?: { highway?: string; name?: string; lanes?: string; maxspeed?: string; oneway?: string };
   geometry?: Array<{ lat: number; lon: number }>;
 };
 type OverpassResp = { elements: OverpassWay[] };
+
+/**
+ * One-way direction relative to the way's own node order:
+ *   1  traffic flows first-node -> last-node
+ *  -1  traffic flows last-node -> first-node ("oneway=-1")
+ *   0  two-way
+ *
+ * Nothing downstream captured this before, so the router treated every link as
+ * bidirectional and would happily route a left turn against traffic on a
+ * one-way pair - visibly wrong to any reviewing engineer. Measured on the
+ * NW 7 Ave corridor, 21% of named ways carry a one-way tag.
+ *
+ * "reversible" and "alternating" are rare and not one-way in the static sense,
+ * so they fall through to 0.
+ */
+function parseOneway(raw: string | undefined): number {
+  if (!raw) return 0;
+  const v = raw.trim().toLowerCase();
+  if (v === "yes" || v === "true" || v === "1") return 1;
+  if (v === "-1" || v === "reverse") return -1;
+  return 0;
+}
 
 /** OSM `lanes` is total both-directions; values like "2", "3", "2;3" occur.
  *  Take the max of any ;-separated list. Returns null when untagged/unparseable. */
@@ -214,7 +242,8 @@ async function fetchOneRegion(regionCode: RegionCode): Promise<{
       ]);
       const lanes = parseLanes(el.tags?.lanes);
       const maxspeed = parseMaxspeedKmh(el.tags?.maxspeed);
-      ways.push([code, name, polyline, lanes, maxspeed]);
+      const oneway = parseOneway(el.tags?.oneway);
+      ways.push([code, name, polyline, lanes, maxspeed, oneway]);
       byClass[baseClass] = (byClass[baseClass] ?? 0) + 1;
     }
     await sleep(5_000);
