@@ -792,11 +792,22 @@ function TisFormSection({
                 points={form.additionalStudyPoints ?? []}
                 signalIds={form.studyIntersectionIds ?? []}
                 onChange={({ points, signalIds }) =>
-                  setForm((f) => ({
-                    ...f,
-                    additionalStudyPoints: points.length > 0 ? points : undefined,
-                    studyIntersectionIds: signalIds.length > 0 ? signalIds : undefined,
-                  }))
+                  setForm((f) => {
+                    // Keep the measured UTDF records in step with the points
+                    // they arrived with: a record whose 4dp coordinate no
+                    // longer has a study point is dropped, so removing an
+                    // imported intersection also removes its measured data.
+                    const keys = new Set(points.map((pt) => `${pt.latitude},${pt.longitude}`));
+                    const keptUtdf = (f.utdfIntersections ?? []).filter(
+                      (u) => keys.has(`${u.latitude},${u.longitude}`),
+                    );
+                    return {
+                      ...f,
+                      additionalStudyPoints: points.length > 0 ? points : undefined,
+                      studyIntersectionIds: signalIds.length > 0 ? signalIds : undefined,
+                      utdfIntersections: keptUtdf.length > 0 ? keptUtdf : undefined,
+                    };
+                  })
                 }
               />
               {/* Synchro import: the engineer's existing UTDF network defines
@@ -837,6 +848,7 @@ function TisFormSection({
                           const parsed = await r.json() as {
                             nodes: Array<{ intId: number; name: string; latitude?: number; longitude?: number; hasVolumes?: boolean }>;
                             volumeIntersections: number;
+                            utdfIntersections?: NonNullable<TisRequest["utdfIntersections"]>;
                             warnings: string[];
                           };
                           const coords = parsed.nodes
@@ -854,6 +866,12 @@ function TisFormSection({
                             );
                             return;
                           }
+                          // Measured records ride the SAME 4dp-coordinate key
+                          // as the study points, so both merges stay in step
+                          // and both truncate at the identical 60-item cap
+                          // (a record beyond the cap would otherwise arrive
+                          // without its matching forced study point).
+                          const measured = Array.isArray(parsed.utdfIntersections) ? parsed.utdfIntersections : [];
                           setForm((f) => {
                             const existing = f.additionalStudyPoints ?? [];
                             const seen = new Set(existing.map((pt) => `${pt.latitude},${pt.longitude}`));
@@ -861,11 +879,23 @@ function TisFormSection({
                               ...existing,
                               ...coords.filter((pt) => !seen.has(`${pt.latitude},${pt.longitude}`)),
                             ].slice(0, 60);
-                            return { ...f, additionalStudyPoints: merged.length > 0 ? merged : undefined };
+                            const priorUtdf = f.utdfIntersections ?? [];
+                            const seenUtdf = new Set(priorUtdf.map((u) => `${u.latitude},${u.longitude}`));
+                            const mergedUtdf = [
+                              ...priorUtdf,
+                              ...measured.filter((u) => !seenUtdf.has(`${u.latitude},${u.longitude}`)),
+                            ].slice(0, 60);
+                            return {
+                              ...f,
+                              additionalStudyPoints: merged.length > 0 ? merged : undefined,
+                              utdfIntersections: mergedUtdf.length > 0 ? mergedUtdf : undefined,
+                            };
                           });
                           setUtdfNote(
                             `Imported ${coords.length} intersection${coords.length === 1 ? "" : "s"} from ${file.name}`
-                            + (parsed.volumeIntersections > 0 ? ` (${parsed.volumeIntersections} with volumes)` : "")
+                            + (measured.length > 0
+                              ? ` — measured volumes from ${measured.length} will replace the AADT-derived existing volumes at matched study intersections`
+                              : (parsed.volumeIntersections > 0 ? ` (${parsed.volumeIntersections} with volumes)` : ""))
                             + (parsed.warnings.length > 0 ? ` — ${parsed.warnings.length} section(s) skipped` : ""),
                           );
                         } catch {
