@@ -26,6 +26,7 @@
     "check:movement-assignment": "node ./scripts/verify-movement-assignment.mjs",
     "check:movement-loading": "node ./scripts/verify-movement-loading.mjs",
     "check:rate-auditability": "node ./scripts/verify-rate-auditability.mjs",
+    "check:turn-ledger": "node ./scripts/verify-turn-ledger.mjs",
     "check:state-dispatch": "node ./scripts/verify-state-dispatch.mjs"
   },
   "dependencies": {
