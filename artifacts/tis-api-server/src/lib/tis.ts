@@ -32,7 +32,7 @@ import { lookupLondonPtal } from "./tfl-ptal";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
 import { modeChoiceLogit, type DemandZone } from "./four-step-model";
 import { type CardinalDir } from "./caltran-gravity";
-import { fetchLocalRoads, assignRoutes, assignRoutesWithTurns, assignWithDriveways, buildGraph, type ConservationReport, type RouteAssignment, type DrivewayAssignment, type DrivewayResult, type TurnFlow } from "./network-assignment";
+import { fetchLocalRoads, assignRoutes, assignRoutesWithTurns, assignWithDriveways, buildGraph, directedReachability, type ConservationReport, type RouteAssignment, type DrivewayAssignment, type DrivewayResult, type TurnFlow } from "./network-assignment";
 import { selectCordonGateways, snapSignalsToJunctions } from "./cordon-gateways";
 import { type Driveway } from "./driveways";
 import { getTransitContext } from "./transit-routes";
@@ -1843,12 +1843,33 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   if (req.conservedAssignment !== false && segsForConserved && segsForConserved.length > 0) {
     try {
       const cg = buildGraph(segsForConserved, conservedVolumeRefs);
-      const cordon = selectCordonGateways(
+      let cordon = selectCordonGateways(
         cg,
         { lat: req.latitude, lon: req.longitude },
         radiusMi,
         dist.byDirection,
       );
+      // Directed-reachability screen — one-way-bearing graphs ONLY. The ring/
+      // octant/capacity selection is purely geometric: on a heavily one-way
+      // grid it can pick a gateway no legal path serves in EITHER direction,
+      // whose demand share then silently evaporates at routing time (the
+      // pred=-1 skip), deflating routed/onNetworkPct and every resolved
+      // weight with no diagnostic. Drop such gateways and renormalize so the
+      // cordon's Σshare stays 1 over gateways that can actually route. On
+      // all-two-way graphs (every shipped region today) the gate keeps this
+      // block inert and the selection byte-identical.
+      if (cordon && cg.links.some((lk) => lk.dir !== 0)) {
+        const reach = directedReachability(cg, cg.nearestNode(req.latitude, req.longitude));
+        const kept = cordon.gateways.filter(
+          (gw) => reach.outbound[gw.node] === 1 || reach.inbound[gw.node] === 1,
+        );
+        if (kept.length === 0) {
+          cordon = null; // no routable cordon — the legacy path stands
+        } else if (kept.length < cordon.gateways.length) {
+          const sum = kept.reduce((s, gw) => s + gw.share, 0);
+          cordon = { ...cordon, gateways: kept.map((gw) => ({ ...gw, share: gw.share / sum })) };
+        }
+      }
       if (cordon) {
         const net = assignRoutesWithTurns(
           { lat: req.latitude, lon: req.longitude },

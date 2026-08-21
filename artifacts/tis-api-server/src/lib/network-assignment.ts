@@ -195,6 +195,50 @@ export function buildGraph(segments: RoadSegment[], volumeRefs: VolumeRef[] = []
   return { links, adj, nodeLat, nodeLon, nodeOf, nearestNode };
 }
 
+/**
+ * Directed reachability from `rootNode`: which nodes the root can legally
+ * reach (`outbound`, over the forward adjacency the graph already enforces)
+ * and which nodes can legally reach the root (`inbound`, over the transpose —
+ * the same transposition the inbound routing pass uses). Plain BFS: this is a
+ * connectivity screen, costs don't matter.
+ *
+ * Exists for cordon-gateway screening on one-way-bearing graphs: a gateway
+ * with no legal path in EITHER direction never routes — its demand share
+ * silently evaporates at the pred=-1 skip, deflating routed/onNetworkPct and
+ * every resolved intersection's weight with no diagnostic. Callers drop such
+ * gateways and renormalize BEFORE routing. On all-two-way graphs outbound and
+ * inbound are identical (undirected connectivity), and callers must not
+ * change behaviour there — today's shipped regions carry no one-way links.
+ */
+export function directedReachability(g: Graph, rootNode: number): { outbound: Uint8Array; inbound: Uint8Array } {
+  const n = g.nodeLat.length;
+  // Transpose: a link relaxable FROM u in the forward graph is relaxable
+  // from its other endpoint here (legal head), exactly as in the inbound
+  // routing pass of assignRoutesWithTurns.
+  const radj: number[][] = [];
+  for (let li = 0; li < g.links.length; li++) {
+    const lk = g.links[li]!;
+    if (lk.dir !== -1) (radj[lk.b] ??= []).push(li);
+    if (lk.dir !== 1) (radj[lk.a] ??= []).push(li);
+  }
+  const bfs = (adjL: number[][]): Uint8Array => {
+    const seen = new Uint8Array(n);
+    if (rootNode < 0 || rootNode >= n) return seen;
+    const queue: number[] = [rootNode];
+    seen[rootNode] = 1;
+    for (let qi = 0; qi < queue.length; qi++) {
+      const u = queue[qi]!;
+      for (const li of adjL[u] ?? []) {
+        const lk = g.links[li]!;
+        const v = lk.a === u ? lk.b : lk.a;
+        if (!seen[v]) { seen[v] = 1; queue.push(v); }
+      }
+    }
+    return seen;
+  };
+  return { outbound: bfs(g.adj), inbound: bfs(radj) };
+}
+
 /** Nearest point on any link to (lat,lon); t = fractional position a→b. */
 export function nearestLinkPoint(g: Graph, lat: number, lon: number) {
   let best = { li: -1, t: 0, lat, lon, distMi: Infinity };
