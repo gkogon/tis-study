@@ -965,6 +965,11 @@ function buildAffectedRow(
   params: ScenarioParams,
   calibration?: CalibrationEntry,
   pathTurns?: PathTurnShare[],
+  // Recorded inbound (gateway→site) turns — defined ONLY when the routing
+  // graph carries one-way links and this signal resolved. undefined ⇒ the
+  // historical inbound mirror of `pathTurns`, bit-for-bit. An EMPTY array is
+  // meaningful: the routed inbound paths do not pass this junction.
+  pathTurnsIn?: PathTurnShare[],
 ): AffectedIntersection {
   // Background-network volume for THIS period: the stored design-hour volume
   // scaled by the period's peaking factor (PERIOD_VOLUME_FACTOR — PM anchors
@@ -995,7 +1000,20 @@ function buildAffectedRow(
   // delta and read as if the analysis had not run. The exact load preserves
   // the (negligible but real) impact in the capacity math; `addedTrips` stays
   // an integer because the API schema types the reported count as such.
-  const addedTripsExact = params.externalTrips * weight;
+  // With a RECORDED inbound ledger (one-way graphs), the junction's project
+  // load is the per-period directional blend of the two ledgers' shares:
+  // outbound weighted (1 − inFraction), inbound weighted inFraction. The
+  // caller's `weight` is necessarily period-independent (it is shared across
+  // AM/PM, whose inFraction differ), so deriving the exact load from the
+  // ledgers themselves is what keeps Σ movement rows === addedTripsExact and
+  // every integer cross-foot below intact. Without an inbound ledger this is
+  // exactly the historical arithmetic (mirror ⇒ both directions share one
+  // through-sum ⇒ the blend collapses to `weight`).
+  const ledgerWeight = pathTurnsIn !== undefined && pathTurns
+    ? pathTurns.reduce((s, t) => s + t.share, 0) * (1 - params.inFraction)
+      + pathTurnsIn.reduce((s, t) => s + t.share, 0) * params.inFraction
+    : undefined;
+  const addedTripsExact = params.externalTrips * (ledgerWeight ?? weight);
   const addedTrips = Math.round(addedTripsExact);
   const addedCriticalVph = addedTripsExact * CRITICAL_MOVEMENT_FRACTION;
   const afterVc = beforeVc + addedCriticalVph / params.capacityVph;
@@ -1048,8 +1066,13 @@ function buildAffectedRow(
   // share units scaled here by this period's external trips. The caller has
   // already set `weight` to the path through-share, so addedTripsExact equals
   // the sum of these rows and every cross-foot below holds unchanged.
-  const pathRows = pathTurns && pathTurns.length > 0 && params.distributionOctants
-    ? pathMovementLoadsExact(pathTurns, params.externalTrips, params.inFraction)
+  // A signal on a one-way pair can resolve with an EMPTY outbound ledger but
+  // real inbound turns (the return street is a different street), so the gate
+  // accepts either direction's rows when the inbound ledger exists.
+  const pathRows = pathTurns
+    && (pathTurns.length > 0 || (pathTurnsIn !== undefined && pathTurnsIn.length > 0))
+    && params.distributionOctants
+    ? pathMovementLoadsExact(pathTurns, params.externalTrips, params.inFraction, pathTurnsIn)
     : undefined;
   const movements: MovementLoad[] | undefined = pathRows
     ? integerizeMovementLoads(pathRows, addedTripsExact)
@@ -1800,6 +1823,12 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // graph, or a node collision) keep the legacy octant model and are labeled
   // movementSource:"octant" — an honest per-row boundary, never a blend.
   let pathTurnsByCandidate: Array<PathTurnShare[] | undefined> | undefined;
+  // Recorded inbound (gateway→site) turns per candidate. Defined ONLY when
+  // the routing graph carries one-way links (the router then routes the
+  // return direction for real instead of relying on the outbound mirror).
+  // undefined on all-two-way graphs ⇒ every downstream consumer keeps the
+  // historical mirror, bit-for-bit.
+  let pathTurnsInByCandidate: Array<PathTurnShare[] | undefined> | undefined;
   let conservedAssignment:
     | {
         enabled: true;
@@ -1833,6 +1862,13 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
           if (arr) arr.push(t);
           else turnsByNode.set(t.node, [t]);
         }
+        // Inbound ledger by node — present only on one-way-bearing graphs.
+        const turnsInByNode = net.turnsInbound ? new Map<number, TurnFlow[]>() : undefined;
+        for (const t of net.turnsInbound ?? []) {
+          const arr = turnsInByNode!.get(t.node);
+          if (arr) arr.push(t);
+          else turnsInByNode!.set(t.node, [t]);
+        }
         const snaps = snapSignalsToJunctions(
           cg,
           candidates.map((c) => ({ lat: c.sig.latitude, lon: c.sig.longitude })),
@@ -1850,26 +1886,55 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
             * Math.cos((cg.nodeLon[b]! - cg.nodeLon[a]!) * p);
           return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
         };
-        let resolved = 0;
-        pathTurnsByCandidate = candidates.map((_, i) => {
-          const snap = snaps[i]!;
-          if (snap.node < 0) return undefined;
-          const turns = turnsByNode.get(snap.node);
-          if (!turns || turns.length === 0) return undefined;
-          resolved++;
-          return turns.map((t) => ({
+        const toShares = (rows: TurnFlow[]): PathTurnShare[] =>
+          rows.map((t) => ({
             enterBearingDeg: bearing(other(t.inLink, t.node), t.node),
             exitBearingDeg: bearing(t.node, other(t.outLink, t.node)),
             share: t.trips,
           }));
-        });
+        let resolved = 0;
+        pathTurnsByCandidate = candidates.map(() => undefined);
+        if (turnsInByNode) pathTurnsInByCandidate = candidates.map(() => undefined);
+        for (let i = 0; i < candidates.length; i++) {
+          const snap = snaps[i]!;
+          if (snap.node < 0) continue;
+          const turnsOut = turnsByNode.get(snap.node) ?? [];
+          if (turnsInByNode) {
+            // One-way-bearing graph: inbound paths are routed for real and may
+            // legitimately use DIFFERENT streets than outbound, so a signal
+            // resolves when either direction's paths pass through it. Empty
+            // arrays are kept (they mean "that direction does not pass here"),
+            // never collapsed back to the mirror.
+            const turnsIn = turnsInByNode.get(snap.node) ?? [];
+            if (turnsOut.length === 0 && turnsIn.length === 0) continue;
+            resolved++;
+            pathTurnsByCandidate[i] = toShares(turnsOut);
+            pathTurnsInByCandidate![i] = toShares(turnsIn);
+          } else {
+            if (turnsOut.length === 0) continue;
+            resolved++;
+            pathTurnsByCandidate[i] = toShares(turnsOut);
+          }
+        }
         // Conserved loading: a resolved intersection's load weight IS its path
-        // through-share (in/out mirror sums to the same total), replacing the
-        // un-normalized distance-decay estimate. addedTripsExact then equals
-        // the sum of the path movement rows and the cross-foots hold.
+        // through-share, replacing the un-normalized distance-decay estimate.
+        // Two-way graphs: the in/out mirror sums to the same total, so the
+        // outbound sum is the whole story and addedTripsExact equals the sum
+        // of the path movement rows (cross-foots hold), exactly as before.
+        // One-way graphs: the two directions can differ, and weights must stay
+        // period-independent (shared across AM/PM whose inFraction differ), so
+        // the weight is the direction-agnostic mean of the two through-share
+        // sums; buildAffectedRow re-derives each period's exact junction load
+        // from the ledgers themselves, keeping the integer cross-foots exact.
         for (let i = 0; i < candidates.length; i++) {
           const turns = pathTurnsByCandidate[i];
-          if (turns) {
+          if (!turns) continue;
+          const turnsIn = pathTurnsInByCandidate?.[i];
+          if (turnsIn !== undefined) {
+            const sumOut = turns.reduce((sum, t) => sum + t.share, 0);
+            const sumIn = turnsIn.reduce((sum, t) => sum + t.share, 0);
+            effectiveWeights[i] = clamp((sumOut + sumIn) / 2, 0, 1);
+          } else {
             effectiveWeights[i] = clamp(turns.reduce((sum, t) => sum + t.share, 0), 0, 1);
           }
         }
@@ -1948,6 +2013,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
             params,
             calibrationMap.get(c.sig.id),
             pathTurnsByCandidate?.[i],
+            pathTurnsInByCandidate?.[i],
           ),
         );
 
@@ -1991,7 +2057,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // synthesize it for the back-compat fields so downstream consumers don't
   // crash.
   const pmReport = periodReports.find((p) => p.period === "pm_peak")
-    ?? (await synthesizePmReport(lu, req, candidates, effectiveWeights, project, growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates, studySet, dist.byDirection, pathTurnsByCandidate));
+    ?? (await synthesizePmReport(lu, req, candidates, effectiveWeights, project, growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates, studySet, dist.byDirection, pathTurnsByCandidate, pathTurnsInByCandidate));
 
   // Top-level back-compat trip-generation summary uses ORIGINAL (non-credited)
   // PM trips so the existing UI labels keep their meaning. Rates come from
@@ -2157,6 +2223,7 @@ async function synthesizePmReport(
   studySet: Set<number>,
   distributionOctants?: Record<string, number>,
   pathTurnsByCandidate?: Array<PathTurnShare[] | undefined>,
+  pathTurnsInByCandidate?: Array<PathTurnShare[] | undefined>,
 ): Promise<PeriodReport> {
   const raw = periodRawTrips(lu, req.size, "pm_peak", rates);
   const passByCredit = raw * (passByPct / 100);
@@ -2166,7 +2233,7 @@ async function synthesizePmReport(
   const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak, ...(distributionOctants ? { distributionOctants } : {}), ...(pathTurnsByCandidate ? { conservedLabeling: true } : {}) };
   const calibrationMap = await loadCalibrationMap();
   const allRows = candidates.map((c, i) =>
-    buildAffectedRow(c, loadWeights[i]!, project, params, calibrationMap.get(c.sig.id), pathTurnsByCandidate?.[i]),
+    buildAffectedRow(c, loadWeights[i]!, project, params, calibrationMap.get(c.sig.id), pathTurnsByCandidate?.[i], pathTurnsInByCandidate?.[i]),
   );
   const rows = allRows.filter((_, i) => studySet.has(i));
   return {

@@ -16,7 +16,7 @@
  * link-level v/c that a reviewer expects from a route-assignment step.
  */
 import { bprTime } from "./four-step-model.ts";
-import { classifyMovement, sideOfStreet, resolveMovements, type Driveway } from "./driveways.ts";
+import { classifyMovement, sideOfStreet, resolveMovements, maskOneWayMovements, type Driveway } from "./driveways.ts";
 
 const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8080";
 
@@ -221,8 +221,11 @@ function nodeBearing(g: Graph, a: number, b: number): number {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
-/** Split the nearest link at the driveway's snap point; add a site→driveway access link. */
-export function insertDriveway(g: Graph, siteNode: number, lat: number, lon: number): { drivewayNode: number; accessLink: number; streetBearing: number } {
+/** Split the nearest link at the driveway's snap point; add a site→driveway access link.
+ *  `streetDir` is the fronting street's one-way flag relative to `streetBearing`
+ *  (1 = travel only along the bearing, -1 = only against it, 0 = two-way), so
+ *  the movement layer can mask turns the one-way street makes impossible. */
+export function insertDriveway(g: Graph, siteNode: number, lat: number, lon: number): { drivewayNode: number; accessLink: number; streetBearing: number; streetDir: 0 | 1 | -1 } {
   const snap = nearestLinkPoint(g, lat, lon);
   const addAdj = (n: number, li: number) => { (g.adj[n] ??= []).push(li); };
   if (snap.li < 0) {
@@ -231,7 +234,7 @@ export function insertDriveway(g: Graph, siteNode: number, lat: number, lon: num
     const al = g.links.length;
     g.links.push({ a: siteNode, b: dn, lenMi: 0.02, freeMin: 0.1, capVph: 2000, cls: 4, baseVc: 0, vol: 0, dir: 0 });
     addAdj(siteNode, al); addAdj(dn, al);
-    return { drivewayNode: dn, accessLink: al, streetBearing: 0 };
+    return { drivewayNode: dn, accessLink: al, streetBearing: 0, streetDir: 0 };
   }
   const orig = g.links[snap.li]!;
   const streetBearing = nodeBearing(g, orig.a, orig.b); // fronting-street bearing (capture before reshape)
@@ -254,7 +257,7 @@ export function insertDriveway(g: Graph, siteNode: number, lat: number, lon: num
   const al = g.links.length;
   g.links.push({ a: siteNode, b: dn, lenMi: Math.max(0.01, distMi(g.nodeLat[siteNode]!, g.nodeLon[siteNode]!, snap.lat, snap.lon)), freeMin: 0.1, capVph: 2000, cls: 4, baseVc: 0, vol: 0, dir: 0 });
   addAdj(siteNode, al); addAdj(dn, al);
-  return { drivewayNode: dn, accessLink: al, streetBearing };
+  return { drivewayNode: dn, accessLink: al, streetBearing, streetDir: orig.dir };
 }
 
 /**
@@ -267,6 +270,16 @@ export type RoutedNetwork = {
   /** Every turn carrying flow, at every interior node the paths pass through. */
   turns: TurnFlow[];
   conservation: ConservationReport;
+  /**
+   * Inbound (gateway→site) turn ledger, present ONLY when the graph carries at
+   * least one one-way link. On an all-two-way graph the historical inbound
+   * mirror (reverse every outbound turn) IS the legal return path, so this
+   * stays undefined and downstream output is bit-for-bit unchanged. With
+   * one-way links the mirror can imply wrong-way travel, so the return
+   * direction is routed for real on the transposed graph and recorded here in
+   * travel-toward-site orientation (enter node on inLink, leave on outLink).
+   */
+  turnsInbound?: TurnFlow[];
 };
 
 /**
@@ -323,7 +336,10 @@ export function assignRoutesWithTurns(
   // record of WHICH movement each vehicle made was thrown away.
   const turn = new Map<string, number>();
   const auxTurn = new Map<string, number>();
-  function dijkstra(): { pred: number[] } {
+  // Site-rooted shortest-path tree over an arbitrary adjacency + link-time
+  // function, so the outbound pass (forward adjacency, outbound loading) and
+  // the inbound pass (transposed adjacency, its own loading) share one router.
+  function dijkstra(adjL: number[][], timeOf: (li: number) => number): { pred: number[] } {
     const n = nodeLat.length;
     const dist = new Array<number>(n).fill(Infinity);
     const pred = new Array<number>(n).fill(-1);
@@ -335,10 +351,10 @@ export function assignRoutesWithTurns(
       for (let i = 0; i < n; i++) if (!done[i] && dist[i]! < ud) { ud = dist[i]!; u = i; }
       if (u === -1) break;
       done[u] = true;
-      for (const li of adj[u] ?? []) {
+      for (const li of adjL[u] ?? []) {
         const lk = links[li]!;
         const v = lk.a === u ? lk.b : lk.a;
-        const nd = ud + linkTime(li);
+        const nd = ud + timeOf(li);
         if (nd < dist[v]!) { dist[v] = nd; pred[v] = li; }
       }
     }
@@ -349,7 +365,7 @@ export function assignRoutesWithTurns(
   // current times, then blends vol = (1-φ)·vol + φ·aux, φ = 1/(iter+1).
   let routed = 0;
   for (let iter = 0; iter < iterations; iter++) {
-    const { pred } = dijkstra();
+    const { pred } = dijkstra(adj, linkTime);
     const aux = new Array<number>(links.length).fill(0);
     // Must be cleared per iteration exactly like `aux` is re-allocated: this is
     // an all-or-nothing loading for THIS iteration's shortest-path tree, not a
@@ -395,6 +411,80 @@ export function assignRoutesWithTurns(
       if (blended > 1e-9) turn.set(k, blended);
       else turn.delete(k);
     }
+  }
+
+  // --- Inbound (return-direction) pass — one-way graphs ONLY. --------------
+  // Downstream movement attribution historically fabricated inbound turns by
+  // mirroring the outbound ledger. On an all-two-way graph the mirror IS the
+  // legal return path, and reverse-Dijkstra tie-breaking could pick different
+  // equal-cost trees than the mirror, so two-way graphs skip this block
+  // entirely (turnsInbound stays undefined ⇒ downstream bit-for-bit
+  // unchanged). With one-way links the mirror can imply wrong-way travel —
+  // the exact violation this module exists to prevent — so the return legs
+  // are routed for real: the same site-rooted Dijkstra/MSA over the
+  // TRANSPOSED adjacency (each link relaxable from its legal HEAD), whose
+  // shortest-path tree is exactly the set of legal gateway→site paths.
+  // Walking that tree from a gateway visits nodes in true travel order, so
+  // the ledger records (node, inLink, outLink) in travel-toward-site
+  // orientation directly — no mirroring anywhere. The pass keeps its own
+  // loading (volIn) for congestion feedback and never touches links[].vol,
+  // so the RouteAssignment summary (corridors, v/c) is unchanged.
+  let turnsInbound: TurnFlow[] | undefined;
+  if (links.some((lk) => lk.dir !== 0)) {
+    const radj: number[][] = [];
+    const addRadj = (n: number, li: number) => { (radj[n] ??= []).push(li); };
+    for (let li = 0; li < links.length; li++) {
+      const lk = links[li]!;
+      // Transposition: forward a→b legal (dir ≠ -1) ⇒ reverse-relaxable from b;
+      // forward b→a legal (dir ≠ 1) ⇒ reverse-relaxable from a.
+      if (lk.dir !== -1) addRadj(lk.b, li);
+      if (lk.dir !== 1) addRadj(lk.a, li);
+    }
+    const volIn = new Array<number>(links.length).fill(0);
+    const timeIn = (li: number) =>
+      bprTime(links[li]!.freeMin, links[li]!.baseVc + volIn[li]! / links[li]!.capVph);
+    const turnIn = new Map<string, number>();
+    const auxTurnIn = new Map<string, number>();
+    for (let iter = 0; iter < iterations; iter++) {
+      const { pred } = dijkstra(radj, timeIn);
+      const aux = new Array<number>(links.length).fill(0);
+      auxTurnIn.clear();
+      for (const d of destNodes) {
+        if (d.node < 0 || pred[d.node] === -1 && d.node !== siteNode) continue;
+        // pred[] is the site-rooted tree on the transposed graph, so walking
+        // it from the gateway follows the REAL inbound path in forward travel
+        // order: the vehicle enters `cur` on the previous hop's link and
+        // leaves it on pred[cur]. At the gateway itself there is no previous
+        // hop (an origin has no turn); the site is a terminus (walk ends).
+        let cur = d.node, guard = 0;
+        let inLi = -1;
+        while (cur !== siteNode && guard++ < 5000) {
+          const li = pred[cur];
+          if (li === undefined || li === -1) break;
+          aux[li]! += d.trips;
+          if (inLi !== -1) {
+            const k = turnKey(cur, inLi, li);
+            auxTurnIn.set(k, (auxTurnIn.get(k) ?? 0) + d.trips);
+          }
+          inLi = li;
+          const lk = links[li]!;
+          cur = lk.a === cur ? lk.b : lk.a;
+        }
+      }
+      const phi = 1 / (iter + 1);
+      for (let li = 0; li < links.length; li++) volIn[li] = (1 - phi) * volIn[li]! + phi * aux[li]!;
+      for (const k of new Set([...turnIn.keys(), ...auxTurnIn.keys()])) {
+        const blended = (1 - phi) * (turnIn.get(k) ?? 0) + phi * (auxTurnIn.get(k) ?? 0);
+        if (blended > 1e-9) turnIn.set(k, blended);
+        else turnIn.delete(k);
+      }
+    }
+    turnsInbound = [];
+    for (const [k, trips] of turnIn) {
+      const [nodeStr, inStr, outStr] = k.split("|");
+      turnsInbound.push({ node: Number(nodeStr), inLink: Number(inStr), outLink: Number(outStr), trips });
+    }
+    turnsInbound.sort((x, y) => x.node - y.node || x.inLink - y.inLink || x.outLink - y.outLink);
   }
 
   // Summarize loaded corridors by road class. projectVph = the PEAK single-
@@ -467,6 +557,7 @@ export function assignRoutesWithTurns(
     },
     turns,
     conservation,
+    ...(turnsInbound ? { turnsInbound } : {}),
   };
 }
 
@@ -575,10 +666,16 @@ export function assignWithDriveways(
   type DW = { node: number; label: string; streetBearing: number; side: 1 | -1; mv: ReturnType<typeof resolveMovements>;
              enterByMovement: { inLeft: number; inRight: number }; exitByMovement: { outLeft: number; outRight: number }; rerouted: number };
   const dws: DW[] = driveways.map((d) => {
-    const { drivewayNode, streetBearing } = insertDriveway(g, siteNode, d.latitude, d.longitude);
+    const { drivewayNode, streetBearing, streetDir } = insertDriveway(g, siteNode, d.latitude, d.longitude);
     const drivewayToSite = bearingBetween(d.latitude, d.longitude, site.lat, site.lon);
     const side = sideOfStreet(streetBearing, drivewayToSite);
-    return { node: drivewayNode, label: d.label ?? d.id, streetBearing, side, mv: resolveMovements(d),
+    // One-way fronting street: mask the movements the street makes physically
+    // impossible (the pair whose along-street travel opposes the legal
+    // direction), so no driveway is ever credited an enter/exit movement that
+    // heads against traffic. streetDir is 0 on all two-way / pre-rollout data
+    // ⇒ the mask is a no-op and the assignment is byte-identical.
+    return { node: drivewayNode, label: d.label ?? d.id, streetBearing, side,
+             mv: maskOneWayMovements(resolveMovements(d), side, streetDir),
              enterByMovement: { inLeft: 0, inRight: 0 }, exitByMovement: { outLeft: 0, outRight: 0 }, rerouted: 0 };
   });
 

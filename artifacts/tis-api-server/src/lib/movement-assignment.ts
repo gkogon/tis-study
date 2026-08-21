@@ -246,17 +246,32 @@ export type PathTurnShare = {
  *
  * The ledger's turns are recorded in the OUTBOUND (site→cordon) direction.
  * Outbound trips make the turn as recorded, weighted (1 − inFraction).
- * Inbound trips traverse the reverse path: they enter on the reverse of the
- * recorded exit leg and leave on the reverse of the recorded entry leg,
- * weighted inFraction. Same quantization (cardinal4) and movement rule
- * (classify — U folded into L) as the octant path, deliberately: the two
- * sources must agree about what "NB Left" means or the report contradicts
- * itself between intersections with different movementSource.
+ *
+ * Inbound trips come in two flavours:
+ *  - `turnsInbound` ABSENT (all-two-way graphs): the reverse of every
+ *    outbound path is legal, so inbound is the mirror — enter on the reverse
+ *    of the recorded exit leg, leave on the reverse of the recorded entry
+ *    leg, weighted inFraction. Bit-for-bit the historical behaviour.
+ *  - `turnsInbound` PRESENT (the routing graph carries one-way links): the
+ *    mirror could imply wrong-way travel on a one-way pair, so the router
+ *    recorded the true return paths on the transposed graph. Those turns are
+ *    applied AS RECORDED (they are already in travel-toward-site
+ *    orientation), weighted inFraction — no mirroring. An empty array is
+ *    meaningful: the routed inbound paths genuinely do not pass this node
+ *    (on a one-way pair the return street is a different street).
+ *
+ * Both ledgers stay in share units; inFraction is applied HERE, per period,
+ * because it differs between AM and PM. Same quantization (cardinal4) and
+ * movement rule (classify — U folded into L) as the octant path,
+ * deliberately: the two sources must agree about what "NB Left" means or the
+ * report contradicts itself between intersections with different
+ * movementSource.
  */
 export function pathMovementLoadsExact(
   turns: PathTurnShare[],
   tripsScale: number,
   inFraction: number,
+  turnsInbound?: PathTurnShare[],
 ): MovementLoadExact[] {
   const agg = new Map<string, MovementLoadExact>();
   const add = (enterDir: number, exitDir: number, exact: number) => {
@@ -273,8 +288,15 @@ export function pathMovementLoadsExact(
     const exit4 = cardinal4(t.exitBearingDeg);
     // Outbound: as recorded.
     add(enter4, exit4, t.share * tripsScale * (1 - inFraction));
-    // Inbound mirror: reverse path, reverse legs.
-    add((exit4 + 180) % 360, (enter4 + 180) % 360, t.share * tripsScale * inFraction);
+    // Inbound mirror: reverse path, reverse legs — ONLY when no recorded
+    // inbound ledger exists (all-two-way graphs, where the mirror is legal).
+    if (turnsInbound === undefined) {
+      add((exit4 + 180) % 360, (enter4 + 180) % 360, t.share * tripsScale * inFraction);
+    }
+  }
+  // Recorded inbound turns: already in travel orientation, applied as-is.
+  for (const t of turnsInbound ?? []) {
+    add(cardinal4(t.enterBearingDeg), cardinal4(t.exitBearingDeg), t.share * tripsScale * inFraction);
   }
   return [...agg.values()].sort(
     (a, b) => b.exact - a.exact || a.approach.localeCompare(b.approach) || a.movement.localeCompare(b.movement),
