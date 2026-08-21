@@ -7,8 +7,10 @@
  *   2. Open it in Synchro Studio (File → Combine → Read UTDF or
  *      Transfer → Read UTDF).
  *   3. Overlay measured turning-movement counts at the affected
- *      intersections — the screening output cannot derive turning
- *      splits because public TMC data doesn't exist at scale.
+ *      intersections — the engine decomposes the PROJECT-ADDED trips
+ *      into L/T/R (see movement-assignment.ts), but no measured
+ *      EXISTING turning split exists at scale, so total movement
+ *      volumes still need field counts.
  *   4. Tweak signal phasing, splits, offsets per their field
  *      verification.
  *   5. Re-run capacity in Synchro and produce a verifiable submittal.
@@ -20,13 +22,17 @@
  *
  * --- The disclosure ----------------------------------------------------
  *
- * The screening engine does not model turning movements per L/T/R; it
- * works at the approach level. The exported UTDF distributes each
- * approach's volume across left / through / right using fixed 10% /
- * 80% / 10% defaults — the industry-typical rule-of-thumb when no
- * field data is available. The header comment in the generated file
- * declares this explicitly so a reviewing PE never mistakes the
- * scaffold for measured TMC data.
+ * The engine DOES model the project-added trips per L/T/R at each
+ * study intersection (movement-assignment.ts — geometric assignment,
+ * cross-footed with each junction's added-trip total). What it has no
+ * measured source for is the EXISTING turning split. Because the UTDF
+ * carries TOTAL approach volumes (existing + project), this export
+ * distributes each approach's volume across left / through / right
+ * using fixed 10% / 80% / 10% defaults — the industry-typical
+ * rule-of-thumb when no field data is available — rather than the
+ * project-only movement assignment. The header comment in the
+ * generated file declares this explicitly so a reviewing PE never
+ * mistakes the scaffold for measured TMC data.
  *
  * Similarly: lane configuration defaults to 1L + 2T + 1R per approach
  * (4 lanes) when the engine output does not include explicit lane

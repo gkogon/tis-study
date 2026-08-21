@@ -238,6 +238,14 @@ function TisFormSection({
   const [form, setForm] = useState<TisRequest>(PROJECT_TEMPLATES[0]!.request);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const lu = useMemo(() => landUses.find((l) => l.code === form.landUseCode), [landUses, form.landUseCode]);
+  // Redevelopment / change-of-use credit. The engine has accepted
+  // existingLandUseCode + existingSize since the existing-use credit shipped,
+  // but nothing in the UI ever set them — the credit was reachable only by
+  // hand-rolling the API call. Absent (or size 0) keeps greenfield behavior.
+  const existingLu = useMemo(
+    () => landUses.find((l) => l.code === form.existingLandUseCode),
+    [landUses, form.existingLandUseCode],
+  );
 
   // Address → coordinates. Lets the engineer type any address in any city,
   // click Find, and have lat/lon auto-fill — no need to look up coordinates
@@ -532,6 +540,14 @@ function TisFormSection({
                 </option>
               ))}
             </select>
+            {lu?.source && (
+              // Provenance for the selected rate, at the moment the engineer
+              // picks it. The report carries the same citation in its
+              // "Rate source" row.
+              <p className="text-xs text-muted-foreground" data-testid="text-rate-source">
+                Rate basis: {lu.source}
+              </p>
+            )}
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -597,6 +613,63 @@ function TisFormSection({
                     );
                   })}
                 </div>
+              </div>
+              <div className="space-y-2 md:col-span-2 border-t pt-3">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                  <Building2 className="w-3 h-3" /> Existing on-site use (redevelopment credit)
+                </span>
+                <p className="text-xs text-muted-foreground">
+                  For a redevelopment or change of use, the prior use's trips are computed on the same basis and
+                  credited, so the report reports net new external trips. Leave as <em>None</em> for a greenfield site.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <label className="space-y-1">
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Existing land use
+                    </span>
+                    <select
+                      className="w-full px-3 py-2 rounded-md border bg-background text-sm"
+                      value={form.existingLandUseCode ?? ""}
+                      onChange={(e) => {
+                        const code = e.target.value;
+                        setForm((f) =>
+                          code
+                            ? { ...f, existingLandUseCode: code, existingSize: f.existingSize ?? 0 }
+                            : { ...f, existingLandUseCode: undefined, existingSize: undefined },
+                        );
+                      }}
+                      data-testid="select-existing-land-use"
+                    >
+                      <option value="">None — greenfield site</option>
+                      {landUses.map((l) => (
+                        <option key={l.code} value={l.code}>
+                          {l.code} — {l.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Existing size {existingLu ? `(${existingLu.unit})` : ""}
+                    </span>
+                    <input
+                      type="number" step="1" min={0}
+                      disabled={!form.existingLandUseCode}
+                      className="w-full px-3 py-2 rounded-md border bg-background text-sm disabled:opacity-50"
+                      value={form.existingSize ?? ""}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setForm((f) => ({ ...f, existingSize: raw === "" ? undefined : Number(raw) }));
+                      }}
+                      data-testid="input-existing-size"
+                    />
+                  </label>
+                </div>
+                {form.existingLandUseCode && !(Number(form.existingSize) > 0) && (
+                  <p className="text-xs text-amber-600 dark:text-amber-500">
+                    Enter a size greater than zero, or the credit is ignored and the run stays greenfield.
+                  </p>
+                )}
               </div>
               <label className="space-y-1">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1">

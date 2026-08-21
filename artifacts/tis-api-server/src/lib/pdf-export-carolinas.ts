@@ -19,6 +19,7 @@
  * Spec: REGIONAL-SPECS/sc-tis-spec.md.
  */
 import type { Region } from "./regions";
+import { appliedRateRows } from "./trip-rate-rows";
 
 type StoredProject = {
   id: string;
@@ -380,6 +381,13 @@ export function renderTisNorthCarolina(
   carSubsection(doc, "2.1 Trip Generation Basis");
   carBody(doc,
     "NCDOT's Best Practices call for the ITE Trip Generation Manual with the Department's Rate-vs-Equation spreadsheet, internal capture per the NCHRP 684 spreadsheet method (vehicle occupancy 1.1, 4,000-ft maximum walking distance), and pass-by limited to retail uses with multi-use pass-by capped at 10% of the adjacent street volume. This screening analysis applies public-data trip-generation rates (NHTS 2017 / SANDAG 2002 / NCHRP 716), with every rate tagged so the jurisdiction-approved ITE figure can be substituted at submittal; applied internal-capture and pass-by credits must be reconciled against the NCDOT limits at scoping.");
+  {
+    // Spell out the applied rate so the reviewer can reproduce the totals by
+    // hand before substituting the jurisdiction-approved figure. Empty for
+    // payloads stored before the rates were carried.
+    const rateRows = appliedRateRows(tg);
+    if (rateRows.length) carRows(doc, rateRows);
+  }
 
   // --- 3.0–5.0 Conditions + MOE table ---
   carSection(doc, "3.0 ANALYSIS CONDITIONS AND MEASURES OF EFFECTIVENESS");
@@ -506,6 +514,7 @@ export function renderTisSouthCarolina(
     "ARMS Chapter 6 calls for trip generation per the latest edition of the ITE Trip Generation Manual, with internal-capture, pass-by, and transit reductions justified to the DTE. This screening analysis applies public-data trip-generation rates (NHTS 2017 / SANDAG 2002 / NCHRP 716), with every rate tagged so the jurisdiction-approved ITE figure can be substituted at submittal.");
   if (jur.creditCapNote) carBody(doc, jur.creditCapNote, true);
   carRows(doc, [
+    ...appliedRateRows(tg),
     ["Daily trips (gross)", fmtNum(tg.dailyTrips)],
     ["AM peak hour", `${fmtNum(tg.amIn)} in / ${fmtNum(tg.amOut)} out`],
     ["PM peak hour", `${fmtNum(tg.pmIn)} in / ${fmtNum(tg.pmOut)} out`],

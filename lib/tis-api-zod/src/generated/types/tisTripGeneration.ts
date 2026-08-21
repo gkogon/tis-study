@@ -15,6 +15,10 @@ export interface TisTripGeneration {
   unitShort?: string;
   variableConfidence?: TisTripGenerationVariableConfidence;
   variableNote?: string;
+  dailyRate?: number;
+  amRate?: number;
+  pmRate?: number;
+  variableSource?: string;
   dailyTrips: number;
   amPeakTrips: number;
   pmPeakTrips: number;

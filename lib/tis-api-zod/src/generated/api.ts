@@ -540,6 +540,10 @@ export const GenerateTisResponse = zod.object({
       ])
       .optional(),
     variableNote: zod.string().optional(),
+    dailyRate: zod.number().optional(),
+    amRate: zod.number().optional(),
+    pmRate: zod.number().optional(),
+    variableSource: zod.string().optional(),
     dailyTrips: zod.number(),
     amPeakTrips: zod.number(),
     pmPeakTrips: zod.number(),
@@ -872,8 +876,20 @@ export const ListTisLandUsesResponseItem = zod
     satMultiplier: zod.number().optional(),
     passByPctPm: zod.number().optional(),
     internalCapturePctPm: zod.number().optional(),
+    confidence: zod
+      .enum([
+        "nhts_2017",
+        "sandag_2002",
+        "nchrp_716",
+        "blended_mpo",
+        "interpolated",
+      ])
+      .optional(),
+    source: zod.string().optional(),
   })
-  .describe("One ITE land-use entry supported by the TIS generator.");
+  .describe(
+    "One land-use entry supported by the TIS generator. Rates are derived from free public sources (SANDAG 2002 \/ FHWA NHTS 2017 \/ NCHRP 716); the land-use code follows the numbering convention the industry shares, but the rates are NOT reproduced from any licensed manual.",
+  );
 export const ListTisLandUsesResponse = zod.array(ListTisLandUsesResponseItem);
 
 /**
@@ -1528,6 +1544,10 @@ export const GetTisProjectResponse = zod
           ])
           .optional(),
         variableNote: zod.string().optional(),
+        dailyRate: zod.number().optional(),
+        amRate: zod.number().optional(),
+        pmRate: zod.number().optional(),
+        variableSource: zod.string().optional(),
         dailyTrips: zod.number(),
         amPeakTrips: zod.number(),
         pmPeakTrips: zod.number(),

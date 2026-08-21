@@ -5,9 +5,10 @@
  * TIS (Traffic Impact Study) API specification — engineering-firm product surface.
  * OpenAPI spec version: 0.1.0
  */
+import type { TisLandUseConfidence } from "./tisLandUseConfidence";
 
 /**
- * One ITE land-use entry supported by the TIS generator.
+ * One land-use entry supported by the TIS generator. Rates are derived from free public sources (SANDAG 2002 / FHWA NHTS 2017 / NCHRP 716); the land-use code follows the numbering convention the industry shares, but the rates are NOT reproduced from any licensed manual.
  */
 export interface TisLandUse {
   code: string;
@@ -21,4 +22,6 @@ export interface TisLandUse {
   satMultiplier?: number;
   passByPctPm?: number;
   internalCapturePctPm?: number;
+  confidence?: TisLandUseConfidence;
+  source?: string;
 }

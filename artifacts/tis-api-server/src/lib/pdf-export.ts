@@ -31,6 +31,7 @@ import {
 import { ukCapacityForIntersection, type UkCapacityResult } from "./uk-capacity";
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { renderTisNorthCarolina, renderTisSouthCarolina } from "./pdf-export-carolinas";
+import { appliedRateRows } from "./trip-rate-rows";
 import { renderTisState } from "./pdf-export-states";
 import { renderDiurnalCharts, drawColumnChart, drawLineChart, CHART_COLORS } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
@@ -166,6 +167,7 @@ function rateConfidenceLabel(c: unknown, note?: string): string | null {
       return null;
   }
 }
+
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // In prod __dirname is dist/, so ../data/fonts works (same convention as
@@ -1433,6 +1435,7 @@ function renderTis(doc: PDFKit.PDFDocument, r: any) {
     const label = rateConfidenceLabel(tg.variableConfidence, tg.variableNote);
     if (label) tgRowsTop.push(["Rate basis", label]);
   }
+  tgRowsTop.push(...appliedRateRows(tg));
   rows(doc, [
     ...tgRowsTop,
     ["Daily trips", String(tg.dailyTrips ?? "—")],
@@ -1825,6 +1828,7 @@ function renderTisGeorgia(
     const label = rateConfidenceLabel(tg.variableConfidence, tg.variableNote);
     if (label) gaTopRows.push(["Rate basis", label]);
   }
+  gaTopRows.push(...appliedRateRows(tg));
   rows(doc, [
     ...gaTopRows,
     ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
@@ -3271,6 +3275,7 @@ function renderTisGeorgiaAbbreviated(
     const label = rateConfidenceLabel(tg.variableConfidence, tg.variableNote);
     if (label) gaAbbrTopRows.push(["Rate basis", label]);
   }
+  gaAbbrTopRows.push(...appliedRateRows(tg));
   rows(doc, gaAbbrTopRows);
   doc.moveDown(0.3);
   table(doc, {
@@ -7826,6 +7831,7 @@ function renderTisFlorida(
     doc.fillColor("black");
   }
   rows(doc, [
+    ...appliedRateRows(tg),
     ["Pass-by capture applied", `${r.passByPctApplied ?? 0}%`],
     ["Internal capture applied", `${r.internalCapturePctApplied ?? 0}% (MTSIH 2024 §4.6.9 sets no statewide numeric cap; rate negotiated at the methodology meeting per NCHRP 684 / standard screening methodology)`],
     ...(tg.existingLandUseCode
@@ -8444,7 +8450,7 @@ function renderTisFlorida(
 
   gaSubsection(doc, "9.1 Turn-Lane Warrants");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `A turn-lane warrant is a movement-level screen: an exclusive left-turn lane is evaluated against the FDM Chapter 212 / NCHRP 745 left-turn-lane guidelines (a function of advancing volume, opposing volume, and posted speed), and an exclusive right-turn lane is conventionally warranted where the peak-hour right-turn volume exceeds roughly 40–60 vph (or the applicable local threshold, e.g., ${jur.name} land-development code). The proposed development adds approximately ${fmtNum(tg.pmIn)} inbound and ${fmtNum(tg.pmOut)} outbound trips in the PM peak hour, distributed to the site driveways and adjacent intersections; the by-movement turning volumes required to apply the warrant thresholds are established from the AM/PM turning-movement counts and the approved trip-distribution at the methodology meeting. This screening tool does not decompose approach volumes into left/through/right movements, so a definitive turn-lane warrant determination — particularly at the site driveways connecting to the SHS — is deferred to the sealed submittal against the counted and assigned movement volumes.`,
+    `A turn-lane warrant is a movement-level screen: an exclusive left-turn lane is evaluated against the FDM Chapter 212 / NCHRP 745 left-turn-lane guidelines (a function of advancing volume, opposing volume, and posted speed), and an exclusive right-turn lane is conventionally warranted where the peak-hour right-turn volume exceeds roughly 40–60 vph (or the applicable local threshold, e.g., ${jur.name} land-development code). The proposed development adds approximately ${fmtNum(tg.pmIn)} inbound and ${fmtNum(tg.pmOut)} outbound trips in the PM peak hour, distributed to the site driveways and adjacent intersections. This screening decomposes those project-added trips into left / through / right movements at each study intersection — outbound trips enter on the site-facing leg and turn toward their destination sector, inbound is the mirror — and reports the result in the "Affected movements" table within each intersection's capacity worksheet, where the movement volumes cross-foot with that junction's added-trip total. What the screening does not carry is a measured EXISTING turning-movement split: warrant thresholds apply to the total movement volume (existing plus project), and only the project increment is decomposed here. A definitive turn-lane warrant determination — particularly at the site driveways connecting to the SHS — therefore remains subject to the AM/PM turning-movement counts and the trip distribution approved at the methodology meeting.`,
     { paragraphGap: 6 },
   );
 

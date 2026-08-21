@@ -44,6 +44,7 @@ export * from "./tisDirection";
 export * from "./tisDistributionMethod";
 export * from "./tisIntersectionCalibration";
 export * from "./tisLandUse";
+export * from "./tisLandUseConfidence";
 export * from "./tisPeriodReport";
 export * from "./tisPeriodTripGen";
 export * from "./tisProjectDetail";
