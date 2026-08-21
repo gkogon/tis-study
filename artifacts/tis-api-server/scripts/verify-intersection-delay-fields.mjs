@@ -60,7 +60,8 @@ ok(it.existingDelaySec === 131.0 && it.futureLos === "F", "existing/future field
 
 // Delay model sanity: LOS is DERIVED from delay, so LOS F can never be 0 s.
 // Assert the invariant directly across a v/c sweep, then confirm a genuinely
-// oversaturated approach lands in LOS F with a non-zero (capped) delay.
+// oversaturated approach lands in LOS F with a non-zero delay (unclamped at
+// v/c 1.5 now that the screening ceiling is 300 s).
 let invariantHeld = true;
 for (let vc = 0; vc <= 2.0; vc += 0.05) {
   const d = vcToDelay(vc, 810);

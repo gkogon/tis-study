@@ -34,13 +34,19 @@ export const PER_INTERSECTION_CAPACITY_VPH = SATURATION_FLOW_VPH * G_OVER_C;
 export const APPROACH_CAPACITY_VPH = PER_INTERSECTION_CAPACITY_VPH; // 1 critical lane per approach
 export const VEH_LENGTH_FT = 25;
 
-// Screening ceiling on REPORTED control delay. The HCM incremental-delay term
-// (d2) grows without bound above capacity, so at v/c ≈ 2 it returns ~500–600 s
-// (≈10 min/veh) — physically implausible and not defensible in a screening
-// deliverable. Above this ceiling the intersection is simply oversaturated and
-// is reported as LOS F (this cap is > the 80 s LOS-F threshold, so LOS is
-// preserved). A calibrated design-level analysis (HCS/Synchro) supersedes it.
-export const SCREENING_MAX_DELAY_SEC = 120;
+// Screening ceiling on REPORTED control delay. The incremental-delay term (d2,
+// Akçelik time-dependent form) grows without bound above capacity — at v/c ≈ 2
+// it returns ~500–600 s (≈10 min/veh), not defensible in a screening
+// deliverable. The ceiling sits at 300 s (5 min/veh): high enough that
+// oversaturated intersections DIFFERENTIATE across scenarios (v/c ~1.2 vs ~1.5
+// print distinct delays instead of both pinning at the old 120 s cap; raw delay
+// crosses 300 s near v/c 1.6 at the default 810 vph capacity), low enough to
+// keep a screening deliverable out of implausible ~10-minute territory. LOS is
+// preserved — the cap is far above the 80 s LOS-F threshold, so F stays F.
+// NOTE: the regional calibration multiplier (calMul, clamped 0.25–5 in tis.ts)
+// applies AFTER this cap at every call site, so the maximum printable delay is
+// cap × calMul. A calibrated design-level analysis (HCS/Synchro) supersedes it.
+export const SCREENING_MAX_DELAY_SEC = 300;
 
 // ---------- HCM signalized-intersection delay (Ex. 19-18) ----------
 
@@ -56,7 +62,8 @@ export function vcToDelay(vc: number, capacityVph: number = PER_INTERSECTION_CAP
     : 0;
 
   // Cap the reported delay at the screening ceiling (LOS F preserved). Keeps a
-  // grossly-oversaturated node from printing an implausible ~500 s delay.
+  // grossly-oversaturated node from printing an implausible ~500 s+ delay while
+  // leaving room below the cap for oversaturated scenarios to differentiate.
   return Math.min(d1 + d2, SCREENING_MAX_DELAY_SEC);
 }
 
