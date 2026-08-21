@@ -86,7 +86,48 @@ ok(zeroFiles.length === 0,
 ok(parsedWays / totalWays > 0.99,
   `≥99% of all shipped ways parse (${parsedWays}/${totalWays} = ${(100 * parsedWays / totalWays).toFixed(1)}%)`);
 
-// --- 4. Malformed input still degrades safely ----------------------------
+// --- 4. Radial truncation: the cap keeps the NEAREST segments ------------
+// The old cap returned early partway through the file, so an over-cap request
+// kept whatever appeared FIRST in the JSON. Way order is arbitrary, so whole
+// streets vanished while distant ones survived and the graph lost connectivity
+// in patches rather than degrading outward. Assert the cap is now isotropic.
+{
+  const LAT = 25.8456, LON = -80.2103;           // Peralta's corridor
+  const CAP = 300;
+  const capped = roadSegmentsNear("miami_dade_metro", LAT, LON, 3.0, CAP);
+  const full = roadSegmentsNear("miami_dade_metro", LAT, LON, 3.0, 1000000);
+  ok(Array.isArray(capped) && capped.length === CAP,
+    `cap is honoured exactly (${capped?.length} === ${CAP})`);
+
+  const dist = (aLat, aLon, bLat, bLon) => {
+    const R = 3958.8, p = Math.PI / 180;
+    const s2 = Math.sin((bLat - aLat) * p / 2) ** 2
+      + Math.cos(aLat * p) * Math.cos(bLat * p) * Math.sin((bLon - aLon) * p / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(s2));
+  };
+  const near = (seg) => Math.min(dist(LAT, LON, seg[1], seg[2]), dist(LAT, LON, seg[3], seg[4]));
+
+  const keptMax = Math.max(...capped.map(near));
+  const fullSorted = full.map(near).sort((a, b) => a - b);
+  const droppedMin = fullSorted[CAP] ?? Infinity;
+  ok(keptMax <= droppedMin + 1e-9,
+    `truncation is radial: farthest kept (${keptMax.toFixed(3)} mi) <= nearest dropped (${droppedMin === Infinity ? "n/a" : droppedMin.toFixed(3) + " mi"})`);
+
+  const again = roadSegmentsNear("miami_dade_metro", LAT, LON, 3.0, CAP);
+  ok(JSON.stringify(again) === JSON.stringify(capped), "repeated calls return identical output (deterministic)");
+}
+
+// --- 5. Street names are carried for router continuity -------------------
+{
+  const segs = roadSegmentsNear("miami_dade_metro", 25.8456, -80.2103, 1.0);
+  const named = segs.filter((s2) => typeof s2[7] === "string" && s2[7].length > 0);
+  ok(named.length > 0,
+    `street names carried on segments (${named.length}/${segs.length}) e.g. "${named[0]?.[7]}"`);
+  ok(segs.every((s2) => s2.length >= 7),
+    "segment tuples keep indices 0-6 intact (name is appended, not inserted)");
+}
+
+// --- 6. Malformed input still degrades safely ----------------------------
 {
   const junk = roadSegmentsNear("definitely_not_a_region", 0, 0, 1);
   ok(junk === null || (Array.isArray(junk) && junk.length === 0),
