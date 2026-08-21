@@ -89,9 +89,79 @@ router.post("/utdf/parse", (req, res): void => {
     volumeIntersections: doc.volumes.length,
     laneIntersections: doc.lanes.length,
     timingIntersections: doc.timings.length,
+    utdfIntersections: buildUtdfIntersectionRecords(doc),
     warnings: doc.warnings,
   }));
 });
+
+/**
+ * Ready-to-attach measured records for the generate request: one per node
+ * carrying BOTH lat/lon and a positive [Volumes] record. Coordinates are
+ * rounded to 4 decimals here (server-side) so they line up exactly with the
+ * client's additionalStudyPoints merge — one rounding rule, one place.
+ * Values that would violate the UtdfIntersectionData schema bounds (a PHF
+ * outside [0.25, 1], a cycle outside [30, 300]) are OMITTED rather than
+ * clamped: a nonsense value from a malformed file should disappear, not be
+ * silently rewritten into a plausible-looking measurement.
+ */
+function buildUtdfIntersectionRecords(doc: ReturnType<typeof parseUtdf>) {
+  const round4 = (n: number): number => Math.round(n * 1e4) / 1e4;
+  return doc.nodes.flatMap((n) => {
+    if (n.latitude === undefined || n.longitude === undefined) return [];
+    const vol = doc.volumes.find((v) => v.intId === n.intId);
+    if (!vol) return [];
+    const volumes: Record<string, number> = {};
+    let total = 0;
+    for (const [mv, v] of Object.entries(vol.movements)) {
+      if (typeof v === "number" && Number.isFinite(v) && v >= 0) {
+        volumes[mv] = v;
+        total += v;
+      }
+    }
+    if (total <= 0) return [];
+    // Representative (volume-weighted) PHF / heavy-vehicle % across the
+    // movements that carry both a volume and a factor.
+    const weighted = (rec?: Partial<Record<string, number>>): number | undefined => {
+      if (!rec) return undefined;
+      let num = 0, den = 0;
+      for (const [mv, val] of Object.entries(rec)) {
+        const w = volumes[mv];
+        if (typeof val === "number" && Number.isFinite(val) && typeof w === "number" && w > 0) {
+          num += val * w;
+          den += w;
+        }
+      }
+      return den > 0 ? num / den : undefined;
+    };
+    const phfRaw = weighted(vol.phf);
+    const phf = phfRaw !== undefined && phfRaw >= 0.25 && phfRaw <= 1
+      ? Math.round(phfRaw * 100) / 100 : undefined;
+    const hvRaw = weighted(vol.heavyVehiclesPct);
+    const hvPct = hvRaw !== undefined && hvRaw >= 0 && hvRaw <= 100
+      ? Math.round(hvRaw * 10) / 10 : undefined;
+    const laneRec = doc.lanes.find((l) => l.intId === n.intId);
+    const storageFt: Record<string, number> = {};
+    if (laneRec) {
+      for (const [mv, info] of Object.entries(laneRec.movements)) {
+        const s = info?.storageFt;
+        if (typeof s === "number" && Number.isFinite(s) && s > 0) storageFt[mv] = s;
+      }
+    }
+    const cyc = doc.timings.find((t) => t.intId === n.intId)?.cycleLengthS;
+    const cycleLenSec = typeof cyc === "number" && cyc >= 30 && cyc <= 300 ? cyc : undefined;
+    return [{
+      intId: n.intId,
+      ...(n.name ? { name: n.name } : {}),
+      latitude: round4(n.latitude),
+      longitude: round4(n.longitude),
+      volumes,
+      ...(phf !== undefined ? { phf } : {}),
+      ...(hvPct !== undefined ? { hvPct } : {}),
+      ...(Object.keys(storageFt).length > 0 ? { storageFt } : {}),
+      ...(cycleLenSec !== undefined ? { cycleLenSec } : {}),
+    }];
+  });
+}
 
 router.post("/generate", generateRateLimiter, async (req, res): Promise<void> => {
   if (!req.isAuthenticated()) {

@@ -21,7 +21,10 @@
 const EARTH_R_M = 6371000;
 const M_PER_MI = 1609.34;
 
-function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+// Exported so the engine's UTDF record→candidate matcher uses the SAME
+// distance function as the snap machinery here (identical thresholds ⇒
+// identical match decisions).
+export function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const φ1 = (lat1 * Math.PI) / 180;

@@ -23,10 +23,13 @@ import {
   dedupCloseSignals,
   forceIncludeIntersections,
   coverageWarningForCandidates,
+  haversineMeters,
+  SNAP_MAX_MI,
   type ForceIncludeInput,
   type CoverageWarning,
   type CoverageNote,
 } from "./intersection-coverage";
+import { UTDF_MOVEMENTS, type UtdfMovement } from "./utdf-import";
 import { getAutoModeShare, getAutoModeShareSource, getLondonAutoModeShare, type PTALBand } from "./mode-share";
 import { lookupLondonPtal } from "./tfl-ptal";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
@@ -322,6 +325,33 @@ async function fetchIntersections(regionCode: string = "atlanta_metro"): Promise
 
 // ---------- Public report types ----------
 
+/** Per-movement numeric values keyed by the twelve standard Synchro
+ *  movements — turning-movement volumes (vph) or turn-bay storage (ft).
+ *  Mirrors the OpenAPI UtdfMovementValues named schema. */
+export type UtdfMovementValues = Partial<Record<UtdfMovement, number>>;
+
+/** Measured data for one intersection imported from a Synchro UTDF file.
+ *  Mirrors the OpenAPI UtdfIntersectionData named schema (the same records
+ *  `/utdf/parse` emits and the client forwards on the generate request). */
+export type UtdfIntersectionInput = {
+  intId?: number;
+  name?: string;
+  latitude: number;
+  longitude: number;
+  /** Measured turning-movement volumes, vph — ONE modeled hour (the PM peak
+   *  by Synchro convention; the engine anchors it at the PM period). */
+  volumes: UtdfMovementValues;
+  /** Representative PHF / heavy-vehicle %. Carried for provenance only —
+   *  the screening capacity model has no PHF or HV input today, so these
+   *  deliberately do not alter the math (documented; see PR). */
+  phf?: number;
+  hvPct?: number;
+  /** Turn-bay storage lengths (ft) by movement, from [Lanes] Storage. */
+  storageFt?: UtdfMovementValues;
+  /** Cycle length (s) from [Timings] — feeds Webster d1 for this signal. */
+  cycleLenSec?: number;
+};
+
 export type TisRequest = {
   projectName: string;
   address: string;
@@ -401,6 +431,17 @@ export type TisRequest = {
   //     no nearby signal are ignored.
   studyIntersectionIds?: string[];
   additionalStudyPoints?: Array<{ latitude: number; longitude: number }>;
+  /** Measured turning-movement data imported from a Synchro UTDF file (the
+   *  structured records `/utdf/parse` emits — never the raw file text, which
+   *  would be echoed into every stored payload). Each record is snapped to
+   *  the nearest study candidate within ~0.35 mi (nearest record wins per
+   *  signal, ties/losers logged loudly); at matched intersections the
+   *  measured volumes replace the AADT-derived existing volumes (growth
+   *  still applies on top; PM is the measured anchor hour, other periods
+   *  scale by PERIOD_VOLUME_FACTOR), turn-bay storage feeds the
+   *  storage-adequacy comparison, and the imported cycle length feeds the
+   *  Webster uniform-delay term. Absent ⇒ byte-identical output. */
+  utdfIntersections?: UtdfIntersectionInput[];
   distributionMethod?: DistributionMethod;
   /** Existing (prior) land use occupying the site today, for a redevelopment
    *  trip-generation credit. Structured (a LAND_USES code + size), distinct from
@@ -517,6 +558,25 @@ export type AffectedIntersection = {
    *  loading uses the same rows), "octant" = the geometric octant model.
    *  Absent on pre-flag payloads and when no distribution ran. */
   movementSource?: "path" | "octant";
+  /** Provenance of the EXISTING volumes at this intersection: "utdf_tmc" =
+   *  measured turning-movement counts from an imported Synchro UTDF model
+   *  replaced the AADT-derived design-hour estimate (growth still applied on
+   *  top; the measurement anchors PM, other periods scale by the period
+   *  factors). Absent = AADT-derived estimate — legacy payloads unchanged. */
+  volumeSource?: "utdf_tmc";
+  /** Field-measured existing turn-bay storage (ft) for the governing
+   *  movement (see storageMovement), imported from the UTDF [Lanes] Storage
+   *  record. Activates the renderers' storage-bay-adequacy tables, which
+   *  already gate on exactly this field. */
+  existingStorageFt?: number;
+  /** Governing movement for existingStorageFt (e.g. "NBL") — the shortest
+   *  imported turn bay, left-turn bays preferred (the movement most likely
+   *  to spill back). */
+  storageMovement?: string;
+  /** Cycle length (s) imported from the UTDF [Timings] section and used in
+   *  this intersection's Webster uniform-delay term in place of the 90 s
+   *  screening default. */
+  utdfCycleLenSec?: number;
 };
 
 export type TripGenerationSummary = {
@@ -787,7 +847,125 @@ function selectStudyIntersectionIdx(loadFractions: number[], pmExternalAutoTrips
 // additive force-include inputs (see forceInclude below) rather than by the
 // radius — it is analyzed even when beyond `radiusMi` and is protected from the
 // opt-in `scopeStudyIntersections` trim.
-type StudyCandidate = { sig: AnalyzerIntersection; distanceMi: number; forced?: boolean };
+type StudyCandidate = {
+  sig: AnalyzerIntersection;
+  distanceMi: number;
+  forced?: boolean;
+  /** Measured UTDF record snapped to this signal (attachUtdfData). Presence
+   *  gates every measured-data path in buildAffectedRow; absent ⇒ legacy. */
+  utdf?: UtdfIntersectionInput;
+};
+
+// ---------- UTDF measured-data attachment (opt-in, req.utdfIntersections) ----------
+
+/** Per-approach totals of a measured UTDF movement-volume record. */
+function utdfApproachTotals(volumes: UtdfMovementValues): Record<Direction, number> {
+  const out: Record<Direction, number> = { NB: 0, SB: 0, EB: 0, WB: 0 };
+  for (const mv of UTDF_MOVEMENTS) {
+    const v = volumes[mv];
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+      out[mv.slice(0, 2) as Direction] += v;
+    }
+  }
+  return out;
+}
+
+type UtdfMeasured = {
+  /** Measured intersection total (Σ all movements), vph — the PM anchor. */
+  totalVph: number;
+  /** Measured per-approach share of the total (Σ = 1). Replaces the
+   *  deterministic-jitter approachVolumeShares fabrication. */
+  shares: Record<Direction, number>;
+};
+
+/** Totals + approach shares from a measured record, or undefined when the
+ *  record carries no positive volume (nothing defensible to substitute). */
+function utdfMeasuredTotals(u: UtdfIntersectionInput): UtdfMeasured | undefined {
+  const byApproach = utdfApproachTotals(u.volumes ?? {});
+  const total = DIRECTIONS.reduce((s, d) => s + byApproach[d], 0);
+  if (!(total > 0)) return undefined;
+  const shares = { NB: 0, SB: 0, EB: 0, WB: 0 } as Record<Direction, number>;
+  for (const d of DIRECTIONS) shares[d] = byApproach[d] / total;
+  return { totalVph: total, shares };
+}
+
+/** The governing imported turn bay: the SHORTEST positive storage length,
+ *  left-turn bays preferred (left bays are where spillback bites first and
+ *  are what the storage records almost always describe). */
+function utdfGoverningStorage(
+  u: UtdfIntersectionInput,
+): { movement: UtdfMovement; storageFt: number } | undefined {
+  const st = u.storageFt;
+  if (!st) return undefined;
+  let best: { movement: UtdfMovement; storageFt: number } | undefined;
+  let bestIsLeft = false;
+  for (const mv of UTDF_MOVEMENTS) {
+    const v = st[mv];
+    if (!(typeof v === "number" && Number.isFinite(v) && v > 0)) continue;
+    const isLeft = mv.endsWith("L");
+    const wins =
+      best === undefined
+      || (isLeft && !bestIsLeft)
+      || (isLeft === bestIsLeft && v < best.storageFt);
+    if (wins) { best = { movement: mv, storageFt: v }; bestIsLeft = isLeft; }
+  }
+  return best;
+}
+
+/**
+ * Snap measured UTDF records onto the study candidates (mutates `candidates`
+ * by setting `utdf` on matched entries). Same proximity contract as the
+ * force-include machinery: a record matches the nearest candidate within
+ * SNAP_MAX_MI (~0.35 mi; client coordinates are 4-dp-rounded ≈ 11 m, far
+ * inside it). dedupCloseSignals can collapse several UTDF nodes onto one
+ * signal, so each candidate keeps ONE record — the nearest — and every
+ * displaced/unmatched/empty record is logged BY NAME, never silently
+ * dropped (the road-parser lesson). Purely additive: no records ⇒ no-op.
+ */
+function attachUtdfData(candidates: StudyCandidate[], records: UtdfIntersectionInput[]): void {
+  const snapMaxM = SNAP_MAX_MI * 1609.34;
+  const label = (u: UtdfIntersectionInput): string =>
+    `${u.name ?? (u.intId !== undefined ? `INTID ${u.intId}` : "unnamed")} @ (${u.latitude}, ${u.longitude})`;
+  // Distance from each candidate to its attached record, for nearest-wins.
+  const attachedDistM = new Map<StudyCandidate, number>();
+  for (const rec of records) {
+    if (!utdfMeasuredTotals(rec)) {
+      logger.warn({ record: label(rec) }, "tis.utdf_record_no_volumes");
+      continue;
+    }
+    let best: StudyCandidate | undefined;
+    let bestM = Infinity;
+    for (const c of candidates) {
+      const dM = haversineMeters(rec.latitude, rec.longitude, c.sig.latitude, c.sig.longitude);
+      if (dM < bestM) { bestM = dM; best = c; }
+    }
+    if (!best || bestM > snapMaxM) {
+      logger.warn(
+        { record: label(rec), nearestM: Math.round(bestM) },
+        "tis.utdf_record_unmatched",
+      );
+      continue;
+    }
+    const prevM = attachedDistM.get(best);
+    if (prevM !== undefined) {
+      // Two UTDF nodes snapped to one (deduped) signal — keep the nearer
+      // record, never sum (summing would double-count one junction's traffic).
+      if (bestM >= prevM) {
+        logger.warn(
+          { displaced: label(rec), keptSignal: best.sig.id, keptDistM: Math.round(prevM) },
+          "tis.utdf_record_displaced_by_nearer",
+        );
+        continue;
+      }
+      logger.warn(
+        { displaced: label(best.utdf!), replacedBy: label(rec), signal: best.sig.id },
+        "tis.utdf_record_displaced_by_nearer",
+      );
+    }
+    best.utdf = rec;
+    attachedDistM.set(best, bestM);
+  }
+}
 
 async function findAffectedIntersections(
   lat: number, lon: number, radiusMi: number, regionCode: string,
@@ -958,19 +1136,33 @@ type ScenarioParams = {
 };
 
 function buildAffectedRow(
-  c: { sig: AnalyzerIntersection; distanceMi: number },
+  c: { sig: AnalyzerIntersection; distanceMi: number; utdf?: UtdfIntersectionInput },
   weight: number,
   project: { lat: number; lon: number },
   params: ScenarioParams,
   calibration?: CalibrationEntry,
   pathTurns?: PathTurnShare[],
 ): AffectedIntersection {
+  // Measured UTDF data for this signal (attachUtdfData). When present, the
+  // measured turning-movement total replaces the AADT-derived design-hour
+  // volume as the EXISTING condition, the measured approach split replaces
+  // the deterministic-jitter fabrication, the imported cycle length feeds
+  // Webster d1, and the imported turn-bay storage rides the row for the
+  // storage-adequacy comparison. Absent ⇒ every path below is unchanged.
+  const measured = c.utdf ? utdfMeasuredTotals(c.utdf) : undefined;
+  const utdfCycleLenS =
+    measured && typeof c.utdf?.cycleLenSec === "number" && Number.isFinite(c.utdf.cycleLenSec)
+      ? Math.min(300, Math.max(30, c.utdf.cycleLenSec))
+      : undefined;
+
   // Background-network volume for THIS period: the stored design-hour volume
+  // (or the measured UTDF turning-movement total — one modeled hour, which is
+  // the PM/design hour by Synchro convention, so it anchors the same way)
   // scaled by the period's peaking factor (PERIOD_VOLUME_FACTOR — PM anchors
   // at 1.0, AM/Saturday carry a smaller share). Drives every background-volume
   // figure below so each period's diagrams and v/c differ instead of reusing
   // one design hour.
-  const baseVolume = c.sig.totalVolume * (params.periodVolumeFactor ?? 1);
+  const baseVolume = (measured ? measured.totalVph : c.sig.totalVolume) * (params.periodVolumeFactor ?? 1);
 
   // True current-year baseline — no growth, no project. State TIS
   // conventions report this as the "Existing Conditions" scenario;
@@ -1018,14 +1210,16 @@ function buildAffectedRow(
   // negative) cannot collapse delay → push every signal to LOS A and
   // wreck mitigation decisions. Range mirrors the DB CHECK constraint.
   const calMul = Math.min(5, Math.max(0.25, calibration?.multiplier ?? 1.0));
-  const currentDelay = vcToDelay(currentVc, params.capacityVph) * calMul;
-  const beforeDelay = vcToDelay(beforeVc, params.capacityVph) * calMul;
-  const afterDelay = vcToDelay(afterVc, params.capacityVph) * calMul;
+  // `utdfCycleLenS` is undefined for every non-UTDF signal, which falls back
+  // to the screening default inside vcToDelay — byte-identical legacy math.
+  const currentDelay = vcToDelay(currentVc, params.capacityVph, utdfCycleLenS) * calMul;
+  const beforeDelay = vcToDelay(beforeVc, params.capacityVph, utdfCycleLenS) * calMul;
+  const afterDelay = vcToDelay(afterVc, params.capacityVph, utdfCycleLenS) * calMul;
   const currentLos = delayToLos(currentDelay);
   const beforeLos = delayToLos(beforeDelay);
   const afterLos = delayToLos(afterDelay);
-  const designNoBuildDelay = hasDesignYear ? vcToDelay(designNoBuildVc, params.capacityVph) * calMul : 0;
-  const designBuildDelay = hasDesignYear ? vcToDelay(designBuildVc, params.capacityVph) * calMul : 0;
+  const designNoBuildDelay = hasDesignYear ? vcToDelay(designNoBuildVc, params.capacityVph, utdfCycleLenS) * calMul : 0;
+  const designBuildDelay = hasDesignYear ? vcToDelay(designBuildVc, params.capacityVph, utdfCycleLenS) * calMul : 0;
   const designNoBuildLos = hasDesignYear ? delayToLos(designNoBuildDelay) : undefined;
   const designBuildLos = hasDesignYear ? delayToLos(designBuildDelay) : undefined;
 
@@ -1079,8 +1273,10 @@ function buildAffectedRow(
         )
       : undefined;
 
-  // Approach split.
-  const volShares = approachVolumeShares(c.sig.id);
+  // Approach split: the MEASURED per-approach shares when a UTDF record is
+  // attached (real counted geometry), else the deterministic screening
+  // perturbation of the 30/25/25/20 base.
+  const volShares = measured ? measured.shares : approachVolumeShares(c.sig.id);
   // Legacy fallback (no distribution octants): cosine-similarity split with a
   // 0.10 floor on every approach; the out-flow leaves on the approach opposite
   // the inbound origin. Kept only for payloads where no distribution ran.
@@ -1089,7 +1285,7 @@ function buildAffectedRow(
     // Current-year baseline (no growth) for this approach.
     const currentVolByApproach = currentVolume * volShares[d];
     const currentVcByApproach = currentVolByApproach / params.approachCapacityVph;
-    const currentDelayByApproach = vcToDelay(currentVcByApproach, params.approachCapacityVph) * calMul;
+    const currentDelayByApproach = vcToDelay(currentVcByApproach, params.approachCapacityVph, utdfCycleLenS) * calMul;
 
     // No-Build (existing-grown-to-opening-year).
     const baseVol = grownVolume * volShares[d];
@@ -1111,8 +1307,8 @@ function buildAffectedRow(
 
     const exVc = (baseVol * 1.0) / params.approachCapacityVph;
     const fuVc = (futureVol * 1.0) / params.approachCapacityVph;
-    const exDelay = vcToDelay(exVc, params.approachCapacityVph) * calMul;
-    const fuDelay = vcToDelay(fuVc, params.approachCapacityVph) * calMul;
+    const exDelay = vcToDelay(exVc, params.approachCapacityVph, utdfCycleLenS) * calMul;
+    const fuDelay = vcToDelay(fuVc, params.approachCapacityVph, utdfCycleLenS) * calMul;
     return {
       direction: d,
       currentVolumeVph: round1(currentVolByApproach),
@@ -1128,7 +1324,7 @@ function buildAffectedRow(
       futureDelaySec: round1(fuDelay),
       existingLos: delayToLos(exDelay),
       futureLos: delayToLos(fuDelay),
-      queue95thFt: round1(queue95Ft(futureVol, params.approachCapacityVph)),
+      queue95thFt: round1(queue95Ft(futureVol, params.approachCapacityVph, utdfCycleLenS)),
     };
   });
 
@@ -1210,6 +1406,16 @@ function buildAffectedRow(
     ...(movements && movements.length > 0 && params.conservedLabeling
       ? { movementSource: (pathRows ? "path" : "octant") as "path" | "octant" }
       : {}),
+    // UTDF measured-data provenance + payload, presence-gated on the attached
+    // record so non-UTDF studies stay byte-identical field-by-field.
+    ...(measured ? { volumeSource: "utdf_tmc" as const } : {}),
+    ...(utdfCycleLenS !== undefined ? { utdfCycleLenSec: utdfCycleLenS } : {}),
+    ...(() => {
+      const storage = measured && c.utdf ? utdfGoverningStorage(c.utdf) : undefined;
+      return storage
+        ? { existingStorageFt: storage.storageFt, storageMovement: storage.movement }
+        : {};
+    })(),
   };
 }
 
@@ -1493,6 +1699,19 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     req.latitude, req.longitude, radiusMi, region.code,
     { ids: req.studyIntersectionIds, points: req.additionalStudyPoints },
   );
+  // Attach measured UTDF records to their signals (opt-in; see attachUtdfData).
+  // Runs BEFORE any buildAffectedRow call so both the per-period loop and the
+  // synthesized-PM path see the same attachments. Absent/empty ⇒ no-op.
+  if (Array.isArray(req.utdfIntersections) && req.utdfIntersections.length > 0) {
+    attachUtdfData(candidates, req.utdfIntersections);
+    logger.info(
+      {
+        records: req.utdfIntersections.length,
+        matched: candidates.filter((c) => c.utdf).length,
+      },
+      "tis.utdf_attach",
+    );
+  }
   // No signal within the study radius → almost certainly a bad geocode (open
   // water / outside our signal coverage), not a real "0-impact" finding. Flag
   // it on the report so the routes can answer with a clear message instead of
@@ -2138,7 +2357,9 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
 async function synthesizePmReport(
   lu: LandUse,
   req: TisRequest,
-  candidates: Array<{ sig: AnalyzerIntersection; distanceMi: number }>,
+  // StudyCandidate so any attached UTDF record (c.utdf) flows through this
+  // synthesized-PM path exactly as it does through the per-period loop.
+  candidates: Array<StudyCandidate>,
   loadWeights: number[],
   project: { lat: number; lon: number },
   growthMultiplier: number,
