@@ -8888,8 +8888,10 @@ function renderFourStepSection(
         + "T_j = (M_j / (d_j · d_site)) / Σ (M_x / (d_x · d_site)).  Zone mass M_j is each signal's through-volume "
         + "(destination-activity proxy) and d_j its distance from the site (d_site = 1). The shares below are the §6.1 distribution."
       : "A production-constrained gravity model allocates trips to surrounding signals:  T_j = P · (A_j · F_j) / Σ (A_x · F_x).  "
-        + "Attractiveness A_j is each signal's through-volume; the friction factor F_j is the NCHRP-716 gamma function "
-        + "F = a·t^b·e^(c·t) (home-based-work: a=28507, b=-0.02, c=-0.123) on the travel time t to the signal.",
+        + "Attractiveness A_j is each signal's through-volume; the friction factor F_j is a gamma function F = a·t^b·e^(c·t) "
+        + "— the form recommended by NCHRP Report 716 — on the travel time t to the signal, with home-based-work shape "
+        + "parameters b=-0.02, c=-0.123 (consistent with NCHRP 716's sampled MPO gravity parameters; the scale constant a "
+        + "cancels in the share normalization).",
     { paragraphGap: 4 });
   doc.fillColor("black");
   const totalAdded = intersections.reduce((s, r) => s + (Number(r.addedTripsPmPeak) || 0), 0) || 1;
