@@ -93,6 +93,28 @@ export function classifyMovement(
   return cross(vec(siteToDriveway), travel) > 0 ? "outLeft" : "outRight";
 }
 
+/**
+ * Remove the movements a ONE-WAY fronting street makes physically impossible.
+ * `streetTravelDir` is the street's one-way flag relative to the SAME bearing
+ * used for `siteSide` (1 = travel only along that bearing, -1 = only against
+ * it, anything else = two-way/unknown ⇒ returned unchanged).
+ *
+ * Geometry, in classifyMovement's own frame (right-hand traffic): with the
+ * site on the LEFT of the street bearing (siteSide = 1), the left-turn pair
+ * (inLeft enters from, and outLeft departs into, travel ALONG the bearing)
+ * and the right-turn pair belongs to travel AGAINST it; siteSide = -1 swaps
+ * the pairs. So the impossible pair is the RIGHT pair when
+ * siteSide × streetTravelDir = 1, and the LEFT pair when it is -1. A trip
+ * whose only movement was masked reroutes through the U-turn machinery like
+ * any other forbidden movement, so demand is redirected, never invented.
+ */
+export function maskOneWayMovements(mv: Movements, siteSide: SiteSide, streetTravelDir: number): Movements {
+  if (streetTravelDir !== 1 && streetTravelDir !== -1) return mv;
+  return siteSide * streetTravelDir === 1
+    ? { ...mv, inRight: false, outRight: false }
+    : { ...mv, inLeft: false, outLeft: false };
+}
+
 /** Business-rule validation beyond the zod structural checks. */
 export function validateDriveways(driveways: Driveway[] | undefined): string | null {
   if (!driveways || driveways.length === 0) return null;
