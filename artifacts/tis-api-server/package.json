@@ -28,6 +28,7 @@
     "check:rate-auditability": "node ./scripts/verify-rate-auditability.mjs",
     "check:turn-ledger": "node ./scripts/verify-turn-ledger.mjs",
     "check:cordon-gateways": "node ./scripts/verify-cordon-gateways.mjs",
+    "check:utdf-import": "node ./scripts/verify-utdf-import.mjs",
     "check:state-dispatch": "node ./scripts/verify-state-dispatch.mjs"
   },
   "dependencies": {
