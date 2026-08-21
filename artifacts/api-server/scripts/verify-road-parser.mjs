@@ -138,8 +138,14 @@ ok(parsedWays / totalWays > 0.99,
     `segments carry the oneway slot (len ${segs[0]?.length})`);
   ok(segs.every((seg) => seg[8] === 0 || seg[8] === 1 || seg[8] === -1),
     "oneway is always one of 0 / 1 / -1, never undefined or a string");
-  ok(segs.every((seg) => seg[8] === 0),
-    "pre-oneway shipped file reads as two-way throughout (no fabricated restrictions)");
+  // Miami has since been re-fetched WITH oneway, so the both-vintages
+  // guarantee is asserted on a still-old-format region instead — and Miami
+  // now proves the opposite side: real oneway values arrive.
+  const oldFmt = roadSegmentsNear("akron_metro", 41.0814, -81.519, 1.0);
+  ok(oldFmt === null || oldFmt.every((seg) => seg[8] === 0),
+    "pre-oneway file (akron) reads as two-way throughout (no fabricated restrictions)");
+  ok(segs.some((seg) => seg[8] === 1 || seg[8] === -1),
+    "re-fetched file (miami) carries real one-way values");
 }
 
 // --- 7. Malformed input still degrades safely ----------------------------
