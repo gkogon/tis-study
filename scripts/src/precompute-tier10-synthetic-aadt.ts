@@ -34,6 +34,7 @@ import { fileURLToPath } from "node:url";
 import { REGIONS, type Region } from "../../artifacts/tis-api-server/src/lib/regions";
 import { regionGroup, type RegionGroup } from "./region-groups";
 import { MeasuredIndex, idwPredict, type MeasuredSignal } from "./knn-idw-aadt";
+import { resolveRoadFile, roadFileExists, readJsonMaybeGz } from "./road-file-io";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../..");
@@ -219,13 +220,13 @@ type AadtRec = { aadt: number; year: number; kFactor: number; distM: number; sou
 function generateForRegion(region: Region): { total: number; snapped: number; snapPct: number; measured: number } | null {
   const slug = regionSlug(region.code);
   const sigPath = path.resolve(DATA_DIR, `${slug}-signals.json`);
-  const roadPath = path.resolve(DATA_DIR, `${slug}-roads.json`);
-  if (!existsSync(sigPath) || !existsSync(roadPath)) return null;
+  const roadPath = resolveRoadFile(DATA_DIR, slug); // .json.gz preferred, .json fallback
+  if (!existsSync(sigPath) || !roadPath) return null;
   let signals: Array<[number, number, number, string | null, number]>;
   let road: RoadNetwork;
   try {
     signals = JSON.parse(readFileSync(sigPath, "utf8"));
-    road = JSON.parse(readFileSync(roadPath, "utf8"));
+    road = readJsonMaybeGz(roadPath);
   } catch {
     return null;
   }
@@ -427,13 +428,16 @@ function main(): void {
     if (r.dataSourceId === "osm_only") return true;
     if (allEligible) {
       const slug = regionSlug(r.code);
+      // roadFileExists checks BOTH .json.gz and .json — a plain existsSync
+      // on the raw name would make every gz-only region look absent and
+      // silently drop it from synthesis.
       return existsSync(path.resolve(DATA_DIR, `${slug}-signals.json`))
-          && existsSync(path.resolve(DATA_DIR, `${slug}-roads.json`));
+          && roadFileExists(DATA_DIR, slug);
     }
     if (includeUnder85 && under85Codes.has(r.code)) {
       const slug = regionSlug(r.code);
       return existsSync(path.resolve(DATA_DIR, `${slug}-signals.json`))
-          && existsSync(path.resolve(DATA_DIR, `${slug}-roads.json`));
+          && roadFileExists(DATA_DIR, slug);
     }
     return false;
   });

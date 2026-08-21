@@ -26,15 +26,24 @@
  * roadSegmentsNear tolerates both vintages, so regions can be re-fetched
  * incrementally rather than in one flag day.
  *
+ * OUTPUT FORMAT: written as `<slug>-roads.json.gz` (gzip -9). The
+ * residential refetch grows the raw corpus to a projected ~3.4GB —
+ * florida-statewide alone would blow GitHub's 100MB per-file hard limit —
+ * so raw JSON must never land on disk for new fetches. Every reader
+ * resolves .json.gz first with a .json fallback (api-server data-files.ts,
+ * scripts road-file-io.ts), so old raw files keep working; a stale raw twin
+ * of a re-fetched region is deleted so it can't shadow-confuse tooling.
+ *
  * Run:
  *   pnpm --filter @workspace/scripts exec tsx src/fetch-osm-roads.ts charlotte_metro
  *   pnpm --filter @workspace/scripts exec tsx src/fetch-osm-roads.ts --all
  *   pnpm --filter @workspace/scripts exec tsx src/fetch-osm-roads.ts --osm-only
  */
 
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzipJson } from "./road-file-io";
 import {
   REGIONS,
   type Region,
@@ -253,8 +262,16 @@ async function fetchOneRegion(regionCode: RegionCode): Promise<{
   const slug = regionSlug(regionCode);
   const dataDir = path.resolve(__dirname, "../../artifacts/api-server/src/data");
   mkdirSync(dataDir, { recursive: true });
-  const outPath = path.resolve(dataDir, `${slug}-roads.json`);
-  writeFileSync(outPath, JSON.stringify({ classes: [...CLASSES], ways }));
+  const outPath = path.resolve(dataDir, `${slug}-roads.json.gz`);
+  writeFileSync(outPath, gzipJson(JSON.stringify({ classes: [...CLASSES], ways })));
+  // A leftover raw twin would waste ~4x the bytes and risk being committed;
+  // readers prefer .gz anyway, so the raw file is pure liability once the
+  // gz exists.
+  const rawTwin = path.resolve(dataDir, `${slug}-roads.json`);
+  if (existsSync(rawTwin)) {
+    rmSync(rawTwin);
+    console.log(`  (removed stale raw twin ${rawTwin})`);
+  }
 
   console.log(`✔ ${regionCode}: ${ways.length} ways (${JSON.stringify(byClass)}) [dupes=${dupes} skipped_class=${skippedClass} skipped_geom=${skippedGeom}] → ${outPath}`);
   return { region, outPath, kept: ways.length, byClass };

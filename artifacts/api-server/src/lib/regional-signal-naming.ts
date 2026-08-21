@@ -12,9 +12,7 @@
  * When a future refactor consolidates the data layer, this can be merged.
  */
 
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readDataJson } from "./data-files";
 
 const CELL_DEG = 0.005;
 const NEAR_RADIUS_M = 80;
@@ -150,21 +148,10 @@ function analyzeOneSignal(grid: Grid, lat: number, lon: number): SignalNamingRes
 }
 
 // ---------- Per-region cache + data loading ----------
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-function findData(filename: string): string {
-  const candidates = [
-    resolve(__dirname, `data/${filename}`),
-    resolve(__dirname, `../data/${filename}`),
-    resolve(process.cwd(), `artifacts/api-server/dist/data/${filename}`),
-    resolve(process.cwd(), `artifacts/api-server/src/data/${filename}`),
-  ];
-  for (const p of candidates) {
-    try { readFileSync(p, "utf8").length; return p; } catch { /* try next */ }
-  }
-  throw new Error(`Data file not found: ${filename}`);
-}
+// Path resolution + gzip-aware reads live in data-files.ts (shared with
+// regional-roads.ts and atlanta-data.ts): `<slug>-roads.json.gz` is
+// preferred over `<slug>-roads.json`, so post-refetch gz-only regions keep
+// their signal names instead of silently falling back to "Signal #<osmId>".
 
 function regionCodeToSlug(regionCode: string): string {
   return regionCode.replace(/_metro$/, "").replace(/_/g, "-");
@@ -184,7 +171,7 @@ export function getSignalNamesForRegion(regionCode: string): Map<number, SignalN
   // an empty map and the caller falls back to "Signal #<osmId>".
   let road: RoadNetwork;
   try {
-    road = JSON.parse(readFileSync(findData(`${slug}-roads.json`), "utf8")) as RoadNetwork;
+    road = readDataJson<RoadNetwork>(`${slug}-roads.json`);
   } catch {
     const empty = new Map<number, SignalNamingResult>();
     nameCache.set(regionCode, empty);
@@ -197,9 +184,9 @@ export function getSignalNamesForRegion(regionCode: string): Map<number, SignalN
     gridCache.set(regionCode, grid);
   }
 
-  const signals = JSON.parse(readFileSync(findData(`${slug}-signals.json`), "utf8")) as Array<
-    [number, number, number, string | null, number]
-  >;
+  const signals = readDataJson<Array<[number, number, number, string | null, number]>>(
+    `${slug}-signals.json`,
+  );
 
   const out = new Map<number, SignalNamingResult>();
   for (const [osmId, lat, lon] of signals) {

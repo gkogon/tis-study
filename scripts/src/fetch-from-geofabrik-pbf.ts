@@ -19,10 +19,11 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, statSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { REGIONS, type RegionCode } from "../../artifacts/tis-api-server/src/lib/regions";
+import { gzipJson } from "./road-file-io";
 
 const PBF_DIR = "/tmp/geofabrik_pbf";
 
@@ -308,8 +309,17 @@ function processState(state: string, metros: RegionCode[]): void {
       }
     }
     const roadOut = { classes: ["motorway", "trunk", "primary", "secondary", "tertiary"], ways };
-    const roadPath = path.join(dataDir, `${slug}-roads.json`);
-    writeFileSync(roadPath, JSON.stringify(roadOut));
+    // Written as .json.gz — same policy as fetch-osm-roads.ts: fresh fetches
+    // must never land raw (florida_statewide raw would blow GitHub's 100MB
+    // per-file limit post-residential-refetch). Readers prefer .gz, so a
+    // stale raw twin is pure liability and is removed.
+    const roadPath = path.join(dataDir, `${slug}-roads.json.gz`);
+    writeFileSync(roadPath, gzipJson(JSON.stringify(roadOut)));
+    const rawTwin = path.join(dataDir, `${slug}-roads.json`);
+    if (existsSync(rawTwin)) {
+      rmSync(rawTwin);
+      console.log(`  (removed stale raw twin ${rawTwin})`);
+    }
     console.log(`  ✔ ${slug}: ${ways.length} ways (${JSON.stringify(byClass)}) → ${roadPath}`);
   }
 }

@@ -42,6 +42,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, statS
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { REGIONS, type RegionCode } from "../../artifacts/tis-api-server/src/lib/regions";
+import { resolveRoadFile, readJsonMaybeGz, writeJsonMaybeGz } from "./road-file-io";
 
 const PBF_DIR = process.env["GEOFABRIK_DIR"] ?? "/tmp/geofabrik_pbf";
 
@@ -289,11 +290,14 @@ function appendSignals(metro: RegionCode, features: GeoJsonFeature[], state: str
 
 function appendRoads(metro: RegionCode, features: GeoJsonFeature[], state: string): void {
   const slug = regionSlug(metro);
-  const p = path.resolve(DATA_DIR, `${slug}-roads.json`);
-  if (!existsSync(p)) throw new Error(`Missing baseline roads at ${p}`);
-  archiveOnce(p, `${slug}-roads.pre-extend.json`);
+  // Baseline may be raw .json or gzipped .json.gz (post-refetch regions are
+  // gz-only). Read whichever exists and write back in the SAME format so the
+  // file never silently changes representation mid-append.
+  const p = resolveRoadFile(DATA_DIR, slug);
+  if (!p) throw new Error(`Missing baseline roads at ${path.resolve(DATA_DIR, `${slug}-roads.json[.gz]`)}`);
+  archiveOnce(p, `${slug}-roads.pre-extend.json${p.endsWith(".gz") ? ".gz" : ""}`);
 
-  const road = JSON.parse(readFileSync(p, "utf8")) as { classes: string[]; ways: unknown[] };
+  const road = readJsonMaybeGz<{ classes: string[]; ways: unknown[] }>(p);
   const boxes = metroBoxes(metro);
 
   // Idempotency key: class|name|first vertex. Appends come from states the
@@ -341,7 +345,7 @@ function appendRoads(metro: RegionCode, features: GeoJsonFeature[], state: strin
     }
   }
 
-  writeFileSync(p, JSON.stringify(road));
+  writeJsonMaybeGz(p, road);
   console.log(`  ✔ ${slug} roads: +${added} ways from ${state} (${JSON.stringify(byClass)}) → total ${road.ways.length}`);
 }
 

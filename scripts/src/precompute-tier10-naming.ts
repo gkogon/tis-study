@@ -23,6 +23,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { REGIONS } from "../../artifacts/tis-api-server/src/lib/regions";
+import { resolveRoadFile, readJsonMaybeGz } from "./road-file-io";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../..");
@@ -116,13 +117,13 @@ function regionSlug(code: string): string {
 
 function computeNamedPct(slug: string): { signals: number; namedPct: number } | null {
   const sigPath = path.resolve(DATA_DIR, `${slug}-signals.json`);
-  const roadPath = path.resolve(DATA_DIR, `${slug}-roads.json`);
-  if (!existsSync(sigPath) || !existsSync(roadPath)) return null;
+  const roadPath = resolveRoadFile(DATA_DIR, slug); // .json.gz preferred, .json fallback
+  if (!existsSync(sigPath) || !roadPath) return null;
   let signals: Array<[number, number, number, string | null, number]>;
   let road: RoadNetwork;
   try {
     signals = JSON.parse(readFileSync(sigPath, "utf8"));
-    road = JSON.parse(readFileSync(roadPath, "utf8"));
+    road = readJsonMaybeGz(roadPath);
   } catch {
     return null;
   }

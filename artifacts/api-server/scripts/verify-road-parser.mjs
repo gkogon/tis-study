@@ -20,6 +20,7 @@ import { register } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
+import { gunzipSync } from "node:zlib";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // ts-loader lives in the sibling package; api-server has no scripts harness.
@@ -33,8 +34,41 @@ const ok = (cond, msg) => { if (!cond) { console.error("FAIL:", msg); fails++; }
 // --- 1. Both tuple shapes parse ------------------------------------------
 // Exercised through the real loader by reading the shipped files directly,
 // then asserting the parser agrees with a shape-aware reference count.
-const dataDir = path.resolve(here, "../src/data");
+// ROAD_DATA_DIR override exists so check:road-file-io can point the shipped-
+// file sweep at a fixture dir (mixed raw/.gz) and prove gz-only files are
+// iterated rather than silently skipped. Default: the real shipped corpus.
+const dataDir = process.env.ROAD_DATA_DIR
+  ? path.resolve(process.env.ROAD_DATA_DIR)
+  : path.resolve(here, "../src/data");
 const pointsOf = (way) => (Array.isArray(way[1]) ? way[1] : Array.isArray(way[2]) ? way[2] : null);
+
+// Road files exist in two on-disk forms — `<slug>-roads.json` and the
+// gzip-compressed `<slug>-roads.json.gz` (post-residential-refetch regions
+// only fit gzipped). This check must see BOTH, or a converted corpus would
+// make the shipped-file sweep below silently iterate nothing.
+const readRoadDoc = (p) => {
+  const buf = fs.readFileSync(p);
+  return JSON.parse(p.endsWith(".gz") ? gunzipSync(buf).toString("utf8") : buf.toString("utf8"));
+};
+// Existing on-disk road file for a slug, preferring .gz like the runtime loader.
+const roadFileFor = (slug) => {
+  for (const cand of [`${slug}-roads.json.gz`, `${slug}-roads.json`]) {
+    const p = path.join(dataDir, cand);
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+};
+// One entry per slug across both extensions, .gz preferred (never double-count).
+const listRoadFiles = () => {
+  const bySlug = new Map();
+  for (const n of fs.readdirSync(dataDir)) {
+    const m = n.match(/^(.*)-roads\.json(\.gz)?$/);
+    if (!m) continue;
+    const prev = bySlug.get(m[1]);
+    if (!prev || n.endsWith(".gz")) bySlug.set(m[1], n);
+  }
+  return [...bySlug.values()];
+};
 
 // --- 2. Spot-check regions that were fully dead before -------------------
 // lat/lon chosen inside each metro; radius wide enough to catch real roads.
@@ -46,8 +80,8 @@ const SPOTS = [
 ];
 
 for (const s of SPOTS) {
-  const file = path.join(dataDir, `${s.slug}-roads.json`);
-  if (!fs.existsSync(file)) { console.log(`skip: ${s.slug} (no shipped file)`); continue; }
+  const file = roadFileFor(s.slug);
+  if (!file) { console.log(`skip: ${s.slug} (no shipped file)`); continue; }
   const segs = roadSegmentsNear(s.code, s.lat, s.lon, 1.0);
   ok(Array.isArray(segs) && segs.length > s.before,
     `${s.label}: parser returns more segments than the old index-based read `
@@ -68,9 +102,9 @@ for (const s of SPOTS) {
 // across every shipped file rather than trusting one spot check.
 let zeroFiles = [];
 let totalWays = 0, parsedWays = 0;
-for (const f of fs.readdirSync(dataDir).filter((n) => n.endsWith("-roads.json"))) {
+for (const f of listRoadFiles()) {
   let doc;
-  try { doc = JSON.parse(fs.readFileSync(path.join(dataDir, f), "utf8")); } catch { continue; }
+  try { doc = readRoadDoc(path.join(dataDir, f)); } catch { continue; }
   const ways = Array.isArray(doc?.ways) ? doc.ways : [];
   if (!ways.length) continue;
   const good = ways.filter((w) => {

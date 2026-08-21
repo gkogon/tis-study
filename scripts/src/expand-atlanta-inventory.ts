@@ -41,6 +41,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ATLANTA_METRO, type LatLonBox } from "../../artifacts/tis-api-server/src/lib/regions";
+import { resolveRoadFile, readJsonMaybeGz, writeJsonMaybeGz } from "./road-file-io";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve(__dirname, "../../artifacts/api-server/src/data");
@@ -121,8 +122,16 @@ function main(): void {
   }
 
   // ── Roads ──────────────────────────────────────────────────────────────
-  const atlRoads = readJson<RoadNetwork>("atlanta-roads.json");
-  const gaRoads = readJson<RoadNetwork>("georgia-statewide-roads.json");
+  // Road files may be raw .json or gzipped .json.gz (post-residential-refetch
+  // regions are gz-only). Read whichever exists; Atlanta is written back in
+  // the SAME format it was read from, so this append never silently changes
+  // the file's on-disk representation.
+  const atlRoadsPath = resolveRoadFile(DATA_DIR, "atlanta");
+  if (!atlRoadsPath) throw new Error(`No atlanta-roads.json[.gz] in ${DATA_DIR}`);
+  const gaRoadsPath = resolveRoadFile(DATA_DIR, "georgia-statewide");
+  if (!gaRoadsPath) throw new Error(`No georgia-statewide-roads.json[.gz] in ${DATA_DIR}`);
+  const atlRoads = readJsonMaybeGz<RoadNetwork>(atlRoadsPath);
+  const gaRoads = readJsonMaybeGz<RoadNetwork>(gaRoadsPath);
   if (JSON.stringify(atlRoads.classes) !== JSON.stringify(gaRoads.classes)) {
     throw new Error(
       `road class tables differ — appending would mislabel every road class.\n` +
@@ -177,11 +186,8 @@ function main(): void {
     path.join(DATA_DIR, "atlanta-signals.json"),
     JSON.stringify(atlSignals.concat(newSignals)),
   );
-  writeFileSync(
-    path.join(DATA_DIR, "atlanta-roads.json"),
-    JSON.stringify({ classes: atlRoads.classes, ways: atlRoads.ways.concat(newWays) }),
-  );
-  console.log("wrote atlanta-signals.json + atlanta-roads.json");
+  writeJsonMaybeGz(atlRoadsPath, { classes: atlRoads.classes, ways: atlRoads.ways.concat(newWays) });
+  console.log(`wrote atlanta-signals.json + ${path.basename(atlRoadsPath)}`);
 }
 
 main();

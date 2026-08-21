@@ -22,9 +22,10 @@
  * Run: pnpm --filter @workspace/scripts run fetch-roads
  */
 
-import { writeFileSync, readFileSync } from "node:fs";
+import { writeFileSync, existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveRoadFile, readJsonMaybeGz, gzipJson } from "./road-file-io";
 
 // Full metro signal bbox split into 8 strips. Earlier 4-quadrant runs got
 // 406'd by the main Overpass endpoint because some quadrants (esp. central
@@ -143,16 +144,22 @@ async function fetchAll(): Promise<OverpassWay[]> {
   return all;
 }
 
-function loadExistingHigherClassWays(outPath: string): {
+function loadExistingHigherClassWays(dataDir: string): {
   ways: unknown[];
   byClass: Record<string, number>;
 } {
   // Keep the previously bundled motorway/trunk/primary/secondary ways (codes
-  // 0–3) since we're only fetching tertiary in this run.
-  const existing = JSON.parse(readFileSync(outPath, "utf8")) as {
+  // 0–3) since we're only fetching tertiary in this run. The baseline may be
+  // raw atlanta-roads.json or gzipped atlanta-roads.json.gz — read whichever
+  // exists (.gz preferred, matching every other reader).
+  const baseline = resolveRoadFile(dataDir, "atlanta");
+  if (!baseline) {
+    throw new Error(`No atlanta-roads.json[.gz] in ${dataDir} — nothing to carry forward`);
+  }
+  const existing = readJsonMaybeGz<{
     classes: string[];
     ways: unknown[];
-  };
+  }>(baseline);
   const byClass: Record<string, number> = {};
   const kept: unknown[] = [];
   for (const w of existing.ways) {
@@ -170,11 +177,11 @@ function loadExistingHigherClassWays(outPath: string): {
 
 function main(): void {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const outPath = path.resolve(
-    __dirname,
-    "../../artifacts/api-server/src/data/atlanta-roads.json",
-  );
-  const carry = loadExistingHigherClassWays(outPath);
+  const dataDir = path.resolve(__dirname, "../../artifacts/api-server/src/data");
+  // Fresh fetches land gzipped (fetch-osm-roads.ts policy): readers prefer
+  // .json.gz, and raw road JSON must stay off main post-residential-refetch.
+  const outPath = path.resolve(dataDir, "atlanta-roads.json.gz");
+  const carry = loadExistingHigherClassWays(dataDir);
 
   // Preflight: bail before we overwrite the file if the prior dataset is
   // missing one of the higher classes. Otherwise a silent regression here
@@ -234,7 +241,14 @@ function main(): void {
     }
 
     const output = { classes: [...CLASSES], ways };
-    writeFileSync(outPath, JSON.stringify(output));
+    writeFileSync(outPath, gzipJson(JSON.stringify(output)));
+    // A leftover raw twin would shadow nothing (readers prefer .gz) but
+    // wastes ~4x the bytes and risks being committed — remove it.
+    const rawTwin = path.resolve(dataDir, "atlanta-roads.json");
+    if (existsSync(rawTwin)) {
+      rmSync(rawTwin);
+      console.log(`(removed stale raw twin ${rawTwin})`);
+    }
 
     console.log("");
     console.log(`Total returned   : ${elements.length}`);

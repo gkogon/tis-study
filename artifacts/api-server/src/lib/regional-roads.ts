@@ -7,27 +7,15 @@
  * one (cached per slug) and returns only the segments within a small
  * radius of the site — a payload the engine can build a graph from in
  * milliseconds. Fails soft (returns null) when a region has no road file.
+ *
+ * On-disk format is dual: `<slug>-roads.json.gz` is preferred over
+ * `<slug>-roads.json` (see data-files.ts). Post-residential-refetch the
+ * corpus only fits in the repo/image gzipped, so new files land as .gz
+ * while already-shipped raw files keep working untouched.
  */
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { regionCodeToSlug } from "./regional-intersections";
 import { lruSet } from "./bounded-cache";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-function findData(filename: string): string | null {
-  const candidates = [
-    resolve(__dirname, `data/${filename}`),
-    resolve(__dirname, `../data/${filename}`),
-    resolve(process.cwd(), "artifacts/api-server/dist/data/" + filename),
-    resolve(process.cwd(), "artifacts/api-server/src/data/" + filename),
-  ];
-  for (const path of candidates) {
-    try { readFileSync(path, "utf8").length; return path; } catch { /* next */ }
-  }
-  return null;
-}
+import { findDataFile, readJsonMaybeGz } from "./data-files";
 
 /**
  * A way tuple as it actually appears in the shipped `<slug>-roads.json` files.
@@ -58,11 +46,16 @@ const cache = new Map<string, RoadFile | null>();
 
 function loadRoadFile(slug: string): RoadFile | null {
   if (cache.has(slug)) return cache.get(slug) ?? null;
-  const path = findData(`${slug}-roads.json`);
+  const path = findDataFile(`${slug}-roads.json`);
   if (!path) { cache.set(slug, null); return null; }
   try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as RoadFile;
-    lruSet(cache, slug, parsed);
+    const parsed = readJsonMaybeGz(path) as RoadFile;
+    // Cap 4 (not the default 8): parsed road files are the largest objects
+    // in the process, and the residential refetch grows them ~3.2x — a
+    // statewide file can parse to 300MB+ of JS objects. 8 grown regions
+    // resident at once risks OOMing the Railway analyzer; 4 halves the
+    // worst case while keeping the hot regions warm.
+    lruSet(cache, slug, parsed, 4);
     return parsed;
   } catch {
     cache.set(slug, null);
