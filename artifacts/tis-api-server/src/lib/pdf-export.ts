@@ -8955,6 +8955,20 @@ function renderFourStepSection(
       + "and queue are in the capacity appendix.",
       { paragraphGap: 6 });
     doc.fillColor("black");
+    // Conserved-assignment diagnostics: only on flag-generated payloads.
+    const cons = (result as Record<string, any>).conservedAssignment;
+    if (cons?.enabled && cons.conservation) {
+      const c = cons.conservation;
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        `Conserved assignment: project trips routed to ${fmtNum(cons.gatewayCount)} cordon gateways on the study `
+        + `boundary (weighted by the directional distribution above). Flow conservation verified at render input: `
+        + `Σ entering = Σ leaving at ${fmtNum(c.nodesChecked)} network junctions, max imbalance `
+        + `${Number(c.maxImbalance ?? 0).toFixed(2)} veh${c.balanced ? "" : " — IMBALANCE EXCEEDS TOLERANCE"}. `
+        + `${fmtNum(cons.resolvedIntersections)} study intersection(s) carry path-derived movements; `
+        + `${fmtNum(cons.octantFallbacks)} retain the geometric octant model (labeled per intersection).`,
+        { paragraphGap: 6 });
+      doc.fillColor("black");
+    }
   } else {
     const vcs = intersections.map((r) => Number(r.futureVc) || 0).filter((v) => v > 0).sort((a, b) => b - a);
     const worstVc = vcs.length ? vcs[0] : 0;
@@ -9161,6 +9175,20 @@ function renderCapacityAppendix(
           ]),
         });
         doc.moveDown(0.15);
+        // Conserved-assignment source label. Present only on payloads generated
+        // with the flag, so stored studies render byte-identically. The mixed
+        // model (path here, octant there) is exactly what makes the label
+        // load-bearing: a reviewer must know which rows they can trace on the
+        // network and which came from the geometric screen.
+        if (ix.movementSource === "path" || ix.movementSource === "octant") {
+          doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+            ix.movementSource === "path"
+              ? "Source: routed network paths through this junction (conserved assignment — the trips in these rows are the same vehicles counted at the adjacent studied junctions along their paths)."
+              : "Source: geometric octant model (this signal did not resolve to a junction on the modeled road network — no junction within 100 m, or its minor legs are below the network's road-class floor).",
+            { paragraphGap: 3 },
+          );
+          doc.fillColor("black");
+        }
         // Stored studies re-render through this path: a payload generated
         // before the movement-derived loading shipped still carries the legacy
         // floor-smeared +Trips split next to this movements table — the very
