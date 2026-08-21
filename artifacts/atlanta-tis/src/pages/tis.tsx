@@ -881,10 +881,19 @@ function TisFormSection({
                             ].slice(0, 60);
                             const priorUtdf = f.utdfIntersections ?? [];
                             const seenUtdf = new Set(priorUtdf.map((u) => `${u.latitude},${u.longitude}`));
+                            // Truncate CONSISTENTLY with the points array: a
+                            // record only ships if its 4dp coordinate survived
+                            // the study-point 60-cap, so the engine never
+                            // receives measured data without the forced study
+                            // point that anchors it (and vice versa the caps
+                            // can't drift apart across repeated imports).
+                            const mergedKeys = new Set(merged.map((pt) => `${pt.latitude},${pt.longitude}`));
                             const mergedUtdf = [
                               ...priorUtdf,
                               ...measured.filter((u) => !seenUtdf.has(`${u.latitude},${u.longitude}`)),
-                            ].slice(0, 60);
+                            ]
+                              .filter((u) => mergedKeys.has(`${u.latitude},${u.longitude}`))
+                              .slice(0, 60);
                             return {
                               ...f,
                               additionalStudyPoints: merged.length > 0 ? merged : undefined,
