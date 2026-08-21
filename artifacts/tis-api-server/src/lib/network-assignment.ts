@@ -20,7 +20,14 @@ import { classifyMovement, sideOfStreet, resolveMovements, type Driveway } from 
 
 const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8080";
 
-export type RoadSegment = [number, number, number, number, number, number | null, number | null];
+export type RoadSegment = [
+  number, number, number, number, number,
+  number | null, number | null,
+  /** Street name, for same-street continuity in routing. Absent on old payloads. */
+  (string | null)?,
+  /** 1 = a->b only, -1 = b->a only, 0/absent = two-way. */
+  (number | null)?,
+];
 
 export type RouteDestination = { lat: number; lon: number; trips: number };
 

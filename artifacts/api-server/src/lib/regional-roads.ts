@@ -42,7 +42,15 @@ function findData(filename: string): string | null {
  * product. Keeping both arms in the type is what stops that regressing.
  */
 type RoadWayLegacy = [number, Array<[number, number]>, (number | null)?, (number | null)?];
-type RoadWayNamed = [number, string, Array<[number, number]>, (number | null)?, (number | null)?];
+type RoadWayNamed = [
+  number, string, Array<[number, number]>,
+  (number | null)?, (number | null)?,
+  // `oneway` (1 = along node order, -1 = against, 0 = two-way) is emitted by
+  // fetch-osm-roads.ts as of 2026-08. Files fetched before that stop at
+  // maxspeed, so it is optional and absent reads as two-way — which is exactly
+  // the old behaviour, letting regions be re-fetched incrementally.
+  (number | null)?,
+];
 type RoadWay = RoadWayLegacy | RoadWayNamed;
 type RoadFile = { classes: string[]; ways: RoadWay[] };
 
@@ -76,6 +84,10 @@ export type RoadSegment = [
   number, number, number, number, number,
   number | null, number | null,
   (string | null)?,
+  // oneway: 1 = a->b only, -1 = b->a only, 0 = two-way. Absent on segments from
+  // road files fetched before oneway capture; absent reads as two-way, which is
+  // the behaviour every consumer already assumed.
+  (number | null)?,
 ];
 
 function distMi(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -132,6 +144,9 @@ export function roadSegmentsNear(
     const lanes = typeof lanesRaw === "number" ? lanesRaw : null;
     const maxspeed = typeof maxspeedRaw === "number" ? maxspeedRaw : null;
     const name = named && typeof way[1] === "string" ? way[1] : null;
+    // Only the named (current) shape can carry oneway; legacy files predate it.
+    const onewayRaw: unknown = named ? way[5] : undefined;
+    const oneway = typeof onewayRaw === "number" ? onewayRaw : 0;
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i]!, b = pts[i + 1]!;
       // Keep the segment if either endpoint is within the radius, and remember
@@ -139,7 +154,7 @@ export function roadSegmentsNear(
       const dA = distMi(lat, lon, a[0], a[1]);
       const dB = distMi(lat, lon, b[0], b[1]);
       const d = Math.min(dA, dB);
-      if (d <= r) out.push({ seg: [cls, a[0], a[1], b[0], b[1], lanes, maxspeed, name], d });
+      if (d <= r) out.push({ seg: [cls, a[0], a[1], b[0], b[1], lanes, maxspeed, name, oneway], d });
     }
   }
 

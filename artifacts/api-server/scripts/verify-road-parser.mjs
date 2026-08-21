@@ -127,7 +127,22 @@ ok(parsedWays / totalWays > 0.99,
     "segment tuples keep indices 0-6 intact (name is appended, not inserted)");
 }
 
-// --- 6. Malformed input still degrades safely ----------------------------
+// --- 6. One-way tolerance across both file vintages ----------------------
+// fetch-osm-roads.ts emits oneway at way[5] as of 2026-08. Every currently
+// shipped file predates that, so absent must read as two-way (0) - the exact
+// behaviour every consumer already assumed. This is what lets regions be
+// re-fetched one at a time instead of in a flag day.
+{
+  const segs = roadSegmentsNear("miami_dade_metro", 25.8456, -80.2103, 1.0);
+  ok(segs.every((seg) => seg.length >= 9),
+    `segments carry the oneway slot (len ${segs[0]?.length})`);
+  ok(segs.every((seg) => seg[8] === 0 || seg[8] === 1 || seg[8] === -1),
+    "oneway is always one of 0 / 1 / -1, never undefined or a string");
+  ok(segs.every((seg) => seg[8] === 0),
+    "pre-oneway shipped file reads as two-way throughout (no fabricated restrictions)");
+}
+
+// --- 7. Malformed input still degrades safely ----------------------------
 {
   const junk = roadSegmentsNear("definitely_not_a_region", 0, 0, 1);
   ok(junk === null || (Array.isArray(junk) && junk.length === 0),
