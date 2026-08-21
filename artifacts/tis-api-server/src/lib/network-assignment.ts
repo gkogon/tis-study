@@ -43,6 +43,29 @@ export type CorridorClass = {
   vOverC: number;       // volume-weighted mean v/c of loaded links
 };
 
+/**
+ * One turning movement's worth of assigned flow, in graph terms.
+ * `node` is the junction; `inLink`/`outLink` are link indices into the graph
+ * the assignment was run on. Geometry (approach + L/T/R) is derived later —
+ * this layer stays purely topological so the conservation proof is about
+ * numbers, not about compass bearings.
+ */
+export type TurnFlow = { node: number; inLink: number; outLink: number; trips: number };
+
+/** Diagnostic for the node-balance invariant. */
+export type ConservationReport = {
+  /** Interior nodes where at least one turn was recorded. */
+  nodesChecked: number;
+  /** Largest |Σ entering − Σ leaving| over those nodes, in trips. */
+  maxImbalance: number;
+  /** True when every checked node balances within tolerance. */
+  balanced: boolean;
+};
+
+function turnKey(node: number, inLink: number, outLink: number): string {
+  return `${node}|${inLink}|${outLink}`;
+}
+
 export type RouteAssignment = {
   available: boolean;
   method: string;
@@ -216,12 +239,34 @@ export function insertDriveway(g: Graph, siteNode: number, lat: number, lon: num
  * Build the graph, run an MSA user-equilibrium assignment of the
  * destinations' trips from the site, and summarize the loaded corridors.
  */
+/** What the assignment produces once the turn attribution is kept. */
+export type RoutedNetwork = {
+  assignment: RouteAssignment;
+  /** Every turn carrying flow, at every interior node the paths pass through. */
+  turns: TurnFlow[];
+  conservation: ConservationReport;
+};
+
+/**
+ * `assignRoutes` returns only the road-class summary and is what the report
+ * payload has always carried — its output is untouched by the turn ledger.
+ * Callers that need the movement attribution use `assignRoutesWithTurns`.
+ */
 export function assignRoutes(
   site: { lat: number; lon: number },
   destinations: RouteDestination[],
   segments: RoadSegment[],
   opts: { iterations?: number; volumeRefs?: VolumeRef[] } = {},
 ): RouteAssignment {
+  return assignRoutesWithTurns(site, destinations, segments, opts).assignment;
+}
+
+export function assignRoutesWithTurns(
+  site: { lat: number; lon: number },
+  destinations: RouteDestination[],
+  segments: RoadSegment[],
+  opts: { iterations?: number; volumeRefs?: VolumeRef[] } = {},
+): RoutedNetwork {
   const volumeRefs = opts.volumeRefs ?? [];
   const iterations = opts.iterations ?? 4;
   const empty: RouteAssignment = {
@@ -229,12 +274,16 @@ export function assignRoutes(
     destinationsTotal: destinations.length, destinationsRouted: 0, onNetworkPct: 0,
     worstLinkVoverC: 0, corridors: [],
   };
-  if (segments.length === 0 || destinations.length === 0) return empty;
+  const emptyNet: RoutedNetwork = {
+    assignment: empty, turns: [],
+    conservation: { nodesChecked: 0, maxImbalance: 0, balanced: true },
+  };
+  if (segments.length === 0 || destinations.length === 0) return emptyNet;
 
   // --- Build graph using the shared buildGraph helper. ---
   const g = buildGraph(segments, volumeRefs);
   const { links, adj, nodeLat, nodeLon } = g;
-  if (links.length === 0) return empty;
+  if (links.length === 0) return emptyNet;
 
   // Snap site + destinations to nearest node (scan — graph is bounded).
   const siteNode = g.nearestNode(site.lat, site.lon);
@@ -245,6 +294,13 @@ export function assignRoutes(
   // Congested time uses total v/c = existing utilization (class baseline) +
   // the project trips loaded onto the link so far.
   const linkTime = (li: number) => bprTime(links[li]!.freeMin, links[li]!.baseVc + links[li]!.vol / links[li]!.capVph);
+
+  // Turn ledger: `${node}|${inLink}|${outLink}` → blended trips making that
+  // turn. This is the attribution the collapse at the end of this function has
+  // always discarded — link flow was already conserved through nodes, only the
+  // record of WHICH movement each vehicle made was thrown away.
+  const turn = new Map<string, number>();
+  const auxTurn = new Map<string, number>();
   function dijkstra(): { pred: number[] } {
     const n = nodeLat.length;
     const dist = new Array<number>(n).fill(Infinity);
@@ -273,15 +329,32 @@ export function assignRoutes(
   for (let iter = 0; iter < iterations; iter++) {
     const { pred } = dijkstra();
     const aux = new Array<number>(links.length).fill(0);
+    // Must be cleared per iteration exactly like `aux` is re-allocated: this is
+    // an all-or-nothing loading for THIS iteration's shortest-path tree, not a
+    // running total. Letting it accumulate would blend each iteration against
+    // the sum of all previous ones and quietly break conservation.
+    auxTurn.clear();
     routed = 0;
     for (const d of destNodes) {
       if (d.node < 0 || pred[d.node] === -1 && d.node !== siteNode) continue;
       let cur = d.node, guard = 0;
       let reached = cur === siteNode;
+      // `outLi` is the link walked on the PREVIOUS hop. Walking backwards from
+      // the destination, at node `cur` the vehicle travelling site→dest enters
+      // on pred[cur] and leaves on that previously-walked link — which is the
+      // (in-link, node, out-link) triple a turning movement is made of. The
+      // walk already visits it; nothing extra has to be computed or stored to
+      // find it. At the destination itself outLi is -1: a terminus has no turn.
+      let outLi = -1;
       while (cur !== siteNode && guard++ < 5000) {
         const li = pred[cur];
         if (li === undefined || li === -1) break;
         aux[li]! += d.trips;
+        if (outLi !== -1) {
+          const k = turnKey(cur, li, outLi);
+          auxTurn.set(k, (auxTurn.get(k) ?? 0) + d.trips);
+        }
+        outLi = li;
         const lk = links[li]!;
         cur = lk.a === cur ? lk.b : lk.a;
         if (cur === siteNode) reached = true;
@@ -290,6 +363,16 @@ export function assignRoutes(
     }
     const phi = 1 / (iter + 1);
     for (let li = 0; li < links.length; li++) links[li]!.vol = (1 - phi) * links[li]!.vol + phi * aux[li]!;
+    // Blend the turn ledger with the SAME φ, over the union of both key sets.
+    // Using the identical blend is what keeps the ledger consistent with `vol`:
+    // both are linear combinations of the same all-or-nothing loadings, so
+    // Σ(turns entering v on e) === (flow on e directed at v) holds at every
+    // iteration, not just at convergence. Keys absent from one side count as 0.
+    for (const k of new Set([...turn.keys(), ...auxTurn.keys()])) {
+      const blended = (1 - phi) * (turn.get(k) ?? 0) + phi * (auxTurn.get(k) ?? 0);
+      if (blended > 1e-9) turn.set(k, blended);
+      else turn.delete(k);
+    }
   }
 
   // Summarize loaded corridors by road class. projectVph = the PEAK single-
@@ -318,15 +401,50 @@ export function assignRoutes(
     .filter((c) => c.projectVph > 0)
     .sort((a, b) => b.projectVph - a.projectVph);
 
+  // Materialise the ledger and check the node-balance invariant it exists to
+  // provide. Flow through a junction must balance: everything that enters on
+  // some link leaves on some link. This is the property the per-intersection
+  // model cannot have, because it loads every intersection independently from
+  // one global octant vector and never asks where the trips went next.
+  const turns: TurnFlow[] = [];
+  const enterByNode = new Map<number, number>();
+  const leaveByNode = new Map<number, number>();
+  for (const [k, trips] of turn) {
+    const [nodeStr, inStr, outStr] = k.split("|");
+    const node = Number(nodeStr), inLink = Number(inStr), outLink = Number(outStr);
+    turns.push({ node, inLink, outLink, trips });
+    enterByNode.set(node, (enterByNode.get(node) ?? 0) + trips);
+    leaveByNode.set(node, (leaveByNode.get(node) ?? 0) + trips);
+  }
+  // Deterministic order: the Map's insertion order depends on which paths were
+  // walked first, which depends on destination order. Sorting makes the output
+  // a pure function of the inputs so two identical runs are byte-identical.
+  turns.sort((x, y) => x.node - y.node || x.inLink - y.inLink || x.outLink - y.outLink);
+
+  let maxImbalance = 0;
+  for (const [node, entered] of enterByNode) {
+    const left = leaveByNode.get(node) ?? 0;
+    maxImbalance = Math.max(maxImbalance, Math.abs(entered - left));
+  }
+  const conservation: ConservationReport = {
+    nodesChecked: enterByNode.size,
+    maxImbalance: Math.round(maxImbalance * 1e6) / 1e6,
+    balanced: maxImbalance <= 1e-6,
+  };
+
   return {
-    available: true,
-    method: "network shortest-path + BPR volume-delay (MSA equilibrium)",
-    iterations,
-    destinationsTotal: destinations.length,
-    destinationsRouted: routed,
-    onNetworkPct: Math.round((routed / Math.max(1, destinations.length)) * 1000) / 10,
-    worstLinkVoverC: Math.round(worstVc * 1000) / 1000,
-    corridors,
+    assignment: {
+      available: true,
+      method: "network shortest-path + BPR volume-delay (MSA equilibrium)",
+      iterations,
+      destinationsTotal: destinations.length,
+      destinationsRouted: routed,
+      onNetworkPct: Math.round((routed / Math.max(1, destinations.length)) * 1000) / 10,
+      worstLinkVoverC: Math.round(worstVc * 1000) / 1000,
+      corridors,
+    },
+    turns,
+    conservation,
   };
 }
 
