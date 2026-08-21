@@ -62,8 +62,21 @@ function loadRoadFile(slug: string): RoadFile | null {
   }
 }
 
-/** Compact directionless segment: [classCode, aLat, aLon, bLat, bLon, lanes, maxspeed]. */
-export type RoadSegment = [number, number, number, number, number, number | null, number | null];
+/**
+ * Compact directionless segment:
+ * [classCode, aLat, aLon, bLat, bLon, lanes, maxspeed, name?]
+ *
+ * `name` is appended, not inserted, so every existing consumer indexing 0-6 is
+ * unaffected. It exists so the router can give a continuity credit to staying
+ * on the same named street: without it, shortest paths cut diagonally through a
+ * grid to save seconds and produce zig-zag turn patterns at studied
+ * intersections that no engineer would recognise.
+ */
+export type RoadSegment = [
+  number, number, number, number, number,
+  number | null, number | null,
+  (string | null)?,
+];
 
 function distMi(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 3958.8;
@@ -90,7 +103,9 @@ export function roadSegmentsNear(
   const road = loadRoadFile(slug);
   if (!road || !Array.isArray(road.ways)) return null;
   const r = Math.max(0.1, Math.min(8, radiusMi));
-  const out: RoadSegment[] = [];
+  // Collect with distance so the cap can be applied radially rather than by
+  // file order — see the truncation note at the end of this function.
+  const out: Array<{ seg: RoadSegment; d: number }> = [];
   for (const way of road.ways) {
     const cls = typeof way[0] === "number" ? way[0] : 99;
     // Way tuples ship in TWO shapes and this loop only ever understood one:
@@ -116,14 +131,30 @@ export function roadSegmentsNear(
     const maxspeedRaw: unknown = named ? way[4] : way[3];
     const lanes = typeof lanesRaw === "number" ? lanesRaw : null;
     const maxspeed = typeof maxspeedRaw === "number" ? maxspeedRaw : null;
+    const name = named && typeof way[1] === "string" ? way[1] : null;
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i]!, b = pts[i + 1]!;
-      // Keep the segment if either endpoint is within the radius.
-      if (distMi(lat, lon, a[0], a[1]) <= r || distMi(lat, lon, b[0], b[1]) <= r) {
-        out.push([cls, a[0], a[1], b[0], b[1], lanes, maxspeed]);
-        if (out.length >= cap) return out;
-      }
+      // Keep the segment if either endpoint is within the radius, and remember
+      // HOW near it is so the cap can be applied radially below.
+      const dA = distMi(lat, lon, a[0], a[1]);
+      const dB = distMi(lat, lon, b[0], b[1]);
+      const d = Math.min(dA, dB);
+      if (d <= r) out.push({ seg: [cls, a[0], a[1], b[0], b[1], lanes, maxspeed, name], d });
     }
   }
-  return out;
+
+  // Radial truncation. The cap used to be enforced with an early `return`
+  // partway through the file, so an over-cap request kept whatever happened to
+  // appear FIRST in the JSON and silently dropped everything after it. Way
+  // order is arbitrary, so entire streets vanished while distant ones survived
+  // — the graph lost connectivity in patches instead of degrading outward, and
+  // shortest paths routed around holes that do not exist on the ground.
+  //
+  // Keeping the NEAREST `cap` segments makes truncation isotropic: the network
+  // is complete out to some radius and empty beyond it, which is the failure
+  // mode the router can reason about. Sorting is stable, so equidistant
+  // segments keep file order and the result stays deterministic.
+  if (out.length > cap) out.sort((x, y) => x.d - y.d);
+  const kept = out.length > cap ? out.slice(0, cap) : out;
+  return kept.map((s) => s.seg);
 }
