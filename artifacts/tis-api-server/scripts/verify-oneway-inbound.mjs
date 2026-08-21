@@ -358,10 +358,12 @@ const DESTS = [
   ok(JSON.stringify(stripTime(on)) === JSON.stringify(stripTime(on2)),
     "engine: deterministic across repeated runs");
 
-  const off = await generateTisReport({ ...baseReq });
+  // Conserved assignment defaults ON since #122 — the legacy path needs an
+  // EXPLICIT false now.
+  const off = await generateTisReport({ ...baseReq, conservedAssignment: false });
   ok(off.conservedAssignment === undefined
     && (off.affectedIntersections ?? []).every((ix) => ix.movementSource === undefined),
-    "engine: flag off — no conserved fields (opt-in unchanged)");
+    "engine: explicit conservedAssignment:false — legacy path, no conserved fields");
 
   await rm(entryPath, { force: true });
   await rm(bundlePath, { force: true });
