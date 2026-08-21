@@ -31,6 +31,7 @@
     "check:cordon-gateways": "node ./scripts/verify-cordon-gateways.mjs",
     "check:utdf-import": "node ./scripts/verify-utdf-import.mjs",
     "check:utdf-vigorous": "node ./scripts/verify-utdf-vigorous.mjs",
+    "check:utdf-engine": "node ./scripts/verify-utdf-engine.mjs",
     "check:conserved-assignment": "node ./scripts/verify-conserved-assignment.mjs",
     "check:state-dispatch": "node ./scripts/verify-state-dispatch.mjs"
   },
