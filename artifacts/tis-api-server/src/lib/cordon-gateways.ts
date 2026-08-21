@@ -212,3 +212,64 @@ export function selectCordonGateways(
   }
   return null;
 }
+
+/**
+ * Snap study signals to real graph junctions, with the guards hazard 5 needs:
+ *
+ *  - a junction must have >=3 DISTINCT incident bearings (15 deg quantisation)
+ *    — 81% of graph nodes are degree-2 polyline shape points where no turn can
+ *    exist, and snapping a signal to one mid-block would fabricate a
+ *    straight-through table at what is really an intersection;
+ *  - the snap is capped at `maxMeters` (default 100 m) — beyond that the
+ *    graph simply does not contain this intersection (minor legs absent);
+ *  - one node may be claimed by ONE signal — OSM way-splitting can put two
+ *    inventory signals near a single graph node, and letting both claim it
+ *    would double-count every turn.
+ *
+ * Returns one entry per input point: the claimed node, or -1 with a reason.
+ * Reasons feed the report's `movementSource` explanation — an unresolved
+ * signal is a fact worth printing, not an error.
+ */
+export type JunctionSnap =
+  | { node: number; reason: "resolved" }
+  | { node: -1; reason: "no_junction_in_range" | "node_already_claimed" };
+
+export function snapSignalsToJunctions(
+  g: Graph,
+  points: Array<{ lat: number; lon: number }>,
+  opts: { maxMeters?: number; minBearingGroups?: number } = {},
+): JunctionSnap[] {
+  const maxMeters = opts.maxMeters ?? 100;
+  const minGroups = opts.minBearingGroups ?? 3;
+  const n = g.nodeLat.length;
+
+  // Distinct incident bearing groups per node, 15 deg quantisation.
+  const groups = new Array<number>(n).fill(0);
+  {
+    const seen: Array<Set<number> | undefined> = new Array(n);
+    for (const lk of g.links) {
+      for (const [from, to] of [[lk.a, lk.b], [lk.b, lk.a]] as const) {
+        const q = Math.round(
+          bearingDeg(g.nodeLat[from]!, g.nodeLon[from]!, g.nodeLat[to]!, g.nodeLon[to]!) / 15,
+        ) % 24;
+        (seen[from] ??= new Set()).add(q);
+      }
+    }
+    for (let i = 0; i < n; i++) groups[i] = seen[i]?.size ?? 0;
+  }
+  const junctions: number[] = [];
+  for (let i = 0; i < n; i++) if (groups[i]! >= minGroups) junctions.push(i);
+
+  const claimed = new Set<number>();
+  return points.map((p2) => {
+    let best = -1, bestM = Infinity;
+    for (const j of junctions) {
+      const m = distMi(p2.lat, p2.lon, g.nodeLat[j]!, g.nodeLon[j]!) * 1609.34;
+      if (m < bestM) { bestM = m; best = j; }
+    }
+    if (best < 0 || bestM > maxMeters) return { node: -1, reason: "no_junction_in_range" };
+    if (claimed.has(best)) return { node: -1, reason: "node_already_claimed" };
+    claimed.add(best);
+    return { node: best, reason: "resolved" };
+  });
+}

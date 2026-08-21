@@ -32,7 +32,8 @@ import { lookupLondonPtal } from "./tfl-ptal";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
 import { modeChoiceLogit, type DemandZone } from "./four-step-model";
 import { type CardinalDir } from "./caltran-gravity";
-import { fetchLocalRoads, assignRoutes, assignWithDriveways, type RouteAssignment, type DrivewayAssignment, type DrivewayResult } from "./network-assignment";
+import { fetchLocalRoads, assignRoutes, assignRoutesWithTurns, assignWithDriveways, buildGraph, type ConservationReport, type RouteAssignment, type DrivewayAssignment, type DrivewayResult, type TurnFlow } from "./network-assignment";
+import { selectCordonGateways, snapSignalsToJunctions } from "./cordon-gateways";
 import { type Driveway } from "./driveways";
 import { getTransitContext } from "./transit-routes";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
@@ -42,7 +43,7 @@ import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSo
 // callers that imported `LAND_USES` from this module.
 import { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence } from "./land-uses";
 import { screenTurboCandidate, turboLaneScreening, type TurboLaneScreening } from "./turbo-lane";
-import { assignMovements, approachAddedTripsFromMovements, type MovementLoad } from "./movement-assignment";
+import { assignMovements, approachAddedTripsFromMovements, integerizeMovementLoads, pathMovementLoadsExact, type MovementLoad, type PathTurnShare } from "./movement-assignment";
 // Pure HCM delay / LOS / queue math (dependency-free leaf, unit-tested there).
 import {
   type Los,
@@ -409,6 +410,15 @@ export type TisRequest = {
    *  net new external trips. Absent ⇒ greenfield, output unchanged. */
   existingLandUseCode?: string;
   existingSize?: number;
+  /** Opt-in conserved path assignment: destinations become cordon gateways on
+   *  the study boundary (weighted by the printed directional distribution),
+   *  project trips are routed through the network, and each resolvable study
+   *  intersection's turning movements + approach loading derive from the
+   *  actual paths through it — so flow is conserved between adjacent
+   *  intersections. Changes v/c, delay and LOS at resolved intersections
+   *  (the legacy loading is deliberately un-normalized). Absent/false ⇒
+   *  byte-identical to today. */
+  conservedAssignment?: boolean;
   /** Site access points with per-movement turn restrictions. When present,
    *  project trips route through these driveways and forbidden movements
    *  reroute onto the network (U-turns). Absent or empty ⇒ single-site
@@ -502,6 +512,11 @@ export type AffectedIntersection = {
    *  assignment). Present when a distribution ran and the intersection
    *  receives ≥1 rounded trip. */
   movements?: MovementLoad[];
+  /** Where the movements table came from: "path" = derived from the actual
+   *  routed paths through this junction (conserved assignment; approach
+   *  loading uses the same rows), "octant" = the geometric octant model.
+   *  Absent on pre-flag payloads and when no distribution ran. */
+  movementSource?: "path" | "octant";
 };
 
 export type TripGenerationSummary = {
@@ -924,6 +939,10 @@ type ScenarioParams = {
   approachCapacityVph: number;    // weather-adjusted approach capacity
   externalTrips: number;          // post-credit external trips for this period
   inFraction: number;             // directional split for this period
+  /** True only when the conserved-assignment flag ran for this report. Gates
+   *  the movementSource label: with the flag off, payloads must stay
+   *  byte-identical, so even the octant label may not appear. */
+  conservedLabeling?: boolean;
   /** Background-network volume as a fraction of the stored design hour for
    *  this period (PERIOD_VOLUME_FACTOR). Optional; defaults to 1.0 so any
    *  caller that omits it keeps the prior design-hour behaviour. */
@@ -944,6 +963,7 @@ function buildAffectedRow(
   project: { lat: number; lon: number },
   params: ScenarioParams,
   calibration?: CalibrationEntry,
+  pathTurns?: PathTurnShare[],
 ): AffectedIntersection {
   // Background-network volume for THIS period: the stored design-hour volume
   // scaled by the period's peaking factor (PERIOD_VOLUME_FACTOR — PM anchors
@@ -1022,27 +1042,42 @@ function buildAffectedRow(
     { lat: c.sig.latitude, lon: c.sig.longitude },
     { lat: project.lat, lon: project.lon },
   );
-  const movements: MovementLoad[] | undefined = params.distributionOctants
-    ? assignMovements(
-        bearingIntersectionToSite,
-        params.distributionOctants,
-        addedTripsExact,
-        params.inFraction,
-      )
+  // Conserved assignment: when the caller resolved this signal to a network
+  // junction, the movements come from the ACTUAL routed paths through it, in
+  // share units scaled here by this period's external trips. The caller has
+  // already set `weight` to the path through-share, so addedTripsExact equals
+  // the sum of these rows and every cross-foot below holds unchanged.
+  const pathRows = pathTurns && pathTurns.length > 0 && params.distributionOctants
+    ? pathMovementLoadsExact(pathTurns, params.externalTrips, params.inFraction)
     : undefined;
+  const movements: MovementLoad[] | undefined = pathRows
+    ? integerizeMovementLoads(pathRows, addedTripsExact)
+    : params.distributionOctants
+      ? assignMovements(
+          bearingIntersectionToSite,
+          params.distributionOctants,
+          addedTripsExact,
+          params.inFraction,
+        )
+      : undefined;
   // Exact per-approach project load, by ENTERING approach: inbound trips load
   // the approach they enter on from their origin octant; outbound trips enter
   // on the site-facing leg traveling away from the site and load that
   // travel-direction row. Geometry decides the split — no floor share — so an
   // approach the distribution never routes through carries zero project trips.
-  const movementAdded: Record<Direction, number> | undefined = params.distributionOctants
-    ? approachAddedTripsFromMovements(
-        bearingIntersectionToSite,
-        params.distributionOctants,
-        addedTripsExact,
-        params.inFraction,
+  const movementAdded: Record<Direction, number> | undefined = pathRows
+    ? pathRows.reduce(
+        (acc, r) => { acc[r.approach] += r.exact; return acc; },
+        { NB: 0, SB: 0, EB: 0, WB: 0 } as Record<Direction, number>,
       )
-    : undefined;
+    : params.distributionOctants
+      ? approachAddedTripsFromMovements(
+          bearingIntersectionToSite,
+          params.distributionOctants,
+          addedTripsExact,
+          params.inFraction,
+        )
+      : undefined;
 
   // Approach split.
   const volShares = approachVolumeShares(c.sig.id);
@@ -1172,6 +1207,9 @@ function buildAffectedRow(
       : undefined,
     turboLane,
     ...(movements && movements.length > 0 ? { movements } : {}),
+    ...(movements && movements.length > 0 && params.conservedLabeling
+      ? { movementSource: (pathRows ? "path" : "octant") as "path" | "octant" }
+      : {}),
   };
 }
 
@@ -1674,6 +1712,10 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // when the region has no road network available.
   let routeAssignment: RouteAssignment | undefined;
   let drivewayAssignment: DrivewayAssignment | undefined;
+  // Hoisted for the conserved-assignment block below: it reuses the same
+  // fetched network + measured-volume seeds instead of re-fetching.
+  let segsForConserved: Awaited<ReturnType<typeof fetchLocalRoads>> = null;
+  let conservedVolumeRefs: Array<{ lat: number; lon: number; aadt: number }> = [];
   try {
     const segs = await fetchLocalRoads(region.code, req.latitude, req.longitude, radiusMi);
     if (segs) {
@@ -1688,6 +1730,8 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
         .filter((c) => c.sig.totalVolume > 0)
         .map((c) => ({ lat: c.sig.latitude, lon: c.sig.longitude, aadt: c.sig.totalVolume }));
       routeAssignment = assignRoutes({ lat: req.latitude, lon: req.longitude }, dests, segs, { volumeRefs });
+      segsForConserved = segs;
+      conservedVolumeRefs = volumeRefs;
       // Driveway-aware assignment: when driveways are supplied, route through
       // them and record per-destination added trips. Opt-in: absent/empty ⇒
       // byte-identical to today (no loadWeights change, no driveways payload).
@@ -1739,6 +1783,105 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // (dwShare is null when no driveways ⇒ byte-identical to today).
   const effectiveWeights = candidates.map((_, i) => (dwShare ? dwShare[i]! : loadWeights[i]!));
 
+  // ---- Conserved path assignment (opt-in, req.conservedAssignment) --------
+  // Destinations become cordon gateways on the study boundary, weighted by the
+  // SAME byDirection the report prints in its distribution section. Project
+  // trips are routed through the network with the turn ledger retained; every
+  // study signal that resolves to a real graph junction gets its turning
+  // movements AND its approach loading from the actual paths through it, so
+  // flow is conserved between adjacent resolved intersections. Signals that
+  // do not resolve (no junction within 100 m, minor legs absent from the
+  // graph, or a node collision) keep the legacy octant model and are labeled
+  // movementSource:"octant" — an honest per-row boundary, never a blend.
+  let pathTurnsByCandidate: Array<PathTurnShare[] | undefined> | undefined;
+  let conservedAssignment:
+    | {
+        enabled: true;
+        gatewayCount: number;
+        classCeiling: number;
+        emptyOctants: string[];
+        resolvedIntersections: number;
+        octantFallbacks: number;
+        conservation: ConservationReport;
+      }
+    | undefined;
+  if (req.conservedAssignment && segsForConserved && segsForConserved.length > 0) {
+    try {
+      const cg = buildGraph(segsForConserved, conservedVolumeRefs);
+      const cordon = selectCordonGateways(
+        cg,
+        { lat: req.latitude, lon: req.longitude },
+        radiusMi,
+        dist.byDirection,
+      );
+      if (cordon) {
+        const net = assignRoutesWithTurns(
+          { lat: req.latitude, lon: req.longitude },
+          cordon.gateways.map((gw) => ({ lat: gw.lat, lon: gw.lon, trips: gw.share })),
+          segsForConserved,
+          { volumeRefs: conservedVolumeRefs },
+        );
+        const turnsByNode = new Map<number, TurnFlow[]>();
+        for (const t of net.turns) {
+          const arr = turnsByNode.get(t.node);
+          if (arr) arr.push(t);
+          else turnsByNode.set(t.node, [t]);
+        }
+        const snaps = snapSignalsToJunctions(
+          cg,
+          candidates.map((c) => ({ lat: c.sig.latitude, lon: c.sig.longitude })),
+        );
+        // Bearing of travel along a link INTO / OUT OF a node.
+        const other = (li: number, node: number): number => {
+          const lk = cg.links[li]!;
+          return lk.a === node ? lk.b : lk.a;
+        };
+        const bearing = (a: number, b: number): number => {
+          const p = Math.PI / 180;
+          const y = Math.sin((cg.nodeLon[b]! - cg.nodeLon[a]!) * p) * Math.cos(cg.nodeLat[b]! * p);
+          const x = Math.cos(cg.nodeLat[a]! * p) * Math.sin(cg.nodeLat[b]! * p)
+            - Math.sin(cg.nodeLat[a]! * p) * Math.cos(cg.nodeLat[b]! * p)
+            * Math.cos((cg.nodeLon[b]! - cg.nodeLon[a]!) * p);
+          return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+        };
+        let resolved = 0;
+        pathTurnsByCandidate = candidates.map((_, i) => {
+          const snap = snaps[i]!;
+          if (snap.node < 0) return undefined;
+          const turns = turnsByNode.get(snap.node);
+          if (!turns || turns.length === 0) return undefined;
+          resolved++;
+          return turns.map((t) => ({
+            enterBearingDeg: bearing(other(t.inLink, t.node), t.node),
+            exitBearingDeg: bearing(t.node, other(t.outLink, t.node)),
+            share: t.trips,
+          }));
+        });
+        // Conserved loading: a resolved intersection's load weight IS its path
+        // through-share (in/out mirror sums to the same total), replacing the
+        // un-normalized distance-decay estimate. addedTripsExact then equals
+        // the sum of the path movement rows and the cross-foots hold.
+        for (let i = 0; i < candidates.length; i++) {
+          const turns = pathTurnsByCandidate[i];
+          if (turns) {
+            effectiveWeights[i] = clamp(turns.reduce((sum, t) => sum + t.share, 0), 0, 1);
+          }
+        }
+        conservedAssignment = {
+          enabled: true,
+          gatewayCount: cordon.gateways.length,
+          classCeiling: cordon.classCeiling,
+          emptyOctants: cordon.emptyOctants,
+          resolvedIntersections: resolved,
+          octantFallbacks: candidates.length - resolved,
+          conservation: net.conservation,
+        };
+      }
+    } catch {
+      /* conserved assignment is best-effort; the legacy path stands */
+    }
+  }
+
   // Per-period analyses.
   const periodReports: PeriodReport[] = [];
   for (const period of periods) {
@@ -1784,6 +1927,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       inFraction,
       periodVolumeFactor: PERIOD_VOLUME_FACTOR[period] ?? 1,
       distributionOctants: dist.byDirection,
+      ...(pathTurnsByCandidate ? { conservedLabeling: true } : {}),
     };
 
     // For "daily" we don't run an intersection-level analysis (HCM control
@@ -1797,6 +1941,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
             project,
             params,
             calibrationMap.get(c.sig.id),
+            pathTurnsByCandidate?.[i],
           ),
         );
 
@@ -1840,7 +1985,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // synthesize it for the back-compat fields so downstream consumers don't
   // crash.
   const pmReport = periodReports.find((p) => p.period === "pm_peak")
-    ?? (await synthesizePmReport(lu, req, candidates, effectiveWeights, project, growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates, studySet, dist.byDirection));
+    ?? (await synthesizePmReport(lu, req, candidates, effectiveWeights, project, growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, passByPct, internalCapturePct, rates, studySet, dist.byDirection, pathTurnsByCandidate));
 
   // Top-level back-compat trip-generation summary uses ORIGINAL (non-credited)
   // PM trips so the existing UI labels keep their meaning. Rates come from
@@ -1971,6 +2116,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     internalCapturePctApplied: internalCapturePct,
     autoModeShareApplied: autoModeShare,
     ...(routeAssignment ? { routeAssignment } : {}),
+    ...(conservedAssignment ? { conservedAssignment } : {}),
     ...(resolvedPtalBand ? { resolvedPtalBand } : {}),
     sensitivity: sens,
     junctionImpactSignificant,
@@ -2004,16 +2150,17 @@ async function synthesizePmReport(
   rates: ResolvedRates,
   studySet: Set<number>,
   distributionOctants?: Record<string, number>,
+  pathTurnsByCandidate?: Array<PathTurnShare[] | undefined>,
 ): Promise<PeriodReport> {
   const raw = periodRawTrips(lu, req.size, "pm_peak", rates);
   const passByCredit = raw * (passByPct / 100);
   const internalCredit = (raw - passByCredit) * (internalCapturePct / 100);
   const externalTrips = Math.max(0, raw - passByCredit - internalCredit);
   const inFraction = lu.directionalSplitPm.in;
-  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak, ...(distributionOctants ? { distributionOctants } : {}) };
+  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak, ...(distributionOctants ? { distributionOctants } : {}), ...(pathTurnsByCandidate ? { conservedLabeling: true } : {}) };
   const calibrationMap = await loadCalibrationMap();
   const allRows = candidates.map((c, i) =>
-    buildAffectedRow(c, loadWeights[i]!, project, params, calibrationMap.get(c.sig.id)),
+    buildAffectedRow(c, loadWeights[i]!, project, params, calibrationMap.get(c.sig.id), pathTurnsByCandidate?.[i]),
   );
   const rows = allRows.filter((_, i) => studySet.has(i));
   return {

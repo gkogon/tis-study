@@ -89,6 +89,8 @@ export interface TisRequest {
    * @minimum 0
    */
   existingSize?: number;
+  /** Opt-in conserved path assignment. Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v/c, delay and LOS at resolved intersections. Absent/false = legacy behavior, byte-identical output. */
+  conservedAssignment?: boolean;
   /**
    * Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).
    * @maxItems 12

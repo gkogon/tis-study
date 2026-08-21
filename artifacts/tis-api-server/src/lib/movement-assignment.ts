@@ -192,10 +192,26 @@ export function assignMovements(
     addedTrips,
     inFraction,
   );
-  const floors = rows.map((r) => Math.floor(r.exact * (total / addedTrips)));
+  return integerizeMovementLoads(rows, addedTrips, total);
+}
+
+/**
+ * Largest-remainder integerization of exact movement loads against a target
+ * total. Extracted from `assignMovements` so path-derived rows (conserved
+ * assignment) integerize through the SAME arithmetic as octant rows — two
+ * allocators would eventually disagree by ±1 and break the printed cross-foot.
+ * `assignMovements` delegates here; its output is unchanged.
+ */
+export function integerizeMovementLoads(
+  rows: MovementLoadExact[],
+  exactTotal: number,
+  total: number = Math.round(exactTotal),
+): MovementLoad[] {
+  if (!(exactTotal > 0) || total <= 0 || rows.length === 0) return [];
+  const floors = rows.map((r) => Math.floor(r.exact * (total / exactTotal)));
   let assigned = floors.reduce((s, v) => s + v, 0);
   const remainders = rows
-    .map((r, i) => ({ i, rem: r.exact * (total / addedTrips) - floors[i]! }))
+    .map((r, i) => ({ i, rem: r.exact * (total / exactTotal) - floors[i]! }))
     .sort((a, b) => b.rem - a.rem);
   for (const { i } of remainders) {
     if (assigned >= total) break;
@@ -207,4 +223,60 @@ export function assignMovements(
     .map((r, i) => ({ approach: r.approach, movement: r.movement, trips: floors[i]! }))
     .filter((r) => r.trips > 0)
     .sort((a, b) => b.trips - a.trips);
+}
+
+/**
+ * One geometric turn observed on the routed network, in SHARE units (fraction
+ * of total project demand making this turn at this junction, site→cordon
+ * direction). Direction-agnostic: the in/out split is applied later, per
+ * period, because inFraction differs between AM and PM.
+ */
+export type PathTurnShare = {
+  /** Compass bearing of travel INTO the junction (deg from north). */
+  enterBearingDeg: number;
+  /** Compass bearing of travel OUT of the junction. */
+  exitBearingDeg: number;
+  /** Fraction of project demand making this turn, 0..1. */
+  share: number;
+};
+
+/**
+ * Exact movement loads from path-derived turns — the conserved-assignment
+ * counterpart of `assignMovementLoadsExact`.
+ *
+ * The ledger's turns are recorded in the OUTBOUND (site→cordon) direction.
+ * Outbound trips make the turn as recorded, weighted (1 − inFraction).
+ * Inbound trips traverse the reverse path: they enter on the reverse of the
+ * recorded exit leg and leave on the reverse of the recorded entry leg,
+ * weighted inFraction. Same quantization (cardinal4) and movement rule
+ * (classify — U folded into L) as the octant path, deliberately: the two
+ * sources must agree about what "NB Left" means or the report contradicts
+ * itself between intersections with different movementSource.
+ */
+export function pathMovementLoadsExact(
+  turns: PathTurnShare[],
+  tripsScale: number,
+  inFraction: number,
+): MovementLoadExact[] {
+  const agg = new Map<string, MovementLoadExact>();
+  const add = (enterDir: number, exitDir: number, exact: number) => {
+    if (!(exact > 0)) return;
+    const approach = TRAVEL_DIR_NAME[enterDir]!;
+    const movement = classify(enterDir, exitDir);
+    const k = `${approach}-${movement}`;
+    const row = agg.get(k);
+    if (row) row.exact += exact;
+    else agg.set(k, { approach, movement, exact });
+  };
+  for (const t of turns) {
+    const enter4 = cardinal4(t.enterBearingDeg);
+    const exit4 = cardinal4(t.exitBearingDeg);
+    // Outbound: as recorded.
+    add(enter4, exit4, t.share * tripsScale * (1 - inFraction));
+    // Inbound mirror: reverse path, reverse legs.
+    add((exit4 + 180) % 360, (enter4 + 180) % 360, t.share * tripsScale * inFraction);
+  }
+  return [...agg.values()].sort(
+    (a, b) => b.exact - a.exact || a.approach.localeCompare(b.approach) || a.movement.localeCompare(b.movement),
+  );
 }
