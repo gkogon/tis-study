@@ -95,6 +95,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /utdf/parse-pdf:
+    post:
+      operationId: parseSynchroPdf
+      tags: [tis]
+      summary: Parse a Synchro report PDF into structured intersections
+      description: |
+        Accepts a Synchro report PDF — the printed report an engineer already
+        has in a study appendix (Timings, Queues, Lanes/Volumes/Timings and
+        HCM-styled intersection pages) — and returns the same parsed shape as
+        /utdf/parse. Synchro report PDFs carry intersection NAMES but no
+        coordinates, so the emitted utdfIntersections records have `name` +
+        `source: synchro_pdf` and no latitude/longitude; the engine matches
+        them to study intersections by normalized name at generate time.
+        The body is the raw PDF bytes (Content-Type: application/pdf), capped
+        at 25 MB / 800 pages; the server branches on the %PDF magic bytes —
+        a UTDF text file posted here still parses as UTDF text. Pages that
+        are not recognized Synchro report blocks are skipped with named
+        warnings, never silently. When the report contains multiple analysis
+        scenarios (Existing AM / Existing PM / Build ...), ONE scenario is
+        imported (PM preferred) and the skipped scenarios are named in
+        `scenariosSkipped` and `warnings`.
+      requestBody:
+        required: true
+        content:
+          application/pdf:
+            schema:
+              $ref: "#/components/schemas/SynchroPdfDocument"
+      responses:
+        "200":
+          description: Parsed Synchro report summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UtdfParseResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /land-uses:
     get:
       operationId: listTisLandUses
@@ -427,6 +467,15 @@ components:
           minLength: 1
           maxLength: 2000000
           description: Raw UTDF file text (client reads the file; no multipart).
+    SynchroPdfDocument:
+      type: string
+      description: >-
+        Raw bytes of a Synchro report PDF (Content-Type: application/pdf).
+        Capped at 25 MB and 800 pages; the server verifies the %PDF magic
+        bytes rather than trusting a filename or content type. (Declared as a
+        plain string rather than format: binary so the generated zod/types
+        libs stay DOM-free; the route reads the raw request body, not this
+        schema.)
     UtdfMovementValues:
       type: object
       description: >-
@@ -451,19 +500,34 @@ components:
     UtdfIntersectionData:
       type: object
       description: >-
-        Measured data for ONE intersection imported from a Synchro UTDF file —
-        the structured record the /utdf/parse endpoint emits and a TIS request
-        attaches as `utdfIntersections`. Coordinates are rounded to 4 decimals
-        (~11 m), well inside the ~0.35-mi study-point snap, so the engine
-        re-matches each record to the same inventory signal the imported study
-        point snapped to. Raw UTDF text is deliberately NOT carried on the
+        Measured data for ONE intersection imported from Synchro — either a
+        UTDF text export (/utdf/parse) or a Synchro report PDF
+        (/utdf/parse-pdf) — the structured record a TIS request attaches as
+        `utdfIntersections`. UTDF-text records carry coordinates, rounded to
+        4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the
+        engine re-matches each record to the same inventory signal the
+        imported study point snapped to. Synchro report PDFs carry NO
+        coordinates, so PDF-sourced records carry `name` +
+        `source: synchro_pdf` instead and the engine matches them to study
+        intersections by normalized intersection name at generate time
+        (coordinates keep priority whenever both are present). A record must
+        carry coordinates or a name; records with neither are ignored with a
+        loud warning. Raw file bytes are deliberately NOT carried on the
         generate request (reports echo the request into stored payloads).
-      required: [latitude, longitude, volumes]
+      required: [volumes]
       properties:
         intId:
           type: integer
           description: Synchro INTID from the source file (provenance only).
         name: { type: string }
+        source:
+          type: string
+          enum: [utdf_text, synchro_pdf]
+          description: >-
+            Which importer produced this record. Absent = utdf_text (legacy
+            records predate the field). synchro_pdf records are matched by
+            name and get the `synchro_pdf_tmc` volume-source provenance label
+            in the report.
         latitude: { type: number, minimum: -90, maximum: 90 }
         longitude: { type: number, minimum: -180, maximum: 180 }
         volumes:
@@ -521,6 +585,20 @@ components:
         utdfIntersections:
           type: array
           items: { $ref: "#/components/schemas/UtdfIntersectionData" }
+        # Which importer produced this result. Absent = utdf_text (the JSON
+        # /utdf/parse endpoint predates the field). synchro_pdf results carry
+        # name-only records plus the scenario fields below.
+        sourceFormat:
+          type: string
+          enum: [utdf_text, synchro_pdf]
+        # Synchro report PDFs print one page set per analysis scenario
+        # ("Scenario 1 - AM", "Existing PM", ...). ONE scenario is imported
+        # (PM preferred; see /utdf/parse-pdf) — these fields disclose which,
+        # and which page sets were skipped, so the choice is never silent.
+        scenarioUsed: { type: string }
+        scenariosSkipped:
+          type: array
+          items: { type: string }
         warnings:
           type: array
           items: { type: string }
@@ -657,10 +735,16 @@ components:
           maxItems: 60
           items: { $ref: "#/components/schemas/UtdfIntersectionData" }
           description: >-
-            Measured turning-movement data imported from a Synchro UTDF file
-            (the structured records /utdf/parse emits). Each record is snapped
-            server-side to the nearest study intersection within ~0.35 mi
-            (nearest record wins per signal); at matched intersections the
+            Measured turning-movement data imported from Synchro — a UTDF text
+            file (the records /utdf/parse emits) or a Synchro report PDF (the
+            records /utdf/parse-pdf emits). A record with coordinates is
+            snapped server-side to the nearest study intersection within
+            ~0.35 mi (nearest record wins per signal); a record without
+            coordinates but with a name (report PDFs carry no coordinates) is
+            matched by normalized intersection name, requiring an unambiguous
+            best match — ties and misses are disclosed in the payload's
+            utdfMatchSummary and logged, never silently dropped. At matched
+            intersections the
             measured volumes replace the AADT-derived existing volumes (growth
             still applies on top, PM is the measured anchor hour and other
             periods scale by the documented period factors), turn-bay storage
@@ -883,11 +967,15 @@ components:
         # = measured turning-movement counts imported from the engineer's
         # Synchro (UTDF) model replaced the AADT-derived design-hour estimate
         # (background growth still applied on top; the measurement anchors the
-        # PM peak and other periods scale by the period factors). Absent =
-        # AADT-derived estimate (legacy behavior, byte-identical payloads).
+        # PM peak and other periods scale by the period factors).
+        # "synchro_pdf_tmc" = the same substitution, but the counts came from
+        # an imported Synchro report PDF and the record was matched to this
+        # intersection by normalized name (report PDFs carry no coordinates).
+        # Absent = AADT-derived estimate (legacy behavior, byte-identical
+        # payloads).
         volumeSource:
           type: string
-          enum: [utdf_tmc]
+          enum: [utdf_tmc, synchro_pdf_tmc]
         # Field-measured existing turn-bay storage (ft) for the governing
         # movement, imported from the UTDF [Lanes] Storage record — activates
         # the storage-bay-adequacy comparison the renderers already gate on
@@ -1096,6 +1184,27 @@ components:
         - onNetworkPct
         - worstLinkVoverC
         - corridors
+    UtdfMatchSummary:
+      type: object
+      description: >-
+        How the request's imported `utdfIntersections` records attached to
+        study intersections. Present ONLY when the request carried at least
+        one record that needed name-based matching (a Synchro-report-PDF
+        record, or any record without usable coordinates) — legacy UTDF-text
+        studies and studies without imported data keep byte-identical
+        payloads. Coordinate matches use the ~0.35-mi nearest-signal snap;
+        name matches require an unambiguous normalized-name match among the
+        study candidates (ties and misses land in `unmatchedNames` and are
+        logged loudly, never silently dropped).
+      properties:
+        total: { type: integer }
+        matched: { type: integer }
+        matchedByCoordinates: { type: integer }
+        matchedByName: { type: integer }
+        unmatchedNames:
+          type: array
+          items: { type: string }
+      required: [total, matched, matchedByCoordinates, matchedByName, unmatchedNames]
     TisReport:
       type: object
       properties:
@@ -1174,6 +1283,8 @@ components:
             farthestDistanceMi: { type: number }
             message: { type: string }
           required: [code, radiusMi, usedCount, nearestDistanceMi, farthestDistanceMi, message]
+        utdfMatchSummary:
+          $ref: "#/components/schemas/UtdfMatchSummary"
       required:
         - generatedAt
         - request

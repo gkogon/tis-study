@@ -5,25 +5,28 @@
  * TIS (Traffic Impact Study) API specification — engineering-firm product surface.
  * OpenAPI spec version: 0.1.0
  */
+import type { UtdfIntersectionDataSource } from "./utdfIntersectionDataSource";
 import type { UtdfMovementValues } from "./utdfMovementValues";
 
 /**
- * Measured data for ONE intersection imported from a Synchro UTDF file — the structured record the /utdf/parse endpoint emits and a TIS request attaches as `utdfIntersections`. Coordinates are rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Raw UTDF text is deliberately NOT carried on the generate request (reports echo the request into stored payloads).
+ * Measured data for ONE intersection imported from Synchro — either a UTDF text export (/utdf/parse) or a Synchro report PDF (/utdf/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).
  */
 export interface UtdfIntersectionData {
   /** Synchro INTID from the source file (provenance only). */
   intId?: number;
   name?: string;
+  /** Which importer produced this record. Absent = utdf_text (legacy records predate the field). synchro_pdf records are matched by name and get the `synchro_pdf_tmc` volume-source provenance label in the report. */
+  source?: UtdfIntersectionDataSource;
   /**
    * @minimum -90
    * @maximum 90
    */
-  latitude: number;
+  latitude?: number;
   /**
    * @minimum -180
    * @maximum 180
    */
-  longitude: number;
+  longitude?: number;
   volumes: UtdfMovementValues;
   /**
    * Representative peak-hour factor (volume-weighted mean of the file's per-movement PHF records). Carried for provenance/auditability; the screening capacity model has no PHF input today.

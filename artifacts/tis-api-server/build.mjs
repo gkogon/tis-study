@@ -62,6 +62,11 @@ async function buildAll() {
       // node resolve their own transitive deps from node_modules.
       "pdfkit",
       "fontkit",
+      // pdfjs-dist lazily imports its own worker module by path at runtime;
+      // bundling would break that dynamic resolution, so node loads it from
+      // node_modules (it is pure JS with no required native deps).
+      "pdfjs-dist",
+      "pdfjs-dist/legacy/build/pdf.mjs",
       "better-sqlite3",
       "sqlite3",
       "canvas",

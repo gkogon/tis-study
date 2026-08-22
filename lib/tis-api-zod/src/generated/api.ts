@@ -276,14 +276,22 @@ export const GenerateTisBody = zod.object({
             .optional()
             .describe("Synchro INTID from the source file (provenance only)."),
           name: zod.string().optional(),
+          source: zod
+            .enum(["utdf_text", "synchro_pdf"])
+            .optional()
+            .describe(
+              "Which importer produced this record. Absent = utdf_text (legacy records predate the field). synchro_pdf records are matched by name and get the `synchro_pdf_tmc` volume-source provenance label in the report.",
+            ),
           latitude: zod
             .number()
             .min(generateTisBodyUtdfIntersectionsItemLatitudeMin)
-            .max(generateTisBodyUtdfIntersectionsItemLatitudeMax),
+            .max(generateTisBodyUtdfIntersectionsItemLatitudeMax)
+            .optional(),
           longitude: zod
             .number()
             .min(generateTisBodyUtdfIntersectionsItemLongitudeMin)
-            .max(generateTisBodyUtdfIntersectionsItemLongitudeMax),
+            .max(generateTisBodyUtdfIntersectionsItemLongitudeMax)
+            .optional(),
           volumes: zod
             .object({
               NBL: zod
@@ -419,13 +427,13 @@ export const GenerateTisBody = zod.object({
             ),
         })
         .describe(
-          "Measured data for ONE intersection imported from a Synchro UTDF file — the structured record the \/utdf\/parse endpoint emits and a TIS request attaches as `utdfIntersections`. Coordinates are rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Raw UTDF text is deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
+          "Measured data for ONE intersection imported from Synchro — either a UTDF text export (\/utdf\/parse) or a Synchro report PDF (\/utdf\/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
         ),
     )
     .max(generateTisBodyUtdfIntersectionsMax)
     .optional()
     .describe(
-      "Measured turning-movement data imported from a Synchro UTDF file (the structured records \/utdf\/parse emits). Each record is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); at matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.",
+      "Measured turning-movement data imported from Synchro — a UTDF text file (the records \/utdf\/parse emits) or a Synchro report PDF (the records \/utdf\/parse-pdf emits). A record with coordinates is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); a record without coordinates but with a name (report PDFs carry no coordinates) is matched by normalized intersection name, requiring an unambiguous best match — ties and misses are disclosed in the payload's utdfMatchSummary and logged, never silently dropped. At matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.",
     ),
   distributionMethod: zod
     .enum(["gravity", "analogy", "surrogate"])
@@ -768,14 +776,22 @@ export const GenerateTisResponse = zod.object({
                 "Synchro INTID from the source file (provenance only).",
               ),
             name: zod.string().optional(),
+            source: zod
+              .enum(["utdf_text", "synchro_pdf"])
+              .optional()
+              .describe(
+                "Which importer produced this record. Absent = utdf_text (legacy records predate the field). synchro_pdf records are matched by name and get the `synchro_pdf_tmc` volume-source provenance label in the report.",
+              ),
             latitude: zod
               .number()
               .min(generateTisResponseRequestUtdfIntersectionsItemLatitudeMin)
-              .max(generateTisResponseRequestUtdfIntersectionsItemLatitudeMax),
+              .max(generateTisResponseRequestUtdfIntersectionsItemLatitudeMax)
+              .optional(),
             longitude: zod
               .number()
               .min(generateTisResponseRequestUtdfIntersectionsItemLongitudeMin)
-              .max(generateTisResponseRequestUtdfIntersectionsItemLongitudeMax),
+              .max(generateTisResponseRequestUtdfIntersectionsItemLongitudeMax)
+              .optional(),
             volumes: zod
               .object({
                 NBL: zod
@@ -963,13 +979,13 @@ export const GenerateTisResponse = zod.object({
               ),
           })
           .describe(
-            "Measured data for ONE intersection imported from a Synchro UTDF file — the structured record the \/utdf\/parse endpoint emits and a TIS request attaches as `utdfIntersections`. Coordinates are rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Raw UTDF text is deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
+            "Measured data for ONE intersection imported from Synchro — either a UTDF text export (\/utdf\/parse) or a Synchro report PDF (\/utdf\/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
           ),
       )
       .max(generateTisResponseRequestUtdfIntersectionsMax)
       .optional()
       .describe(
-        "Measured turning-movement data imported from a Synchro UTDF file (the structured records \/utdf\/parse emits). Each record is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); at matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.",
+        "Measured turning-movement data imported from Synchro — a UTDF text file (the records \/utdf\/parse emits) or a Synchro report PDF (the records \/utdf\/parse-pdf emits). A record with coordinates is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); a record without coordinates but with a name (report PDFs carry no coordinates) is matched by normalized intersection name, requiring an unambiguous best match — ties and misses are disclosed in the payload's utdfMatchSummary and logged, never silently dropped. At matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.",
       ),
     distributionMethod: zod
       .enum(["gravity", "analogy", "surrogate"])
@@ -1148,7 +1164,7 @@ export const GenerateTisResponse = zod.object({
           }),
         )
         .optional(),
-      volumeSource: zod.enum(["utdf_tmc"]).optional(),
+      volumeSource: zod.enum(["utdf_tmc", "synchro_pdf_tmc"]).optional(),
       existingStorageFt: zod.number().optional(),
       storageMovement: zod.string().optional(),
       utdfCycleLenSec: zod.number().optional(),
@@ -1250,7 +1266,7 @@ export const GenerateTisResponse = zod.object({
               }),
             )
             .optional(),
-          volumeSource: zod.enum(["utdf_tmc"]).optional(),
+          volumeSource: zod.enum(["utdf_tmc", "synchro_pdf_tmc"]).optional(),
           existingStorageFt: zod.number().optional(),
           storageMovement: zod.string().optional(),
           utdfCycleLenSec: zod.number().optional(),
@@ -1414,6 +1430,18 @@ export const GenerateTisResponse = zod.object({
     .describe(
       "Present ONLY when the study radius contained no signalized intersection and the engine widened to the nearest-N fallback set (sparse rural\/exurban site). The study succeeded; this discloses that every analyzed intersection sits beyond the stated radius.",
     ),
+  utdfMatchSummary: zod
+    .object({
+      total: zod.number(),
+      matched: zod.number(),
+      matchedByCoordinates: zod.number(),
+      matchedByName: zod.number(),
+      unmatchedNames: zod.array(zod.string()),
+    })
+    .optional()
+    .describe(
+      "How the request's imported `utdfIntersections` records attached to study intersections. Present ONLY when the request carried at least one record that needed name-based matching (a Synchro-report-PDF record, or any record without usable coordinates) — legacy UTDF-text studies and studies without imported data keep byte-identical payloads. Coordinate matches use the ~0.35-mi nearest-signal snap; name matches require an unambiguous normalized-name match among the study candidates (ties and misses land in `unmatchedNames` and are logged loudly, never silently dropped).",
+    ),
 });
 
 /**
@@ -1523,14 +1551,22 @@ export const ParseUtdfFileResponse = zod.object({
             .optional()
             .describe("Synchro INTID from the source file (provenance only)."),
           name: zod.string().optional(),
+          source: zod
+            .enum(["utdf_text", "synchro_pdf"])
+            .optional()
+            .describe(
+              "Which importer produced this record. Absent = utdf_text (legacy records predate the field). synchro_pdf records are matched by name and get the `synchro_pdf_tmc` volume-source provenance label in the report.",
+            ),
           latitude: zod
             .number()
             .min(parseUtdfFileResponseUtdfIntersectionsItemLatitudeMin)
-            .max(parseUtdfFileResponseUtdfIntersectionsItemLatitudeMax),
+            .max(parseUtdfFileResponseUtdfIntersectionsItemLatitudeMax)
+            .optional(),
           longitude: zod
             .number()
             .min(parseUtdfFileResponseUtdfIntersectionsItemLongitudeMin)
-            .max(parseUtdfFileResponseUtdfIntersectionsItemLongitudeMax),
+            .max(parseUtdfFileResponseUtdfIntersectionsItemLongitudeMax)
+            .optional(),
           volumes: zod
             .object({
               NBL: zod
@@ -1666,10 +1702,302 @@ export const ParseUtdfFileResponse = zod.object({
             ),
         })
         .describe(
-          "Measured data for ONE intersection imported from a Synchro UTDF file — the structured record the \/utdf\/parse endpoint emits and a TIS request attaches as `utdfIntersections`. Coordinates are rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Raw UTDF text is deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
+          "Measured data for ONE intersection imported from Synchro — either a UTDF text export (\/utdf\/parse) or a Synchro report PDF (\/utdf\/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
         ),
     )
     .optional(),
+  sourceFormat: zod.enum(["utdf_text", "synchro_pdf"]).optional(),
+  scenarioUsed: zod.string().optional(),
+  scenariosSkipped: zod.array(zod.string()).optional(),
+  warnings: zod.array(zod.string()),
+});
+
+/**
+ * Accepts a Synchro report PDF — the printed report an engineer already
+has in a study appendix (Timings, Queues, Lanes/Volumes/Timings and
+HCM-styled intersection pages) — and returns the same parsed shape as
+/utdf/parse. Synchro report PDFs carry intersection NAMES but no
+coordinates, so the emitted utdfIntersections records have `name` +
+`source: synchro_pdf` and no latitude/longitude; the engine matches
+them to study intersections by normalized name at generate time.
+The body is the raw PDF bytes (Content-Type: application/pdf), capped
+at 25 MB / 800 pages; the server branches on the %PDF magic bytes —
+a UTDF text file posted here still parses as UTDF text. Pages that
+are not recognized Synchro report blocks are skipped with named
+warnings, never silently. When the report contains multiple analysis
+scenarios (Existing AM / Existing PM / Build ...), ONE scenario is
+imported (PM preferred) and the skipped scenarios are named in
+`scenariosSkipped` and `warnings`.
+
+ * @summary Parse a Synchro report PDF into structured intersections
+ */
+export const parseSynchroPdfResponseUtdfIntersectionsItemLatitudeMin = -90;
+export const parseSynchroPdfResponseUtdfIntersectionsItemLatitudeMax = 90;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemLongitudeMin = -180;
+export const parseSynchroPdfResponseUtdfIntersectionsItemLongitudeMax = 180;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemVolumesNBLMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemVolumesNBTMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemVolumesNBRMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemVolumesSBLMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemVolumesSBTMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemVolumesSBRMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemVolumesEBLMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemVolumesEBTMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemVolumesEBRMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemVolumesWBLMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemVolumesWBTMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemVolumesWBRMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemPhfMin = 0.25;
+export const parseSynchroPdfResponseUtdfIntersectionsItemPhfMax = 1;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemHvPctMin = 0;
+export const parseSynchroPdfResponseUtdfIntersectionsItemHvPctMax = 100;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtNBLMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtNBTMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtNBRMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtSBLMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtSBTMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtSBRMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtEBLMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtEBTMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtEBRMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtWBLMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtWBTMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtWBRMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemCycleLenSecMin = 30;
+export const parseSynchroPdfResponseUtdfIntersectionsItemCycleLenSecMax = 300;
+
+export const ParseSynchroPdfResponse = zod.object({
+  nodes: zod.array(
+    zod.object({
+      intId: zod.number(),
+      name: zod.string(),
+      latitude: zod.number().optional(),
+      longitude: zod.number().optional(),
+      hasVolumes: zod.boolean().optional(),
+    }),
+  ),
+  volumeIntersections: zod.number(),
+  laneIntersections: zod.number(),
+  timingIntersections: zod.number(),
+  utdfIntersections: zod
+    .array(
+      zod
+        .object({
+          intId: zod
+            .number()
+            .optional()
+            .describe("Synchro INTID from the source file (provenance only)."),
+          name: zod.string().optional(),
+          source: zod
+            .enum(["utdf_text", "synchro_pdf"])
+            .optional()
+            .describe(
+              "Which importer produced this record. Absent = utdf_text (legacy records predate the field). synchro_pdf records are matched by name and get the `synchro_pdf_tmc` volume-source provenance label in the report.",
+            ),
+          latitude: zod
+            .number()
+            .min(parseSynchroPdfResponseUtdfIntersectionsItemLatitudeMin)
+            .max(parseSynchroPdfResponseUtdfIntersectionsItemLatitudeMax)
+            .optional(),
+          longitude: zod
+            .number()
+            .min(parseSynchroPdfResponseUtdfIntersectionsItemLongitudeMin)
+            .max(parseSynchroPdfResponseUtdfIntersectionsItemLongitudeMax)
+            .optional(),
+          volumes: zod
+            .object({
+              NBL: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemVolumesNBLMin)
+                .optional(),
+              NBT: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemVolumesNBTMin)
+                .optional(),
+              NBR: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemVolumesNBRMin)
+                .optional(),
+              SBL: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemVolumesSBLMin)
+                .optional(),
+              SBT: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemVolumesSBTMin)
+                .optional(),
+              SBR: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemVolumesSBRMin)
+                .optional(),
+              EBL: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemVolumesEBLMin)
+                .optional(),
+              EBT: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemVolumesEBTMin)
+                .optional(),
+              EBR: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemVolumesEBRMin)
+                .optional(),
+              WBL: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemVolumesWBLMin)
+                .optional(),
+              WBT: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemVolumesWBTMin)
+                .optional(),
+              WBR: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemVolumesWBRMin)
+                .optional(),
+            })
+            .describe(
+              "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+            ),
+          phf: zod
+            .number()
+            .min(parseSynchroPdfResponseUtdfIntersectionsItemPhfMin)
+            .max(parseSynchroPdfResponseUtdfIntersectionsItemPhfMax)
+            .optional()
+            .describe(
+              "Representative peak-hour factor (volume-weighted mean of the file's per-movement PHF records). Carried for provenance\/auditability; the screening capacity model has no PHF input today.",
+            ),
+          hvPct: zod
+            .number()
+            .min(parseSynchroPdfResponseUtdfIntersectionsItemHvPctMin)
+            .max(parseSynchroPdfResponseUtdfIntersectionsItemHvPctMax)
+            .optional()
+            .describe(
+              "Representative heavy-vehicle % (volume-weighted mean of the file's per-movement records). Carried for provenance\/auditability; the screening capacity model has no heavy-vehicle input today.",
+            ),
+          storageFt: zod
+            .object({
+              NBL: zod
+                .number()
+                .min(
+                  parseSynchroPdfResponseUtdfIntersectionsItemStorageFtNBLMin,
+                )
+                .optional(),
+              NBT: zod
+                .number()
+                .min(
+                  parseSynchroPdfResponseUtdfIntersectionsItemStorageFtNBTMin,
+                )
+                .optional(),
+              NBR: zod
+                .number()
+                .min(
+                  parseSynchroPdfResponseUtdfIntersectionsItemStorageFtNBRMin,
+                )
+                .optional(),
+              SBL: zod
+                .number()
+                .min(
+                  parseSynchroPdfResponseUtdfIntersectionsItemStorageFtSBLMin,
+                )
+                .optional(),
+              SBT: zod
+                .number()
+                .min(
+                  parseSynchroPdfResponseUtdfIntersectionsItemStorageFtSBTMin,
+                )
+                .optional(),
+              SBR: zod
+                .number()
+                .min(
+                  parseSynchroPdfResponseUtdfIntersectionsItemStorageFtSBRMin,
+                )
+                .optional(),
+              EBL: zod
+                .number()
+                .min(
+                  parseSynchroPdfResponseUtdfIntersectionsItemStorageFtEBLMin,
+                )
+                .optional(),
+              EBT: zod
+                .number()
+                .min(
+                  parseSynchroPdfResponseUtdfIntersectionsItemStorageFtEBTMin,
+                )
+                .optional(),
+              EBR: zod
+                .number()
+                .min(
+                  parseSynchroPdfResponseUtdfIntersectionsItemStorageFtEBRMin,
+                )
+                .optional(),
+              WBL: zod
+                .number()
+                .min(
+                  parseSynchroPdfResponseUtdfIntersectionsItemStorageFtWBLMin,
+                )
+                .optional(),
+              WBT: zod
+                .number()
+                .min(
+                  parseSynchroPdfResponseUtdfIntersectionsItemStorageFtWBTMin,
+                )
+                .optional(),
+              WBR: zod
+                .number()
+                .min(
+                  parseSynchroPdfResponseUtdfIntersectionsItemStorageFtWBRMin,
+                )
+                .optional(),
+            })
+            .optional()
+            .describe(
+              "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+            ),
+          cycleLenSec: zod
+            .number()
+            .min(parseSynchroPdfResponseUtdfIntersectionsItemCycleLenSecMin)
+            .max(parseSynchroPdfResponseUtdfIntersectionsItemCycleLenSecMax)
+            .optional()
+            .describe(
+              "Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.",
+            ),
+        })
+        .describe(
+          "Measured data for ONE intersection imported from Synchro — either a UTDF text export (\/utdf\/parse) or a Synchro report PDF (\/utdf\/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
+        ),
+    )
+    .optional(),
+  sourceFormat: zod.enum(["utdf_text", "synchro_pdf"]).optional(),
+  scenarioUsed: zod.string().optional(),
+  scenariosSkipped: zod.array(zod.string()).optional(),
   warnings: zod.array(zod.string()),
 });
 
@@ -2193,6 +2521,12 @@ export const GetTisProjectResponse = zod
                       "Synchro INTID from the source file (provenance only).",
                     ),
                   name: zod.string().optional(),
+                  source: zod
+                    .enum(["utdf_text", "synchro_pdf"])
+                    .optional()
+                    .describe(
+                      "Which importer produced this record. Absent = utdf_text (legacy records predate the field). synchro_pdf records are matched by name and get the `synchro_pdf_tmc` volume-source provenance label in the report.",
+                    ),
                   latitude: zod
                     .number()
                     .min(
@@ -2200,7 +2534,8 @@ export const GetTisProjectResponse = zod
                     )
                     .max(
                       getTisProjectResponseRequestOneUtdfIntersectionsItemLatitudeMax,
-                    ),
+                    )
+                    .optional(),
                   longitude: zod
                     .number()
                     .min(
@@ -2208,7 +2543,8 @@ export const GetTisProjectResponse = zod
                     )
                     .max(
                       getTisProjectResponseRequestOneUtdfIntersectionsItemLongitudeMax,
-                    ),
+                    )
+                    .optional(),
                   volumes: zod
                     .object({
                       NBL: zod
@@ -2404,13 +2740,13 @@ export const GetTisProjectResponse = zod
                     ),
                 })
                 .describe(
-                  "Measured data for ONE intersection imported from a Synchro UTDF file — the structured record the \/utdf\/parse endpoint emits and a TIS request attaches as `utdfIntersections`. Coordinates are rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Raw UTDF text is deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
+                  "Measured data for ONE intersection imported from Synchro — either a UTDF text export (\/utdf\/parse) or a Synchro report PDF (\/utdf\/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
                 ),
             )
             .max(getTisProjectResponseRequestOneUtdfIntersectionsMax)
             .optional()
             .describe(
-              "Measured turning-movement data imported from a Synchro UTDF file (the structured records \/utdf\/parse emits). Each record is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); at matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.",
+              "Measured turning-movement data imported from Synchro — a UTDF text file (the records \/utdf\/parse emits) or a Synchro report PDF (the records \/utdf\/parse-pdf emits). A record with coordinates is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); a record without coordinates but with a name (report PDFs carry no coordinates) is matched by normalized intersection name, requiring an unambiguous best match — ties and misses are disclosed in the payload's utdfMatchSummary and logged, never silently dropped. At matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.",
             ),
           distributionMethod: zod
             .enum(["gravity", "analogy", "surrogate"])
@@ -2650,6 +2986,12 @@ export const GetTisProjectResponse = zod
                     "Synchro INTID from the source file (provenance only).",
                   ),
                 name: zod.string().optional(),
+                source: zod
+                  .enum(["utdf_text", "synchro_pdf"])
+                  .optional()
+                  .describe(
+                    "Which importer produced this record. Absent = utdf_text (legacy records predate the field). synchro_pdf records are matched by name and get the `synchro_pdf_tmc` volume-source provenance label in the report.",
+                  ),
                 latitude: zod
                   .number()
                   .min(
@@ -2657,7 +2999,8 @@ export const GetTisProjectResponse = zod
                   )
                   .max(
                     getTisProjectResponseResultRequestUtdfIntersectionsItemLatitudeMax,
-                  ),
+                  )
+                  .optional(),
                 longitude: zod
                   .number()
                   .min(
@@ -2665,7 +3008,8 @@ export const GetTisProjectResponse = zod
                   )
                   .max(
                     getTisProjectResponseResultRequestUtdfIntersectionsItemLongitudeMax,
-                  ),
+                  )
+                  .optional(),
                 volumes: zod
                   .object({
                     NBL: zod
@@ -2861,13 +3205,13 @@ export const GetTisProjectResponse = zod
                   ),
               })
               .describe(
-                "Measured data for ONE intersection imported from a Synchro UTDF file — the structured record the \/utdf\/parse endpoint emits and a TIS request attaches as `utdfIntersections`. Coordinates are rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Raw UTDF text is deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
+                "Measured data for ONE intersection imported from Synchro — either a UTDF text export (\/utdf\/parse) or a Synchro report PDF (\/utdf\/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
               ),
           )
           .max(getTisProjectResponseResultRequestUtdfIntersectionsMax)
           .optional()
           .describe(
-            "Measured turning-movement data imported from a Synchro UTDF file (the structured records \/utdf\/parse emits). Each record is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); at matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.",
+            "Measured turning-movement data imported from Synchro — a UTDF text file (the records \/utdf\/parse emits) or a Synchro report PDF (the records \/utdf\/parse-pdf emits). A record with coordinates is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); a record without coordinates but with a name (report PDFs carry no coordinates) is matched by normalized intersection name, requiring an unambiguous best match — ties and misses are disclosed in the payload's utdfMatchSummary and logged, never silently dropped. At matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.",
           ),
         distributionMethod: zod
           .enum(["gravity", "analogy", "surrogate"])
@@ -3054,7 +3398,7 @@ export const GetTisProjectResponse = zod
               }),
             )
             .optional(),
-          volumeSource: zod.enum(["utdf_tmc"]).optional(),
+          volumeSource: zod.enum(["utdf_tmc", "synchro_pdf_tmc"]).optional(),
           existingStorageFt: zod.number().optional(),
           storageMovement: zod.string().optional(),
           utdfCycleLenSec: zod.number().optional(),
@@ -3172,7 +3516,9 @@ export const GetTisProjectResponse = zod
                   }),
                 )
                 .optional(),
-              volumeSource: zod.enum(["utdf_tmc"]).optional(),
+              volumeSource: zod
+                .enum(["utdf_tmc", "synchro_pdf_tmc"])
+                .optional(),
               existingStorageFt: zod.number().optional(),
               storageMovement: zod.string().optional(),
               utdfCycleLenSec: zod.number().optional(),
@@ -3343,6 +3689,18 @@ export const GetTisProjectResponse = zod
         .optional()
         .describe(
           "Present ONLY when the study radius contained no signalized intersection and the engine widened to the nearest-N fallback set (sparse rural\/exurban site). The study succeeded; this discloses that every analyzed intersection sits beyond the stated radius.",
+        ),
+      utdfMatchSummary: zod
+        .object({
+          total: zod.number(),
+          matched: zod.number(),
+          matchedByCoordinates: zod.number(),
+          matchedByName: zod.number(),
+          unmatchedNames: zod.array(zod.string()),
+        })
+        .optional()
+        .describe(
+          "How the request's imported `utdfIntersections` records attached to study intersections. Present ONLY when the request carried at least one record that needed name-based matching (a Synchro-report-PDF record, or any record without usable coordinates) — legacy UTDF-text studies and studies without imported data keep byte-identical payloads. Coordinate matches use the ~0.35-mi nearest-signal snap; name matches require an unambiguous normalized-name match among the study candidates (ties and misses land in `unmatchedNames` and are logged loudly, never silently dropped).",
         ),
     }),
   })

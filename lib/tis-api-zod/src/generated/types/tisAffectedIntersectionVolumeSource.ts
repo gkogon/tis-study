@@ -11,4 +11,5 @@ export type TisAffectedIntersectionVolumeSource =
 
 export const TisAffectedIntersectionVolumeSource = {
   utdf_tmc: "utdf_tmc",
+  synchro_pdf_tmc: "synchro_pdf_tmc",
 } as const;

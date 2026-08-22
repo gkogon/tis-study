@@ -308,6 +308,108 @@ export const useParseUtdfFile = <
 };
 
 /**
+ * Accepts a Synchro report PDF — the printed report an engineer already
+has in a study appendix (Timings, Queues, Lanes/Volumes/Timings and
+HCM-styled intersection pages) — and returns the same parsed shape as
+/utdf/parse. Synchro report PDFs carry intersection NAMES but no
+coordinates, so the emitted utdfIntersections records have `name` +
+`source: synchro_pdf` and no latitude/longitude; the engine matches
+them to study intersections by normalized name at generate time.
+The body is the raw PDF bytes (Content-Type: application/pdf), capped
+at 25 MB / 800 pages; the server branches on the %PDF magic bytes —
+a UTDF text file posted here still parses as UTDF text. Pages that
+are not recognized Synchro report blocks are skipped with named
+warnings, never silently. When the report contains multiple analysis
+scenarios (Existing AM / Existing PM / Build ...), ONE scenario is
+imported (PM preferred) and the skipped scenarios are named in
+`scenariosSkipped` and `warnings`.
+
+ * @summary Parse a Synchro report PDF into structured intersections
+ */
+export const getParseSynchroPdfUrl = () => {
+  return `/tis-api/utdf/parse-pdf`;
+};
+
+export const parseSynchroPdf = async (
+  parseSynchroPdfBody: Blob,
+  options?: RequestInit,
+): Promise<UtdfParseResult> => {
+  return customFetch<UtdfParseResult>(getParseSynchroPdfUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/pdf", ...options?.headers },
+    body: JSON.stringify(parseSynchroPdfBody),
+  });
+};
+
+export const getParseSynchroPdfMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof parseSynchroPdf>>,
+    TError,
+    { data: BodyType<Blob> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof parseSynchroPdf>>,
+  TError,
+  { data: BodyType<Blob> },
+  TContext
+> => {
+  const mutationKey = ["parseSynchroPdf"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof parseSynchroPdf>>,
+    { data: BodyType<Blob> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return parseSynchroPdf(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ParseSynchroPdfMutationResult = NonNullable<
+  Awaited<ReturnType<typeof parseSynchroPdf>>
+>;
+export type ParseSynchroPdfMutationBody = BodyType<Blob>;
+export type ParseSynchroPdfMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Parse a Synchro report PDF into structured intersections
+ */
+export const useParseSynchroPdf = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof parseSynchroPdf>>,
+    TError,
+    { data: BodyType<Blob> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof parseSynchroPdf>>,
+  TError,
+  { data: BodyType<Blob> },
+  TContext
+> => {
+  return useMutation(getParseSynchroPdfMutationOptions(options));
+};
+
+/**
  * @summary ITE land-use catalog supported by the TIS generator
  */
 export const getListTisLandUsesUrl = () => {
