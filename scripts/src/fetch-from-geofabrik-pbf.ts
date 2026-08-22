@@ -1,25 +1,67 @@
 /**
- * Extract per-metro signals + roads from Geofabrik OSM PBF state extracts.
+ * Extract per-metro roads (and optionally signals) from Geofabrik OSM PBF
+ * state extracts — the no-rate-limit alternative to Overpass.
  *
- * Why this exists: Overpass API has been timing out (504/429) on bulk
- * regional queries during the 2026-05-27 expansion run. Geofabrik
- * publishes daily PBF snapshots per US state with no rate limits —
- * download once, parse locally, slice by metro bbox.
+ * Why this exists: Overpass API times out (504/429) on bulk regional
+ * queries — first during the 2026-05-27 expansion run, again during the
+ * 2026-08 residential/oneway refetch (main instance 504s, mirrors refusing
+ * connections). Geofabrik publishes daily PBF snapshots per US state with
+ * no rate limits — download once, filter locally with osmium, slice by
+ * metro bbox.
+ *
+ * OUTPUT FORMAT — must stay in lockstep with fetch-osm-roads.ts (the
+ * Overpass fetcher), which is the format's ground truth:
+ *
+ *   {
+ *     "classes": ["motorway","trunk","primary","secondary","tertiary",
+ *                 "residential","unclassified"],
+ *     "ways": [
+ *       [classCode, "Way Name", [[lat,lon], ...], lanes|null, maxspeedKmh|null, oneway],
+ *     ]
+ *   }
+ *
+ * The classes ARRAY ORDER is the classCode mapping — reordering it silently
+ * remaps every way's class downstream, so CLASSES here must be identical to
+ * fetch-osm-roads.ts, not merely same-membership. `oneway` is relative to
+ * way node order (1 = along, -1 = against, 0 = two-way); osmium's geojson
+ * export preserves node order in LineString coordinates, so the sign
+ * convention carries over from OSM unchanged (verified way-for-way against
+ * an Overpass-fetched region: identical polylines, identical oneway).
+ *
+ * Written as `<slug>-roads.json.gz` (gzip -9, same policy as
+ * fetch-osm-roads.ts): statewide raw JSON exceeds GitHub's 100MB per-file
+ * hard limit post-residential-refetch, so fresh fetches must never land
+ * raw. Readers prefer .gz; a stale raw twin is removed.
  *
  * Pipeline per state:
- *   1. osmium tags-filter <state>.osm.pbf n/highway=traffic_signals \
- *        → <state>-signals.geojson
- *   2. osmium tags-filter <state>.osm.pbf w/highway=motorway,trunk,...,tertiary \
- *        → <state>-roads.geojson  (with named only)
- *   3. Stream-parse the geojson; for each metro in this state, filter by
- *      its bbox + write the existing schema
- *      (compact tuple <slug>-signals.json + classes/ways <slug>-roads.json).
+ *   1. osmium tags-filter <state>.osm.pbf w/highway=motorway,...,residential,
+ *        unclassified (+ _link variants) → <state>-roads-v2.osm.pbf
+ *   2. osmium export -f geojsonseq → <state>-roads-v2.geojsonseq
+ *      (line-delimited: a statewide roads-with-residential geojson can
+ *      exceed V8's ~512MB max string length, so the FeatureCollection
+ *      format cannot even be read; geojsonseq streams line by line)
+ *   3. Stream the features; for each requested metro in this state, filter
+ *      by bbox and write <slug>-roads.json.gz.
  *
- * Run: pnpm --filter @workspace/scripts exec tsx src/fetch-from-geofabrik-pbf.ts
+ * The intermediate *-v2* files are versioned because pre-2026-08 runs left
+ * tertiary-and-up extracts (<state>-roads.geojson) in /tmp/geofabrik_pbf;
+ * reusing those would silently drop residential/unclassified/oneway.
+ *
+ * Signals extraction is OPT-IN via --signals: the shipped `<slug>-signals.json`
+ * files key AADT tuples by id (append-only invariant, cf. PR #82), so a road
+ * refetch must not rewrite them as a side effect.
+ *
+ * Run:
+ *   pnpm --filter @workspace/scripts exec tsx src/fetch-from-geofabrik-pbf.ts charlotte_metro
+ *   pnpm --filter @workspace/scripts exec tsx src/fetch-from-geofabrik-pbf.ts \
+ *     --out-dir /tmp/roads_out georgia_statewide          # validation runs
+ *   pnpm --filter @workspace/scripts exec tsx src/fetch-from-geofabrik-pbf.ts \
+ *     --signals savannah_metro                            # also rewrite signals
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, statSync, rmSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { createInterface } from "node:readline";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { REGIONS, type RegionCode } from "../../artifacts/tis-api-server/src/lib/regions";
@@ -27,16 +69,18 @@ import { gzipJson } from "./road-file-io";
 
 const PBF_DIR = "/tmp/geofabrik_pbf";
 
-// Which metros pull from which state PBFs. For metros that span state lines
-// we include all relevant states (Chattanooga TN+GA, Memphis TN+MS+AR,
-// Louisville KY+IN, etc.). When a state's PBF isn't downloaded, signals/
-// roads outside the primary state are silently missing — those edge areas
-// of the metro will have lower coverage.
-const STATES: Record<string, RegionCode[]> = {
-  florida: ["jacksonville_metro", "pensacola_metro", "fort_lauderdale_metro", "west_palm_beach_metro", "daytona_beach_metro", "lakeland_metro", "tallahassee_metro", "fort_myers_metro", "sarasota_metro", "florida_statewide"],
+// Which metros pull from which state PBFs. Single primary state per metro:
+// processState() WRITES the metro's file, so listing a metro under two
+// states would make whichever state runs last overwrite the other's slice.
+// For metros that straddle a state line (Charlotte NC/SC, Chattanooga TN/GA,
+// Memphis TN/MS/AR, ...) the out-of-state edge of the bbox is therefore
+// missing from a Geofabrik fetch — those edges only get full coverage from
+// the Overpass path, which queries by bbox not by state.
+export const STATES: Record<string, RegionCode[]> = {
+  florida: ["jacksonville_metro", "pensacola_metro", "fort_lauderdale_metro", "west_palm_beach_metro", "daytona_beach_metro", "lakeland_metro", "tallahassee_metro", "fort_myers_metro", "sarasota_metro", "florida_statewide", "tampa_metro", "orlando_metro", "miami_dade_metro"],
   georgia: ["savannah_metro", "augusta_metro", "macon_metro", "georgia_statewide"],
-  tennessee: ["memphis_metro", "knoxville_metro", "chattanooga_metro"],
-  "north-carolina": ["asheville_metro", "wilmington_metro", "triad_metro", "fayetteville_metro", "greenville_nc_metro"],
+  tennessee: ["memphis_metro", "knoxville_metro", "chattanooga_metro", "nashville_metro"],
+  "north-carolina": ["asheville_metro", "wilmington_metro", "triad_metro", "fayetteville_metro", "greenville_nc_metro", "charlotte_metro", "raleigh_durham_metro"],
   "south-carolina": ["charleston_sc_metro", "columbia_sc_metro", "greenville_spartanburg_metro", "south_carolina_statewide"],
   alabama: ["birmingham_metro", "mobile_metro", "huntsville_metro"],
   virginia: ["hampton_roads_metro", "richmond_metro", "roanoke_metro", "charlottesville_metro"],
@@ -87,8 +131,6 @@ const STATES: Record<string, RegionCode[]> = {
   alaska: ["anchorage_metro"],
   hawaii: ["honolulu_metro"],
   // ── Tier-8: Canada (Geofabrik publishes per-province under north-america/canada/) ──
-  // Path uses canadian state name only; the prefix `canada/` is added by the
-  // download URL constructor when state has no US equivalent (see script).
   ontario: ["toronto_metro", "ottawa_metro", "hamilton_metro"],
   quebec: ["montreal_metro", "quebec_city_metro"],
   "british-columbia": ["vancouver_metro"],
@@ -100,19 +142,51 @@ const STATES: Record<string, RegionCode[]> = {
   "great-britain": ["london_metro", "manchester_uk_metro", "birmingham_uk_metro", "glasgow_metro", "edinburgh_metro", "leeds_metro", "bristol_metro"],
 };
 
-const ROAD_HIGHWAYS = [
-  "motorway", "trunk", "primary", "secondary", "tertiary",
-  "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link",
-];
-const ROAD_CLASS_CODE = new Map<string, number>([
-  ["motorway", 0], ["trunk", 1], ["primary", 2], ["secondary", 3], ["tertiary", 4],
-]);
+/** Geofabrik download path for a STATES key (relative to download.geofabrik.de). */
+export function geofabrikPath(state: string): string {
+  const CANADA = new Set(["ontario", "quebec", "british-columbia", "alberta", "manitoba", "nova-scotia"]);
+  if (CANADA.has(state)) return `north-america/canada/${state}-latest.osm.pbf`;
+  if (state === "mexico") return `north-america/mexico-latest.osm.pbf`;
+  if (state === "great-britain") return `europe/great-britain-latest.osm.pbf`;
+  return `north-america/us/${state}-latest.osm.pbf`;
+}
+
+// MUST match fetch-osm-roads.ts exactly — array order IS the classCode
+// mapping baked into every shipped file. Same-membership is not enough.
+const CLASSES = [
+  "motorway",
+  "trunk",
+  "primary",
+  "secondary",
+  "tertiary",
+  "residential",
+  "unclassified",
+] as const;
+const CLASS_CODE = new Map(CLASSES.map((c, i) => [c, i] as const));
+
+type Bounds = { latMin: number; latMax: number; lonMin: number; lonMax: number };
 
 type GeoJsonFeature = {
   type: "Feature";
   geometry: { type: "Point" | "LineString" | "MultiLineString"; coordinates: number[] | number[][] | number[][][] };
   properties: Record<string, unknown>;
 };
+
+/**
+ * One-way direction relative to the way's own node order:
+ *   1  traffic flows first-node -> last-node
+ *  -1  traffic flows last-node -> first-node ("oneway=-1")
+ *   0  two-way
+ * (Copied from fetch-osm-roads.ts — value parity is load-bearing for the
+ * router; "reversible"/"alternating" fall through to 0 there too.)
+ */
+function parseOneway(raw: string | undefined): number {
+  if (!raw) return 0;
+  const v = raw.trim().toLowerCase();
+  if (v === "yes" || v === "true" || v === "1") return 1;
+  if (v === "-1" || v === "reverse") return -1;
+  return 0;
+}
 
 /** OSM `lanes` is total both-directions; values like "2", "3", "2;3" occur.
  *  Take the max of any ;-separated list. Returns null when untagged/unparseable.
@@ -145,82 +219,93 @@ function osmium(args: string): void {
   execSync(cmd, { stdio: "inherit" });
 }
 
-/** Extract signals + roads geojson per state via osmium. Idempotent (skips if file exists). */
-function extractState(state: string): { signalsGeoJson: string; roadsGeoJson: string } | null {
+/**
+ * Roads extract for one state: tags-filter → geojsonseq. Idempotent (skips
+ * existing files). Filenames carry -v2 because pre-2026-08 intermediates in
+ * PBF_DIR were tertiary-and-up; reusing them would silently drop the
+ * residential/unclassified classes this refetch exists to add.
+ */
+function extractStateRoads(state: string): string | null {
   const pbf = path.join(PBF_DIR, `${state}.osm.pbf`);
   if (!existsSync(pbf)) {
     console.warn(`  ✗ ${state}: PBF not downloaded (${pbf})`);
     return null;
   }
-  const sgj = path.join(PBF_DIR, `${state}-signals.geojson`);
-  const rgj = path.join(PBF_DIR, `${state}-roads.geojson`);
+  const seq = path.join(PBF_DIR, `${state}-roads-v2.geojsonseq`);
+  if (existsSync(seq)) {
+    console.log(`  (roads geojsonseq already exists for ${state}; skipping extract)`);
+    return seq;
+  }
+  const tmpPbf = path.join(PBF_DIR, `${state}-roads-v2.osm.pbf`);
+  if (!existsSync(tmpPbf)) {
+    const expr = CLASSES.flatMap((h) => [`w/highway=${h}`, `w/highway=${h}_link`]).join(" ");
+    osmium(`tags-filter --overwrite -o "${tmpPbf}" "${pbf}" ${expr}`);
+  }
+  osmium(`export --overwrite -o "${seq}" -f geojsonseq "${tmpPbf}"`);
+  return seq;
+}
 
-  if (!existsSync(sgj)) {
-    // osmium tags-filter outputs OSM PBF only; geojson must be a 2-step.
-    const sigPbf = path.join(PBF_DIR, `${state}-signals.osm.pbf`);
-    if (!existsSync(sigPbf)) {
-      osmium(`tags-filter --overwrite -o "${sigPbf}" "${pbf}" n/highway=traffic_signals`);
-    }
-    osmium(`export --overwrite -o "${sgj}" -f geojson "${sigPbf}"`);
-  } else {
+/** Signals extract for one state (opt-in; see --signals). */
+function extractStateSignals(state: string): string | null {
+  const pbf = path.join(PBF_DIR, `${state}.osm.pbf`);
+  if (!existsSync(pbf)) return null;
+  const sgj = path.join(PBF_DIR, `${state}-signals.geojson`);
+  if (existsSync(sgj)) {
     console.log(`  (signals geojson already exists for ${state}; skipping extract)`);
+    return sgj;
   }
-  if (!existsSync(rgj)) {
-    const tmpPbf = path.join(PBF_DIR, `${state}-roads.osm.pbf`);
-    if (!existsSync(tmpPbf)) {
-      const expr = ROAD_HIGHWAYS.map((h) => `w/highway=${h}`).join(" ");
-      osmium(`tags-filter --overwrite -o "${tmpPbf}" "${pbf}" ${expr}`);
-    }
-    osmium(`export --overwrite -o "${rgj}" -f geojson "${tmpPbf}"`);
-  } else {
-    console.log(`  (roads geojson already exists for ${state}; skipping extract)`);
+  const sigPbf = path.join(PBF_DIR, `${state}-signals.osm.pbf`);
+  if (!existsSync(sigPbf)) {
+    osmium(`tags-filter --overwrite -o "${sigPbf}" "${pbf}" n/highway=traffic_signals`);
   }
-  return { signalsGeoJson: sgj, roadsGeoJson: rgj };
+  osmium(`export --overwrite -o "${sgj}" -f geojson "${sigPbf}"`);
+  return sgj;
 }
 
 /** Test if a point is inside a bbox. */
-function inBbox(lat: number, lon: number, b: { latMin: number; latMax: number; lonMin: number; lonMax: number }): boolean {
+function inBbox(lat: number, lon: number, b: Bounds): boolean {
   return lat >= b.latMin && lat <= b.latMax && lon >= b.lonMin && lon <= b.lonMax;
 }
 
 /** Test if a LineString intersects a bbox (cheap envelope test). */
-function lineIntersectsBbox(coords: number[][], b: { latMin: number; latMax: number; lonMin: number; lonMax: number }): boolean {
+function lineIntersectsBbox(coords: number[][], b: Bounds): boolean {
   let lineLatMin = Infinity, lineLatMax = -Infinity, lineLonMin = Infinity, lineLonMax = -Infinity;
   for (const [lon, lat] of coords) {
-    if (lat < lineLatMin) lineLatMin = lat;
-    if (lat > lineLatMax) lineLatMax = lat;
-    if (lon < lineLonMin) lineLonMin = lon;
-    if (lon > lineLonMax) lineLonMax = lon;
+    if (lat! < lineLatMin) lineLatMin = lat!;
+    if (lat! > lineLatMax) lineLatMax = lat!;
+    if (lon! < lineLonMin) lineLonMin = lon!;
+    if (lon! > lineLonMax) lineLonMax = lon!;
   }
   return !(lineLatMax < b.latMin || lineLatMin > b.latMax || lineLonMax < b.lonMin || lineLonMin > b.lonMax);
 }
 
 /**
- * Stream-parse a geojson file. Files can be huge (>100MB for a state's
- * roads), so we parse one feature at a time rather than loading whole JSON.
- * osmium's geojson format writes one feature per line OR a FeatureCollection.
- * We probe and pick the right strategy.
+ * Stream features from an osmium geojsonseq file (RFC 8142: one feature per
+ * line, each prefixed with RS \x1e). Statewide roads-with-residential output
+ * runs to multiple GB — past V8's max string length — so whole-file parsing
+ * is not an option, and neither is the FeatureCollection format.
  */
-function parseGeoJsonFeatures(filePath: string): GeoJsonFeature[] {
-  // For simplicity, load whole file. Geofabrik PBFs are ~280MB; the filtered
-  // geojsons are far smaller (signals ~few MB, roads ~50-150MB). Node can
-  // handle this in ~2-4GB heap; if we hit limits we'll switch to streaming.
-  const sizeMB = statSync(filePath).size / 1024 / 1024;
-  console.log(`  reading ${filePath} (${sizeMB.toFixed(1)} MB)`);
-  const text = readFileSync(filePath, "utf8");
-  // osmium produces a FeatureCollection OR line-delimited features depending
-  // on options. Try FeatureCollection first.
-  const trimmed = text.trim();
+async function* streamFeatures(filePath: string): AsyncGenerator<GeoJsonFeature> {
+  const rl = createInterface({ input: createReadStream(filePath), crlfDelay: Infinity });
+  for await (const line of rl) {
+    const l = (line.charCodeAt(0) === 0x1e ? line.slice(1) : line).trim();
+    if (!l) continue;
+    try {
+      const f = JSON.parse(l) as GeoJsonFeature;
+      if (f.type === "Feature") yield f;
+    } catch { /* skip malformed line */ }
+  }
+}
+
+/** Parse a whole (small) geojson file — signals only, a few MB per state. */
+function readFeatures(filePath: string): GeoJsonFeature[] {
+  const trimmed = readFileSync(filePath, "utf8").trim();
   if (trimmed.startsWith("{")) {
     try {
       const obj = JSON.parse(trimmed) as { features?: GeoJsonFeature[]; type?: string };
       if (obj.type === "FeatureCollection" && Array.isArray(obj.features)) return obj.features;
-      if ((obj as GeoJsonFeature).type === "Feature") return [obj as unknown as GeoJsonFeature];
-    } catch {
-      // Fall through to line-delimited
-    }
+    } catch { /* fall through */ }
   }
-  // Line-delimited GeoJSON: one feature per line
   const out: GeoJsonFeature[] = [];
   for (const line of trimmed.split("\n")) {
     const l = line.trim();
@@ -228,109 +313,167 @@ function parseGeoJsonFeatures(filePath: string): GeoJsonFeature[] {
     try {
       const f = JSON.parse(l) as GeoJsonFeature;
       if (f.type === "Feature") out.push(f);
-    } catch { /* skip malformed */ }
+    } catch { /* skip */ }
   }
   return out;
 }
 
-/** Run the pipeline for one state: extract → split per metro → write outputs. */
-function processState(state: string, metros: RegionCode[]): void {
+function regionSlug(code: RegionCode): string {
+  return code.replace(/_metro$/, "").replace(/_/g, "-");
+}
+
+type MetroAcc = {
+  code: RegionCode;
+  slug: string;
+  bounds: Bounds;
+  /** Per-way tuples pre-serialized: keeps peak memory ≈ output size instead
+   *  of a full object graph (statewide ways run to hundreds of MB). */
+  parts: string[];
+  byClass: Record<string, number>;
+};
+
+/** Run the roads pipeline for one state: extract → stream-split per metro → write .json.gz. */
+async function processStateRoads(state: string, metros: RegionCode[], outDir: string): Promise<void> {
   console.log(`\n=== ${state} → metros: ${metros.join(", ")} ===`);
-  const extracted = extractState(state);
-  if (!extracted) return;
+  const seq = extractStateRoads(state);
+  if (!seq) return;
 
-  // ── Signals ────────────────────────────────────────────────────────
-  const signalFeatures = parseGeoJsonFeatures(extracted.signalsGeoJson);
-  console.log(`  ${signalFeatures.length} signals in ${state} statewide`);
-
-  // ── Roads ──────────────────────────────────────────────────────────
-  const roadFeatures = parseGeoJsonFeatures(extracted.roadsGeoJson);
-  console.log(`  ${roadFeatures.length} road features in ${state} statewide`);
-
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const dataDir = path.resolve(__dirname, "../../artifacts/api-server/src/data");
-
+  const accs: MetroAcc[] = [];
   for (const metro of metros) {
     const region = REGIONS[metro];
-    if (!region) continue;
+    if (!region) { console.warn(`  ✗ unknown region ${metro}`); continue; }
     const b = region.bounds;
-    const slug = metro.replace(/_metro$/, "").replace(/_/g, "-");
+    if (b.latMin === 0 && b.latMax === 0) { console.warn(`  ✗ ${metro} has placeholder bounds; fill in regions.ts first`); continue; }
+    accs.push({ code: metro, slug: regionSlug(metro), bounds: b, parts: [], byClass: {} });
+  }
+  if (accs.length === 0) return;
 
-    // Signals → tuple format
-    const sigOut: Array<[number, number, number, string | null, number]> = [];
-    for (const f of signalFeatures) {
-      if (f.geometry.type !== "Point") continue;
-      const [lon, lat] = f.geometry.coordinates as [number, number];
-      if (!inBbox(lat, lon, b)) continue;
-      const id = parseInt(String((f.properties as { "@id"?: string; id?: number })["@id"] ?? f.properties.id ?? 0), 10) || sigOut.length;
-      const name = (f.properties.name as string | undefined) ?? null;
-      sigOut.push([id, Math.round(lat * 1e5) / 1e5, Math.round(lon * 1e5) / 1e5, name, 2]);
+  let features = 0;
+  for await (const f of streamFeatures(seq)) {
+    features++;
+    if (features % 500000 === 0) console.log(`  … ${features} features streamed`);
+    // Named ways only — parity with fetch-osm-roads.ts, whose Overpass query
+    // filters on ["name"]. The roads file backs cross-street naming; unnamed
+    // service stubs would bloat it without naming value.
+    const name = (f.properties.name as string | undefined)?.trim();
+    if (!name) continue;
+    const highway = f.properties.highway as string | undefined;
+    if (!highway) continue;
+    const baseClass = highway.endsWith("_link") ? highway.slice(0, -5) : highway;
+    const code = CLASS_CODE.get(baseClass as (typeof CLASSES)[number]);
+    if (code === undefined) continue;
+    const lanes = parseLanes(f.properties.lanes as string | undefined);
+    const maxspeed = parseMaxspeedKmh(f.properties.maxspeed as string | undefined);
+    const oneway = parseOneway(f.properties.oneway as string | undefined);
+
+    // Geometry: LineString, or MultiLineString (each part becomes a way tuple).
+    // osmium export preserves way node order in coordinates, so `oneway`'s
+    // sign stays relative to the emitted polyline order — same convention as
+    // the Overpass path.
+    const geoms: number[][][] = [];
+    if (f.geometry.type === "LineString") {
+      geoms.push(f.geometry.coordinates as number[][]);
+    } else if (f.geometry.type === "MultiLineString") {
+      for (const part of f.geometry.coordinates as number[][][]) geoms.push(part);
+    } else {
+      continue;
     }
-    const sigPath = path.join(dataDir, `${slug}-signals.json`);
-    writeFileSync(sigPath, JSON.stringify(sigOut));
-    console.log(`  ✔ ${slug}: ${sigOut.length} signals → ${sigPath}`);
 
-    // Roads → {classes, ways} format with named ways only. Length-5
-    // tuples [code, name, polyline, lanes|null, maxspeedKmh|null] —
-    // same shape fetch-osm-roads.ts writes; readers accept length ≥ 3.
-    const ways: unknown[] = [];
-    const byClass: Record<string, number> = {};
-    for (const f of roadFeatures) {
-      const name = (f.properties.name as string | undefined)?.trim();
-      if (!name) continue;
-      const highway = f.properties.highway as string | undefined;
-      if (!highway) continue;
-      const baseClass = highway.endsWith("_link") ? highway.slice(0, -5) : highway;
-      const code = ROAD_CLASS_CODE.get(baseClass);
-      if (code === undefined) continue;
-      const lanes = parseLanes(f.properties.lanes as string | undefined);
-      const maxspeed = parseMaxspeedKmh(f.properties.maxspeed as string | undefined);
-
-      // Geometry: could be LineString or MultiLineString
-      const geoms: number[][][] = [];
-      if (f.geometry.type === "LineString") {
-        geoms.push(f.geometry.coordinates as number[][]);
-      } else if (f.geometry.type === "MultiLineString") {
-        for (const part of f.geometry.coordinates as number[][][]) geoms.push(part);
-      } else {
-        continue;
-      }
-
-      for (const g of geoms) {
-        if (g.length < 2) continue;
-        if (!lineIntersectsBbox(g, b)) continue;
-        // Round to 5 decimals (~1.1m precision) to save bundle size.
+    for (const g of geoms) {
+      if (g.length < 2) continue;
+      for (const acc of accs) {
+        if (!lineIntersectsBbox(g, acc.bounds)) continue;
+        // Round to 5 decimals (~1.1m precision) to save bundle size — same
+        // rounding as fetch-osm-roads.ts.
         const polyline = g.map(([lon, lat]) => [
           Math.round((lat as number) * 1e5) / 1e5,
           Math.round((lon as number) * 1e5) / 1e5,
         ]);
-        ways.push([code, name, polyline, lanes, maxspeed]);
-        byClass[baseClass] = (byClass[baseClass] ?? 0) + 1;
+        acc.parts.push(JSON.stringify([code, name, polyline, lanes, maxspeed, oneway]));
+        acc.byClass[baseClass] = (acc.byClass[baseClass] ?? 0) + 1;
       }
     }
-    const roadOut = { classes: ["motorway", "trunk", "primary", "secondary", "tertiary"], ways };
-    // Written as .json.gz — same policy as fetch-osm-roads.ts: fresh fetches
-    // must never land raw (florida_statewide raw would blow GitHub's 100MB
-    // per-file limit post-residential-refetch). Readers prefer .gz, so a
-    // stale raw twin is pure liability and is removed.
-    const roadPath = path.join(dataDir, `${slug}-roads.json.gz`);
-    writeFileSync(roadPath, gzipJson(JSON.stringify(roadOut)));
-    const rawTwin = path.join(dataDir, `${slug}-roads.json`);
+  }
+  console.log(`  ${features} road features in ${state} statewide`);
+
+  mkdirSync(outDir, { recursive: true });
+  for (const acc of accs) {
+    // Assemble the document textually: identical bytes to JSON.stringify of
+    // the equivalent object, without materializing the object graph.
+    const json = `{"classes":${JSON.stringify([...CLASSES])},"ways":[${acc.parts.join(",")}]}`;
+    const roadPath = path.join(outDir, `${acc.slug}-roads.json.gz`);
+    writeFileSync(roadPath, gzipJson(json));
+    // Same policy as fetch-osm-roads.ts: readers prefer .gz, so a stale raw
+    // twin is pure liability (shadow-confuses tooling, risks a >100MB commit).
+    const rawTwin = path.join(outDir, `${acc.slug}-roads.json`);
     if (existsSync(rawTwin)) {
       rmSync(rawTwin);
       console.log(`  (removed stale raw twin ${rawTwin})`);
     }
-    console.log(`  ✔ ${slug}: ${ways.length} ways (${JSON.stringify(byClass)}) → ${roadPath}`);
+    console.log(`  ✔ ${acc.slug}: ${acc.parts.length} ways (${JSON.stringify(acc.byClass)}) → ${roadPath}`);
   }
 }
 
-function main(): void {
-  // Optional CLI filter: metro codes. When given, only those metros are
-  // written and only their states' PBFs are required — a full-state run
-  // would otherwise rebuild every sibling metro's signals/roads files,
-  // breaking the tuple-id keying their <slug>-aadt.json depends on
-  // (append-only invariant, cf. PR #82).
-  const wanted = new Set(process.argv.slice(2) as RegionCode[]);
+/** Signals pipeline for one state (opt-in). Same tuple shape as before:
+ *  [id, lat, lon, name|null, 2]. */
+async function processStateSignals(state: string, metros: RegionCode[], outDir: string): Promise<void> {
+  const sgj = extractStateSignals(state);
+  if (!sgj) return;
+  const signalFeatures = readFeatures(sgj);
+  console.log(`  ${signalFeatures.length} signals in ${state} statewide`);
+  mkdirSync(outDir, { recursive: true });
+  for (const metro of metros) {
+    const region = REGIONS[metro];
+    if (!region) continue;
+    const b = region.bounds;
+    const slug = regionSlug(metro);
+    const sigOut: Array<[number, number, number, string | null, number]> = [];
+    for (const f of signalFeatures) {
+      if (f.geometry.type !== "Point") continue;
+      const [lon, lat] = f.geometry.coordinates as [number, number];
+      if (!inBbox(lat!, lon!, b)) continue;
+      const id = parseInt(String((f.properties as { "@id"?: string; id?: number })["@id"] ?? f.properties.id ?? 0), 10) || sigOut.length;
+      const name = (f.properties.name as string | undefined) ?? null;
+      sigOut.push([id, Math.round(lat! * 1e5) / 1e5, Math.round(lon! * 1e5) / 1e5, name, 2]);
+    }
+    const sigPath = path.join(outDir, `${slug}-signals.json`);
+    writeFileSync(sigPath, JSON.stringify(sigOut));
+    console.log(`  ✔ ${slug}: ${sigOut.length} signals → ${sigPath}`);
+  }
+}
+
+async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  const wantSignals = args.includes("--signals");
+  let outDir: string | null = null;
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === "--signals") continue;
+    if (a === "--out-dir") {
+      outDir = args[++i] ?? null;
+      if (!outDir) { console.error("--out-dir requires a directory argument"); process.exit(2); }
+      continue;
+    }
+    if (a.startsWith("--")) { console.error(`Unknown flag: ${a}`); process.exit(2); }
+    positional.push(a);
+  }
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const resolvedOutDir = outDir
+    ? path.resolve(outDir)
+    : path.resolve(__dirname, "../../artifacts/api-server/src/data");
+
+  // Metro-code filter. When given, only those metros are written and only
+  // their states' PBFs are required — a full-state run would otherwise
+  // rebuild every sibling metro's files. With --signals that would break the
+  // tuple-id keying their <slug>-aadt.json depends on (append-only
+  // invariant, cf. PR #82); running road-only unfiltered is merely slow.
+  const wanted = new Set(positional as RegionCode[]);
+  const unknownWanted = positional.filter((m) => !Object.values(STATES).some((ms) => ms.includes(m as RegionCode)));
+  if (unknownWanted.length > 0) {
+    console.error(`Not in the STATES map: ${unknownWanted.join(", ")} — add a state mapping first.`);
+    process.exit(2);
+  }
   const states: Array<[string, RegionCode[]]> = [];
   for (const [state, metros] of Object.entries(STATES)) {
     const filtered = wanted.size > 0 ? metros.filter((m) => wanted.has(m)) : metros;
@@ -345,17 +488,30 @@ function main(): void {
   }
   if (missing.length > 0) {
     console.error(`Missing PBFs: ${missing.join(", ")}`);
-    console.error(`Download with: for s in ${missing.join(" ")}; do curl -L -o ${PBF_DIR}/$s.osm.pbf https://download.geofabrik.de/north-america/us/$s-latest.osm.pbf; done`);
+    console.error(`Download with:`);
+    for (const s of missing) {
+      console.error(`  curl -L -o ${PBF_DIR}/${s}.osm.pbf https://download.geofabrik.de/${geofabrikPath(s)}`);
+    }
     process.exit(1);
   }
 
   for (const [state, metros] of states) {
     try {
-      processState(state, metros);
+      await processStateRoads(state, metros, resolvedOutDir);
+      if (wantSignals) await processStateSignals(state, metros, resolvedOutDir);
     } catch (e) {
       console.error(`✗ ${state}: ${(e as Error).message}`);
     }
   }
 }
 
-main();
+// Entry guard: STATES/geofabrikPath are exported for tooling (coverage
+// audits), and a bare import must not kick off a fetch run.
+const isMain = process.argv[1]
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
