@@ -140,5 +140,5 @@ I prefer concise and clear communication. When making changes, prioritize unders
 - **TanStack Table Documentation**: [https://tanstack.com/table/v8](https://tanstack.com/table/v8)
 - **OpenStreetMap Overpass API**: [https://wiki.openstreetmap.org/wiki/Overpass_API](https://wiki.openstreetmap.org/wiki/Overpass_API)
 - **GDOT 511 API Reference**: _Populate as you build_
-- **HCM 6th Edition Reference**: _Populate as you build_
-- **ITE Trip Generation Manual**: _Populate as you build_
+- **Capacity method references (Webster 1958 / Akçelik)**: _Populate as you build_
+- **Trip-rate sources (NHTS 2017 / SANDAG 2002 / NCHRP 716)**: _Populate as you build_
