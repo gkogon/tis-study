@@ -9,9 +9,15 @@
  *
  * Run:  pnpm run check:state-dispatch
  */
-import { fileURLToPath } from "node:url";
+import { register } from "node:module";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 const here = path.dirname(fileURLToPath(import.meta.url));
+// Register the shared ts-loader like every sibling harness: Node's native
+// type-stripping does no extension searching, so the extensionless relative
+// imports inside the TS modules (regions.ts -> "./state-boundaries") fail
+// with ERR_MODULE_NOT_FOUND without it.
+register(pathToFileURL(path.resolve(here, "ts-loader.mjs")).href, import.meta.url);
 const { stateForCoordinate, stateBoundariesLoaded } =
   await import(path.resolve(here, "../src/lib/state-boundaries.ts"));
 const { regionForCoordinate } = await import(path.resolve(here, "../src/lib/regions.ts"));
