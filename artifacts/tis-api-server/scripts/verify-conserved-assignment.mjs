@@ -18,9 +18,18 @@
 //     40 capped delay values and the methodology prose). No summary, no
 //     movementSource. This is the promise that keeps the legacy path
 //     reachable and unchanged for anyone who asks for it.
-//     Regenerate ONLY when legacy behavior changes deliberately (engine or
-//     Miami-Dade road-file update):  node ./scripts/verify-conserved-assignment.mjs --write-legacy-baseline
-//     ...and say so in the PR: rewriting the baseline re-pins what "legacy
+//
+//     The baseline is only meaningful against fixed network inputs, so the
+//     road segments it was pinned against are themselves a committed fixture
+//     (scripts/fixtures/conserved-road-segments.json — the roadSegmentsNear
+//     output for the site at pin time). Normal runs never read the live
+//     miami-dade road file, so the check passes identically on every machine
+//     regardless of road-data batches. Regenerate ONLY when legacy behavior
+//     changes deliberately (engine change, or deliberately refreshing the
+//     pinned network):  node ./scripts/verify-conserved-assignment.mjs --write-legacy-baseline
+//     ...which re-snapshots BOTH fixtures (segments from the live road file,
+//     then the baseline from a run over them — they must always be pinned as
+//     a pair). Say so in the PR: rewriting the baseline re-pins what "legacy
 //     bytes" means.
 //
 //  3. FLAG ON ⇒ the numbers keep their books. At every resolved intersection:
@@ -31,10 +40,10 @@
 //     the conservation diagnostics, and the whole thing is deterministic.
 //
 // Harness mirrors verify-driveway-routing.mjs: esbuild-bundle tis.ts, mock
-// global fetch so /api/roads serves the REAL Miami-Dade network from the local
-// road file and /api/intersections serves synthetic signals placed ON real
-// graph junctions (so the snap resolves) plus one off-network signal (so the
-// octant fallback is exercised).
+// global fetch so /api/roads serves a REAL Miami-Dade network — from the
+// committed segment fixture, NOT the live road file — and /api/intersections
+// serves synthetic signals placed ON real graph junctions (so the snap
+// resolves) plus one off-network signal (so the octant fallback is exercised).
 //
 // Run: node ./scripts/verify-conserved-assignment.mjs
 import { register } from "node:module";
@@ -47,7 +56,6 @@ register(pathToFileURL(path.resolve(here, "ts-loader.mjs")).href, import.meta.ur
 
 process.env.DATABASE_URL ??= "postgres://localhost/tis_e2e_stub_db";
 
-const { roadSegmentsNear } = await import(path.resolve(here, "../../api-server/src/lib/regional-roads.ts"));
 const { buildGraph } = await import(path.resolve(here, "../src/lib/network-assignment.ts"));
 const { snapSignalsToJunctions } = await import(path.resolve(here, "../src/lib/cordon-gateways.ts"));
 const { GenerateTisBody, GenerateTisResponse } = await import(path.resolve(here, "../../../lib/tis-api-zod/src/generated/api.ts"));
@@ -57,11 +65,32 @@ const ok = (cond, msg) => { if (!cond) { console.error("FAIL:", msg); fails++; }
 
 // ---------------------------------------------------------------------------
 // Site + real network. Pick signal positions that are REAL junctions.
+//
+// The network comes from the committed segment fixture, not the live
+// miami-dade road file: every downstream byte (graph, signal placement, the
+// mocked /api/roads payload, and therefore the pinned legacy baseline) derives
+// from these segments, so reading the live file would break the baseline's
+// byte-identity check on every road-data batch even though engine behavior is
+// unchanged. Only --write-legacy-baseline touches the live road file, and it
+// re-snapshots the segment fixture and the baseline together.
 // ---------------------------------------------------------------------------
 const SITE = { lat: 25.8456, lon: -80.2103 };
 const RADIUS = 0.5;
-const segments = roadSegmentsNear("miami_dade_metro", SITE.lat, SITE.lon, RADIUS + 0.25);
-ok(segments.length > 300, `real Miami network loaded (${segments.length} segments)`);
+const WRITE_BASELINE = process.argv.includes("--write-legacy-baseline");
+const segmentsPath = path.resolve(here, "fixtures/conserved-road-segments.json");
+let segments;
+if (WRITE_BASELINE) {
+  const { roadSegmentsNear } = await import(path.resolve(here, "../../api-server/src/lib/regional-roads.ts"));
+  segments = roadSegmentsNear("miami_dade_metro", SITE.lat, SITE.lon, RADIUS + 0.25);
+  if (!segments || segments.length === 0) {
+    throw new Error("--write-legacy-baseline needs the live miami-dade road file (roadSegmentsNear returned nothing)");
+  }
+  await writeFile(segmentsPath, JSON.stringify(segments) + "\n", "utf8");
+  console.log(`REWROTE road-segment fixture (${segments.length} segments):`, segmentsPath);
+} else {
+  segments = JSON.parse(await readFile(segmentsPath, "utf8"));
+}
+ok(segments.length > 300, `pinned Miami network fixture loaded (${segments.length} segments)`);
 
 const g = buildGraph(segments);
 // Find junction nodes 0.1–0.4 mi from the site, spread by taking every Nth.
@@ -176,7 +205,7 @@ ok((dflt.affectedIntersections ?? []).some((ix) => ix.movementSource === "path" 
 // ---------------------------------------------------------------------------
 const flagFalse = await generateTisReport({ ...baseReq, conservedAssignment: false });
 const baselinePath = path.resolve(here, "fixtures/conserved-legacy-baseline.json");
-if (process.argv.includes("--write-legacy-baseline")) {
+if (WRITE_BASELINE) {
   await writeFile(baselinePath, JSON.stringify(stripTime(flagFalse)) + "\n", "utf8");
   console.log("REWROTE legacy baseline fixture:", baselinePath);
   console.log("(only do this when legacy behavior changed DELIBERATELY — it re-pins the legacy bytes)");
