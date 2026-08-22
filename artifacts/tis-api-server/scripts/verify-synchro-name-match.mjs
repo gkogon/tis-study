@@ -45,7 +45,10 @@ const NORM = [
   ["University Dr", "university"],
   ["NW 82nd Terrace", "82"],
   ["State Road 54", "state 54"], // "road" is a suffix word; "state 54" is stable both sides
-  ["North Street", "north street"], // all tokens would drop → falls back to full tokens
+  // All tokens would drop → falls back to the full token list in CANONICAL
+  // form, so "North Street" and "North St" share one key.
+  ["North Street", "n st"],
+  ["North St", "n st"],
 ];
 for (const [input, want] of NORM) {
   const got = normalizeStreetName(input);
@@ -75,6 +78,18 @@ const SAME = [
   ["Nearest-Wins Blvd", "Farthest-Loses Blvd", false],
   // a 2-leg name never matches a bare single label
   ["Main St & First Ave", "Main St", false],
+  // EXPLICIT-DISAGREEMENT GUARD: dropped-from-the-key suffix/directional
+  // tokens still refuse a match when both sides state conflicting values —
+  // the tie contract alone cannot save us when the true twin street is
+  // outside the study and only its doppelgänger is a candidate.
+  ["NW 79th St & NW 7th Ave", "NW 79th Street & NW 7th Court", false], // Ave ≠ Ct
+  ["NW 79 St & NW 7 Ave", "SW 79th Street & SW 7th Avenue", false],    // NW ≠ SW quadrant
+  ["Main St & 1st Ave", "Main Avenue & 1st Avenue", false],            // St ≠ Ave
+  // ...but absent-vs-present is NOT a conflict (the legitimate drift):
+  ["Main & 1st", "Main Avenue & 1st Avenue", true],
+  ["79 St & 7 Ave", "NW 79th Street & NW 7th Avenue", true],
+  // fallback-key canonicalization: a street literally named "North Street"
+  ["North St & Main St", "North Street & Main Street", true],
 ];
 for (const [a, b, want] of SAME) {
   const got = sameIntersectionName(a, b);
@@ -115,6 +130,30 @@ ok(r.kind === "tie" && r.candidates.length === 2, `twin normalized names ⇒ tie
 // All-null inventory names ⇒ none, never a crash.
 r = matchIntersectionByName("Cleary Blvd & N Pine Island Rd", [{ id: "x", name: null }], nameOf);
 ok(r.kind === "none" && r.nearMisses.length === 0, "all-null candidate names ⇒ none");
+
+// GRID-METRO INJECTION GUARD: the record's true intersection ("NW 7th Ave")
+// is OUTSIDE the study; only the parallel doppelgänger street ("NW 7th Ct")
+// is a candidate. There is no tie to refuse — the disagreement guard must
+// refuse the single plausible-looking wrong candidate, and the near-miss
+// list must still NAME it so the warning is actionable.
+const gridCands = [{ id: "sig-ct", name: "NW 79th Street & NW 7th Court" }];
+r = matchIntersectionByName("NW 79 St & NW 7 Ave", gridCands, nameOf);
+ok(r.kind === "none", `grid doppelgänger: single wrong candidate refused (${r.kind})`);
+ok(r.kind === "none" && r.nearMisses.some((c) => c.id === "sig-ct"),
+  "grid doppelgänger: refused candidate still listed as the near-miss");
+
+// When BOTH the true street and the doppelgänger are candidates, the guard
+// upgrades the old blanket tie into the one correct match.
+const bothCands = [
+  { id: "sig-ave", name: "NW 79th Street & NW 7th Avenue" },
+  { id: "sig-ct", name: "NW 79th Street & NW 7th Court" },
+];
+r = matchIntersectionByName("NW 79 St & NW 7 Ave", bothCands, nameOf);
+ok(r.kind === "match" && r.candidate.id === "sig-ave",
+  `grid pair: exact suffix picks the true street (${r.kind === "match" ? r.candidate.id : r.kind})`);
+// ...and a record that states NO suffix stays genuinely ambiguous ⇒ tie.
+r = matchIntersectionByName("NW 79 St & NW 7", bothCands, nameOf);
+ok(r.kind === "tie", `suffix-less record against the pair stays a tie (${r.kind})`);
 
 // ---------------------------------------------------------------------------
 // 4. Real-world torture set: HCA report names vs OSM-style inventory labels
