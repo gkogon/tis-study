@@ -30,6 +30,7 @@ import {
   type CoverageNote,
 } from "./intersection-coverage";
 import { UTDF_MOVEMENTS, type UtdfMovement } from "./utdf-import";
+import { matchIntersectionByName } from "./synchro-name-match";
 import { getAutoModeShare, getAutoModeShareSource, getLondonAutoModeShare, type PTALBand } from "./mode-share";
 import { lookupLondonPtal } from "./tfl-ptal";
 import { loadCalibrationMap, type CalibrationEntry } from "./tis-calibration";
@@ -336,8 +337,16 @@ export type UtdfMovementValues = Partial<Record<UtdfMovement, number>>;
 export type UtdfIntersectionInput = {
   intId?: number;
   name?: string;
-  latitude: number;
-  longitude: number;
+  /** Which importer produced this record. Absent = "utdf_text" (legacy
+   *  records predate the field). "synchro_pdf" records come from a Synchro
+   *  report PDF: they carry a name but NO coordinates, match by normalized
+   *  name (attachUtdfData), and get the "synchro_pdf_tmc" provenance label. */
+  source?: "utdf_text" | "synchro_pdf";
+  /** Present on UTDF-text records (4-dp rounded). Synchro report PDFs carry
+   *  no coordinates, so PDF records omit both and match by name instead.
+   *  Coordinates keep priority whenever present. */
+  latitude?: number;
+  longitude?: number;
   /** Measured turning-movement volumes, vph — ONE modeled hour (the PM peak
    *  by Synchro convention; the engine anchors it at the PM period). */
   volumes: UtdfMovementValues;
@@ -563,8 +572,11 @@ export type AffectedIntersection = {
    *  measured turning-movement counts from an imported Synchro UTDF model
    *  replaced the AADT-derived design-hour estimate (growth still applied on
    *  top; the measurement anchors PM, other periods scale by the period
-   *  factors). Absent = AADT-derived estimate — legacy payloads unchanged. */
-  volumeSource?: "utdf_tmc";
+   *  factors). "synchro_pdf_tmc" = the same substitution, but the counts came
+   *  from an imported Synchro report PDF and the record matched this signal
+   *  by normalized name (report PDFs carry no coordinates). Absent =
+   *  AADT-derived estimate — legacy payloads unchanged. */
+  volumeSource?: "utdf_tmc" | "synchro_pdf_tmc";
   /** Field-measured existing turn-bay storage (ft) for the governing
    *  movement (see storageMovement), imported from the UTDF [Lanes] Storage
    *  record. Activates the renderers' storage-bay-adequacy tables, which
@@ -743,6 +755,11 @@ export type TisReport = {
    *  beyond the stated radius. Also echoed into `methodology` so every
    *  renderer that prints the methodology list discloses it in the PDF. */
   coverageNote?: CoverageNote;
+  /** How the request's imported utdfIntersections records attached to study
+   *  signals. Present ONLY when at least one record needed name-based
+   *  matching (Synchro-report-PDF import) — UTDF-text-only and non-UTDF
+   *  studies keep byte-identical payloads. See attachUtdfData. */
+  utdfMatchSummary?: UtdfMatchSummary;
   /** Florida standard: the Caltran mass/distance gravity model + directional
    *  trip distribution. Present ONLY for Florida studies (every other region
    *  keeps the NCHRP-716 gamma distribution and leaves this absent). Drives the
@@ -913,31 +930,84 @@ function utdfGoverningStorage(
   return best;
 }
 
+/** How the imported records attached — surfaced on the payload ONLY when the
+ *  request carried a record that needed name matching (see generateTisReport),
+ *  so legacy UTDF-text studies keep byte-identical payloads. */
+export type UtdfMatchSummary = {
+  total: number;
+  matched: number;
+  matchedByCoordinates: number;
+  matchedByName: number;
+  unmatchedNames: string[];
+};
+
 /**
  * Snap measured UTDF records onto the study candidates (mutates `candidates`
- * by setting `utdf` on matched entries). Same proximity contract as the
- * force-include machinery: a record matches the nearest candidate within
- * SNAP_MAX_MI (~0.35 mi; client coordinates are 4-dp-rounded ≈ 11 m, far
- * inside it). dedupCloseSignals can collapse several UTDF nodes onto one
- * signal, so each candidate keeps ONE record — the nearest — and every
- * displaced/unmatched/empty record is logged BY NAME, never silently
- * dropped (the road-parser lesson). Purely additive: no records ⇒ no-op.
+ * by setting `utdf` on matched entries), and report how each record fared.
+ *
+ * TWO MATCHING MODES, coordinates first:
+ *
+ *  - COORDINATES (UTDF-text records): same proximity contract as the
+ *    force-include machinery — a record matches the nearest candidate within
+ *    SNAP_MAX_MI (~0.35 mi; client coordinates are 4-dp-rounded ≈ 11 m, far
+ *    inside it). dedupCloseSignals can collapse several UTDF nodes onto one
+ *    signal, so each candidate keeps ONE record — the nearest.
+ *
+ *  - NAME (Synchro-report-PDF records, which carry no coordinates): the
+ *    record's intersection name must match EXACTLY ONE candidate's inventory
+ *    name after normalization (synchro-name-match.ts — separators, suffixes,
+ *    ordinals, directionals). A tie matches nothing: a wrong-but-plausible
+ *    attachment is worse than none. Name records run AFTER every coordinate
+ *    record so coordinates keep priority at a contested signal.
+ *
+ * Every displaced/unmatched/tied/empty record is logged BY NAME and counted
+ * in the returned summary, never silently dropped (the road-parser lesson).
+ * Purely additive: no records ⇒ no-op.
  */
-function attachUtdfData(candidates: StudyCandidate[], records: UtdfIntersectionInput[]): void {
+function attachUtdfData(
+  candidates: StudyCandidate[],
+  records: UtdfIntersectionInput[],
+): UtdfMatchSummary {
   const snapMaxM = SNAP_MAX_MI * 1609.34;
   const label = (u: UtdfIntersectionInput): string =>
-    `${u.name ?? (u.intId !== undefined ? `INTID ${u.intId}` : "unnamed")} @ (${u.latitude}, ${u.longitude})`;
+    `${u.name ?? (u.intId !== undefined ? `INTID ${u.intId}` : "unnamed")}` +
+    (u.latitude !== undefined && u.longitude !== undefined
+      ? ` @ (${u.latitude}, ${u.longitude})`
+      : " (no coordinates)");
+  const summary: UtdfMatchSummary = {
+    total: records.length, matched: 0, matchedByCoordinates: 0, matchedByName: 0, unmatchedNames: [],
+  };
+  const unmatched = (u: UtdfIntersectionInput): void => {
+    summary.unmatchedNames.push(label(u));
+  };
+  const hasCoords = (u: UtdfIntersectionInput): boolean =>
+    typeof u.latitude === "number" && Number.isFinite(u.latitude) &&
+    typeof u.longitude === "number" && Number.isFinite(u.longitude);
+
+  // ---- Pass 1: coordinate records (nearest-wins per signal) ----
   // Distance from each candidate to its attached record, for nearest-wins.
   const attachedDistM = new Map<StudyCandidate, number>();
+  const nameRecords: UtdfIntersectionInput[] = [];
   for (const rec of records) {
     if (!utdfMeasuredTotals(rec)) {
       logger.warn({ record: label(rec) }, "tis.utdf_record_no_volumes");
+      unmatched(rec);
+      continue;
+    }
+    if (!hasCoords(rec)) {
+      if (rec.name && rec.name.trim().length > 0) {
+        nameRecords.push(rec);
+      } else {
+        // Neither coordinates nor a name — nothing to match on.
+        logger.warn({ record: label(rec) }, "tis.utdf_record_no_coords_no_name");
+        unmatched(rec);
+      }
       continue;
     }
     let best: StudyCandidate | undefined;
     let bestM = Infinity;
     for (const c of candidates) {
-      const dM = haversineMeters(rec.latitude, rec.longitude, c.sig.latitude, c.sig.longitude);
+      const dM = haversineMeters(rec.latitude!, rec.longitude!, c.sig.latitude, c.sig.longitude);
       if (dM < bestM) { bestM = dM; best = c; }
     }
     if (!best || bestM > snapMaxM) {
@@ -945,6 +1015,7 @@ function attachUtdfData(candidates: StudyCandidate[], records: UtdfIntersectionI
         { record: label(rec), nearestM: Math.round(bestM) },
         "tis.utdf_record_unmatched",
       );
+      unmatched(rec);
       continue;
     }
     const prevM = attachedDistM.get(best);
@@ -956,16 +1027,65 @@ function attachUtdfData(candidates: StudyCandidate[], records: UtdfIntersectionI
           { displaced: label(rec), keptSignal: best.sig.id, keptDistM: Math.round(prevM) },
           "tis.utdf_record_displaced_by_nearer",
         );
+        unmatched(rec);
         continue;
       }
       logger.warn(
         { displaced: label(best.utdf!), replacedBy: label(rec), signal: best.sig.id },
         "tis.utdf_record_displaced_by_nearer",
       );
+      summary.matchedByCoordinates--;
+      summary.matched--;
+      unmatched(best.utdf!);
     }
     best.utdf = rec;
     attachedDistM.set(best, bestM);
+    summary.matched++;
+    summary.matchedByCoordinates++;
   }
+
+  // ---- Pass 2: name records (unambiguous normalized-name match) ----
+  for (const rec of nameRecords) {
+    const result = matchIntersectionByName(rec.name!, candidates, (c) => c.sig.name);
+    if (result.kind === "tie") {
+      logger.warn(
+        {
+          record: label(rec),
+          tiedSignals: result.candidates.map((c) => `${c.sig.id} "${c.sig.name}"`),
+        },
+        "tis.utdf_record_name_tie",
+      );
+      unmatched(rec);
+      continue;
+    }
+    if (result.kind === "none") {
+      logger.warn(
+        {
+          record: label(rec),
+          candidateCount: candidates.length,
+          nearMisses: result.nearMisses.map((c) => `${c.sig.id} "${c.sig.name}"`),
+        },
+        "tis.utdf_record_name_unmatched",
+      );
+      unmatched(rec);
+      continue;
+    }
+    const best = result.candidate;
+    if (best.utdf) {
+      // A coordinate record (or an earlier name record) already holds this
+      // signal — coordinates keep priority; among name records, first wins.
+      logger.warn(
+        { displaced: label(rec), keptRecord: label(best.utdf), signal: best.sig.id },
+        "tis.utdf_record_displaced_by_existing",
+      );
+      unmatched(rec);
+      continue;
+    }
+    best.utdf = rec;
+    summary.matched++;
+    summary.matchedByName++;
+  }
+  return summary;
 }
 
 async function findAffectedIntersections(
@@ -1431,8 +1551,17 @@ function buildAffectedRow(
       ? { movementSource: (pathRows ? "path" : "octant") as "path" | "octant" }
       : {}),
     // UTDF measured-data provenance + payload, presence-gated on the attached
-    // record so non-UTDF studies stay byte-identical field-by-field.
-    ...(measured ? { volumeSource: "utdf_tmc" as const } : {}),
+    // record so non-UTDF studies stay byte-identical field-by-field. The
+    // label discriminates the importer: "synchro_pdf_tmc" = counts from a
+    // Synchro report PDF (matched by name), "utdf_tmc" = UTDF text export
+    // (matched by coordinates) — a reviewer sees which artifact to audit.
+    ...(measured
+      ? {
+          volumeSource: (c.utdf?.source === "synchro_pdf"
+            ? "synchro_pdf_tmc"
+            : "utdf_tmc") as "utdf_tmc" | "synchro_pdf_tmc",
+        }
+      : {}),
     ...(utdfCycleLenS !== undefined ? { utdfCycleLenSec: utdfCycleLenS } : {}),
     ...(() => {
       const storage = measured && c.utdf ? utdfGoverningStorage(c.utdf) : undefined;
@@ -1726,12 +1855,25 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // Attach measured UTDF records to their signals (opt-in; see attachUtdfData).
   // Runs BEFORE any buildAffectedRow call so both the per-period loop and the
   // synthesized-PM path see the same attachments. Absent/empty ⇒ no-op.
+  // The match summary is surfaced on the payload ONLY when a record needed
+  // name-based matching (a Synchro-report-PDF record, or any record without
+  // usable coordinates) — legacy UTDF-text requests keep byte-identical
+  // payloads while the new import path gets a reviewable match report.
+  let utdfMatchSummary: UtdfMatchSummary | undefined;
   if (Array.isArray(req.utdfIntersections) && req.utdfIntersections.length > 0) {
-    attachUtdfData(candidates, req.utdfIntersections);
+    const summary = attachUtdfData(candidates, req.utdfIntersections);
+    const usedNameMatching = req.utdfIntersections.some(
+      (u) =>
+        u.source === "synchro_pdf" ||
+        !(typeof u.latitude === "number" && Number.isFinite(u.latitude) &&
+          typeof u.longitude === "number" && Number.isFinite(u.longitude)),
+    );
+    if (usedNameMatching) utdfMatchSummary = summary;
     logger.info(
       {
         records: req.utdfIntersections.length,
         matched: candidates.filter((c) => c.utdf).length,
+        byName: summary.matchedByName,
       },
       "tis.utdf_attach",
     );
@@ -2434,6 +2576,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     junctionImpactSignificant,
     ...(coverageWarning ? { coverageWarning } : {}),
     ...(coverageNote ? { coverageNote } : {}),
+    ...(utdfMatchSummary ? { utdfMatchSummary } : {}),
     ...(flGravity ? { flGravity } : {}),
     tripDistribution: dist,
     ...(drivewayAssignment?.available

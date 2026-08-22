@@ -1,13 +1,19 @@
-import { Router, type IRouter, type Request, type Response } from "express";
+import express, { Router, type IRouter, type Request, type Response } from "express";
 import {
   GenerateTisBody,
   GenerateTisResponse,
   ListTisLandUsesResponse,
   ParseUtdfFileBody,
   ParseUtdfFileResponse,
+  ParseSynchroPdfResponse,
 } from "@workspace/tis-api-zod";
 import { generateTisReport, LAND_USES } from "../lib/tis";
 import { parseUtdf } from "../lib/utdf-import";
+import {
+  isPdfBytes,
+  parseSynchroPdf,
+  SYNCHRO_PDF_MAX_BYTES,
+} from "../lib/synchro-pdf-import";
 import { validateDriveways } from "../lib/driveways";
 import { regionForCoordinate, REGIONS } from "../lib/regions";
 import { renderStudyPdf } from "../lib/pdf-export";
@@ -76,6 +82,16 @@ router.post("/utdf/parse", (req, res): void => {
     res.status(400).json({ error: "Provide the UTDF file text as { content }." });
     return;
   }
+  // Magic-byte branch (never filename): a PDF read as text and posted here
+  // is mangled bytes, not UTDF — point at the PDF endpoint instead of
+  // "parsing" garbage into an empty document.
+  if (body.data.content.startsWith("%PDF-")) {
+    res.status(400).json({
+      error:
+        "That file is a PDF. Upload Synchro report PDFs as raw bytes (Content-Type: application/pdf) to /utdf/parse-pdf — the importer's file picker does this automatically.",
+    });
+    return;
+  }
   const doc = parseUtdf(body.data.content);
   const withVolumes = new Set(doc.volumes.map((v) => v.intId));
   res.json(ParseUtdfFileResponse.parse({
@@ -95,19 +111,31 @@ router.post("/utdf/parse", (req, res): void => {
 });
 
 /**
- * Ready-to-attach measured records for the generate request: one per node
- * carrying BOTH lat/lon and a positive [Volumes] record. Coordinates are
- * rounded to 4 decimals here (server-side) so they line up exactly with the
- * client's additionalStudyPoints merge — one rounding rule, one place.
- * Values that would violate the UtdfIntersectionData schema bounds (a PHF
- * outside [0.25, 1], a cycle outside [30, 300]) are OMITTED rather than
+ * Ready-to-attach measured records for the generate request. Default (UTDF
+ * text): one per node carrying BOTH lat/lon and a positive [Volumes] record.
+ * Coordinates are rounded to 4 decimals here (server-side) so they line up
+ * exactly with the client's additionalStudyPoints merge — one rounding rule,
+ * one place. With `source: "synchro_pdf"` (report-PDF import — Synchro
+ * reports print NO coordinates): one per NAMED node with a positive volumes
+ * record; no coordinates are emitted and the record carries the source
+ * discriminator so the engine matches it by normalized name at generate
+ * time. Values that would violate the UtdfIntersectionData schema bounds (a
+ * PHF outside [0.25, 1], a cycle outside [30, 300]) are OMITTED rather than
  * clamped: a nonsense value from a malformed file should disappear, not be
  * silently rewritten into a plausible-looking measurement.
  */
-function buildUtdfIntersectionRecords(doc: ReturnType<typeof parseUtdf>) {
+function buildUtdfIntersectionRecords(
+  doc: ReturnType<typeof parseUtdf>,
+  opts?: { source?: "synchro_pdf" },
+) {
   const round4 = (n: number): number => Math.round(n * 1e4) / 1e4;
+  const nameOnly = opts?.source === "synchro_pdf";
   return doc.nodes.flatMap((n) => {
-    if (n.latitude === undefined || n.longitude === undefined) return [];
+    if (nameOnly) {
+      if (!n.name || n.name.trim().length === 0) return [];
+    } else if (n.latitude === undefined || n.longitude === undefined) {
+      return [];
+    }
     const vol = doc.volumes.find((v) => v.intId === n.intId);
     if (!vol) return [];
     const volumes: Record<string, number> = {};
@@ -152,8 +180,9 @@ function buildUtdfIntersectionRecords(doc: ReturnType<typeof parseUtdf>) {
     return [{
       intId: n.intId,
       ...(n.name ? { name: n.name } : {}),
-      latitude: round4(n.latitude),
-      longitude: round4(n.longitude),
+      ...(nameOnly
+        ? { source: "synchro_pdf" as const }
+        : { latitude: round4(n.latitude!), longitude: round4(n.longitude!) }),
       volumes,
       ...(phf !== undefined ? { phf } : {}),
       ...(hvPct !== undefined ? { hvPct } : {}),
@@ -162,6 +191,96 @@ function buildUtdfIntersectionRecords(doc: ReturnType<typeof parseUtdf>) {
     }];
   });
 }
+
+// Parse a Synchro REPORT PDF (Timings / Queues / LVT / HCM pages — the file
+// engineers actually email around) into the same structured shape as
+// /utdf/parse. The body is the raw PDF bytes: the global express.json parser
+// ignores non-JSON content types, so the route-level raw parser below is the
+// only body handling this endpoint needs. Report PDFs carry NO coordinates —
+// the emitted records are name-only (`source: "synchro_pdf"`) and the engine
+// matches them to study intersections by normalized name at generate time.
+router.post(
+  "/utdf/parse-pdf",
+  // Raw-parser limit sits above SYNCHRO_PDF_MAX_BYTES so OUR cap (a clear
+  // 400 naming the limit) fires before the parser's opaque 413.
+  express.raw({ type: ["application/pdf", "application/octet-stream"], limit: "30mb" }),
+  async (req, res): Promise<void> => {
+    if (!req.isAuthenticated()) {
+      res.status(401).json({ error: "Sign in to import a Synchro report PDF." });
+      return;
+    }
+    const body = req.body as unknown;
+    if (!Buffer.isBuffer(body) || body.length === 0) {
+      res.status(400).json({
+        error: "Send the PDF bytes with Content-Type: application/pdf.",
+      });
+      return;
+    }
+    if (body.length > SYNCHRO_PDF_MAX_BYTES) {
+      res.status(400).json({
+        error: `PDF is ${(body.length / 1024 / 1024).toFixed(1)} MB — over the ${Math.round(SYNCHRO_PDF_MAX_BYTES / 1024 / 1024)} MB limit. Print just the Synchro report pages to a smaller PDF.`,
+      });
+      return;
+    }
+    const bytes = new Uint8Array(body);
+    // Magic-byte branch, never filename: a UTDF text file posted here still
+    // parses as UTDF text (same records, coordinates included when present).
+    if (!isPdfBytes(bytes)) {
+      const asText = body.toString("utf8");
+      if (asText.length > 2_000_000) {
+        res.status(400).json({ error: "Not a PDF, and too large to read as UTDF text (2 MB limit)." });
+        return;
+      }
+      const doc = parseUtdf(asText);
+      const withVolumes = new Set(doc.volumes.map((v) => v.intId));
+      res.json(ParseSynchroPdfResponse.parse({
+        nodes: doc.nodes.map((n) => ({
+          intId: n.intId,
+          name: n.name,
+          ...(n.latitude !== undefined ? { latitude: n.latitude } : {}),
+          ...(n.longitude !== undefined ? { longitude: n.longitude } : {}),
+          hasVolumes: withVolumes.has(n.intId),
+        })),
+        volumeIntersections: doc.volumes.length,
+        laneIntersections: doc.lanes.length,
+        timingIntersections: doc.timings.length,
+        utdfIntersections: buildUtdfIntersectionRecords(doc),
+        sourceFormat: "utdf_text",
+        warnings: [
+          "file did not start with the %PDF magic bytes — parsed as UTDF text instead",
+          ...doc.warnings,
+        ],
+      }));
+      return;
+    }
+    const result = await parseSynchroPdf(bytes);
+    if (result.pageLimitExceeded !== undefined) {
+      res.status(400).json({
+        error: `PDF has ${result.pageLimitExceeded} pages — over the page cap. Print just the Synchro report pages to a smaller PDF.`,
+      });
+      return;
+    }
+    const doc = result.doc;
+    const withVolumes = new Set(doc.volumes.map((v) => v.intId));
+    res.json(ParseSynchroPdfResponse.parse({
+      // Report nodes carry no coordinates — the client must NOT merge them
+      // into additionalStudyPoints; matching happens at generate time.
+      nodes: doc.nodes.map((n) => ({
+        intId: n.intId,
+        name: n.name,
+        hasVolumes: withVolumes.has(n.intId),
+      })),
+      volumeIntersections: doc.volumes.length,
+      laneIntersections: doc.lanes.length,
+      timingIntersections: doc.timings.length,
+      utdfIntersections: buildUtdfIntersectionRecords(doc, { source: "synchro_pdf" }),
+      sourceFormat: "synchro_pdf",
+      ...(result.scenarioUsed !== undefined ? { scenarioUsed: result.scenarioUsed } : {}),
+      ...(result.scenariosSkipped.length > 0 ? { scenariosSkipped: result.scenariosSkipped } : {}),
+      warnings: doc.warnings,
+    }));
+  },
+);
 
 router.post("/generate", generateRateLimiter, async (req, res): Promise<void> => {
   if (!req.isAuthenticated()) {

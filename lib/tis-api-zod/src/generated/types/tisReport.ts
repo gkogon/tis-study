@@ -16,6 +16,7 @@ import type { TisSensitivityResult } from "./tisSensitivityResult";
 import type { TisTripDistribution } from "./tisTripDistribution";
 import type { TisTripGeneration } from "./tisTripGeneration";
 import type { TisWeather } from "./tisWeather";
+import type { UtdfMatchSummary } from "./utdfMatchSummary";
 
 export interface TisReport {
   generatedAt: string;
@@ -45,4 +46,5 @@ export interface TisReport {
   driveways?: DrivewayRouteResult;
   /** Present ONLY when the study radius contained no signalized intersection and the engine widened to the nearest-N fallback set (sparse rural/exurban site). The study succeeded; this discloses that every analyzed intersection sits beyond the stated radius. */
   coverageNote?: TisReportCoverageNote;
+  utdfMatchSummary?: UtdfMatchSummary;
 }

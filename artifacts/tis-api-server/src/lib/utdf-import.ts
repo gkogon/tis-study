@@ -170,8 +170,12 @@ function col(header: string[], name: string): number {
  * reported loudly — a diagonal leg carries real vehicles, and dropping it
  * without a word is exactly the silent-skip failure mode this module exists
  * to prevent.
+ *
+ * Exported for the Synchro-report-PDF importer (synchro-pdf-import.ts), whose
+ * column headers are the same movement labels — one classifier, one set of
+ * rules for what maps onto the 4-leg model.
  */
-function movementColumns(header: string[]): {
+export function movementColumns(header: string[]): {
   std: Array<{ idx: number; mv: UtdfMovement }>;
   uturns: Array<{ idx: number; foldInto: UtdfMovement; label: string }>;
   unmapped: string[];

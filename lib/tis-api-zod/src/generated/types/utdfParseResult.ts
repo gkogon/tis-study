@@ -7,6 +7,7 @@
  */
 import type { UtdfIntersectionData } from "./utdfIntersectionData";
 import type { UtdfParseResultNodesItem } from "./utdfParseResultNodesItem";
+import type { UtdfParseResultSourceFormat } from "./utdfParseResultSourceFormat";
 
 export interface UtdfParseResult {
   nodes: UtdfParseResultNodesItem[];
@@ -14,5 +15,8 @@ export interface UtdfParseResult {
   laneIntersections: number;
   timingIntersections: number;
   utdfIntersections?: UtdfIntersectionData[];
+  sourceFormat?: UtdfParseResultSourceFormat;
+  scenarioUsed?: string;
+  scenariosSkipped?: string[];
   warnings: string[];
 }

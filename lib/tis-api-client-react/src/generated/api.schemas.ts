@@ -190,6 +190,11 @@ export interface UtdfParseRequest {
 }
 
 /**
+ * Raw bytes of a Synchro report PDF (Content-Type: application/pdf). Capped at 25 MB and 800 pages; the server verifies the %PDF magic bytes rather than trusting a filename or content type. (Declared as a plain string rather than format: binary so the generated zod/types libs stay DOM-free; the route reads the raw request body, not this schema.)
+ */
+export type SynchroPdfDocument = string;
+
+/**
  * Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.
  */
 export interface UtdfMovementValues {
@@ -220,22 +225,35 @@ export interface UtdfMovementValues {
 }
 
 /**
- * Measured data for ONE intersection imported from a Synchro UTDF file — the structured record the /utdf/parse endpoint emits and a TIS request attaches as `utdfIntersections`. Coordinates are rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Raw UTDF text is deliberately NOT carried on the generate request (reports echo the request into stored payloads).
+ * Which importer produced this record. Absent = utdf_text (legacy records predate the field). synchro_pdf records are matched by name and get the `synchro_pdf_tmc` volume-source provenance label in the report.
+ */
+export type UtdfIntersectionDataSource =
+  (typeof UtdfIntersectionDataSource)[keyof typeof UtdfIntersectionDataSource];
+
+export const UtdfIntersectionDataSource = {
+  utdf_text: "utdf_text",
+  synchro_pdf: "synchro_pdf",
+} as const;
+
+/**
+ * Measured data for ONE intersection imported from Synchro — either a UTDF text export (/utdf/parse) or a Synchro report PDF (/utdf/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).
  */
 export interface UtdfIntersectionData {
   /** Synchro INTID from the source file (provenance only). */
   intId?: number;
   name?: string;
+  /** Which importer produced this record. Absent = utdf_text (legacy records predate the field). synchro_pdf records are matched by name and get the `synchro_pdf_tmc` volume-source provenance label in the report. */
+  source?: UtdfIntersectionDataSource;
   /**
    * @minimum -90
    * @maximum 90
    */
-  latitude: number;
+  latitude?: number;
   /**
    * @minimum -180
    * @maximum 180
    */
-  longitude: number;
+  longitude?: number;
   volumes: UtdfMovementValues;
   /**
    * Representative peak-hour factor (volume-weighted mean of the file's per-movement PHF records). Carried for provenance/auditability; the screening capacity model has no PHF input today.
@@ -266,12 +284,23 @@ export type UtdfParseResultNodesItem = {
   hasVolumes?: boolean;
 };
 
+export type UtdfParseResultSourceFormat =
+  (typeof UtdfParseResultSourceFormat)[keyof typeof UtdfParseResultSourceFormat];
+
+export const UtdfParseResultSourceFormat = {
+  utdf_text: "utdf_text",
+  synchro_pdf: "synchro_pdf",
+} as const;
+
 export interface UtdfParseResult {
   nodes: UtdfParseResultNodesItem[];
   volumeIntersections: number;
   laneIntersections: number;
   timingIntersections: number;
   utdfIntersections?: UtdfIntersectionData[];
+  sourceFormat?: UtdfParseResultSourceFormat;
+  scenarioUsed?: string;
+  scenariosSkipped?: string[];
   warnings: string[];
 }
 
@@ -452,7 +481,7 @@ export interface TisRequest {
    */
   additionalStudyPoints?: TisRequestAdditionalStudyPointsItem[];
   /**
-   * Measured turning-movement data imported from a Synchro UTDF file (the structured records /utdf/parse emits). Each record is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); at matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.
+   * Measured turning-movement data imported from Synchro — a UTDF text file (the records /utdf/parse emits) or a Synchro report PDF (the records /utdf/parse-pdf emits). A record with coordinates is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); a record without coordinates but with a name (report PDFs carry no coordinates) is matched by normalized intersection name, requiring an unambiguous best match — ties and misses are disclosed in the payload's utdfMatchSummary and logged, never silently dropped. At matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.
    * @maxItems 60
    */
   utdfIntersections?: UtdfIntersectionData[];
@@ -679,6 +708,7 @@ export type TisAffectedIntersectionVolumeSource =
 
 export const TisAffectedIntersectionVolumeSource = {
   utdf_tmc: "utdf_tmc",
+  synchro_pdf_tmc: "synchro_pdf_tmc",
 } as const;
 
 /**
@@ -849,6 +879,17 @@ export const TisReportCoverageNoteCode = {
   nearest_n_fallback: "nearest_n_fallback",
 } as const;
 
+/**
+ * How the request's imported `utdfIntersections` records attached to study intersections. Present ONLY when the request carried at least one record that needed name-based matching (a Synchro-report-PDF record, or any record without usable coordinates) — legacy UTDF-text studies and studies without imported data keep byte-identical payloads. Coordinate matches use the ~0.35-mi nearest-signal snap; name matches require an unambiguous normalized-name match among the study candidates (ties and misses land in `unmatchedNames` and are logged loudly, never silently dropped).
+ */
+export interface UtdfMatchSummary {
+  total: number;
+  matched: number;
+  matchedByCoordinates: number;
+  matchedByName: number;
+  unmatchedNames: string[];
+}
+
 export type TisReportConservedAssignmentConservation = {
   nodesChecked?: number;
   maxImbalance?: number;
@@ -905,6 +946,7 @@ export interface TisReport {
   driveways?: DrivewayRouteResult;
   /** Present ONLY when the study radius contained no signalized intersection and the engine widened to the nearest-N fallback set (sparse rural/exurban site). The study succeeded; this discloses that every analyzed intersection sits beyond the stated radius. */
   coverageNote?: TisReportCoverageNote;
+  utdfMatchSummary?: UtdfMatchSummary;
 }
 
 /**

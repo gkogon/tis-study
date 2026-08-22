@@ -797,9 +797,15 @@ function TisFormSection({
                     // they arrived with: a record whose 4dp coordinate no
                     // longer has a study point is dropped, so removing an
                     // imported intersection also removes its measured data.
+                    // Records WITHOUT coordinates (Synchro report PDFs carry
+                    // none — they match by name at generate time) are not
+                    // anchored to any study point and always survive.
                     const keys = new Set(points.map((pt) => `${pt.latitude},${pt.longitude}`));
                     const keptUtdf = (f.utdfIntersections ?? []).filter(
-                      (u) => keys.has(`${u.latitude},${u.longitude}`),
+                      (u) =>
+                        u.latitude === undefined || u.longitude === undefined
+                          ? true
+                          : keys.has(`${u.latitude},${u.longitude}`),
                     );
                     return {
                       ...f,
@@ -810,34 +816,124 @@ function TisFormSection({
                   })
                 }
               />
-              {/* Synchro import: the engineer's existing UTDF network defines
-                  the study scope. FileReader → /tis-api/utdf/parse → parsed
-                  node coordinates merge into additionalStudyPoints (the same
-                  force-include machinery as map clicks and pasted lat/lons). */}
+              {/* Synchro import: the engineer's existing Synchro work defines
+                  the study data. Two file shapes, branched by MAGIC BYTES
+                  (never filename):
+                    - UTDF text  → /tis-api/utdf/parse → parsed node
+                      coordinates merge into additionalStudyPoints (the same
+                      force-include machinery as map clicks / pasted lat/lons)
+                      and measured records ride the same 4dp coordinate keys.
+                    - Synchro report PDF → /tis-api/utdf/parse-pdf → records
+                      carry NAMES but no coordinates (reports print none);
+                      the engine matches them to study intersections by
+                      normalized name at generate time, and the report's
+                      match summary shows what attached. */}
               <div className="mt-2 space-y-1">
                 <label className="inline-flex items-center gap-2 text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground">
                   <FileText className="w-3.5 h-3.5" />
-                  Import study intersections from Synchro (UTDF)
+                  Import from Synchro (UTDF file or report PDF)
                   <input
                     type="file"
-                    accept=".csv,.txt,.utdf,text/plain,text/csv"
+                    accept=".csv,.txt,.utdf,.pdf,text/plain,text/csv,application/pdf"
                     className="hidden"
                     data-testid="input-utdf-file"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       e.target.value = ""; // allow re-selecting the same file
                       if (!file) return;
-                      if (file.size > 2_000_000) {
-                        setUtdfNote("File exceeds the 2 MB UTDF limit.");
-                        return;
-                      }
-                      const reader = new FileReader();
-                      reader.onload = async () => {
+                      void (async () => {
+                        let bytes: ArrayBuffer;
+                        try {
+                          bytes = await file.arrayBuffer();
+                        } catch {
+                          setUtdfNote("Could not read that file.");
+                          return;
+                        }
+                        const head = new Uint8Array(bytes.slice(0, 5));
+                        const isPdf =
+                          head.length === 5 &&
+                          head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 &&
+                          head[3] === 0x46 && head[4] === 0x2d; // "%PDF-"
+                        if (isPdf) {
+                          if (file.size > 25 * 1024 * 1024) {
+                            setUtdfNote("PDF exceeds the 25 MB limit — print just the Synchro report pages to a smaller PDF.");
+                            return;
+                          }
+                          try {
+                            const r = await fetch("/tis-api/utdf/parse-pdf", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/pdf" },
+                              body: bytes,
+                            });
+                            if (!r.ok) {
+                              let msg = "Could not parse that PDF as a Synchro report.";
+                              if (r.status === 401) msg = "Sign in to import a Synchro report PDF.";
+                              else { try { msg = (await r.json())?.error ?? msg; } catch { /* non-JSON */ } }
+                              setUtdfNote(msg);
+                              return;
+                            }
+                            const parsed = await r.json() as {
+                              nodes: Array<{ intId: number; name: string; hasVolumes?: boolean }>;
+                              volumeIntersections: number;
+                              utdfIntersections?: NonNullable<TisRequest["utdfIntersections"]>;
+                              scenarioUsed?: string;
+                              scenariosSkipped?: string[];
+                              warnings: string[];
+                            };
+                            const measured = Array.isArray(parsed.utdfIntersections) ? parsed.utdfIntersections : [];
+                            if (measured.length === 0) {
+                              setUtdfNote(
+                                parsed.nodes.length === 0
+                                  ? `No Synchro report pages recognized in ${file.name}${parsed.warnings.length > 0 ? ` — ${parsed.warnings[0]}` : ""}`
+                                  : `Parsed ${parsed.nodes.length} intersection(s) from ${file.name} but none carried an importable volume table${parsed.warnings.length > 0 ? ` — ${parsed.warnings.length} warning(s)` : ""}`,
+                              );
+                              return;
+                            }
+                            // Report records have NO coordinates: nothing to
+                            // merge into additionalStudyPoints — they attach
+                            // to study intersections by name at generate
+                            // time. Dedupe by name so re-importing the same
+                            // report doesn't stack duplicates; the 60-record
+                            // cap spans coordinate + name records combined
+                            // (the request schema's ceiling).
+                            setForm((f) => {
+                              const priorUtdf = f.utdfIntersections ?? [];
+                              const seenNames = new Set(
+                                priorUtdf.map((u) => (u.name ?? "").trim().toLowerCase()).filter((n) => n.length > 0),
+                              );
+                              const mergedUtdf = [
+                                ...priorUtdf,
+                                ...measured.filter(
+                                  (u) => !seenNames.has((u.name ?? "").trim().toLowerCase()),
+                                ),
+                              ].slice(0, 60);
+                              return {
+                                ...f,
+                                utdfIntersections: mergedUtdf.length > 0 ? mergedUtdf : undefined,
+                              };
+                            });
+                            setUtdfNote(
+                              `Imported measured volumes for ${measured.length} intersection${measured.length === 1 ? "" : "s"} from ${file.name}`
+                              + (parsed.scenarioUsed ? ` (${parsed.scenarioUsed})` : "")
+                              + ` — matched to study intersections by name when the study runs`
+                              + ((parsed.scenariosSkipped?.length ?? 0) > 0 ? `; ${parsed.scenariosSkipped!.length} other scenario(s) skipped` : "")
+                              + (parsed.warnings.length > 0 ? ` — ${parsed.warnings.length} warning(s)` : ""),
+                            );
+                          } catch {
+                            setUtdfNote("Could not reach the Synchro report parser.");
+                          }
+                          return;
+                        }
+                        // ---- UTDF text path (unchanged behavior) ----
+                        if (file.size > 2_000_000) {
+                          setUtdfNote("File exceeds the 2 MB UTDF limit.");
+                          return;
+                        }
                         try {
                           const r = await fetch("/tis-api/utdf/parse", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ content: String(reader.result ?? "") }),
+                            body: JSON.stringify({ content: new TextDecoder().decode(bytes) }),
                           });
                           if (!r.ok) {
                             setUtdfNote(r.status === 401
@@ -887,12 +983,17 @@ function TisFormSection({
                             // receives measured data without the forced study
                             // point that anchors it (and vice versa the caps
                             // can't drift apart across repeated imports).
+                            // Name-only records (from a report-PDF import)
+                            // have no anchoring point and pass through.
                             const mergedKeys = new Set(merged.map((pt) => `${pt.latitude},${pt.longitude}`));
                             const mergedUtdf = [
                               ...priorUtdf,
                               ...measured.filter((u) => !seenUtdf.has(`${u.latitude},${u.longitude}`)),
                             ]
-                              .filter((u) => mergedKeys.has(`${u.latitude},${u.longitude}`))
+                              .filter((u) =>
+                                u.latitude === undefined || u.longitude === undefined
+                                  ? true
+                                  : mergedKeys.has(`${u.latitude},${u.longitude}`))
                               .slice(0, 60);
                             return {
                               ...f,
@@ -910,8 +1011,7 @@ function TisFormSection({
                         } catch {
                           setUtdfNote("Could not reach the UTDF parser.");
                         }
-                      };
-                      reader.readAsText(file);
+                      })();
                     }}
                   />
                 </label>
@@ -1042,6 +1142,44 @@ function TripGenCard({ report }: { report: TisReport }) {
               {(tg.dailyTrips / Math.max(1, tg.size)).toFixed(2)}
             </div>
             <div className="text-xs text-muted-foreground mt-0.5">trips per {tg.unit.replace(/^1,000 /, "k").replace("Dwelling Units", "DU")} per day</div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * How the imported Synchro records attached to study intersections — shown
+ * ONLY when the payload carries utdfMatchSummary (i.e., the request included
+ * records matched by NAME: a Synchro report PDF carries no coordinates).
+ * The unmatched list is the actionable part: those names either need a
+ * different spelling in the report or their junctions are outside the study.
+ */
+function UtdfMatchCard({ report }: { report: TisReport }) {
+  const s = report.utdfMatchSummary;
+  if (!s) return null;
+  const parts: string[] = [];
+  if (s.matchedByName > 0) parts.push(`${s.matchedByName} by name`);
+  if (s.matchedByCoordinates > 0) parts.push(`${s.matchedByCoordinates} by coordinates`);
+  return (
+    <Card data-testid="card-utdf-match">
+      <CardContent className="pt-4 text-sm space-y-1">
+        <div className="flex items-start gap-2">
+          {s.matched === s.total
+            ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" />
+            : <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />}
+          <div>
+            <span className="font-medium">
+              Imported Synchro data matched {s.matched} of {s.total} intersection{s.total === 1 ? "" : "s"}
+            </span>
+            {parts.length > 0 && <span className="text-muted-foreground"> ({parts.join(", ")})</span>}
+            {s.unmatchedNames.length > 0 && (
+              <div className="text-xs text-muted-foreground mt-1">
+                Not matched to any study intersection: {s.unmatchedNames.join("; ")}.
+                Unmatched intersections keep the AADT-derived existing-volume estimate.
+              </div>
+            )}
           </div>
         </div>
       </CardContent>
@@ -1914,6 +2052,7 @@ export default function TisPage() {
           <ScenarioStripCard report={report} />
           <TripGenCard report={report} />
           <ImpactSummaryCard report={report} />
+          <UtdfMatchCard report={report} />
           <PeriodTabsCard report={report} />
           {report.sensitivity && <SensitivityCard report={report} />}
           <FindingsCard report={report} />
