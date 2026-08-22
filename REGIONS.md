@@ -1,7 +1,8 @@
 # Multi-region expansion playbook
 
 The product launched on the Atlanta MSA but the engineering math
-(HCM 6th Ed., ITE 11th Ed., MUTCD) is universal. This doc maps what
+(Webster/Akçelik capacity methods, public-data trip rates, MUTCD) is
+universal. This doc maps what
 has to change to launch the next metro, in priority order, with rough
 effort estimates.
 
