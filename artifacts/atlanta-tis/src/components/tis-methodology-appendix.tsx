@@ -50,14 +50,24 @@ export function TisMethodologyAppendix({ report }: { report: TisReport }) {
         </Section>
 
         <Section number="A.2" title="Trip Distribution &amp; Assignment">
+          {/* Kept in sync with the engine's ACTUAL method (trip-distribution.ts):
+              this paragraph previously described the pre-June inverse-distance
+              screen, months after the gravity models replaced it — a report
+              appendix that misstates its own methodology is worse than none.
+              The payload's methodLabel/basis are authoritative; the prose only
+              explains the family of methods. */}
           <p>
-            Generated trips were distributed to the surrounding signalized intersection network
-            using a screening-level distance-decay assignment, with each affected intersection
-            receiving a share of trips proportional to inverse-distance from the site, capped at
-            the study radius of <span className="font-mono">{report.studyRadiusMi} mi</span>.
-            This is consistent with the screening-level approaches catalogued in{" "}
-            <Cite t="NCHRP_765" />. A full TIS would replace this with an origin-destination matrix
-            calibrated to local travel survey data or model output.
+            Generated external trips were distributed across destination zones using{" "}
+            <span className="font-medium">{report.tripDistribution?.methodLabel ?? "a gravity model"}</span>
+            {report.tripDistribution?.basis ? <> ({report.tripDistribution.basis})</> : null}, and
+            assigned to the signalized intersections within the{" "}
+            <span className="font-mono">{report.studyRadiusMi} mi</span> study radius. Outside
+            Florida the gravity distribution uses the NCHRP Report 716 gamma friction function
+            F(t) = a·t<sup>b</sup>·e<sup>c·t</sup> (home-based-work coefficients) over congested
+            travel times; Florida studies apply the Caltran mass/distance formulation to match the
+            controlling FDOT-district methodology. The resulting directional shares are printed in
+            the Trip Distribution section above and in the report PDF. A submittal-grade TIS would
+            substitute an origin-destination matrix calibrated to local survey or model output.
           </p>
         </Section>
 

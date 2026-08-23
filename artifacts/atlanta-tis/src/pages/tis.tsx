@@ -31,6 +31,7 @@ import { FirmSettingsModal } from "@/components/firm-settings-modal";
 import { AuthBar } from "@/components/auth-bar";
 import { TisCoverPage } from "@/components/tis-cover-page";
 import { TisMethodologyAppendix } from "@/components/tis-methodology-appendix";
+import { TripDistributionCard } from "@/components/trip-distribution-card";
 import { TisLimitations } from "@/components/tis-limitations";
 import {
   loadFirmBranding,
@@ -2051,6 +2052,7 @@ export default function TisPage() {
           <ResultHeader report={report} />
           <ScenarioStripCard report={report} />
           <TripGenCard report={report} />
+          <TripDistributionCard report={report} />
           <ImpactSummaryCard report={report} />
           <UtdfMatchCard report={report} />
           <PeriodTabsCard report={report} />
