@@ -15,6 +15,7 @@
 import { register } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
+import fs from "node:fs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(path.resolve(here, "ts-loader.mjs")).href, import.meta.url);
@@ -103,16 +104,37 @@ const seg = (aLat, aLon, bLat, bLon, dir = 0, name = "S") =>
 //    every dir is 0, both adjacency entries exist — the legacy behaviour.
 // ---------------------------------------------------------------------------
 {
-  const segments = roadSegmentsNear("akron_metro", 41.0814, -81.519, 1.0) ?? [];
-  if (segments.length > 50) {
-    const g = buildGraph(segments);
+  // Control region picked DYNAMICALLY: the rollout converts regions one at a
+  // time, so any hardcoded control (akron, once) goes stale the day it is
+  // re-fetched. Old vintage = no way in the file carries the oneway slot.
+  const dataDir = path.resolve(here, "../../api-server/src/data");
+  const control = (() => {
+    for (const f of fs.readdirSync(dataDir).sort()) {
+      if (!f.endsWith("-roads.json") || fs.existsSync(path.join(dataDir, f + ".gz"))) continue;
+      try {
+        const d = JSON.parse(fs.readFileSync(path.join(dataDir, f), "utf8"));
+        const ways = d.ways ?? [];
+        if (!ways.length || ways.slice(0, 50).some((w) => w.length >= 6)) continue;
+        const poly = ways[0].find((s) => Array.isArray(s) && Array.isArray(s[0]));
+        if (!poly?.[0]) continue;
+        const slug = f.slice(0, -"-roads.json".length);
+        for (const code of [`${slug.replace(/-/g, "_")}_metro`, slug.replace(/-/g, "_")]) {
+          const segs = roadSegmentsNear(code, poly[0][0], poly[0][1], 1.0) ?? [];
+          if (segs.length > 50) return { code, segs };
+        }
+      } catch { /* unreadable — keep scanning */ }
+    }
+    return null;
+  })();
+  if (control) {
+    const g = buildGraph(control.segs);
     ok(g.links.every((lk) => lk.dir === 0),
-      `old-format (akron): every link is two-way (${g.links.length} links) — pre-rollout regions unchanged`);
+      `old-format (${control.code}): every link is two-way (${g.links.length} links) — pre-rollout regions unchanged`);
     ok(g.links.every((lk, li) =>
       (g.adj[lk.a] ?? []).includes(li) && (g.adj[lk.b] ?? []).includes(li)),
-      "old-format (akron): both adjacency entries exist for every link (legacy shape)");
+      `old-format (${control.code}): both adjacency entries exist for every link (legacy shape)`);
   } else {
-    console.log("skip: akron data unavailable");
+    console.log("skip: no old-vintage region remains — rollout complete; legacy-control section obsolete");
   }
 }
 

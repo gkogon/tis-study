@@ -175,9 +175,33 @@ ok(parsedWays / totalWays > 0.99,
   // Miami has since been re-fetched WITH oneway, so the both-vintages
   // guarantee is asserted on a still-old-format region instead — and Miami
   // now proves the opposite side: real oneway values arrive.
-  const oldFmt = roadSegmentsNear("akron_metro", 41.0814, -81.519, 1.0);
-  ok(oldFmt === null || oldFmt.every((seg) => seg[8] === 0),
-    "pre-oneway file (akron) reads as two-way throughout (no fabricated restrictions)");
+  // The control region is picked DYNAMICALLY: the rollout converts regions
+  // one at a time, so any hardcoded control (akron, once) goes stale the day
+  // it is re-fetched. Old vintage = no way carries the oneway slot (>=6).
+  const control = (() => {
+    for (const f of fs.readdirSync(dataDir).sort()) {
+      if (!f.endsWith("-roads.json") || fs.existsSync(path.join(dataDir, f + ".gz"))) continue;
+      try {
+        const d = JSON.parse(fs.readFileSync(path.join(dataDir, f), "utf8"));
+        const ways = d.ways ?? [];
+        if (!ways.length || ways.slice(0, 50).some((w) => w.length >= 6)) continue;
+        const poly = ways[0].find((s) => Array.isArray(s) && Array.isArray(s[0]));
+        if (!poly?.[0]) continue;
+        const slug = f.slice(0, -"-roads.json".length);
+        for (const code of [`${slug.replace(/-/g, "_")}_metro`, slug.replace(/-/g, "_")]) {
+          const segs = roadSegmentsNear(code, poly[0][0], poly[0][1], 1.0);
+          if (segs && segs.length) return { code, segs };
+        }
+      } catch { /* unreadable — keep scanning */ }
+    }
+    return null;
+  })();
+  if (control) {
+    ok(control.segs.every((seg) => seg[8] === 0),
+      `pre-oneway file (${control.code}) reads as two-way throughout (no fabricated restrictions)`);
+  } else {
+    console.log("skip: no old-vintage region remains — rollout complete; this legacy-control assert is obsolete");
+  }
   ok(segs.some((seg) => seg[8] === 1 || seg[8] === -1),
     "re-fetched file (miami) carries real one-way values");
 }
