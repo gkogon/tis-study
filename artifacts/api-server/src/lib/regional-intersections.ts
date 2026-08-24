@@ -8,23 +8,33 @@
  * signal inventory and synthesize the rest of the IntersectionSummary
  * shape with safe defaults.
  *
- * What's synthesized:
+ * What each field actually is (the old version of this comment claimed a
+ * constant 1200 vph baseline — that never existed in the code; volumes have
+ * been AADT-preferring since the file was created):
  *   - id            = "<regionSlug>-<osmId>" (collision-safe across regions)
- *   - name          = the OSM signal's `name` tag, or "Signal #<osmId>" fallback
- *   - zone          = 0.1°-grid bucket as "lat_lon" so the engine can still
- *                     group nearby signals
- *   - roadClass     = "primary" (real classification arrives when the metro
- *                     gets a roads dataset + signal-naming pass)
- *   - totalVolume   = 1200 vph baseline (rough metro arterial — the TIS
- *                     engine's growth/assignment math still works against a
- *                     constant; calibration replaces this per-signal later)
- *   - turningVolume = 0
- *   - inefficiencyScore / avgDelaySeconds = 0
- *   - severity      = "low"
+ *   - name          = city-authoritative label, else roads-derived
+ *                     "Street A & Street B", else "Signal #<osmId>"
+ *   - zone          = neighborhood polygon when loaded, else compass quadrant
+ *   - roadClass     = nearest road's OSM class via the signal-naming pass,
+ *                     else "primary" default
+ *   - totalVolume   = three-tier ladder, best available first:
+ *                       1. measured/precomputed AADT × K-factor / 100 from
+ *                          the committed <slug>-aadt.json (per-signal, with
+ *                          a `source` provenance slug — fdot, nysdot,
+ *                          caltrans, fhwa_hpms_2018, synthetic_osm_class, …)
+ *                       2. VOLUME_BY_CLASS[roadClass] (700–2500 vph)
+ *                       3. DEFAULT_VOLUME (1000 vph)
+ *                     The provenance is surfaced as volumeSource/volumeYear
+ *                     on the summary so downstream consumers can tell
+ *                     measured from synthetic.
+ *   - turningVolume / inefficiencyScore / avgDelaySeconds = 0 and
+ *     severity = "low" — honest placeholders: only Atlanta has the
+ *     Webster-delay model that populates these for real, and fabricating
+ *     them would be worse than zeroing them.
  *
- * This is intentionally a stub. The TIS engine consumes only id/name/zone/
- * lat/lon/totalVolume, so the unused fields exist to satisfy the schema
- * (ListIntersectionsResponse Zod validator) without falsifying analytics.
+ * The TIS engine consumes only id/name/zone/lat/lon/totalVolume; the
+ * placeholder fields exist to satisfy the schema (ListIntersectionsResponse
+ * Zod validator) without falsifying analytics.
  */
 
 import { readFileSync, existsSync } from "node:fs";
@@ -596,6 +606,12 @@ export function loadRegionalIntersections(regionCode: string): IntersectionSumma
       inefficiencyScore: 0,
       avgDelaySeconds: 0,
       severity: "low" as Severity,
+      // Provenance: lets downstream consumers (engine, PDFs, coverage
+      // tooling) distinguish measured DOT counts from synthetic_osm_class
+      // precomputes and from the road-class fallback — previously the
+      // `source` field was loaded and then discarded here.
+      volumeSource: aadtRec ? aadtRec.source : "road_class_baseline",
+      ...(aadtRec ? { volumeYear: aadtRec.year } : {}),
     };
   });
 

@@ -21,4 +21,8 @@ export interface IntersectionSummary {
   inefficiencyScore: number;
   avgDelaySeconds: number;
   severity: IntersectionSummarySeverity;
+  /** Provenance of totalVolume. A per-signal AADT source slug (fdot, nysdot, caltrans, fhwa_hpms_2018, synthetic_osm_class, ...) when the volume is AADT x K-factor from the region's AADT dataset, or "road_class_baseline" when it is the OSM road-class fallback. Absent on legacy payloads and Atlanta's model-derived summaries. */
+  volumeSource?: string;
+  /** Count year of the AADT record behind totalVolume. Present only when volumeSource is a measured or precomputed AADT source. */
+  volumeYear?: number;
 }

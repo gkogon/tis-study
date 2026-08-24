@@ -13,8 +13,9 @@
  * keyed by signal id (positive OSM id, or negative city/county id) with:
  *   { aadt: number, year: number, kFactor: number, distM: number, source: "fdot" | "ncdot" }
  *
- * regional-intersections.ts reads this file to replace the synthetic
- * 1200vph road-class baseline with measured per-signal volumes.
+ * regional-intersections.ts reads this file and prefers these per-signal
+ * volumes (AADT × K / 100) over its OSM road-class baseline ladder
+ * (VOLUME_BY_CLASS 700–2500 vph, DEFAULT_VOLUME 1000).
  *
  * Run:
  *   pnpm --filter @workspace/scripts exec tsx src/fetch-aadt-by-signal.ts tampa
