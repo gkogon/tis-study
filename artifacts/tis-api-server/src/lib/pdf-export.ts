@@ -4467,8 +4467,11 @@ function renderTisLondon(
         { paragraphGap: 6 },
       );
     } else {
+      // No priorUse on the request: keep the same engine-note posture as the
+      // other gray ldnNote escape hatches — professional prose, never a
+      // bracketed TODO, because this paragraph ships in the deliverable PDF.
       doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-        `[TODO — Consultant to insert trip-comparison narrative: name the prior use on the site (set TisRequest.priorUse to populate automatically), present TRICS-derived rates for both the prior use and the proposed ${tg.landUseName ?? "scheme"}, report the net change, and conclude on whether the residual impact warrants any further capacity assessment.]`,
+        `No prior site use was specified for this scheme, so the conventional sub-threshold assessment — a trip comparison against the previous use of the site — is not generated here. At submittal the chartered engineer should identify the prior use (supplying it in the study request populates this narrative), present TRICS-derived rates for the prior use and the proposed ${tg.landUseName ?? "scheme"}, report the net change, and conclude on whether the residual impact warrants any further capacity assessment.`,
         { paragraphGap: 6 },
       );
       doc.fillColor("black");

@@ -1,5 +1,7 @@
 # Driveway Access Modeling — Phase 1 (Backend) Implementation Plan
 
+> **STATUS: EXECUTED (verified 2026-08-24).** `artifacts/tis-api-server/src/lib/driveways.ts` and the driveway-aware assignment shipped (PR #62); the driveway legality fixes continued through PR #125. The `- [ ]` checkboxes below were never ticked during execution — do not use them to judge remaining work.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the TIS engine accept a site's driveways with per-movement turn restrictions, route project trips through them on the road graph so forbidden movements reroute (U-turns) onto the network, and feed the rerouted volumes into per-intersection `addedTrips → LOS`, plus a driveway table in the report.
