@@ -1926,11 +1926,19 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // a site-responsive mode choice). Everywhere else, a binary logit
   // calibrated to the metro's measured auto-mode share, shifted by SITE
   // URBANITY: a density proxy from the surrounding signals' through-volumes
-  // (median volume / 30k-AADT reference) so a downtown parcel splits more
-  // toward transit/walk than a greenfield parcel in the same metro.
+  // so a downtown parcel splits more toward transit/walk than a greenfield
+  // parcel in the same metro.
   const densityVols = candidates.map((c) => c.sig.totalVolume).filter((v) => v > 0).sort((a, b) => a - b);
   const medianVol = densityVols.length ? densityVols[Math.floor(densityVols.length / 2)]! : 0;
-  const densityIndex = Math.min(1, Math.max(0, medianVol / 30_000));
+  // `totalVolume` is DESIGN-HOUR vph (AADT × K-factor — see the
+  // PERIOD_FACTOR note at the top of this file), so the density reference
+  // must be design-hour scale: 30,000 AADT at the FHWA-standard 9% K is
+  // ~2,700 vph. The old divisor compared vph against the 30k AADT figure
+  // directly, which pinned densityIndex near 0.06 for every metro (real
+  // medians ~1,800 vph) — flattening the mode-choice shift and classifying
+  // every US site as rural in areaTypeFromDensity.
+  const DENSITY_DESIGN_HOUR_REF_VPH = 2_700; // 30,000 AADT × 0.09 K
+  const densityIndex = Math.min(1, Math.max(0, medianVol / DENSITY_DESIGN_HOUR_REF_VPH));
   // Real transit LOS (best-effort): when a Transitland key is configured,
   // measure the stops/routes near the site and fold that accessibility into
   // the mode-choice logit. Returns null fast (no key / no data) → the logit
