@@ -18,9 +18,15 @@
  * horizon AADT/DHV table (Existing / ETC / ETC+20 / ETC+30) is the
  * single strongest "this is NYSDOT-shaped" signal.
  *
- * Crash data integration is a separate roadmap item; this renderer
- * ships the Shell's escape-hatch language ("full crash analysis not
- * required") until SIMS / Regional Traffic Office data is wired.
+ * Crash data ships in three tiers, all fail-soft: county-level 3-year
+ * totals from the NY State Police dataset (r.nyCrashSummary), NYC
+ * site-radius precise records from OpenData h9gi-nx95
+ * (r.nyPreciseCrashSummary), and the statewide NHTSA FARS fatal-crash
+ * supplement (r.farsKSummary). The remaining gap is Tier-2 statewide
+ * per-intersection exposure (NYSDOT TSSR/CLEAR), which is gated on
+ * Regional Traffic Office access — until then upstate sites carry the
+ * county aggregate plus FARS, and §4 falls back to the Shell's
+ * escape-hatch language only when every ingest returns nothing.
  */
 import type { Region } from "./regions";
 import { renderDiurnalCharts } from "./pdf-charts";
@@ -255,8 +261,9 @@ function nyLosThresholdTables(doc: PDFKit.PDFDocument) {
  * NYSDOT HDM Chapter 5 §5 (rev. 9/16/2014) so the deliverable is
  * visually recognizable to a NY PE/PTOE within seconds. Engine output
  * (LOS scenarios, growth rate, mitigations, approach volumes) is
- * reshaped into Shell-conformant tables and boilerplate; crash data
- * is not wired yet so §4 ships the Shell's escape-hatch language.
+ * reshaped into Shell-conformant tables and boilerplate; §4 renders
+ * the stashed crash tiers (county, NYC-precise, FARS) and only falls
+ * back to the Shell's escape-hatch language when all are absent.
  */
 export function renderTisNewYork(
   doc: PDFKit.PDFDocument,
@@ -403,10 +410,31 @@ export function renderTisNewYork(
 
   doc.font("bold").fontSize(11).fillColor("black").text("Crash:");
   doc.moveDown(0.1);
-  doc.font("body").fontSize(10).fillColor("black").text(
-    "A minimum three-year accident history review was performed and the safety screening met all of the required steps. A full crash analysis is not required.",
-    { paragraphGap: 6 },
-  );
+  // Summarize what §4.0 actually found rather than asserting the
+  // screening passed — the old hardcoded "met all of the required
+  // steps" sentence shipped regardless of the crash ingests' results.
+  {
+    const s1Precise = (r as any).nyPreciseCrashSummary;
+    const s1County = (r as any).nyCrashSummary;
+    const bits: string[] = [];
+    if (s1Precise?.totalCrashes > 0) {
+      bits.push(`${fmtNum(s1Precise.totalCrashes)} crashes within 0.25 mi of the site over the ${s1Precise.windowYears}-year window (NYC OpenData h9gi-nx95)`);
+    }
+    if (s1County?.totalAccidents > 0) {
+      bits.push(`${fmtNum(s1County.totalAccidents)} crashes county-wide in ${s1County.countyName} County over the rolling 3-year window (NY DMV via data.ny.gov)`);
+    }
+    if (bits.length > 0) {
+      doc.font("body").fontSize(10).fillColor("black").text(
+        `A minimum three-year accident history review was performed: ${bits.join("; ")}. Section 4.0 carries the severity breakdown and HDM Chapter 5 §5.3.4 screening context; the project-specific rate comparison against NYSDOT statewide averages remains a submittal-stage task with Regional Traffic Office data.`,
+        { paragraphGap: 6 },
+      );
+    } else {
+      doc.font("body").fontSize(10).fillColor("black").text(
+        "A minimum three-year accident history review was attempted; the automated crash ingests returned no records for this site (see Section 4.0). The HDM Chapter 5 §5.3.4 safety screening must be completed manually with Regional Traffic Office data before submittal.",
+        { paragraphGap: 6 },
+      );
+    }
+  }
 
   // CBDTP cordon caveat — surfaced in §1.0 when the site is inside or
   // adjacent to the Manhattan Central Business District Tolling
@@ -1008,6 +1036,47 @@ export function renderTisNewYork(
       { paragraphGap: 6 },
     );
   }
+
+  // NHTSA FARS fatal-crash supplement — the statewide public per-crash
+  // source (per-crash NY data outside NYC is gated behind SIMS/TSSR
+  // access). renderStudyPdf stashes r.farsKSummary for every US site
+  // and each state renderer emits its own block; NY was the only US
+  // renderer not rendering it. Primitives duplicated locally per this
+  // file's no-cross-file-coupling rule.
+  {
+    const fars = (r as any).farsKSummary as
+      | {
+          windowYears: number;
+          radiusMi: number;
+          totalCrashes: number;
+          recentSevere: Array<{ occurredAt: string; severity: string; onStreet: string | null; crossStreet: string | null; mannerOfCollision: string | null }>;
+        }
+      | undefined;
+    if (fars && fars.totalCrashes > 0) {
+      doc.moveDown(0.2);
+      doc.font("bold").fontSize(10).fillColor("black").text("Fatal Crash History (NHTSA FARS supplement):");
+      doc.moveDown(0.2);
+      doc.font("body").fontSize(10).fillColor("black").text(
+        `${fmtNum(fars.totalCrashes)} fatal crash${fars.totalCrashes === 1 ? "" : "es"} within ${(fars.radiusMi ?? 0).toFixed(2)} mi of the site over a ${fars.windowYears}-year window are recorded in the NHTSA Fatality Analysis Reporting System (FARS) public ArcGIS layer. FARS records only K-severity (fatal) crashes by definition and its public layer carries the calendar year only; injury and PDO crashes, and time-of-day patterns, must come from the ${nyRegion.label} Regional Traffic Office (SIMS / TSSR) for a formal Highway Safety Manual analysis.`,
+        { paragraphGap: 6 },
+      );
+      if (fars.recentSevere.length > 0) {
+        nyTable(doc, {
+          headers: ["Year", "Severity", "On street", "Cross street", "Manner"],
+          widths: [55, 60, 150, 130, 85],
+          align: ["center", "center", "left", "left", "left"],
+          rows: fars.recentSevere.map((c) => [
+            c.occurredAt.slice(0, 4),
+            c.severity,
+            c.onStreet ?? "—",
+            c.crossStreet ?? "—",
+            c.mannerOfCollision ?? "—",
+          ]),
+        });
+        doc.moveDown(0.3);
+      }
+    }
+  }
   doc.moveDown(0.4);
 
   // --- Appendix A — Existing Volume Report -------------------------------
@@ -1310,20 +1379,28 @@ export function renderCeqrNyc(
   // the intersection radius (populated by crashesNearPoint with
   // source nyc_opendata), surface them as a Vision Zero
   // intersection-level overlay. Otherwise emit the scaffold prose.
+  // Severity comes from CrashSummary.bySeverity (KABCO buckets) — the
+  // summary carries no flat `fatalities`/`seriousInjuries` fields, and
+  // reading those printed "0 fatalities" even when bySeverity.K > 0.
+  // NYC's dataset publishes no A/B injury subgrades (everything is C),
+  // so report fatal (K) and total injury (A+B+C) rather than a
+  // "serious injuries" figure the source cannot support.
   const preciseCrash = (r as any)?.nyPreciseCrashSummary as
     | {
         totalCrashes?: number;
         radiusMi?: number;
         windowYears?: number;
-        fatalities?: number;
-        seriousInjuries?: number;
+        bySeverity?: { K?: number; A?: number; B?: number; C?: number };
         pedestrianInvolved?: number;
         cyclistInvolved?: number;
       }
     | undefined;
   if (preciseCrash && (preciseCrash.totalCrashes ?? 0) > 0) {
+    const sev = preciseCrash.bySeverity ?? {};
+    const fatalities = sev.K ?? 0;
+    const injuries = (sev.A ?? 0) + (sev.B ?? 0) + (sev.C ?? 0);
     doc.text(
-      `• C.5 Safety — NYC OpenData Vision Zero crashes within ${preciseCrash.radiusMi ?? "—"} mi of the site over the rolling ${preciseCrash.windowYears ?? "—"}-year window: ${preciseCrash.totalCrashes} total crashes (${preciseCrash.fatalities ?? 0} fatalities, ${preciseCrash.seriousInjuries ?? 0} serious injuries, ${preciseCrash.pedestrianInvolved ?? 0} pedestrian-involved, ${preciseCrash.cyclistInvolved ?? 0} cyclist-involved). A submittable CEQR §C.5 narrative must compare these counts against the city-wide crash rate per veh-mi-traveled, identify HCLs in the study area, and surface mitigation per the NYC DOT Vision Zero priority-intersection list. Source: NYC OpenData Motor Vehicle Collisions (h9gi-nx95).`,
+      `• C.5 Safety — NYC OpenData Vision Zero crashes within ${preciseCrash.radiusMi ?? "—"} mi of the site over the rolling ${preciseCrash.windowYears ?? "—"}-year window: ${preciseCrash.totalCrashes} total crashes (${fatalities} fatal, ${injuries} injury-involved, ${preciseCrash.pedestrianInvolved ?? 0} pedestrian-involved, ${preciseCrash.cyclistInvolved ?? 0} cyclist-involved). A submittable CEQR §C.5 narrative must compare these counts against the city-wide crash rate per veh-mi-traveled, identify HCLs in the study area, and surface mitigation per the NYC DOT Vision Zero priority-intersection list. Source: NYC OpenData Motor Vehicle Collisions (h9gi-nx95).`,
       { paragraphGap: 6 },
     );
   } else {
