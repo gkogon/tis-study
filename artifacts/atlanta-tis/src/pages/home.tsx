@@ -19,7 +19,7 @@ import { TOTAL_METROS, TOTAL_SIGNALS, COUNTRIES_COVERED, CONTINENTS_COVERED } fr
 export default function HomePage() {
   usePageMeta({
     title: "Simple Impact Studies — Defensible TIS without the week of engineer time",
-    description: `Screening-level Traffic Impact Studies for engineering firms across ${TOTAL_METROS} cities in ${COUNTRIES_COVERED} countries on ${CONTINENTS_COVERED} continents (${TOTAL_SIGNALS.toLocaleString()} signals indexed). HCM 6th, public trip-generation data, MUTCD, AASHTO — the math your reviewer expects, in about a minute.`,
+    description: `Screening-level Traffic Impact Studies for engineering firms across ${TOTAL_METROS} cities in ${COUNTRIES_COVERED} countries on ${CONTINENTS_COVERED} continents (${TOTAL_SIGNALS.toLocaleString()} signals indexed). Openly-published capacity math, public trip-generation data, MUTCD, AASHTO — the math your reviewer expects, in about a minute.`,
     canonical: "https://simpleimpactstudies.com/",
   });
 
@@ -70,7 +70,7 @@ function HeroSection() {
         </h1>
         <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-xl">
           TIS, parking, signal warrants, sight distance, queuing, road diet.
-          Every figure footnoted to HCM, NHTS, MUTCD, or AASHTO. A junior PE
+          Every figure footnoted to its published source — NHTS, SANDAG, MUTCD, AASHTO. A junior PE
           spends 20 to 40 hours on a screening pass. Here it runs in about a minute.
         </p>
         <div className="flex flex-wrap items-center gap-3 pt-1">
@@ -166,7 +166,7 @@ function ProductPreview() {
       </div>
 
       <div className="px-5 py-3 border-t border-border bg-muted/40 text-[10px] text-muted-foreground font-mono leading-relaxed">
-        Per HCM 6th Ed. Ch.19 Exhibit 19-8: A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F &gt;80s
+        Conventional US control-delay bands: A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F &gt;80s
       </div>
     </div>
   );
@@ -252,7 +252,7 @@ function BigStat({ value, label, sub }: { value: string; label: string; sub?: st
 const MATH_STATS: Array<{ value: string; unit?: string; label: string; sub: string }> = [
   {
     value: "800",
-    label: "HCM analyses per intersection",
+    label: "Capacity analyses per intersection",
     sub: "4 approaches × existing + future × 100 Monte-Carlo runs",
   },
   {
@@ -268,13 +268,13 @@ const MATH_STATS: Array<{ value: string; unit?: string; label: string; sub: stri
   {
     value: "6",
     label: "Reference standards",
-    sub: "HCM · NHTS · SANDAG · MUTCD · AASHTO · FHWA",
+    sub: "Webster/Akçelik · NHTS · SANDAG · MUTCD · AASHTO · FHWA",
   },
 ];
 
 const MECHANICS: Array<[string, string]> = [
   ["State-DOT data pre-indexed", `Signal counts, intersection inventory, and live incident feeds stay loaded in-process. We did the import once, for all ${TOTAL_SIGNALS.toLocaleString()} signals across ${TOTAL_METROS} metros.`],
-  ["HCM equations in parallel", "Eq. 19-13 (control delay) and Eq. 19-50 (95th-percentile queue) run concurrently across every intersection in the radius."],
+  ["Capacity equations in parallel", "Webster–Akçelik control delay and 95th-percentile back-of-queue run concurrently across every intersection in the radius."],
   ["Trip rates from one table", "80 land-use codes as a typed lookup, not flipped page-by-page. Public-data average rates (SANDAG 2002 / NHTS 2017 / NCHRP 716), with pass-by and internal-capture credits applied before off-site assignment."],
   ["No GUI overhead", "No model setup, no scenario manager, no project file. The form is the model; generation streams straight to a structured report."],
 ];
@@ -284,11 +284,11 @@ function MathSection() {
     <section>
       <Marker n="01" label="The math" />
       <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50 max-w-2xl">
-        Real HCM math. We just took the week out.
+        Real capacity math. We just took the week out.
       </h2>
       <p className="text-muted-foreground text-lg leading-relaxed max-w-2xl mt-3">
         Every figure comes from the same public-data sources a senior
-        reviewer would reach for — HCM capacity methods, NHTS / SANDAG /
+        reviewer would reach for — openly-published Webster–Akçelik capacity methods, NHTS / SANDAG /
         NCHRP trip rates, and MUTCD / AASHTO / FHWA standards. Nothing is
         estimated past the point a published equation can carry it.
       </p>
@@ -311,7 +311,7 @@ function MathSection() {
       </div>
       <p className="text-sm text-muted-foreground leading-relaxed mt-3">
         Multiply by every signalized intersection in the study radius — a
-        typical screening clears tens of thousands of HCM delay and queue
+        typical screening clears tens of thousands of delay and queue
         solves before it returns a single number.
       </p>
 
@@ -355,7 +355,7 @@ function MathSection() {
                 internal-capture and pass-by credits assigned off-site.
               </p>
               <p className="font-mono text-xs leading-relaxed border-l-2 border-blue-600 pl-4 py-1 text-muted-foreground">
-                Intersection control delay per HCM Ch. 19 Eq. 19-13. Cycle
+                Intersection control delay per the Webster–Akçelik signalized model. Cycle
                 90s, g/C 0.45, saturation flow 1,800 vphpl × weather factor.
                 15-min peak period, incremental delay k = 0.5.
               </p>
@@ -391,7 +391,7 @@ function FlagshipSection() {
             engine can carry where the data exists.
           </p>
           <p className="text-xs text-muted-foreground/80 leading-relaxed font-mono">
-            The other 170 metros run the same HCM/NHTS/MUTCD math against
+            The other 170 metros run the same Webster/NHTS/MUTCD math against
             the OSM signal graph + measured AADT from each state DOT (where
             published). See the per-metro coverage table above for what's
             wired where.

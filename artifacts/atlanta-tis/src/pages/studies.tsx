@@ -29,7 +29,7 @@ const STUDIES: Study[] = [
       "Screening-level TIS for a candidate site — public-data trip generation, signalized-intersection capacity, recommended mitigations.",
     icon: MapPin,
     status: "live",
-    citation: "NHTS 2017 / SANDAG 2002 / NCHRP 716 · HCM 6th Ed. · MUTCD",
+    citation: "NHTS 2017 / SANDAG 2002 / NCHRP 716 · Webster/Akçelik · MUTCD",
   },
   {
     id: "parking",
@@ -66,10 +66,10 @@ const STUDIES: Study[] = [
     href: "/studies/queuing",
     title: "Queuing Analysis",
     blurb:
-      "HCM Ch. 31 — 95th-percentile back-of-queue against the auxiliary-lane storage you have today.",
+      "95th-percentile back-of-queue (standard cyclic-queue relation) against the auxiliary-lane storage you have today.",
     icon: ChevronRight,
     status: "live",
-    citation: "HCM 6th Ed. · Ch. 31",
+    citation: "Webster cyclic-queue relations (openly published)",
   },
   {
     id: "road-diet",

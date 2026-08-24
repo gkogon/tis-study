@@ -41,7 +41,7 @@ const ROWS: CompareRow[] = [
     outsourced: { v: "partial", note: "depends on the sub" },
   },
   {
-    feature: "HCM 6th Ed. capacity model",
+    feature: "Signalized capacity model (delay / LOS / queue)",
     us: { v: "yes" },
     synchro: { v: "yes" },
     vistro: { v: "yes" },

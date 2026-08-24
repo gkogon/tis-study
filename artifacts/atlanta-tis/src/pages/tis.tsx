@@ -623,7 +623,7 @@ function TisFormSection({
                 </span>
                 <p className="text-xs text-muted-foreground">
                   For a redevelopment or change of use, the prior use's trips are computed on the same basis and
-                  credited, so the report reports net new external trips. Leave as <em>None</em> for a greenfield site.
+                  credited, so the report shows net new external trips. Leave as <em>None</em> for a greenfield site.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <label className="space-y-1">
@@ -1386,7 +1386,7 @@ function IntersectionTable({ report }: { report: TisReport }) {
                         {r.calibration && r.calibration.sampleCount > 0 && (
                           <span
                             className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900"
-                            title={`HCM delay calibrated against ${r.calibration.sampleCount} observed sample${r.calibration.sampleCount === 1 ? "" : "s"} (multiplier ×${r.calibration.delayMultiplier.toFixed(2)})`}
+                            title={`Screening delay calibrated against ${r.calibration.sampleCount} observed sample${r.calibration.sampleCount === 1 ? "" : "s"} (multiplier ×${r.calibration.delayMultiplier.toFixed(2)})`}
                             data-testid={`badge-calibrated-${r.signalId}`}
                           >
                             Calibrated
@@ -1443,7 +1443,7 @@ function ApproachDetailTable({ approaches }: { approaches: TisApproachImpact[] }
   return (
     <div className="space-y-2">
       <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-        Approach detail (HCM signalized intersection, weather-adjusted)
+        Approach detail (signalized-intersection screening model, weather-adjusted)
       </div>
       <table className="w-full text-xs">
         <thead>

@@ -135,7 +135,7 @@ export default function HelpPage() {
               <li><strong>Page 2 — Executive summary.</strong> Headline metric strip (intersections studied, LOS drops, intersections at E/F, worst Δ delay), project inputs, PM-peak trip generation, period-by-period trip totals.</li>
               <li><strong>Page 3+ — Intersections.</strong> One row per signal: existing/future LOS chips (color-coded), Δ delay, 95th-percentile back-of-queue length, recommended mitigation sized to the impact.</li>
               <li><strong>Monte-Carlo sensitivity</strong> (optional). 100-iteration robustness test on the LOS impacts.</li>
-              <li><strong>Findings + methodology appendices.</strong> Every figure footnoted to HCM, NHTS, MUTCD, AASHTO. PE-defensible.</li>
+              <li><strong>Findings + methodology appendices.</strong> Every figure footnoted to its published source — Webster/Akçelik, NHTS, MUTCD, AASHTO. PE-defensible.</li>
               <li><strong>Citations page</strong> at the end with the full reference list.</li>
             </ul>
             <p className="text-sm text-muted-foreground pt-2">
@@ -221,12 +221,12 @@ export default function HelpPage() {
               GDOT 511 NaviGAtor v2 — Georgia DOT's public ITS feed. The
               engine pulls live signal volumes and incident data. For
               intersections where we have ground-truth observations, we
-              calibrate the HCM delay model against observed delay; report
+              calibrate the screening delay model against observed delay; report
               text notes which signals are calibrated and against how many
               samples.
             </FAQ>
             <FAQ q="What standards are referenced?">
-              HCM 6th Edition (capacity, LOS, queuing). Public trip-generation
+              Openly-published capacity methods — Webster 1958 / Akçelik 1980 (delay, LOS, queuing). Public trip-generation
               data — NHTS 2017 / SANDAG 2002 / NCHRP 716 (rates, K/D factors,
               pass-by). MUTCD 2009/2024 (signal warrants).
               AASHTO Green Book (sight distance). FHWA (road-diet feasibility).

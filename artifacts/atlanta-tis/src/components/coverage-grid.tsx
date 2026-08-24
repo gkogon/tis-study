@@ -107,7 +107,7 @@ export function CoverageGrid() {
           </h2>
           <p className="text-base sm:text-lg text-muted-foreground leading-relaxed max-w-xl">
             Every signalized intersection in every metro we cover is indexed
-            against the same engine — same HCM 6th methods, same public-data
+            against the same engine — same openly-published capacity methods, same public-data
             trip rates, same MUTCD warrants. Pick a state below to see what's wired.
           </p>
         </div>
