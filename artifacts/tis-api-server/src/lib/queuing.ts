@@ -152,9 +152,9 @@ export function runQueuingAnalysis(
     },
     notes,
     citations: [
-      "HCM 6th Edition Chapter 31 — Signalized Intersections: Supplemental.",
+      "Standard signalized cyclic-queue relations (Webster 1958 arrival/discharge form, openly published).",
       "Capacity of a signalized lane group: c = s × g/C.",
-      "HCM Eq. 31-6 — Queue length and storage ratio.",
+      "Queue length and storage ratio from the standard cyclic-queue relation with Poisson percentile factor.",
     ],
   };
 }

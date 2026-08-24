@@ -1959,7 +1959,7 @@ function renderTisGeorgia(
   if (intersections.length > 0) {
     doc.moveDown(0.2);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "Each scenario cell shows LOS grade / average control delay (s/veh) per HCM 6th Ed. Ex. 19-8 (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). Screening delays use a generic signal model and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal.",
+      "Each scenario cell shows LOS grade / average control delay (s/veh) against the conventional US control-delay bands (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). Screening delays use a generic signal model and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal.",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
@@ -4819,7 +4819,7 @@ function renderTisLondon(
     });
     doc.moveDown(0.3);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "* Queue is the engine's HCM 95th-percentile in feet (not MMQ in PCUs as a UK reviewer would expect). LOS letters map informally to delay categories — see §1.2.",
+      "* Queue is the engine's US-convention 95th-percentile back-of-queue in feet (not MMQ in PCUs as a UK reviewer would expect). LOS letters map informally to delay categories — see §1.2.",
       { paragraphGap: 4 },
     );
     doc.fillColor("black");

@@ -141,7 +141,7 @@ export function runRoadDietAnalysis(
     citations: [
       "FHWA-SA-14-028 — Road Diet Informational Guide.",
       "FHWA Proven Safety Countermeasures: Road Diets.",
-      "HCM 6th Ed. Ch. 18 — Urban Street Segments (capacity reference).",
+      "Conservative urban-arterial per-lane capacity defaults from the openly-published literature.",
     ],
   };
 }

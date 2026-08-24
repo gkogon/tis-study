@@ -23,7 +23,7 @@ export const genericUsTemplate: ReportTemplate = {
       tableHeader: "#E8EEF6",
       rule: "#D8DEE6",
     },
-    cover: { style: "band", tagline: "Prepared in accordance with HCM screening methodology" },
+    cover: { style: "band", tagline: "Prepared using openly-published screening methodology (Webster/Akçelik)" },
     footer: "{{firm.name}}  ·  Traffic Impact Study  ·  {{project.projectName}}  ·  Page {{page}}",
     docControl: false,
   },
