@@ -44,6 +44,12 @@ export type IntersectionSummary = {
   inefficiencyScore: number;
   avgDelaySeconds: number;
   severity: Severity;
+  /** Provenance of totalVolume — AADT source slug or "road_class_baseline".
+   *  Set by regional-intersections.ts; Atlanta's model-derived summaries
+   *  leave it unset. */
+  volumeSource?: string;
+  /** Count year of the AADT record behind totalVolume, when measured. */
+  volumeYear?: number;
 };
 
 export type Intersection = IntersectionSummary & {
