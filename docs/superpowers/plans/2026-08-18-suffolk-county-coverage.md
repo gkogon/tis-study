@@ -1,5 +1,7 @@
 # Suffolk County (Long Island) Coverage Implementation Plan
 
+> **STATUS: EXECUTED (verified 2026-08-24).** `coverageBoxes` shipped in `artifacts/tis-api-server/src/lib/regions.ts` and `check:long-island-coverage` guards it in CI. Checkbox state below is not authoritative.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make Suffolk County coordinates return a real traffic study from `POST /tis-api/demo/generate`, backed by an actual signal and AADT inventory rather than a widened bounding box.

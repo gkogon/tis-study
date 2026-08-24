@@ -1570,20 +1570,23 @@ function renderTis(doc: PDFKit.PDFDocument, r: any) {
  *   §3  Study Network
  *   §4  Trip Generation
  *   §5  Trip Distribution and Assignment
- *   §6  Traffic Analysis (existing + build; multi-scenario
- *       Existing/No-Build/Build pending engine refactor)
+ *   §6  Traffic Analysis (Existing / No-Build / Build three-scenario
+ *       table, auto-upgrading to five scenarios when design-year
+ *       fields are present on the payload)
  *   §7  Identification of Programmed Projects
  *   §8  Ingress/Egress Analysis
  *   §9  Internal Circulation Analysis
  *   §10 Compliance with Comprehensive Plan Analysis
  *
  * DRI-specific sections (§11 Non-Expedited Criteria, §12 Area of
- * Influence, §13 ARC Air Quality Benchmark) are not produced by this
- * renderer — those require GRTA-specific data integration (AOI GIS,
- * ARC scoring rubric, Census ACS demographics) tracked separately as
- * the "DRI Module" roadmap item. When the project clearly exceeds
- * DRI thresholds, this renderer notes that the DRI sections need
- * separate preparation.
+ * Influence, §13 ARC Air Quality Benchmark) ARE produced — see
+ * renderTisGeorgiaDriSections, gated by probablyDriScale(tg). Items
+ * the engine cannot compute (utility capacity, TMA membership, ACS
+ * housing tables) are flagged for verification rather than omitted.
+ * Regulatory naming: GRTA was dissolved into GTEA by HB 297
+ * (2026-05-12) — agency-role references say GTEA; published document
+ * titles ("GRTA DRI Review Procedures", "GRTA Site Plan Guidelines")
+ * and the "GRTA Xpress" route brand are retained until reissued.
  */
 function renderTisGeorgia(
   doc: PDFKit.PDFDocument,
@@ -1653,7 +1656,7 @@ function renderTisGeorgia(
   gaSection(doc, "1.0 PROJECT DESCRIPTION");
   gaSubsection(doc, "1.1 Introduction");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `This report presents the analysis of the anticipated traffic impacts associated with the proposed ${project.projectName || "development"}, located within ${region.displayName}, Georgia. Analysis follows methodology consistent with Georgia Department of Transportation (GDOT), Atlanta Regional Commission (ARC), and Georgia Regional Transportation Authority (GRTA) guidance.`,
+    `This report presents the analysis of the anticipated traffic impacts associated with the proposed ${project.projectName || "development"}, located within ${region.displayName}, Georgia. Analysis follows methodology consistent with Georgia Department of Transportation (GDOT), Atlanta Regional Commission (ARC), and Georgia Transportation Efficiency Authority (GTEA — successor to GRTA per HB 297, effective 2026-05-12) guidance.`,
     { paragraphGap: 6 },
   );
 
@@ -1714,7 +1717,7 @@ function renderTisGeorgia(
       });
     } else {
       doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-        "No transit stops detected within 0.25 mi of the site via the live Transit.land / OSM Overpass query. Transit service area should be confirmed against current MARTA, GRTA Xpress, CCT, GCT, and local transit operator route maps. Proximity to transit influences trip-mode reductions under ARC's Air Quality Benchmark.",
+        "No transit stops detected within 0.25 mi of the site via the live Transit.land / OSM Overpass query. Transit service area should be confirmed against current MARTA, GRTA Xpress (the Xpress fleet operates under GTEA since HB 297), CCT, GCT, and local transit operator route maps. Proximity to transit influences trip-mode reductions under ARC's Air Quality Benchmark.",
         { paragraphGap: 6 },
       );
       doc.fillColor("black");
@@ -1727,12 +1730,12 @@ function renderTisGeorgia(
   gaSubsection(doc, "2.1 Growth Rate");
   if (r.growthSource) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Background traffic growth is applied at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from measured per-segment compound annual growth at GDOT count stations within the study metro. Source: ${r.growthSource}. The metro-level median is published here for transparency. For DRI submittals, the growth rate is typically refined to per-segment trend on the affected facilities and agreed upon during the pre-application methodology meeting with GRTA, ARC, GDOT, and the local jurisdiction.`,
+      `Background traffic growth is applied at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from measured per-segment compound annual growth at GDOT count stations within the study metro. Source: ${r.growthSource}. The metro-level median is published here for transparency. For DRI submittals, the growth rate is typically refined to per-segment trend on the affected facilities and agreed upon during the pre-application methodology meeting with GTEA, ARC, GDOT, and the local jurisdiction.`,
       { paragraphGap: 6 },
     );
   } else {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Background traffic growth is applied at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. This rate is consistent with GDOT historical traffic count growth observed along adjacent roadways within the study area. For DRI submittals, the growth rate is typically agreed upon during the pre-application methodology meeting with GRTA, ARC, GDOT, and the local jurisdiction.`,
+      `Background traffic growth is applied at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. This rate is consistent with GDOT historical traffic count growth observed along adjacent roadways within the study area. For DRI submittals, the growth rate is typically agreed upon during the pre-application methodology meeting with GTEA, ARC, GDOT, and the local jurisdiction.`,
       { paragraphGap: 6 },
     );
   }
@@ -1773,19 +1776,19 @@ function renderTisGeorgia(
 
   gaSubsection(doc, "3.2 Trip Distribution");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Directional distribution and assignment of new project trips is based on the existing roadway network geometry, proximity to project access points, and engineering judgment. For formal DRI submittal, distribution percentages should be agreed upon during the methodology meeting with GRTA, ARC, GDOT, and the local jurisdiction.",
+    "Directional distribution and assignment of new project trips is based on the existing roadway network geometry, proximity to project access points, and engineering judgment. For formal DRI submittal, distribution percentages should be agreed upon during the methodology meeting with GTEA, ARC, GDOT, and the local jurisdiction.",
     { paragraphGap: 6 },
   );
 
   gaSubsection(doc, "3.3 Level of Service Standards");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Per GDOT and GRTA convention, the Level of Service standard for all intersections and roadway segments within the study network is LOS D. Where an intersection or segment currently operates at LOS E or F during the existing peak period, the LOS standard for that period becomes LOS E, consistent with GRTA's Letter of Understanding.",
+    "Per GDOT and GTEA convention, the Level of Service standard for all intersections and roadway segments within the study network is LOS D. Where an intersection or segment currently operates at LOS E or F during the existing peak period, the LOS standard for that period becomes LOS E, consistent with the Letter of Understanding process carried forward by GTEA.",
     { paragraphGap: 6 },
   );
 
   gaSubsection(doc, "3.4 Study Network Determination");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `The study network covers all signalized intersections within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile radius of the project site. For DRI-level submittal, GRTA's 7-percent rule (which extends the network to any intersection or segment where project-generated trips exceed 7 percent of the service volume) should be applied; this screening-level analysis applies the radius-based criterion as a starting point.`,
+    `The study network covers all signalized intersections within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile radius of the project site. For DRI-level submittal, the 7-percent rule from the GRTA/GTEA DRI Review Procedures document (which extends the network to any intersection or segment where project-generated trips exceed 7 percent of the service volume — a procedures-document figure, not a DCA rule) should be applied; this screening-level analysis applies the radius-based criterion as a starting point.`,
     { paragraphGap: 6 },
   );
 
@@ -1889,63 +1892,77 @@ function renderTisGeorgia(
     (it) => it.designNoBuildLos != null || it.designBuildLos != null,
   );
   const gaDesignYr = r.designYear ?? (req.openingYear ? Number(req.openingYear) + 20 : null);
+  // openingYear can equal the current analysis year (growthYears 0):
+  // "grown at 0.92%/yr over 0 year(s)" would describe a no-op as if
+  // growth had been applied, so the clause switches honestly.
+  const gaGrowthClause = (r.growthYears ?? 0) === 0
+    ? "identical to Existing volumes (the opening year is the current analysis year, so no background growth is applied)"
+    : `existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}`;
   if (gaHasDesignYear) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Four scenarios are evaluated at each affected intersection per GRTA / GDOT convention for projects exceeding screening thresholds: (1) Existing — current-year volumes from the GDOT 511 system, no growth applied; (2) No-Build at opening year ${req.openingYear ?? "—"} — existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year(s); (3) Build at opening year ${req.openingYear ?? "—"} — No-Build volumes plus project external trips at the assigned distribution; (4) 20-Year Design Year (${gaDesignYr ?? "—"}) No-Build and Build — opening-year volumes compounded another 20 years at the same growth rate, project trips at full build-out unchanged.`,
+      `Four scenarios are evaluated at each affected intersection per GTEA / GDOT convention for projects exceeding screening thresholds: (1) Existing — current-year volumes from the GDOT 511 system, no growth applied; (2) No-Build at opening year ${req.openingYear ?? "—"} — ${gaGrowthClause}; (3) Build at opening year ${req.openingYear ?? "—"} — No-Build volumes plus project external trips at the assigned distribution; (4) 20-Year Design Year (${gaDesignYr ?? "—"}) No-Build and Build — opening-year volumes compounded another 20 years at the same growth rate, project trips at full build-out unchanged.`,
       { paragraphGap: 6 },
     );
   } else {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Three scenarios are evaluated at each affected intersection: (1) Existing — current-year volumes from the GDOT 511 system, no growth applied; (2) No-Build (opening year ${req.openingYear ?? "—"}) — existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year(s) without project trips; (3) Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the proposed development's external trips at the assigned distribution.`,
+      `Three scenarios are evaluated at each affected intersection: (1) Existing — current-year volumes from the GDOT 511 system, no growth applied; (2) No-Build (opening year ${req.openingYear ?? "—"}) — ${gaGrowthClause}, without project trips; (3) Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the proposed development's external trips at the assigned distribution.`,
       { paragraphGap: 6 },
     );
   }
+  // LOS letter + control delay per scenario cell (FL renderer
+  // convention): an F at 82 s and an F at 155 s are different findings.
+  const gaLosCell = (los: unknown, delaySec: unknown) => {
+    const g = los ?? "—";
+    return delaySec == null || Number.isNaN(Number(delaySec))
+      ? String(g)
+      : `${g} / ${Math.round(Number(delaySec))}`;
+  };
 
   if (intersections.length > 0 && gaHasDesignYear) {
     table(doc, {
       headers: ["Intersection", "Existing", "Opening NB", "Opening Bld", "Design NB", "Design Bld", "Δ delay (s)"],
-      widths: [180, 55, 65, 65, 55, 55, 55],
+      widths: [150, 58, 66, 66, 58, 58, 54],
       align: ["left", "center", "center", "center", "center", "center", "right"],
       rows: intersections.map((it) => {
         const losChanged = it.losChanged === true;
-        const currentLos = it.currentLos ?? it.existingLos ?? "—";
-        const noBuildLos = it.existingLos ?? "—";
-        const buildLos = it.futureLos ?? "—";
-        const designNbLos = it.designNoBuildLos ?? "—";
-        const designBldLos = it.designBuildLos ?? "—";
         return [
           it.name ?? it.signalId ?? "—",
-          String(currentLos),
-          String(noBuildLos),
-          (losChanged ? "▲ " : "") + String(buildLos),
-          String(designNbLos),
-          String(designBldLos),
+          gaLosCell(it.currentLos ?? it.existingLos, it.currentDelaySec ?? it.existingDelaySec),
+          gaLosCell(it.existingLos, it.existingDelaySec),
+          (losChanged ? "▲ " : "") + gaLosCell(it.futureLos, it.futureDelaySec),
+          gaLosCell(it.designNoBuildLos, it.designNoBuildDelaySec),
+          gaLosCell(it.designBuildLos, it.designBuildDelaySec),
           fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
         ];
       }),
     });
   } else if (intersections.length > 0) {
     table(doc, {
-      headers: ["Intersection", "Existing LOS", "No-Build LOS", "Build LOS", "Δ delay (s)", "Q95 (ft)"],
-      widths: [200, 65, 75, 65, 70, 60],
+      headers: ["Intersection", "Existing", "No-Build", "Build", "Δ delay (s)", "Q95 (ft)"],
+      widths: [180, 70, 80, 70, 65, 60],
       align: ["left", "center", "center", "center", "right", "right"],
       rows: intersections.map((it) => {
         const losChanged = it.losChanged === true;
         // Fallback: if `currentLos` is missing (older payload), use existingLos
         // for both Existing and No-Build columns so the table still renders.
-        const currentLos = it.currentLos ?? it.existingLos ?? "—";
-        const noBuildLos = it.existingLos ?? "—";
-        const buildLos = it.futureLos ?? "—";
         return [
           it.name ?? it.signalId ?? "—",
-          String(currentLos),
-          String(noBuildLos),
-          (losChanged ? "▲ " : "") + String(buildLos),
+          gaLosCell(it.currentLos ?? it.existingLos, it.currentDelaySec ?? it.existingDelaySec),
+          gaLosCell(it.existingLos, it.existingDelaySec),
+          (losChanged ? "▲ " : "") + gaLosCell(it.futureLos, it.futureDelaySec),
           fmtNum((it.futureDelaySec ?? 0) - (it.existingDelaySec ?? 0), 1),
           fmtNum(it.queue95thFt),
         ];
       }),
     });
+  }
+  if (intersections.length > 0) {
+    doc.moveDown(0.2);
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "Each scenario cell shows LOS grade / average control delay (s/veh) per HCM 6th Ed. Ex. 19-8 (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). Screening delays use a generic signal model and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal.",
+      { paragraphGap: 6 },
+    );
+    doc.fillColor("black");
   }
   if (intersections.length > 0) {
     // Mitigation list — GA-style, "Recommended Improvements". Runs for
@@ -3159,7 +3176,7 @@ function renderTisGeorgiaWorksheet(
   // --- §4 Tier Determination -------------------------------------------
   gaSection(doc, "4.0 WORKSHEET-TIER DETERMINATION");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Per Gwinnett County DOT TIS Guidelines (2023) Table 1, projects generating 0–20 peak-hour site-generated automobile trips qualify as Level 1. The proposed development estimate of ${fmtNum(tierInput.pmPeakTrips)} PM peak-hour trips falls within this band; accordingly, no Level 2 (Abbreviated) or Level 3 (Full) TIS is required. The GRTA equivalent (Limited Trip Generation Memo, applicable when Net ADT < 1,000) is also satisfied at ${fmtNum(tierInput.dailyTrips)} daily trips.`,
+    `Per Gwinnett County DOT TIS Guidelines (2023) Table 1, projects generating 0–20 peak-hour site-generated automobile trips qualify as Level 1. The proposed development estimate of ${fmtNum(tierInput.pmPeakTrips)} PM peak-hour trips falls within this band; accordingly, no Level 2 (Abbreviated) or Level 3 (Full) TIS is required. The GTEA equivalent (Limited Trip Generation Memo per the GRTA DRI Review Procedures, applicable when Net ADT < 1,000) is also satisfied at ${fmtNum(tierInput.dailyTrips)} daily trips.`,
     { paragraphGap: 6 },
   );
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
@@ -4467,8 +4484,11 @@ function renderTisLondon(
         { paragraphGap: 6 },
       );
     } else {
+      // No priorUse on the request: keep the same engine-note posture as the
+      // other gray ldnNote escape hatches — professional prose, never a
+      // bracketed TODO, because this paragraph ships in the deliverable PDF.
       doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-        `[TODO — Consultant to insert trip-comparison narrative: name the prior use on the site (set TisRequest.priorUse to populate automatically), present TRICS-derived rates for both the prior use and the proposed ${tg.landUseName ?? "scheme"}, report the net change, and conclude on whether the residual impact warrants any further capacity assessment.]`,
+        `No prior site use was specified for this scheme, so the conventional sub-threshold assessment — a trip comparison against the previous use of the site — is not generated here. At submittal the chartered engineer should identify the prior use (supplying it in the study request populates this narrative), present TRICS-derived rates for the prior use and the proposed ${tg.landUseName ?? "scheme"}, report the net change, and conclude on whether the residual impact warrants any further capacity assessment.`,
         { paragraphGap: 6 },
       );
       doc.fillColor("black");
@@ -7160,8 +7180,18 @@ function renderTisGeorgiaDriSections(
 
   // ---- §11 Non-Expedited Criteria ---------------------------------------
   gaSection(doc, "11.0 NON-EXPEDITED REVIEW CRITERIA");
+  // Regulatory currency + correct citations, per the primary-source
+  // verification pass in REGIONAL-SPECS/georgia-dri-deep-dive.md:
+  // the eight criteria come from the GRTA/GTEA DRI Review Procedures
+  // document, NOT DCA Ch. 110-12-3 (which establishes the process but
+  // articulates no such criteria); ARC-region DRIs are governed by
+  // the Ch. 110-12-7 alternative procedure.
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Per GA DCA Chapter 110-12-3, DRI submittals must address the eight non-expedited review criteria below. Items marked as auto-computed reflect the engine's deterministic outputs from this analysis; items flagged for verification require coordination with GRTA, ARC, MARTA, GDOT, and the local jurisdiction during the pre-application methodology meeting.",
+    "Regulatory currency note: GRTA was dissolved and its DRI review functions transferred to the Georgia Transportation Efficiency Authority (GTEA) by HB 297, effective 2026-05-12; DRIs in process at the transfer date continue under the procedures in force at application. DCA Chapters 110-12-3 and 110-12-7 still reference GRTA verbatim (the rules had not been amended as of 2026-06-12), and the controlling procedures document retains its published \"GRTA DRI Review Procedures\" title until reissued. This report cites GTEA as the current authority and retains historical document titles as published. For DRIs within the ARC region, DCA Chapter 110-12-7 provides the controlling alternative review procedure and defines three expedited-eligibility categories: LCI plan areas, transit-oriented developments, and projects generating fewer than 1,000 net new daily trips.",
+    { paragraphGap: 6 },
+  );
+  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+    "The eight non-expedited review criteria below are drawn from the GRTA/GTEA DRI Review Procedures document (DCA Chapter 110-12-3 establishes the DRI process but does not itself articulate these criteria). Items marked as auto-computed reflect the engine's deterministic outputs from this analysis; items flagged for verification require coordination with GTEA, ARC, MARTA, GDOT, and the local jurisdiction during the pre-application methodology meeting.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
@@ -7256,14 +7286,14 @@ function renderTisGeorgiaDriSections(
   // ---- §12 Area of Influence --------------------------------------------
   gaSection(doc, "12.0 AREA OF INFLUENCE");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `The Area of Influence (AOI) for this DRI is defined as the area within a 6-mile radius of the project site, consistent with GRTA's standard AOI definition for DRI review. The AOI is centered on the proposed development located in ${region.displayName} and includes all Census block groups whose centroids fall within the 6-mile buffer.`,
+    `The Area of Influence (AOI) for this DRI is defined as the area within a 6-mile radius of the project site, per the AOI definition in the GRTA/GTEA DRI Review Procedures document (a procedures-document figure — the DCA rules themselves specify no AOI radius). The AOI is centered on the proposed development located in ${region.displayName} and includes all Census block groups whose centroids fall within the 6-mile buffer.`,
     { paragraphGap: 6 },
   );
 
   doc.font("bold").fontSize(11).fillColor("black").text("Required AOI demographic overlay");
   doc.moveDown(0.3);
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
-    "Per GRTA DRI submittal guidance, the AOI characterization requires the following American Community Survey 5-Year Estimate tables aggregated to block-group geography and clipped to the 6-mile buffer. This screening analysis does not auto-generate the Census overlay — the tables below identify the data sources the DRI consultant must compile for the formal submittal.",
+    "Per the GRTA/GTEA DRI Review Procedures, the AOI characterization requires the following American Community Survey 5-Year Estimate tables aggregated to block-group geography and clipped to the 6-mile buffer. This screening analysis does not auto-generate the Census overlay — the tables below identify the data sources the DRI consultant must compile for the formal submittal.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
@@ -7381,7 +7411,7 @@ function renderTisGeorgiaDriSections(
       [
         "Park-and-ride / GRTA Xpress access",
         "Requires verification",
-        "Distance to nearest park-and-ride lot — GRTA facility map",
+        "Distance to nearest park-and-ride lot — GTEA facility map (published pre-HB 297 as the GRTA map)",
       ],
       [
         "Auto-computed VMT reduction (from §11.2)",
@@ -7392,7 +7422,7 @@ function renderTisGeorgiaDriSections(
   });
   doc.moveDown(0.3);
   doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
-    "Notes: The auto-computed VMT reduction reflects only credits supported by engine data. Verification-required rubric items would add to this figure once confirmed during the methodology meeting with GRTA, ARC, MARTA, and the local jurisdiction. The final ARC Air Quality Benchmark score for DRI submittal is determined by ARC review staff and is not produced by this screening tool.",
+    "Notes: The auto-computed VMT reduction reflects only credits supported by engine data. Verification-required rubric items would add to this figure once confirmed during the methodology meeting with GTEA, ARC, MARTA, and the local jurisdiction. The final ARC Air Quality Benchmark score for DRI submittal is determined by ARC review staff and is not produced by this screening tool.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");
@@ -9201,8 +9231,12 @@ function renderCapacityAppendix(
     if (approaches.length === 0) return;
 
     doc.font("bold").fontSize(9.5).fillColor("black").text("Per-Approach Capacity (PM Peak)", { paragraphGap: 4 });
+    // The engine's `existing*` approach fields are NO-BUILD values
+    // (grown to opening year) — see the naming note in tis.ts. The
+    // old "Exist" headers presented No-Build→Build as Existing→Build
+    // in every region's appendix; label them honestly.
     table(doc, {
-      headers: ["Appr.", "Exist vph", "+Trips", "Build vph", "v/c Ex→Bld", "Delay Ex→Bld", "LOS Ex→Bld", "Q95 ft"],
+      headers: ["Appr.", "NB vph", "+Trips", "Build vph", "v/c NB→Bld", "Delay NB→Bld", "LOS NB→Bld", "Q95 ft"],
       widths: [52, 64, 44, 64, 70, 84, 60, 54],
       align: ["left", "right", "right", "right", "center", "center", "center", "right"],
       rows: approaches.map((a) => [
@@ -9220,6 +9254,11 @@ function renderCapacityAppendix(
         fmtNum(a.queue95thFt),
       ]),
     });
+    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      "NB = No-Build: existing counts grown to the opening year, without project trips. Build = No-Build plus assigned project trips. Current-year Existing conditions appear in the scenario tables of the main report body.",
+      { paragraphGap: 4 },
+    );
+    doc.fillColor("black");
 
     // Affected movements: which turning movements the project's trips load.
     // Preferred source is the engine's geometric movement assignment
