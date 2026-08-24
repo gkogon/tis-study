@@ -525,7 +525,7 @@ export function renderTisSouthCarolina(
   // --- 3.0 Volume development + 4.0 capacity vs TG-21 ---
   carSection(doc, "3.0 TRAFFIC VOLUME DEVELOPMENT AND CAPACITY ANALYSIS");
   carBody(doc,
-    "Scenarios per ARMS: existing year, build-out no-build, and build-out build. Capacity analysis follows the Highway Capacity Manual (HCM 6th Edition consistent) with LOS reported for all approaches and movements; coordinated signal systems are analyzed as a system.", true);
+    "Scenarios per ARMS: existing year, build-out no-build, and build-out build. Capacity analysis computes signalized control delay by the openly-published Webster/Akcelik method with LOS reported for all approaches and movements; coordinated signal systems are analyzed as a system.", true);
   carSubsection(doc, "3.1 TG-21 Level of Service Standard — LOS C");
   carBody(doc,
     "Per SCDOT Traffic Engineering Guideline TG-21 (Mitigation of Traffic Impacts), the acceptable level of service for the design (peak) hour is LOS C or better for all roadway types statewide, applied in lieu of locally preferred thresholds. Where the baseline already operates at or below LOS C, the baseline LOS must be maintained or improved; where the baseline is LOS F in a congested urban area, mitigation is at the DTE's determination. Note: this is a stricter standard than the LOS D convention applied in several neighboring states.");

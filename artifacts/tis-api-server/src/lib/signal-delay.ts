@@ -1,14 +1,34 @@
-// Signalized-intersection screening delay / LOS / queue — pure HCM math.
+// Signalized-intersection screening delay / LOS / queue.
 //
 // Extracted from tis.ts so the delay model is a dependency-free leaf that can be
 // unit-tested in isolation (no logger/db/region imports). tis.ts re-exports these
 // for back-compat, so existing `import { vcToDelay, delayToLos, queue95Ft } from
 // "./tis"` sites (turbo-lane.ts, uk-capacity.ts) are unchanged.
 //
-// All constants are HCM 6th-Edition thresholds or clearly-stated screening
-// assumptions — no proprietary tables reproduced.
+// PROVENANCE — every formula here is drawn from the openly-published
+// traffic-engineering literature, not from a proprietary capacity manual:
+//
+//   • Uniform delay (d1): F. V. Webster, "Traffic Signal Settings", Road
+//     Research Technical Paper No. 39, Road Research Laboratory, HMSO,
+//     London (1958) — d1 = C(1 − λ)² / (2(1 − λx)).
+//   • Incremental / overflow delay (d2): R. Akçelik's time-dependent
+//     overflow function, Australian Road Research Board (ARRB), published
+//     independently and reproduced throughout the open literature.
+//   • Back-of-queue: the standard undersaturated cyclic-queue relation with
+//     a Poisson percentile factor (see below).
+//
+// The delay values these produce are consistent with conventional US
+// signalized-intersection practice because that practice is built on the
+// same Webster/Akçelik foundation. No proprietary tables, exhibits, default
+// values or procedure text are reproduced.
 
-// ---------- HCM LOS thresholds (HCM 6th Ed, Ex. 19-8) ----------
+// ---------- Control-delay LOS bands ----------
+// The conventional US control-delay letter bands for signalized
+// intersections, as republished in publicly-available state DOT design and
+// traffic-engineering manuals (e.g. GDOT, Caltrans HDM, NYSDOT). Values are
+// seconds of average control delay per vehicle. Reported letters are
+// re-derived here so the engine never has to cross-reference a licensed
+// document at runtime.
 
 export type Los = "A" | "B" | "C" | "D" | "E" | "F";
 
@@ -48,7 +68,7 @@ export const VEH_LENGTH_FT = 25;
 // cap × calMul. A calibrated design-level analysis (HCS/Synchro) supersedes it.
 export const SCREENING_MAX_DELAY_SEC = 300;
 
-// ---------- HCM signalized-intersection delay (Ex. 19-18) ----------
+// ---------- Signalized-intersection control delay (Webster d1 + Akçelik d2) ----------
 
 // `cycleLenS` / `gOverC` default to the screening constants, so every existing
 // call site is byte-identical. A caller with a MEASURED cycle length (e.g. a
@@ -77,7 +97,8 @@ export function vcToDelay(
   return Math.min(d1 + d2, SCREENING_MAX_DELAY_SEC);
 }
 
-// 95th-percentile back-of-queue length per HCM 6th Ed. Eq. 19-50, simplified.
+// 95th-percentile back-of-queue length — standard undersaturated cyclic-queue
+// relation (Webster arrival/discharge form), simplified.
 //   Q1 (avg vehicles per cycle queued) = (vph/3600) * C * (1 - g/C) / (1 - x*g/C)
 //   Q95 ≈ Q1 * 1.65  (Poisson incremental factor, undersaturated)
 //   length_ft = Q95 * VEH_LENGTH_FT

@@ -218,14 +218,15 @@ export function nysdotRegion(lat: number, lon: number, region: Region): NysdotRe
 }
 
 /**
- * HCM 2010 LOS-threshold tables. Shell §3 requires these three blocks
+ * LOS-threshold tables. Shell §3 requires these three blocks
  * (signalized / unsignalized / freeway) so a reviewer can verify the
  * engine is calibrated against the same thresholds NYSDOT reviewers
- * use. Cited verbatim per HCM 2010 Exhibits 18-4, 19-1, 20-2, 21-1,
- * 10-7.
+ * use. Values are the conventional US control-delay / density bands as
+ * republished in publicly-available state DOT design manuals (incl.
+ * NYSDOT HDM); no licensed exhibit text is reproduced.
  */
 function nyLosThresholdTables(doc: PDFKit.PDFDocument) {
-  doc.font("bold").fontSize(10).fillColor("black").text("Signalized intersections (HCM 2010 Exhibit 18-4, p. 18-6) — control delay sec/veh; any v/c > 1.0 is F.");
+  doc.font("bold").fontSize(10).fillColor("black").text("Signalized intersections — conventional US control-delay bands, sec/veh (as republished in state DOT design manuals); any v/c > 1.0 is F.");
   doc.moveDown(0.2);
   nyTable(doc, {
     headers: ["LOS", "A", "B", "C", "D", "E", "F"],
@@ -235,7 +236,7 @@ function nyLosThresholdTables(doc: PDFKit.PDFDocument) {
   });
   doc.moveDown(0.3);
 
-  doc.font("bold").fontSize(10).fillColor("black").text("Unsignalized — 2-way stop / all-way stop / roundabout (HCM 2010 Exhibits 19-1, 20-2, 21-1) — sec/veh; any v/c > 1.0 is F.");
+  doc.font("bold").fontSize(10).fillColor("black").text("Unsignalized — 2-way stop / all-way stop / roundabout — conventional US control-delay bands, sec/veh; any v/c > 1.0 is F.");
   doc.moveDown(0.2);
   nyTable(doc, {
     headers: ["LOS", "A", "B", "C", "D", "E", "F"],
@@ -245,7 +246,7 @@ function nyLosThresholdTables(doc: PDFKit.PDFDocument) {
   });
   doc.moveDown(0.3);
 
-  doc.font("bold").fontSize(10).fillColor("black").text("Freeway basic / weaving / merge-diverge (HCM 2010 Exhibit 10-7, p. 10-9) — density pc/mi/ln; any component vd/c > 1.00 is F.");
+  doc.font("bold").fontSize(10).fillColor("black").text("Freeway basic / weaving / merge-diverge — conventional US density bands, pc/mi/ln; any component vd/c > 1.00 is F.");
   doc.moveDown(0.2);
   nyTable(doc, {
     headers: ["LOS", "A", "B", "C", "D", "E", "F"],
@@ -582,7 +583,7 @@ export function renderTisNewYork(
   // --- §3.0 Capacity Analysis --------------------------------------------
   nySection(doc, "3.0 CAPACITY ANALYSIS");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Capacity analyses performed in this report are consistent with HCM 6th Edition. The software used to perform this analysis is the SimpleImpactStudies HCM 6 solver (per-approach control-delay model). Synchro / SimTraffic, HCS, Sidra, or VISSIM may be substituted for formal submittal per NYSDOT Regional Traffic Office preference.",
+    "Capacity analyses in this report use the SimpleImpactStudies screening solver — a per-approach control-delay model built on the openly-published Webster uniform-delay and Akçelik overflow formulations — reported against the conventional US control-delay bands. Synchro / SimTraffic, HCS, Sidra, or VISSIM may be substituted for formal submittal per NYSDOT Regional Traffic Office preference.",
     { paragraphGap: 6 },
   );
   // Functional-class summary — counts of each NYSDOT functional class
@@ -607,7 +608,7 @@ export function renderTisNewYork(
     doc.fillColor("black");
   }
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Level of Service thresholds applied below are per HCM 2010 Exhibits 18-4 (signalized), 19-1 / 20-2 / 21-1 (unsignalized — 2-way stop / all-way stop / roundabout), and 10-7 (freeway). Any component v/c > 1.0 is LOS F regardless of delay or density.",
+    "Level of Service thresholds applied below are the conventional US control-delay and density bands for signalized, unsignalized (2-way stop / all-way stop / roundabout), and freeway facilities, as republished in publicly-available state DOT design manuals. Any component v/c > 1.0 is LOS F regardless of delay or density.",
     { paragraphGap: 6 },
   );
   nyLosThresholdTables(doc);
@@ -1083,7 +1084,7 @@ export function renderTisNewYork(
   doc.addPage();
   nySection(doc, "APPENDIX A — EXISTING VOLUME REPORT");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Per-approach existing peak-hour volumes (vph) for all affected intersections within study limits. Source: SimpleImpactStudies HCM 6 solver, calibrated against the controlling DOT 511 / Regional Traffic Office data feed.",
+    "Per-approach existing peak-hour volumes (vph) for all affected intersections within study limits. Source: SimpleImpactStudies screening solver (Webster/Akçelik control-delay model), calibrated against the controlling DOT 511 / Regional Traffic Office data feed.",
     { paragraphGap: 6 },
   );
   if (intersections.length > 0) {
@@ -1120,7 +1121,7 @@ export function renderTisNewYork(
   doc.addPage();
   nySection(doc, "APPENDIX B — EXISTING CONDITION CAPACITY ANALYSIS OUTPUT");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Per-intersection HCM 6 solver output for the Existing No-Build condition (current-year volumes; volumes grown to opening year at the §3.1 background-growth rate for No-Build comparison).",
+    "Per-intersection screening-solver output (Webster/Akçelik control-delay model) for the Existing No-Build condition (current-year volumes; volumes grown to opening year at the §3.1 background-growth rate for No-Build comparison).",
     { paragraphGap: 6 },
   );
   if (intersections.length > 0) {
@@ -1149,7 +1150,7 @@ export function renderTisNewYork(
   doc.addPage();
   nySection(doc, "APPENDIX C — PROPOSED CONDITION CAPACITY ANALYSIS OUTPUT");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Per-intersection HCM 6 solver output for the Proposed Build condition (No-Build volumes plus project external trips at the assigned distribution).",
+    "Per-intersection screening-solver output (Webster/Akçelik control-delay model) for the Proposed Build condition (No-Build volumes plus project external trips at the assigned distribution).",
     { paragraphGap: 6 },
   );
   if (intersections.length > 0) {

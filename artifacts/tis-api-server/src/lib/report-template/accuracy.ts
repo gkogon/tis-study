@@ -72,7 +72,7 @@ export function buildAccuracyReport(report: any, opts: { asOf?: string } = {}): 
     component: "Junction capacity",
     grade: "Medium",
     basis: ints.length
-      ? "HCM / degree-of-saturation screening from v/c ratios."
+      ? "Degree-of-saturation screening from v/c ratios (Webster/Akçelik delay model)."
       : "No junctions within the study radius — capacity is not the controlling factor.",
     toSubmit: ints.length ? "A calibrated LinSig / Synchro / Junctions model on the agreed demand." : undefined,
   });
