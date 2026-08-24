@@ -1637,8 +1637,8 @@ function renderTisGeorgia(
     doc.text("• No intersections within the study network are projected to drop one or more LOS during the build conditions.", { paragraphGap: 2 });
     doc.text("• No improvements are necessary to maintain the Level of Service standard (LOS D) within the study network.", { paragraphGap: 4 });
   } else {
-    doc.text(`• ${losDrops} intersection${losDrops === 1 ? "" : "s"} project to drop one or more LOS under build conditions.`, { paragraphGap: 2 });
-    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate at LOS E or F under build conditions and may require mitigation.`, { paragraphGap: 4 });
+    doc.text(`• ${losDrops} intersection${losDrops === 1 ? " is" : "s are"} projected to drop one or more LOS grades under build conditions.`, { paragraphGap: 2 });
+    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate${losEf === 1 ? "s" : ""} at LOS E or F under build conditions and may require mitigation.`, { paragraphGap: 4 });
   }
   doc.fillColor("black");
   doc.moveDown(0.5);
@@ -2495,8 +2495,8 @@ function renderTisCalifornia(
     doc.text("• No intersections within the study network are projected to drop one or more LOS under build conditions.", { paragraphGap: 2 });
     doc.text("• No operational improvements appear necessary to maintain the LOS D standard within the study network (non-CEQA scope).", { paragraphGap: 4 });
   } else {
-    doc.text(`• ${losDrops} intersection${losDrops === 1 ? "" : "s"} project to drop one or more LOS under build conditions (non-CEQA scope).`, { paragraphGap: 2 });
-    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate at LOS E or F under build conditions and may warrant operational mitigation (non-CEQA scope).`, { paragraphGap: 4 });
+    doc.text(`• ${losDrops} intersection${losDrops === 1 ? " is" : "s are"} projected to drop one or more LOS grades under build conditions (non-CEQA scope).`, { paragraphGap: 2 });
+    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate${losEf === 1 ? "s" : ""} at LOS E or F under build conditions and may warrant operational mitigation (non-CEQA scope).`, { paragraphGap: 4 });
   }
   doc.fillColor("black");
   doc.moveDown(0.3);
@@ -3555,7 +3555,7 @@ function renderTisGeorgiaAbbreviated(
   doc.text(`• The proposed ${project.projectName || "development"} is projected to generate ${fmtNum(tierInput.dailyTrips)} daily trips and ${fmtNum(tierInput.pmPeakTrips)} PM peak-hour trips.`, { paragraphGap: 2 });
   doc.text("• Trip generation falls within Gwinnett County DOT Level 2 (Abbreviated) criteria; a Level 3 Full TIS is not required at this tier.", { paragraphGap: 2 });
   if (losEf > 0) {
-    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate at LOS E or F under future conditions and warrant mitigation per the §10 recommendations.`, { paragraphGap: 2 });
+    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate${losEf === 1 ? "s" : ""} at LOS E or F under future conditions and warrant mitigation per the §10 recommendations.`, { paragraphGap: 2 });
   } else {
     doc.text("• All affected study intersections are projected to operate at LOS D or better under future conditions, meeting the GDOT/Gwinnett LOS standard.", { paragraphGap: 2 });
   }
@@ -4731,7 +4731,7 @@ function renderTisLondon(
         : `${ukCap.overCapacity} junction(s) exceed the UK practical-capacity threshold (signals DoS ≥ 90% / priority and roundabout RFC ≥ 0.85) under the With-Development scenario (worst Degree of Saturation ${fmtNum(ukCap.worstDosPct, 1)}%), indicating mitigation would be warranted.`)
     : (losDrops === 0 && losEf === 0
         ? "no junction within the study network is projected to deteriorate by one or more LOS categories under the With-Development scenario, and capacity is not the limiting factor on this analysis."
-        : `${losDrops} junction(s) project to deteriorate by one or more LOS categories under the With-Development scenario and ${losEf} junction(s) project to operate at LOS E or F, indicating mitigation would be warranted.`);
+        : `${losDrops} junction${losDrops === 1 ? " is" : "s are"} projected to deteriorate by one or more LOS categories under the With-Development scenario and ${losEf} junction${losEf === 1 ? " is" : "s are"} projected to operate at LOS E or F, indicating mitigation would be warranted.`);
   doc.font("body").fontSize(10).fillColor("black").text(
     `On the basis of the screening-level cross-reference set out above, ${concCapacityClause} The following deliverables remain outstanding and are required for a submittable London Transport Assessment:`,
     { paragraphGap: 6 },
@@ -5125,7 +5125,7 @@ function renderLondonTransportStatement(
         : `${ukCap.overCapacity} junction(s) exceed the UK practical-capacity threshold (signals DoS ≥ 90% / priority and roundabout RFC ≥ 0.85) under the With-Development scenario (worst Degree of Saturation ${fmtNum(ukCap.worstDosPct, 1)}%), indicating mitigation would be warranted.`)
     : (losDrops === 0 && losEf === 0
         ? "no junction within the study network is projected to deteriorate by one or more LOS categories under the With-Development scenario, and capacity is not the limiting factor on this analysis."
-        : `${losDrops} junction(s) project to deteriorate by one or more LOS categories under the With-Development scenario and ${losEf} junction(s) project to operate at LOS E or F, indicating mitigation would be warranted.`);
+        : `${losDrops} junction${losDrops === 1 ? " is" : "s are"} projected to deteriorate by one or more LOS categories under the With-Development scenario and ${losEf} junction${losEf === 1 ? " is" : "s are"} projected to operate at LOS E or F, indicating mitigation would be warranted.`);
   doc.font("body").fontSize(10).fillColor("black").text(
     `On the basis of this screening-level Transport Statement, ${tsConcCapacityClause} The scheme falls within the DfT 2007 Appendix B TS size band for the use class (${sizeRule}) and trips none of the "regardless of size" escalators (peak-hour ≥ 30 vph, daily ≥ 100 vpd, ≥ 100 parking spaces, AQMA proximity, inadequate local transport infrastructure); a Transport Statement is therefore the appropriate deliverable shape under the de-facto DfT 2007 / PPG split. Promotion to a full Transport Assessment (TA) would be required only if (i) the scheme grew above the TA size threshold for the use class, or (ii) any Appendix B escalator subsequently triggered.`,
     { paragraphGap: 6 },
@@ -5590,7 +5590,7 @@ function renderTisTexasAbbreviated(
     );
   } else {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `${losDrops} intersection${losDrops === 1 ? "" : "s"} project to drop one or more LOS grade and ${losEf} operate at LOS E or F under the Background-plus-site scenario. Abbreviated-tier mitigation typically covers driveway geometry (right-turn deceleration / left-turn lanes per ACM Ch. 2 §4 and RDW Ch. 16), signal-timing tweaks, and turn-lane warrants; full corridor mitigation belongs in the Full TIA where one is later required.`,
+      `${losDrops} intersection${losDrops === 1 ? " is" : "s are"} projected to drop one or more LOS grades and ${losEf} operate${losEf === 1 ? "s" : ""} at LOS E or F under the Background-plus-site scenario. Abbreviated-tier mitigation typically covers driveway geometry (right-turn deceleration / left-turn lanes per ACM Ch. 2 §4 and RDW Ch. 16), signal-timing tweaks, and turn-lane warrants; full corridor mitigation belongs in the Full TIA where one is later required.`,
       { paragraphGap: 6 },
     );
   }
@@ -5760,8 +5760,8 @@ function renderTisTexas(
     doc.text("• No intersections within the study network are projected to drop one or more LOS grade between the Background and Background-plus-site scenarios.", { paragraphGap: 2 });
     doc.text("• No mitigation is necessary to maintain the operational thresholds agreed upon during preliminary scoping.", { paragraphGap: 4 });
   } else {
-    doc.text(`• ${losDrops} intersection${losDrops === 1 ? "" : "s"} project to drop one or more LOS grade under the Background-plus-site scenario.`, { paragraphGap: 2 });
-    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate at LOS E or F under the Background-plus-site scenario and are flagged for mitigation under TSP §16.4.3.`, { paragraphGap: 4 });
+    doc.text(`• ${losDrops} intersection${losDrops === 1 ? " is" : "s are"} projected to drop one or more LOS grades under the Background-plus-site scenario.`, { paragraphGap: 2 });
+    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate${losEf === 1 ? "s" : ""} at LOS E or F under the Background-plus-site scenario and are flagged for mitigation under TSP §16.4.3.`, { paragraphGap: 4 });
   }
   doc.fillColor("black");
   doc.moveDown(0.5);
@@ -6150,7 +6150,7 @@ function renderTisTexas(
   renderFarsKBlock(doc, r, { subsection: "7.1 NHTSA FARS Fatal Crash History" });
   gaSection(doc, "8.0 CONCLUSIONS");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Based on the screening analysis above, the project is classified as ${catLabel} per TSP §16.2.1. Of the ${intersections.length} affected intersection${intersections.length === 1 ? "" : "s"} analyzed, ${losDrops} drop one or more LOS grade and ${losEf} operate at LOS E or F under the Background-plus-site scenario. The horizon analyzed in this screening is the buildout year only; the full submittal must cover the years required by the project's TIA category per TSP §16.2.1 Table 16-1.`,
+    `Based on the screening analysis above, the project is classified as ${catLabel} per TSP §16.2.1. Of the ${intersections.length} affected intersection${intersections.length === 1 ? "" : "s"} analyzed, ${losDrops} drop${losDrops === 1 ? "s" : ""} one or more LOS grades and ${losEf} operate${losEf === 1 ? "s" : ""} at LOS E or F under the Background-plus-site scenario. The horizon analyzed in this screening is the buildout year only; the full submittal must cover the years required by the project's TIA category per TSP §16.2.1 Table 16-1.`,
     { paragraphGap: 6 },
   );
 
@@ -6546,8 +6546,8 @@ function renderTisIllinois(
     doc.text("• No intersections within the study network are projected to drop one or more LOS under build conditions.", { paragraphGap: 2 });
     doc.text("• No mitigation is necessary to maintain the host-jurisdiction Level of Service standard within the study network.", { paragraphGap: 4 });
   } else {
-    doc.text(`• ${losDrops} intersection${losDrops === 1 ? "" : "s"} project to drop one or more LOS under build conditions.`, { paragraphGap: 2 });
-    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate at LOS E or F under build conditions and may require mitigation per BLRS Ch. 32 + Ch. 34 and the host-jurisdiction standard above.`, { paragraphGap: 4 });
+    doc.text(`• ${losDrops} intersection${losDrops === 1 ? " is" : "s are"} projected to drop one or more LOS grades under build conditions.`, { paragraphGap: 2 });
+    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate${losEf === 1 ? "s" : ""} at LOS E or F under build conditions and may require mitigation per BLRS Ch. 32 + Ch. 34 and the host-jurisdiction standard above.`, { paragraphGap: 4 });
   }
   doc.fillColor("black");
   doc.moveDown(0.5);
@@ -7440,6 +7440,7 @@ type FloridaJurisdictionKey =
   | "manatee"
   | "orange"
   | "duval"
+  | "county_default"
   | "district_default";
 
 type FloridaJurisdiction = {
@@ -7462,6 +7463,48 @@ type FloridaJurisdiction = {
 };
 
 /**
+ * All 67 Florida counties → FDOT district, keyed by normalized county
+ * name (lowercase, periods stripped). District office cities match the
+ * convention used by the named-jurisdiction entries above ("FDOT
+ * District 5 (DeLand)").
+ */
+const FL_COUNTY_TO_DISTRICT: Record<string, string> = (() => {
+  const districts: Array<[string, string[]]> = [
+    ["FDOT District 1 (Bartow)", ["charlotte", "collier", "desoto", "de soto", "glades", "hardee", "hendry", "highlands", "lee", "manatee", "okeechobee", "polk", "sarasota"]],
+    ["FDOT District 2 (Lake City)", ["alachua", "baker", "bradford", "clay", "columbia", "dixie", "duval", "gilchrist", "hamilton", "lafayette", "levy", "madison", "nassau", "putnam", "st johns", "saint johns", "suwannee", "taylor", "union"]],
+    ["FDOT District 3 (Chipley)", ["bay", "calhoun", "escambia", "franklin", "gadsden", "gulf", "holmes", "jackson", "jefferson", "leon", "liberty", "okaloosa", "santa rosa", "wakulla", "walton", "washington"]],
+    ["FDOT District 4 (Fort Lauderdale)", ["broward", "indian river", "martin", "palm beach", "st lucie", "saint lucie"]],
+    ["FDOT District 5 (DeLand)", ["brevard", "flagler", "lake", "marion", "orange", "osceola", "seminole", "sumter", "volusia"]],
+    ["FDOT District 6 (Miami)", ["miami-dade", "miami dade", "monroe"]],
+    ["FDOT District 7 (Tampa)", ["citrus", "hernando", "hillsborough", "pasco", "pinellas"]],
+  ];
+  const map: Record<string, string> = {};
+  for (const [district, counties] of districts) for (const c of counties) map[c] = district;
+  return map;
+})();
+
+/**
+ * Pull a Florida county name out of a free-text address ("Bonita Beach
+ * Rd & US 41, Bonita Springs, FL (Lee County)"). A candidate counts
+ * only if it resolves in FL_COUNTY_TO_DISTRICT, so street names like
+ * "County Road 45" can't false-positive; multi-word captures retry with
+ * leading words dropped ("West Palm Beach County" → "Palm Beach").
+ */
+function flCountyFromAddress(address: string | undefined): { display: string; district: string } | null {
+  if (!address) return null;
+  const re = /([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,2})\s+County\b/g;
+  for (const m of address.matchAll(re)) {
+    const words = m[1]!.split(/\s+/);
+    for (let i = 0; i < words.length; i++) {
+      const candidate = words.slice(i).join(" ");
+      const district = FL_COUNTY_TO_DISTRICT[candidate.toLowerCase().replace(/\./g, "")];
+      if (district) return { display: candidate, district };
+    }
+  }
+  return null;
+}
+
+/**
  * Resolve the controlling Florida jurisdiction for a site by lat/lon.
  * Uses rough county / metro bounding boxes — adequate for prose
  * adaptation (which framework, which LOS standard, which thresholds,
@@ -7475,7 +7518,7 @@ type FloridaJurisdiction = {
  * dispatch deterministic; Gulf-coast (Hillsborough) and central-state
  * (Orange, Duval) follow.
  */
-function floridaJurisdiction(lat: number, lon: number): FloridaJurisdiction {
+function floridaJurisdiction(lat: number, lon: number, address?: string): FloridaJurisdiction {
   const inBox = (latMin: number, latMax: number, lonMin: number, lonMax: number) =>
     lat >= latMin && lat <= latMax && lon >= lonMin && lon <= lonMax;
 
@@ -7685,10 +7728,32 @@ function floridaJurisdiction(lat: number, lon: number): FloridaJurisdiction {
       extraNote: "Jacksonville requires a Traffic Methodology Meeting with the City Traffic Engineer and the Chief of Transportation Planning BEFORE any TIS is accepted — the methodology meeting is a hard prerequisite, not an option. The Concurrency and Mobility Management System Office (CMMSO) was established in 1991 and is the controlling review body.",
     };
   }
+  // Outside the named major-jurisdiction overlays: identify the county
+  // from the address when possible so the prose reads "Lee County …
+  // FDOT District 1 (Bartow)" instead of leaking an internal statewide
+  // label and a confirm-this-URL note into the deliverable.
+  const county = flCountyFromAddress(address);
+  if (county) {
+    return {
+      key: "county_default",
+      name: `${county.display} County`,
+      fdotDistrict: county.district,
+      framework: "Per controlling local government; MTSIH 2024 default if no local TIS procedure",
+      frameworkDoc: "MTSIH 2024 + statewide Policy 000-525-006",
+      losStandardNote: "SHS LOS D in urbanized areas and LOS C outside urbanized areas per FDOT Policy 000-525-006",
+      tripThreshold: "Driveway Category C–G (> 600 vpd including pass-by) triggers pre-application meeting + traffic study per MTSIH 2024 §3.2 / Appendix A",
+      horizonConvention: "Per MTSIH 2024 §4.3: Existing + Future Background + Future Build + Future Build with Mitigation; opening year canonical",
+      preStudyMeetingRequired: false,
+      methodologyLetterAppendix: "A",
+      certificationFrontMatter: false,
+      threeTrackEndChapters: false,
+      extraNote: `${county.display} County publishes no TIS supplement to MTSIH 2024 recognized by this screening; county-level practice is administered through pre-application meetings and methodology letters. Confirm the current county land-development code before submittal.`,
+    };
+  }
   return {
     key: "district_default",
-    name: "Florida (statewide default — no major-jurisdiction overlay)",
-    fdotDistrict: "FDOT District (confirm against the FDOT districts map at https://www.fdot.gov/agencyresources/districts.shtm)",
+    name: "Florida",
+    fdotDistrict: "FDOT district per the site county — see the FDOT districts map",
     framework: "Per controlling local government; MTSIH 2024 default if no local TIS procedure",
     frameworkDoc: "MTSIH 2024 + statewide Policy 000-525-006",
     losStandardNote: "SHS LOS D in urbanized areas and LOS C outside urbanized areas per FDOT Policy 000-525-006",
@@ -7747,9 +7812,13 @@ function renderTisFlorida(
 
   const lat = Number(project.siteLat ?? req.latitude ?? NaN);
   const lon = Number(project.siteLon ?? req.longitude ?? NaN);
+  const siteAddress: string | undefined = req.address ?? (project as any).address ?? undefined;
   const jur = Number.isFinite(lat) && Number.isFinite(lon)
-    ? floridaJurisdiction(lat, lon)
-    : floridaJurisdiction(27.7663, -82.6404);
+    ? floridaJurisdiction(lat, lon, siteAddress)
+    : floridaJurisdiction(27.7663, -82.6404, siteAddress);
+  // "within Lee County, Florida" for a resolved jurisdiction, but never
+  // "within Florida, Florida" on the no-county statewide fallback.
+  const jurWithin = jur.key === "district_default" ? "in Florida" : `within ${jur.name}, Florida`;
 
   // ─────────────────────────────────────────────────────────────────────
   // Florida TIS — canonical section structure mirrors the Caltran Engineering
@@ -7771,7 +7840,7 @@ function renderTisFlorida(
   gaSection(doc, "1.0 EXECUTIVE SUMMARY");
   doc.font("body").fontSize(10).fillColor("black");
   doc.text(
-    `This Traffic Impact Study has been prepared to evaluate the potential traffic impact, identify short-term roadway and circulation needs, determine potential mitigation strategies, and identify critical traffic issues that should be addressed during the planning process of the proposed ${project.projectName || "development"}, located at ${req.address ?? (project as any).address ?? region.displayName}, within ${jur.name}, Florida. The host controlling jurisdiction is ${jur.name} (${jur.fdotDistrict}); the applicable review framework is ${jur.framework}. Analysis follows the FDOT Multimodal Transportation Site Impact Handbook (MTSIH, March 25, 2024) and the FDOT Quality/Level of Service Handbook v6.0 (August 2025); capacity analysis computes signalized control delay by the openly-published Webster (1958) uniform-delay formulation with an Akcelik overflow term — the basis of the capacity procedures FDOT Traffic Analysis Handbook §4.1 requires, which a submittal-grade study re-runs in licensed capacity software. The study covers ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study area for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`,
+    `This Traffic Impact Study has been prepared to evaluate the potential traffic impact, identify short-term roadway and circulation needs, determine potential mitigation strategies, and identify critical traffic issues that should be addressed during the planning process of the proposed ${project.projectName || "development"}, located at ${req.address ?? (project as any).address ?? region.displayName}, ${jurWithin}. The host controlling jurisdiction is ${jur.name} (${jur.fdotDistrict}); the applicable review framework is ${jur.framework}. Analysis follows the FDOT Multimodal Transportation Site Impact Handbook (MTSIH, March 25, 2024) and the FDOT Quality/Level of Service Handbook v6.0 (August 2025); capacity analysis computes signalized control delay by the openly-published Webster (1958) uniform-delay formulation with an Akcelik overflow term — the basis of the capacity procedures FDOT Traffic Analysis Handbook §4.1 requires, which a submittal-grade study re-runs in licensed capacity software. The study covers ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmtNum(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile study area for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) at a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`,
     { paragraphGap: 6 },
   );
   doc.text("As part of this Traffic Impact Study, the following assignments were prepared consistent with the FDOT-approved methodology:", { paragraphGap: 2 });
@@ -7790,8 +7859,8 @@ function renderTisFlorida(
     doc.text("• No intersections within the study network are projected to drop a Level of Service grade under Build conditions.", { paragraphGap: 2 });
     doc.text("• No mitigation is required to maintain the FDOT State Highway System LOS standard within the study area.", { paragraphGap: 4 });
   } else {
-    doc.text(`• ${losDrops} intersection${losDrops === 1 ? "" : "s"} project to drop one or more LOS grade${losDrops === 1 ? "" : "s"} under Build conditions.`, { paragraphGap: 2 });
-    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate at LOS E or F under Build conditions; mitigation per MTSIH 2024 §5 should be evaluated.`, { paragraphGap: 4 });
+    doc.text(`• ${losDrops} intersection${losDrops === 1 ? " is" : "s are"} projected to drop one or more LOS grades under Build conditions.`, { paragraphGap: 2 });
+    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate${losEf === 1 ? "s" : ""} at LOS E or F under Build conditions; mitigation per MTSIH 2024 §5 should be evaluated.`, { paragraphGap: 4 });
   }
   doc.fillColor("black");
   doc.moveDown(0.5);
@@ -7978,7 +8047,7 @@ function renderTisFlorida(
   // --- 3.0 Introduction -------------------------------------------------
   gaSection(doc, "3.0 INTRODUCTION");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `The proposed ${project.projectName || "development"} is located at ${req.address ?? (project as any).address ?? "the study site"} within ${jur.name}, in the ${region.displayName} area. The project consists of ${tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "the proposed program"} under ITE land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}), and is anticipated to be completed by the opening year ${openingYear}.`,
+    `The proposed ${project.projectName || "development"} is located at ${req.address ?? (project as any).address ?? "the study site"}${jur.key === "district_default" ? "" : ` within ${jur.name}`}, in the ${region.displayName} area. The project consists of ${tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "the proposed program"} under land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}), and is anticipated to be completed by the opening year ${openingYear}.`,
     { paragraphGap: 6 },
   );
   rows(doc, [
@@ -8770,7 +8839,7 @@ function renderTisFlorida(
     );
   } else {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `The proposed ${project.projectName || "development"} is projected to generate ${fmtNum(tg.dailyTrips)} daily trips (${fmtNum(tg.pmIn)} in / ${fmtNum(tg.pmOut)} out in the PM peak hour) at full build-out. Under Build (Scenario 3) conditions at opening year ${openingYear}, ${losDrops} study intersection${losDrops === 1 ? "" : "s"} project to drop a Level of Service grade and ${losEf} operate${losEf === 1 ? "s" : ""} at LOS E or F. The improvement alternatives identified in §7.1 should be advanced, and the applicable proportionate-share / mobility-fee obligation should be calculated per the controlling ${jur.name} ordinance to maintain the FDOT SHS LOS standard within the study network.`,
+      `The proposed ${project.projectName || "development"} is projected to generate ${fmtNum(tg.dailyTrips)} daily trips (${fmtNum(tg.pmIn)} in / ${fmtNum(tg.pmOut)} out in the PM peak hour) at full build-out. Under Build (Scenario 3) conditions at opening year ${openingYear}, ${losDrops} study intersection${losDrops === 1 ? " is" : "s are"} projected to drop a Level of Service grade and ${losEf} operate${losEf === 1 ? "s" : ""} at LOS E or F. The improvement alternatives identified in §7.1 should be advanced, and the applicable proportionate-share / mobility-fee obligation should be calculated per the controlling ${jur.name} ordinance to maintain the FDOT SHS LOS standard within the study network.`,
       { paragraphGap: 6 },
     );
   }
