@@ -1,5 +1,7 @@
 # Driveway Access Modeling — Phase 2 (Auto-detect + Map UX) Implementation Plan
 
+> **STATUS: EXECUTED (verified 2026-08-24).** `artifacts/atlanta-tis/src/components/driveway-editor.tsx` shipped. Checkbox state below is not authoritative.
+
 > Builds on Phase 1 (backend routing, PR #62). Design in `docs/superpowers/specs/2026-07-01-driveway-access-modeling-design.md` §B (auto-detect) and §E (frontend). Branch: `feat/tis-driveway-frontend` (off `feat/tis-driveway-access`).
 
 **Goal:** Let the user auto-detect candidate driveways on the fronting streets near a site, then select / reposition / edit each driveway's access type on an interactive map, and submit them with the TIS request.

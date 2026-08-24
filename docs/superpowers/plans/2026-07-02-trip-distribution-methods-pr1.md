@@ -1,5 +1,7 @@
 # Trip Distribution Methods (PR1 — Unified Layer + Gravity Everywhere) Implementation Plan
 
+> **STATUS: EXECUTED (verified 2026-08-24).** `artifacts/tis-api-server/src/lib/trip-distribution.ts`, `pdf-export-distribution.ts`, and the end-to-end `distributionMethod` option all shipped; the web results view rendering followed in PR #135. The `- [ ]` checkboxes below were never ticked during execution — do not use them to judge remaining work.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Introduce a region-agnostic trip-distribution layer (`trip-distribution.ts`) that fully implements the `gravity` strategy (wrapping today's four-step / Caltran logic), stubs `analogy`/`surrogate` to fall back to gravity, wires it into `tis.ts` so the returned `weights[]` / `loadMultipliers[]` / `flGravity` drive per-intersection loading in ALL regions, renders a shared trip-distribution PDF section in every US regional renderer, and exposes a `distributionMethod` request option end-to-end (OpenAPI → codegen → engine type → frontend dropdown). The key design decision that makes byte-identity provable: **`tis.ts` builds the exact `demandZones` / `gravityZones` it builds today (including `refVolume` and the `clamp(mass/refVolume, 0.05, 1.0)` `baseVoverC`) and passes the pre-built zones into the leaf module — the leaf never re-derives `refVolume`/`baseVoverC`.**
