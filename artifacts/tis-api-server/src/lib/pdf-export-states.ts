@@ -1178,7 +1178,7 @@ function renderTisState(
     doc.text(`• No study-area intersections are projected to drop a Level of Service grade under Build conditions.`, { paragraphGap: 2 });
     doc.text(`• The proposed development does not create unacceptable LOS deterioration under ${cfg.agencyAbbrev} standards (LOS ${cfg.losUrban} acceptable).`, { paragraphGap: 4 });
   } else {
-    doc.text(`• ${losDrops} intersection${losDrops === 1 ? "" : "s"} project${losDrops === 1 ? "s" : ""} to drop one or more LOS grade${losDrops === 1 ? "" : "s"} under Build conditions.`, { paragraphGap: 2 });
+    doc.text(`• ${losDrops} intersection${losDrops === 1 ? " is" : "s are"} projected to drop one or more LOS grades under Build conditions.`, { paragraphGap: 2 });
     doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate${losEf === 1 ? "s" : ""} at LOS E or F under Build conditions — mitigation analysis is required per ${cfg.primaryDoc}.`, { paragraphGap: 4 });
   }
   doc.fillColor("black");
@@ -1246,7 +1246,7 @@ function renderTisState(
   doc.moveDown(0.3);
 
   stateSub("3.7 Level of Service Standards");
-  body(`Acceptable LOS per ${cfg.primaryDoc}: LOS ${cfg.losUrban} in urbanized areas; LOS ${cfg.losRural} in rural areas.${cfg.losNote ? ` ${cfg.losNote}` : ""} LOS is evaluated using the Highway Capacity Manual (HCM), current edition, via HCS and/or Synchro.${cfg.softwareNote ? ` ${cfg.softwareNote}` : ""}`);
+  body(`Acceptable LOS per ${cfg.primaryDoc}: LOS ${cfg.losUrban} in urbanized areas; LOS ${cfg.losRural} in rural areas.${cfg.losNote ? ` ${cfg.losNote}` : ""} The controlling standard evaluates LOS per the Highway Capacity Manual (current edition) via HCS and/or Synchro; this screening applies the openly-published Webster/Akçelik signalized model, superseded by those tools at submittal.${cfg.softwareNote ? ` ${cfg.softwareNote}` : ""}`);
   doc.moveDown(0.8);
 
   // ─── §4 EXISTING CONDITIONS ─────────────────────────────────────────────
