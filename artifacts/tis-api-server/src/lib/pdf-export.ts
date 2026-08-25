@@ -3963,7 +3963,7 @@ function renderTisLondon(
       : `no PTAL band was supplied for this run so the flat London-wide average has been applied (TfL Travel in London), which materially over-states car-mode demand at inner-London high-PTAL sites — the run should be re-issued with the site's PTAL band`;
     doc.text(`• Sustainable-mode demand is approximated through a metro-specific auto-mode-share factor (${sharePct} applied for London, per the engine's mode-share configuration sourced from TfL Travel in London). The external-trip totals shown below already reflect that ${sharePct} reduction from the gross screening rate — ${ptalClause}. This is a screening-level approximation in place of the full multi-modal split (walking / cycling / bus / rail / car / taxi / motorcycle / LGV / HGV) that a UK TA is required to demonstrate under NPPF paragraph 115.`, { paragraphGap: 4 });
   }
-  doc.text("• Geometric design citations in the engine's output are HCM and AASHTO; UK chartered review would substitute DMRB CD 109 / CD 116 / CD 122 / CD 123 (trunk) and Manual for Streets / Manual for Streets 2 (urban / residential).", { paragraphGap: 4 });
+  doc.text("• Geometric design citations in the engine's output are US-convention (Webster/Akçelik capacity, AASHTO geometric); UK chartered review would substitute DMRB CD 109 / CD 116 / CD 122 / CD 123 (trunk) and Manual for Streets / Manual for Streets 2 (urban / residential).", { paragraphGap: 4 });
   doc.text("• Units are metric where derivable; some engine-generated fields remain in imperial (queue 95th-percentile reported in feet rather than MMQ in PCUs) and are flagged inline.", { paragraphGap: 4 });
   doc.text("• Where net peak car-mode generation falls below 15 trips per peak hour, the engine demotes the junction capacity table to an appendix and surfaces a trip-comparison narrative shell — matching the convention adopted by London consultancies (Waterman, Patrick Parsons) for sub-150-unit residential schemes. Above that threshold the junction table remains the §5.4 headline.", { paragraphGap: 6 });
   doc.fillColor("black");
@@ -4583,7 +4583,7 @@ function renderTisLondon(
     });
     doc.moveDown(0.3);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "Capacity reported per DMRB / TRL signalised method (uk-capacity.ts): DoS = Degree of Saturation; PRC = Practical Reserve Capacity to the 90% limit (PRC ≥ 0 ⇒ within practical capacity); MMQ = Mean Maximum Queue in PCU; Q95 = engine HCM 95th-percentile back-of-queue, in feet (per-approach). Scenarios: Existing (current-year, no growth) · No-Build (opening-year grown) · With-Development (+ scheme trips)" + (intersections[0]?.designNoBuildVc != null ? " · Design No-Build / Design Build (design-year horizon)." : ".") + " The engine models each junction as signalised, so DoS equals the calibrated v/c; a submitted TA re-runs these in LinSig 3 / Junctions 11 with measured geometry (see §1.8 and Appendix C).",
+      "Capacity reported per DMRB / TRL signalised method (uk-capacity.ts): DoS = Degree of Saturation; PRC = Practical Reserve Capacity to the 90% limit (PRC ≥ 0 ⇒ within practical capacity); MMQ = Mean Maximum Queue in PCU; Q95 = engine US-convention 95th-percentile back-of-queue, in feet (per-approach). Scenarios: Existing (current-year, no growth) · No-Build (opening-year grown) · With-Development (+ scheme trips)" + (intersections[0]?.designNoBuildVc != null ? " · Design No-Build / Design Build (design-year horizon)." : ".") + " The engine models each junction as signalised, so DoS equals the calibrated v/c; a submitted TA re-runs these in LinSig 3 / Junctions 11 with measured geometry (see §1.8 and Appendix C).",
       { paragraphGap: 4 },
     );
     doc.fillColor("black");
@@ -6053,7 +6053,7 @@ function renderTisTexas(
 
   gaSubsection(doc, "6.3 Capacity and Level of Service Analysis");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Per TSP §16.4.1 and §16.4.4, capacity analysis follows the latest HCM methodology using one of the District-accepted tools (Synchro, HCS, Vissim, or Vistro). For signalized intersections, each approach and the overall intersection are analyzed. Two future scenarios are compared at each affected intersection: Background (grown traffic without the proposed project) and Background-plus-site (grown traffic plus the project's external trips at the assigned distribution). An Existing scenario is included for context. Host-jurisdiction LOS standard: ${cityLos}`,
+    `Per TSP §16.4.1 and §16.4.4, submittal capacity analysis follows the latest HCM methodology using one of the District-accepted tools (Synchro, HCS, Vissim, or Vistro); this screening applies the openly-published Webster/Akçelik signalized model pending that tool run. For signalized intersections, each approach and the overall intersection are analyzed. Two future scenarios are compared at each affected intersection: Background (grown traffic without the proposed project) and Background-plus-site (grown traffic plus the project's external trips at the assigned distribution). An Existing scenario is included for context. Host-jurisdiction LOS standard: ${cityLos}`,
     { paragraphGap: 6 },
   );
 
@@ -6711,7 +6711,7 @@ function renderTisIllinois(
   const openingYr = Number(req.openingYear ?? 0) || null;
   const designYr = openingYr ? openingYr + 20 : null;
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Per IDOT District 8 Appendix A, four mandatory scenarios are evaluated for each phase: (1) Opening (Construction) Year No-Build (${openingYr ?? "opening year"}); (2) Opening Year Build (${openingYr ?? "opening year"}); (3) 20-Year Design Year No-Build (${designYr ?? "opening + 20"}); (4) 20-Year Design Year Build (${designYr ?? "opening + 20"}). For phased developments, a Full-Build-Out year between opening and design year is added. The design year is measured from construction completion, not submittal year, per BLRS §27-6.02(a). Level of Service is calculated per HCM current edition.`,
+    `Per IDOT District 8 Appendix A, four mandatory scenarios are evaluated for each phase: (1) Opening (Construction) Year No-Build (${openingYr ?? "opening year"}); (2) Opening Year Build (${openingYr ?? "opening year"}); (3) 20-Year Design Year No-Build (${designYr ?? "opening + 20"}); (4) 20-Year Design Year Build (${designYr ?? "opening + 20"}). For phased developments, a Full-Build-Out year between opening and design year is added. The design year is measured from construction completion, not submittal year, per BLRS §27-6.02(a). This screening assigns Level of Service from the conventional US control-delay bands; a submittal-grade analysis calculates LOS with the District's required methodology and current-edition tools.`,
     { paragraphGap: 6 },
   );
   doc.font("body").fontSize(10).fillColor("black").text(
@@ -7901,7 +7901,7 @@ function renderTisFlorida(
 
   gaSubsection(doc, "2.2 Analysis Software");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Per FDOT TAH §4.1, approved analysis tools are HCS, Synchro / SimTraffic, SIDRA INTERSECTION (roundabouts), CORSIM, and Vissim. This screening analysis applies the HCM 6th Edition signalized-intersection model consistent with HCS output formatting. Vistro is not included in the FDOT TAH tool inventory; formal submittal output should be prepared in HCS or Synchro.",
+    "Per FDOT TAH §4.1, approved analysis tools are HCS, Synchro / SimTraffic, SIDRA INTERSECTION (roundabouts), CORSIM, and Vissim. This screening analysis applies the openly-published Webster/Akçelik signalized-intersection model, reported in a format consistent with HCS output conventions. Vistro is not included in the FDOT TAH tool inventory; formal submittal output should be prepared in HCS or Synchro.",
     { paragraphGap: 6 },
   );
 
@@ -8034,7 +8034,7 @@ function renderTisFlorida(
 
   gaSubsection(doc, "2.7 Level of Service Standards");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Per FDOT Policy 000-525-006, the peak-hour automobile-mode LOS standard on the State Highway System is LOS D in urbanized areas and LOS C in rural and transitioning areas. Constrained or backlogged facilities maintain their facility-specific designation. Roadway segment LOS reporting uses the FDOT Q/LOS Handbook v6.0 Generalized Service Volume Tables (GSVTs). Intersection LOS uses HCM 6th Edition Chapter 19 (signalized intersections), Exhibit 19-8 thresholds: A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s of average control delay per vehicle.",
+    "Per FDOT Policy 000-525-006, the peak-hour automobile-mode LOS standard on the State Highway System is LOS D in urbanized areas and LOS C in rural and transitioning areas. Constrained or backlogged facilities maintain their facility-specific designation. Roadway segment LOS reporting uses the FDOT Q/LOS Handbook v6.0 Generalized Service Volume Tables (GSVTs). Intersection LOS uses the conventional US signalized control-delay bands: A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s of average control delay per vehicle.",
     { paragraphGap: 6 },
   );
 
@@ -8518,7 +8518,7 @@ function renderTisFlorida(
   const queueRows = intersections.filter((it) => Number.isFinite(Number(it.queue95thFt)));
   if (queueRows.length > 0) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      "The 95th-percentile back-of-queue at each study intersection under Build conditions is summarized below (worst-approach basis). Queues are estimated from the HCM 6th Edition signalized-intersection model; a formal submittal should report per-lane-group queues from a Synchro / SimTraffic run and compare them to the available turn-lane storage evaluated in §9.0.",
+      "The 95th-percentile back-of-queue at each study intersection under Build conditions is summarized below (worst-approach basis). Queues are estimated from the standard cyclic-queue relation (Webster arrival/discharge form); a formal submittal should report per-lane-group queues from a Synchro / SimTraffic run and compare them to the available turn-lane storage evaluated in §9.0.",
       { paragraphGap: 6 },
     );
     table(doc, {
