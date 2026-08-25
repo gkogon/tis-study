@@ -22,8 +22,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // A realistic-but-fake Peachtree-area multifamily TIS. Numbers picked
-// to pass a senior PE's sniff test on first read: ITE land-use 221
-// (Multifamily Mid-Rise), reasonable Atlanta intersection set, an
+// to pass a senior PE's sniff test on first read: land-use 221
+// (Mid-Rise Apartment), reasonable Atlanta intersection set, an
 // honest mix of intersections that pass / drop / hit LOS E.
 const sample = {
   generatedAt: "2026-05-14T18:00:00.000Z",
@@ -46,7 +46,7 @@ const sample = {
   studyRadiusMi: 0.75,
   tripGeneration: {
     landUseCode: "221",
-    landUseName: "Multifamily Housing (Mid-Rise)",
+    landUseName: "Mid-Rise Apartment",
     size: 240,
     unit: "dwelling units",
     dailyTrips: 1271,
@@ -78,7 +78,7 @@ const sample = {
     "6 intersections remain at existing LOS without mitigation.",
   ],
   findings: [
-    "Project will generate 1,271 new daily vehicle trips, with 101 during the PM peak hour (62 inbound / 39 outbound) after 10% pass-by capture per ITE TGM Appendix B.",
+    "Project will generate 1,271 new daily vehicle trips, with 101 during the PM peak hour (62 inbound / 39 outbound) after 10% pass-by capture per standard pass-by screening methodology.",
     "Existing volumes were grown by 1.50%/yr over 1 year (×1.015) to the 2027 opening-year horizon.",
     "10 signalized intersections fall within the 0.75-mi study area; 4 are projected to drop at least one LOS grade after build-out.",
     "2 intersections are projected to operate at LOS E or F under the build condition and require formal mitigation per City of Atlanta DOT TIS guidance.",
@@ -86,14 +86,14 @@ const sample = {
     "Monte-Carlo sensitivity (100 runs, ±10% trip-rate / ±15% existing-volume): worst-case delay change is 7.2s (median); 80% range 5.4–9.1s. Probability of ≥1 LOS drop: 92% (high confidence the LOS impacts shown are robust to input uncertainty).",
   ],
   methodology: [
-    "Trip generation uses ITE Trip Generation Manual 11th-Edition average rates for the selected land-use code, computed for AM peak, PM peak, Saturday midday, and daily totals. Saturday-midday rates are estimated as a published industry multiple of the PM peak rate by land-use category.",
-    "Pass-by and internal-capture credits are applied at the PM peak per ITE's Pass-By Trip Generation Manual (3rd Edition) and ULI Mixed-Use Internal Capture defaults; only the residual external trips are assigned to off-site intersections.",
+    "Trip generation uses public-data screening average rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for the selected land-use code, computed for AM peak, PM peak, Saturday midday, and daily totals. Saturday-midday rates are estimated as a published industry multiple of the PM peak rate by land-use category.",
+    "Pass-by and internal-capture credits are applied at the PM peak per standard pass-by screening methodology and ULI Mixed-Use Internal Capture defaults; only the residual external trips are assigned to off-site intersections.",
     "Existing intersection volumes are grown to the opening-year horizon at the user-supplied annual growth rate (default 1.5%/yr) before the capacity analysis.",
-    "Weather adjustment follows HCM 6th-Edition Ch. 11 (rain/snow capacity reduction): clear 1.00, light rain 0.95, heavy rain 0.86, light snow 0.86, heavy snow 0.70. The factor multiplies the saturation flow at every intersection.",
+    "Weather adjustment applies saturation-flow reduction factors from published FHWA road-weather research (rain/snow capacity reduction): clear 1.00, light rain 0.95, heavy rain 0.86, light snow 0.86, heavy snow 0.70. The factor multiplies the saturation flow at every intersection.",
     "Off-site impact is screened for all signalized intersections within the study radius. New trips are assigned by inverse-distance weighting (clamped at 100m), normalised to sum to 100% of the period's external trip total.",
-    "Intersection-level control delay uses the HCM signalized-intersection model d = d1 + d2 (Webster uniform delay + Akçelik/HCM incremental-delay term) with a 90s cycle, g/C = 0.45, 1,800 vphpl saturation flow (× weather factor), 15-minute peak analysis period (T = 0.25 hr) and pretimed-signal incremental-delay factor k = 0.5.",
-    "Approach-level analysis splits each signal's inflow across NB/SB/EB/WB approaches (deterministic per-signal allocation perturbed ±15% from a 30/25/25/20 base) and assigns added trips to each approach by cosine-similarity to the bearing of the project relative to the signal. Per-approach v/c, control delay, LOS, and 95th-percentile back-of-queue length (HCM Eq. 19-50, Q95 ≈ Q1 × 1.65 × 25 ft/veh) are reported.",
-    "Level of Service is assigned from HCM 6th-Edition signalized-intersection control-delay thresholds (Exhibit 19-8): A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s.",
+    "Intersection-level control delay uses the openly-published signalized model d = d1 + d2 (Webster 1958 uniform delay + Akçelik time-dependent overflow term) with a 90s cycle, g/C = 0.45, 1,800 vphpl saturation flow (× weather factor), 15-minute peak analysis period (T = 0.25 hr) and pretimed-signal incremental-delay factor k = 0.5.",
+    "Approach-level analysis splits each signal's inflow across NB/SB/EB/WB approaches (deterministic per-signal allocation perturbed ±15% from a 30/25/25/20 base) and assigns added trips to each approach by cosine-similarity to the bearing of the project relative to the signal. Per-approach v/c, control delay, LOS, and 95th-percentile back-of-queue length (standard undersaturated cyclic back-of-queue relation, Q95 ≈ Q1 × 1.65 × 25 ft/veh) are reported.",
+    "Level of Service is assigned from the conventional US signalized control-delay bands republished in state DOT traffic-engineering manuals: A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s.",
     "Monte-Carlo sensitivity perturbs the project trip rate by N(1, 0.10) and the baseline existing volume by N(1, 0.15) over 100 iterations and reports the resulting distribution of worst-case delay change and probability of any LOS drop.",
     "Mitigations are screening-level recommendations sized to the projected delay change, not full Synchro/SimTraffic optimization runs. A formal TIS submittal should validate these recommendations with detailed traffic counts and signal-timing analysis.",
   ],
@@ -120,11 +120,11 @@ const sample = {
     expectedLosDrops: 3.4,
   },
   citations: [
-    "ITE Trip Generation Manual, 11th Edition — peak and daily rates by land-use code.",
-    "ITE Pass-By Trip Generation Manual, 3rd Edition — pass-by capture defaults.",
-    "HCM 6th Edition, Chapter 11 (Capacity and LOS) — saturation flow + weather adjustment.",
-    "HCM 6th Edition, Chapter 19 (Signalized Intersections) — Eq. 19-13 control delay, Exhibit 19-8 LOS thresholds.",
-    "HCM 6th Edition, Chapter 31 — 95th-percentile back-of-queue methodology.",
+    "SANDAG 2002, “(Not So) Brief Guide of Vehicular Traffic Generation Rates for the San Diego Region” — daily/peak screening rates by land-use category.",
+    "NCHRP Report 716, Travel Demand Forecasting: Parameters and Techniques (TRB, 2012) — per-employee/household trip parameters.",
+    "FHWA National Household Travel Survey (NHTS), 2017 — trip-rate trend data.",
+    "F. V. Webster, Traffic Signal Settings, Road Research Technical Paper No. 39 (RRL/HMSO, 1958) — uniform-delay term.",
+    "Akçelik time-dependent overflow delay function (ARRB) — incremental-delay term and 95th-percentile back-of-queue relation.",
     "ULI Mixed-Use Development Internal Capture defaults.",
     "City of Atlanta DOT — Traffic Impact Study Guidelines.",
     "Sample report generated by Simple Impact Studies — simpleimpactstudies.com",
