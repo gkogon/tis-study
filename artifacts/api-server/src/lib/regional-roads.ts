@@ -95,14 +95,18 @@ function distMi(lat1: number, lon1: number, lat2: number, lon2: number): number 
 /**
  * Road segments within `radiusMi` of (lat,lon) for a region. Returns null
  * when no road data exists for the region. Caps the returned set so a
- * pathological radius can't produce an unbounded payload.
+ * pathological radius can't produce an unbounded payload. 16k (was 8k):
+ * with unnamed ways in the files, dense-metro segment density reaches
+ * ~700/km² (Tokyo), where 8k bound the effective network at ~1.2mi radius;
+ * 16k is ~1MB of JSON on the localhost hop and keeps typical study radii
+ * un-truncated.
  */
 export function roadSegmentsNear(
   regionCode: string,
   lat: number,
   lon: number,
   radiusMi: number,
-  cap = 8000,
+  cap = 16000,
 ): RoadSegment[] | null {
   const slug = regionCodeToSlug(regionCode);
   const road = loadRoadFile(slug);

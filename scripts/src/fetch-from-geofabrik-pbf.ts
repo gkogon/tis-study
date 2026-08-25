@@ -488,11 +488,13 @@ async function processStateRoads(state: string, metros: RegionCode[], outDir: st
   for await (const f of streamFeatures(seq)) {
     features++;
     if (features % 500000 === 0) console.log(`  … ${features} features streamed`);
-    // Named ways only — parity with fetch-osm-roads.ts, whose Overpass query
-    // filters on ["name"]. The roads file backs cross-street naming; unnamed
-    // service stubs would bloat it without naming value.
-    const name = (f.properties.name as string | undefined)?.trim();
-    if (!name) continue;
+    // Unnamed ways are KEPT with name=null: the roads file feeds both the
+    // routing graph and cross-street naming, and a named-only filter deletes
+    // most of the network where OSM naming is sparse — JP metros are 3-5%
+    // named on residential/unclassified, and freeway ramps (_link) are
+    // unnamed everywhere (Miami-Dade: 4,418 of them). Every naming consumer
+    // skips non-string names, so signal labels are unaffected.
+    const name = (f.properties.name as string | undefined)?.trim() || null;
     const highway = f.properties.highway as string | undefined;
     if (!highway) continue;
     const baseClass = highway.endsWith("_link") ? highway.slice(0, -5) : highway;

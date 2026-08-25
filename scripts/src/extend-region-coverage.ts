@@ -300,21 +300,26 @@ function appendRoads(metro: RegionCode, features: GeoJsonFeature[], state: strin
   const road = readJsonMaybeGz<{ classes: string[]; ways: unknown[] }>(p);
   const boxes = metroBoxes(metro);
 
-  // Idempotency key: class|name|first vertex. Appends come from states the
-  // file never covered, so collisions only occur on a re-run.
+  // Idempotency key: class|name|first vertex|last vertex. Appends come from
+  // states the file never covered, so collisions only occur on a re-run. The
+  // last vertex matters now that unnamed ways are kept: distinct null-named
+  // ways of one class can share a first vertex (two side streets leaving the
+  // same junction) and must not dedupe against each other.
   const seen = new Set<string>();
   for (const w of road.ways) {
     const way = w as unknown[];
     const pts = way[2] as Array<[number, number]> | undefined;
     if (!Array.isArray(pts) || pts.length === 0) continue;
-    seen.add(`${way[0]}|${way[1]}|${pts[0]![0]}|${pts[0]![1]}`);
+    const last = pts[pts.length - 1]!;
+    seen.add(`${way[0]}|${way[1]}|${pts[0]![0]}|${pts[0]![1]}|${last[0]}|${last[1]}`);
   }
 
   let added = 0;
   const byClass: Record<string, number> = {};
   for (const f of features) {
-    const name = typeof f.properties["name"] === "string" ? (f.properties["name"] as string).trim() : "";
-    if (!name) continue;
+    // Unnamed ways are kept (name=null) — see fetch-from-geofabrik-pbf.ts
+    // for the rationale; naming consumers skip non-string names.
+    const name = typeof f.properties["name"] === "string" ? (f.properties["name"] as string).trim() || null : null;
     const hw = f.properties["highway"] as string | undefined;
     if (!hw) continue;
     const baseClass = hw.endsWith("_link") ? hw.slice(0, -5) : hw;
@@ -336,7 +341,8 @@ function appendRoads(metro: RegionCode, features: GeoJsonFeature[], state: strin
         Math.round((lat as number) * 1e5) / 1e5,
         Math.round((lon as number) * 1e5) / 1e5,
       ]);
-      const key = `${code}|${name}|${polyline[0]![0]}|${polyline[0]![1]}`;
+      const lastPt = polyline[polyline.length - 1]!;
+      const key = `${code}|${name}|${polyline[0]![0]}|${polyline[0]![1]}|${lastPt[0]}|${lastPt[1]}`;
       if (seen.has(key)) continue;
       seen.add(key);
       road.ways.push([code, name, polyline, lanes, maxspeed]);

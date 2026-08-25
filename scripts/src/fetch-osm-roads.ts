@@ -2,19 +2,23 @@
  * Generic OSM road-network fetcher, keyed off a region in the registry.
  *
  * For a given region code, queries OpenStreetMap (Overpass API) for every
- * named highway way in CLASSES (motorway through unclassified, plus _link
- * subtypes) inside the region's bounding box. Output mirrors atlanta-roads.json:
+ * highway way in CLASSES (motorway through unclassified, plus _link
+ * subtypes) inside the region's bounding box — named or not. Output mirrors
+ * atlanta-roads.json:
  *
  *   {
  *     "classes": ["motorway","trunk","primary","secondary","tertiary",
  *                 "residential","unclassified"],
  *     "ways": [
- *       [classCode, "Way Name", [[lat,lon], ...], lanes|null, maxspeedKmh|null, oneway],
+ *       [classCode, "Way Name"|null, [[lat,lon], ...], lanes|null, maxspeedKmh|null, oneway],
  *     ]
  *   }
  *
  * The roads file backs cross-street naming (e.g. "Roswell Rd & Mt Vernon Hwy")
- * for signals in that region. Without it, signals show as "Signal #<osmId>".
+ * for signals in that region — naming consumers skip null-named ways, so
+ * signals near only-unnamed streets still show as "Signal #<osmId>". Unnamed
+ * ways exist for ROUTING: they carry most of the local network in JP metros
+ * and the freeway ramps everywhere.
  *
  * Trailing `lanes` + `maxspeedKmh` (both null when untagged in OSM) feed the
  * per-road AADT modulation in precompute-tier10-synthetic-aadt.ts, and `oneway`
@@ -146,8 +150,8 @@ function bboxStrips(region: Region, cellDeg = 0.14): string[] {
 function buildQuery(bbox: string): string {
   const queries: string[] = [];
   for (const c of CLASSES) {
-    queries.push(`way["highway"="${c}"]["name"](${bbox});`);
-    queries.push(`way["highway"="${c}_link"]["name"](${bbox});`);
+    queries.push(`way["highway"="${c}"](${bbox});`);
+    queries.push(`way["highway"="${c}_link"](${bbox});`);
   }
   return `
 [out:json][timeout:180];
@@ -234,8 +238,10 @@ async function fetchOneRegion(regionCode: RegionCode): Promise<{
       seenIds.add(el.id);
 
       const hw = el.tags?.highway;
-      const name = el.tags?.name;
-      if (!hw || !name) { skippedClass++; continue; }
+      // Unnamed ways are kept (name=null) — see fetch-from-geofabrik-pbf.ts
+      // for the rationale; naming consumers skip non-string names.
+      const name = el.tags?.name?.trim() || null;
+      if (!hw) { skippedClass++; continue; }
       const baseClass = hw.endsWith("_link") ? hw.slice(0, -5) : hw;
       const code = CLASS_CODE.get(baseClass as (typeof CLASSES)[number]);
       if (code === undefined) { skippedClass++; continue; }
