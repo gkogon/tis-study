@@ -11,29 +11,29 @@
  */
 
 export interface Citation {
-  tag: string;          // short marker, e.g. "HCM-19-2"
-  shortLabel: string;   // e.g. "HCM 6th Ed., Ch. 19, Eq. 19-8"
+  tag: string;          // short marker, e.g. "WEBSTER-D1"
+  shortLabel: string;   // e.g. "Webster uniform delay (d₁)"
   fullCitation: string; // bibliography-form
 }
 
 export const CITATIONS: Record<string, Citation> = {
   HCM_19: {
-    tag: "HCM-19",
-    shortLabel: "HCM 6th Ed., Ch. 19",
+    tag: "SIG-DELAY",
+    shortLabel: "Webster (1958) / Akçelik (1980) signalized delay",
     fullCitation:
-      "Transportation Research Board. Highway Capacity Manual, 6th Edition, Chapter 19: Signalized Intersections. National Academies of Sciences, Engineering, and Medicine, 2016.",
+      "Webster, F. V. Traffic Signal Settings. Road Research Technical Paper No. 39, Road Research Laboratory, HMSO, London, 1958; Akçelik, R. Time-Dependent Expressions for Delay, Stop Rate and Queue Length at Traffic Signals. Australian Road Research Board, Internal Report AIR 367-1, 1980.",
   },
   HCM_19_8: {
-    tag: "HCM-19-8",
-    shortLabel: "HCM 6th Ed., Eq. 19-8 (uniform delay)",
+    tag: "WEBSTER-D1",
+    shortLabel: "Webster uniform delay (d₁)",
     fullCitation:
-      "Transportation Research Board. Highway Capacity Manual, 6th Edition, Equation 19-8: Uniform Control Delay (d₁). National Academies of Sciences, Engineering, and Medicine, 2016.",
+      "Webster, F. V. Traffic Signal Settings, Road Research Technical Paper No. 39, HMSO, London, 1958 — uniform-delay term d₁ = C(1 − λ)² / 2(1 − λx).",
   },
   HCM_19_LOS: {
-    tag: "HCM-19-LOS",
-    shortLabel: "HCM 6th Ed., Exhibit 19-8 (LOS thresholds)",
+    tag: "LOS-BANDS",
+    shortLabel: "Conventional US control-delay LOS bands",
     fullCitation:
-      "Transportation Research Board. Highway Capacity Manual, 6th Edition, Exhibit 19-8: LOS Criteria for Signalized Intersections. National Academies of Sciences, Engineering, and Medicine, 2016.",
+      "Conventional US signalized-intersection control-delay Level-of-Service bands (A ≤10 s … F >80 s), as republished in publicly-available state DOT design and traffic-engineering manuals (e.g. GDOT, Caltrans HDM, NYSDOT HDM).",
   },
   NHTS_2017: {
     tag: "NHTS-2017",

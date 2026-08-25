@@ -39,13 +39,13 @@ export default function CityDetailPage() {
       : aadtIsMeasured && m.aadtPct > 0
         ? ` ${m.aadtPct.toFixed(0)}% calibrated to state-DOT counts.`
         : m.aadtPct > 0
-          ? ` ${m.aadtPct.toFixed(0)}% synthesized via OSM road-class geometry (HCM baseline).`
+          ? ` ${m.aadtPct.toFixed(0)}% synthesized via OSM road-class geometry (road-class capacity baseline).`
           : ""
     : "";
   usePageMeta({
     title: m ? `Traffic impact studies in ${m.shortName}, ${m.state}` : "Cities",
     description: m
-      ? `Defensible screening-level TIS, parking, signal-warrant, sight-distance, queuing and road-diet studies for ${m.longName}. ${m.signals.toLocaleString()} signalized intersections indexed.${aadtPhrase} HCM 6th, public trip-generation data, MUTCD.`
+      ? `Defensible screening-level TIS, parking, signal-warrant, sight-distance, queuing and road-diet studies for ${m.longName}. ${m.signals.toLocaleString()} signalized intersections indexed.${aadtPhrase} Openly-published capacity math, public trip-generation data, MUTCD.`
       : undefined,
     canonical: m ? `https://simpleimpactstudies.com/cities/${m.slug}` : undefined,
   });

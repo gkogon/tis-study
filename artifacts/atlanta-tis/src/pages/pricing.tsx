@@ -62,7 +62,7 @@ const TIERS: Tier[] = [
       "10 studies, total",
       "1 seat",
       "All 6 study types",
-      "Full HCM / NHTS / MUTCD citations",
+      "Full methodology citations (Webster/Akçelik, NHTS, MUTCD)",
       "White-labeled PDF",
     ],
   },
@@ -332,7 +332,7 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What citations are included in every report?",
-    a: "HCM 6th Ed., public trip-generation data (NHTS 2017 / SANDAG 2002 / NCHRP 716), MUTCD 2009/2024, AASHTO Green Book 7th Ed., FHWA. Every figure on every page is footnoted to the specific table or equation it derives from.",
+    a: "Openly-published capacity methods (Webster 1958 / Akçelik 1980), public trip-generation data (NHTS 2017 / SANDAG 2002 / NCHRP 716), MUTCD 2009/2024, AASHTO Green Book 7th Ed., FHWA. Every figure on every page is footnoted to the specific table or equation it derives from.",
   },
   {
     q: "What happens if we run out of studies in a billing period?",

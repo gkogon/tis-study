@@ -191,10 +191,10 @@ function Calculator() {
           )}
           <p className="text-sm text-muted-foreground">{result.note}</p>
           <div className="rounded-lg bg-muted/50 border px-4 py-3 text-xs text-muted-foreground leading-relaxed">
-            <span className="font-medium text-foreground">How this maps from HCM:</span>{" "}
+            <span className="font-medium text-foreground">How this maps from the US engine:</span>{" "}
             the US engine reports LOS letters and control delay. The same junction here reports the metrics a UK
             reviewer accepts — Degree of Saturation (DoS), Practical Reserve Capacity (PRC = (0.9/DoS−1)·100) and
-            Mean Maximum Queue (MMQ) in PCU — per DMRB CD 123 / the TRL junction models, not HCM Chapter 19.
+            Mean Maximum Queue (MMQ) in PCU — per DMRB CD 123 / the TRL junction models, not the US signalized-delay model.
           </div>
         </CardContent>
       </Card>
@@ -258,7 +258,7 @@ function SampleReport() {
         <CardHeader>
           <CardTitle className="text-base">§5.4 Assessment of Junction Impact (DMRB / TRL)</CardTitle>
           <CardDescription>
-            What the London TA report now prints — DoS, PRC and MMQ instead of HCM LOS letters.
+            What the London TA report now prints — DoS, PRC and MMQ instead of US LOS letters.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -372,8 +372,8 @@ export default function TrcsDemoPage() {
         <h1 className="text-3xl font-bold tracking-tight">TRCS — UK Transport Assessment engine</h1>
         <p className="text-muted-foreground max-w-3xl">
           A working DMRB / TRL junction-capacity engine for the UK — Degree of Saturation, Practical Reserve
-          Capacity and Mean Maximum Queue (PCU), the metrics a UK reviewer accepts, in place of US HCM Level of
-          Service. Signals via OSCADY / LinSig; roundabouts via Kimber / ARCADY; priority junctions via PICADY
+          Capacity and Mean Maximum Queue (PCU), the metrics a UK reviewer accepts, in place of US Level of
+          Service letters. Signals via OSCADY / LinSig; roundabouts via Kimber / ARCADY; priority junctions via PICADY
           gap-acceptance.
         </p>
       </div>

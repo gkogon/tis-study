@@ -1446,7 +1446,7 @@ function LoadingState({ projectName }: { projectName: string | null }) {
     () => [
       "Pulling live GDOT signal data",
       "Calculating public-data trip generation",
-      "Running HCM 6th-Ed. capacity analysis",
+      "Running signalized capacity analysis",
       "Computing Monte-Carlo sensitivity",
       "Drafting findings + methodology",
     ],
@@ -1645,7 +1645,7 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
           {response.size.toLocaleString()} {response.landUseUnitShort}
         </p>
         <p className="text-sm text-muted-foreground">
-          Generated against indexed regional traffic data · NHTS 2017 / SANDAG 2002 / NCHRP 716 · HCM 6th Ed. · MUTCD
+          Generated against indexed regional traffic data · NHTS 2017 / SANDAG 2002 / NCHRP 716 · Webster/Akçelik · MUTCD
         </p>
       </div>
 
@@ -2052,8 +2052,8 @@ function FooterTrust() {
         />
         <TrustTile
           icon={ShieldCheck}
-          label="HCM 6th Ed. capacity"
-          body="Same methodology a real TIS submittal cites."
+          label="Published capacity math"
+          body="Webster/Akçelik delay — the same open formulations US practice is built on."
         />
       </div>
       <div className="text-xs text-muted-foreground text-center pt-2">

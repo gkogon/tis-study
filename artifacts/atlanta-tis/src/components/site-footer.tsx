@@ -13,8 +13,8 @@ export function SiteFooter() {
         <div className="col-span-2 space-y-3">
           <BrandMark />
           <p className="text-muted-foreground leading-relaxed max-w-xs">
-            Screening-level traffic engineering studies. Footnoted to HCM,
-            public trip-generation data, and the MUTCD. Built for engineering firms that ship.
+            Screening-level traffic engineering studies. Footnoted to
+            openly-published capacity methods, public trip-generation data, and the MUTCD. Built for engineering firms that ship.
           </p>
           <div className="text-xs text-muted-foreground pt-1">
             <span className="inline-flex items-center gap-1.5">
@@ -54,7 +54,7 @@ export function SiteFooter() {
       </div>
       <div className="border-t border-border/60">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-          <div>© {new Date().getFullYear()} Simple Impact Studies. Cites HCM 6th Ed., NHTS 2017 / SANDAG 2002 / NCHRP 716, MUTCD 2009/2024.</div>
+          <div>© {new Date().getFullYear()} Simple Impact Studies. Cites Webster/Akçelik (openly published), NHTS 2017 / SANDAG 2002 / NCHRP 716, MUTCD 2009/2024.</div>
           <div>Built in Atlanta · Data: GDOT 511 NaviGAtor</div>
         </div>
       </div>

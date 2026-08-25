@@ -1,5 +1,5 @@
 /**
- * Queuing Analysis generator (HCM Ch. 31).
+ * Queuing Analysis generator (95th-percentile back-of-queue, standard cyclic-queue relation).
  */
 import { useState } from "react";
 import { Link } from "wouter";
@@ -83,11 +83,11 @@ export default function QueuingStudyPage() {
           <div className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-blue-700">
             <Activity className="w-3.5 h-3.5" /> Queuing Analysis
           </div>
-          <h1 className="text-3xl font-bold">HCM Ch. 31 — 95th-percentile back-of-queue</h1>
+          <h1 className="text-3xl font-bold">Queuing — 95th-percentile back-of-queue</h1>
           <p className="text-muted-foreground">
             Tests whether an auxiliary-lane bay (left-turn, right-turn, or through) is long
             enough to contain the 95th-percentile back-of-queue at the analysis hour.
-            Use the full HCM-grade analysis in HCS or Synchro for the final design package.
+            Use a full design-grade analysis in HCS or Synchro for the final design package.
           </p>
         </header>
 
@@ -142,7 +142,7 @@ export default function QueuingStudyPage() {
                 <input type="number" min="0" max="2000" value={storage} onChange={(e) => setStorage(e.target.value)} placeholder="leave blank for required-only" className="input" data-testid="input-q-storage" />
               </Field>
               <Field label="Saturation flow (vphpl, optional)">
-                <input type="number" min="800" max="2400" value={sat} onChange={(e) => setSat(e.target.value)} placeholder="HCM defaults" className="input" data-testid="input-q-sat" />
+                <input type="number" min="800" max="2400" value={sat} onChange={(e) => setSat(e.target.value)} placeholder="screening defaults" className="input" data-testid="input-q-sat" />
               </Field>
               <Field label="Vehicle spacing (ft, optional)">
                 <input type="number" min="15" max="80" value={spacing} onChange={(e) => setSpacing(e.target.value)} placeholder="25" className="input" data-testid="input-q-spacing" />

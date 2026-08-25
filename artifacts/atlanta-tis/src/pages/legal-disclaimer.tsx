@@ -22,11 +22,11 @@ export default function LegalDisclaimerPage() {
         engineering reference at a screening-grade level of fidelity:
       </p>
       <ul>
-        <li>The Traffic Impact Study engine implements Webster-style capacity analysis with HCM 6th Ed. delay tables, public-data trip generation (NHTS 2017 / SANDAG 2002 / NCHRP 716), and pass-by / internal-capture adjustments.</li>
+        <li>The Traffic Impact Study engine implements Webster/Akçelik capacity analysis (openly-published formulations) reported against the conventional US control-delay bands, public-data trip generation (NHTS 2017 / SANDAG 2002 / NCHRP 716), and pass-by / internal-capture adjustments.</li>
         <li>The Parking Demand engine is being migrated to a public zoning-code basis and is temporarily unavailable.</li>
         <li>The Signal Warrants engine implements MUTCD Ch. 4C Warrants 1A, 1B, 3 (volume-only proxy), and 7 (crash-experience).</li>
         <li>The Sight Distance engine implements AASHTO Green Book SSD (Eq. 3-2) and ISD (Eq. 9-1) with maneuver- and vehicle-class adjustments.</li>
-        <li>The Queuing Analysis engine implements an HCM Ch. 31 95th-percentile back-of-queue approximation with oversaturation queue growth.</li>
+        <li>The Queuing Analysis engine implements a 95th-percentile back-of-queue approximation (standard cyclic-queue relation) with oversaturation queue growth.</li>
         <li>The Road-Diet Feasibility engine implements FHWA-SA-14-028 screening thresholds with capacity headroom and safety estimation.</li>
         <li>The Post-Build Verification engine compares observed GDOT 511 incident pressure against a one-year baseline at the project location.</li>
       </ul>
@@ -114,7 +114,7 @@ export default function LegalDisclaimerPage() {
       <p>
         The Service is intended exclusively for use by licensed engineering
         firms and credentialed transportation-engineering professionals.
-        Outputs are presented in technical form (HCM-style LOS, MUTCD
+        Outputs are presented in technical form (US-convention LOS, MUTCD
         warrant tables, AASHTO distance computations, etc.) and require
         professional context to interpret correctly.
       </p>

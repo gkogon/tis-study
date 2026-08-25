@@ -2,7 +2,7 @@
  * Multi-page methodology + references appendix attached to every printed
  * TIS report. This is what makes the deliverable PE-stampable: every figure
  * in the body of the report is traceable to a numbered section here, and
- * every section here cites a published authority (HCM / NHTS / SANDAG /
+ * every section here cites a published authority (Webster/Akçelik / NHTS / SANDAG /
  * NCHRP / MUTCD / AASHTO / GDOT).
  */
 import type { TisReport } from "@workspace/tis-api-client-react";
@@ -74,17 +74,18 @@ export function TisMethodologyAppendix({ report }: { report: TisReport }) {
         <Section number="A.3" title="Capacity &amp; Level of Service">
           <p>
             Existing and post-build delay and Level of Service (LOS) at each affected intersection
-            were computed per <Cite t="HCM_19" />. Average control delay (the basis of LOS) follows{" "}
-            <Cite t="HCM_19_8" />:
+            were computed with the openly-published signalized-delay model <Cite t="HCM_19" />.
+            Average control delay (the basis of LOS) follows the Webster uniform-delay term{" "}
+            <Cite t="HCM_19_8" /> plus the Akçelik time-dependent incremental term:
           </p>
           <Formula>
-            d = d<sub>1</sub>(PF) + d<sub>2</sub> + d<sub>3</sub>
+            d = d<sub>1</sub> + d<sub>2</sub>
           </Formula>
           <p className="text-xs text-muted-foreground ml-2">
-            where <em>d<sub>1</sub></em> is uniform delay, <em>d<sub>2</sub></em> is incremental
-            delay, <em>d<sub>3</sub></em> is initial-queue delay, and <em>PF</em> is the
-            progression-adjustment factor. LOS letter assignment uses the thresholds in{" "}
-            <Cite t="HCM_19_LOS" />.
+            where <em>d<sub>1</sub></em> is Webster uniform delay and <em>d<sub>2</sub></em> is the
+            Akçelik incremental (overflow) term. A design-level analysis adds progression and
+            initial-queue terms; this screening model deliberately omits them. LOS letter
+            assignment uses the thresholds in <Cite t="HCM_19_LOS" />.
           </p>
           <Table
             headers={["LOS", "Average control delay (s/veh)"]}
@@ -98,7 +99,7 @@ export function TisMethodologyAppendix({ report }: { report: TisReport }) {
             ]}
           />
           <p className="text-xs text-muted-foreground">
-            Existing volumes used as inputs to the HCM procedure are derived deterministically
+            Existing volumes used as inputs to the capacity procedure are derived deterministically
             from the bundled signal inventory and zone-level demand model — see Appendix B,
             "Limitations &amp; Assumptions". Replace with measured turning-movement counts
             for a final-design TIS.
