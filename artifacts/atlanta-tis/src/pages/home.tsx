@@ -226,8 +226,8 @@ function StatsBand() {
     <section className="border-y border-border bg-slate-50 dark:bg-slate-950/40">
       <LosScaleStrip />
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14 grid grid-cols-2 md:grid-cols-4 gap-px bg-border">
-        <BigStat value="40 hrs" label="Saved per screening study" />
-        <BigStat value="$5,000" label="In junior-engineer wages, per study" />
+        <BigStat value="40 hrs" label="Junior production hours replaced, per study" />
+        <BigStat value="$5,000" label="In junior-engineer production wages, per study" />
         <BigStat value="60s" label="Average study turnaround" />
         <BigStat value="6" label="Study engines" sub="TIS · Parking · Warrants · SD · Queuing · Road-Diet" />
       </div>
