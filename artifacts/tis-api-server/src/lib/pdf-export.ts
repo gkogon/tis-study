@@ -6053,7 +6053,7 @@ function renderTisTexas(
 
   gaSubsection(doc, "6.3 Capacity and Level of Service Analysis");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Per TSP §16.4.1 and §16.4.4, capacity analysis follows the latest HCM methodology using one of the District-accepted tools (Synchro, HCS, Vissim, or Vistro). For signalized intersections, each approach and the overall intersection are analyzed. Two future scenarios are compared at each affected intersection: Background (grown traffic without the proposed project) and Background-plus-site (grown traffic plus the project's external trips at the assigned distribution). An Existing scenario is included for context. Host-jurisdiction LOS standard: ${cityLos}`,
+    `Per TSP §16.4.1 and §16.4.4, submittal capacity analysis follows the latest HCM methodology using one of the District-accepted tools (Synchro, HCS, Vissim, or Vistro); this screening applies the openly-published Webster/Akçelik signalized model pending that tool run. For signalized intersections, each approach and the overall intersection are analyzed. Two future scenarios are compared at each affected intersection: Background (grown traffic without the proposed project) and Background-plus-site (grown traffic plus the project's external trips at the assigned distribution). An Existing scenario is included for context. Host-jurisdiction LOS standard: ${cityLos}`,
     { paragraphGap: 6 },
   );
 
@@ -6711,7 +6711,7 @@ function renderTisIllinois(
   const openingYr = Number(req.openingYear ?? 0) || null;
   const designYr = openingYr ? openingYr + 20 : null;
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Per IDOT District 8 Appendix A, four mandatory scenarios are evaluated for each phase: (1) Opening (Construction) Year No-Build (${openingYr ?? "opening year"}); (2) Opening Year Build (${openingYr ?? "opening year"}); (3) 20-Year Design Year No-Build (${designYr ?? "opening + 20"}); (4) 20-Year Design Year Build (${designYr ?? "opening + 20"}). For phased developments, a Full-Build-Out year between opening and design year is added. The design year is measured from construction completion, not submittal year, per BLRS §27-6.02(a). Level of Service is calculated per HCM current edition.`,
+    `Per IDOT District 8 Appendix A, four mandatory scenarios are evaluated for each phase: (1) Opening (Construction) Year No-Build (${openingYr ?? "opening year"}); (2) Opening Year Build (${openingYr ?? "opening year"}); (3) 20-Year Design Year No-Build (${designYr ?? "opening + 20"}); (4) 20-Year Design Year Build (${designYr ?? "opening + 20"}). For phased developments, a Full-Build-Out year between opening and design year is added. The design year is measured from construction completion, not submittal year, per BLRS §27-6.02(a). This screening assigns Level of Service from the conventional US control-delay bands; a submittal-grade analysis calculates LOS with the District's required methodology and current-edition tools.`,
     { paragraphGap: 6 },
   );
   doc.font("body").fontSize(10).fillColor("black").text(
@@ -7901,7 +7901,7 @@ function renderTisFlorida(
 
   gaSubsection(doc, "2.2 Analysis Software");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Per FDOT TAH §4.1, approved analysis tools are HCS, Synchro / SimTraffic, SIDRA INTERSECTION (roundabouts), CORSIM, and Vissim. This screening analysis applies the HCM 6th Edition signalized-intersection model consistent with HCS output formatting. Vistro is not included in the FDOT TAH tool inventory; formal submittal output should be prepared in HCS or Synchro.",
+    "Per FDOT TAH §4.1, approved analysis tools are HCS, Synchro / SimTraffic, SIDRA INTERSECTION (roundabouts), CORSIM, and Vissim. This screening analysis applies the openly-published Webster/Akçelik signalized-intersection model, reported in a format consistent with HCS output conventions. Vistro is not included in the FDOT TAH tool inventory; formal submittal output should be prepared in HCS or Synchro.",
     { paragraphGap: 6 },
   );
 
@@ -8518,7 +8518,7 @@ function renderTisFlorida(
   const queueRows = intersections.filter((it) => Number.isFinite(Number(it.queue95thFt)));
   if (queueRows.length > 0) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      "The 95th-percentile back-of-queue at each study intersection under Build conditions is summarized below (worst-approach basis). Queues are estimated from the HCM 6th Edition signalized-intersection model; a formal submittal should report per-lane-group queues from a Synchro / SimTraffic run and compare them to the available turn-lane storage evaluated in §9.0.",
+      "The 95th-percentile back-of-queue at each study intersection under Build conditions is summarized below (worst-approach basis). Queues are estimated from the standard cyclic-queue relation (Webster arrival/discharge form); a formal submittal should report per-lane-group queues from a Synchro / SimTraffic run and compare them to the available turn-lane storage evaluated in §9.0.",
       { paragraphGap: 6 },
     );
     table(doc, {
