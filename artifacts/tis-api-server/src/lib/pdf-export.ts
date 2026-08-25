@@ -3828,7 +3828,7 @@ function renderTisLondon(
     doc.text("• No junction within the study network is projected to deteriorate by one or more LOS categories under the With-Development scenario.", { paragraphGap: 2 });
     doc.text("• Highway capacity is not the limiting factor for this scheme on the basis of this screening; PTAL-banded car parking, sustainable-mode uptake and Healthy Streets compliance remain to be assessed separately.", { paragraphGap: 4 });
   } else {
-    doc.text(`• ${losDrops} junction${losDrops === 1 ? "" : "s"} project to deteriorate by one or more LOS categories under the With-Development scenario.`, { paragraphGap: 2 });
+    doc.text(`• ${losDrops} junction${losDrops === 1 ? " is" : "s are"} projected to deteriorate by one or more LOS categories under the With-Development scenario.`, { paragraphGap: 2 });
     doc.text(`• ${losEf} junction${losEf === 1 ? " operates" : "s operate"} at LOS E or F under With-Development and would warrant mitigation under either S106 obligation or S278 highway works (depending on the responsible authority).`, { paragraphGap: 4 });
   }
   doc.fillColor("black");
@@ -4973,7 +4973,7 @@ function renderLondonTransportStatement(
     doc.text("• No junction within the study network is projected to deteriorate by one or more LOS categories under the With-Development scenario.", { paragraphGap: 2 });
     doc.text("• Highway capacity is not the limiting factor for this scheme on the basis of this screening; PTAL-banded car parking and sustainable-mode uptake remain to be confirmed at the chartered-engineer stage.", { paragraphGap: 4 });
   } else {
-    doc.text(`• ${losDrops} junction${losDrops === 1 ? "" : "s"} project to deteriorate by one or more LOS categories under the With-Development scenario.`, { paragraphGap: 2 });
+    doc.text(`• ${losDrops} junction${losDrops === 1 ? " is" : "s are"} projected to deteriorate by one or more LOS categories under the With-Development scenario.`, { paragraphGap: 2 });
     doc.text(`• ${losEf} junction${losEf === 1 ? " operates" : "s operate"} at LOS E or F under With-Development and would warrant mitigation.`, { paragraphGap: 4 });
   }
   doc.fillColor("black");
