@@ -3963,7 +3963,7 @@ function renderTisLondon(
       : `no PTAL band was supplied for this run so the flat London-wide average has been applied (TfL Travel in London), which materially over-states car-mode demand at inner-London high-PTAL sites — the run should be re-issued with the site's PTAL band`;
     doc.text(`• Sustainable-mode demand is approximated through a metro-specific auto-mode-share factor (${sharePct} applied for London, per the engine's mode-share configuration sourced from TfL Travel in London). The external-trip totals shown below already reflect that ${sharePct} reduction from the gross screening rate — ${ptalClause}. This is a screening-level approximation in place of the full multi-modal split (walking / cycling / bus / rail / car / taxi / motorcycle / LGV / HGV) that a UK TA is required to demonstrate under NPPF paragraph 115.`, { paragraphGap: 4 });
   }
-  doc.text("• Geometric design citations in the engine's output are HCM and AASHTO; UK chartered review would substitute DMRB CD 109 / CD 116 / CD 122 / CD 123 (trunk) and Manual for Streets / Manual for Streets 2 (urban / residential).", { paragraphGap: 4 });
+  doc.text("• Geometric design citations in the engine's output are US-convention (Webster/Akçelik capacity, AASHTO geometric); UK chartered review would substitute DMRB CD 109 / CD 116 / CD 122 / CD 123 (trunk) and Manual for Streets / Manual for Streets 2 (urban / residential).", { paragraphGap: 4 });
   doc.text("• Units are metric where derivable; some engine-generated fields remain in imperial (queue 95th-percentile reported in feet rather than MMQ in PCUs) and are flagged inline.", { paragraphGap: 4 });
   doc.text("• Where net peak car-mode generation falls below 15 trips per peak hour, the engine demotes the junction capacity table to an appendix and surfaces a trip-comparison narrative shell — matching the convention adopted by London consultancies (Waterman, Patrick Parsons) for sub-150-unit residential schemes. Above that threshold the junction table remains the §5.4 headline.", { paragraphGap: 6 });
   doc.fillColor("black");
@@ -4583,7 +4583,7 @@ function renderTisLondon(
     });
     doc.moveDown(0.3);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "Capacity reported per DMRB / TRL signalised method (uk-capacity.ts): DoS = Degree of Saturation; PRC = Practical Reserve Capacity to the 90% limit (PRC ≥ 0 ⇒ within practical capacity); MMQ = Mean Maximum Queue in PCU; Q95 = engine HCM 95th-percentile back-of-queue, in feet (per-approach). Scenarios: Existing (current-year, no growth) · No-Build (opening-year grown) · With-Development (+ scheme trips)" + (intersections[0]?.designNoBuildVc != null ? " · Design No-Build / Design Build (design-year horizon)." : ".") + " The engine models each junction as signalised, so DoS equals the calibrated v/c; a submitted TA re-runs these in LinSig 3 / Junctions 11 with measured geometry (see §1.8 and Appendix C).",
+      "Capacity reported per DMRB / TRL signalised method (uk-capacity.ts): DoS = Degree of Saturation; PRC = Practical Reserve Capacity to the 90% limit (PRC ≥ 0 ⇒ within practical capacity); MMQ = Mean Maximum Queue in PCU; Q95 = engine US-convention 95th-percentile back-of-queue, in feet (per-approach). Scenarios: Existing (current-year, no growth) · No-Build (opening-year grown) · With-Development (+ scheme trips)" + (intersections[0]?.designNoBuildVc != null ? " · Design No-Build / Design Build (design-year horizon)." : ".") + " The engine models each junction as signalised, so DoS equals the calibrated v/c; a submitted TA re-runs these in LinSig 3 / Junctions 11 with measured geometry (see §1.8 and Appendix C).",
       { paragraphGap: 4 },
     );
     doc.fillColor("black");
@@ -8034,7 +8034,7 @@ function renderTisFlorida(
 
   gaSubsection(doc, "2.7 Level of Service Standards");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Per FDOT Policy 000-525-006, the peak-hour automobile-mode LOS standard on the State Highway System is LOS D in urbanized areas and LOS C in rural and transitioning areas. Constrained or backlogged facilities maintain their facility-specific designation. Roadway segment LOS reporting uses the FDOT Q/LOS Handbook v6.0 Generalized Service Volume Tables (GSVTs). Intersection LOS uses HCM 6th Edition Chapter 19 (signalized intersections), Exhibit 19-8 thresholds: A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s of average control delay per vehicle.",
+    "Per FDOT Policy 000-525-006, the peak-hour automobile-mode LOS standard on the State Highway System is LOS D in urbanized areas and LOS C in rural and transitioning areas. Constrained or backlogged facilities maintain their facility-specific designation. Roadway segment LOS reporting uses the FDOT Q/LOS Handbook v6.0 Generalized Service Volume Tables (GSVTs). Intersection LOS uses the conventional US signalized control-delay bands: A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s of average control delay per vehicle.",
     { paragraphGap: 6 },
   );
 
