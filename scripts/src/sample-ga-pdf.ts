@@ -30,7 +30,7 @@ const fakeReport = {
   studyRadiusMi: 0.5,
   tripGeneration: {
     landUseCode: "221",
-    landUseName: "Multifamily Housing (Mid-Rise)",
+    landUseName: "Mid-Rise Apartment",
     size: 220,
     unit: "dwelling units",
     dailyTrips: 1130,
@@ -40,7 +40,7 @@ const fakeReport = {
     pmOut: 53,
   },
   affectedIntersections: [
-    { signalId: "GA-S1", name: "Peachtree St & 14th St", zone: "midtown", latitude: 33.7891, longitude: -84.3853, distanceMi: 0.05, existingVc: 0.88, addedTripsPmPeak: 19, futureVc: 0.94, currentLos: "D", currentDelaySec: 43.0, existingDelaySec: 51.2, futureDelaySec: 58.7, existingLos: "D", futureLos: "E", losChanged: true, mitigation: "Re-time the Peachtree / 14 St cycle; reallocate green to the dominant peak-direction phase per HCM Ch. 19. Coordinate with the City of Atlanta Office of Mobility Planning for the SPI-16 review.", mitigationSeverity: "moderate", approaches: [], queue95thFt: 310, designNoBuildLos: "E", designNoBuildDelaySec: 72.4, designBuildLos: "F", designBuildDelaySec: 95.2 },
+    { signalId: "GA-S1", name: "Peachtree St & 14th St", zone: "midtown", latitude: 33.7891, longitude: -84.3853, distanceMi: 0.05, existingVc: 0.88, addedTripsPmPeak: 19, futureVc: 0.94, currentLos: "D", currentDelaySec: 43.0, existingDelaySec: 51.2, futureDelaySec: 58.7, existingLos: "D", futureLos: "E", losChanged: true, mitigation: "Re-time the Peachtree / 14 St cycle; reallocate green to the dominant peak-direction phase. Coordinate with the City of Atlanta Office of Mobility Planning for the SPI-16 review.", mitigationSeverity: "moderate", approaches: [], queue95thFt: 310, designNoBuildLos: "E", designNoBuildDelaySec: 72.4, designBuildLos: "F", designBuildDelaySec: 95.2 },
     { signalId: "GA-S2", name: "Peachtree St & Spring St (15th)", zone: "midtown", latitude: 33.7903, longitude: -84.3878, distanceMi: 0.21, existingVc: 0.81, addedTripsPmPeak: 12, futureVc: 0.85, currentLos: "C", currentDelaySec: 33.2, existingDelaySec: 38.1, futureDelaySec: 40.9, existingLos: "C", futureLos: "D", losChanged: true, mitigation: "Add a brief NB-leading-LT phase if pedestrian-conflict-driven LT-stall becomes critical under build conditions; coordinate with GDOT 511 NaviGAtor signal-timing schedule.", mitigationSeverity: "minor", approaches: [], queue95thFt: 220, designNoBuildLos: "D", designNoBuildDelaySec: 53.0, designBuildLos: "E", designBuildDelaySec: 60.4 },
     { signalId: "GA-S3", name: "Peachtree St & 17th St", zone: "midtown", latitude: 33.7960, longitude: -84.3838, distanceMi: 0.43, existingVc: 0.69, addedTripsPmPeak: 7, futureVc: 0.72, currentLos: "C", currentDelaySec: 26.0, existingDelaySec: 29.5, futureDelaySec: 31.2, existingLos: "C", futureLos: "C", losChanged: false, mitigation: "", mitigationSeverity: "none", approaches: [], queue95thFt: 170, designNoBuildLos: "C", designNoBuildDelaySec: 37.3, designBuildLos: "C", designBuildDelaySec: 38.4 },
   ],
@@ -55,9 +55,9 @@ const fakeReport = {
     "Background growth derived from the ARC Open Data Hub re-publication of GDOT AADT 2008-2017.",
   ],
   methodology: [
-    "Trip generation per ITE Trip Generation Manual 11th Edition for ITE LU 221 (Multifamily Housing — Mid-Rise) at 220 DU.",
-    "Pass-by and internal-capture defaults from ULI Mixed-Use Internal Capture and ITE Pass-By Trip Generation Manual (3rd Edition).",
-    "Intersection-level control delay per HCM 6th Edition Chapter 19; calibration from the live GDOT 511 NaviGAtor incident + signal feed.",
+    "Trip generation per public-data screening average rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use 221 (Mid-Rise Apartment) at 220 DU; the daily rate traces to the City of San Diego LDC Trip Generation Manual (May 2003) San Diego Traffic Generators measured data (locally measured, not ITE).",
+    "Pass-by credits per standard screening methodology; internal-capture defaults per ULI Mixed-Use Internal Capture.",
+    "Intersection-level control delay per the openly-published Webster/Akcelik signalized method (Webster 1958 uniform delay with an Akcelik overflow term); calibration from the live GDOT 511 NaviGAtor incident + signal feed.",
   ],
   periodReports: [
     { period: "pm_peak", periodLabel: "PM Peak", tripGeneration: { period: "pm_peak", periodLabel: "PM Peak", rawTrips: 138, passByCredit: 4, internalCaptureCredit: 0, externalTrips: 134, inTrips: 81, outTrips: 53 }, affectedIntersections: [], intersectionsWithLosDrop: 2, intersectionsAtLosEf: 1, worstDelayDeltaSec: 7.5 },
@@ -73,8 +73,11 @@ const fakeReport = {
   internalCapturePctApplied: 0,
   autoModeShareApplied: 0.90,
   citations: [
-    "ITE Trip Generation Manual, 11th Edition",
-    "HCM 6th Edition, Chapter 19 (Signalized Intersections)",
+    "SANDAG 2002, “(Not So) Brief Guide of Vehicular Traffic Generation Rates for the San Diego Region”",
+    "City of San Diego LDC Trip Generation Manual (May 2003) — San Diego Traffic Generators measured data",
+    "NCHRP Report 716, Travel Demand Forecasting: Parameters and Techniques (TRB, 2012)",
+    "FHWA National Household Travel Survey (NHTS), 2017",
+    "F. V. Webster, Traffic Signal Settings, Road Research Technical Paper No. 39 (RRL/HMSO, 1958); Akcelik time-dependent overflow delay term (ARRB)",
     "GDOT 511 NaviGAtor live signal-timing feed",
     "City of Atlanta SPI-16 Midtown Special Public Interest District",
     "Atlanta Regional Commission (ARC) Regional Transportation Plan (RTP)",

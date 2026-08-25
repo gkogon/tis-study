@@ -24,7 +24,7 @@ const fakeReport = {
   studyRadiusMi: 0.5,
   tripGeneration: {
     landUseCode: "221",
-    landUseName: "Multifamily Housing (Mid-Rise)",
+    landUseName: "Mid-Rise Apartment",
     size: 240,
     unit: "dwelling units",
     dailyTrips: 1234,
@@ -51,10 +51,10 @@ const fakeReport = {
     "Background growth derived from per-station median CAGR at NYSDOT count stations within the New York-Newark-Jersey City MSA bounding box.",
   ],
   methodology: [
-    "Trip generation uses ITE Trip Generation Manual 11th Edition average rates for ITE land use 221 (Multifamily Housing — Mid-Rise) at 240 dwelling units.",
-    "Pass-by and internal-capture defaults from ULI Mixed-Use Internal Capture and ITE Pass-By Trip Generation Manual (3rd Edition).",
-    "Intersection-level control delay per HCM 6th Edition Chapter 19 (signalized) with calibration from live NYCDOT/NYSDOT signal-timing feed where available.",
-    "Auto-mode share 32% from NYC ACS B08301 (commuting by mode); applied multiplicatively to ITE external trips.",
+    "Trip generation uses public-data screening average rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use 221 (Mid-Rise Apartment) at 240 dwelling units; the daily rate traces to the City of San Diego LDC Trip Generation Manual (May 2003) San Diego Traffic Generators measured data (locally measured, not ITE).",
+    "Pass-by credits per standard screening methodology; internal-capture defaults per ULI Mixed-Use Internal Capture.",
+    "Intersection-level control delay per the openly-published Webster/Akcelik signalized method (Webster 1958 uniform delay with an Akcelik overflow term), with calibration from live NYCDOT/NYSDOT signal-timing feed where available.",
+    "Auto-mode share 32% from NYC ACS B08301 (commuting by mode); applied multiplicatively to external vehicle trips.",
   ],
   periodReports: [
     { period: "pm_peak", periodLabel: "PM Peak", tripGeneration: { period: "pm_peak", periodLabel: "PM Peak", rawTrips: 156, passByCredit: 4, internalCaptureCredit: 0, externalTrips: 152, inTrips: 92, outTrips: 60 }, affectedIntersections: [], intersectionsWithLosDrop: 3, intersectionsAtLosEf: 1, worstDelayDeltaSec: 10.4 },
@@ -70,8 +70,11 @@ const fakeReport = {
   internalCapturePctApplied: 0,
   autoModeShareApplied: 0.32,
   citations: [
-    "ITE Trip Generation Manual, 11th Edition",
-    "HCM 6th Edition, Chapter 19 (Signalized Intersections)",
+    "SANDAG 2002, “(Not So) Brief Guide of Vehicular Traffic Generation Rates for the San Diego Region”",
+    "City of San Diego LDC Trip Generation Manual (May 2003) — San Diego Traffic Generators measured data",
+    "NCHRP Report 716, Travel Demand Forecasting: Parameters and Techniques (TRB, 2012)",
+    "FHWA National Household Travel Survey (NHTS), 2017",
+    "F. V. Webster, Traffic Signal Settings, Road Research Technical Paper No. 39 (RRL/HMSO, 1958); Akcelik time-dependent overflow delay term (ARRB)",
     "NYSDOT Highway Design Manual, Chapter 5 (TIS Shell, rev. 9/16/2014)",
     "ULI Mixed-Use Development Internal Capture defaults",
   ],

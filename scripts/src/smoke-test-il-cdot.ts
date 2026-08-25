@@ -2,7 +2,7 @@
  * Smoke test for the IL CDOT Tier 1 + Tier 2 PDF renderers.
  *
  * Renders two PDFs at Chicago Loop coords (41.8819, -87.6278) with
- * ITE 221 (Multifamily Housing Mid-Rise):
+ * land use 221 (Mid-Rise Apartment):
  *   - 30 DU → Tier 1 (CDOT site-plan + project narrative)
  *   - 100 DU → Tier 2 (CDOT TDM Memo)
  * Writes both to /tmp and prints their paths + sizes.
@@ -13,7 +13,7 @@ import { writeFileSync } from "node:fs";
 import { renderStudyPdf } from "../../artifacts/tis-api-server/src/lib/pdf-export";
 
 function makeReport(sizeDu: number) {
-  const dailyPerDu = 4.5; // ITE 221 ~ 4.5 daily/DU midrise
+  const dailyPerDu = 4.5; // conservative screening ballpark for LU 221 midrise (land-uses.ts carries 6.0 daily/DU)
   const pmPeakPerDu = 0.39;
   const amPeakPerDu = 0.36;
   const dailyTrips = Math.round(sizeDu * dailyPerDu);
@@ -36,7 +36,7 @@ function makeReport(sizeDu: number) {
     studyRadiusMi: 0.5,
     tripGeneration: {
       landUseCode: "221",
-      landUseName: "Multifamily Housing (Mid-Rise)",
+      landUseName: "Mid-Rise Apartment",
       size: sizeDu,
       unit: "dwelling units",
       dailyTrips,
@@ -54,7 +54,7 @@ function makeReport(sizeDu: number) {
       `Project generates ${dailyTrips} daily trips and ${pmPeakTrips} PM peak-hour trips at ${sizeDu} dwelling units.`,
     ],
     methodology: [
-      "Trip generation per ITE Trip Generation Manual current edition for ITE 221 (Multifamily Housing Mid-Rise).",
+      "Trip generation per public-data screening average rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use 221 (Mid-Rise Apartment).",
     ],
     periodReports: [],
     growthAppliedPct: 1.8,
@@ -64,7 +64,9 @@ function makeReport(sizeDu: number) {
     passByPctApplied: 0,
     internalCapturePctApplied: 0,
     citations: [
-      "ITE Trip Generation Manual, current edition",
+      "SANDAG 2002, “(Not So) Brief Guide of Vehicular Traffic Generation Rates for the San Diego Region”",
+      "NCHRP Report 716, Travel Demand Forecasting: Parameters and Techniques (TRB, 2012)",
+      "FHWA National Household Travel Survey (NHTS), 2017",
       "CDOT Guidelines for Travel Demand Study and Management (TDM) Plans v1.1 (June 2023)",
       "Connected Communities Ordinance — Chicago Municipal Code §17-3-0308 / §17-4-0301",
     ],
