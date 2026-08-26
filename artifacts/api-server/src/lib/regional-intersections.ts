@@ -143,6 +143,15 @@ export function regionCodeToSlug(regionCode: string): string {
 }
 
 /**
+ * Every region code this loader can actually serve. The check-script suite
+ * compares this against the engine's active-region registry so a region can
+ * no longer ship engine-side without its REGION_INFO entry here.
+ */
+export function servedRegionCodes(): string[] {
+  return Object.keys(REGION_INFO);
+}
+
+/**
  * Region bounds + display name for zone labeling. Duplicates the canonical
  * registry in artifacts/tis-api-server/src/lib/regions.ts because api-server
  * and tis-api-server are independent workspaces and we don't want a runtime
@@ -491,6 +500,22 @@ const REGION_INFO: Record<string, RegionBoundsInfo> = {
   // Central America / Caribbean (2) — Havana (Cuba) removed: OFAC-sanctioned / Stripe-prohibited.
   panama_city_metro: { displayName: "Panama City", bounds: { latMin: 8.85, latMax: 9.10, lonMin: -79.65, lonMax: -79.40 } },
   san_jose_cr_metro: { displayName: "San José (CR)", bounds: { latMin: 9.85, latMax: 10.05, lonMin: -84.20, lonMax: -83.95 } },
+  // Tier-11 light-coverage metros (2026-06-01). These 12 shipped with data
+  // files and engine registry entries but were never added here, so every
+  // study request in them 400'd at the inventory fetch. Bounds copied from
+  // tis-api-server/src/lib/regions.ts (the canonical registry).
+  addis_ababa_metro: { displayName: "Addis Ababa (አዲስ አበባ)", bounds: { latMin: 8.93, latMax: 9.10, lonMin: 38.68, lonMax: 38.88 } },
+  almaty_metro: { displayName: "Almaty (Алматы)", bounds: { latMin: 43.16, latMax: 43.36, lonMin: 76.83, lonMax: 77.03 } },
+  belgrade_metro: { displayName: "Belgrade (Београд)", bounds: { latMin: 44.74, latMax: 44.86, lonMin: 20.40, lonMax: 20.54 } },
+  dakar_metro: { displayName: "Dakar", bounds: { latMin: 14.65, latMax: 14.78, lonMin: -17.50, lonMax: -17.38 } },
+  dar_es_salaam_metro: { displayName: "Dar es Salaam", bounds: { latMin: -6.92, latMax: -6.72, lonMin: 39.16, lonMax: 39.34 } },
+  dhaka_metro: { displayName: "Dhaka (ঢাকা)", bounds: { latMin: 23.68, latMax: 23.90, lonMin: 90.32, lonMax: 90.50 } },
+  kuwait_city_metro: { displayName: "Kuwait City (مدينة الكويت)", bounds: { latMin: 29.28, latMax: 29.48, lonMin: 47.90, lonMax: 48.10 } },
+  muscat_metro: { displayName: "Muscat (مسقط)", bounds: { latMin: 23.50, latMax: 23.70, lonMin: 58.30, lonMax: 58.55 } },
+  sofia_metro: { displayName: "Sofia (София)", bounds: { latMin: 42.62, latMax: 42.74, lonMin: 23.26, lonMax: 23.40 } },
+  tunis_metro: { displayName: "Tunis (تونس)", bounds: { latMin: 36.74, latMax: 36.90, lonMin: 10.10, lonMax: 10.28 } },
+  vilnius_metro: { displayName: "Vilnius", bounds: { latMin: 54.63, latMax: 54.75, lonMin: 25.20, lonMax: 25.36 } },
+  zagreb_metro: { displayName: "Zagreb", bounds: { latMin: 45.74, latMax: 45.86, lonMin: 15.90, lonMax: 16.04 } },
 };
 
 /** Compass-quadrant zone label relative to the region centroid.

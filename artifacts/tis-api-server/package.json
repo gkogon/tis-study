@@ -37,7 +37,8 @@
     "check:synchro-pdf-import": "node ./scripts/verify-synchro-pdf-import.mjs",
     "check:synchro-pdf-engine": "node ./scripts/verify-synchro-pdf-engine.mjs",
     "check:conserved-assignment": "node ./scripts/verify-conserved-assignment.mjs",
-    "check:state-dispatch": "node ./scripts/verify-state-dispatch.mjs"
+    "check:state-dispatch": "node ./scripts/verify-state-dispatch.mjs",
+    "check:region-parity": "node ./scripts/verify-region-parity.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",
