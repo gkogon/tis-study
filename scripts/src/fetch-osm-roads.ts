@@ -2,8 +2,9 @@
  * Generic OSM road-network fetcher, keyed off a region in the registry.
  *
  * For a given region code, queries OpenStreetMap (Overpass API) for every
- * named highway way in CLASSES (motorway through unclassified, plus _link
- * subtypes) inside the region's bounding box. Output mirrors atlanta-roads.json:
+ * highway way in CLASSES (motorway through unclassified, plus _link
+ * subtypes) inside the region's bounding box — named or not. Output mirrors
+ * atlanta-roads.json:
  *
  *   {
  *     "classes": ["motorway","trunk","primary","secondary","tertiary",

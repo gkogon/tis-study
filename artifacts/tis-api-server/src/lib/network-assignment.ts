@@ -23,7 +23,8 @@ const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8
 export type RoadSegment = [
   number, number, number, number, number,
   number | null, number | null,
-  /** Street name, for same-street continuity in routing. Absent on old payloads. */
+  /** Street name; null on unnamed ways, absent on old payloads. Carried for
+   *  consumers/diagnostics — buildGraph does not read it. */
   (string | null)?,
   /** 1 = a->b only, -1 = b->a only, 0/absent = two-way. */
   (number | null)?,
