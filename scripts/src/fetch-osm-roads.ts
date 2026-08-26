@@ -146,8 +146,8 @@ function bboxStrips(region: Region, cellDeg = 0.14): string[] {
 function buildQuery(bbox: string): string {
   const queries: string[] = [];
   for (const c of CLASSES) {
-    queries.push(`way["highway"="${c}"]["name"](${bbox});`);
-    queries.push(`way["highway"="${c}_link"]["name"](${bbox});`);
+    queries.push(`way["highway"="${c}"](${bbox});`);
+    queries.push(`way["highway"="${c}_link"](${bbox});`);
   }
   return `
 [out:json][timeout:180];
@@ -234,8 +234,10 @@ async function fetchOneRegion(regionCode: RegionCode): Promise<{
       seenIds.add(el.id);
 
       const hw = el.tags?.highway;
-      const name = el.tags?.name;
-      if (!hw || !name) { skippedClass++; continue; }
+      // Unnamed ways kept with name = null (Option A, 2026-08-25) — ramps
+      // and no-street-name-country residential grids feed the router.
+      const name = el.tags?.name?.trim() || null;
+      if (!hw) { skippedClass++; continue; }
       const baseClass = hw.endsWith("_link") ? hw.slice(0, -5) : hw;
       const code = CLASS_CODE.get(baseClass as (typeof CLASSES)[number]);
       if (code === undefined) { skippedClass++; continue; }

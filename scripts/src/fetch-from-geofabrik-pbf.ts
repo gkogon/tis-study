@@ -16,9 +16,11 @@
  *     "classes": ["motorway","trunk","primary","secondary","tertiary",
  *                 "residential","unclassified"],
  *     "ways": [
- *       [classCode, "Way Name", [[lat,lon], ...], lanes|null, maxspeedKmh|null, oneway],
+ *       [classCode, "Way Name"|null, [[lat,lon], ...], lanes|null, maxspeedKmh|null, oneway],
  *     ]
  *   }
+ *
+ *   name is null for unnamed ways (kept for routing since 2026-08-25).
  *
  * The classes ARRAY ORDER is the classCode mapping — reordering it silently
  * remaps every way's class downstream, so CLASSES here must be identical to
@@ -488,11 +490,13 @@ async function processStateRoads(state: string, metros: RegionCode[], outDir: st
   for await (const f of streamFeatures(seq)) {
     features++;
     if (features % 500000 === 0) console.log(`  … ${features} features streamed`);
-    // Named ways only — parity with fetch-osm-roads.ts, whose Overpass query
-    // filters on ["name"]. The roads file backs cross-street naming; unnamed
-    // service stubs would bloat it without naming value.
-    const name = (f.properties.name as string | undefined)?.trim();
-    if (!name) continue;
+    // Unnamed ways are KEPT (name = null) since the 2026-08-25 Option-A
+    // decision: the roads file feeds ROUTING as well as cross-street naming,
+    // and unnamed ways are exactly the freeway ramps (unnamed _link ways in
+    // every metro) and the residential grid in no-street-name countries
+    // (Japan: ~3-5% of residential ways carry a name). All naming consumers
+    // guard on typeof way[1] === "string", so null names render nothing.
+    const name = (f.properties.name as string | undefined)?.trim() || null;
     const highway = f.properties.highway as string | undefined;
     if (!highway) continue;
     const baseClass = highway.endsWith("_link") ? highway.slice(0, -5) : highway;
