@@ -307,14 +307,17 @@ function appendRoads(metro: RegionCode, features: GeoJsonFeature[], state: strin
     const way = w as unknown[];
     const pts = way[2] as Array<[number, number]> | undefined;
     if (!Array.isArray(pts) || pts.length === 0) continue;
-    seen.add(`${way[0]}|${way[1]}|${pts[0]![0]}|${pts[0]![1]}`);
+    // Key includes the LAST vertex too: with unnamed ways (name = null since
+    // Option A, 2026-08-25) name no longer disambiguates, and distinct ways
+    // can share class + first vertex at a junction.
+    const last = pts[pts.length - 1]!;
+    seen.add(`${way[0]}|${way[1]}|${pts[0]![0]}|${pts[0]![1]}|${last[0]}|${last[1]}`);
   }
 
   let added = 0;
   const byClass: Record<string, number> = {};
   for (const f of features) {
-    const name = typeof f.properties["name"] === "string" ? (f.properties["name"] as string).trim() : "";
-    if (!name) continue;
+    const name = typeof f.properties["name"] === "string" ? (f.properties["name"] as string).trim() || null : null;
     const hw = f.properties["highway"] as string | undefined;
     if (!hw) continue;
     const baseClass = hw.endsWith("_link") ? hw.slice(0, -5) : hw;
@@ -336,7 +339,8 @@ function appendRoads(metro: RegionCode, features: GeoJsonFeature[], state: strin
         Math.round((lat as number) * 1e5) / 1e5,
         Math.round((lon as number) * 1e5) / 1e5,
       ]);
-      const key = `${code}|${name}|${polyline[0]![0]}|${polyline[0]![1]}`;
+      const last = polyline[polyline.length - 1]!;
+      const key = `${code}|${name}|${polyline[0]![0]}|${polyline[0]![1]}|${last[0]}|${last[1]}`;
       if (seen.has(key)) continue;
       seen.add(key);
       road.ways.push([code, name, polyline, lanes, maxspeed]);

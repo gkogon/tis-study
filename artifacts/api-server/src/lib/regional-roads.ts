@@ -102,7 +102,7 @@ export function roadSegmentsNear(
   lat: number,
   lon: number,
   radiusMi: number,
-  cap = 8000,
+  cap = 16000,
 ): RoadSegment[] | null {
   const slug = regionCodeToSlug(regionCode);
   const road = loadRoadFile(slug);
