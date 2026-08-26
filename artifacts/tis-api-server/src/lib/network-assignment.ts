@@ -17,6 +17,7 @@
  */
 import { bprTime } from "./four-step-model.ts";
 import { classifyMovement, sideOfStreet, resolveMovements, maskOneWayMovements, type Driveway } from "./driveways.ts";
+import { logger } from "./logger.ts";
 
 const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8080";
 
@@ -88,24 +89,50 @@ const PER_LANE_CAP_VPH = 1900;                      // HCM-ish per-lane capacity
 // utilized classes/links instead of being inert on empty roads.
 const CLASS_BASE_VC = [0.75, 0.70, 0.62, 0.52, 0.42];
 
-/** Fetch the bounded local road network from the analyzer. null on failure. */
+// Roads fetch timeout. The old hard-coded 6s looked generous but was not:
+// the analyzer parses a region's road file on first touch (a statewide
+// gz can take >6s, during which Node's single thread serves nothing), so
+// the FIRST study in a cold region silently lost its road network and the
+// whole conserved-assignment layer degraded to the octant fallback — a
+// correct-looking report built on the weaker path, with nothing logged.
+// 30s matches the intersections fetch (ANALYZER_FETCH_TIMEOUT_MS).
+const ROADS_FETCH_TIMEOUT_MS = Math.max(6000, Number(process.env["ROADS_FETCH_TIMEOUT_MS"]) || 30000);
+
+/**
+ * Fetch the bounded local road network from the analyzer. null on failure.
+ * Two attempts: an aborted first request still leaves the analyzer parsing
+ * (the route handler runs to completion and caches the parsed file), so the
+ * retry usually lands on a warm cache. Failure is logged — an absent road
+ * network changes the whole downstream assignment story and must be visible.
+ */
 export async function fetchLocalRoads(
   regionCode: string, lat: number, lon: number, radiusMi: number,
 ): Promise<RoadSegment[] | null> {
-  try {
-    const url = `${ANALYZER_BASE_URL}/api/roads?regionCode=${encodeURIComponent(regionCode)}`
-      + `&lat=${lat}&lon=${lon}&radiusMi=${Math.max(0.5, radiusMi + 0.25)}`;
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 6000);
-    const r = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(t);
-    if (!r.ok) return null;
-    const data = (await r.json()) as { available?: boolean; segments?: RoadSegment[] };
-    if (!data.available || !Array.isArray(data.segments) || data.segments.length === 0) return null;
-    return data.segments;
-  } catch {
-    return null;
+  const url = `${ANALYZER_BASE_URL}/api/roads?regionCode=${encodeURIComponent(regionCode)}`
+    + `&lat=${lat}&lon=${lon}&radiusMi=${Math.max(0.5, radiusMi + 0.25)}`;
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), ROADS_FETCH_TIMEOUT_MS);
+      const r = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(t);
+      if (!r.ok) { lastErr = `http ${r.status}`; continue; }
+      const data = (await r.json()) as { available?: boolean; segments?: RoadSegment[] };
+      if (!data.available || !Array.isArray(data.segments) || data.segments.length === 0) {
+        // Honest "no network for this region" — not a transient failure.
+        return null;
+      }
+      return data.segments;
+    } catch (err) {
+      lastErr = err;
+    }
   }
+  logger.warn(
+    { regionCode, lat, lon, radiusMi, timeoutMs: ROADS_FETCH_TIMEOUT_MS, err: String(lastErr) },
+    "tis.roads_fetch_failed",
+  );
+  return null;
 }
 
 function distMi(la1: number, lo1: number, la2: number, lo2: number): number {
