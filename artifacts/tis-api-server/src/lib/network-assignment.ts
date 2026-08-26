@@ -17,7 +17,7 @@
  */
 import { bprTime } from "./four-step-model.ts";
 import { classifyMovement, sideOfStreet, resolveMovements, maskOneWayMovements, type Driveway } from "./driveways.ts";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8080";
 
