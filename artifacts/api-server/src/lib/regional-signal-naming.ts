@@ -167,15 +167,45 @@ export function getSignalNamesForRegion(regionCode: string): Map<number, SignalN
 
   const slug = regionCodeToSlug(regionCode);
 
+  // Fast path: precomputed sidecar (scripts/generate-signal-names.mjs). The
+  // live naming pass parses the whole region road file and grid-scans every
+  // signal — fine for a metro, fatal for the statewide files (georgia:
+  // ~140s and >1GB of Segment allocations post-residential-refetch, while
+  // the engine's inventory fetch times out at 30s). The pass is a pure
+  // function of two committed inputs, so regions where it is expensive ship
+  // its output instead. Regenerate sidecars whenever a region's roads or
+  // signals file is refetched.
+  try {
+    const side = readDataJson<{ names: Array<[number, string, number]> }>(`${slug}-signal-names.json`);
+    const out = new Map<number, SignalNamingResult>();
+    for (const [osmId, name, roadClassCode] of side.names) out.set(osmId, { name, roadClassCode });
+    nameCache.set(regionCode, out);
+    return out;
+  } catch {
+    // No sidecar — compute from the road network below.
+  }
+
+  const out = computeSignalNamesForRegion(regionCode);
+  nameCache.set(regionCode, out);
+  return out;
+}
+
+/**
+ * The live roads-based naming pass, sidecar-blind. Callers wanting the cached
+ * (and sidecar-preferring) path use getSignalNamesForRegion; this exists so
+ * scripts/generate-signal-names.mjs can regenerate a sidecar from the actual
+ * inputs instead of reading its own stale output back.
+ */
+export function computeSignalNamesForRegion(regionCode: string): Map<number, SignalNamingResult> {
+  const slug = regionCodeToSlug(regionCode);
+
   // Roads dataset may not exist yet for some regions; in that case we return
   // an empty map and the caller falls back to "Signal #<osmId>".
   let road: RoadNetwork;
   try {
     road = readDataJson<RoadNetwork>(`${slug}-roads.json`);
   } catch {
-    const empty = new Map<number, SignalNamingResult>();
-    nameCache.set(regionCode, empty);
-    return empty;
+    return new Map<number, SignalNamingResult>();
   }
 
   let grid = gridCache.get(regionCode);
@@ -197,7 +227,6 @@ export function getSignalNamesForRegion(regionCode: string): Map<number, SignalN
     const result = analyzeOneSignal(grid, lat, lon);
     if (result) out.set(osmId, result);
   }
-  nameCache.set(regionCode, out);
   return out;
 }
 
