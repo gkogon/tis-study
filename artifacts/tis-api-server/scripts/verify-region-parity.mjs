@@ -59,6 +59,17 @@ for (const code of active) {
 ok(noFiles.length === 0,
   `every active region has aadt+signals+roads data files (${noFiles.length ? "missing: " + noFiles.join("; ") : "all present"})`);
 
+// 2b. Statewide regions must ship a signal-names sidecar: their live naming
+// pass takes minutes (georgia ~140s post-residential-refetch) while the
+// engine's inventory fetch allows 30s, so without the sidecar every
+// first-touch study at a rural site fails. Regenerate with
+// api-server/scripts/generate-signal-names.mjs after any roads/signals refetch.
+const statewide = active.filter((c) => c.endsWith("_statewide"));
+const noSidecar = statewide.filter((c) =>
+  !existsSync(path.join(dataDir, `${regionCodeToSlug(c)}-signal-names.json`)));
+ok(noSidecar.length === 0,
+  `every statewide region has a signal-names sidecar (${noSidecar.length ? "missing: " + noSidecar.join(", ") : statewide.length + " present"})`);
+
 // 3. End-to-end smoke on the 12 once-broken Tier-11 codes.
 const TIER11 = [
   "addis_ababa_metro", "almaty_metro", "belgrade_metro", "dakar_metro",
