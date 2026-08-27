@@ -1533,107 +1533,107 @@
     "method": "direct+group_fill",
     "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from canada × 1.00 motorization scalar",
     "baseline": {
-      "0": 51630,
+      "0": 60701,
       "1": 35000,
       "2": 35000,
       "3": 22000,
       "4": 15000
     },
     "measuredN": {
-      "0": 484,
+      "0": 492,
       "1": 4,
-      "2": 1495,
-      "3": 3573,
-      "4": 763
+      "2": 1558,
+      "3": 3834,
+      "4": 732
     }
   },
   "montreal_metro": {
     "method": "direct",
-    "provenance": "direct calibration: n=2383/847/3669/9175/3971 per class",
+    "provenance": "direct calibration: n=2383/847/3744/9224/3971 per class",
     "baseline": {
-      "0": 68000,
-      "1": 57000,
-      "2": 18700,
+      "0": 103788,
+      "1": 60000,
+      "2": 21174,
       "3": 15000,
       "4": 15000
     },
     "measuredN": {
       "0": 2383,
       "1": 847,
-      "2": 3669,
-      "3": 9175,
+      "2": 3744,
+      "3": 9224,
       "4": 3971
     }
   },
   "vancouver_metro": {
-    "method": "direct+group_fill",
-    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from canada × 1.00 motorization scalar",
+    "method": "direct",
+    "provenance": "direct calibration: n=277/662/1942/2495/450 per class",
     "baseline": {
-      "0": 60000,
-      "1": 14535,
-      "2": 5321,
-      "3": 2929,
-      "4": 1949
+      "0": 33764,
+      "1": 13073,
+      "2": 11371,
+      "3": 11371,
+      "4": 9410
     },
     "measuredN": {
-      "0": 48,
-      "1": 352,
-      "2": 971,
-      "3": 1445,
-      "4": 511
+      "0": 277,
+      "1": 662,
+      "2": 1942,
+      "3": 2495,
+      "4": 450
     }
   },
   "calgary_metro": {
     "method": "direct",
-    "provenance": "direct calibration: n=297/156/413/1843/526 per class",
+    "provenance": "direct calibration: n=297/156/408/1848/526 per class",
     "baseline": {
-      "0": 69000,
-      "1": 43000,
-      "2": 34000,
+      "0": 96057,
+      "1": 49829,
+      "2": 35000,
       "3": 22000,
       "4": 15000
     },
     "measuredN": {
       "0": 297,
       "1": 156,
-      "2": 413,
-      "3": 1843,
+      "2": 408,
+      "3": 1848,
       "4": 526
     }
   },
   "ottawa_metro": {
-    "method": "direct+group_fill",
-    "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from canada × 1.00 motorization scalar",
+    "method": "direct",
+    "provenance": "direct calibration: n=110/85/846/1304/140 per class",
     "baseline": {
-      "0": 147000,
-      "1": 31000,
-      "2": 1839,
-      "3": 1839,
-      "4": 1654
+      "0": 169779,
+      "1": 4550,
+      "2": 3970,
+      "3": 3833,
+      "4": 3337
     },
     "measuredN": {
-      "0": 107,
-      "1": 36,
-      "2": 873,
-      "3": 1262,
-      "4": 136
+      "0": 110,
+      "1": 85,
+      "2": 846,
+      "3": 1304,
+      "4": 140
     }
   },
   "edmonton_metro": {
     "method": "direct+group_fill",
     "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from canada × 1.00 motorization scalar",
     "baseline": {
-      "0": 31000,
+      "0": 35391,
       "1": 31000,
-      "2": 21000,
-      "3": 12900,
-      "4": 6600
+      "2": 18822,
+      "3": 10095,
+      "4": 5200
     },
     "measuredN": {
       "0": 137,
       "1": 26,
-      "2": 411,
-      "3": 1528,
+      "2": 410,
+      "3": 1683,
       "4": 92
     }
   },
@@ -1642,26 +1642,26 @@
     "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from canada × 1.00 motorization scalar",
     "baseline": {
       "0": 60000,
-      "1": 14297,
-      "2": 11034,
-      "3": 9760,
-      "4": 5516
+      "1": 19700,
+      "2": 13297,
+      "3": 7843,
+      "4": 5597
     },
     "measuredN": {
       "0": 14,
       "1": 189,
-      "2": 590,
-      "3": 741,
-      "4": 84
+      "2": 586,
+      "3": 734,
+      "4": 95
     }
   },
   "quebec_city_metro": {
     "method": "direct+group_fill",
     "provenance": "direct calibration on 4 classes; 1 thin-sample classes filled from canada × 1.00 motorization scalar",
     "baseline": {
-      "0": 66000,
+      "0": 115589,
       "1": 31000,
-      "2": 22000,
+      "2": 23095,
       "3": 22000,
       "4": 15000
     },
@@ -1679,16 +1679,16 @@
     "baseline": {
       "0": 31000,
       "1": 31000,
-      "2": 10154,
-      "3": 3265,
-      "4": 2905
+      "2": 11512,
+      "3": 4625,
+      "4": 4625
     },
     "measuredN": {
-      "0": 127,
+      "0": 129,
       "1": 12,
-      "2": 303,
-      "3": 548,
-      "4": 40
+      "2": 422,
+      "3": 726,
+      "4": 55
     }
   },
   "halifax_metro": {
@@ -1697,16 +1697,16 @@
     "baseline": {
       "0": 60000,
       "1": 31000,
-      "2": 9357,
-      "3": 9357,
-      "4": 9357
+      "2": 12589,
+      "3": 11900,
+      "4": 11900
     },
     "measuredN": {
-      "0": 47,
+      "0": 57,
       "1": 1,
-      "2": 156,
-      "3": 274,
-      "4": 63
+      "2": 175,
+      "3": 295,
+      "4": 94
     }
   },
   "mexico_city_metro": {

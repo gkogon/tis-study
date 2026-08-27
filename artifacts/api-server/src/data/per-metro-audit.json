@@ -598,45 +598,6 @@
     }
   },
   {
-    "code": "yokohama_metro",
-    "slug": "yokohama",
-    "country": "JP",
-    "dataSourceId": "osm_only",
-    "total": 4081,
-    "measured": 0,
-    "measuredPct": 0,
-    "synthetic": 4081,
-    "sourceCounts": {
-      "synthetic_osm_class": 4081
-    }
-  },
-  {
-    "code": "nagoya_metro",
-    "slug": "nagoya",
-    "country": "JP",
-    "dataSourceId": "osm_only",
-    "total": 4022,
-    "measured": 0,
-    "measuredPct": 0,
-    "synthetic": 4022,
-    "sourceCounts": {
-      "synthetic_osm_class": 4022
-    }
-  },
-  {
-    "code": "sapporo_metro",
-    "slug": "sapporo",
-    "country": "JP",
-    "dataSourceId": "osm_only",
-    "total": 2905,
-    "measured": 0,
-    "measuredPct": 0,
-    "synthetic": 2905,
-    "sourceCounts": {
-      "synthetic_osm_class": 2905
-    }
-  },
-  {
     "code": "fukuoka_metro",
     "slug": "fukuoka",
     "country": "JP",
@@ -1785,7 +1746,7 @@
     "synthetic": 291,
     "sourceCounts": {
       "synthetic_osm_class": 291,
-      "vegvesen_adt": 135
+      "vegvesen_trafikkdata": 135
     }
   },
   {
@@ -1800,20 +1761,6 @@
     "sourceCounts": {
       "paris_opendata": 3485,
       "synthetic_osm_class": 7308
-    }
-  },
-  {
-    "code": "vancouver_metro",
-    "slug": "vancouver",
-    "country": "CA",
-    "dataSourceId": "moti_bc",
-    "total": 8748,
-    "measured": 3327,
-    "measuredPct": 38,
-    "synthetic": 5421,
-    "sourceCounts": {
-      "synthetic_osm_class": 5421,
-      "vancouver_open_data_directional": 3327
     }
   },
   {
@@ -1873,17 +1820,34 @@
     }
   },
   {
-    "code": "tokyo_metro",
-    "slug": "tokyo",
+    "code": "sapporo_metro",
+    "slug": "sapporo",
     "country": "JP",
     "dataSourceId": "osm_only",
-    "total": 14825,
-    "measured": 9354,
-    "measuredPct": 63.1,
-    "synthetic": 5471,
+    "total": 2952,
+    "measured": 1839,
+    "measuredPct": 62.3,
+    "synthetic": 1113,
     "sourceCounts": {
-      "synthetic_osm_class": 5471,
-      "mlit_census_r3_2021": 9354
+      "mlit_census_r3_2021": 1839,
+      "synthetic_osm_class": 1113
+    }
+  },
+  {
+    "code": "vancouver_metro",
+    "slug": "vancouver",
+    "country": "CA",
+    "dataSourceId": "moti_bc",
+    "total": 8748,
+    "measured": 5826,
+    "measuredPct": 66.6,
+    "synthetic": 2922,
+    "sourceCounts": {
+      "bc_mott_tmp_aadt": 1622,
+      "vancouver_open_data_directional": 2991,
+      "synthetic_osm_class": 2922,
+      "bc_mott_utv_aadt": 259,
+      "surrey_loop_counts": 954
     }
   },
   {
@@ -1915,20 +1879,6 @@
     }
   },
   {
-    "code": "osaka_metro",
-    "slug": "osaka",
-    "country": "JP",
-    "dataSourceId": "osm_only",
-    "total": 8717,
-    "measured": 6510,
-    "measuredPct": 74.7,
-    "synthetic": 2207,
-    "sourceCounts": {
-      "mlit_census_r3_2021": 6510,
-      "synthetic_osm_class": 2207
-    }
-  },
-  {
     "code": "quebec_city_metro",
     "slug": "quebec-city",
     "country": "CA",
@@ -1940,36 +1890,6 @@
     "sourceCounts": {
       "mtq_djma": 1482,
       "synthetic_osm_class": 481
-    }
-  },
-  {
-    "code": "toronto_metro",
-    "slug": "toronto",
-    "country": "CA",
-    "dataSourceId": "mto",
-    "total": 8412,
-    "measured": 6365,
-    "measuredPct": 75.7,
-    "synthetic": 2047,
-    "sourceCounts": {
-      "toronto_open_data_svc": 6199,
-      "mto": 166,
-      "synthetic_osm_class": 2047
-    }
-  },
-  {
-    "code": "hamilton_metro",
-    "slug": "hamilton",
-    "country": "CA",
-    "dataSourceId": "mto",
-    "total": 1358,
-    "measured": 1033,
-    "measuredPct": 76.1,
-    "synthetic": 325,
-    "sourceCounts": {
-      "hamilton_open_data_adt": 951,
-      "synthetic_osm_class": 325,
-      "mto": 82
     }
   },
   {
@@ -2015,32 +1935,47 @@
     }
   },
   {
-    "code": "halifax_metro",
-    "slug": "halifax",
+    "code": "toronto_metro",
+    "slug": "toronto",
     "country": "CA",
-    "dataSourceId": "ns_public_works",
-    "total": 663,
-    "measured": 544,
-    "measuredPct": 82.1,
-    "synthetic": 119,
+    "dataSourceId": "mto",
+    "total": 8419,
+    "measured": 6659,
+    "measuredPct": 79.1,
+    "synthetic": 1760,
     "sourceCounts": {
-      "halifax_open_data_traffic_studies": 544,
-      "synthetic_osm_class": 119
+      "toronto_open_data_svc": 6166,
+      "durham_region_aadt": 350,
+      "mto": 143,
+      "synthetic_osm_class": 1760
     }
   },
   {
-    "code": "edmonton_metro",
-    "slug": "edmonton",
-    "country": "CA",
-    "dataSourceId": "ab_transportation",
-    "total": 2628,
-    "measured": 2196,
-    "measuredPct": 83.6,
-    "synthetic": 432,
+    "code": "tokyo_metro",
+    "slug": "tokyo",
+    "country": "JP",
+    "dataSourceId": "osm_only",
+    "total": 15143,
+    "measured": 12495,
+    "measuredPct": 82.5,
+    "synthetic": 2648,
     "sourceCounts": {
-      "synthetic_osm_class": 432,
-      "edmonton_open_data_aawdt": 2154,
-      "ab_transportation": 42
+      "mlit_census_r3_2021": 12495,
+      "synthetic_osm_class": 2648
+    }
+  },
+  {
+    "code": "yokohama_metro",
+    "slug": "yokohama",
+    "country": "JP",
+    "dataSourceId": "osm_only",
+    "total": 4372,
+    "measured": 3700,
+    "measuredPct": 84.6,
+    "synthetic": 672,
+    "sourceCounts": {
+      "mlit_census_r3_2021": 3700,
+      "synthetic_osm_class": 672
     }
   },
   {
@@ -2079,13 +2014,13 @@
     "country": "CA",
     "dataSourceId": "mtq",
     "total": 23403,
-    "measured": 20347,
-    "measuredPct": 86.9,
-    "synthetic": 3056,
+    "measured": 20471,
+    "measuredPct": 87.5,
+    "synthetic": 2932,
     "sourceCounts": {
-      "montreal_open_data_intersection": 12770,
-      "mtq_djma": 7577,
-      "synthetic_osm_class": 3056
+      "montreal_open_data_intersection": 13159,
+      "mtq_djma": 7312,
+      "synthetic_osm_class": 2932
     }
   },
   {
@@ -2117,6 +2052,50 @@
     }
   },
   {
+    "code": "edmonton_metro",
+    "slug": "edmonton",
+    "country": "CA",
+    "dataSourceId": "ab_transportation",
+    "total": 2628,
+    "measured": 2350,
+    "measuredPct": 89.4,
+    "synthetic": 278,
+    "sourceCounts": {
+      "st_albert_open_data_adt": 158,
+      "edmonton_open_data_aawdt": 2150,
+      "synthetic_osm_class": 278,
+      "ab_transportation": 42
+    }
+  },
+  {
+    "code": "osaka_metro",
+    "slug": "osaka",
+    "country": "JP",
+    "dataSourceId": "osm_only",
+    "total": 9123,
+    "measured": 8267,
+    "measuredPct": 90.6,
+    "synthetic": 856,
+    "sourceCounts": {
+      "mlit_census_r3_2021": 8267,
+      "synthetic_osm_class": 856
+    }
+  },
+  {
+    "code": "nagoya_metro",
+    "slug": "nagoya",
+    "country": "JP",
+    "dataSourceId": "osm_only",
+    "total": 4288,
+    "measured": 3912,
+    "measuredPct": 91.2,
+    "synthetic": 376,
+    "sourceCounts": {
+      "mlit_census_r3_2021": 3912,
+      "synthetic_osm_class": 376
+    }
+  },
+  {
     "code": "helsinki_metro",
     "slug": "helsinki",
     "country": "FI",
@@ -2131,18 +2110,34 @@
     }
   },
   {
+    "code": "halifax_metro",
+    "slug": "halifax",
+    "country": "CA",
+    "dataSourceId": "ns_public_works",
+    "total": 665,
+    "measured": 627,
+    "measuredPct": 94.3,
+    "synthetic": 38,
+    "sourceCounts": {
+      "halifax_open_data_traffic_studies": 488,
+      "synthetic_osm_class": 38,
+      "ns_public_works_aadt": 139
+    }
+  },
+  {
     "code": "ottawa_metro",
     "slug": "ottawa",
     "country": "CA",
     "dataSourceId": "mto",
     "total": 2591,
-    "measured": 2418,
-    "measuredPct": 93.3,
-    "synthetic": 173,
+    "measured": 2489,
+    "measuredPct": 96.1,
+    "synthetic": 102,
     "sourceCounts": {
-      "ottawa_open_data_midblock": 2300,
-      "mto": 118,
-      "synthetic_osm_class": 173
+      "ottawa_open_data_midblock": 1472,
+      "ottawa_intersection_volume": 915,
+      "synthetic_osm_class": 102,
+      "mto": 102
     }
   },
   {
@@ -2158,6 +2153,22 @@
       "winnipeg_open_data_midblock": 1556,
       "mb_infrastructure": 66,
       "synthetic_osm_class": 35
+    }
+  },
+  {
+    "code": "hamilton_metro",
+    "slug": "hamilton",
+    "country": "CA",
+    "dataSourceId": "mto",
+    "total": 1358,
+    "measured": 1347,
+    "measuredPct": 99.2,
+    "synthetic": 11,
+    "sourceCounts": {
+      "hamilton_open_data_adt": 948,
+      "burlington_open_data_aadt": 346,
+      "mto": 53,
+      "synthetic_osm_class": 11
     }
   },
   {

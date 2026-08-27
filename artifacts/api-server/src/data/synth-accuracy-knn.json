@@ -13,13 +13,13 @@
     },
     {
       "code": "los_angeles_metro",
-      "n": 22923,
+      "n": 22921,
       "mdape": 0,
       "accuracy": 1,
       "within10": 77.4,
       "within20": 80.1,
       "within30": 82,
-      "within50": 85.3,
+      "within50": 85.2,
       "fallbackPct": 0
     },
     {
@@ -38,10 +38,10 @@
       "n": 7464,
       "mdape": 0,
       "accuracy": 1,
-      "within10": 82.7,
-      "within20": 84.8,
-      "within30": 86.5,
-      "within50": 89.2,
+      "within10": 82.9,
+      "within20": 84.9,
+      "within30": 86.6,
+      "within50": 89.3,
       "fallbackPct": 0
     },
     {
@@ -57,7 +57,7 @@
     },
     {
       "code": "inland_empire_metro",
-      "n": 8249,
+      "n": 8252,
       "mdape": 0,
       "accuracy": 1,
       "within10": 78.9,
@@ -83,20 +83,20 @@
       "mdape": 0,
       "accuracy": 1,
       "within10": 78.7,
-      "within20": 81.5,
+      "within20": 81.6,
       "within30": 84.2,
       "within50": 87.5,
       "fallbackPct": 0
     },
     {
       "code": "denver_metro",
-      "n": 7250,
+      "n": 7249,
       "mdape": 0,
       "accuracy": 1,
       "within10": 71.3,
       "within20": 75.7,
-      "within30": 79.1,
-      "within50": 84.2,
+      "within30": 79.2,
+      "within50": 84.3,
       "fallbackPct": 0
     },
     {
@@ -112,24 +112,24 @@
     },
     {
       "code": "montreal_metro",
-      "n": 20045,
+      "n": 20169,
       "mdape": 0,
       "accuracy": 1,
-      "within10": 97.6,
-      "within20": 98.3,
-      "within30": 98.6,
-      "within50": 99,
+      "within10": 97.1,
+      "within20": 98,
+      "within30": 98.5,
+      "within50": 98.9,
       "fallbackPct": 0
     },
     {
       "code": "vancouver_metro",
-      "n": 3327,
+      "n": 5826,
       "mdape": 0,
       "accuracy": 1,
-      "within10": 90.7,
-      "within20": 92.4,
-      "within30": 93.3,
-      "within50": 95.6,
+      "within10": 91.4,
+      "within20": 93.2,
+      "within30": 94.2,
+      "within50": 96,
       "fallbackPct": 0
     },
     {
@@ -145,24 +145,24 @@
     },
     {
       "code": "ottawa_metro",
-      "n": 2414,
+      "n": 2485,
       "mdape": 0,
       "accuracy": 1,
-      "within10": 81.6,
-      "within20": 84.8,
-      "within30": 86.3,
-      "within50": 89.2,
+      "within10": 80.1,
+      "within20": 83.3,
+      "within30": 84.7,
+      "within50": 87.8,
       "fallbackPct": 0
     },
     {
       "code": "edmonton_metro",
-      "n": 2194,
+      "n": 2348,
       "mdape": 0,
       "accuracy": 1,
-      "within10": 82.2,
-      "within20": 86,
-      "within30": 88.1,
-      "within50": 91.2,
+      "within10": 82.8,
+      "within20": 86.5,
+      "within30": 88.5,
+      "within50": 91.4,
       "fallbackPct": 0
     },
     {
@@ -170,10 +170,10 @@
       "n": 1460,
       "mdape": 0,
       "accuracy": 1,
-      "within10": 91.6,
+      "within10": 91.2,
       "within20": 94.7,
       "within30": 95.5,
-      "within50": 97.3,
+      "within50": 97.4,
       "fallbackPct": 0.1
     },
     {
@@ -200,7 +200,7 @@
     },
     {
       "code": "london_metro",
-      "n": 11567,
+      "n": 11566,
       "mdape": 0,
       "accuracy": 1,
       "within10": 92.9,
@@ -310,46 +310,46 @@
     },
     {
       "code": "modesto_metro",
-      "n": 615,
+      "n": 616,
       "mdape": 0,
       "accuracy": 1,
-      "within10": 69.3,
-      "within20": 71.5,
-      "within30": 73.3,
-      "within50": 76.7,
+      "within10": 69.2,
+      "within20": 71.4,
+      "within30": 73.2,
+      "within50": 76.6,
       "fallbackPct": 0.5
     },
     {
       "code": "oxnard_metro",
-      "n": 1638,
+      "n": 1639,
       "mdape": 0,
       "accuracy": 1,
-      "within10": 83.8,
-      "within20": 86.1,
-      "within30": 87.8,
+      "within10": 83.7,
+      "within20": 86,
+      "within30": 87.7,
       "within50": 90.4,
       "fallbackPct": 0.1
     },
     {
       "code": "colorado_springs_metro",
-      "n": 1271,
+      "n": 1272,
       "mdape": 0,
       "accuracy": 1,
-      "within10": 65,
-      "within20": 70.7,
-      "within30": 75.2,
-      "within50": 82,
+      "within10": 64.8,
+      "within20": 70.4,
+      "within30": 75,
+      "within50": 81.7,
       "fallbackPct": 0.1
     },
     {
       "code": "fort_collins_metro",
-      "n": 724,
+      "n": 728,
       "mdape": 0,
       "accuracy": 1,
-      "within10": 73.6,
-      "within20": 77.8,
+      "within10": 73.5,
+      "within20": 77.6,
       "within30": 80.8,
-      "within50": 85.6,
+      "within50": 85.9,
       "fallbackPct": 0
     },
     {
@@ -368,22 +368,22 @@
       "n": 445,
       "mdape": 0,
       "accuracy": 1,
-      "within10": 92.8,
-      "within20": 94.6,
-      "within30": 95.5,
+      "within10": 93,
+      "within20": 94.8,
+      "within30": 95.7,
       "within50": 97.1,
       "fallbackPct": 1.1
     },
     {
       "code": "munich_metro",
-      "n": 77,
+      "n": 88,
       "mdape": 0,
       "accuracy": 1,
-      "within10": 92.2,
-      "within20": 94.8,
-      "within30": 97.4,
-      "within50": 98.7,
-      "fallbackPct": 1.3
+      "within10": 93.2,
+      "within20": 95.5,
+      "within30": 97.7,
+      "within50": 98.9,
+      "fallbackPct": 1.1
     },
     {
       "code": "rotterdam_metro",
@@ -419,25 +419,69 @@
       "fallbackPct": 11.1
     },
     {
-      "code": "tokyo_metro",
-      "n": 9318,
+      "code": "oslo_metro",
+      "n": 135,
       "mdape": 0,
       "accuracy": 1,
-      "within10": 80.3,
-      "within20": 85.1,
-      "within30": 88.1,
-      "within50": 92.1,
+      "within10": 88.9,
+      "within20": 91.9,
+      "within30": 93.3,
+      "within50": 94.1,
+      "fallbackPct": 0
+    },
+    {
+      "code": "tokyo_metro",
+      "n": 12439,
+      "mdape": 0,
+      "accuracy": 1,
+      "within10": 79.3,
+      "within20": 84.4,
+      "within30": 87.5,
+      "within50": 91.7,
       "fallbackPct": 0
     },
     {
       "code": "osaka_metro",
-      "n": 6432,
+      "n": 8211,
       "mdape": 0,
       "accuracy": 1,
-      "within10": 82.4,
-      "within20": 87.2,
-      "within30": 89.8,
-      "within50": 93.5,
+      "within10": 81,
+      "within20": 86.2,
+      "within30": 89.2,
+      "within50": 93.2,
+      "fallbackPct": 0
+    },
+    {
+      "code": "yokohama_metro",
+      "n": 3687,
+      "mdape": 0,
+      "accuracy": 1,
+      "within10": 85.4,
+      "within20": 89.5,
+      "within30": 92.3,
+      "within50": 95.6,
+      "fallbackPct": 0
+    },
+    {
+      "code": "nagoya_metro",
+      "n": 3902,
+      "mdape": 0,
+      "accuracy": 1,
+      "within10": 83.6,
+      "within20": 88.7,
+      "within30": 91.3,
+      "within50": 95,
+      "fallbackPct": 0
+    },
+    {
+      "code": "sapporo_metro",
+      "n": 1821,
+      "mdape": 0,
+      "accuracy": 1,
+      "within10": 85.4,
+      "within20": 89.9,
+      "within30": 93,
+      "within50": 96.7,
       "fallbackPct": 0
     },
     {
@@ -478,9 +522,9 @@
       "n": 616,
       "mdape": 0.001,
       "accuracy": 0.999,
-      "within10": 79.7,
+      "within10": 79.4,
       "within20": 85.6,
-      "within30": 88.5,
+      "within30": 88.3,
       "within50": 92.2,
       "fallbackPct": 1
     },
@@ -489,9 +533,9 @@
       "n": 202,
       "mdape": 0.001,
       "accuracy": 0.999,
-      "within10": 63.9,
-      "within20": 67.3,
-      "within30": 70.3,
+      "within10": 64.4,
+      "within20": 67.8,
+      "within30": 70.8,
       "within50": 78.2,
       "fallbackPct": 1
     },
@@ -522,15 +566,15 @@
       "n": 988,
       "mdape": 0.001,
       "accuracy": 0.999,
-      "within10": 88.9,
-      "within20": 94.5,
-      "within30": 96.8,
+      "within10": 88.6,
+      "within20": 94.3,
+      "within30": 96.6,
       "within50": 98.8,
       "fallbackPct": 0
     },
     {
       "code": "charlotte_metro",
-      "n": 3772,
+      "n": 3771,
       "mdape": 0.002,
       "accuracy": 0.998,
       "within10": 71.8,
@@ -555,21 +599,21 @@
       "n": 777,
       "mdape": 0.002,
       "accuracy": 0.998,
-      "within10": 70.5,
-      "within20": 75.2,
-      "within30": 78.6,
+      "within10": 70.4,
+      "within20": 75,
+      "within30": 78.8,
       "within50": 83.5,
       "fallbackPct": 1
     },
     {
       "code": "toronto_metro",
-      "n": 6313,
+      "n": 6612,
       "mdape": 0.002,
       "accuracy": 0.998,
-      "within10": 73.1,
-      "within20": 79.3,
-      "within30": 83.7,
-      "within50": 90.4,
+      "within10": 73.6,
+      "within20": 79.8,
+      "within30": 84.1,
+      "within50": 90.7,
       "fallbackPct": 0.1
     },
     {
@@ -588,21 +632,10 @@
       "n": 520,
       "mdape": 0.002,
       "accuracy": 0.998,
-      "within10": 82.9,
+      "within10": 82.7,
       "within20": 90,
       "within30": 91.9,
       "within50": 93.8,
-      "fallbackPct": 0
-    },
-    {
-      "code": "oslo_metro",
-      "n": 135,
-      "mdape": 0.002,
-      "accuracy": 0.998,
-      "within10": 85.9,
-      "within20": 90.4,
-      "within30": 92.6,
-      "within50": 95.6,
       "fallbackPct": 0
     },
     {
@@ -662,24 +695,24 @@
     },
     {
       "code": "omaha_metro",
-      "n": 2642,
+      "n": 2643,
       "mdape": 0.003,
       "accuracy": 0.997,
-      "within10": 67.4,
+      "within10": 67.3,
       "within20": 73.9,
       "within30": 77.9,
       "within50": 83.8,
       "fallbackPct": 0.1
     },
     {
-      "code": "hamilton_metro",
-      "n": 1030,
+      "code": "halifax_metro",
+      "n": 622,
       "mdape": 0.003,
       "accuracy": 0.997,
-      "within10": 65.2,
-      "within20": 70.5,
-      "within30": 73.4,
-      "within50": 78.1,
+      "within10": 67.2,
+      "within20": 70.7,
+      "within30": 73.5,
+      "within50": 78.6,
       "fallbackPct": 0
     },
     {
@@ -694,26 +727,15 @@
       "fallbackPct": 0
     },
     {
-      "code": "halifax_metro",
-      "n": 539,
+      "code": "orlando_metro",
+      "n": 5551,
       "mdape": 0.004,
       "accuracy": 0.996,
-      "within10": 64.9,
-      "within20": 67.7,
-      "within30": 70.9,
-      "within50": 75.9,
-      "fallbackPct": 0.4
-    },
-    {
-      "code": "orlando_metro",
-      "n": 5773,
-      "mdape": 0.005,
-      "accuracy": 0.995,
-      "within10": 63.3,
-      "within20": 69,
-      "within30": 74,
-      "within50": 80.8,
-      "fallbackPct": 0.3
+      "within10": 63.6,
+      "within20": 69.2,
+      "within30": 74.3,
+      "within50": 81.1,
+      "fallbackPct": 0.2
     },
     {
       "code": "greenville_nc_metro",
@@ -745,41 +767,41 @@
       "within10": 65,
       "within20": 70.3,
       "within30": 74.5,
-      "within50": 79.6,
+      "within50": 79.5,
       "fallbackPct": 2.4
     },
     {
       "code": "miami_dade_metro",
-      "n": 8642,
+      "n": 8640,
       "mdape": 0.008,
       "accuracy": 0.992,
-      "within10": 66.1,
-      "within20": 73,
+      "within10": 66.2,
+      "within20": 73.1,
       "within30": 78.2,
       "within50": 85.1,
       "fallbackPct": 0
+    },
+    {
+      "code": "jacksonville_metro",
+      "n": 2075,
+      "mdape": 0.008,
+      "accuracy": 0.992,
+      "within10": 61.4,
+      "within20": 67.9,
+      "within30": 73.2,
+      "within50": 81.4,
+      "fallbackPct": 0.3
     },
     {
       "code": "bordeaux_metro",
       "n": 833,
       "mdape": 0.008,
       "accuracy": 0.992,
-      "within10": 85.2,
+      "within10": 85.1,
       "within20": 91.7,
-      "within30": 94,
-      "within50": 97.4,
+      "within30": 93.9,
+      "within50": 97.2,
       "fallbackPct": 0
-    },
-    {
-      "code": "jacksonville_metro",
-      "n": 2075,
-      "mdape": 0.01,
-      "accuracy": 0.99,
-      "within10": 61.3,
-      "within20": 68,
-      "within30": 73.2,
-      "within50": 81.5,
-      "fallbackPct": 0.3
     },
     {
       "code": "lexington_metro",
@@ -805,13 +827,13 @@
     },
     {
       "code": "madrid_metro",
-      "n": 6028,
+      "n": 6044,
       "mdape": 0.012,
       "accuracy": 0.988,
-      "within10": 71.2,
+      "within10": 71.3,
       "within20": 79.5,
-      "within30": 84.4,
-      "within50": 89.5,
+      "within30": 84.3,
+      "within50": 89.3,
       "fallbackPct": 0
     },
     {
@@ -819,9 +841,9 @@
       "n": 938,
       "mdape": 0.013,
       "accuracy": 0.987,
-      "within10": 86.5,
+      "within10": 85.9,
       "within20": 93.1,
-      "within30": 95.6,
+      "within30": 95.4,
       "within50": 97.9,
       "fallbackPct": 0
     },
@@ -831,7 +853,7 @@
       "mdape": 0.014,
       "accuracy": 0.986,
       "within10": 61.6,
-      "within20": 68.4,
+      "within20": 68.3,
       "within30": 73,
       "within50": 79.5,
       "fallbackPct": 0.3
@@ -841,11 +863,22 @@
       "n": 2543,
       "mdape": 0.016,
       "accuracy": 0.984,
-      "within10": 60.6,
-      "within20": 68.1,
-      "within30": 72.8,
+      "within10": 60.5,
+      "within20": 67.9,
+      "within30": 72.7,
       "within50": 80.6,
       "fallbackPct": 0.9
+    },
+    {
+      "code": "greenville_spartanburg_metro",
+      "n": 838,
+      "mdape": 0.019,
+      "accuracy": 0.981,
+      "within10": 60.4,
+      "within20": 67.2,
+      "within30": 72.3,
+      "within50": 77.9,
+      "fallbackPct": 1.3
     },
     {
       "code": "florida_statewide",
@@ -859,22 +892,22 @@
       "fallbackPct": 0.8
     },
     {
-      "code": "greenville_spartanburg_metro",
-      "n": 838,
-      "mdape": 0.02,
-      "accuracy": 0.98,
-      "within10": 60.4,
-      "within20": 67.2,
-      "within30": 72.3,
-      "within50": 78,
-      "fallbackPct": 1.3
+      "code": "hamilton_metro",
+      "n": 1344,
+      "mdape": 0.021,
+      "accuracy": 0.979,
+      "within10": 59.4,
+      "within20": 66.2,
+      "within30": 70.1,
+      "within50": 76.3,
+      "fallbackPct": 0
     },
     {
       "code": "knoxville_metro",
-      "n": 1460,
+      "n": 1462,
       "mdape": 0.022,
       "accuracy": 0.978,
-      "within10": 58.2,
+      "within10": 58.1,
       "within20": 64.3,
       "within30": 67.9,
       "within50": 75.5,
@@ -885,9 +918,9 @@
       "n": 3251,
       "mdape": 0.022,
       "accuracy": 0.978,
-      "within10": 79.7,
+      "within10": 79.4,
       "within20": 89,
-      "within30": 93.1,
+      "within30": 93.2,
       "within50": 96.5,
       "fallbackPct": 0
     },
@@ -896,17 +929,17 @@
       "n": 3571,
       "mdape": 0.022,
       "accuracy": 0.978,
-      "within10": 70.6,
+      "within10": 70.5,
       "within20": 81.2,
       "within30": 86.8,
-      "within50": 92.8,
+      "within50": 92.7,
       "fallbackPct": 0
     },
     {
       "code": "copenhagen_metro",
       "n": 1015,
-      "mdape": 0.022,
-      "accuracy": 0.978,
+      "mdape": 0.023,
+      "accuracy": 0.977,
       "within10": 74.5,
       "within20": 83.6,
       "within30": 88.6,
@@ -918,10 +951,10 @@
       "n": 3457,
       "mdape": 0.025,
       "accuracy": 0.975,
-      "within10": 77.4,
-      "within20": 88.2,
-      "within30": 92.5,
-      "within50": 96.1,
+      "within10": 77,
+      "within20": 88.1,
+      "within30": 92.2,
+      "within50": 96,
       "fallbackPct": 0
     },
     {
@@ -929,9 +962,9 @@
       "n": 2008,
       "mdape": 0.029,
       "accuracy": 0.971,
-      "within10": 57.6,
-      "within20": 65.4,
-      "within30": 70.6,
+      "within10": 57.5,
+      "within20": 65.3,
+      "within30": 70.5,
       "within50": 79.3,
       "fallbackPct": 0.2
     },
@@ -942,8 +975,8 @@
       "accuracy": 0.969,
       "within10": 57.3,
       "within20": 63.6,
-      "within30": 68.6,
-      "within50": 76.7,
+      "within30": 68.5,
+      "within50": 76.6,
       "fallbackPct": 0.3
     },
     {
@@ -984,8 +1017,8 @@
       "n": 2621,
       "mdape": 0.053,
       "accuracy": 0.947,
-      "within10": 54.4,
-      "within20": 62.4,
+      "within10": 54.3,
+      "within20": 62.3,
       "within30": 67.8,
       "within50": 77.9,
       "fallbackPct": 0.1
@@ -995,10 +1028,10 @@
       "n": 754,
       "mdape": 0.057,
       "accuracy": 0.943,
-      "within10": 54,
-      "within20": 59.5,
+      "within10": 53.8,
+      "within20": 59.7,
       "within30": 64.9,
-      "within50": 74.7,
+      "within50": 74.5,
       "fallbackPct": 0.4
     },
     {
@@ -1006,20 +1039,31 @@
       "n": 2486,
       "mdape": 0.059,
       "accuracy": 0.941,
-      "within10": 53.7,
-      "within20": 63.5,
-      "within30": 70,
+      "within10": 53.6,
+      "within20": 63.4,
+      "within30": 69.8,
       "within50": 78.8,
       "fallbackPct": 1.4
     },
     {
+      "code": "fort_lauderdale_metro",
+      "n": 3574,
+      "mdape": 0.064,
+      "accuracy": 0.936,
+      "within10": 53.6,
+      "within20": 61.3,
+      "within30": 67.4,
+      "within50": 77.4,
+      "fallbackPct": 0
+    },
+    {
       "code": "boston_metro",
-      "n": 7563,
+      "n": 7565,
       "mdape": 0.066,
       "accuracy": 0.934,
       "within10": 54.6,
       "within20": 64.2,
-      "within30": 70.8,
+      "within30": 70.9,
       "within50": 80.2,
       "fallbackPct": 0.1
     },
@@ -1046,17 +1090,6 @@
       "fallbackPct": 0.6
     },
     {
-      "code": "fort_lauderdale_metro",
-      "n": 3591,
-      "mdape": 0.066,
-      "accuracy": 0.934,
-      "within10": 53.4,
-      "within20": 61,
-      "within30": 67.3,
-      "within50": 77.2,
-      "fallbackPct": 0
-    },
-    {
       "code": "burlington_vt_metro",
       "n": 228,
       "mdape": 0.071,
@@ -1079,17 +1112,6 @@
       "fallbackPct": 0.3
     },
     {
-      "code": "new_york_metro",
-      "n": 25814,
-      "mdape": 0.086,
-      "accuracy": 0.914,
-      "within10": 51.6,
-      "within20": 60.4,
-      "within30": 66.5,
-      "within50": 75.4,
-      "fallbackPct": 0
-    },
-    {
       "code": "charlottesville_metro",
       "n": 276,
       "mdape": 0.089,
@@ -1103,12 +1125,12 @@
     {
       "code": "tulsa_metro",
       "n": 2648,
-      "mdape": 0.091,
-      "accuracy": 0.909,
-      "within10": 50.8,
-      "within20": 58.8,
-      "within30": 64.4,
-      "within50": 73.2,
+      "mdape": 0.092,
+      "accuracy": 0.908,
+      "within10": 50.6,
+      "within20": 58.7,
+      "within30": 64.3,
+      "within50": 73.1,
       "fallbackPct": 0
     },
     {
@@ -1123,14 +1145,25 @@
       "fallbackPct": 0.2
     },
     {
+      "code": "worcester_metro",
+      "n": 501,
+      "mdape": 0.094,
+      "accuracy": 0.906,
+      "within10": 51.1,
+      "within20": 60.5,
+      "within30": 66.9,
+      "within50": 76.8,
+      "fallbackPct": 1.4
+    },
+    {
       "code": "cleveland_metro",
       "n": 3300,
       "mdape": 0.095,
       "accuracy": 0.905,
       "within10": 51,
-      "within20": 62,
-      "within30": 69.8,
-      "within50": 79.9,
+      "within20": 61.9,
+      "within30": 69.7,
+      "within50": 79.8,
       "fallbackPct": 0.2
     },
     {
@@ -1140,7 +1173,7 @@
       "accuracy": 0.904,
       "within10": 50.5,
       "within20": 57.7,
-      "within30": 63.9,
+      "within30": 63.8,
       "within50": 75.1,
       "fallbackPct": 0.2
     },
@@ -1167,6 +1200,28 @@
       "fallbackPct": 0.3
     },
     {
+      "code": "washington_dc_metro",
+      "n": 3050,
+      "mdape": 0.1,
+      "accuracy": 0.9,
+      "within10": 50,
+      "within20": 57,
+      "within30": 63.4,
+      "within50": 73,
+      "fallbackPct": 0.2
+    },
+    {
+      "code": "new_york_metro",
+      "n": 24208,
+      "mdape": 0.105,
+      "accuracy": 0.895,
+      "within10": 49.5,
+      "within20": 58.5,
+      "within30": 64.8,
+      "within50": 74.1,
+      "fallbackPct": 0
+    },
+    {
       "code": "detroit_metro",
       "n": 5251,
       "mdape": 0.105,
@@ -1184,7 +1239,7 @@
       "accuracy": 0.895,
       "within10": 49.6,
       "within20": 57.6,
-      "within30": 62.5,
+      "within30": 62.7,
       "within50": 71.1,
       "fallbackPct": 0
     },
@@ -1198,17 +1253,6 @@
       "within30": 64.1,
       "within50": 74.2,
       "fallbackPct": 0.1
-    },
-    {
-      "code": "worcester_metro",
-      "n": 501,
-      "mdape": 0.107,
-      "accuracy": 0.893,
-      "within10": 49.1,
-      "within20": 59.3,
-      "within30": 66.5,
-      "within50": 75.8,
-      "fallbackPct": 1.4
     },
     {
       "code": "provo_metro",
@@ -1290,24 +1334,13 @@
     {
       "code": "cincinnati_metro",
       "n": 2554,
-      "mdape": 0.128,
-      "accuracy": 0.872,
+      "mdape": 0.127,
+      "accuracy": 0.873,
       "within10": 46.3,
       "within20": 56.9,
-      "within30": 65.3,
+      "within30": 65.2,
       "within50": 76.2,
       "fallbackPct": 0.3
-    },
-    {
-      "code": "washington_dc_metro",
-      "n": 10191,
-      "mdape": 0.129,
-      "accuracy": 0.871,
-      "within10": 47.4,
-      "within20": 55.3,
-      "within30": 61.3,
-      "within50": 70.9,
-      "fallbackPct": 0.1
     },
     {
       "code": "fort_wayne_metro",
@@ -1343,17 +1376,6 @@
       "fallbackPct": 0
     },
     {
-      "code": "bologna_metro",
-      "n": 896,
-      "mdape": 0.141,
-      "accuracy": 0.859,
-      "within10": 43.8,
-      "within20": 59.5,
-      "within30": 70,
-      "within50": 82.7,
-      "fallbackPct": 0
-    },
-    {
       "code": "richmond_metro",
       "n": 3403,
       "mdape": 0.142,
@@ -1365,12 +1387,23 @@
       "fallbackPct": 0.4
     },
     {
+      "code": "bologna_metro",
+      "n": 896,
+      "mdape": 0.144,
+      "accuracy": 0.856,
+      "within10": 43.6,
+      "within20": 59.4,
+      "within30": 69.9,
+      "within50": 82.5,
+      "fallbackPct": 0
+    },
+    {
       "code": "pittsburgh_metro",
-      "n": 2764,
-      "mdape": 0.149,
-      "accuracy": 0.851,
-      "within10": 43.3,
-      "within20": 56,
+      "n": 2762,
+      "mdape": 0.15,
+      "accuracy": 0.85,
+      "within10": 43.2,
+      "within20": 55.9,
       "within30": 64.4,
       "within50": 77.5,
       "fallbackPct": 0.3
@@ -1433,17 +1466,17 @@
     {
       "code": "columbus_oh_metro",
       "n": 2412,
-      "mdape": 0.172,
-      "accuracy": 0.828,
-      "within10": 43.5,
-      "within20": 52.4,
-      "within30": 60.3,
-      "within50": 71.3,
+      "mdape": 0.17,
+      "accuracy": 0.83,
+      "within10": 43.6,
+      "within20": 52.6,
+      "within30": 60.4,
+      "within50": 71.4,
       "fallbackPct": 0.4
     },
     {
       "code": "chicago_metro",
-      "n": 12837,
+      "n": 12844,
       "mdape": 0.173,
       "accuracy": 0.827,
       "within10": 42.6,
@@ -1523,9 +1556,9 @@
       "n": 904,
       "mdape": 0.196,
       "accuracy": 0.804,
-      "within10": 38.1,
-      "within20": 51,
-      "within30": 62.9,
+      "within10": 38.2,
+      "within20": 50.9,
+      "within30": 62.8,
       "within50": 77.1,
       "fallbackPct": 0.3
     },
@@ -1541,17 +1574,6 @@
       "fallbackPct": 0.5
     },
     {
-      "code": "asheville_metro",
-      "n": 569,
-      "mdape": 0.199,
-      "accuracy": 0.801,
-      "within10": 41.1,
-      "within20": 50.1,
-      "within30": 57.1,
-      "within50": 68.7,
-      "fallbackPct": 1.7
-    },
-    {
       "code": "albany_metro",
       "n": 1295,
       "mdape": 0.202,
@@ -1561,6 +1583,17 @@
       "within30": 57.2,
       "within50": 68.4,
       "fallbackPct": 0.7
+    },
+    {
+      "code": "asheville_metro",
+      "n": 569,
+      "mdape": 0.204,
+      "accuracy": 0.796,
+      "within10": 41.1,
+      "within20": 49.9,
+      "within30": 57.1,
+      "within50": 68.5,
+      "fallbackPct": 1.7
     },
     {
       "code": "harrisburg_metro",
@@ -1602,8 +1635,8 @@
       "accuracy": 0.784,
       "within10": 39.1,
       "within20": 48.9,
-      "within30": 56.4,
-      "within50": 69.2,
+      "within30": 56.3,
+      "within50": 69.3,
       "fallbackPct": 0.4
     },
     {
@@ -1685,13 +1718,13 @@
     },
     {
       "code": "jackson_ms_metro",
-      "n": 589,
+      "n": 588,
       "mdape": 0.24,
       "accuracy": 0.76,
-      "within10": 39.2,
-      "within20": 47.2,
-      "within30": 54.5,
-      "within50": 64.9,
+      "within10": 39.3,
+      "within20": 47.1,
+      "within30": 54.4,
+      "within50": 64.8,
       "fallbackPct": 0
     },
     {
@@ -1712,18 +1745,18 @@
       "accuracy": 0.758,
       "within10": 29.2,
       "within20": 44.8,
-      "within30": 57.2,
-      "within50": 76.1,
+      "within30": 57.4,
+      "within50": 76.2,
       "fallbackPct": 0
     },
     {
       "code": "dallas_fort_worth_metro",
       "n": 15686,
-      "mdape": 0.258,
-      "accuracy": 0.742,
+      "mdape": 0.257,
+      "accuracy": 0.743,
       "within10": 38.8,
       "within20": 46.4,
-      "within30": 52.4,
+      "within30": 52.5,
       "within50": 62.1,
       "fallbackPct": 0.2
     },
@@ -1765,10 +1798,10 @@
       "n": 672,
       "mdape": 0.281,
       "accuracy": 0.719,
-      "within10": 32.9,
+      "within10": 33.5,
       "within20": 42.7,
-      "within30": 50.9,
-      "within50": 63.8,
+      "within30": 51,
+      "within50": 63.1,
       "fallbackPct": 0
     },
     {
@@ -1821,21 +1854,10 @@
       "mdape": 0.303,
       "accuracy": 0.697,
       "within10": 30.2,
-      "within20": 40,
-      "within30": 49.2,
+      "within20": 40.2,
+      "within30": 49.4,
       "within50": 69,
       "fallbackPct": 0
-    },
-    {
-      "code": "philadelphia_metro",
-      "n": 7616,
-      "mdape": 0.311,
-      "accuracy": 0.689,
-      "within10": 22.3,
-      "within20": 36.2,
-      "within30": 48.7,
-      "within50": 67.8,
-      "fallbackPct": 0.1
     },
     {
       "code": "columbia_mo_metro",
@@ -1860,6 +1882,17 @@
       "fallbackPct": 0
     },
     {
+      "code": "philadelphia_metro",
+      "n": 7229,
+      "mdape": 0.329,
+      "accuracy": 0.671,
+      "within10": 19.4,
+      "within20": 33.6,
+      "within30": 46.6,
+      "within50": 66.5,
+      "fallbackPct": 0
+    },
+    {
       "code": "ogden_metro",
       "n": 274,
       "mdape": 0.338,
@@ -1875,10 +1908,10 @@
       "n": 377,
       "mdape": 0.342,
       "accuracy": 0.658,
-      "within10": 36.6,
-      "within20": 43.8,
-      "within30": 48.8,
-      "within50": 54.4,
+      "within10": 37.7,
+      "within20": 43.5,
+      "within30": 48.3,
+      "within50": 54.9,
       "fallbackPct": 0
     },
     {
@@ -1894,11 +1927,11 @@
     },
     {
       "code": "houston_metro",
-      "n": 14326,
+      "n": 14334,
       "mdape": 0.383,
       "accuracy": 0.617,
       "within10": 30.9,
-      "within20": 38.4,
+      "within20": 38.5,
       "within30": 45,
       "within50": 56.1,
       "fallbackPct": 0.1
@@ -1917,12 +1950,12 @@
     {
       "code": "mcallen_metro",
       "n": 741,
-      "mdape": 0.391,
-      "accuracy": 0.609,
-      "within10": 25.2,
-      "within20": 35.8,
-      "within30": 42.9,
-      "within50": 55.9,
+      "mdape": 0.405,
+      "accuracy": 0.595,
+      "within10": 24.3,
+      "within20": 34.7,
+      "within30": 41.3,
+      "within50": 55.3,
       "fallbackPct": 0.8
     },
     {
@@ -1949,13 +1982,13 @@
     },
     {
       "code": "cedar_rapids_metro",
-      "n": 353,
-      "mdape": 0.42,
-      "accuracy": 0.58,
-      "within10": 26.6,
-      "within20": 34.6,
-      "within30": 41.6,
-      "within50": 54.7,
+      "n": 352,
+      "mdape": 0.422,
+      "accuracy": 0.578,
+      "within10": 26.7,
+      "within20": 34.7,
+      "within30": 41.8,
+      "within50": 54.5,
       "fallbackPct": 0
     },
     {
@@ -1964,7 +1997,7 @@
       "mdape": 0.438,
       "accuracy": 0.562,
       "within10": 30.2,
-      "within20": 37.3,
+      "within20": 37.4,
       "within30": 42.8,
       "within50": 52.8,
       "fallbackPct": 0.4
@@ -1992,26 +2025,26 @@
       "fallbackPct": 0.4
     },
     {
-      "code": "el_paso_metro",
-      "n": 1479,
-      "mdape": 0.474,
-      "accuracy": 0.526,
-      "within10": 31.2,
-      "within20": 36.9,
-      "within30": 41.4,
-      "within50": 51.2,
-      "fallbackPct": 0
-    },
-    {
       "code": "manchester_metro",
       "n": 994,
-      "mdape": 0.498,
-      "accuracy": 0.502,
-      "within10": 25.3,
-      "within20": 31.5,
-      "within30": 38,
-      "within50": 50.3,
+      "mdape": 0.496,
+      "accuracy": 0.504,
+      "within10": 25.4,
+      "within20": 31.6,
+      "within30": 38.1,
+      "within50": 50.4,
       "fallbackPct": 0.9
+    },
+    {
+      "code": "el_paso_metro",
+      "n": 1165,
+      "mdape": 0.502,
+      "accuracy": 0.498,
+      "within10": 29.9,
+      "within20": 36.1,
+      "within30": 40.4,
+      "within50": 50,
+      "fallbackPct": 0
     },
     {
       "code": "seattle_metro",
@@ -2040,21 +2073,21 @@
       "n": 829,
       "mdape": 0.628,
       "accuracy": 0.372,
-      "within10": 8.3,
-      "within20": 16.9,
-      "within30": 24.2,
-      "within50": 38.5,
+      "within10": 8.2,
+      "within20": 17,
+      "within30": 24.4,
+      "within50": 38.4,
       "fallbackPct": 0
     }
   ],
   "globalRollup": {
-    "regions": 186,
-    "totalMeasuredSignals": 502645,
-    "mdape": 0.091,
-    "accuracy": 0.909,
-    "within10": 60.9,
-    "within20": 67.3,
-    "within30": 72.1,
-    "within50": 79.4
+    "regions": 189,
+    "totalMeasuredSignals": 510858,
+    "mdape": 0.088,
+    "accuracy": 0.912,
+    "within10": 61.8,
+    "within20": 68.1,
+    "within30": 72.9,
+    "within50": 80
   }
 }
