@@ -2129,15 +2129,16 @@
     "slug": "ottawa",
     "country": "CA",
     "dataSourceId": "mto",
-    "total": 2591,
-    "measured": 2489,
-    "measuredPct": 96.1,
+    "total": 3383,
+    "measured": 3281,
+    "measuredPct": 97,
     "synthetic": 102,
     "sourceCounts": {
       "ottawa_open_data_midblock": 1472,
       "ottawa_intersection_volume": 915,
       "synthetic_osm_class": 102,
-      "mto": 102
+      "mto": 102,
+      "gatineau_open_data_debits": 792
     }
   },
   {

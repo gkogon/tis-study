@@ -822,11 +822,11 @@ const SOURCES: SourceConfig[] = [
       }),
   },
   // Ottawa
-  // NOTE ott-gatineau is currently INERT: ottawa-signals.json holds zero
-  // signals on the Québec side (verified 2026-08-26 — 0 signals at
-  // lat>45.46 & lon<-75.63), so its 2,158 intersection points have nothing
-  // to snap to. Kept registered so a future Ottawa signals re-fetch that
-  // includes Gatineau picks the data up for free.
+  // ott-gatineau went live 2026-08-26 once fetch-gatineau-signals.ts appended
+  // the 818 Québec-side signals the Tier-8 ontario-extract build missed:
+  // 792 dark→measured at median 24 m. Its counts stay on the Québec bank —
+  // the closest Gatineau count to any Ontario-bank signal is 619 m, past the
+  // 400 m cap, so it never displaces the Ottawa midblock long-snaps.
   {
     key: "ott-gatineau",
     slug: "ottawa",
