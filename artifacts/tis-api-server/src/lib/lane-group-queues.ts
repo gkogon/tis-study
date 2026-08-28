@@ -23,6 +23,9 @@ type LaneGroup = {
   queue95thFt: number;
   storageFt?: number;
   storageDeficient?: boolean;
+  /** Measured lane count, when the import carried real geometry. */
+  lanes?: number;
+  capacityVph?: number;
 };
 
 const num = (x: unknown): string =>
@@ -68,13 +71,15 @@ export function renderLaneGroupQueues(
       + "approach (saturation flow × g/C), with the project's own trips assigned to specific movements "
       + "by the path assignment; lane-group volumes cross-foot to their approach total. Where the "
       + "imported record also carried a bay length, the queue is compared against that bay and a deficit "
-      + "is flagged. Lane counts and phasing are NOT carried by the import, so a calibrated Synchro / "
-      + "SimTraffic run supersedes these figures for design.",
+      + "is flagged. Where the record also carried LANE COUNTS, the Lanes column shows them and that "
+      + "group's capacity is sized as lanes x saturation flow x g/C; an em-dash in the Lanes column means "
+      + "no count was supplied and the group falls back to a single critical lane. Signal phasing is not "
+      + "carried by the import, so a calibrated Synchro / SimTraffic run supersedes these figures for design.",
     { paragraphGap: 6 },
   );
 
-  const headers = ["Intersection", "Lane group", "Build vph", "v/c", "Q95 (ft)", "Bay (ft)", "Storage"];
-  const widths = [150, 70, 55, 40, 55, 50, 65];
+  const headers = ["Intersection", "Lane group", "Lanes", "Build vph", "v/c", "Q95 (ft)", "Bay (ft)", "Storage"];
+  const widths = [136, 62, 42, 52, 38, 52, 46, 57];
   const rows: string[][] = [];
   for (const it of its) {
     for (const a of it.approaches ?? []) {
@@ -83,6 +88,9 @@ export function renderLaneGroupQueues(
         rows.push([
           String(it.name ?? it.signalId ?? "—"),
           `${a.direction} ${g.movement}`,
+          // An em-dash means no measured count came through the import, so
+          // this row used the one-critical-lane screening basis.
+          typeof g.lanes === "number" && Number.isFinite(g.lanes) ? String(g.lanes) : "—",
           num(g.futureVolumeVph),
           Number.isFinite(g.futureVc) ? g.futureVc.toFixed(2) : "—",
           num(g.queue95thFt),
@@ -106,7 +114,7 @@ export function renderLaneGroupQueues(
     let x = startX;
     doc.font(bold ? "bold" : "body").fontSize(8).fillColor(deficient ? "#b45309" : "black");
     cells.forEach((c, i) => {
-      const right = i >= 2 && i <= 5;
+      const right = i >= 2 && i <= 6;
       doc.text(c, x + 2, y + 3, { width: widths[i] - 4, align: right ? "right" : "left", lineBreak: false });
       x += widths[i];
     });
@@ -115,11 +123,11 @@ export function renderLaneGroupQueues(
     y += rowH;
   };
   drawRow(headers, true, false);
-  for (const r of rows) drawRow(r, false, r[6] === "Deficient");
+  for (const r of rows) drawRow(r, false, r[7] === "Deficient");
   doc.y = y + 4;
   doc.x = PAGE_MARGIN;
 
-  const deficient = rows.filter((r) => r[6] === "Deficient").length;
+  const deficient = rows.filter((r) => r[7] === "Deficient").length;
   doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
     deficient > 0
       ? `${deficient} lane group(s) show a 95th-percentile queue longer than the imported bay storage; these are carried into the turn-lane evaluation.`

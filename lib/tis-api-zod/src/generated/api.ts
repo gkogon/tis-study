@@ -132,6 +132,30 @@ export const generateTisBodyUtdfIntersectionsItemStorageFtWBTMin = 0;
 
 export const generateTisBodyUtdfIntersectionsItemStorageFtWBRMin = 0;
 
+export const generateTisBodyUtdfIntersectionsItemLanesOneNBLMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemLanesOneNBTMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemLanesOneNBRMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemLanesOneSBLMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemLanesOneSBTMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemLanesOneSBRMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemLanesOneEBLMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemLanesOneEBTMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemLanesOneEBRMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemLanesOneWBLMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemLanesOneWBTMin = 0;
+
+export const generateTisBodyUtdfIntersectionsItemLanesOneWBRMin = 0;
+
 export const generateTisBodyUtdfIntersectionsItemCycleLenSecMin = 30;
 export const generateTisBodyUtdfIntersectionsItemCycleLenSecMax = 300;
 
@@ -417,6 +441,64 @@ export const GenerateTisBody = zod.object({
             .describe(
               "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
             ),
+          lanes: zod
+            .object({
+              NBL: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemLanesOneNBLMin)
+                .optional(),
+              NBT: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemLanesOneNBTMin)
+                .optional(),
+              NBR: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemLanesOneNBRMin)
+                .optional(),
+              SBL: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemLanesOneSBLMin)
+                .optional(),
+              SBT: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemLanesOneSBTMin)
+                .optional(),
+              SBR: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemLanesOneSBRMin)
+                .optional(),
+              EBL: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemLanesOneEBLMin)
+                .optional(),
+              EBT: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemLanesOneEBTMin)
+                .optional(),
+              EBR: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemLanesOneEBRMin)
+                .optional(),
+              WBL: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemLanesOneWBLMin)
+                .optional(),
+              WBT: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemLanesOneWBTMin)
+                .optional(),
+              WBR: zod
+                .number()
+                .min(generateTisBodyUtdfIntersectionsItemLanesOneWBRMin)
+                .optional(),
+            })
+            .describe(
+              "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+            )
+            .optional()
+            .describe(
+              "Lane COUNT per movement from the file's [Lanes] section — real measured geometry. When present, each lane group's capacity is sized as lanes x saturation flow x g\/C instead of the one-critical-lane screening assumption. Counts above 6 are rejected as parse artifacts. Absent on records whose [Lanes] section carried no counts (a Synchro report PDF typically will not), and those intersections keep the screening basis unchanged.",
+            ),
           cycleLenSec: zod
             .number()
             .min(generateTisBodyUtdfIntersectionsItemCycleLenSecMin)
@@ -460,6 +542,12 @@ export const GenerateTisBody = zod.object({
     .default(generateTisBodyConservedAssignmentDefault)
     .describe(
       "Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output.",
+    ),
+  realLaneGeometry: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output.",
     ),
   driveways: zod
     .array(
@@ -612,6 +700,30 @@ export const generateTisResponseRequestUtdfIntersectionsItemStorageFtWBTMin = 0;
 
 export const generateTisResponseRequestUtdfIntersectionsItemStorageFtWBRMin = 0;
 
+export const generateTisResponseRequestUtdfIntersectionsItemLanesOneNBLMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemLanesOneNBTMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemLanesOneNBRMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemLanesOneSBLMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemLanesOneSBTMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemLanesOneSBRMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemLanesOneEBLMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemLanesOneEBTMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemLanesOneEBRMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemLanesOneWBLMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemLanesOneWBTMin = 0;
+
+export const generateTisResponseRequestUtdfIntersectionsItemLanesOneWBRMin = 0;
+
 export const generateTisResponseRequestUtdfIntersectionsItemCycleLenSecMin = 30;
 export const generateTisResponseRequestUtdfIntersectionsItemCycleLenSecMax = 300;
 
@@ -629,6 +741,10 @@ export const generateTisResponseRequestDrivewaysItemLongitudeMin = -180;
 export const generateTisResponseRequestDrivewaysItemLongitudeMax = 180;
 
 export const generateTisResponseRequestDrivewaysMax = 12;
+
+export const generateTisResponseAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax = 6;
+
+export const generateTisResponsePeriodReportsItemAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax = 6;
 
 export const GenerateTisResponse = zod.object({
   generatedAt: zod.string(),
@@ -965,6 +1081,88 @@ export const GenerateTisResponse = zod.object({
               .describe(
                 "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
               ),
+            lanes: zod
+              .object({
+                NBL: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemLanesOneNBLMin,
+                  )
+                  .optional(),
+                NBT: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemLanesOneNBTMin,
+                  )
+                  .optional(),
+                NBR: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemLanesOneNBRMin,
+                  )
+                  .optional(),
+                SBL: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemLanesOneSBLMin,
+                  )
+                  .optional(),
+                SBT: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemLanesOneSBTMin,
+                  )
+                  .optional(),
+                SBR: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemLanesOneSBRMin,
+                  )
+                  .optional(),
+                EBL: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemLanesOneEBLMin,
+                  )
+                  .optional(),
+                EBT: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemLanesOneEBTMin,
+                  )
+                  .optional(),
+                EBR: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemLanesOneEBRMin,
+                  )
+                  .optional(),
+                WBL: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemLanesOneWBLMin,
+                  )
+                  .optional(),
+                WBT: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemLanesOneWBTMin,
+                  )
+                  .optional(),
+                WBR: zod
+                  .number()
+                  .min(
+                    generateTisResponseRequestUtdfIntersectionsItemLanesOneWBRMin,
+                  )
+                  .optional(),
+              })
+              .describe(
+                "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+              )
+              .optional()
+              .describe(
+                "Lane COUNT per movement from the file's [Lanes] section — real measured geometry. When present, each lane group's capacity is sized as lanes x saturation flow x g\/C instead of the one-critical-lane screening assumption. Counts above 6 are rejected as parse artifacts. Absent on records whose [Lanes] section carried no counts (a Synchro report PDF typically will not), and those intersections keep the screening basis unchanged.",
+              ),
             cycleLenSec: zod
               .number()
               .min(
@@ -1012,6 +1210,12 @@ export const GenerateTisResponse = zod.object({
       .default(generateTisResponseRequestConservedAssignmentDefault)
       .describe(
         "Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output.",
+      ),
+    realLaneGeometry: zod
+      .boolean()
+      .optional()
+      .describe(
+        "Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output.",
       ),
     driveways: zod
       .array(
@@ -1146,6 +1350,14 @@ export const GenerateTisResponse = zod.object({
                 queue95thFt: zod.number(),
                 storageFt: zod.number().optional(),
                 storageDeficient: zod.boolean().optional(),
+                lanes: zod
+                  .number()
+                  .min(1)
+                  .max(
+                    generateTisResponseAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax,
+                  )
+                  .optional(),
+                capacityVph: zod.number().optional(),
               }),
             )
             .optional(),
@@ -1262,6 +1474,14 @@ export const GenerateTisResponse = zod.object({
                     queue95thFt: zod.number(),
                     storageFt: zod.number().optional(),
                     storageDeficient: zod.boolean().optional(),
+                    lanes: zod
+                      .number()
+                      .min(1)
+                      .max(
+                        generateTisResponsePeriodReportsItemAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax,
+                      )
+                      .optional(),
+                    capacityVph: zod.number().optional(),
                   }),
                 )
                 .optional(),
@@ -1554,6 +1774,30 @@ export const parseUtdfFileResponseUtdfIntersectionsItemStorageFtWBTMin = 0;
 
 export const parseUtdfFileResponseUtdfIntersectionsItemStorageFtWBRMin = 0;
 
+export const parseUtdfFileResponseUtdfIntersectionsItemLanesOneNBLMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemLanesOneNBTMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemLanesOneNBRMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemLanesOneSBLMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemLanesOneSBTMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemLanesOneSBRMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemLanesOneEBLMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemLanesOneEBTMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemLanesOneEBRMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemLanesOneWBLMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemLanesOneWBTMin = 0;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemLanesOneWBRMin = 0;
+
 export const parseUtdfFileResponseUtdfIntersectionsItemCycleLenSecMin = 30;
 export const parseUtdfFileResponseUtdfIntersectionsItemCycleLenSecMax = 300;
 
@@ -1720,6 +1964,64 @@ export const ParseUtdfFileResponse = zod.object({
             .describe(
               "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
             ),
+          lanes: zod
+            .object({
+              NBL: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemLanesOneNBLMin)
+                .optional(),
+              NBT: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemLanesOneNBTMin)
+                .optional(),
+              NBR: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemLanesOneNBRMin)
+                .optional(),
+              SBL: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemLanesOneSBLMin)
+                .optional(),
+              SBT: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemLanesOneSBTMin)
+                .optional(),
+              SBR: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemLanesOneSBRMin)
+                .optional(),
+              EBL: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemLanesOneEBLMin)
+                .optional(),
+              EBT: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemLanesOneEBTMin)
+                .optional(),
+              EBR: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemLanesOneEBRMin)
+                .optional(),
+              WBL: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemLanesOneWBLMin)
+                .optional(),
+              WBT: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemLanesOneWBTMin)
+                .optional(),
+              WBR: zod
+                .number()
+                .min(parseUtdfFileResponseUtdfIntersectionsItemLanesOneWBRMin)
+                .optional(),
+            })
+            .describe(
+              "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+            )
+            .optional()
+            .describe(
+              "Lane COUNT per movement from the file's [Lanes] section — real measured geometry. When present, each lane group's capacity is sized as lanes x saturation flow x g\/C instead of the one-critical-lane screening assumption. Counts above 6 are rejected as parse artifacts. Absent on records whose [Lanes] section carried no counts (a Synchro report PDF typically will not), and those intersections keep the screening basis unchanged.",
+            ),
           cycleLenSec: zod
             .number()
             .min(parseUtdfFileResponseUtdfIntersectionsItemCycleLenSecMin)
@@ -1818,6 +2120,30 @@ export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtWBLMin = 0;
 export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtWBTMin = 0;
 
 export const parseSynchroPdfResponseUtdfIntersectionsItemStorageFtWBRMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemLanesOneNBLMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemLanesOneNBTMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemLanesOneNBRMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemLanesOneSBLMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemLanesOneSBTMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemLanesOneSBRMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemLanesOneEBLMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemLanesOneEBTMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemLanesOneEBRMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemLanesOneWBLMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemLanesOneWBTMin = 0;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemLanesOneWBRMin = 0;
 
 export const parseSynchroPdfResponseUtdfIntersectionsItemCycleLenSecMin = 30;
 export const parseSynchroPdfResponseUtdfIntersectionsItemCycleLenSecMax = 300;
@@ -2008,6 +2334,64 @@ export const ParseSynchroPdfResponse = zod.object({
             .optional()
             .describe(
               "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+            ),
+          lanes: zod
+            .object({
+              NBL: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemLanesOneNBLMin)
+                .optional(),
+              NBT: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemLanesOneNBTMin)
+                .optional(),
+              NBR: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemLanesOneNBRMin)
+                .optional(),
+              SBL: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemLanesOneSBLMin)
+                .optional(),
+              SBT: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemLanesOneSBTMin)
+                .optional(),
+              SBR: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemLanesOneSBRMin)
+                .optional(),
+              EBL: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemLanesOneEBLMin)
+                .optional(),
+              EBT: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemLanesOneEBTMin)
+                .optional(),
+              EBR: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemLanesOneEBRMin)
+                .optional(),
+              WBL: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemLanesOneWBLMin)
+                .optional(),
+              WBT: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemLanesOneWBTMin)
+                .optional(),
+              WBR: zod
+                .number()
+                .min(parseSynchroPdfResponseUtdfIntersectionsItemLanesOneWBRMin)
+                .optional(),
+            })
+            .describe(
+              "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+            )
+            .optional()
+            .describe(
+              "Lane COUNT per movement from the file's [Lanes] section — real measured geometry. When present, each lane group's capacity is sized as lanes x saturation flow x g\/C instead of the one-critical-lane screening assumption. Counts above 6 are rejected as parse artifacts. Absent on records whose [Lanes] section carried no counts (a Synchro report PDF typically will not), and those intersections keep the screening basis unchanged.",
             ),
           cycleLenSec: zod
             .number()
@@ -2233,6 +2617,30 @@ export const getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtWBTMin
 
 export const getTisProjectResponseRequestOneUtdfIntersectionsItemStorageFtWBRMin = 0;
 
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneNBLMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneNBTMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneNBRMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneSBLMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneSBTMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneSBRMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneEBLMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneEBTMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneEBRMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneWBLMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneWBTMin = 0;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneWBRMin = 0;
+
 export const getTisProjectResponseRequestOneUtdfIntersectionsItemCycleLenSecMin = 30;
 export const getTisProjectResponseRequestOneUtdfIntersectionsItemCycleLenSecMax = 300;
 
@@ -2360,6 +2768,30 @@ export const getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtWBT
 
 export const getTisProjectResponseResultRequestUtdfIntersectionsItemStorageFtWBRMin = 0;
 
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneNBLMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneNBTMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneNBRMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneSBLMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneSBTMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneSBRMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneEBLMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneEBTMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneEBRMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneWBLMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneWBTMin = 0;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneWBRMin = 0;
+
 export const getTisProjectResponseResultRequestUtdfIntersectionsItemCycleLenSecMin = 30;
 export const getTisProjectResponseResultRequestUtdfIntersectionsItemCycleLenSecMax = 300;
 
@@ -2377,6 +2809,10 @@ export const getTisProjectResponseResultRequestDrivewaysItemLongitudeMin = -180;
 export const getTisProjectResponseResultRequestDrivewaysItemLongitudeMax = 180;
 
 export const getTisProjectResponseResultRequestDrivewaysMax = 12;
+
+export const getTisProjectResponseResultAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax = 6;
+
+export const getTisProjectResponseResultPeriodReportsItemAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax = 6;
 
 export const GetTisProjectResponse = zod
   .object({
@@ -2754,6 +3190,88 @@ export const GetTisProjectResponse = zod
                     .describe(
                       "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
                     ),
+                  lanes: zod
+                    .object({
+                      NBL: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneNBLMin,
+                        )
+                        .optional(),
+                      NBT: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneNBTMin,
+                        )
+                        .optional(),
+                      NBR: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneNBRMin,
+                        )
+                        .optional(),
+                      SBL: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneSBLMin,
+                        )
+                        .optional(),
+                      SBT: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneSBTMin,
+                        )
+                        .optional(),
+                      SBR: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneSBRMin,
+                        )
+                        .optional(),
+                      EBL: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneEBLMin,
+                        )
+                        .optional(),
+                      EBT: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneEBTMin,
+                        )
+                        .optional(),
+                      EBR: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneEBRMin,
+                        )
+                        .optional(),
+                      WBL: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneWBLMin,
+                        )
+                        .optional(),
+                      WBT: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneWBTMin,
+                        )
+                        .optional(),
+                      WBR: zod
+                        .number()
+                        .min(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneWBRMin,
+                        )
+                        .optional(),
+                    })
+                    .describe(
+                      "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+                    )
+                    .optional()
+                    .describe(
+                      "Lane COUNT per movement from the file's [Lanes] section — real measured geometry. When present, each lane group's capacity is sized as lanes x saturation flow x g\/C instead of the one-critical-lane screening assumption. Counts above 6 are rejected as parse artifacts. Absent on records whose [Lanes] section carried no counts (a Synchro report PDF typically will not), and those intersections keep the screening basis unchanged.",
+                    ),
                   cycleLenSec: zod
                     .number()
                     .min(
@@ -2801,6 +3319,12 @@ export const GetTisProjectResponse = zod
             .default(getTisProjectResponseRequestOneConservedAssignmentDefault)
             .describe(
               "Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output.",
+            ),
+          realLaneGeometry: zod
+            .boolean()
+            .optional()
+            .describe(
+              "Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output.",
             ),
           driveways: zod
             .array(
@@ -3219,6 +3743,88 @@ export const GetTisProjectResponse = zod
                   .describe(
                     "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
                   ),
+                lanes: zod
+                  .object({
+                    NBL: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneNBLMin,
+                      )
+                      .optional(),
+                    NBT: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneNBTMin,
+                      )
+                      .optional(),
+                    NBR: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneNBRMin,
+                      )
+                      .optional(),
+                    SBL: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneSBLMin,
+                      )
+                      .optional(),
+                    SBT: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneSBTMin,
+                      )
+                      .optional(),
+                    SBR: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneSBRMin,
+                      )
+                      .optional(),
+                    EBL: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneEBLMin,
+                      )
+                      .optional(),
+                    EBT: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneEBTMin,
+                      )
+                      .optional(),
+                    EBR: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneEBRMin,
+                      )
+                      .optional(),
+                    WBL: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneWBLMin,
+                      )
+                      .optional(),
+                    WBT: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneWBTMin,
+                      )
+                      .optional(),
+                    WBR: zod
+                      .number()
+                      .min(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneWBRMin,
+                      )
+                      .optional(),
+                  })
+                  .describe(
+                    "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+                  )
+                  .optional()
+                  .describe(
+                    "Lane COUNT per movement from the file's [Lanes] section — real measured geometry. When present, each lane group's capacity is sized as lanes x saturation flow x g\/C instead of the one-critical-lane screening assumption. Counts above 6 are rejected as parse artifacts. Absent on records whose [Lanes] section carried no counts (a Synchro report PDF typically will not), and those intersections keep the screening basis unchanged.",
+                  ),
                 cycleLenSec: zod
                   .number()
                   .min(
@@ -3266,6 +3872,12 @@ export const GetTisProjectResponse = zod
           .default(getTisProjectResponseResultRequestConservedAssignmentDefault)
           .describe(
             "Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output.",
+          ),
+        realLaneGeometry: zod
+          .boolean()
+          .optional()
+          .describe(
+            "Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output.",
           ),
         driveways: zod
           .array(
@@ -3408,6 +4020,14 @@ export const GetTisProjectResponse = zod
                     queue95thFt: zod.number(),
                     storageFt: zod.number().optional(),
                     storageDeficient: zod.boolean().optional(),
+                    lanes: zod
+                      .number()
+                      .min(1)
+                      .max(
+                        getTisProjectResponseResultAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax,
+                      )
+                      .optional(),
+                    capacityVph: zod.number().optional(),
                   }),
                 )
                 .optional(),
@@ -3540,6 +4160,14 @@ export const GetTisProjectResponse = zod
                         queue95thFt: zod.number(),
                         storageFt: zod.number().optional(),
                         storageDeficient: zod.boolean().optional(),
+                        lanes: zod
+                          .number()
+                          .min(1)
+                          .max(
+                            getTisProjectResponseResultPeriodReportsItemAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax,
+                          )
+                          .optional(),
+                        capacityVph: zod.number().optional(),
                       }),
                     )
                     .optional(),

@@ -268,6 +268,8 @@ export interface UtdfIntersectionData {
    */
   hvPct?: number;
   storageFt?: UtdfMovementValues;
+  /** Lane COUNT per movement from the file's [Lanes] section — real measured geometry. When present, each lane group's capacity is sized as lanes x saturation flow x g/C instead of the one-critical-lane screening assumption. Counts above 6 are rejected as parse artifacts. Absent on records whose [Lanes] section carried no counts (a Synchro report PDF typically will not), and those intersections keep the screening basis unchanged. */
+  lanes?: UtdfMovementValues;
   /**
    * Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.
    * @minimum 30
@@ -498,6 +500,8 @@ export interface TisRequest {
   existingSize?: number;
   /** Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output. */
   conservedAssignment?: boolean;
+  /** Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output. */
+  realLaneGeometry?: boolean;
   /**
    * Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).
    * @maxItems 12
@@ -595,6 +599,12 @@ export interface TisLaneGroupImpact {
   queue95thFt: number;
   storageFt?: number;
   storageDeficient?: boolean;
+  /**
+   * @minimum 1
+   * @maximum 6
+   */
+  lanes?: number;
+  capacityVph?: number;
 }
 
 export interface TisApproachImpact {
