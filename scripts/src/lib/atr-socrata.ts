@@ -16,11 +16,11 @@
  * resolve two conflicting rows in one INSERT), same ON CONFLICT update set.
  * Nothing about NYC's output changes.
  */
-import { sql } from "drizzle-orm";
-import { db, atrCountsTable, type InsertAtrCount } from "@workspace/db";
+import { type InsertAtrCount } from "@workspace/db";
+import { BATCH_INSERT_SIZE, dedupeBatch, upsertAtrBatch } from "./atr-upsert";
 
 export const DEFAULT_PAGE_SIZE = 50_000;
-export const BATCH_INSERT_SIZE = 1_000;
+export { BATCH_INSERT_SIZE, dedupeBatch };
 
 export type AtrSocrataSource<Raw> = {
   /** Value written to the `source` column. Stable — it is part of the
@@ -49,18 +49,7 @@ export type IngestStats = {
   elapsedSec: string;
 };
 
-export function parseIngestArgs(argv: string[] = process.argv.slice(2)): {
-  years: number;
-  dry: boolean;
-} {
-  let years = 3;
-  let dry = false;
-  for (const a of argv) {
-    if (a === "--dry") dry = true;
-    else if (a.startsWith("--years=")) years = Math.max(1, Math.min(20, Number(a.slice(8))));
-  }
-  return { years, dry };
-}
+export { parseIngestArgs } from "./atr-upsert";
 
 async function fetchPage<Raw>(
   src: AtrSocrataSource<Raw>,
@@ -98,49 +87,6 @@ async function fetchPage<Raw>(
   throw lastErr;
 }
 
-/**
- * Dedupe within a batch. Postgres ON CONFLICT cannot resolve two rows that
- * collide with each other inside one INSERT ("cannot affect row a second
- * time"), and sources do publish overlapping count sessions for the same
- * (segment, direction, timestamp). Last wins.
- *
- * Exported for testing — this is the one piece of the loop with real logic.
- */
-export function dedupeBatch(rows: InsertAtrCount[]): InsertAtrCount[] {
-  const seen = new Map<string, InsertAtrCount>();
-  for (const r of rows) {
-    const k = `${r.source}|${r.sourceSegmentId}|${r.direction}|${r.occurredAt.toISOString()}`;
-    seen.set(k, r);
-  }
-  return Array.from(seen.values());
-}
-
-async function upsertBatch(rows: InsertAtrCount[], dry: boolean): Promise<void> {
-  if (rows.length === 0 || dry) return;
-  await db
-    .insert(atrCountsTable)
-    .values(dedupeBatch(rows))
-    .onConflictDoUpdate({
-      target: [
-        atrCountsTable.source,
-        atrCountsTable.sourceSegmentId,
-        atrCountsTable.direction,
-        atrCountsTable.occurredAt,
-      ],
-      // Sources republish corrected counts; the unique key means an update,
-      // never a duplicate.
-      set: {
-        vol: sql`EXCLUDED.vol`,
-        latitude: sql`EXCLUDED.latitude`,
-        longitude: sql`EXCLUDED.longitude`,
-        street: sql`EXCLUDED.street`,
-        fromStreet: sql`EXCLUDED.from_street`,
-        toStreet: sql`EXCLUDED.to_street`,
-        borough: sql`EXCLUDED.borough`,
-      },
-    });
-}
-
 export async function runAtrIngest<Raw>(
   src: AtrSocrataSource<Raw>,
   opts: { years: number; dry: boolean },
@@ -172,7 +118,7 @@ export async function runAtrIngest<Raw>(
       else skipped++;
     }
     for (let i = 0; i < mapped.length; i += BATCH_INSERT_SIZE) {
-      await upsertBatch(mapped.slice(i, i + BATCH_INSERT_SIZE), opts.dry);
+      await upsertAtrBatch(mapped.slice(i, i + BATCH_INSERT_SIZE), opts.dry);
     }
     upserted += mapped.length;
 

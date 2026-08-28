@@ -62,7 +62,12 @@ export type AtrSegmentSummary = {
  * the radius. Upstate sites therefore find nothing, as before.
  */
 const ATR_SOURCE_BY_REGION: Record<string, string> = {};
-const ATR_SOURCE_BY_STATE: Record<string, string> = { NY: "nyc_dot_atr" };
+const ATR_SOURCE_BY_STATE: Record<string, string> = {
+  NY: "nyc_dot_atr",
+  // FDOT Traffic TMSCOUNT (TDA) — hourly directional counts, all 63 counties,
+  // so this genuinely is statewide rather than one city's feed.
+  FL: "fdot_tda",
+};
 
 export function atrSourceForRegion(
   region: { code?: string | null; stateCode?: string | null; country?: string | null } | null | undefined,
