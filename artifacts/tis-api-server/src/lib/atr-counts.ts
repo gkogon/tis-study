@@ -48,6 +48,38 @@ export type AtrSegmentSummary = {
   avgDailyVph: number | null;
 };
 
+/**
+ * Which ingested ATR dataset backs a given study region.
+ *
+ * Adding a metro is one row here plus its ingest adapter — see
+ * scripts/src/lib/atr-socrata.ts. Keyed by region code first so a city feed is
+ * not applied to the whole state, then by state for feeds that genuinely are
+ * statewide.
+ *
+ * NOTE on NY: the only feed today is NYC DOT's, and it is mapped at STATE level
+ * deliberately, because that reproduces the previous behaviour exactly — every
+ * NY-state study queried nyc_dot_atr and failed open when no segment was within
+ * the radius. Upstate sites therefore find nothing, as before.
+ */
+const ATR_SOURCE_BY_REGION: Record<string, string> = {};
+const ATR_SOURCE_BY_STATE: Record<string, string> = {
+  NY: "nyc_dot_atr",
+  // FDOT Traffic TMSCOUNT (TDA) — hourly directional counts, all 63 counties,
+  // so this genuinely is statewide rather than one city's feed.
+  FL: "fdot_tda",
+};
+
+export function atrSourceForRegion(
+  region: { code?: string | null; stateCode?: string | null; country?: string | null } | null | undefined,
+): string | null {
+  if (!region) return null;
+  if ((region.country ?? "US") !== "US") return null;
+  const byRegion = region.code ? ATR_SOURCE_BY_REGION[region.code] : undefined;
+  if (byRegion) return byRegion;
+  const byState = region.stateCode ? ATR_SOURCE_BY_STATE[region.stateCode] : undefined;
+  return byState ?? null;
+}
+
 export type AtrSummary = {
   windowYears: number;
   radiusMi: number;
@@ -89,7 +121,12 @@ export async function atrSegmentsNearPoint(args: {
   source?: string;
   maxSegments?: number;
 }): Promise<AtrSummary> {
-  const { lat, lon, radiusMi, windowYears, source = "nyc_dot_atr" } = args;
+  // No default source. It used to default to "nyc_dot_atr", which silently made
+  // every caller a NYC caller — the reason ingesting another metro would have
+  // changed nothing. Callers resolve the source from the region instead
+  // (atrSourceForRegion) and skip the query when there isn't one.
+  const { lat, lon, radiusMi, windowYears, source } = args;
+  if (!source) return { windowYears, radiusMi, segments: [], source: "", totalSegmentsFound: 0 };
   const maxSegments = args.maxSegments ?? 8;
 
   const since = new Date();
