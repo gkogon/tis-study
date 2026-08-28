@@ -41,7 +41,8 @@ import { writeFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ingestTemplateFromPdf } from "../lib/report-template/ingest";
-import { saveFirmTemplate } from "../lib/report-template/store";
+import { clearFirmTemplate, saveFirmTemplate } from "../lib/report-template/store";
+import { validateTemplate } from "../lib/report-template/registry";
 
 const router: IRouter = Router();
 
@@ -310,12 +311,20 @@ router.post(
         name: `${firm.name} report template`,
         firmName: firm.name,
       });
+      // Durable copy. The filesystem store below is convenient for local dev
+      // but lives on an ephemeral container filesystem in production, so the
+      // DB column is the one that actually survives a deploy.
+      await db
+        .update(firmsTable)
+        .set({ reportTemplate: tpl })
+        .where(eq(firmsTable.id, firm.id));
       saveFirmTemplate(firm.id, tpl);
       res.json({
         ok: true,
         templateId: tpl.id,
         documentType: tpl.documentType,
         chapters: tpl.chapters.length,
+        sections: tpl.chapters.reduce((n, c) => n + c.sections.length, 0),
         brand: { primary: tpl.brand.palette.primary, hasLogo: !!tpl.brand.logo, cover: tpl.brand.cover.style },
       });
     } catch (err) {
@@ -330,6 +339,74 @@ router.post(
     }
   },
 );
+
+/**
+ * GET /firms/report-template — what format this firm's studies currently render
+ * in. Summary only: the stored template carries a base64 logo and every section
+ * of captured prose, which is far too much to ship to a settings page.
+ */
+router.get("/firms/report-template", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Sign in required." });
+    return;
+  }
+  const user = req.user!;
+  const { firm } = await getOrCreateFirmForUser(user.id, {
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+  });
+  const raw = firm.reportTemplate;
+  if (!raw) {
+    res.json({ template: null });
+    return;
+  }
+  try {
+    const tpl = validateTemplate(raw);
+    res.json({
+      template: {
+        id: tpl.id,
+        name: tpl.name,
+        documentType: tpl.documentType,
+        chapters: tpl.chapters.length,
+        sections: tpl.chapters.reduce((n, c) => n + c.sections.length, 0),
+        brand: {
+          primary: tpl.brand.palette.primary,
+          hasLogo: !!tpl.brand.logo,
+          cover: tpl.brand.cover.style,
+        },
+      },
+    });
+  } catch (err) {
+    // A stored template that no longer validates renders as the region default,
+    // so report it as unusable rather than pretending it is in effect.
+    req.log.error({ err }, "firms.template_invalid");
+    res.json({ template: null, invalid: true });
+  }
+});
+
+/**
+ * DELETE /firms/report-template — revert to the region's default format.
+ */
+router.delete("/firms/report-template", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Sign in required." });
+    return;
+  }
+  const user = req.user!;
+  const { firm, role } = await getOrCreateFirmForUser(user.id, {
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+  });
+  if (!requireRole(role, ["owner", "admin"])) {
+    res.status(403).json({ error: "Only owners or admins can change the firm report template." });
+    return;
+  }
+  await db.update(firmsTable).set({ reportTemplate: null }).where(eq(firmsTable.id, firm.id));
+  clearFirmTemplate(firm.id);
+  res.json({ ok: true, template: null });
+});
 
 router.get("/firms/members", async (req, res): Promise<void> => {
   if (!req.isAuthenticated()) {

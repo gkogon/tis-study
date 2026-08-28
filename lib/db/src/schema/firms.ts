@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -26,6 +27,17 @@ export const firmsTable = pgTable("firms", {
   slug: varchar("slug", { length: 64 }).notNull().unique(),
   // Logo asset for white-labeled PDFs. Object storage URL.
   logoUrl: text("logo_url"),
+  // The firm's own report format, ingested from an example PDF they upload
+  // (see POST /firms/report-template). A `ReportTemplate` from
+  // report-template/engine.ts: cover + brand + ordered chapters/sections/blocks.
+  // When set, every study this firm runs renders in their format instead of the
+  // region default.
+  //
+  // Stored here rather than on disk on purpose: the filesystem store in
+  // report-template/store.ts writes under the process CWD, which on Railway is
+  // an ephemeral container filesystem — an uploaded template silently vanished
+  // on the next deploy. The DB is the only durable home we have.
+  reportTemplate: jsonb("report_template"),
 
   // Stripe linkage. customerId is created on first billing action;
   // subscriptionId is set after Checkout completes.
