@@ -44,6 +44,23 @@ export const MIN_CYCLE_S = 60;
 export const MAX_CYCLE_S = 120;
 
 /**
+ * Practical minimum green a phase can be served, seconds.
+ *
+ * Without this floor a phase whose approaches measure zero volume gets a green
+ * of zero, hence g/C = 0, hence CAPACITY ZERO and v/c = Infinity for every
+ * movement on that axis. That is not a theoretical concern: a T-intersection,
+ * or any site where one axis has no counted volume, hits it immediately, and
+ * any project trips later assigned to that approach would produce a nonsense
+ * delay. Found by property-based fuzzing, not by the worked examples.
+ *
+ * 10 s is the conventional practical minimum; HOP-07-006's own
+ * pedestrian-constrained example builds a 20 s minimum phase from 7 s Walk plus
+ * 10 s clearance plus 3 s yellow, so a 10 s vehicle green sits comfortably
+ * inside normal practice.
+ */
+export const MIN_PHASE_GREEN_S = 10;
+
+/**
  * Webster destabilizes as the intersection approaches saturation — the
  * (1 - Y) denominator sends the cycle to infinity — and HOP-07-006 says so
  * outright. Above this critical-flow-ratio sum we stop trusting the formula
@@ -143,8 +160,15 @@ export function computeSignalTiming(args: {
   // Critical Movement Method splits: the green available after lost time is
   // shared in proportion to each phase's critical lane volume.
   const effectiveGreen = Math.max(0, cycle - lostTime);
-  const gNs = effectiveGreen * (clvNs / clvSum);
-  const gEw = effectiveGreen * (clvEw / clvSum);
+  let gNs = effectiveGreen * (clvNs / clvSum);
+  let gEw = effectiveGreen * (clvEw / clvSum);
+  // Floor each phase at a servable minimum, taking the deficit from the other
+  // phase so the two still sum to the available green. A phase with zero
+  // demand still has to be served; giving it zero green would hand its
+  // approaches zero capacity.
+  const floor = Math.min(MIN_PHASE_GREEN_S, effectiveGreen / 2);
+  if (gNs < floor) { gNs = floor; gEw = effectiveGreen - floor; }
+  else if (gEw < floor) { gEw = floor; gNs = effectiveGreen - floor; }
 
   return {
     cycleLenS: cycle,
