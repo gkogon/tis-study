@@ -35,6 +35,7 @@ import { appliedRateRows } from "./trip-rate-rows";
 import { renderTisState } from "./pdf-export-states";
 import { renderDiurnalCharts, drawColumnChart, drawLineChart, CHART_COLORS } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
+import { renderLaneGroupQueues } from "./lane-group-queues";
 import { profileForLandUse, distributeDaily, type ProfileLocale } from "./office-diurnal";
 import { renderTemplatePdf, type RenderContext, type ReportTemplate } from "./report-template/engine";
 import { loadTemplate } from "./report-template/registry";
@@ -8548,43 +8549,12 @@ function renderTisFlorida(
   }
 
   // --- 8.1 Per-lane-group queues (measured turn splits only) -------------
-  if (laneGroupIts.length > 0) {
-    gaSubsection(doc, "8.1 Lane-Group Queues at Intersections with Measured Turning Movements");
-    doc.font("body").fontSize(10).fillColor("black").text(
-      "At the intersections below, an imported Synchro record supplied measured turning-movement counts, so the background traffic carries a real left / through / right split rather than an assumed one. Each lane group is analyzed on the same one-critical-lane screening basis as the approach (saturation flow × g/C), with the project's own trips assigned to specific movements by the path assignment; lane-group volumes cross-foot to their approach total. Where the imported record also carried a bay length, the queue is compared against that bay and a deficit is flagged. Lane counts and phasing are NOT carried by the import, so a calibrated Synchro / SimTraffic run supersedes these figures for design.",
-      { paragraphGap: 6 },
-    );
-    const lgRows: string[][] = [];
-    for (const it of laneGroupIts as any[]) {
-      for (const a of it.approaches ?? []) {
-        for (const g of a.laneGroups ?? []) {
-          lgRows.push([
-            it.name ?? it.signalId ?? "—",
-            `${a.direction} ${g.movement}`,
-            fmtNum(g.futureVolumeVph),
-            Number(g.futureVc).toFixed(2),
-            fmtNum(g.queue95thFt),
-            Number.isFinite(Number(g.storageFt)) ? fmtNum(g.storageFt) : "—",
-            g.storageDeficient ? "Deficient" : Number.isFinite(Number(g.storageFt)) ? "Adequate" : "—",
-          ]);
-        }
-      }
-    }
-    table(doc, {
-      headers: ["Intersection", "Lane group", "Build vph", "v/c", "Q95 (ft)", "Bay (ft)", "Storage"],
-      widths: [150, 70, 55, 40, 55, 50, 65],
-      align: ["left", "left", "right", "right", "right", "right", "left"],
-      rows: lgRows,
-    });
-    const deficient = lgRows.filter((r) => r[6] === "Deficient").length;
-    doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      deficient > 0
-        ? `${deficient} lane group(s) show a 95th-percentile queue longer than the imported bay storage; these are carried into the turn-lane evaluation in §9.0.`
-        : "No lane group exceeds its imported bay storage under Build conditions.",
-      { paragraphGap: 6 },
-    );
-    doc.fillColor("black");
-  }
+  // Shared leaf module: renders nothing unless an import supplied real
+  // turning movements, so studies without one stay byte-identical.
+  renderLaneGroupQueues(doc, intersections as any[], {
+    headingFn: gaSubsection,
+    heading: "8.1 Lane-Group Queues at Intersections with Measured Turning Movements",
+  });
 
   // --- 9.0 Turn Lane Evaluation -----------------------------------------
   gaSection(doc, `9.0 TURN LANE EVALUATION (${openingYear})`);

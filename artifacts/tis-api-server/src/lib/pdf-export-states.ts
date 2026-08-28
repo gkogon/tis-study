@@ -17,6 +17,7 @@
 import type { Region } from "./regions";
 import { renderDiurnalCharts } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
+import { renderLaneGroupQueues } from "./lane-group-queues";
 import { tripGenExternalNote } from "./pdf-export";
 
 // Re-export for use in pdf-export.ts dispatch
@@ -1378,6 +1379,11 @@ function renderTisState(
     doc.moveDown(0.3);
     note(`Acceptable ${cfg.agencyAbbrev} LOS threshold: LOS ${cfg.losUrban} (urban) / LOS ${cfg.losRural} (rural). Locations shown at Build LOS E or F require mitigation analysis in §9.`);
   }
+  // Measured lane-group queues, where an import supplied a real turn split.
+  // No-ops (byte-identical output) for studies without one.
+  renderLaneGroupQueues(doc, intersections as any[], {
+    heading: "Lane-Group Queues at Intersections with Measured Turning Movements",
+  });
   doc.moveDown(0.8);
 
   // ─── §9 MITIGATION ANALYSIS ──────────────────────────────────────────────
