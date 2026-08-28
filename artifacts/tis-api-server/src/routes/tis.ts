@@ -484,6 +484,7 @@ router.post("/generate/pdf", generateRateLimiter, async (req, res): Promise<void
       },
       {
         firmId: firm.id,
+        reportTemplate: firm.reportTemplate,
         name: firm.name,
         logoUrl: firm.logoUrl,
         brandColor: firm.brandColor,
@@ -592,6 +593,11 @@ const londonTaPdfHandler = async (req: Request, res: Response): Promise<void> =>
       lastName: req.user.lastName,
     });
     firmBranding = {
+      // Carried so a firm that uploaded its own format gets it here too — this
+      // is the London/Velocity path, which is exactly where an imported
+      // template is most likely to exist.
+      firmId: firm.id,
+      reportTemplate: firm.reportTemplate,
       name: firm.name,
       logoUrl: firm.logoUrl,
       brandColor: firm.brandColor,

@@ -37,7 +37,7 @@ import { renderDiurnalCharts, drawColumnChart, drawLineChart, CHART_COLORS } fro
 import { renderTripDistributionSection } from "./pdf-export-distribution";
 import { profileForLandUse, distributeDaily, type ProfileLocale } from "./office-diurnal";
 import { renderTemplatePdf, type RenderContext, type ReportTemplate } from "./report-template/engine";
-import { loadTemplate } from "./report-template/registry";
+import { loadTemplate, validateTemplate } from "./report-template/registry";
 import { buildProviders } from "./report-template/providers";
 import { loadFirmTemplate } from "./report-template/store";
 import { getTransitContext, type TransitContext } from "./transit-routes";
@@ -79,6 +79,13 @@ type FirmStamp = {
   website?: string | null;
   /** When set and the firm has an uploaded template, the study renders in it. */
   firmId?: string | null;
+  /**
+   * The firm's imported report format, read from `firms.report_template`.
+   * Passed down rather than looked up here so the render path stays
+   * synchronous. When absent we fall back to the filesystem store, which is
+   * how local dev works; in production the DB column is the durable copy.
+   */
+  reportTemplate?: unknown;
 };
 
 // Default cover brand color when a firm hasn't set one — a professional
@@ -262,6 +269,16 @@ function resolveTemplate(project: StoredProject, firm: FirmStamp): { template: R
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   const region = regionForCoordinate(lat, lon);
   const locale: ProfileLocale = region?.country === "UK" ? "uk" : "us";
+  // DB copy first (durable across deploys), then the filesystem store. A
+  // malformed stored template must not take the whole render down, so an
+  // invalid one falls through to the region default rather than throwing.
+  if (firm.reportTemplate) {
+    try {
+      return { template: validateTemplate(firm.reportTemplate), locale };
+    } catch {
+      /* fall through to the filesystem store / region default */
+    }
+  }
   if (firm.firmId) {
     const t = loadFirmTemplate(firm.firmId);
     if (t) return { template: t, locale };

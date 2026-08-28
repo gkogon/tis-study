@@ -29,6 +29,20 @@ type Firm = {
   seatLimit: number;
 };
 
+/**
+ * Summary of the firm's imported report format (GET /firms/report-template).
+ * Summary only — the stored template carries the logo bytes and every section
+ * of captured prose, which has no business on a settings page.
+ */
+type FirmTemplate = {
+  id: string;
+  name: string;
+  documentType: string;
+  chapters: number;
+  sections: number;
+  brand: { primary: string; hasLogo: boolean; cover: string };
+};
+
 const DEFAULT_BRAND_COLOR = "#7a1420";
 
 type Member = {
@@ -68,6 +82,9 @@ export default function SettingsFirmPage() {
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [template, setTemplate] = useState<FirmTemplate | null>(null);
+  const [templateInvalid, setTemplateInvalid] = useState(false);
+  const [uploadingTemplate, setUploadingTemplate] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -75,9 +92,12 @@ export default function SettingsFirmPage() {
     Promise.all([
       fetch("/tis-api/firms/me", { credentials: "include" }).then((r) => r.json()),
       fetch("/tis-api/firms/members", { credentials: "include" }).then((r) => r.json()),
+      fetch("/tis-api/firms/report-template", { credentials: "include" }).then((r) => r.json()),
     ])
-      .then(([me, mem]) => {
+      .then(([me, mem, tpl]) => {
         if (cancelled) return;
+        setTemplate(tpl?.template ?? null);
+        setTemplateInvalid(!!tpl?.invalid);
         if (me?.firm) {
           setFirm(me.firm);
           setRole(me.role);
@@ -123,6 +143,61 @@ export default function SettingsFirmPage() {
       setError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
       setUploadingLogo(false);
+    }
+  }
+
+  /**
+   * Upload an example report PDF. The server ingests its structure, headings,
+   * palette and logo into a template; from then on this firm's studies render
+   * in that format instead of the region default.
+   */
+  async function uploadTemplateFile(file: File) {
+    setError(null);
+    setInfo(null);
+    setUploadingTemplate(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch("/tis-api/firms/report-template", {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
+      const next = await fetch("/tis-api/firms/report-template", { credentials: "include" }).then((x) => x.json());
+      setTemplate(next?.template ?? null);
+      setTemplateInvalid(!!next?.invalid);
+      setInfo(
+        `Format imported — ${data.chapters} chapters, ${data.sections} sections.` +
+          (data.brand?.hasLogo ? " Logo and palette picked up from the cover." : " No logo found on the cover; the palette was still read."),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Template import failed.");
+    } finally {
+      setUploadingTemplate(false);
+    }
+  }
+
+  /** Revert to the region's default format. */
+  async function removeTemplate() {
+    setError(null);
+    setInfo(null);
+    setUploadingTemplate(true);
+    try {
+      const r = await fetch("/tis-api/firms/report-template", {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
+      setTemplate(null);
+      setTemplateInvalid(false);
+      setInfo("Reverted to the standard format for each study's region.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove the template.");
+    } finally {
+      setUploadingTemplate(false);
     }
   }
 
@@ -316,6 +391,65 @@ export default function SettingsFirmPage() {
               />
               <p className="text-xs text-muted-foreground">
                 PNG, JPG, SVG, or WEBP — up to 2 MB. Appears on the cover page of every white-labeled PDF.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Report format</label>
+              {template ? (
+                <div className="border rounded-md p-3 bg-muted/20 space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span
+                      className="inline-block w-3 h-3 rounded-sm border"
+                      style={{ backgroundColor: template.brand.primary }}
+                      aria-hidden="true"
+                    />
+                    <span className="text-sm font-medium">{template.name}</span>
+                    <span className="text-xs text-muted-foreground">{template.documentType}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {template.chapters} chapters · {template.sections} sections ·{" "}
+                    {template.brand.hasLogo ? "logo imported" : "no logo found"} · {template.brand.cover} cover
+                  </p>
+                </div>
+              ) : templateInvalid ? (
+                <p className="text-xs text-amber-700">
+                  A format was uploaded but can no longer be read, so studies are rendering in the
+                  standard format. Re-upload the example report to fix it.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Studies render in the standard format for each site's region.
+                </p>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className={"inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border " + (canEdit ? "hover:bg-accent cursor-pointer" : "opacity-50 cursor-not-allowed")}>
+                  <Upload className="w-3.5 h-3.5" />
+                  {uploadingTemplate ? "Reading…" : template ? "Replace example report" : "Upload example report"}
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    disabled={!canEdit || uploadingTemplate}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadTemplateFile(f); e.currentTarget.value = ""; }}
+                    className="hidden"
+                    data-testid="input-firm-template-file"
+                  />
+                </label>
+                {template && canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => void removeTemplate()}
+                    disabled={uploadingTemplate}
+                    className="px-3 py-1.5 text-sm rounded-md border hover:bg-accent disabled:opacity-50"
+                    data-testid="button-firm-template-remove"
+                  >
+                    Use standard format
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Upload one of your own finished studies as a PDF. We read its chapter structure,
+                headings, colours and logo, and your future studies come out in that format. It needs a
+                text layer — a scanned report won't import.
               </p>
             </div>
             <div className="space-y-1.5">
