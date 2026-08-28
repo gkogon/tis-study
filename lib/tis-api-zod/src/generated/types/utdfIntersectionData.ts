@@ -41,6 +41,8 @@ export interface UtdfIntersectionData {
    */
   hvPct?: number;
   storageFt?: UtdfMovementValues;
+  /** Lane COUNT per movement from the file's [Lanes] section — real measured geometry. When present, each lane group's capacity is sized as lanes x saturation flow x g/C instead of the one-critical-lane screening assumption. Counts above 6 are rejected as parse artifacts. Absent on records whose [Lanes] section carried no counts (a Synchro report PDF typically will not), and those intersections keep the screening basis unchanged. */
+  lanes?: UtdfMovementValues;
   /**
    * Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.
    * @minimum 30

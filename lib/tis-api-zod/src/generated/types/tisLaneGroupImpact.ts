@@ -16,4 +16,10 @@ export interface TisLaneGroupImpact {
   queue95thFt: number;
   storageFt?: number;
   storageDeficient?: boolean;
+  /**
+   * @minimum 1
+   * @maximum 6
+   */
+  lanes?: number;
+  capacityVph?: number;
 }

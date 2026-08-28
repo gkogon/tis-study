@@ -550,6 +550,17 @@ components:
             screening capacity model has no heavy-vehicle input today.
         storageFt:
           $ref: "#/components/schemas/UtdfMovementValues"
+        lanes:
+          allOf:
+            - $ref: "#/components/schemas/UtdfMovementValues"
+          description: >-
+            Lane COUNT per movement from the file's [Lanes] section — real
+            measured geometry. When present, each lane group's capacity is
+            sized as lanes x saturation flow x g/C instead of the
+            one-critical-lane screening assumption. Counts above 6 are rejected
+            as parse artifacts. Absent on records whose [Lanes] section carried
+            no counts (a Synchro report PDF typically will not), and those
+            intersections keep the screening basis unchanged.
         cycleLenSec:
           type: number
           minimum: 30
@@ -783,6 +794,15 @@ components:
             true = conserved assignment runs; explicit false = legacy
             (un-normalized octant) behavior, byte-identical to the pre-default
             output.
+        realLaneGeometry:
+          type: boolean
+          description: >-
+            Use measured lane counts from an imported Synchro [Lanes] section to
+            size each lane group's capacity (lanes x saturation flow x g/C)
+            instead of the one-critical-lane screening assumption. Only affects
+            intersections whose imported record carried lane counts. Omitted or
+            true uses measured geometry; explicit false pins the legacy basis,
+            byte-identical to the pre-change output.
         driveways:
           type: array
           maxItems: 12
@@ -910,6 +930,13 @@ components:
         # True when the 95th-percentile queue exceeds the measured bay storage
         # -- the standard turn-lane mitigation trigger.
         storageDeficient: { type: boolean }
+        # Measured lane count for this movement, from the imported [Lanes]
+        # section. Present ONLY where the record carried real geometry; its
+        # absence is what makes a row fall back to one-critical-lane.
+        lanes: { type: integer, minimum: 1, maximum: 6 }
+        # Capacity actually used for this lane group (vph), so a reviewing
+        # engineer can see which basis the row used.
+        capacityVph: { type: number }
       required:
         - movement
         - existingVolumeVph

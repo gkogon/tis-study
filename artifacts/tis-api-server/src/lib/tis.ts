@@ -357,6 +357,12 @@ export type UtdfIntersectionInput = {
   hvPct?: number;
   /** Turn-bay storage lengths (ft) by movement, from [Lanes] Storage. */
   storageFt?: UtdfMovementValues;
+  /** Lane COUNT by movement, from [Lanes] Lanes — real measured geometry.
+   *  Present only on records whose [Lanes] section carried counts; a Synchro
+   *  report PDF import typically will not. When absent the lane group falls
+   *  back to the one-critical-lane screening basis, which is what every study
+   *  used before this shipped. */
+  lanes?: UtdfMovementValues;
   /** Cycle length (s) from [Timings] — feeds Webster d1 for this signal. */
   cycleLenSec?: number;
 };
@@ -470,6 +476,15 @@ export type TisRequest = {
    *  Omitted/true ⇒ conserved assignment runs. Explicit false ⇒ legacy
    *  octant behavior, byte-identical to the old default output. */
   conservedAssignment?: boolean;
+  /** Use MEASURED lane counts from an imported Synchro [Lanes] section to size
+   *  each lane group's capacity (lanes x saturation flow x g/C), instead of the
+   *  one-critical-lane screening assumption. Only ever applies at intersections
+   *  whose imported record actually carried lane counts — everywhere else the
+   *  output is unchanged either way. Changes v/c, delay-derived LOS inputs and
+   *  queue at those intersections. Omitted/true ⇒ measured geometry is used.
+   *  Explicit false ⇒ one-critical-lane, byte-identical to the pre-change
+   *  output (see scripts/verify-lane-geometry.mjs). */
+  realLaneGeometry?: boolean;
   /** Site access points with per-movement turn restrictions. When present,
    *  project trips route through these driveways and forbidden movements
    *  reroute onto the network (U-turns). Absent or empty ⇒ single-site
@@ -519,6 +534,14 @@ export type LaneGroupImpact = {
   storageFt?: number;
   /** 95th-percentile queue exceeds that bay — the mitigation trigger. */
   storageDeficient?: boolean;
+  /** Measured lane count for this movement, from the imported [Lanes] section.
+   *  Present ONLY where the record carried real geometry. Its absence is what
+   *  makes the row fall back to the one-critical-lane screening basis, and the
+   *  report says which basis each row used. */
+  lanes?: number;
+  /** Capacity actually used for this lane group, vph. Printed so a reviewing
+   *  engineer can see whether the row was measured-geometry or screening. */
+  capacityVph?: number;
 };
 
 export type AffectedIntersection = {
@@ -981,6 +1004,10 @@ export function laneGroupsForApproach(opts: {
   addedTripsPeak: number;
   laneCapacityVph: number;
   cycleLenS?: number;
+  /** False reproduces the pre-lane-geometry one-critical-lane basis exactly,
+   *  for the legacy escape hatch on TisRequest. Omitted/true uses measured
+   *  lane counts where the import supplied them. */
+  useRealLaneGeometry?: boolean;
 }): LaneGroupImpact[] | undefined {
   const { approach, utdf, approachVolumeVph, addedExactByMovement } = opts;
   const vols = utdf.volumes ?? {};
@@ -1017,12 +1044,26 @@ export function laneGroupsForApproach(opts: {
   }
 
   const storage = utdf.storageFt ?? {};
+  const laneCounts = utdf.lanes ?? {};
   return (["L", "T", "R"] as const).map((m, idx) => {
     const share = measured[m] / measuredApproachTotal;
     const existingVolumeVph = approachVolumeVph * share;
     const futureVolumeVph = existingVolumeVph + added[idx];
-    const futureVc = futureVolumeVph / opts.laneCapacityVph;
-    const queue = queue95Ft(futureVolumeVph, opts.laneCapacityVph, opts.cycleLenS);
+
+    // Real lane geometry when the import carried it: capacity scales with the
+    // number of lanes serving THIS movement, on the same saturation-flow x g/C
+    // basis the rest of the screen uses. Without a count we keep the
+    // one-critical-lane assumption, which is what every study did before this
+    // — so an intersection with no [Lanes] data is bit-for-bit unchanged.
+    const laneCount = laneCounts[`${approach}${m}` as UtdfMovement];
+    const hasLanes = opts.useRealLaneGeometry !== false
+      && typeof laneCount === "number" && Number.isFinite(laneCount) && laneCount > 0;
+    const capacity = hasLanes
+      ? opts.laneCapacityVph * (laneCount as number)
+      : opts.laneCapacityVph;
+
+    const futureVc = futureVolumeVph / capacity;
+    const queue = queue95Ft(futureVolumeVph, capacity, opts.cycleLenS);
     const bay = storage[`${approach}${m}` as UtdfMovement];
     const hasBay = typeof bay === "number" && Number.isFinite(bay) && bay > 0;
     return {
@@ -1032,6 +1073,8 @@ export function laneGroupsForApproach(opts: {
       futureVolumeVph: round1(futureVolumeVph),
       futureVc: round2(futureVc),
       queue95thFt: round1(queue),
+      capacityVph: round1(capacity),
+      ...(hasLanes ? { lanes: laneCount as number } : {}),
       ...(hasBay ? { storageFt: bay, storageDeficient: queue > bay } : {}),
     };
   });
@@ -1353,6 +1396,9 @@ type ScenarioParams = {
    *  this period (PERIOD_VOLUME_FACTOR). Optional; defaults to 1.0 so any
    *  caller that omits it keeps the prior design-hour behaviour. */
   periodVolumeFactor?: number;
+  /** Mirrors TisRequest.realLaneGeometry; false pins the legacy one-critical-
+   *  lane basis for lane groups. */
+  realLaneGeometry?: boolean;
   /** Directional trip-distribution octant shares (NNE…NNW, Σ≈100) from the
    *  study's distribution step. When present, each affected-intersection row
    *  gains a per-turning-movement breakdown of its added project trips
@@ -1593,6 +1639,7 @@ function buildAffectedRow(
           addedTripsPeak,
           laneCapacityVph: params.approachCapacityVph,
           cycleLenS: utdfCycleLenS,
+          useRealLaneGeometry: params.realLaneGeometry,
         });
         return laneGroups ? { laneGroups } : {};
       })(),
@@ -2516,6 +2563,8 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       periodVolumeFactor: PERIOD_VOLUME_FACTOR[period] ?? 1,
       distributionOctants: dist.byDirection,
       ...(pathTurnsByCandidate ? { conservedLabeling: true } : {}),
+      // Explicit false pins the legacy one-critical-lane lane-group basis.
+      ...(req.realLaneGeometry === false ? { realLaneGeometry: false } : {}),
     };
 
     // For "daily" we don't run an intersection-level analysis (HCM control
@@ -2750,7 +2799,7 @@ async function synthesizePmReport(
   const internalCredit = (raw - passByCredit) * (internalCapturePct / 100);
   const externalTrips = Math.max(0, raw - passByCredit - internalCredit);
   const inFraction = lu.directionalSplitPm.in;
-  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak, ...(distributionOctants ? { distributionOctants } : {}), ...(pathTurnsByCandidate ? { conservedLabeling: true } : {}) };
+  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak, ...(distributionOctants ? { distributionOctants } : {}), ...(pathTurnsByCandidate ? { conservedLabeling: true } : {}), ...(req.realLaneGeometry === false ? { realLaneGeometry: false } : {}) };
   const calibrationMap = await loadCalibrationMap();
   const allRows = candidates.map((c, i) =>
     buildAffectedRow(c, loadWeights[i]!, project, params, calibrationMap.get(c.sig.id), pathTurnsByCandidate?.[i], pathTurnsInByCandidate?.[i]),
