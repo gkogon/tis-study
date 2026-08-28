@@ -1033,6 +1033,12 @@ export function laneGroupsForApproach(opts: {
   // to the approach's printed +Trips exactly (independent rounding drifts +/-1).
   const exact = (["L", "T", "R"] as const).map((m) => addedExactByMovement[m] ?? 0);
   const exactTotal = exact.reduce((s, v) => s + v, 0);
+  // Demand with no movement basis to distribute it by. The allocator below can
+  // only hand out one trip per movement in that state, so it would print a
+  // fabricated 1/1/1 and drop the rest. Report nothing instead — the approach
+  // row still carries the full count, and the caption's cross-foot promise
+  // stays true.
+  if (opts.addedTripsPeak > 0 && !(exactTotal > 0)) return undefined;
   const scaled = exactTotal > 0
     ? exact.map((v) => (v / exactTotal) * opts.addedTripsPeak)
     : [0, 0, 0];
@@ -1633,8 +1639,24 @@ function buildAffectedRow(
       ...(() => {
         if (!c.utdf) return {};
         const addedExactByMovement: Record<Movement, number> = { L: 0, T: 0, R: 0 };
-        for (const r of pathRows ?? []) {
-          if (r.approach === d) addedExactByMovement[r.movement] += r.exact;
+        if (pathRows && pathRows.length > 0) {
+          for (const r of pathRows) {
+            if (r.approach === d) addedExactByMovement[r.movement] += r.exact;
+          }
+        } else {
+          // Not path-resolved (no routed graph, or this candidate failed to
+          // snap). Fall back to the OCTANT movement split, which is the same
+          // array addedTripsPeak itself is summed from — so the lane-group
+          // rows cross-foot to the approach row by construction.
+          //
+          // Previously this branch left the record at all-zeros, which made
+          // exactTotal 0 in the allocator; the largest-remainder loop can only
+          // add one trip per movement, so an approach carrying 45 added trips
+          // printed 1/1/1 and silently discarded 42 of them — under a caption
+          // that tells the reviewer the columns cross-foot.
+          for (const m of movements ?? []) {
+            if (m.approach === d) addedExactByMovement[m.movement] += m.trips;
+          }
         }
         const laneGroups = laneGroupsForApproach({
           approach: d,
