@@ -1135,6 +1135,20 @@ export const GenerateTisResponse = zod.object({
           currentVc: zod.number().optional(),
           currentDelaySec: zod.number().optional(),
           currentLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
+          laneGroups: zod
+            .array(
+              zod.object({
+                movement: zod.enum(["L", "T", "R"]),
+                existingVolumeVph: zod.number(),
+                addedTripsPeak: zod.number(),
+                futureVolumeVph: zod.number(),
+                futureVc: zod.number(),
+                queue95thFt: zod.number(),
+                storageFt: zod.number().optional(),
+                storageDeficient: zod.boolean().optional(),
+              }),
+            )
+            .optional(),
         }),
       ),
       queue95thFt: zod.number(),
@@ -1237,6 +1251,20 @@ export const GenerateTisResponse = zod.object({
               currentVc: zod.number().optional(),
               currentDelaySec: zod.number().optional(),
               currentLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
+              laneGroups: zod
+                .array(
+                  zod.object({
+                    movement: zod.enum(["L", "T", "R"]),
+                    existingVolumeVph: zod.number(),
+                    addedTripsPeak: zod.number(),
+                    futureVolumeVph: zod.number(),
+                    futureVc: zod.number(),
+                    queue95thFt: zod.number(),
+                    storageFt: zod.number().optional(),
+                    storageDeficient: zod.boolean().optional(),
+                  }),
+                )
+                .optional(),
             }),
           ),
           queue95thFt: zod.number(),
@@ -3369,6 +3397,20 @@ export const GetTisProjectResponse = zod
               currentVc: zod.number().optional(),
               currentDelaySec: zod.number().optional(),
               currentLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
+              laneGroups: zod
+                .array(
+                  zod.object({
+                    movement: zod.enum(["L", "T", "R"]),
+                    existingVolumeVph: zod.number(),
+                    addedTripsPeak: zod.number(),
+                    futureVolumeVph: zod.number(),
+                    futureVc: zod.number(),
+                    queue95thFt: zod.number(),
+                    storageFt: zod.number().optional(),
+                    storageDeficient: zod.boolean().optional(),
+                  }),
+                )
+                .optional(),
             }),
           ),
           queue95thFt: zod.number(),
@@ -3486,6 +3528,20 @@ export const GetTisProjectResponse = zod
                   currentDelaySec: zod.number().optional(),
                   currentLos: zod
                     .enum(["A", "B", "C", "D", "E", "F"])
+                    .optional(),
+                  laneGroups: zod
+                    .array(
+                      zod.object({
+                        movement: zod.enum(["L", "T", "R"]),
+                        existingVolumeVph: zod.number(),
+                        addedTripsPeak: zod.number(),
+                        futureVolumeVph: zod.number(),
+                        futureVc: zod.number(),
+                        queue95thFt: zod.number(),
+                        storageFt: zod.number().optional(),
+                        storageDeficient: zod.boolean().optional(),
+                      }),
+                    )
                     .optional(),
                 }),
               ),
