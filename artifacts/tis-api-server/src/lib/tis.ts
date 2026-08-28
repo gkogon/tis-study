@@ -1023,6 +1023,11 @@ export function laneGroupsForApproach(opts: {
   // No measured volume on this approach: nothing to split. A zero total would
   // also make every share NaN, which is how fabricated numbers get printed.
   if (!(measuredApproachTotal > 0)) return undefined;
+  // A non-finite or negative approach volume would propagate straight into the
+  // printed volumes and queues as negative numbers. Upstream should never send
+  // one, but "should never" is not a guard, and a negative queue length in a
+  // sealed study is indefensible. Found by property-based fuzzing.
+  if (!Number.isFinite(approachVolumeVph) || approachVolumeVph < 0) return undefined;
 
   // Integerize added trips by largest remainder so the lane-group column sums
   // to the approach's printed +Trips exactly (independent rounding drifts +/-1).
