@@ -34,6 +34,7 @@ import { getCbdtpStatus, type CbdtpStatus, type Gml239Status } from "./nysdot-da
 import type { NycTransitContext } from "./nyc-transit-data";
 import { getMeasuredGrowthRate } from "./regional-growth-rates";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
+import { renderLaneGroupQueues } from "./lane-group-queues";
 
 type StoredProject = {
   id: string;
@@ -866,6 +867,11 @@ export function renderTisNewYork(
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text("No signalized intersections within the study radius — no off-site capacity impact is anticipated.", { paragraphGap: 6 });
     doc.fillColor("black");
   }
+  // Measured lane-group queues, where an import supplied a real turn split.
+  // No-ops (byte-identical output) for studies without one.
+  renderLaneGroupQueues(doc, intersections as any[], {
+    heading: "Lane-Group Queues at Intersections with Measured Turning Movements",
+  });
   doc.moveDown(0.3);
 
   // §3.6 Capacity Improvement Measures

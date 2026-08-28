@@ -869,6 +869,14 @@ components:
         currentVc: { type: number }
         currentDelaySec: { type: number }
         currentLos: { type: string, enum: [A, B, C, D, E, F] }
+        # Per-lane-group (turn-movement) detail. Present ONLY when an imported
+        # Synchro/UTDF record supplied real measured turning-movement volumes
+        # for this intersection. Without measured movements the approach total
+        # is the finest granularity the screen can honestly report, so this is
+        # absent rather than filled with an assumed turn split.
+        laneGroups:
+          type: array
+          items: { $ref: "#/components/schemas/TisLaneGroupImpact" }
       required:
         - direction
         - existingVolumeVph
@@ -880,6 +888,34 @@ components:
         - futureDelaySec
         - existingLos
         - futureLos
+        - queue95thFt
+    # One turn-movement lane group on an approach (left / through / right).
+    # Analyzed on the same one-critical-lane screening basis as the approach
+    # itself (saturation flow x g/C, see signal-delay.ts) -- the granularity
+    # changes, the capacity model does not.
+    TisLaneGroupImpact:
+      type: object
+      properties:
+        movement: { type: string, enum: [L, T, R] }
+        # Measured movement volume grown to the opening year, vph.
+        existingVolumeVph: { type: number }
+        # Project trips assigned to this specific movement.
+        addedTripsPeak: { type: integer }
+        futureVolumeVph: { type: number }
+        futureVc: { type: number }
+        queue95thFt: { type: number }
+        # Turn-bay storage for THIS movement from the imported [Lanes] Storage
+        # record. Absent when the import carried no storage for it.
+        storageFt: { type: number }
+        # True when the 95th-percentile queue exceeds the measured bay storage
+        # -- the standard turn-lane mitigation trigger.
+        storageDeficient: { type: boolean }
+      required:
+        - movement
+        - existingVolumeVph
+        - addedTripsPeak
+        - futureVolumeVph
+        - futureVc
         - queue95thFt
     TisAffectedIntersection:
       type: object

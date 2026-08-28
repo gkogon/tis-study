@@ -35,6 +35,7 @@ import { appliedRateRows } from "./trip-rate-rows";
 import { renderTisState } from "./pdf-export-states";
 import { renderDiurnalCharts, drawColumnChart, drawLineChart, CHART_COLORS } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
+import { renderLaneGroupQueues } from "./lane-group-queues";
 import { profileForLandUse, distributeDaily, type ProfileLocale } from "./office-diurnal";
 import { renderTemplatePdf, type RenderContext, type ReportTemplate } from "./report-template/engine";
 import { loadTemplate } from "./report-template/registry";
@@ -8516,9 +8517,17 @@ function renderTisFlorida(
   // --- 8.0 Queue Analysis -----------------------------------------------
   gaSection(doc, `8.0 QUEUE ANALYSIS (${openingYear})`);
   const queueRows = intersections.filter((it) => Number.isFinite(Number(it.queue95thFt)));
+  // Lane-group rows exist only where an imported Synchro/UTDF record gave a
+  // measured turn split (see laneGroupsForApproach in tis.ts). When any are
+  // present the section stops describing itself as worst-approach-only.
+  const laneGroupIts = intersections.filter(
+    (it: any) => Array.isArray(it.approaches) && it.approaches.some((a: any) => Array.isArray(a.laneGroups) && a.laneGroups.length > 0),
+  );
   if (queueRows.length > 0) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      "The 95th-percentile back-of-queue at each study intersection under Build conditions is summarized below (worst-approach basis). Queues are estimated from the standard cyclic-queue relation (Webster arrival/discharge form); a formal submittal should report per-lane-group queues from a Synchro / SimTraffic run and compare them to the available turn-lane storage evaluated in §9.0.",
+      laneGroupIts.length > 0
+        ? "The 95th-percentile back-of-queue at each study intersection under Build conditions is summarized below. Queues are estimated from the standard cyclic-queue relation (Webster arrival/discharge form). The table below reports the governing approach; where imported Synchro records supplied measured turning-movement counts, §8.1 reports the queue for each left / through / right lane group individually and compares it to that movement's own bay storage."
+        : "The 95th-percentile back-of-queue at each study intersection under Build conditions is summarized below (worst-approach basis). Queues are estimated from the standard cyclic-queue relation (Webster arrival/discharge form); a formal submittal should report per-lane-group queues from a Synchro / SimTraffic run and compare them to the available turn-lane storage evaluated in §9.0.",
       { paragraphGap: 6 },
     );
     table(doc, {
@@ -8539,6 +8548,14 @@ function renderTisFlorida(
     doc.fillColor("black");
   }
 
+  // --- 8.1 Per-lane-group queues (measured turn splits only) -------------
+  // Shared leaf module: renders nothing unless an import supplied real
+  // turning movements, so studies without one stay byte-identical.
+  renderLaneGroupQueues(doc, intersections as any[], {
+    headingFn: gaSubsection,
+    heading: "8.1 Lane-Group Queues at Intersections with Measured Turning Movements",
+  });
+
   // --- 9.0 Turn Lane Evaluation -----------------------------------------
   gaSection(doc, `9.0 TURN LANE EVALUATION (${openingYear})`);
   const storageRows = intersections.filter((it: any) => Number.isFinite(Number(it.existingStorageFt)) && Number.isFinite(Number(it.queue95thFt)));
@@ -8549,7 +8566,9 @@ function renderTisFlorida(
 
   gaSubsection(doc, "9.1 Turn-Lane Warrants");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `A turn-lane warrant is a movement-level screen: an exclusive left-turn lane is evaluated against the FDM Chapter 212 / NCHRP 745 left-turn-lane guidelines (a function of advancing volume, opposing volume, and posted speed), and an exclusive right-turn lane is conventionally warranted where the peak-hour right-turn volume exceeds roughly 40–60 vph (or the applicable local threshold, e.g., ${jur.name} land-development code). The proposed development adds approximately ${fmtNum(tg.pmIn)} inbound and ${fmtNum(tg.pmOut)} outbound trips in the PM peak hour, distributed to the site driveways and adjacent intersections. This screening decomposes those project-added trips into left / through / right movements at each study intersection — outbound trips enter on the site-facing leg and turn toward their destination sector, inbound is the mirror — and reports the result in the "Affected movements" table within each intersection's capacity worksheet, where the movement volumes cross-foot with that junction's added-trip total. What the screening does not carry is a measured EXISTING turning-movement split: warrant thresholds apply to the total movement volume (existing plus project), and only the project increment is decomposed here. A definitive turn-lane warrant determination — particularly at the site driveways connecting to the SHS — therefore remains subject to the AM/PM turning-movement counts and the trip distribution approved at the methodology meeting.`,
+    `A turn-lane warrant is a movement-level screen: an exclusive left-turn lane is evaluated against the FDM Chapter 212 / NCHRP 745 left-turn-lane guidelines (a function of advancing volume, opposing volume, and posted speed), and an exclusive right-turn lane is conventionally warranted where the peak-hour right-turn volume exceeds roughly 40–60 vph (or the applicable local threshold, e.g., ${jur.name} land-development code). The proposed development adds approximately ${fmtNum(tg.pmIn)} inbound and ${fmtNum(tg.pmOut)} outbound trips in the PM peak hour, distributed to the site driveways and adjacent intersections. This screening decomposes those project-added trips into left / through / right movements at each study intersection — outbound trips enter on the site-facing leg and turn toward their destination sector, inbound is the mirror — and reports the result in the "Affected movements" table within each intersection's capacity worksheet, where the movement volumes cross-foot with that junction's added-trip total. ${laneGroupIts.length > 0
+      ? `At the ${laneGroupIts.length} intersection(s) listed in §8.1 an imported Synchro record supplied measured existing turning movements, so the warrant screen there applies to the total movement volume (existing plus project). Everywhere else the screening does not carry a measured EXISTING turning-movement split: warrant thresholds apply to the total movement volume (existing plus project), and only the project increment is decomposed.`
+      : `What the screening does not carry is a measured EXISTING turning-movement split: warrant thresholds apply to the total movement volume (existing plus project), and only the project increment is decomposed here.`} A definitive turn-lane warrant determination — particularly at the site driveways connecting to the SHS — therefore remains subject to the AM/PM turning-movement counts and the trip distribution approved at the methodology meeting.`,
     { paragraphGap: 6 },
   );
 

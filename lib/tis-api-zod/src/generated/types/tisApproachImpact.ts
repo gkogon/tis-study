@@ -9,6 +9,7 @@ import type { TisApproachImpactCurrentLos } from "./tisApproachImpactCurrentLos"
 import type { TisApproachImpactExistingLos } from "./tisApproachImpactExistingLos";
 import type { TisApproachImpactFutureLos } from "./tisApproachImpactFutureLos";
 import type { TisDirection } from "./tisDirection";
+import type { TisLaneGroupImpact } from "./tisLaneGroupImpact";
 
 export interface TisApproachImpact {
   direction: TisDirection;
@@ -26,4 +27,5 @@ export interface TisApproachImpact {
   currentVc?: number;
   currentDelaySec?: number;
   currentLos?: TisApproachImpactCurrentLos;
+  laneGroups?: TisLaneGroupImpact[];
 }

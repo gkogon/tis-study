@@ -47,7 +47,7 @@ import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSo
 // callers that imported `LAND_USES` from this module.
 import { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence } from "./land-uses";
 import { screenTurboCandidate, turboLaneScreening, type TurboLaneScreening } from "./turbo-lane";
-import { assignMovements, approachAddedTripsFromMovements, integerizeMovementLoads, pathMovementLoadsExact, type MovementLoad, type PathTurnShare } from "./movement-assignment";
+import { assignMovements, approachAddedTripsFromMovements, integerizeMovementLoads, pathMovementLoadsExact, type Movement, type MovementLoad, type PathTurnShare } from "./movement-assignment";
 // Pure HCM delay / LOS / queue math (dependency-free leaf, unit-tested there).
 import {
   type Los,
@@ -499,6 +499,26 @@ export type ApproachImpact = {
   existingLos: Los;
   futureLos: Los;
   queue95thFt: number;
+  /** Per-turn-movement detail, present ONLY when an imported Synchro/UTDF
+   *  record supplied measured turning-movement volumes for this intersection.
+   *  Without measured movements the approach total is the finest granularity
+   *  this screen can report honestly, so this stays absent rather than being
+   *  filled from an assumed turn split. */
+  laneGroups?: LaneGroupImpact[];
+};
+
+/** One turn-movement lane group (left / through / right) on an approach. */
+export type LaneGroupImpact = {
+  movement: "L" | "T" | "R";
+  existingVolumeVph: number;
+  addedTripsPeak: number;
+  futureVolumeVph: number;
+  futureVc: number;
+  queue95thFt: number;
+  /** This movement's own imported turn-bay storage, when the record had one. */
+  storageFt?: number;
+  /** 95th-percentile queue exceeds that bay — the mitigation trigger. */
+  storageDeficient?: boolean;
 };
 
 export type AffectedIntersection = {
@@ -928,6 +948,93 @@ function utdfGoverningStorage(
     if (wins) { best = { movement: mv, storageFt: v }; bestIsLeft = isLeft; }
   }
   return best;
+}
+
+/**
+ * Split one approach into its left / through / right lane groups, using the
+ * MEASURED turning-movement volumes from an imported Synchro/UTDF record.
+ *
+ * Why this is honest and the old worst-approach number was the ceiling: the
+ * screen has never had a turn split for background traffic. Project trips are
+ * movement-resolved (path assignment), but existing volume was only ever known
+ * per approach — so any per-movement queue would have been built on an invented
+ * split. An imported record removes exactly that gap, and only for the
+ * intersections it covers, which is why this returns undefined otherwise.
+ *
+ * Two deliberate choices:
+ *  - Movement shares are taken WITHIN the approach and applied to the same
+ *    `approachVolumeVph` the approach row already uses, rather than using the
+ *    record's absolute volumes. That keeps the lane-group rows cross-footing to
+ *    the approach row exactly, the same discipline the printed +Trips column
+ *    already follows.
+ *  - Capacity per lane group is the SAME one-critical-lane basis as the
+ *    approach itself (`APPROACH_CAPACITY_VPH` = saturation flow x g/C; see
+ *    signal-delay.ts). The granularity changes; the capacity model does not.
+ *    Real per-lane-group capacity needs lane counts and phasing, which no
+ *    import carries today -- a calibrated Synchro run supersedes this.
+ */
+export function laneGroupsForApproach(opts: {
+  approach: Direction;
+  utdf: UtdfIntersectionInput;
+  approachVolumeVph: number;
+  addedExactByMovement: Record<Movement, number>;
+  addedTripsPeak: number;
+  laneCapacityVph: number;
+  cycleLenS?: number;
+}): LaneGroupImpact[] | undefined {
+  const { approach, utdf, approachVolumeVph, addedExactByMovement } = opts;
+  const vols = utdf.volumes ?? {};
+  const measured: Record<Movement, number> = { L: 0, T: 0, R: 0 };
+  let measuredApproachTotal = 0;
+  for (const m of ["L", "T", "R"] as const) {
+    const v = vols[`${approach}${m}` as UtdfMovement];
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+      measured[m] = v;
+      measuredApproachTotal += v;
+    }
+  }
+  // No measured volume on this approach: nothing to split. A zero total would
+  // also make every share NaN, which is how fabricated numbers get printed.
+  if (!(measuredApproachTotal > 0)) return undefined;
+
+  // Integerize added trips by largest remainder so the lane-group column sums
+  // to the approach's printed +Trips exactly (independent rounding drifts +/-1).
+  const exact = (["L", "T", "R"] as const).map((m) => addedExactByMovement[m] ?? 0);
+  const exactTotal = exact.reduce((s, v) => s + v, 0);
+  const scaled = exactTotal > 0
+    ? exact.map((v) => (v / exactTotal) * opts.addedTripsPeak)
+    : [0, 0, 0];
+  const floors = scaled.map((v) => Math.floor(v));
+  let remainder = opts.addedTripsPeak - floors.reduce((s, v) => s + v, 0);
+  const order = scaled
+    .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac);
+  const added = [...floors];
+  for (const { i } of order) {
+    if (remainder <= 0) break;
+    added[i] += 1;
+    remainder -= 1;
+  }
+
+  const storage = utdf.storageFt ?? {};
+  return (["L", "T", "R"] as const).map((m, idx) => {
+    const share = measured[m] / measuredApproachTotal;
+    const existingVolumeVph = approachVolumeVph * share;
+    const futureVolumeVph = existingVolumeVph + added[idx];
+    const futureVc = futureVolumeVph / opts.laneCapacityVph;
+    const queue = queue95Ft(futureVolumeVph, opts.laneCapacityVph, opts.cycleLenS);
+    const bay = storage[`${approach}${m}` as UtdfMovement];
+    const hasBay = typeof bay === "number" && Number.isFinite(bay) && bay > 0;
+    return {
+      movement: m,
+      existingVolumeVph: round1(existingVolumeVph),
+      addedTripsPeak: added[idx],
+      futureVolumeVph: round1(futureVolumeVph),
+      futureVc: round2(futureVc),
+      queue95thFt: round1(queue),
+      ...(hasBay ? { storageFt: bay, storageDeficient: queue > bay } : {}),
+    };
+  });
 }
 
 /** How the imported records attached — surfaced on the payload ONLY when the
@@ -1469,6 +1576,26 @@ function buildAffectedRow(
       existingLos: delayToLos(exDelay),
       futureLos: delayToLos(fuDelay),
       queue95thFt: round1(queue95Ft(futureVol, params.approachCapacityVph, utdfCycleLenS)),
+      // Per-movement queues, but only where an imported record supplies a real
+      // turn split for the background traffic. Absent everywhere else on
+      // purpose — see laneGroupsForApproach.
+      ...(() => {
+        if (!c.utdf) return {};
+        const addedExactByMovement: Record<Movement, number> = { L: 0, T: 0, R: 0 };
+        for (const r of pathRows ?? []) {
+          if (r.approach === d) addedExactByMovement[r.movement] += r.exact;
+        }
+        const laneGroups = laneGroupsForApproach({
+          approach: d,
+          utdf: c.utdf,
+          approachVolumeVph: baseVol,
+          addedExactByMovement,
+          addedTripsPeak,
+          laneCapacityVph: params.approachCapacityVph,
+          cycleLenS: utdfCycleLenS,
+        });
+        return laneGroups ? { laneGroups } : {};
+      })(),
     };
   });
 

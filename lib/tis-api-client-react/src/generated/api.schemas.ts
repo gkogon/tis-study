@@ -577,6 +577,26 @@ export const TisApproachImpactCurrentLos = {
   F: "F",
 } as const;
 
+export type TisLaneGroupImpactMovement =
+  (typeof TisLaneGroupImpactMovement)[keyof typeof TisLaneGroupImpactMovement];
+
+export const TisLaneGroupImpactMovement = {
+  L: "L",
+  T: "T",
+  R: "R",
+} as const;
+
+export interface TisLaneGroupImpact {
+  movement: TisLaneGroupImpactMovement;
+  existingVolumeVph: number;
+  addedTripsPeak: number;
+  futureVolumeVph: number;
+  futureVc: number;
+  queue95thFt: number;
+  storageFt?: number;
+  storageDeficient?: boolean;
+}
+
 export interface TisApproachImpact {
   direction: TisDirection;
   existingVolumeVph: number;
@@ -593,6 +613,7 @@ export interface TisApproachImpact {
   currentVc?: number;
   currentDelaySec?: number;
   currentLos?: TisApproachImpactCurrentLos;
+  laneGroups?: TisLaneGroupImpact[];
 }
 
 export type TisAffectedIntersectionExistingLos =
