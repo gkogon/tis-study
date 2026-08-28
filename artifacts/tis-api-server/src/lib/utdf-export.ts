@@ -65,6 +65,31 @@ const DEFAULT_LANE_WIDTH_FT = 12;
 // 10/80/10 L/T/R default split — industry-typical when no field
 // counts are available. The renderer prose declares this in the
 // downloaded file's header.
+/** Mean Earth radius in feet (6,371,000 m / 0.3048). */
+const EARTH_RADIUS_FT = 20_902_231;
+
+/**
+ * Local equirectangular projection to FEET east/north of an origin, matching
+ * the `Metric,0` (feet) flag written into [Network].
+ *
+ * Longitude degrees are scaled by cos(latitude) because meridians converge —
+ * omitting that is what stretched the exported network along X. Equirectangular
+ * is accurate to well under a foot over a TIS study radius; anything larger
+ * would want a real state-plane projection.
+ */
+export function projectFeet(
+  lat: number,
+  lon: number,
+  originLat: number,
+  originLon: number,
+): { x: number; y: number } {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return { x: 0, y: 0 };
+  const toRad = Math.PI / 180;
+  const x = EARTH_RADIUS_FT * (lon - originLon) * toRad * Math.cos(originLat * toRad);
+  const y = EARTH_RADIUS_FT * (lat - originLat) * toRad;
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
 const DEFAULT_LEFT_FRAC = 0.1;
 const DEFAULT_THROUGH_FRAC = 0.8;
 const DEFAULT_RIGHT_FRAC = 0.1;
@@ -135,9 +160,27 @@ export function generateUtdf(result: EngineResult, opts: UtdfOptions = {}): stri
   lines.push(`#`);
   lines.push(`# IMPORTANT — DEFAULT ASSUMPTIONS BELOW. OVERRIDE BEFORE SUBMITTAL.`);
   lines.push(`#`);
-  lines.push(`# 1. Turning movement counts: NOT measured. Approach volumes are`);
-  lines.push(`#    distributed by 10% LEFT / 80% THROUGH / 10% RIGHT. Public TMC`);
-  lines.push(`#    data does not exist at scale; PE must overlay field counts.`);
+  // How many intersections actually carry a measured turn split, so the
+  // disclosure below describes THIS file rather than the worst case.
+  const measuredMovementNodes = intersections.filter((it) =>
+    (Array.isArray(it.approaches) ? it.approaches : []).some(
+      (a) => Array.isArray((a as { laneGroups?: unknown[] }).laneGroups)
+        && ((a as { laneGroups?: unknown[] }).laneGroups as unknown[]).length > 0,
+    ),
+  ).length;
+  if (measuredMovementNodes > 0) {
+    lines.push(`# 1. Turning movement counts: MEASURED at ${measuredMovementNodes} of ${intersections.length}`);
+    lines.push(`#    intersection(s), from the Synchro record imported with this study;`);
+    lines.push(`#    those movements carry the real turn split, rescaled to the`);
+    lines.push(`#    scenario's approach volume. Rows marked "default-" in [Lanes] are`);
+    lines.push(`#    the remaining intersections, where approach volumes are still`);
+    lines.push(`#    distributed by 10% LEFT / 80% THROUGH / 10% RIGHT and the PE must`);
+    lines.push(`#    overlay field counts.`);
+  } else {
+    lines.push(`# 1. Turning movement counts: NOT measured. Approach volumes are`);
+    lines.push(`#    distributed by 10% LEFT / 80% THROUGH / 10% RIGHT. Public TMC`);
+    lines.push(`#    data does not exist at scale; PE must overlay field counts.`);
+  }
   lines.push(`# 2. Lane configuration: defaults to 1 LEFT + 2 THROUGH + 1 RIGHT`);
   lines.push(`#    per approach (4 lanes total). PE substitutes field-verified`);
   lines.push(`#    geometry from as-built plans or driveway survey.`);
@@ -164,6 +207,14 @@ export function generateUtdf(result: EngineResult, opts: UtdfOptions = {}): stri
   lines.push(``);
 
   // --- [Nodes] section ---
+  // Projection origin: the first node with real coordinates. Every node's X/Y
+  // is then feet east/north of it, which keeps the numbers small and makes the
+  // relative layout — the part Synchro's capacity math actually uses — correct.
+  const origin = intersections.find(
+    (it) => Number.isFinite(it.latitude) && Number.isFinite(it.longitude),
+  );
+  const originLat = origin ? (origin.latitude as number) : 0;
+  const originLon = origin ? (origin.longitude as number) : 0;
   lines.push(`[Nodes]`);
   lines.push(`INTID,Name,X,Y,Z,TYPE,LATITUDE,LONGITUDE,Notes`);
   intersections.forEach((it, i) => {
@@ -171,12 +222,18 @@ export function generateUtdf(result: EngineResult, opts: UtdfOptions = {}): stri
     const name = csvEscape(it.name ?? it.signalId ?? `Node ${intid}`);
     const lat = Number.isFinite(it.latitude) ? it.latitude : "";
     const lon = Number.isFinite(it.longitude) ? it.longitude : "";
-    // X/Y in Synchro are arbitrary planar units. We use lat/lon × 1000
-    // as a rough metric proxy — Synchro re-projects on import anyway,
-    // and the relative layout matters more than absolute position for
-    // the capacity calculation.
-    const x = Number.isFinite(it.longitude) ? Math.round((it.longitude as number) * 100000) : 0;
-    const y = Number.isFinite(it.latitude) ? Math.round((it.latitude as number) * 100000) : 0;
+    // X/Y are written in the unit the [Network] Metric flag declares, which is
+    // 0 = FEET. The old code wrote degrees × 100000 on the assumption Synchro
+    // re-projects on import; it does not, and the units are not feet, so the
+    // network came in both ~3.6x too small (100,000 units/degree vs ~364,000
+    // ft/degree) AND stretched along X, because scaling latitude and longitude
+    // by the same constant ignores the cos(latitude) convergence of meridians
+    // — an 11% aspect error at Miami's latitude, worse further north.
+    //
+    // Local equirectangular projection about the first node instead: exact
+    // enough over a TIS study radius (a few miles) and in real feet, so link
+    // lengths and the intersection layout are geometrically true.
+    const { x, y } = projectFeet(it.latitude as number, it.longitude as number, originLat, originLon);
     lines.push(
       `${intid},${name},${x},${y},0,Signalized,${lat},${lon},engine-generated`,
     );
@@ -195,17 +252,29 @@ export function generateUtdf(result: EngineResult, opts: UtdfOptions = {}): stri
     const dirsWithData = new Set(approaches.map((a) => normDirection(a.direction)));
     // For each of the four cardinal approaches that have engine data,
     // emit three movements (L/T/R) at the default lane counts.
+    // Turn-bay storage per movement, when an imported record carried it. The
+    // old code wrote a hardcoded 0 for every movement, which reads in Synchro
+    // as "no bay" and silently discards a measured length we already had.
+    const storageByMovement: Record<string, number> = {};
+    for (const a of approaches) {
+      const dir = normDirection(a.direction);
+      const groups = (a as { laneGroups?: Array<{ movement: string; storageFt?: number }> }).laneGroups;
+      for (const g of groups ?? []) {
+        if (Number.isFinite(g.storageFt as number) && (g.storageFt as number) > 0) {
+          storageByMovement[`${dir}${g.movement}`] = g.storageFt as number;
+        }
+      }
+    }
+    const laneRow = (dir: string, mv: "L" | "T" | "R", lanes: number, fallbackNote: string) => {
+      const st = storageByMovement[`${dir}${mv}`];
+      const hasSt = Number.isFinite(st) && st > 0;
+      return `${intid},${dir}${mv},${lanes},${DEFAULT_LANE_WIDTH_FT},0,${hasSt ? Math.round(st) : 0},0,${hasSt ? "measured-storage" : fallbackNote}`;
+    };
     for (const dir of ["NB", "SB", "EB", "WB"]) {
       if (!dirsWithData.has(dir)) continue;
-      lines.push(
-        `${intid},${dir}L,${DEFAULT_LEFT_LANES},${DEFAULT_LANE_WIDTH_FT},0,0,0,default-1L`,
-      );
-      lines.push(
-        `${intid},${dir}T,${DEFAULT_THROUGH_LANES},${DEFAULT_LANE_WIDTH_FT},0,0,0,default-2T`,
-      );
-      lines.push(
-        `${intid},${dir}R,${DEFAULT_RIGHT_LANES},${DEFAULT_LANE_WIDTH_FT},0,0,0,default-1R`,
-      );
+      lines.push(laneRow(dir, "L", DEFAULT_LEFT_LANES, "default-1L"));
+      lines.push(laneRow(dir, "T", DEFAULT_THROUGH_LANES, "default-2T"));
+      lines.push(laneRow(dir, "R", DEFAULT_RIGHT_LANES, "default-1R"));
     }
   });
   lines.push(``);
@@ -217,14 +286,39 @@ export function generateUtdf(result: EngineResult, opts: UtdfOptions = {}): stri
     const intid = i + 1;
     const approaches = Array.isArray(it.approaches) ? it.approaches : [];
     const v: Record<string, number> = { NB: 0, SB: 0, EB: 0, WB: 0 };
+    // Measured L/T/R by direction, when the engine resolved a real turn split
+    // for this approach from an imported Synchro record. Absent otherwise, and
+    // absent entirely on payloads generated before lane groups shipped — hence
+    // the optional read and the 10/80/10 fallback below.
+    const measured: Record<string, Record<string, number> | undefined> = {};
     for (const a of approaches) {
       const dir = normDirection(a.direction);
-      const vol = scenarioVol(a, scenario);
-      v[dir] = vol;
+      v[dir] = scenarioVol(a, scenario);
+      const groups = (a as { laneGroups?: Array<{ movement: string; futureVolumeVph: number }> }).laneGroups;
+      if (Array.isArray(groups) && groups.length > 0) {
+        const byMv: Record<string, number> = {};
+        for (const g of groups) {
+          if (Number.isFinite(g.futureVolumeVph)) byMv[g.movement] = g.futureVolumeVph;
+        }
+        if (Object.keys(byMv).length > 0) measured[dir] = byMv;
+      }
     }
-    // Apply 10/80/10 L/T/R split per direction.
     const row = ["NB", "SB", "EB", "WB"].flatMap((dir) => {
       const vol = v[dir] ?? 0;
+      const m = measured[dir];
+      if (m) {
+        // Real split. Rescale to the scenario volume so the exported movements
+        // still sum to the approach total this scenario reports.
+        const sum = (m.L ?? 0) + (m.T ?? 0) + (m.R ?? 0);
+        if (sum > 0) {
+          return [
+            Math.round(vol * ((m.L ?? 0) / sum)),
+            Math.round(vol * ((m.T ?? 0) / sum)),
+            Math.round(vol * ((m.R ?? 0) / sum)),
+          ];
+        }
+      }
+      // No measured split: the documented 10/80/10 rule-of-thumb scaffold.
       return [
         Math.round(vol * DEFAULT_LEFT_FRAC),
         Math.round(vol * DEFAULT_THROUGH_FRAC),
