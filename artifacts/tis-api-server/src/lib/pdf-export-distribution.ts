@@ -21,6 +21,204 @@ const VELOCITY_GREEN = "#8EC57C";
 const TEXT_GRAY = "#6b7280";
 
 const fin2 = (x: unknown): number => (typeof x === "number" && Number.isFinite(x) ? x : 0);
+
+/**
+ * A "nice" ring interval (1/2/5 x a power of ten) giving roughly four rings at
+ * any scale. Scale-derived rather than a fixed ladder so the ring count stays
+ * bounded no matter how large the study extent is.
+ */
+function niceRingStep(maxMi: number): number {
+  const target = Math.max(maxMi, 1e-6) / 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(target)));
+  const norm = target / mag;
+  const mult = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+  return mult * mag;
+}
+
+/**
+ * Figure — Project Trip Distribution, drawn as a TO-SCALE plan.
+ *
+ * The section already carries a compass rose and two charts, but none of them
+ * is the exhibit a reviewing engineer looks for: the conventional TIS figure
+ * puts the study locations in their real geographic relationship to the site
+ * and writes each one's percentage of project trips on the leg that serves it.
+ * A bar chart of the same numbers does not answer "where is that 12% going?"
+ *
+ * Each zone is plotted from its own `bearingDeg` / `distanceMi` — the polar
+ * position the gravity model already computed — so unlike the site-access
+ * schematic elsewhere in the report, this figure IS to scale, and carries a
+ * scale bar to say so. Leg weight is proportional to trip share, which is what
+ * makes the dominant corridors readable at a glance.
+ */
+export function drawDistributionPlan(
+  doc: PDFKit.PDFDocument,
+  td: TripDistributionSummary,
+  accent: string,
+): void {
+  const zones = (td.zones ?? [])
+    .filter((z) => Number.isFinite(z.distanceMi) && Number.isFinite(z.bearingDeg) && fin2(z.sharePct) > 0)
+    .slice(0, 12);
+  if (zones.length === 0) return;
+
+  const figW = doc.page.width - 2 * PAGE_MARGIN;
+  const figH = 330;
+  // Site box dimensions, declared up front: the label pass needs them to avoid
+  // printing over the box, and the box itself is drawn last.
+  const SITE_W = 92, SITE_H = 26;
+  // Keep the whole figure on one page — splitting a plan across a page break
+  // makes it unreadable and mis-scales the bar.
+  if (doc.y + figH > doc.page.height - PAGE_MARGIN - 40) doc.addPage();
+  const x0 = PAGE_MARGIN;
+  const y0 = doc.y;
+  const cx = x0 + figW / 2;
+  const cy = y0 + figH / 2;
+
+  doc.save();
+  doc.lineWidth(0.75).strokeColor("#d1d5db").rect(x0, y0, figW, figH).stroke();
+
+  // Usable radius leaves room for the labels that sit outside each node.
+  const R = Math.min(figW / 2 - 96, figH / 2 - 46);
+  // One absurd distance would otherwise set the scale and collapse every real
+  // zone onto the site marker. Clamp the extent to the largest SANE distance
+  // (zones beyond it still plot, just at the frame edge).
+  const dists = zones.map((z) => z.distanceMi).filter((d) => Number.isFinite(d) && d >= 0).sort((a, b) => a - b);
+  const p95 = dists.length > 0 ? dists[Math.min(dists.length - 1, Math.floor(dists.length * 0.95))]! : 0.1;
+  const maxMi = Math.min(Math.max(p95, 0.1), 500);
+  const pxPerMi = R / maxMi;
+
+  // Distance rings at "nice" intervals, so the reader can read range directly.
+  //
+  // The step is derived from maxMi rather than taken from a fixed ladder. A
+  // fixed ladder topped out at 2 mi, so one zone with an absurd distanceMi — a
+  // data error, or a genuinely far-flung zone — meant maxMi of 1e9 and a loop
+  // of ~500 MILLION iterations, each drawing a circle. That is an out-of-memory
+  // crash of the whole render, not a cosmetic problem, and the `rp > R` break
+  // never fires because pxPerMi shrinks in exact proportion. Found by stress
+  // testing with pathological zone geometry.
+  const ringStep = niceRingStep(maxMi);
+  const MAX_RINGS = 12;
+  doc.save().lineWidth(0.4).strokeColor("#e5e7eb").dash(2, { space: 2 });
+  for (let k = 1; k <= MAX_RINGS; k++) {
+    const r = ringStep * k;
+    if (r > maxMi + 1e-9) break;
+    const rp = r * pxPerMi;
+    if (rp > R + 1) break;
+    doc.circle(cx, cy, rp).stroke();
+    doc.undash();
+    doc.font("Helvetica").fontSize(6).fillColor("#9ca3af")
+      .text(`${r % 1 === 0 ? r : r.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} mi`,
+        cx + 2, cy - rp - 7, { lineBreak: false });
+    doc.dash(2, { space: 2 });
+  }
+  doc.undash().restore();
+
+  // North arrow — triangle above, letter below, so they never overlap.
+  const nax = x0 + figW - 20;
+  doc.save().fillColor(TEXT_GRAY)
+    .moveTo(nax, y0 + 8).lineTo(nax - 4, y0 + 17).lineTo(nax + 4, y0 + 17)
+    .closePath().fill().restore();
+  doc.fillColor(TEXT_GRAY).font("Helvetica").fontSize(7)
+    .text("N", nax - 4, y0 + 19, { width: 8, align: "center", lineBreak: false });
+
+  const maxShare = Math.max(...zones.map((z) => fin2(z.sharePct)), 1);
+
+  // Legs first so the node markers sit on top of them.
+  for (const z of zones) {
+    const rad = (z.bearingDeg * Math.PI) / 180;
+    const r = Math.min(z.distanceMi * pxPerMi, R);
+    const px = cx + r * Math.sin(rad);
+    const py = cy - r * Math.cos(rad);
+    const w = 0.6 + 3.4 * (fin2(z.sharePct) / maxShare);
+    doc.save().lineWidth(w).strokeColor(accent).opacity(0.55)
+      .moveTo(cx, cy).lineTo(px, py).stroke().opacity(1).restore();
+  }
+
+  // Nodes.
+  const placed = zones.map((z, i) => {
+    const rad = (z.bearingDeg * Math.PI) / 180;
+    // Clamped to the plot radius: a zone beyond the (95th-percentile) extent
+    // is drawn at the frame edge rather than off the page.
+    const r = Math.min(z.distanceMi * pxPerMi, R);
+    const px = cx + r * Math.sin(rad);
+    const py = cy - r * Math.cos(rad);
+    doc.save().fillColor(accent).circle(px, py, 4).fill().restore();
+    doc.save().lineWidth(0.75).strokeColor("#ffffff").circle(px, py, 4).stroke().restore();
+    return { z, i, px, py, east: Math.sin(rad) >= 0 };
+  });
+
+  // Labels, de-collided. Close-in zones land almost on top of each other, and
+  // two overlapping percentages in an engineering figure are worse than none.
+  // Each side of the plan is swept top-to-bottom and any label closer than one
+  // label-height to the previous one is pushed down; a leader line then keeps
+  // it tied to its node.
+  const LABEL_W = 86;
+  const LABEL_H = 15;
+  for (const side of [true, false]) {
+    const col = placed.filter((p) => p.east === side).sort((a, b) => a.py - b.py);
+    let lastY = -Infinity;
+    for (const p of col) {
+      let ly = Math.max(y0 + 4, Math.min(p.py - 8, y0 + figH - 24));
+      if (ly - lastY < LABEL_H) ly = lastY + LABEL_H;
+      // Ran out of room below: fall back to the node's own position rather
+      // than marching labels off the bottom of the frame.
+      if (ly > y0 + figH - 24) ly = Math.max(y0 + 4, p.py - 8);
+      lastY = ly;
+
+      let lx = side ? p.px + 8 : p.px - 8 - LABEL_W;
+      // Never let a label sit on the site box. Close-in zones put their label
+      // right where "PROJECT SITE" is printed, which is the one place in the
+      // figure that must stay readable.
+      const boxTop = cy - SITE_H / 2 - 4;
+      const boxBot = cy + SITE_H / 2 + 4;
+      if (ly + LABEL_H > boxTop && ly < boxBot) {
+        if (side) lx = Math.max(lx, cx + SITE_W / 2 + 6);
+        else lx = Math.min(lx, cx - SITE_W / 2 - 6 - LABEL_W);
+      }
+      if (lx < x0 + 3) lx = x0 + 3;
+      if (lx + LABEL_W > x0 + figW - 3) lx = x0 + figW - 3 - LABEL_W;
+
+      // Leader line whenever the label had to move off its node.
+      if (Math.abs(ly + 4 - p.py) > 5) {
+        const anchorX = side ? lx : lx + LABEL_W;
+        doc.save().lineWidth(0.4).strokeColor("#c7cdd4")
+          .moveTo(p.px, p.py).lineTo(anchorX, ly + 5).stroke().restore();
+      }
+
+      doc.font("Helvetica-Bold").fontSize(7).fillColor("black")
+        .text(`${fin2(p.z.sharePct).toFixed(1)}%`, lx, ly, { width: LABEL_W, align: side ? "left" : "right", lineBreak: false });
+      doc.font("Helvetica").fontSize(6).fillColor(TEXT_GRAY)
+        .text(shortZoneLabel(p.z.name, p.i), lx, ly + 8, { width: LABEL_W, align: side ? "left" : "right", lineBreak: false });
+    }
+  }
+
+  // Site marker last — it belongs on top of every leg.
+  doc.save().fillColor("#fde68a").opacity(0.9).rect(cx - SITE_W / 2, cy - SITE_H / 2, SITE_W, SITE_H).fill().opacity(1).restore();
+  doc.lineWidth(1).strokeColor("#b45309").rect(cx - SITE_W / 2, cy - SITE_H / 2, SITE_W, SITE_H).stroke();
+  doc.fillColor("black").font("Helvetica-Bold").fontSize(7.5)
+    .text("PROJECT SITE", cx - SITE_W / 2 + 3, cy - 4, { width: SITE_W - 6, align: "center", lineBreak: false });
+
+  // Scale bar — the claim that this figure is to scale, made checkable.
+  const barMi = ringStep;  // same interval as the rings, so the two agree
+  const barPx = barMi * pxPerMi;
+  const bx = x0 + 14, by = y0 + figH - 18;
+  doc.save().lineWidth(1).strokeColor("#374151")
+    .moveTo(bx, by).lineTo(bx + barPx, by).stroke()
+    .moveTo(bx, by - 3).lineTo(bx, by + 3).stroke()
+    .moveTo(bx + barPx, by - 3).lineTo(bx + barPx, by + 3).stroke().restore();
+  doc.font("Helvetica").fontSize(6.5).fillColor(TEXT_GRAY)
+    .text(`${barMi} mi`, bx, by + 4, { lineBreak: false });
+
+  doc.restore();
+  doc.y = y0 + figH + 6;
+  doc.x = PAGE_MARGIN;
+  doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+    `Figure — Project Trip Distribution. Study-area zones plotted to scale at their true bearing and distance from the site; leg weight is proportional to each zone's share of project trips, and the label gives that share. Derived from the ${td.methodLabel} distribution — the same shares tabulated above. Screening-grade: zone positions are the analysis locations, not a surveyed base map.`,
+    PAGE_MARGIN,
+    doc.y,
+    { width: doc.page.width - 2 * PAGE_MARGIN, paragraphGap: 6 },
+  );
+  doc.fillColor("black");
+}
 const shortZoneLabel = (name: string, i: number): string => {
   const s = (name || `Zone ${i + 1}`).replace(/\s+/g, " ").trim();
   return s.length > 16 ? s.slice(0, 15) + "…" : s;
@@ -268,6 +466,9 @@ export function renderTripDistributionSection(
   doc.fillColor("black");
 
   // ---- Distribution graphs (Task 8B): appended for every US flavor, incl. FL ----
+  // (0) The plan exhibit. Goes FIRST because it is the figure a reviewer looks
+  // for — the charts below quantify what this one locates.
+  drawDistributionPlan(doc, td, CHART_COLORS.outbound);
   // (1) Directional distribution — compass rose over the eight octants.
   drawCompassRose(doc, {
     title: "Figure — Directional Distribution of Project Trips",
