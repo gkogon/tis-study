@@ -709,7 +709,9 @@ export function renderTisNewYork(
   // against the measured peaks. The block omits silently when no ATR
   // coverage exists near the site (NYC DOT counts a rotating sample,
   // not the full grid).
-  const atrSummary = (r as any).nycAtrSummary as
+  // Prefer the generic field; fall back to the NY-named one so studies stored
+  // before the multi-source change keep rendering their ATR block.
+  const atrSummary = ((r as any).atrSummary ?? (r as any).nycAtrSummary) as
     | {
         windowYears: number;
         radiusMi: number;

@@ -46,7 +46,7 @@ import { enrichGdotIntersections, fetchGdotSiteSnapshot } from "./gdot-live-data
 import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite, getGml239Status, getCbdtpStatus } from "./nysdot-data";
 import { getNycTransitContext } from "./nyc-transit-data";
 import { crashesNearPoint } from "./crashes";
-import { atrSegmentsNearPoint } from "./atr-counts";
+import { atrSegmentsNearPoint, atrSourceForRegion } from "./atr-counts";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
 import {
@@ -424,16 +424,19 @@ export async function renderStudyPdf(
         //     NYC DOT counts a rotating sample — many midtown sites
         //     have no ATR segment closer than 0.5 mi (e.g. Times
         //     Square's nearest is on 9th Ave, 0.7 mi west).
-        const atrTask = atrSegmentsNearPoint({
-          lat,
-          lon,
-          radiusMi: 1.0,
-          windowYears: 3,
-          source: "nyc_dot_atr",
-        })
+        const atrSource = atrSourceForRegion(region);
+        const atrTask = (atrSource
+          ? atrSegmentsNearPoint({ lat, lon, radiusMi: 1.0, windowYears: 3, source: atrSource })
+          : Promise.resolve(null))
           .then((s) => {
-            if (s.segments.length > 0 && result && typeof result === "object") {
-              (result as Record<string, unknown>).nycAtrSummary = s;
+            if (s && s.segments.length > 0 && result && typeof result === "object") {
+              // Generic field, so a renderer for any metro can read it.
+              (result as Record<string, unknown>).atrSummary = s;
+              // Mirror for back-compat: stored NY studies and the NY renderer
+              // read `nycAtrSummary`, and stored payloads must keep rendering.
+              if (s.source === "nyc_dot_atr") {
+                (result as Record<string, unknown>).nycAtrSummary = s;
+              }
             }
           })
           .catch(() => {});
