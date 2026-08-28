@@ -23,6 +23,19 @@ const TEXT_GRAY = "#6b7280";
 const fin2 = (x: unknown): number => (typeof x === "number" && Number.isFinite(x) ? x : 0);
 
 /**
+ * A "nice" ring interval (1/2/5 x a power of ten) giving roughly four rings at
+ * any scale. Scale-derived rather than a fixed ladder so the ring count stays
+ * bounded no matter how large the study extent is.
+ */
+function niceRingStep(maxMi: number): number {
+  const target = Math.max(maxMi, 1e-6) / 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(target)));
+  const norm = target / mag;
+  const mult = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+  return mult * mag;
+}
+
+/**
  * Figure — Project Trip Distribution, drawn as a TO-SCALE plan.
  *
  * The section already carries a compass rose and two charts, but none of them
@@ -65,13 +78,29 @@ export function drawDistributionPlan(
 
   // Usable radius leaves room for the labels that sit outside each node.
   const R = Math.min(figW / 2 - 96, figH / 2 - 46);
-  const maxMi = Math.max(...zones.map((z) => z.distanceMi), 0.1);
+  // One absurd distance would otherwise set the scale and collapse every real
+  // zone onto the site marker. Clamp the extent to the largest SANE distance
+  // (zones beyond it still plot, just at the frame edge).
+  const dists = zones.map((z) => z.distanceMi).filter((d) => Number.isFinite(d) && d >= 0).sort((a, b) => a - b);
+  const p95 = dists.length > 0 ? dists[Math.min(dists.length - 1, Math.floor(dists.length * 0.95))]! : 0.1;
+  const maxMi = Math.min(Math.max(p95, 0.1), 500);
   const pxPerMi = R / maxMi;
 
   // Distance rings at "nice" intervals, so the reader can read range directly.
-  const ringStep = maxMi <= 0.6 ? 0.25 : maxMi <= 1.5 ? 0.5 : maxMi <= 4 ? 1 : 2;
+  //
+  // The step is derived from maxMi rather than taken from a fixed ladder. A
+  // fixed ladder topped out at 2 mi, so one zone with an absurd distanceMi — a
+  // data error, or a genuinely far-flung zone — meant maxMi of 1e9 and a loop
+  // of ~500 MILLION iterations, each drawing a circle. That is an out-of-memory
+  // crash of the whole render, not a cosmetic problem, and the `rp > R` break
+  // never fires because pxPerMi shrinks in exact proportion. Found by stress
+  // testing with pathological zone geometry.
+  const ringStep = niceRingStep(maxMi);
+  const MAX_RINGS = 12;
   doc.save().lineWidth(0.4).strokeColor("#e5e7eb").dash(2, { space: 2 });
-  for (let r = ringStep; r <= maxMi + 1e-9; r += ringStep) {
+  for (let k = 1; k <= MAX_RINGS; k++) {
+    const r = ringStep * k;
+    if (r > maxMi + 1e-9) break;
     const rp = r * pxPerMi;
     if (rp > R + 1) break;
     doc.circle(cx, cy, rp).stroke();
@@ -96,7 +125,7 @@ export function drawDistributionPlan(
   // Legs first so the node markers sit on top of them.
   for (const z of zones) {
     const rad = (z.bearingDeg * Math.PI) / 180;
-    const r = z.distanceMi * pxPerMi;
+    const r = Math.min(z.distanceMi * pxPerMi, R);
     const px = cx + r * Math.sin(rad);
     const py = cy - r * Math.cos(rad);
     const w = 0.6 + 3.4 * (fin2(z.sharePct) / maxShare);
@@ -107,7 +136,9 @@ export function drawDistributionPlan(
   // Nodes.
   const placed = zones.map((z, i) => {
     const rad = (z.bearingDeg * Math.PI) / 180;
-    const r = z.distanceMi * pxPerMi;
+    // Clamped to the plot radius: a zone beyond the (95th-percentile) extent
+    // is drawn at the frame edge rather than off the page.
+    const r = Math.min(z.distanceMi * pxPerMi, R);
     const px = cx + r * Math.sin(rad);
     const py = cy - r * Math.cos(rad);
     doc.save().fillColor(accent).circle(px, py, 4).fill().restore();
@@ -167,7 +198,7 @@ export function drawDistributionPlan(
     .text("PROJECT SITE", cx - SITE_W / 2 + 3, cy - 4, { width: SITE_W - 6, align: "center", lineBreak: false });
 
   // Scale bar — the claim that this figure is to scale, made checkable.
-  const barMi = ringStep;
+  const barMi = ringStep;  // same interval as the rings, so the two agree
   const barPx = barMi * pxPerMi;
   const bx = x0 + 14, by = y0 + figH - 18;
   doc.save().lineWidth(1).strokeColor("#374151")
