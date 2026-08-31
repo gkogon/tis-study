@@ -237,7 +237,12 @@ async function main(): Promise<void> {
         occurredAt: localHourToUtc(WINDOW.year, WINDOW.month, day, hour, st.tz),
         durationMinutes: 60,
         vol: n,
-        street: null,
+        // The stations layer carries no road name — only an id, a functional
+        // class and a point. A null here left the rendered "Segment" column as
+        // an em-dash on every TMAS row, which is useless to a reviewer trying to
+        // look the station up. The station id IS the lookup key in FHWA's own
+        // published tables, so print that.
+        street: `CCS station ${state}-${st.id}`,
         fromStreet: null,
         toStreet: null,
         direction: DIRECTION[String(v.direction)] ?? String(v.direction),
