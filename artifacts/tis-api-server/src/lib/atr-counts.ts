@@ -85,10 +85,12 @@ const ATR_SOURCE_BY_STATE: Record<string, string> = {
   // nyc_dot_atr (through 2026-02) and FL keeps fdot_tda (rolling 365 days),
   // because TMAS's latest published year is 2023.
   //
-  // ⚠️ NEW JERSEY IS ABSENT ON PURPOSE. NJ has stations in the TMAS stations
-  // layer but reports NO volume rows (FIPS 34 returns zero), so mapping it here
-  // would run a query that can never return anything. NJ's own open feed is
-  // AADT-only and stale since 2024-03. See [[reference_measured_counts_sources]].
+  // NEW JERSEY: reachable, but only through the archive. NJ stopped reporting to
+  // TMAS after 2020 (2023/2022/2021 all return zero rows), so the ingest pulls
+  // its 2019 data — the last clean pre-COVID year — for the Trenton stations.
+  // That is why the TMAS lookback window is 10 years and why the block states
+  // its vintage in prose. NJ's own feed is AADT-only and stale since 2024-03,
+  // and njtms.org 403s all programmatic access.
   GA: "fhwa_tmas",
   TX: "fhwa_tmas",
   CA: "fhwa_tmas",
@@ -96,6 +98,7 @@ const ATR_SOURCE_BY_STATE: Record<string, string> = {
   MD: "fhwa_tmas",
   NC: "fhwa_tmas",
   SC: "fhwa_tmas",
+  NJ: "fhwa_tmas",
 };
 
 /**
