@@ -18,6 +18,7 @@ import type { Region } from "./regions";
 import { renderDiurnalCharts } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
 import { renderLaneGroupQueues } from "./lane-group-queues";
+import { renderAtrMeasuredVolumes } from "./atr-measured-volumes";
 import { tripGenExternalNote } from "./pdf-export";
 
 // Re-export for use in pdf-export.ts dispatch
@@ -1266,6 +1267,21 @@ function renderTisState(
     ["Count collection period", r.countPeriod ?? "Weekday AM + PM peak (field-collected)"],
   ]);
   doc.moveDown(0.3);
+
+  // 4.2a — measured agency ATR counts, when the study's state has an ingested
+  // count feed and a station falls within the search radius. Renders NOTHING
+  // otherwise, so states with no coverage stay byte-identical.
+  //
+  // Deliberately NOT wired into the Florida or New York renderers: FL already
+  // prints live FDOT TMSCOUNT volumes in its own §4.3 and NY has its bespoke
+  // §3.2a, so adding this there would report the same agency data twice under
+  // two different aggregations (two-way vs directional, fixed hour vs windowed
+  // peak). Any state that reaches renderTisState has neither.
+  renderAtrMeasuredVolumes(doc, (r as any).atrSummary, {
+    headingFn: (_doc, title) => stateSub(title),
+    heading: "4.2a Measured Traffic Counts (Supplemental)",
+    estimateBasis: "the AADT-derived volumes in §4.2",
+  });
 
   if (intersections.length) {
     stateSub("4.3 Existing Intersection Operations");

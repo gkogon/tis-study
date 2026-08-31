@@ -43,9 +43,13 @@ export type AtrSegmentSummary = {
   // 4-6 PM hours.
   amPeakHourVph: number | null;
   pmPeakHourVph: number | null;
-  // Daily average across all sampled days. Useful for comparing
-  // against AADT estimates.
-  avgDailyVph: number | null;
+  // Average of DAILY TOTALS across sampled days — vehicles per DAY, not
+  // per hour. Directly comparable to AADT, which is the point of showing
+  // it. ⚠️ Named `...Veh` deliberately: this was `avgDailyVph` rendered
+  // under a "Daily (vph)" column, which printed ~50,000 vph for the West
+  // Side Highway on production. The bug was invisible until 2026-08-31
+  // because `atr_counts` had never been populated.
+  avgDailyVeh: number | null;
 };
 
 /**
@@ -66,6 +70,15 @@ const ATR_SOURCE_BY_STATE: Record<string, string> = {
   NY: "nyc_dot_atr",
   // FDOT Traffic TMSCOUNT (TDA) — hourly directional counts, all 63 counties,
   // so this genuinely is statewide rather than one city's feed.
+  //
+  // ⚠️ NOTE: the Florida renderer does NOT render this summary, on purpose. FL
+  // already prints measured FDOT counts in its own §4.3, from a LIVE TMSCOUNT
+  // query at render time (enrichTmsCountIntersections). Rendering this too
+  // would report the same agency's data twice under different aggregations
+  // (two-way / fixed 08:00 + 17:00 hour vs directional / windowed peak over a
+  // multi-year sample). Kept mapped because the ingested form is the better
+  // methodology and is the intended replacement for §4.3 — but that is a
+  // deliberate swap, not something to switch on by accident.
   FL: "fdot_tda",
 };
 
@@ -267,7 +280,7 @@ export async function atrSegmentsNearPoint(args: {
       sampleDays: Number(r.sampleDays ?? 0),
       amPeakHourVph: row.am_peak !== null ? Math.round(Number(row.am_peak)) : null,
       pmPeakHourVph: row.pm_peak !== null ? Math.round(Number(row.pm_peak)) : null,
-      avgDailyVph: row.avg_daily !== null ? Math.round(Number(row.avg_daily)) : null,
+      avgDailyVeh: row.avg_daily !== null ? Math.round(Number(row.avg_daily)) : null,
     });
   }
 

@@ -90,8 +90,12 @@ export function mapFeature(f: FdotFeature): InsertAtrCount[] {
     // and we are holding state-plane feet, which must not be stored as WGS84.
     && lat > 24.0 && lat < 31.5 && lon > -88.0 && lon < -79.5;
 
-  const street = (a.ROADWAY != null ? String(a.ROADWAY) : "").trim()
-    || (a.LOCALNAM != null ? String(a.LOCALNAM) : "").trim() || null;
+  // LOCALNAM first, ROADWAY second. ROADWAY is FDOT's 8-digit roadway ID
+  // ("87004000"), not a name — preferring it put bare ID numbers in the
+  // "Segment" column of the rendered count table. LOCALNAM is the human
+  // name; fall back to the ID only when there is no name at all.
+  const street = (a.LOCALNAM != null ? String(a.LOCALNAM) : "").trim()
+    || (a.ROADWAY != null ? String(a.ROADWAY) : "").trim() || null;
   const county = a.COUNTY != null ? String(a.COUNTY).trim() : null;
 
   const rows: InsertAtrCount[] = [];
@@ -122,10 +126,25 @@ export function mapFeature(f: FdotFeature): InsertAtrCount[] {
   return rows;
 }
 
+/**
+ * SoQL-style date literal for the WHERE clause.
+ *
+ * ⚠️ This service REJECTS an epoch-millisecond comparison against BEGDATE —
+ * `BEGDATE >= 1756...000` comes back as HTTP 400 "Cannot perform query.
+ * Invalid query parameters." on every page, so the ingest never fetched a
+ * single row. ArcGIS accepts an epoch operand on some feature services and
+ * not others; this one wants a literal. Both `DATE 'YYYY-MM-DD'` and
+ * `timestamp 'YYYY-MM-DD HH:MM:SS'` were verified live against the layer.
+ */
+function dateLiteral(ms: number): string {
+  return `DATE '${new Date(ms).toISOString().slice(0, 10)}'`;
+}
+
 async function fetchPage(offset: number, sinceMs: number, county: string | null): Promise<FdotFeature[]> {
+  const since = dateLiteral(sinceMs);
   const where = county
-    ? `COUNTY='${county.replace(/'/g, "''")}' AND BEGDATE >= ${sinceMs}`
-    : `BEGDATE >= ${sinceMs}`;
+    ? `COUNTY='${county.replace(/'/g, "''")}' AND BEGDATE >= ${since}`
+    : `BEGDATE >= ${since}`;
   const params = new URLSearchParams({
     where,
     outFields: OUT_FIELDS,
