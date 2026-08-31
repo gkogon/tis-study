@@ -57,7 +57,7 @@ export const TMAS_SOURCE = "fhwa_tmas";
 /** Ten states in scope. NJ deliberately absent — see the header. */
 const STATE_FIPS: Record<string, string> = {
   GA: "13", FL: "12", TX: "48", CA: "06", NY: "36",
-  PA: "42", MD: "24", NC: "37", SC: "45",
+  PA: "42", MD: "24", NC: "37", SC: "45", NJ: "34",
 };
 
 /** Where a state's own feed is fresher, TMAS is redundant. */
@@ -69,9 +69,32 @@ const SKIP_HAVE_BETTER_FEED: Record<string, string> = {
 const STATIONS_URL =
   "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/"
   + "NTAD_Travel_Monitoring_Analysis_System_Stations/FeatureServer/0/query";
-const VOLUME_HOST = "https://data.transportation.gov/resource/kv7k-jsg5.json";
+/**
+ * One Socrata dataset per year. 2017 exists upstream but is not published here.
+ *
+ * ⚠️ NEW JERSEY STOPPED REPORTING AFTER 2020. Measured NJ rows by year:
+ * 2023/2022/2021 = 0, 2020 = 3,908,064, 2019 = 2,592,984. So NJ is only
+ * reachable through the archive, and 2020 is a COVID year whose volumes are not
+ * representative of anything — 2019 is the last clean year and is what NJ uses.
+ */
+const DATASET_BY_YEAR: Record<number, string> = {
+  2023: "kv7k-jsg5", 2022: "ytjj-yht4", 2021: "9fns-puia", 2020: "ymmm-mwzp",
+  2019: "2hya-qc6x", 2018: "4z2n-nkpd", 2016: "qjsn-7dw8", 2015: "gjfe-peac",
+};
 
-const WINDOW = { year: 2023, month: 10, days: ["3", "4", "5"] };
+/** Latest year each state actually reports. Everything not listed uses LATEST_YEAR. */
+const LATEST_YEAR = 2023;
+const YEAR_BY_STATE: Record<string, number> = {
+  NJ: 2019,
+};
+
+/**
+ * Months sampled. Four seasonal blocks rather than one: a single October week
+ * cannot show whether a corridor is seasonal, and Florida/coastal Carolina
+ * corridors demonstrably are. Three midweek days in each -> 12 days a year,
+ * which is still an honest `sampleDays` and still a conventional count window.
+ */
+const MONTHS = [2, 5, 8, 10];
 
 /** TMG direction codes. Odd = cardinal, even = the diagonal between them. */
 const DIRECTION: Record<string, string> = {
@@ -173,22 +196,46 @@ function localHourToUtc(y: number, mo: number, d: number, hour: number, tz: stri
   return new Date(guess + (Date.UTC(y, mo - 1, d, hour) - seen));
 }
 
-/** Volume rows for one state, lanes summed server-side, midweek window only. */
-async function volumeForState(state: string): Promise<any[]> {
+/**
+ * The Tue/Wed/Thu of the second full week of a month.
+ *
+ * Computed, not hardcoded: day-of-week shifts every year, so a fixed "3,4,5"
+ * that happened to be midweek in October 2023 is a Sunday in another year. The
+ * second week avoids the 1st-of-month and holiday-adjacent edges. Verified
+ * against the real calendar: 2023-10 -> 10/11/12 (Wed is the 11th).
+ */
+function midweekDays(year: number, month: number): number[] {
+  // First Tuesday on or after the 8th, then the Wed and Thu that follow it.
+  // Scanning for "any three midweek days" instead returned 8/9/14 — a Wed, a
+  // Thu and the NEXT week's Tue, which is not a count window anyone runs.
+  for (let d = 8; d <= 21; d++) {
+    if (new Date(Date.UTC(year, month - 1, d)).getUTCDay() === 2) return [d, d + 1, d + 2];
+  }
+  return [];
+}
+
+/** Volume rows for one state-year, lanes summed server-side, midweek days only. */
+async function volumeForState(state: string, year: number): Promise<any[]> {
   const fips = STATE_FIPS[state];
-  const where = `state_cd='${fips}' AND year='${WINDOW.year}' AND month='${WINDOW.month}' `
-    + `AND day in (${WINDOW.days.map((d) => `'${d}'`).join(",")})`;
+  const dataset = DATASET_BY_YEAR[year];
+  if (!dataset) throw new Error(`no TMAS dataset for ${year}`);
+  const host = `https://data.transportation.gov/resource/${dataset}.json`;
   const rows: any[] = [];
   const PAGE = 50_000;
-  for (let offset = 0; ; offset += PAGE) {
-    const url = `${VOLUME_HOST}?$select=${encodeURIComponent("station_id,direction,day,hours,sum(veh_count) as vol")}`
-      + `&$where=${encodeURIComponent(where)}`
-      + `&$group=${encodeURIComponent("station_id,direction,day,hours")}`
-      + `&$order=${encodeURIComponent("station_id,direction,day,hours")}`
-      + `&$limit=${PAGE}&$offset=${offset}`;
-    const page = await fetchJson(url);
-    rows.push(...page);
-    if (page.length < PAGE) break;
+  for (const month of MONTHS) {
+    const days = midweekDays(year, month);
+    const where = `state_cd='${fips}' AND month='${month}' `
+      + `AND day in (${days.map((d) => `'${d}'`).join(",")})`;
+    for (let offset = 0; ; offset += PAGE) {
+      const url = `${host}?$select=${encodeURIComponent("station_id,direction,month,day,hours,sum(veh_count) as vol")}`
+        + `&$where=${encodeURIComponent(where)}`
+        + `&$group=${encodeURIComponent("station_id,direction,month,day,hours")}`
+        + `&$order=${encodeURIComponent("station_id,direction,month,day,hours")}`
+        + `&$limit=${PAGE}&$offset=${offset}`;
+      const page = await fetchJson(url);
+      rows.push(...page);
+      if (page.length < PAGE) break;
+    }
   }
   return rows;
 }
@@ -197,44 +244,47 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const dry = argv.includes("--dry");
   const only = argv.find((a) => a.startsWith("--state="))?.split("=")[1]?.toUpperCase();
+  const yearArg = argv.find((a) => a.startsWith("--year="))?.split("=")[1];
   const includeCovered = argv.includes("--include-covered");
 
   const states = Object.keys(STATE_FIPS)
     .filter((s) => (only ? s === only : true))
     .filter((s) => (includeCovered || only === s ? true : !SKIP_HAVE_BETTER_FEED[s]));
 
-  console.log(`ingest-atr-tmas: window ${WINDOW.year}-${WINDOW.month} days ${WINDOW.days.join("/")} `
-    + `(Tue/Wed/Thu), states=${states.join(",")}, dry=${dry}`);
+  console.log(`ingest-atr-tmas: months ${MONTHS.join("/")}, 3 midweek days each, `
+    + `states=${states.join(",")}, dry=${dry}`);
   for (const [s, why] of Object.entries(SKIP_HAVE_BETTER_FEED)) {
     if (!states.includes(s)) console.log(`  skipping ${s}: ${why}`);
   }
 
   let grandRows = 0;
-  let grandStations = 0;
+  const perState: string[] = [];
   for (const state of states) {
+    const year = yearArg ? Number(yearArg) : (YEAR_BY_STATE[state] ?? LATEST_YEAR);
     const stations = await stationsForState(state);
     const byId = new Map(stations.map((s) => [s.id, s]));
-    process.stdout.write(`  ${state}: ${stations.length} stations in served regions… `);
+    process.stdout.write(`  ${state} ${year}: ${stations.length} stations in served regions… `);
     if (stations.length === 0) { console.log("nothing to do"); continue; }
 
-    const vol = await volumeForState(state);
+    const vol = await volumeForState(state, year);
     const mapped: InsertAtrCount[] = [];
     let unmatched = 0;
     for (const v of vol) {
       const st = byId.get(normId(String(v.station_id ?? "")));
       if (!st) { unmatched++; continue; }
       const hour = Number(String(v.hours ?? "").split(":")[0]);
+      const month = Number(v.month);
       const day = Number(v.day);
       const n = Number(v.vol);
-      if (!Number.isFinite(hour) || !Number.isFinite(day) || !Number.isFinite(n) || n < 0) continue;
+      if (![hour, month, day, n].every(Number.isFinite) || n < 0) continue;
       mapped.push({
         source: TMAS_SOURCE,
         // Station ids repeat across states ("000001" exists in many), so the
         // segment key MUST carry the state or two states collide on the
         // (source, segment, direction, occurred_at) unique index.
-        sourceRequestId: `${state}-${st.id}-${WINDOW.year}${WINDOW.month}${v.day}`,
+        sourceRequestId: `${state}-${st.id}-${year}${month}${day}`,
         sourceSegmentId: `${state}-${st.id}`,
-        occurredAt: localHourToUtc(WINDOW.year, WINDOW.month, day, hour, st.tz),
+        occurredAt: localHourToUtc(year, month, day, hour, st.tz),
         durationMinutes: 60,
         vol: n,
         // The stations layer carries no road name — only an id, a functional
@@ -251,17 +301,19 @@ async function main(): Promise<void> {
         longitude: st.lon,
       });
     }
-    console.log(`${vol.length.toLocaleString()} volume rows -> ${mapped.length.toLocaleString()} bins`
+    const segs = new Set(mapped.map((m) => m.sourceSegmentId)).size;
+    console.log(`${vol.length.toLocaleString()} rows -> ${mapped.length.toLocaleString()} bins, ${segs} stations`
       + (unmatched ? ` (${unmatched.toLocaleString()} outside served regions)` : ""));
+    perState.push(`${state}:${year}=${mapped.length.toLocaleString()}`);
 
     for (let i = 0; i < mapped.length; i += BATCH_INSERT_SIZE) {
       await upsertAtrBatch(mapped.slice(i, i + BATCH_INSERT_SIZE), dry);
     }
     grandRows += mapped.length;
-    grandStations += new Set(mapped.map((m) => m.sourceSegmentId)).size;
   }
 
-  console.log(`ingest-atr-tmas: stations=${grandStations} rows=${grandRows.toLocaleString()} dry=${dry}`);
+  console.log(`ingest-atr-tmas: ${perState.join(" ")}`);
+  console.log(`ingest-atr-tmas: rows=${grandRows.toLocaleString()} dry=${dry}`);
 }
 
 main().then(() => process.exit(0)).catch((e) => {

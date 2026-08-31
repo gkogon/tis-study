@@ -118,6 +118,24 @@ export function renderAtrMeasuredVolumes(
     citation: s.source,
   };
   const nearestMi = Math.min(...s.segments.map((x) => x.distanceMi).filter((d) => Number.isFinite(d)));
+
+  // Vintage. A historical archive can be years old — New Jersey stopped
+  // reporting to TMAS after 2020, so its newest usable data is 2019. The count
+  // date is already in the table, but a reviewer skimming the prose should not
+  // have to infer staleness from a column; and an old count is still perfectly
+  // usable IF growth is applied to it, which is the sentence they need.
+  const newest = s.segments
+    .map((x) => Date.parse(`${x.latestCountDate}T00:00:00Z`))
+    .filter((t) => Number.isFinite(t))
+    .sort((a, b) => b - a)[0];
+  const ageYears = Number.isFinite(newest)
+    ? (Date.now() - newest) / (365.25 * 24 * 3600 * 1000)
+    : 0;
+  const vintageNote = ageYears >= 3
+    ? ` These counts are from ${new Date(newest).getUTCFullYear()} — roughly `
+      + `${Math.round(ageYears)} years old. They remain valid as a measured baseline, but background `
+      + `growth must be applied from the count year forward, and a current count supersedes them.`
+    : "";
   const n = s.segments.length;
   const plural = n === 1 ? "" : "s";
 
@@ -141,6 +159,7 @@ export function renderAtrMeasuredVolumes(
         + `rather than the site. Treat it as a sanity check on `
         + `${opts.estimateBasis ?? "the estimated existing volumes above"} and as a defensible basis for `
         + `growth, not as the project's turning-movement counts, which must still be collected.`
+        + vintageNote
     : `The volumes below are Automated Traffic Recorder (ATR) counts published by ${prov.agency}, at `
         + `${n} count location${plural} within ${s.radiusMi.toFixed(2)} miles of the site, looking back `
         + `${s.windowYears} year${s.windowYears === 1 ? "" : "s"}. These are MEASURED, not modeled — `
@@ -148,7 +167,7 @@ export function renderAtrMeasuredVolumes(
         + `are derived rather than counted. Where a measured segment and the estimate disagree materially, `
         + `the measured count governs and the estimate should be re-run against it. ATR is directional `
         + `SEGMENT volume, not per-approach turning movement counts; TMCs at the affected intersection${plural} `
-        + `must still be collected separately for formal submittal.`;
+        + `must still be collected separately for formal submittal.` + vintageNote;
   doc.font("body").fontSize(10).fillColor("black").text(body, { paragraphGap: 6 });
 
   const headers = ["Segment", "Dir.", "Dist (mi)", "Latest count", "Days", "AM peak (vph)", "PM peak (vph)", "Daily (veh/day)"];
