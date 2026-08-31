@@ -47,7 +47,8 @@ import { enrichGdotIntersections, fetchGdotSiteSnapshot } from "./gdot-live-data
 import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite, getGml239Status, getCbdtpStatus } from "./nysdot-data";
 import { getNycTransitContext } from "./nyc-transit-data";
 import { crashesNearPoint } from "./crashes";
-import { atrSegmentsNearPoint, atrSourceForRegion } from "./atr-counts";
+import { atrSegmentsNearPoint, atrSourceForRegion, atrTimeZoneForRegion } from "./atr-counts";
+import { renderAtrMeasuredVolumes } from "./atr-measured-volumes";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
 import {
@@ -460,6 +461,9 @@ export async function renderStudyPdf(
           try {
             const s = await atrSegmentsNearPoint({
               lat, lon, radiusMi: 1.0, windowYears: 3, source: atrSource,
+              // Local-hour bucketing follows the STUDY's region, not Eastern —
+              // otherwise a California AM peak reads three hours late.
+              timeZone: atrTimeZoneForRegion(region),
             });
             if (s.segments.length > 0) {
               // Generic field, so a renderer for any metro can read it.
@@ -1850,6 +1854,15 @@ function renderTisGeorgia(
   doc.moveDown(0.5);
 
   // --- §4 Trip Generation (detailed) -------------------------------------
+  // Measured agency counts, when this study's state has an ingested feed and a
+  // station falls within the search radius. Renders nothing otherwise, so a
+  // study with no coverage is byte-identical.
+  renderAtrMeasuredVolumes(doc, (r as any).atrSummary, {
+    headingFn: (_doc, title) => gaSubsection(doc, title),
+    heading: "3.6 Measured Traffic Counts (Supplemental)",
+    estimateBasis: "the existing volumes underlying §3.5",
+  });
+
   gaSection(doc, "4.0 TRIP GENERATION");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Net new trips applied to the study network are calculated by subtracting pass-by capture and internal capture from the gross trip generation. Gross trip rates are drawn from public data (SANDAG 2002 / NHTS 2017 / NCHRP 716); a submittal-grade study should confirm rates against the jurisdiction-approved source.",
@@ -2774,6 +2787,15 @@ function renderTisCalifornia(
     "Level of Service (LOS) is calculated from average control delay per vehicle: Webster's uniform-delay equation (F. V. Webster, Traffic Signal Settings, Road Research Technical Paper No. 39, Road Research Laboratory / HMSO, London, 1958) plus Akcelik's time-dependent overflow term, with a standard undersaturated cyclic back-of-queue relation at the 95th percentile. Control-delay bands (as republished in state DOT traffic-engineering manuals): A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F >80s of average control delay per vehicle. Caltrans Highway Design Manual (HDM, 7th Edition) Topic 102 + Ch. 400 governs LOS-based design capacity for SHS facilities. CA MUTCD 2026 Part 4C governs signal-warrant analyses.",
     { paragraphGap: 6 },
   );
+
+  // Measured agency counts, when this study's state has an ingested feed and a
+  // station falls within the search radius. Renders nothing otherwise, so a
+  // study with no coverage is byte-identical.
+  renderAtrMeasuredVolumes(doc, (r as any).atrSummary, {
+    headingFn: (_doc, title) => caSubsection(doc, title),
+    heading: "4.1a Measured Traffic Counts (Supplemental)",
+    estimateBasis: "the operational volumes used in this non-CEQA analysis",
+  });
 
   caSubsection(doc, "4.2 Trip Generation");
   if (r.growthSource) {
@@ -5937,6 +5959,15 @@ function renderTisTexas(
     "Existing AADT for state-system segments is taken from the TxDOT Open Data Portal AADT layer (annual refresh). Peak-hour turning-movement counts at study intersections should be collected mid-week (Tue/Wed/Thu), school-in-session, within 12 months of submittal — per Houston IDM §15.06.01.A counts must be within 12 months in high-growth areas and within 24 months elsewhere; Austin TDS no longer accepts pre-COVID counts by default.",
     { paragraphGap: 6 },
   );
+  // Measured agency counts, when this study's state has an ingested feed and a
+  // station falls within the search radius. Renders nothing otherwise, so a
+  // study with no coverage is byte-identical.
+  renderAtrMeasuredVolumes(doc, (r as any).atrSummary, {
+    headingFn: (_doc, title) => gaSubsection(doc, title),
+    heading: "4.3a Measured Traffic Counts (Supplemental)",
+    estimateBasis: "the AADT-derived volumes in §4.3",
+  });
+
   gaSubsection(doc, "4.4 Level of Service");
   if (intersections.length > 0) {
     table(doc, {

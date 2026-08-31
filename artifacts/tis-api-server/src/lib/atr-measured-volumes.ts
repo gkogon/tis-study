@@ -56,6 +56,13 @@ const SOURCE_PROVENANCE: Record<string, { agency: string; citation: string }> = 
     agency: "FDOT",
     citation: "FDOT Traffic Monitoring TMSCOUNT / Transportation Data & Analytics (Traffic_TMSCOUNT_TDA)",
   },
+  fhwa_tmas: {
+    agency: "the state DOT, via FHWA",
+    citation:
+      "FHWA Travel Monitoring Analysis System (TMAS) continuous-count volumes, 2023 "
+      + "(data.transportation.gov / kv7k-jsg5), station coordinates from the NTAD TMAS Stations layer. "
+      + "Counts are collected and reported by the state highway agency",
+  },
 };
 
 /** Shorten `text` until it fits `maxW` at the doc's current font/size. */

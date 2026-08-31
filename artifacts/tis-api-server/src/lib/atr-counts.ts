@@ -80,7 +80,55 @@ const ATR_SOURCE_BY_STATE: Record<string, string> = {
   // methodology and is the intended replacement for §4.3 — but that is a
   // deliberate swap, not something to switch on by accident.
   FL: "fdot_tda",
+  // FHWA TMAS — the national continuous-count feed. One adapter, 49 reporting
+  // states. Used wherever there is no fresher state-specific feed: NY keeps
+  // nyc_dot_atr (through 2026-02) and FL keeps fdot_tda (rolling 365 days),
+  // because TMAS's latest published year is 2023.
+  //
+  // ⚠️ NEW JERSEY IS ABSENT ON PURPOSE. NJ has stations in the TMAS stations
+  // layer but reports NO volume rows (FIPS 34 returns zero), so mapping it here
+  // would run a query that can never return anything. NJ's own open feed is
+  // AADT-only and stale since 2024-03. See [[reference_measured_counts_sources]].
+  GA: "fhwa_tmas",
+  TX: "fhwa_tmas",
+  CA: "fhwa_tmas",
+  PA: "fhwa_tmas",
+  MD: "fhwa_tmas",
+  NC: "fhwa_tmas",
+  SC: "fhwa_tmas",
 };
+
+/**
+ * IANA zone used to bucket an ATR bin into a LOCAL hour.
+ *
+ * The peak-hour SQL used to hardcode America/New_York, which was correct while
+ * the only feeds were NYC DOT and FDOT. A national feed breaks that: a 08:00
+ * California peak read in Eastern lands at 11:00 and misses the 7-9 AM window
+ * entirely, so the "AM peak" column would print a mid-morning volume.
+ *
+ * Keyed by region first for the two states that straddle a boundary (El Paso is
+ * Mountain in an otherwise Central state; the Florida panhandle is Central in an
+ * otherwise Eastern one), then by state. Default stays Eastern so NY and FL
+ * results are unchanged.
+ */
+const ATR_TZ_BY_REGION: Record<string, string> = {
+  el_paso_metro: "America/Denver",
+  pensacola_metro: "America/Chicago",
+};
+const ATR_TZ_BY_STATE: Record<string, string> = {
+  CA: "America/Los_Angeles",
+  TX: "America/Chicago",
+};
+export const ATR_DEFAULT_TZ = "America/New_York";
+
+export function atrTimeZoneForRegion(
+  region: { code?: string | null; stateCode?: string | null } | null | undefined,
+): string {
+  if (!region) return ATR_DEFAULT_TZ;
+  const byRegion = region.code ? ATR_TZ_BY_REGION[region.code] : undefined;
+  if (byRegion) return byRegion;
+  return (region.stateCode ? ATR_TZ_BY_STATE[region.stateCode] : undefined) ?? ATR_DEFAULT_TZ;
+}
 
 export function atrSourceForRegion(
   region: { code?: string | null; stateCode?: string | null; country?: string | null } | null | undefined,
@@ -133,12 +181,15 @@ export async function atrSegmentsNearPoint(args: {
   windowYears: number;
   source?: string;
   maxSegments?: number;
+  /** IANA zone for local-hour bucketing; see atrTimeZoneForRegion. */
+  timeZone?: string;
 }): Promise<AtrSummary> {
   // No default source. It used to default to "nyc_dot_atr", which silently made
   // every caller a NYC caller — the reason ingesting another metro would have
   // changed nothing. Callers resolve the source from the region instead
   // (atrSourceForRegion) and skip the query when there isn't one.
   const { lat, lon, radiusMi, windowYears, source } = args;
+  const tz = args.timeZone ?? ATR_DEFAULT_TZ;
   if (!source) return { windowYears, radiusMi, segments: [], source: "", totalSegmentsFound: 0 };
   const maxSegments = args.maxSegments ?? 8;
 
@@ -226,8 +277,8 @@ export async function atrSegmentsNearPoint(args: {
       WITH hourly AS (
         SELECT
           date_trunc('hour', occurred_at) AS hour_start,
-          extract(hour FROM occurred_at AT TIME ZONE 'America/New_York') AS local_hour,
-          extract(dow FROM occurred_at AT TIME ZONE 'America/New_York') AS local_dow,
+          extract(hour FROM occurred_at AT TIME ZONE ${tz}) AS local_hour,
+          extract(dow FROM occurred_at AT TIME ZONE ${tz}) AS local_dow,
           sum(vol) AS hourly_vol
         FROM atr_counts
         WHERE source = ${source}
@@ -247,7 +298,7 @@ export async function atrSegmentsNearPoint(args: {
       ),
       daily AS (
         SELECT avg(daily_vol)::numeric AS avg_daily FROM (
-          SELECT date_trunc('day', occurred_at AT TIME ZONE 'America/New_York') AS day, sum(vol) AS daily_vol
+          SELECT date_trunc('day', occurred_at AT TIME ZONE ${tz}) AS day, sum(vol) AS daily_vol
           FROM atr_counts
           WHERE source = ${source}
             AND source_segment_id = ${r.segmentId}
