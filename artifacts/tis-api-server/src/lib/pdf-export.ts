@@ -47,7 +47,7 @@ import { enrichGdotIntersections, fetchGdotSiteSnapshot } from "./gdot-live-data
 import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite, getGml239Status, getCbdtpStatus } from "./nysdot-data";
 import { getNycTransitContext } from "./nyc-transit-data";
 import { crashesNearPoint } from "./crashes";
-import { atrSegmentsNearPoint, atrSourceForRegion, atrTimeZoneForRegion } from "./atr-counts";
+import { atrSegmentsNearPoint, atrSourceForRegion, atrTimeZoneForRegion, atrRadiusForSource } from "./atr-counts";
 import { renderAtrMeasuredVolumes } from "./atr-measured-volumes";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
@@ -452,15 +452,16 @@ export async function renderStudyPdf(
       // resolved from the region registry (atrSourceForRegion); a region with
       // no registered feed skips the query entirely.
       //
-      // 1.0 mi radius because count programs sample a rotating subset rather
-      // than the full grid, so the nearest segment is often past 0.5 mi.
+      // Radius is per-source (atrRadiusForSource): 1.0 mi for the dense local
+      // programs, 3.0 mi for the national continuous-count network, whose
+      // permanent stations sit roughly one per corridor.
       {
         const atrResult = project.resultPayload as Record<string, unknown> | null;
         const atrSource = atrSourceForRegion(region);
         if (atrSource && atrResult && typeof atrResult === "object") {
           try {
             const s = await atrSegmentsNearPoint({
-              lat, lon, radiusMi: 1.0, windowYears: 3, source: atrSource,
+              lat, lon, radiusMi: atrRadiusForSource(atrSource), windowYears: 3, source: atrSource,
               // Local-hour bucketing follows the STUDY's region, not Eastern —
               // otherwise a California AM peak reads three hours late.
               timeZone: atrTimeZoneForRegion(region),

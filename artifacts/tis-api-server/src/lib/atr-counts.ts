@@ -141,6 +141,30 @@ export function atrSourceForRegion(
   return byState ?? null;
 }
 
+/**
+ * Search radius by source. Count programs differ in KIND, not just coverage.
+ *
+ * NYC DOT and FDOT run dense local/short-count programs — a station within a
+ * mile is plausibly on a study approach. FHWA TMAS is the national CONTINUOUS
+ * COUNT STATION network: permanent highway stations, roughly one per major
+ * corridor. Measured nearest-station distance from real metro sites: Charlotte
+ * 0.79 mi, Charleston 2.23, Atlanta 3.27, Baltimore 4.71, LA 5.66, Dallas 10.98,
+ * Philadelphia 12.00. At 1.0 mi TMAS would essentially never return a row.
+ *
+ * 3.0 mi is the compromise: far enough to find the corridor station, near enough
+ * that it is still the same traffic shed. It is NOT widened further, because a
+ * count twelve miles away on a different facility tells a reviewer nothing about
+ * the study intersection, and printing it under a "measured" heading would be a
+ * worse failure than printing nothing.
+ */
+const ATR_RADIUS_MI_BY_SOURCE: Record<string, number> = {
+  fhwa_tmas: 3.0,
+};
+export const ATR_DEFAULT_RADIUS_MI = 1.0;
+export function atrRadiusForSource(source: string | null | undefined): number {
+  return (source ? ATR_RADIUS_MI_BY_SOURCE[source] : undefined) ?? ATR_DEFAULT_RADIUS_MI;
+}
+
 export type AtrSummary = {
   windowYears: number;
   radiusMi: number;

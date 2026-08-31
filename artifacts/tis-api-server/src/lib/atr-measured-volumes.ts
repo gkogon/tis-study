@@ -47,7 +47,7 @@ export type AtrSummaryLike = {
  * Provenance per ingested source. Keep the citation exact — this block's whole
  * value is that a reviewer can go pull the same public file and check us.
  */
-const SOURCE_PROVENANCE: Record<string, { agency: string; citation: string }> = {
+const SOURCE_PROVENANCE: Record<string, { agency: string; citation: string; corridorLevel?: boolean }> = {
   nyc_dot_atr: {
     agency: "NYC DOT",
     citation: "NYC DOT Automated Traffic Volume Counts (data.cityofnewyork.us / 7ym2-wayt)",
@@ -57,6 +57,12 @@ const SOURCE_PROVENANCE: Record<string, { agency: string; citation: string }> = 
     citation: "FDOT Traffic Monitoring TMSCOUNT / Transportation Data & Analytics (Traffic_TMSCOUNT_TDA)",
   },
   fhwa_tmas: {
+    // Permanent highway stations, roughly one per major corridor — NOT a local
+    // count grid. Nearest-station distance from real metro sites ranged 0.79 to
+    // 12.00 miles. The prose below changes accordingly: at that distance the
+    // count characterises the CORRIDOR, and claiming it validates the site
+    // estimate would be the same class of overclaim this report has been purged of.
+    corridorLevel: true,
     agency: "the state DOT, via FHWA",
     citation:
       "FHWA Travel Monitoring Analysis System (TMAS) continuous-count volumes, 2023 "
@@ -111,6 +117,7 @@ export function renderAtrMeasuredVolumes(
     agency: "the state or local agency",
     citation: s.source,
   };
+  const nearestMi = Math.min(...s.segments.map((x) => x.distanceMi).filter((d) => Number.isFinite(d)));
   const n = s.segments.length;
   const plural = n === 1 ? "" : "s";
 
@@ -118,17 +125,31 @@ export function renderAtrMeasuredVolumes(
   if (opts.headingFn) opts.headingFn(doc, heading);
   else doc.font("bold").fontSize(11).fillColor("black").text(heading, { paragraphGap: 6 });
 
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `The volumes below are Automated Traffic Recorder (ATR) counts published by ${prov.agency}, at `
-      + `${n} count location${plural} within ${s.radiusMi.toFixed(2)} miles of the site, looking back `
-      + `${s.windowYears} year${s.windowYears === 1 ? "" : "s"}. These are MEASURED, not modeled — `
-      + `they exist to validate ${opts.estimateBasis ?? "the estimated existing volumes above"}, which `
-      + `are derived rather than counted. Where a measured segment and the estimate disagree materially, `
-      + `the measured count governs and the estimate should be re-run against it. ATR is directional `
-      + `SEGMENT volume, not per-approach turning movement counts; TMCs at the affected intersection${plural} `
-      + `must still be collected separately for formal submittal.`,
-    { paragraphGap: 6 },
-  );
+  // Two different claims, because two different kinds of station. A local
+  // short-count program a few hundred feet away really does validate the
+  // estimate; a permanent corridor station three miles off does not, and saying
+  // it does would be the same class of overclaim this report has been purged of.
+  const body = prov.corridorLevel
+    ? `The volumes below come from the nearest permanent continuous-count station${plural} to the site `
+        + `— ${n} station${plural}, the closest ${nearestMi.toFixed(2)} miles away — operated by `
+        + `${prov.agency}. These are MEASURED, and they establish the order of magnitude and the `
+        // No emoji in PDF prose: PDFKit's Helvetica has no glyph for U+26A0 and
+        // it rendered as "& þ" in the generated report.
+        + `directional split actually observed on the corridor. They are NOT a substitute for counts `
+        + `at the study intersection${plural}: a continuous-count station sits on a highway or major `
+        + `arterial, typically one per corridor, and at this distance it characterises the corridor `
+        + `rather than the site. Treat it as a sanity check on `
+        + `${opts.estimateBasis ?? "the estimated existing volumes above"} and as a defensible basis for `
+        + `growth, not as the project's turning-movement counts, which must still be collected.`
+    : `The volumes below are Automated Traffic Recorder (ATR) counts published by ${prov.agency}, at `
+        + `${n} count location${plural} within ${s.radiusMi.toFixed(2)} miles of the site, looking back `
+        + `${s.windowYears} year${s.windowYears === 1 ? "" : "s"}. These are MEASURED, not modeled — `
+        + `they exist to validate ${opts.estimateBasis ?? "the estimated existing volumes above"}, which `
+        + `are derived rather than counted. Where a measured segment and the estimate disagree materially, `
+        + `the measured count governs and the estimate should be re-run against it. ATR is directional `
+        + `SEGMENT volume, not per-approach turning movement counts; TMCs at the affected intersection${plural} `
+        + `must still be collected separately for formal submittal.`;
+  doc.font("body").fontSize(10).fillColor("black").text(body, { paragraphGap: 6 });
 
   const headers = ["Segment", "Dir.", "Dist (mi)", "Latest count", "Days", "AM peak (vph)", "PM peak (vph)", "Daily (veh/day)"];
   // Must sum to <= 512 (612pt letter less two 50pt margins).
