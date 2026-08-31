@@ -20,6 +20,7 @@
  */
 import type { Region } from "./regions";
 import { appliedRateRows } from "./trip-rate-rows";
+import { renderAtrMeasuredVolumes } from "./atr-measured-volumes";
 
 type StoredProject = {
   id: string;
@@ -414,6 +415,14 @@ export function renderTisNorthCarolina(
   });
 
   // --- 6.0 Mitigation criteria check (Ch. 5.J) ---
+  // Measured agency counts where an ingested feed covers this site. Renders
+  // nothing without coverage, so studies outside it stay byte-identical.
+  renderAtrMeasuredVolumes(doc, (r as any).atrSummary, {
+    headingFn: (_doc, title) => carSubsection(doc, title),
+    heading: "3.1 Measured Traffic Counts (Supplemental)",
+    estimateBasis: "the analysis volumes in §3.0",
+  });
+
   carSection(doc, "4.0 MITIGATION CRITERIA CHECK (POLICY CH. 5.J)");
   carBody(doc,
     "NCDOT requires improvements when, comparing base-network and project conditions: total average delay increases by 25% or more while remaining at the same LOS; the LOS degrades by one level; or the intersection operates at LOS F. Turn-lane mitigation applies where the 95th-percentile queue exceeds existing storage. Signal-timing changes alone are not considered mitigation. The District Engineer makes the final mitigation determination.");
@@ -552,6 +561,14 @@ export function renderTisSouthCarolina(
   });
 
   // --- 5.0 Findings / access mgmt / warrants ---
+  // Measured agency counts where an ingested feed covers this site. Renders
+  // nothing without coverage, so studies outside it stay byte-identical.
+  renderAtrMeasuredVolumes(doc, (r as any).atrSummary, {
+    headingFn: (_doc, title) => carSubsection(doc, title),
+    heading: "3.1 Measured Traffic Counts (Supplemental)",
+    estimateBasis: "the volumes developed in §3.0",
+  });
+
   carSection(doc, "4.0 FINDINGS, ACCESS MANAGEMENT, AND SIGNAL WARRANTS");
   carBody(doc,
     losEf === 0 && losDrops === 0
