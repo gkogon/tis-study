@@ -252,8 +252,15 @@ export async function atrSegmentsNearPoint(args: {
       latitude: atrCountsTable.latitude,
       longitude: atrCountsTable.longitude,
       distance: haversine,
-      latest: sql<Date>`max(${atrCountsTable.occurredAt})`,
-      sampleDays: sql<number>`count(distinct date_trunc('day', ${atrCountsTable.occurredAt}))`,
+      // Both of these are bucketed in the STUDY's local zone, not UTC. In UTC a
+      // three-day midweek count spills into a fourth calendar day the moment it
+      // includes an evening hour (23:00 EDT on Oct 5 is 03:00 UTC on Oct 6), so
+      // `sampleDays` over-reported 4 for a 3-day count and `latestCountDate`
+      // printed a day the count never covered. Both are printed to a reviewing
+      // engineer as evidence of how much observation backs the number, so an
+      // inflated count is exactly the wrong error to make.
+      latest: sql<string>`to_char(max(${atrCountsTable.occurredAt}) AT TIME ZONE ${tz}, 'YYYY-MM-DD')`,
+      sampleDays: sql<number>`count(distinct date_trunc('day', ${atrCountsTable.occurredAt} AT TIME ZONE ${tz}))`,
     })
     .from(atrCountsTable)
     .where(
@@ -351,7 +358,9 @@ export async function atrSegmentsNearPoint(args: {
       // drizzle returns max(occurred_at) as the raw Postgres string for
       // some configurations; coerce defensively rather than asserting
       // it's a Date.
-      latestCountDate: new Date(r.latest as unknown as string | Date).toISOString().slice(0, 10),
+      // Already a local-zone 'YYYY-MM-DD' string from SQL; re-parsing it through
+      // Date would push it back into UTC and undo the fix above.
+      latestCountDate: String(r.latest ?? "").slice(0, 10),
       sampleDays: Number(r.sampleDays ?? 0),
       amPeakHourVph: row.am_peak !== null ? Math.round(Number(row.am_peak)) : null,
       pmPeakHourVph: row.pm_peak !== null ? Math.round(Number(row.pm_peak)) : null,
