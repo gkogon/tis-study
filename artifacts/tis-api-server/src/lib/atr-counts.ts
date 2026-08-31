@@ -50,6 +50,9 @@ export type AtrSegmentSummary = {
   // Side Highway on production. The bug was invisible until 2026-08-31
   // because `atr_counts` had never been populated.
   avgDailyVeh: number | null;
+  /** Same-window average daily volume per calendar year, ascending. Empty when
+   *  only one year has been ingested for this station. */
+  yearly: Array<{ year: number; avgDailyVeh: number }>;
 };
 
 /**
@@ -329,6 +332,7 @@ export async function atrSegmentsNearPoint(args: {
       am_peak: number | null;
       pm_peak: number | null;
       avg_daily: number | null;
+      yearly: Array<{ year: number; avgDaily: number }> | null;
     }>(sql`
       WITH hourly AS (
         SELECT
@@ -363,10 +367,31 @@ export async function atrSegmentsNearPoint(args: {
           GROUP BY 1
         ) t
       )
+      ,
+      -- Same-station, same-window volume by calendar year. The ingest samples
+      -- the SAME midweek days in the SAME four months every year, so a
+      -- year-over-year comparison here is like-for-like: no seasonal drift, no
+      -- day-of-week drift, same physical sensor. That is what makes it usable
+      -- as growth evidence rather than two unrelated numbers.
+      yearly AS (
+        SELECT extract(year FROM day)::int AS yr, avg(daily_vol)::numeric AS avg_daily
+        FROM (
+          SELECT date_trunc('day', occurred_at AT TIME ZONE ${tz}) AS day, sum(vol) AS daily_vol
+          FROM atr_counts
+          WHERE source = ${source}
+            AND source_segment_id = ${r.segmentId}
+            AND direction = ${r.direction}
+            AND occurred_at >= ${since}
+          GROUP BY 1
+        ) t
+        GROUP BY 1
+      )
       SELECT
         (SELECT peak FROM am_window) AS am_peak,
         (SELECT peak FROM pm_window) AS pm_peak,
-        (SELECT avg_daily FROM daily) AS avg_daily
+        (SELECT avg_daily FROM daily) AS avg_daily,
+        (SELECT json_agg(json_build_object('year', yr, 'avgDaily', round(avg_daily)) ORDER BY yr)
+           FROM yearly) AS yearly
     `);
 
     const row = peakRow.rows[0] ?? { am_peak: null, pm_peak: null, avg_daily: null };
@@ -390,6 +415,10 @@ export async function atrSegmentsNearPoint(args: {
       amPeakHourVph: row.am_peak !== null ? Math.round(Number(row.am_peak)) : null,
       pmPeakHourVph: row.pm_peak !== null ? Math.round(Number(row.pm_peak)) : null,
       avgDailyVeh: row.avg_daily !== null ? Math.round(Number(row.avg_daily)) : null,
+      yearly: Array.isArray(row.yearly)
+        ? row.yearly.map((y) => ({ year: Number(y.year), avgDailyVeh: Number(y.avgDaily) }))
+            .filter((y) => Number.isFinite(y.year) && Number.isFinite(y.avgDailyVeh))
+        : [],
     });
   }
 

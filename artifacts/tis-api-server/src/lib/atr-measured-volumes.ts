@@ -33,6 +33,8 @@ export type AtrSegmentRow = {
   pmPeakHourVph: number | null;
   /** Vehicles per DAY, not per hour — comparable to AADT. */
   avgDailyVeh: number | null;
+  /** Same-window average daily volume per year, ascending. May be absent. */
+  yearly?: Array<{ year: number; avgDailyVeh: number }>;
 };
 
 export type AtrSummaryLike = {
@@ -217,6 +219,52 @@ export function renderAtrMeasuredVolumes(
   for (const r of rows) drawRow(r, false);
   doc.y = y + 4;
   doc.x = PAGE_MARGIN;
+
+  // Measured growth, where the same station has two or more sampled years.
+  // This is the one place in the report where a growth rate can be checked
+  // against an actual sensor instead of a published default, so it is stated
+  // as observation, NOT substituted for the engine's growth rate — swapping the
+  // computed rate for this would re-baseline every study, which is a separate
+  // decision.
+  const trends = s.segments
+    .map((seg) => {
+      const ys = (seg.yearly ?? []).filter((y) => y.avgDailyVeh > 0);
+      if (ys.length < 2) return null;
+      const first = ys[0];
+      const last = ys[ys.length - 1];
+      const span = last.year - first.year;
+      if (span <= 0) return null;
+      const totalPct = ((last.avgDailyVeh - first.avgDailyVeh) / first.avgDailyVeh) * 100;
+      const cagrPct = (Math.pow(last.avgDailyVeh / first.avgDailyVeh, 1 / span) - 1) * 100;
+      return { seg, first, last, span, totalPct, cagrPct };
+    })
+    .filter((t): t is NonNullable<typeof t> => t !== null);
+
+  if (trends.length > 0) {
+    const rates = trends.map((t) => t.cagrPct).sort((a, b) => a - b);
+    // True median: with an even count, average the two middle values. Taking
+    // rates[len/2] outright picks the UPPER of the pair, which for a growth rate
+    // is the wrong direction to be wrong in — two stations at -0.24 and +2.19
+    // would have been reported as a +2.19%/yr "median".
+    const mid = rates.length >> 1;
+    const median = rates.length % 2 === 1 ? rates[mid] : (rates[mid - 1] + rates[mid]) / 2;
+    const detail = trends
+      .map((t) => `${t.seg.street ?? "station"} ${t.seg.direction}: `
+        + `${num(t.first.avgDailyVeh)} (${t.first.year}) to ${num(t.last.avgDailyVeh)} (${t.last.year}), `
+        + `${t.totalPct >= 0 ? "+" : ""}${t.totalPct.toFixed(1)}% over ${t.span} years `
+        + `(${t.cagrPct >= 0 ? "+" : ""}${t.cagrPct.toFixed(2)}%/yr)`)
+      .join("; ");
+    doc.font("body").fontSize(9).fillColor("black").text(
+      `MEASURED GROWTH AT THESE STATIONS. The same sensors, sampled on the same midweek days in the `
+        + `same months of each year, recorded: ${detail}. Median observed growth is `
+        + `${median >= 0 ? "+" : ""}${median.toFixed(2)}% per year. This is an OBSERVATION offered so the `
+        + `background growth rate applied elsewhere in this study can be checked against a real sensor; `
+        + `it is not itself applied, and a corridor-specific rate adopted by the reviewing agency governs. `
+        + `A two-point comparison spanning 2019 to 2023 also brackets the pandemic, so it reflects `
+        + `post-pandemic recovery as well as underlying growth.`,
+      { paragraphGap: 6 },
+    );
+  }
 
   doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
     `Source: ${prov.citation}. AM peak = max weekday hourly volume 7:00-9:00 local. PM peak = max weekday `
