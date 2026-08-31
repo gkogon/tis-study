@@ -90,8 +90,12 @@ export function mapFeature(f: FdotFeature): InsertAtrCount[] {
     // and we are holding state-plane feet, which must not be stored as WGS84.
     && lat > 24.0 && lat < 31.5 && lon > -88.0 && lon < -79.5;
 
-  const street = (a.ROADWAY != null ? String(a.ROADWAY) : "").trim()
-    || (a.LOCALNAM != null ? String(a.LOCALNAM) : "").trim() || null;
+  // LOCALNAM first, ROADWAY second. ROADWAY is FDOT's 8-digit roadway ID
+  // ("87004000"), not a name — preferring it put bare ID numbers in the
+  // "Segment" column of the rendered count table. LOCALNAM is the human
+  // name; fall back to the ID only when there is no name at all.
+  const street = (a.LOCALNAM != null ? String(a.LOCALNAM) : "").trim()
+    || (a.ROADWAY != null ? String(a.ROADWAY) : "").trim() || null;
   const county = a.COUNTY != null ? String(a.COUNTY).trim() : null;
 
   const rows: InsertAtrCount[] = [];

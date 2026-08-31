@@ -727,7 +727,7 @@ export function renderTisNewYork(
           sampleDays: number;
           amPeakHourVph: number | null;
           pmPeakHourVph: number | null;
-          avgDailyVph: number | null;
+          avgDailyVeh: number | null;
         }>;
         source: string;
         totalSegmentsFound: number;
@@ -742,8 +742,11 @@ export function renderTisNewYork(
     );
 
     nyTable(doc, {
-      headers: ["Segment", "Direction", "Dist (mi)", "Latest count", "Sample days", "AM peak (vph)", "PM peak (vph)", "Daily (vph)"],
-      widths: [165, 50, 50, 70, 55, 65, 65, 60],
+      // Widths must sum to <= 512 (612pt letter less two 50pt margins). They
+      // summed to 580, which clipped the header row to "Directio n" / "Da (vp"
+      // on the first study that ever had ATR rows to render.
+      headers: ["Segment", "Dir.", "Dist (mi)", "Latest count", "Days", "AM peak (vph)", "PM peak (vph)", "Daily (veh/day)"],
+      widths: [148, 34, 46, 62, 34, 60, 60, 68],
       align: ["left", "center", "right", "center", "right", "right", "right", "right"],
       rows: atrSummary.segments.map((s) => [
         s.street ?? "—",
@@ -753,12 +756,12 @@ export function renderTisNewYork(
         String(s.sampleDays),
         s.amPeakHourVph !== null ? fmtNum(s.amPeakHourVph) : "—",
         s.pmPeakHourVph !== null ? fmtNum(s.pmPeakHourVph) : "—",
-        s.avgDailyVph !== null ? fmtNum(s.avgDailyVph) : "—",
+        s.avgDailyVeh !== null ? fmtNum(s.avgDailyVeh) : "—",
       ]),
     });
     doc.moveDown(0.2);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      `Source: NYC DOT Automated Traffic Volume Counts (data.cityofnewyork.us / 7ym2-wayt). AM peak = max weekday hourly volume in 7:00-9:00 AM local. PM peak = max weekday hourly volume in 4:00-6:00 PM local. Daily = weekday average of 24-hour summed bins. Sample-days counts unique calendar days of observation within the ${atrSummary.windowYears}-year window. Total ATR segments found within radius: ${atrSummary.totalSegmentsFound}.`,
+      `Source: NYC DOT Automated Traffic Volume Counts (data.cityofnewyork.us / 7ym2-wayt). AM peak = max weekday hourly volume in 7:00-9:00 AM local. PM peak = max weekday hourly volume in 4:00-6:00 PM local. Daily = weekday average of 24-hour summed bins, i.e. vehicles per DAY (directly comparable to AADT, not to the vph columns). Sample-days counts unique calendar days of observation within the ${atrSummary.windowYears}-year window. Total ATR segments found within radius: ${atrSummary.totalSegmentsFound}.`,
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
