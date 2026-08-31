@@ -442,24 +442,38 @@ export async function renderStudyPdf(
         //     NYC DOT counts a rotating sample — many midtown sites
         //     have no ATR segment closer than 0.5 mi (e.g. Times
         //     Square's nearest is on 9th Ave, 0.7 mi west).
-        const atrSource = atrSourceForRegion(region);
-        const atrTask = (atrSource
-          ? atrSegmentsNearPoint({ lat, lon, radiusMi: 1.0, windowYears: 3, source: atrSource })
-          : Promise.resolve(null))
-          .then((s) => {
-            if (s && s.segments.length > 0 && result && typeof result === "object") {
-              // Generic field, so a renderer for any metro can read it.
-              (result as Record<string, unknown>).atrSummary = s;
-              // Mirror for back-compat: stored NY studies and the NY renderer
-              // read `nycAtrSummary`, and stored payloads must keep rendering.
-              if (s.source === "nyc_dot_atr") {
-                (result as Record<string, unknown>).nycAtrSummary = s;
-              }
-            }
-          })
-          .catch(() => {});
-        await Promise.all([speedTask, crashTask, preciseCrashTask, gml239Task, transitTask, atrTask]);
+        await Promise.all([speedTask, crashTask, preciseCrashTask, gml239Task, transitTask]);
       }
+      // Measured ATR counts — REGION-AGNOSTIC, deliberately outside every
+      // state branch. This previously sat inside the `stateCode === "NY"` block
+      // and so was unreachable for every other state: the FDOT feed covering
+      // all 63 Florida counties was ingested and then never read. The source is
+      // resolved from the region registry (atrSourceForRegion); a region with
+      // no registered feed skips the query entirely.
+      //
+      // 1.0 mi radius because count programs sample a rotating subset rather
+      // than the full grid, so the nearest segment is often past 0.5 mi.
+      {
+        const atrResult = project.resultPayload as Record<string, unknown> | null;
+        const atrSource = atrSourceForRegion(region);
+        if (atrSource && atrResult && typeof atrResult === "object") {
+          try {
+            const s = await atrSegmentsNearPoint({
+              lat, lon, radiusMi: 1.0, windowYears: 3, source: atrSource,
+            });
+            if (s.segments.length > 0) {
+              // Generic field, so a renderer for any metro can read it.
+              atrResult.atrSummary = s;
+              // Mirror for back-compat: studies stored before the multi-source
+              // change, and the NY renderer, read `nycAtrSummary`.
+              if (s.source === "nyc_dot_atr") atrResult.nycAtrSummary = s;
+            }
+          } catch {
+            // Fails open: the K-factor-derived table stands alone.
+          }
+        }
+      }
+
       // FL — three parallel live-data enrichments:
       //   (a) precise crash records from FDOT SSO ingest (fdot_sso, 10y
       //       window — public extract is stale after 2019).
