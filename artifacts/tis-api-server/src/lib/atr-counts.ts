@@ -165,6 +165,28 @@ export function atrRadiusForSource(source: string | null | undefined): number {
   return (source ? ATR_RADIUS_MI_BY_SOURCE[source] : undefined) ?? ATR_DEFAULT_RADIUS_MI;
 }
 
+/**
+ * Lookback window by source.
+ *
+ * ⚠️ A THREE-YEAR DEFAULT IS A TIME BOMB FOR HISTORICAL SOURCES. The TMAS bins
+ * are from October 2023; as of this writing they are 2.9 years old and inside
+ * the window by weeks. Left at 3 years, every TMAS count would silently vanish
+ * from every report — no error, no empty section, just a block that stops
+ * appearing — and New Jersey's only usable data (2019, the last year it reported)
+ * could never appear at all.
+ *
+ * TMAS is a historical archive by nature, so it gets a decade. The vintage is not
+ * hidden: the block prints each station's actual count date, and old data is
+ * labelled as such in the prose.
+ */
+const ATR_WINDOW_YEARS_BY_SOURCE: Record<string, number> = {
+  fhwa_tmas: 10,
+};
+export const ATR_DEFAULT_WINDOW_YEARS = 3;
+export function atrWindowYearsForSource(source: string | null | undefined): number {
+  return (source ? ATR_WINDOW_YEARS_BY_SOURCE[source] : undefined) ?? ATR_DEFAULT_WINDOW_YEARS;
+}
+
 export type AtrSummary = {
   windowYears: number;
   radiusMi: number;

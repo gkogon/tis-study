@@ -47,7 +47,7 @@ import { enrichGdotIntersections, fetchGdotSiteSnapshot } from "./gdot-live-data
 import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite, getGml239Status, getCbdtpStatus } from "./nysdot-data";
 import { getNycTransitContext } from "./nyc-transit-data";
 import { crashesNearPoint } from "./crashes";
-import { atrSegmentsNearPoint, atrSourceForRegion, atrTimeZoneForRegion, atrRadiusForSource } from "./atr-counts";
+import { atrSegmentsNearPoint, atrSourceForRegion, atrTimeZoneForRegion, atrRadiusForSource, atrWindowYearsForSource } from "./atr-counts";
 import { renderAtrMeasuredVolumes } from "./atr-measured-volumes";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
@@ -461,7 +461,8 @@ export async function renderStudyPdf(
         if (atrSource && atrResult && typeof atrResult === "object") {
           try {
             const s = await atrSegmentsNearPoint({
-              lat, lon, radiusMi: atrRadiusForSource(atrSource), windowYears: 3, source: atrSource,
+              lat, lon, radiusMi: atrRadiusForSource(atrSource),
+              windowYears: atrWindowYearsForSource(atrSource), source: atrSource,
               // Local-hour bucketing follows the STUDY's region, not Eastern —
               // otherwise a California AM peak reads three hours late.
               timeZone: atrTimeZoneForRegion(region),
