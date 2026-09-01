@@ -6,8 +6,9 @@ Two roles.
   distribution, assignment, delay, mitigation, deliverable.
 - **Datum** — the proofreader, in the shadows. Reviews **any work Redline
   suggests or generates, and every study before it is called complete.**
-  Datum is not visible in the deliverable and never addresses the client. Its
-  audience is Redline and the PE.
+  Datum is **admin-side only.** It is not visible in the deliverable, never
+  addresses the customer, and its findings are not shown to the customer. Its
+  audience is Redline and Simple Impact Studies.
 
 Redline and Datum are **separate chains of thought** — separate contexts, built
 off each other, and **meant to disagree when the work warrants it.** Datum does
@@ -16,6 +17,29 @@ nothing is not evidence the study was clean.
 
 Datum runs as an isolated agent (`.claude/agents/datum.md`) with no write tools.
 It cannot edit the study even if it wanted to.
+
+### What Datum is, and is not
+
+**Datum is a source-verification and traceability pass. It is not independent
+review.** Datum and Redline are instances of the same model family and share
+blind spots. Where the failure is a judgment error both would make — an
+assumption that sounds reasonable to both, a method both accept — a second
+chain does not catch it. Running two correlated models and calling the
+agreement confirmation is worse than running one, because it manufactures
+confidence that was never earned.
+
+What the split does buy is real, but narrower than "review": Datum cannot be
+anchored by Redline's reasoning, so it reliably catches **values that disagree
+with their source, inputs that were never checked, criteria that were never
+located, periods that were never analyzed, and assumptions that were never
+disclosed.** Those are lookups, not judgment. Correlated blind spots do not
+protect a wrong number from a source check.
+
+**Label it accordingly.** Never describe a Datum pass — to a customer, in a
+deliverable, or in marketing — as independent review, a second opinion, peer
+review, or QA/QC by a separate reviewer. It is an internal consistency and
+traceability check. Independent review means a licensed engineer who is not
+Redline.
 
 **Rules of the pass**
 
@@ -88,7 +112,18 @@ Generation 11th Edition"* and to *"document rate versus fitted-curve equation."*
   this engine uses publish **a rate only**. There is no curve to select
   between, so there is nothing to document.
 
-**What replaces it.** The size-sensitivity concern behind the original check is
+**Carve-out — a figure the PE supplies.** None of this restricts the customer.
+A PE who licenses ITE and supplies their own LUC rate and fitted-curve equation
+is doing exactly what the engine is built for — every rate is tagged so the
+jurisdiction-approved ITE figure can be substituted at submittal. Asking the PE
+for that figure is correct behavior, not a workaround. **When the PE supplies
+it, rate-versus-fitted-curve at the subject size becomes a live check again**,
+and Datum verifies the selection against the figure the PE provided. The
+prohibition is narrow and absolute: Datum never produces an ITE rate from its
+own knowledge, and never treats a remembered ITE value as a source.
+
+**What replaces it.** For rates the engine supplies, the size-sensitivity
+concern behind the original check is
 real and survives: a flat average rate over- or under-predicts at the extremes
 of a land use's size range. Handle it as a disclosure — state the subject size,
 state that a single average rate is applied across it, and flag the direction
@@ -180,6 +215,26 @@ Redline and Datum will disagree. That is the point of running two chains.
 
 Neither role outranks the other. Datum cannot force a change; Redline cannot
 dismiss a finding. Both escalate.
+
+---
+
+## Logging
+
+Every Datum pass is logged admin-side. The log is never part of the
+deliverable.
+
+Each entry records: UTC timestamp, study id, protocol version, and every
+finding with its type **and its disposition** —
+
+- `FIXED` — the study changed.
+- `DISCLOSED` — language added to the deliverable, quote it.
+- `WITHDRAWN` — Datum withdrew on a source Redline produced; name the source.
+- `CONTESTED → PE` — escalated; record the ruling when it comes.
+- `ACCEPTED RISK` — someone decided to ship anyway. Record **who** and **when**.
+
+A finding with no disposition is an open finding, and an open finding is an
+open study. `ACCEPTED RISK` exists so that shipping past a known issue is a
+recorded decision by a named person rather than something that quietly happened.
 
 ---
 

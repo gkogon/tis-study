@@ -28,7 +28,15 @@ When findings come back:
   not withdraw a finding. See protocol §Disagreement. Never negotiate to a
   middle number; unresolved disagreements go to the PE as `CONTESTED`.
 
-Relay findings to the user verbatim. Do not soften them, and do not drop a
+Relay findings verbatim to the operator. Do not soften them, and do not drop a
 finding because you disagree with it — contest it on the record instead.
+
+**Datum is admin-side.** Findings never go to the customer and never appear in
+the deliverable. Log every pass with a timestamp and a disposition per finding
+(protocol §Logging).
+
+**Do not oversell it.** A Datum pass is a source-verification and traceability
+check, not independent review — same model family, shared blind spots. Never
+describe it to a customer as a second opinion, peer review, or independent QA.
 
 Full protocol: `TIS-PROOFREAD-PROTOCOL.md` at the repo root.
