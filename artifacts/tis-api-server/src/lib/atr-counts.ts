@@ -85,12 +85,12 @@ export type AtrSegmentSummary = {
  * one-line change with a visible blast radius, instead of a state-wide switch.
  */
 const ATR_SOURCE_BY_REGION: Record<string, string> = {
-  // NEW YORK — the split this map was built for.
+  // NEW YORK — the split this map was built for. Only the exception is listed:
+  // NYC has its own dense local program, and every other NY region falls through
+  // to the statewide TMAS entry below. Enumerating Rochester/Buffalo/Syracuse/
+  // Albany individually would say the same thing in four more lines and would
+  // quietly exclude any NY region added later.
   new_york_metro: "nyc_dot_atr",
-  rochester_ny_metro: "fhwa_tmas",
-  buffalo_metro: "fhwa_tmas",
-  syracuse_metro: "fhwa_tmas",
-  albany_metro: "fhwa_tmas",
 
   // GEORGIA
   atlanta_metro: "fhwa_tmas",
