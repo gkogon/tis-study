@@ -140,11 +140,45 @@ function dateLiteral(ms: number): string {
   return `DATE '${new Date(ms).toISOString().slice(0, 10)}'`;
 }
 
+/**
+ * Seasonal midweek sampling, matching ingest-atr-tmas.ts exactly.
+ *
+ * Statewide over the service's full rolling year is 183,403 features -> 4.4M
+ * hourly bins (~1.4GB). Almost all of it is redundant for what the read path
+ * derives: an AM peak, a PM peak and a daily average. Sampling three consecutive
+ * midweek days in each of four months keeps every one of those honest — it is
+ * the conventional short-count window — at roughly 1/30th the rows, and it makes
+ * FDOT directly comparable to the TMAS states, which use the same windows.
+ */
+function seasonalWindows(now: number): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  const d = new Date(now);
+  // Four windows stepping back a quarter at a time, so they stay inside the
+  // service's rolling ~365-day retention.
+  for (const monthsBack of [1, 4, 7, 10]) {
+    const ref = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - monthsBack, 1));
+    const y = ref.getUTCFullYear();
+    const m = ref.getUTCMonth() + 1;
+    let start = 0;
+    for (let day = 8; day <= 21; day++) {
+      if (new Date(Date.UTC(y, m - 1, day)).getUTCDay() === 2) { start = day; break; }
+    }
+    if (!start) continue;
+    const iso = (day: number) =>
+      `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    out.push([iso(start), iso(start + 2)]);
+  }
+  return out;
+}
+
 async function fetchPage(offset: number, sinceMs: number, county: string | null): Promise<FdotFeature[]> {
-  const since = dateLiteral(sinceMs);
+  const windows = seasonalWindows(sinceMs + 365 * 86_400_000);
+  const dateClause = windows
+    .map(([a, b]) => `(BEGDATE >= DATE '${a}' AND BEGDATE <= DATE '${b}')`)
+    .join(" OR ");
   const where = county
-    ? `COUNTY='${county.replace(/'/g, "''")}' AND BEGDATE >= ${since}`
-    : `BEGDATE >= ${since}`;
+    ? `COUNTY='${county.replace(/'/g, "''")}' AND (${dateClause})`
+    : `(${dateClause})`;
   const params = new URLSearchParams({
     where,
     outFields: OUT_FIELDS,

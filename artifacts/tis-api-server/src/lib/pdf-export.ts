@@ -48,7 +48,7 @@ import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite, getGml239Stat
 import { getNycTransitContext } from "./nyc-transit-data";
 import { crashesNearPoint } from "./crashes";
 import { atrSegmentsNearPoint, atrSourceForRegion, atrTimeZoneForRegion, atrRadiusForSource, atrWindowYearsForSource } from "./atr-counts";
-import { renderAtrMeasuredVolumes } from "./atr-measured-volumes";
+import { renderAtrMeasuredVolumes, hasAtrVolumes } from "./atr-measured-volumes";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
 import {
@@ -8294,7 +8294,23 @@ function renderTisFlorida(
 
   // --- 4.3 Daily Peak-Hour Traffic Volumes (collected counts, T4) --------
   const flTmsRows = intersections.filter((it: any) => it.tmscount && (it.tmscount.daily2way != null || it.tmscount.pmPeak2way != null));
-  if (flTmsRows.length > 0) {
+  // Florida gets FDOT counts two ways and the INGESTED path is the better one:
+  // directional rather than two-way, a windowed weekday peak rather than
+  // whatever the 08:00 and 17:00 hours happened to be, averaged over a
+  // multi-day sample rather than a single count day, and with the same-station
+  // year-over-year growth comparison the live path cannot produce. It also does
+  // not depend on an ArcGIS round trip completing inside the render budget.
+  //
+  // The live §4.3 stays as the FALLBACK rather than being deleted: ingested
+  // coverage is a sampled station set, and where it finds nothing near a site
+  // the live nearest-station query still can. Strictly better, never worse.
+  if (hasAtrVolumes((r as any).atrSummary)) {
+    renderAtrMeasuredVolumes(doc, (r as any).atrSummary, {
+      headingFn: (_doc, title) => gaSubsection(doc, title),
+      heading: "4.3 Measured Traffic Counts (FDOT Continuous / Short-Count Stations)",
+      estimateBasis: "the AADT-derived volumes in §4.2",
+    });
+  } else if (flTmsRows.length > 0) {
     gaSubsection(doc, "4.3 Daily Peak-Hour Traffic Volumes (Collected Counts)");
     doc.font("body").fontSize(10).fillColor("black").text(
       "Collected daily and peak-hour volumes at the nearest FDOT continuous / short-count monitoring station to each study segment, from a live query of the FDOT TMSCOUNT (Transportation Data & Analytics) service at render time. Volumes are two-way (summed across the station's counted directions); AM = the 08:00 hour and PM = the 17:00 hour of the station's directional hourly counts. A count station is not present at every study intersection; where none falls within range the row is omitted and project-specific counts are required at submittal.",
