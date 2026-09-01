@@ -288,10 +288,55 @@ it is the reason the 2026-08-31 doc recommended deferral.
 - **Miami-Dade timing ingest** (§5) — first agency provider behind the §4.1
   interface, ~78% coverage of full signals in a metro with a live prospect
   whose employer is the publishing department.
-- **Sweep for the same pattern elsewhere.** Miami-Dade's feed was found only
-  because a county Experience app was inspected directly; it appears in no
-  data catalog and no search result. The generalizable lesson is that agency
-  timing sheets can hide behind asset-keyed document endpoints wired into
-  public GIS viewers. The other served metros' signal viewers deserve the same
-  inspection, and the 2026-08-28 sweep that concluded "no open feed exists"
-  should be treated as unreliable rather than as settled.
+- ~~Sweep for the same pattern elsewhere.~~ **Done 2026-09-01 — see §9.**
+  Miami-Dade is an outlier, not the first of a pattern.
+
+## 9. National sweep result: Miami-Dade is an outlier
+
+Run 2026-09-01, three independent methods, to test whether the Miami-Dade
+pattern repeats. It does not.
+
+| Method | Scope | Result |
+|---|---|---|
+| Templated doc URLs in web-map popups | 452 signal-related AGOL items, 406 configs inspected | **1 hit** — Miami-Dade. The other 19 matches were Web AppBuilder `${itemId}` logo boilerplate. |
+| Timing / document fields on feature layers | 751 signal feature services, 347 layers flagged, all 71 timing-named fields sampled | **0 hits.** Fields exist but are empty. |
+| Feature attachments | 140 attachment-enabled layers, 69 with actual attachments | **1 partial** — TxDOT Houston, below. |
+
+Confirmed empty schema (the field exists, no row is populated): San Mateo
+County `Timing_Sheet_Link` 0/140, Menlo Park `Timing_Sheet` 0/42, Colorado
+Springs `CYCLELENGT` 0/311. South San Francisco `Timing` is 60/135 populated
+but holds control-mode labels ("Local Schedule"), not timings.
+
+Open-data catalogs were checked separately: Socrata returns 1,155 hits for
+"signal timing" and every one inspected is a program tracker — Seattle
+"Corridors With Optimal Signal Timing", Chicago "Performance Metrics", Austin
+"Traffic Signal Re-Timing", NYC "VZV Signal Timing/25MPH Retiming". Project
+lists, not plans. ArcGIS Hub and USDOT datahub likewise.
+
+**Partial hits, neither worth a pipeline:**
+
+- **TxDOT Houston** (`WA_2_TxDOT_Houston_Traffic_Signal_Timing_View_Layer`,
+  HDR-hosted): 9 `…_Previous Timing_TxDOT.pdf` attachments on a 175-feature
+  Esri Field Maps layer — a consultant's corridor retiming study on SH 99 and
+  I-10. Real sheets, negligible coverage, and it disappears when the project
+  closes. Worth grabbing the 9 files, not worth automating.
+- **SPaT logs on USDOT datahub** (Utah pooled-fund study; UDOT/Panasonic, 3
+  Orem intersections; Tampa CV Pilot). Real phase-state messages that could be
+  aggregated into observed g/C, but they are multi-day research samples at a
+  handful of intersections. The Tampa entry — the only served metro — is
+  explicitly labelled a sample.
+
+Georgia specifically: no public timing viewer exists. GDOT ATSPM stays the
+only route, and an official ask beats a scraper (§2).
+
+**Consequence for this design:** the realistic provider roster is client
+Synchro upload, Miami-Dade, and Webster everywhere else. That *confirms* the
+§5 decision to spec the Miami-Dade ingest separately rather than building a
+generic multi-agency ingest framework — there is no second agency to
+generalize from.
+
+⚠️ **Limits of this sweep.** AGOL search does not index agency-hosted ArcGIS
+Enterprise portals (e.g. `gisportalny.dot.ny.gov`, `gisms.miamidade.gov`), and
+a viewer can build its document URL in runtime JavaScript rather than in the
+item config, where none of these methods would see it. "No other feed" means
+none found by three methods, not proof of absence.
