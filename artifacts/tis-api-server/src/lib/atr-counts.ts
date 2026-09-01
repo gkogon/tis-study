@@ -68,9 +68,86 @@ export type AtrSegmentSummary = {
  * NY-state study queried nyc_dot_atr and failed open when no segment was within
  * the radius. Upstate sites therefore find nothing, as before.
  */
-const ATR_SOURCE_BY_REGION: Record<string, string> = {};
+/**
+ * Per-metro count source. Checked BEFORE the state map, so a state whose best
+ * feed differs by metro is expressed here rather than forced into one answer.
+ *
+ * ⚠️ NEW YORK IS WHY THIS EXISTS. `NY: "nyc_dot_atr"` at state level meant every
+ * NY study queried NYC DOT's feed — which covers the five boroughs and nothing
+ * else. Rochester, Buffalo, Syracuse and Albany therefore resolved a source,
+ * ran a query, found nothing within radius and rendered no measured counts at
+ * all, silently, while TMAS coverage for them existed the whole time. NYC keeps
+ * its own dense local program; the rest of the state falls through to TMAS.
+ *
+ * The other entries are deliberately explicit rather than left to the state map.
+ * They state, per metro that this product actually sells into, which agency's
+ * counts back its reports — so swapping one metro to a better feed later is a
+ * one-line change with a visible blast radius, instead of a state-wide switch.
+ */
+const ATR_SOURCE_BY_REGION: Record<string, string> = {
+  // NEW YORK — the split this map was built for. Only the exception is listed:
+  // NYC has its own dense local program, and every other NY region falls through
+  // to the statewide TMAS entry below. Enumerating Rochester/Buffalo/Syracuse/
+  // Albany individually would say the same thing in four more lines and would
+  // quietly exclude any NY region added later.
+  new_york_metro: "nyc_dot_atr",
+
+  // GEORGIA
+  atlanta_metro: "fhwa_tmas",
+  savannah_metro: "fhwa_tmas",
+  augusta_metro: "fhwa_tmas",
+  macon_metro: "fhwa_tmas",
+  georgia_statewide: "fhwa_tmas",
+
+  // TEXAS
+  houston_metro: "fhwa_tmas",
+  dallas_fort_worth_metro: "fhwa_tmas",
+  austin_metro: "fhwa_tmas",
+  san_antonio_metro: "fhwa_tmas",
+  el_paso_metro: "fhwa_tmas",
+  corpus_christi_metro: "fhwa_tmas",
+  lubbock_metro: "fhwa_tmas",
+  mcallen_metro: "fhwa_tmas",
+
+  // PENNSYLVANIA
+  philadelphia_metro: "fhwa_tmas",
+  pittsburgh_metro: "fhwa_tmas",
+  allentown_metro: "fhwa_tmas",
+  harrisburg_metro: "fhwa_tmas",
+  scranton_metro: "fhwa_tmas",
+  erie_metro: "fhwa_tmas",
+
+  // CALIFORNIA
+  los_angeles_metro: "fhwa_tmas",
+  sf_bay_metro: "fhwa_tmas",
+  san_diego_metro: "fhwa_tmas",
+  sacramento_metro: "fhwa_tmas",
+  inland_empire_metro: "fhwa_tmas",
+  fresno_metro: "fhwa_tmas",
+  bakersfield_metro: "fhwa_tmas",
+  stockton_metro: "fhwa_tmas",
+  modesto_metro: "fhwa_tmas",
+  oxnard_metro: "fhwa_tmas",
+
+  // FLORIDA — mapped to FDOT's own feed, which is fresher than TMAS (rolling
+  // 365 days vs 2023). ⚠️ The FL renderer does NOT print this block: it already
+  // carries measured FDOT volumes in its own §4.3 from a live TMSCOUNT query at
+  // render time. The mapping is here so the intent is visible and so replacing
+  // §4.3 with the ingested path — better methodology, directional and windowed
+  // rather than two-way at a fixed hour — is a renderer change, not a data hunt.
+  miami_dade_metro: "fdot_tda",
+  fort_lauderdale_metro: "fdot_tda",
+  west_palm_beach_metro: "fdot_tda",
+  tampa_metro: "fdot_tda",
+  orlando_metro: "fdot_tda",
+  jacksonville_metro: "fdot_tda",
+  daytona_beach_metro: "fdot_tda",
+  pensacola_metro: "fdot_tda",
+};
 const ATR_SOURCE_BY_STATE: Record<string, string> = {
-  NY: "nyc_dot_atr",
+  // Fallback for NY regions not named in the region map above. TMAS, not NYC
+  // DOT — an unlisted NY region is by definition not New York City.
+  NY: "fhwa_tmas",
   // FDOT Traffic TMSCOUNT (TDA) — hourly directional counts, all 63 counties,
   // so this genuinely is statewide rather than one city's feed.
   //

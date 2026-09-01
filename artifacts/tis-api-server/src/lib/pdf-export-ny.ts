@@ -33,6 +33,7 @@ import { renderDiurnalCharts } from "./pdf-charts";
 import { getCbdtpStatus, type CbdtpStatus, type Gml239Status } from "./nysdot-data";
 import type { NycTransitContext } from "./nyc-transit-data";
 import { getMeasuredGrowthRate } from "./regional-growth-rates";
+import { renderAtrMeasuredVolumes } from "./atr-measured-volumes";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
 import { renderLaneGroupQueues } from "./lane-group-queues";
 
@@ -734,7 +735,18 @@ export function renderTisNewYork(
       }
     | undefined;
 
-  if (atrSummary && atrSummary.segments.length > 0) {
+  // ⚠️ The block below names NYC DOT and its dataset id in the prose, which is
+  // only true for the NYC feed. Upstate NY (Rochester/Buffalo/Syracuse/Albany)
+  // is backed by FHWA TMAS, and rendering it here would have told a reviewer
+  // that NYC DOT published counts for Syracuse. Anything that is not the NYC
+  // feed goes through the shared, source-aware block instead.
+  if (atrSummary && atrSummary.segments.length > 0 && atrSummary.source !== "nyc_dot_atr") {
+    renderAtrMeasuredVolumes(doc, atrSummary, {
+      headingFn: (_doc, title) => nySubsection(doc, title),
+      heading: "3.2a Measured Traffic Counts (Supplemental)",
+      estimateBasis: `the K-factor-derived AADT/DHV table in §3.2`,
+    });
+  } else if (atrSummary && atrSummary.segments.length > 0) {
     nySubsection(doc, "3.2a NYC DOT ATR Measured Volumes (Supplemental)");
     doc.font("body").fontSize(10).fillColor("black").text(
       `The §3.2 AADT/DHV table above is derived from the engine's modeled peak-hour estimate via K = ${K_FACTOR.toFixed(2)}. The block below carries Automated Traffic Recorder (ATR) volumes published by NYC DOT (data.cityofnewyork.us / 7ym2-wayt) at ${atrSummary.segments.length} count location${atrSummary.segments.length === 1 ? "" : "s"} within ${atrSummary.radiusMi.toFixed(2)} miles of the site, looking back ${atrSummary.windowYears} year${atrSummary.windowYears === 1 ? "" : "s"}. These are measured, not modeled — they should be used to validate the §3.2 estimate. NYC DOT ATR is directional segment volume, not per-approach turning movement counts; TMCs at the affected intersection${atrSummary.segments.length === 1 ? "" : "s"} must still be collected separately for formal submittal.`,
