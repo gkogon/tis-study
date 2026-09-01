@@ -228,15 +228,23 @@ export function renderAtrMeasuredVolumes(
   // decision.
   const trends = s.segments
     .map((seg) => {
-      const ys = (seg.yearly ?? []).filter((y) => y.avgDailyVeh > 0);
-      if (ys.length < 2) return null;
+      const all = (seg.yearly ?? []).filter((y) => y.avgDailyVeh > 0);
+      if (all.length < 2) return null;
+      // Prefer a post-pandemic span when the series supports one. A 2019->2023
+      // comparison mixes underlying growth with COVID recovery, and a reviewer is
+      // entitled to a number that does not. Where three or more years exist, the
+      // headline runs from the first year >= 2021; the pandemic caveat is then
+      // dropped because it no longer applies.
+      const post = all.filter((y) => y.year >= 2021);
+      const ys = post.length >= 2 ? post : all;
+      const spansCovid = ys[0].year < 2021;
       const first = ys[0];
       const last = ys[ys.length - 1];
       const span = last.year - first.year;
       if (span <= 0) return null;
       const totalPct = ((last.avgDailyVeh - first.avgDailyVeh) / first.avgDailyVeh) * 100;
       const cagrPct = (Math.pow(last.avgDailyVeh / first.avgDailyVeh, 1 / span) - 1) * 100;
-      return { seg, first, last, span, totalPct, cagrPct };
+      return { seg, first, last, span, totalPct, cagrPct, spansCovid, points: all.length };
     })
     .filter((t): t is NonNullable<typeof t> => t !== null);
 
@@ -260,8 +268,12 @@ export function renderAtrMeasuredVolumes(
         + `${median >= 0 ? "+" : ""}${median.toFixed(2)}% per year. This is an OBSERVATION offered so the `
         + `background growth rate applied elsewhere in this study can be checked against a real sensor; `
         + `it is not itself applied, and a corridor-specific rate adopted by the reviewing agency governs. `
-        + `A two-point comparison spanning 2019 to 2023 also brackets the pandemic, so it reflects `
-        + `post-pandemic recovery as well as underlying growth.`,
+        + (trends.some((t) => t.spansCovid)
+            ? `This comparison spans 2019 to 2023 and therefore brackets the pandemic, so it reflects `
+              + `post-pandemic recovery as well as underlying growth.`
+            : `The comparison is drawn from ${Math.max(...trends.map((t) => t.points))} sampled years and `
+              + `starts in ${Math.min(...trends.map((t) => t.first.year))}, so it excludes the pandemic `
+              + `distortion and reflects underlying growth.`),
       { paragraphGap: 6 },
     );
   }
