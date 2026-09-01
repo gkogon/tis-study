@@ -30,7 +30,13 @@ export const REGULATIONS: Regulation[] = [
   { code: "SANDAG 2002", title: "SANDAG (Not So) Brief Guide of Vehicular Traffic Generation Rates", edition: "April 2002", effective: "2002-04", jurisdiction: "US", appliesTo: ["vehicular"] },
   { code: "NHTS 2017", title: "FHWA National Household Travel Survey — Summary of Travel Trends", edition: "2017", effective: "2018", jurisdiction: "US", appliesTo: ["vehicular"] },
   { code: "NCHRP 716", title: "NCHRP Report 716: Travel Demand Forecasting Parameters and Techniques", edition: "2012", effective: "2012", jurisdiction: "US", appliesTo: ["vehicular"] },
-  { code: "HCM", title: "Highway Capacity Manual", edition: "6th Edition", effective: "2016", jurisdiction: "US", appliesTo: ["vehicular"] },
+  // ⚠️ The Highway Capacity Manual is DELIBERATELY ABSENT and must not be re-added.
+  // This product holds no HCM licence (cease-and-desist 2026-07-08); the HCM strip
+  // (#104, #144) cleared every renderer and UI string but missed this registry, which
+  // the `regulations` provider renders as a literal citation table. The delay model is
+  // and always was Webster + Akçelik, both openly published — cite those instead.
+  { code: "Webster 1958", title: "Webster, Traffic Signal Settings, Road Research Technical Paper No. 39 (RRL/HMSO)", edition: "1958", effective: "1958", jurisdiction: "US", appliesTo: ["vehicular"] },
+  { code: "Akçelik", title: "Akçelik time-dependent overflow-delay function, Australian Road Research Board", edition: "open literature", effective: "1980", jurisdiction: "US", appliesTo: ["vehicular"] },
   { code: "MUTCD", title: "Manual on Uniform Traffic Control Devices", edition: "11th Edition", effective: "2023-12", jurisdiction: "US", appliesTo: ["vehicular"] },
   { code: "AASHTO", title: "A Policy on Geometric Design of Highways and Streets (Green Book)", edition: "7th Edition", effective: "2018", jurisdiction: "US", appliesTo: ["vehicular"] },
   // US state examples
@@ -41,7 +47,9 @@ export const REGULATIONS: Regulation[] = [
   { code: "NPPF", title: "National Planning Policy Framework", edition: "December 2024", effective: "2024-12", jurisdiction: "UK", appliesTo: ["vehicular", "pedestrian"] },
   { code: "PPG", title: "Planning Practice Guidance — Travel Plans, Transport Assessments and Statements", edition: "current", effective: "2024", jurisdiction: "UK", appliesTo: ["vehicular", "pedestrian"] },
   { code: "DMRB", title: "Design Manual for Roads and Bridges (CD 109 / 116 / 123)", edition: "2020", effective: "2020", jurisdiction: "UK", appliesTo: ["vehicular"] },
-  { code: "TRICS", title: "TRICS Good Practice Guide", edition: "2025", effective: "2025", jurisdiction: "UK", appliesTo: ["vehicular", "pedestrian"] },
+  // ⚠️ TRICS is DELIBERATELY ABSENT and must not be re-added — no licence; dropped in #73.
+  // UK trip generation runs on the 2011 Census origin-destination table instead.
+  { code: "Census WU03EW", title: "ONS 2011 Census origin-destination: usual residence and place of work by method of travel", edition: "2011", effective: "2014", jurisdiction: "UK", appliesTo: ["vehicular", "pedestrian"] },
   // UK — London
   { code: "London Plan", title: "The London Plan (Policies T1–T9)", edition: "2021", effective: "2021-03", jurisdiction: "UK-London", appliesTo: ["vehicular", "pedestrian"] },
   { code: "MTS", title: "Mayor's Transport Strategy", edition: "2018", effective: "2018", jurisdiction: "UK-London", appliesTo: ["vehicular", "pedestrian"] },
