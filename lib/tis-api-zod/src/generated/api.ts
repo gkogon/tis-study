@@ -1429,7 +1429,17 @@ export const GenerateTisResponse = zod.object({
   intersectionsStudied: zod.number(),
   intersectionsWithLosDrop: zod.number(),
   intersectionsAtLosEf: zod.number(),
-  worstDelayDeltaSec: zod.number(),
+  worstDelayDeltaSec: zod
+    .number()
+    .describe(
+      "Largest projected delay increase across the studied intersections, in the OPENING YEAR only. Scoped, not absolute — compare against worstDelayDeltaDesignSec, which is routinely larger because background growth over the design horizon sits underneath it.",
+    ),
+  worstDelayDeltaDesignSec: zod
+    .number()
+    .optional()
+    .describe(
+      "Largest projected delay increase in the DESIGN year (designBuild - designNoBuild). Absent when no design year was analyzed.",
+    ),
   mitigationSummary: zod.array(zod.string()),
   findings: zod.array(zod.string()),
   methodology: zod.array(zod.string()),
@@ -1582,7 +1592,11 @@ export const GenerateTisResponse = zod.object({
       ),
       intersectionsWithLosDrop: zod.number(),
       intersectionsAtLosEf: zod.number(),
-      worstDelayDeltaSec: zod.number(),
+      worstDelayDeltaSec: zod
+        .number()
+        .describe(
+          "Largest projected delay increase across the studied intersections, in the OPENING YEAR only. Scoped, not absolute — compare against worstDelayDeltaDesignSec, which is routinely larger because background growth over the design horizon sits underneath it.",
+        ),
     }),
   ),
   growthAppliedPct: zod.number(),
@@ -4165,7 +4179,17 @@ export const GetTisProjectResponse = zod
       intersectionsStudied: zod.number(),
       intersectionsWithLosDrop: zod.number(),
       intersectionsAtLosEf: zod.number(),
-      worstDelayDeltaSec: zod.number(),
+      worstDelayDeltaSec: zod
+        .number()
+        .describe(
+          "Largest projected delay increase across the studied intersections, in the OPENING YEAR only. Scoped, not absolute — compare against worstDelayDeltaDesignSec, which is routinely larger because background growth over the design horizon sits underneath it.",
+        ),
+      worstDelayDeltaDesignSec: zod
+        .number()
+        .optional()
+        .describe(
+          "Largest projected delay increase in the DESIGN year (designBuild - designNoBuild). Absent when no design year was analyzed.",
+        ),
       mitigationSummary: zod.array(zod.string()),
       findings: zod.array(zod.string()),
       methodology: zod.array(zod.string()),
@@ -4336,7 +4360,11 @@ export const GetTisProjectResponse = zod
           ),
           intersectionsWithLosDrop: zod.number(),
           intersectionsAtLosEf: zod.number(),
-          worstDelayDeltaSec: zod.number(),
+          worstDelayDeltaSec: zod
+            .number()
+            .describe(
+              "Largest projected delay increase across the studied intersections, in the OPENING YEAR only. Scoped, not absolute — compare against worstDelayDeltaDesignSec, which is routinely larger because background growth over the design horizon sits underneath it.",
+            ),
         }),
       ),
       growthAppliedPct: zod.number(),
