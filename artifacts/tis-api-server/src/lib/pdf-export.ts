@@ -53,6 +53,12 @@ import { renderAtrMeasuredVolumes, hasAtrVolumes } from "./atr-measured-volumes"
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
 import {
+  CONCURRENCY_LOS_LEGEND,
+  CONCURRENCY_SOURCE,
+  assessConcurrency,
+  stationsForStudyArea,
+} from "./fl-concurrency-stations";
+import {
   FDOT_ARTERIAL_GSVT,
   floridaGsvtServiceVolume,
   floridaRepresentativeK,
@@ -8804,7 +8810,76 @@ function renderTisFlorida(
     doc.fillColor("black");
   }
 
-  gaSubsection(doc, "10.2 Site Access / Ingress-Egress");
+    // --- 10.2 Concurrency station determination (Miami-Dade only) ----------
+  // The GSVT screen above needs a context class + lane count the request rarely
+  // carries. Miami-Dade publishes per-station maximum service volumes, existing
+  // peak-hour peak-direction volumes and RESERVED (date-of-service) trips, so on
+  // those links the concurrency verdict is a lookup rather than a derivation.
+  // Reserved trips are the one input no open dataset provides.
+  if (jur.key === "miami_dade") {
+    const stationNames = intersections
+      .map((it: any) => String(it.name ?? it.signalId ?? ""))
+      .filter(Boolean);
+    const stations = stationsForStudyArea(stationNames);
+    gaSubsection(doc, "10.2 Concurrency Station Determination");
+    if (stations.length === 0) {
+      doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+        "No published Miami-Dade concurrency station matched a study-area roadway name in this run. The concurrency determination must be made against the county's current station tables during the methodology meeting.",
+        { paragraphGap: 6 },
+      );
+      doc.fillColor("black");
+    } else {
+      // Peak-direction project trips. Net-new external where an existing-use
+      // credit was supplied, otherwise the gross PM peak, times the FDOT
+      // statewide D factor.
+      const pmTrips = Number(tg.netNewExternalTrips ?? tg.externalTrips ?? tg.pmPeakTrips ?? 0);
+      const projPeakDir = pmTrips * 0.55;
+      const rows = stations.map((st) => assessConcurrency(st, projPeakDir));
+      doc.font("body").fontSize(10).fillColor("black").text(
+        `Study-area roadways were matched against the published Miami-Dade concurrency station tables. The project's peak-direction demand is taken as ${fmtNum(Math.round(projPeakDir))} trips (${fmtNum(Math.round(pmTrips))} PM peak-hour trips x D = 0.55). Each matched link is tested independently against that full demand, which is deliberately conservative: it assigns 100% of the project's peak-direction trips to every link rather than distributing them.`,
+        { paragraphGap: 6 },
+      );
+      table(doc, {
+        headers: ["Station / roadway", "Ln", "Max SV", "Existing", "Resv.", "Available", "After", "OK?"],
+        widths: [170, 26, 54, 56, 46, 58, 52, 40],
+        align: ["left", "right", "right", "right", "right", "right", "right", "center"],
+        rows: rows.map((a) => [
+          `${a.station.id}. ${a.station.roadway} - ${a.station.location}`,
+          String(a.station.lanes),
+          fmtNum(a.station.maxLosVolume),
+          fmtNum(a.station.php),
+          fmtNum(a.station.dosTrips),
+          fmtNum(a.station.availableTrips),
+          fmtNum(a.remainingAfterProject),
+          a.station.availableTrips < 0 ? "DEF." : a.adequate ? "Yes" : "No",
+        ]),
+      });
+      doc.moveDown(0.2);
+      const deficient = rows.filter((a) => a.station.availableTrips < 0);
+      const failing = rows.filter((a) => a.station.availableTrips >= 0 && !a.adequate);
+      const significant = rows.filter((a) => a.significant);
+      const bullets: string[] = [];
+      if (deficient.length) bullets.push(`${deficient.length} matched link(s) are ALREADY concurrency-deficient before this project (negative available trips); a proportionate-share contribution or mitigation is required irrespective of the project's own demand.`);
+      if (failing.length) bullets.push(`${failing.length} matched link(s) have positive available capacity that the project's peak-direction demand would exhaust.`);
+      if (significant.length) bullets.push(`${significant.length} matched link(s) see project demand at or above 5% of the link's maximum service volume, the threshold at which the county's tables flag an impact as significant.`);
+      if (!bullets.length) bullets.push("Every matched link retains available reserved capacity after the project's peak-direction demand.");
+      for (const b of bullets) {
+        doc.font("body").fontSize(10).fillColor("black").text(`- ${b}`, { paragraphGap: 3 });
+      }
+      doc.moveDown(0.2);
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        `OK? column: Yes = available capacity covers the project; No = project exceeds available capacity; DEF. = link is already concurrency-deficient before this project. LOS standard codes: ${Object.entries(CONCURRENCY_LOS_LEGEND).map(([k, v]) => `${k} = ${v}`).join("; ")}.`,
+        { paragraphGap: 3 },
+      );
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        `Source: ${CONCURRENCY_SOURCE} Station values are a transcribed snapshot and must be re-verified against the county's current published tables before submittal; reserved (date-of-service) trips change as developments are approved.`,
+        { paragraphGap: 6 },
+      );
+      doc.fillColor("black");
+    }
+  }
+
+  gaSubsection(doc, "10.3 Site Access / Ingress-Egress");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "Per MTSIH 2024 §3.2 Table 5, driveway TIA-scoping is keyed to gross trips per day (including pass-by): Category A 1–20 vpd (single-family); B 21–600 (small multifamily / very small commercial); C 601–1,500 (small-mid retail / small office); D 1,501–4,000 (mid retail / mid office); E 4,001–15,000 (large retail / mixed-use); F 15,001–30,000 (very large mixed-use / mall); G ≥30,001 (regional mall). Pre-application meeting + traffic study are required for Categories C–G (>600 vpd including pass-by). A connection-permit change-of-use is additionally triggered per F.S. 335.182(3)(b) when trip generation increases by >25% AND >100 vpd vs. the existing use. Connection to the FDOT State Highway System requires a connection permit per Rule 14-96 F.A.C. (last amended April 2, 2023). Driveway spacing, median-opening spacing, and signal spacing are governed by the access-management class (Classes 1–7) assigned to the impacted SHS segment per Rule 14-97 F.A.C. and FDOT Procedure 525-030-155; the class is stored in the RCI as Feature 146 / ACMANCLS (codes 00–07; 99 = unclassified, interim standards in Rule 14-97.004(1) apply until assignment). Driveway geometry (W, R, F, Y, G, Driveway Length, S, I; Categories A–D in FDM Chapter 214, Categories E–F–G punt to FDM Chapter 212), turn-lane warrants, deceleration-lane length, and intersection sight distance must be designed to FDOT Design Manual (FDM 2026) standards; off-SHS connections on city/county facilities follow the Florida Greenbook. The access-management class for the impacted SHS facility should be confirmed against the FDOT-published Access Management TDA layer.",
     { paragraphGap: 6 },
