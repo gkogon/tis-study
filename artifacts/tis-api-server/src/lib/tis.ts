@@ -41,7 +41,7 @@ import { selectCordonGateways, snapSignalsToJunctions } from "./cordon-gateways"
 import { type Driveway } from "./driveways";
 import { getTransitContext } from "./transit-routes";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
-import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSource } from "./regional-growth-rates";
+import { DESIGN_YEAR_HORIZON_DEFAULT, GROWTH_OVERRIDE_PREFIX, getMeasuredGrowthRate, getMeasuredGrowthSource } from "./regional-growth-rates";
 // Canonical public-data land-use registry (SANDAG 2002 / NHTS 2017 /
 // NCHRP 716) lives in one place. Re-exported below for any downstream
 // callers that imported `LAND_USES` from this module.
@@ -2037,8 +2037,16 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // No-Build / Build LOS columns stay consistent — without this, the IL
   // renderer §5 prose would print "1.80%/yr" while the engine still grew
   // volumes at 1.50%/yr, a reviewer-visible mismatch.
-  const measuredRate = req.growthRatePct === undefined ? getMeasuredGrowthRate(region.code) : undefined;
-  const growthRatePct = clamp(req.growthRatePct ?? measuredRate?.growthPct ?? 1.5, -5, 6);
+  // The measured rate is resolved even when an override wins, so the payload can
+  // name what the override DISPLACED. Previously `measuredRate` was set to
+  // undefined on override, which suppressed `growthSource` entirely — an
+  // overridden study printed its growth figure with no provenance at all while
+  // the engine held a cited rate it had not used, and a reviewer had no way to
+  // see that an override had happened at all.
+  const measuredRate = getMeasuredGrowthRate(region.code);
+  const growthOverridePct = req.growthRatePct;
+  const growthIsOverride = growthOverridePct !== undefined;
+  const growthRatePct = clamp(growthOverridePct ?? measuredRate?.growthPct ?? 1.5, -5, 6);
   const growthYears = Math.max(0, req.openingYear - CURRENT_YEAR);
   const growthMultiplier = Math.pow(1 + growthRatePct / 100, growthYears);
   // 4th-scenario design year: opening + 20yr at the same CAGR. Per IL
@@ -2768,11 +2776,24 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     periodReports,
     growthAppliedPct: growthRatePct,
     growthYears,
-    ...(measuredRate
+    ...(growthIsOverride
       ? {
-          growthSource: `${getMeasuredGrowthSource(region.code) ?? "Per-metro historical AADT layer"} — median per-segment CAGR across ${measuredRate.stations} matched count stations within the ${region.displayName} bounding box (${measuredRate.yearFrom} → ${measuredRate.yearTo})`,
+          growthSource: [
+            `${GROWTH_OVERRIDE_PREFIX} — ${growthRatePct.toFixed(2)}%/yr was supplied with the request and applied in place of the engine's own rate.`,
+            growthOverridePct !== undefined && Math.abs(growthOverridePct - growthRatePct) > 0.005
+              ? `The requested value ${growthOverridePct.toFixed(2)}%/yr was clamped to the permitted range.`
+              : "",
+            measuredRate
+              ? `The measured rate for this region is ${measuredRate.growthPct.toFixed(2)}%/yr (${getMeasuredGrowthSource(region.code) ?? "per-metro historical AADT layer"} — median per-segment CAGR across ${measuredRate.stations} matched count stations within the ${region.displayName} bounding box (${measuredRate.yearFrom} → ${measuredRate.yearTo})).`
+              : "No measured growth rate is wired for this region, so there is no measured value to compare the override against.",
+            "The applied rate is not derived from measured data; its basis must be stated by the preparer.",
+          ].filter(Boolean).join(" "),
         }
-      : {}),
+      : measuredRate
+        ? {
+            growthSource: `${getMeasuredGrowthSource(region.code) ?? "Per-metro historical AADT layer"} — median per-segment CAGR across ${measuredRate.stations} matched count stations within the ${region.displayName} bounding box (${measuredRate.yearFrom} → ${measuredRate.yearTo})`,
+          }
+        : {}),
     designYear,
     designYearHorizonYears: designYearHorizon,
     weather,

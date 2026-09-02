@@ -1299,6 +1299,17 @@ components:
           items: { $ref: "#/components/schemas/TisPeriodReport" }
         growthAppliedPct: { type: number }
         growthYears: { type: integer }
+        growthSource:
+          type: string
+          description: >-
+            Provenance for growthAppliedPct, printed verbatim by the
+            renderers. Names the basis of the applied rate: a measured
+            per-metro CAGR and the DOT layer it came from, or — when the
+            request supplied growthRatePct — that an explicit override was
+            applied, alongside the measured rate for the region that the
+            override displaced. Optional: absent on payloads stored before
+            this field existed, which re-render through the same path and
+            must not sprout an empty citation.
         weather: { $ref: "#/components/schemas/TisWeather" }
         weatherCapacityFactor: { type: number }
         passByPctApplied: { type: number }
