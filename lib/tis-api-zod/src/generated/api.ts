@@ -1303,14 +1303,23 @@ export const GenerateTisResponse = zod.object({
       latitude: zod.number(),
       longitude: zod.number(),
       distanceMi: zod.number(),
-      existingVc: zod.number(),
+      existingVc: zod
+        .number()
+        .describe(
+          'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+        ),
       addedTripsPmPeak: zod.number(),
       futureVc: zod.number(),
       existingDelaySec: zod.number(),
       futureDelaySec: zod.number(),
       existingLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
       futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
-      currentVc: zod.number().optional(),
+      currentVc: zod
+        .number()
+        .optional()
+        .describe(
+          'True current-year baseline: existing volumes with NO growth applied. This is the scenario to label \"Existing\". Optional so payloads saved before the scenario split still validate.',
+        ),
       currentDelaySec: zod.number().optional(),
       currentLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
       designNoBuildVc: zod.number().optional(),
@@ -1325,17 +1334,38 @@ export const GenerateTisResponse = zod.object({
       approaches: zod.array(
         zod.object({
           direction: zod.enum(["NB", "SB", "EB", "WB"]),
-          existingVolumeVph: zod.number(),
+          existingVolumeVph: zod
+            .number()
+            .describe(
+              'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+            ),
           addedTripsPeak: zod.number(),
           futureVolumeVph: zod.number(),
-          existingVc: zod.number(),
+          existingVc: zod
+            .number()
+            .describe(
+              'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+            ),
           futureVc: zod.number(),
-          existingDelaySec: zod.number(),
+          existingDelaySec: zod
+            .number()
+            .describe(
+              'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+            ),
           futureDelaySec: zod.number(),
-          existingLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+          existingLos: zod
+            .enum(["A", "B", "C", "D", "E", "F"])
+            .describe(
+              'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+            ),
           futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
           queue95thFt: zod.number(),
-          currentVolumeVph: zod.number().optional(),
+          currentVolumeVph: zod
+            .number()
+            .optional()
+            .describe(
+              'True current-year baseline: existing volumes with NO growth applied. This is the scenario to label \"Existing\". Optional so payloads saved before the scenario split still validate.',
+            ),
           currentVc: zod.number().optional(),
           currentDelaySec: zod.number().optional(),
           currentLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
@@ -1427,14 +1457,23 @@ export const GenerateTisResponse = zod.object({
           latitude: zod.number(),
           longitude: zod.number(),
           distanceMi: zod.number(),
-          existingVc: zod.number(),
+          existingVc: zod
+            .number()
+            .describe(
+              'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+            ),
           addedTripsPmPeak: zod.number(),
           futureVc: zod.number(),
           existingDelaySec: zod.number(),
           futureDelaySec: zod.number(),
           existingLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
           futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
-          currentVc: zod.number().optional(),
+          currentVc: zod
+            .number()
+            .optional()
+            .describe(
+              'True current-year baseline: existing volumes with NO growth applied. This is the scenario to label \"Existing\". Optional so payloads saved before the scenario split still validate.',
+            ),
           currentDelaySec: zod.number().optional(),
           currentLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
           designNoBuildVc: zod.number().optional(),
@@ -1449,17 +1488,38 @@ export const GenerateTisResponse = zod.object({
           approaches: zod.array(
             zod.object({
               direction: zod.enum(["NB", "SB", "EB", "WB"]),
-              existingVolumeVph: zod.number(),
+              existingVolumeVph: zod
+                .number()
+                .describe(
+                  'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                ),
               addedTripsPeak: zod.number(),
               futureVolumeVph: zod.number(),
-              existingVc: zod.number(),
+              existingVc: zod
+                .number()
+                .describe(
+                  'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                ),
               futureVc: zod.number(),
-              existingDelaySec: zod.number(),
+              existingDelaySec: zod
+                .number()
+                .describe(
+                  'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                ),
               futureDelaySec: zod.number(),
-              existingLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+              existingLos: zod
+                .enum(["A", "B", "C", "D", "E", "F"])
+                .describe(
+                  'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                ),
               futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
               queue95thFt: zod.number(),
-              currentVolumeVph: zod.number().optional(),
+              currentVolumeVph: zod
+                .number()
+                .optional()
+                .describe(
+                  'True current-year baseline: existing volumes with NO growth applied. This is the scenario to label \"Existing\". Optional so payloads saved before the scenario split still validate.',
+                ),
               currentVc: zod.number().optional(),
               currentDelaySec: zod.number().optional(),
               currentLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
@@ -3979,14 +4039,23 @@ export const GetTisProjectResponse = zod
           latitude: zod.number(),
           longitude: zod.number(),
           distanceMi: zod.number(),
-          existingVc: zod.number(),
+          existingVc: zod
+            .number()
+            .describe(
+              'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+            ),
           addedTripsPmPeak: zod.number(),
           futureVc: zod.number(),
           existingDelaySec: zod.number(),
           futureDelaySec: zod.number(),
           existingLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
           futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
-          currentVc: zod.number().optional(),
+          currentVc: zod
+            .number()
+            .optional()
+            .describe(
+              'True current-year baseline: existing volumes with NO growth applied. This is the scenario to label \"Existing\". Optional so payloads saved before the scenario split still validate.',
+            ),
           currentDelaySec: zod.number().optional(),
           currentLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
           designNoBuildVc: zod.number().optional(),
@@ -4001,17 +4070,38 @@ export const GetTisProjectResponse = zod
           approaches: zod.array(
             zod.object({
               direction: zod.enum(["NB", "SB", "EB", "WB"]),
-              existingVolumeVph: zod.number(),
+              existingVolumeVph: zod
+                .number()
+                .describe(
+                  'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                ),
               addedTripsPeak: zod.number(),
               futureVolumeVph: zod.number(),
-              existingVc: zod.number(),
+              existingVc: zod
+                .number()
+                .describe(
+                  'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                ),
               futureVc: zod.number(),
-              existingDelaySec: zod.number(),
+              existingDelaySec: zod
+                .number()
+                .describe(
+                  'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                ),
               futureDelaySec: zod.number(),
-              existingLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+              existingLos: zod
+                .enum(["A", "B", "C", "D", "E", "F"])
+                .describe(
+                  'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                ),
               futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
               queue95thFt: zod.number(),
-              currentVolumeVph: zod.number().optional(),
+              currentVolumeVph: zod
+                .number()
+                .optional()
+                .describe(
+                  'True current-year baseline: existing volumes with NO growth applied. This is the scenario to label \"Existing\". Optional so payloads saved before the scenario split still validate.',
+                ),
               currentVc: zod.number().optional(),
               currentDelaySec: zod.number().optional(),
               currentLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
@@ -4108,14 +4198,23 @@ export const GetTisProjectResponse = zod
               latitude: zod.number(),
               longitude: zod.number(),
               distanceMi: zod.number(),
-              existingVc: zod.number(),
+              existingVc: zod
+                .number()
+                .describe(
+                  'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                ),
               addedTripsPmPeak: zod.number(),
               futureVc: zod.number(),
               existingDelaySec: zod.number(),
               futureDelaySec: zod.number(),
               existingLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
               futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
-              currentVc: zod.number().optional(),
+              currentVc: zod
+                .number()
+                .optional()
+                .describe(
+                  'True current-year baseline: existing volumes with NO growth applied. This is the scenario to label \"Existing\". Optional so payloads saved before the scenario split still validate.',
+                ),
               currentDelaySec: zod.number().optional(),
               currentLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
               designNoBuildVc: zod.number().optional(),
@@ -4139,17 +4238,38 @@ export const GetTisProjectResponse = zod
               approaches: zod.array(
                 zod.object({
                   direction: zod.enum(["NB", "SB", "EB", "WB"]),
-                  existingVolumeVph: zod.number(),
+                  existingVolumeVph: zod
+                    .number()
+                    .describe(
+                      'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                    ),
                   addedTripsPeak: zod.number(),
                   futureVolumeVph: zod.number(),
-                  existingVc: zod.number(),
+                  existingVc: zod
+                    .number()
+                    .describe(
+                      'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                    ),
                   futureVc: zod.number(),
-                  existingDelaySec: zod.number(),
+                  existingDelaySec: zod
+                    .number()
+                    .describe(
+                      'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                    ),
                   futureDelaySec: zod.number(),
-                  existingLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+                  existingLos: zod
+                    .enum(["A", "B", "C", "D", "E", "F"])
+                    .describe(
+                      'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                    ),
                   futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
                   queue95thFt: zod.number(),
-                  currentVolumeVph: zod.number().optional(),
+                  currentVolumeVph: zod
+                    .number()
+                    .optional()
+                    .describe(
+                      'True current-year baseline: existing volumes with NO growth applied. This is the scenario to label \"Existing\". Optional so payloads saved before the scenario split still validate.',
+                    ),
                   currentVc: zod.number().optional(),
                   currentDelaySec: zod.number().optional(),
                   currentLos: zod

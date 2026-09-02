@@ -874,18 +874,34 @@ components:
       type: object
       properties:
         direction: { $ref: "#/components/schemas/TisDirection" }
-        existingVolumeVph: { type: number }
+        existingVolumeVph:
+          type: number
+          description: >-
+            Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing".
         addedTripsPeak: { type: integer }
         futureVolumeVph: { type: number }
-        existingVc: { type: number }
+        existingVc:
+          type: number
+          description: >-
+            Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing".
         futureVc: { type: number }
-        existingDelaySec: { type: number }
+        existingDelaySec:
+          type: number
+          description: >-
+            Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing".
         futureDelaySec: { type: number }
-        existingLos: { type: string, enum: [A, B, C, D, E, F] }
+        existingLos:
+          type: string
+          enum: [A, B, C, D, E, F]
+          description: >-
+            Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing".
         futureLos: { type: string, enum: [A, B, C, D, E, F] }
         queue95thFt: { type: number }
         # True current-year baseline for this approach (no growth). Optional.
-        currentVolumeVph: { type: number }
+        currentVolumeVph:
+          type: number
+          description: >-
+            True current-year baseline: existing volumes with NO growth applied. This is the scenario to label "Existing". Optional so payloads saved before the scenario split still validate.
         currentVc: { type: number }
         currentDelaySec: { type: number }
         currentLos: { type: string, enum: [A, B, C, D, E, F] }
@@ -953,7 +969,10 @@ components:
         latitude: { type: number }
         longitude: { type: number }
         distanceMi: { type: number }
-        existingVc: { type: number }
+        existingVc:
+          type: number
+          description: >-
+            Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing".
         addedTripsPmPeak: { type: integer }
         futureVc: { type: number }
         existingDelaySec: { type: number }
@@ -969,7 +988,10 @@ components:
         # silently stripped at the response boundary, which (a) collapsed the
         # "Existing" scenario column to No-Build values and (b) forced every
         # design-year 4-scenario table to fall back to the 3-scenario table.
-        currentVc: { type: number }
+        currentVc:
+          type: number
+          description: >-
+            True current-year baseline: existing volumes with NO growth applied. This is the scenario to label "Existing". Optional so payloads saved before the scenario split still validate.
         currentDelaySec: { type: number }
         currentLos:
           type: string

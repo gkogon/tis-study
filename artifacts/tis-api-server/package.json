@@ -27,6 +27,7 @@
     "check:movement-loading": "node ./scripts/verify-movement-loading.mjs",
     "check:rate-auditability": "node ./scripts/verify-rate-auditability.mjs",
     "check:growth-provenance": "node ./scripts/verify-growth-provenance.mjs",
+    "check:scenario-labels": "node ./scripts/verify-scenario-labels.mjs",
     "check:turn-ledger": "node ./scripts/verify-turn-ledger.mjs",
     "check:oneway-routing": "node ./scripts/verify-oneway-routing.mjs",
     "check:oneway-inbound": "node ./scripts/verify-oneway-inbound.mjs",

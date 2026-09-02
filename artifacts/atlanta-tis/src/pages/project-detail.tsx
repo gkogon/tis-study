@@ -248,7 +248,7 @@ function TisDetailSummary({ result: r }: { result: TisReport }) {
               <tr>
                 <th className="text-left px-3 py-2">Signal</th>
                 <th className="text-right px-3 py-2">Trips</th>
-                <th className="text-center px-3 py-2">Existing</th>
+                <th className="text-center px-3 py-2">No-Build</th>
                 <th className="text-center px-3 py-2">Future</th>
                 <th className="text-right px-3 py-2">Δ delay</th>
                 <th className="text-right px-3 py-2">Q95 ft</th>
