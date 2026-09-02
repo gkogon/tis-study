@@ -1172,7 +1172,13 @@ components:
           items: { $ref: "#/components/schemas/TisAffectedIntersection" }
         intersectionsWithLosDrop: { type: integer }
         intersectionsAtLosEf: { type: integer }
-        worstDelayDeltaSec: { type: number }
+        worstDelayDeltaSec:
+          type: number
+          description: >-
+            Largest projected delay increase across the studied intersections,
+            in the OPENING YEAR only. Scoped, not absolute — compare against
+            worstDelayDeltaDesignSec, which is routinely larger because
+            background growth over the design horizon sits underneath it.
       required:
         - period
         - periodLabel
@@ -1306,7 +1312,19 @@ components:
         intersectionsStudied: { type: integer }
         intersectionsWithLosDrop: { type: integer }
         intersectionsAtLosEf: { type: integer }
-        worstDelayDeltaSec: { type: number }
+        worstDelayDeltaSec:
+          type: number
+          description: >-
+            Largest projected delay increase across the studied intersections,
+            in the OPENING YEAR only. Scoped, not absolute — compare against
+            worstDelayDeltaDesignSec, which is routinely larger because
+            background growth over the design horizon sits underneath it.
+        worstDelayDeltaDesignSec:
+          type: number
+          description: >-
+            Largest projected delay increase in the DESIGN year
+            (designBuild - designNoBuild). Absent when no design year was
+            analyzed.
         mitigationSummary:
           type: array
           items: { type: string }

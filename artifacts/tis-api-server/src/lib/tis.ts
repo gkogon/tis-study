@@ -1362,8 +1362,25 @@ function periodDirectionalIn(lu: LandUse, period: AnalysisPeriod): number {
   }
 }
 
-function recommendMitigation(
-  delayDelta: number, futureLos: Los,
+/** Screening mitigation thresholds, in seconds of delay increase.
+ *
+ *  These are SCREENING DEFAULTS WITH NO AGENCY ATTRIBUTION. No jurisdiction is
+ *  resolved anywhere in this call path, so nothing here may be represented as
+ *  a named agency's criterion — the previous wording named a governing city
+ *  that is never determined anywhere in this call path. A governing agency's
+ *  own TIS criteria supersede these, and typically add two tests this screen
+ *  does NOT run: a v/c criterion, and a separate clause for approaches already
+ *  failing in the no-build. */
+export const SCREENING_DELAY_DELTA_MINOR_SEC = 5;
+export const SCREENING_DELAY_DELTA_MODERATE_SEC = 15;
+
+/** One analysis horizon put to the mitigation test. */
+type MitigationHorizon = { label: string; delta: number; los: Los | undefined };
+
+const MITIGATION_RANK = { none: 0, minor: 1, moderate: 2, major: 3 } as const;
+
+function verdictForHorizon(
+  delayDelta: number, futureLos: Los | undefined,
 ): { text: string; severity: AffectedIntersection["mitigationSeverity"] } {
   if (futureLos === "F") {
     return {
@@ -1371,22 +1388,47 @@ function recommendMitigation(
       severity: "major",
     };
   }
-  if (futureLos === "E" || delayDelta >= 15) {
+  if (futureLos === "E" || delayDelta >= SCREENING_DELAY_DELTA_MODERATE_SEC) {
     return {
       text: "Moderate: extend critical-phase green time and consider a protected-only left-turn phase to absorb the new demand without queue spillback.",
       severity: "moderate",
     };
   }
-  if (delayDelta >= 5 || (futureLos === "D" && delayDelta > 0)) {
+  if (delayDelta >= SCREENING_DELAY_DELTA_MINOR_SEC || (futureLos === "D" && delayDelta > 0)) {
     return {
       text: "Minor: signal-timing optimization (shift 3–5s of green to the critical phase) is sufficient. No geometric change required.",
       severity: "minor",
     };
   }
-  return {
-    text: "No mitigation required — projected delay change is below the City's 5-second TIS threshold.",
-    severity: "none",
+  return { text: "", severity: "none" };
+}
+
+/** Mitigation verdict across EVERY analyzed horizon.
+ *
+ *  Screening the opening year alone leaves the design year untested, and the
+ *  design year usually carries the LARGER delta because two decades of
+ *  background growth sit underneath it. A verdict that silently covers one
+ *  horizon reads as covering the study. */
+function recommendMitigation(
+  horizons: MitigationHorizon[],
+): { text: string; severity: AffectedIntersection["mitigationSeverity"] } {
+  let worst: { text: string; severity: AffectedIntersection["mitigationSeverity"]; label: string } = {
+    text: "", severity: "none", label: horizons[0]?.label ?? "opening year",
   };
+  for (const h of horizons) {
+    const v = verdictForHorizon(h.delta, h.los);
+    if (MITIGATION_RANK[v.severity] > MITIGATION_RANK[worst.severity]) worst = { ...v, label: h.label };
+  }
+  const screened = horizons
+    .map((h) => `${h.label} ${h.delta >= 0 ? "+" : ""}${h.delta.toFixed(1)}s`)
+    .join(", ");
+  if (worst.severity === "none") {
+    return {
+      text: `No mitigation indicated at screening level (${screened}). The largest projected delay change is below the ${SCREENING_DELAY_DELTA_MINOR_SEC}-second screening threshold — a screening default, not an agency criterion: no jurisdiction was resolved for this site. The governing agency's TIS criteria supersede this, and typically add a v/c test and a separate clause for approaches already failing in the no-build; neither is screened here.`,
+      severity: "none",
+    };
+  }
+  return { text: `${worst.text} Governing horizon: ${worst.label} (${screened}).`, severity: worst.severity };
 }
 
 type ScenarioParams = {
@@ -1675,7 +1717,13 @@ function buildAffectedRow(
 
   const worstQueue = approaches.reduce((m, a) => Math.max(m, a.queue95thFt), 0);
 
-  let mit = recommendMitigation(afterDelay - beforeDelay, afterLos);
+  // Every analyzed horizon goes to the test, not just the opening year.
+  let mit = recommendMitigation([
+    { label: "opening year", delta: afterDelay - beforeDelay, los: afterLos },
+    ...(hasDesignYear
+      ? [{ label: "design year", delta: designBuildDelay - designNoBuildDelay, los: designBuildLos }]
+      : []),
+  ]);
 
   // Turbo-lane (continuous-green-T) screening. Computed for every candidate
   // 3-leg T-intersection regardless of LOS; when the intersection also fails
@@ -1825,23 +1873,56 @@ function plainFindings(
     out.push("No signalized intersections were found within the study radius — no off-site capacity impact is anticipated.");
     return out;
   }
+  // Every count and every delta below NAMES ITS HORIZON. An unscoped headline
+  // computed from the opening year alone understates the study against its own
+  // printed design-year values — a reviewer who spots that reads the whole
+  // document as understated.
+  const openingDelta = (r: AffectedIntersection) => r.futureDelaySec - r.existingDelaySec;
+  const designDelta = (r: AffectedIntersection) =>
+    (r.designBuildDelaySec ?? 0) - (r.designNoBuildDelaySec ?? 0);
+  const hasDesign = rows.some((r) => r.designBuildDelaySec !== undefined);
+
   const dropped = rows.filter((r) => r.losChanged).length;
   const ef = rows.filter((r) => r.futureLos === "E" || r.futureLos === "F").length;
+  const efDesign = rows.filter((r) => r.designBuildLos === "E" || r.designBuildLos === "F").length;
   out.push(
-    `${rows.length} signalized intersection${rows.length === 1 ? "" : "s"} fall within the study area; ${dropped} are projected to drop at least one LOS grade after build-out.`,
+    `${rows.length} signalized intersection${rows.length === 1 ? "" : "s"} fall within the study area; ${dropped} are projected to drop at least one LOS grade in the opening year after build-out.`,
   );
   if (ef > 0) {
-    out.push(`${ef} intersection${ef === 1 ? " is" : "s are"} projected to operate at LOS E or F under the build condition and require formal mitigation per ${region.jurisdiction.dotName} TIS guidance.`);
+    out.push(`${ef} intersection${ef === 1 ? " is" : "s are"} projected to operate at LOS E or F under the opening-year build condition and require formal mitigation per ${region.jurisdiction.dotName} TIS guidance.`);
+  } else if (hasDesign && efDesign > 0) {
+    out.push(`All studied intersections remain at LOS D or better under the opening-year build condition, but ${efDesign} ${efDesign === 1 ? "is" : "are"} projected to reach LOS E or F under the design-year build condition.`);
   } else {
-    out.push("All studied intersections are projected to remain at LOS D or better with build traffic; no formal mitigation is required.");
+    out.push(`All studied intersections are projected to remain at LOS D or better with build traffic${hasDesign ? " in both the opening and design years" : " in the opening year"}; no mitigation is indicated at screening level.`);
   }
-  const worst = rows.reduce<AffectedIntersection | null>(
-    (a, b) => (a == null || (b.futureDelaySec - b.existingDelaySec) > (a.futureDelaySec - a.existingDelaySec) ? b : a),
-    null,
-  );
-  if (worst && worst.futureDelaySec - worst.existingDelaySec >= 5) {
+
+  const worstBy = (f: (r: AffectedIntersection) => number) =>
+    rows.reduce<AffectedIntersection | null>((a, b) => (a == null || f(b) > f(a) ? b : a), null);
+
+  const worst = worstBy(openingDelta);
+  if (worst && openingDelta(worst) >= SCREENING_DELAY_DELTA_MINOR_SEC) {
     out.push(
-      `Worst-impact location: ${worst.name} — projected delay rises ${(worst.futureDelaySec - worst.existingDelaySec).toFixed(1)}s (LOS ${worst.existingLos} → ${worst.futureLos}); 95th-pct queue ${worst.queue95thFt.toFixed(0)} ft on the critical approach.`,
+      `Worst opening-year impact: ${worst.name} — projected delay rises ${openingDelta(worst).toFixed(1)}s (LOS ${worst.existingLos} → ${worst.futureLos}); 95th-pct queue ${worst.queue95thFt.toFixed(0)} ft on the critical approach.`,
+    );
+  }
+
+  // Reconcile the headline against the design year, ALWAYS when one was
+  // analyzed — not only when it crosses a threshold. The design-year delta is
+  // routinely the larger of the two, and a headline that reports only the
+  // opening-year figure contradicts values printed elsewhere in the same study.
+  if (hasDesign && worst) {
+    const worstD = worstBy(designDelta)!;
+    const maxOpening = openingDelta(worst);
+    const maxDesign = designDelta(worstD);
+    out.push(
+      maxOpening < 0.05 && maxDesign < 0.05
+        // Both round to zero: "0.0s and 0.0s" is a sentence that says nothing.
+        // State the fact instead — it still records that BOTH horizons were checked.
+        ? "No measurable delay change at either the opening year or the design year."
+        : `Largest projected delay change: ${maxOpening.toFixed(1)}s in the opening year (${worst.name}) and ${maxDesign.toFixed(1)}s in the design year (${worstD.name}).`
+          + (maxDesign > maxOpening
+            ? ` The design-year figure is the larger; that difference is driven by background traffic growth over the design horizon, not by the development.`
+            : ""),
     );
   }
   const turboRows = rows.filter((r) => r.turboLane);
@@ -2765,6 +2846,20 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     intersectionsWithLosDrop: pmReport.intersectionsWithLosDrop,
     intersectionsAtLosEf: pmReport.intersectionsAtLosEf,
     worstDelayDeltaSec: pmReport.worstDelayDeltaSec,
+    // Design-year companion to worstDelayDeltaSec, so a consumer can see the
+    // opening-year headline is scoped rather than absolute. The design-year
+    // delta is routinely the larger of the two; reporting only the opening-year
+    // figure contradicts values printed elsewhere in the same study.
+    ...(() => {
+      const d = pmReport.affectedIntersections.filter((r) => r.designBuildDelaySec !== undefined);
+      return d.length > 0
+        ? {
+            worstDelayDeltaDesignSec: round1(
+              d.reduce((m, r) => Math.max(m, (r.designBuildDelaySec ?? 0) - (r.designNoBuildDelaySec ?? 0)), 0),
+            ),
+          }
+        : {};
+    })(),
     mitigationSummary,
     findings,
     // The fallback disclosure rides the methodology list so every renderer
@@ -2890,7 +2985,7 @@ function buildSummaryMitigations(rows: AffectedIntersection[], region: Region): 
     out.push(`Signal-timing optimization at ${minor.length} intersection${minor.length === 1 ? "" : "s"} (3–5s green-time shift toward the critical phase) is sufficient.`);
   }
   if (none.length === rows.length) {
-    out.push("All studied intersections operate within the City's no-mitigation threshold (≤5s additional delay) under the build condition.");
+    out.push(`All studied intersections fall below the ${SCREENING_DELAY_DELTA_MINOR_SEC}-second screening threshold for additional delay across every analyzed horizon. That threshold is a screening default, not an agency criterion — no jurisdiction was resolved for this site — and this screen applies no v/c test and no separate clause for approaches already failing in the no-build. The governing agency's TIS criteria supersede it.`);
   }
   return out;
 }
