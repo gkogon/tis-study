@@ -1354,8 +1354,8 @@ function IntersectionTable({ report }: { report: TisReport }) {
                 <th className="text-left py-2 px-2 font-medium">Zone</th>
                 <th className="text-right py-2 px-2 font-medium">Dist (mi)</th>
                 <th className="text-right py-2 px-2 font-medium">+Trips PM</th>
-                <th className="text-center py-2 px-2 font-medium">LOS now</th>
-                <th className="text-center py-2 px-2 font-medium">LOS after</th>
+                <th className="text-center py-2 px-2 font-medium">LOS no-build</th>
+                <th className="text-center py-2 px-2 font-medium">LOS build</th>
                 <th className="text-right py-2 px-2 font-medium">Delay Δ</th>
                 <th className="text-right py-2 px-2 font-medium">Q95 (ft)</th>
                 <th className="text-center py-2 pl-2 font-medium">Mitigation</th>
@@ -1449,12 +1449,12 @@ function ApproachDetailTable({ approaches }: { approaches: TisApproachImpact[] }
         <thead>
           <tr className="border-b text-[10px] uppercase tracking-wide text-muted-foreground">
             <th className="text-left py-1 pr-2 font-medium">Approach</th>
-            <th className="text-right py-1 px-2 font-medium">Existing vph</th>
+            <th className="text-right py-1 px-2 font-medium">No-Build vph</th>
             <th className="text-right py-1 px-2 font-medium">+Trips</th>
             <th className="text-right py-1 px-2 font-medium">Future vph</th>
-            <th className="text-right py-1 px-2 font-medium">v/c (now → after)</th>
-            <th className="text-right py-1 px-2 font-medium">Delay (now → after)</th>
-            <th className="text-center py-1 px-2 font-medium">LOS (now → after)</th>
+            <th className="text-right py-1 px-2 font-medium">v/c (no-build → build)</th>
+            <th className="text-right py-1 px-2 font-medium">Delay (no-build → build)</th>
+            <th className="text-center py-1 px-2 font-medium">LOS (no-build → build)</th>
             <th className="text-right py-1 pl-2 font-medium">Q95 (ft)</th>
           </tr>
         </thead>
