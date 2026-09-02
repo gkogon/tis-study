@@ -1511,6 +1511,12 @@ function renderTis(doc: PDFKit.PDFDocument, r: any) {
     doc.moveDown(1);
   }
 
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "",
+    headingFn: (d, t) => section(d, t.replace(/^\s+/, "")),
+    cap: 20,
+  });
+
   // Affected intersections table — three scenarios stacked per standard
   // TIS convention: Existing (current year) / No-Build (opening year,
   // growth only) / Build (opening year, growth + project).
@@ -3234,6 +3240,12 @@ function renderTisGeorgiaWorksheet(
   doc.moveDown(0.3);
 
   // --- §4 Tier Determination -------------------------------------------
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "3.1",
+    headingFn: gaSubsection,
+    cap: 20,
+  });
+
   gaSection(doc, "4.0 WORKSHEET-TIER DETERMINATION");
   doc.font("body").fontSize(10).fillColor("black").text(
     `Per Gwinnett County DOT TIS Guidelines (2023) Table 1, projects generating 0–20 peak-hour site-generated automobile trips qualify as Level 1. The proposed development estimate of ${fmtNum(tierInput.pmPeakTrips)} PM peak-hour trips falls within this band; accordingly, no Level 2 (Abbreviated) or Level 3 (Full) TIS is required. The GTEA equivalent (Limited Trip Generation Memo per the GRTA DRI Review Procedures, applicable when Net ADT < 1,000) is also satisfied at ${fmtNum(tierInput.dailyTrips)} daily trips.`,
@@ -3476,6 +3488,12 @@ function renderTisGeorgiaAbbreviated(
     "Directional distribution of site-generated trips is based on the existing roadway network geometry, proximity to project access points, regional travel patterns from the ARC Activity-Based Model (ABM2), and engineering judgment. Assignment to the study network follows a proportional allocation by signal proximity and approach geometry; the per-intersection allocation is reflected in the §7 Traffic Operation Analysis below. For final submittal, distribution percentages should be confirmed during the methodology meeting with Gwinnett County DOT, GDOT District 7, and (where applicable) GTEA.",
     { paragraphGap: 6 },
   );
+
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "6.2.1",
+    headingFn: gaSubsection,
+    cap: 20,
+  });
 
   gaSubsection(doc, "6.3 Pass-By and Trip-Generation Reduction Assumptions");
   rows(doc, [
@@ -5428,6 +5446,12 @@ function renderTisTexasWorksheet(
   doc.moveDown(0.3);
 
   // --- §4 Worksheet-Tier Determination ---------------------------------
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "3.1",
+    headingFn: gaSubsection,
+    cap: 20,
+  });
+
   gaSection(doc, "4.0 WORKSHEET-TIER DETERMINATION");
   const determinationText = {
     houston: `Per IDM Ch. 15 (revision 07-01-2022), projects below the Category III Full TIA scoping threshold are gated through one of three lower tiers: Access Management Form (driveway-only review), Technical Memorandum (80–120 PHT band per §15.04.A.5), or Category I TIA (<100 PHT per Table 15.04.01). ≥100 PHT triggers a scoping meeting that determines whether a full TIA is required (§15.04.A.4.a). The screened ${fmtNum(pht)} PM PHT and ${fmtNum(daily)} daily trips route this project to ${houstonSubTier}.`,
@@ -5586,6 +5610,12 @@ function renderTisTexasAbbreviated(
   doc.moveDown(0.4);
 
   // --- §4 Tier Determination ------------------------------------------
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "3.1",
+    headingFn: gaSubsection,
+    cap: 20,
+  });
+
   gaSection(doc, "4.0 ABBREVIATED-TIER DETERMINATION");
   const determinationText = {
     houston: `Per IDM Ch. 15 (revision 07-01-2022) Table 15.04.01, Category II covers the 100–499 PHT band. The screened ${fmtNum(pht)} PM PHT places this project within that band. The OCE TIA Content Guide outline is reduced relative to Category III — LOS analysis at the site-access intersections plus adjacent signalized intersections (LOS D threshold of significance per IDM §15.04.B.6.a), no full corridor-capacity sweep. The Access Management Data Summary Form remains required as a commercial-site companion regardless of TIA tier; CPC 101 Form is also required per TIA Content Guide p. 3.`,
