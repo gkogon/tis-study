@@ -1915,10 +1915,14 @@ function plainFindings(
     const maxOpening = openingDelta(worst);
     const maxDesign = designDelta(worstD);
     out.push(
-      `Largest projected delay change: ${maxOpening.toFixed(1)}s in the opening year (${worst.name}) and ${maxDesign.toFixed(1)}s in the design year (${worstD.name}).`
-      + (maxDesign > maxOpening
-        ? ` The design-year figure is the larger; that difference is driven by background traffic growth over the design horizon, not by the development.`
-        : ""),
+      maxOpening < 0.05 && maxDesign < 0.05
+        // Both round to zero: "0.0s and 0.0s" is a sentence that says nothing.
+        // State the fact instead — it still records that BOTH horizons were checked.
+        ? "No measurable delay change at either the opening year or the design year."
+        : `Largest projected delay change: ${maxOpening.toFixed(1)}s in the opening year (${worst.name}) and ${maxDesign.toFixed(1)}s in the design year (${worstD.name}).`
+          + (maxDesign > maxOpening
+            ? ` The design-year figure is the larger; that difference is driven by background traffic growth over the design horizon, not by the development.`
+            : ""),
     );
   }
   const turboRows = rows.filter((r) => r.turboLane);
