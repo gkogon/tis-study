@@ -44,8 +44,13 @@ Redline.
 **Rules of the pass**
 
 1. Datum does not edit. It produces a findings list and hands it back.
-2. Every finding is `BLOCKER` / `DISCLOSE` / `NOTE`.
+2. Every finding is `BLOCKER` / `DEFECT` / `DISCLOSE` / `NOTE`.
    - `BLOCKER` — wrong number, wrong source, or a missing input. Nothing ships.
+   - `DEFECT` — the **engine** is wrong, not this study. A mislabeled field, a
+     value the payload cannot source, a check the code never runs. It blocks
+     this study and it opens a bug. Route it to the code queue, not to the PE —
+     a PE cannot rule on a software defect, and every study the engine has ever
+     produced carries it.
    - `DISCLOSE` — the analysis is fine but the deliverable must say so out loud.
    - `NOTE` — worth the PE's attention, not a hold.
 3. "I could not verify this" is a finding, not a pass. Silence is never a pass.
@@ -56,6 +61,30 @@ Redline.
    produced a number is not evidence for the number.
 6. Datum's findings never appear in the client deliverable. `DISCLOSE` findings
    become deliverable language; the finding itself does not.
+
+## What a Datum pass requires
+
+A pass run on less than this returns `UNVERIFIED` where it should return a
+finding, and an `UNVERIFIED` list padded with things Datum was simply never
+given is worse than no pass — it looks like coverage.
+
+Redline supplies:
+
+1. **Every studied intersection's printed values**, not a selection. Headline
+   aggregates ("2 LOS drops", "0 at LOS E or F", "worst delta 1.2 s") summarize
+   all of them and cannot be checked against three of twelve.
+2. **The rendered deliverable**, or the renderer path that produced it. Section
+   6 asks what the document *says*. Printed values do not answer that — a
+   disclosure can be absent from the deliverable while every number in it is
+   correct.
+3. **The inputs as entered**, including the ones Redline did not choose:
+   growth rate, region code, and any explicit override.
+4. **What was not supplied to the study**, named. Absent count dates and an
+   unnamed governing jurisdiction are findings, and Datum can only report them
+   if it knows they are missing rather than withheld.
+
+Redline does **not** supply its reasoning, its judgment calls, or its own list
+of concerns. Those are the answers. A pass that receives them is grading itself.
 
 Engine constants referenced below are in
 `artifacts/tis-api-server/src/lib/signal-delay.ts`; trip rates are in
@@ -71,6 +100,22 @@ Engine constants referenced below are in
   application date.
 - Confirm count dates support the growth years applied — one year at 1.5%
   implies 2026 counts.
+
+- **Confirm the growth rate against the engine's measured rate for the
+  region**, in `regional-growth-rates.ts`. Precedence in `tis.ts` is explicit
+  override → measured CAGR → 1.5 legacy default, and **an explicit override
+  sets `measuredRate` to `undefined`, which suppresses `growthSource`
+  entirely.** So an overridden study prints a growth figure with no provenance
+  at all, while the engine holds a cited rate it did not use. Any override is a
+  `BLOCKER` unless the deliverable states the override and its basis on its
+  face. This check is cheap and it moves every volume, v/c, delay and queue in
+  the study.
+
+- **Confirm each scenario label describes the computation behind it.** Read the
+  field the number came from, not the column heading. A row labeled "Existing"
+  that holds a volume already grown to the opening year is not a rounding
+  quibble — it is the baseline the entire impact is measured against, and it
+  will be read as counted traffic by everyone downstream.
 
 *Running it here:* count vintage and per-state growth provenance come from
 `regional-growth-rates.ts` and the ingested ATR/TMAS series. If the count year
@@ -150,6 +195,12 @@ as a curve selection.
   say that** — it is not a project impact.
 - Check the 95th-percentile queue (`queue95Ft`) against available storage **and
   driveway offset** for every approach carrying project traffic.
+- **Reconcile every headline aggregate against the per-intersection values,
+  and confirm its year scope.** "Worst delay delta", "N LOS drops", and "0 at
+  LOS E or F" are computed from one horizon. If a larger delta exists at
+  another horizon in the same study, the headline is either wrong or unscoped,
+  and both read to a reviewer as the study understating itself.
+
 - Watch the delay ceiling: reported control delay is capped at
   `SCREENING_MAX_DELAY_SEC = 300`. Two approaches both printing at or near 300 s
   are not equal — they are both off-scale. Do not report them as a tie.
@@ -161,6 +212,12 @@ as a curve selection.
 - A delay-increase test alone is usually incomplete. Most jurisdictions add:
   - a **v/c criterion**, and
   - a **separate clause for approaches already failing** in the no-build.
+- **Confirm which horizon the verdict was computed from.** A mitigation test
+  run on the opening year alone leaves the design year untested. Either the
+  test runs at every analyzed horizon, or the finding is scoped to its year in
+  the deliverable's own words — "no mitigation required in 2027" is a different
+  claim from "no mitigation required."
+
 - A criterion Datum could not locate in the agency document is
   `BLOCKER — unverified`, not an assumed absence.
 
@@ -227,6 +284,7 @@ Each entry records: UTC timestamp, study id, protocol version, and every
 finding with its type **and its disposition** —
 
 - `FIXED` — the study changed.
+- `BUG FILED` — a `DEFECT`; record the issue or PR.
 - `DISCLOSED` — language added to the deliverable, quote it.
 - `WITHDRAWN` — Datum withdrew on a source Redline produced; name the source.
 - `CONTESTED → PE` — escalated; record the ruling when it comes.
@@ -245,6 +303,9 @@ DATUM FINDINGS — <study id> — <date>
 
 BLOCKER
   [§n] <finding> — <what to change>
+
+DEFECT
+  [§n] <finding> — <file:line> — <bug to open>
 
 DISCLOSE
   [§n] <finding> — <exact language to add>

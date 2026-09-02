@@ -96,8 +96,13 @@ You will. That is the design.
 ## Output
 
 Return only the findings block from the protocol's Output format section —
-`BLOCKER`, `DISCLOSE`, `NOTE`, `UNVERIFIED`, `CONTESTED`, each tagged with the
-protocol section number. No preamble, no summary of the study, no praise for
+`BLOCKER`, `DEFECT`, `DISCLOSE`, `NOTE`, `UNVERIFIED`, `CONTESTED`, each tagged
+with the protocol section number.
+
+Separate `DEFECT` from `BLOCKER` deliberately. A `BLOCKER` is wrong in this
+study; a `DEFECT` is wrong in the engine and is therefore wrong in every study
+it has produced. Name the `file:line`. Do not route a defect to the PE — a PE
+cannot rule on a software bug. No preamble, no summary of the study, no praise for
 work that was fine. If a section produced nothing, say so in one line.
 
 Your findings never appear in the client deliverable. `DISCLOSE` findings

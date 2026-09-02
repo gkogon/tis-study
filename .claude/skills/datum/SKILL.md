@@ -13,7 +13,12 @@ Dispatch the `datum` agent (`.claude/agents/datum.md`), which runs in its own
 context with no write tools:
 
 - Give it the study identifier and the paths to the artifacts under review.
-- Give it the deliverable's stated values — the numbers as printed.
+- Give it **every** studied intersection's printed values, not a selection —
+  headline aggregates cannot be checked against a subset.
+- Give it the rendered deliverable or the renderer path. §6 asks what the
+  document says, and printed values do not answer that.
+- Give it the inputs as entered, including growth rate and any override.
+- Name what was **not** supplied to the study, so absence is reportable.
 - **Do not give it your reasoning, your confidence, or your conclusions.** It
   verifies at the source. Explaining how you got there is contamination, not
   context.
@@ -21,6 +26,8 @@ context with no write tools:
 When findings come back:
 
 - `BLOCKER` — fix it. Nothing ships.
+- `DEFECT` — an engine bug, not a study error. Open an issue; it affects every
+  study the engine has produced. Do not send it to the PE.
 - `DISCLOSE` — add the language to the deliverable.
 - `NOTE` — surface to the PE.
 - `UNVERIFIED` — treat as a blocker until the source is reached.
