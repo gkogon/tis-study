@@ -32,6 +32,7 @@ import { ukCapacityForIntersection, type UkCapacityResult } from "./uk-capacity"
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { renderTisNorthCarolina, renderTisSouthCarolina } from "./pdf-export-carolinas";
 import { appliedRateRows } from "./trip-rate-rows";
+import { isGrowthOverride } from "./regional-growth-rates";
 import { renderTisState } from "./pdf-export-states";
 import { renderDiurnalCharts, drawColumnChart, drawLineChart, CHART_COLORS } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
@@ -1771,7 +1772,7 @@ function renderTisGeorgia(
   gaSubsection(doc, "2.1 Growth Rate");
   if (r.growthSource) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Background traffic growth is applied at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from measured per-segment compound annual growth at GDOT count stations within the study metro. Source: ${r.growthSource}. The metro-level median is published here for transparency. For DRI submittals, the growth rate is typically refined to per-segment trend on the affected facilities and agreed upon during the pre-application methodology meeting with GTEA, ARC, GDOT, and the local jurisdiction.`,
+      `Background traffic growth is applied at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, ${isGrowthOverride(r.growthSource) ? `applied as an explicit override, not derived from measured data. ${r.growthSource}` : `derived from measured per-segment compound annual growth at GDOT count stations within the study metro. Source: ${r.growthSource}. The metro-level median is published here for transparency.`} For DRI submittals, the growth rate is typically refined to per-segment trend on the affected facilities and agreed upon during the pre-application methodology meeting with GTEA, ARC, GDOT, and the local jurisdiction.`,
       { paragraphGap: 6 },
     );
   } else {
@@ -2802,7 +2803,7 @@ function renderTisCalifornia(
   caSubsection(doc, "4.2 Trip Generation");
   if (r.growthSource) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Gross trip generation is calculated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Background traffic growth is applied at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from measured per-segment compound annual growth at Caltrans count stations within the study metro. Source: ${r.growthSource}. Pass-by capture applied: ${r.passByPctApplied ?? 0}%; internal capture applied: ${r.internalCapturePctApplied ?? 0}%.`,
+      `Gross trip generation is calculated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Background traffic growth is applied at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, ${isGrowthOverride(r.growthSource) ? `applied as an explicit override, not derived from measured data. ${r.growthSource}` : `derived from measured per-segment compound annual growth at Caltrans count stations within the study metro. Source: ${r.growthSource}.`} Pass-by capture applied: ${r.passByPctApplied ?? 0}%; internal capture applied: ${r.internalCapturePctApplied ?? 0}%.`,
       { paragraphGap: 6 },
     );
   } else {
@@ -3443,7 +3444,7 @@ function renderTisGeorgiaAbbreviated(
   gaSubsection(doc, "6.1 Future ADT Volumes");
   if (r.growthSource) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Future-year ADT volumes are calculated by applying background traffic growth at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year (derived from the measured per-segment compound annual growth rate at GDOT count stations within the study metro; source: ${r.growthSource}) to existing volumes, then layering the proposed development's site-generated daily trips (${fmtNum(tierInput.dailyTrips)} vpd gross) net of any pass-by and internal capture credits.`,
+      `Future-year ADT volumes are calculated by applying background traffic growth at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year ${isGrowthOverride(r.growthSource) ? `(an explicit override, not derived from measured data — ${r.growthSource})` : `(derived from the measured per-segment compound annual growth rate at GDOT count stations within the study metro; source: ${r.growthSource})`} to existing volumes, then layering the proposed development's site-generated daily trips (${fmtNum(tierInput.dailyTrips)} vpd gross) net of any pass-by and internal capture credits.`,
       { paragraphGap: 6 },
     );
   } else {
@@ -6047,7 +6048,7 @@ function renderTisTexas(
   gaSubsection(doc, "5.4 Non-Site Traffic");
   if (r.growthSource) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Background traffic is grown at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from measured per-segment compound annual growth at TxDOT count stations within the study metro. Source: ${r.growthSource}. Per TSP §16.4.2, the prescribed method is to average at least the last five years of historical AADT data for the segment analyzed; the metro-level median published here is a starting point and should be refined to per-segment trend on the affected facilities before formal submittal. Background growth data is also commonly sourced from the host city or regional MPO travel-demand model (H-GAC, NCTCOG, CAMPO, or AAMPO depending on the MSA).`,
+      `Background traffic is grown at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, ${isGrowthOverride(r.growthSource) ? `applied as an explicit override, not derived from measured data. ${r.growthSource} Per TSP §16.4.2, the prescribed method is to average at least the last five years of historical AADT data for the segment analyzed; the rate applied here should be refined to per-segment trend on the affected facilities before formal submittal.` : `derived from measured per-segment compound annual growth at TxDOT count stations within the study metro. Source: ${r.growthSource}. Per TSP §16.4.2, the prescribed method is to average at least the last five years of historical AADT data for the segment analyzed; the metro-level median published here is a starting point and should be refined to per-segment trend on the affected facilities before formal submittal.`} Background growth data is also commonly sourced from the host city or regional MPO travel-demand model (H-GAC, NCTCOG, CAMPO, or AAMPO depending on the MSA).`,
       { paragraphGap: 6 },
     );
   } else {
@@ -8090,7 +8091,7 @@ function renderTisFlorida(
   gaSubsection(doc, "2.6 Growth Rate");
   if (r.growthSource) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Per FDOT TAH §2.7, demand projections should use the adopted regional MPO/TPO travel-demand model (TDM); where TDM use is not warranted, historical AADT trend growth from Florida Traffic Online (FTO) is the FDOT-wide convention. Background traffic is grown at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from the measured per-segment compound annual growth rate across the FDOT TDA Annual_Average_Daily_Traffic_Historical layer. Source: ${r.growthSource}. The metro-level median is published here for transparency; for formal submittal, the FDOT District / FTO segment-level trend on the affected facilities is the authoritative input and should be confirmed at the methodology meeting.`,
+      `Per FDOT TAH §2.7, demand projections should use the adopted regional MPO/TPO travel-demand model (TDM); where TDM use is not warranted, historical AADT trend growth from Florida Traffic Online (FTO) is the FDOT-wide convention. Background traffic is grown at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, ${isGrowthOverride(r.growthSource) ? `applied as an explicit override, not derived from measured data. ${r.growthSource} The override is not an FTO or FDOT TDA trend` : `derived from the measured per-segment compound annual growth rate across the FDOT TDA Annual_Average_Daily_Traffic_Historical layer. Source: ${r.growthSource}. The metro-level median is published here for transparency`}; for formal submittal, the FDOT District / FTO segment-level trend on the affected facilities is the authoritative input and should be confirmed at the methodology meeting.`,
       { paragraphGap: 6 },
     );
   } else {

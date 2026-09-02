@@ -965,6 +965,8 @@ export interface TisReport {
   periodReports: TisPeriodReport[];
   growthAppliedPct: number;
   growthYears: number;
+  /** Provenance for growthAppliedPct, printed verbatim by the renderers. Names the basis of the applied rate: a measured per-metro CAGR and the DOT layer it came from, or — when the request supplied growthRatePct — that an explicit override was applied, alongside the measured rate for the region that the override displaced. Optional: absent on payloads stored before this field existed, which re-render through the same path and must not sprout an empty citation. */
+  growthSource?: string;
   weather: TisWeather;
   weatherCapacityFactor: number;
   passByPctApplied: number;
