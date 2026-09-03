@@ -168,6 +168,14 @@ export function generateUtdf(result: EngineResult, opts: UtdfOptions = {}): stri
         && ((a as { laneGroups?: unknown[] }).laneGroups as unknown[]).length > 0,
     ),
   ).length;
+  // Intersections carrying at least one measured per-movement lane count.
+  const measuredLaneNodes = intersections.filter((it) =>
+    (Array.isArray(it.approaches) ? it.approaches : []).some((a) =>
+      ((a as { laneGroups?: Array<{ lanes?: number }> }).laneGroups ?? []).some(
+        (g) => Number.isInteger(g.lanes as number) && (g.lanes as number) > 0,
+      ),
+    ),
+  ).length;
   if (measuredMovementNodes > 0) {
     lines.push(`# 1. Turning movement counts: MEASURED at ${measuredMovementNodes} of ${intersections.length}`);
     lines.push(`#    intersection(s), from the Synchro record imported with this study;`);
@@ -181,9 +189,18 @@ export function generateUtdf(result: EngineResult, opts: UtdfOptions = {}): stri
     lines.push(`#    distributed by 10% LEFT / 80% THROUGH / 10% RIGHT. Public TMC`);
     lines.push(`#    data does not exist at scale; PE must overlay field counts.`);
   }
-  lines.push(`# 2. Lane configuration: defaults to 1 LEFT + 2 THROUGH + 1 RIGHT`);
-  lines.push(`#    per approach (4 lanes total). PE substitutes field-verified`);
-  lines.push(`#    geometry from as-built plans or driveway survey.`);
+  if (measuredLaneNodes > 0) {
+    lines.push(`# 2. Lane configuration: MEASURED at ${measuredLaneNodes} of ${intersections.length}`);
+    lines.push(`#    intersection(s) — per-movement lane counts carried straight from`);
+    lines.push(`#    the imported Synchro [Lanes] record. Those rows are marked`);
+    lines.push(`#    "measured-lanes" in [Lanes]. Every other row defaults to`);
+    lines.push(`#    1 LEFT + 2 THROUGH + 1 RIGHT and is marked "default-"; PE`);
+    lines.push(`#    substitutes field-verified geometry there.`);
+  } else {
+    lines.push(`# 2. Lane configuration: NOT measured — defaults to 1 LEFT + 2 THROUGH`);
+    lines.push(`#    + 1 RIGHT per approach (4 lanes total). PE substitutes field-`);
+    lines.push(`#    verified geometry from as-built plans or driveway survey.`);
+  }
   lines.push(`# 3. Signal timing: NEMA 8-phase dual-ring, cycle ${DEFAULT_CYCLE_LENGTH_S}s, yellow`);
   lines.push(`#    ${DEFAULT_YELLOW_S}s, all-red ${DEFAULT_ALL_RED_S}s. Splits proportional to approach v/c.`);
   lines.push(`#    PE substitutes signal-controller logs from agency permit file.`);
@@ -256,19 +273,39 @@ export function generateUtdf(result: EngineResult, opts: UtdfOptions = {}): stri
     // old code wrote a hardcoded 0 for every movement, which reads in Synchro
     // as "no bay" and silently discards a measured length we already had.
     const storageByMovement: Record<string, number> = {};
+    // Measured lane COUNT per movement, from the imported [Lanes] section.
+    // The engine has carried this on LaneGroupImpact.lanes since #166 and the
+    // PDF lane-group table already prints it; this export was still writing
+    // the 1L/2T/1R default over the top of it, which is the one thing Peralta
+    // actually asked for — lane geometry a reviewer can open in Synchro.
+    const lanesByMovement: Record<string, number> = {};
     for (const a of approaches) {
       const dir = normDirection(a.direction);
-      const groups = (a as { laneGroups?: Array<{ movement: string; storageFt?: number }> }).laneGroups;
+      const groups = (a as {
+        laneGroups?: Array<{ movement: string; storageFt?: number; lanes?: number }>;
+      }).laneGroups;
       for (const g of groups ?? []) {
         if (Number.isFinite(g.storageFt as number) && (g.storageFt as number) > 0) {
           storageByMovement[`${dir}${g.movement}`] = g.storageFt as number;
         }
+        if (Number.isInteger(g.lanes as number) && (g.lanes as number) > 0) {
+          lanesByMovement[`${dir}${g.movement}`] = g.lanes as number;
+        }
       }
     }
-    const laneRow = (dir: string, mv: "L" | "T" | "R", lanes: number, fallbackNote: string) => {
+    const laneRow = (dir: string, mv: "L" | "T" | "R", defaultLanes: number, fallbackNote: string) => {
       const st = storageByMovement[`${dir}${mv}`];
       const hasSt = Number.isFinite(st) && st > 0;
-      return `${intid},${dir}${mv},${lanes},${DEFAULT_LANE_WIDTH_FT},0,${hasSt ? Math.round(st) : 0},0,${hasSt ? "measured-storage" : fallbackNote}`;
+      const measuredLanes = lanesByMovement[`${dir}${mv}`];
+      const hasLanes = Number.isInteger(measuredLanes) && measuredLanes > 0;
+      const lanes = hasLanes ? measuredLanes : defaultLanes;
+      // Note column is the provenance disclosure a reviewing PE reads first:
+      // say exactly which of the two fields on this row is real.
+      const note = hasLanes && hasSt ? "measured-lanes+storage"
+        : hasLanes ? "measured-lanes"
+        : hasSt ? `measured-storage,${fallbackNote}`
+        : fallbackNote;
+      return `${intid},${dir}${mv},${lanes},${DEFAULT_LANE_WIDTH_FT},0,${hasSt ? Math.round(st) : 0},0,${note}`;
     };
     for (const dir of ["NB", "SB", "EB", "WB"]) {
       if (!dirsWithData.has(dir)) continue;
