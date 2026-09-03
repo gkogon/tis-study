@@ -16,5 +16,6 @@ export interface TisPeriodReport {
   affectedIntersections: TisAffectedIntersection[];
   intersectionsWithLosDrop: number;
   intersectionsAtLosEf: number;
+  /** Largest projected delay increase across the studied intersections, in the OPENING YEAR only. Scoped, not absolute — compare against worstDelayDeltaDesignSec, which is routinely larger because background growth over the design horizon sits underneath it. */
   worstDelayDeltaSec: number;
 }
