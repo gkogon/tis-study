@@ -9156,7 +9156,7 @@ function renderFourStepSection(
   const autoPct = Number.isFinite(autoShare) ? Math.round(autoShare * 100) : 100;
   doc.font("body").fontSize(9.5).fillColor("black").text(
     `Auto-mode share ${autoPct}% applied via a binary logit  P(auto) = 1 / (1 + e^-(ASC − λ·ΔGC))  calibrated to the `
-    + `metro's measured auto-mode share (ACS B08301) and shifted by site urbanity (local density), so a denser, more `
+    + `metro's auto-mode share — measured (ACS B08301) where the metro is wired, otherwise the ACS B08301 metropolitan median of 90% — and shifted by site urbanity (local density), so a denser, more `
     + `transit-served site splits further from auto than a greenfield parcel in the same metro. The remaining `
     + `${100 - autoPct}% of trips (transit, walking, cycling) do not load the off-site roadway network; only auto `
     + `trips are carried into Step 4.`,
