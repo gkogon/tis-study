@@ -500,6 +500,13 @@ export type ResolvedStudyTier = Exclude<StudyTier, "auto">;
 export type { DistributionMethod } from "./trip-distribution";
 
 export type ApproachImpact = {
+  /** Project-added trips split across left/through/right on THIS approach,
+   *  from the geometric movement assignment the engine already runs off the
+   *  trip-distribution octants (movement-assignment.ts). Covers the PROJECT
+   *  increment only — background turning splits are not measured at screening
+   *  level, so consumers must not read this as a total turn split. Absent when
+   *  no distribution ran. */
+  addedByMovement?: { L: number; T: number; R: number };
   direction: Direction;
   // True current-year baseline (no growth).
   currentVolumeVph: number;
@@ -1708,6 +1715,22 @@ function buildAffectedRow(
       existingLos: delayToLos(exDelay),
       futureLos: delayToLos(fuDelay),
       queue95thFt: round1(queue95Ft(futureVol, params.approachCapacityVph, utdfCycleLenS)),
+      // Project-trip L/T/R for this approach, from the geometric assignment
+      // already computed above off the distribution octants. Emitted so the
+      // UTDF export can write existing + a REAL project split instead of
+      // flattening the total to 10/80/10. Project increment only — the
+      // background split is still unmeasured at screening level.
+      ...(() => {
+        if (!movements) return {};
+        const byMv = { L: 0, T: 0, R: 0 };
+        let any = false;
+        for (const m of movements) {
+          if (m.approach !== d) continue;
+          byMv[m.movement] += m.trips;
+          any = true;
+        }
+        return any ? { addedByMovement: byMv } : {};
+      })(),
       // Per-movement queues, but only where an imported record supplies a real
       // turn split for the background traffic. Absent everywhere else on
       // purpose — see laneGroupsForApproach.
