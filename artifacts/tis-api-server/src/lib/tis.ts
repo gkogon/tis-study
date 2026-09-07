@@ -549,6 +549,13 @@ export type LaneGroupImpact = {
 
 export type AffectedIntersection = {
   signalId: string;
+  /** Per-direction through lanes on the major / minor approach, from the OSM
+   *  `lanes` tag on the road the signal was matched to. Present only where
+   *  OSM carried a tag — absence is what makes the UTDF export fall back to
+   *  its 1L/2T/1R screening default, and the export row says which basis it
+   *  used. Never populated speculatively. */
+  mainThroughLanes?: number;
+  minorThroughLanes?: number;
   name: string;
   zone: string;
   latitude: number;
@@ -1783,6 +1790,10 @@ function buildAffectedRow(
 
   return {
     signalId: c.sig.id,
+    ...(c.sig.mainThroughLanesMeasured && c.sig.mainThroughLanes
+      ? { mainThroughLanes: c.sig.mainThroughLanes }
+      : {}),
+    ...(c.sig.minorThroughLanes ? { minorThroughLanes: c.sig.minorThroughLanes } : {}),
     name: c.sig.name,
     zone: c.sig.zone,
     latitude: c.sig.latitude,
