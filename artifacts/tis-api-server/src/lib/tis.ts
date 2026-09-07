@@ -58,6 +58,8 @@ import {
   PER_INTERSECTION_CAPACITY_VPH,
   APPROACH_CAPACITY_VPH,
 } from "./signal-delay";
+// Background-volume credibility guard (dependency-free leaf, unit-tested there).
+import { implausibleVolumeDisclosures } from "./volume-plausibility";
 import { intersectionLoadFraction } from "./trip-loading";
 import {
   computeTripDistribution,
@@ -2824,19 +2826,27 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // `region` is already resolved earlier (before findAffectedIntersections)
   // — reuse it for the findings/mitigation language so the report is
   // self-consistent.
-  const findings = plainFindings(
-    tripGeneration,
-    pmReport.affectedIntersections,
-    growthYears,
-    growthRatePct,
-    weather,
-    weatherFactor,
-    passByPct,
-    internalCapturePct,
-    sens,
-    region,
-    autoModeShare,
-  );
+  // Background-volume plausibility. Leads the findings list when it fires —
+  // a reader must not reach the LOS tables before being told the volumes
+  // behind them are not credible.
+  const volumeDisclosures = implausibleVolumeDisclosures(pmReport.affectedIntersections);
+
+  const findings = [
+    ...volumeDisclosures,
+    ...plainFindings(
+      tripGeneration,
+      pmReport.affectedIntersections,
+      growthYears,
+      growthRatePct,
+      weather,
+      weatherFactor,
+      passByPct,
+      internalCapturePct,
+      sens,
+      region,
+      autoModeShare,
+    ),
+  ];
 
   const mitigationSummary = buildSummaryMitigations(pmReport.affectedIntersections, region);
 
@@ -2892,9 +2902,12 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     // The fallback disclosure rides the methodology list so every renderer
     // that prints methodology discloses the widened study set in the PDF
     // without per-renderer changes.
-    methodology: coverageNote
-      ? [coverageNote.message, ...tisMethodologyForRegion(region)]
-      : tisMethodologyForRegion(region),
+    methodology: [
+      // Disclosures first: both of these qualify every number below them.
+      ...volumeDisclosures,
+      ...(coverageNote ? [coverageNote.message] : []),
+      ...tisMethodologyForRegion(region),
+    ],
     periodReports,
     growthAppliedPct: growthRatePct,
     growthYears,
