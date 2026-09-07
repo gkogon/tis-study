@@ -637,6 +637,13 @@ export function loadRegionalIntersections(regionCode: string): IntersectionSumma
       // `source` field was loaded and then discarded here.
       volumeSource: aadtRec ? aadtRec.source : "road_class_baseline",
       ...(aadtRec ? { volumeYear: aadtRec.year } : {}),
+      // Real per-approach lane geometry off OSM, where the matched way carries
+      // a `lanes` tag. Omitted rather than defaulted so a consumer can tell
+      // "2 lanes because OSM says 2" from "2 lanes because we guessed".
+      ...(naming?.majorLanes
+        ? { mainThroughLanes: naming.majorLanes, mainThroughLanesMeasured: true }
+        : {}),
+      ...(naming?.minorLanes ? { minorThroughLanes: naming.minorLanes } : {}),
     };
   });
 

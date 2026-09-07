@@ -258,6 +258,9 @@ type AnalyzerIntersection = {
   medianType?: "raised" | "painted" | "none";
   mainThroughLanes?: number;
   mainThroughLanesMeasured?: boolean;
+  /** Per-direction through lanes on the minor (cross-street) approach, from
+   *  OSM `lanes`. Absent when the matched way carries no tag. */
+  minorThroughLanes?: number;
 };
 
 const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8080";

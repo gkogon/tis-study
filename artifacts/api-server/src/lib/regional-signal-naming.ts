@@ -23,6 +23,11 @@ type Segment = {
   /** OSM highway class code: 0=motorway, 1=trunk, 2=primary, 3=secondary, 4=tertiary */
   classCode: number;
   alat: number; alon: number; blat: number; blon: number;
+  /** OSM `lanes` on the way this segment came from — TOTAL across both
+   *  directions unless `oneway` is set. Null when the way carries no tag. */
+  lanes: number | null;
+  /** 1 = along node order, -1 = against, 0 = two-way. */
+  oneway: number;
 };
 type Grid = Map<number, Segment[]>;
 
@@ -36,6 +41,14 @@ type RoadNetwork = { classes: string[]; ways: unknown[] };
 export type SignalNamingResult = {
   name: string;
   roadClassCode: number;
+  /** Per-DIRECTION through-lane count on the major (nearest) approach road,
+   *  derived from OSM `lanes`. OSM counts both directions on a two-way way,
+   *  so a two-way `lanes=4` yields 2 here. Null when OSM carries no lane tag
+   *  on the matched way — absence is what makes the consumer fall back to a
+   *  screening default, and the consumer says which basis it used. */
+  majorLanes: number | null;
+  /** Same for the minor (cross-street) approach. */
+  minorLanes: number | null;
 };
 
 function cellKey(latIdx: number, lonIdx: number): number {
@@ -52,11 +65,19 @@ function buildGrid(road: RoadNetwork): Grid {
     if (!name) continue;
     const pts = way[2] as Array<[number, number]>;
     if (!Array.isArray(pts) || pts.length < 2) continue;
+    // Way tuple is [classCode, name, polyline, lanes?, maxspeed?, oneway?] —
+    // see regional-roads.ts. `lanes` is OSM's TOTAL lane count on the way,
+    // both directions, unless the way is oneway.
+    const laneCount = typeof way[3] === "number" && (way[3] as number) > 0 ? (way[3] as number) : null;
+    const onewayFlag = typeof way[5] === "number" ? (way[5] as number) : 0;
 
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i]!;
       const b = pts[i + 1]!;
-      const seg: Segment = { name, classCode, alat: a[0], alon: a[1], blat: b[0], blon: b[1] };
+      const seg: Segment = {
+        name, classCode, alat: a[0], alon: a[1], blat: b[0], blon: b[1],
+        lanes: laneCount, oneway: onewayFlag,
+      };
       const aLatIdx = Math.floor(a[0] / CELL_DEG);
       const aLonIdx = Math.floor(a[1] / CELL_DEG);
       const bLatIdx = Math.floor(b[0] / CELL_DEG);
@@ -106,7 +127,7 @@ function analyzeOneSignal(grid: Grid, lat: number, lon: number): SignalNamingRes
   const latIdx = Math.floor(lat / CELL_DEG);
   const lonIdx = Math.floor(lon / CELL_DEG);
   // Per-name: closest distance + class of the closest segment carrying that name
-  const bestPerName = new Map<string, { distance: number; classCode: number }>();
+  const bestPerName = new Map<string, { distance: number; classCode: number; lanes: number | null; oneway: number }>();
   // Most-major class observed within FAR_RADIUS_M (lower code = bigger road).
   let bestClass = 99;
   let bestClassDist = Infinity;
@@ -119,7 +140,7 @@ function analyzeOneSignal(grid: Grid, lat: number, lon: number): SignalNamingRes
         const d = pointToSegmentMeters(lat, lon, s.alat, s.alon, s.blat, s.blon);
         const prev = bestPerName.get(s.name);
         if (prev === undefined || d < prev.distance) {
-          bestPerName.set(s.name, { distance: d, classCode: s.classCode });
+          bestPerName.set(s.name, { distance: d, classCode: s.classCode, lanes: s.lanes, oneway: s.oneway });
         }
         // Track the most-major road class within FAR_RADIUS_M as the signal's class.
         // Tie-break on distance so we don't pick a far-away motorway over a nearby trunk.
@@ -133,10 +154,18 @@ function analyzeOneSignal(grid: Grid, lat: number, lon: number): SignalNamingRes
 
   if (bestPerName.size === 0) return null;
   const ranked = Array.from(bestPerName.entries()).sort((a, b) => a[1].distance - b[1].distance);
-  const [n1, { distance: d1 }] = ranked[0]!;
+  const [n1, { distance: d1, lanes: l1, oneway: o1 }] = ranked[0]!;
+  // OSM `lanes` counts BOTH directions on a two-way way. A signalised approach
+  // is one direction, so halve it unless the way is oneway (oneway !== 0).
+  // Round UP: a 3-lane two-way road is 2 lanes one way and 1 the other, and the
+  // approach we care about at a signal is the wider one.
+  const perDirection = (lanes: number | null, oneway: number): number | null =>
+    lanes === null ? null : oneway !== 0 ? lanes : Math.max(1, Math.ceil(lanes / 2));
   const norm = (s: string) => s.toLowerCase().replace(/[\s,;./-]+/g, "");
   const n1Norm = norm(n1);
   const second = ranked.slice(1).find(([n]) => norm(n) !== n1Norm);
+  const majorLanes = perDirection(l1, o1);
+  const minorLanes = second ? perDirection(second[1].lanes, second[1].oneway) : null;
   const roadClassCode = bestClass === 99 ? -1 : bestClass;
 
   let name: string | null = null;
@@ -144,7 +173,7 @@ function analyzeOneSignal(grid: Grid, lat: number, lon: number): SignalNamingRes
   else if (second && second[1].distance <= FAR_RADIUS_M && d1 <= FAR_RADIUS_M) name = `${n1} & ${second[0]}`;
   else if (d1 <= FAR_RADIUS_M) name = `Near ${n1}`;
   if (!name) return null;
-  return { name, roadClassCode };
+  return { name, roadClassCode, majorLanes, minorLanes };
 }
 
 // ---------- Per-region cache + data loading ----------
@@ -176,9 +205,23 @@ export function getSignalNamesForRegion(regionCode: string): Map<number, SignalN
   // its output instead. Regenerate sidecars whenever a region's roads or
   // signals file is refetched.
   try {
-    const side = readDataJson<{ names: Array<[number, string, number]> }>(`${slug}-signal-names.json`);
+    // Sidecar tuples are [osmId, name, roadClassCode] and may carry two
+    // optional lane counts appended by a newer generator. Read them when
+    // present so regenerating a sidecar lights lane geometry up without a
+    // code change; absent reads as null, which the consumers treat as
+    // "no measured geometry" and fall back to the screening default.
+    const side = readDataJson<{ names: Array<[number, string, number, (number | null)?, (number | null)?]> }>(
+      `${slug}-signal-names.json`,
+    );
     const out = new Map<number, SignalNamingResult>();
-    for (const [osmId, name, roadClassCode] of side.names) out.set(osmId, { name, roadClassCode });
+    for (const [osmId, name, roadClassCode, maj, min] of side.names) {
+      out.set(osmId, {
+        name,
+        roadClassCode,
+        majorLanes: typeof maj === "number" && maj > 0 ? maj : null,
+        minorLanes: typeof min === "number" && min > 0 ? min : null,
+      });
+    }
     nameCache.set(regionCode, out);
     return out;
   } catch {
