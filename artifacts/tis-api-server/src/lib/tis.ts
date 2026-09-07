@@ -740,6 +740,8 @@ export type TisReport = {
   /** Total signalized intersections within the study radius (before the
    *  impact-significance scope). `intersectionsStudied` is the analyzed subset. */
   intersectionsInStudyArea: number;
+  /** In-radius records merged away as duplicates of a junction already kept. */
+  intersectionsMergedAsDuplicates: number;
   intersectionsWithLosDrop: number;
   intersectionsAtLosEf: number;
   worstDelayDeltaSec: number;
@@ -1252,7 +1254,14 @@ function attachUtdfData(
 async function findAffectedIntersections(
   lat: number, lon: number, radiusMi: number, regionCode: string,
   forceInclude?: ForceIncludeInput,
-): Promise<{ candidates: Array<StudyCandidate>; coverageNote?: CoverageNote }> {
+): Promise<{
+  candidates: Array<StudyCandidate>;
+  coverageNote?: CoverageNote;
+  /** In-radius inventory records BEFORE same-junction merging. */
+  inRadiusCount: number;
+  /** In-radius records absorbed into a kept junction by the dedup. */
+  mergedCount: number;
+}> {
   const inventory = await fetchIntersections(regionCode);
   // Radius filter + nearest-first sort and the same-junction dedup both live in
   // the dependency-free `intersection-coverage` leaf module so the distance
@@ -1289,7 +1298,15 @@ async function findAffectedIntersections(
   // the 45 m distance threshold — the ones the NAME_DEDUP_MAX_M ceiling bounds —
   // so over-collapse of distinct junctions stays observable. Not in the report.
   if (merged.length > 0) {
-    logger.debug({
+    // WARN, not debug: every merge removes an intersection from the study, and
+    // the gravity step then normalizes trip shares across whatever survives --
+    // so a wrong merge silently rescales every volume, v/c and delay in the
+    // report. `nameAbsorbedBeyond45m` is the risky subset: those rest on name
+    // equality alone, and where signal names are derived from nearby road names
+    // rather than supplied by the source data, two distinct junctions on the
+    // same pair of roads carry the same name and merge.
+    logger.warn({
+      inRadiusCount: within.length,
       keptCount: kept.length,
       mergedCount: merged.length,
       nameAbsorbedBeyond45m,
@@ -1303,7 +1320,9 @@ async function findAffectedIntersections(
   const hasForce =
     forceInclude != null &&
     ((forceInclude.ids?.length ?? 0) > 0 || (forceInclude.points?.length ?? 0) > 0);
-  if (!hasForce) return { candidates: kept, coverageNote };
+  if (!hasForce) {
+    return { candidates: kept, coverageNote, inRadiusCount: within.length, mergedCount: merged.length };
+  }
 
   const { included, unmatchedIds, unsnappedPoints } = forceIncludeIntersections(
     inventory, lat, lon, forceInclude,
@@ -1326,7 +1345,9 @@ async function findAffectedIntersections(
   const extras: StudyCandidate[] = included
     .filter((e) => !keptIds.has(e.sig.id))
     .map((e) => ({ sig: e.sig, distanceMi: e.distanceMi, forced: true }));
-  if (extras.length === 0) return { candidates: kept, coverageNote };
+  if (extras.length === 0) {
+    return { candidates: kept, coverageNote, inRadiusCount: within.length, mergedCount: merged.length };
+  }
 
   const combined = [...kept, ...extras].sort((a, b) => a.distanceMi - b.distanceMi);
   const deduped = dedupCloseSignals(combined);
@@ -1334,7 +1355,9 @@ async function findAffectedIntersections(
     { regionCode, radiusMi, radiusCount: kept.length, forcedAdded: deduped.kept.length - kept.length },
     "tis.force_include",
   );
-  return { candidates: deduped.kept, coverageNote };
+  // inRadiusCount/mergedCount describe the RADIUS set only; force-included
+  // signals from outside it are carried on each candidate's `forced` flag.
+  return { candidates: deduped.kept, coverageNote, inRadiusCount: within.length, mergedCount: merged.length };
 }
 
 function periodRawTrips(lu: LandUse, size: number, period: AnalysisPeriod, rates?: ResolvedRates): number {
@@ -2138,7 +2161,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const designYears = Math.max(0, designYear - CURRENT_YEAR);
   const designGrowthMultiplier = Math.pow(1 + growthRatePct / 100, designYears);
 
-  const { candidates, coverageNote } = await findAffectedIntersections(
+  const { candidates, coverageNote, inRadiusCount, mergedCount } = await findAffectedIntersections(
     req.latitude, req.longitude, radiusMi, region.code,
     { ids: req.studyIntersectionIds, points: req.additionalStudyPoints },
   );
@@ -2842,7 +2865,11 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     tripGeneration,
     affectedIntersections: pmReport.affectedIntersections,
     intersectionsStudied: pmReport.affectedIntersections.length,
-    intersectionsInStudyArea: candidates.length,
+    // The study area's population is what the inventory holds inside the radius,
+    // NOT what survived same-junction merging. Reporting the post-merge count here
+    // made a set that had silently lost intersections look complete.
+    intersectionsInStudyArea: inRadiusCount,
+    intersectionsMergedAsDuplicates: mergedCount,
     intersectionsWithLosDrop: pmReport.intersectionsWithLosDrop,
     intersectionsAtLosEf: pmReport.intersectionsAtLosEf,
     worstDelayDeltaSec: pmReport.worstDelayDeltaSec,
