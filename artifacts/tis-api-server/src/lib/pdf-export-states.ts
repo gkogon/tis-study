@@ -15,6 +15,7 @@
  */
 
 import type { Region } from "./regions";
+import { splitTripGenSource } from "./trip-gen-sentence.js";
 import { renderDiurnalCharts } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
 import { renderLaneGroupQueues } from "./lane-group-queues";
@@ -1064,6 +1065,8 @@ const TEXT_GRAY = "#6b7280";
  * Falls back to [INFERRED] notation where no formal published guideline was
  * located — prompting the reviewer to confirm at the methodology meeting.
  */
+
+
 function renderTisState(
   doc: PDFKit.PDFDocument,
   r: any,
@@ -1240,7 +1243,8 @@ function renderTisState(
   doc.fillColor("black").moveDown(0.3);
 
   stateSub("3.5 Trip Generation");
-  body(`Trip generation is calculated using ${cfg.tripGenSource}, as used in ${cfg.stateName} screening practice. The published rate or equation for Land Use Code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) is applied to a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Pass-by credit of ${fmt(r.passByPctApplied ?? 0)}% and internal capture of ${fmt(r.internalCapturePctApplied ?? 0)}% are applied per standard screening procedures and agreed in the methodology meeting.`);
+  const tgSrc = splitTripGenSource(cfg.tripGenSource);
+  body(`Trip generation is calculated using ${tgSrc.head}, as used in ${cfg.stateName} screening practice.${tgSrc.tail ? ` ${tgSrc.tail}` : ""} The published rate or equation for Land Use Code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) is applied to a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Pass-by credit of ${fmt(r.passByPctApplied ?? 0)}% and internal capture of ${fmt(r.internalCapturePctApplied ?? 0)}% are applied per standard screening procedures and agreed in the methodology meeting.`);
   doc.moveDown(0.3);
 
   stateSub("3.6 Background Growth Rate");
