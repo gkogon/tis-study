@@ -260,6 +260,9 @@ type AnalyzerIntersection = {
   medianType?: "raised" | "painted" | "none";
   mainThroughLanes?: number;
   mainThroughLanesMeasured?: boolean;
+  /** Per-direction through lanes on the minor (cross-street) approach, from
+   *  OSM `lanes`. Absent when the matched way carries no tag. */
+  minorThroughLanes?: number;
 };
 
 const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8080";
@@ -499,6 +502,13 @@ export type ResolvedStudyTier = Exclude<StudyTier, "auto">;
 export type { DistributionMethod } from "./trip-distribution";
 
 export type ApproachImpact = {
+  /** Project-added trips split across left/through/right on THIS approach,
+   *  from the geometric movement assignment the engine already runs off the
+   *  trip-distribution octants (movement-assignment.ts). Covers the PROJECT
+   *  increment only — background turning splits are not measured at screening
+   *  level, so consumers must not read this as a total turn split. Absent when
+   *  no distribution ran. */
+  addedByMovement?: { L: number; T: number; R: number };
   direction: Direction;
   // True current-year baseline (no growth).
   currentVolumeVph: number;
@@ -548,6 +558,13 @@ export type LaneGroupImpact = {
 
 export type AffectedIntersection = {
   signalId: string;
+  /** Per-direction through lanes on the major / minor approach, from the OSM
+   *  `lanes` tag on the road the signal was matched to. Present only where
+   *  OSM carried a tag — absence is what makes the UTDF export fall back to
+   *  its 1L/2T/1R screening default, and the export row says which basis it
+   *  used. Never populated speculatively. */
+  mainThroughLanes?: number;
+  minorThroughLanes?: number;
   name: string;
   zone: string;
   latitude: number;
@@ -1700,6 +1717,22 @@ function buildAffectedRow(
       existingLos: delayToLos(exDelay),
       futureLos: delayToLos(fuDelay),
       queue95thFt: round1(queue95Ft(futureVol, params.approachCapacityVph, utdfCycleLenS)),
+      // Project-trip L/T/R for this approach, from the geometric assignment
+      // already computed above off the distribution octants. Emitted so the
+      // UTDF export can write existing + a REAL project split instead of
+      // flattening the total to 10/80/10. Project increment only — the
+      // background split is still unmeasured at screening level.
+      ...(() => {
+        if (!movements) return {};
+        const byMv = { L: 0, T: 0, R: 0 };
+        let any = false;
+        for (const m of movements) {
+          if (m.approach !== d) continue;
+          byMv[m.movement] += m.trips;
+          any = true;
+        }
+        return any ? { addedByMovement: byMv } : {};
+      })(),
       // Per-movement queues, but only where an imported record supplies a real
       // turn split for the background traffic. Absent everywhere else on
       // purpose — see laneGroupsForApproach.
@@ -1782,6 +1815,10 @@ function buildAffectedRow(
 
   return {
     signalId: c.sig.id,
+    ...(c.sig.mainThroughLanesMeasured && c.sig.mainThroughLanes
+      ? { mainThroughLanes: c.sig.mainThroughLanes }
+      : {}),
+    ...(c.sig.minorThroughLanes ? { minorThroughLanes: c.sig.minorThroughLanes } : {}),
     name: c.sig.name,
     zone: c.sig.zone,
     latitude: c.sig.latitude,

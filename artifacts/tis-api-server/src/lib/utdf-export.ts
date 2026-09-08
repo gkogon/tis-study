@@ -307,10 +307,29 @@ export function generateUtdf(result: EngineResult, opts: UtdfOptions = {}): stri
         : fallbackNote;
       return `${intid},${dir}${mv},${lanes},${DEFAULT_LANE_WIDTH_FT},0,${hasSt ? Math.round(st) : 0},0,${note}`;
     };
+    // OSM gives a per-direction lane count for the major and minor approach
+    // roads but does not say which compass axis each is. Volume decides it:
+    // the higher-volume axis is the major road. Through lanes only — OSM does
+    // not tell us how many are turn bays, so left/right stay at the screening
+    // default unless an imported record measured them.
+    const osmMajor = (it as { mainThroughLanes?: number }).mainThroughLanes;
+    const osmMinor = (it as { minorThroughLanes?: number }).minorThroughLanes;
+    const axisVol = (a: string, b: string) =>
+      approaches.filter((x) => [a, b].includes(normDirection(x.direction)))
+        .reduce((t, x) => t + scenarioVol(x, scenario), 0);
+    const nsMajor = axisVol("NB", "SB") >= axisVol("EB", "WB");
+    const osmThroughFor = (dir: string): number | undefined => {
+      const onMajorAxis = nsMajor ? dir === "NB" || dir === "SB" : dir === "EB" || dir === "WB";
+      const n = onMajorAxis ? osmMajor : osmMinor;
+      return Number.isInteger(n) && (n as number) > 0 ? n : undefined;
+    };
     for (const dir of ["NB", "SB", "EB", "WB"]) {
       if (!dirsWithData.has(dir)) continue;
+      const osmT = osmThroughFor(dir);
       lines.push(laneRow(dir, "L", DEFAULT_LEFT_LANES, "default-1L"));
-      lines.push(laneRow(dir, "T", DEFAULT_THROUGH_LANES, "default-2T"));
+      lines.push(osmT !== undefined
+        ? laneRow(dir, "T", osmT, `osm-lanes-${osmT}T`)
+        : laneRow(dir, "T", DEFAULT_THROUGH_LANES, "default-2T"));
       lines.push(laneRow(dir, "R", DEFAULT_RIGHT_LANES, "default-1R"));
     }
   });
@@ -328,6 +347,7 @@ export function generateUtdf(result: EngineResult, opts: UtdfOptions = {}): stri
     // absent entirely on payloads generated before lane groups shipped — hence
     // the optional read and the 10/80/10 fallback below.
     const measured: Record<string, Record<string, number> | undefined> = {};
+    const projectByMovement: Record<string, { L: number; T: number; R: number } | undefined> = {};
     for (const a of approaches) {
       const dir = normDirection(a.direction);
       v[dir] = scenarioVol(a, scenario);
@@ -339,6 +359,10 @@ export function generateUtdf(result: EngineResult, opts: UtdfOptions = {}): stri
         }
         if (Object.keys(byMv).length > 0) measured[dir] = byMv;
       }
+      // Project-trip L/T/R from the engine's geometric assignment. Only carries
+      // the project increment; never a total turn split.
+      const abm = (a as { addedByMovement?: { L: number; T: number; R: number } }).addedByMovement;
+      if (abm && (abm.L + abm.T + abm.R) > 0) projectByMovement[dir] = abm;
     }
     const row = ["NB", "SB", "EB", "WB"].flatMap((dir) => {
       const vol = v[dir] ?? 0;
@@ -355,11 +379,19 @@ export function generateUtdf(result: EngineResult, opts: UtdfOptions = {}): stri
           ];
         }
       }
-      // No measured split: the documented 10/80/10 rule-of-thumb scaffold.
+      // No measured split. Background traffic still falls to the documented
+      // 10/80/10 rule of thumb — no public source gives a real background turn
+      // split at screening level. But the PROJECT increment does have a real
+      // per-movement assignment (geometric, off the trip-distribution octants),
+      // so apply the scaffold ONLY to background and add the project movements
+      // on top rather than flattening the whole total.
+      const proj = projectByMovement[dir];
+      const projTotal = proj ? proj.L + proj.T + proj.R : 0;
+      const background = Math.max(0, vol - projTotal);
       return [
-        Math.round(vol * DEFAULT_LEFT_FRAC),
-        Math.round(vol * DEFAULT_THROUGH_FRAC),
-        Math.round(vol * DEFAULT_RIGHT_FRAC),
+        Math.round(background * DEFAULT_LEFT_FRAC + (proj?.L ?? 0)),
+        Math.round(background * DEFAULT_THROUGH_FRAC + (proj?.T ?? 0)),
+        Math.round(background * DEFAULT_RIGHT_FRAC + (proj?.R ?? 0)),
       ];
     });
     lines.push(`${intid},${row.join(",")}`);

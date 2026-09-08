@@ -48,6 +48,17 @@ export type IntersectionSummary = {
    *  Set by regional-intersections.ts; Atlanta's model-derived summaries
    *  leave it unset. */
   volumeSource?: string;
+  /** Per-DIRECTION through-lane count on the MAJOR approach, from OSM `lanes`
+   *  on the road this signal was matched to. Fills the field the engine has
+   *  always declared (tis.ts AnalyzerIntersection, consumed by turbo-lane.ts)
+   *  and that the analyzer never populated — turbo screening was falling back
+   *  to a hardcoded 2. Absent when OSM carries no lane tag on the matched way. */
+  mainThroughLanes?: number;
+  /** True when mainThroughLanes came from an OSM tag rather than a default.
+   *  Consumers print the basis, so this must never be set speculatively. */
+  mainThroughLanesMeasured?: boolean;
+  /** Per-direction through lanes on the MINOR (cross-street) approach. */
+  minorThroughLanes?: number;
   /** Count year of the AADT record behind totalVolume, when measured. */
   volumeYear?: number;
 };
