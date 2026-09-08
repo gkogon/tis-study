@@ -20,6 +20,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { regionForCoordinate, type Region } from "./regions";
+import { buildStudyScopeNote } from "./study-scope-note.js";
 import { stateForCoordinate } from "./state-boundaries";
 import { fetchStreetViewImage } from "./streetview";
 import {
@@ -1318,7 +1319,8 @@ function dispatchTisRender(
       renderFourStepSection(doc, result);
       renderCapacityAppendix(doc, intersections, periods,
         Number(result.intersectionsInStudyArea) || intersections.length,
-        Number(result.studyRadiusMi) || 0.5);
+        Number(result.studyRadiusMi) || 0.5,
+        Number(result.intersectionsMergedAsDuplicates) || 0);
     }
   } finally {
     velocityPaletteActive = false;
@@ -9223,6 +9225,7 @@ function renderCapacityAppendix(
   periods: any[],
   inStudyArea?: number,
   studyRadiusMi?: number,
+  mergedAsDuplicates?: number,
 ) {
   doc.addPage();
   gaSection(doc, "APPENDIX — INTERSECTION CAPACITY ANALYSIS WORKSHEETS");
@@ -9233,18 +9236,20 @@ function renderCapacityAppendix(
     + "back-of-queue (ft) are reported for the Existing (No-Build) and Build conditions.",
     { paragraphGap: 4 },
   );
-  // Scope transparency: state how many signals are in the study area vs. how many
-  // were analyzed, and why, when the impact-significance scope trimmed the set.
+  // Scope transparency: reconcile the study set against the study area, naming
+  // the ACTUAL reason any record is absent. `intersectionsInStudyArea` is the
+  // raw in-radius inventory (#191), which counts a junction once per approach —
+  // reporting that as an intersection count made a correct analysis look like it
+  // had skipped half the study area. See study-scope-note.ts.
   const analyzed = intersections.length;
-  if (inStudyArea && inStudyArea > analyzed) {
-    const radius = studyRadiusMi && studyRadiusMi > 0 ? studyRadiusMi : 0.5;
-    doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
-      `Study scope: ${inStudyArea} signalized intersections lie within the ${radius}-mile study area; `
-      + `${analyzed} are carried as study intersections — the site frontage/adjacent intersections plus those the `
-      + `project materially impacts. The remainder receive net new site traffic below the impact-significance `
-      + `threshold (de-minimis, per ITE MTIASD §2.2) and are not analyzed individually.`,
-      { paragraphGap: 8 },
-    );
+  const scopeNote = buildStudyScopeNote({
+    inRadiusRecords: inStudyArea ?? analyzed,
+    mergedAsDuplicates: mergedAsDuplicates ?? 0,
+    analyzed,
+    studyRadiusMi: studyRadiusMi && studyRadiusMi > 0 ? studyRadiusMi : 0.5,
+  });
+  if (scopeNote) {
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(scopeNote, { paragraphGap: 8 });
   }
   doc.font("body").fontSize(9).fillColor("#b45309").text(
     "Background turning-movement volumes in the diagrams are distributed from each approach total using an "
