@@ -17,6 +17,35 @@
  * volumes (AADT × K / 100) over its OSM road-class baseline ladder
  * (VOLUME_BY_CLASS 700–2500 vph, DEFAULT_VOLUME 1000).
  *
+ * ---------------------------------------------------------------------------
+ * SNAPPING IS PROXIMITY-ONLY, AND THAT IS NOT SUFFICIENT ON ITS OWN.
+ *
+ * Every path below picks the NEAREST counted feature inside a radius. Nothing
+ * here knows whether that feature is the road the signal actually sits on.
+ * Wherever a surface arterial runs parallel to a freeway inside the radius —
+ * a frontage road, a mall ring road, any arterial in an interchange quadrant —
+ * the signal snaps to the freeway MAINLINE count.
+ *
+ * This shipped: S Hosmer St and Tacoma Mall Blvd parallel I-5 at 51–158 m, so
+ * seven Tacoma signals took WSDOT AADT 163,000 / 171,000. At K=9 that is
+ * 14,670 / 15,390 vph, which the engine divided by its 810 vph screening
+ * capacity to print v/c 8.15–8.55 with 4,300–5,400 ft queues across a 37-page
+ * study, silently.
+ *
+ * The compatibility rule therefore lives at the CONSUMING join, in
+ * artifacts/api-server/src/lib/aadt-plausibility.ts: a record whose AADT
+ * exceeds what the signal's OSM road class can physically move through a
+ * signal is refused there, and the road-class baseline is used instead.
+ *
+ * That gate — not this script — is the invariant. It is enforced on every
+ * region on every read, so a new DOT source wired up here cannot reintroduce
+ * the defect. Records are deliberately still WRITTEN as the DOT reported them
+ * (rather than filtered out here) so the refusal stays auditable and a widened
+ * snap radius shows up as a drop in effective coverage rather than as silently
+ * missing rows. If you add a source and see its coverage fall short of the
+ * snap statistics printed below, that gap is this problem: tighten the radius.
+ * ---------------------------------------------------------------------------
+ *
  * Run:
  *   pnpm --filter @workspace/scripts exec tsx src/fetch-aadt-by-signal.ts tampa
  *   pnpm --filter @workspace/scripts exec tsx src/fetch-aadt-by-signal.ts --all
