@@ -21,12 +21,27 @@
  *                       1. measured/precomputed AADT × K-factor / 100 from
  *                          the committed <slug>-aadt.json (per-signal, with
  *                          a `source` provenance slug — fdot, nysdot,
- *                          caltrans, fhwa_hpms_2018, synthetic_osm_class, …)
+ *                          caltrans, fhwa_hpms_2018, synthetic_osm_class, …),
+ *                          BUT ONLY IF the record passes the functional-class
+ *                          compatibility gate (aadt-plausibility.ts) — see
+ *                          below
  *                       2. VOLUME_BY_CLASS[roadClass] (700–2500 vph)
  *                       3. DEFAULT_VOLUME (1000 vph)
  *                     The provenance is surfaced as volumeSource/volumeYear
  *                     on the summary so downstream consumers can tell
  *                     measured from synthetic.
+ *
+ * Tier 1 is gated because the AADT files are built by PROXIMITY snapping
+ * (scripts/src/fetch-aadt-by-signal.ts takes the nearest counted feature
+ * inside a radius) and proximity cannot tell whether the counted facility is
+ * the road the signal sits on. Where a surface arterial parallels a freeway
+ * inside that radius the signal inherits the freeway mainline count: Tacoma's
+ * S Hosmer St / Tacoma Mall Blvd signals took I-5's 163k/171k AADT from
+ * 51–158 m away and the resulting study printed v/c 8.15–8.55 with 4,300–5,400
+ * ft queues. A record above what the signal's road class can physically move
+ * through a signal is refused here and the tier-2 baseline is used instead,
+ * with volumeSource set to REJECTED_VOLUME_SOURCE so the refusal is visible
+ * rather than silent.
  *   - turningVolume / inefficiencyScore / avgDelaySeconds = 0 and
  *     severity = "low" — honest placeholders: only Atlanta has the
  *     Webster-delay model that populates these for real, and fabricating
@@ -44,6 +59,7 @@ import { lruSet } from "./bounded-cache";
 import type { IntersectionSummary, Severity } from "./atlanta-analysis";
 import { getSignalNamesForRegion } from "./regional-signal-naming";
 import { neighborhoodFor } from "./regional-zones";
+import { isLimitedAccessMismatch, REJECTED_VOLUME_SOURCE } from "./aadt-plausibility";
 
 /** Per-signal AADT record matching scripts/src/fetch-aadt-by-signal.ts output. */
 type AadtRecord = {
@@ -605,7 +621,18 @@ export function loadRegionalIntersections(regionCode: string): IntersectionSumma
     // AADT × (K/100) gives peak-hour vph at the count station. For FDOT
     // segments the K-factor is per-segment (e.g. 9.0). For NCDOT stations
     // we default K to FHWA's 9% standard.
-    const aadtRec = aadtBySignal[String(rawId)];
+    // Functional-class compatibility gate. The AADT datasets are snapped to
+    // signals by PROXIMITY (fetch-aadt-by-signal.ts), which cannot tell whether
+    // the counted facility is the one the signal sits on. Where a surface
+    // arterial parallels a freeway inside the snap radius the signal inherits
+    // the freeway mainline count — Tacoma's S Hosmer St / Tacoma Mall Blvd
+    // signals took I-5's 163k/171k AADT from 51–158 m away and printed v/c
+    // 8.15–8.55. A record above what this signal's road class can physically
+    // move through a signal is describing a different facility, so it is
+    // refused here and the road-class baseline is used instead.
+    const rawAadtRec = aadtBySignal[String(rawId)];
+    const aadtRejected = rawAadtRec !== undefined && isLimitedAccessMismatch(rawAadtRec.aadt, classCode);
+    const aadtRec = aadtRejected ? undefined : rawAadtRec;
     const totalVolume = aadtRec
       ? Math.max(100, Math.round((aadtRec.aadt * aadtRec.kFactor) / 100))
       : classCode >= 0
@@ -635,7 +662,14 @@ export function loadRegionalIntersections(regionCode: string): IntersectionSumma
       // tooling) distinguish measured DOT counts from synthetic_osm_class
       // precomputes and from the road-class fallback — previously the
       // `source` field was loaded and then discarded here.
-      volumeSource: aadtRec ? aadtRec.source : "road_class_baseline",
+      // A refused record gets its own slug rather than a plain
+      // "road_class_baseline", so coverage tooling can tell "no AADT here"
+      // from "AADT here, refused as functionally incompatible".
+      volumeSource: aadtRec
+        ? aadtRec.source
+        : aadtRejected
+          ? REJECTED_VOLUME_SOURCE
+          : "road_class_baseline",
       ...(aadtRec ? { volumeYear: aadtRec.year } : {}),
       // Real per-approach lane geometry off OSM, where the matched way carries
       // a `lanes` tag. Omitted rather than defaulted so a consumer can tell
