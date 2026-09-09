@@ -13,8 +13,9 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@workspace/replit-auth-web";
 import {
   Menu, X, ChevronDown, LogOut, User, CreditCard, FolderOpen,
-  Activity, ArrowRight, Building2,
+  Activity, ArrowRight, Building2, Sun, Moon,
 } from "lucide-react";
+import { currentTheme, toggleTheme, type Theme } from "../lib/theme";
 
 type Item = { href: string; label: string };
 
@@ -65,6 +66,13 @@ export function SiteNav() {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Site theme: dark by default, remembered per browser (src/lib/theme.ts).
+  const [theme, setTheme] = useState<Theme>(() => (typeof document === "undefined" ? "dark" : currentTheme()));
+  useEffect(() => {
+    const onTheme = (e: Event) => setTheme((e as CustomEvent<Theme>).detail);
+    window.addEventListener("sis-theme", onTheme);
+    return () => window.removeEventListener("sis-theme", onTheme);
+  }, []);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Close the user menu when clicking outside.
@@ -129,6 +137,17 @@ export function SiteNav() {
         </nav>
 
         <div className="flex-1" />
+
+        <button
+          type="button"
+          onClick={() => setTheme(toggleTheme())}
+          className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          title={theme === "dark" ? "Light mode" : "Dark mode"}
+          data-testid="button-theme-toggle"
+        >
+          {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </button>
 
         <div className="hidden md:flex items-center gap-2">
           {isAuthenticated ? (

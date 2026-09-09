@@ -174,13 +174,14 @@
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
 
-  --background: 222.2 84% 4.9%;
+  /* Asphalt night — the same ground as the home-page opener (#0B1220), so the site is one piece in dark mode. */
+  --background: 220 49% 8.4%;
   --foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  --card: 222.2 84% 4.9%;
+  --border: 219 36% 18%;
+  --card: 220 49% 8.4%;
   --card-foreground: 210 40% 98%;
   --card-border: 217.2 32.6% 17.5%;
-  --sidebar: 222.2 84% 4.9%;
+  --sidebar: 220 49% 8.4%;
   --sidebar-foreground: 210 40% 98%;
   --sidebar-border: 217.2 32.6% 17.5%;
   --sidebar-primary: 210 40% 98%;
@@ -188,7 +189,7 @@
   --sidebar-accent: 217.2 32.6% 17.5%;
   --sidebar-accent-foreground: 210 40% 98%;
   --sidebar-ring: 217.2 32.6% 17.5%;
-  --popover: 222.2 84% 4.9%;
+  --popover: 220 49% 8.4%;
   --popover-foreground: 210 40% 98%;
   --popover-border: 217.2 32.6% 17.5%;
   --primary: 210 40% 98%;
