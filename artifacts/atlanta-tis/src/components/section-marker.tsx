@@ -3,10 +3,19 @@
  * makes the marketing pages read like a TIS report (§01, §02…) rather
  * than a stack of identical SaaS modules. Left aligned, mono, restrained.
  */
-export function Marker({ n, label }: { n: string; label: string }) {
+export type MarkerAccent = "blue" | "amber";
+
+export function Marker({
+  n, label, accent = "blue",
+}: {
+  n: string;
+  label: string;
+  /** `amber` for dark grounds — blue-700 sits under 3:1 on near-black. */
+  accent?: MarkerAccent;
+}) {
   return (
     <div className="flex items-baseline gap-3 mb-7">
-      <span className="font-mono text-xs tabular-nums text-blue-700 font-semibold">
+      <span className={`font-mono text-xs tabular-nums font-semibold ${accent === "amber" ? "text-amber-400" : "text-blue-700"}`}>
         §{n}
       </span>
       <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground whitespace-nowrap">

@@ -94,7 +94,15 @@ export function SiteNav() {
   }
 
   return (
-    <header className="sticky top-0 z-40 bg-background/75 backdrop-blur-md border-b border-border/60">
+    <header
+      className={
+        "sticky top-0 z-40 backdrop-blur-md border-b border-border/60 " +
+        // Home opens on the dark instrument panel. The glass nav would let
+        // 25% of the white body through at scroll 0, so it goes opaque on
+        // the opener's ground there and stays light glass everywhere else.
+        (location === "/" ? "dark bg-[#0B1220]" : "bg-background/75")
+      }
+    >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-6">
         <Link href="/" className="shrink-0 hover:opacity-80 transition-opacity">
           <BrandMark />
