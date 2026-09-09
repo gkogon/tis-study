@@ -8,6 +8,11 @@
  *
  * The opener is `StudyAliveHero`: a pinned canvas simulation that builds
  * a study as the visitor scrolls (site → signal → rush hour → report).
+ *
+ * The whole page renders inside `.dark`, so the body below the opener
+ * stays on the hero's near-black instrument panel instead of dropping
+ * back to the light marketing theme. Grounds #0B1220 / #0F1729,
+ * hairlines #1E2A3F / #2B3A52, muted text #8A9BB5, dim #5B6B85.
  */
 import { Link } from "wouter";
 import { ArrowRight, Check, BookOpen } from "lucide-react";
@@ -20,6 +25,18 @@ import { Marker, LosScaleStrip } from "../components/section-marker";
 import { usePageMeta } from "../hooks/use-page-meta";
 import { TOTAL_METROS, TOTAL_SIGNALS, COUNTRIES_COVERED, CONTINENTS_COVERED } from "../data/metro-coverage";
 
+/**
+ * Home A palette, expressed as overrides of the `.dark` tokens so every
+ * token-based color inside the page (sections, coverage grid, the live
+ * Atlanta widgets, the footer) lands on the same ground as the opener.
+ */
+const HOME_DARK_TOKENS = {
+  "--background": "220 49% 8%", // #0B1220
+  "--card": "220 49% 8%",
+  "--border": "218 35% 18%", // #1E2A3F
+  "--muted-foreground": "216 23% 63%", // #8A9BB5
+} as React.CSSProperties;
+
 export default function HomePage() {
   usePageMeta({
     title: "Simple Impact Studies — Defensible TIS without the week of engineer time",
@@ -28,7 +45,7 @@ export default function HomePage() {
   });
 
   return (
-    <div className="overflow-x-hidden">
+    <div className="dark bg-background text-foreground overflow-x-hidden" style={HOME_DARK_TOKENS}>
       <StudyAliveHero />
 
       <StatsBand />
@@ -49,13 +66,15 @@ export default function HomePage() {
 
 function StatsBand() {
   return (
-    <section id="after-hero" className="border-y border-border bg-slate-50 dark:bg-slate-950/40">
+    <section id="after-hero" className="border-y border-[#1E2A3F] bg-[#0F1729]">
       <LosScaleStrip />
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14 grid grid-cols-2 md:grid-cols-4 gap-px bg-border">
-        <BigStat value="40 hrs" label="Junior production hours replaced, per study" />
-        <BigStat value="$5,000" label="In junior-engineer production wages, per study" />
-        <BigStat value="60s" label="Average study turnaround" />
-        <BigStat value="6" label="Study engines" sub="TIS · Parking · Warrants · SD · Queuing · Road-Diet" />
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[#1E2A3F]">
+          <BigStat value="40 hrs" label="Junior production hours replaced, per study" />
+          <BigStat value="$5,000" label="In junior-engineer production wages, per study" />
+          <BigStat value="60s" label="Average study turnaround" />
+          <BigStat value="6" label="Study engines" sub="TIS · Parking · Warrants · SD · Queuing · Road-Diet" />
+        </div>
       </div>
     </section>
   );
@@ -63,7 +82,7 @@ function StatsBand() {
 
 function BigStat({ value, label, sub }: { value: string; label: string; sub?: string }) {
   return (
-    <div className="bg-slate-50 dark:bg-slate-950/40 px-3 py-2 space-y-1.5">
+    <div className="bg-[#0F1729] px-3 py-2 space-y-1.5">
       <div className="font-mono text-4xl sm:text-5xl font-semibold tabular-nums tracking-tight text-slate-900 dark:text-slate-50">
         {value}
       </div>
@@ -108,7 +127,7 @@ const MECHANICS: Array<[string, string]> = [
 function MathSection() {
   return (
     <section>
-      <Marker n="01" label="The math" />
+      <Marker n="01" label="The math" accent="amber" />
       <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50 max-w-2xl">
         Real capacity math. We just took the week out.
       </h2>
@@ -120,7 +139,7 @@ function MathSection() {
       </p>
 
       {/* Computational scale — the beefy numbers. */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-border border border-border mt-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-[#2B3A52] border border-[#2B3A52] mt-8">
         {MATH_STATS.map((s) => (
           <div key={s.label} className="bg-background px-5 py-6 space-y-2">
             <div className="font-mono text-5xl sm:text-6xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-slate-50">
@@ -149,7 +168,7 @@ function MathSection() {
           <div className="divide-y divide-border border-y border-border">
             {MECHANICS.map(([title, body], i) => (
               <div key={title} className="flex gap-4 py-4">
-                <span className="font-mono text-sm tabular-nums text-blue-700 font-semibold pt-0.5">
+                <span className="font-mono text-sm tabular-nums text-amber-400 font-semibold pt-0.5">
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 <div className="space-y-1">
@@ -163,7 +182,7 @@ function MathSection() {
 
         <div className="lg:col-span-6 space-y-3">
           <div className="border border-border overflow-hidden">
-            <div className="px-5 py-3 border-b border-border bg-muted/40 flex items-center justify-between">
+            <div className="px-5 py-3 border-b border-border bg-[#0F1729] flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
                 Sample footnote
               </span>
@@ -202,7 +221,7 @@ function MathSection() {
 function FlagshipSection() {
   return (
     <section className="space-y-8">
-      <Marker n="A" label="Flagship reference" />
+      <Marker n="A" label="Flagship reference" accent="amber" />
       <div className="grid lg:grid-cols-12 gap-8 items-start">
         <div className="lg:col-span-5 space-y-3">
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
@@ -217,7 +236,7 @@ function FlagshipSection() {
             engine can carry where the data exists.
           </p>
           <p className="text-xs text-muted-foreground/80 leading-relaxed font-mono">
-            The other 170 metros run the same Webster/NHTS/MUTCD math against
+            The other {TOTAL_METROS - 1} metros run the same Webster/NHTS/MUTCD math against
             the OSM signal graph + measured AADT from each state DOT (where
             published). See the per-metro coverage table above for what's
             wired where.
@@ -236,7 +255,7 @@ function FlagshipSection() {
 function EconomicsSection() {
   return (
     <section>
-      <Marker n="02" label="The economics" />
+      <Marker n="02" label="The economics" accent="amber" />
       <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-start">
         <div className="lg:col-span-5 space-y-5">
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
@@ -251,7 +270,7 @@ function EconomicsSection() {
             bid 4 to 6× more projects at the same headcount.
           </p>
           <div className="border border-border divide-y divide-border">
-            <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-900/40">
+            <div className="px-4 py-2.5 bg-[#0F1729]">
               <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
                 The alternative — what one screening costs elsewhere
               </span>
@@ -264,7 +283,7 @@ function EconomicsSection() {
 
         <div className="lg:col-span-7 space-y-4">
           <div className="border border-border overflow-hidden">
-            <div className="px-5 py-3 border-b border-border bg-slate-50 dark:bg-slate-900/40 flex items-center justify-between flex-wrap gap-2">
+            <div className="px-5 py-3 border-b border-border bg-[#0F1729] flex items-center justify-between flex-wrap gap-2">
               <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                 Wage savings, by plan
               </span>
@@ -311,9 +330,9 @@ function RoiRow({
   savings: string; multiple: string; highlight?: boolean;
 }) {
   return (
-    <div className={"px-5 py-4 grid grid-cols-12 gap-3 items-center text-sm " + (highlight ? "bg-blue-50/60 dark:bg-blue-950/20" : "")}>
+    <div className={"px-5 py-4 grid grid-cols-12 gap-3 items-center text-sm " + (highlight ? "bg-blue-500/10" : "")}>
       <div className="col-span-4 sm:col-span-3">
-        <div className={`font-semibold tracking-tight ${highlight ? "text-blue-700" : "text-slate-900 dark:text-slate-100"}`}>
+        <div className={`font-semibold tracking-tight ${highlight ? "text-blue-400" : "text-slate-900 dark:text-slate-100"}`}>
           {plan}
         </div>
         <div className="text-xs text-muted-foreground">{volume}</div>
@@ -326,7 +345,7 @@ function RoiRow({
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Monthly wage savings</div>
       </div>
       <div className="col-span-3 sm:col-span-2 text-right">
-        <div className="font-mono text-2xl font-bold tabular-nums text-blue-700">{multiple}</div>
+        <div className="font-mono text-2xl font-bold tabular-nums text-blue-400">{multiple}</div>
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">ROI</div>
       </div>
     </div>
@@ -351,17 +370,17 @@ const REPORT_INCLUDES = [
 function WorkflowSection() {
   return (
     <section>
-      <Marker n="03" label="From inputs to report" />
+      <Marker n="03" label="From inputs to report" accent="amber" />
       <h2 className="text-3xl sm:text-4xl font-bold tracking-tight max-w-2xl">
         Three inputs. One report.
       </h2>
       <p className="text-muted-foreground text-lg max-w-2xl mt-3">
         No CAD files, no manual data scraping, no Synchro session.
       </p>
-      <div className="grid sm:grid-cols-3 gap-px bg-border border border-border mt-7">
+      <div className="grid sm:grid-cols-3 gap-px bg-[#2B3A52] border border-[#2B3A52] mt-7">
         {STEPS.map(([title, body], i) => (
           <div key={title} className="bg-background p-6 sm:p-7 space-y-3">
-            <div className="font-mono text-3xl font-bold tabular-nums text-slate-200 dark:text-slate-700">
+            <div className="font-mono text-3xl font-bold tabular-nums text-[#5B6B85]">
               {String(i + 1).padStart(2, "0")}
             </div>
             <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
@@ -372,7 +391,7 @@ function WorkflowSection() {
       <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2">
         {REPORT_INCLUDES.map((r) => (
           <span key={r} className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <Check className="w-4 h-4 text-blue-700 shrink-0" />
+            <Check className="w-4 h-4 text-blue-400 shrink-0" />
             {r}
           </span>
         ))}
@@ -383,13 +402,13 @@ function WorkflowSection() {
 
 function FinalCta() {
   return (
-    <section className="border border-border bg-slate-50 dark:bg-slate-950/40 px-6 sm:px-10 py-12 sm:py-14">
+    <section className="rounded-[8px] border border-[#2B3A52] bg-[#0B1220] px-6 sm:px-10 py-12 sm:py-14">
       <div className="grid lg:grid-cols-12 gap-8 items-center">
         <div className="lg:col-span-8 space-y-3">
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
             Try it on a real project this week.
           </h2>
-          <p className="text-muted-foreground text-lg leading-relaxed max-w-xl">
+          <p className="text-white/70 text-lg leading-relaxed max-w-xl">
             Ten free studies on signup. Run them on actual upcoming sites.
             If it doesn't save your engineers at least four hours per
             study, we'll part as friends.
@@ -398,7 +417,7 @@ function FinalCta() {
         <div className="lg:col-span-4 flex flex-col sm:flex-row lg:flex-col gap-3">
           <Link
             href="/signup?plan=growth"
-            className="group inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
+            className="group inline-flex items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold rounded-lg bg-white text-slate-900 hover:bg-slate-100 transition-all"
             data-testid="link-cta-trial-bottom"
           >
             Start 14-day trial
@@ -406,7 +425,7 @@ function FinalCta() {
           </Link>
           <Link
             href="/for-firms"
-            className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold rounded-lg border border-border hover:bg-accent transition-colors"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold rounded-lg border border-white/25 text-white hover:bg-white/5 transition-colors"
             data-testid="link-for-firms-bottom"
           >
             For engineering firms
