@@ -57,7 +57,19 @@ import {
   CRITICAL_MOVEMENT_FRACTION,
   PER_INTERSECTION_CAPACITY_VPH,
   APPROACH_CAPACITY_VPH,
+  SATURATION_FLOW_VPH,
 } from "./signal-delay";
+// Volume-responsive signal timing (Webster + Critical Movement, protected lefts,
+// pedestrian minimum) and the measured-source resolver. Leaf module.
+import {
+  resolveSignalTiming,
+  timingFromSynchroPhases,
+  gOverCForApproach,
+  gOverCForMovement,
+  criticalGOverC,
+  DEFAULT_THROUGH_LANES_PER_DIR,
+  type SignalTiming,
+} from "./webster-timing";
 // Background-volume credibility guard (dependency-free leaf, unit-tested there).
 import { implausibleVolumeDisclosures } from "./volume-plausibility";
 import { intersectionLoadFraction } from "./trip-loading";
@@ -370,6 +382,11 @@ export type UtdfIntersectionInput = {
   lanes?: UtdfMovementValues;
   /** Cycle length (s) from [Timings] — feeds Webster d1 for this signal. */
   cycleLenSec?: number;
+  /** Phase number serving each movement ([Lanes] Phase1) and split seconds by
+   *  phase ([Timings]). Together they are a measured g/C per movement — the
+   *  "measured" timing tier. Absent → the record supplies at most a cycle. */
+  phaseByMovement?: Record<string, number>;
+  splitSByPhase?: Record<string, number>;
 };
 
 export type TisRequest = {
@@ -490,6 +507,13 @@ export type TisRequest = {
    *  Explicit false ⇒ one-critical-lane, byte-identical to the pre-change
    *  output (see scripts/verify-lane-geometry.mjs). */
   realLaneGeometry?: boolean;
+  /** Signal timing basis. Omitted / "computed" = per-intersection cycle and
+   *  splits from the timing resolver (measured Synchro phases > measured
+   *  cycle > Webster from no-build volumes > screening default), capacity
+   *  re-derived per approach from that timing. "screening" = the legacy flat
+   *  90 s / g/C 0.45 for every intersection, byte-identical to the pre-change
+   *  output. */
+  signalTiming?: "computed" | "screening";
   /** Site access points with per-movement turn restrictions. When present,
    *  project trips route through these driveways and forbidden movements
    *  reroute onto the network (U-turns). Absent or empty ⇒ single-site
@@ -652,6 +676,27 @@ export type AffectedIntersection = {
    *  this intersection's Webster uniform-delay term in place of the 90 s
    *  screening default. */
   utdfCycleLenSec?: number;
+  /** How this intersection's signal timing was resolved and what it was
+   *  (see webster-timing.ts). Absent on requests that set
+   *  signalTiming: "screening" and on payloads that predate the resolver. */
+  signalTiming?: SignalTimingProvenance;
+};
+
+export type SignalTimingProvenance = {
+  basis: SignalTiming["basis"];
+  source?: string;
+  cycleLenSec: number;
+  criticalPhases: 2 | 3 | 4;
+  gOverCns: number;
+  gOverCew: number;
+  gOverCnsLeft?: number;
+  gOverCewLeft?: number;
+  leftPhasingNs: "protected" | "permissive";
+  leftPhasingEw: "protected" | "permissive";
+  leftPhasingSource: SignalTiming["leftPhasingSource"];
+  criticalFlowRatio: number;
+  pedMinGreenNsSec: number;
+  pedMinGreenEwSec: number;
 };
 
 export type TripGenerationSummary = {
@@ -1025,6 +1070,12 @@ export function laneGroupsForApproach(opts: {
   addedTripsPeak: number;
   laneCapacityVph: number;
   cycleLenS?: number;
+  /** Per-movement one-lane capacity and green ratio under a resolved signal
+   *  timing: a protected left gets its own phase's g/C, through/right and a
+   *  permissive left ride the through phase. Absent → laneCapacityVph and the
+   *  screening g/C for every movement (legacy). */
+  laneCapacityByMovement?: Partial<Record<Movement, number>>;
+  gOverCByMovement?: Partial<Record<Movement, number>>;
   /** False reproduces the pre-lane-geometry one-critical-lane basis exactly,
    *  for the legacy escape hatch on TisRequest. Omitted/true uses measured
    *  lane counts where the import supplied them. */
@@ -1090,12 +1141,13 @@ export function laneGroupsForApproach(opts: {
     const laneCount = laneCounts[`${approach}${m}` as UtdfMovement];
     const hasLanes = opts.useRealLaneGeometry !== false
       && typeof laneCount === "number" && Number.isFinite(laneCount) && laneCount > 0;
+    const oneLane = opts.laneCapacityByMovement?.[m] ?? opts.laneCapacityVph;
     const capacity = hasLanes
-      ? opts.laneCapacityVph * (laneCount as number)
-      : opts.laneCapacityVph;
+      ? oneLane * (laneCount as number)
+      : oneLane;
 
     const futureVc = futureVolumeVph / capacity;
-    const queue = queue95Ft(futureVolumeVph, capacity, opts.cycleLenS);
+    const queue = queue95Ft(futureVolumeVph, capacity, opts.cycleLenS, opts.gOverCByMovement?.[m]);
     const bay = storage[`${approach}${m}` as UtdfMovement];
     const hasBay = typeof bay === "number" && Number.isFinite(bay) && bay > 0;
     return {
@@ -1494,6 +1546,14 @@ type ScenarioParams = {
   /** Mirrors TisRequest.realLaneGeometry; false pins the legacy one-critical-
    *  lane basis for lane groups. */
   realLaneGeometry?: boolean;
+  /** Mirrors TisRequest.signalTiming. "screening" (or absent, for callers
+   *  that predate the resolver) keeps the flat 90 s / 0.45 capacity basis;
+   *  "computed" resolves timing per intersection and re-derives capacity. */
+  signalTiming?: "computed" | "screening";
+  /** Weather capacity factor already folded into capacityVph /
+   *  approachCapacityVph; carried separately so a re-derived capacity applies
+   *  the same factor. Absent → recovered from approachCapacityVph. */
+  weatherFactor?: number;
   /** Directional trip-distribution octant shares (NNE…NNW, Σ≈100) from the
    *  study's distribution step. When present, each affected-intersection row
    *  gains a per-turning-movement breakdown of its added project trips
@@ -1503,6 +1563,77 @@ type ScenarioParams = {
    *  approach split, unchanged. */
   distributionOctants?: Record<string, number>;
 };
+
+/**
+ * Resolve this intersection's signal timing ONCE, from the NO-BUILD approach
+ * volumes, for reuse across every scenario (Current, No-Build, Build, Design
+ * No-Build, Design Build). Recomputing per scenario would let Webster retime
+ * the signal to absorb the project's own trips — a mitigation the applicant
+ * never asked the agency for — and mitigation triggers would evaporate.
+ *
+ * Tiers, strict: a client Synchro record with a phase→movement map and
+ * splits ("measured") > its cycle alone ("measured-cycle") > Webster from
+ * volumes ("webster") > the flat screening default. Lane counts feed the
+ * protected-left inference (opposing through lanes) and the pedestrian
+ * minimum (crossing width): the record's [Lanes] counts when it has them,
+ * else the OSM through lanes matched to the signal, main axis = the heavier
+ * axis by volume. Returns undefined under signalTiming: "screening".
+ */
+function resolveTimingForRow(
+  c: { sig: AnalyzerIntersection; utdf?: UtdfIntersectionInput },
+  measured: ReturnType<typeof utdfMeasuredTotals> | undefined,
+  utdfCycleLenS: number | undefined,
+  noBuildVolumeVph: number,
+  params: ScenarioParams,
+  volShares: Record<Direction, number>,
+): SignalTiming | undefined {
+  if (params.signalTiming !== "computed") return undefined;
+  const approachVph: Record<Direction, number> = {
+    NB: noBuildVolumeVph * volShares.NB, SB: noBuildVolumeVph * volShares.SB,
+    EB: noBuildVolumeVph * volShares.EB, WB: noBuildVolumeVph * volShares.WB,
+  };
+  // Measured left share per approach, applied to the SAME no-build approach
+  // volume the row uses (the lane-group discipline), never the record's
+  // absolute counts.
+  let leftVph: Partial<Record<Direction, number>> | undefined;
+  const vols = measured && c.utdf ? c.utdf.volumes : undefined;
+  if (vols) {
+    leftVph = {};
+    for (const d of DIRECTIONS) {
+      const l = vols[`${d}L` as UtdfMovement], t = vols[`${d}T` as UtdfMovement], r = vols[`${d}R` as UtdfMovement];
+      const posv = (v: number | undefined): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
+      const tot: number = posv(l) + posv(t) + posv(r);
+      if (tot > 0 && typeof l === "number" && Number.isFinite(l) && l >= 0) leftVph[d] = approachVph[d] * (l / tot);
+    }
+  }
+  // Through lanes per direction on each axis.
+  const lanes = c.utdf?.lanes;
+  const laneOf = (mv: string): number | undefined => {
+    const v = lanes?.[mv as UtdfMovement];
+    return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined;
+  };
+  const nsVol = approachVph.NB + approachVph.SB, ewVol = approachVph.EB + approachVph.WB;
+  const mainIsNs = nsVol >= ewVol;
+  const osmMain = c.sig.mainThroughLanesMeasured && c.sig.mainThroughLanes ? c.sig.mainThroughLanes : undefined;
+  const osmMinor = c.sig.minorThroughLanes;
+  const lanesPerDir = {
+    ns: Math.max(laneOf("NBT") ?? 0, laneOf("SBT") ?? 0) || (mainIsNs ? osmMain : osmMinor) || DEFAULT_THROUGH_LANES_PER_DIR,
+    ew: Math.max(laneOf("EBT") ?? 0, laneOf("WBT") ?? 0) || (mainIsNs ? osmMinor : osmMain) || DEFAULT_THROUGH_LANES_PER_DIR,
+  };
+  return resolveSignalTiming({
+    providers: [
+      () => (measured && c.utdf ? timingFromSynchroPhases(c.utdf) : undefined),
+    ],
+    fallback: {
+      approachVph,
+      ...(leftVph ? { leftVph } : {}),
+      opposingLanes: { ns: lanesPerDir.ns, ew: lanesPerDir.ew },
+      // Pedestrians walking with the NS phase cross the EW street.
+      crossingLanes: { ns: 2 * lanesPerDir.ew, ew: 2 * lanesPerDir.ns },
+      ...(utdfCycleLenS !== undefined ? { measuredCycleS: utdfCycleLenS } : {}),
+    },
+  });
+}
 
 function buildAffectedRow(
   c: { sig: AnalyzerIntersection; distanceMi: number; utdf?: UtdfIntersectionInput },
@@ -1538,18 +1669,37 @@ function buildAffectedRow(
   // one design hour.
   const baseVolume = (measured ? measured.totalVph : c.sig.totalVolume) * (params.periodVolumeFactor ?? 1);
 
+  // Approach split: the MEASURED per-approach shares when a UTDF record is
+  // attached (real counted geometry), else the deterministic screening
+  // perturbation of the 30/25/25/20 base. Needed here (not just in the
+  // approach loop) because the signal timing is resolved from these shares.
+  const volShares = measured ? measured.shares : approachVolumeShares(c.sig.id);
+
+  // ---- Signal timing: resolved once from NO-BUILD volumes, held fixed ----
+  // Under signalTiming: "screening" `timing` is undefined and every capacity,
+  // cycle and g/C below collapses to the flat legacy constants — the
+  // pre-change arithmetic, byte for byte.
+  const weatherFactor = params.weatherFactor ?? params.approachCapacityVph / APPROACH_CAPACITY_VPH;
+  const timing = resolveTimingForRow(c, measured, utdfCycleLenS, baseVolume * params.growthMultiplier, params, volShares);
+  const capacityVph = timing ? SATURATION_FLOW_VPH * criticalGOverC(timing) * weatherFactor : params.capacityVph;
+  const approachCap = (d: Direction): number =>
+    timing ? SATURATION_FLOW_VPH * gOverCForApproach(timing, d) * weatherFactor : params.approachCapacityVph;
+  const cyc = timing ? timing.cycleLenS : utdfCycleLenS;
+  const gcInt = timing ? criticalGOverC(timing) : undefined;
+  const gcApp = (d: Direction): number | undefined => (timing ? gOverCForApproach(timing, d) : undefined);
+
   // True current-year baseline — no growth, no project. State TIS
   // conventions report this as the "Existing Conditions" scenario;
   // it's what a count taken this week would show.
   const currentVolume = baseVolume;
   const currentCriticalVph = currentVolume * CRITICAL_MOVEMENT_FRACTION;
-  const currentVc = currentCriticalVph / params.capacityVph;
+  const currentVc = currentCriticalVph / capacityVph;
 
   // No-Build = current volumes grown to the opening year, no project.
   // Historically labeled "before" / "existing" here.
   const grownVolume = baseVolume * params.growthMultiplier;
   const beforeCriticalVph = grownVolume * CRITICAL_MOVEMENT_FRACTION;
-  const beforeVc = beforeCriticalVph / params.capacityVph;
+  const beforeVc = beforeCriticalVph / capacityVph;
 
   // Build = No-Build + project trips. Carry the EXACT (fractional) project
   // load through the v/c, delay and per-approach math; round only for the
@@ -1576,7 +1726,7 @@ function buildAffectedRow(
   const addedTripsExact = params.externalTrips * (ledgerWeight ?? weight);
   const addedTrips = Math.round(addedTripsExact);
   const addedCriticalVph = addedTripsExact * CRITICAL_MOVEMENT_FRACTION;
-  const afterVc = beforeVc + addedCriticalVph / params.capacityVph;
+  const afterVc = beforeVc + addedCriticalVph / capacityVph;
 
   // Design-Year No-Build = current × designGrowthMultiplier (no project).
   // Design-Year Build   = Design No-Build + project trips (same external
@@ -1587,8 +1737,8 @@ function buildAffectedRow(
   const designNoBuildCriticalVph = hasDesignYear
     ? baseVolume * (dgm as number) * CRITICAL_MOVEMENT_FRACTION
     : 0;
-  const designNoBuildVc = hasDesignYear ? designNoBuildCriticalVph / params.capacityVph : 0;
-  const designBuildVc = hasDesignYear ? designNoBuildVc + addedCriticalVph / params.capacityVph : 0;
+  const designNoBuildVc = hasDesignYear ? designNoBuildCriticalVph / capacityVph : 0;
+  const designBuildVc = hasDesignYear ? designNoBuildVc + addedCriticalVph / capacityVph : 0;
 
   // HCM delay first; calibration multiplier applied AFTER so the LOS bucket
   // reflects the calibrated value reviewers care about. When no row exists
@@ -1597,16 +1747,17 @@ function buildAffectedRow(
   // negative) cannot collapse delay → push every signal to LOS A and
   // wreck mitigation decisions. Range mirrors the DB CHECK constraint.
   const calMul = Math.min(5, Math.max(0.25, calibration?.multiplier ?? 1.0));
-  // `utdfCycleLenS` is undefined for every non-UTDF signal, which falls back
-  // to the screening default inside vcToDelay — byte-identical legacy math.
-  const currentDelay = vcToDelay(currentVc, params.capacityVph, utdfCycleLenS) * calMul;
-  const beforeDelay = vcToDelay(beforeVc, params.capacityVph, utdfCycleLenS) * calMul;
-  const afterDelay = vcToDelay(afterVc, params.capacityVph, utdfCycleLenS) * calMul;
+  // Under "screening" `cyc` is the imported cycle (or undefined) and `gcInt`
+  // is undefined, which falls back to the screening default inside vcToDelay
+  // — byte-identical legacy math.
+  const currentDelay = vcToDelay(currentVc, capacityVph, cyc, gcInt) * calMul;
+  const beforeDelay = vcToDelay(beforeVc, capacityVph, cyc, gcInt) * calMul;
+  const afterDelay = vcToDelay(afterVc, capacityVph, cyc, gcInt) * calMul;
   const currentLos = delayToLos(currentDelay);
   const beforeLos = delayToLos(beforeDelay);
   const afterLos = delayToLos(afterDelay);
-  const designNoBuildDelay = hasDesignYear ? vcToDelay(designNoBuildVc, params.capacityVph, utdfCycleLenS) * calMul : 0;
-  const designBuildDelay = hasDesignYear ? vcToDelay(designBuildVc, params.capacityVph, utdfCycleLenS) * calMul : 0;
+  const designNoBuildDelay = hasDesignYear ? vcToDelay(designNoBuildVc, capacityVph, cyc, gcInt) * calMul : 0;
+  const designBuildDelay = hasDesignYear ? vcToDelay(designBuildVc, capacityVph, cyc, gcInt) * calMul : 0;
   const designNoBuildLos = hasDesignYear ? delayToLos(designNoBuildDelay) : undefined;
   const designBuildLos = hasDesignYear ? delayToLos(designBuildDelay) : undefined;
 
@@ -1665,10 +1816,7 @@ function buildAffectedRow(
         )
       : undefined;
 
-  // Approach split: the MEASURED per-approach shares when a UTDF record is
-  // attached (real counted geometry), else the deterministic screening
-  // perturbation of the 30/25/25/20 base.
-  const volShares = measured ? measured.shares : approachVolumeShares(c.sig.id);
+  // (`volShares` is defined above, beside the timing resolution.)
   // Legacy fallback (no distribution octants): cosine-similarity split with a
   // 0.10 floor on every approach; the out-flow leaves on the approach opposite
   // the inbound origin. Kept only for payloads where no distribution ran.
@@ -1676,8 +1824,9 @@ function buildAffectedRow(
   const approaches: ApproachImpact[] = DIRECTIONS.map((d) => {
     // Current-year baseline (no growth) for this approach.
     const currentVolByApproach = currentVolume * volShares[d];
-    const currentVcByApproach = currentVolByApproach / params.approachCapacityVph;
-    const currentDelayByApproach = vcToDelay(currentVcByApproach, params.approachCapacityVph, utdfCycleLenS) * calMul;
+    const capD = approachCap(d);
+    const currentVcByApproach = currentVolByApproach / capD;
+    const currentDelayByApproach = vcToDelay(currentVcByApproach, capD, cyc, gcApp(d)) * calMul;
 
     // No-Build (existing-grown-to-opening-year).
     const baseVol = grownVolume * volShares[d];
@@ -1697,10 +1846,10 @@ function buildAffectedRow(
       ? movements.reduce((s, m) => s + (m.approach === d ? m.trips : 0), 0)
       : Math.round(addedOnApproach);
 
-    const exVc = (baseVol * 1.0) / params.approachCapacityVph;
-    const fuVc = (futureVol * 1.0) / params.approachCapacityVph;
-    const exDelay = vcToDelay(exVc, params.approachCapacityVph, utdfCycleLenS) * calMul;
-    const fuDelay = vcToDelay(fuVc, params.approachCapacityVph, utdfCycleLenS) * calMul;
+    const exVc = (baseVol * 1.0) / capD;
+    const fuVc = (futureVol * 1.0) / capD;
+    const exDelay = vcToDelay(exVc, capD, cyc, gcApp(d)) * calMul;
+    const fuDelay = vcToDelay(fuVc, capD, cyc, gcApp(d)) * calMul;
     return {
       direction: d,
       currentVolumeVph: round1(currentVolByApproach),
@@ -1716,7 +1865,7 @@ function buildAffectedRow(
       futureDelaySec: round1(fuDelay),
       existingLos: delayToLos(exDelay),
       futureLos: delayToLos(fuDelay),
-      queue95thFt: round1(queue95Ft(futureVol, params.approachCapacityVph, utdfCycleLenS)),
+      queue95thFt: round1(queue95Ft(futureVol, capD, cyc, gcApp(d))),
       // Project-trip L/T/R for this approach, from the geometric assignment
       // already computed above off the distribution octants. Emitted so the
       // UTDF export can write existing + a REAL project split instead of
@@ -1764,8 +1913,22 @@ function buildAffectedRow(
           approachVolumeVph: baseVol,
           addedExactByMovement,
           addedTripsPeak,
-          laneCapacityVph: params.approachCapacityVph,
-          cycleLenS: utdfCycleLenS,
+          laneCapacityVph: capD,
+          cycleLenS: cyc,
+          ...(timing
+            ? {
+                laneCapacityByMovement: {
+                  L: SATURATION_FLOW_VPH * gOverCForMovement(timing, d, "L") * weatherFactor,
+                  T: capD,
+                  R: capD,
+                },
+                gOverCByMovement: {
+                  L: gOverCForMovement(timing, d, "L"),
+                  T: gOverCForApproach(timing, d),
+                  R: gOverCForApproach(timing, d),
+                },
+              }
+            : {}),
           useRealLaneGeometry: params.realLaneGeometry,
         });
         return laneGroups ? { laneGroups } : {};
@@ -1874,6 +2037,26 @@ function buildAffectedRow(
         }
       : {}),
     ...(utdfCycleLenS !== undefined ? { utdfCycleLenSec: utdfCycleLenS } : {}),
+    ...(timing
+      ? {
+          signalTiming: {
+            basis: timing.basis,
+            ...(timing.source ? { source: timing.source } : {}),
+            cycleLenSec: timing.cycleLenS,
+            criticalPhases: timing.criticalPhases,
+            gOverCns: round3(timing.gOverCns),
+            gOverCew: round3(timing.gOverCew),
+            ...(timing.gOverCnsLeft !== undefined ? { gOverCnsLeft: round3(timing.gOverCnsLeft) } : {}),
+            ...(timing.gOverCewLeft !== undefined ? { gOverCewLeft: round3(timing.gOverCewLeft) } : {}),
+            leftPhasingNs: timing.leftPhasing.ns,
+            leftPhasingEw: timing.leftPhasing.ew,
+            leftPhasingSource: timing.leftPhasingSource,
+            criticalFlowRatio: timing.criticalFlowRatio,
+            pedMinGreenNsSec: round1(timing.pedMinGreenS.ns),
+            pedMinGreenEwSec: round1(timing.pedMinGreenS.ew),
+          } satisfies SignalTimingProvenance,
+        }
+      : {}),
     ...(() => {
       const storage = measured && c.utdf ? utdfGoverningStorage(c.utdf) : undefined;
       return storage
@@ -2030,9 +2213,16 @@ const TIS_METHODOLOGY = [
 const CALTRAN_STEP2_CLAUSE =
   "Step 2 Trip Distribution: the Caltran mass/distance gravity model — the Florida distribution standard (Caltran Engineering HCA Westside TIS) — allocates trips to surrounding zones by T_j = (M_j / (d_j · d_site)) / Σ(M_x / (d_x · d_site)), where mass M_j is each signal's through-volume (destination-activity attraction proxy) and d_j is its straight-line distance from the site (site-zone distance normalizer d_site = 1). The normalized zone shares set the directional distribution and drive the project-trip assignment.";
 
-function tisMethodologyForRegion(region: Region): string[] {
-  if (!isFloridaRegion(region)) return TIS_METHODOLOGY;
-  return TIS_METHODOLOGY.map((m) =>
+const FLAT_SIGNAL_CLAUSE = "with a 90s cycle, g/C = 0.45, 1,800 vphpl saturation flow (× weather factor)";
+const RESOLVED_SIGNAL_CLAUSE =
+  "with each intersection's own cycle length and green splits from the signal-timing resolver — a client Synchro record's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle (60–120 s) with Critical Movement Method splits derived from the no-build approach volumes (FHWA-HOP-07-006), a protected-left phase where the FHWA-HRT-04-091 cross product of left-turn and opposing through volume warrants one, and a pedestrian minimum green from the crossing width; timing is resolved once from no-build volumes and held fixed across every scenario, approach capacity is 1,800 vphpl saturation flow × that phase's g/C (× weather factor), and an intersection at or beyond saturation (Y ≥ 0.85) reports the flat 90s / g/C 0.45 screening default instead";
+
+function tisMethodologyForRegion(region: Region, signalTiming: "computed" | "screening" = "computed"): string[] {
+  const base = signalTiming === "computed"
+    ? TIS_METHODOLOGY.map((m) => (m.includes(FLAT_SIGNAL_CLAUSE) ? m.replace(FLAT_SIGNAL_CLAUSE, RESOLVED_SIGNAL_CLAUSE) : m))
+    : TIS_METHODOLOGY;
+  if (!isFloridaRegion(region)) return base;
+  return base.map((m) =>
     m.includes("NCHRP-716 gamma function")
       ? m.replace(
           /Step 2 Trip Distribution:.*?on the travel time t to each signal\./,
@@ -2743,6 +2933,10 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       ...(pathTurnsByCandidate ? { conservedLabeling: true } : {}),
       // Explicit false pins the legacy one-critical-lane lane-group basis.
       ...(req.realLaneGeometry === false ? { realLaneGeometry: false } : {}),
+      // Signal timing resolves per intersection unless the request pins the
+      // legacy flat basis.
+      signalTiming: req.signalTiming === "screening" ? "screening" : "computed",
+      weatherFactor,
     };
 
     // For "daily" we don't run an intersection-level analysis (HCM control
@@ -2943,7 +3137,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       // Disclosures first: both of these qualify every number below them.
       ...volumeDisclosures,
       ...(coverageNote ? [coverageNote.message] : []),
-      ...tisMethodologyForRegion(region),
+      ...tisMethodologyForRegion(region, req.signalTiming === "screening" ? "screening" : "computed"),
     ],
     periodReports,
     growthAppliedPct: growthRatePct,
@@ -3019,7 +3213,7 @@ async function synthesizePmReport(
   const internalCredit = (raw - passByCredit) * (internalCapturePct / 100);
   const externalTrips = Math.max(0, raw - passByCredit - internalCredit);
   const inFraction = lu.directionalSplitPm.in;
-  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak, ...(distributionOctants ? { distributionOctants } : {}), ...(pathTurnsByCandidate ? { conservedLabeling: true } : {}), ...(req.realLaneGeometry === false ? { realLaneGeometry: false } : {}) };
+  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak, ...(distributionOctants ? { distributionOctants } : {}), ...(pathTurnsByCandidate ? { conservedLabeling: true } : {}), ...(req.realLaneGeometry === false ? { realLaneGeometry: false } : {}), signalTiming: req.signalTiming === "screening" ? "screening" : "computed", weatherFactor: capacityVph / PER_INTERSECTION_CAPACITY_VPH };
   const calibrationMap = await loadCalibrationMap();
   const allRows = candidates.map((c, i) =>
     buildAffectedRow(c, loadWeights[i]!, project, params, calibrationMap.get(c.sig.id), pathTurnsByCandidate?.[i], pathTurnsInByCandidate?.[i]),
@@ -3071,6 +3265,10 @@ function clamp(v: number, lo: number, hi: number): number {
   if (!Number.isFinite(v)) return lo;
   return Math.max(lo, Math.min(hi, v));
 }
+function round3(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+
 function round1(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.round(n * 10) / 10;

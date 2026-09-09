@@ -340,3 +340,64 @@ Enterprise portals (e.g. `gisportalny.dot.ny.gov`, `gisms.miamidade.gov`), and
 a viewer can build its document URL in runtime JavaScript rather than in the
 item config, where none of these methods would see it. "No other feed" means
 none found by three methods, not proof of absence.
+
+## 10. Implementation notes — 2026-09-08 (wired)
+
+Wired as specified in §4, with two additions Gerald approved on 2026-09-08
+after asking whether the cycles were complete: they were not.
+
+**Protected-left phasing (new).** `computeSignalTiming` models 2–4 critical
+phases: NS through, EW through, plus a protected NS and/or EW left. Lost time
+is 5 s × critical phases (numerators 20 / 27.5 / 35 for 2 / 3 / 4, HOP-07-006).
+A protected left's critical lane volume is the heavier left; a through phase's
+is the heavier through(+right), or the whole approach when that axis's left is
+permissive. Phasing comes from, in order: the imported Synchro phase map (a
+left whose phase differs from its through's phase is protected; source
+`import`), an explicit caller value, or the FHWA-HRT-04-091 cross product of
+left-turn and opposing through volume against 50,000 / 90,000 / 110,000 by
+opposing through lanes (source `inferred`). Without a turning count the left
+is the export's 10% convention. Lane counts come from the record's `[Lanes]`
+or, failing that, the OSM through lanes #195 carries, main axis = heavier axis.
+`gOverCForMovement` gives a protected left its own g/C; a permissive left
+rides the through phase (its gap-acceptance capacity loss is still not
+modeled — stated in the module header).
+
+**Pedestrian minimum green (new).** Each through phase is floored at
+7 s WALK + (cross-street lanes × 12 ft) ÷ 3.5 ft/s, one lane per direction
+when unknown (13.9 s). A cycle that cannot serve lost time plus every phase's
+floor is raised to the shortest one that can — including a measured cycle,
+whose basis still says where it came from.
+
+**Synchro measured tier.** `utdf-import.ts` now keeps the `[Lanes] Phase1`
+movement→phase map (previously "real but unconsumed"); `routes/tis.ts` emits
+`phaseByMovement` + `splitSByPhase` on `UtdfIntersectionData`; the engine's
+first provider is `timingFromSynchroPhases`. Effective green = split − 5 s.
+Cycle-only records degrade to `measured-cycle`; records with splits but no
+`Phase1` map degrade the same way rather than guess NEMA numbering.
+
+**Legacy escape hatch.** `TisRequest.signalTiming: "computed" | "screening"`
+(default computed). `verify-conserved-assignment.mjs`'s legacy run now pins
+`signalTiming: "screening"` beside `conservedAssignment: false`, and the
+pinned pre-flip baseline holds byte for byte — no re-pin was needed.
+
+**The §6 regression grid did not re-earn the 2026-08-31 claim.** Under fixed
+timing the flat 90 s / 0.45 model DOES miss triggers: 92 of 1,200
+approach-scenarios two-phase, 88 of 1,284 with lefts. A 0.45 green ratio for
+every approach gives conflicting phases 90% of the cycle between them, which
+no controller does; a minor street at a busy major, which a real plan gives
+15–25% of the cycle, sits far closer to capacity than the flat model charged
+it. Every disagreement is explained by the timing levers (worse g/C or longer
+cycle) or by the flat model having already failed the approach pre-project —
+`check:signal-timing` asserts that, and asserts the finding itself so it
+cannot be quietly forgotten. Consequence for §7: regenerated samples will not
+only lose false-alarm mitigations on major approaches; some will GAIN
+mitigation findings on minor approaches. Check the sent corpus both ways.
+
+**§4.5 corrections.** The module header no longer claims no feed exists
+anywhere. The NY "calibrated against DOT 511" sentence is not on `main` at
+the cited line (already removed); the GA renderer's "GDOT 511 NaviGAtor
+calibration" sentence at `pdf-export.ts` §2.2 is true for Atlanta rows only
+and is left for the GA-renderer owner.
+
+**Not done here (unchanged from §5):** Miami-Dade ingest, ATSPM, saturation
+flow re-baseline, coordination/arrival type, actuation.
