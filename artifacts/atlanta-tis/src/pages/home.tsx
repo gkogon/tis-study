@@ -44,8 +44,10 @@ export default function HomePage() {
     canonical: "https://simpleimpactstudies.com/",
   });
 
+  // overflow-x-clip, not -hidden: hidden would make this div the scroll
+  // container and position:sticky inside the opener would never engage.
   return (
-    <div className="dark bg-background text-foreground overflow-x-hidden" style={HOME_DARK_TOKENS}>
+    <div className="dark bg-background text-foreground overflow-x-clip" style={HOME_DARK_TOKENS}>
       <StudyAliveHero />
 
       <StatsBand />

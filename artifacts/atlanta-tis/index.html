@@ -3,7 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    <meta name="theme-color" content="#2563eb" />
+    <meta name="theme-color" content="#0B1220" />
+    <!-- Theme before paint: dark unless this browser chose light (see src/lib/theme.ts). -->
+    <script>
+      (function () {
+        var t = null;
+        try { t = localStorage.getItem("sis-theme"); } catch (e) {}
+        var dark = t ? t === "dark" : true;
+        document.documentElement.classList.toggle("dark", dark);
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      })();
+    </script>
 
     <title>Simple Impact Studies — Defensible TIS without the week of engineer time</title>
     <meta name="description" content="Defensible screening-level Traffic Impact Studies for engineering firms. Openly-published capacity methods (Webster/Akçelik), public-data trip generation (NHTS 2017 / SANDAG 2002 / NCHRP 716), MUTCD, AASHTO — the math your senior reviewers expect, without the 40 hours of junior-PE labor per site." />
