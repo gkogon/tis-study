@@ -1,7 +1,7 @@
 # CI for the node check-script suite.
 #
-# Runs every "check:*" script in artifacts/tis-api-server and
-# artifacts/api-server on pull requests (and pushes to main, so direct
+# Runs every "check:*" script in artifacts/tis-api-server,
+# artifacts/api-server and artifacts/atlanta-tis on pull requests (and pushes to main, so direct
 # pushes are covered too). Script names are read from each package.json
 # at run time, so new check scripts are picked up without editing this
 # file.
@@ -46,7 +46,7 @@ jobs:
         run: |
           failed=()
           total=0
-          for dir in artifacts/tis-api-server artifacts/api-server; do
+          for dir in artifacts/tis-api-server artifacts/api-server artifacts/atlanta-tis; do
             dir_count=0
             while IFS= read -r s; do
               dir_count=$((dir_count + 1))
