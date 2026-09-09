@@ -836,12 +836,14 @@ components:
         realLaneGeometry:
           type: boolean
           description: >-
-            Use measured lane counts from an imported Synchro [Lanes] section to
-            size each lane group's capacity (lanes x saturation flow x g/C)
-            instead of the one-critical-lane screening assumption. Only affects
-            intersections whose imported record carried lane counts. Omitted or
-            true uses measured geometry; explicit false pins the legacy basis,
-            byte-identical to the pre-change output.
+            Size approach and lane-group capacity with real through-lane counts
+            (lanes x saturation flow x g/C) instead of the one-critical-lane
+            screening assumption. Precedence per approach: the imported Synchro
+            [Lanes] count > the OSM through-lane count on the road the signal
+            was matched to > one lane. Each approach reports throughLanes and
+            lanesSource. Omitted or true uses real geometry; explicit false
+            pins the one-lane legacy basis everywhere, byte-identical to the
+            pre-change output.
         driveways:
           type: array
           maxItems: 12
@@ -936,6 +938,13 @@ components:
             Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing".
         futureLos: { type: string, enum: [A, B, C, D, E, F] }
         queue95thFt: { type: number }
+        # Through lanes this approach's capacity was sized with, and where the
+        # count came from: import = the Synchro record's [Lanes] section, osm =
+        # the OSM `lanes` tag on the matched road (main-street count on the
+        # volume-major axis, minor-street count on the other). Absent on the
+        # one-lane screening default and under realLaneGeometry: false.
+        throughLanes: { type: integer, minimum: 1, maximum: 6 }
+        lanesSource: { type: string, enum: [import, osm] }
         # True current-year baseline for this approach (no growth). Optional.
         currentVolumeVph:
           type: number
@@ -989,6 +998,9 @@ components:
         # section. Present ONLY where the record carried real geometry; its
         # absence is what makes a row fall back to one-critical-lane.
         lanes: { type: integer, minimum: 1, maximum: 6 }
+        # Where `lanes` came from: the record's [Lanes] section, or (through
+        # movement only) the OSM through-lane count.
+        lanesSource: { type: string, enum: [import, osm] }
         # Capacity actually used for this lane group (vph), so a reviewing
         # engineer can see which basis the row used.
         capacityVph: { type: number }

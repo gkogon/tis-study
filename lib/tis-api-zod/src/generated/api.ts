@@ -582,7 +582,7 @@ export const GenerateTisBody = zod.object({
     .boolean()
     .optional()
     .describe(
-      "Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output.",
+      "Size approach and lane-group capacity with real through-lane counts (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Precedence per approach: the imported Synchro [Lanes] count > the OSM through-lane count on the road the signal was matched to > one lane. Each approach reports throughLanes and lanesSource. Omitted or true uses real geometry; explicit false pins the one-lane legacy basis everywhere, byte-identical to the pre-change output.",
     ),
   driveways: zod
     .array(
@@ -782,10 +782,14 @@ export const generateTisResponseRequestDrivewaysItemLongitudeMax = 180;
 
 export const generateTisResponseRequestDrivewaysMax = 12;
 
+export const generateTisResponseAffectedIntersectionsItemApproachesItemThroughLanesMax = 6;
+
 export const generateTisResponseAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax = 6;
 
 export const generateTisResponseAffectedIntersectionsItemSignalTimingCriticalPhasesMin = 2;
 export const generateTisResponseAffectedIntersectionsItemSignalTimingCriticalPhasesMax = 4;
+
+export const generateTisResponsePeriodReportsItemAffectedIntersectionsItemApproachesItemThroughLanesMax = 6;
 
 export const generateTisResponsePeriodReportsItemAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax = 6;
 
@@ -1295,7 +1299,7 @@ export const GenerateTisResponse = zod.object({
       .boolean()
       .optional()
       .describe(
-        "Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output.",
+        "Size approach and lane-group capacity with real through-lane counts (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Precedence per approach: the imported Synchro [Lanes] count > the OSM through-lane count on the road the signal was matched to > one lane. Each approach reports throughLanes and lanesSource. Omitted or true uses real geometry; explicit false pins the one-lane legacy basis everywhere, byte-identical to the pre-change output.",
       ),
     driveways: zod
       .array(
@@ -1440,6 +1444,14 @@ export const GenerateTisResponse = zod.object({
             ),
           futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
           queue95thFt: zod.number(),
+          throughLanes: zod
+            .number()
+            .min(1)
+            .max(
+              generateTisResponseAffectedIntersectionsItemApproachesItemThroughLanesMax,
+            )
+            .optional(),
+          lanesSource: zod.enum(["import", "osm"]).optional(),
           currentVolumeVph: zod
             .number()
             .optional()
@@ -1467,6 +1479,7 @@ export const GenerateTisResponse = zod.object({
                     generateTisResponseAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax,
                   )
                   .optional(),
+                lanesSource: zod.enum(["import", "osm"]).optional(),
                 capacityVph: zod.number().optional(),
               }),
             )
@@ -1661,6 +1674,14 @@ export const GenerateTisResponse = zod.object({
                 ),
               futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
               queue95thFt: zod.number(),
+              throughLanes: zod
+                .number()
+                .min(1)
+                .max(
+                  generateTisResponsePeriodReportsItemAffectedIntersectionsItemApproachesItemThroughLanesMax,
+                )
+                .optional(),
+              lanesSource: zod.enum(["import", "osm"]).optional(),
               currentVolumeVph: zod
                 .number()
                 .optional()
@@ -1688,6 +1709,7 @@ export const GenerateTisResponse = zod.object({
                         generateTisResponsePeriodReportsItemAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax,
                       )
                       .optional(),
+                    lanesSource: zod.enum(["import", "osm"]).optional(),
                     capacityVph: zod.number().optional(),
                   }),
                 )
@@ -3146,10 +3168,14 @@ export const getTisProjectResponseResultRequestDrivewaysItemLongitudeMax = 180;
 
 export const getTisProjectResponseResultRequestDrivewaysMax = 12;
 
+export const getTisProjectResponseResultAffectedIntersectionsItemApproachesItemThroughLanesMax = 6;
+
 export const getTisProjectResponseResultAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax = 6;
 
 export const getTisProjectResponseResultAffectedIntersectionsItemSignalTimingCriticalPhasesMin = 2;
 export const getTisProjectResponseResultAffectedIntersectionsItemSignalTimingCriticalPhasesMax = 4;
+
+export const getTisProjectResponseResultPeriodReportsItemAffectedIntersectionsItemApproachesItemThroughLanesMax = 6;
 
 export const getTisProjectResponseResultPeriodReportsItemAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax = 6;
 
@@ -3700,7 +3726,7 @@ export const GetTisProjectResponse = zod
             .boolean()
             .optional()
             .describe(
-              "Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output.",
+              "Size approach and lane-group capacity with real through-lane counts (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Precedence per approach: the imported Synchro [Lanes] count > the OSM through-lane count on the road the signal was matched to > one lane. Each approach reports throughLanes and lanesSource. Omitted or true uses real geometry; explicit false pins the one-lane legacy basis everywhere, byte-identical to the pre-change output.",
             ),
           driveways: zod
             .array(
@@ -4287,7 +4313,7 @@ export const GetTisProjectResponse = zod
           .boolean()
           .optional()
           .describe(
-            "Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output.",
+            "Size approach and lane-group capacity with real through-lane counts (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Precedence per approach: the imported Synchro [Lanes] count > the OSM through-lane count on the road the signal was matched to > one lane. Each approach reports throughLanes and lanesSource. Omitted or true uses real geometry; explicit false pins the one-lane legacy basis everywhere, byte-identical to the pre-change output.",
           ),
         driveways: zod
           .array(
@@ -4440,6 +4466,14 @@ export const GetTisProjectResponse = zod
                 ),
               futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
               queue95thFt: zod.number(),
+              throughLanes: zod
+                .number()
+                .min(1)
+                .max(
+                  getTisProjectResponseResultAffectedIntersectionsItemApproachesItemThroughLanesMax,
+                )
+                .optional(),
+              lanesSource: zod.enum(["import", "osm"]).optional(),
               currentVolumeVph: zod
                 .number()
                 .optional()
@@ -4467,6 +4501,7 @@ export const GetTisProjectResponse = zod
                         getTisProjectResponseResultAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax,
                       )
                       .optional(),
+                    lanesSource: zod.enum(["import", "osm"]).optional(),
                     capacityVph: zod.number().optional(),
                   }),
                 )
@@ -4675,6 +4710,14 @@ export const GetTisProjectResponse = zod
                     ),
                   futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
                   queue95thFt: zod.number(),
+                  throughLanes: zod
+                    .number()
+                    .min(1)
+                    .max(
+                      getTisProjectResponseResultPeriodReportsItemAffectedIntersectionsItemApproachesItemThroughLanesMax,
+                    )
+                    .optional(),
+                  lanesSource: zod.enum(["import", "osm"]).optional(),
                   currentVolumeVph: zod
                     .number()
                     .optional()
@@ -4704,6 +4747,7 @@ export const GetTisProjectResponse = zod
                             getTisProjectResponseResultPeriodReportsItemAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax,
                           )
                           .optional(),
+                        lanesSource: zod.enum(["import", "osm"]).optional(),
                         capacityVph: zod.number().optional(),
                       }),
                     )

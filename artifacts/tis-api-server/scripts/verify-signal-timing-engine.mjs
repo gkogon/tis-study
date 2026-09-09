@@ -43,7 +43,12 @@ const junctionNodes = probeSnaps.flatMap((s, i) => (s.node === i ? [i] : []));
 const ring = junctionNodes.filter((i) => { const d = dist(SITE.lat, SITE.lon, g.nodeLat[i], g.nodeLon[i]); return d > 0.08 && d < 0.4; });
 const step = Math.max(1, Math.floor(ring.length / 4));
 const onNet = [0, 1, 2, 3].map((k) => ring[k * step]).filter((v) => v !== undefined);
-const MOCK_INTS = onNet.map((n, i) => ({ id: `sig-${i + 1}`, name: `Junction ${i + 1}`, zone: "MIA", latitude: g.nodeLat[n], longitude: g.nodeLon[n], totalVolume: 2400 + i * 300 }));
+const MOCK_INTS = onNet.map((n, i) => ({
+  id: `sig-${i + 1}`, name: `Junction ${i + 1}`, zone: "MIA", latitude: g.nodeLat[n], longitude: g.nodeLon[n], totalVolume: 2400 + i * 300,
+  // sig-2 carries OSM lane geometry the way #195's analyzer emits it: three
+  // through lanes per direction on the main street, one on the minor.
+  ...(i === 1 ? { mainThroughLanes: 3, mainThroughLanesMeasured: true, minorThroughLanes: 1 } : {}),
+}));
 ok(MOCK_INTS.length === 4, `four mock signals placed on real junctions (${MOCK_INTS.length})`);
 
 const { build: esbuild } = await import(path.resolve(SERVER, "node_modules/esbuild/lib/main.js"));
@@ -84,11 +89,25 @@ ok(aRows.some((ix) => ix.signalTiming?.basis === "webster"), "at least one inter
       if (!(ap.futureVc > 0)) continue;
       const implied = ap.futureVolumeVph / ap.futureVc;
       const gc = ap.direction === "NB" || ap.direction === "SB" ? t.gOverCns : t.gOverCew;
+      const lanes = ap.throughLanes ?? 1;
       checked++;
-      if (!near(implied, SATURATION_FLOW_VPH * gc * wx, 0.03)) { bad++; if (bad <= 2) console.log("   capacity mismatch:", ix.name, ap.direction, implied.toFixed(0), "vs", (SATURATION_FLOW_VPH * gc * wx).toFixed(0)); }
+      if (!near(implied, SATURATION_FLOW_VPH * gc * lanes * wx, 0.03)) { bad++; if (bad <= 2) console.log("   capacity mismatch:", ix.name, ap.direction, implied.toFixed(0), "vs", (SATURATION_FLOW_VPH * gc * lanes * wx).toFixed(0)); }
     }
   }
-  ok(checked > 0 && bad === 0, `per-approach capacity re-derived as 1,800 × g/C × weather on every Webster/measured approach (${checked} checked, ${bad} off by >3%)`);
+  ok(checked > 0 && bad === 0, `per-approach capacity re-derived as 1,800 × g/C × through lanes × weather on every Webster/measured approach (${checked} checked, ${bad} off by >3%)`);
+  // OSM lane geometry (sig-2): main-street count lands on the volume-major axis, minor count on the other.
+  const s2 = aRows.find((ix) => ix.signalId === "sig-2");
+  const byDir = Object.fromEntries((s2?.approaches ?? []).map((ap) => [ap.direction, ap]));
+  const nsVol = (byDir.NB?.existingVolumeVph ?? 0) + (byDir.SB?.existingVolumeVph ?? 0), ewVol = (byDir.EB?.existingVolumeVph ?? 0) + (byDir.WB?.existingVolumeVph ?? 0);
+  const major = nsVol >= ewVol ? ["NB", "SB"] : ["EB", "WB"], minor = nsVol >= ewVol ? ["EB", "WB"] : ["NB", "SB"];
+  ok(major.every((d) => byDir[d]?.throughLanes === 3 && byDir[d]?.lanesSource === "osm") && minor.every((d) => byDir[d]?.throughLanes === 1 && byDir[d]?.lanesSource === "osm"),
+     `sig-2: OSM 3 through lanes on the volume-major axis (${major.join("/")}), 1 on the minor (${minor.join("/")}), both stamped osm`);
+  const s1 = aRows.find((ix) => ix.signalId === "sig-1");
+  ok((s1?.approaches ?? []).every((ap) => ap.throughLanes === undefined && ap.lanesSource === undefined), "sig-1 (no OSM tag, no record): no lane stamp — one-lane basis, legacy-identical fields");
+  const noGeo = await generateTisReport({ ...baseReq, realLaneGeometry: false });
+  const s2n = rows(noGeo).find((ix) => ix.signalId === "sig-2");
+  ok((s2n?.approaches ?? []).every((ap) => ap.throughLanes === undefined) && (s2n?.approaches ?? []).every((ap) => near(ap.futureVolumeVph / ap.futureVc, SATURATION_FLOW_VPH * (ap.direction === "NB" || ap.direction === "SB" ? s2n.signalTiming.gOverCns : s2n.signalTiming.gOverCew) * wx, 0.03)),
+     "realLaneGeometry: false pins sig-2 back to one lane per approach with no stamp");
   const cycles = aRows.map((ix) => ix.signalTiming?.cycleLenSec);
   ok(cycles.every((c) => c >= 60 && c <= 300), `cycles within [60, 300] s (${cycles.join(", ")})`);
   ok(!aRows.some((ix) => ix.signalTiming?.basis === "webster" && ix.signalTiming.cycleLenSec === 90 && ix.signalTiming.gOverCns === 0.45 && ix.signalTiming.gOverCew === 0.45),
@@ -119,9 +138,11 @@ const legacy = await generateTisReport({ ...baseReq, conservedAssignment: false,
   for (const ix of lRows) for (const ap of ix.approaches ?? []) {
     if (!(ap.futureVc > 0)) continue;
     checked++;
-    if (!near(ap.futureVolumeVph / ap.futureVc, 810 * wx, 0.02)) off++;
+    // signalTiming pins the TIMING; lane geometry is its own hatch
+    // (realLaneGeometry), so sig-2's OSM lanes still scale the flat basis here.
+    if (!near(ap.futureVolumeVph / ap.futureVc, 810 * wx * (ap.throughLanes ?? 1), 0.02)) off++;
   }
-  ok(checked > 0 && off === 0, `screening mode: every approach sits on the flat 810 vph × weather capacity (${checked} checked, ${off} off)`);
+  ok(checked > 0 && off === 0, `screening mode: every approach sits on the flat 810 vph × through lanes × weather capacity (${checked} checked, ${off} off)`);
 }
 
 // 4. measured tier via a Synchro record on sig-1 (coordinates match the mock)
@@ -154,6 +175,7 @@ const legacy = await generateTisReport({ ...baseReq, conservedAssignment: false,
 {
   const parsed = GenerateTisResponse.parse(a);
   ok(rows(parsed).every((ix) => ix.signalTiming?.basis), "signalTiming survives GenerateTisResponse (not stripped by zod)");
+  ok(rows(parsed).find((ix) => ix.signalId === "sig-2")?.approaches?.some((ap) => ap.throughLanes === 3 && ap.lanesSource === "osm"), "throughLanes / lanesSource survive GenerateTisResponse");
   ok(GenerateTisBody.safeParse({ ...baseReq, signalTiming: "screening" }).success && !GenerateTisBody.safeParse({ ...baseReq, signalTiming: "bogus" }).success,
      "GenerateTisBody accepts signalTiming: screening and rejects an unknown basis");
   const body = GenerateTisBody.parse({ ...baseReq });

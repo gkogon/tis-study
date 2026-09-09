@@ -401,3 +401,19 @@ and is left for the GA-renderer owner.
 
 **Not done here (unchanged from §5):** Miami-Dade ingest, ATSPM, saturation
 flow re-baseline, coordination/arrival type, actuation.
+
+**Through lanes into capacity (added 2026-09-08, same PR).** #195 put OSM
+through-lane counts on the row and the export and nowhere else, so every
+approach was still sized as one critical lane unless a Synchro `[Lanes]`
+count was attached — a three-lane arterial approach read roughly 3× too
+congested. `throughLanesByApproach` now sizes approach capacity, the
+intersection-level critical-axis capacity and the through lane group as
+1,800 × g/C × lanes × weather, with the precedence #195 set for the export:
+the record's `[Lanes]` count > the OSM count (main-street count on the
+volume-major axis, minor-street count on the other) > one lane. The same
+counts feed the resolver's protected-left inference and pedestrian minimum.
+Each approach reports `throughLanes` + `lanesSource` (import / osm), the
+worksheet prints them, and `realLaneGeometry: false` pins one lane everywhere
+— the pre-lane-geometry basis stays reachable with the flag that always
+pinned it. Coverage is #195's: Boston 97% … Chicago 63%, Florida 0% until the
+sidecar is regenerated, Phoenix/Seattle 0% (no roads file).

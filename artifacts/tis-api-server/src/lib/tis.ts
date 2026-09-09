@@ -550,6 +550,14 @@ export type ApproachImpact = {
   existingLos: Los;
   futureLos: Los;
   queue95thFt: number;
+  /** Through lanes this approach's capacity was sized with, and where the
+   *  count came from: "import" = the record's [Lanes] section, "osm" = the
+   *  OSM `lanes` tag on the road the signal was matched to (main-street count
+   *  on the volume-major axis, minor-street count on the other). Absent on
+   *  the one-lane screening default and under realLaneGeometry: false, so
+   *  legacy payloads are byte-identical. */
+  throughLanes?: number;
+  lanesSource?: "import" | "osm";
   /** Per-turn-movement detail, present ONLY when an imported Synchro/UTDF
    *  record supplied measured turning-movement volumes for this intersection.
    *  Without measured movements the approach total is the finest granularity
@@ -575,6 +583,9 @@ export type LaneGroupImpact = {
    *  makes the row fall back to the one-critical-lane screening basis, and the
    *  report says which basis each row used. */
   lanes?: number;
+  /** Where `lanes` came from: the record's [Lanes] section, or the OSM
+   *  through-lane count (through movement only). */
+  lanesSource?: "import" | "osm";
   /** Capacity actually used for this lane group, vph. Printed so a reviewing
    *  engineer can see whether the row was measured-geometry or screening. */
   capacityVph?: number;
@@ -1076,6 +1087,10 @@ export function laneGroupsForApproach(opts: {
    *  screening g/C for every movement (legacy). */
   laneCapacityByMovement?: Partial<Record<Movement, number>>;
   gOverCByMovement?: Partial<Record<Movement, number>>;
+  /** OSM through-lane count for this approach, used to size the THROUGH
+   *  lane group when the record carried no [Lanes] count for it. Left and
+   *  right stay one-lane — OSM does not say how many lanes are turn bays. */
+  osmThroughLanes?: number;
   /** False reproduces the pre-lane-geometry one-critical-lane basis exactly,
    *  for the legacy escape hatch on TisRequest. Omitted/true uses measured
    *  lane counts where the import supplied them. */
@@ -1138,9 +1153,13 @@ export function laneGroupsForApproach(opts: {
     // basis the rest of the screen uses. Without a count we keep the
     // one-critical-lane assumption, which is what every study did before this
     // — so an intersection with no [Lanes] data is bit-for-bit unchanged.
-    const laneCount = laneCounts[`${approach}${m}` as UtdfMovement];
-    const hasLanes = opts.useRealLaneGeometry !== false
-      && typeof laneCount === "number" && Number.isFinite(laneCount) && laneCount > 0;
+    const importedCount = laneCounts[`${approach}${m}` as UtdfMovement];
+    const hasImported = opts.useRealLaneGeometry !== false
+      && typeof importedCount === "number" && Number.isFinite(importedCount) && importedCount > 0;
+    const hasOsm = !hasImported && m === "T" && opts.useRealLaneGeometry !== false
+      && typeof opts.osmThroughLanes === "number" && Number.isFinite(opts.osmThroughLanes) && opts.osmThroughLanes > 0;
+    const hasLanes = hasImported || hasOsm;
+    const laneCount = hasImported ? (importedCount as number) : hasOsm ? (opts.osmThroughLanes as number) : undefined;
     const oneLane = opts.laneCapacityByMovement?.[m] ?? opts.laneCapacityVph;
     const capacity = hasLanes
       ? oneLane * (laneCount as number)
@@ -1158,7 +1177,7 @@ export function laneGroupsForApproach(opts: {
       futureVc: round2(futureVc),
       queue95thFt: round1(queue),
       capacityVph: round1(capacity),
-      ...(hasLanes ? { lanes: laneCount as number } : {}),
+      ...(hasLanes ? { lanes: laneCount as number, lanesSource: (hasImported ? "import" : "osm") as "import" | "osm" } : {}),
       ...(hasBay ? { storageFt: bay, storageDeficient: queue > bay } : {}),
     };
   });
@@ -1579,19 +1598,49 @@ type ScenarioParams = {
  * else the OSM through lanes matched to the signal, main axis = the heavier
  * axis by volume. Returns undefined under signalTiming: "screening".
  */
+type ThroughLanes = { lanes: number; source: "import" | "osm" | "default" };
+
+/**
+ * Through lanes per approach, with provenance. Precedence, the rule #195 set
+ * for the UTDF export: the record's [Lanes] count for that approach's through
+ * movement > the OSM through-lane count on the road the signal was matched to
+ * (OSM gives a main-street and a minor-street count but not which compass
+ * axis each is; volume decides — the heavier no-build axis is the major road)
+ * > one lane. realLaneGeometry: false pins one lane everywhere, so the
+ * pre-lane-geometry capacity basis stays reachable with the flag that has
+ * always pinned it.
+ */
+function throughLanesByApproach(
+  c: { sig: AnalyzerIntersection; utdf?: UtdfIntersectionInput },
+  approachVph: Record<Direction, number>,
+  realLaneGeometry: boolean | undefined,
+): Record<Direction, ThroughLanes> {
+  const out = {} as Record<Direction, ThroughLanes>;
+  const nsMajor = approachVph.NB + approachVph.SB >= approachVph.EB + approachVph.WB;
+  const osmMain = c.sig.mainThroughLanesMeasured && Number.isInteger(c.sig.mainThroughLanes) && (c.sig.mainThroughLanes as number) > 0
+    ? (c.sig.mainThroughLanes as number) : undefined;
+  const osmMinor = Number.isInteger(c.sig.minorThroughLanes) && (c.sig.minorThroughLanes as number) > 0
+    ? (c.sig.minorThroughLanes as number) : undefined;
+  for (const d of DIRECTIONS) {
+    if (realLaneGeometry === false) { out[d] = { lanes: 1, source: "default" }; continue; }
+    const imported = c.utdf?.lanes?.[`${d}T` as UtdfMovement];
+    if (typeof imported === "number" && Number.isFinite(imported) && imported > 0) { out[d] = { lanes: imported, source: "import" }; continue; }
+    const onMajor = nsMajor ? d === "NB" || d === "SB" : d === "EB" || d === "WB";
+    const osm = onMajor ? osmMain : osmMinor;
+    out[d] = osm !== undefined ? { lanes: osm, source: "osm" } : { lanes: 1, source: "default" };
+  }
+  return out;
+}
+
 function resolveTimingForRow(
   c: { sig: AnalyzerIntersection; utdf?: UtdfIntersectionInput },
   measured: ReturnType<typeof utdfMeasuredTotals> | undefined,
   utdfCycleLenS: number | undefined,
-  noBuildVolumeVph: number,
+  approachVph: Record<Direction, number>,
+  lanesPerDir: { ns: number; ew: number },
   params: ScenarioParams,
-  volShares: Record<Direction, number>,
 ): SignalTiming | undefined {
   if (params.signalTiming !== "computed") return undefined;
-  const approachVph: Record<Direction, number> = {
-    NB: noBuildVolumeVph * volShares.NB, SB: noBuildVolumeVph * volShares.SB,
-    EB: noBuildVolumeVph * volShares.EB, WB: noBuildVolumeVph * volShares.WB,
-  };
   // Measured left share per approach, applied to the SAME no-build approach
   // volume the row uses (the lane-group discipline), never the record's
   // absolute counts.
@@ -1606,20 +1655,6 @@ function resolveTimingForRow(
       if (tot > 0 && typeof l === "number" && Number.isFinite(l) && l >= 0) leftVph[d] = approachVph[d] * (l / tot);
     }
   }
-  // Through lanes per direction on each axis.
-  const lanes = c.utdf?.lanes;
-  const laneOf = (mv: string): number | undefined => {
-    const v = lanes?.[mv as UtdfMovement];
-    return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined;
-  };
-  const nsVol = approachVph.NB + approachVph.SB, ewVol = approachVph.EB + approachVph.WB;
-  const mainIsNs = nsVol >= ewVol;
-  const osmMain = c.sig.mainThroughLanesMeasured && c.sig.mainThroughLanes ? c.sig.mainThroughLanes : undefined;
-  const osmMinor = c.sig.minorThroughLanes;
-  const lanesPerDir = {
-    ns: Math.max(laneOf("NBT") ?? 0, laneOf("SBT") ?? 0) || (mainIsNs ? osmMain : osmMinor) || DEFAULT_THROUGH_LANES_PER_DIR,
-    ew: Math.max(laneOf("EBT") ?? 0, laneOf("WBT") ?? 0) || (mainIsNs ? osmMinor : osmMain) || DEFAULT_THROUGH_LANES_PER_DIR,
-  };
   return resolveSignalTiming({
     providers: [
       () => (measured && c.utdf ? timingFromSynchroPhases(c.utdf) : undefined),
@@ -1680,10 +1715,26 @@ function buildAffectedRow(
   // cycle and g/C below collapses to the flat legacy constants — the
   // pre-change arithmetic, byte for byte.
   const weatherFactor = params.weatherFactor ?? params.approachCapacityVph / APPROACH_CAPACITY_VPH;
-  const timing = resolveTimingForRow(c, measured, utdfCycleLenS, baseVolume * params.growthMultiplier, params, volShares);
-  const capacityVph = timing ? SATURATION_FLOW_VPH * criticalGOverC(timing) * weatherFactor : params.capacityVph;
+  const noBuildVph = baseVolume * params.growthMultiplier;
+  const noBuildByApproach: Record<Direction, number> = {
+    NB: noBuildVph * volShares.NB, SB: noBuildVph * volShares.SB, EB: noBuildVph * volShares.EB, WB: noBuildVph * volShares.WB,
+  };
+  // Through lanes per approach (import > OSM > one lane; realLaneGeometry:
+  // false pins one lane). They size capacity below AND feed the timing
+  // resolver's protected-left inference and pedestrian minimum.
+  const laneInfo = throughLanesByApproach(c, noBuildByApproach, params.realLaneGeometry);
+  const lanesPerDir = {
+    ns: Math.max(laneInfo.NB.lanes, laneInfo.SB.lanes) || DEFAULT_THROUGH_LANES_PER_DIR,
+    ew: Math.max(laneInfo.EB.lanes, laneInfo.WB.lanes) || DEFAULT_THROUGH_LANES_PER_DIR,
+  };
+  const nsMajor = noBuildByApproach.NB + noBuildByApproach.SB >= noBuildByApproach.EB + noBuildByApproach.WB;
+  const criticalLanes = nsMajor ? lanesPerDir.ns : lanesPerDir.ew;
+  const timing = resolveTimingForRow(c, measured, utdfCycleLenS, noBuildByApproach, lanesPerDir, params);
+  // Intersection-level capacity: the critical-movement fraction of the total
+  // is a per-lane critical volume, so the major axis's lane count scales it.
+  const capacityVph = (timing ? SATURATION_FLOW_VPH * criticalGOverC(timing) * weatherFactor : params.capacityVph) * criticalLanes;
   const approachCap = (d: Direction): number =>
-    timing ? SATURATION_FLOW_VPH * gOverCForApproach(timing, d) * weatherFactor : params.approachCapacityVph;
+    (timing ? SATURATION_FLOW_VPH * gOverCForApproach(timing, d) * weatherFactor : params.approachCapacityVph) * laneInfo[d].lanes;
   const cyc = timing ? timing.cycleLenS : utdfCycleLenS;
   const gcInt = timing ? criticalGOverC(timing) : undefined;
   const gcApp = (d: Direction): number | undefined => (timing ? gOverCForApproach(timing, d) : undefined);
@@ -1866,6 +1917,7 @@ function buildAffectedRow(
       existingLos: delayToLos(exDelay),
       futureLos: delayToLos(fuDelay),
       queue95thFt: round1(queue95Ft(futureVol, capD, cyc, gcApp(d))),
+      ...(laneInfo[d].source !== "default" ? { throughLanes: laneInfo[d].lanes, lanesSource: laneInfo[d].source } : {}),
       // Project-trip L/T/R for this approach, from the geometric assignment
       // already computed above off the distribution octants. Emitted so the
       // UTDF export can write existing + a REAL project split instead of
@@ -1913,14 +1965,15 @@ function buildAffectedRow(
           approachVolumeVph: baseVol,
           addedExactByMovement,
           addedTripsPeak,
-          laneCapacityVph: capD,
+          laneCapacityVph: capD / laneInfo[d].lanes,
           cycleLenS: cyc,
+          ...(laneInfo[d].source === "osm" ? { osmThroughLanes: laneInfo[d].lanes } : {}),
           ...(timing
             ? {
                 laneCapacityByMovement: {
                   L: SATURATION_FLOW_VPH * gOverCForMovement(timing, d, "L") * weatherFactor,
-                  T: capD,
-                  R: capD,
+                  T: capD / laneInfo[d].lanes,
+                  R: capD / laneInfo[d].lanes,
                 },
                 gOverCByMovement: {
                   L: gOverCForMovement(timing, d, "L"),

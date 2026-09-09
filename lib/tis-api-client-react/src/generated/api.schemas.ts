@@ -527,7 +527,7 @@ export interface TisRequest {
   conservedAssignment?: boolean;
   /** Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g/C. `screening`: the legacy flat 90 s cycle / g/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`. */
   signalTiming?: TisRequestSignalTiming;
-  /** Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output. */
+  /** Size approach and lane-group capacity with real through-lane counts (lanes x saturation flow x g/C) instead of the one-critical-lane screening assumption. Precedence per approach: the imported Synchro [Lanes] count > the OSM through-lane count on the road the signal was matched to > one lane. Each approach reports throughLanes and lanesSource. Omitted or true uses real geometry; explicit false pins the one-lane legacy basis everywhere, byte-identical to the pre-change output. */
   realLaneGeometry?: boolean;
   /**
    * Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).
@@ -599,6 +599,14 @@ export const TisApproachImpactFutureLos = {
   F: "F",
 } as const;
 
+export type TisApproachImpactLanesSource =
+  (typeof TisApproachImpactLanesSource)[keyof typeof TisApproachImpactLanesSource];
+
+export const TisApproachImpactLanesSource = {
+  import: "import",
+  osm: "osm",
+} as const;
+
 export type TisApproachImpactCurrentLos =
   (typeof TisApproachImpactCurrentLos)[keyof typeof TisApproachImpactCurrentLos];
 
@@ -620,6 +628,14 @@ export const TisLaneGroupImpactMovement = {
   R: "R",
 } as const;
 
+export type TisLaneGroupImpactLanesSource =
+  (typeof TisLaneGroupImpactLanesSource)[keyof typeof TisLaneGroupImpactLanesSource];
+
+export const TisLaneGroupImpactLanesSource = {
+  import: "import",
+  osm: "osm",
+} as const;
+
 export interface TisLaneGroupImpact {
   movement: TisLaneGroupImpactMovement;
   existingVolumeVph: number;
@@ -634,6 +650,7 @@ export interface TisLaneGroupImpact {
    * @maximum 6
    */
   lanes?: number;
+  lanesSource?: TisLaneGroupImpactLanesSource;
   capacityVph?: number;
 }
 
@@ -653,6 +670,12 @@ export interface TisApproachImpact {
   existingLos: TisApproachImpactExistingLos;
   futureLos: TisApproachImpactFutureLos;
   queue95thFt: number;
+  /**
+   * @minimum 1
+   * @maximum 6
+   */
+  throughLanes?: number;
+  lanesSource?: TisApproachImpactLanesSource;
   /** True current-year baseline: existing volumes with NO growth applied. This is the scenario to label "Existing". Optional so payloads saved before the scenario split still validate. */
   currentVolumeVph?: number;
   currentVc?: number;

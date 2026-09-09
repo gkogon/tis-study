@@ -9333,7 +9333,16 @@ function renderCapacityAppendix(
         + (t.gOverCnsLeft !== undefined ? ` (NS left ${fmtNum(t.gOverCnsLeft, 2)})` : "")
         + (t.gOverCewLeft !== undefined ? ` (EW left ${fmtNum(t.gOverCewLeft, 2)})` : "")
         + `; ${lefts}; pedestrian minimum green ${fmtNum(t.pedMinGreenNsSec)} s NS / ${fmtNum(t.pedMinGreenEwSec)} s EW. `
-        + "Timing is resolved once from the no-build volumes and held fixed across scenarios; approach capacity is 1,800 pc/h/ln × that phase's g/C × weather factor.",
+        + "Timing is resolved once from the no-build volumes and held fixed across scenarios; approach capacity is 1,800 pc/h/ln × that phase's g/C × through lanes × weather factor"
+        + (() => {
+            type ApLanes = { direction?: string; throughLanes?: number; lanesSource?: string };
+            const all: ApLanes[] = (ix.approaches ?? []) as ApLanes[];
+            const aps = all.filter((ap) => typeof ap.throughLanes === "number");
+            if (aps.length === 0) return " (one through lane per approach — no lane count was available).";
+            const src = (x: string | undefined) => (x === "import" ? "Synchro" : x === "osm" ? "OSM" : "default");
+            const list = all.map((ap) => `${ap.direction} ${ap.throughLanes ?? 1}${typeof ap.throughLanes === "number" ? ` (${src(ap.lanesSource)})` : ""}`).join(" / ");
+            return ` — through lanes ${list}.`;
+          })(),
         { paragraphGap: 4 },
       );
       doc.fillColor("black");

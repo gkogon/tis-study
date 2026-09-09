@@ -5,6 +5,7 @@
  * TIS (Traffic Impact Study) API specification — engineering-firm product surface.
  * OpenAPI spec version: 0.1.0
  */
+import type { TisLaneGroupImpactLanesSource } from "./tisLaneGroupImpactLanesSource";
 import type { TisLaneGroupImpactMovement } from "./tisLaneGroupImpactMovement";
 
 export interface TisLaneGroupImpact {
@@ -21,5 +22,6 @@ export interface TisLaneGroupImpact {
    * @maximum 6
    */
   lanes?: number;
+  lanesSource?: TisLaneGroupImpactLanesSource;
   capacityVph?: number;
 }
