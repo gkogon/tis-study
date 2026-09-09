@@ -4,8 +4,9 @@
  * warrant projects.
  */
 import { CheckCircle2, XCircle, FileWarning } from "lucide-react";
+import { WarrantCurveChart } from "./warrant-curve-chart";
 
-type WarrantOutcome = {
+export type WarrantOutcome = {
   id: "1A" | "1B" | "3" | "7";
   name: string;
   description: string;
@@ -61,6 +62,8 @@ export function WarrantsReport({ report }: { report: WarrantsReportT }) {
           </div>
         </div>
       )}
+
+      <WarrantCurveChart warrants={report.warrants} reductionApplied={report.reductionApplied} />
 
       <div className="space-y-3">
         {report.warrants.map((w) => <WarrantCard key={w.id} warrant={w} />)}
