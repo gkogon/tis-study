@@ -236,6 +236,16 @@ export const UtdfIntersectionDataSource = {
 } as const;
 
 /**
+ * Phase number serving each movement (NBL, NBT, ... WBR), from the file's [Lanes] Phase1 record. Together with splitSByPhase this is a complete measured g/C per movement with no NEMA phase-numbering guesswork: a left whose phase differs from its through's phase is protected. Absent when the file carried no Phase1 row (a Synchro report PDF typically will not), in which case the intersection's timing degrades to measured-cycle (cycle from the file, splits computed).
+ */
+export type UtdfIntersectionDataPhaseByMovement = { [key: string]: number };
+
+/**
+ * Split (max green) seconds by phase number, from the file's [Timings] section. Effective green is taken as split minus 5 s lost time.
+ */
+export type UtdfIntersectionDataSplitSByPhase = { [key: string]: number };
+
+/**
  * Measured data for ONE intersection imported from Synchro — either a UTDF text export (/utdf/parse) or a Synchro report PDF (/utdf/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).
  */
 export interface UtdfIntersectionData {
@@ -276,6 +286,10 @@ export interface UtdfIntersectionData {
    * @maximum 300
    */
   cycleLenSec?: number;
+  /** Phase number serving each movement (NBL, NBT, ... WBR), from the file's [Lanes] Phase1 record. Together with splitSByPhase this is a complete measured g/C per movement with no NEMA phase-numbering guesswork: a left whose phase differs from its through's phase is protected. Absent when the file carried no Phase1 row (a Synchro report PDF typically will not), in which case the intersection's timing degrades to measured-cycle (cycle from the file, splits computed). */
+  phaseByMovement?: UtdfIntersectionDataPhaseByMovement;
+  /** Split (max green) seconds by phase number, from the file's [Timings] section. Effective green is taken as split minus 5 s lost time. */
+  splitSByPhase?: UtdfIntersectionDataSplitSByPhase;
 }
 
 export type UtdfParseResultNodesItem = {
@@ -397,6 +411,17 @@ export type TisRequestAdditionalStudyPointsItem = {
 };
 
 /**
+ * Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g/C. `screening`: the legacy flat 90 s cycle / g/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`.
+ */
+export type TisRequestSignalTiming =
+  (typeof TisRequestSignalTiming)[keyof typeof TisRequestSignalTiming];
+
+export const TisRequestSignalTiming = {
+  computed: "computed",
+  screening: "screening",
+} as const;
+
+/**
  * Optional consultant-supplied within-day arrival/departure distribution that overrides the engine's default office distribution for the inbound/outbound-by-start-time and on-site-accumulation charts. Each array holds 24 non-negative values (clock hours 0–23); the renderer normalises each to sum to 1, so only relative magnitudes matter. Supplying this also unlocks the figures for non-office use classes.
  */
 export interface TisTripProfile {
@@ -500,6 +525,8 @@ export interface TisRequest {
   existingSize?: number;
   /** Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output. */
   conservedAssignment?: boolean;
+  /** Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g/C. `screening`: the legacy flat 90 s cycle / g/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`. */
+  signalTiming?: TisRequestSignalTiming;
   /** Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output. */
   realLaneGeometry?: boolean;
   /**
@@ -751,6 +778,73 @@ export const TisAffectedIntersectionVolumeSource = {
 } as const;
 
 /**
+ * measured = cycle AND per-movement splits from a source; measured-cycle = cycle from a source, splits computed; webster = computed from no-build volumes; screening-default = volumes absent or the intersection is at/over saturation (Y >= 0.85), where Webster is not applicable and the flat 90 s / 0.45 is reported instead.
+ */
+export type TisAffectedIntersectionSignalTimingBasis =
+  (typeof TisAffectedIntersectionSignalTimingBasis)[keyof typeof TisAffectedIntersectionSignalTimingBasis];
+
+export const TisAffectedIntersectionSignalTimingBasis = {
+  measured: "measured",
+  "measured-cycle": "measured-cycle",
+  webster: "webster",
+  "screening-default": "screening-default",
+} as const;
+
+export type TisAffectedIntersectionSignalTimingLeftPhasingNs =
+  (typeof TisAffectedIntersectionSignalTimingLeftPhasingNs)[keyof typeof TisAffectedIntersectionSignalTimingLeftPhasingNs];
+
+export const TisAffectedIntersectionSignalTimingLeftPhasingNs = {
+  protected: "protected",
+  permissive: "permissive",
+} as const;
+
+export type TisAffectedIntersectionSignalTimingLeftPhasingEw =
+  (typeof TisAffectedIntersectionSignalTimingLeftPhasingEw)[keyof typeof TisAffectedIntersectionSignalTimingLeftPhasingEw];
+
+export const TisAffectedIntersectionSignalTimingLeftPhasingEw = {
+  protected: "protected",
+  permissive: "permissive",
+} as const;
+
+/**
+ * import = a Synchro record mapped each left to its own phase (or not); inferred = FHWA-HRT-04-091 cross product of left-turn and opposing through volume against 50,000 / 90,000 / 110,000 by opposing through lanes; default = screening.
+ */
+export type TisAffectedIntersectionSignalTimingLeftPhasingSource =
+  (typeof TisAffectedIntersectionSignalTimingLeftPhasingSource)[keyof typeof TisAffectedIntersectionSignalTimingLeftPhasingSource];
+
+export const TisAffectedIntersectionSignalTimingLeftPhasingSource = {
+  import: "import",
+  explicit: "explicit",
+  inferred: "inferred",
+  default: "default",
+} as const;
+
+export type TisAffectedIntersectionSignalTiming = {
+  /** measured = cycle AND per-movement splits from a source; measured-cycle = cycle from a source, splits computed; webster = computed from no-build volumes; screening-default = volumes absent or the intersection is at/over saturation (Y >= 0.85), where Webster is not applicable and the flat 90 s / 0.45 is reported instead. */
+  basis: TisAffectedIntersectionSignalTimingBasis;
+  /** Measured source, e.g. synchro. */
+  source?: string;
+  cycleLenSec: number;
+  /**
+   * @minimum 2
+   * @maximum 4
+   */
+  criticalPhases: number;
+  gOverCns: number;
+  gOverCew: number;
+  gOverCnsLeft?: number;
+  gOverCewLeft?: number;
+  leftPhasingNs: TisAffectedIntersectionSignalTimingLeftPhasingNs;
+  leftPhasingEw: TisAffectedIntersectionSignalTimingLeftPhasingEw;
+  /** import = a Synchro record mapped each left to its own phase (or not); inferred = FHWA-HRT-04-091 cross product of left-turn and opposing through volume against 50,000 / 90,000 / 110,000 by opposing through lanes; default = screening. */
+  leftPhasingSource?: TisAffectedIntersectionSignalTimingLeftPhasingSource;
+  /** Webster's Y — sum of critical flow ratios. */
+  criticalFlowRatio?: number;
+  pedMinGreenNsSec?: number;
+  pedMinGreenEwSec?: number;
+};
+
+/**
  * Per-intersection calibration metadata when ground-truth observations exist for this signal.
  */
 export interface TisIntersectionCalibration {
@@ -798,6 +892,7 @@ export interface TisAffectedIntersection {
   existingStorageFt?: number;
   storageMovement?: string;
   utdfCycleLenSec?: number;
+  signalTiming?: TisAffectedIntersectionSignalTiming;
 }
 
 /**

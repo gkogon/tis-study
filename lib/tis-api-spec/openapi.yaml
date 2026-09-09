@@ -569,6 +569,25 @@ components:
             Signal cycle length (s) from the file's [Timings] section. Feeds
             the Webster uniform-delay term for this intersection in place of
             the 90 s screening default.
+        phaseByMovement:
+          type: object
+          additionalProperties: { type: integer, minimum: 1, maximum: 16 }
+          description: >-
+            Phase number serving each movement (NBL, NBT, ... WBR), from the
+            file's [Lanes] Phase1 record. Together with splitSByPhase this is a
+            complete measured g/C per movement with no NEMA phase-numbering
+            guesswork: a left whose phase differs from its through's phase is
+            protected. Absent when the file carried no Phase1 row (a Synchro
+            report PDF typically will not), in which case the intersection's
+            timing degrades to measured-cycle (cycle from the file, splits
+            computed).
+        splitSByPhase:
+          type: object
+          additionalProperties: { type: number, minimum: 1, maximum: 300 }
+          description: >-
+            Split (max green) seconds by phase number, from the file's
+            [Timings] section. Effective green is taken as split minus 5 s lost
+            time.
     UtdfParseResult:
       type: object
       required: [nodes, volumeIntersections, laneIntersections, timingIntersections, warnings]
@@ -794,6 +813,26 @@ components:
             true = conserved assignment runs; explicit false = legacy
             (un-normalized octant) behavior, byte-identical to the pre-default
             output.
+        signalTiming:
+          type: string
+          enum: [computed, screening]
+          default: computed
+          description: >-
+            Signal timing basis for delay, LOS and queue (default computed).
+            `computed`: each study intersection gets its own cycle length and
+            green splits — a client Synchro upload's measured cycle and
+            per-phase splits where the record carries them, otherwise a
+            Webster optimum cycle with Critical Movement Method splits from the
+            no-build approach volumes (FHWA-HOP-07-006), with a protected-left
+            phase inferred from the FHWA-HRT-04-091 cross-product guidance and
+            a pedestrian minimum green from the crossing width. Timing is
+            resolved once from no-build volumes and held fixed across every
+            scenario, so the model never retimes the signal to absorb the
+            project's own trips. Per-approach capacity is re-derived as
+            saturation flow x that phase's g/C. `screening`: the legacy flat
+            90 s cycle / g/C 0.45 for every intersection, byte-identical to the
+            pre-change output. Each intersection reports which basis it used
+            in `signalTiming`.
         realLaneGeometry:
           type: boolean
           description: >-
@@ -1072,6 +1111,45 @@ components:
         # in this intersection's Webster uniform-delay term in place of the
         # 90 s screening default. Absent when the file carried no timing.
         utdfCycleLenSec: { type: number }
+        # How this intersection's signal timing was resolved and what it was.
+        # Absent only on legacy payloads generated before the resolver shipped
+        # and on requests that set signalTiming: screening (whose rows are
+        # byte-identical to the pre-change output). Ratios are effective green
+        # over cycle; a *Left ratio is present only for a protected-left phase.
+        signalTiming:
+          type: object
+          required: [basis, cycleLenSec, criticalPhases, gOverCns, gOverCew, leftPhasingNs, leftPhasingEw]
+          properties:
+            basis:
+              type: string
+              enum: [measured, measured-cycle, webster, screening-default]
+              description: >-
+                measured = cycle AND per-movement splits from a source;
+                measured-cycle = cycle from a source, splits computed; webster =
+                computed from no-build volumes; screening-default = volumes
+                absent or the intersection is at/over saturation (Y >= 0.85),
+                where Webster is not applicable and the flat 90 s / 0.45 is
+                reported instead.
+            source: { type: string, description: "Measured source, e.g. synchro." }
+            cycleLenSec: { type: number }
+            criticalPhases: { type: integer, minimum: 2, maximum: 4 }
+            gOverCns: { type: number }
+            gOverCew: { type: number }
+            gOverCnsLeft: { type: number }
+            gOverCewLeft: { type: number }
+            leftPhasingNs: { type: string, enum: [protected, permissive] }
+            leftPhasingEw: { type: string, enum: [protected, permissive] }
+            leftPhasingSource:
+              type: string
+              enum: [import, explicit, inferred, default]
+              description: >-
+                import = a Synchro record mapped each left to its own phase (or
+                not); inferred = FHWA-HRT-04-091 cross product of left-turn and
+                opposing through volume against 50,000 / 90,000 / 110,000 by
+                opposing through lanes; default = screening.
+            criticalFlowRatio: { type: number, description: "Webster's Y — sum of critical flow ratios." }
+            pedMinGreenNsSec: { type: number }
+            pedMinGreenEwSec: { type: number }
       required:
         - signalId
         - name

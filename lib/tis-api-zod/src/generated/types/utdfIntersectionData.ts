@@ -5,7 +5,9 @@
  * TIS (Traffic Impact Study) API specification — engineering-firm product surface.
  * OpenAPI spec version: 0.1.0
  */
+import type { UtdfIntersectionDataPhaseByMovement } from "./utdfIntersectionDataPhaseByMovement";
 import type { UtdfIntersectionDataSource } from "./utdfIntersectionDataSource";
+import type { UtdfIntersectionDataSplitSByPhase } from "./utdfIntersectionDataSplitSByPhase";
 import type { UtdfMovementValues } from "./utdfMovementValues";
 
 /**
@@ -49,4 +51,8 @@ export interface UtdfIntersectionData {
    * @maximum 300
    */
   cycleLenSec?: number;
+  /** Phase number serving each movement (NBL, NBT, ... WBR), from the file's [Lanes] Phase1 record. Together with splitSByPhase this is a complete measured g/C per movement with no NEMA phase-numbering guesswork: a left whose phase differs from its through's phase is protected. Absent when the file carried no Phase1 row (a Synchro report PDF typically will not), in which case the intersection's timing degrades to measured-cycle (cycle from the file, splits computed). */
+  phaseByMovement?: UtdfIntersectionDataPhaseByMovement;
+  /** Split (max green) seconds by phase number, from the file's [Timings] section. Effective green is taken as split minus 5 s lost time. */
+  splitSByPhase?: UtdfIntersectionDataSplitSByPhase;
 }
