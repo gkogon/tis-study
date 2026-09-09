@@ -9,7 +9,7 @@
  * Filesystem-backed by default (one JSON per firm); point `TEMPLATE_STORE_DIR`
  * at a persistent volume in production.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import type { ReportTemplate } from "./engine";
 import { validateTemplate } from "./registry";
@@ -34,6 +34,15 @@ export function loadFirmTemplate(firmId: string): ReportTemplate | null {
     return validateTemplate(JSON.parse(readFileSync(f, "utf8")));
   } catch {
     return null;
+  }
+}
+
+/** Drop a firm's local template copy so it falls back to the region default. */
+export function clearFirmTemplate(firmId: string): void {
+  try {
+    rmSync(fileFor(firmId), { force: true });
+  } catch {
+    /* best effort — the DB column is the authoritative copy */
   }
 }
 

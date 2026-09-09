@@ -97,6 +97,8 @@ export interface TisRequest {
   existingSize?: number;
   /** Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output. */
   conservedAssignment?: boolean;
+  /** Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output. */
+  realLaneGeometry?: boolean;
   /**
    * Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).
    * @maxItems 12

@@ -43,10 +43,232 @@ export type AtrSegmentSummary = {
   // 4-6 PM hours.
   amPeakHourVph: number | null;
   pmPeakHourVph: number | null;
-  // Daily average across all sampled days. Useful for comparing
-  // against AADT estimates.
-  avgDailyVph: number | null;
+  // Average of DAILY TOTALS across sampled days — vehicles per DAY, not
+  // per hour. Directly comparable to AADT, which is the point of showing
+  // it. ⚠️ Named `...Veh` deliberately: this was `avgDailyVph` rendered
+  // under a "Daily (vph)" column, which printed ~50,000 vph for the West
+  // Side Highway on production. The bug was invisible until 2026-08-31
+  // because `atr_counts` had never been populated.
+  avgDailyVeh: number | null;
+  /** Same-window average daily volume per calendar year, ascending. Empty when
+   *  only one year has been ingested for this station. */
+  yearly: Array<{ year: number; avgDailyVeh: number }>;
 };
+
+/**
+ * Which ingested ATR dataset backs a given study region.
+ *
+ * Adding a metro is one row here plus its ingest adapter — see
+ * scripts/src/lib/atr-socrata.ts. Keyed by region code first so a city feed is
+ * not applied to the whole state, then by state for feeds that genuinely are
+ * statewide.
+ *
+ * NOTE on NY: the only feed today is NYC DOT's, and it is mapped at STATE level
+ * deliberately, because that reproduces the previous behaviour exactly — every
+ * NY-state study queried nyc_dot_atr and failed open when no segment was within
+ * the radius. Upstate sites therefore find nothing, as before.
+ */
+/**
+ * Per-metro count source. Checked BEFORE the state map, so a state whose best
+ * feed differs by metro is expressed here rather than forced into one answer.
+ *
+ * ⚠️ NEW YORK IS WHY THIS EXISTS. `NY: "nyc_dot_atr"` at state level meant every
+ * NY study queried NYC DOT's feed — which covers the five boroughs and nothing
+ * else. Rochester, Buffalo, Syracuse and Albany therefore resolved a source,
+ * ran a query, found nothing within radius and rendered no measured counts at
+ * all, silently, while TMAS coverage for them existed the whole time. NYC keeps
+ * its own dense local program; the rest of the state falls through to TMAS.
+ *
+ * The other entries are deliberately explicit rather than left to the state map.
+ * They state, per metro that this product actually sells into, which agency's
+ * counts back its reports — so swapping one metro to a better feed later is a
+ * one-line change with a visible blast radius, instead of a state-wide switch.
+ */
+const ATR_SOURCE_BY_REGION: Record<string, string> = {
+  // NEW YORK — the split this map was built for. Only the exception is listed:
+  // NYC has its own dense local program, and every other NY region falls through
+  // to the statewide TMAS entry below. Enumerating Rochester/Buffalo/Syracuse/
+  // Albany individually would say the same thing in four more lines and would
+  // quietly exclude any NY region added later.
+  new_york_metro: "nyc_dot_atr",
+
+  // GEORGIA
+  atlanta_metro: "fhwa_tmas",
+  savannah_metro: "fhwa_tmas",
+  augusta_metro: "fhwa_tmas",
+  macon_metro: "fhwa_tmas",
+  georgia_statewide: "fhwa_tmas",
+
+  // TEXAS
+  houston_metro: "fhwa_tmas",
+  dallas_fort_worth_metro: "fhwa_tmas",
+  austin_metro: "fhwa_tmas",
+  san_antonio_metro: "fhwa_tmas",
+  el_paso_metro: "fhwa_tmas",
+  corpus_christi_metro: "fhwa_tmas",
+  lubbock_metro: "fhwa_tmas",
+  mcallen_metro: "fhwa_tmas",
+
+  // PENNSYLVANIA
+  philadelphia_metro: "fhwa_tmas",
+  pittsburgh_metro: "fhwa_tmas",
+  allentown_metro: "fhwa_tmas",
+  harrisburg_metro: "fhwa_tmas",
+  scranton_metro: "fhwa_tmas",
+  erie_metro: "fhwa_tmas",
+
+  // CALIFORNIA
+  los_angeles_metro: "fhwa_tmas",
+  sf_bay_metro: "fhwa_tmas",
+  san_diego_metro: "fhwa_tmas",
+  sacramento_metro: "fhwa_tmas",
+  inland_empire_metro: "fhwa_tmas",
+  fresno_metro: "fhwa_tmas",
+  bakersfield_metro: "fhwa_tmas",
+  stockton_metro: "fhwa_tmas",
+  modesto_metro: "fhwa_tmas",
+  oxnard_metro: "fhwa_tmas",
+
+  // FLORIDA — mapped to FDOT's own feed, which is fresher than TMAS (rolling
+  // 365 days vs 2023). ⚠️ The FL renderer does NOT print this block: it already
+  // carries measured FDOT volumes in its own §4.3 from a live TMSCOUNT query at
+  // render time. The mapping is here so the intent is visible and so replacing
+  // §4.3 with the ingested path — better methodology, directional and windowed
+  // rather than two-way at a fixed hour — is a renderer change, not a data hunt.
+  miami_dade_metro: "fdot_tda",
+  fort_lauderdale_metro: "fdot_tda",
+  west_palm_beach_metro: "fdot_tda",
+  tampa_metro: "fdot_tda",
+  orlando_metro: "fdot_tda",
+  jacksonville_metro: "fdot_tda",
+  daytona_beach_metro: "fdot_tda",
+  pensacola_metro: "fdot_tda",
+};
+const ATR_SOURCE_BY_STATE: Record<string, string> = {
+  // Fallback for NY regions not named in the region map above. TMAS, not NYC
+  // DOT — an unlisted NY region is by definition not New York City.
+  NY: "fhwa_tmas",
+  // FDOT Traffic TMSCOUNT (TDA) — hourly directional counts, all 63 counties,
+  // so this genuinely is statewide rather than one city's feed.
+  //
+  // ⚠️ NOTE: the Florida renderer does NOT render this summary, on purpose. FL
+  // already prints measured FDOT counts in its own §4.3, from a LIVE TMSCOUNT
+  // query at render time (enrichTmsCountIntersections). Rendering this too
+  // would report the same agency's data twice under different aggregations
+  // (two-way / fixed 08:00 + 17:00 hour vs directional / windowed peak over a
+  // multi-year sample). Kept mapped because the ingested form is the better
+  // methodology and is the intended replacement for §4.3 — but that is a
+  // deliberate swap, not something to switch on by accident.
+  FL: "fdot_tda",
+  // FHWA TMAS — the national continuous-count feed. One adapter, 49 reporting
+  // states. Used wherever there is no fresher state-specific feed: NY keeps
+  // nyc_dot_atr (through 2026-02) and FL keeps fdot_tda (rolling 365 days),
+  // because TMAS's latest published year is 2023.
+  //
+  // NEW JERSEY: reachable, but only through the archive. NJ stopped reporting to
+  // TMAS after 2020 (2023/2022/2021 all return zero rows), so the ingest pulls
+  // its 2019 data — the last clean pre-COVID year — for the Trenton stations.
+  // That is why the TMAS lookback window is 10 years and why the block states
+  // its vintage in prose. NJ's own feed is AADT-only and stale since 2024-03,
+  // and njtms.org 403s all programmatic access.
+  GA: "fhwa_tmas",
+  TX: "fhwa_tmas",
+  CA: "fhwa_tmas",
+  PA: "fhwa_tmas",
+  MD: "fhwa_tmas",
+  NC: "fhwa_tmas",
+  SC: "fhwa_tmas",
+  NJ: "fhwa_tmas",
+};
+
+/**
+ * IANA zone used to bucket an ATR bin into a LOCAL hour.
+ *
+ * The peak-hour SQL used to hardcode America/New_York, which was correct while
+ * the only feeds were NYC DOT and FDOT. A national feed breaks that: a 08:00
+ * California peak read in Eastern lands at 11:00 and misses the 7-9 AM window
+ * entirely, so the "AM peak" column would print a mid-morning volume.
+ *
+ * Keyed by region first for the two states that straddle a boundary (El Paso is
+ * Mountain in an otherwise Central state; the Florida panhandle is Central in an
+ * otherwise Eastern one), then by state. Default stays Eastern so NY and FL
+ * results are unchanged.
+ */
+const ATR_TZ_BY_REGION: Record<string, string> = {
+  el_paso_metro: "America/Denver",
+  pensacola_metro: "America/Chicago",
+};
+const ATR_TZ_BY_STATE: Record<string, string> = {
+  CA: "America/Los_Angeles",
+  TX: "America/Chicago",
+};
+export const ATR_DEFAULT_TZ = "America/New_York";
+
+export function atrTimeZoneForRegion(
+  region: { code?: string | null; stateCode?: string | null } | null | undefined,
+): string {
+  if (!region) return ATR_DEFAULT_TZ;
+  const byRegion = region.code ? ATR_TZ_BY_REGION[region.code] : undefined;
+  if (byRegion) return byRegion;
+  return (region.stateCode ? ATR_TZ_BY_STATE[region.stateCode] : undefined) ?? ATR_DEFAULT_TZ;
+}
+
+export function atrSourceForRegion(
+  region: { code?: string | null; stateCode?: string | null; country?: string | null } | null | undefined,
+): string | null {
+  if (!region) return null;
+  if ((region.country ?? "US") !== "US") return null;
+  const byRegion = region.code ? ATR_SOURCE_BY_REGION[region.code] : undefined;
+  if (byRegion) return byRegion;
+  const byState = region.stateCode ? ATR_SOURCE_BY_STATE[region.stateCode] : undefined;
+  return byState ?? null;
+}
+
+/**
+ * Search radius by source. Count programs differ in KIND, not just coverage.
+ *
+ * NYC DOT and FDOT run dense local/short-count programs — a station within a
+ * mile is plausibly on a study approach. FHWA TMAS is the national CONTINUOUS
+ * COUNT STATION network: permanent highway stations, roughly one per major
+ * corridor. Measured nearest-station distance from real metro sites: Charlotte
+ * 0.79 mi, Charleston 2.23, Atlanta 3.27, Baltimore 4.71, LA 5.66, Dallas 10.98,
+ * Philadelphia 12.00. At 1.0 mi TMAS would essentially never return a row.
+ *
+ * 3.0 mi is the compromise: far enough to find the corridor station, near enough
+ * that it is still the same traffic shed. It is NOT widened further, because a
+ * count twelve miles away on a different facility tells a reviewer nothing about
+ * the study intersection, and printing it under a "measured" heading would be a
+ * worse failure than printing nothing.
+ */
+const ATR_RADIUS_MI_BY_SOURCE: Record<string, number> = {
+  fhwa_tmas: 3.0,
+};
+export const ATR_DEFAULT_RADIUS_MI = 1.0;
+export function atrRadiusForSource(source: string | null | undefined): number {
+  return (source ? ATR_RADIUS_MI_BY_SOURCE[source] : undefined) ?? ATR_DEFAULT_RADIUS_MI;
+}
+
+/**
+ * Lookback window by source.
+ *
+ * ⚠️ A THREE-YEAR DEFAULT IS A TIME BOMB FOR HISTORICAL SOURCES. The TMAS bins
+ * are from October 2023; as of this writing they are 2.9 years old and inside
+ * the window by weeks. Left at 3 years, every TMAS count would silently vanish
+ * from every report — no error, no empty section, just a block that stops
+ * appearing — and New Jersey's only usable data (2019, the last year it reported)
+ * could never appear at all.
+ *
+ * TMAS is a historical archive by nature, so it gets a decade. The vintage is not
+ * hidden: the block prints each station's actual count date, and old data is
+ * labelled as such in the prose.
+ */
+const ATR_WINDOW_YEARS_BY_SOURCE: Record<string, number> = {
+  fhwa_tmas: 10,
+};
+export const ATR_DEFAULT_WINDOW_YEARS = 3;
+export function atrWindowYearsForSource(source: string | null | undefined): number {
+  return (source ? ATR_WINDOW_YEARS_BY_SOURCE[source] : undefined) ?? ATR_DEFAULT_WINDOW_YEARS;
+}
 
 export type AtrSummary = {
   windowYears: number;
@@ -88,8 +310,16 @@ export async function atrSegmentsNearPoint(args: {
   windowYears: number;
   source?: string;
   maxSegments?: number;
+  /** IANA zone for local-hour bucketing; see atrTimeZoneForRegion. */
+  timeZone?: string;
 }): Promise<AtrSummary> {
-  const { lat, lon, radiusMi, windowYears, source = "nyc_dot_atr" } = args;
+  // No default source. It used to default to "nyc_dot_atr", which silently made
+  // every caller a NYC caller — the reason ingesting another metro would have
+  // changed nothing. Callers resolve the source from the region instead
+  // (atrSourceForRegion) and skip the query when there isn't one.
+  const { lat, lon, radiusMi, windowYears, source } = args;
+  const tz = args.timeZone ?? ATR_DEFAULT_TZ;
+  if (!source) return { windowYears, radiusMi, segments: [], source: "", totalSegmentsFound: 0 };
   const maxSegments = args.maxSegments ?? 8;
 
   const since = new Date();
@@ -127,8 +357,15 @@ export async function atrSegmentsNearPoint(args: {
       latitude: atrCountsTable.latitude,
       longitude: atrCountsTable.longitude,
       distance: haversine,
-      latest: sql<Date>`max(${atrCountsTable.occurredAt})`,
-      sampleDays: sql<number>`count(distinct date_trunc('day', ${atrCountsTable.occurredAt}))`,
+      // Both of these are bucketed in the STUDY's local zone, not UTC. In UTC a
+      // three-day midweek count spills into a fourth calendar day the moment it
+      // includes an evening hour (23:00 EDT on Oct 5 is 03:00 UTC on Oct 6), so
+      // `sampleDays` over-reported 4 for a 3-day count and `latestCountDate`
+      // printed a day the count never covered. Both are printed to a reviewing
+      // engineer as evidence of how much observation backs the number, so an
+      // inflated count is exactly the wrong error to make.
+      latest: sql<string>`to_char(max(${atrCountsTable.occurredAt}) AT TIME ZONE ${tz}, 'YYYY-MM-DD')`,
+      sampleDays: sql<number>`count(distinct date_trunc('day', ${atrCountsTable.occurredAt} AT TIME ZONE ${tz}))`,
     })
     .from(atrCountsTable)
     .where(
@@ -172,12 +409,13 @@ export async function atrSegmentsNearPoint(args: {
       am_peak: number | null;
       pm_peak: number | null;
       avg_daily: number | null;
+      yearly: Array<{ year: number; avgDaily: number }> | null;
     }>(sql`
       WITH hourly AS (
         SELECT
           date_trunc('hour', occurred_at) AS hour_start,
-          extract(hour FROM occurred_at AT TIME ZONE 'America/New_York') AS local_hour,
-          extract(dow FROM occurred_at AT TIME ZONE 'America/New_York') AS local_dow,
+          extract(hour FROM occurred_at AT TIME ZONE ${tz}) AS local_hour,
+          extract(dow FROM occurred_at AT TIME ZONE ${tz}) AS local_dow,
           sum(vol) AS hourly_vol
         FROM atr_counts
         WHERE source = ${source}
@@ -197,7 +435,7 @@ export async function atrSegmentsNearPoint(args: {
       ),
       daily AS (
         SELECT avg(daily_vol)::numeric AS avg_daily FROM (
-          SELECT date_trunc('day', occurred_at AT TIME ZONE 'America/New_York') AS day, sum(vol) AS daily_vol
+          SELECT date_trunc('day', occurred_at AT TIME ZONE ${tz}) AS day, sum(vol) AS daily_vol
           FROM atr_counts
           WHERE source = ${source}
             AND source_segment_id = ${r.segmentId}
@@ -206,10 +444,31 @@ export async function atrSegmentsNearPoint(args: {
           GROUP BY 1
         ) t
       )
+      ,
+      -- Same-station, same-window volume by calendar year. The ingest samples
+      -- the SAME midweek days in the SAME four months every year, so a
+      -- year-over-year comparison here is like-for-like: no seasonal drift, no
+      -- day-of-week drift, same physical sensor. That is what makes it usable
+      -- as growth evidence rather than two unrelated numbers.
+      yearly AS (
+        SELECT extract(year FROM day)::int AS yr, avg(daily_vol)::numeric AS avg_daily
+        FROM (
+          SELECT date_trunc('day', occurred_at AT TIME ZONE ${tz}) AS day, sum(vol) AS daily_vol
+          FROM atr_counts
+          WHERE source = ${source}
+            AND source_segment_id = ${r.segmentId}
+            AND direction = ${r.direction}
+            AND occurred_at >= ${since}
+          GROUP BY 1
+        ) t
+        GROUP BY 1
+      )
       SELECT
         (SELECT peak FROM am_window) AS am_peak,
         (SELECT peak FROM pm_window) AS pm_peak,
-        (SELECT avg_daily FROM daily) AS avg_daily
+        (SELECT avg_daily FROM daily) AS avg_daily,
+        (SELECT json_agg(json_build_object('year', yr, 'avgDaily', round(avg_daily)) ORDER BY yr)
+           FROM yearly) AS yearly
     `);
 
     const row = peakRow.rows[0] ?? { am_peak: null, pm_peak: null, avg_daily: null };
@@ -226,11 +485,17 @@ export async function atrSegmentsNearPoint(args: {
       // drizzle returns max(occurred_at) as the raw Postgres string for
       // some configurations; coerce defensively rather than asserting
       // it's a Date.
-      latestCountDate: new Date(r.latest as unknown as string | Date).toISOString().slice(0, 10),
+      // Already a local-zone 'YYYY-MM-DD' string from SQL; re-parsing it through
+      // Date would push it back into UTC and undo the fix above.
+      latestCountDate: String(r.latest ?? "").slice(0, 10),
       sampleDays: Number(r.sampleDays ?? 0),
       amPeakHourVph: row.am_peak !== null ? Math.round(Number(row.am_peak)) : null,
       pmPeakHourVph: row.pm_peak !== null ? Math.round(Number(row.pm_peak)) : null,
-      avgDailyVph: row.avg_daily !== null ? Math.round(Number(row.avg_daily)) : null,
+      avgDailyVeh: row.avg_daily !== null ? Math.round(Number(row.avg_daily)) : null,
+      yearly: Array.isArray(row.yearly)
+        ? row.yearly.map((y) => ({ year: Number(y.year), avgDailyVeh: Number(y.avgDaily) }))
+            .filter((y) => Number.isFinite(y.year) && Number.isFinite(y.avgDailyVeh))
+        : [],
     });
   }
 

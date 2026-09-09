@@ -68,6 +68,35 @@ export const VEH_LENGTH_FT = 25;
 // cap × calMul. A calibrated design-level analysis (HCS/Synchro) supersedes it.
 export const SCREENING_MAX_DELAY_SEC = 300;
 
+// Credibility ceiling on the INPUT side, and the companion to the delay cap
+// above. The delay cap keeps an oversaturated intersection's printed delay
+// defensible; it cannot tell whether the volume that produced the
+// oversaturation was real. A reported v/c above this is not describing how a
+// signalized intersection behaves at all — no at-grade signal operates at four
+// times capacity — so it is a screening-model limitation, not a congestion
+// finding, and must not be printed as though it were one.
+//
+// This exists because tacoma_metro shipped a 37-page study, silently, in which
+// seven of thirteen study intersections printed v/c 8.15–8.55 with 4,300–5,400
+// ft queues. The cause was the AADT→signal join assigning I-5 mainline counts
+// (163k/171k AADT) to S Hosmer St / Tacoma Mall Blvd surface signals parked
+// 51–158 m from the freeway. aadt-plausibility.ts now refuses those records at
+// the join; this threshold is the second line of defence, so that ANY future
+// route to an impossible volume — a new DOT source, a bad K-factor, a UTDF
+// import, a hand-entered count — is disclosed in the deliverable instead of
+// being printed as an ordinary LOS F.
+//
+// 2.5 sits well above genuine failure (a real failing intersection prints
+// v/c 1.1–1.6) and below the ~5.0 worst case the join's class ceilings can
+// still produce on the largest interchange cross-streets.
+//
+// Above this line the number is not reportable, but the CAUSE is not always the
+// data: it is either a freeway count on a surface signal (the Tacoma case) or a
+// real arterial volume that this file's own flat g/C 0.45 / 810 vph screening
+// capacity understates. volume-plausibility.ts discloses both, because after
+// the join fix the second case is the more common one in Florida.
+export const PLAUSIBLE_MAX_INTERSECTION_VC = 2.5;
+
 // ---------- Signalized-intersection control delay (Webster d1 + Akçelik d2) ----------
 
 // `cycleLenS` / `gOverC` default to the screening constants, so every existing

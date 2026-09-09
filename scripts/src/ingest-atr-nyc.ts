@@ -23,14 +23,9 @@
  *   pnpm --filter @workspace/scripts exec tsx src/ingest-atr-nyc.ts --years=5
  *   pnpm --filter @workspace/scripts exec tsx src/ingest-atr-nyc.ts --dry
  */
-import { sql } from "drizzle-orm";
 import proj4 from "proj4";
-import { db, pool, atrCountsTable, type InsertAtrCount } from "@workspace/db";
-
-const DATASET = "7ym2-wayt";
-const BASE_URL = `https://data.cityofnewyork.us/resource/${DATASET}.json`;
-const PAGE_SIZE = 50_000;
-const BATCH_INSERT_SIZE = 1_000;
+import { pool, type InsertAtrCount } from "@workspace/db";
+import { runAtrIngest, parseIngestArgs, type AtrSocrataSource } from "./lib/atr-socrata";
 
 // EPSG:2263 = NAD83 / New York Long Island, US Survey Feet.
 // proj4 doesn't ship most EPSG definitions; we register the projection
@@ -60,15 +55,6 @@ type SocrataAtr = {
   direction?: string;
 };
 
-function parseArgs(): { years: number; dry: boolean } {
-  let years = 3;
-  let dry = false;
-  for (const a of process.argv.slice(2)) {
-    if (a === "--dry") dry = true;
-    else if (a.startsWith("--years=")) years = Math.max(1, Math.min(20, Number(a.slice(8))));
-  }
-  return { years, dry };
-}
 
 function parseWkt(wkt: string | undefined): { lon: number; lat: number } | null {
   if (!wkt) return null;
@@ -132,122 +118,22 @@ function mapRow(row: SocrataAtr): InsertAtrCount | null {
   };
 }
 
-async function fetchPage(offset: number, sinceYear: number): Promise<SocrataAtr[]> {
-  const params = new URLSearchParams({
-    $where: `yr >= ${sinceYear}`,
-    $order: "yr DESC, m DESC, d DESC, hh DESC, mm DESC",
-    $limit: String(PAGE_SIZE),
-    $offset: String(offset),
+/** NYC DOT Automated Traffic Volume Counts — the reference implementation. */
+export const NYC_ATR: AtrSocrataSource<SocrataAtr> = {
+  id: "nyc_dot_atr",
+  label: "ingest-atr-nyc",
+  host: "data.cityofnewyork.us",
+  dataset: "7ym2-wayt",
+  // The dataset splits the timestamp across yr/m/d/hh/mm integer columns, so
+  // the year filter is a plain numeric comparison rather than a date range.
+  whereForYears: (sinceYear) => `yr >= ${sinceYear}`,
+  order: "yr DESC, m DESC, d DESC, hh DESC, mm DESC",
+  mapRow,
+};
+
+runAtrIngest(NYC_ATR, parseIngestArgs())
+  .then(() => pool.end())
+  .catch((err) => {
+    console.error("ingest-atr-nyc FAILED:", err);
+    pool.end().finally(() => process.exit(1));
   });
-  const headers: Record<string, string> = {};
-  if (process.env.SOCRATA_APP_TOKEN) {
-    headers["X-App-Token"] = process.env.SOCRATA_APP_TOKEN;
-  }
-  // Socrata routinely resets long-running connections under load.
-  // Three attempts with exponential backoff has proven sufficient
-  // for the dataset sizes we ingest here.
-  const url = `${BASE_URL}?${params.toString()}`;
-  let lastErr: unknown = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const r = await fetch(url, { headers });
-      if (!r.ok) throw new Error(`Socrata ${r.status}: ${await r.text().then(t => t.slice(0, 200))}`);
-      return (await r.json()) as SocrataAtr[];
-    } catch (e) {
-      lastErr = e;
-      const wait = 2000 * (attempt + 1);
-      console.warn(`    retry ${attempt + 1} after ${wait}ms (${(e as Error).message?.slice(0, 80)})`);
-      await new Promise((res) => setTimeout(res, wait));
-    }
-  }
-  throw lastErr;
-}
-
-async function upsertBatch(rows: InsertAtrCount[], dry: boolean): Promise<void> {
-  if (rows.length === 0) return;
-  if (dry) return;
-  // Postgres ON CONFLICT cannot resolve duplicates within a single
-  // INSERT — the error reads "ON CONFLICT DO UPDATE command cannot
-  // affect row a second time." Source publishes multiple count
-  // sessions per (segment, direction, occurred_at) in some periods
-  // (especially overlapping request ids on adjacent days), so dedupe
-  // within the batch first. Last wins.
-  const seen = new Map<string, InsertAtrCount>();
-  for (const r of rows) {
-    const k = `${r.source}|${r.sourceSegmentId}|${r.direction}|${r.occurredAt.toISOString()}`;
-    seen.set(k, r);
-  }
-  const deduped = Array.from(seen.values());
-  await db
-    .insert(atrCountsTable)
-    .values(deduped)
-    .onConflictDoUpdate({
-      target: [
-        atrCountsTable.source,
-        atrCountsTable.sourceSegmentId,
-        atrCountsTable.direction,
-        atrCountsTable.occurredAt,
-      ],
-      // On re-ingest, update vol + coords + street descriptors (NYC
-      // occasionally republishes corrected counts; the unique key
-      // ensures no duplicates).
-      set: {
-        vol: sql`EXCLUDED.vol`,
-        latitude: sql`EXCLUDED.latitude`,
-        longitude: sql`EXCLUDED.longitude`,
-        street: sql`EXCLUDED.street`,
-        fromStreet: sql`EXCLUDED.from_street`,
-        toStreet: sql`EXCLUDED.to_street`,
-        borough: sql`EXCLUDED.borough`,
-      },
-    });
-}
-
-async function main(): Promise<void> {
-  const { years, dry } = parseArgs();
-  const sinceYear = new Date().getUTCFullYear() - years;
-
-  console.log(`ingest-atr-nyc: window = yr >= ${sinceYear} (last ${years}y), dry=${dry}`);
-
-  let offset = 0;
-  let totalFetched = 0;
-  let totalUpserted = 0;
-  let totalSkipped = 0;
-  const startedAt = Date.now();
-
-  while (true) {
-    process.stdout.write(`  fetching offset=${offset.toLocaleString()}… `);
-    const t0 = Date.now();
-    const page = await fetchPage(offset, sinceYear);
-    const dt = Date.now() - t0;
-    console.log(`${page.length.toLocaleString()} rows in ${dt}ms`);
-    if (page.length === 0) break;
-    totalFetched += page.length;
-
-    const mapped: InsertAtrCount[] = [];
-    for (const r of page) {
-      const m = mapRow(r);
-      if (m) mapped.push(m);
-      else totalSkipped++;
-    }
-
-    for (let i = 0; i < mapped.length; i += BATCH_INSERT_SIZE) {
-      await upsertBatch(mapped.slice(i, i + BATCH_INSERT_SIZE), dry);
-    }
-    totalUpserted += mapped.length;
-
-    if (page.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
-  }
-
-  const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(1);
-  console.log(
-    `ingest-atr-nyc: fetched=${totalFetched.toLocaleString()} upserted=${totalUpserted.toLocaleString()} skipped=${totalSkipped.toLocaleString()} elapsed=${elapsedSec}s`,
-  );
-  await pool.end();
-}
-
-main().catch((err) => {
-  console.error("ingest-atr-nyc FAILED:", err);
-  pool.end().finally(() => process.exit(1));
-});

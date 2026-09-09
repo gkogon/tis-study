@@ -33,7 +33,9 @@ import { renderDiurnalCharts } from "./pdf-charts";
 import { getCbdtpStatus, type CbdtpStatus, type Gml239Status } from "./nysdot-data";
 import type { NycTransitContext } from "./nyc-transit-data";
 import { getMeasuredGrowthRate } from "./regional-growth-rates";
+import { renderAtrMeasuredVolumes } from "./atr-measured-volumes";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
+import { renderLaneGroupQueues } from "./lane-group-queues";
 
 type StoredProject = {
   id: string;
@@ -709,7 +711,9 @@ export function renderTisNewYork(
   // against the measured peaks. The block omits silently when no ATR
   // coverage exists near the site (NYC DOT counts a rotating sample,
   // not the full grid).
-  const atrSummary = (r as any).nycAtrSummary as
+  // Prefer the generic field; fall back to the NY-named one so studies stored
+  // before the multi-source change keep rendering their ATR block.
+  const atrSummary = ((r as any).atrSummary ?? (r as any).nycAtrSummary) as
     | {
         windowYears: number;
         radiusMi: number;
@@ -724,14 +728,25 @@ export function renderTisNewYork(
           sampleDays: number;
           amPeakHourVph: number | null;
           pmPeakHourVph: number | null;
-          avgDailyVph: number | null;
+          avgDailyVeh: number | null;
         }>;
         source: string;
         totalSegmentsFound: number;
       }
     | undefined;
 
-  if (atrSummary && atrSummary.segments.length > 0) {
+  // ⚠️ The block below names NYC DOT and its dataset id in the prose, which is
+  // only true for the NYC feed. Upstate NY (Rochester/Buffalo/Syracuse/Albany)
+  // is backed by FHWA TMAS, and rendering it here would have told a reviewer
+  // that NYC DOT published counts for Syracuse. Anything that is not the NYC
+  // feed goes through the shared, source-aware block instead.
+  if (atrSummary && atrSummary.segments.length > 0 && atrSummary.source !== "nyc_dot_atr") {
+    renderAtrMeasuredVolumes(doc, atrSummary, {
+      headingFn: (_doc, title) => nySubsection(doc, title),
+      heading: "3.2a Measured Traffic Counts (Supplemental)",
+      estimateBasis: `the K-factor-derived AADT/DHV table in §3.2`,
+    });
+  } else if (atrSummary && atrSummary.segments.length > 0) {
     nySubsection(doc, "3.2a NYC DOT ATR Measured Volumes (Supplemental)");
     doc.font("body").fontSize(10).fillColor("black").text(
       `The §3.2 AADT/DHV table above is derived from the engine's modeled peak-hour estimate via K = ${K_FACTOR.toFixed(2)}. The block below carries Automated Traffic Recorder (ATR) volumes published by NYC DOT (data.cityofnewyork.us / 7ym2-wayt) at ${atrSummary.segments.length} count location${atrSummary.segments.length === 1 ? "" : "s"} within ${atrSummary.radiusMi.toFixed(2)} miles of the site, looking back ${atrSummary.windowYears} year${atrSummary.windowYears === 1 ? "" : "s"}. These are measured, not modeled — they should be used to validate the §3.2 estimate. NYC DOT ATR is directional segment volume, not per-approach turning movement counts; TMCs at the affected intersection${atrSummary.segments.length === 1 ? "" : "s"} must still be collected separately for formal submittal.`,
@@ -739,8 +754,11 @@ export function renderTisNewYork(
     );
 
     nyTable(doc, {
-      headers: ["Segment", "Direction", "Dist (mi)", "Latest count", "Sample days", "AM peak (vph)", "PM peak (vph)", "Daily (vph)"],
-      widths: [165, 50, 50, 70, 55, 65, 65, 60],
+      // Widths must sum to <= 512 (612pt letter less two 50pt margins). They
+      // summed to 580, which clipped the header row to "Directio n" / "Da (vp"
+      // on the first study that ever had ATR rows to render.
+      headers: ["Segment", "Dir.", "Dist (mi)", "Latest count", "Days", "AM peak (vph)", "PM peak (vph)", "Daily (veh/day)"],
+      widths: [148, 34, 46, 62, 34, 60, 60, 68],
       align: ["left", "center", "right", "center", "right", "right", "right", "right"],
       rows: atrSummary.segments.map((s) => [
         s.street ?? "—",
@@ -750,12 +768,12 @@ export function renderTisNewYork(
         String(s.sampleDays),
         s.amPeakHourVph !== null ? fmtNum(s.amPeakHourVph) : "—",
         s.pmPeakHourVph !== null ? fmtNum(s.pmPeakHourVph) : "—",
-        s.avgDailyVph !== null ? fmtNum(s.avgDailyVph) : "—",
+        s.avgDailyVeh !== null ? fmtNum(s.avgDailyVeh) : "—",
       ]),
     });
     doc.moveDown(0.2);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      `Source: NYC DOT Automated Traffic Volume Counts (data.cityofnewyork.us / 7ym2-wayt). AM peak = max weekday hourly volume in 7:00-9:00 AM local. PM peak = max weekday hourly volume in 4:00-6:00 PM local. Daily = weekday average of 24-hour summed bins. Sample-days counts unique calendar days of observation within the ${atrSummary.windowYears}-year window. Total ATR segments found within radius: ${atrSummary.totalSegmentsFound}.`,
+      `Source: NYC DOT Automated Traffic Volume Counts (data.cityofnewyork.us / 7ym2-wayt). AM peak = max weekday hourly volume in 7:00-9:00 AM local. PM peak = max weekday hourly volume in 4:00-6:00 PM local. Daily = weekday average of 24-hour summed bins, i.e. vehicles per DAY (directly comparable to AADT, not to the vph columns). Sample-days counts unique calendar days of observation within the ${atrSummary.windowYears}-year window. Total ATR segments found within radius: ${atrSummary.totalSegmentsFound}.`,
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
@@ -866,6 +884,11 @@ export function renderTisNewYork(
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text("No signalized intersections within the study radius — no off-site capacity impact is anticipated.", { paragraphGap: 6 });
     doc.fillColor("black");
   }
+  // Measured lane-group queues, where an import supplied a real turn split.
+  // No-ops (byte-identical output) for studies without one.
+  renderLaneGroupQueues(doc, intersections as any[], {
+    heading: "Lane-Group Queues at Intersections with Measured Turning Movements",
+  });
   doc.moveDown(0.3);
 
   // §3.6 Capacity Improvement Measures

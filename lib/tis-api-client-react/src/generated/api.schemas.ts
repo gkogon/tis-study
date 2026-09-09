@@ -268,6 +268,8 @@ export interface UtdfIntersectionData {
    */
   hvPct?: number;
   storageFt?: UtdfMovementValues;
+  /** Lane COUNT per movement from the file's [Lanes] section — real measured geometry. When present, each lane group's capacity is sized as lanes x saturation flow x g/C instead of the one-critical-lane screening assumption. Counts above 6 are rejected as parse artifacts. Absent on records whose [Lanes] section carried no counts (a Synchro report PDF typically will not), and those intersections keep the screening basis unchanged. */
+  lanes?: UtdfMovementValues;
   /**
    * Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.
    * @minimum 30
@@ -498,6 +500,8 @@ export interface TisRequest {
   existingSize?: number;
   /** Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output. */
   conservedAssignment?: boolean;
+  /** Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output. */
+  realLaneGeometry?: boolean;
   /**
    * Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).
    * @maxItems 12
@@ -541,6 +545,9 @@ export interface TisTripGeneration {
   netNewExternalPm?: number;
 }
 
+/**
+ * Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing".
+ */
 export type TisApproachImpactExistingLos =
   (typeof TisApproachImpactExistingLos)[keyof typeof TisApproachImpactExistingLos];
 
@@ -577,22 +584,54 @@ export const TisApproachImpactCurrentLos = {
   F: "F",
 } as const;
 
-export interface TisApproachImpact {
-  direction: TisDirection;
+export type TisLaneGroupImpactMovement =
+  (typeof TisLaneGroupImpactMovement)[keyof typeof TisLaneGroupImpactMovement];
+
+export const TisLaneGroupImpactMovement = {
+  L: "L",
+  T: "T",
+  R: "R",
+} as const;
+
+export interface TisLaneGroupImpact {
+  movement: TisLaneGroupImpactMovement;
   existingVolumeVph: number;
   addedTripsPeak: number;
   futureVolumeVph: number;
+  futureVc: number;
+  queue95thFt: number;
+  storageFt?: number;
+  storageDeficient?: boolean;
+  /**
+   * @minimum 1
+   * @maximum 6
+   */
+  lanes?: number;
+  capacityVph?: number;
+}
+
+export interface TisApproachImpact {
+  direction: TisDirection;
+  /** Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing". */
+  existingVolumeVph: number;
+  addedTripsPeak: number;
+  futureVolumeVph: number;
+  /** Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing". */
   existingVc: number;
   futureVc: number;
+  /** Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing". */
   existingDelaySec: number;
   futureDelaySec: number;
+  /** Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing". */
   existingLos: TisApproachImpactExistingLos;
   futureLos: TisApproachImpactFutureLos;
   queue95thFt: number;
+  /** True current-year baseline: existing volumes with NO growth applied. This is the scenario to label "Existing". Optional so payloads saved before the scenario split still validate. */
   currentVolumeVph?: number;
   currentVc?: number;
   currentDelaySec?: number;
   currentLos?: TisApproachImpactCurrentLos;
+  laneGroups?: TisLaneGroupImpact[];
 }
 
 export type TisAffectedIntersectionExistingLos =
@@ -727,6 +766,7 @@ export interface TisAffectedIntersection {
   latitude: number;
   longitude: number;
   distanceMi: number;
+  /** Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing". */
   existingVc: number;
   addedTripsPmPeak: number;
   futureVc: number;
@@ -734,6 +774,7 @@ export interface TisAffectedIntersection {
   futureDelaySec: number;
   existingLos: TisAffectedIntersectionExistingLos;
   futureLos: TisAffectedIntersectionFutureLos;
+  /** True current-year baseline: existing volumes with NO growth applied. This is the scenario to label "Existing". Optional so payloads saved before the scenario split still validate. */
   currentVc?: number;
   currentDelaySec?: number;
   currentLos?: TisAffectedIntersectionCurrentLos;
@@ -797,6 +838,7 @@ export interface TisPeriodReport {
   affectedIntersections: TisAffectedIntersection[];
   intersectionsWithLosDrop: number;
   intersectionsAtLosEf: number;
+  /** Largest projected delay increase across the studied intersections, in the OPENING YEAR only. Scoped, not absolute — compare against worstDelayDeltaDesignSec, which is routinely larger because background growth over the design horizon sits underneath it. */
   worstDelayDeltaSec: number;
 }
 
@@ -925,15 +967,24 @@ export interface TisReport {
   tripGeneration: TisTripGeneration;
   affectedIntersections: TisAffectedIntersection[];
   intersectionsStudied: number;
+  /** Signalized intersections the region inventory holds INSIDE the study radius, before same-junction records are merged. This is the study area's true population; intersectionsStudied is what survived the merge. When the two differ, intersectionsMergedAsDuplicates says by how much, and the set analyzed is NOT the set in the radius. */
+  intersectionsInStudyArea?: number;
+  /** In-radius records absorbed as duplicate representations of a junction already kept. Non-zero means intersectionsStudied under-counts the radius. Merges above 45 m rest on name equality, and in regions whose signal names are derived from nearby road names rather than supplied by the source data, distinct junctions can share a name -- so a non-zero value here is a prompt to verify, not a guarantee of duplication. */
+  intersectionsMergedAsDuplicates?: number;
   intersectionsWithLosDrop: number;
   intersectionsAtLosEf: number;
+  /** Largest projected delay increase across the studied intersections, in the OPENING YEAR only. Scoped, not absolute — compare against worstDelayDeltaDesignSec, which is routinely larger because background growth over the design horizon sits underneath it. */
   worstDelayDeltaSec: number;
+  /** Largest projected delay increase in the DESIGN year (designBuild - designNoBuild). Absent when no design year was analyzed. */
+  worstDelayDeltaDesignSec?: number;
   mitigationSummary: string[];
   findings: string[];
   methodology: string[];
   periodReports: TisPeriodReport[];
   growthAppliedPct: number;
   growthYears: number;
+  /** Provenance for growthAppliedPct, printed verbatim by the renderers. Names the basis of the applied rate: a measured per-metro CAGR and the DOT layer it came from, or — when the request supplied growthRatePct — that an explicit override was applied, alongside the measured rate for the region that the override displaced. Optional: absent on payloads stored before this field existed, which re-render through the same path and must not sprout an empty citation. */
+  growthSource?: string;
   weather: TisWeather;
   weatherCapacityFactor: number;
   passByPctApplied: number;

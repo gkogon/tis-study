@@ -165,4 +165,17 @@ export function getMeasuredGrowthRate(regionCode: string): MeasuredGrowthRate | 
  * uniformly. Per-state overrides can be layered later if any state
  * deviates (e.g. a 3R-project shorter horizon).
  */
+/** Marker that opens `growthSource` when the request supplied its own
+ *  growth rate. The renderers branch on this: the measured-derivation
+ *  wording ("derived from measured per-segment CAGR at DOT count
+ *  stations") is FALSE for an overridden rate, and an override that a
+ *  reviewer cannot see is the failure this marker exists to prevent. */
+export const GROWTH_OVERRIDE_PREFIX = "Explicit override";
+
+/** True when `growthSource` describes an explicitly overridden rate
+ *  rather than a measured one. */
+export function isGrowthOverride(growthSource: string | null | undefined): boolean {
+  return typeof growthSource === "string" && growthSource.startsWith(GROWTH_OVERRIDE_PREFIX);
+}
+
 export const DESIGN_YEAR_HORIZON_DEFAULT = 20;

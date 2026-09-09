@@ -41,13 +41,13 @@ import { selectCordonGateways, snapSignalsToJunctions } from "./cordon-gateways"
 import { type Driveway } from "./driveways";
 import { getTransitContext } from "./transit-routes";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
-import { DESIGN_YEAR_HORIZON_DEFAULT, getMeasuredGrowthRate, getMeasuredGrowthSource } from "./regional-growth-rates";
+import { DESIGN_YEAR_HORIZON_DEFAULT, GROWTH_OVERRIDE_PREFIX, getMeasuredGrowthRate, getMeasuredGrowthSource } from "./regional-growth-rates";
 // Canonical public-data land-use registry (SANDAG 2002 / NHTS 2017 /
 // NCHRP 716) lives in one place. Re-exported below for any downstream
 // callers that imported `LAND_USES` from this module.
 import { LAND_USES, resolveRatesForVariable, type LandUse, type ResolvedRates, type RateConfidence } from "./land-uses";
 import { screenTurboCandidate, turboLaneScreening, type TurboLaneScreening } from "./turbo-lane";
-import { assignMovements, approachAddedTripsFromMovements, integerizeMovementLoads, pathMovementLoadsExact, type MovementLoad, type PathTurnShare } from "./movement-assignment";
+import { assignMovements, approachAddedTripsFromMovements, integerizeMovementLoads, pathMovementLoadsExact, type Movement, type MovementLoad, type PathTurnShare } from "./movement-assignment";
 // Pure HCM delay / LOS / queue math (dependency-free leaf, unit-tested there).
 import {
   type Los,
@@ -58,6 +58,8 @@ import {
   PER_INTERSECTION_CAPACITY_VPH,
   APPROACH_CAPACITY_VPH,
 } from "./signal-delay";
+// Background-volume credibility guard (dependency-free leaf, unit-tested there).
+import { implausibleVolumeDisclosures } from "./volume-plausibility";
 import { intersectionLoadFraction } from "./trip-loading";
 import {
   computeTripDistribution,
@@ -258,6 +260,9 @@ type AnalyzerIntersection = {
   medianType?: "raised" | "painted" | "none";
   mainThroughLanes?: number;
   mainThroughLanesMeasured?: boolean;
+  /** Per-direction through lanes on the minor (cross-street) approach, from
+   *  OSM `lanes`. Absent when the matched way carries no tag. */
+  minorThroughLanes?: number;
 };
 
 const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8080";
@@ -357,6 +362,12 @@ export type UtdfIntersectionInput = {
   hvPct?: number;
   /** Turn-bay storage lengths (ft) by movement, from [Lanes] Storage. */
   storageFt?: UtdfMovementValues;
+  /** Lane COUNT by movement, from [Lanes] Lanes — real measured geometry.
+   *  Present only on records whose [Lanes] section carried counts; a Synchro
+   *  report PDF import typically will not. When absent the lane group falls
+   *  back to the one-critical-lane screening basis, which is what every study
+   *  used before this shipped. */
+  lanes?: UtdfMovementValues;
   /** Cycle length (s) from [Timings] — feeds Webster d1 for this signal. */
   cycleLenSec?: number;
 };
@@ -470,6 +481,15 @@ export type TisRequest = {
    *  Omitted/true ⇒ conserved assignment runs. Explicit false ⇒ legacy
    *  octant behavior, byte-identical to the old default output. */
   conservedAssignment?: boolean;
+  /** Use MEASURED lane counts from an imported Synchro [Lanes] section to size
+   *  each lane group's capacity (lanes x saturation flow x g/C), instead of the
+   *  one-critical-lane screening assumption. Only ever applies at intersections
+   *  whose imported record actually carried lane counts — everywhere else the
+   *  output is unchanged either way. Changes v/c, delay-derived LOS inputs and
+   *  queue at those intersections. Omitted/true ⇒ measured geometry is used.
+   *  Explicit false ⇒ one-critical-lane, byte-identical to the pre-change
+   *  output (see scripts/verify-lane-geometry.mjs). */
+  realLaneGeometry?: boolean;
   /** Site access points with per-movement turn restrictions. When present,
    *  project trips route through these driveways and forbidden movements
    *  reroute onto the network (U-turns). Absent or empty ⇒ single-site
@@ -482,6 +502,13 @@ export type ResolvedStudyTier = Exclude<StudyTier, "auto">;
 export type { DistributionMethod } from "./trip-distribution";
 
 export type ApproachImpact = {
+  /** Project-added trips split across left/through/right on THIS approach,
+   *  from the geometric movement assignment the engine already runs off the
+   *  trip-distribution octants (movement-assignment.ts). Covers the PROJECT
+   *  increment only — background turning splits are not measured at screening
+   *  level, so consumers must not read this as a total turn split. Absent when
+   *  no distribution ran. */
+  addedByMovement?: { L: number; T: number; R: number };
   direction: Direction;
   // True current-year baseline (no growth).
   currentVolumeVph: number;
@@ -499,10 +526,45 @@ export type ApproachImpact = {
   existingLos: Los;
   futureLos: Los;
   queue95thFt: number;
+  /** Per-turn-movement detail, present ONLY when an imported Synchro/UTDF
+   *  record supplied measured turning-movement volumes for this intersection.
+   *  Without measured movements the approach total is the finest granularity
+   *  this screen can report honestly, so this stays absent rather than being
+   *  filled from an assumed turn split. */
+  laneGroups?: LaneGroupImpact[];
+};
+
+/** One turn-movement lane group (left / through / right) on an approach. */
+export type LaneGroupImpact = {
+  movement: "L" | "T" | "R";
+  existingVolumeVph: number;
+  addedTripsPeak: number;
+  futureVolumeVph: number;
+  futureVc: number;
+  queue95thFt: number;
+  /** This movement's own imported turn-bay storage, when the record had one. */
+  storageFt?: number;
+  /** 95th-percentile queue exceeds that bay — the mitigation trigger. */
+  storageDeficient?: boolean;
+  /** Measured lane count for this movement, from the imported [Lanes] section.
+   *  Present ONLY where the record carried real geometry. Its absence is what
+   *  makes the row fall back to the one-critical-lane screening basis, and the
+   *  report says which basis each row used. */
+  lanes?: number;
+  /** Capacity actually used for this lane group, vph. Printed so a reviewing
+   *  engineer can see whether the row was measured-geometry or screening. */
+  capacityVph?: number;
 };
 
 export type AffectedIntersection = {
   signalId: string;
+  /** Per-direction through lanes on the major / minor approach, from the OSM
+   *  `lanes` tag on the road the signal was matched to. Present only where
+   *  OSM carried a tag — absence is what makes the UTDF export fall back to
+   *  its 1L/2T/1R screening default, and the export row says which basis it
+   *  used. Never populated speculatively. */
+  mainThroughLanes?: number;
+  minorThroughLanes?: number;
   name: string;
   zone: string;
   latitude: number;
@@ -697,6 +759,8 @@ export type TisReport = {
   /** Total signalized intersections within the study radius (before the
    *  impact-significance scope). `intersectionsStudied` is the analyzed subset. */
   intersectionsInStudyArea: number;
+  /** In-radius records merged away as duplicates of a junction already kept. */
+  intersectionsMergedAsDuplicates: number;
   intersectionsWithLosDrop: number;
   intersectionsAtLosEf: number;
   worstDelayDeltaSec: number;
@@ -930,6 +994,124 @@ function utdfGoverningStorage(
   return best;
 }
 
+/**
+ * Split one approach into its left / through / right lane groups, using the
+ * MEASURED turning-movement volumes from an imported Synchro/UTDF record.
+ *
+ * Why this is honest and the old worst-approach number was the ceiling: the
+ * screen has never had a turn split for background traffic. Project trips are
+ * movement-resolved (path assignment), but existing volume was only ever known
+ * per approach — so any per-movement queue would have been built on an invented
+ * split. An imported record removes exactly that gap, and only for the
+ * intersections it covers, which is why this returns undefined otherwise.
+ *
+ * Two deliberate choices:
+ *  - Movement shares are taken WITHIN the approach and applied to the same
+ *    `approachVolumeVph` the approach row already uses, rather than using the
+ *    record's absolute volumes. That keeps the lane-group rows cross-footing to
+ *    the approach row exactly, the same discipline the printed +Trips column
+ *    already follows.
+ *  - Capacity per lane group is the SAME one-critical-lane basis as the
+ *    approach itself (`APPROACH_CAPACITY_VPH` = saturation flow x g/C; see
+ *    signal-delay.ts). The granularity changes; the capacity model does not.
+ *    Real per-lane-group capacity needs lane counts and phasing, which no
+ *    import carries today -- a calibrated Synchro run supersedes this.
+ */
+export function laneGroupsForApproach(opts: {
+  approach: Direction;
+  utdf: UtdfIntersectionInput;
+  approachVolumeVph: number;
+  addedExactByMovement: Record<Movement, number>;
+  addedTripsPeak: number;
+  laneCapacityVph: number;
+  cycleLenS?: number;
+  /** False reproduces the pre-lane-geometry one-critical-lane basis exactly,
+   *  for the legacy escape hatch on TisRequest. Omitted/true uses measured
+   *  lane counts where the import supplied them. */
+  useRealLaneGeometry?: boolean;
+}): LaneGroupImpact[] | undefined {
+  const { approach, utdf, approachVolumeVph, addedExactByMovement } = opts;
+  const vols = utdf.volumes ?? {};
+  const measured: Record<Movement, number> = { L: 0, T: 0, R: 0 };
+  let measuredApproachTotal = 0;
+  for (const m of ["L", "T", "R"] as const) {
+    const v = vols[`${approach}${m}` as UtdfMovement];
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+      measured[m] = v;
+      measuredApproachTotal += v;
+    }
+  }
+  // No measured volume on this approach: nothing to split. A zero total would
+  // also make every share NaN, which is how fabricated numbers get printed.
+  if (!(measuredApproachTotal > 0)) return undefined;
+  // A non-finite or negative approach volume would propagate straight into the
+  // printed volumes and queues as negative numbers. Upstream should never send
+  // one, but "should never" is not a guard, and a negative queue length in a
+  // sealed study is indefensible. Found by property-based fuzzing.
+  if (!Number.isFinite(approachVolumeVph) || approachVolumeVph < 0) return undefined;
+
+  // Integerize added trips by largest remainder so the lane-group column sums
+  // to the approach's printed +Trips exactly (independent rounding drifts +/-1).
+  const exact = (["L", "T", "R"] as const).map((m) => addedExactByMovement[m] ?? 0);
+  const exactTotal = exact.reduce((s, v) => s + v, 0);
+  // Demand with no movement basis to distribute it by. The allocator below can
+  // only hand out one trip per movement in that state, so it would print a
+  // fabricated 1/1/1 and drop the rest. Report nothing instead — the approach
+  // row still carries the full count, and the caption's cross-foot promise
+  // stays true.
+  if (opts.addedTripsPeak > 0 && !(exactTotal > 0)) return undefined;
+  const scaled = exactTotal > 0
+    ? exact.map((v) => (v / exactTotal) * opts.addedTripsPeak)
+    : [0, 0, 0];
+  const floors = scaled.map((v) => Math.floor(v));
+  let remainder = opts.addedTripsPeak - floors.reduce((s, v) => s + v, 0);
+  const order = scaled
+    .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac);
+  const added = [...floors];
+  for (const { i } of order) {
+    if (remainder <= 0) break;
+    added[i] += 1;
+    remainder -= 1;
+  }
+
+  const storage = utdf.storageFt ?? {};
+  const laneCounts = utdf.lanes ?? {};
+  return (["L", "T", "R"] as const).map((m, idx) => {
+    const share = measured[m] / measuredApproachTotal;
+    const existingVolumeVph = approachVolumeVph * share;
+    const futureVolumeVph = existingVolumeVph + added[idx];
+
+    // Real lane geometry when the import carried it: capacity scales with the
+    // number of lanes serving THIS movement, on the same saturation-flow x g/C
+    // basis the rest of the screen uses. Without a count we keep the
+    // one-critical-lane assumption, which is what every study did before this
+    // — so an intersection with no [Lanes] data is bit-for-bit unchanged.
+    const laneCount = laneCounts[`${approach}${m}` as UtdfMovement];
+    const hasLanes = opts.useRealLaneGeometry !== false
+      && typeof laneCount === "number" && Number.isFinite(laneCount) && laneCount > 0;
+    const capacity = hasLanes
+      ? opts.laneCapacityVph * (laneCount as number)
+      : opts.laneCapacityVph;
+
+    const futureVc = futureVolumeVph / capacity;
+    const queue = queue95Ft(futureVolumeVph, capacity, opts.cycleLenS);
+    const bay = storage[`${approach}${m}` as UtdfMovement];
+    const hasBay = typeof bay === "number" && Number.isFinite(bay) && bay > 0;
+    return {
+      movement: m,
+      existingVolumeVph: round1(existingVolumeVph),
+      addedTripsPeak: added[idx],
+      futureVolumeVph: round1(futureVolumeVph),
+      futureVc: round2(futureVc),
+      queue95thFt: round1(queue),
+      capacityVph: round1(capacity),
+      ...(hasLanes ? { lanes: laneCount as number } : {}),
+      ...(hasBay ? { storageFt: bay, storageDeficient: queue > bay } : {}),
+    };
+  });
+}
+
 /** How the imported records attached — surfaced on the payload ONLY when the
  *  request carried a record that needed name matching (see generateTisReport),
  *  so legacy UTDF-text studies keep byte-identical payloads. */
@@ -1091,7 +1273,14 @@ function attachUtdfData(
 async function findAffectedIntersections(
   lat: number, lon: number, radiusMi: number, regionCode: string,
   forceInclude?: ForceIncludeInput,
-): Promise<{ candidates: Array<StudyCandidate>; coverageNote?: CoverageNote }> {
+): Promise<{
+  candidates: Array<StudyCandidate>;
+  coverageNote?: CoverageNote;
+  /** In-radius inventory records BEFORE same-junction merging. */
+  inRadiusCount: number;
+  /** In-radius records absorbed into a kept junction by the dedup. */
+  mergedCount: number;
+}> {
   const inventory = await fetchIntersections(regionCode);
   // Radius filter + nearest-first sort and the same-junction dedup both live in
   // the dependency-free `intersection-coverage` leaf module so the distance
@@ -1128,7 +1317,15 @@ async function findAffectedIntersections(
   // the 45 m distance threshold — the ones the NAME_DEDUP_MAX_M ceiling bounds —
   // so over-collapse of distinct junctions stays observable. Not in the report.
   if (merged.length > 0) {
-    logger.debug({
+    // WARN, not debug: every merge removes an intersection from the study, and
+    // the gravity step then normalizes trip shares across whatever survives --
+    // so a wrong merge silently rescales every volume, v/c and delay in the
+    // report. `nameAbsorbedBeyond45m` is the risky subset: those rest on name
+    // equality alone, and where signal names are derived from nearby road names
+    // rather than supplied by the source data, two distinct junctions on the
+    // same pair of roads carry the same name and merge.
+    logger.warn({
+      inRadiusCount: within.length,
       keptCount: kept.length,
       mergedCount: merged.length,
       nameAbsorbedBeyond45m,
@@ -1142,7 +1339,9 @@ async function findAffectedIntersections(
   const hasForce =
     forceInclude != null &&
     ((forceInclude.ids?.length ?? 0) > 0 || (forceInclude.points?.length ?? 0) > 0);
-  if (!hasForce) return { candidates: kept, coverageNote };
+  if (!hasForce) {
+    return { candidates: kept, coverageNote, inRadiusCount: within.length, mergedCount: merged.length };
+  }
 
   const { included, unmatchedIds, unsnappedPoints } = forceIncludeIntersections(
     inventory, lat, lon, forceInclude,
@@ -1165,7 +1364,9 @@ async function findAffectedIntersections(
   const extras: StudyCandidate[] = included
     .filter((e) => !keptIds.has(e.sig.id))
     .map((e) => ({ sig: e.sig, distanceMi: e.distanceMi, forced: true }));
-  if (extras.length === 0) return { candidates: kept, coverageNote };
+  if (extras.length === 0) {
+    return { candidates: kept, coverageNote, inRadiusCount: within.length, mergedCount: merged.length };
+  }
 
   const combined = [...kept, ...extras].sort((a, b) => a.distanceMi - b.distanceMi);
   const deduped = dedupCloseSignals(combined);
@@ -1173,7 +1374,9 @@ async function findAffectedIntersections(
     { regionCode, radiusMi, radiusCount: kept.length, forcedAdded: deduped.kept.length - kept.length },
     "tis.force_include",
   );
-  return { candidates: deduped.kept, coverageNote };
+  // inRadiusCount/mergedCount describe the RADIUS set only; force-included
+  // signals from outside it are carried on each candidate's `forced` flag.
+  return { candidates: deduped.kept, coverageNote, inRadiusCount: within.length, mergedCount: merged.length };
 }
 
 function periodRawTrips(lu: LandUse, size: number, period: AnalysisPeriod, rates?: ResolvedRates): number {
@@ -1201,8 +1404,25 @@ function periodDirectionalIn(lu: LandUse, period: AnalysisPeriod): number {
   }
 }
 
-function recommendMitigation(
-  delayDelta: number, futureLos: Los,
+/** Screening mitigation thresholds, in seconds of delay increase.
+ *
+ *  These are SCREENING DEFAULTS WITH NO AGENCY ATTRIBUTION. No jurisdiction is
+ *  resolved anywhere in this call path, so nothing here may be represented as
+ *  a named agency's criterion — the previous wording named a governing city
+ *  that is never determined anywhere in this call path. A governing agency's
+ *  own TIS criteria supersede these, and typically add two tests this screen
+ *  does NOT run: a v/c criterion, and a separate clause for approaches already
+ *  failing in the no-build. */
+export const SCREENING_DELAY_DELTA_MINOR_SEC = 5;
+export const SCREENING_DELAY_DELTA_MODERATE_SEC = 15;
+
+/** One analysis horizon put to the mitigation test. */
+type MitigationHorizon = { label: string; delta: number; los: Los | undefined };
+
+const MITIGATION_RANK = { none: 0, minor: 1, moderate: 2, major: 3 } as const;
+
+function verdictForHorizon(
+  delayDelta: number, futureLos: Los | undefined,
 ): { text: string; severity: AffectedIntersection["mitigationSeverity"] } {
   if (futureLos === "F") {
     return {
@@ -1210,22 +1430,47 @@ function recommendMitigation(
       severity: "major",
     };
   }
-  if (futureLos === "E" || delayDelta >= 15) {
+  if (futureLos === "E" || delayDelta >= SCREENING_DELAY_DELTA_MODERATE_SEC) {
     return {
       text: "Moderate: extend critical-phase green time and consider a protected-only left-turn phase to absorb the new demand without queue spillback.",
       severity: "moderate",
     };
   }
-  if (delayDelta >= 5 || (futureLos === "D" && delayDelta > 0)) {
+  if (delayDelta >= SCREENING_DELAY_DELTA_MINOR_SEC || (futureLos === "D" && delayDelta > 0)) {
     return {
       text: "Minor: signal-timing optimization (shift 3–5s of green to the critical phase) is sufficient. No geometric change required.",
       severity: "minor",
     };
   }
-  return {
-    text: "No mitigation required — projected delay change is below the City's 5-second TIS threshold.",
-    severity: "none",
+  return { text: "", severity: "none" };
+}
+
+/** Mitigation verdict across EVERY analyzed horizon.
+ *
+ *  Screening the opening year alone leaves the design year untested, and the
+ *  design year usually carries the LARGER delta because two decades of
+ *  background growth sit underneath it. A verdict that silently covers one
+ *  horizon reads as covering the study. */
+function recommendMitigation(
+  horizons: MitigationHorizon[],
+): { text: string; severity: AffectedIntersection["mitigationSeverity"] } {
+  let worst: { text: string; severity: AffectedIntersection["mitigationSeverity"]; label: string } = {
+    text: "", severity: "none", label: horizons[0]?.label ?? "opening year",
   };
+  for (const h of horizons) {
+    const v = verdictForHorizon(h.delta, h.los);
+    if (MITIGATION_RANK[v.severity] > MITIGATION_RANK[worst.severity]) worst = { ...v, label: h.label };
+  }
+  const screened = horizons
+    .map((h) => `${h.label} ${h.delta >= 0 ? "+" : ""}${h.delta.toFixed(1)}s`)
+    .join(", ");
+  if (worst.severity === "none") {
+    return {
+      text: `No mitigation indicated at screening level (${screened}). The largest projected delay change is below the ${SCREENING_DELAY_DELTA_MINOR_SEC}-second screening threshold — a screening default, not an agency criterion: no jurisdiction was resolved for this site. The governing agency's TIS criteria supersede this, and typically add a v/c test and a separate clause for approaches already failing in the no-build; neither is screened here.`,
+      severity: "none",
+    };
+  }
+  return { text: `${worst.text} Governing horizon: ${worst.label} (${screened}).`, severity: worst.severity };
 }
 
 type ScenarioParams = {
@@ -1246,6 +1491,9 @@ type ScenarioParams = {
    *  this period (PERIOD_VOLUME_FACTOR). Optional; defaults to 1.0 so any
    *  caller that omits it keeps the prior design-hour behaviour. */
   periodVolumeFactor?: number;
+  /** Mirrors TisRequest.realLaneGeometry; false pins the legacy one-critical-
+   *  lane basis for lane groups. */
+  realLaneGeometry?: boolean;
   /** Directional trip-distribution octant shares (NNE…NNW, Σ≈100) from the
    *  study's distribution step. When present, each affected-intersection row
    *  gains a per-turning-movement breakdown of its added project trips
@@ -1469,12 +1717,71 @@ function buildAffectedRow(
       existingLos: delayToLos(exDelay),
       futureLos: delayToLos(fuDelay),
       queue95thFt: round1(queue95Ft(futureVol, params.approachCapacityVph, utdfCycleLenS)),
+      // Project-trip L/T/R for this approach, from the geometric assignment
+      // already computed above off the distribution octants. Emitted so the
+      // UTDF export can write existing + a REAL project split instead of
+      // flattening the total to 10/80/10. Project increment only — the
+      // background split is still unmeasured at screening level.
+      ...(() => {
+        if (!movements) return {};
+        const byMv = { L: 0, T: 0, R: 0 };
+        let any = false;
+        for (const m of movements) {
+          if (m.approach !== d) continue;
+          byMv[m.movement] += m.trips;
+          any = true;
+        }
+        return any ? { addedByMovement: byMv } : {};
+      })(),
+      // Per-movement queues, but only where an imported record supplies a real
+      // turn split for the background traffic. Absent everywhere else on
+      // purpose — see laneGroupsForApproach.
+      ...(() => {
+        if (!c.utdf) return {};
+        const addedExactByMovement: Record<Movement, number> = { L: 0, T: 0, R: 0 };
+        if (pathRows && pathRows.length > 0) {
+          for (const r of pathRows) {
+            if (r.approach === d) addedExactByMovement[r.movement] += r.exact;
+          }
+        } else {
+          // Not path-resolved (no routed graph, or this candidate failed to
+          // snap). Fall back to the OCTANT movement split, which is the same
+          // array addedTripsPeak itself is summed from — so the lane-group
+          // rows cross-foot to the approach row by construction.
+          //
+          // Previously this branch left the record at all-zeros, which made
+          // exactTotal 0 in the allocator; the largest-remainder loop can only
+          // add one trip per movement, so an approach carrying 45 added trips
+          // printed 1/1/1 and silently discarded 42 of them — under a caption
+          // that tells the reviewer the columns cross-foot.
+          for (const m of movements ?? []) {
+            if (m.approach === d) addedExactByMovement[m.movement] += m.trips;
+          }
+        }
+        const laneGroups = laneGroupsForApproach({
+          approach: d,
+          utdf: c.utdf,
+          approachVolumeVph: baseVol,
+          addedExactByMovement,
+          addedTripsPeak,
+          laneCapacityVph: params.approachCapacityVph,
+          cycleLenS: utdfCycleLenS,
+          useRealLaneGeometry: params.realLaneGeometry,
+        });
+        return laneGroups ? { laneGroups } : {};
+      })(),
     };
   });
 
   const worstQueue = approaches.reduce((m, a) => Math.max(m, a.queue95thFt), 0);
 
-  let mit = recommendMitigation(afterDelay - beforeDelay, afterLos);
+  // Every analyzed horizon goes to the test, not just the opening year.
+  let mit = recommendMitigation([
+    { label: "opening year", delta: afterDelay - beforeDelay, los: afterLos },
+    ...(hasDesignYear
+      ? [{ label: "design year", delta: designBuildDelay - designNoBuildDelay, los: designBuildLos }]
+      : []),
+  ]);
 
   // Turbo-lane (continuous-green-T) screening. Computed for every candidate
   // 3-leg T-intersection regardless of LOS; when the intersection also fails
@@ -1508,6 +1815,10 @@ function buildAffectedRow(
 
   return {
     signalId: c.sig.id,
+    ...(c.sig.mainThroughLanesMeasured && c.sig.mainThroughLanes
+      ? { mainThroughLanes: c.sig.mainThroughLanes }
+      : {}),
+    ...(c.sig.minorThroughLanes ? { minorThroughLanes: c.sig.minorThroughLanes } : {}),
     name: c.sig.name,
     zone: c.sig.zone,
     latitude: c.sig.latitude,
@@ -1624,23 +1935,56 @@ function plainFindings(
     out.push("No signalized intersections were found within the study radius — no off-site capacity impact is anticipated.");
     return out;
   }
+  // Every count and every delta below NAMES ITS HORIZON. An unscoped headline
+  // computed from the opening year alone understates the study against its own
+  // printed design-year values — a reviewer who spots that reads the whole
+  // document as understated.
+  const openingDelta = (r: AffectedIntersection) => r.futureDelaySec - r.existingDelaySec;
+  const designDelta = (r: AffectedIntersection) =>
+    (r.designBuildDelaySec ?? 0) - (r.designNoBuildDelaySec ?? 0);
+  const hasDesign = rows.some((r) => r.designBuildDelaySec !== undefined);
+
   const dropped = rows.filter((r) => r.losChanged).length;
   const ef = rows.filter((r) => r.futureLos === "E" || r.futureLos === "F").length;
+  const efDesign = rows.filter((r) => r.designBuildLos === "E" || r.designBuildLos === "F").length;
   out.push(
-    `${rows.length} signalized intersection${rows.length === 1 ? "" : "s"} fall within the study area; ${dropped} are projected to drop at least one LOS grade after build-out.`,
+    `${rows.length} signalized intersection${rows.length === 1 ? "" : "s"} fall within the study area; ${dropped} are projected to drop at least one LOS grade in the opening year after build-out.`,
   );
   if (ef > 0) {
-    out.push(`${ef} intersection${ef === 1 ? " is" : "s are"} projected to operate at LOS E or F under the build condition and require formal mitigation per ${region.jurisdiction.dotName} TIS guidance.`);
+    out.push(`${ef} intersection${ef === 1 ? " is" : "s are"} projected to operate at LOS E or F under the opening-year build condition and require formal mitigation per ${region.jurisdiction.dotName} TIS guidance.`);
+  } else if (hasDesign && efDesign > 0) {
+    out.push(`All studied intersections remain at LOS D or better under the opening-year build condition, but ${efDesign} ${efDesign === 1 ? "is" : "are"} projected to reach LOS E or F under the design-year build condition.`);
   } else {
-    out.push("All studied intersections are projected to remain at LOS D or better with build traffic; no formal mitigation is required.");
+    out.push(`All studied intersections are projected to remain at LOS D or better with build traffic${hasDesign ? " in both the opening and design years" : " in the opening year"}; no mitigation is indicated at screening level.`);
   }
-  const worst = rows.reduce<AffectedIntersection | null>(
-    (a, b) => (a == null || (b.futureDelaySec - b.existingDelaySec) > (a.futureDelaySec - a.existingDelaySec) ? b : a),
-    null,
-  );
-  if (worst && worst.futureDelaySec - worst.existingDelaySec >= 5) {
+
+  const worstBy = (f: (r: AffectedIntersection) => number) =>
+    rows.reduce<AffectedIntersection | null>((a, b) => (a == null || f(b) > f(a) ? b : a), null);
+
+  const worst = worstBy(openingDelta);
+  if (worst && openingDelta(worst) >= SCREENING_DELAY_DELTA_MINOR_SEC) {
     out.push(
-      `Worst-impact location: ${worst.name} — projected delay rises ${(worst.futureDelaySec - worst.existingDelaySec).toFixed(1)}s (LOS ${worst.existingLos} → ${worst.futureLos}); 95th-pct queue ${worst.queue95thFt.toFixed(0)} ft on the critical approach.`,
+      `Worst opening-year impact: ${worst.name} — projected delay rises ${openingDelta(worst).toFixed(1)}s (LOS ${worst.existingLos} → ${worst.futureLos}); 95th-pct queue ${worst.queue95thFt.toFixed(0)} ft on the critical approach.`,
+    );
+  }
+
+  // Reconcile the headline against the design year, ALWAYS when one was
+  // analyzed — not only when it crosses a threshold. The design-year delta is
+  // routinely the larger of the two, and a headline that reports only the
+  // opening-year figure contradicts values printed elsewhere in the same study.
+  if (hasDesign && worst) {
+    const worstD = worstBy(designDelta)!;
+    const maxOpening = openingDelta(worst);
+    const maxDesign = designDelta(worstD);
+    out.push(
+      maxOpening < 0.05 && maxDesign < 0.05
+        // Both round to zero: "0.0s and 0.0s" is a sentence that says nothing.
+        // State the fact instead — it still records that BOTH horizons were checked.
+        ? "No measurable delay change at either the opening year or the design year."
+        : `Largest projected delay change: ${maxOpening.toFixed(1)}s in the opening year (${worst.name}) and ${maxDesign.toFixed(1)}s in the design year (${worstD.name}).`
+          + (maxDesign > maxOpening
+            ? ` The design-year figure is the larger; that difference is driven by background traffic growth over the design horizon, not by the development.`
+            : ""),
     );
   }
   const turboRows = rows.filter((r) => r.turboLane);
@@ -1667,7 +2011,7 @@ const TIS_METHODOLOGY = [
   "Pass-by and internal-capture credits are applied in full at the PM peak (and at 25% of that credit fraction for the AM and Saturday-midday periods) per standard pass-by screening methodology and ULI Mixed-Use Internal Capture defaults; only the residual external vehicle trips are assigned to off-site intersections.",
   "Existing intersection volumes are grown to the opening-year horizon at the user-supplied annual growth rate (default 1.5%/yr) before the capacity analysis.",
   "Weather adjustment applies published rain/snow capacity-reduction factors as adopted in US traffic-engineering practice: clear 1.00, light rain 0.95, heavy rain 0.86, light snow 0.86, heavy snow 0.70. The factor multiplies the saturation flow at every intersection.",
-  "Off-site impact is screened for all signalized intersections within the study radius (default 0.5 mi) using the four-step travel demand model (FHWA; NCHRP Report 716). Step 1 Trip Generation: public-data average rates (SANDAG 2002 / NHTS 2017 / NCHRP 716) give the site's external (post pass-by / internal-capture) productions. Step 2 Trip Distribution: a production-constrained gravity model T_j = P · (A_j·F_j) / Σ(A_x·F_x) allocates trips to surrounding signals, where attractiveness A_j is the signal's through-volume and the friction factor F_j is the NCHRP-716 gamma function F = a·t^b·e^(c·t) (home-based-work coefficients a=28507, b=-0.02, c=-0.123) on the travel time t to each signal. Step 3 Mode Choice: a binary logit P(auto)=1/(1+e^-(ASC−λ·ΔGC)) calibrated to the metro's measured auto-mode share (ACS B08301) and shifted by site urbanity (a density proxy from surrounding through-volumes) so denser, more transit-served sites split further from auto; only the resulting vehicle trips load the network. Step 4 Route Assignment: a capacity-constrained assignment using the BPR volume-delay function t = t0·[1 + 0.15·(v/c)^4] iteratively shifts trips away from over-capacity signals toward less-congested alternatives. Signals lacking AADT data fall back to a constant 5,000 vpd attraction.",
+  "Off-site impact is screened for all signalized intersections within the study radius (default 0.5 mi) using the four-step travel demand model (FHWA; NCHRP Report 716). Step 1 Trip Generation: public-data average rates (SANDAG 2002 / NHTS 2017 / NCHRP 716) give the site's external (post pass-by / internal-capture) productions. Step 2 Trip Distribution: a production-constrained gravity model T_j = P · (A_j·F_j) / Σ(A_x·F_x) allocates trips to surrounding signals, where attractiveness A_j is the signal's through-volume and the friction factor F_j is the NCHRP-716 gamma function F = a·t^b·e^(c·t) (home-based-work coefficients a=28507, b=-0.02, c=-0.123) on the travel time t to each signal. Step 3 Mode Choice: a binary logit P(auto)=1/(1+e^-(ASC−λ·ΔGC)) calibrated to the metro's auto-mode share — measured (ACS B08301) where the metro is wired, otherwise the ACS B08301 metropolitan median of 90% — and shifted by site urbanity (a density proxy from surrounding through-volumes) so denser, more transit-served sites split further from auto; only the resulting vehicle trips load the network. Step 4 Route Assignment: a capacity-constrained assignment using the BPR volume-delay function t = t0·[1 + 0.15·(v/c)^4] iteratively shifts trips away from over-capacity signals toward less-congested alternatives. Signals lacking AADT data fall back to a constant 5,000 vpd attraction.",
   "After assignment, all signalized intersections within the study radius are reported in the affected-intersections table. Project-added trips, v/c ratio change, control delay change, LOS change, and 95th-percentile queue are reported for each intersection so the reviewer can assess relative impact. Intersections beyond the study radius are excluded from analysis.",
   "Auto-mode share is applied per metro before assignment. Suburban-US metros default to 90% auto (ACS 5-Year B08301 median); transit-heavy metros use measured auto-mode share (e.g., NYC 32%, Tokyo 30%, London 38%, San Francisco 47%). Non-auto trips (transit, walking, cycling) do not load the off-site roadway. This is a screening-level adjustment; a real TIS submittal in a transit-heavy market should refine with project-specific TAZ data.",
   "Candidate signals are de-duplicated within a 45m clustering threshold to prevent OSM divided-arterial splits and way-record artifacts from double-counting a single physical intersection.",
@@ -1836,8 +2180,16 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // No-Build / Build LOS columns stay consistent — without this, the IL
   // renderer §5 prose would print "1.80%/yr" while the engine still grew
   // volumes at 1.50%/yr, a reviewer-visible mismatch.
-  const measuredRate = req.growthRatePct === undefined ? getMeasuredGrowthRate(region.code) : undefined;
-  const growthRatePct = clamp(req.growthRatePct ?? measuredRate?.growthPct ?? 1.5, -5, 6);
+  // The measured rate is resolved even when an override wins, so the payload can
+  // name what the override DISPLACED. Previously `measuredRate` was set to
+  // undefined on override, which suppressed `growthSource` entirely — an
+  // overridden study printed its growth figure with no provenance at all while
+  // the engine held a cited rate it had not used, and a reviewer had no way to
+  // see that an override had happened at all.
+  const measuredRate = getMeasuredGrowthRate(region.code);
+  const growthOverridePct = req.growthRatePct;
+  const growthIsOverride = growthOverridePct !== undefined;
+  const growthRatePct = clamp(growthOverridePct ?? measuredRate?.growthPct ?? 1.5, -5, 6);
   const growthYears = Math.max(0, req.openingYear - CURRENT_YEAR);
   const growthMultiplier = Math.pow(1 + growthRatePct / 100, growthYears);
   // 4th-scenario design year: opening + 20yr at the same CAGR. Per IL
@@ -1848,7 +2200,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   const designYears = Math.max(0, designYear - CURRENT_YEAR);
   const designGrowthMultiplier = Math.pow(1 + growthRatePct / 100, designYears);
 
-  const { candidates, coverageNote } = await findAffectedIntersections(
+  const { candidates, coverageNote, inRadiusCount, mergedCount } = await findAffectedIntersections(
     req.latitude, req.longitude, radiusMi, region.code,
     { ids: req.studyIntersectionIds, points: req.additionalStudyPoints },
   );
@@ -2389,6 +2741,8 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       periodVolumeFactor: PERIOD_VOLUME_FACTOR[period] ?? 1,
       distributionOctants: dist.byDirection,
       ...(pathTurnsByCandidate ? { conservedLabeling: true } : {}),
+      // Explicit false pins the legacy one-critical-lane lane-group basis.
+      ...(req.realLaneGeometry === false ? { realLaneGeometry: false } : {}),
     };
 
     // For "daily" we don't run an intersection-level analysis (HCM control
@@ -2509,19 +2863,27 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   // `region` is already resolved earlier (before findAffectedIntersections)
   // — reuse it for the findings/mitigation language so the report is
   // self-consistent.
-  const findings = plainFindings(
-    tripGeneration,
-    pmReport.affectedIntersections,
-    growthYears,
-    growthRatePct,
-    weather,
-    weatherFactor,
-    passByPct,
-    internalCapturePct,
-    sens,
-    region,
-    autoModeShare,
-  );
+  // Background-volume plausibility. Leads the findings list when it fires —
+  // a reader must not reach the LOS tables before being told the volumes
+  // behind them are not credible.
+  const volumeDisclosures = implausibleVolumeDisclosures(pmReport.affectedIntersections);
+
+  const findings = [
+    ...volumeDisclosures,
+    ...plainFindings(
+      tripGeneration,
+      pmReport.affectedIntersections,
+      growthYears,
+      growthRatePct,
+      weather,
+      weatherFactor,
+      passByPct,
+      internalCapturePct,
+      sens,
+      region,
+      autoModeShare,
+    ),
+  ];
 
   const mitigationSummary = buildSummaryMitigations(pmReport.affectedIntersections, region);
 
@@ -2550,26 +2912,60 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     tripGeneration,
     affectedIntersections: pmReport.affectedIntersections,
     intersectionsStudied: pmReport.affectedIntersections.length,
-    intersectionsInStudyArea: candidates.length,
+    // The study area's population is what the inventory holds inside the radius,
+    // NOT what survived same-junction merging. Reporting the post-merge count here
+    // made a set that had silently lost intersections look complete.
+    intersectionsInStudyArea: inRadiusCount,
+    intersectionsMergedAsDuplicates: mergedCount,
     intersectionsWithLosDrop: pmReport.intersectionsWithLosDrop,
     intersectionsAtLosEf: pmReport.intersectionsAtLosEf,
     worstDelayDeltaSec: pmReport.worstDelayDeltaSec,
+    // Design-year companion to worstDelayDeltaSec, so a consumer can see the
+    // opening-year headline is scoped rather than absolute. The design-year
+    // delta is routinely the larger of the two; reporting only the opening-year
+    // figure contradicts values printed elsewhere in the same study.
+    ...(() => {
+      const d = pmReport.affectedIntersections.filter((r) => r.designBuildDelaySec !== undefined);
+      return d.length > 0
+        ? {
+            worstDelayDeltaDesignSec: round1(
+              d.reduce((m, r) => Math.max(m, (r.designBuildDelaySec ?? 0) - (r.designNoBuildDelaySec ?? 0)), 0),
+            ),
+          }
+        : {};
+    })(),
     mitigationSummary,
     findings,
     // The fallback disclosure rides the methodology list so every renderer
     // that prints methodology discloses the widened study set in the PDF
     // without per-renderer changes.
-    methodology: coverageNote
-      ? [coverageNote.message, ...tisMethodologyForRegion(region)]
-      : tisMethodologyForRegion(region),
+    methodology: [
+      // Disclosures first: both of these qualify every number below them.
+      ...volumeDisclosures,
+      ...(coverageNote ? [coverageNote.message] : []),
+      ...tisMethodologyForRegion(region),
+    ],
     periodReports,
     growthAppliedPct: growthRatePct,
     growthYears,
-    ...(measuredRate
+    ...(growthIsOverride
       ? {
-          growthSource: `${getMeasuredGrowthSource(region.code) ?? "Per-metro historical AADT layer"} — median per-segment CAGR across ${measuredRate.stations} matched count stations within the ${region.displayName} bounding box (${measuredRate.yearFrom} → ${measuredRate.yearTo})`,
+          growthSource: [
+            `${GROWTH_OVERRIDE_PREFIX} — ${growthRatePct.toFixed(2)}%/yr was supplied with the request and applied in place of the engine's own rate.`,
+            growthOverridePct !== undefined && Math.abs(growthOverridePct - growthRatePct) > 0.005
+              ? `The requested value ${growthOverridePct.toFixed(2)}%/yr was clamped to the permitted range.`
+              : "",
+            measuredRate
+              ? `The measured rate for this region is ${measuredRate.growthPct.toFixed(2)}%/yr (${getMeasuredGrowthSource(region.code) ?? "per-metro historical AADT layer"} — median per-segment CAGR across ${measuredRate.stations} matched count stations within the ${region.displayName} bounding box (${measuredRate.yearFrom} → ${measuredRate.yearTo})).`
+              : "No measured growth rate is wired for this region, so there is no measured value to compare the override against.",
+            "The applied rate is not derived from measured data; its basis must be stated by the preparer.",
+          ].filter(Boolean).join(" "),
         }
-      : {}),
+      : measuredRate
+        ? {
+            growthSource: `${getMeasuredGrowthSource(region.code) ?? "Per-metro historical AADT layer"} — median per-segment CAGR across ${measuredRate.stations} matched count stations within the ${region.displayName} bounding box (${measuredRate.yearFrom} → ${measuredRate.yearTo})`,
+          }
+        : {}),
     designYear,
     designYearHorizonYears: designYearHorizon,
     weather,
@@ -2623,7 +3019,7 @@ async function synthesizePmReport(
   const internalCredit = (raw - passByCredit) * (internalCapturePct / 100);
   const externalTrips = Math.max(0, raw - passByCredit - internalCredit);
   const inFraction = lu.directionalSplitPm.in;
-  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak, ...(distributionOctants ? { distributionOctants } : {}), ...(pathTurnsByCandidate ? { conservedLabeling: true } : {}) };
+  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak, ...(distributionOctants ? { distributionOctants } : {}), ...(pathTurnsByCandidate ? { conservedLabeling: true } : {}), ...(req.realLaneGeometry === false ? { realLaneGeometry: false } : {}) };
   const calibrationMap = await loadCalibrationMap();
   const allRows = candidates.map((c, i) =>
     buildAffectedRow(c, loadWeights[i]!, project, params, calibrationMap.get(c.sig.id), pathTurnsByCandidate?.[i], pathTurnsInByCandidate?.[i]),
@@ -2666,7 +3062,7 @@ function buildSummaryMitigations(rows: AffectedIntersection[], region: Region): 
     out.push(`Signal-timing optimization at ${minor.length} intersection${minor.length === 1 ? "" : "s"} (3–5s green-time shift toward the critical phase) is sufficient.`);
   }
   if (none.length === rows.length) {
-    out.push("All studied intersections operate within the City's no-mitigation threshold (≤5s additional delay) under the build condition.");
+    out.push(`All studied intersections fall below the ${SCREENING_DELAY_DELTA_MINOR_SEC}-second screening threshold for additional delay across every analyzed horizon. That threshold is a screening default, not an agency criterion — no jurisdiction was resolved for this site — and this screen applies no v/c test and no separate clause for approaches already failing in the no-build. The governing agency's TIS criteria supersede it.`);
   }
   return out;
 }

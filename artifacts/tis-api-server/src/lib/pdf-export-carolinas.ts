@@ -20,6 +20,8 @@
  */
 import type { Region } from "./regions";
 import { appliedRateRows } from "./trip-rate-rows";
+import { renderAtrMeasuredVolumes } from "./atr-measured-volumes";
+import { renderTripDistributionSection } from "./pdf-export-distribution";
 
 type StoredProject = {
   id: string;
@@ -367,7 +369,7 @@ export function renderTisNorthCarolina(
   // --- 2.0 Methodology ---
   carSection(doc, "2.0 METHODOLOGY");
   carBody(doc,
-    "NCDOT requires HCM-based analysis; the Department currently utilizes Synchro 11 (with mandatory SimTraffic simulation, minimum ten runs), HCS for freeway facilities, and Sidra for roundabouts. This screening analysis applies HCM-consistent computation; Synchro 11-compatible models and SimTraffic outputs are to be provided at formal submittal.");
+    "NCDOT requires HCM-based analysis at submittal; the Department currently utilizes Synchro 11 (with mandatory SimTraffic simulation, minimum ten runs), HCS for freeway facilities, and Sidra for roundabouts. This screening applies the openly-published Webster/Akçelik signalized model pending those tool runs; Synchro 11-compatible models and SimTraffic outputs are to be provided at formal submittal.");
   carRows(doc, [
     ["Peak periods", "AM and PM weekday peak hours (minimum); counts Tue–Thu, school in session, less than 12 months old"],
     ["PHF (future conditions)", "0.90 per Standards"],
@@ -414,6 +416,22 @@ export function renderTisNorthCarolina(
   });
 
   // --- 6.0 Mitigation criteria check (Ch. 5.J) ---
+  // Measured agency counts where an ingested feed covers this site. Renders
+  // nothing without coverage, so studies outside it stay byte-identical.
+  renderAtrMeasuredVolumes(doc, (r as any).atrSummary, {
+    headingFn: (_doc, title) => carSubsection(doc, title),
+    heading: "3.1 Measured Traffic Counts (Supplemental)",
+    estimateBasis: "the analysis volumes in §3.0",
+  });
+
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "3.2",
+    assignmentNumber: "3.3",
+    headingFn: (_doc, title) => carSubsection(doc, title),
+    cap: 20,
+  });
+  doc.moveDown(0.5);
+
   carSection(doc, "4.0 MITIGATION CRITERIA CHECK (POLICY CH. 5.J)");
   carBody(doc,
     "NCDOT requires improvements when, comparing base-network and project conditions: total average delay increases by 25% or more while remaining at the same LOS; the LOS degrades by one level; or the intersection operates at LOS F. Turn-lane mitigation applies where the 95th-percentile queue exceeds existing storage. Signal-timing changes alone are not considered mitigation. The District Engineer makes the final mitigation determination.");
@@ -522,6 +540,14 @@ export function renderTisSouthCarolina(
   ]);
   doc.moveDown(0.3);
 
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "2.1",
+    assignmentNumber: "2.2",
+    headingFn: (_doc, title) => carSubsection(doc, title),
+    cap: 20,
+  });
+  doc.moveDown(0.5);
+
   // --- 3.0 Volume development + 4.0 capacity vs TG-21 ---
   carSection(doc, "3.0 TRAFFIC VOLUME DEVELOPMENT AND CAPACITY ANALYSIS");
   carBody(doc,
@@ -552,6 +578,14 @@ export function renderTisSouthCarolina(
   });
 
   // --- 5.0 Findings / access mgmt / warrants ---
+  // Measured agency counts where an ingested feed covers this site. Renders
+  // nothing without coverage, so studies outside it stay byte-identical.
+  renderAtrMeasuredVolumes(doc, (r as any).atrSummary, {
+    headingFn: (_doc, title) => carSubsection(doc, title),
+    heading: "3.1 Measured Traffic Counts (Supplemental)",
+    estimateBasis: "the volumes developed in §3.0",
+  });
+
   carSection(doc, "4.0 FINDINGS, ACCESS MANAGEMENT, AND SIGNAL WARRANTS");
   carBody(doc,
     losEf === 0 && losDrops === 0

@@ -28,7 +28,11 @@ node_modules
 !.vscode/extensions.json
 
 # Claude Code local dev configs
-.claude/
+.claude/*
+# ...but Redline/Datum are project assets, not local config — they must
+# survive a clone and be reviewable in a PR.
+!.claude/agents/
+!.claude/skills/
 
 # misc
 /.sass-cache

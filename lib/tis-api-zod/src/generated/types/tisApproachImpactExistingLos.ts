@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing".
+ */
 export type TisApproachImpactExistingLos =
   (typeof TisApproachImpactExistingLos)[keyof typeof TisApproachImpactExistingLos];
 

@@ -25,15 +25,24 @@ export interface TisReport {
   tripGeneration: TisTripGeneration;
   affectedIntersections: TisAffectedIntersection[];
   intersectionsStudied: number;
+  /** Signalized intersections the region inventory holds INSIDE the study radius, before same-junction records are merged. This is the study area's true population; intersectionsStudied is what survived the merge. When the two differ, intersectionsMergedAsDuplicates says by how much, and the set analyzed is NOT the set in the radius. */
+  intersectionsInStudyArea?: number;
+  /** In-radius records absorbed as duplicate representations of a junction already kept. Non-zero means intersectionsStudied under-counts the radius. Merges above 45 m rest on name equality, and in regions whose signal names are derived from nearby road names rather than supplied by the source data, distinct junctions can share a name -- so a non-zero value here is a prompt to verify, not a guarantee of duplication. */
+  intersectionsMergedAsDuplicates?: number;
   intersectionsWithLosDrop: number;
   intersectionsAtLosEf: number;
+  /** Largest projected delay increase across the studied intersections, in the OPENING YEAR only. Scoped, not absolute — compare against worstDelayDeltaDesignSec, which is routinely larger because background growth over the design horizon sits underneath it. */
   worstDelayDeltaSec: number;
+  /** Largest projected delay increase in the DESIGN year (designBuild - designNoBuild). Absent when no design year was analyzed. */
+  worstDelayDeltaDesignSec?: number;
   mitigationSummary: string[];
   findings: string[];
   methodology: string[];
   periodReports: TisPeriodReport[];
   growthAppliedPct: number;
   growthYears: number;
+  /** Provenance for growthAppliedPct, printed verbatim by the renderers. Names the basis of the applied rate: a measured per-metro CAGR and the DOT layer it came from, or — when the request supplied growthRatePct — that an explicit override was applied, alongside the measured rate for the region that the override displaced. Optional: absent on payloads stored before this field existed, which re-render through the same path and must not sprout an empty citation. */
+  growthSource?: string;
   weather: TisWeather;
   weatherCapacityFactor: number;
   passByPctApplied: number;

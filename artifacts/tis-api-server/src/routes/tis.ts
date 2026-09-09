@@ -169,10 +169,21 @@ function buildUtdfIntersectionRecords(
       ? Math.round(hvRaw * 10) / 10 : undefined;
     const laneRec = doc.lanes.find((l) => l.intId === n.intId);
     const storageFt: Record<string, number> = {};
+    // Per-movement lane counts from the record's [Lanes] section. The parser
+    // has always captured these (UtdfLaneInfo.lanes); this boundary read only
+    // storageFt and dropped them on the floor, so the engine had no lane
+    // geometry for an intersection whose geometry we had been handed.
+    const lanes: Record<string, number> = {};
     if (laneRec) {
       for (const [mv, info] of Object.entries(laneRec.movements)) {
         const s = info?.storageFt;
         if (typeof s === "number" && Number.isFinite(s) && s > 0) storageFt[mv] = s;
+        const l = info?.lanes;
+        // Sanity band: a movement with more than 6 lanes is a parse artifact,
+        // not geometry. Reject rather than let it inflate capacity.
+        if (typeof l === "number" && Number.isFinite(l) && l > 0 && l <= 6) {
+          lanes[mv] = Math.round(l);
+        }
       }
     }
     const cyc = doc.timings.find((t) => t.intId === n.intId)?.cycleLengthS;
@@ -187,6 +198,7 @@ function buildUtdfIntersectionRecords(
       ...(phf !== undefined ? { phf } : {}),
       ...(hvPct !== undefined ? { hvPct } : {}),
       ...(Object.keys(storageFt).length > 0 ? { storageFt } : {}),
+      ...(Object.keys(lanes).length > 0 ? { lanes } : {}),
       ...(cycleLenSec !== undefined ? { cycleLenSec } : {}),
     }];
   });
@@ -484,6 +496,7 @@ router.post("/generate/pdf", generateRateLimiter, async (req, res): Promise<void
       },
       {
         firmId: firm.id,
+        reportTemplate: firm.reportTemplate,
         name: firm.name,
         logoUrl: firm.logoUrl,
         brandColor: firm.brandColor,
@@ -592,6 +605,11 @@ const londonTaPdfHandler = async (req: Request, res: Response): Promise<void> =>
       lastName: req.user.lastName,
     });
     firmBranding = {
+      // Carried so a firm that uploaded its own format gets it here too — this
+      // is the London/Velocity path, which is exactly where an imported
+      // template is most likely to exist.
+      firmId: firm.id,
+      reportTemplate: firm.reportTemplate,
       name: firm.name,
       logoUrl: firm.logoUrl,
       brandColor: firm.brandColor,

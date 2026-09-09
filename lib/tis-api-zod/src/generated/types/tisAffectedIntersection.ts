@@ -25,6 +25,7 @@ export interface TisAffectedIntersection {
   latitude: number;
   longitude: number;
   distanceMi: number;
+  /** Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing". */
   existingVc: number;
   addedTripsPmPeak: number;
   futureVc: number;
@@ -32,6 +33,7 @@ export interface TisAffectedIntersection {
   futureDelaySec: number;
   existingLos: TisAffectedIntersectionExistingLos;
   futureLos: TisAffectedIntersectionFutureLos;
+  /** True current-year baseline: existing volumes with NO growth applied. This is the scenario to label "Existing". Optional so payloads saved before the scenario split still validate. */
   currentVc?: number;
   currentDelaySec?: number;
   currentLos?: TisAffectedIntersectionCurrentLos;

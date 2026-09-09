@@ -1864,7 +1864,7 @@ function IntersectionTable({ rows }: { rows: AffectedIntersection[] }) {
               <th className="text-left px-4 py-2 font-medium">Signal</th>
               <th className="text-right px-4 py-2 font-medium">Dist (mi)</th>
               <th className="text-right px-4 py-2 font-medium">+ Trips</th>
-              <th className="text-center px-4 py-2 font-medium">Existing</th>
+              <th className="text-center px-4 py-2 font-medium">No-Build</th>
               <th className="text-center px-4 py-2 font-medium">Future</th>
               <th className="text-right px-4 py-2 font-medium">Δ delay</th>
               <th className="px-2 py-2" />
@@ -1911,7 +1911,7 @@ function IntersectionRow({ it }: { it: AffectedIntersection }) {
           <td colSpan={7} className="px-4 py-4">
             <div className="space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <MiniStat label="Existing v/c" value={it.existingVc.toFixed(2)} />
+                <MiniStat label="No-Build v/c" value={it.existingVc.toFixed(2)} />
                 <MiniStat label="Future v/c" value={it.futureVc.toFixed(2)} />
                 <MiniStat label="95th queue" value={`${Math.round(it.queue95thFt)} ft`} />
                 <MiniStat label="Zone" value={it.zone || "—"} />
@@ -1938,9 +1938,9 @@ function IntersectionRow({ it }: { it: AffectedIntersection }) {
                     <thead className="bg-muted/40 uppercase tracking-wide text-muted-foreground">
                       <tr>
                         <th className="text-left px-3 py-1.5 font-medium">Approach</th>
-                        <th className="text-right px-3 py-1.5 font-medium">Exist v/c</th>
+                        <th className="text-right px-3 py-1.5 font-medium">No-Build v/c</th>
                         <th className="text-right px-3 py-1.5 font-medium">Future v/c</th>
-                        <th className="text-center px-3 py-1.5 font-medium">Exist LOS</th>
+                        <th className="text-center px-3 py-1.5 font-medium">No-Build LOS</th>
                         <th className="text-center px-3 py-1.5 font-medium">Future LOS</th>
                         <th className="text-right px-3 py-1.5 font-medium">Future delay</th>
                         <th className="text-right px-3 py-1.5 font-medium">95th queue</th>

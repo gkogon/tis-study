@@ -20,6 +20,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { regionForCoordinate, type Region } from "./regions";
+import { buildStudyScopeNote } from "./study-scope-note.js";
 import { stateForCoordinate } from "./state-boundaries";
 import { fetchStreetViewImage } from "./streetview";
 import {
@@ -32,12 +33,14 @@ import { ukCapacityForIntersection, type UkCapacityResult } from "./uk-capacity"
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { renderTisNorthCarolina, renderTisSouthCarolina } from "./pdf-export-carolinas";
 import { appliedRateRows } from "./trip-rate-rows";
+import { isGrowthOverride } from "./regional-growth-rates";
 import { renderTisState } from "./pdf-export-states";
 import { renderDiurnalCharts, drawColumnChart, drawLineChart, CHART_COLORS } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
+import { renderLaneGroupQueues } from "./lane-group-queues";
 import { profileForLandUse, distributeDaily, type ProfileLocale } from "./office-diurnal";
 import { renderTemplatePdf, type RenderContext, type ReportTemplate } from "./report-template/engine";
-import { loadTemplate } from "./report-template/registry";
+import { loadTemplate, validateTemplate } from "./report-template/registry";
 import { buildProviders } from "./report-template/providers";
 import { loadFirmTemplate } from "./report-template/store";
 import { getTransitContext, type TransitContext } from "./transit-routes";
@@ -46,7 +49,8 @@ import { enrichGdotIntersections, fetchGdotSiteSnapshot } from "./gdot-live-data
 import { enrichNyIntersectionsWithSpeed, getNyCrashSummaryForSite, getGml239Status, getCbdtpStatus } from "./nysdot-data";
 import { getNycTransitContext } from "./nyc-transit-data";
 import { crashesNearPoint } from "./crashes";
-import { atrSegmentsNearPoint } from "./atr-counts";
+import { atrSegmentsNearPoint, atrSourceForRegion, atrTimeZoneForRegion, atrRadiusForSource, atrWindowYearsForSource } from "./atr-counts";
+import { renderAtrMeasuredVolumes, hasAtrVolumes } from "./atr-measured-volumes";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
 import type { StudyTier } from "./tis";
 import {
@@ -79,6 +83,13 @@ type FirmStamp = {
   website?: string | null;
   /** When set and the firm has an uploaded template, the study renders in it. */
   firmId?: string | null;
+  /**
+   * The firm's imported report format, read from `firms.report_template`.
+   * Passed down rather than looked up here so the render path stays
+   * synchronous. When absent we fall back to the filesystem store, which is
+   * how local dev works; in production the DB column is the durable copy.
+   */
+  reportTemplate?: unknown;
 };
 
 // Default cover brand color when a firm hasn't set one — a professional
@@ -262,6 +273,16 @@ function resolveTemplate(project: StoredProject, firm: FirmStamp): { template: R
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   const region = regionForCoordinate(lat, lon);
   const locale: ProfileLocale = region?.country === "UK" ? "uk" : "us";
+  // DB copy first (durable across deploys), then the filesystem store. A
+  // malformed stored template must not take the whole render down, so an
+  // invalid one falls through to the region default rather than throwing.
+  if (firm.reportTemplate) {
+    try {
+      return { template: validateTemplate(firm.reportTemplate), locale };
+    } catch {
+      /* fall through to the filesystem store / region default */
+    }
+  }
   if (firm.firmId) {
     const t = loadFirmTemplate(firm.firmId);
     if (t) return { template: t, locale };
@@ -424,21 +445,43 @@ export async function renderStudyPdf(
         //     NYC DOT counts a rotating sample — many midtown sites
         //     have no ATR segment closer than 0.5 mi (e.g. Times
         //     Square's nearest is on 9th Ave, 0.7 mi west).
-        const atrTask = atrSegmentsNearPoint({
-          lat,
-          lon,
-          radiusMi: 1.0,
-          windowYears: 3,
-          source: "nyc_dot_atr",
-        })
-          .then((s) => {
-            if (s.segments.length > 0 && result && typeof result === "object") {
-              (result as Record<string, unknown>).nycAtrSummary = s;
-            }
-          })
-          .catch(() => {});
-        await Promise.all([speedTask, crashTask, preciseCrashTask, gml239Task, transitTask, atrTask]);
+        await Promise.all([speedTask, crashTask, preciseCrashTask, gml239Task, transitTask]);
       }
+      // Measured ATR counts — REGION-AGNOSTIC, deliberately outside every
+      // state branch. This previously sat inside the `stateCode === "NY"` block
+      // and so was unreachable for every other state: the FDOT feed covering
+      // all 63 Florida counties was ingested and then never read. The source is
+      // resolved from the region registry (atrSourceForRegion); a region with
+      // no registered feed skips the query entirely.
+      //
+      // Radius is per-source (atrRadiusForSource): 1.0 mi for the dense local
+      // programs, 3.0 mi for the national continuous-count network, whose
+      // permanent stations sit roughly one per corridor.
+      {
+        const atrResult = project.resultPayload as Record<string, unknown> | null;
+        const atrSource = atrSourceForRegion(region);
+        if (atrSource && atrResult && typeof atrResult === "object") {
+          try {
+            const s = await atrSegmentsNearPoint({
+              lat, lon, radiusMi: atrRadiusForSource(atrSource),
+              windowYears: atrWindowYearsForSource(atrSource), source: atrSource,
+              // Local-hour bucketing follows the STUDY's region, not Eastern —
+              // otherwise a California AM peak reads three hours late.
+              timeZone: atrTimeZoneForRegion(region),
+            });
+            if (s.segments.length > 0) {
+              // Generic field, so a renderer for any metro can read it.
+              atrResult.atrSummary = s;
+              // Mirror for back-compat: studies stored before the multi-source
+              // change, and the NY renderer, read `nycAtrSummary`.
+              if (s.source === "nyc_dot_atr") atrResult.nycAtrSummary = s;
+            }
+          } catch {
+            // Fails open: the K-factor-derived table stands alone.
+          }
+        }
+      }
+
       // FL — three parallel live-data enrichments:
       //   (a) precise crash records from FDOT SSO ingest (fdot_sso, 10y
       //       window — public extract is stale after 2019).
@@ -1276,7 +1319,8 @@ function dispatchTisRender(
       renderFourStepSection(doc, result);
       renderCapacityAppendix(doc, intersections, periods,
         Number(result.intersectionsInStudyArea) || intersections.length,
-        Number(result.studyRadiusMi) || 0.5);
+        Number(result.studyRadiusMi) || 0.5,
+        Number(result.intersectionsMergedAsDuplicates) || 0);
     }
   } finally {
     velocityPaletteActive = false;
@@ -1468,6 +1512,12 @@ function renderTis(doc: PDFKit.PDFDocument, r: any) {
     tripGenExternalNote(doc, periods);
     doc.moveDown(1);
   }
+
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "",
+    headingFn: (d, t) => section(d, t.replace(/^\s+/, "")),
+    cap: 20,
+  });
 
   // Affected intersections table — three scenarios stacked per standard
   // TIS convention: Existing (current year) / No-Build (opening year,
@@ -1730,7 +1780,7 @@ function renderTisGeorgia(
   gaSubsection(doc, "2.1 Growth Rate");
   if (r.growthSource) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Background traffic growth is applied at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from measured per-segment compound annual growth at GDOT count stations within the study metro. Source: ${r.growthSource}. The metro-level median is published here for transparency. For DRI submittals, the growth rate is typically refined to per-segment trend on the affected facilities and agreed upon during the pre-application methodology meeting with GTEA, ARC, GDOT, and the local jurisdiction.`,
+      `Background traffic growth is applied at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, ${isGrowthOverride(r.growthSource) ? `applied as an explicit override, not derived from measured data. ${r.growthSource}` : `derived from measured per-segment compound annual growth at GDOT count stations within the study metro. Source: ${r.growthSource}. The metro-level median is published here for transparency.`} For DRI submittals, the growth rate is typically refined to per-segment trend on the affected facilities and agreed upon during the pre-application methodology meeting with GTEA, ARC, GDOT, and the local jurisdiction.`,
       { paragraphGap: 6 },
     );
   } else {
@@ -1815,6 +1865,15 @@ function renderTisGeorgia(
   doc.moveDown(0.5);
 
   // --- §4 Trip Generation (detailed) -------------------------------------
+  // Measured agency counts, when this study's state has an ingested feed and a
+  // station falls within the search radius. Renders nothing otherwise, so a
+  // study with no coverage is byte-identical.
+  renderAtrMeasuredVolumes(doc, (r as any).atrSummary, {
+    headingFn: (_doc, title) => gaSubsection(doc, title),
+    heading: "3.6 Measured Traffic Counts (Supplemental)",
+    estimateBasis: "the existing volumes underlying §3.5",
+  });
+
   gaSection(doc, "4.0 TRIP GENERATION");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Net new trips applied to the study network are calculated by subtracting pass-by capture and internal capture from the gross trip generation. Gross trip rates are drawn from public data (SANDAG 2002 / NHTS 2017 / NCHRP 716); a submittal-grade study should confirm rates against the jurisdiction-approved source.",
@@ -2740,10 +2799,19 @@ function renderTisCalifornia(
     { paragraphGap: 6 },
   );
 
+  // Measured agency counts, when this study's state has an ingested feed and a
+  // station falls within the search radius. Renders nothing otherwise, so a
+  // study with no coverage is byte-identical.
+  renderAtrMeasuredVolumes(doc, (r as any).atrSummary, {
+    headingFn: (_doc, title) => caSubsection(doc, title),
+    heading: "4.1a Measured Traffic Counts (Supplemental)",
+    estimateBasis: "the operational volumes used in this non-CEQA analysis",
+  });
+
   caSubsection(doc, "4.2 Trip Generation");
   if (r.growthSource) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Gross trip generation is calculated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Background traffic growth is applied at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from measured per-segment compound annual growth at Caltrans count stations within the study metro. Source: ${r.growthSource}. Pass-by capture applied: ${r.passByPctApplied ?? 0}%; internal capture applied: ${r.internalCapturePctApplied ?? 0}%.`,
+      `Gross trip generation is calculated per the public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for land use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? ""}) at the proposed development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Background traffic growth is applied at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, ${isGrowthOverride(r.growthSource) ? `applied as an explicit override, not derived from measured data. ${r.growthSource}` : `derived from measured per-segment compound annual growth at Caltrans count stations within the study metro. Source: ${r.growthSource}.`} Pass-by capture applied: ${r.passByPctApplied ?? 0}%; internal capture applied: ${r.internalCapturePctApplied ?? 0}%.`,
       { paragraphGap: 6 },
     );
   } else {
@@ -3174,6 +3242,12 @@ function renderTisGeorgiaWorksheet(
   doc.moveDown(0.3);
 
   // --- §4 Tier Determination -------------------------------------------
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "3.1",
+    headingFn: gaSubsection,
+    cap: 20,
+  });
+
   gaSection(doc, "4.0 WORKSHEET-TIER DETERMINATION");
   doc.font("body").fontSize(10).fillColor("black").text(
     `Per Gwinnett County DOT TIS Guidelines (2023) Table 1, projects generating 0–20 peak-hour site-generated automobile trips qualify as Level 1. The proposed development estimate of ${fmtNum(tierInput.pmPeakTrips)} PM peak-hour trips falls within this band; accordingly, no Level 2 (Abbreviated) or Level 3 (Full) TIS is required. The GTEA equivalent (Limited Trip Generation Memo per the GRTA DRI Review Procedures, applicable when Net ADT < 1,000) is also satisfied at ${fmtNum(tierInput.dailyTrips)} daily trips.`,
@@ -3384,7 +3458,7 @@ function renderTisGeorgiaAbbreviated(
   gaSubsection(doc, "6.1 Future ADT Volumes");
   if (r.growthSource) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Future-year ADT volumes are calculated by applying background traffic growth at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year (derived from the measured per-segment compound annual growth rate at GDOT count stations within the study metro; source: ${r.growthSource}) to existing volumes, then layering the proposed development's site-generated daily trips (${fmtNum(tierInput.dailyTrips)} vpd gross) net of any pass-by and internal capture credits.`,
+      `Future-year ADT volumes are calculated by applying background traffic growth at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year ${isGrowthOverride(r.growthSource) ? `(an explicit override, not derived from measured data — ${r.growthSource})` : `(derived from the measured per-segment compound annual growth rate at GDOT count stations within the study metro; source: ${r.growthSource})`} to existing volumes, then layering the proposed development's site-generated daily trips (${fmtNum(tierInput.dailyTrips)} vpd gross) net of any pass-by and internal capture credits.`,
       { paragraphGap: 6 },
     );
   } else {
@@ -3416,6 +3490,12 @@ function renderTisGeorgiaAbbreviated(
     "Directional distribution of site-generated trips is based on the existing roadway network geometry, proximity to project access points, regional travel patterns from the ARC Activity-Based Model (ABM2), and engineering judgment. Assignment to the study network follows a proportional allocation by signal proximity and approach geometry; the per-intersection allocation is reflected in the §7 Traffic Operation Analysis below. For final submittal, distribution percentages should be confirmed during the methodology meeting with Gwinnett County DOT, GDOT District 7, and (where applicable) GTEA.",
     { paragraphGap: 6 },
   );
+
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "6.2.1",
+    headingFn: gaSubsection,
+    cap: 20,
+  });
 
   gaSubsection(doc, "6.3 Pass-By and Trip-Generation Reduction Assumptions");
   rows(doc, [
@@ -5368,6 +5448,12 @@ function renderTisTexasWorksheet(
   doc.moveDown(0.3);
 
   // --- §4 Worksheet-Tier Determination ---------------------------------
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "3.1",
+    headingFn: gaSubsection,
+    cap: 20,
+  });
+
   gaSection(doc, "4.0 WORKSHEET-TIER DETERMINATION");
   const determinationText = {
     houston: `Per IDM Ch. 15 (revision 07-01-2022), projects below the Category III Full TIA scoping threshold are gated through one of three lower tiers: Access Management Form (driveway-only review), Technical Memorandum (80–120 PHT band per §15.04.A.5), or Category I TIA (<100 PHT per Table 15.04.01). ≥100 PHT triggers a scoping meeting that determines whether a full TIA is required (§15.04.A.4.a). The screened ${fmtNum(pht)} PM PHT and ${fmtNum(daily)} daily trips route this project to ${houstonSubTier}.`,
@@ -5526,6 +5612,12 @@ function renderTisTexasAbbreviated(
   doc.moveDown(0.4);
 
   // --- §4 Tier Determination ------------------------------------------
+  renderTripDistributionSection(doc, r as any, {
+    subsectionNumber: "3.1",
+    headingFn: gaSubsection,
+    cap: 20,
+  });
+
   gaSection(doc, "4.0 ABBREVIATED-TIER DETERMINATION");
   const determinationText = {
     houston: `Per IDM Ch. 15 (revision 07-01-2022) Table 15.04.01, Category II covers the 100–499 PHT band. The screened ${fmtNum(pht)} PM PHT places this project within that band. The OCE TIA Content Guide outline is reduced relative to Category III — LOS analysis at the site-access intersections plus adjacent signalized intersections (LOS D threshold of significance per IDM §15.04.B.6.a), no full corridor-capacity sweep. The Access Management Data Summary Form remains required as a commercial-site companion regardless of TIA tier; CPC 101 Form is also required per TIA Content Guide p. 3.`,
@@ -5902,6 +5994,15 @@ function renderTisTexas(
     "Existing AADT for state-system segments is taken from the TxDOT Open Data Portal AADT layer (annual refresh). Peak-hour turning-movement counts at study intersections should be collected mid-week (Tue/Wed/Thu), school-in-session, within 12 months of submittal — per Houston IDM §15.06.01.A counts must be within 12 months in high-growth areas and within 24 months elsewhere; Austin TDS no longer accepts pre-COVID counts by default.",
     { paragraphGap: 6 },
   );
+  // Measured agency counts, when this study's state has an ingested feed and a
+  // station falls within the search radius. Renders nothing otherwise, so a
+  // study with no coverage is byte-identical.
+  renderAtrMeasuredVolumes(doc, (r as any).atrSummary, {
+    headingFn: (_doc, title) => gaSubsection(doc, title),
+    heading: "4.3a Measured Traffic Counts (Supplemental)",
+    estimateBasis: "the AADT-derived volumes in §4.3",
+  });
+
   gaSubsection(doc, "4.4 Level of Service");
   if (intersections.length > 0) {
     table(doc, {
@@ -5979,7 +6080,7 @@ function renderTisTexas(
   gaSubsection(doc, "5.4 Non-Site Traffic");
   if (r.growthSource) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Background traffic is grown at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from measured per-segment compound annual growth at TxDOT count stations within the study metro. Source: ${r.growthSource}. Per TSP §16.4.2, the prescribed method is to average at least the last five years of historical AADT data for the segment analyzed; the metro-level median published here is a starting point and should be refined to per-segment trend on the affected facilities before formal submittal. Background growth data is also commonly sourced from the host city or regional MPO travel-demand model (H-GAC, NCTCOG, CAMPO, or AAMPO depending on the MSA).`,
+      `Background traffic is grown at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, ${isGrowthOverride(r.growthSource) ? `applied as an explicit override, not derived from measured data. ${r.growthSource} Per TSP §16.4.2, the prescribed method is to average at least the last five years of historical AADT data for the segment analyzed; the rate applied here should be refined to per-segment trend on the affected facilities before formal submittal.` : `derived from measured per-segment compound annual growth at TxDOT count stations within the study metro. Source: ${r.growthSource}. Per TSP §16.4.2, the prescribed method is to average at least the last five years of historical AADT data for the segment analyzed; the metro-level median published here is a starting point and should be refined to per-segment trend on the affected facilities before formal submittal.`} Background growth data is also commonly sourced from the host city or regional MPO travel-demand model (H-GAC, NCTCOG, CAMPO, or AAMPO depending on the MSA).`,
       { paragraphGap: 6 },
     );
   } else {
@@ -8022,7 +8123,7 @@ function renderTisFlorida(
   gaSubsection(doc, "2.6 Growth Rate");
   if (r.growthSource) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Per FDOT TAH §2.7, demand projections should use the adopted regional MPO/TPO travel-demand model (TDM); where TDM use is not warranted, historical AADT trend growth from Florida Traffic Online (FTO) is the FDOT-wide convention. Background traffic is grown at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, derived from the measured per-segment compound annual growth rate across the FDOT TDA Annual_Average_Daily_Traffic_Historical layer. Source: ${r.growthSource}. The metro-level median is published here for transparency; for formal submittal, the FDOT District / FTO segment-level trend on the affected facilities is the authoritative input and should be confirmed at the methodology meeting.`,
+      `Per FDOT TAH §2.7, demand projections should use the adopted regional MPO/TPO travel-demand model (TDM); where TDM use is not warranted, historical AADT trend growth from Florida Traffic Online (FTO) is the FDOT-wide convention. Background traffic is grown at ${r.growthAppliedPct?.toFixed(2) ?? "—"}% per year, ${isGrowthOverride(r.growthSource) ? `applied as an explicit override, not derived from measured data. ${r.growthSource} The override is not an FTO or FDOT TDA trend` : `derived from the measured per-segment compound annual growth rate across the FDOT TDA Annual_Average_Daily_Traffic_Historical layer. Source: ${r.growthSource}. The metro-level median is published here for transparency`}; for formal submittal, the FDOT District / FTO segment-level trend on the affected facilities is the authoritative input and should be confirmed at the methodology meeting.`,
       { paragraphGap: 6 },
     );
   } else {
@@ -8226,7 +8327,23 @@ function renderTisFlorida(
 
   // --- 4.3 Daily Peak-Hour Traffic Volumes (collected counts, T4) --------
   const flTmsRows = intersections.filter((it: any) => it.tmscount && (it.tmscount.daily2way != null || it.tmscount.pmPeak2way != null));
-  if (flTmsRows.length > 0) {
+  // Florida gets FDOT counts two ways and the INGESTED path is the better one:
+  // directional rather than two-way, a windowed weekday peak rather than
+  // whatever the 08:00 and 17:00 hours happened to be, averaged over a
+  // multi-day sample rather than a single count day, and with the same-station
+  // year-over-year growth comparison the live path cannot produce. It also does
+  // not depend on an ArcGIS round trip completing inside the render budget.
+  //
+  // The live §4.3 stays as the FALLBACK rather than being deleted: ingested
+  // coverage is a sampled station set, and where it finds nothing near a site
+  // the live nearest-station query still can. Strictly better, never worse.
+  if (hasAtrVolumes((r as any).atrSummary)) {
+    renderAtrMeasuredVolumes(doc, (r as any).atrSummary, {
+      headingFn: (_doc, title) => gaSubsection(doc, title),
+      heading: "4.3 Measured Traffic Counts (FDOT Continuous / Short-Count Stations)",
+      estimateBasis: "the AADT-derived volumes in §4.2",
+    });
+  } else if (flTmsRows.length > 0) {
     gaSubsection(doc, "4.3 Daily Peak-Hour Traffic Volumes (Collected Counts)");
     doc.font("body").fontSize(10).fillColor("black").text(
       "Collected daily and peak-hour volumes at the nearest FDOT continuous / short-count monitoring station to each study segment, from a live query of the FDOT TMSCOUNT (Transportation Data & Analytics) service at render time. Volumes are two-way (summed across the station's counted directions); AM = the 08:00 hour and PM = the 17:00 hour of the station's directional hourly counts. A count station is not present at every study intersection; where none falls within range the row is omitted and project-specific counts are required at submittal.",
@@ -8516,9 +8633,17 @@ function renderTisFlorida(
   // --- 8.0 Queue Analysis -----------------------------------------------
   gaSection(doc, `8.0 QUEUE ANALYSIS (${openingYear})`);
   const queueRows = intersections.filter((it) => Number.isFinite(Number(it.queue95thFt)));
+  // Lane-group rows exist only where an imported Synchro/UTDF record gave a
+  // measured turn split (see laneGroupsForApproach in tis.ts). When any are
+  // present the section stops describing itself as worst-approach-only.
+  const laneGroupIts = intersections.filter(
+    (it: any) => Array.isArray(it.approaches) && it.approaches.some((a: any) => Array.isArray(a.laneGroups) && a.laneGroups.length > 0),
+  );
   if (queueRows.length > 0) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      "The 95th-percentile back-of-queue at each study intersection under Build conditions is summarized below (worst-approach basis). Queues are estimated from the standard cyclic-queue relation (Webster arrival/discharge form); a formal submittal should report per-lane-group queues from a Synchro / SimTraffic run and compare them to the available turn-lane storage evaluated in §9.0.",
+      laneGroupIts.length > 0
+        ? "The 95th-percentile back-of-queue at each study intersection under Build conditions is summarized below. Queues are estimated from the standard cyclic-queue relation (Webster arrival/discharge form). The table below reports the governing approach; where imported Synchro records supplied measured turning-movement counts, §8.1 reports the queue for each left / through / right lane group individually and compares it to that movement's own bay storage."
+        : "The 95th-percentile back-of-queue at each study intersection under Build conditions is summarized below (worst-approach basis). Queues are estimated from the standard cyclic-queue relation (Webster arrival/discharge form); a formal submittal should report per-lane-group queues from a Synchro / SimTraffic run and compare them to the available turn-lane storage evaluated in §9.0.",
       { paragraphGap: 6 },
     );
     table(doc, {
@@ -8539,6 +8664,14 @@ function renderTisFlorida(
     doc.fillColor("black");
   }
 
+  // --- 8.1 Per-lane-group queues (measured turn splits only) -------------
+  // Shared leaf module: renders nothing unless an import supplied real
+  // turning movements, so studies without one stay byte-identical.
+  renderLaneGroupQueues(doc, intersections as any[], {
+    headingFn: gaSubsection,
+    heading: "8.1 Lane-Group Queues at Intersections with Measured Turning Movements",
+  });
+
   // --- 9.0 Turn Lane Evaluation -----------------------------------------
   gaSection(doc, `9.0 TURN LANE EVALUATION (${openingYear})`);
   const storageRows = intersections.filter((it: any) => Number.isFinite(Number(it.existingStorageFt)) && Number.isFinite(Number(it.queue95thFt)));
@@ -8549,7 +8682,9 @@ function renderTisFlorida(
 
   gaSubsection(doc, "9.1 Turn-Lane Warrants");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `A turn-lane warrant is a movement-level screen: an exclusive left-turn lane is evaluated against the FDM Chapter 212 / NCHRP 745 left-turn-lane guidelines (a function of advancing volume, opposing volume, and posted speed), and an exclusive right-turn lane is conventionally warranted where the peak-hour right-turn volume exceeds roughly 40–60 vph (or the applicable local threshold, e.g., ${jur.name} land-development code). The proposed development adds approximately ${fmtNum(tg.pmIn)} inbound and ${fmtNum(tg.pmOut)} outbound trips in the PM peak hour, distributed to the site driveways and adjacent intersections. This screening decomposes those project-added trips into left / through / right movements at each study intersection — outbound trips enter on the site-facing leg and turn toward their destination sector, inbound is the mirror — and reports the result in the "Affected movements" table within each intersection's capacity worksheet, where the movement volumes cross-foot with that junction's added-trip total. What the screening does not carry is a measured EXISTING turning-movement split: warrant thresholds apply to the total movement volume (existing plus project), and only the project increment is decomposed here. A definitive turn-lane warrant determination — particularly at the site driveways connecting to the SHS — therefore remains subject to the AM/PM turning-movement counts and the trip distribution approved at the methodology meeting.`,
+    `A turn-lane warrant is a movement-level screen: an exclusive left-turn lane is evaluated against the FDM Chapter 212 / NCHRP 745 left-turn-lane guidelines (a function of advancing volume, opposing volume, and posted speed), and an exclusive right-turn lane is conventionally warranted where the peak-hour right-turn volume exceeds roughly 40–60 vph (or the applicable local threshold, e.g., ${jur.name} land-development code). The proposed development adds approximately ${fmtNum(tg.pmIn)} inbound and ${fmtNum(tg.pmOut)} outbound trips in the PM peak hour, distributed to the site driveways and adjacent intersections. This screening decomposes those project-added trips into left / through / right movements at each study intersection — outbound trips enter on the site-facing leg and turn toward their destination sector, inbound is the mirror — and reports the result in the "Affected movements" table within each intersection's capacity worksheet, where the movement volumes cross-foot with that junction's added-trip total. ${laneGroupIts.length > 0
+      ? `At the ${laneGroupIts.length} intersection(s) listed in §8.1 an imported Synchro record supplied measured existing turning movements, so the warrant screen there applies to the total movement volume (existing plus project). Everywhere else the screening does not carry a measured EXISTING turning-movement split: warrant thresholds apply to the total movement volume (existing plus project), and only the project increment is decomposed.`
+      : `What the screening does not carry is a measured EXISTING turning-movement split: warrant thresholds apply to the total movement volume (existing plus project), and only the project increment is decomposed here.`} A definitive turn-lane warrant determination — particularly at the site driveways connecting to the SHS — therefore remains subject to the AM/PM turning-movement counts and the trip distribution approved at the methodology meeting.`,
     { paragraphGap: 6 },
   );
 
@@ -9023,7 +9158,7 @@ function renderFourStepSection(
   const autoPct = Number.isFinite(autoShare) ? Math.round(autoShare * 100) : 100;
   doc.font("body").fontSize(9.5).fillColor("black").text(
     `Auto-mode share ${autoPct}% applied via a binary logit  P(auto) = 1 / (1 + e^-(ASC − λ·ΔGC))  calibrated to the `
-    + `metro's measured auto-mode share (ACS B08301) and shifted by site urbanity (local density), so a denser, more `
+    + `metro's auto-mode share — measured (ACS B08301) where the metro is wired, otherwise the ACS B08301 metropolitan median of 90% — and shifted by site urbanity (local density), so a denser, more `
     + `transit-served site splits further from auto than a greenfield parcel in the same metro. The remaining `
     + `${100 - autoPct}% of trips (transit, walking, cycling) do not load the off-site roadway network; only auto `
     + `trips are carried into Step 4.`,
@@ -9090,6 +9225,7 @@ function renderCapacityAppendix(
   periods: any[],
   inStudyArea?: number,
   studyRadiusMi?: number,
+  mergedAsDuplicates?: number,
 ) {
   doc.addPage();
   gaSection(doc, "APPENDIX — INTERSECTION CAPACITY ANALYSIS WORKSHEETS");
@@ -9100,18 +9236,20 @@ function renderCapacityAppendix(
     + "back-of-queue (ft) are reported for the Existing (No-Build) and Build conditions.",
     { paragraphGap: 4 },
   );
-  // Scope transparency: state how many signals are in the study area vs. how many
-  // were analyzed, and why, when the impact-significance scope trimmed the set.
+  // Scope transparency: reconcile the study set against the study area, naming
+  // the ACTUAL reason any record is absent. `intersectionsInStudyArea` is the
+  // raw in-radius inventory (#191), which counts a junction once per approach —
+  // reporting that as an intersection count made a correct analysis look like it
+  // had skipped half the study area. See study-scope-note.ts.
   const analyzed = intersections.length;
-  if (inStudyArea && inStudyArea > analyzed) {
-    const radius = studyRadiusMi && studyRadiusMi > 0 ? studyRadiusMi : 0.5;
-    doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
-      `Study scope: ${inStudyArea} signalized intersections lie within the ${radius}-mile study area; `
-      + `${analyzed} are carried as study intersections — the site frontage/adjacent intersections plus those the `
-      + `project materially impacts. The remainder receive net new site traffic below the impact-significance `
-      + `threshold (de-minimis, per ITE MTIASD §2.2) and are not analyzed individually.`,
-      { paragraphGap: 8 },
-    );
+  const scopeNote = buildStudyScopeNote({
+    inRadiusRecords: inStudyArea ?? analyzed,
+    mergedAsDuplicates: mergedAsDuplicates ?? 0,
+    analyzed,
+    studyRadiusMi: studyRadiusMi && studyRadiusMi > 0 ? studyRadiusMi : 0.5,
+  });
+  if (scopeNote) {
+    doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(scopeNote, { paragraphGap: 8 });
   }
   doc.font("body").fontSize(9).fillColor("#b45309").text(
     "Background turning-movement volumes in the diagrams are distributed from each approach total using an "
