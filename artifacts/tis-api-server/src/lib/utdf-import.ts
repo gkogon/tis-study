@@ -62,7 +62,13 @@ export type UtdfVolumes = {
   heavyVehiclesPct?: Partial<Record<UtdfMovement, number>>;
 };
 
-export type UtdfLaneInfo = { lanes?: number; storageFt?: number; widthFt?: number };
+export type UtdfLaneInfo = {
+  lanes?: number;
+  storageFt?: number;
+  widthFt?: number;
+  /** Phase number serving this movement, from the [Lanes] Phase1 record. */
+  phase?: number;
+};
 
 export type UtdfLanes = {
   intId: number;
@@ -352,8 +358,9 @@ function parseLanes(sec: Section, doc: UtdfDocument): void {
         record === "lanes" ? "lanes"
         : record === "storage" ? "storageFt"
         : record === "width" ? "widthFt"
+        : record === "phase1" ? "phase"
         : null;
-      if (!field) continue; // Shared, Grade, Phase1... — real but unconsumed
+      if (!field) continue; // Shared, Grade, ... — real but unconsumed
       for (const { idx, mv } of cols.std) {
         const v = num(r[idx]);
         if (v === undefined) continue;
@@ -369,6 +376,7 @@ function parseLanes(sec: Section, doc: UtdfDocument): void {
   const iLanes = col(sec.header, "Lanes");
   const iWidth = col(sec.header, "Width");
   const iStorage = col(sec.header, "Storage");
+  const iPhase1 = col(sec.header, "Phase1");
   if (iName < 0) { doc.warnings.push("[Lanes] layout not recognised — skipped"); return; }
   for (const r of sec.rows) {
     const intId = num(r[iId]);
@@ -379,6 +387,7 @@ function parseLanes(sec: Section, doc: UtdfDocument): void {
       lanes: iLanes >= 0 ? num(r[iLanes]) : undefined,
       widthFt: iWidth >= 0 ? num(r[iWidth]) : undefined,
       storageFt: iStorage >= 0 ? num(r[iStorage]) : undefined,
+      ...(iPhase1 >= 0 && num(r[iPhase1]) !== undefined ? { phase: num(r[iPhase1]) } : {}),
     };
   }
 }

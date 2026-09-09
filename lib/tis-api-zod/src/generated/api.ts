@@ -159,6 +159,10 @@ export const generateTisBodyUtdfIntersectionsItemLanesOneWBRMin = 0;
 export const generateTisBodyUtdfIntersectionsItemCycleLenSecMin = 30;
 export const generateTisBodyUtdfIntersectionsItemCycleLenSecMax = 300;
 
+export const generateTisBodyUtdfIntersectionsItemPhaseByMovementMaxOne = 16;
+
+export const generateTisBodyUtdfIntersectionsItemSplitSByPhaseMaxOne = 300;
+
 export const generateTisBodyUtdfIntersectionsMax = 60;
 
 export const generateTisBodyExistingLandUseCodeMin = 2;
@@ -166,6 +170,7 @@ export const generateTisBodyExistingLandUseCodeMin = 2;
 export const generateTisBodyExistingSizeMin = 0;
 
 export const generateTisBodyConservedAssignmentDefault = true;
+export const generateTisBodySignalTimingDefault = `computed`;
 export const generateTisBodyDrivewaysItemLatitudeMin = -90;
 export const generateTisBodyDrivewaysItemLatitudeMax = 90;
 
@@ -507,6 +512,30 @@ export const GenerateTisBody = zod.object({
             .describe(
               "Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.",
             ),
+          phaseByMovement: zod
+            .record(
+              zod.string(),
+              zod
+                .number()
+                .min(1)
+                .max(generateTisBodyUtdfIntersectionsItemPhaseByMovementMaxOne),
+            )
+            .optional()
+            .describe(
+              "Phase number serving each movement (NBL, NBT, ... WBR), from the file's [Lanes] Phase1 record. Together with splitSByPhase this is a complete measured g\/C per movement with no NEMA phase-numbering guesswork: a left whose phase differs from its through's phase is protected. Absent when the file carried no Phase1 row (a Synchro report PDF typically will not), in which case the intersection's timing degrades to measured-cycle (cycle from the file, splits computed).",
+            ),
+          splitSByPhase: zod
+            .record(
+              zod.string(),
+              zod
+                .number()
+                .min(1)
+                .max(generateTisBodyUtdfIntersectionsItemSplitSByPhaseMaxOne),
+            )
+            .optional()
+            .describe(
+              "Split (max green) seconds by phase number, from the file's [Timings] section. Effective green is taken as split minus 5 s lost time.",
+            ),
         })
         .describe(
           "Measured data for ONE intersection imported from Synchro — either a UTDF text export (\/utdf\/parse) or a Synchro report PDF (\/utdf\/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
@@ -543,11 +572,17 @@ export const GenerateTisBody = zod.object({
     .describe(
       "Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output.",
     ),
+  signalTiming: zod
+    .enum(["computed", "screening"])
+    .default(generateTisBodySignalTimingDefault)
+    .describe(
+      "Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g\/C. `screening`: the legacy flat 90 s cycle \/ g\/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`.",
+    ),
   realLaneGeometry: zod
     .boolean()
     .optional()
     .describe(
-      "Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output.",
+      "Size approach and lane-group capacity with real through-lane counts (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Precedence per approach: the imported Synchro [Lanes] count > the OSM through-lane count on the road the signal was matched to > one lane. Each approach reports throughLanes and lanesSource. Omitted or true uses real geometry; explicit false pins the one-lane legacy basis everywhere, byte-identical to the pre-change output.",
     ),
   driveways: zod
     .array(
@@ -727,6 +762,10 @@ export const generateTisResponseRequestUtdfIntersectionsItemLanesOneWBRMin = 0;
 export const generateTisResponseRequestUtdfIntersectionsItemCycleLenSecMin = 30;
 export const generateTisResponseRequestUtdfIntersectionsItemCycleLenSecMax = 300;
 
+export const generateTisResponseRequestUtdfIntersectionsItemPhaseByMovementMaxOne = 16;
+
+export const generateTisResponseRequestUtdfIntersectionsItemSplitSByPhaseMaxOne = 300;
+
 export const generateTisResponseRequestUtdfIntersectionsMax = 60;
 
 export const generateTisResponseRequestExistingLandUseCodeMin = 2;
@@ -734,6 +773,7 @@ export const generateTisResponseRequestExistingLandUseCodeMin = 2;
 export const generateTisResponseRequestExistingSizeMin = 0;
 
 export const generateTisResponseRequestConservedAssignmentDefault = true;
+export const generateTisResponseRequestSignalTimingDefault = `computed`;
 export const generateTisResponseRequestDrivewaysItemLatitudeMin = -90;
 export const generateTisResponseRequestDrivewaysItemLatitudeMax = 90;
 
@@ -742,9 +782,19 @@ export const generateTisResponseRequestDrivewaysItemLongitudeMax = 180;
 
 export const generateTisResponseRequestDrivewaysMax = 12;
 
+export const generateTisResponseAffectedIntersectionsItemApproachesItemThroughLanesMax = 6;
+
 export const generateTisResponseAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax = 6;
 
+export const generateTisResponseAffectedIntersectionsItemSignalTimingCriticalPhasesMin = 2;
+export const generateTisResponseAffectedIntersectionsItemSignalTimingCriticalPhasesMax = 4;
+
+export const generateTisResponsePeriodReportsItemAffectedIntersectionsItemApproachesItemThroughLanesMax = 6;
+
 export const generateTisResponsePeriodReportsItemAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax = 6;
+
+export const generateTisResponsePeriodReportsItemAffectedIntersectionsItemSignalTimingCriticalPhasesMin = 2;
+export const generateTisResponsePeriodReportsItemAffectedIntersectionsItemSignalTimingCriticalPhasesMax = 4;
 
 export const GenerateTisResponse = zod.object({
   generatedAt: zod.string(),
@@ -1175,6 +1225,34 @@ export const GenerateTisResponse = zod.object({
               .describe(
                 "Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.",
               ),
+            phaseByMovement: zod
+              .record(
+                zod.string(),
+                zod
+                  .number()
+                  .min(1)
+                  .max(
+                    generateTisResponseRequestUtdfIntersectionsItemPhaseByMovementMaxOne,
+                  ),
+              )
+              .optional()
+              .describe(
+                "Phase number serving each movement (NBL, NBT, ... WBR), from the file's [Lanes] Phase1 record. Together with splitSByPhase this is a complete measured g\/C per movement with no NEMA phase-numbering guesswork: a left whose phase differs from its through's phase is protected. Absent when the file carried no Phase1 row (a Synchro report PDF typically will not), in which case the intersection's timing degrades to measured-cycle (cycle from the file, splits computed).",
+              ),
+            splitSByPhase: zod
+              .record(
+                zod.string(),
+                zod
+                  .number()
+                  .min(1)
+                  .max(
+                    generateTisResponseRequestUtdfIntersectionsItemSplitSByPhaseMaxOne,
+                  ),
+              )
+              .optional()
+              .describe(
+                "Split (max green) seconds by phase number, from the file's [Timings] section. Effective green is taken as split minus 5 s lost time.",
+              ),
           })
           .describe(
             "Measured data for ONE intersection imported from Synchro — either a UTDF text export (\/utdf\/parse) or a Synchro report PDF (\/utdf\/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
@@ -1211,11 +1289,17 @@ export const GenerateTisResponse = zod.object({
       .describe(
         "Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output.",
       ),
+    signalTiming: zod
+      .enum(["computed", "screening"])
+      .default(generateTisResponseRequestSignalTimingDefault)
+      .describe(
+        "Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g\/C. `screening`: the legacy flat 90 s cycle \/ g\/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`.",
+      ),
     realLaneGeometry: zod
       .boolean()
       .optional()
       .describe(
-        "Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output.",
+        "Size approach and lane-group capacity with real through-lane counts (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Precedence per approach: the imported Synchro [Lanes] count > the OSM through-lane count on the road the signal was matched to > one lane. Each approach reports throughLanes and lanesSource. Omitted or true uses real geometry; explicit false pins the one-lane legacy basis everywhere, byte-identical to the pre-change output.",
       ),
     driveways: zod
       .array(
@@ -1360,6 +1444,14 @@ export const GenerateTisResponse = zod.object({
             ),
           futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
           queue95thFt: zod.number(),
+          throughLanes: zod
+            .number()
+            .min(1)
+            .max(
+              generateTisResponseAffectedIntersectionsItemApproachesItemThroughLanesMax,
+            )
+            .optional(),
+          lanesSource: zod.enum(["import", "osm"]).optional(),
           currentVolumeVph: zod
             .number()
             .optional()
@@ -1387,6 +1479,7 @@ export const GenerateTisResponse = zod.object({
                     generateTisResponseAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax,
                   )
                   .optional(),
+                lanesSource: zod.enum(["import", "osm"]).optional(),
                 capacityVph: zod.number().optional(),
               }),
             )
@@ -1424,6 +1517,51 @@ export const GenerateTisResponse = zod.object({
       existingStorageFt: zod.number().optional(),
       storageMovement: zod.string().optional(),
       utdfCycleLenSec: zod.number().optional(),
+      signalTiming: zod
+        .object({
+          basis: zod
+            .enum([
+              "measured",
+              "measured-cycle",
+              "webster",
+              "screening-default",
+            ])
+            .describe(
+              "measured = cycle AND per-movement splits from a source; measured-cycle = cycle from a source, splits computed; webster = computed from no-build volumes; screening-default = volumes absent or the intersection is at\/over saturation (Y >= 0.85), where Webster is not applicable and the flat 90 s \/ 0.45 is reported instead.",
+            ),
+          source: zod
+            .string()
+            .optional()
+            .describe("Measured source, e.g. synchro."),
+          cycleLenSec: zod.number(),
+          criticalPhases: zod
+            .number()
+            .min(
+              generateTisResponseAffectedIntersectionsItemSignalTimingCriticalPhasesMin,
+            )
+            .max(
+              generateTisResponseAffectedIntersectionsItemSignalTimingCriticalPhasesMax,
+            ),
+          gOverCns: zod.number(),
+          gOverCew: zod.number(),
+          gOverCnsLeft: zod.number().optional(),
+          gOverCewLeft: zod.number().optional(),
+          leftPhasingNs: zod.enum(["protected", "permissive"]),
+          leftPhasingEw: zod.enum(["protected", "permissive"]),
+          leftPhasingSource: zod
+            .enum(["import", "explicit", "inferred", "default"])
+            .optional()
+            .describe(
+              "import = a Synchro record mapped each left to its own phase (or not); inferred = FHWA-HRT-04-091 cross product of left-turn and opposing through volume against 50,000 \/ 90,000 \/ 110,000 by opposing through lanes; default = screening.",
+            ),
+          criticalFlowRatio: zod
+            .number()
+            .optional()
+            .describe("Webster's Y — sum of critical flow ratios."),
+          pedMinGreenNsSec: zod.number().optional(),
+          pedMinGreenEwSec: zod.number().optional(),
+        })
+        .optional(),
     }),
   ),
   intersectionsStudied: zod.number(),
@@ -1536,6 +1674,14 @@ export const GenerateTisResponse = zod.object({
                 ),
               futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
               queue95thFt: zod.number(),
+              throughLanes: zod
+                .number()
+                .min(1)
+                .max(
+                  generateTisResponsePeriodReportsItemAffectedIntersectionsItemApproachesItemThroughLanesMax,
+                )
+                .optional(),
+              lanesSource: zod.enum(["import", "osm"]).optional(),
               currentVolumeVph: zod
                 .number()
                 .optional()
@@ -1563,6 +1709,7 @@ export const GenerateTisResponse = zod.object({
                         generateTisResponsePeriodReportsItemAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax,
                       )
                       .optional(),
+                    lanesSource: zod.enum(["import", "osm"]).optional(),
                     capacityVph: zod.number().optional(),
                   }),
                 )
@@ -1600,6 +1747,51 @@ export const GenerateTisResponse = zod.object({
           existingStorageFt: zod.number().optional(),
           storageMovement: zod.string().optional(),
           utdfCycleLenSec: zod.number().optional(),
+          signalTiming: zod
+            .object({
+              basis: zod
+                .enum([
+                  "measured",
+                  "measured-cycle",
+                  "webster",
+                  "screening-default",
+                ])
+                .describe(
+                  "measured = cycle AND per-movement splits from a source; measured-cycle = cycle from a source, splits computed; webster = computed from no-build volumes; screening-default = volumes absent or the intersection is at\/over saturation (Y >= 0.85), where Webster is not applicable and the flat 90 s \/ 0.45 is reported instead.",
+                ),
+              source: zod
+                .string()
+                .optional()
+                .describe("Measured source, e.g. synchro."),
+              cycleLenSec: zod.number(),
+              criticalPhases: zod
+                .number()
+                .min(
+                  generateTisResponsePeriodReportsItemAffectedIntersectionsItemSignalTimingCriticalPhasesMin,
+                )
+                .max(
+                  generateTisResponsePeriodReportsItemAffectedIntersectionsItemSignalTimingCriticalPhasesMax,
+                ),
+              gOverCns: zod.number(),
+              gOverCew: zod.number(),
+              gOverCnsLeft: zod.number().optional(),
+              gOverCewLeft: zod.number().optional(),
+              leftPhasingNs: zod.enum(["protected", "permissive"]),
+              leftPhasingEw: zod.enum(["protected", "permissive"]),
+              leftPhasingSource: zod
+                .enum(["import", "explicit", "inferred", "default"])
+                .optional()
+                .describe(
+                  "import = a Synchro record mapped each left to its own phase (or not); inferred = FHWA-HRT-04-091 cross product of left-turn and opposing through volume against 50,000 \/ 90,000 \/ 110,000 by opposing through lanes; default = screening.",
+                ),
+              criticalFlowRatio: zod
+                .number()
+                .optional()
+                .describe("Webster's Y — sum of critical flow ratios."),
+              pedMinGreenNsSec: zod.number().optional(),
+              pedMinGreenEwSec: zod.number().optional(),
+            })
+            .optional(),
         }),
       ),
       intersectionsWithLosDrop: zod.number(),
@@ -1893,6 +2085,10 @@ export const parseUtdfFileResponseUtdfIntersectionsItemLanesOneWBRMin = 0;
 export const parseUtdfFileResponseUtdfIntersectionsItemCycleLenSecMin = 30;
 export const parseUtdfFileResponseUtdfIntersectionsItemCycleLenSecMax = 300;
 
+export const parseUtdfFileResponseUtdfIntersectionsItemPhaseByMovementMaxOne = 16;
+
+export const parseUtdfFileResponseUtdfIntersectionsItemSplitSByPhaseMaxOne = 300;
+
 export const ParseUtdfFileResponse = zod.object({
   nodes: zod.array(
     zod.object({
@@ -2122,6 +2318,34 @@ export const ParseUtdfFileResponse = zod.object({
             .describe(
               "Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.",
             ),
+          phaseByMovement: zod
+            .record(
+              zod.string(),
+              zod
+                .number()
+                .min(1)
+                .max(
+                  parseUtdfFileResponseUtdfIntersectionsItemPhaseByMovementMaxOne,
+                ),
+            )
+            .optional()
+            .describe(
+              "Phase number serving each movement (NBL, NBT, ... WBR), from the file's [Lanes] Phase1 record. Together with splitSByPhase this is a complete measured g\/C per movement with no NEMA phase-numbering guesswork: a left whose phase differs from its through's phase is protected. Absent when the file carried no Phase1 row (a Synchro report PDF typically will not), in which case the intersection's timing degrades to measured-cycle (cycle from the file, splits computed).",
+            ),
+          splitSByPhase: zod
+            .record(
+              zod.string(),
+              zod
+                .number()
+                .min(1)
+                .max(
+                  parseUtdfFileResponseUtdfIntersectionsItemSplitSByPhaseMaxOne,
+                ),
+            )
+            .optional()
+            .describe(
+              "Split (max green) seconds by phase number, from the file's [Timings] section. Effective green is taken as split minus 5 s lost time.",
+            ),
         })
         .describe(
           "Measured data for ONE intersection imported from Synchro — either a UTDF text export (\/utdf\/parse) or a Synchro report PDF (\/utdf\/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
@@ -2239,6 +2463,10 @@ export const parseSynchroPdfResponseUtdfIntersectionsItemLanesOneWBRMin = 0;
 
 export const parseSynchroPdfResponseUtdfIntersectionsItemCycleLenSecMin = 30;
 export const parseSynchroPdfResponseUtdfIntersectionsItemCycleLenSecMax = 300;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemPhaseByMovementMaxOne = 16;
+
+export const parseSynchroPdfResponseUtdfIntersectionsItemSplitSByPhaseMaxOne = 300;
 
 export const ParseSynchroPdfResponse = zod.object({
   nodes: zod.array(
@@ -2493,6 +2721,34 @@ export const ParseSynchroPdfResponse = zod.object({
             .describe(
               "Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.",
             ),
+          phaseByMovement: zod
+            .record(
+              zod.string(),
+              zod
+                .number()
+                .min(1)
+                .max(
+                  parseSynchroPdfResponseUtdfIntersectionsItemPhaseByMovementMaxOne,
+                ),
+            )
+            .optional()
+            .describe(
+              "Phase number serving each movement (NBL, NBT, ... WBR), from the file's [Lanes] Phase1 record. Together with splitSByPhase this is a complete measured g\/C per movement with no NEMA phase-numbering guesswork: a left whose phase differs from its through's phase is protected. Absent when the file carried no Phase1 row (a Synchro report PDF typically will not), in which case the intersection's timing degrades to measured-cycle (cycle from the file, splits computed).",
+            ),
+          splitSByPhase: zod
+            .record(
+              zod.string(),
+              zod
+                .number()
+                .min(1)
+                .max(
+                  parseSynchroPdfResponseUtdfIntersectionsItemSplitSByPhaseMaxOne,
+                ),
+            )
+            .optional()
+            .describe(
+              "Split (max green) seconds by phase number, from the file's [Timings] section. Effective green is taken as split minus 5 s lost time.",
+            ),
         })
         .describe(
           "Measured data for ONE intersection imported from Synchro — either a UTDF text export (\/utdf\/parse) or a Synchro report PDF (\/utdf\/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
@@ -2736,6 +2992,10 @@ export const getTisProjectResponseRequestOneUtdfIntersectionsItemLanesOneWBRMin 
 export const getTisProjectResponseRequestOneUtdfIntersectionsItemCycleLenSecMin = 30;
 export const getTisProjectResponseRequestOneUtdfIntersectionsItemCycleLenSecMax = 300;
 
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemPhaseByMovementMaxOne = 16;
+
+export const getTisProjectResponseRequestOneUtdfIntersectionsItemSplitSByPhaseMaxOne = 300;
+
 export const getTisProjectResponseRequestOneUtdfIntersectionsMax = 60;
 
 export const getTisProjectResponseRequestOneExistingLandUseCodeMin = 2;
@@ -2743,6 +3003,7 @@ export const getTisProjectResponseRequestOneExistingLandUseCodeMin = 2;
 export const getTisProjectResponseRequestOneExistingSizeMin = 0;
 
 export const getTisProjectResponseRequestOneConservedAssignmentDefault = true;
+export const getTisProjectResponseRequestOneSignalTimingDefault = `computed`;
 export const getTisProjectResponseRequestOneDrivewaysItemLatitudeMin = -90;
 export const getTisProjectResponseRequestOneDrivewaysItemLatitudeMax = 90;
 
@@ -2887,6 +3148,10 @@ export const getTisProjectResponseResultRequestUtdfIntersectionsItemLanesOneWBRM
 export const getTisProjectResponseResultRequestUtdfIntersectionsItemCycleLenSecMin = 30;
 export const getTisProjectResponseResultRequestUtdfIntersectionsItemCycleLenSecMax = 300;
 
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemPhaseByMovementMaxOne = 16;
+
+export const getTisProjectResponseResultRequestUtdfIntersectionsItemSplitSByPhaseMaxOne = 300;
+
 export const getTisProjectResponseResultRequestUtdfIntersectionsMax = 60;
 
 export const getTisProjectResponseResultRequestExistingLandUseCodeMin = 2;
@@ -2894,6 +3159,7 @@ export const getTisProjectResponseResultRequestExistingLandUseCodeMin = 2;
 export const getTisProjectResponseResultRequestExistingSizeMin = 0;
 
 export const getTisProjectResponseResultRequestConservedAssignmentDefault = true;
+export const getTisProjectResponseResultRequestSignalTimingDefault = `computed`;
 export const getTisProjectResponseResultRequestDrivewaysItemLatitudeMin = -90;
 export const getTisProjectResponseResultRequestDrivewaysItemLatitudeMax = 90;
 
@@ -2902,9 +3168,19 @@ export const getTisProjectResponseResultRequestDrivewaysItemLongitudeMax = 180;
 
 export const getTisProjectResponseResultRequestDrivewaysMax = 12;
 
+export const getTisProjectResponseResultAffectedIntersectionsItemApproachesItemThroughLanesMax = 6;
+
 export const getTisProjectResponseResultAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax = 6;
 
+export const getTisProjectResponseResultAffectedIntersectionsItemSignalTimingCriticalPhasesMin = 2;
+export const getTisProjectResponseResultAffectedIntersectionsItemSignalTimingCriticalPhasesMax = 4;
+
+export const getTisProjectResponseResultPeriodReportsItemAffectedIntersectionsItemApproachesItemThroughLanesMax = 6;
+
 export const getTisProjectResponseResultPeriodReportsItemAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax = 6;
+
+export const getTisProjectResponseResultPeriodReportsItemAffectedIntersectionsItemSignalTimingCriticalPhasesMin = 2;
+export const getTisProjectResponseResultPeriodReportsItemAffectedIntersectionsItemSignalTimingCriticalPhasesMax = 4;
 
 export const GetTisProjectResponse = zod
   .object({
@@ -3376,6 +3652,34 @@ export const GetTisProjectResponse = zod
                     .describe(
                       "Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.",
                     ),
+                  phaseByMovement: zod
+                    .record(
+                      zod.string(),
+                      zod
+                        .number()
+                        .min(1)
+                        .max(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemPhaseByMovementMaxOne,
+                        ),
+                    )
+                    .optional()
+                    .describe(
+                      "Phase number serving each movement (NBL, NBT, ... WBR), from the file's [Lanes] Phase1 record. Together with splitSByPhase this is a complete measured g\/C per movement with no NEMA phase-numbering guesswork: a left whose phase differs from its through's phase is protected. Absent when the file carried no Phase1 row (a Synchro report PDF typically will not), in which case the intersection's timing degrades to measured-cycle (cycle from the file, splits computed).",
+                    ),
+                  splitSByPhase: zod
+                    .record(
+                      zod.string(),
+                      zod
+                        .number()
+                        .min(1)
+                        .max(
+                          getTisProjectResponseRequestOneUtdfIntersectionsItemSplitSByPhaseMaxOne,
+                        ),
+                    )
+                    .optional()
+                    .describe(
+                      "Split (max green) seconds by phase number, from the file's [Timings] section. Effective green is taken as split minus 5 s lost time.",
+                    ),
                 })
                 .describe(
                   "Measured data for ONE intersection imported from Synchro — either a UTDF text export (\/utdf\/parse) or a Synchro report PDF (\/utdf\/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
@@ -3412,11 +3716,17 @@ export const GetTisProjectResponse = zod
             .describe(
               "Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output.",
             ),
+          signalTiming: zod
+            .enum(["computed", "screening"])
+            .default(getTisProjectResponseRequestOneSignalTimingDefault)
+            .describe(
+              "Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g\/C. `screening`: the legacy flat 90 s cycle \/ g\/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`.",
+            ),
           realLaneGeometry: zod
             .boolean()
             .optional()
             .describe(
-              "Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output.",
+              "Size approach and lane-group capacity with real through-lane counts (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Precedence per approach: the imported Synchro [Lanes] count > the OSM through-lane count on the road the signal was matched to > one lane. Each approach reports throughLanes and lanesSource. Omitted or true uses real geometry; explicit false pins the one-lane legacy basis everywhere, byte-identical to the pre-change output.",
             ),
           driveways: zod
             .array(
@@ -3929,6 +4239,34 @@ export const GetTisProjectResponse = zod
                   .describe(
                     "Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.",
                   ),
+                phaseByMovement: zod
+                  .record(
+                    zod.string(),
+                    zod
+                      .number()
+                      .min(1)
+                      .max(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemPhaseByMovementMaxOne,
+                      ),
+                  )
+                  .optional()
+                  .describe(
+                    "Phase number serving each movement (NBL, NBT, ... WBR), from the file's [Lanes] Phase1 record. Together with splitSByPhase this is a complete measured g\/C per movement with no NEMA phase-numbering guesswork: a left whose phase differs from its through's phase is protected. Absent when the file carried no Phase1 row (a Synchro report PDF typically will not), in which case the intersection's timing degrades to measured-cycle (cycle from the file, splits computed).",
+                  ),
+                splitSByPhase: zod
+                  .record(
+                    zod.string(),
+                    zod
+                      .number()
+                      .min(1)
+                      .max(
+                        getTisProjectResponseResultRequestUtdfIntersectionsItemSplitSByPhaseMaxOne,
+                      ),
+                  )
+                  .optional()
+                  .describe(
+                    "Split (max green) seconds by phase number, from the file's [Timings] section. Effective green is taken as split minus 5 s lost time.",
+                  ),
               })
               .describe(
                 "Measured data for ONE intersection imported from Synchro — either a UTDF text export (\/utdf\/parse) or a Synchro report PDF (\/utdf\/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
@@ -3965,11 +4303,17 @@ export const GetTisProjectResponse = zod
           .describe(
             "Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output.",
           ),
+        signalTiming: zod
+          .enum(["computed", "screening"])
+          .default(getTisProjectResponseResultRequestSignalTimingDefault)
+          .describe(
+            "Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g\/C. `screening`: the legacy flat 90 s cycle \/ g\/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`.",
+          ),
         realLaneGeometry: zod
           .boolean()
           .optional()
           .describe(
-            "Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output.",
+            "Size approach and lane-group capacity with real through-lane counts (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Precedence per approach: the imported Synchro [Lanes] count > the OSM through-lane count on the road the signal was matched to > one lane. Each approach reports throughLanes and lanesSource. Omitted or true uses real geometry; explicit false pins the one-lane legacy basis everywhere, byte-identical to the pre-change output.",
           ),
         driveways: zod
           .array(
@@ -4122,6 +4466,14 @@ export const GetTisProjectResponse = zod
                 ),
               futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
               queue95thFt: zod.number(),
+              throughLanes: zod
+                .number()
+                .min(1)
+                .max(
+                  getTisProjectResponseResultAffectedIntersectionsItemApproachesItemThroughLanesMax,
+                )
+                .optional(),
+              lanesSource: zod.enum(["import", "osm"]).optional(),
               currentVolumeVph: zod
                 .number()
                 .optional()
@@ -4149,6 +4501,7 @@ export const GetTisProjectResponse = zod
                         getTisProjectResponseResultAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax,
                       )
                       .optional(),
+                    lanesSource: zod.enum(["import", "osm"]).optional(),
                     capacityVph: zod.number().optional(),
                   }),
                 )
@@ -4186,6 +4539,51 @@ export const GetTisProjectResponse = zod
           existingStorageFt: zod.number().optional(),
           storageMovement: zod.string().optional(),
           utdfCycleLenSec: zod.number().optional(),
+          signalTiming: zod
+            .object({
+              basis: zod
+                .enum([
+                  "measured",
+                  "measured-cycle",
+                  "webster",
+                  "screening-default",
+                ])
+                .describe(
+                  "measured = cycle AND per-movement splits from a source; measured-cycle = cycle from a source, splits computed; webster = computed from no-build volumes; screening-default = volumes absent or the intersection is at\/over saturation (Y >= 0.85), where Webster is not applicable and the flat 90 s \/ 0.45 is reported instead.",
+                ),
+              source: zod
+                .string()
+                .optional()
+                .describe("Measured source, e.g. synchro."),
+              cycleLenSec: zod.number(),
+              criticalPhases: zod
+                .number()
+                .min(
+                  getTisProjectResponseResultAffectedIntersectionsItemSignalTimingCriticalPhasesMin,
+                )
+                .max(
+                  getTisProjectResponseResultAffectedIntersectionsItemSignalTimingCriticalPhasesMax,
+                ),
+              gOverCns: zod.number(),
+              gOverCew: zod.number(),
+              gOverCnsLeft: zod.number().optional(),
+              gOverCewLeft: zod.number().optional(),
+              leftPhasingNs: zod.enum(["protected", "permissive"]),
+              leftPhasingEw: zod.enum(["protected", "permissive"]),
+              leftPhasingSource: zod
+                .enum(["import", "explicit", "inferred", "default"])
+                .optional()
+                .describe(
+                  "import = a Synchro record mapped each left to its own phase (or not); inferred = FHWA-HRT-04-091 cross product of left-turn and opposing through volume against 50,000 \/ 90,000 \/ 110,000 by opposing through lanes; default = screening.",
+                ),
+              criticalFlowRatio: zod
+                .number()
+                .optional()
+                .describe("Webster's Y — sum of critical flow ratios."),
+              pedMinGreenNsSec: zod.number().optional(),
+              pedMinGreenEwSec: zod.number().optional(),
+            })
+            .optional(),
         }),
       ),
       intersectionsStudied: zod.number(),
@@ -4312,6 +4710,14 @@ export const GetTisProjectResponse = zod
                     ),
                   futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
                   queue95thFt: zod.number(),
+                  throughLanes: zod
+                    .number()
+                    .min(1)
+                    .max(
+                      getTisProjectResponseResultPeriodReportsItemAffectedIntersectionsItemApproachesItemThroughLanesMax,
+                    )
+                    .optional(),
+                  lanesSource: zod.enum(["import", "osm"]).optional(),
                   currentVolumeVph: zod
                     .number()
                     .optional()
@@ -4341,6 +4747,7 @@ export const GetTisProjectResponse = zod
                             getTisProjectResponseResultPeriodReportsItemAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax,
                           )
                           .optional(),
+                        lanesSource: zod.enum(["import", "osm"]).optional(),
                         capacityVph: zod.number().optional(),
                       }),
                     )
@@ -4380,6 +4787,51 @@ export const GetTisProjectResponse = zod
               existingStorageFt: zod.number().optional(),
               storageMovement: zod.string().optional(),
               utdfCycleLenSec: zod.number().optional(),
+              signalTiming: zod
+                .object({
+                  basis: zod
+                    .enum([
+                      "measured",
+                      "measured-cycle",
+                      "webster",
+                      "screening-default",
+                    ])
+                    .describe(
+                      "measured = cycle AND per-movement splits from a source; measured-cycle = cycle from a source, splits computed; webster = computed from no-build volumes; screening-default = volumes absent or the intersection is at\/over saturation (Y >= 0.85), where Webster is not applicable and the flat 90 s \/ 0.45 is reported instead.",
+                    ),
+                  source: zod
+                    .string()
+                    .optional()
+                    .describe("Measured source, e.g. synchro."),
+                  cycleLenSec: zod.number(),
+                  criticalPhases: zod
+                    .number()
+                    .min(
+                      getTisProjectResponseResultPeriodReportsItemAffectedIntersectionsItemSignalTimingCriticalPhasesMin,
+                    )
+                    .max(
+                      getTisProjectResponseResultPeriodReportsItemAffectedIntersectionsItemSignalTimingCriticalPhasesMax,
+                    ),
+                  gOverCns: zod.number(),
+                  gOverCew: zod.number(),
+                  gOverCnsLeft: zod.number().optional(),
+                  gOverCewLeft: zod.number().optional(),
+                  leftPhasingNs: zod.enum(["protected", "permissive"]),
+                  leftPhasingEw: zod.enum(["protected", "permissive"]),
+                  leftPhasingSource: zod
+                    .enum(["import", "explicit", "inferred", "default"])
+                    .optional()
+                    .describe(
+                      "import = a Synchro record mapped each left to its own phase (or not); inferred = FHWA-HRT-04-091 cross product of left-turn and opposing through volume against 50,000 \/ 90,000 \/ 110,000 by opposing through lanes; default = screening.",
+                    ),
+                  criticalFlowRatio: zod
+                    .number()
+                    .optional()
+                    .describe("Webster's Y — sum of critical flow ratios."),
+                  pedMinGreenNsSec: zod.number().optional(),
+                  pedMinGreenEwSec: zod.number().optional(),
+                })
+                .optional(),
             }),
           ),
           intersectionsWithLosDrop: zod.number(),

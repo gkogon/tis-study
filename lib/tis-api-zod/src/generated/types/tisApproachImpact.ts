@@ -8,6 +8,7 @@
 import type { TisApproachImpactCurrentLos } from "./tisApproachImpactCurrentLos";
 import type { TisApproachImpactExistingLos } from "./tisApproachImpactExistingLos";
 import type { TisApproachImpactFutureLos } from "./tisApproachImpactFutureLos";
+import type { TisApproachImpactLanesSource } from "./tisApproachImpactLanesSource";
 import type { TisDirection } from "./tisDirection";
 import type { TisLaneGroupImpact } from "./tisLaneGroupImpact";
 
@@ -27,6 +28,12 @@ export interface TisApproachImpact {
   existingLos: TisApproachImpactExistingLos;
   futureLos: TisApproachImpactFutureLos;
   queue95thFt: number;
+  /**
+   * @minimum 1
+   * @maximum 6
+   */
+  throughLanes?: number;
+  lanesSource?: TisApproachImpactLanesSource;
   /** True current-year baseline: existing volumes with NO growth applied. This is the scenario to label "Existing". Optional so payloads saved before the scenario split still validate. */
   currentVolumeVph?: number;
   currentVc?: number;

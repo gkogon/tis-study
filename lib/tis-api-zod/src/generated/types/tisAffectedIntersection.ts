@@ -13,6 +13,7 @@ import type { TisAffectedIntersectionFutureLos } from "./tisAffectedIntersection
 import type { TisAffectedIntersectionMitigationSeverity } from "./tisAffectedIntersectionMitigationSeverity";
 import type { TisAffectedIntersectionMovementsItem } from "./tisAffectedIntersectionMovementsItem";
 import type { TisAffectedIntersectionMovementSource } from "./tisAffectedIntersectionMovementSource";
+import type { TisAffectedIntersectionSignalTiming } from "./tisAffectedIntersectionSignalTiming";
 import type { TisAffectedIntersectionTurboLane } from "./tisAffectedIntersectionTurboLane";
 import type { TisAffectedIntersectionVolumeSource } from "./tisAffectedIntersectionVolumeSource";
 import type { TisApproachImpact } from "./tisApproachImpact";
@@ -57,4 +58,5 @@ export interface TisAffectedIntersection {
   existingStorageFt?: number;
   storageMovement?: string;
   utdfCycleLenSec?: number;
+  signalTiming?: TisAffectedIntersectionSignalTiming;
 }

@@ -178,7 +178,7 @@ const stripTime = (r) => {
   // explicit-flag run. That is the request echo, not engine behaviour —
   // normalise it out of every comparison (including against the pre-flip
   // baseline, whose echo carried no flag).
-  if (c.request) delete c.request.conservedAssignment;
+  if (c.request) { delete c.request.conservedAssignment; delete c.request.signalTiming; delete c.request.realLaneGeometry; }
   return c;
 };
 
@@ -203,7 +203,7 @@ ok((dflt.affectedIntersections ?? []).some((ix) => ix.movementSource === "path" 
 // ---------------------------------------------------------------------------
 // 2. EXPLICIT FALSE ⇒ legacy bytes (pinned pre-flip fixture); nothing leaks.
 // ---------------------------------------------------------------------------
-const flagFalse = await generateTisReport({ ...baseReq, conservedAssignment: false });
+const flagFalse = await generateTisReport({ ...baseReq, conservedAssignment: false, signalTiming: "screening", realLaneGeometry: false });
 const baselinePath = path.resolve(here, "fixtures/conserved-legacy-baseline.json");
 if (WRITE_BASELINE) {
   await writeFile(baselinePath, JSON.stringify(stripTime(flagFalse)) + "\n", "utf8");
@@ -284,7 +284,7 @@ ok(JSON.stringify(stripTime(on)) === JSON.stringify(stripTime(on2)),
   const body = GenerateTisBody.safeParse({ ...baseReq });
   ok(body.success && body.data.conservedAssignment === true,
     "GenerateTisBody injects conservedAssignment:true when the flag is omitted (API default ON)");
-  const bodyFalse = GenerateTisBody.safeParse({ ...baseReq, conservedAssignment: false });
+  const bodyFalse = GenerateTisBody.safeParse({ ...baseReq, conservedAssignment: false, signalTiming: "screening", realLaneGeometry: false });
   ok(bodyFalse.success && bodyFalse.data.conservedAssignment === false,
     "GenerateTisBody preserves explicit false (legacy reachable via the API)");
 

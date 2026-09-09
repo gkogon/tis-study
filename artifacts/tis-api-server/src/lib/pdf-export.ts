@@ -2018,7 +2018,7 @@ function renderTisGeorgia(
   if (intersections.length > 0) {
     doc.moveDown(0.2);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "Each scenario cell shows LOS grade / average control delay (s/veh) against the conventional US control-delay bands (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). Screening delays use a generic signal model and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal.",
+      `Each scenario cell shows LOS grade / average control delay (s/veh) against the conventional US control-delay bands (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). ${signalModelClause(intersections, false)}`,
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
@@ -8535,7 +8535,7 @@ function renderTisFlorida(
     });
     doc.moveDown(0.2);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "Each scenario cell shows LOS grade / average control delay (s/veh) against the conventional US control-delay bands (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). Screening delays use a generic signal model (90 s cycle, g/C 0.45, 1,800 pc/h/ln, one critical lane per approach) and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal.",
+      `Each scenario cell shows LOS grade / average control delay (s/veh) against the conventional US control-delay bands (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). ${signalModelClause(intersections, true)}`,
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
@@ -8562,7 +8562,7 @@ function renderTisFlorida(
     });
     doc.moveDown(0.2);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "Each scenario cell shows LOS grade / average control delay (s/veh) against the conventional US control-delay bands (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). Screening delays use a generic signal model (90 s cycle, g/C 0.45, 1,800 pc/h/ln, one critical lane per approach) and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal.",
+      `Each scenario cell shows LOS grade / average control delay (s/veh) against the conventional US control-delay bands (A ≤10, B ≤20, C ≤35, D ≤55, E ≤80, F >80 s). ${signalModelClause(intersections, true)}`,
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
@@ -9310,6 +9310,44 @@ function renderCapacityAppendix(
       ["Mitigation", ix.mitigation ? String(ix.mitigation) : "None required at screening level"],
     ]);
     doc.moveDown(0.4);
+    // Signal-timing provenance — printed on every intersection the resolver
+    // stamped. Absent on signalTiming: "screening" runs and on payloads that
+    // predate the resolver, which therefore render byte-identically.
+    if (ix.signalTiming) {
+      const t = ix.signalTiming;
+      const basis = t.basis === "measured"
+        ? `measured — cycle and per-phase splits from the engineer's imported ${t.source === "synchro" ? "Synchro" : t.source ?? "Synchro"} record`
+        : t.basis === "measured-cycle"
+          ? `the engineer's imported ${t.source === "synchro" ? "Synchro" : t.source ?? "Synchro"} cycle with Critical Movement Method splits derived from the no-build volumes`
+          : t.basis === "webster"
+            ? "a Webster optimum cycle with Critical Movement Method splits derived from the no-build approach volumes (FHWA-HOP-07-006)"
+            : `the generic 90 s / g/C 0.45 screening default — critical flow ratio ${fmtNum(t.criticalFlowRatio, 2)} puts this intersection at or beyond saturation, where Webster is not applicable`;
+      const phasingSrc = t.leftPhasingSource === "import"
+        ? "from the imported phase map"
+        : t.leftPhasingSource === "inferred"
+          ? "inferred from the FHWA-HRT-04-091 cross product of left-turn and opposing through volume"
+          : "screening default";
+      const lefts = `${t.leftPhasingNs} NS / ${t.leftPhasingEw} EW left-turn phasing (${phasingSrc})`;
+      doc.font("body").fontSize(8.5).fillColor(TEXT_GRAY).text(
+        `Signal timing: ${basis} — ${fmtNum(t.cycleLenSec)} s cycle, ${t.criticalPhases} critical phases; g/C NS ${fmtNum(t.gOverCns, 2)} / EW ${fmtNum(t.gOverCew, 2)}`
+        + (t.gOverCnsLeft !== undefined ? ` (NS left ${fmtNum(t.gOverCnsLeft, 2)})` : "")
+        + (t.gOverCewLeft !== undefined ? ` (EW left ${fmtNum(t.gOverCewLeft, 2)})` : "")
+        + `; ${lefts}; pedestrian minimum green ${fmtNum(t.pedMinGreenNsSec)} s NS / ${fmtNum(t.pedMinGreenEwSec)} s EW. `
+        + "Timing is resolved once from the no-build volumes and held fixed across scenarios; approach capacity is 1,800 pc/h/ln × that phase's g/C × through lanes × weather factor"
+        + (() => {
+            type ApLanes = { direction?: string; throughLanes?: number; lanesSource?: string };
+            const all: ApLanes[] = (ix.approaches ?? []) as ApLanes[];
+            const aps = all.filter((ap) => typeof ap.throughLanes === "number");
+            if (aps.length === 0) return " (one through lane per approach — no lane count was available).";
+            const src = (x: string | undefined) => (x === "import" ? "Synchro" : x === "osm" ? "OSM" : "default");
+            const list = all.map((ap) => `${ap.direction} ${ap.throughLanes ?? 1}${typeof ap.throughLanes === "number" ? ` (${src(ap.lanesSource)})` : ""}`).join(" / ");
+            return ` — through lanes ${list}.`;
+          })(),
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+      doc.moveDown(0.2);
+    }
     // Existing-volume provenance, printed ONLY on studies that carried an
     // imported UTDF payload (anyUtdfProvenance) so every other study renders
     // byte-identically. On those studies EVERY worksheet is labeled — the
@@ -9853,6 +9891,33 @@ function metricStrip(doc: PDFKit.PDFDocument, metrics: Metric[]) {
   doc.fillColor("black");
   doc.x = startX;
   doc.y = y + h + 4;
+}
+
+/**
+ * The sentence under every LOS table that says what signal model produced
+ * the delays. Legacy payloads and signalTiming: "screening" runs carry no
+ * per-intersection stamp and keep the generic-model sentence byte for byte;
+ * a study whose intersections resolved to measured or Webster timing must
+ * not carry a disclosure describing a model it did not use.
+ */
+function signalModelClause(
+  intersections: ReadonlyArray<{ signalTiming?: { basis: string } }>,
+  detailed: boolean,
+): string {
+  const stamped = intersections.filter((ix) => ix.signalTiming);
+  if (stamped.length === 0) {
+    return detailed
+      ? "Screening delays use a generic signal model (90 s cycle, g/C 0.45, 1,800 pc/h/ln, one critical lane per approach) and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal."
+      : "Screening delays use a generic signal model and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal.";
+  }
+  const measured = stamped.filter((ix) => ix.signalTiming!.basis === "measured" || ix.signalTiming!.basis === "measured-cycle").length;
+  const dflt = stamped.filter((ix) => ix.signalTiming!.basis === "screening-default").length;
+  const webster = stamped.length - measured - dflt;
+  const parts: string[] = [];
+  if (measured > 0) parts.push(`${measured} from the engineer's imported Synchro record`);
+  if (webster > 0) parts.push(`${webster} from a Webster optimum cycle with Critical Movement Method splits derived from the no-build volumes`);
+  if (dflt > 0) parts.push(`${dflt} at or beyond saturation on the generic 90 s / g/C 0.45 default`);
+  return `Screening delays use each intersection's resolved signal timing — ${parts.join("; ")} (basis printed per intersection in the worksheets; timing held fixed across scenarios; approach capacity = 1,800 pc/h/ln × that phase's g/C) — and are superseded by a calibrated HCS/Synchro analysis of the actual lane geometry and signal timing at submittal.`;
 }
 
 function fmtNum(n: any, decimals: number = 0): string {

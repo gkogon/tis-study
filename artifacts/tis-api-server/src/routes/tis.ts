@@ -186,8 +186,27 @@ function buildUtdfIntersectionRecords(
         }
       }
     }
-    const cyc = doc.timings.find((t) => t.intId === n.intId)?.cycleLengthS;
+    const timing = doc.timings.find((t) => t.intId === n.intId);
+    const cyc = timing?.cycleLengthS;
     const cycleLenSec = typeof cyc === "number" && cyc >= 30 && cyc <= 300 ? cyc : undefined;
+    // Phase→movement map ([Lanes] Phase1) and split per phase ([Timings]
+    // MaxInitial). The parser has captured both since the importer shipped
+    // and this boundary dropped them, which is why an imported model could
+    // move the delay number slightly and never the LOS letter: the engine
+    // only ever saw the cycle. Presence-gated so records without them are
+    // byte-identical.
+    const phaseByMovement: Record<string, number> = {};
+    if (laneRec) {
+      for (const [mv, info] of Object.entries(laneRec.movements)) {
+        const ph = info?.phase;
+        if (typeof ph === "number" && Number.isFinite(ph) && ph >= 1 && ph <= 16) phaseByMovement[mv] = Math.round(ph);
+      }
+    }
+    const splitSByPhase: Record<string, number> = {};
+    for (const ph of timing?.phases ?? []) {
+      const sp = ph.splitS;
+      if (typeof sp === "number" && Number.isFinite(sp) && sp >= 1 && sp <= 300) splitSByPhase[String(ph.phase)] = sp;
+    }
     return [{
       intId: n.intId,
       ...(n.name ? { name: n.name } : {}),
@@ -200,6 +219,8 @@ function buildUtdfIntersectionRecords(
       ...(Object.keys(storageFt).length > 0 ? { storageFt } : {}),
       ...(Object.keys(lanes).length > 0 ? { lanes } : {}),
       ...(cycleLenSec !== undefined ? { cycleLenSec } : {}),
+      ...(Object.keys(phaseByMovement).length > 0 ? { phaseByMovement } : {}),
+      ...(Object.keys(splitSByPhase).length > 0 ? { splitSByPhase } : {}),
     }];
   });
 }

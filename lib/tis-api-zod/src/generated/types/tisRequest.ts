@@ -9,6 +9,7 @@ import type { Driveway } from "./driveway";
 import type { TisAnalysisPeriod } from "./tisAnalysisPeriod";
 import type { TisDistributionMethod } from "./tisDistributionMethod";
 import type { TisRequestAdditionalStudyPointsItem } from "./tisRequestAdditionalStudyPointsItem";
+import type { TisRequestSignalTiming } from "./tisRequestSignalTiming";
 import type { TisTripProfile } from "./tisTripProfile";
 import type { TisWeather } from "./tisWeather";
 import type { UtdfIntersectionData } from "./utdfIntersectionData";
@@ -97,7 +98,9 @@ export interface TisRequest {
   existingSize?: number;
   /** Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output. */
   conservedAssignment?: boolean;
-  /** Use measured lane counts from an imported Synchro [Lanes] section to size each lane group's capacity (lanes x saturation flow x g/C) instead of the one-critical-lane screening assumption. Only affects intersections whose imported record carried lane counts. Omitted or true uses measured geometry; explicit false pins the legacy basis, byte-identical to the pre-change output. */
+  /** Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g/C. `screening`: the legacy flat 90 s cycle / g/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`. */
+  signalTiming?: TisRequestSignalTiming;
+  /** Size approach and lane-group capacity with real through-lane counts (lanes x saturation flow x g/C) instead of the one-critical-lane screening assumption. Precedence per approach: the imported Synchro [Lanes] count > the OSM through-lane count on the road the signal was matched to > one lane. Each approach reports throughLanes and lanesSource. Omitted or true uses real geometry; explicit false pins the one-lane legacy basis everywhere, byte-identical to the pre-change output. */
   realLaneGeometry?: boolean;
   /**
    * Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).
