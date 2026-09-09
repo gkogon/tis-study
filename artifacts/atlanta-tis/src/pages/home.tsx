@@ -52,7 +52,7 @@ export default function HomePage() {
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20 space-y-20">
         <MathSection />
-        <CoverageGrid />
+        <CoverageGrid accent="amber" />
         <FlagshipSection />
         <EconomicsSection />
         <WorkflowSection />

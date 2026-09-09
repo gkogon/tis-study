@@ -3,13 +3,15 @@
  * makes the marketing pages read like a TIS report (§01, §02…) rather
  * than a stack of identical SaaS modules. Left aligned, mono, restrained.
  */
+export type MarkerAccent = "blue" | "amber";
+
 export function Marker({
   n, label, accent = "blue",
 }: {
   n: string;
   label: string;
   /** `amber` for dark grounds — blue-700 sits under 3:1 on near-black. */
-  accent?: "blue" | "amber";
+  accent?: MarkerAccent;
 }) {
   return (
     <div className="flex items-baseline gap-3 mb-7">

@@ -79,7 +79,7 @@ export function CalibrationActivity({ variant = "strip" }: { variant?: "strip" |
       {/* The always-growing number: GDOT snapshots archived. Ticks up
           every 10 min — visible proof of the irreproducible data moat. */}
       <span className="text-sm inline-flex items-center gap-1.5">
-        <Activity className="w-3.5 h-3.5 text-blue-700" />
+        <Activity className="w-3.5 h-3.5 text-blue-700 dark:text-blue-400" />
         <strong className="tabular-nums">{data.totalSnapshots.toLocaleString()}</strong>{" "}
         <span className="text-muted-foreground">GDOT snapshots archived</span>
       </span>
@@ -87,7 +87,7 @@ export function CalibrationActivity({ variant = "strip" }: { variant?: "strip" |
         <>
           <span className="hidden sm:inline text-border">·</span>
           <span className="text-sm">
-            <strong className="tabular-nums text-blue-700">{data.changesLastHour}</strong>{" "}
+            <strong className="tabular-nums text-blue-700 dark:text-blue-400">{data.changesLastHour}</strong>{" "}
             <span className="text-muted-foreground">recalibrated this hour</span>
           </span>
         </>

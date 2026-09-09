@@ -17,7 +17,7 @@
 
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { Marker } from "./section-marker";
+import { Marker, type MarkerAccent } from "./section-marker";
 import { MetroSearch } from "./metro-search";
 import {
   METROS,
@@ -73,7 +73,7 @@ function buildGroups(): StateGroup[] {
   return groups;
 }
 
-export function CoverageGrid() {
+export function CoverageGrid({ accent = "blue" }: { accent?: MarkerAccent } = {}) {
   const groups = useMemo(buildGroups, []);
   const [openStates, setOpenStates] = useState<Set<string>>(new Set());
 
@@ -96,7 +96,7 @@ export function CoverageGrid() {
 
   return (
     <section className="space-y-10" data-testid="coverage-grid">
-      <Marker n="04" label="Coverage" />
+      <Marker n="04" label="Coverage" accent={accent} />
 
       <header className="grid lg:grid-cols-12 gap-8 lg:gap-12 items-end">
         <div className="lg:col-span-7 space-y-4">

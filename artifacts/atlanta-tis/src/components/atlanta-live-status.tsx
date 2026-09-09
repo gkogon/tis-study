@@ -102,7 +102,7 @@ export function AtlantaLiveStatus() {
     <section className="border rounded-xl bg-background overflow-hidden">
       <header className="px-5 py-3 border-b flex items-center justify-between gap-3 flex-wrap bg-muted/30">
         <div className="inline-flex items-center gap-2 text-sm font-semibold">
-          <RadioTower className="w-4 h-4 text-blue-600" />
+          <RadioTower className="w-4 h-4 text-blue-600 dark:text-blue-400" />
           Live Atlanta metro · GDOT 511 NaviGAtor
         </div>
         {fetchedAt && (
@@ -148,13 +148,13 @@ export function AtlantaLiveStatus() {
         <div className="px-5 py-3 border-t space-y-2 text-sm">
           {highImportanceAlerts.slice(0, 2).map((a) => (
             <div key={a.id} className="flex items-start gap-2">
-              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 text-red-600 shrink-0" />
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 text-red-600 dark:text-red-400 shrink-0" />
               <span className="text-foreground">{a.message}</span>
             </div>
           ))}
           {(incidents?.incidents ?? []).slice(0, 3).map((i) => (
             <div key={i.id} className="flex items-start gap-2 text-muted-foreground">
-              <Activity className="w-3.5 h-3.5 mt-0.5 text-blue-600 shrink-0" />
+              <Activity className="w-3.5 h-3.5 mt-0.5 text-blue-600 dark:text-blue-400 shrink-0" />
               <span>
                 <strong className="text-foreground">{i.roadway ?? "—"}</strong>{" · "}
                 {i.title ?? i.description?.slice(0, 100) ?? "Incident"}
@@ -166,7 +166,7 @@ export function AtlantaLiveStatus() {
               href={sampleCamera.views[0].url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline pt-1"
+              className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline pt-1"
               data-testid="link-live-camera"
             >
               <Camera className="w-3 h-3" />
@@ -190,9 +190,9 @@ function Tile({
   tone: "ok" | "warn" | "bad" | "muted";
 }) {
   const toneCls =
-    tone === "bad" ? "text-red-600" :
-    tone === "warn" ? "text-amber-600" :
-    tone === "ok" ? "text-emerald-600" :
+    tone === "bad" ? "text-red-600 dark:text-red-400" :
+    tone === "warn" ? "text-amber-600 dark:text-amber-400" :
+    tone === "ok" ? "text-emerald-600 dark:text-emerald-400" :
     "text-foreground";
   return (
     <div className="px-4 py-3">
