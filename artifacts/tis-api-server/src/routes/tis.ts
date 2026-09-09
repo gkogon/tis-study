@@ -49,6 +49,23 @@ router.get("/regions", (_req, res): void => {
   res.json({ regions });
 });
 
+/**
+ * Resolve the covered region for a coordinate. Lets the study map load the
+ * analyzer's road network and signal inventory for the right metro while
+ * the engine is still running — the same resolution the engine itself uses,
+ * so the map never shows a different metro than the report.
+ */
+router.get("/region-for", (req, res): void => {
+  const lat = Number(req.query["lat"]);
+  const lon = Number(req.query["lon"]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    res.status(400).json({ error: "lat and lon query params are required numbers" });
+    return;
+  }
+  const region = regionForCoordinate(lat, lon);
+  res.json({ regionCode: region?.code ?? null, displayName: region?.displayName ?? null });
+});
+
 router.get("/land-uses", (_req, res): void => {
   // `confidence` + `source` ride along so the land-use picker can show where a
   // rate came from. They used to be projected away here, which meant the one

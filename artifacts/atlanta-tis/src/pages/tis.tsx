@@ -19,6 +19,7 @@ import "leaflet/dist/leaflet.css";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DrivewayEditor } from "@/components/driveway-editor";
 import { StudyIntersectionsEditor } from "@/components/study-intersections-editor";
+import { StudyMapAlive } from "@/components/study-map-alive";
 import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, Printer, Building2, MapPin, Car, Activity, ChevronDown, ChevronRight,
@@ -1886,7 +1887,13 @@ export default function TisPage() {
     saveProjectMetadata(key, meta);
   }, [meta, report?.request.projectName, report?.request.latitude, report?.request.longitude]);
 
+  // What the live study map draws while the engine runs (and after): the
+  // site, radius and name of the run in flight — kept even when the previous
+  // report is still on screen so a re-run re-targets the map immediately.
+  const [activeRun, setActiveRun] = useState<{ latitude: number; longitude: number; radiusMi: number; projectName: string } | null>(null);
+
   function handleGenerate(req: TisRequest) {
+    setActiveRun({ latitude: req.latitude, longitude: req.longitude, radiusMi: req.studyRadiusMi ?? 0.5, projectName: req.projectName });
     generate.mutate(
       { data: req },
       {
@@ -2020,6 +2027,29 @@ export default function TisPage() {
         onGenerate={handleGenerate}
         busy={luLoading || generate.isPending}
       />
+
+      {activeRun && (generate.isPending || report) && (
+        <Card className="print:hidden" data-testid="card-study-map-alive">
+          <CardHeader>
+            <CardTitle className="text-base">{generate.isPending ? "Building the study" : "Study network"}</CardTitle>
+            <CardDescription>
+              The real road network and signals around the site.{" "}
+              {generate.isPending
+                ? "This is what the engine is working on right now."
+                : "Project trips run along their assigned routes; every studied signal shows its level of service."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <StudyMapAlive
+              site={{ latitude: activeRun.latitude, longitude: activeRun.longitude }}
+              radiusMi={activeRun.radiusMi}
+              phase={generate.isPending ? "pending" : "report"}
+              report={generate.isPending ? null : report}
+              projectName={activeRun.projectName}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {generate.error && (
         <Card className="border-red-300 bg-red-50 dark:bg-red-950/20 print:hidden">

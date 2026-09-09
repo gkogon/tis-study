@@ -159,6 +159,16 @@ router.get("/live-incidents", async (req, res): Promise<void> => {
   }
 });
 
+/** Great-circle miles — for the optional radius filter on /intersections. */
+function haversineMi(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 3958.8;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 /**
  * Region-aware intersection list.
  *   GET /intersections?regionCode=charlotte_metro
@@ -174,12 +184,23 @@ router.get("/live-incidents", async (req, res): Promise<void> => {
  */
 router.get("/intersections", (req, res): void => {
   const regionCode = (req.query["regionCode"] as string | undefined) ?? "atlanta_metro";
+  // Optional radius filter (lat, lon, radiusMi): the study map asks for
+  // just the signals around a site instead of the whole metro inventory
+  // (4.5k–8k records). Absent → unchanged full-inventory behaviour.
+  const qLat = Number(req.query["lat"]);
+  const qLon = Number(req.query["lon"]);
+  const qRadius = Number(req.query["radiusMi"]);
+  const within = <T extends { latitude: number; longitude: number }>(list: T[]): T[] => {
+    if (!Number.isFinite(qLat) || !Number.isFinite(qLon)) return list;
+    const r = Math.max(0.05, Math.min(8, Number.isFinite(qRadius) ? qRadius : 0.75));
+    return list.filter((s) => haversineMi(qLat, qLon, s.latitude, s.longitude) <= r);
+  };
   if (regionCode === "atlanta_metro") {
-    res.json(ListIntersectionsResponse.parse(getIntersectionSummaries()));
+    res.json(ListIntersectionsResponse.parse(within(getIntersectionSummaries())));
     return;
   }
   try {
-    const summaries = loadRegionalIntersections(regionCode);
+    const summaries = within(loadRegionalIntersections(regionCode));
     res.json(ListIntersectionsResponse.parse(summaries));
   } catch (e) {
     req.log?.warn?.({ regionCode, err: e }, "regional intersections load failed");

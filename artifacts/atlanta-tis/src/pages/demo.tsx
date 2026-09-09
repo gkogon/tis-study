@@ -20,6 +20,7 @@ import {
   Loader2, ArrowRight, AlertCircle, MapPin, FileCheck2, ChevronRight,
   ChevronDown, Hourglass, ShieldCheck, Download,
 } from "lucide-react";
+import { StudyMapAlive } from "../components/study-map-alive";
 import { SiteFooter } from "../components/site-footer";
 
 type Preset = {
@@ -449,6 +450,8 @@ export default function DemoPage() {
   const [response, setResponse] = useState<DemoResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // The run in flight, for the live study map shown while generating.
+  const [activeSite, setActiveSite] = useState<{ latitude: number; longitude: number; radiusMi: number } | null>(null);
 
   // Fallback land uses surfaced when /demo/landuses fails or returns
   // empty (network issue, ad-blocker, slow API rollout, etc.). Without
@@ -520,6 +523,7 @@ export default function DemoPage() {
   async function run(form: StudyForm) {
     setLoading(true);
     setError(null);
+    setActiveSite({ latitude: form.latitude, longitude: form.longitude, radiusMi: form.studyRadiusMi ?? 0.75 });
     setActiveName(
       form.projectName ||
         `${form.latitude.toFixed(4)}, ${form.longitude.toFixed(4)}`,
@@ -595,7 +599,7 @@ export default function DemoPage() {
           <DemoForm presets={presets} landUses={landUses} landUsesError={landUsesError} onReload={() => setReloadTick((n) => n + 1)} onRun={run} resolvedRegion={resolvedRegion} />
         )}
 
-        {loading && <LoadingState projectName={activeName} />}
+        {loading && <LoadingState projectName={activeName} site={activeSite} />}
 
         {error && !loading && (
           <ErrorState message={error} onReset={reset} />
@@ -1441,7 +1445,7 @@ function DemoForm({
   );
 }
 
-function LoadingState({ projectName }: { projectName: string | null }) {
+function LoadingState({ projectName, site }: { projectName: string | null; site: { latitude: number; longitude: number; radiusMi: number } | null }) {
   const stages = useMemo(
     () => [
       "Pulling live GDOT signal data",
@@ -1460,10 +1464,12 @@ function LoadingState({ projectName }: { projectName: string | null }) {
     return () => clearInterval(t);
   }, [stages.length]);
   return (
-    <div className="rounded-2xl border border-border bg-gradient-to-br from-slate-50 to-background dark:from-slate-950/40 p-10 sm:p-14 text-center space-y-6">
-      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 mx-auto">
-        <Loader2 className="w-6 h-6 animate-spin" />
-      </div>
+    <div className="rounded-2xl border border-border bg-gradient-to-br from-slate-50 to-background dark:from-slate-950/40 p-6 sm:p-10 text-center space-y-6">
+      {!site && (
+        <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 mx-auto">
+          <Loader2 className="w-6 h-6 animate-spin" />
+        </div>
+      )}
       <div className="space-y-2 max-w-md mx-auto">
         <h2 className="text-2xl font-bold tracking-tight">Generating your study…</h2>
         <p className="text-sm text-muted-foreground">
@@ -1471,7 +1477,12 @@ function LoadingState({ projectName }: { projectName: string | null }) {
           through. This usually takes 20–60 seconds.
         </p>
       </div>
-      <ol className="space-y-1.5 max-w-md mx-auto text-left">
+      {site && (
+        <div className="text-left">
+          <StudyMapAlive site={{ latitude: site.latitude, longitude: site.longitude }} radiusMi={site.radiusMi} phase="pending" projectName={projectName} />
+        </div>
+      )}
+      {!site && <ol className="space-y-1.5 max-w-md mx-auto text-left">
         {stages.map((s, i) => (
           <li
             key={s}
@@ -1497,7 +1508,7 @@ function LoadingState({ projectName }: { projectName: string | null }) {
             {s}
           </li>
         ))}
-      </ol>
+      </ol>}
       {projectName && (
         <div className="text-[11px] text-muted-foreground pt-2 font-mono truncate max-w-md mx-auto">
           {projectName}
