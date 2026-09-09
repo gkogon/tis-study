@@ -37,7 +37,16 @@ register(pathToFileURL(path.resolve(here, "ts-loader.mjs")).href, import.meta.ur
 const { GenerateTisResponse } = await import(
   path.resolve(here, "../../../lib/tis-api-zod/src/generated/api.ts")
 );
-const tis = readFileSync(path.resolve(here, "../src/lib/tis.ts"), "utf8");
+// The engine text under test spans the server module (call sites, summary
+// prose) and the pure core (lib/tis-engine-core: the verdict rules in
+// mitigation.ts, buildAffectedRow's horizon list in row-math.ts). Every regex
+// below runs over the three concatenated, so a rule holds wherever it lives.
+const CORE = path.resolve(here, "../../../lib/tis-engine-core/src");
+const tis = [
+  path.resolve(here, "../src/lib/tis.ts"),
+  path.resolve(CORE, "mitigation.ts"),
+  path.resolve(CORE, "row-math.ts"),
+].map((p) => readFileSync(p, "utf8")).join("\n");
 const spec = readFileSync(path.resolve(here, "../../../lib/tis-api-spec/openapi.yaml"), "utf8");
 
 let fails = 0;

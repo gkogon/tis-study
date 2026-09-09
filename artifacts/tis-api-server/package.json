@@ -46,12 +46,14 @@
     "check:signal-timing": "node ./scripts/verify-signal-timing.mjs",
     "check:signal-timing-engine": "node ./scripts/verify-signal-timing-engine.mjs",
     "check:state-dispatch": "node ./scripts/verify-state-dispatch.mjs",
-    "check:region-parity": "node ./scripts/verify-region-parity.mjs"
+    "check:region-parity": "node ./scripts/verify-region-parity.mjs",
+    "check:engine-core-exports": "node ./scripts/verify-engine-core-exports.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",
     "@workspace/db": "workspace:*",
     "@workspace/tis-api-zod": "workspace:*",
+    "@workspace/tis-engine-core": "workspace:*",
     "bcryptjs": "^2.4.3",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",

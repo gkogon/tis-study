@@ -8,7 +8,7 @@ import {
   ParseSynchroPdfResponse,
 } from "@workspace/tis-api-zod";
 import { generateTisReport, LAND_USES } from "../lib/tis";
-import { parseUtdf } from "../lib/utdf-import";
+import { parseUtdf } from "@workspace/tis-engine-core";
 import {
   isPdfBytes,
   parseSynchroPdf,

@@ -755,6 +755,9 @@ importers:
       '@workspace/tis-api-zod':
         specifier: workspace:*
         version: link:../../lib/tis-api-zod
+      '@workspace/tis-engine-core':
+        specifier: workspace:*
+        version: link:../../lib/tis-engine-core
       bcryptjs:
         specifier: ^2.4.3
         version: 2.4.3
@@ -916,6 +919,8 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 3.25.76
+
+  lib/tis-engine-core: {}
 
   scripts:
     dependencies:

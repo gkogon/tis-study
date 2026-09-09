@@ -1,0 +1,146 @@
+// Signalized-intersection screening delay / LOS / queue.
+//
+// Extracted from tis.ts so the delay model is a dependency-free leaf that can be
+// unit-tested in isolation (no logger/db/region imports). tis.ts re-exports these
+// for back-compat, so existing `import { vcToDelay, delayToLos, queue95Ft } from
+// "./tis"` sites (turbo-lane.ts, uk-capacity.ts) are unchanged.
+//
+// PROVENANCE — every formula here is drawn from the openly-published
+// traffic-engineering literature, not from a proprietary capacity manual:
+//
+//   • Uniform delay (d1): F. V. Webster, "Traffic Signal Settings", Road
+//     Research Technical Paper No. 39, Road Research Laboratory, HMSO,
+//     London (1958) — d1 = C(1 − λ)² / (2(1 − λx)).
+//   • Incremental / overflow delay (d2): R. Akçelik's time-dependent
+//     overflow function, Australian Road Research Board (ARRB), published
+//     independently and reproduced throughout the open literature.
+//   • Back-of-queue: the standard undersaturated cyclic-queue relation with
+//     a Poisson percentile factor (see below).
+//
+// The delay values these produce are consistent with conventional US
+// signalized-intersection practice because that practice is built on the
+// same Webster/Akçelik foundation. No proprietary tables, exhibits, default
+// values or procedure text are reproduced.
+
+// ---------- Control-delay LOS bands ----------
+// The conventional US control-delay letter bands for signalized
+// intersections, as republished in publicly-available state DOT design and
+// traffic-engineering manuals (e.g. GDOT, Caltrans HDM, NYSDOT). Values are
+// seconds of average control delay per vehicle. Reported letters are
+// re-derived here so the engine never has to cross-reference a licensed
+// document at runtime.
+
+export type Los = "A" | "B" | "C" | "D" | "E" | "F";
+
+const LOS_THRESHOLDS: Array<{ los: Los; maxDelay: number }> = [
+  { los: "A", maxDelay: 10 },
+  { los: "B", maxDelay: 20 },
+  { los: "C", maxDelay: 35 },
+  { los: "D", maxDelay: 55 },
+  { los: "E", maxDelay: 80 },
+  { los: "F", maxDelay: Infinity },
+];
+
+export function delayToLos(delaySec: number): Los {
+  for (const t of LOS_THRESHOLDS) if (delaySec <= t.maxDelay) return t.los;
+  return "F";
+}
+
+export const CYCLE_LEN = 90;
+export const G_OVER_C = 0.45;
+export const SATURATION_FLOW_VPH = 1800;
+export const CRITICAL_MOVEMENT_FRACTION = 0.45;
+export const PER_INTERSECTION_CAPACITY_VPH = SATURATION_FLOW_VPH * G_OVER_C;
+export const APPROACH_CAPACITY_VPH = PER_INTERSECTION_CAPACITY_VPH; // 1 critical lane per approach
+export const VEH_LENGTH_FT = 25;
+
+// Screening ceiling on REPORTED control delay. The incremental-delay term (d2,
+// Akçelik time-dependent form) grows without bound above capacity — at v/c ≈ 2
+// it returns ~500–600 s (≈10 min/veh), not defensible in a screening
+// deliverable. The ceiling sits at 300 s (5 min/veh): high enough that
+// oversaturated intersections DIFFERENTIATE across scenarios (v/c ~1.2 vs ~1.5
+// print distinct delays instead of both pinning at the old 120 s cap; raw delay
+// crosses 300 s near v/c 1.6 at the default 810 vph capacity), low enough to
+// keep a screening deliverable out of implausible ~10-minute territory. LOS is
+// preserved — the cap is far above the 80 s LOS-F threshold, so F stays F.
+// NOTE: the regional calibration multiplier (calMul, clamped 0.25–5 in tis.ts)
+// applies AFTER this cap at every call site, so the maximum printable delay is
+// cap × calMul. A calibrated design-level analysis (HCS/Synchro) supersedes it.
+export const SCREENING_MAX_DELAY_SEC = 300;
+
+// Credibility ceiling on the INPUT side, and the companion to the delay cap
+// above. The delay cap keeps an oversaturated intersection's printed delay
+// defensible; it cannot tell whether the volume that produced the
+// oversaturation was real. A reported v/c above this is not describing how a
+// signalized intersection behaves at all — no at-grade signal operates at four
+// times capacity — so it is a screening-model limitation, not a congestion
+// finding, and must not be printed as though it were one.
+//
+// This exists because tacoma_metro shipped a 37-page study, silently, in which
+// seven of thirteen study intersections printed v/c 8.15–8.55 with 4,300–5,400
+// ft queues. The cause was the AADT→signal join assigning I-5 mainline counts
+// (163k/171k AADT) to S Hosmer St / Tacoma Mall Blvd surface signals parked
+// 51–158 m from the freeway. aadt-plausibility.ts now refuses those records at
+// the join; this threshold is the second line of defence, so that ANY future
+// route to an impossible volume — a new DOT source, a bad K-factor, a UTDF
+// import, a hand-entered count — is disclosed in the deliverable instead of
+// being printed as an ordinary LOS F.
+//
+// 2.5 sits well above genuine failure (a real failing intersection prints
+// v/c 1.1–1.6) and below the ~5.0 worst case the join's class ceilings can
+// still produce on the largest interchange cross-streets.
+//
+// Above this line the number is not reportable, but the CAUSE is not always the
+// data: it is either a freeway count on a surface signal (the Tacoma case) or a
+// real arterial volume that this file's own flat g/C 0.45 / 810 vph screening
+// capacity understates. volume-plausibility.ts discloses both, because after
+// the join fix the second case is the more common one in Florida.
+export const PLAUSIBLE_MAX_INTERSECTION_VC = 2.5;
+
+// ---------- Signalized-intersection control delay (Webster d1 + Akçelik d2) ----------
+
+// `cycleLenS` / `gOverC` default to the screening constants, so every existing
+// call site is byte-identical. A caller with a MEASURED cycle length (e.g. a
+// Synchro UTDF import) passes it to sharpen the Webster uniform-delay term for
+// that intersection; the screening capacity (saturation flow × g/C) is
+// deliberately NOT re-derived from it — cycle length enters d1 only.
+export function vcToDelay(
+  vc: number,
+  capacityVph: number = PER_INTERSECTION_CAPACITY_VPH,
+  cycleLenS: number = CYCLE_LEN,
+  gOverC: number = G_OVER_C,
+): number {
+  const x = Math.max(0, vc);
+  const xForD1 = Math.min(0.99, x);
+  const d1 = (0.5 * cycleLenS * Math.pow(1 - gOverC, 2)) / (1 - xForD1 * gOverC);
+
+  const T = 0.25;
+  const k = 0.5;
+  const d2 = x > 0
+    ? 900 * T * ((x - 1) + Math.sqrt(Math.pow(x - 1, 2) + (8 * k * x) / (capacityVph * T)))
+    : 0;
+
+  // Cap the reported delay at the screening ceiling (LOS F preserved). Keeps a
+  // grossly-oversaturated node from printing an implausible ~500 s+ delay while
+  // leaving room below the cap for oversaturated scenarios to differentiate.
+  return Math.min(d1 + d2, SCREENING_MAX_DELAY_SEC);
+}
+
+// 95th-percentile back-of-queue length — standard undersaturated cyclic-queue
+// relation (Webster arrival/discharge form), simplified.
+//   Q1 (avg vehicles per cycle queued) = (vph/3600) * C * (1 - g/C) / (1 - x*g/C)
+//   Q95 ≈ Q1 * 1.65  (Poisson incremental factor, undersaturated)
+//   length_ft = Q95 * VEH_LENGTH_FT
+export function queue95Ft(
+  approachVph: number,
+  capacityVph: number,
+  cycleLenS: number = CYCLE_LEN,
+  gOverC: number = G_OVER_C,
+): number {
+  if (approachVph <= 0) return 0;
+  const x = Math.min(0.99, approachVph / capacityVph);
+  const arrPerSec = approachVph / 3600;
+  const q1 = (arrPerSec * cycleLenS * (1 - gOverC)) / Math.max(0.05, 1 - x * gOverC);
+  const q95 = q1 * 1.65;
+  return q95 * VEH_LENGTH_FT;
+}

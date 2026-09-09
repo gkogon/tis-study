@@ -32,7 +32,7 @@ import type { Region } from "./regions";
 import { renderDiurnalCharts } from "./pdf-charts";
 import { getCbdtpStatus, type CbdtpStatus, type Gml239Status } from "./nysdot-data";
 import type { NycTransitContext } from "./nyc-transit-data";
-import { getMeasuredGrowthRate } from "./regional-growth-rates";
+import { getMeasuredGrowthRate } from "@workspace/tis-engine-core";
 import { renderAtrMeasuredVolumes } from "./atr-measured-volumes";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
 import { renderLaneGroupQueues } from "./lane-group-queues";

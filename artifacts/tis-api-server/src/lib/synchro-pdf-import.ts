@@ -45,8 +45,8 @@
  * warnings and the response's scenariosSkipped.
  */
 
-import type { UtdfDocument, UtdfMovement } from "./utdf-import";
-import { movementColumns } from "./utdf-import";
+import type { UtdfDocument, UtdfMovement } from "@workspace/tis-engine-core";
+import { movementColumns } from "@workspace/tis-engine-core";
 
 /** Size cap for an uploaded report PDF. ~20 MB nominal, set to 25 MB so a
  *  real-world full TIS appendix (the 688-page fixture source is 22 MB)
