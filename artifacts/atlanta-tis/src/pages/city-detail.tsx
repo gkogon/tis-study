@@ -12,12 +12,14 @@ import { Link, useRoute } from "wouter";
 import { ArrowRight, ArrowLeft, ExternalLink, MapPin } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 import { Marker } from "../components/section-marker";
+import { MetroSignalMap } from "../components/metro-signal-map";
 import { usePageMeta } from "../hooks/use-page-meta";
 import {
   metroBySlug,
   siblingMetros,
   STATE_NAMES,
   TIER_A_AADT_CUTOFF,
+  TOTAL_METROS,
   type MetroCoverage,
 } from "../data/metro-coverage";
 import NotFound from "./not-found";
@@ -95,6 +97,12 @@ export default function CityDetailPage() {
             {m.longName}
           </p>
         </header>
+
+        {/* §00 The inventory itself — every signal the engine knows here, live */}
+        <section className="space-y-5">
+          <Marker n="00" label="Signal inventory" />
+          <MetroSignalMap metro={m} />
+        </section>
 
         {/* §01 Top-line numbers */}
         <section className="space-y-5">
@@ -257,7 +265,7 @@ export default function CityDetailPage() {
             className="font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
             data-testid="link-all-cities"
           >
-            <MapPin className="w-3 h-3" /> All cities ({30})
+            <MapPin className="w-3 h-3" /> All cities ({TOTAL_METROS})
           </Link>
         </section>
       </div>

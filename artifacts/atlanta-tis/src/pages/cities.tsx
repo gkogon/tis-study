@@ -11,6 +11,7 @@ import { Link } from "wouter";
 import { SiteFooter } from "../components/site-footer";
 import { Marker } from "../components/section-marker";
 import { MetroSearch } from "../components/metro-search";
+import { MetroMap } from "../components/metro-map";
 import { usePageMeta } from "../hooks/use-page-meta";
 import {
   METROS,
@@ -57,6 +58,8 @@ export default function CitiesPage() {
             <MetroSearch />
           </div>
         </header>
+
+        <MetroMap />
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6 border-t border-b border-border py-6">
           <Stat label="Metros" value={String(TOTAL_METROS)} sublabel={`${TOTAL_SIGNALS.toLocaleString()} signals`} />
