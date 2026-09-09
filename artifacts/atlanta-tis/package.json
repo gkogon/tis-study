@@ -9,7 +9,8 @@
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check:study-alive-sim": "node scripts/check-study-alive-sim.mjs",
-    "check:study-map-sim": "node scripts/check-study-map-sim.mjs"
+    "check:study-map-sim": "node scripts/check-study-map-sim.mjs",
+    "check:queue-sim": "node scripts/check-queue-sim.mjs"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

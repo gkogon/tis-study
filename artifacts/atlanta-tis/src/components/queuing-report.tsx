@@ -2,6 +2,7 @@
  * Read-only Queuing Analysis report.
  */
 import { CheckCircle2, AlertTriangle, XCircle, HelpCircle, Activity } from "lucide-react";
+import { QueueAnimation } from "./queue-animation";
 
 type Verdict = "pass" | "marginal" | "fail" | "not_measured";
 
@@ -58,6 +59,8 @@ export function QueuingReport({ report }: { report: QueuingReportT }) {
           {MOVEMENT_LABEL[report.intersection.movement]} movement · {report.inputs.laneCount} lane{report.inputs.laneCount === 1 ? "" : "s"}
         </div>
       </header>
+
+      <QueueAnimation report={report} />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card label="v/c ratio" value={report.capacity.vOverC.toFixed(2)} sub={`${report.capacity.totalVph} vph capacity`} tone={report.capacity.vOverC > 1 ? "bad" : report.capacity.vOverC > 0.85 ? "warn" : "ok"} />
