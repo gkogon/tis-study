@@ -5,10 +5,14 @@
  * Visual language: a drawing set / instrument panel. Numbered report
  * sections (§01–§03), hairline rules, big mono numbers. Kept short on
  * purpose — three content sections, each carrying real figures.
+ *
+ * The opener is `StudyAliveHero`: a pinned canvas simulation that builds
+ * a study as the visitor scrolls (site → signal → rush hour → report).
  */
 import { Link } from "wouter";
-import { ArrowRight, Check, FileText, BookOpen } from "lucide-react";
+import { ArrowRight, Check, BookOpen } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
+import { StudyAliveHero } from "../components/study-alive-hero";
 import { AtlantaLiveStatus } from "../components/atlanta-live-status";
 import { CalibrationActivity } from "../components/calibration-activity";
 import { CoverageGrid } from "../components/coverage-grid";
@@ -25,15 +29,7 @@ export default function HomePage() {
 
   return (
     <div className="overflow-x-hidden">
-      <div className="relative">
-        <div
-          aria-hidden
-          className="absolute inset-x-0 top-0 -z-10 h-[600px] bg-gradient-to-b from-slate-100/80 via-background to-background dark:from-slate-900/30"
-        />
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-10">
-          <HeroSection />
-        </div>
-      </div>
+      <StudyAliveHero />
 
       <StatsBand />
 
@@ -51,179 +47,9 @@ export default function HomePage() {
   );
 }
 
-function HeroSection() {
-  return (
-    <section className="grid lg:grid-cols-12 gap-10 lg:gap-12 items-center">
-      <div className="lg:col-span-7 space-y-7">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Live state-DOT data · {TOTAL_METROS} metros · {TOTAL_SIGNALS.toLocaleString()} signals indexed
-          </div>
-          <div className="h-px w-full bg-border" />
-        </div>
-        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-[60px] font-bold leading-[1.04] text-slate-900 dark:text-slate-50">
-          A screening TIS shouldn't take{" "}
-          <span className="bg-amber-300 dark:bg-amber-400/90 dark:text-slate-900 box-decoration-clone px-1.5 -mx-0.5">
-            a week.
-          </span>
-        </h1>
-        <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-xl">
-          TIS, parking, signal warrants, sight distance, queuing, road diet.
-          Every figure footnoted to its published source — NHTS, SANDAG, MUTCD, AASHTO. A junior PE
-          spends 20 to 40 hours on a screening pass. Here it runs in about a minute.
-        </p>
-        <div className="flex flex-wrap items-center gap-3 pt-1">
-          <Link
-            href="/demo"
-            className="group inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg bg-foreground text-background hover:bg-foreground/90 transition-all"
-            data-testid="link-demo"
-          >
-            Try a live demo
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-          </Link>
-          <Link
-            href="/signup?plan=growth"
-            className="inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-lg border border-border hover:border-foreground/30 hover:bg-accent transition-colors"
-            data-testid="link-start-trial"
-          >
-            Start 14-day trial
-          </Link>
-          <a
-            href="/sample-tis-report.pdf"
-            target="_blank"
-            rel="noopener"
-            className="inline-flex items-center gap-2 px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            data-testid="link-sample-pdf"
-          >
-            <FileText className="w-4 h-4" />
-            Or download a sample PDF
-          </a>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-2 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <Check className="w-3.5 h-3.5 text-blue-700" /> No credit card
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Check className="w-3.5 h-3.5 text-blue-700" /> 10 free studies
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Check className="w-3.5 h-3.5 text-blue-700" /> Cancel anytime
-          </span>
-        </div>
-      </div>
-
-      <div className="lg:col-span-5">
-        <ProductPreview />
-      </div>
-    </section>
-  );
-}
-
-/** Faux deliverable preview — an earned card: it depicts a document. */
-function ProductPreview() {
-  return (
-    <div className="rounded-lg border border-border bg-background shadow-lg overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/40">
-        <div className="flex items-center gap-2 text-xs">
-          <FileText className="w-4 h-4 text-blue-700" />
-          <span className="font-mono text-muted-foreground">TIS-2026-0429</span>
-        </div>
-        <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-          Live preview
-        </div>
-      </div>
-
-      <div className="px-5 py-4 border-b border-border space-y-1">
-        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-blue-700">
-          Traffic Impact Study
-        </div>
-        <div className="text-lg font-bold">Peachtree Multifamily — 240 DU</div>
-        <div className="text-xs text-muted-foreground font-mono">
-          LU 220 · Sample (Atlanta MSA) · Opening year 2027
-        </div>
-      </div>
-
-      <div className="grid grid-cols-4 divide-x divide-border border-b border-border">
-        <MetricTile value="49" label="Intersections" />
-        <MetricTile value="9" label="LOS E/F" tone="warn" />
-        <MetricTile value="0" label="LOS drops" tone="good" />
-        <MetricTile value="0.6s" label="Δ delay" />
-      </div>
-
-      <div className="px-5 py-4 space-y-2">
-        <div className="grid grid-cols-12 gap-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          <div className="col-span-6">Signal</div>
-          <div className="col-span-2 text-center">Existing</div>
-          <div className="col-span-2 text-center">Future</div>
-          <div className="col-span-2 text-right">Δ delay</div>
-        </div>
-        <IntersectionRow name="Peachtree & 5th" existing="C" future="C" delta="6.8s" />
-        <IntersectionRow name="Spring & North Ave" existing="D" future="E" delta="23.4s" alert />
-        <IntersectionRow name="W Peachtree & 14th" existing="F" future="F" delta="11.8s" />
-        <IntersectionRow name="Crescent & 8th" existing="B" future="C" delta="4.1s" />
-      </div>
-
-      <div className="px-5 py-3 border-t border-border bg-muted/40 text-[10px] text-muted-foreground font-mono leading-relaxed">
-        Conventional US control-delay bands: A ≤10s · B ≤20s · C ≤35s · D ≤55s · E ≤80s · F &gt;80s
-      </div>
-    </div>
-  );
-}
-
-function MetricTile({
-  value, label, tone,
-}: { value: string; label: string; tone?: "warn" | "good" }) {
-  const valueColor =
-    tone === "warn" ? "text-amber-600" :
-    tone === "good" ? "text-green-600" :
-    "text-foreground";
-  return (
-    <div className="px-3 py-3 text-center">
-      <div className={`font-mono text-xl font-bold tabular-nums ${valueColor}`}>{value}</div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">
-        {label}
-      </div>
-    </div>
-  );
-}
-
-const LOS_CHIP: Record<string, string> = {
-  A: "bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300",
-  B: "bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300",
-  C: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-  D: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-  E: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
-  F: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
-};
-
-function IntersectionRow({
-  name, existing, future, delta, alert,
-}: { name: string; existing: string; future: string; delta: string; alert?: boolean }) {
-  return (
-    <div className="grid grid-cols-12 gap-2 items-center text-xs">
-      <div className="col-span-6 truncate font-medium">{name}</div>
-      <div className="col-span-2 text-center">
-        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${LOS_CHIP[existing] ?? ""}`}>
-          {existing}
-        </span>
-      </div>
-      <div className="col-span-2 text-center">
-        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${LOS_CHIP[future] ?? ""}`}>
-          {future}
-        </span>
-      </div>
-      <div className={`col-span-2 text-right tabular-nums font-mono text-[11px] ${alert ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>
-        +{delta}
-      </div>
-    </div>
-  );
-}
-
 function StatsBand() {
   return (
-    <section className="border-y border-border bg-slate-50 dark:bg-slate-950/40">
+    <section id="after-hero" className="border-y border-border bg-slate-50 dark:bg-slate-950/40">
       <LosScaleStrip />
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-14 grid grid-cols-2 md:grid-cols-4 gap-px bg-border">
         <BigStat value="40 hrs" label="Junior production hours replaced, per study" />
