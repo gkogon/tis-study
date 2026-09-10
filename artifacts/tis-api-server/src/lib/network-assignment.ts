@@ -105,7 +105,29 @@ const ROADS_FETCH_TIMEOUT_MS = Math.max(6000, Number(process.env["ROADS_FETCH_TI
  * retry usually lands on a warm cache. Failure is logged — an absent road
  * network changes the whole downstream assignment story and must be visible.
  */
+// Short memo of successful road fetches, keyed by the only inputs the URL is
+// built from. A what-if iteration (driveway / timing / size edits) re-runs the
+// engine for the SAME site and radius, and the analyzer re-scans the region's
+// road file radially on every call (its Cache-Control header is ignored by
+// Node's fetch) — so without this each what-if paid a full roads round-trip
+// for a payload that cannot have changed. Only non-null results are memoised
+// (a transient failure or an "unavailable" answer is retried next time), and
+// the TTL keeps a redeployed road batch from being served stale for long.
+export const ROADS_MEMO_TTL_MS = 10 * 60 * 1000;
+const roadsMemo = new Map<string, { at: number; segments: RoadSegment[] }>();
+
 export async function fetchLocalRoads(
+  regionCode: string, lat: number, lon: number, radiusMi: number,
+): Promise<RoadSegment[] | null> {
+  const memoKey = `${regionCode}|${lat}|${lon}|${radiusMi}`;
+  const hit = roadsMemo.get(memoKey);
+  if (hit && Date.now() - hit.at < ROADS_MEMO_TTL_MS) return hit.segments;
+  const segments = await fetchLocalRoadsUncached(regionCode, lat, lon, radiusMi);
+  if (segments) roadsMemo.set(memoKey, { at: Date.now(), segments });
+  return segments;
+}
+
+async function fetchLocalRoadsUncached(
   regionCode: string, lat: number, lon: number, radiusMi: number,
 ): Promise<RoadSegment[] | null> {
   const url = `${ANALYZER_BASE_URL}/api/roads?regionCode=${encodeURIComponent(regionCode)}`

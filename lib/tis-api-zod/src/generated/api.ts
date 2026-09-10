@@ -179,6 +179,21 @@ export const generateTisBodyDrivewaysItemLongitudeMax = 180;
 
 export const generateTisBodyDrivewaysMax = 12;
 
+export const generateTisBodySignalTimingOverridesItemLatitudeMin = -90;
+export const generateTisBodySignalTimingOverridesItemLatitudeMax = 90;
+
+export const generateTisBodySignalTimingOverridesItemLongitudeMin = -180;
+export const generateTisBodySignalTimingOverridesItemLongitudeMax = 180;
+
+export const generateTisBodySignalTimingOverridesItemCycleLenSecMin = 30;
+export const generateTisBodySignalTimingOverridesItemCycleLenSecMax = 300;
+
+export const generateTisBodySignalTimingOverridesItemPhaseByMovementMaxOne = 16;
+
+export const generateTisBodySignalTimingOverridesItemSplitSByPhaseMaxOne = 300;
+
+export const generateTisBodySignalTimingOverridesMax = 60;
+
 export const GenerateTisBody = zod.object({
   projectName: zod.string().min(1),
   address: zod.string(),
@@ -626,6 +641,64 @@ export const GenerateTisBody = zod.object({
     .describe(
       "Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).",
     ),
+  signalTimingOverrides: zod
+    .array(
+      zod
+        .object({
+          latitude: zod
+            .number()
+            .min(generateTisBodySignalTimingOverridesItemLatitudeMin)
+            .max(generateTisBodySignalTimingOverridesItemLatitudeMax),
+          longitude: zod
+            .number()
+            .min(generateTisBodySignalTimingOverridesItemLongitudeMin)
+            .max(generateTisBodySignalTimingOverridesItemLongitudeMax),
+          name: zod
+            .string()
+            .optional()
+            .describe(
+              "Intersection name (the report row's `name`), for the name fallback and the summary.",
+            ),
+          cycleLenSec: zod
+            .number()
+            .min(generateTisBodySignalTimingOverridesItemCycleLenSecMin)
+            .max(generateTisBodySignalTimingOverridesItemCycleLenSecMax),
+          phaseByMovement: zod
+            .record(
+              zod.string(),
+              zod
+                .number()
+                .min(1)
+                .max(
+                  generateTisBodySignalTimingOverridesItemPhaseByMovementMaxOne,
+                ),
+            )
+            .describe(
+              "Phase number serving each movement (NBL, NBT, ... WBR). A left whose phase differs from its through's phase is protected. Both axes' through movements must map to a phase that has a split, or the override does not resolve and the next provider is used.",
+            ),
+          splitSByPhase: zod
+            .record(
+              zod.string(),
+              zod
+                .number()
+                .min(1)
+                .max(
+                  generateTisBodySignalTimingOverridesItemSplitSByPhaseMaxOne,
+                ),
+            )
+            .describe(
+              "Split (max green) seconds by phase number; effective green is split minus 5 s lost time.",
+            ),
+        })
+        .describe(
+          "A per-signal TIMING override for a what-if scenario: cycle length plus a phase-to-movement map and split seconds, the same measured tier a Synchro record supplies — but WITHOUT turning volumes, so the intersection's existing volumes and approach split are left exactly as the base study computed them. Snapped to the nearest study intersection within ~0.35 mi by coordinates (copy latitude\/longitude from the report row; nearest record wins per signal); a record whose coordinates miss falls back to an unambiguous normalized-name match when `name` is given. Consumed only by the signal-timing resolver, as its first provider (above a Synchro record, above Webster); rows it attaches to report signalTiming.source \"override\". Ignored under signalTiming: screening. Every record's fate is reported in the response's timingOverrideSummary.",
+        ),
+    )
+    .max(generateTisBodySignalTimingOverridesMax)
+    .optional()
+    .describe(
+      "Per-signal timing overrides for a what-if scenario (see SignalTimingOverride). Timing only: existing volumes and approach shares at the matched signal are untouched. Absent => output byte-identical to a study without overrides.",
+    ),
 });
 
 export const generateTisResponseRequestLatitudeMin = -90;
@@ -781,6 +854,23 @@ export const generateTisResponseRequestDrivewaysItemLongitudeMin = -180;
 export const generateTisResponseRequestDrivewaysItemLongitudeMax = 180;
 
 export const generateTisResponseRequestDrivewaysMax = 12;
+
+export const generateTisResponseRequestSignalTimingOverridesItemLatitudeMin =
+  -90;
+export const generateTisResponseRequestSignalTimingOverridesItemLatitudeMax = 90;
+
+export const generateTisResponseRequestSignalTimingOverridesItemLongitudeMin =
+  -180;
+export const generateTisResponseRequestSignalTimingOverridesItemLongitudeMax = 180;
+
+export const generateTisResponseRequestSignalTimingOverridesItemCycleLenSecMin = 30;
+export const generateTisResponseRequestSignalTimingOverridesItemCycleLenSecMax = 300;
+
+export const generateTisResponseRequestSignalTimingOverridesItemPhaseByMovementMaxOne = 16;
+
+export const generateTisResponseRequestSignalTimingOverridesItemSplitSByPhaseMaxOne = 300;
+
+export const generateTisResponseRequestSignalTimingOverridesMax = 60;
 
 export const generateTisResponseAffectedIntersectionsItemApproachesItemThroughLanesMax = 6;
 
@@ -1345,6 +1435,76 @@ export const GenerateTisResponse = zod.object({
       .describe(
         "Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).",
       ),
+    signalTimingOverrides: zod
+      .array(
+        zod
+          .object({
+            latitude: zod
+              .number()
+              .min(
+                generateTisResponseRequestSignalTimingOverridesItemLatitudeMin,
+              )
+              .max(
+                generateTisResponseRequestSignalTimingOverridesItemLatitudeMax,
+              ),
+            longitude: zod
+              .number()
+              .min(
+                generateTisResponseRequestSignalTimingOverridesItemLongitudeMin,
+              )
+              .max(
+                generateTisResponseRequestSignalTimingOverridesItemLongitudeMax,
+              ),
+            name: zod
+              .string()
+              .optional()
+              .describe(
+                "Intersection name (the report row's `name`), for the name fallback and the summary.",
+              ),
+            cycleLenSec: zod
+              .number()
+              .min(
+                generateTisResponseRequestSignalTimingOverridesItemCycleLenSecMin,
+              )
+              .max(
+                generateTisResponseRequestSignalTimingOverridesItemCycleLenSecMax,
+              ),
+            phaseByMovement: zod
+              .record(
+                zod.string(),
+                zod
+                  .number()
+                  .min(1)
+                  .max(
+                    generateTisResponseRequestSignalTimingOverridesItemPhaseByMovementMaxOne,
+                  ),
+              )
+              .describe(
+                "Phase number serving each movement (NBL, NBT, ... WBR). A left whose phase differs from its through's phase is protected. Both axes' through movements must map to a phase that has a split, or the override does not resolve and the next provider is used.",
+              ),
+            splitSByPhase: zod
+              .record(
+                zod.string(),
+                zod
+                  .number()
+                  .min(1)
+                  .max(
+                    generateTisResponseRequestSignalTimingOverridesItemSplitSByPhaseMaxOne,
+                  ),
+              )
+              .describe(
+                "Split (max green) seconds by phase number; effective green is split minus 5 s lost time.",
+              ),
+          })
+          .describe(
+            "A per-signal TIMING override for a what-if scenario: cycle length plus a phase-to-movement map and split seconds, the same measured tier a Synchro record supplies — but WITHOUT turning volumes, so the intersection's existing volumes and approach split are left exactly as the base study computed them. Snapped to the nearest study intersection within ~0.35 mi by coordinates (copy latitude\/longitude from the report row; nearest record wins per signal); a record whose coordinates miss falls back to an unambiguous normalized-name match when `name` is given. Consumed only by the signal-timing resolver, as its first provider (above a Synchro record, above Webster); rows it attaches to report signalTiming.source \"override\". Ignored under signalTiming: screening. Every record's fate is reported in the response's timingOverrideSummary.",
+          ),
+      )
+      .max(generateTisResponseRequestSignalTimingOverridesMax)
+      .optional()
+      .describe(
+        "Per-signal timing overrides for a what-if scenario (see SignalTimingOverride). Timing only: existing volumes and approach shares at the matched signal are untouched. Absent => output byte-identical to a study without overrides.",
+      ),
   }),
   studyRadiusMi: zod.number(),
   tripGeneration: zod.object({
@@ -1387,6 +1547,86 @@ export const GenerateTisResponse = zod.object({
       latitude: zod.number(),
       longitude: zod.number(),
       distanceMi: zod.number(),
+      designHourVolumeVph: zod
+        .number()
+        .optional()
+        .describe(
+          "The unrounded design-hour volume this row anchors on — the inventory's AADT x K design hour, or the measured turning-movement total when a UTDF record attached (volumeSource). The period's background volume is this x the period's periodVolumeFactor.",
+        ),
+      loadWeight: zod
+        .number()
+        .optional()
+        .describe(
+          "The per-intersection project-load weight the row was built with (exact; distance-decay, driveway share, or the conserved through-share). addedTripsPmPeak = round(externalTrips x weight), except where inbound ledgers (pathTurnsIn) re-derive the blend.",
+        ),
+      pathTurns: zod
+        .array(
+          zod
+            .object({
+              enterBearingDeg: zod.number(),
+              exitBearingDeg: zod.number(),
+              share: zod.number(),
+            })
+            .describe(
+              "One routed turn through a junction, in share units (fraction of project demand), from the conserved assignment.",
+            ),
+        )
+        .optional()
+        .describe(
+          'Conserved-assignment turn ledger (outbound, site to cordon) for a movementSource \"path\" row: each routed turn through this junction in share units. Absent on octant rows.',
+        ),
+      pathTurnsIn: zod
+        .array(
+          zod
+            .object({
+              enterBearingDeg: zod.number(),
+              exitBearingDeg: zod.number(),
+              share: zod.number(),
+            })
+            .describe(
+              "One routed turn through a junction, in share units (fraction of project demand), from the conserved assignment.",
+            ),
+        )
+        .optional()
+        .describe(
+          "Recorded inbound ledger, present only when the routing graph carries one-way links. An empty array is meaningful (the inbound paths do not pass this junction); absent means the inbound mirror of pathTurns applies.",
+        ),
+      movementsExact: zod
+        .array(
+          zod.object({
+            approach: zod.enum(["NB", "SB", "EB", "WB"]),
+            movement: zod.enum(["L", "T", "R"]),
+            exact: zod.number(),
+          }),
+        )
+        .optional()
+        .describe(
+          "The exact (fractional) movement loads the integer `movements` table was integerized from, and the per-approach loading derives from. Sums to externalTrips x loadWeight (or the ledger blend).",
+        ),
+      mainThroughLanes: zod
+        .number()
+        .optional()
+        .describe(
+          "Per-direction through lanes on the major approach from the OSM lanes tag, present only when measured (mainThroughLanesMeasured).",
+        ),
+      minorThroughLanes: zod
+        .number()
+        .optional()
+        .describe(
+          "Per-direction through lanes on the minor approach from the OSM lanes tag, when tagged.",
+        ),
+      mainThroughLanesMeasured: zod
+        .boolean()
+        .optional()
+        .describe(
+          "True when mainThroughLanes came from a measured OSM tag (the only case the engine uses it).",
+        ),
+      utdfRecordIndex: zod
+        .number()
+        .optional()
+        .describe(
+          "Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached.",
+        ),
       existingVc: zod
         .number()
         .describe(
@@ -1491,6 +1731,12 @@ export const GenerateTisResponse = zod.object({
         .object({
           sampleCount: zod.number(),
           delayMultiplier: zod.number(),
+          delayMultiplierExact: zod
+            .number()
+            .optional()
+            .describe(
+              "The unrounded multiplier the engine applied (delayMultiplier is 2 dp); optional on older payloads.",
+            ),
           lastObservedDelaySec: zod.number().nullish(),
         })
         .optional()
@@ -1546,6 +1792,10 @@ export const GenerateTisResponse = zod.object({
           gOverCew: zod.number(),
           gOverCnsLeft: zod.number().optional(),
           gOverCewLeft: zod.number().optional(),
+          gOverCnsExact: zod.number().optional(),
+          gOverCewExact: zod.number().optional(),
+          gOverCnsLeftExact: zod.number().optional(),
+          gOverCewLeftExact: zod.number().optional(),
           leftPhasingNs: zod.enum(["protected", "permissive"]),
           leftPhasingEw: zod.enum(["protected", "permissive"]),
           leftPhasingSource: zod
@@ -1617,6 +1867,86 @@ export const GenerateTisResponse = zod.object({
           latitude: zod.number(),
           longitude: zod.number(),
           distanceMi: zod.number(),
+          designHourVolumeVph: zod
+            .number()
+            .optional()
+            .describe(
+              "The unrounded design-hour volume this row anchors on — the inventory's AADT x K design hour, or the measured turning-movement total when a UTDF record attached (volumeSource). The period's background volume is this x the period's periodVolumeFactor.",
+            ),
+          loadWeight: zod
+            .number()
+            .optional()
+            .describe(
+              "The per-intersection project-load weight the row was built with (exact; distance-decay, driveway share, or the conserved through-share). addedTripsPmPeak = round(externalTrips x weight), except where inbound ledgers (pathTurnsIn) re-derive the blend.",
+            ),
+          pathTurns: zod
+            .array(
+              zod
+                .object({
+                  enterBearingDeg: zod.number(),
+                  exitBearingDeg: zod.number(),
+                  share: zod.number(),
+                })
+                .describe(
+                  "One routed turn through a junction, in share units (fraction of project demand), from the conserved assignment.",
+                ),
+            )
+            .optional()
+            .describe(
+              'Conserved-assignment turn ledger (outbound, site to cordon) for a movementSource \"path\" row: each routed turn through this junction in share units. Absent on octant rows.',
+            ),
+          pathTurnsIn: zod
+            .array(
+              zod
+                .object({
+                  enterBearingDeg: zod.number(),
+                  exitBearingDeg: zod.number(),
+                  share: zod.number(),
+                })
+                .describe(
+                  "One routed turn through a junction, in share units (fraction of project demand), from the conserved assignment.",
+                ),
+            )
+            .optional()
+            .describe(
+              "Recorded inbound ledger, present only when the routing graph carries one-way links. An empty array is meaningful (the inbound paths do not pass this junction); absent means the inbound mirror of pathTurns applies.",
+            ),
+          movementsExact: zod
+            .array(
+              zod.object({
+                approach: zod.enum(["NB", "SB", "EB", "WB"]),
+                movement: zod.enum(["L", "T", "R"]),
+                exact: zod.number(),
+              }),
+            )
+            .optional()
+            .describe(
+              "The exact (fractional) movement loads the integer `movements` table was integerized from, and the per-approach loading derives from. Sums to externalTrips x loadWeight (or the ledger blend).",
+            ),
+          mainThroughLanes: zod
+            .number()
+            .optional()
+            .describe(
+              "Per-direction through lanes on the major approach from the OSM lanes tag, present only when measured (mainThroughLanesMeasured).",
+            ),
+          minorThroughLanes: zod
+            .number()
+            .optional()
+            .describe(
+              "Per-direction through lanes on the minor approach from the OSM lanes tag, when tagged.",
+            ),
+          mainThroughLanesMeasured: zod
+            .boolean()
+            .optional()
+            .describe(
+              "True when mainThroughLanes came from a measured OSM tag (the only case the engine uses it).",
+            ),
+          utdfRecordIndex: zod
+            .number()
+            .optional()
+            .describe(
+              "Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached.",
+            ),
           existingVc: zod
             .number()
             .describe(
@@ -1721,6 +2051,12 @@ export const GenerateTisResponse = zod.object({
             .object({
               sampleCount: zod.number(),
               delayMultiplier: zod.number(),
+              delayMultiplierExact: zod
+                .number()
+                .optional()
+                .describe(
+                  "The unrounded multiplier the engine applied (delayMultiplier is 2 dp); optional on older payloads.",
+                ),
               lastObservedDelaySec: zod.number().nullish(),
             })
             .optional()
@@ -1776,6 +2112,10 @@ export const GenerateTisResponse = zod.object({
               gOverCew: zod.number(),
               gOverCnsLeft: zod.number().optional(),
               gOverCewLeft: zod.number().optional(),
+              gOverCnsExact: zod.number().optional(),
+              gOverCewExact: zod.number().optional(),
+              gOverCnsLeftExact: zod.number().optional(),
+              gOverCewLeftExact: zod.number().optional(),
               leftPhasingNs: zod.enum(["protected", "permissive"]),
               leftPhasingEw: zod.enum(["protected", "permissive"]),
               leftPhasingSource: zod
@@ -1801,6 +2141,30 @@ export const GenerateTisResponse = zod.object({
         .describe(
           "Largest projected delay increase across the studied intersections, in the OPENING YEAR only. Scoped, not absolute — compare against worstDelayDeltaDesignSec, which is routinely larger because background growth over the design horizon sits underneath it.",
         ),
+      periodVolumeFactor: zod
+        .number()
+        .optional()
+        .describe(
+          "Background-network volume as a fraction of the stored design hour for this period (PM anchors at 1.0).",
+        ),
+      inFraction: zod
+        .number()
+        .optional()
+        .describe(
+          "Inbound directional share of the project's external trips for this period.",
+        ),
+      externalTripsExact: zod
+        .number()
+        .optional()
+        .describe(
+          "The proposed use's external auto trips for this period, unrounded (tripGeneration.externalTrips is rounded).",
+        ),
+      existingUseCreditExact: zod
+        .number()
+        .optional()
+        .describe(
+          "The existing-use redevelopment credit for this period, unrounded; present only when the request supplied an existing land use. Net assigned trips = max(0, externalTripsExact - existingUseCreditExact).",
+        ),
     }),
   ),
   growthAppliedPct: zod.number(),
@@ -1822,6 +2186,2467 @@ export const GenerateTisResponse = zod.object({
   passByPctApplied: zod.number(),
   internalCapturePctApplied: zod.number(),
   autoModeShareApplied: zod.number().optional(),
+  designYear: zod
+    .number()
+    .optional()
+    .describe(
+      "Opening year + the design horizon, the year the design-year scenarios are grown to.",
+    ),
+  designYearHorizonYears: zod
+    .number()
+    .optional()
+    .describe(
+      "Design horizon in years beyond the opening year (20 by default).",
+    ),
+  regionCode: zod
+    .string()
+    .optional()
+    .describe(
+      "The covered region the engine resolved for the site (e.g. atlanta_metro).",
+    ),
+  jurisdiction: zod
+    .object({
+      dotName: zod.string(),
+      planningOfficeName: zod.string(),
+    })
+    .optional()
+    .describe(
+      "The region's governing-agency names, as the findings and mitigation summary print them.",
+    ),
+  autoModeShareSource: zod
+    .string()
+    .optional()
+    .describe(
+      "Citation for the region's auto-mode share, as the findings print it.",
+    ),
+  weatherFactorExact: zod
+    .number()
+    .optional()
+    .describe(
+      "The unrounded weather capacity factor applied (weatherCapacityFactor is 2 dp).",
+    ),
+  timingOverrideSummary: zod
+    .object({
+      total: zod.number(),
+      matched: zod.number(),
+      matchedByCoordinates: zod.number(),
+      matchedByName: zod.number(),
+      matches: zod.array(
+        zod.object({
+          index: zod
+            .number()
+            .describe("Index into request.signalTimingOverrides."),
+          signalId: zod.string(),
+          signalName: zod.string(),
+          by: zod.enum(["coordinates", "name"]),
+        }),
+      ),
+      unmatched: zod.array(
+        zod.object({
+          index: zod
+            .number()
+            .describe("Index into request.signalTimingOverrides."),
+          label: zod.string(),
+          reason: zod.enum([
+            "no_signal_within_snap",
+            "displaced_by_nearer",
+            "name_tie",
+            "name_unmatched",
+            "displaced_by_existing",
+          ]),
+        }),
+      ),
+    })
+    .optional()
+    .describe(
+      "How the request's signalTimingOverrides attached to study intersections. Present whenever the request carried the array (even empty), so a what-if client can always show which overrides took and which did not.",
+    ),
+  routeAssignment: zod
+    .object({
+      available: zod.boolean(),
+      method: zod.string(),
+      iterations: zod.number(),
+      destinationsTotal: zod.number(),
+      destinationsRouted: zod.number(),
+      onNetworkPct: zod.number(),
+      worstLinkVoverC: zod.number(),
+      corridors: zod.array(
+        zod.object({
+          classLabel: zod.string(),
+          projectVph: zod.number(),
+          lengthMi: zod.number(),
+          vOverC: zod.number(),
+        }),
+      ),
+    })
+    .optional(),
+  conservedAssignment: zod
+    .object({
+      enabled: zod.boolean().optional(),
+      gatewayCount: zod.number().optional(),
+      classCeiling: zod.number().optional(),
+      emptyOctants: zod.array(zod.string()).optional(),
+      resolvedIntersections: zod.number().optional(),
+      octantFallbacks: zod.number().optional(),
+      conservation: zod
+        .object({
+          nodesChecked: zod.number().optional(),
+          maxImbalance: zod.number().optional(),
+          balanced: zod.boolean().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+  sensitivity: zod
+    .object({
+      iterations: zod.number(),
+      worstDelayDeltaMean: zod.number(),
+      worstDelayDeltaP10: zod.number(),
+      worstDelayDeltaP50: zod.number(),
+      worstDelayDeltaP90: zod.number(),
+      probAnyLosDrop: zod.number(),
+      probAnyLosEf: zod.number(),
+      expectedLosDrops: zod.number(),
+    })
+    .optional(),
+  tripDistribution: zod
+    .object({
+      method: zod
+        .enum(["gravity", "analogy", "surrogate"])
+        .describe(
+          "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
+        ),
+      methodLabel: zod.string(),
+      basis: zod.string(),
+      betaExponent: zod.number(),
+      massBasis: zod.string(),
+      weights: zod.array(zod.number()),
+      loadMultipliers: zod.array(zod.number()),
+      byDirection: zod.record(zod.string(), zod.number()),
+      sectors: zod.record(zod.string(), zod.number()),
+      zones: zod.array(
+        zod.object({
+          id: zod.string(),
+          name: zod.string(),
+          distanceMi: zod.number(),
+          bearingDeg: zod.number(),
+          cardinal: zod.string(),
+          mass: zod.number(),
+          term: zod.number(),
+          weight: zod.number(),
+          sharePct: zod.number(),
+        }),
+      ),
+    })
+    .optional()
+    .describe("Region-agnostic trip-distribution summary for the study."),
+  driveways: zod
+    .object({
+      driveways: zod.array(
+        zod
+          .object({
+            drivewayNode: zod
+              .number()
+              .describe(
+                "Internal graph node index for the driveway snap point.",
+              ),
+            label: zod
+              .string()
+              .describe("Driveway label (falls back to the driveway id)."),
+            enterByMovement: zod.object({
+              inLeft: zod.number().describe("Trips entering via left turn."),
+              inRight: zod.number().describe("Trips entering via right turn."),
+            }),
+            exitByMovement: zod.object({
+              outLeft: zod.number().describe("Trips exiting via left turn."),
+              outRight: zod.number().describe("Trips exiting via right turn."),
+            }),
+            reroutedTrips: zod
+              .number()
+              .describe(
+                "Trips that could not leave directly and rerouted as U-turns.",
+              ),
+          })
+          .describe(
+            "Per-driveway assignment summary from a driveway-routed TIS.",
+          ),
+      ),
+      reroutes: zod.array(
+        zod.object({
+          destIndex: zod
+            .number()
+            .describe(
+              "Index into the destination list (candidate intersection) where the U-turn volume was credited.",
+            ),
+          trips: zod
+            .number()
+            .describe("Number of trips rerouted via this U-turn."),
+        }),
+      ),
+    })
+    .optional()
+    .describe(
+      "Driveway access assignment result. Present only when `request.driveways` was supplied and non-empty AND a road network was available to route through. Absent ⇒ no driveways or roads unavailable (base LOS unchanged).",
+    ),
+  coverageNote: zod
+    .object({
+      code: zod.enum(["nearest_n_fallback"]),
+      radiusMi: zod.number(),
+      usedCount: zod.number(),
+      nearestDistanceMi: zod.number(),
+      farthestDistanceMi: zod.number(),
+      message: zod.string(),
+    })
+    .optional()
+    .describe(
+      "Present ONLY when the study radius contained no signalized intersection and the engine widened to the nearest-N fallback set (sparse rural\/exurban site). The study succeeded; this discloses that every analyzed intersection sits beyond the stated radius.",
+    ),
+  utdfMatchSummary: zod
+    .object({
+      total: zod.number(),
+      matched: zod.number(),
+      matchedByCoordinates: zod.number(),
+      matchedByName: zod.number(),
+      unmatchedNames: zod.array(zod.string()),
+    })
+    .optional()
+    .describe(
+      "How the request's imported `utdfIntersections` records attached to study intersections. Present ONLY when the request carried at least one record that needed name-based matching (a Synchro-report-PDF record, or any record without usable coordinates) — legacy UTDF-text studies and studies without imported data keep byte-identical payloads. Coordinate matches use the ~0.35-mi nearest-signal snap; name matches require an unambiguous normalized-name match among the study candidates (ties and misses land in `unmatchedNames` and are logged loudly, never silently dropped).",
+    ),
+});
+
+/**
+ * Same request as /generate; same TisReport back. Recomputes the study
+with the full engine for an in-progress scenario — edited driveways,
+per-signal timing overrides (signalTimingOverrides), size / pass-by /
+growth / weather changes — WITHOUT reserving a study slot, saving a
+project, or recording a funnel event. runSensitivity is ignored
+(forced off). Signed-in only; metered per user (60/hour) and gated on
+the firm still having studies or credits available (402 otherwise);
+one what-if in flight per user (409 otherwise). Use /generate to
+commit the final scenario.
+
+ * @summary Re-run a study as a what-if scenario (no study slot, nothing saved)
+ */
+
+export const whatIfTisBodyLatitudeMin = -90;
+export const whatIfTisBodyLatitudeMax = 90;
+
+export const whatIfTisBodyLongitudeMin = -180;
+export const whatIfTisBodyLongitudeMax = 180;
+
+export const whatIfTisBodyLandUseCodeMin = 2;
+
+export const whatIfTisBodySizeMin = 0.01;
+
+export const whatIfTisBodyOpeningYearMin = 2024;
+export const whatIfTisBodyOpeningYearMax = 2050;
+
+export const whatIfTisBodyStudyRadiusMiMin = 0.1;
+export const whatIfTisBodyStudyRadiusMiMax = 6.5;
+
+export const whatIfTisBodyGrowthRatePctMin = 0;
+export const whatIfTisBodyGrowthRatePctMax = 6;
+
+export const whatIfTisBodyPassByPctMin = 0;
+export const whatIfTisBodyPassByPctMax = 70;
+
+export const whatIfTisBodyInternalCapturePctMin = 0;
+export const whatIfTisBodyInternalCapturePctMax = 50;
+
+export const whatIfTisBodyTripProfileArrivalsItemMin = 0;
+
+export const whatIfTisBodyTripProfileArrivalsMin = 24;
+export const whatIfTisBodyTripProfileArrivalsMax = 24;
+
+export const whatIfTisBodyTripProfileDeparturesItemMin = 0;
+
+export const whatIfTisBodyTripProfileDeparturesMin = 24;
+export const whatIfTisBodyTripProfileDeparturesMax = 24;
+
+export const whatIfTisBodyStudyIntersectionIdsMax = 60;
+
+export const whatIfTisBodyAdditionalStudyPointsItemLatitudeMin = -90;
+export const whatIfTisBodyAdditionalStudyPointsItemLatitudeMax = 90;
+
+export const whatIfTisBodyAdditionalStudyPointsItemLongitudeMin = -180;
+export const whatIfTisBodyAdditionalStudyPointsItemLongitudeMax = 180;
+
+export const whatIfTisBodyAdditionalStudyPointsMax = 60;
+
+export const whatIfTisBodyUtdfIntersectionsItemLatitudeMin = -90;
+export const whatIfTisBodyUtdfIntersectionsItemLatitudeMax = 90;
+
+export const whatIfTisBodyUtdfIntersectionsItemLongitudeMin = -180;
+export const whatIfTisBodyUtdfIntersectionsItemLongitudeMax = 180;
+
+export const whatIfTisBodyUtdfIntersectionsItemVolumesNBLMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemVolumesNBTMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemVolumesNBRMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemVolumesSBLMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemVolumesSBTMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemVolumesSBRMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemVolumesEBLMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemVolumesEBTMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemVolumesEBRMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemVolumesWBLMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemVolumesWBTMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemVolumesWBRMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemPhfMin = 0.25;
+export const whatIfTisBodyUtdfIntersectionsItemPhfMax = 1;
+
+export const whatIfTisBodyUtdfIntersectionsItemHvPctMin = 0;
+export const whatIfTisBodyUtdfIntersectionsItemHvPctMax = 100;
+
+export const whatIfTisBodyUtdfIntersectionsItemStorageFtNBLMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemStorageFtNBTMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemStorageFtNBRMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemStorageFtSBLMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemStorageFtSBTMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemStorageFtSBRMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemStorageFtEBLMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemStorageFtEBTMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemStorageFtEBRMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemStorageFtWBLMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemStorageFtWBTMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemStorageFtWBRMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemLanesOneNBLMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemLanesOneNBTMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemLanesOneNBRMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemLanesOneSBLMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemLanesOneSBTMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemLanesOneSBRMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemLanesOneEBLMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemLanesOneEBTMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemLanesOneEBRMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemLanesOneWBLMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemLanesOneWBTMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemLanesOneWBRMin = 0;
+
+export const whatIfTisBodyUtdfIntersectionsItemCycleLenSecMin = 30;
+export const whatIfTisBodyUtdfIntersectionsItemCycleLenSecMax = 300;
+
+export const whatIfTisBodyUtdfIntersectionsItemPhaseByMovementMaxOne = 16;
+
+export const whatIfTisBodyUtdfIntersectionsItemSplitSByPhaseMaxOne = 300;
+
+export const whatIfTisBodyUtdfIntersectionsMax = 60;
+
+export const whatIfTisBodyExistingLandUseCodeMin = 2;
+
+export const whatIfTisBodyExistingSizeMin = 0;
+
+export const whatIfTisBodyConservedAssignmentDefault = true;
+export const whatIfTisBodySignalTimingDefault = `computed`;
+export const whatIfTisBodyDrivewaysItemLatitudeMin = -90;
+export const whatIfTisBodyDrivewaysItemLatitudeMax = 90;
+
+export const whatIfTisBodyDrivewaysItemLongitudeMin = -180;
+export const whatIfTisBodyDrivewaysItemLongitudeMax = 180;
+
+export const whatIfTisBodyDrivewaysMax = 12;
+
+export const whatIfTisBodySignalTimingOverridesItemLatitudeMin = -90;
+export const whatIfTisBodySignalTimingOverridesItemLatitudeMax = 90;
+
+export const whatIfTisBodySignalTimingOverridesItemLongitudeMin = -180;
+export const whatIfTisBodySignalTimingOverridesItemLongitudeMax = 180;
+
+export const whatIfTisBodySignalTimingOverridesItemCycleLenSecMin = 30;
+export const whatIfTisBodySignalTimingOverridesItemCycleLenSecMax = 300;
+
+export const whatIfTisBodySignalTimingOverridesItemPhaseByMovementMaxOne = 16;
+
+export const whatIfTisBodySignalTimingOverridesItemSplitSByPhaseMaxOne = 300;
+
+export const whatIfTisBodySignalTimingOverridesMax = 60;
+
+export const WhatIfTisBody = zod.object({
+  projectName: zod.string().min(1),
+  address: zod.string(),
+  latitude: zod
+    .number()
+    .min(whatIfTisBodyLatitudeMin)
+    .max(whatIfTisBodyLatitudeMax),
+  longitude: zod
+    .number()
+    .min(whatIfTisBodyLongitudeMin)
+    .max(whatIfTisBodyLongitudeMax),
+  landUseCode: zod.string().min(whatIfTisBodyLandUseCodeMin),
+  size: zod.number().min(whatIfTisBodySizeMin),
+  openingYear: zod
+    .number()
+    .min(whatIfTisBodyOpeningYearMin)
+    .max(whatIfTisBodyOpeningYearMax),
+  studyRadiusMi: zod
+    .number()
+    .min(whatIfTisBodyStudyRadiusMiMin)
+    .max(whatIfTisBodyStudyRadiusMiMax)
+    .optional(),
+  analysisPeriods: zod
+    .array(zod.enum(["am_peak", "pm_peak", "saturday_midday", "daily"]))
+    .optional()
+    .describe("Defaults to all four periods if omitted."),
+  growthRatePct: zod
+    .number()
+    .min(whatIfTisBodyGrowthRatePctMin)
+    .max(whatIfTisBodyGrowthRatePctMax)
+    .optional()
+    .describe(
+      "Annual background growth rate applied to existing volumes (default 1.5%\/yr).",
+    ),
+  weather: zod
+    .enum(["clear", "light_rain", "heavy_rain", "light_snow", "heavy_snow"])
+    .optional(),
+  passByPct: zod
+    .number()
+    .min(whatIfTisBodyPassByPctMin)
+    .max(whatIfTisBodyPassByPctMax)
+    .optional()
+    .describe("Override the land-use default pass-by % at the PM peak."),
+  internalCapturePct: zod
+    .number()
+    .min(whatIfTisBodyInternalCapturePctMin)
+    .max(whatIfTisBodyInternalCapturePctMax)
+    .optional()
+    .describe(
+      "Override the land-use default internal-capture % at the PM peak.",
+    ),
+  runSensitivity: zod
+    .boolean()
+    .optional()
+    .describe(
+      "If true, runs a 100-iteration Monte-Carlo sensitivity analysis.",
+    ),
+  independentVariable: zod
+    .string()
+    .optional()
+    .describe(
+      "Optional ITE TGM 11th Ed. alternate independent variable (matches a `unitShort` from the land use's `secondaryVariables`). Defaults to the primary published variable.",
+    ),
+  tripProfile: zod
+    .object({
+      arrivals: zod
+        .array(zod.number().min(whatIfTisBodyTripProfileArrivalsItemMin))
+        .min(whatIfTisBodyTripProfileArrivalsMin)
+        .max(whatIfTisBodyTripProfileArrivalsMax)
+        .describe("Relative inbound (arrival) volume in each clock hour 0–23."),
+      departures: zod
+        .array(zod.number().min(whatIfTisBodyTripProfileDeparturesItemMin))
+        .min(whatIfTisBodyTripProfileDeparturesMin)
+        .max(whatIfTisBodyTripProfileDeparturesMax)
+        .describe(
+          "Relative outbound (departure) volume in each clock hour 0–23.",
+        ),
+      source: zod
+        .string()
+        .optional()
+        .describe("Provenance label printed under the figures."),
+    })
+    .optional()
+    .describe(
+      "Optional consultant-supplied within-day arrival\/departure distribution that overrides the engine's default office distribution for the inbound\/outbound-by-start-time and on-site-accumulation charts. Each array holds 24 non-negative values (clock hours 0–23); the renderer normalises each to sum to 1, so only relative magnitudes matter. Supplying this also unlocks the figures for non-office use classes.",
+    ),
+  scopeStudyIntersections: zod
+    .boolean()
+    .optional()
+    .describe(
+      "When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it.",
+    ),
+  studyIntersectionIds: zod
+    .array(zod.string().min(1))
+    .max(whatIfTisBodyStudyIntersectionIdsMax)
+    .optional()
+    .describe(
+      "Analyzer signal IDs to force-include as study intersections regardless of studyRadiusMi — a reviewer's agreed corridor scope (e.g. an arterial's signals spanning beyond a default 0.5-mi radius). Purely additive: unioned with the radius set, never removes a signal the radius found, and protected from the scopeStudyIntersections trim. Unknown IDs are ignored.",
+    ),
+  additionalStudyPoints: zod
+    .array(
+      zod.object({
+        latitude: zod
+          .number()
+          .min(whatIfTisBodyAdditionalStudyPointsItemLatitudeMin)
+          .max(whatIfTisBodyAdditionalStudyPointsItemLatitudeMax),
+        longitude: zod
+          .number()
+          .min(whatIfTisBodyAdditionalStudyPointsItemLongitudeMin)
+          .max(whatIfTisBodyAdditionalStudyPointsItemLongitudeMax),
+      }),
+    )
+    .max(whatIfTisBodyAdditionalStudyPointsMax)
+    .optional()
+    .describe(
+      "Reviewer-scoped intersection coordinates (pasted or map-clicked), each snapped to the nearest inventory signal within ~0.35 mi and force-included regardless of studyRadiusMi. Additive, like studyIntersectionIds; robust when a signal's name is unknown. Points with no nearby signal are ignored.",
+    ),
+  utdfIntersections: zod
+    .array(
+      zod
+        .object({
+          intId: zod
+            .number()
+            .optional()
+            .describe("Synchro INTID from the source file (provenance only)."),
+          name: zod.string().optional(),
+          source: zod
+            .enum(["utdf_text", "synchro_pdf"])
+            .optional()
+            .describe(
+              "Which importer produced this record. Absent = utdf_text (legacy records predate the field). synchro_pdf records are matched by name and get the `synchro_pdf_tmc` volume-source provenance label in the report.",
+            ),
+          latitude: zod
+            .number()
+            .min(whatIfTisBodyUtdfIntersectionsItemLatitudeMin)
+            .max(whatIfTisBodyUtdfIntersectionsItemLatitudeMax)
+            .optional(),
+          longitude: zod
+            .number()
+            .min(whatIfTisBodyUtdfIntersectionsItemLongitudeMin)
+            .max(whatIfTisBodyUtdfIntersectionsItemLongitudeMax)
+            .optional(),
+          volumes: zod
+            .object({
+              NBL: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemVolumesNBLMin)
+                .optional(),
+              NBT: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemVolumesNBTMin)
+                .optional(),
+              NBR: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemVolumesNBRMin)
+                .optional(),
+              SBL: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemVolumesSBLMin)
+                .optional(),
+              SBT: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemVolumesSBTMin)
+                .optional(),
+              SBR: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemVolumesSBRMin)
+                .optional(),
+              EBL: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemVolumesEBLMin)
+                .optional(),
+              EBT: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemVolumesEBTMin)
+                .optional(),
+              EBR: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemVolumesEBRMin)
+                .optional(),
+              WBL: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemVolumesWBLMin)
+                .optional(),
+              WBT: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemVolumesWBTMin)
+                .optional(),
+              WBR: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemVolumesWBRMin)
+                .optional(),
+            })
+            .describe(
+              "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+            ),
+          phf: zod
+            .number()
+            .min(whatIfTisBodyUtdfIntersectionsItemPhfMin)
+            .max(whatIfTisBodyUtdfIntersectionsItemPhfMax)
+            .optional()
+            .describe(
+              "Representative peak-hour factor (volume-weighted mean of the file's per-movement PHF records). Carried for provenance\/auditability; the screening capacity model has no PHF input today.",
+            ),
+          hvPct: zod
+            .number()
+            .min(whatIfTisBodyUtdfIntersectionsItemHvPctMin)
+            .max(whatIfTisBodyUtdfIntersectionsItemHvPctMax)
+            .optional()
+            .describe(
+              "Representative heavy-vehicle % (volume-weighted mean of the file's per-movement records). Carried for provenance\/auditability; the screening capacity model has no heavy-vehicle input today.",
+            ),
+          storageFt: zod
+            .object({
+              NBL: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemStorageFtNBLMin)
+                .optional(),
+              NBT: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemStorageFtNBTMin)
+                .optional(),
+              NBR: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemStorageFtNBRMin)
+                .optional(),
+              SBL: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemStorageFtSBLMin)
+                .optional(),
+              SBT: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemStorageFtSBTMin)
+                .optional(),
+              SBR: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemStorageFtSBRMin)
+                .optional(),
+              EBL: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemStorageFtEBLMin)
+                .optional(),
+              EBT: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemStorageFtEBTMin)
+                .optional(),
+              EBR: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemStorageFtEBRMin)
+                .optional(),
+              WBL: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemStorageFtWBLMin)
+                .optional(),
+              WBT: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemStorageFtWBTMin)
+                .optional(),
+              WBR: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemStorageFtWBRMin)
+                .optional(),
+            })
+            .optional()
+            .describe(
+              "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+            ),
+          lanes: zod
+            .object({
+              NBL: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemLanesOneNBLMin)
+                .optional(),
+              NBT: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemLanesOneNBTMin)
+                .optional(),
+              NBR: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemLanesOneNBRMin)
+                .optional(),
+              SBL: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemLanesOneSBLMin)
+                .optional(),
+              SBT: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemLanesOneSBTMin)
+                .optional(),
+              SBR: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemLanesOneSBRMin)
+                .optional(),
+              EBL: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemLanesOneEBLMin)
+                .optional(),
+              EBT: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemLanesOneEBTMin)
+                .optional(),
+              EBR: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemLanesOneEBRMin)
+                .optional(),
+              WBL: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemLanesOneWBLMin)
+                .optional(),
+              WBT: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemLanesOneWBTMin)
+                .optional(),
+              WBR: zod
+                .number()
+                .min(whatIfTisBodyUtdfIntersectionsItemLanesOneWBRMin)
+                .optional(),
+            })
+            .describe(
+              "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+            )
+            .optional()
+            .describe(
+              "Lane COUNT per movement from the file's [Lanes] section — real measured geometry. When present, each lane group's capacity is sized as lanes x saturation flow x g\/C instead of the one-critical-lane screening assumption. Counts above 6 are rejected as parse artifacts. Absent on records whose [Lanes] section carried no counts (a Synchro report PDF typically will not), and those intersections keep the screening basis unchanged.",
+            ),
+          cycleLenSec: zod
+            .number()
+            .min(whatIfTisBodyUtdfIntersectionsItemCycleLenSecMin)
+            .max(whatIfTisBodyUtdfIntersectionsItemCycleLenSecMax)
+            .optional()
+            .describe(
+              "Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.",
+            ),
+          phaseByMovement: zod
+            .record(
+              zod.string(),
+              zod
+                .number()
+                .min(1)
+                .max(whatIfTisBodyUtdfIntersectionsItemPhaseByMovementMaxOne),
+            )
+            .optional()
+            .describe(
+              "Phase number serving each movement (NBL, NBT, ... WBR), from the file's [Lanes] Phase1 record. Together with splitSByPhase this is a complete measured g\/C per movement with no NEMA phase-numbering guesswork: a left whose phase differs from its through's phase is protected. Absent when the file carried no Phase1 row (a Synchro report PDF typically will not), in which case the intersection's timing degrades to measured-cycle (cycle from the file, splits computed).",
+            ),
+          splitSByPhase: zod
+            .record(
+              zod.string(),
+              zod
+                .number()
+                .min(1)
+                .max(whatIfTisBodyUtdfIntersectionsItemSplitSByPhaseMaxOne),
+            )
+            .optional()
+            .describe(
+              "Split (max green) seconds by phase number, from the file's [Timings] section. Effective green is taken as split minus 5 s lost time.",
+            ),
+        })
+        .describe(
+          "Measured data for ONE intersection imported from Synchro — either a UTDF text export (\/utdf\/parse) or a Synchro report PDF (\/utdf\/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
+        ),
+    )
+    .max(whatIfTisBodyUtdfIntersectionsMax)
+    .optional()
+    .describe(
+      "Measured turning-movement data imported from Synchro — a UTDF text file (the records \/utdf\/parse emits) or a Synchro report PDF (the records \/utdf\/parse-pdf emits). A record with coordinates is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); a record without coordinates but with a name (report PDFs carry no coordinates) is matched by normalized intersection name, requiring an unambiguous best match — ties and misses are disclosed in the payload's utdfMatchSummary and logged, never silently dropped. At matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.",
+    ),
+  distributionMethod: zod
+    .enum(["gravity", "analogy", "surrogate"])
+    .optional()
+    .describe(
+      "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
+    ),
+  existingLandUseCode: zod
+    .string()
+    .min(whatIfTisBodyExistingLandUseCodeMin)
+    .optional()
+    .describe(
+      "Optional existing (prior) land use occupying the site today, for a redevelopment trip-generation credit. Its trips are computed the same way as the proposed use and subtracted, so the report shows net new external trips (gross − internal capture − pass-by − existing-use credit). Absent ⇒ greenfield behavior (no credit, unchanged output).",
+    ),
+  existingSize: zod
+    .number()
+    .min(whatIfTisBodyExistingSizeMin)
+    .optional()
+    .describe(
+      "Size of the existing land use in that use's primary unit. Required (and must be > 0) for the existing-use credit to apply; ignored when existingLandUseCode is absent.",
+    ),
+  conservedAssignment: zod
+    .boolean()
+    .default(whatIfTisBodyConservedAssignmentDefault)
+    .describe(
+      "Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output.",
+    ),
+  signalTiming: zod
+    .enum(["computed", "screening"])
+    .default(whatIfTisBodySignalTimingDefault)
+    .describe(
+      "Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g\/C. `screening`: the legacy flat 90 s cycle \/ g\/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`.",
+    ),
+  realLaneGeometry: zod
+    .boolean()
+    .optional()
+    .describe(
+      "Size approach and lane-group capacity with real through-lane counts (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Precedence per approach: the imported Synchro [Lanes] count > the OSM through-lane count on the road the signal was matched to > one lane. Each approach reports throughLanes and lanesSource. Omitted or true uses real geometry; explicit false pins the one-lane legacy basis everywhere, byte-identical to the pre-change output.",
+    ),
+  driveways: zod
+    .array(
+      zod.object({
+        id: zod.string().min(1),
+        latitude: zod
+          .number()
+          .min(whatIfTisBodyDrivewaysItemLatitudeMin)
+          .max(whatIfTisBodyDrivewaysItemLatitudeMax),
+        longitude: zod
+          .number()
+          .min(whatIfTisBodyDrivewaysItemLongitudeMin)
+          .max(whatIfTisBodyDrivewaysItemLongitudeMax),
+        label: zod.string().optional(),
+        accessType: zod
+          .enum([
+            "full",
+            "riro",
+            "three_quarter",
+            "entrance_only",
+            "exit_only",
+            "custom",
+          ])
+          .describe(
+            'Preset access type. All except \"custom\" expand server-side to a fixed movements set; \"custom\" uses the movements object verbatim.',
+          ),
+        movements: zod
+          .object({
+            inLeft: zod.boolean().describe("Left turn into the site"),
+            inRight: zod.boolean().describe("Right turn into the site"),
+            outLeft: zod.boolean().describe("Left turn out onto the street"),
+            outRight: zod.boolean().describe("Right turn out onto the street"),
+          })
+          .describe(
+            "Allowed turning movements, relative to the fronting street.",
+          ),
+      }),
+    )
+    .max(whatIfTisBodyDrivewaysMax)
+    .optional()
+    .describe(
+      "Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).",
+    ),
+  signalTimingOverrides: zod
+    .array(
+      zod
+        .object({
+          latitude: zod
+            .number()
+            .min(whatIfTisBodySignalTimingOverridesItemLatitudeMin)
+            .max(whatIfTisBodySignalTimingOverridesItemLatitudeMax),
+          longitude: zod
+            .number()
+            .min(whatIfTisBodySignalTimingOverridesItemLongitudeMin)
+            .max(whatIfTisBodySignalTimingOverridesItemLongitudeMax),
+          name: zod
+            .string()
+            .optional()
+            .describe(
+              "Intersection name (the report row's `name`), for the name fallback and the summary.",
+            ),
+          cycleLenSec: zod
+            .number()
+            .min(whatIfTisBodySignalTimingOverridesItemCycleLenSecMin)
+            .max(whatIfTisBodySignalTimingOverridesItemCycleLenSecMax),
+          phaseByMovement: zod
+            .record(
+              zod.string(),
+              zod
+                .number()
+                .min(1)
+                .max(
+                  whatIfTisBodySignalTimingOverridesItemPhaseByMovementMaxOne,
+                ),
+            )
+            .describe(
+              "Phase number serving each movement (NBL, NBT, ... WBR). A left whose phase differs from its through's phase is protected. Both axes' through movements must map to a phase that has a split, or the override does not resolve and the next provider is used.",
+            ),
+          splitSByPhase: zod
+            .record(
+              zod.string(),
+              zod
+                .number()
+                .min(1)
+                .max(whatIfTisBodySignalTimingOverridesItemSplitSByPhaseMaxOne),
+            )
+            .describe(
+              "Split (max green) seconds by phase number; effective green is split minus 5 s lost time.",
+            ),
+        })
+        .describe(
+          "A per-signal TIMING override for a what-if scenario: cycle length plus a phase-to-movement map and split seconds, the same measured tier a Synchro record supplies — but WITHOUT turning volumes, so the intersection's existing volumes and approach split are left exactly as the base study computed them. Snapped to the nearest study intersection within ~0.35 mi by coordinates (copy latitude\/longitude from the report row; nearest record wins per signal); a record whose coordinates miss falls back to an unambiguous normalized-name match when `name` is given. Consumed only by the signal-timing resolver, as its first provider (above a Synchro record, above Webster); rows it attaches to report signalTiming.source \"override\". Ignored under signalTiming: screening. Every record's fate is reported in the response's timingOverrideSummary.",
+        ),
+    )
+    .max(whatIfTisBodySignalTimingOverridesMax)
+    .optional()
+    .describe(
+      "Per-signal timing overrides for a what-if scenario (see SignalTimingOverride). Timing only: existing volumes and approach shares at the matched signal are untouched. Absent => output byte-identical to a study without overrides.",
+    ),
+});
+
+export const whatIfTisResponseRequestLatitudeMin = -90;
+export const whatIfTisResponseRequestLatitudeMax = 90;
+
+export const whatIfTisResponseRequestLongitudeMin = -180;
+export const whatIfTisResponseRequestLongitudeMax = 180;
+
+export const whatIfTisResponseRequestLandUseCodeMin = 2;
+
+export const whatIfTisResponseRequestSizeMin = 0.01;
+
+export const whatIfTisResponseRequestOpeningYearMin = 2024;
+export const whatIfTisResponseRequestOpeningYearMax = 2050;
+
+export const whatIfTisResponseRequestStudyRadiusMiMin = 0.1;
+export const whatIfTisResponseRequestStudyRadiusMiMax = 6.5;
+
+export const whatIfTisResponseRequestGrowthRatePctMin = 0;
+export const whatIfTisResponseRequestGrowthRatePctMax = 6;
+
+export const whatIfTisResponseRequestPassByPctMin = 0;
+export const whatIfTisResponseRequestPassByPctMax = 70;
+
+export const whatIfTisResponseRequestInternalCapturePctMin = 0;
+export const whatIfTisResponseRequestInternalCapturePctMax = 50;
+
+export const whatIfTisResponseRequestTripProfileArrivalsItemMin = 0;
+
+export const whatIfTisResponseRequestTripProfileArrivalsMin = 24;
+export const whatIfTisResponseRequestTripProfileArrivalsMax = 24;
+
+export const whatIfTisResponseRequestTripProfileDeparturesItemMin = 0;
+
+export const whatIfTisResponseRequestTripProfileDeparturesMin = 24;
+export const whatIfTisResponseRequestTripProfileDeparturesMax = 24;
+
+export const whatIfTisResponseRequestStudyIntersectionIdsMax = 60;
+
+export const whatIfTisResponseRequestAdditionalStudyPointsItemLatitudeMin = -90;
+export const whatIfTisResponseRequestAdditionalStudyPointsItemLatitudeMax = 90;
+
+export const whatIfTisResponseRequestAdditionalStudyPointsItemLongitudeMin =
+  -180;
+export const whatIfTisResponseRequestAdditionalStudyPointsItemLongitudeMax = 180;
+
+export const whatIfTisResponseRequestAdditionalStudyPointsMax = 60;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemLatitudeMin = -90;
+export const whatIfTisResponseRequestUtdfIntersectionsItemLatitudeMax = 90;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemLongitudeMin = -180;
+export const whatIfTisResponseRequestUtdfIntersectionsItemLongitudeMax = 180;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemVolumesNBLMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemVolumesNBTMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemVolumesNBRMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemVolumesSBLMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemVolumesSBTMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemVolumesSBRMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemVolumesEBLMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemVolumesEBTMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemVolumesEBRMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemVolumesWBLMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemVolumesWBTMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemVolumesWBRMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemPhfMin = 0.25;
+export const whatIfTisResponseRequestUtdfIntersectionsItemPhfMax = 1;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemHvPctMin = 0;
+export const whatIfTisResponseRequestUtdfIntersectionsItemHvPctMax = 100;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemStorageFtNBLMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemStorageFtNBTMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemStorageFtNBRMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemStorageFtSBLMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemStorageFtSBTMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemStorageFtSBRMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemStorageFtEBLMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemStorageFtEBTMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemStorageFtEBRMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemStorageFtWBLMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemStorageFtWBTMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemStorageFtWBRMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemLanesOneNBLMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemLanesOneNBTMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemLanesOneNBRMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemLanesOneSBLMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemLanesOneSBTMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemLanesOneSBRMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemLanesOneEBLMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemLanesOneEBTMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemLanesOneEBRMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemLanesOneWBLMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemLanesOneWBTMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemLanesOneWBRMin = 0;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemCycleLenSecMin = 30;
+export const whatIfTisResponseRequestUtdfIntersectionsItemCycleLenSecMax = 300;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemPhaseByMovementMaxOne = 16;
+
+export const whatIfTisResponseRequestUtdfIntersectionsItemSplitSByPhaseMaxOne = 300;
+
+export const whatIfTisResponseRequestUtdfIntersectionsMax = 60;
+
+export const whatIfTisResponseRequestExistingLandUseCodeMin = 2;
+
+export const whatIfTisResponseRequestExistingSizeMin = 0;
+
+export const whatIfTisResponseRequestConservedAssignmentDefault = true;
+export const whatIfTisResponseRequestSignalTimingDefault = `computed`;
+export const whatIfTisResponseRequestDrivewaysItemLatitudeMin = -90;
+export const whatIfTisResponseRequestDrivewaysItemLatitudeMax = 90;
+
+export const whatIfTisResponseRequestDrivewaysItemLongitudeMin = -180;
+export const whatIfTisResponseRequestDrivewaysItemLongitudeMax = 180;
+
+export const whatIfTisResponseRequestDrivewaysMax = 12;
+
+export const whatIfTisResponseRequestSignalTimingOverridesItemLatitudeMin = -90;
+export const whatIfTisResponseRequestSignalTimingOverridesItemLatitudeMax = 90;
+
+export const whatIfTisResponseRequestSignalTimingOverridesItemLongitudeMin =
+  -180;
+export const whatIfTisResponseRequestSignalTimingOverridesItemLongitudeMax = 180;
+
+export const whatIfTisResponseRequestSignalTimingOverridesItemCycleLenSecMin = 30;
+export const whatIfTisResponseRequestSignalTimingOverridesItemCycleLenSecMax = 300;
+
+export const whatIfTisResponseRequestSignalTimingOverridesItemPhaseByMovementMaxOne = 16;
+
+export const whatIfTisResponseRequestSignalTimingOverridesItemSplitSByPhaseMaxOne = 300;
+
+export const whatIfTisResponseRequestSignalTimingOverridesMax = 60;
+
+export const whatIfTisResponseAffectedIntersectionsItemApproachesItemThroughLanesMax = 6;
+
+export const whatIfTisResponseAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax = 6;
+
+export const whatIfTisResponseAffectedIntersectionsItemSignalTimingCriticalPhasesMin = 2;
+export const whatIfTisResponseAffectedIntersectionsItemSignalTimingCriticalPhasesMax = 4;
+
+export const whatIfTisResponsePeriodReportsItemAffectedIntersectionsItemApproachesItemThroughLanesMax = 6;
+
+export const whatIfTisResponsePeriodReportsItemAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax = 6;
+
+export const whatIfTisResponsePeriodReportsItemAffectedIntersectionsItemSignalTimingCriticalPhasesMin = 2;
+export const whatIfTisResponsePeriodReportsItemAffectedIntersectionsItemSignalTimingCriticalPhasesMax = 4;
+
+export const WhatIfTisResponse = zod.object({
+  generatedAt: zod.string(),
+  request: zod.object({
+    projectName: zod.string().min(1),
+    address: zod.string(),
+    latitude: zod
+      .number()
+      .min(whatIfTisResponseRequestLatitudeMin)
+      .max(whatIfTisResponseRequestLatitudeMax),
+    longitude: zod
+      .number()
+      .min(whatIfTisResponseRequestLongitudeMin)
+      .max(whatIfTisResponseRequestLongitudeMax),
+    landUseCode: zod.string().min(whatIfTisResponseRequestLandUseCodeMin),
+    size: zod.number().min(whatIfTisResponseRequestSizeMin),
+    openingYear: zod
+      .number()
+      .min(whatIfTisResponseRequestOpeningYearMin)
+      .max(whatIfTisResponseRequestOpeningYearMax),
+    studyRadiusMi: zod
+      .number()
+      .min(whatIfTisResponseRequestStudyRadiusMiMin)
+      .max(whatIfTisResponseRequestStudyRadiusMiMax)
+      .optional(),
+    analysisPeriods: zod
+      .array(zod.enum(["am_peak", "pm_peak", "saturday_midday", "daily"]))
+      .optional()
+      .describe("Defaults to all four periods if omitted."),
+    growthRatePct: zod
+      .number()
+      .min(whatIfTisResponseRequestGrowthRatePctMin)
+      .max(whatIfTisResponseRequestGrowthRatePctMax)
+      .optional()
+      .describe(
+        "Annual background growth rate applied to existing volumes (default 1.5%\/yr).",
+      ),
+    weather: zod
+      .enum(["clear", "light_rain", "heavy_rain", "light_snow", "heavy_snow"])
+      .optional(),
+    passByPct: zod
+      .number()
+      .min(whatIfTisResponseRequestPassByPctMin)
+      .max(whatIfTisResponseRequestPassByPctMax)
+      .optional()
+      .describe("Override the land-use default pass-by % at the PM peak."),
+    internalCapturePct: zod
+      .number()
+      .min(whatIfTisResponseRequestInternalCapturePctMin)
+      .max(whatIfTisResponseRequestInternalCapturePctMax)
+      .optional()
+      .describe(
+        "Override the land-use default internal-capture % at the PM peak.",
+      ),
+    runSensitivity: zod
+      .boolean()
+      .optional()
+      .describe(
+        "If true, runs a 100-iteration Monte-Carlo sensitivity analysis.",
+      ),
+    independentVariable: zod
+      .string()
+      .optional()
+      .describe(
+        "Optional ITE TGM 11th Ed. alternate independent variable (matches a `unitShort` from the land use's `secondaryVariables`). Defaults to the primary published variable.",
+      ),
+    tripProfile: zod
+      .object({
+        arrivals: zod
+          .array(
+            zod
+              .number()
+              .min(whatIfTisResponseRequestTripProfileArrivalsItemMin),
+          )
+          .min(whatIfTisResponseRequestTripProfileArrivalsMin)
+          .max(whatIfTisResponseRequestTripProfileArrivalsMax)
+          .describe(
+            "Relative inbound (arrival) volume in each clock hour 0–23.",
+          ),
+        departures: zod
+          .array(
+            zod
+              .number()
+              .min(whatIfTisResponseRequestTripProfileDeparturesItemMin),
+          )
+          .min(whatIfTisResponseRequestTripProfileDeparturesMin)
+          .max(whatIfTisResponseRequestTripProfileDeparturesMax)
+          .describe(
+            "Relative outbound (departure) volume in each clock hour 0–23.",
+          ),
+        source: zod
+          .string()
+          .optional()
+          .describe("Provenance label printed under the figures."),
+      })
+      .optional()
+      .describe(
+        "Optional consultant-supplied within-day arrival\/departure distribution that overrides the engine's default office distribution for the inbound\/outbound-by-start-time and on-site-accumulation charts. Each array holds 24 non-negative values (clock hours 0–23); the renderer normalises each to sum to 1, so only relative magnitudes matter. Supplying this also unlocks the figures for non-office use classes.",
+      ),
+    scopeStudyIntersections: zod
+      .boolean()
+      .optional()
+      .describe(
+        "When true, trim the study to the MTIASD materially-impacted set (nearest-few site-adjacent intersections plus any carrying >=8 PM-peak project trips, capped). Default false: analyze EVERY signalized intersection within the study radius — the radius is the stated study scope. Shorten a report with a smaller radius, not by scoping within it.",
+      ),
+    studyIntersectionIds: zod
+      .array(zod.string().min(1))
+      .max(whatIfTisResponseRequestStudyIntersectionIdsMax)
+      .optional()
+      .describe(
+        "Analyzer signal IDs to force-include as study intersections regardless of studyRadiusMi — a reviewer's agreed corridor scope (e.g. an arterial's signals spanning beyond a default 0.5-mi radius). Purely additive: unioned with the radius set, never removes a signal the radius found, and protected from the scopeStudyIntersections trim. Unknown IDs are ignored.",
+      ),
+    additionalStudyPoints: zod
+      .array(
+        zod.object({
+          latitude: zod
+            .number()
+            .min(whatIfTisResponseRequestAdditionalStudyPointsItemLatitudeMin)
+            .max(whatIfTisResponseRequestAdditionalStudyPointsItemLatitudeMax),
+          longitude: zod
+            .number()
+            .min(whatIfTisResponseRequestAdditionalStudyPointsItemLongitudeMin)
+            .max(whatIfTisResponseRequestAdditionalStudyPointsItemLongitudeMax),
+        }),
+      )
+      .max(whatIfTisResponseRequestAdditionalStudyPointsMax)
+      .optional()
+      .describe(
+        "Reviewer-scoped intersection coordinates (pasted or map-clicked), each snapped to the nearest inventory signal within ~0.35 mi and force-included regardless of studyRadiusMi. Additive, like studyIntersectionIds; robust when a signal's name is unknown. Points with no nearby signal are ignored.",
+      ),
+    utdfIntersections: zod
+      .array(
+        zod
+          .object({
+            intId: zod
+              .number()
+              .optional()
+              .describe(
+                "Synchro INTID from the source file (provenance only).",
+              ),
+            name: zod.string().optional(),
+            source: zod
+              .enum(["utdf_text", "synchro_pdf"])
+              .optional()
+              .describe(
+                "Which importer produced this record. Absent = utdf_text (legacy records predate the field). synchro_pdf records are matched by name and get the `synchro_pdf_tmc` volume-source provenance label in the report.",
+              ),
+            latitude: zod
+              .number()
+              .min(whatIfTisResponseRequestUtdfIntersectionsItemLatitudeMin)
+              .max(whatIfTisResponseRequestUtdfIntersectionsItemLatitudeMax)
+              .optional(),
+            longitude: zod
+              .number()
+              .min(whatIfTisResponseRequestUtdfIntersectionsItemLongitudeMin)
+              .max(whatIfTisResponseRequestUtdfIntersectionsItemLongitudeMax)
+              .optional(),
+            volumes: zod
+              .object({
+                NBL: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemVolumesNBLMin,
+                  )
+                  .optional(),
+                NBT: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemVolumesNBTMin,
+                  )
+                  .optional(),
+                NBR: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemVolumesNBRMin,
+                  )
+                  .optional(),
+                SBL: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemVolumesSBLMin,
+                  )
+                  .optional(),
+                SBT: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemVolumesSBTMin,
+                  )
+                  .optional(),
+                SBR: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemVolumesSBRMin,
+                  )
+                  .optional(),
+                EBL: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemVolumesEBLMin,
+                  )
+                  .optional(),
+                EBT: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemVolumesEBTMin,
+                  )
+                  .optional(),
+                EBR: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemVolumesEBRMin,
+                  )
+                  .optional(),
+                WBL: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemVolumesWBLMin,
+                  )
+                  .optional(),
+                WBT: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemVolumesWBTMin,
+                  )
+                  .optional(),
+                WBR: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemVolumesWBRMin,
+                  )
+                  .optional(),
+              })
+              .describe(
+                "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+              ),
+            phf: zod
+              .number()
+              .min(whatIfTisResponseRequestUtdfIntersectionsItemPhfMin)
+              .max(whatIfTisResponseRequestUtdfIntersectionsItemPhfMax)
+              .optional()
+              .describe(
+                "Representative peak-hour factor (volume-weighted mean of the file's per-movement PHF records). Carried for provenance\/auditability; the screening capacity model has no PHF input today.",
+              ),
+            hvPct: zod
+              .number()
+              .min(whatIfTisResponseRequestUtdfIntersectionsItemHvPctMin)
+              .max(whatIfTisResponseRequestUtdfIntersectionsItemHvPctMax)
+              .optional()
+              .describe(
+                "Representative heavy-vehicle % (volume-weighted mean of the file's per-movement records). Carried for provenance\/auditability; the screening capacity model has no heavy-vehicle input today.",
+              ),
+            storageFt: zod
+              .object({
+                NBL: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemStorageFtNBLMin,
+                  )
+                  .optional(),
+                NBT: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemStorageFtNBTMin,
+                  )
+                  .optional(),
+                NBR: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemStorageFtNBRMin,
+                  )
+                  .optional(),
+                SBL: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemStorageFtSBLMin,
+                  )
+                  .optional(),
+                SBT: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemStorageFtSBTMin,
+                  )
+                  .optional(),
+                SBR: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemStorageFtSBRMin,
+                  )
+                  .optional(),
+                EBL: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemStorageFtEBLMin,
+                  )
+                  .optional(),
+                EBT: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemStorageFtEBTMin,
+                  )
+                  .optional(),
+                EBR: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemStorageFtEBRMin,
+                  )
+                  .optional(),
+                WBL: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemStorageFtWBLMin,
+                  )
+                  .optional(),
+                WBT: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemStorageFtWBTMin,
+                  )
+                  .optional(),
+                WBR: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemStorageFtWBRMin,
+                  )
+                  .optional(),
+              })
+              .optional()
+              .describe(
+                "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+              ),
+            lanes: zod
+              .object({
+                NBL: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemLanesOneNBLMin,
+                  )
+                  .optional(),
+                NBT: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemLanesOneNBTMin,
+                  )
+                  .optional(),
+                NBR: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemLanesOneNBRMin,
+                  )
+                  .optional(),
+                SBL: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemLanesOneSBLMin,
+                  )
+                  .optional(),
+                SBT: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemLanesOneSBTMin,
+                  )
+                  .optional(),
+                SBR: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemLanesOneSBRMin,
+                  )
+                  .optional(),
+                EBL: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemLanesOneEBLMin,
+                  )
+                  .optional(),
+                EBT: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemLanesOneEBTMin,
+                  )
+                  .optional(),
+                EBR: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemLanesOneEBRMin,
+                  )
+                  .optional(),
+                WBL: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemLanesOneWBLMin,
+                  )
+                  .optional(),
+                WBT: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemLanesOneWBTMin,
+                  )
+                  .optional(),
+                WBR: zod
+                  .number()
+                  .min(
+                    whatIfTisResponseRequestUtdfIntersectionsItemLanesOneWBRMin,
+                  )
+                  .optional(),
+              })
+              .describe(
+                "Per-movement numeric values keyed by the twelve standard Synchro movements (U-turns are folded into the corresponding left by the parser). Used for turning-movement volumes (vph) and for turn-bay storage lengths (ft); a movement absent from the source file is simply omitted.",
+              )
+              .optional()
+              .describe(
+                "Lane COUNT per movement from the file's [Lanes] section — real measured geometry. When present, each lane group's capacity is sized as lanes x saturation flow x g\/C instead of the one-critical-lane screening assumption. Counts above 6 are rejected as parse artifacts. Absent on records whose [Lanes] section carried no counts (a Synchro report PDF typically will not), and those intersections keep the screening basis unchanged.",
+              ),
+            cycleLenSec: zod
+              .number()
+              .min(whatIfTisResponseRequestUtdfIntersectionsItemCycleLenSecMin)
+              .max(whatIfTisResponseRequestUtdfIntersectionsItemCycleLenSecMax)
+              .optional()
+              .describe(
+                "Signal cycle length (s) from the file's [Timings] section. Feeds the Webster uniform-delay term for this intersection in place of the 90 s screening default.",
+              ),
+            phaseByMovement: zod
+              .record(
+                zod.string(),
+                zod
+                  .number()
+                  .min(1)
+                  .max(
+                    whatIfTisResponseRequestUtdfIntersectionsItemPhaseByMovementMaxOne,
+                  ),
+              )
+              .optional()
+              .describe(
+                "Phase number serving each movement (NBL, NBT, ... WBR), from the file's [Lanes] Phase1 record. Together with splitSByPhase this is a complete measured g\/C per movement with no NEMA phase-numbering guesswork: a left whose phase differs from its through's phase is protected. Absent when the file carried no Phase1 row (a Synchro report PDF typically will not), in which case the intersection's timing degrades to measured-cycle (cycle from the file, splits computed).",
+              ),
+            splitSByPhase: zod
+              .record(
+                zod.string(),
+                zod
+                  .number()
+                  .min(1)
+                  .max(
+                    whatIfTisResponseRequestUtdfIntersectionsItemSplitSByPhaseMaxOne,
+                  ),
+              )
+              .optional()
+              .describe(
+                "Split (max green) seconds by phase number, from the file's [Timings] section. Effective green is taken as split minus 5 s lost time.",
+              ),
+          })
+          .describe(
+            "Measured data for ONE intersection imported from Synchro — either a UTDF text export (\/utdf\/parse) or a Synchro report PDF (\/utdf\/parse-pdf) — the structured record a TIS request attaches as `utdfIntersections`. UTDF-text records carry coordinates, rounded to 4 decimals (~11 m), well inside the ~0.35-mi study-point snap, so the engine re-matches each record to the same inventory signal the imported study point snapped to. Synchro report PDFs carry NO coordinates, so PDF-sourced records carry `name` + `source: synchro_pdf` instead and the engine matches them to study intersections by normalized intersection name at generate time (coordinates keep priority whenever both are present). A record must carry coordinates or a name; records with neither are ignored with a loud warning. Raw file bytes are deliberately NOT carried on the generate request (reports echo the request into stored payloads).",
+          ),
+      )
+      .max(whatIfTisResponseRequestUtdfIntersectionsMax)
+      .optional()
+      .describe(
+        "Measured turning-movement data imported from Synchro — a UTDF text file (the records \/utdf\/parse emits) or a Synchro report PDF (the records \/utdf\/parse-pdf emits). A record with coordinates is snapped server-side to the nearest study intersection within ~0.35 mi (nearest record wins per signal); a record without coordinates but with a name (report PDFs carry no coordinates) is matched by normalized intersection name, requiring an unambiguous best match — ties and misses are disclosed in the payload's utdfMatchSummary and logged, never silently dropped. At matched intersections the measured volumes replace the AADT-derived existing volumes (growth still applies on top, PM is the measured anchor hour and other periods scale by the documented period factors), turn-bay storage feeds the storage-adequacy comparison, and the imported cycle length feeds the Webster uniform-delay term. Purely additive: absent => output byte-identical to a study without UTDF data.",
+      ),
+    distributionMethod: zod
+      .enum(["gravity", "analogy", "surrogate"])
+      .optional()
+      .describe(
+        "Directional trip-distribution method. gravity = mass\/distance or gamma-friction gravity model; analogy = analogous-site distribution (PR2); surrogate = market-area (pop+emp+volume) distribution (PR3). Defaults to gravity.",
+      ),
+    existingLandUseCode: zod
+      .string()
+      .min(whatIfTisResponseRequestExistingLandUseCodeMin)
+      .optional()
+      .describe(
+        "Optional existing (prior) land use occupying the site today, for a redevelopment trip-generation credit. Its trips are computed the same way as the proposed use and subtracted, so the report shows net new external trips (gross − internal capture − pass-by − existing-use credit). Absent ⇒ greenfield behavior (no credit, unchanged output).",
+      ),
+    existingSize: zod
+      .number()
+      .min(whatIfTisResponseRequestExistingSizeMin)
+      .optional()
+      .describe(
+        "Size of the existing land use in that use's primary unit. Required (and must be > 0) for the existing-use credit to apply; ignored when existingLandUseCode is absent.",
+      ),
+    conservedAssignment: zod
+      .boolean()
+      .default(whatIfTisResponseRequestConservedAssignmentDefault)
+      .describe(
+        "Conserved path assignment (default ON). Project trips are routed through the road network to cordon gateways on the study boundary (weighted by the printed directional distribution); each study intersection that resolves to a network junction gets its turning movements AND approach loading from the actual paths through it, so flow is conserved between adjacent resolved intersections. Changes v\/c, delay and LOS at resolved intersections. Omitted or true = conserved assignment runs; explicit false = legacy (un-normalized octant) behavior, byte-identical to the pre-default output.",
+      ),
+    signalTiming: zod
+      .enum(["computed", "screening"])
+      .default(whatIfTisResponseRequestSignalTimingDefault)
+      .describe(
+        "Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g\/C. `screening`: the legacy flat 90 s cycle \/ g\/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`.",
+      ),
+    realLaneGeometry: zod
+      .boolean()
+      .optional()
+      .describe(
+        "Size approach and lane-group capacity with real through-lane counts (lanes x saturation flow x g\/C) instead of the one-critical-lane screening assumption. Precedence per approach: the imported Synchro [Lanes] count > the OSM through-lane count on the road the signal was matched to > one lane. Each approach reports throughLanes and lanesSource. Omitted or true uses real geometry; explicit false pins the one-lane legacy basis everywhere, byte-identical to the pre-change output.",
+      ),
+    driveways: zod
+      .array(
+        zod.object({
+          id: zod.string().min(1),
+          latitude: zod
+            .number()
+            .min(whatIfTisResponseRequestDrivewaysItemLatitudeMin)
+            .max(whatIfTisResponseRequestDrivewaysItemLatitudeMax),
+          longitude: zod
+            .number()
+            .min(whatIfTisResponseRequestDrivewaysItemLongitudeMin)
+            .max(whatIfTisResponseRequestDrivewaysItemLongitudeMax),
+          label: zod.string().optional(),
+          accessType: zod
+            .enum([
+              "full",
+              "riro",
+              "three_quarter",
+              "entrance_only",
+              "exit_only",
+              "custom",
+            ])
+            .describe(
+              'Preset access type. All except \"custom\" expand server-side to a fixed movements set; \"custom\" uses the movements object verbatim.',
+            ),
+          movements: zod
+            .object({
+              inLeft: zod.boolean().describe("Left turn into the site"),
+              inRight: zod.boolean().describe("Right turn into the site"),
+              outLeft: zod.boolean().describe("Left turn out onto the street"),
+              outRight: zod
+                .boolean()
+                .describe("Right turn out onto the street"),
+            })
+            .describe(
+              "Allowed turning movements, relative to the fronting street.",
+            ),
+        }),
+      )
+      .max(whatIfTisResponseRequestDrivewaysMax)
+      .optional()
+      .describe(
+        "Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).",
+      ),
+    signalTimingOverrides: zod
+      .array(
+        zod
+          .object({
+            latitude: zod
+              .number()
+              .min(whatIfTisResponseRequestSignalTimingOverridesItemLatitudeMin)
+              .max(
+                whatIfTisResponseRequestSignalTimingOverridesItemLatitudeMax,
+              ),
+            longitude: zod
+              .number()
+              .min(
+                whatIfTisResponseRequestSignalTimingOverridesItemLongitudeMin,
+              )
+              .max(
+                whatIfTisResponseRequestSignalTimingOverridesItemLongitudeMax,
+              ),
+            name: zod
+              .string()
+              .optional()
+              .describe(
+                "Intersection name (the report row's `name`), for the name fallback and the summary.",
+              ),
+            cycleLenSec: zod
+              .number()
+              .min(
+                whatIfTisResponseRequestSignalTimingOverridesItemCycleLenSecMin,
+              )
+              .max(
+                whatIfTisResponseRequestSignalTimingOverridesItemCycleLenSecMax,
+              ),
+            phaseByMovement: zod
+              .record(
+                zod.string(),
+                zod
+                  .number()
+                  .min(1)
+                  .max(
+                    whatIfTisResponseRequestSignalTimingOverridesItemPhaseByMovementMaxOne,
+                  ),
+              )
+              .describe(
+                "Phase number serving each movement (NBL, NBT, ... WBR). A left whose phase differs from its through's phase is protected. Both axes' through movements must map to a phase that has a split, or the override does not resolve and the next provider is used.",
+              ),
+            splitSByPhase: zod
+              .record(
+                zod.string(),
+                zod
+                  .number()
+                  .min(1)
+                  .max(
+                    whatIfTisResponseRequestSignalTimingOverridesItemSplitSByPhaseMaxOne,
+                  ),
+              )
+              .describe(
+                "Split (max green) seconds by phase number; effective green is split minus 5 s lost time.",
+              ),
+          })
+          .describe(
+            "A per-signal TIMING override for a what-if scenario: cycle length plus a phase-to-movement map and split seconds, the same measured tier a Synchro record supplies — but WITHOUT turning volumes, so the intersection's existing volumes and approach split are left exactly as the base study computed them. Snapped to the nearest study intersection within ~0.35 mi by coordinates (copy latitude\/longitude from the report row; nearest record wins per signal); a record whose coordinates miss falls back to an unambiguous normalized-name match when `name` is given. Consumed only by the signal-timing resolver, as its first provider (above a Synchro record, above Webster); rows it attaches to report signalTiming.source \"override\". Ignored under signalTiming: screening. Every record's fate is reported in the response's timingOverrideSummary.",
+          ),
+      )
+      .max(whatIfTisResponseRequestSignalTimingOverridesMax)
+      .optional()
+      .describe(
+        "Per-signal timing overrides for a what-if scenario (see SignalTimingOverride). Timing only: existing volumes and approach shares at the matched signal are untouched. Absent => output byte-identical to a study without overrides.",
+      ),
+  }),
+  studyRadiusMi: zod.number(),
+  tripGeneration: zod.object({
+    landUseCode: zod.string(),
+    landUseName: zod.string(),
+    size: zod.number(),
+    unit: zod.string(),
+    unitShort: zod.string().optional(),
+    variableConfidence: zod
+      .enum([
+        "nhts_2017",
+        "sandag_2002",
+        "nchrp_716",
+        "blended_mpo",
+        "interpolated",
+      ])
+      .optional(),
+    variableNote: zod.string().optional(),
+    dailyRate: zod.number().optional(),
+    amRate: zod.number().optional(),
+    pmRate: zod.number().optional(),
+    variableSource: zod.string().optional(),
+    dailyTrips: zod.number(),
+    amPeakTrips: zod.number(),
+    pmPeakTrips: zod.number(),
+    pmIn: zod.number(),
+    pmOut: zod.number(),
+    existingLandUseCode: zod.string().optional(),
+    existingLandUseName: zod.string().optional(),
+    existingSize: zod.number().optional(),
+    existingUnit: zod.string().optional(),
+    existingUseCreditPm: zod.number().optional(),
+    netNewExternalPm: zod.number().optional(),
+  }),
+  affectedIntersections: zod.array(
+    zod.object({
+      signalId: zod.string(),
+      name: zod.string(),
+      zone: zod.string(),
+      latitude: zod.number(),
+      longitude: zod.number(),
+      distanceMi: zod.number(),
+      designHourVolumeVph: zod
+        .number()
+        .optional()
+        .describe(
+          "The unrounded design-hour volume this row anchors on — the inventory's AADT x K design hour, or the measured turning-movement total when a UTDF record attached (volumeSource). The period's background volume is this x the period's periodVolumeFactor.",
+        ),
+      loadWeight: zod
+        .number()
+        .optional()
+        .describe(
+          "The per-intersection project-load weight the row was built with (exact; distance-decay, driveway share, or the conserved through-share). addedTripsPmPeak = round(externalTrips x weight), except where inbound ledgers (pathTurnsIn) re-derive the blend.",
+        ),
+      pathTurns: zod
+        .array(
+          zod
+            .object({
+              enterBearingDeg: zod.number(),
+              exitBearingDeg: zod.number(),
+              share: zod.number(),
+            })
+            .describe(
+              "One routed turn through a junction, in share units (fraction of project demand), from the conserved assignment.",
+            ),
+        )
+        .optional()
+        .describe(
+          'Conserved-assignment turn ledger (outbound, site to cordon) for a movementSource \"path\" row: each routed turn through this junction in share units. Absent on octant rows.',
+        ),
+      pathTurnsIn: zod
+        .array(
+          zod
+            .object({
+              enterBearingDeg: zod.number(),
+              exitBearingDeg: zod.number(),
+              share: zod.number(),
+            })
+            .describe(
+              "One routed turn through a junction, in share units (fraction of project demand), from the conserved assignment.",
+            ),
+        )
+        .optional()
+        .describe(
+          "Recorded inbound ledger, present only when the routing graph carries one-way links. An empty array is meaningful (the inbound paths do not pass this junction); absent means the inbound mirror of pathTurns applies.",
+        ),
+      movementsExact: zod
+        .array(
+          zod.object({
+            approach: zod.enum(["NB", "SB", "EB", "WB"]),
+            movement: zod.enum(["L", "T", "R"]),
+            exact: zod.number(),
+          }),
+        )
+        .optional()
+        .describe(
+          "The exact (fractional) movement loads the integer `movements` table was integerized from, and the per-approach loading derives from. Sums to externalTrips x loadWeight (or the ledger blend).",
+        ),
+      mainThroughLanes: zod
+        .number()
+        .optional()
+        .describe(
+          "Per-direction through lanes on the major approach from the OSM lanes tag, present only when measured (mainThroughLanesMeasured).",
+        ),
+      minorThroughLanes: zod
+        .number()
+        .optional()
+        .describe(
+          "Per-direction through lanes on the minor approach from the OSM lanes tag, when tagged.",
+        ),
+      mainThroughLanesMeasured: zod
+        .boolean()
+        .optional()
+        .describe(
+          "True when mainThroughLanes came from a measured OSM tag (the only case the engine uses it).",
+        ),
+      utdfRecordIndex: zod
+        .number()
+        .optional()
+        .describe(
+          "Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached.",
+        ),
+      existingVc: zod
+        .number()
+        .describe(
+          'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+        ),
+      addedTripsPmPeak: zod.number(),
+      futureVc: zod.number(),
+      existingDelaySec: zod.number(),
+      futureDelaySec: zod.number(),
+      existingLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+      futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+      currentVc: zod
+        .number()
+        .optional()
+        .describe(
+          'True current-year baseline: existing volumes with NO growth applied. This is the scenario to label \"Existing\". Optional so payloads saved before the scenario split still validate.',
+        ),
+      currentDelaySec: zod.number().optional(),
+      currentLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
+      designNoBuildVc: zod.number().optional(),
+      designNoBuildDelaySec: zod.number().optional(),
+      designNoBuildLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
+      designBuildVc: zod.number().optional(),
+      designBuildDelaySec: zod.number().optional(),
+      designBuildLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
+      losChanged: zod.boolean(),
+      mitigation: zod.string(),
+      mitigationSeverity: zod.enum(["none", "minor", "moderate", "major"]),
+      approaches: zod.array(
+        zod.object({
+          direction: zod.enum(["NB", "SB", "EB", "WB"]),
+          existingVolumeVph: zod
+            .number()
+            .describe(
+              'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+            ),
+          addedTripsPeak: zod.number(),
+          futureVolumeVph: zod.number(),
+          existingVc: zod
+            .number()
+            .describe(
+              'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+            ),
+          futureVc: zod.number(),
+          existingDelaySec: zod
+            .number()
+            .describe(
+              'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+            ),
+          futureDelaySec: zod.number(),
+          existingLos: zod
+            .enum(["A", "B", "C", "D", "E", "F"])
+            .describe(
+              'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+            ),
+          futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+          queue95thFt: zod.number(),
+          throughLanes: zod
+            .number()
+            .min(1)
+            .max(
+              whatIfTisResponseAffectedIntersectionsItemApproachesItemThroughLanesMax,
+            )
+            .optional(),
+          lanesSource: zod.enum(["import", "osm"]).optional(),
+          currentVolumeVph: zod
+            .number()
+            .optional()
+            .describe(
+              'True current-year baseline: existing volumes with NO growth applied. This is the scenario to label \"Existing\". Optional so payloads saved before the scenario split still validate.',
+            ),
+          currentVc: zod.number().optional(),
+          currentDelaySec: zod.number().optional(),
+          currentLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
+          laneGroups: zod
+            .array(
+              zod.object({
+                movement: zod.enum(["L", "T", "R"]),
+                existingVolumeVph: zod.number(),
+                addedTripsPeak: zod.number(),
+                futureVolumeVph: zod.number(),
+                futureVc: zod.number(),
+                queue95thFt: zod.number(),
+                storageFt: zod.number().optional(),
+                storageDeficient: zod.boolean().optional(),
+                lanes: zod
+                  .number()
+                  .min(1)
+                  .max(
+                    whatIfTisResponseAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax,
+                  )
+                  .optional(),
+                lanesSource: zod.enum(["import", "osm"]).optional(),
+                capacityVph: zod.number().optional(),
+              }),
+            )
+            .optional(),
+        }),
+      ),
+      queue95thFt: zod.number(),
+      calibration: zod
+        .object({
+          sampleCount: zod.number(),
+          delayMultiplier: zod.number(),
+          delayMultiplierExact: zod
+            .number()
+            .optional()
+            .describe(
+              "The unrounded multiplier the engine applied (delayMultiplier is 2 dp); optional on older payloads.",
+            ),
+          lastObservedDelaySec: zod.number().nullish(),
+        })
+        .optional()
+        .describe(
+          "Per-intersection calibration metadata when ground-truth observations exist for this signal.",
+        ),
+      turboLane: zod.record(zod.string(), zod.unknown()).optional(),
+      movementSource: zod
+        .enum(["path", "octant"])
+        .optional()
+        .describe(
+          'Where the movements table came from. \"path\" = derived from the routed paths through this junction (conserved assignment); \"octant\" = the geometric octant model. Absent on pre-flag payloads.',
+        ),
+      movements: zod
+        .array(
+          zod.object({
+            approach: zod.enum(["NB", "SB", "EB", "WB"]),
+            movement: zod.enum(["L", "T", "R"]),
+            trips: zod.number(),
+          }),
+        )
+        .optional(),
+      volumeSource: zod.enum(["utdf_tmc", "synchro_pdf_tmc"]).optional(),
+      existingStorageFt: zod.number().optional(),
+      storageMovement: zod.string().optional(),
+      utdfCycleLenSec: zod.number().optional(),
+      signalTiming: zod
+        .object({
+          basis: zod
+            .enum([
+              "measured",
+              "measured-cycle",
+              "webster",
+              "screening-default",
+            ])
+            .describe(
+              "measured = cycle AND per-movement splits from a source; measured-cycle = cycle from a source, splits computed; webster = computed from no-build volumes; screening-default = volumes absent or the intersection is at\/over saturation (Y >= 0.85), where Webster is not applicable and the flat 90 s \/ 0.45 is reported instead.",
+            ),
+          source: zod
+            .string()
+            .optional()
+            .describe("Measured source, e.g. synchro."),
+          cycleLenSec: zod.number(),
+          criticalPhases: zod
+            .number()
+            .min(
+              whatIfTisResponseAffectedIntersectionsItemSignalTimingCriticalPhasesMin,
+            )
+            .max(
+              whatIfTisResponseAffectedIntersectionsItemSignalTimingCriticalPhasesMax,
+            ),
+          gOverCns: zod.number(),
+          gOverCew: zod.number(),
+          gOverCnsLeft: zod.number().optional(),
+          gOverCewLeft: zod.number().optional(),
+          gOverCnsExact: zod.number().optional(),
+          gOverCewExact: zod.number().optional(),
+          gOverCnsLeftExact: zod.number().optional(),
+          gOverCewLeftExact: zod.number().optional(),
+          leftPhasingNs: zod.enum(["protected", "permissive"]),
+          leftPhasingEw: zod.enum(["protected", "permissive"]),
+          leftPhasingSource: zod
+            .enum(["import", "explicit", "inferred", "default"])
+            .optional()
+            .describe(
+              "import = a Synchro record mapped each left to its own phase (or not); inferred = FHWA-HRT-04-091 cross product of left-turn and opposing through volume against 50,000 \/ 90,000 \/ 110,000 by opposing through lanes; default = screening.",
+            ),
+          criticalFlowRatio: zod
+            .number()
+            .optional()
+            .describe("Webster's Y — sum of critical flow ratios."),
+          pedMinGreenNsSec: zod.number().optional(),
+          pedMinGreenEwSec: zod.number().optional(),
+        })
+        .optional(),
+    }),
+  ),
+  intersectionsStudied: zod.number(),
+  intersectionsInStudyArea: zod
+    .number()
+    .optional()
+    .describe(
+      "Signalized intersections the region inventory holds INSIDE the study radius, before same-junction records are merged. This is the study area's true population; intersectionsStudied is what survived the merge. When the two differ, intersectionsMergedAsDuplicates says by how much, and the set analyzed is NOT the set in the radius.",
+    ),
+  intersectionsMergedAsDuplicates: zod
+    .number()
+    .optional()
+    .describe(
+      "In-radius records absorbed as duplicate representations of a junction already kept. Non-zero means intersectionsStudied under-counts the radius. Merges above 45 m rest on name equality, and in regions whose signal names are derived from nearby road names rather than supplied by the source data, distinct junctions can share a name -- so a non-zero value here is a prompt to verify, not a guarantee of duplication.",
+    ),
+  intersectionsWithLosDrop: zod.number(),
+  intersectionsAtLosEf: zod.number(),
+  worstDelayDeltaSec: zod
+    .number()
+    .describe(
+      "Largest projected delay increase across the studied intersections, in the OPENING YEAR only. Scoped, not absolute — compare against worstDelayDeltaDesignSec, which is routinely larger because background growth over the design horizon sits underneath it.",
+    ),
+  worstDelayDeltaDesignSec: zod
+    .number()
+    .optional()
+    .describe(
+      "Largest projected delay increase in the DESIGN year (designBuild - designNoBuild). Absent when no design year was analyzed.",
+    ),
+  mitigationSummary: zod.array(zod.string()),
+  findings: zod.array(zod.string()),
+  methodology: zod.array(zod.string()),
+  periodReports: zod.array(
+    zod.object({
+      period: zod.enum(["am_peak", "pm_peak", "saturday_midday", "daily"]),
+      periodLabel: zod.string(),
+      tripGeneration: zod.object({
+        period: zod.enum(["am_peak", "pm_peak", "saturday_midday", "daily"]),
+        periodLabel: zod.string(),
+        rawTrips: zod.number(),
+        passByCredit: zod.number(),
+        internalCaptureCredit: zod.number(),
+        externalTrips: zod.number(),
+        inTrips: zod.number(),
+        outTrips: zod.number(),
+        existingUseCredit: zod.number().optional(),
+        netNewExternalTrips: zod.number().optional(),
+      }),
+      affectedIntersections: zod.array(
+        zod.object({
+          signalId: zod.string(),
+          name: zod.string(),
+          zone: zod.string(),
+          latitude: zod.number(),
+          longitude: zod.number(),
+          distanceMi: zod.number(),
+          designHourVolumeVph: zod
+            .number()
+            .optional()
+            .describe(
+              "The unrounded design-hour volume this row anchors on — the inventory's AADT x K design hour, or the measured turning-movement total when a UTDF record attached (volumeSource). The period's background volume is this x the period's periodVolumeFactor.",
+            ),
+          loadWeight: zod
+            .number()
+            .optional()
+            .describe(
+              "The per-intersection project-load weight the row was built with (exact; distance-decay, driveway share, or the conserved through-share). addedTripsPmPeak = round(externalTrips x weight), except where inbound ledgers (pathTurnsIn) re-derive the blend.",
+            ),
+          pathTurns: zod
+            .array(
+              zod
+                .object({
+                  enterBearingDeg: zod.number(),
+                  exitBearingDeg: zod.number(),
+                  share: zod.number(),
+                })
+                .describe(
+                  "One routed turn through a junction, in share units (fraction of project demand), from the conserved assignment.",
+                ),
+            )
+            .optional()
+            .describe(
+              'Conserved-assignment turn ledger (outbound, site to cordon) for a movementSource \"path\" row: each routed turn through this junction in share units. Absent on octant rows.',
+            ),
+          pathTurnsIn: zod
+            .array(
+              zod
+                .object({
+                  enterBearingDeg: zod.number(),
+                  exitBearingDeg: zod.number(),
+                  share: zod.number(),
+                })
+                .describe(
+                  "One routed turn through a junction, in share units (fraction of project demand), from the conserved assignment.",
+                ),
+            )
+            .optional()
+            .describe(
+              "Recorded inbound ledger, present only when the routing graph carries one-way links. An empty array is meaningful (the inbound paths do not pass this junction); absent means the inbound mirror of pathTurns applies.",
+            ),
+          movementsExact: zod
+            .array(
+              zod.object({
+                approach: zod.enum(["NB", "SB", "EB", "WB"]),
+                movement: zod.enum(["L", "T", "R"]),
+                exact: zod.number(),
+              }),
+            )
+            .optional()
+            .describe(
+              "The exact (fractional) movement loads the integer `movements` table was integerized from, and the per-approach loading derives from. Sums to externalTrips x loadWeight (or the ledger blend).",
+            ),
+          mainThroughLanes: zod
+            .number()
+            .optional()
+            .describe(
+              "Per-direction through lanes on the major approach from the OSM lanes tag, present only when measured (mainThroughLanesMeasured).",
+            ),
+          minorThroughLanes: zod
+            .number()
+            .optional()
+            .describe(
+              "Per-direction through lanes on the minor approach from the OSM lanes tag, when tagged.",
+            ),
+          mainThroughLanesMeasured: zod
+            .boolean()
+            .optional()
+            .describe(
+              "True when mainThroughLanes came from a measured OSM tag (the only case the engine uses it).",
+            ),
+          utdfRecordIndex: zod
+            .number()
+            .optional()
+            .describe(
+              "Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached.",
+            ),
+          existingVc: zod
+            .number()
+            .describe(
+              'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+            ),
+          addedTripsPmPeak: zod.number(),
+          futureVc: zod.number(),
+          existingDelaySec: zod.number(),
+          futureDelaySec: zod.number(),
+          existingLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+          futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+          currentVc: zod
+            .number()
+            .optional()
+            .describe(
+              'True current-year baseline: existing volumes with NO growth applied. This is the scenario to label \"Existing\". Optional so payloads saved before the scenario split still validate.',
+            ),
+          currentDelaySec: zod.number().optional(),
+          currentLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
+          designNoBuildVc: zod.number().optional(),
+          designNoBuildDelaySec: zod.number().optional(),
+          designNoBuildLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
+          designBuildVc: zod.number().optional(),
+          designBuildDelaySec: zod.number().optional(),
+          designBuildLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
+          losChanged: zod.boolean(),
+          mitigation: zod.string(),
+          mitigationSeverity: zod.enum(["none", "minor", "moderate", "major"]),
+          approaches: zod.array(
+            zod.object({
+              direction: zod.enum(["NB", "SB", "EB", "WB"]),
+              existingVolumeVph: zod
+                .number()
+                .describe(
+                  'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                ),
+              addedTripsPeak: zod.number(),
+              futureVolumeVph: zod.number(),
+              existingVc: zod
+                .number()
+                .describe(
+                  'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                ),
+              futureVc: zod.number(),
+              existingDelaySec: zod
+                .number()
+                .describe(
+                  'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                ),
+              futureDelaySec: zod.number(),
+              existingLos: zod
+                .enum(["A", "B", "C", "D", "E", "F"])
+                .describe(
+                  'Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing\/counted condition — the true current-year baseline is the current\* field alongside it. Renderers must label this \"No-Build\", never \"Existing\".',
+                ),
+              futureLos: zod.enum(["A", "B", "C", "D", "E", "F"]),
+              queue95thFt: zod.number(),
+              throughLanes: zod
+                .number()
+                .min(1)
+                .max(
+                  whatIfTisResponsePeriodReportsItemAffectedIntersectionsItemApproachesItemThroughLanesMax,
+                )
+                .optional(),
+              lanesSource: zod.enum(["import", "osm"]).optional(),
+              currentVolumeVph: zod
+                .number()
+                .optional()
+                .describe(
+                  'True current-year baseline: existing volumes with NO growth applied. This is the scenario to label \"Existing\". Optional so payloads saved before the scenario split still validate.',
+                ),
+              currentVc: zod.number().optional(),
+              currentDelaySec: zod.number().optional(),
+              currentLos: zod.enum(["A", "B", "C", "D", "E", "F"]).optional(),
+              laneGroups: zod
+                .array(
+                  zod.object({
+                    movement: zod.enum(["L", "T", "R"]),
+                    existingVolumeVph: zod.number(),
+                    addedTripsPeak: zod.number(),
+                    futureVolumeVph: zod.number(),
+                    futureVc: zod.number(),
+                    queue95thFt: zod.number(),
+                    storageFt: zod.number().optional(),
+                    storageDeficient: zod.boolean().optional(),
+                    lanes: zod
+                      .number()
+                      .min(1)
+                      .max(
+                        whatIfTisResponsePeriodReportsItemAffectedIntersectionsItemApproachesItemLaneGroupsItemLanesMax,
+                      )
+                      .optional(),
+                    lanesSource: zod.enum(["import", "osm"]).optional(),
+                    capacityVph: zod.number().optional(),
+                  }),
+                )
+                .optional(),
+            }),
+          ),
+          queue95thFt: zod.number(),
+          calibration: zod
+            .object({
+              sampleCount: zod.number(),
+              delayMultiplier: zod.number(),
+              delayMultiplierExact: zod
+                .number()
+                .optional()
+                .describe(
+                  "The unrounded multiplier the engine applied (delayMultiplier is 2 dp); optional on older payloads.",
+                ),
+              lastObservedDelaySec: zod.number().nullish(),
+            })
+            .optional()
+            .describe(
+              "Per-intersection calibration metadata when ground-truth observations exist for this signal.",
+            ),
+          turboLane: zod.record(zod.string(), zod.unknown()).optional(),
+          movementSource: zod
+            .enum(["path", "octant"])
+            .optional()
+            .describe(
+              'Where the movements table came from. \"path\" = derived from the routed paths through this junction (conserved assignment); \"octant\" = the geometric octant model. Absent on pre-flag payloads.',
+            ),
+          movements: zod
+            .array(
+              zod.object({
+                approach: zod.enum(["NB", "SB", "EB", "WB"]),
+                movement: zod.enum(["L", "T", "R"]),
+                trips: zod.number(),
+              }),
+            )
+            .optional(),
+          volumeSource: zod.enum(["utdf_tmc", "synchro_pdf_tmc"]).optional(),
+          existingStorageFt: zod.number().optional(),
+          storageMovement: zod.string().optional(),
+          utdfCycleLenSec: zod.number().optional(),
+          signalTiming: zod
+            .object({
+              basis: zod
+                .enum([
+                  "measured",
+                  "measured-cycle",
+                  "webster",
+                  "screening-default",
+                ])
+                .describe(
+                  "measured = cycle AND per-movement splits from a source; measured-cycle = cycle from a source, splits computed; webster = computed from no-build volumes; screening-default = volumes absent or the intersection is at\/over saturation (Y >= 0.85), where Webster is not applicable and the flat 90 s \/ 0.45 is reported instead.",
+                ),
+              source: zod
+                .string()
+                .optional()
+                .describe("Measured source, e.g. synchro."),
+              cycleLenSec: zod.number(),
+              criticalPhases: zod
+                .number()
+                .min(
+                  whatIfTisResponsePeriodReportsItemAffectedIntersectionsItemSignalTimingCriticalPhasesMin,
+                )
+                .max(
+                  whatIfTisResponsePeriodReportsItemAffectedIntersectionsItemSignalTimingCriticalPhasesMax,
+                ),
+              gOverCns: zod.number(),
+              gOverCew: zod.number(),
+              gOverCnsLeft: zod.number().optional(),
+              gOverCewLeft: zod.number().optional(),
+              gOverCnsExact: zod.number().optional(),
+              gOverCewExact: zod.number().optional(),
+              gOverCnsLeftExact: zod.number().optional(),
+              gOverCewLeftExact: zod.number().optional(),
+              leftPhasingNs: zod.enum(["protected", "permissive"]),
+              leftPhasingEw: zod.enum(["protected", "permissive"]),
+              leftPhasingSource: zod
+                .enum(["import", "explicit", "inferred", "default"])
+                .optional()
+                .describe(
+                  "import = a Synchro record mapped each left to its own phase (or not); inferred = FHWA-HRT-04-091 cross product of left-turn and opposing through volume against 50,000 \/ 90,000 \/ 110,000 by opposing through lanes; default = screening.",
+                ),
+              criticalFlowRatio: zod
+                .number()
+                .optional()
+                .describe("Webster's Y — sum of critical flow ratios."),
+              pedMinGreenNsSec: zod.number().optional(),
+              pedMinGreenEwSec: zod.number().optional(),
+            })
+            .optional(),
+        }),
+      ),
+      intersectionsWithLosDrop: zod.number(),
+      intersectionsAtLosEf: zod.number(),
+      worstDelayDeltaSec: zod
+        .number()
+        .describe(
+          "Largest projected delay increase across the studied intersections, in the OPENING YEAR only. Scoped, not absolute — compare against worstDelayDeltaDesignSec, which is routinely larger because background growth over the design horizon sits underneath it.",
+        ),
+      periodVolumeFactor: zod
+        .number()
+        .optional()
+        .describe(
+          "Background-network volume as a fraction of the stored design hour for this period (PM anchors at 1.0).",
+        ),
+      inFraction: zod
+        .number()
+        .optional()
+        .describe(
+          "Inbound directional share of the project's external trips for this period.",
+        ),
+      externalTripsExact: zod
+        .number()
+        .optional()
+        .describe(
+          "The proposed use's external auto trips for this period, unrounded (tripGeneration.externalTrips is rounded).",
+        ),
+      existingUseCreditExact: zod
+        .number()
+        .optional()
+        .describe(
+          "The existing-use redevelopment credit for this period, unrounded; present only when the request supplied an existing land use. Net assigned trips = max(0, externalTripsExact - existingUseCreditExact).",
+        ),
+    }),
+  ),
+  growthAppliedPct: zod.number(),
+  growthYears: zod.number(),
+  growthSource: zod
+    .string()
+    .optional()
+    .describe(
+      "Provenance for growthAppliedPct, printed verbatim by the renderers. Names the basis of the applied rate: a measured per-metro CAGR and the DOT layer it came from, or — when the request supplied growthRatePct — that an explicit override was applied, alongside the measured rate for the region that the override displaced. Optional: absent on payloads stored before this field existed, which re-render through the same path and must not sprout an empty citation.",
+    ),
+  weather: zod.enum([
+    "clear",
+    "light_rain",
+    "heavy_rain",
+    "light_snow",
+    "heavy_snow",
+  ]),
+  weatherCapacityFactor: zod.number(),
+  passByPctApplied: zod.number(),
+  internalCapturePctApplied: zod.number(),
+  autoModeShareApplied: zod.number().optional(),
+  designYear: zod
+    .number()
+    .optional()
+    .describe(
+      "Opening year + the design horizon, the year the design-year scenarios are grown to.",
+    ),
+  designYearHorizonYears: zod
+    .number()
+    .optional()
+    .describe(
+      "Design horizon in years beyond the opening year (20 by default).",
+    ),
+  regionCode: zod
+    .string()
+    .optional()
+    .describe(
+      "The covered region the engine resolved for the site (e.g. atlanta_metro).",
+    ),
+  jurisdiction: zod
+    .object({
+      dotName: zod.string(),
+      planningOfficeName: zod.string(),
+    })
+    .optional()
+    .describe(
+      "The region's governing-agency names, as the findings and mitigation summary print them.",
+    ),
+  autoModeShareSource: zod
+    .string()
+    .optional()
+    .describe(
+      "Citation for the region's auto-mode share, as the findings print it.",
+    ),
+  weatherFactorExact: zod
+    .number()
+    .optional()
+    .describe(
+      "The unrounded weather capacity factor applied (weatherCapacityFactor is 2 dp).",
+    ),
+  timingOverrideSummary: zod
+    .object({
+      total: zod.number(),
+      matched: zod.number(),
+      matchedByCoordinates: zod.number(),
+      matchedByName: zod.number(),
+      matches: zod.array(
+        zod.object({
+          index: zod
+            .number()
+            .describe("Index into request.signalTimingOverrides."),
+          signalId: zod.string(),
+          signalName: zod.string(),
+          by: zod.enum(["coordinates", "name"]),
+        }),
+      ),
+      unmatched: zod.array(
+        zod.object({
+          index: zod
+            .number()
+            .describe("Index into request.signalTimingOverrides."),
+          label: zod.string(),
+          reason: zod.enum([
+            "no_signal_within_snap",
+            "displaced_by_nearer",
+            "name_tie",
+            "name_unmatched",
+            "displaced_by_existing",
+          ]),
+        }),
+      ),
+    })
+    .optional()
+    .describe(
+      "How the request's signalTimingOverrides attached to study intersections. Present whenever the request carried the array (even empty), so a what-if client can always show which overrides took and which did not.",
+    ),
   routeAssignment: zod
     .object({
       available: zod.boolean(),
@@ -3012,6 +5837,23 @@ export const getTisProjectResponseRequestOneDrivewaysItemLongitudeMax = 180;
 
 export const getTisProjectResponseRequestOneDrivewaysMax = 12;
 
+export const getTisProjectResponseRequestOneSignalTimingOverridesItemLatitudeMin =
+  -90;
+export const getTisProjectResponseRequestOneSignalTimingOverridesItemLatitudeMax = 90;
+
+export const getTisProjectResponseRequestOneSignalTimingOverridesItemLongitudeMin =
+  -180;
+export const getTisProjectResponseRequestOneSignalTimingOverridesItemLongitudeMax = 180;
+
+export const getTisProjectResponseRequestOneSignalTimingOverridesItemCycleLenSecMin = 30;
+export const getTisProjectResponseRequestOneSignalTimingOverridesItemCycleLenSecMax = 300;
+
+export const getTisProjectResponseRequestOneSignalTimingOverridesItemPhaseByMovementMaxOne = 16;
+
+export const getTisProjectResponseRequestOneSignalTimingOverridesItemSplitSByPhaseMaxOne = 300;
+
+export const getTisProjectResponseRequestOneSignalTimingOverridesMax = 60;
+
 export const getTisProjectResponseResultRequestLatitudeMin = -90;
 export const getTisProjectResponseResultRequestLatitudeMax = 90;
 
@@ -3167,6 +6009,23 @@ export const getTisProjectResponseResultRequestDrivewaysItemLongitudeMin = -180;
 export const getTisProjectResponseResultRequestDrivewaysItemLongitudeMax = 180;
 
 export const getTisProjectResponseResultRequestDrivewaysMax = 12;
+
+export const getTisProjectResponseResultRequestSignalTimingOverridesItemLatitudeMin =
+  -90;
+export const getTisProjectResponseResultRequestSignalTimingOverridesItemLatitudeMax = 90;
+
+export const getTisProjectResponseResultRequestSignalTimingOverridesItemLongitudeMin =
+  -180;
+export const getTisProjectResponseResultRequestSignalTimingOverridesItemLongitudeMax = 180;
+
+export const getTisProjectResponseResultRequestSignalTimingOverridesItemCycleLenSecMin = 30;
+export const getTisProjectResponseResultRequestSignalTimingOverridesItemCycleLenSecMax = 300;
+
+export const getTisProjectResponseResultRequestSignalTimingOverridesItemPhaseByMovementMaxOne = 16;
+
+export const getTisProjectResponseResultRequestSignalTimingOverridesItemSplitSByPhaseMaxOne = 300;
+
+export const getTisProjectResponseResultRequestSignalTimingOverridesMax = 60;
 
 export const getTisProjectResponseResultAffectedIntersectionsItemApproachesItemThroughLanesMax = 6;
 
@@ -3776,6 +6635,76 @@ export const GetTisProjectResponse = zod
             .describe(
               "Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).",
             ),
+          signalTimingOverrides: zod
+            .array(
+              zod
+                .object({
+                  latitude: zod
+                    .number()
+                    .min(
+                      getTisProjectResponseRequestOneSignalTimingOverridesItemLatitudeMin,
+                    )
+                    .max(
+                      getTisProjectResponseRequestOneSignalTimingOverridesItemLatitudeMax,
+                    ),
+                  longitude: zod
+                    .number()
+                    .min(
+                      getTisProjectResponseRequestOneSignalTimingOverridesItemLongitudeMin,
+                    )
+                    .max(
+                      getTisProjectResponseRequestOneSignalTimingOverridesItemLongitudeMax,
+                    ),
+                  name: zod
+                    .string()
+                    .optional()
+                    .describe(
+                      "Intersection name (the report row's `name`), for the name fallback and the summary.",
+                    ),
+                  cycleLenSec: zod
+                    .number()
+                    .min(
+                      getTisProjectResponseRequestOneSignalTimingOverridesItemCycleLenSecMin,
+                    )
+                    .max(
+                      getTisProjectResponseRequestOneSignalTimingOverridesItemCycleLenSecMax,
+                    ),
+                  phaseByMovement: zod
+                    .record(
+                      zod.string(),
+                      zod
+                        .number()
+                        .min(1)
+                        .max(
+                          getTisProjectResponseRequestOneSignalTimingOverridesItemPhaseByMovementMaxOne,
+                        ),
+                    )
+                    .describe(
+                      "Phase number serving each movement (NBL, NBT, ... WBR). A left whose phase differs from its through's phase is protected. Both axes' through movements must map to a phase that has a split, or the override does not resolve and the next provider is used.",
+                    ),
+                  splitSByPhase: zod
+                    .record(
+                      zod.string(),
+                      zod
+                        .number()
+                        .min(1)
+                        .max(
+                          getTisProjectResponseRequestOneSignalTimingOverridesItemSplitSByPhaseMaxOne,
+                        ),
+                    )
+                    .describe(
+                      "Split (max green) seconds by phase number; effective green is split minus 5 s lost time.",
+                    ),
+                })
+                .describe(
+                  "A per-signal TIMING override for a what-if scenario: cycle length plus a phase-to-movement map and split seconds, the same measured tier a Synchro record supplies — but WITHOUT turning volumes, so the intersection's existing volumes and approach split are left exactly as the base study computed them. Snapped to the nearest study intersection within ~0.35 mi by coordinates (copy latitude\/longitude from the report row; nearest record wins per signal); a record whose coordinates miss falls back to an unambiguous normalized-name match when `name` is given. Consumed only by the signal-timing resolver, as its first provider (above a Synchro record, above Webster); rows it attaches to report signalTiming.source \"override\". Ignored under signalTiming: screening. Every record's fate is reported in the response's timingOverrideSummary.",
+                ),
+            )
+            .max(getTisProjectResponseRequestOneSignalTimingOverridesMax)
+            .optional()
+            .describe(
+              "Per-signal timing overrides for a what-if scenario (see SignalTimingOverride). Timing only: existing volumes and approach shares at the matched signal are untouched. Absent => output byte-identical to a study without overrides.",
+            ),
         }),
         zod.record(zod.string(), zod.unknown()),
       ])
@@ -4367,6 +7296,76 @@ export const GetTisProjectResponse = zod
           .describe(
             "Site access points with per-movement turn restrictions. When present, project trips route through these driveways and forbidden movements reroute onto the network. Absent ⇒ single-site behavior (unchanged).",
           ),
+        signalTimingOverrides: zod
+          .array(
+            zod
+              .object({
+                latitude: zod
+                  .number()
+                  .min(
+                    getTisProjectResponseResultRequestSignalTimingOverridesItemLatitudeMin,
+                  )
+                  .max(
+                    getTisProjectResponseResultRequestSignalTimingOverridesItemLatitudeMax,
+                  ),
+                longitude: zod
+                  .number()
+                  .min(
+                    getTisProjectResponseResultRequestSignalTimingOverridesItemLongitudeMin,
+                  )
+                  .max(
+                    getTisProjectResponseResultRequestSignalTimingOverridesItemLongitudeMax,
+                  ),
+                name: zod
+                  .string()
+                  .optional()
+                  .describe(
+                    "Intersection name (the report row's `name`), for the name fallback and the summary.",
+                  ),
+                cycleLenSec: zod
+                  .number()
+                  .min(
+                    getTisProjectResponseResultRequestSignalTimingOverridesItemCycleLenSecMin,
+                  )
+                  .max(
+                    getTisProjectResponseResultRequestSignalTimingOverridesItemCycleLenSecMax,
+                  ),
+                phaseByMovement: zod
+                  .record(
+                    zod.string(),
+                    zod
+                      .number()
+                      .min(1)
+                      .max(
+                        getTisProjectResponseResultRequestSignalTimingOverridesItemPhaseByMovementMaxOne,
+                      ),
+                  )
+                  .describe(
+                    "Phase number serving each movement (NBL, NBT, ... WBR). A left whose phase differs from its through's phase is protected. Both axes' through movements must map to a phase that has a split, or the override does not resolve and the next provider is used.",
+                  ),
+                splitSByPhase: zod
+                  .record(
+                    zod.string(),
+                    zod
+                      .number()
+                      .min(1)
+                      .max(
+                        getTisProjectResponseResultRequestSignalTimingOverridesItemSplitSByPhaseMaxOne,
+                      ),
+                  )
+                  .describe(
+                    "Split (max green) seconds by phase number; effective green is split minus 5 s lost time.",
+                  ),
+              })
+              .describe(
+                "A per-signal TIMING override for a what-if scenario: cycle length plus a phase-to-movement map and split seconds, the same measured tier a Synchro record supplies — but WITHOUT turning volumes, so the intersection's existing volumes and approach split are left exactly as the base study computed them. Snapped to the nearest study intersection within ~0.35 mi by coordinates (copy latitude\/longitude from the report row; nearest record wins per signal); a record whose coordinates miss falls back to an unambiguous normalized-name match when `name` is given. Consumed only by the signal-timing resolver, as its first provider (above a Synchro record, above Webster); rows it attaches to report signalTiming.source \"override\". Ignored under signalTiming: screening. Every record's fate is reported in the response's timingOverrideSummary.",
+              ),
+          )
+          .max(getTisProjectResponseResultRequestSignalTimingOverridesMax)
+          .optional()
+          .describe(
+            "Per-signal timing overrides for a what-if scenario (see SignalTimingOverride). Timing only: existing volumes and approach shares at the matched signal are untouched. Absent => output byte-identical to a study without overrides.",
+          ),
       }),
       studyRadiusMi: zod.number(),
       tripGeneration: zod.object({
@@ -4409,6 +7408,86 @@ export const GetTisProjectResponse = zod
           latitude: zod.number(),
           longitude: zod.number(),
           distanceMi: zod.number(),
+          designHourVolumeVph: zod
+            .number()
+            .optional()
+            .describe(
+              "The unrounded design-hour volume this row anchors on — the inventory's AADT x K design hour, or the measured turning-movement total when a UTDF record attached (volumeSource). The period's background volume is this x the period's periodVolumeFactor.",
+            ),
+          loadWeight: zod
+            .number()
+            .optional()
+            .describe(
+              "The per-intersection project-load weight the row was built with (exact; distance-decay, driveway share, or the conserved through-share). addedTripsPmPeak = round(externalTrips x weight), except where inbound ledgers (pathTurnsIn) re-derive the blend.",
+            ),
+          pathTurns: zod
+            .array(
+              zod
+                .object({
+                  enterBearingDeg: zod.number(),
+                  exitBearingDeg: zod.number(),
+                  share: zod.number(),
+                })
+                .describe(
+                  "One routed turn through a junction, in share units (fraction of project demand), from the conserved assignment.",
+                ),
+            )
+            .optional()
+            .describe(
+              'Conserved-assignment turn ledger (outbound, site to cordon) for a movementSource \"path\" row: each routed turn through this junction in share units. Absent on octant rows.',
+            ),
+          pathTurnsIn: zod
+            .array(
+              zod
+                .object({
+                  enterBearingDeg: zod.number(),
+                  exitBearingDeg: zod.number(),
+                  share: zod.number(),
+                })
+                .describe(
+                  "One routed turn through a junction, in share units (fraction of project demand), from the conserved assignment.",
+                ),
+            )
+            .optional()
+            .describe(
+              "Recorded inbound ledger, present only when the routing graph carries one-way links. An empty array is meaningful (the inbound paths do not pass this junction); absent means the inbound mirror of pathTurns applies.",
+            ),
+          movementsExact: zod
+            .array(
+              zod.object({
+                approach: zod.enum(["NB", "SB", "EB", "WB"]),
+                movement: zod.enum(["L", "T", "R"]),
+                exact: zod.number(),
+              }),
+            )
+            .optional()
+            .describe(
+              "The exact (fractional) movement loads the integer `movements` table was integerized from, and the per-approach loading derives from. Sums to externalTrips x loadWeight (or the ledger blend).",
+            ),
+          mainThroughLanes: zod
+            .number()
+            .optional()
+            .describe(
+              "Per-direction through lanes on the major approach from the OSM lanes tag, present only when measured (mainThroughLanesMeasured).",
+            ),
+          minorThroughLanes: zod
+            .number()
+            .optional()
+            .describe(
+              "Per-direction through lanes on the minor approach from the OSM lanes tag, when tagged.",
+            ),
+          mainThroughLanesMeasured: zod
+            .boolean()
+            .optional()
+            .describe(
+              "True when mainThroughLanes came from a measured OSM tag (the only case the engine uses it).",
+            ),
+          utdfRecordIndex: zod
+            .number()
+            .optional()
+            .describe(
+              "Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached.",
+            ),
           existingVc: zod
             .number()
             .describe(
@@ -4513,6 +7592,12 @@ export const GetTisProjectResponse = zod
             .object({
               sampleCount: zod.number(),
               delayMultiplier: zod.number(),
+              delayMultiplierExact: zod
+                .number()
+                .optional()
+                .describe(
+                  "The unrounded multiplier the engine applied (delayMultiplier is 2 dp); optional on older payloads.",
+                ),
               lastObservedDelaySec: zod.number().nullish(),
             })
             .optional()
@@ -4568,6 +7653,10 @@ export const GetTisProjectResponse = zod
               gOverCew: zod.number(),
               gOverCnsLeft: zod.number().optional(),
               gOverCewLeft: zod.number().optional(),
+              gOverCnsExact: zod.number().optional(),
+              gOverCewExact: zod.number().optional(),
+              gOverCnsLeftExact: zod.number().optional(),
+              gOverCewLeftExact: zod.number().optional(),
               leftPhasingNs: zod.enum(["protected", "permissive"]),
               leftPhasingEw: zod.enum(["protected", "permissive"]),
               leftPhasingSource: zod
@@ -4644,6 +7733,86 @@ export const GetTisProjectResponse = zod
               latitude: zod.number(),
               longitude: zod.number(),
               distanceMi: zod.number(),
+              designHourVolumeVph: zod
+                .number()
+                .optional()
+                .describe(
+                  "The unrounded design-hour volume this row anchors on — the inventory's AADT x K design hour, or the measured turning-movement total when a UTDF record attached (volumeSource). The period's background volume is this x the period's periodVolumeFactor.",
+                ),
+              loadWeight: zod
+                .number()
+                .optional()
+                .describe(
+                  "The per-intersection project-load weight the row was built with (exact; distance-decay, driveway share, or the conserved through-share). addedTripsPmPeak = round(externalTrips x weight), except where inbound ledgers (pathTurnsIn) re-derive the blend.",
+                ),
+              pathTurns: zod
+                .array(
+                  zod
+                    .object({
+                      enterBearingDeg: zod.number(),
+                      exitBearingDeg: zod.number(),
+                      share: zod.number(),
+                    })
+                    .describe(
+                      "One routed turn through a junction, in share units (fraction of project demand), from the conserved assignment.",
+                    ),
+                )
+                .optional()
+                .describe(
+                  'Conserved-assignment turn ledger (outbound, site to cordon) for a movementSource \"path\" row: each routed turn through this junction in share units. Absent on octant rows.',
+                ),
+              pathTurnsIn: zod
+                .array(
+                  zod
+                    .object({
+                      enterBearingDeg: zod.number(),
+                      exitBearingDeg: zod.number(),
+                      share: zod.number(),
+                    })
+                    .describe(
+                      "One routed turn through a junction, in share units (fraction of project demand), from the conserved assignment.",
+                    ),
+                )
+                .optional()
+                .describe(
+                  "Recorded inbound ledger, present only when the routing graph carries one-way links. An empty array is meaningful (the inbound paths do not pass this junction); absent means the inbound mirror of pathTurns applies.",
+                ),
+              movementsExact: zod
+                .array(
+                  zod.object({
+                    approach: zod.enum(["NB", "SB", "EB", "WB"]),
+                    movement: zod.enum(["L", "T", "R"]),
+                    exact: zod.number(),
+                  }),
+                )
+                .optional()
+                .describe(
+                  "The exact (fractional) movement loads the integer `movements` table was integerized from, and the per-approach loading derives from. Sums to externalTrips x loadWeight (or the ledger blend).",
+                ),
+              mainThroughLanes: zod
+                .number()
+                .optional()
+                .describe(
+                  "Per-direction through lanes on the major approach from the OSM lanes tag, present only when measured (mainThroughLanesMeasured).",
+                ),
+              minorThroughLanes: zod
+                .number()
+                .optional()
+                .describe(
+                  "Per-direction through lanes on the minor approach from the OSM lanes tag, when tagged.",
+                ),
+              mainThroughLanesMeasured: zod
+                .boolean()
+                .optional()
+                .describe(
+                  "True when mainThroughLanes came from a measured OSM tag (the only case the engine uses it).",
+                ),
+              utdfRecordIndex: zod
+                .number()
+                .optional()
+                .describe(
+                  "Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached.",
+                ),
               existingVc: zod
                 .number()
                 .describe(
@@ -4759,6 +7928,12 @@ export const GetTisProjectResponse = zod
                 .object({
                   sampleCount: zod.number(),
                   delayMultiplier: zod.number(),
+                  delayMultiplierExact: zod
+                    .number()
+                    .optional()
+                    .describe(
+                      "The unrounded multiplier the engine applied (delayMultiplier is 2 dp); optional on older payloads.",
+                    ),
                   lastObservedDelaySec: zod.number().nullish(),
                 })
                 .optional()
@@ -4816,6 +7991,10 @@ export const GetTisProjectResponse = zod
                   gOverCew: zod.number(),
                   gOverCnsLeft: zod.number().optional(),
                   gOverCewLeft: zod.number().optional(),
+                  gOverCnsExact: zod.number().optional(),
+                  gOverCewExact: zod.number().optional(),
+                  gOverCnsLeftExact: zod.number().optional(),
+                  gOverCewLeftExact: zod.number().optional(),
                   leftPhasingNs: zod.enum(["protected", "permissive"]),
                   leftPhasingEw: zod.enum(["protected", "permissive"]),
                   leftPhasingSource: zod
@@ -4841,6 +8020,30 @@ export const GetTisProjectResponse = zod
             .describe(
               "Largest projected delay increase across the studied intersections, in the OPENING YEAR only. Scoped, not absolute — compare against worstDelayDeltaDesignSec, which is routinely larger because background growth over the design horizon sits underneath it.",
             ),
+          periodVolumeFactor: zod
+            .number()
+            .optional()
+            .describe(
+              "Background-network volume as a fraction of the stored design hour for this period (PM anchors at 1.0).",
+            ),
+          inFraction: zod
+            .number()
+            .optional()
+            .describe(
+              "Inbound directional share of the project's external trips for this period.",
+            ),
+          externalTripsExact: zod
+            .number()
+            .optional()
+            .describe(
+              "The proposed use's external auto trips for this period, unrounded (tripGeneration.externalTrips is rounded).",
+            ),
+          existingUseCreditExact: zod
+            .number()
+            .optional()
+            .describe(
+              "The existing-use redevelopment credit for this period, unrounded; present only when the request supplied an existing land use. Net assigned trips = max(0, externalTripsExact - existingUseCreditExact).",
+            ),
         }),
       ),
       growthAppliedPct: zod.number(),
@@ -4862,6 +8065,81 @@ export const GetTisProjectResponse = zod
       passByPctApplied: zod.number(),
       internalCapturePctApplied: zod.number(),
       autoModeShareApplied: zod.number().optional(),
+      designYear: zod
+        .number()
+        .optional()
+        .describe(
+          "Opening year + the design horizon, the year the design-year scenarios are grown to.",
+        ),
+      designYearHorizonYears: zod
+        .number()
+        .optional()
+        .describe(
+          "Design horizon in years beyond the opening year (20 by default).",
+        ),
+      regionCode: zod
+        .string()
+        .optional()
+        .describe(
+          "The covered region the engine resolved for the site (e.g. atlanta_metro).",
+        ),
+      jurisdiction: zod
+        .object({
+          dotName: zod.string(),
+          planningOfficeName: zod.string(),
+        })
+        .optional()
+        .describe(
+          "The region's governing-agency names, as the findings and mitigation summary print them.",
+        ),
+      autoModeShareSource: zod
+        .string()
+        .optional()
+        .describe(
+          "Citation for the region's auto-mode share, as the findings print it.",
+        ),
+      weatherFactorExact: zod
+        .number()
+        .optional()
+        .describe(
+          "The unrounded weather capacity factor applied (weatherCapacityFactor is 2 dp).",
+        ),
+      timingOverrideSummary: zod
+        .object({
+          total: zod.number(),
+          matched: zod.number(),
+          matchedByCoordinates: zod.number(),
+          matchedByName: zod.number(),
+          matches: zod.array(
+            zod.object({
+              index: zod
+                .number()
+                .describe("Index into request.signalTimingOverrides."),
+              signalId: zod.string(),
+              signalName: zod.string(),
+              by: zod.enum(["coordinates", "name"]),
+            }),
+          ),
+          unmatched: zod.array(
+            zod.object({
+              index: zod
+                .number()
+                .describe("Index into request.signalTimingOverrides."),
+              label: zod.string(),
+              reason: zod.enum([
+                "no_signal_within_snap",
+                "displaced_by_nearer",
+                "name_tie",
+                "name_unmatched",
+                "displaced_by_existing",
+              ]),
+            }),
+          ),
+        })
+        .optional()
+        .describe(
+          "How the request's signalTimingOverrides attached to study intersections. Present whenever the request carried the array (even empty), so a what-if client can always show which overrides took and which did not.",
+        ),
       routeAssignment: zod
         .object({
           available: zod.boolean(),

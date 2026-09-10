@@ -25,6 +25,10 @@ export type TisAffectedIntersectionSignalTiming = {
   gOverCew: number;
   gOverCnsLeft?: number;
   gOverCewLeft?: number;
+  gOverCnsExact?: number;
+  gOverCewExact?: number;
+  gOverCnsLeftExact?: number;
+  gOverCewLeftExact?: number;
   leftPhasingNs: TisAffectedIntersectionSignalTimingLeftPhasingNs;
   leftPhasingEw: TisAffectedIntersectionSignalTimingLeftPhasingEw;
   /** import = a Synchro record mapped each left to its own phase (or not); inferred = FHWA-HRT-04-091 cross product of left-turn and opposing through volume against 50,000 / 90,000 / 110,000 by opposing through lanes; default = screening. */
