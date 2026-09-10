@@ -101,6 +101,7 @@ import {
   // mitigation
   SCREENING_DELAY_DELTA_MINOR_SEC,
   SCREENING_DELAY_DELTA_MODERATE_SEC,
+  buildSummaryMitigations,
   // trips
   periodRawTrips,
   periodDirectionalIn,
@@ -2104,7 +2105,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     ),
   ];
 
-  const mitigationSummary = buildSummaryMitigations(pmReport.affectedIntersections, region);
+  const mitigationSummary = buildSummaryMitigations(pmReport.affectedIntersections, region.jurisdiction);
 
   // Junction-impact significance: derived from the net PM-peak car-mode
   // external trips (already mode-share-net-out upstream). Below the
@@ -2279,25 +2280,4 @@ async function synthesizePmReport(
   };
 }
 
-function buildSummaryMitigations(rows: AffectedIntersection[], region: Region): string[] {
-  if (rows.length === 0) return ["No off-site mitigations required."];
-  const major = rows.filter((r) => r.mitigationSeverity === "major");
-  const moderate = rows.filter((r) => r.mitigationSeverity === "moderate");
-  const minor = rows.filter((r) => r.mitigationSeverity === "minor");
-  const none = rows.filter((r) => r.mitigationSeverity === "none");
-  const out: string[] = [];
-  if (major.length) {
-    out.push(`Major mitigation required at ${major.length} intersection${major.length === 1 ? "" : "s"}: add critical-approach turn lane(s) and retime the signal; coordinate with ${region.jurisdiction.planningOfficeName}.`);
-  }
-  if (moderate.length) {
-    out.push(`Moderate mitigation at ${moderate.length} intersection${moderate.length === 1 ? "" : "s"}: extend critical-phase green and add protected-only left-turn phasing as needed.`);
-  }
-  if (minor.length) {
-    out.push(`Signal-timing optimization at ${minor.length} intersection${minor.length === 1 ? "" : "s"} (3–5s green-time shift toward the critical phase) is sufficient.`);
-  }
-  if (none.length === rows.length) {
-    out.push(`All studied intersections fall below the ${SCREENING_DELAY_DELTA_MINOR_SEC}-second screening threshold for additional delay across every analyzed horizon. That threshold is a screening default, not an agency criterion — no jurisdiction was resolved for this site — and this screen applies no v/c test and no separate clause for approaches already failing in the no-build. The governing agency's TIS criteria supersede it.`);
-  }
-  return out;
-}
 
