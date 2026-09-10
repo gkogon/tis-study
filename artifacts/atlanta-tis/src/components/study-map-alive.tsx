@@ -16,6 +16,14 @@
  * `addedTripsPmPeak`. Hover a signal for the numbers. No road file for the
  * region → straight-line routes and a note.
  *
+ * Scenario: when `scenarioReport` is passed (the browser re-solve of the same
+ * study), badges, flows, stats and the hover card read from it while the
+ * base report stays the yardstick — flow rates are normalised to the BASE
+ * study's busiest signal so a uniform trip change is visible, a dashed ring
+ * marks every signal whose LOS moved against the base, and the sim is kept
+ * (rates updated in place) so the cars never restart on an edit. Clicking a
+ * signal selects it (`onSelectSignal`); the selection wears a solid ring.
+ *
  * Canvas is aria-hidden; everything the reader needs is in the DOM beside it.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -36,12 +44,22 @@ export type StudyMapAliveProps = {
   phase: "pending" | "report";
   report?: TisReport | null;
   projectName?: string | null;
+  /** The browser re-solve of `report` for the scenario being edited. Absent
+   *  or null ⇒ the map shows the base report alone. */
+  scenarioReport?: TisReport | null;
+  /** Studied signal to ring as selected (the studio's Signal tab). */
+  selectedSignalId?: string | null;
+  /** Fired on a canvas click: the studied signal under the pointer, or null
+   *  when the click landed on empty map. */
+  onSelectSignal?: (signalId: string | null) => void;
 };
 
 const SIM_SPEED = 20;            // simulated seconds per real second
 const MAX_PENDING_TARGETS = 40;  // background pulses fan out to at most this many signals
 const REVEAL_S = 1.4;            // network draws in over this many real seconds
 const ROUTING_STAGE_S = 2.5;     // paced stage after the two real fetches
+const HIT_RADIUS_PX = 14;        // hover / click hit-test radius around a signal
+const FLOW_RATE_PER_MAX = 0.05;  // cars per simulated second at the base study's busiest signal
 
 const CLASS_STYLE: Array<{ w: number; c: string }> = [
   { w: 5, c: "#3A4A66" }, { w: 4, c: "#33425C" }, { w: 3.2, c: "#2D3B54" }, { w: 2.4, c: "#27344B" }, { w: 1.5, c: "#212D42" },
@@ -51,24 +69,39 @@ function useReducedMotion(): boolean {
   return useMemo(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches, []);
 }
 
-export function StudyMapAlive({ site, radiusMi, phase, report, projectName }: StudyMapAliveProps) {
+/** Flow rate for a row against the base study's busiest signal. */
+function flowRate(addedTripsPmPeak: number, baseMaxTrips: number): number {
+  return (FLOW_RATE_PER_MAX * addedTripsPmPeak) / baseMaxTrips;
+}
+
+/** Settle a still frame for reduced-motion readers. */
+function settle(sim: FlowSim): void {
+  sim.cars = [];
+  for (let i = 0; i < 400; i++) sim.step(0.5);
+}
+
+export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scenarioReport, selectedSignalId, onSelectSignal }: StudyMapAliveProps) {
   const reduced = useReducedMotion();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [net, setNet] = useState<{ status: NetStatus; segments: number; signals: number; regionName: string | null }>({ status: "idle", segments: 0, signals: 0, regionName: null });
   const [scenario, setScenario] = useState<Scenario>("build");
-  const [hover, setHover] = useState<{ x: number; y: number; row: TisAffectedIntersection | null; sig: Signal } | null>(null);
+  // Hover keeps the signal only; the row is resolved at render time so the
+  // card follows a slider edit while the pointer rests on a signal.
+  const [hover, setHover] = useState<{ x: number; y: number; sig: Signal } | null>(null);
   const [, tick] = useState(0);
 
   // Everything the animation loop needs lives in one ref so the loop never closes over stale props.
   const world = useRef<{
     graph: RoadGraph | null; segments: RoadSegment[]; signals: Signal[]; siteNode: number;
     loadedAt: number | null; sigLoadedAt: number | null; sim: FlowSim | null; simKey: string;
-    reportRows: Map<string, TisAffectedIntersection>; phase: "pending" | "report"; scenario: Scenario;
+    reportRows: Map<string, TisAffectedIntersection>; baseRows: Map<string, TisAffectedIntersection>;
+    phase: "pending" | "report"; scenario: Scenario; selected: string | null;
     static: HTMLCanvasElement | null; staticKey: string; hoverSig: Signal | null;
-  }>({ graph: null, segments: [], signals: [], siteNode: -1, loadedAt: null, sigLoadedAt: null, sim: null, simKey: "", reportRows: new Map(), phase, scenario, static: null, staticKey: "", hoverSig: null });
+  }>({ graph: null, segments: [], signals: [], siteNode: -1, loadedAt: null, sigLoadedAt: null, sim: null, simKey: "", reportRows: new Map(), baseRows: new Map(), phase, scenario, selected: null, static: null, staticKey: "", hoverSig: null });
   world.current.phase = phase;
   world.current.scenario = scenario;
+  world.current.selected = selectedSignalId ?? null;
 
   const siteKey = `${site.latitude.toFixed(4)},${site.longitude.toFixed(4)},${radiusMi}`;
 
@@ -110,13 +143,34 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName }: St
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteKey]);
 
-  // ---- report rows keyed by signal id ----
+  // ---- report rows keyed by signal id (scenario on top of the base) ----
   useEffect(() => {
-    const m = new Map<string, TisAffectedIntersection>();
-    if (phase === "report" && report) for (const r of report.affectedIntersections) m.set(r.signalId, r);
-    world.current.reportRows = m;
-    world.current.sim = null; world.current.simKey = "";
-  }, [phase, report]);
+    const w = world.current;
+    const base = new Map<string, TisAffectedIntersection>();
+    const shown = new Map<string, TisAffectedIntersection>();
+    if (phase === "report" && report) {
+      for (const r of report.affectedIntersections) base.set(r.signalId, r);
+      for (const r of (scenarioReport ?? report).affectedIntersections) shown.set(r.signalId, r);
+    }
+    const sameIds = w.sim !== null && w.reportRows.size === shown.size && [...shown.keys()].every((id) => w.reportRows.has(id));
+    w.reportRows = shown;
+    w.baseRows = base;
+    if (sameIds && w.sim) {
+      // Same study, new numbers: update the rates in place and keep the cars.
+      let baseMax = 1;
+      for (const r of base.values()) baseMax = Math.max(baseMax, r.addedTripsPmPeak);
+      let changed = false;
+      for (const f of w.sim.flows) {
+        if (!f.signalId) continue;
+        const row = shown.get(f.signalId);
+        const rate = row ? flowRate(row.addedTripsPmPeak, baseMax) : 0;
+        if (rate !== f.ratePerS) { f.ratePerS = rate; changed = true; }
+      }
+      if (changed && reduced) settle(w.sim);
+    } else {
+      w.sim = null; w.simKey = "";
+    }
+  }, [phase, report, scenarioReport, reduced]);
 
   // stage list re-render while pending (the loop itself never touches React state)
   useEffect(() => {
@@ -140,6 +194,8 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName }: St
     const center: LatLon = { lat: site.latitude, lon: site.longitude };
 
     function ensureSim(pxPerMi: number): void {
+      // Deliberately blind to trip values: rates are updated in place by the
+      // rows effect, so an edit never rebuilds the sim and resets the cars.
       const key = `${w.phase}:${w.graph ? w.graph.links.length : 0}:${w.signals.length}:${w.reportRows.size}:${pxPerMi.toFixed(1)}`;
       if (w.sim && w.simKey === key) return;
       const flows: Flow[] = [];
@@ -153,11 +209,14 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName }: St
         return straightRoute(center, p);
       };
       if (w.phase === "report" && w.reportRows.size) {
+        // Normalised to the BASE study's busiest signal so a scenario that
+        // scales every row is visible on the map.
+        const yard = w.baseRows.size ? w.baseRows : w.reportRows;
         let maxTrips = 1;
-        for (const r of w.reportRows.values()) maxTrips = Math.max(maxTrips, r.addedTripsPmPeak);
+        for (const r of yard.values()) maxTrips = Math.max(maxTrips, r.addedTripsPmPeak);
         for (const r of w.reportRows.values()) {
           const route = routeTo({ lat: r.latitude, lon: r.longitude });
-          if (route) flows.push({ route, ratePerS: (0.05 * r.addedTripsPmPeak) / maxTrips, tint: "project" });
+          if (route) flows.push({ route, ratePerS: flowRate(r.addedTripsPmPeak, maxTrips), tint: "project", signalId: r.signalId });
         }
       } else if (w.phase === "pending" && w.signals.length) {
         const targets = [...w.signals].sort((a, b) => distMi(center.lat, center.lon, a.latitude, a.longitude) - distMi(center.lat, center.lon, b.latitude, b.longitude)).slice(0, MAX_PENDING_TARGETS);
@@ -165,7 +224,7 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName }: St
         for (const s of targets) { const route = routeTo({ lat: s.latitude, lon: s.longitude }); if (route) flows.push({ route, ratePerS: per, tint: "background" }); }
       }
       w.sim = new FlowSim(flows); w.simKey = key;
-      if (reduced && w.phase === "report") for (let i = 0; i < 400; i++) w.sim.step(0.5); // settle to a still frame
+      if (reduced && w.phase === "report") settle(w.sim); // settle to a still frame
     }
 
     function drawStatic(pxPerMi: number, revealMi: number, complete: boolean): HTMLCanvasElement {
@@ -260,6 +319,19 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName }: St
           ctx.fillStyle = LOS_MAP_COLORS[los] ?? "#94A3B8";
           ctx.beginPath(); ctx.roundRect(x - bw / 2, y - bh / 2, bw, bh, 4); ctx.fill();
           if (r.losChanged && w.scenario === "build") { ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.5; ctx.stroke(); }
+          // Scenario moved this signal's LOS against the base study: dashed ring.
+          const base = w.baseRows.get(r.signalId);
+          if (base && base !== r) {
+            const baseLos = w.scenario === "build" ? base.futureLos : base.existingLos;
+            if (baseLos !== los) {
+              ctx.strokeStyle = "#60A5FA"; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+              ctx.beginPath(); ctx.arc(x, y, 18, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+            }
+          }
+          if (w.selected === r.signalId) {
+            ctx.strokeStyle = "#60A5FA"; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.stroke();
+          }
           ctx.fillStyle = "#0B1220"; ctx.font = '700 13px "JetBrains Mono", Menlo, monospace'; ctx.textAlign = "center"; ctx.textBaseline = "middle";
           ctx.fillText(los, x, y + 0.5);
         }
@@ -274,21 +346,30 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName }: St
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteKey, reduced]);
 
-  // ---- hover ----
-  function onMove(e: React.MouseEvent<HTMLCanvasElement>) {
-    const canvas = canvasRef.current; if (!canvas) return;
+  // ---- pointer: hit-test, hover, click ----
+  function hitTest(e: React.MouseEvent<HTMLCanvasElement>): { sig: Signal | null; mx: number; my: number } {
+    const canvas = canvasRef.current; if (!canvas) return { sig: null, mx: 0, my: 0 };
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     const w = world.current;
     const pxPerMi = Math.min(rect.width, rect.height) / (2 * radiusMi * 1.25);
     const proj = projector({ lat: site.latitude, lon: site.longitude }, pxPerMi, rect.width / 2, rect.height / 2);
-    let best: Signal | null = null, bestD = 14;
+    let best: Signal | null = null, bestD = HIT_RADIUS_PX;
     const candidates: Signal[] = w.phase === "report" && w.reportRows.size
       ? [...w.reportRows.values()].map((r) => ({ id: r.signalId, name: r.name, latitude: r.latitude, longitude: r.longitude }))
       : w.signals;
     for (const s of candidates) { const [x, y] = proj({ lat: s.latitude, lon: s.longitude }); const d = Math.hypot(x - mx, y - my); if (d < bestD) { bestD = d; best = s; } }
-    if (!best) { if (hover) setHover(null); return; }
-    setHover({ x: mx, y: my, sig: best, row: w.reportRows.get(best.id) ?? null });
+    return { sig: best, mx, my };
+  }
+  function onMove(e: React.MouseEvent<HTMLCanvasElement>) {
+    const { sig, mx, my } = hitTest(e);
+    if (!sig) { if (hover) setHover(null); return; }
+    setHover({ x: mx, y: my, sig });
+  }
+  function onClick(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (!onSelectSignal || phase !== "report") return;
+    const { sig } = hitTest(e);
+    onSelectSignal(sig && world.current.reportRows.has(sig.id) ? sig.id : null);
   }
 
   // ---- stage list ----
@@ -305,9 +386,18 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName }: St
         { label: "Solving capacity and LOS at every signal", state: routingDone ? "active" : "todo" },
         { label: "Drafting findings and methodology", state: "todo" },
       ];
-  const rows = report?.affectedIntersections ?? [];
-  const drops = rows.filter((r) => r.losChanged).length;
-  const worst = rows.reduce((m, r) => Math.max(m, r.futureDelaySec - r.existingDelaySec), 0);
+  const shownReport = scenarioReport ?? report;
+  const isScenario = !!scenarioReport && scenarioReport !== report;
+  const rows = shownReport?.affectedIntersections ?? [];
+  const baseRowsArr = report?.affectedIntersections ?? [];
+  const stat = (rs: TisAffectedIntersection[]) => ({
+    drops: rs.filter((r) => r.losChanged).length,
+    ef: rs.filter((r) => r.futureLos === "E" || r.futureLos === "F").length,
+    worst: rs.reduce((m, r) => Math.max(m, r.futureDelaySec - r.existingDelaySec), 0),
+  });
+  const cur = stat(rows), baseStat = stat(baseRowsArr);
+  const hoverRow = hover ? rows.find((r) => r.signalId === hover.sig.id) ?? null : null;
+  const hoverBase = hover && isScenario ? baseRowsArr.find((r) => r.signalId === hover.sig.id) ?? null : null;
 
   return (
     <div ref={wrapRef} className="grid gap-4 md:grid-cols-[260px_minmax(0,1fr)]" data-testid="study-map-alive">
@@ -332,13 +422,23 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName }: St
         ) : (
           <>
             <div>
-              <div className="text-sm font-semibold">Project trips on the network</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Each studied signal shows its LOS; trips leave the site along their shortest routes at a rate proportional to the PM-peak trips it receives. Hover a signal for the numbers.</div>
+              <div className="text-sm font-semibold">{isScenario ? "Project trips on the network — scenario" : "Project trips on the network"}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                Each studied signal shows its LOS; trips leave the site along their shortest routes at a rate proportional to the PM-peak trips it receives. Hover a signal for the numbers{onSelectSignal ? ", click one to edit its timing" : ""}.
+              </div>
             </div>
             <div className="grid grid-cols-3 gap-2 border-t pt-3">
               <div><div className="text-[10px] uppercase tracking-wider text-muted-foreground">Studied</div><div className="font-mono text-xl font-semibold tabular-nums">{rows.length}</div></div>
-              <div><div className="text-[10px] uppercase tracking-wider text-muted-foreground">LOS drops</div><div className={`font-mono text-xl font-semibold tabular-nums ${drops ? "text-amber-600" : ""}`}>{drops}</div></div>
-              <div><div className="text-[10px] uppercase tracking-wider text-muted-foreground">Worst Δ</div><div className={`font-mono text-xl font-semibold tabular-nums ${worst >= 5 ? "text-amber-600" : ""}`}>+{worst.toFixed(1)}s</div></div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">LOS drops</div>
+                <div className={`font-mono text-xl font-semibold tabular-nums ${cur.drops ? "text-amber-600" : ""}`} data-testid="stat-map-los-drops">{cur.drops}</div>
+                {isScenario && cur.drops !== baseStat.drops && <div className="font-mono text-[10px] text-muted-foreground tabular-nums">base {baseStat.drops}</div>}
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Worst Δ</div>
+                <div className={`font-mono text-xl font-semibold tabular-nums ${cur.worst >= 5 ? "text-amber-600" : ""}`} data-testid="stat-map-worst-delta">+{cur.worst.toFixed(1)}s</div>
+                {isScenario && cur.worst.toFixed(1) !== baseStat.worst.toFixed(1) && <div className="font-mono text-[10px] text-muted-foreground tabular-nums">base +{baseStat.worst.toFixed(1)}s</div>}
+              </div>
             </div>
             <div className="flex items-center gap-1 text-xs border-t pt-3">
               <span className="text-muted-foreground mr-1">Scenario:</span>
@@ -351,6 +451,8 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName }: St
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] uppercase tracking-wider text-muted-foreground">
               <span><i className="inline-block w-2.5 h-1.5 rounded-sm align-middle mr-1 bg-blue-500" />Project trips</span>
               <span><i className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1 border border-white bg-amber-500" />LOS changed</span>
+              {isScenario && <span><i className="inline-block w-2.5 h-2.5 rounded-full align-middle mr-1 border border-dashed border-blue-400" />Moved vs base</span>}
+              {onSelectSignal && <span><i className="inline-block w-2.5 h-2.5 rounded-full align-middle mr-1 border-2 border-blue-400" />Selected</span>}
               <span><i className="inline-block w-2 h-2 rounded-full align-middle mr-1 bg-slate-400/60" />Signal not studied</span>
             </div>
             {net.status === "none" && <div className="text-xs text-muted-foreground">No road file for this region — routes are drawn straight-line.</div>}
@@ -358,14 +460,24 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName }: St
         )}
       </div>
       <div className="relative rounded-lg overflow-hidden border bg-[#0B1220] h-[320px] md:h-[440px]">
-        <canvas ref={canvasRef} className="absolute inset-0 block w-full h-full" aria-hidden onMouseMove={onMove} onMouseLeave={() => setHover(null)} />
+        <canvas
+          ref={canvasRef}
+          className={`absolute inset-0 block w-full h-full ${hover && onSelectSignal ? "cursor-pointer" : ""}`}
+          aria-hidden
+          onMouseMove={onMove}
+          onMouseLeave={() => setHover(null)}
+          onClick={onClick}
+        />
         {hover && (
           <div className="absolute z-10 pointer-events-none rounded border border-white/15 bg-[#0F1729]/95 text-slate-50 px-2.5 py-2 text-xs shadow-lg max-w-[240px]" style={{ left: Math.min(hover.x + 12, 9999), top: hover.y + 12 }} data-testid="tooltip-map-signal">
             <div className="font-medium">{hover.sig.name}</div>
-            {hover.row ? (
+            {hoverRow ? (
               <div className="font-mono text-[11px] text-slate-300 mt-0.5">
-                LOS {hover.row.existingLos} → {hover.row.futureLos} · {hover.row.existingDelaySec.toFixed(1)}s → {hover.row.futureDelaySec.toFixed(1)}s<br />
-                +{hover.row.addedTripsPmPeak} PM peak trips · {hover.row.distanceMi.toFixed(2)} mi
+                LOS {hoverRow.existingLos} → {hoverRow.futureLos} · {hoverRow.existingDelaySec.toFixed(1)}s → {hoverRow.futureDelaySec.toFixed(1)}s<br />
+                +{hoverRow.addedTripsPmPeak} PM peak trips · {hoverRow.distanceMi.toFixed(2)} mi
+                {hoverBase && (hoverBase.futureLos !== hoverRow.futureLos || hoverBase.futureDelaySec !== hoverRow.futureDelaySec || hoverBase.addedTripsPmPeak !== hoverRow.addedTripsPmPeak) && (
+                  <><br /><span className="text-slate-400">base: LOS {hoverBase.futureLos} · {hoverBase.futureDelaySec.toFixed(1)}s · +{hoverBase.addedTripsPmPeak}</span></>
+                )}
               </div>
             ) : (
               <div className="font-mono text-[11px] text-slate-400 mt-0.5">{phase === "pending" ? "in the study radius" : "not studied"}</div>

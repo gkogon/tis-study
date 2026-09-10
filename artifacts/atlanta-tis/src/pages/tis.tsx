@@ -34,6 +34,16 @@ import { TisCoverPage } from "@/components/tis-cover-page";
 import { TisMethodologyAppendix } from "@/components/tis-methodology-appendix";
 import { TripDistributionCard } from "@/components/trip-distribution-card";
 import { TisLimitations } from "@/components/tis-limitations";
+import { ScenarioStudio } from "@/components/scenario-studio";
+import { Switch } from "@/components/ui/switch";
+import {
+  LOS_COLORS, SEVERITY_CONFIG, LosBadge, ApproachDetailTable, DELAY_CONFIDENCE_FRAC, delayBand,
+} from "@/components/tis-report-bits";
+import {
+  solveScenarioDetailed, reportDiff, isClientScenarioDirty, isScenarioDirty, EMPTY_SCENARIO,
+  type ScenarioState, type WhatIfRequest,
+} from "@/lib/scenario-solve";
+import { flushSync } from "react-dom";
 import {
   loadFirmBranding,
   loadProjectMetadata,
@@ -44,14 +54,6 @@ import {
   type ProjectMetadata,
   emptyProjectMetadata,
 } from "@/lib/firm-branding";
-
-// ±15% confidence band on delay-delta projections at the 80% confidence
-// level. Mirrors the calibration RMSE disclosure in the methodology appendix.
-const DELAY_CONFIDENCE_FRAC = 0.15;
-function delayBand(delta: number): { lo: number; hi: number } {
-  const half = Math.abs(delta) * DELAY_CONFIDENCE_FRAC;
-  return { lo: delta - half, hi: delta + half };
-}
 
 // The capacity engine reads coordinates at 4-decimal precision (≈11 m);
 // extra digits from a geocoder or hand-paste are noise and have tripped
@@ -165,21 +167,9 @@ const PROJECT_TEMPLATES: ProjectTemplate[] = [
   },
 ];
 
-const LOS_COLORS: Record<string, { bg: string; fg: string; border: string; map: string }> = {
-  A: { bg: "bg-emerald-100 dark:bg-emerald-950/40", fg: "text-emerald-800 dark:text-emerald-200", border: "border-emerald-300", map: "#10b981" },
-  B: { bg: "bg-emerald-100 dark:bg-emerald-950/40", fg: "text-emerald-800 dark:text-emerald-200", border: "border-emerald-300", map: "#22c55e" },
-  C: { bg: "bg-yellow-100 dark:bg-yellow-950/40", fg: "text-yellow-800 dark:text-yellow-200", border: "border-yellow-300", map: "#eab308" },
-  D: { bg: "bg-amber-100 dark:bg-amber-950/40", fg: "text-amber-800 dark:text-amber-200", border: "border-amber-300", map: "#f59e0b" },
-  E: { bg: "bg-orange-100 dark:bg-orange-950/40", fg: "text-orange-800 dark:text-orange-200", border: "border-orange-300", map: "#f97316" },
-  F: { bg: "bg-red-100 dark:bg-red-950/40", fg: "text-red-800 dark:text-red-200", border: "border-red-300", map: "#dc2626" },
-};
-
-const SEVERITY_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
-  none: { label: "No mitigation", color: "text-emerald-600", icon: CheckCircle2 },
-  minor: { label: "Minor", color: "text-yellow-600", icon: Info },
-  moderate: { label: "Moderate", color: "text-amber-600", icon: AlertTriangle },
-  major: { label: "Major", color: "text-red-600", icon: AlertCircle },
-};
+// LOS_COLORS, SEVERITY_CONFIG, LosBadge, ApproachDetailTable and the delay
+// confidence band live in components/tis-report-bits.tsx so the scenario
+// studio renders the same rows this page prints.
 
 function siteIcon(): L.DivIcon {
   return L.divIcon({
@@ -193,15 +183,6 @@ function siteIcon(): L.DivIcon {
       box-shadow:0 2px 5px rgba(0,0,0,0.4);
     "></div>`,
   });
-}
-
-function LosBadge({ los }: { los: string }) {
-  const c = LOS_COLORS[los] ?? LOS_COLORS.A!;
-  return (
-    <span className={`inline-flex items-center justify-center w-7 h-7 rounded font-bold text-sm border ${c.bg} ${c.fg} ${c.border}`}>
-      {los}
-    </span>
-  );
 }
 
 const ALL_PERIODS: TisAnalysisPeriod[] = ["am_peak", "pm_peak", "saturday_midday", "daily"];
@@ -1437,49 +1418,6 @@ function IntersectionTable({ report }: { report: TisReport }) {
   );
 }
 
-function ApproachDetailTable({ approaches }: { approaches: TisApproachImpact[] }) {
-  if (!approaches || approaches.length === 0) {
-    return <div className="text-xs text-muted-foreground">No approach detail.</div>;
-  }
-  return (
-    <div className="space-y-2">
-      <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-        Approach detail (signalized-intersection screening model, weather-adjusted)
-      </div>
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="border-b text-[10px] uppercase tracking-wide text-muted-foreground">
-            <th className="text-left py-1 pr-2 font-medium">Approach</th>
-            <th className="text-right py-1 px-2 font-medium">No-Build vph</th>
-            <th className="text-right py-1 px-2 font-medium">+Trips</th>
-            <th className="text-right py-1 px-2 font-medium">Future vph</th>
-            <th className="text-right py-1 px-2 font-medium">v/c (no-build → build)</th>
-            <th className="text-right py-1 px-2 font-medium">Delay (no-build → build)</th>
-            <th className="text-center py-1 px-2 font-medium">LOS (no-build → build)</th>
-            <th className="text-right py-1 pl-2 font-medium">Q95 (ft)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {approaches.map((a) => (
-            <tr key={a.direction} className="border-b last:border-0">
-              <td className="py-1 pr-2 font-mono font-semibold">{a.direction}</td>
-              <td className="py-1 px-2 text-right tabular-nums">{a.existingVolumeVph.toFixed(0)}</td>
-              <td className="py-1 px-2 text-right tabular-nums">{a.addedTripsPeak}</td>
-              <td className="py-1 px-2 text-right tabular-nums">{a.futureVolumeVph.toFixed(0)}</td>
-              <td className="py-1 px-2 text-right tabular-nums">{a.existingVc.toFixed(2)} → <span className={a.futureVc >= 0.95 ? "text-red-600 font-semibold" : a.futureVc >= 0.85 ? "text-amber-600" : ""}>{a.futureVc.toFixed(2)}</span></td>
-              <td className="py-1 px-2 text-right tabular-nums">{a.existingDelaySec.toFixed(1)}s → {a.futureDelaySec.toFixed(1)}s</td>
-              <td className="py-1 px-2 text-center"><LosBadge los={a.existingLos} /> → <LosBadge los={a.futureLos} /></td>
-              <td className={`py-1 pl-2 text-right tabular-nums ${a.queue95thFt >= 400 ? "text-red-600 font-semibold" : a.queue95thFt >= 250 ? "text-amber-600" : ""}`}>
-                {a.queue95thFt.toFixed(0)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 function PeriodTabsCard({ report }: { report: TisReport }) {
   const periods = report.periodReports;
   const periodKeys = periods.map((p) => p.period).join("|");
@@ -1853,6 +1791,74 @@ export default function TisPage() {
   const { data: landUses, isLoading: luLoading } = useListTisLandUses();
   const generate = useGenerateTis();
   const [report, setReport] = useState<TisReport | null>(null);
+
+  // ---- scenario studio ----
+  // The scenario re-solves the report in the browser with the engine's own
+  // row math; the memo keys on the inputs the solve reads, so a map click
+  // (selection) or the Apply switch never re-solves.
+  const [scenario, setScenario] = useState<ScenarioState>(EMPTY_SCENARIO);
+  const solveKey = JSON.stringify([scenario.size, scenario.passByPct, scenario.internalCapturePct, scenario.growthRatePct, scenario.weather, scenario.timing]);
+  const clientDirty = isClientScenarioDirty(scenario);
+  const solution = useMemo(() => {
+    if (!report) return null;
+    const s = solveScenarioDetailed(report, scenario);
+    // With nothing edited the yardstick IS the report: hand the studio the
+    // base rows (not the re-solve, which can differ by the fallback tolerance
+    // on a pre-E2 study) while keeping the solve's provenance.
+    return isClientScenarioDirty(scenario) ? s : { ...s, report };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report, solveKey]);
+  const scenarioReport = clientDirty && solution ? solution.report : null;
+  // Print and the server PDF always carry the BASE study: beforeprint swaps
+  // the cards back synchronously (flushSync) before the print snapshot.
+  const [printBase, setPrintBase] = useState(false);
+  useEffect(() => {
+    const before = () => { if (scenario.applyToReport) flushSync(() => setPrintBase(true)); };
+    const after = () => setPrintBase(false);
+    window.addEventListener("beforeprint", before);
+    window.addEventListener("afterprint", after);
+    return () => { window.removeEventListener("beforeprint", before); window.removeEventListener("afterprint", after); };
+  }, [scenario.applyToReport]);
+  const scenarioApplied = scenario.applyToReport && scenarioReport !== null && !printBase;
+  const shown = scenarioApplied && scenarioReport ? scenarioReport : report;
+
+  // Engine what-if: the whole scenario (timing overrides, site, driveways)
+  // through POST /tis-api/whatif, which charges no study slot and saves
+  // nothing. The server's report becomes the new base; the diff line reports
+  // how far the client solve was from it.
+  const [whatIf, setWhatIf] = useState<{ pending: boolean; error: string | null; diff: ReturnType<typeof reportDiff> | null }>({ pending: false, error: null, diff: null });
+  async function runWhatIf(req: WhatIfRequest) {
+    if (!report) return;
+    const clientSolve = solution?.report ?? null;
+    setWhatIf({ pending: true, error: null, diff: null });
+    try {
+      const res = await fetch("/tis-api/whatif", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(req),
+      });
+      if (!res.ok) {
+        let msg = "The engine could not run this scenario.";
+        try { msg = (await res.json())?.error ?? msg; } catch { /* non-JSON */ }
+        if (res.status === 401) msg = "Sign in to run scenarios in the engine.";
+        else if (res.status === 402) msg = `${msg} What-if runs need studies or credits left on the firm's plan.`;
+        else if (res.status === 409) msg = "A what-if is already running for your account. Wait for it to finish, then try again.";
+        else if (res.status === 429) msg = "Too many what-if runs in the last hour. Try again in a little while.";
+        else if (res.status === 404) msg = "This engine does not accept what-if runs yet.";
+        setWhatIf({ pending: false, error: msg, diff: null });
+        return;
+      }
+      const data = (await res.json()) as TisReport;
+      const diff = clientSolve ? reportDiff(clientSolve, data) : null;
+      setReport(data);
+      setScenario((s) => ({ ...EMPTY_SCENARIO, selectedSignalId: s.selectedSignalId, applyToReport: s.applyToReport }));
+      setWhatIf({ pending: false, error: null, diff });
+    } catch {
+      setWhatIf({ pending: false, error: "Couldn't reach the engine. Try again.", diff: null });
+    }
+  }
+
   const [firm, setFirm] = useState<FirmBranding>(() =>
     typeof window === "undefined" ? loadFirmBranding() : loadFirmBranding(),
   );
@@ -1897,7 +1903,12 @@ export default function TisPage() {
     generate.mutate(
       { data: req },
       {
-        onSuccess: (data) => setReport(data),
+        onSuccess: (data) => {
+          setReport(data);
+          // A new study never inherits per-signal edits keyed on old signal ids.
+          setScenario(EMPTY_SCENARIO);
+          setWhatIf({ pending: false, error: null, diff: null });
+        },
       },
     );
   }
@@ -2031,22 +2042,56 @@ export default function TisPage() {
       {activeRun && (generate.isPending || report) && (
         <Card className="print:hidden" data-testid="card-study-map-alive">
           <CardHeader>
-            <CardTitle className="text-base">{generate.isPending ? "Building the study" : "Study network"}</CardTitle>
-            <CardDescription>
-              The real road network and signals around the site.{" "}
-              {generate.isPending
-                ? "This is what the engine is working on right now."
-                : "Project trips run along their assigned routes; every studied signal shows its level of service."}
-            </CardDescription>
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="space-y-1.5">
+                <CardTitle className="text-base">
+                  {generate.isPending ? "Building the study" : isScenarioDirty(scenario) ? "Study network — scenario" : "Study network"}
+                </CardTitle>
+                <CardDescription>
+                  The real road network and signals around the site.{" "}
+                  {generate.isPending
+                    ? "This is what the engine is working on right now."
+                    : "Project trips run along their assigned routes; every studied signal shows its level of service. Edit the study in the rail and the map re-solves with the engine's own row math."}
+                </CardDescription>
+              </div>
+              {!generate.isPending && report && (
+                <label htmlFor="apply-to-report" className="flex items-center gap-2 text-xs font-medium shrink-0">
+                  <Switch
+                    id="apply-to-report"
+                    checked={scenario.applyToReport}
+                    onCheckedChange={(v) => setScenario((s) => ({ ...s, applyToReport: v }))}
+                    data-testid="switch-apply-to-report"
+                  />
+                  Apply to report
+                </label>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
-            <StudyMapAlive
-              site={{ latitude: activeRun.latitude, longitude: activeRun.longitude }}
-              radiusMi={activeRun.radiusMi}
-              phase={generate.isPending ? "pending" : "report"}
-              report={generate.isPending ? null : report}
-              projectName={activeRun.projectName}
-            />
+            <div className={!generate.isPending && report && solution ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]" : ""}>
+              <StudyMapAlive
+                site={{ latitude: activeRun.latitude, longitude: activeRun.longitude }}
+                radiusMi={activeRun.radiusMi}
+                phase={generate.isPending ? "pending" : "report"}
+                report={generate.isPending ? null : report}
+                projectName={activeRun.projectName}
+                scenarioReport={generate.isPending ? null : scenarioReport}
+                selectedSignalId={scenario.selectedSignalId}
+                onSelectSignal={(id) => setScenario((s) => ({ ...s, selectedSignalId: id }))}
+              />
+              {!generate.isPending && report && solution && (
+                <ScenarioStudio
+                  report={report}
+                  solution={solution}
+                  scenario={scenario}
+                  onChange={setScenario}
+                  onRerun={runWhatIf}
+                  rerunPending={whatIf.pending}
+                  rerunError={whatIf.error}
+                  engineDiff={whatIf.diff}
+                />
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -2080,17 +2125,23 @@ export default function TisPage() {
           <ProjectMetadataSection meta={meta} setMeta={setMeta} firm={firm} />
           <TisCoverPage report={report} firm={firm} meta={meta} />
           <ResultHeader report={report} />
-          <ScenarioStripCard report={report} />
+          {scenarioApplied && (
+            <div className="print:hidden rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-xs text-blue-900 dark:text-blue-200" data-testid="banner-scenario-applied">
+              Scenario applied to the impact, period, map, intersection and mitigation cards on screen. The cover, trip generation,
+              distribution and methodology stay on the base study, and print and the PDF always use the base study.
+            </div>
+          )}
+          <ScenarioStripCard report={shown ?? report} />
           <TripGenCard report={report} />
           <TripDistributionCard report={report} />
-          <ImpactSummaryCard report={report} />
+          <ImpactSummaryCard report={shown ?? report} />
           <UtdfMatchCard report={report} />
-          <PeriodTabsCard report={report} />
+          <PeriodTabsCard report={shown ?? report} />
           {report.sensitivity && <SensitivityCard report={report} />}
           <FindingsCard report={report} />
-          <MapCard report={report} />
-          <IntersectionTable report={report} />
-          <MitigationsCard report={report} />
+          <MapCard report={shown ?? report} />
+          <IntersectionTable report={shown ?? report} />
+          <MitigationsCard report={shown ?? report} />
           <MethodologyCard report={report} />
           <TisMethodologyAppendix report={report} />
           <TisLimitations />
