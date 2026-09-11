@@ -19,6 +19,7 @@
     "smoke:distribution-pdf": "node ./scripts/smoke-distribution-pdf.mjs",
     "check:coverage-warning": "node ./scripts/verify-coverage-warning.mjs",
     "check:name-dedup": "node ./scripts/verify-name-dedup.mjs",
+    "check:atlanta-name-dedup": "node ./scripts/verify-atlanta-name-dedup.mjs",
     "check:signal-set-reconciliation": "node ./scripts/verify-signal-set-reconciliation.mjs",
     "check:study-scope-note": "node ./scripts/verify-study-scope-note.mjs",
     "check:atlanta-msa-coverage": "node ./scripts/verify-atlanta-msa-coverage.mjs",

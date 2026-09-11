@@ -2,17 +2,19 @@
  * Cross-street naming for traffic signals.
  *
  * The raw OSM signals dataset (`atlanta-signals.json`) only carries names for
- * 5 of ~7,393 signals. For the other 99.93% we derive a "Street A & Street B"
- * label by finding the two closest *named* road segments around each signal,
- * using the road network we already ship in `atlanta-roads.json`.
+ * 6 of its 7,958 signals (five memorial intersections and one cross-street
+ * pair). For the rest we derive a "Street A & Street B" label by finding the
+ * two closest *named* road segments around each signal, using the road
+ * network we already ship in `atlanta-roads.json`.
  *
  * Implementation notes:
  *   - We index every named road segment into a coarse lat/lon grid (cell size
- *     ≈500m). For each signal we only scan its cell + 8 neighbors. With ~24K
- *     named ways → ~200K segments → ~3 segments/cell average, every signal
- *     resolves against ~140 candidate segments on average. The whole pass takes well under
- *     a second on cold start and is memoized for the rest of the process
- *     lifetime.
+ *     ≈500m). For each signal we only scan its cell + 8 neighbors. The
+ *     shipped `atlanta-roads.json` (2026-08-21, #126) has ~241K named ways →
+ *     ~2.7M segments, so the grid build plus the naming pass adds a few
+ *     seconds to the first Atlanta request (scripts/verify-atlanta-naming.mjs
+ *     prints the measured cold start) and is memoized for the rest of the
+ *     process lifetime.
  *   - Distance uses an equirectangular projection (meters) calibrated at the
  *     signal's own latitude. Plenty accurate for sub-kilometer queries inside
  *     metro Atlanta.
@@ -50,9 +52,14 @@ function buildGrid(road: RoadNetwork): Grid {
 
   for (const w of road.ways) {
     const way = w as unknown[];
-    // Way is either [classCode, polyline] (unnamed) or
-    // [classCode, name, polyline] (named). Skip unnamed.
-    if (way.length !== 3 || typeof way[1] !== "string") continue;
+    // Way tuple is [classCode, name, polyline, lanes?, maxspeedKmh?, oneway?]
+    // (scripts/src/fetch-osm-roads.ts). Older files carried [classCode,
+    // polyline] for unnamed ways, so keep the string check on way[1]. The
+    // length guard is `< 3`, never `=== 3`: the 2026-08-21 regeneration (#126)
+    // made every Atlanta way 6 elements, and an exact-length check rejected
+    // all of them, emptied the grid and left every signal on its coordinate
+    // label. Same guard as regional-signal-naming.ts.
+    if (way.length < 3 || typeof way[1] !== "string") continue;
     const name = (way[1] as string).trim();
     if (!name) continue;
     const pts = way[2] as Array<[number, number]>;
