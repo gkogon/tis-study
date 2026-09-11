@@ -62,6 +62,10 @@ export interface TisReport {
   autoModeShareSource?: string;
   /** The unrounded weather capacity factor applied (weatherCapacityFactor is 2 dp). */
   weatherFactorExact?: number;
+  /** The opening-year growth multiplier the engine applied to existing volumes, (1 + growthAppliedPct/100) ^ growthYears. */
+  growthMultiplierExact?: number;
+  /** The design-year growth multiplier the engine applied for the Design-Year scenarios. Not derivable from growthAppliedPct / growthYears / designYearHorizonYears alone: growthYears is clamped to 0 for an opening year at or before the current year while the design span is still measured from the current year, so a re-solve must take this value rather than rebuilding it from growthYears + designYearHorizonYears. */
+  designGrowthMultiplierExact?: number;
   timingOverrideSummary?: TimingOverrideMatchSummary;
   routeAssignment?: TisRouteAssignment;
   conservedAssignment?: TisReportConservedAssignment;

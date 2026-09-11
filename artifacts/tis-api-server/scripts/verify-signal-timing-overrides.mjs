@@ -18,12 +18,20 @@
 //     movementsExact (and pathTurns on path rows), signalTiming carries the
 //     unrounded ratios, periods carry periodVolumeFactor / inFraction /
 //     externalTripsExact, the report carries designYear / regionCode /
-//     jurisdiction / autoModeShareSource / weatherFactorExact, and calibration
+//     jurisdiction / autoModeShareSource / weatherFactorExact /
+//     growthMultiplierExact / designGrowthMultiplierExact, and calibration
 //     carries delayMultiplierExact — all unrounded, all consistent with the
-//     printed (rounded) fields.
+//     printed (rounded) fields. The design-year multiplier is PRINTED, not
+//     rebuilt: for an opening year at or before the current year growthYears
+//     clamps to 0 while the design span still runs from the current year, so
+//     growthYears + horizon is the WRONG exponent and every row must be
+//     reproducible from the printed value alone.
 //  6. STRIP TRAP. Everything above survives the generated zod (WhatIfTisBody /
 //     WhatIfTisResponse), and the body schema enforces the 60-record cap.
 //  7. PARITY. runSensitivity: false (what /whatif forces) changes no row.
+//     ROADS MEMO. Repeat runs at one site skip the roads fetch; the memo is
+//     bounded (ROADS_MEMO_MAX_ENTRIES, oldest evicted) and expired entries
+//     are deleted, not merely skipped.
 //
 // Harness mirrors verify-signal-timing-engine.mjs: esbuild-bundle tis.ts,
 // mock fetch with the pinned Miami network fixture, mock signals on real
@@ -42,7 +50,7 @@ const { WhatIfTisBody, WhatIfTisResponse, GenerateTisResponse } = await import(p
 const core = await import("@workspace/tis-engine-core");
 
 const segments = JSON.parse(await readFile(path.resolve(here, "fixtures/conserved-road-segments.json"), "utf8"));
-const { buildGraph } = await import(path.resolve(here, "../src/lib/network-assignment.ts"));
+const { buildGraph, fetchLocalRoads, roadsMemoSize, ROADS_MEMO_MAX_ENTRIES, ROADS_MEMO_TTL_MS } = await import(path.resolve(here, "../src/lib/network-assignment.ts"));
 const { snapSignalsToJunctions } = await import(path.resolve(here, "../src/lib/cordon-gateways.ts"));
 const SITE = { lat: 25.8456, lon: -80.2103 }, RADIUS = 0.5;
 const g = buildGraph(segments);
@@ -235,14 +243,23 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
   ok(base.weatherFactorExact === 1 && base.weatherCapacityFactor === 1, "weatherFactorExact 1 (clear)");
   const wet = await generateTisReport({ ...baseReq, weather: "heavy_rain" });
   ok(wet.weatherFactorExact === core.WEATHER_FACTOR.heavy_rain && wet.weatherCapacityFactor === core.round2(core.WEATHER_FACTOR.heavy_rain), `heavy rain: weatherFactorExact ${wet.weatherFactorExact}`);
+  // Growth multipliers are printed. For a FUTURE opening year they also agree
+  // with the recipe a client would naively rebuild from growthYears.
+  const thisYear = new Date().getUTCFullYear();
+  ok(base.growthYears === Math.max(0, baseReq.openingYear - thisYear) && base.growthMultiplierExact === Math.pow(1 + base.growthAppliedPct / 100, base.growthYears),
+     `growthMultiplierExact ${base.growthMultiplierExact} = (1 + ${base.growthAppliedPct}/100) ^ ${base.growthYears}`);
+  ok(base.designGrowthMultiplierExact === Math.pow(1 + base.growthAppliedPct / 100, Math.max(0, base.designYear - thisYear)),
+     `designGrowthMultiplierExact ${base.designGrowthMultiplierExact} = (1 + pct/100) ^ (designYear ${base.designYear} - ${thisYear})`);
+  ok(baseReq.openingYear > thisYear && base.designGrowthMultiplierExact === Math.pow(1 + base.growthAppliedPct / 100, base.growthYears + base.designYearHorizonYears),
+     "future opening year: the printed design multiplier equals the growthYears + horizon rebuild (the only case where that recipe is right)");
 
   // Exact rebuild: buildAffectedRow from the printed inputs reproduces the row.
   {
     const row = byId(base, "sig-1");
     const sig = MOCK_INTS.find((m) => m.id === "sig-1");
     const params = {
-      growthMultiplier: Math.pow(1 + base.growthAppliedPct / 100, base.growthYears),
-      designGrowthMultiplier: Math.pow(1 + base.growthAppliedPct / 100, base.growthYears + base.designYearHorizonYears),
+      growthMultiplier: base.growthMultiplierExact,
+      designGrowthMultiplier: base.designGrowthMultiplierExact,
       capacityVph: core.PER_INTERSECTION_CAPACITY_VPH * base.weatherFactorExact,
       approachCapacityVph: core.APPROACH_CAPACITY_VPH * base.weatherFactorExact,
       externalTrips: pm.externalTripsExact,
@@ -258,6 +275,43 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
     );
     const strip = (r) => { const c = { ...r }; delete c.distanceMi; return JSON.stringify(c); };
     ok(strip(rebuilt) === strip(row), "buildAffectedRow from the printed exact inputs reproduces sig-1 byte for byte (distanceMi aside — the row prints it rounded)");
+  }
+
+  // PAST opening year (the schema floor is 2024): growthYears clamps to 0 but
+  // the design span does not, so growthYears + horizon is NOT the engine's
+  // exponent. The printed multiplier is, and the row rebuilds from it.
+  {
+    const past = await generateTisReport({ ...baseReq, openingYear: 2024 });
+    const pm2 = past.periodReports[0];
+    const pct = past.growthAppliedPct;
+    ok(past.growthYears === 0 && past.growthMultiplierExact === 1, `openingYear 2024: growthYears ${past.growthYears}, growthMultiplierExact ${past.growthMultiplierExact}`);
+    const designSpan = Math.max(0, past.designYear - thisYear);
+    ok(past.designYear === 2044 && past.designGrowthMultiplierExact === Math.pow(1 + pct / 100, designSpan),
+       `openingYear 2024: designGrowthMultiplierExact ${past.designGrowthMultiplierExact} = (1 + pct/100) ^ ${designSpan} (design year ${past.designYear})`);
+    const naive = Math.pow(1 + pct / 100, past.growthYears + past.designYearHorizonYears);
+    ok(thisYear > 2024 && pct > 0 && naive !== past.designGrowthMultiplierExact,
+       `openingYear 2024: the growthYears + horizon rebuild (${naive}) is NOT the engine's design multiplier (${past.designGrowthMultiplierExact})`);
+    const row = byId(past, "sig-1");
+    const sig = MOCK_INTS.find((m) => m.id === "sig-1");
+    const params = {
+      growthMultiplier: past.growthMultiplierExact,
+      designGrowthMultiplier: past.designGrowthMultiplierExact,
+      capacityVph: core.PER_INTERSECTION_CAPACITY_VPH * past.weatherFactorExact,
+      approachCapacityVph: core.APPROACH_CAPACITY_VPH * past.weatherFactorExact,
+      externalTrips: pm2.externalTripsExact,
+      inFraction: pm2.inFraction,
+      periodVolumeFactor: pm2.periodVolumeFactor,
+      distributionOctants: past.tripDistribution.byDirection,
+      conservedLabeling: true,
+      signalTiming: "computed",
+      weatherFactor: past.weatherFactorExact,
+    };
+    const build = (p) => core.buildAffectedRow({ sig, distanceMi: row.distanceMi }, row.loadWeight, { lat: SITE.lat, lon: SITE.lon }, p, undefined, row.pathTurns, row.pathTurnsIn);
+    const strip = (r) => { const c = { ...r }; delete c.distanceMi; return JSON.stringify(c); };
+    ok(strip(build(params)) === strip(row), "openingYear 2024: buildAffectedRow from the printed multipliers reproduces sig-1 byte for byte");
+    const wrong = build({ ...params, designGrowthMultiplier: naive });
+    ok(typeof row.designNoBuildVc === "number" && wrong.designNoBuildVc !== row.designNoBuildVc,
+       `openingYear 2024: the naive multiplier moves designNoBuildVc (${row.designNoBuildVc} -> ${wrong.designNoBuildVc})`);
   }
 
   // Calibration: the unrounded multiplier rides beside the 2-dp one.
@@ -291,6 +345,8 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
   ok(rows(parsed).filter((ix) => ix.movementSource === "path").every((ix) => Array.isArray(ix.pathTurns) && Array.isArray(ix.movementsExact)), "pathTurns / movementsExact survive WhatIfTisResponse");
   ok(parsed.periodReports[0].periodVolumeFactor === 1 && typeof parsed.periodReports[0].externalTripsExact === "number" && typeof parsed.periodReports[0].inFraction === "number", "period exact fields survive WhatIfTisResponse");
   ok(parsed.designYear === 2047 && parsed.regionCode === "miami_dade_metro" && parsed.jurisdiction?.dotName && parsed.autoModeShareSource && parsed.weatherFactorExact === 1, "report-level exact fields survive WhatIfTisResponse");
+  ok(typeof parsed.designGrowthMultiplierExact === "number" && parsed.growthMultiplierExact === ov.growthMultiplierExact && parsed.designGrowthMultiplierExact === ov.designGrowthMultiplierExact,
+     "growthMultiplierExact / designGrowthMultiplierExact survive WhatIfTisResponse");
   ok(rows(parsed).find((ix) => ix.signalId === "sig-2")?.mainThroughLanesMeasured === true, "mainThroughLanesMeasured survives WhatIfTisResponse");
 }
 
@@ -303,6 +359,32 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
   const b = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRIDE], runSensitivity: false });
   ok(rows(a).map((ix) => JSON.stringify(ix)).join("\n") === rows(b).map((ix) => JSON.stringify(ix)).join("\n"), "runSensitivity: false changes no row");
   ok(roadsFetches === before, `repeat runs at the same site skip the roads fetch (memo; ${roadsFetches} fetches total)`);
+}
+// The memo is bounded and expiry frees memory. Driven through the module
+// directly (same mocked fetch); each distinct coordinate is a fresh key —
+// the exact vector a caller nudging a coordinate per request would use.
+{
+  const realNow = Date.now;
+  const start = roadsFetches;
+  const n = ROADS_MEMO_MAX_ENTRIES + 4;
+  const at = (i) => fetchLocalRoads("miami_dade_metro", SITE.lat + i * 1e-9, SITE.lon, RADIUS);
+  for (let i = 0; i < n; i++) await at(i);
+  ok(roadsFetches - start === n && roadsMemoSize() === ROADS_MEMO_MAX_ENTRIES,
+     `${n} distinct sites: ${roadsFetches - start} fetches, memo holds ${roadsMemoSize()} (cap ${ROADS_MEMO_MAX_ENTRIES})`);
+  const mid = roadsFetches;
+  await at(n - 1);
+  ok(roadsFetches === mid, "the newest site is still memoised");
+  await at(0);
+  ok(roadsFetches === mid + 1 && roadsMemoSize() === ROADS_MEMO_MAX_ENTRIES, "the oldest site was evicted (re-fetched) and the cap still holds");
+  Date.now = () => realNow() + ROADS_MEMO_TTL_MS + 1;
+  try {
+    ok(roadsMemoSize() === 0, "past the TTL every entry is deleted, not merely skipped");
+    const t = roadsFetches;
+    await at(0);
+    ok(roadsFetches === t + 1 && roadsMemoSize() === 1, "after expiry a fetch re-populates exactly one entry");
+  } finally {
+    Date.now = realNow;
+  }
 }
 
 for (const f of [bundlePath, entryPath]) { try { await unlink(f); } catch { /* already gone */ } }

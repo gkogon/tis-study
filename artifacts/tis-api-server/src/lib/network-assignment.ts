@@ -113,17 +113,52 @@ const ROADS_FETCH_TIMEOUT_MS = Math.max(6000, Number(process.env["ROADS_FETCH_TI
 // for a payload that cannot have changed. Only non-null results are memoised
 // (a transient failure or an "unavailable" answer is retried next time), and
 // the TTL keeps a redeployed road batch from being served stale for long.
+//
+// The memo is BOUNDED. Its key is built from the caller's raw floats, so an
+// unbounded map would grow by one multi-MB road slice per distinct
+// (site, radius) ever studied for the life of the process — and a single
+// signed-in what-if user (60/hr) or the anonymous demo driveway helper could
+// drive that by nudging a coordinate one ULP per request. Two guards: every
+// call sweeps entries past the TTL (expiry frees memory rather than merely
+// skipping the read), and the map never holds more than ROADS_MEMO_MAX_ENTRIES
+// — a miss over the cap evicts the oldest entry (Map preserves insertion
+// order, and a refreshed entry is re-inserted at the tail). The cap is a
+// per-process memory ceiling, not a hit-rate target: a what-if session
+// iterates on one site, so even a handful of live entries covers it.
 export const ROADS_MEMO_TTL_MS = 10 * 60 * 1000;
+export const ROADS_MEMO_MAX_ENTRIES = 16;
 const roadsMemo = new Map<string, { at: number; segments: RoadSegment[] }>();
+
+/** Live entry count (after the same sweep a fetch would run). Test hook. */
+export function roadsMemoSize(now = Date.now()): number {
+  sweepRoadsMemo(now);
+  return roadsMemo.size;
+}
+
+function sweepRoadsMemo(now: number): void {
+  for (const [key, entry] of roadsMemo) {
+    if (now - entry.at >= ROADS_MEMO_TTL_MS) roadsMemo.delete(key);
+  }
+}
 
 export async function fetchLocalRoads(
   regionCode: string, lat: number, lon: number, radiusMi: number,
 ): Promise<RoadSegment[] | null> {
   const memoKey = `${regionCode}|${lat}|${lon}|${radiusMi}`;
+  sweepRoadsMemo(Date.now());
   const hit = roadsMemo.get(memoKey);
-  if (hit && Date.now() - hit.at < ROADS_MEMO_TTL_MS) return hit.segments;
+  if (hit) return hit.segments;
   const segments = await fetchLocalRoadsUncached(regionCode, lat, lon, radiusMi);
-  if (segments) roadsMemo.set(memoKey, { at: Date.now(), segments });
+  if (segments) {
+    // Delete-then-set so a refreshed key moves to the tail (newest) position.
+    roadsMemo.delete(memoKey);
+    while (roadsMemo.size >= ROADS_MEMO_MAX_ENTRIES) {
+      const oldest = roadsMemo.keys().next().value;
+      if (oldest === undefined) break;
+      roadsMemo.delete(oldest);
+    }
+    roadsMemo.set(memoKey, { at: Date.now(), segments });
+  }
   return segments;
 }
 

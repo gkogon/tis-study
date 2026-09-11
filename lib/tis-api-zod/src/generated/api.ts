@@ -2225,6 +2225,18 @@ export const GenerateTisResponse = zod.object({
     .describe(
       "The unrounded weather capacity factor applied (weatherCapacityFactor is 2 dp).",
     ),
+  growthMultiplierExact: zod
+    .number()
+    .optional()
+    .describe(
+      "The opening-year growth multiplier the engine applied to existing volumes, (1 + growthAppliedPct\/100) ^ growthYears.",
+    ),
+  designGrowthMultiplierExact: zod
+    .number()
+    .optional()
+    .describe(
+      "The design-year growth multiplier the engine applied for the Design-Year scenarios. Not derivable from growthAppliedPct \/ growthYears \/ designYearHorizonYears alone: growthYears is clamped to 0 for an opening year at or before the current year while the design span is still measured from the current year, so a re-solve must take this value rather than rebuilding it from growthYears + designYearHorizonYears.",
+    ),
   timingOverrideSummary: zod
     .object({
       total: zod.number(),
@@ -4610,6 +4622,18 @@ export const WhatIfTisResponse = zod.object({
     .optional()
     .describe(
       "The unrounded weather capacity factor applied (weatherCapacityFactor is 2 dp).",
+    ),
+  growthMultiplierExact: zod
+    .number()
+    .optional()
+    .describe(
+      "The opening-year growth multiplier the engine applied to existing volumes, (1 + growthAppliedPct\/100) ^ growthYears.",
+    ),
+  designGrowthMultiplierExact: zod
+    .number()
+    .optional()
+    .describe(
+      "The design-year growth multiplier the engine applied for the Design-Year scenarios. Not derivable from growthAppliedPct \/ growthYears \/ designYearHorizonYears alone: growthYears is clamped to 0 for an opening year at or before the current year while the design span is still measured from the current year, so a re-solve must take this value rather than rebuilding it from growthYears + designYearHorizonYears.",
     ),
   timingOverrideSummary: zod
     .object({
@@ -8103,6 +8127,18 @@ export const GetTisProjectResponse = zod
         .optional()
         .describe(
           "The unrounded weather capacity factor applied (weatherCapacityFactor is 2 dp).",
+        ),
+      growthMultiplierExact: zod
+        .number()
+        .optional()
+        .describe(
+          "The opening-year growth multiplier the engine applied to existing volumes, (1 + growthAppliedPct\/100) ^ growthYears.",
+        ),
+      designGrowthMultiplierExact: zod
+        .number()
+        .optional()
+        .describe(
+          "The design-year growth multiplier the engine applied for the Design-Year scenarios. Not derivable from growthAppliedPct \/ growthYears \/ designYearHorizonYears alone: growthYears is clamped to 0 for an opening year at or before the current year while the design span is still measured from the current year, so a re-solve must take this value rather than rebuilding it from growthYears + designYearHorizonYears.",
         ),
       timingOverrideSummary: zod
         .object({

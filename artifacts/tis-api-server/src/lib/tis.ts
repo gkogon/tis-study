@@ -540,6 +540,17 @@ export type TisReport = {
   jurisdiction: { dotName: string; planningOfficeName: string };
   autoModeShareSource: string;
   weatherFactorExact: number;
+  /** The opening-year growth multiplier the engine multiplied existing
+   *  volumes by: (1 + growthAppliedPct/100) ^ growthYears. */
+  growthMultiplierExact: number;
+  /** The design-year growth multiplier the engine used for the Design-Year
+   *  scenarios. NOT derivable from growthAppliedPct / growthYears /
+   *  designYearHorizonYears alone: the engine grows the design year over
+   *  max(0, designYear - currentYear), and growthYears is clamped to 0
+   *  whenever openingYear is at or before the current year, so for a past
+   *  opening year the design span is shorter than growthYears + horizon.
+   *  Printed so a re-solve reproduces the design-year columns exactly. */
+  designGrowthMultiplierExact: number;
   /** How request.signalTimingOverrides attached (attachTimingOverrides).
    *  Present whenever the request carried the array, so a what-if client can
    *  always show which overrides took. */
@@ -2190,6 +2201,8 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     },
     autoModeShareSource: getAutoModeShareSource(region.code),
     weatherFactorExact: weatherFactor,
+    growthMultiplierExact: growthMultiplier,
+    designGrowthMultiplierExact: designGrowthMultiplier,
     ...(timingOverrideSummary ? { timingOverrideSummary } : {}),
     ...(routeAssignment ? { routeAssignment } : {}),
     ...(conservedAssignment ? { conservedAssignment } : {}),
