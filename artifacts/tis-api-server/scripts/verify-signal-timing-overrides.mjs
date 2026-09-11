@@ -35,7 +35,8 @@
 //     is the caller's raw coordinates) and expired entries are deleted, not
 //     merely skipped.
 //  9. CLIENT PARITY where a shortcut would break it: an opening year BEFORE
-//     the run (the design-year exponent is designYear − CURRENT_YEAR, not
+//     the run (the design-year multiplier is PRINTED —
+//     designGrowthMultiplierExact — and the client reads it, never rebuilding
 //     growthYears + horizon) and a turbo-lane row (the screen's geometry is
 //     printed as turboScreenInputs so the browser re-runs the same screen).
 //     The browser solver (atlanta-tis scenario-solve.ts) is run against THIS
@@ -426,13 +427,16 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
 // 9. Client parity: past opening year + turbo row, against this engine.
 // ---------------------------------------------------------------------------
 {
-  const { solveScenarioDetailed, EMPTY_SCENARIO, toWhatIfRequest, timingEditFromRow, withCycle, withNsShare, designGrowthYears } =
+  const { solveScenarioDetailed, EMPTY_SCENARIO, toWhatIfRequest, timingEditFromRow, withCycle, withNsShare, designGrowthYears, printedDesignGrowthYears } =
     await import(path.resolve(here, "../../atlanta-tis/src/lib/scenario-solve.ts"));
   const CURRENT_YEAR = new Date().getUTCFullYear();
   const pastRaw = await generateTisReport({ ...baseReq, openingYear: CURRENT_YEAR - 1 });
   ok(pastRaw.growthYears === 0 && pastRaw.designYear === CURRENT_YEAR - 1 + 20, `opening ${CURRENT_YEAR - 1}: growthYears 0, designYear ${pastRaw.designYear}`);
   const past = WhatIfTisResponse.parse(pastRaw);
-  ok(designGrowthYears(past) === 19, `client reads the engine's design exponent: ${designGrowthYears(past)} (growthYears + horizon would be 20)`);
+  ok(past.growthMultiplierExact === 1 && past.designGrowthMultiplierExact === Math.pow(1 + past.growthAppliedPct / 100, 19),
+     `the engine printed growthMultiplierExact 1 and designGrowthMultiplierExact (1 + pct/100) ^ 19 (${past.designGrowthMultiplierExact})`);
+  ok(printedDesignGrowthYears(past) === 19 && designGrowthYears(past) === 19,
+     `client reads the engine's design span back off the PRINTED multiplier: ${printedDesignGrowthYears(past)} (growthYears + horizon would be 20; no generatedAt reconstruction)`);
 
   const r3 = byId(past, "sig-3");
   ok(r3?.turboLane?.candidate === true, "sig-3 screens as a turbo-lane candidate");
@@ -458,7 +462,7 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
     return out;
   };
   const sol0 = solveScenarioDetailed(past, EMPTY_SCENARIO);
-  ok(sol0.rowFallbacks.size === 0 && sol0.baseOnly.size === 0, `client solve of the past-opening-year report fires no fallback (turbo row included; ${sol0.rowFallbacks.size} flagged)`);
+  ok(sol0.rowFallbacks.size === 0 && sol0.baseOnly.size === 0 && sol0.reportFallbacks.size === 0, `client solve of the past-opening-year report fires no fallback (turbo row included; ${sol0.rowFallbacks.size} rows, report-level: ${[...sol0.reportFallbacks].join(", ") || "none"})`);
   const pmOf = (r) => r.periodReports.find((p) => p.period === "pm_peak").affectedIntersections;
   // Compared against the engine's RAW rows: the response zod strips
   // approaches[].addedByMovement (not in the OpenAPI schema — a pre-existing
@@ -484,6 +488,7 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
   const engRaw = await generateTisReport(toWhatIfRequest(past, state));
   const eng = WhatIfTisResponse.parse(engRaw);
   const cli = solveScenarioDetailed(past, state);
+  ok(cli.reportFallbacks.size === 0, `the 4 %/yr edit raised the new rate to the span read off the printed multiplier — no "designGrowth" fallback (${[...cli.reportFallbacks].join(", ") || "none"})`);
   const e3 = byId(eng, "sig-3"), c3 = pmOf(cli.report).find((ix) => ix.signalId === "sig-3");
   ok(e3?.signalTiming?.source === "override" && e3.signalTiming.cycleLenSec === 150, `engine what-if: sig-3 runs the 150 s plan (${e3?.signalTiming?.source})`);
   ok(eng.growthAppliedPct === 4 && cli.report.growthAppliedPct === 4, "both sides applied 4 %/yr growth");

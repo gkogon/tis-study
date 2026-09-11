@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-10T13:41:22.233Z",
+  "generatedAt": "2026-09-11T04:31:27.025Z",
   "request": {
     "projectName": "Peachtree Multifamily",
     "address": "1100 Peachtree St NE, Atlanta, GA 30309",
@@ -19349,6 +19349,8 @@
   },
   "autoModeShareSource": "ACS 5-Year Estimates Table B08301 (US) or national-stats equivalent",
   "weatherFactorExact": 1,
+  "growthMultiplierExact": 1.015,
+  "designGrowthMultiplierExact": 1.3670578316483042,
   "timingOverrideSummary": {
     "total": 2,
     "matched": 2,

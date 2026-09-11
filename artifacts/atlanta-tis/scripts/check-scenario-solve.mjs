@@ -45,10 +45,17 @@
 //    it edits, dropping the one it clears (timing[id] === null) — so a second
 //    send never reverts the first send's plans to Webster.
 //
-// 2c. DESIGN-YEAR EXPONENT. The engine grows the design year by
+// 2c. DESIGN-YEAR GROWTH. The engine grows the design year by
 //    max(0, designYear − CURRENT_YEAR), NOT growthYears + horizon: the two
 //    differ whenever the opening year is before the run (the schema allows
-//    2024). designGrowthYears recovers the engine's exponent from the report.
+//    2024). An E2 report PRINTS the multipliers it used
+//    (growthMultiplierExact / designGrowthMultiplierExact) and the solve reads
+//    them verbatim — both fixtures must carry them and the EXACT path must be
+//    the one taken (no "designGrowth" fallback), at base and under a growth-
+//    rate edit (where the span is read back off the printed multiplier). The
+//    reconstruction (openingYear − growthYears, else generatedAt's UTC year)
+//    exists ONLY for pre-E2 saved reports and is exercised here on a
+//    multiplier-less header, where it must fire and be disclosed.
 //
 // Run: `pnpm run check:scenario-solve` (plain node 26, no bundler).
 import fs from "node:fs";
@@ -57,7 +64,7 @@ import { fileURLToPath } from "node:url";
 import {
   solveScenario, solveScenarioDetailed, EMPTY_SCENARIO, toWhatIfRequest, reportDiff,
   timingEditFromRow, withCycle, withNsShare, withProtectedLeft, isScenarioDirty,
-  designGrowthYears, baseOverridesBySignal,
+  designGrowthYears, printedDesignGrowthYears, reconstructedDesignGrowthYears, baseOverridesBySignal,
 } from "../src/lib/scenario-solve.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -278,29 +285,80 @@ console.log("");
 }
 
 // ---------------------------------------------------------------------------
-// 2c. Design-year exponent: the engine's max(0, designYear − CURRENT_YEAR).
+// 2c. Design-year growth: the engine's printed multipliers, read verbatim.
 // ---------------------------------------------------------------------------
 {
+  const engineSpan = (r) => r.designYear - (r.request.openingYear - r.growthYears); // opening year is after the run in both fixtures
+  for (const [name, R] of [["A", A], ["B", B]]) {
+    ok(typeof R.growthMultiplierExact === "number" && typeof R.designGrowthMultiplierExact === "number",
+      `fixture ${name} prints growthMultiplierExact (${R.growthMultiplierExact}) and designGrowthMultiplierExact (${R.designGrowthMultiplierExact})`);
+    ok(R.growthMultiplierExact === Math.pow(1 + R.growthAppliedPct / 100, R.growthYears),
+      `fixture ${name}: growthMultiplierExact = (1 + ${R.growthAppliedPct}/100) ^ ${R.growthYears}`);
+    ok(R.designGrowthMultiplierExact === Math.pow(1 + R.growthAppliedPct / 100, engineSpan(R)),
+      `fixture ${name}: designGrowthMultiplierExact = (1 + pct/100) ^ ${engineSpan(R)} (design ${R.designYear}, opening ${R.request.openingYear}, growth ${R.growthYears})`);
+    ok(printedDesignGrowthYears(R) === engineSpan(R) && designGrowthYears(R) === engineSpan(R),
+      `fixture ${name}: the design span is read back off the printed multiplier (${printedDesignGrowthYears(R)}) — the EXACT path, not the reconstruction`);
+  }
+  // The exact path is the one the solve takes on the fixtures: at base (the
+  // multipliers are read verbatim — gate 1 already proved that byte for byte)
+  // and under a growth-rate edit (the span comes off the printed multiplier).
+  const grown = solveScenarioDetailed(A, { ...EMPTY_SCENARIO, growthRatePct: 4 });
+  ok(!solA.reportFallbacks.has("designGrowth") && !grown.reportFallbacks.has("designGrowth") && grown.reportFallbacks.size === 0,
+    `no "designGrowth" fallback on fixture A at base or under a 4 %/yr edit (${[...grown.reportFallbacks].join(", ") || "none"})`);
+  {
+    const rr = grown.report.affectedIntersections.find((r) => r.designNoBuildVc !== undefined && r.existingVc > 0);
+    const ratio = rr.designNoBuildVc / rr.existingVc;
+    const want = Math.pow(1.04, engineSpan(A)) / Math.pow(1.04, A.growthYears);
+    ok(Math.abs(ratio - want) < 0.02, `4 %/yr edit: design no-build v/c / opening v/c = ${ratio.toFixed(4)} ≈ 1.04^${engineSpan(A) - A.growthYears} (${want.toFixed(4)}) at ${rr.signalId}`);
+  }
+  const grownB = solveScenarioDetailed(B, { ...EMPTY_SCENARIO, growthRatePct: 0.5 });
+  ok(grownB.reportFallbacks.size === 0, `no report-level fallback on fixture B under a 0.5 %/yr edit (${[...grownB.reportFallbacks].join(", ") || "none"})`);
+
+  // The printed path on synthetic headers: the exponent is the log-ratio,
+  // whatever the opening year; a 0 %/yr base carries no span.
+  const printed = (pct, span) => ({ growthAppliedPct: pct, designGrowthMultiplierExact: Math.pow(1 + pct / 100, span) });
+  ok(printedDesignGrowthYears(printed(1.5, 19)) === 19 && printedDesignGrowthYears(printed(6, 25)) === 25 && printedDesignGrowthYears(printed(-5, 18)) === 18,
+    "printedDesignGrowthYears reads 19 / 25 / 18 back off (1 + pct/100) ^ span at 1.5, 6 and −5 %/yr");
+  ok(printedDesignGrowthYears(printed(0, 19)) === undefined, "a 0 %/yr base prints multiplier 1 — no span to read (falls back)");
+  ok(printedDesignGrowthYears({ growthAppliedPct: 1.5 }) === undefined, "a pre-E2 report (no printed multiplier) has no exact path");
+
+  // FALLBACK — pre-E2 headers only (no printed multipliers): the engine's
+  // max(0, designYear − CURRENT_YEAR), CURRENT_YEAR reconstructed.
   const hdr = (openingYear, growthYears, generatedAt, designYear = openingYear + 20) =>
-    ({ growthYears, designYear, designYearHorizonYears: 20, generatedAt, request: { openingYear } });
-  ok(designGrowthYears(A) === A.growthYears + A.designYearHorizonYears && designGrowthYears(A) === A.designYear - (A.request.openingYear - A.growthYears),
-    `fixture A: ${designGrowthYears(A)} design years (opening ${A.request.openingYear}, growth ${A.growthYears}, design ${A.designYear})`);
-  ok(designGrowthYears(hdr(2027, 1, "2026-09-10T13:41:21.421Z")) === 21, "opening 2027 run in 2026: 21 (growthYears 1 + 20)");
-  ok(designGrowthYears(hdr(2026, 0, "2026-09-10T13:41:21.421Z")) === 20, "opening 2026 run in 2026: 20");
-  ok(designGrowthYears(hdr(2025, 0, "2026-09-10T13:41:21.421Z")) === 19, "opening 2025 run in 2026: 19 — growthYears + horizon would say 20 (the engine grows to 2045 from 2026)");
-  ok(designGrowthYears(hdr(2024, 0, "2026-12-31T23:59:59.000Z")) === 18, "opening 2024 run in late 2026 (UTC): 18");
-  ok(designGrowthYears(hdr(2024, 0, "2027-01-01T00:00:01.000Z")) === 17, "the run year is read from generatedAt in UTC");
-  // And it moves the solve: a past opening year re-solved with the engine's
-  // exponent gives smaller design-year growth than the shortcut would.
-  const past = { ...A, growthYears: 0, designYear: 2045, request: { ...A.request, openingYear: 2025 }, generatedAt: "2026-09-10T13:41:21.421Z" };
-  const solPast = solveScenario(past, EMPTY_SCENARIO);
+    ({ growthAppliedPct: 1.5, growthYears, designYear, designYearHorizonYears: 20, generatedAt, request: { openingYear } });
+  ok(reconstructedDesignGrowthYears(hdr(2027, 1, "2026-09-10T13:41:21.421Z")) === 21, "pre-E2, opening 2027 run in 2026: 21 (growthYears 1 + 20)");
+  ok(reconstructedDesignGrowthYears(hdr(2026, 0, "2026-09-10T13:41:21.421Z")) === 20, "pre-E2, opening 2026 run in 2026: 20");
+  ok(reconstructedDesignGrowthYears(hdr(2025, 0, "2026-09-10T13:41:21.421Z")) === 19, "pre-E2, opening 2025 run in 2026: 19 — growthYears + horizon would say 20 (the engine grows to 2045 from 2026)");
+  ok(reconstructedDesignGrowthYears(hdr(2024, 0, "2026-12-31T23:59:59.000Z")) === 18, "pre-E2, opening 2024 run in late 2026 (UTC): 18");
+  ok(reconstructedDesignGrowthYears(hdr(2024, 0, "2027-01-01T00:00:01.000Z")) === 17, "pre-E2: the run year is read from generatedAt in UTC");
+  ok(designGrowthYears(hdr(2025, 0, "2026-09-10T13:41:21.421Z")) === 19, "designGrowthYears takes the reconstruction only when nothing is printed");
+
+  // A past opening year on a pre-E2 report (the printed multipliers stripped):
+  // the fallback fires, is disclosed, and grows the design year by the
+  // engine's exponent — not the shortcut's.
+  const pastPre = { ...A, growthYears: 0, designYear: 2045, request: { ...A.request, openingYear: 2025 }, generatedAt: "2026-09-10T13:41:21.421Z" };
+  delete pastPre.growthMultiplierExact;
+  delete pastPre.designGrowthMultiplierExact;
+  const solPre = solveScenarioDetailed(pastPre, EMPTY_SCENARIO);
+  ok(solPre.reportFallbacks.has("designGrowth"), `pre-E2 past opening year: the "designGrowth" fallback fires and is disclosed (${[...solPre.reportFallbacks].join(", ")})`);
   const gPast = Math.pow(1 + A.growthAppliedPct / 100, 19), gShort = Math.pow(1 + A.growthAppliedPct / 100, 20);
-  const rowP = solPast.affectedIntersections.find((r) => r.designNoBuildVc !== undefined && r.existingVc > 0);
-  const rowA = A.affectedIntersections.find((r) => r.signalId === rowP.signalId);
+  const rowP = solPre.report.affectedIntersections.find((r) => r.designNoBuildVc !== undefined && r.existingVc > 0);
   // existingVc is the opening-year no-build v/c at growth^growthYears; design no-build scales by growth^designYears / growth^growthYears.
   const ratio = rowP.designNoBuildVc / rowP.existingVc;
   ok(Math.abs(ratio - gPast) < 0.02 && Math.abs(ratio - gShort) > Math.abs(ratio - gPast),
-    `past opening year: design no-build v/c / opening v/c = ${ratio.toFixed(4)} ≈ growth^19 (${gPast.toFixed(4)}), not growth^20 (${gShort.toFixed(4)}) at ${rowP.signalId}`);
+    `pre-E2 past opening year: design no-build v/c / opening v/c = ${ratio.toFixed(4)} ≈ growth^19 (${gPast.toFixed(4)}), not growth^20 (${gShort.toFixed(4)}) at ${rowP.signalId}`);
+  // The same header as an E2 report — the engine printed multiplier 1 for the
+  // opening year and growth^19 for the design year: read verbatim, no fallback,
+  // same rows as the reconstruction produced (it was exact here too).
+  const pastE2 = { ...pastPre, growthMultiplierExact: 1, designGrowthMultiplierExact: gPast };
+  const solE2 = solveScenarioDetailed(pastE2, EMPTY_SCENARIO);
+  ok(solE2.reportFallbacks.size === 0, "E2 past opening year: the printed multipliers are read verbatim — no fallback");
+  ok(JSON.stringify(solE2.report.affectedIntersections) === JSON.stringify(solPre.report.affectedIntersections), "E2 past opening year: identical rows to the (exact) reconstruction");
+  const solE2Grown = solveScenarioDetailed(pastE2, { ...EMPTY_SCENARIO, growthRatePct: 2 });
+  ok(solE2Grown.reportFallbacks.size === 0, "E2 past opening year, 2 %/yr edit: the span (19) is read off the printed multiplier — no fallback");
+  const rowG = solE2Grown.report.affectedIntersections.find((r) => r.signalId === rowP.signalId);
+  ok(Math.abs(rowG.designNoBuildVc / rowG.existingVc - Math.pow(1.02, 19)) < 0.02, `E2 past opening year, 2 %/yr edit: design no-build grows by 1.02^19 (${(rowG.designNoBuildVc / rowG.existingVc).toFixed(4)})`);
+  const rowA = A.affectedIntersections.find((r) => r.signalId === rowP.signalId);
   ok(rowA.designNoBuildVc !== undefined, "fixture row carries design-year fields to compare");
   // reportDiff sees the design year: perturb one design field and it must not read 0.
   const bumped = JSON.parse(JSON.stringify(solA.report));

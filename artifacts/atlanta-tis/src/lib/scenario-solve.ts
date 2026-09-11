@@ -18,7 +18,8 @@
  * `periodVolumeFactor` / `inFraction` / `externalTripsExact` /
  * `existingUseCreditExact`, and the report's `designYear`,
  * `designYearHorizonYears`, `regionCode`, `jurisdiction`,
- * `autoModeShareSource`, `weatherFactorExact`. They are declared on the
+ * `autoModeShareSource`, `weatherFactorExact`, `growthMultiplierExact`,
+ * `designGrowthMultiplierExact`. They are declared on the
  * generated client types (`@workspace/tis-api-client-react`) and read straight
  * off the report — there is no local view of them any more. For a report the
  * E2 engine produced the solve is byte-identical to the server's and
@@ -52,6 +53,13 @@
  *                engine's 0.35-mi coordinate rule, else by normalized name.
  *   calibration  delayMultiplier (round2) in place of the exact multiplier.
  *   jurisdiction planning office parsed from the base mitigation summary.
+ *   designGrowth the design-year growth span (the engine's designYear −
+ *                CURRENT_YEAR, which an E2 report prints as
+ *                `designGrowthMultiplierExact`) rebuilt from openingYear −
+ *                growthYears, or `generatedAt`'s UTC year once growthYears
+ *                was clamped at 0. Exact unless generatedAt lies about the
+ *                run year. Fires on every solve of a pre-E2 report, and on an
+ *                E2 report only under a growth-rate edit at a 0 %/yr base.
  *   turbo        a pre-E2 row prints its turbo-lane screening but not the
  *                geometry behind it (E2 prints `turboScreenInputs`); the base
  *                screening rides along unchanged and the mitigation prose
@@ -157,16 +165,50 @@ export const EMPTY_SCENARIO: ScenarioState = {
   applyToReport: false,
 };
 
-/** The engine's design-year growth exponent for this report:
- *  max(0, designYear − CURRENT_YEAR), where CURRENT_YEAR is the year the
- *  engine ran (tis.ts: `new Date().getUTCFullYear()`). The report never
- *  prints that year, but it is recoverable exactly: while growth applied,
- *  openingYear − growthYears; once growthYears was clamped at 0 (an opening
- *  year at or before the run — the schema allows 2024) only `generatedAt`
- *  says which year the engine ran in. `growthYears + horizon`, the obvious
- *  shortcut, over-counts by (CURRENT_YEAR − openingYear) in exactly that
- *  case and moves every design-year delay, v/c and LOS off the engine's. */
-export function designGrowthYears(report: Pick<TisReport, "growthYears" | "designYear" | "designYearHorizonYears" | "generatedAt" | "request">): number {
+/**
+ * The growth the engine applied to this report. Two multipliers:
+ *
+ *   opening year   (1 + growthAppliedPct/100) ^ growthYears
+ *   design year    (1 + growthAppliedPct/100) ^ max(0, designYear − CURRENT_YEAR)
+ *
+ * where CURRENT_YEAR is the year the engine RAN (tis.ts: `new Date()
+ * .getUTCFullYear()`), never printed. An E2 report prints both multipliers —
+ * `growthMultiplierExact` / `designGrowthMultiplierExact` — and the solve
+ * reads them off the report verbatim. `growthYears + horizon`, the obvious
+ * rebuild of the design exponent, is WRONG whenever the opening year is at
+ * or before the run (the schema allows 2024): growthYears clamps to 0 while
+ * the design span still runs from the current year, so it over-counts by
+ * (CURRENT_YEAR − openingYear) and moves every design-year delay, v/c and
+ * LOS off the engine's.
+ *
+ * A growth-RATE edit needs the exponents, not the multipliers: growthYears is
+ * printed, and the design span is read back off the printed design
+ * multiplier (`printedDesignGrowthYears`) — so an edited rate is raised to
+ * exactly the span the engine will use when the scenario is sent.
+ */
+
+/** The engine's design-year exponent, read off the printed multiplier:
+ *  log(designGrowthMultiplierExact) / log(1 + growthAppliedPct/100), which is
+ *  an integer up to floating-point noise. `undefined` when the report does
+ *  not carry it (a pre-E2 report) or cannot (a 0 %/yr base — the multiplier
+ *  is 1 whatever the span). */
+export function printedDesignGrowthYears(report: Pick<TisReport, "growthAppliedPct" | "designGrowthMultiplierExact">): number | undefined {
+  const m = report.designGrowthMultiplierExact;
+  const base = 1 + report.growthAppliedPct / 100;
+  if (typeof m !== "number" || !(m > 0) || !(base > 0) || base === 1) return undefined;
+  const ratio = Math.log(m) / Math.log(base);
+  const n = Math.round(ratio);
+  return n >= 0 && Math.abs(ratio - n) < 1e-6 ? n : undefined;
+}
+
+/** FALLBACK — pre-E2 saved reports ONLY (every study written before the
+ *  engine printed `designGrowthMultiplierExact`), or an E2 report at 0 %/yr
+ *  whose printed multiplier carries no exponent. Reconstructs CURRENT_YEAR:
+ *  while growth applied it is openingYear − growthYears, exactly; once
+ *  growthYears was clamped at 0 only `generatedAt` says which year the
+ *  engine ran in (its UTC year). Delete with the rest of the pre-E2
+ *  machinery once no such report is served. */
+export function reconstructedDesignGrowthYears(report: Pick<TisReport, "growthYears" | "designYear" | "designYearHorizonYears" | "generatedAt" | "request">): number {
   const horizon = report.designYearHorizonYears ?? DESIGN_YEAR_HORIZON_DEFAULT;
   const growthYears = Math.max(0, report.growthYears);
   const opening = report.request.openingYear;
@@ -178,6 +220,12 @@ export function designGrowthYears(report: Pick<TisReport, "growthYears" | "desig
     currentYear = Number.isFinite(generated) ? new Date(generated).getUTCFullYear() : new Date().getUTCFullYear();
   }
   return Math.max(0, designYear - currentYear);
+}
+
+/** The engine's design-year growth exponent for this report: the printed
+ *  path when the report carries it, else the pre-E2 reconstruction. */
+export function designGrowthYears(report: Pick<TisReport, "growthAppliedPct" | "designGrowthMultiplierExact" | "growthYears" | "designYear" | "designYearHorizonYears" | "generatedAt" | "request">): number {
+  return printedDesignGrowthYears(report) ?? reconstructedDesignGrowthYears(report);
 }
 
 /** True when any edit differs from the base study (selection alone is not an edit). */
@@ -324,7 +372,7 @@ export function withLeftSplit(e: SignalTimingEdit, axis: "ns" | "ew", leftSplitS
 
 export type RowFallback =
   | "baseVolume" | "loadWeight" | "pathLedger" | "gOverC" | "utdfAttach" | "calibration" | "turbo" | "baseOnly";
-export type ReportFallback = "jurisdiction" | "autoModeShare" | "landUse";
+export type ReportFallback = "jurisdiction" | "autoModeShare" | "landUse" | "designGrowth";
 
 export type ScenarioSolution = {
   report: TisReport;
@@ -652,9 +700,28 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
   const internalCapturePct = clamp(state.internalCapturePct ?? baseIc, 0, 50);
   const growthRatePct = clamp(state.growthRatePct ?? report.growthAppliedPct, -5, 6);
   const growthYears = Math.max(0, report.growthYears);
-  const designYears = designGrowthYears(report);
-  const growthMultiplier = Math.pow(1 + growthRatePct / 100, growthYears);
-  const designGrowthMultiplier = Math.pow(1 + growthRatePct / 100, designYears);
+  const growthExact = report.growthMultiplierExact;
+  const designGrowthExact = report.designGrowthMultiplierExact;
+  let growthMultiplier: number;
+  let designGrowthMultiplier: number;
+  if (state.growthRatePct === null && typeof growthExact === "number" && typeof designGrowthExact === "number") {
+    // Rate untouched, E2 report: the multipliers the engine used, verbatim.
+    growthMultiplier = growthExact;
+    designGrowthMultiplier = designGrowthExact;
+  } else {
+    // A rate edit raises the new rate to the engine's own spans: growthYears
+    // is printed; the design span is read off the printed design multiplier.
+    // Pre-E2 reports (no printed multipliers) and a 0 %/yr base (whose
+    // printed multiplier carries no span) fall back to the reconstruction —
+    // disclosed as the "designGrowth" fallback.
+    let designYears = printedDesignGrowthYears(report);
+    if (designYears === undefined) {
+      designYears = reconstructedDesignGrowthYears(report);
+      reportFallbacks.add("designGrowth");
+    }
+    growthMultiplier = Math.pow(1 + growthRatePct / 100, growthYears);
+    designGrowthMultiplier = Math.pow(1 + growthRatePct / 100, designYears);
+  }
   const weather: TisWeather = state.weather ?? report.weather;
   const weatherFactor = state.weather === null
     ? (report.weatherFactorExact ?? WEATHER_FACTOR[report.weather as Weather] ?? report.weatherCapacityFactor)
@@ -670,7 +737,7 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
 
   // Base per-period inputs (exact) — the load-weight and ledger fallbacks
   // reconstruct from the printed integer trips against these.
-  const gm0 = Math.pow(1 + report.growthAppliedPct / 100, growthYears);
+  const gm0 = growthExact ?? Math.pow(1 + report.growthAppliedPct / 100, growthYears);
   const basePeriods = report.periodReports
     .filter((p) => p.period !== "daily")
     .map((p) => {

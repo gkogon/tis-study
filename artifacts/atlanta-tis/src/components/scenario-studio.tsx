@@ -354,6 +354,7 @@ export function ScenarioStudio({ report, solution, scenario, onChange, onRerun, 
             ? "Exact: every row rebuilt from the engine's own inputs."
             : `${fallbackRows} of ${report.affectedIntersections.length} rows reconstructed from the printed report (${fallbackKinds.map((f) => FALLBACK_LABEL[f]).join("; ")}); within ±0.2 s of the engine, exact once the study is regenerated.`}
           {solution.reportFallbacks.has("jurisdiction") ? " Planning office read from the base summary." : ""}
+          {solution.reportFallbacks.has("designGrowth") ? " Design-year growth span rebuilt from the study's run year (the report predates the printed multiplier)." : ""}
           {solution.baseOnly.size > 0 ? ` ${solution.baseOnly.size} row(s) held at base.` : ""}
         </div>
       </div>
