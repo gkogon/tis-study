@@ -1,0 +1,3 @@
+# Build outputs of assemble.mjs / esbuild; regenerate with the commands in assemble.mjs.
+bundle.js
+alive-surfaces.html

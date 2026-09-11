@@ -174,8 +174,10 @@ export function pointAlong(r: Route, sMi: number): LatLon {
   return { lat: a.lat + (b.lat - a.lat) * t, lon: a.lon + (b.lon - a.lon) * t };
 }
 
-/** One flow = cars leaving the site along one route at a rate. */
-export type Flow = { route: Route; ratePerS: number; tint: "project" | "background" };
+/** One flow = cars leaving the site along one route at a rate. `signalId` names
+ *  the studied signal a project flow feeds, so a scenario re-solve can update
+ *  `ratePerS` in place without rebuilding the sim (and resetting the cars). */
+export type Flow = { route: Route; ratePerS: number; tint: "project" | "background"; signalId?: string };
 export type Car = { flow: number; s: number; v: number };
 
 /**

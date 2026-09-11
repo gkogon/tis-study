@@ -72,3 +72,33 @@ export function recommendMitigation(
   }
   return { text: `${worst.text} Governing horizon: ${worst.label} (${screened}).`, severity: worst.severity };
 }
+
+/** The study-level mitigation summary — moved VERBATIM out of tis.ts so the
+ *  browser scenario solver prints the engine's own sentences. The only region
+ *  input is the planning office named in the "Major" line, handed in as plain
+ *  data (the server passes region.jurisdiction; the browser passes the
+ *  report's jurisdiction field). */
+export function buildSummaryMitigations(
+  rows: Pick<AffectedIntersection, "mitigationSeverity">[],
+  jurisdiction: { planningOfficeName: string },
+): string[] {
+  if (rows.length === 0) return ["No off-site mitigations required."];
+  const major = rows.filter((r) => r.mitigationSeverity === "major");
+  const moderate = rows.filter((r) => r.mitigationSeverity === "moderate");
+  const minor = rows.filter((r) => r.mitigationSeverity === "minor");
+  const none = rows.filter((r) => r.mitigationSeverity === "none");
+  const out: string[] = [];
+  if (major.length) {
+    out.push(`Major mitigation required at ${major.length} intersection${major.length === 1 ? "" : "s"}: add critical-approach turn lane(s) and retime the signal; coordinate with ${jurisdiction.planningOfficeName}.`);
+  }
+  if (moderate.length) {
+    out.push(`Moderate mitigation at ${moderate.length} intersection${moderate.length === 1 ? "" : "s"}: extend critical-phase green and add protected-only left-turn phasing as needed.`);
+  }
+  if (minor.length) {
+    out.push(`Signal-timing optimization at ${minor.length} intersection${minor.length === 1 ? "" : "s"} (3–5s green-time shift toward the critical phase) is sufficient.`);
+  }
+  if (none.length === rows.length) {
+    out.push(`All studied intersections fall below the ${SCREENING_DELAY_DELTA_MINOR_SEC}-second screening threshold for additional delay across every analyzed horizon. That threshold is a screening default, not an agency criterion — no jurisdiction was resolved for this site — and this screen applies no v/c test and no separate clause for approaches already failing in the no-build. The governing agency's TIS criteria supersede it.`);
+  }
+  return out;
+}

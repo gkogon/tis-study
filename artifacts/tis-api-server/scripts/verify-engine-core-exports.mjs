@@ -53,7 +53,7 @@ const EXPECTED = [
   "clamp", "round1", "round2", "round3",
   // mitigation
   "SCREENING_DELAY_DELTA_MINOR_SEC", "SCREENING_DELAY_DELTA_MODERATE_SEC",
-  "verdictForHorizon", "recommendMitigation",
+  "verdictForHorizon", "recommendMitigation", "buildSummaryMitigations",
   // trips
   "periodRawTrips", "periodDirectionalIn", "externalTripsForPeriod",
 ];

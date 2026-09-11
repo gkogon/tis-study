@@ -1,0 +1,47 @@
+{
+  "projectName": "Buford Highway Corridor — Sample Drive Signal Study",
+  "intersection": {
+    "name": "Buford Hwy @ Sample Drive",
+    "approach": "Buford Hwy EB left turn",
+    "movement": "left_turn"
+  },
+  "inputs": {
+    "hourlyVolumeVph": 380,
+    "laneCount": 1,
+    "cycleLengthSec": 110,
+    "effectiveGreenSec": 22,
+    "saturationFlowVphpl": 1805,
+    "vehicleSpacingFt": 25,
+    "analysisPeriodHr": 0.25
+  },
+  "capacity": {
+    "perLaneVph": 361,
+    "totalVph": 361,
+    "vOverC": 1.05,
+    "isOversaturated": true
+  },
+  "queue": {
+    "averageVehicles": 9.3,
+    "averageFt": 233,
+    "p95Vehicles": 32.6,
+    "p95Ft": 816
+  },
+  "storage": {
+    "availableFt": 250,
+    "verdict": "fail",
+    "marginFt": -566,
+    "requiredFt": 816
+  },
+  "notes": [
+    "Capacity 361 vph/lane × 1 lanes = 361 vph total.",
+    "v/c ratio 1.05 — oversaturated; queue grows each cycle until demand subsides..",
+    "95th-percentile multiplier k = 3.00 (over-saturated).",
+    "Auxiliary lane is 566 ft short. Lengthen the bay or reduce demand (signal retiming, lane reassignment, access management).",
+    "Screening estimate. A full HCM Ch. 31 analysis runs incremental-delay (d2) and progression-quality (PF) terms — use HCS or Synchro for the final design."
+  ],
+  "citations": [
+    "Standard signalized cyclic-queue relations (Webster 1958 arrival/discharge form, openly published).",
+    "Capacity of a signalized lane group: c = s × g/C.",
+    "Queue length and storage ratio from the standard cyclic-queue relation with Poisson percentile factor."
+  ]
+}
