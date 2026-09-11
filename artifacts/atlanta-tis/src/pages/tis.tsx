@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import {
   useListTisLandUses,
   useGenerateTis,
+  useWhatIfTis,
   type TisRequest,
   type TisReport,
   type TisAffectedIntersection,
@@ -170,6 +171,31 @@ const PROJECT_TEMPLATES: ProjectTemplate[] = [
 // LOS_COLORS, SEVERITY_CONFIG, LosBadge, ApproachDetailTable and the delay
 // confidence band live in components/tis-report-bits.tsx so the scenario
 // studio renders the same rows this page prints.
+
+/** The message for a failed POST /tis-api/whatif. The generated client rejects
+ *  with an ApiError carrying the HTTP status and the parsed error body, so the
+ *  gate's four answers stay distinguishable: 401 not signed in, 402 the firm
+ *  has no uncharged run left, 409 one what-if already in flight for this user,
+ *  429 the 60/hr limiter. Anything without a status never reached the server. */
+function whatIfErrorMessage(err: unknown): string {
+  const at = (k: string): unknown =>
+    typeof err === "object" && err !== null && k in err ? (err as Record<string, unknown>)[k] : undefined;
+  const status = typeof at("status") === "number" ? (at("status") as number) : 0;
+  const body = at("data");
+  const fromBody =
+    typeof body === "object" && body !== null && typeof (body as { error?: unknown }).error === "string"
+      ? (body as { error: string }).error
+      : null;
+  const msg = fromBody ?? "The engine could not run this scenario.";
+  switch (status) {
+    case 401: return "Sign in to run scenarios in the engine.";
+    case 402: return `${msg} What-if runs need studies or credits left on the firm's plan.`;
+    case 409: return "A what-if is already running for your account. Wait for it to finish, then try again.";
+    case 429: return "Too many what-if runs in the last hour. Try again in a little while.";
+    case 404: return "This engine does not accept what-if runs yet.";
+    default: return status ? msg : "Couldn't reach the engine. Try again.";
+  }
+}
 
 function siteIcon(): L.DivIcon {
   return L.divIcon({
@@ -1826,36 +1852,24 @@ export default function TisPage() {
   // through POST /tis-api/whatif, which charges no study slot and saves
   // nothing. The server's report becomes the new base; the diff line reports
   // how far the client solve was from it.
-  const [whatIf, setWhatIf] = useState<{ pending: boolean; error: string | null; diff: ReturnType<typeof reportDiff> | null }>({ pending: false, error: null, diff: null });
+  const whatIfRun = useWhatIfTis();
+  const [whatIf, setWhatIf] = useState<{ error: string | null; diff: ReturnType<typeof reportDiff> | null }>({ error: null, diff: null });
   async function runWhatIf(req: WhatIfRequest) {
     if (!report) return;
     const clientSolve = solution?.report ?? null;
-    setWhatIf({ pending: true, error: null, diff: null });
+    setWhatIf({ error: null, diff: null });
     try {
-      const res = await fetch("/tis-api/whatif", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(req),
-      });
-      if (!res.ok) {
-        let msg = "The engine could not run this scenario.";
-        try { msg = (await res.json())?.error ?? msg; } catch { /* non-JSON */ }
-        if (res.status === 401) msg = "Sign in to run scenarios in the engine.";
-        else if (res.status === 402) msg = `${msg} What-if runs need studies or credits left on the firm's plan.`;
-        else if (res.status === 409) msg = "A what-if is already running for your account. Wait for it to finish, then try again.";
-        else if (res.status === 429) msg = "Too many what-if runs in the last hour. Try again in a little while.";
-        else if (res.status === 404) msg = "This engine does not accept what-if runs yet.";
-        setWhatIf({ pending: false, error: msg, diff: null });
-        return;
-      }
-      const data = (await res.json()) as TisReport;
+      const data = await whatIfRun.mutateAsync({ data: req });
+      // The client solve against the engine's own answer. With an E2 report
+      // feeding solveScenario this reads 0 differences (check:scenario-solve
+      // pins it on two engine-generated fixtures); anything else means an
+      // input the browser reconstructed wrongly.
       const diff = clientSolve ? reportDiff(clientSolve, data) : null;
       setReport(data);
       setScenario((s) => ({ ...EMPTY_SCENARIO, selectedSignalId: s.selectedSignalId, applyToReport: s.applyToReport }));
-      setWhatIf({ pending: false, error: null, diff });
-    } catch {
-      setWhatIf({ pending: false, error: "Couldn't reach the engine. Try again.", diff: null });
+      setWhatIf({ error: null, diff });
+    } catch (err) {
+      setWhatIf({ error: whatIfErrorMessage(err), diff: null });
     }
   }
 
@@ -1907,7 +1921,7 @@ export default function TisPage() {
           setReport(data);
           // A new study never inherits per-signal edits keyed on old signal ids.
           setScenario(EMPTY_SCENARIO);
-          setWhatIf({ pending: false, error: null, diff: null });
+          setWhatIf({ error: null, diff: null });
         },
       },
     );
@@ -2086,7 +2100,7 @@ export default function TisPage() {
                   scenario={scenario}
                   onChange={setScenario}
                   onRerun={runWhatIf}
-                  rerunPending={whatIf.pending}
+                  rerunPending={whatIfRun.isPending}
                   rerunError={whatIf.error}
                   engineDiff={whatIf.diff}
                 />

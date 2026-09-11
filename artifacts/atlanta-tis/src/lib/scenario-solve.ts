@@ -10,13 +10,27 @@
  * path-turn ledgers are held at the base study's values, and driveway edits
  * go to the engine (`toWhatIfRequest` → POST /tis-api/whatif).
  *
- * Exactness. A report generated after Track E2 carries unrounded inputs
- * (`designHourVolumeVph`, `loadWeight`, `pathTurns`, `utdfRecordIndex`,
- * `delayMultiplierExact`, `jurisdiction`, …); with those the client solve is
- * byte-identical to the server. Reports that predate them (every saved study
- * today) are reconstructed from the PRINTED fields, and each substitution is
- * recorded on the solution's `fallbacks` so the UI can say so and U2 can
- * retire them. The documented substitutions and their error bounds:
+ * Exactness. Track E2's report carries every unrounded input a re-solve needs
+ * — `designHourVolumeVph`, `loadWeight`, `pathTurns` / `pathTurnsIn`,
+ * `movementsExact`, `mainThroughLanes` / `minorThroughLanes` /
+ * `mainThroughLanesMeasured`, `utdfRecordIndex`, the `signalTiming.*Exact`
+ * ratios, `calibration.delayMultiplierExact`, each period's
+ * `periodVolumeFactor` / `inFraction` / `externalTripsExact` /
+ * `existingUseCreditExact`, and the report's `designYear`,
+ * `designYearHorizonYears`, `regionCode`, `jurisdiction`,
+ * `autoModeShareSource`, `weatherFactorExact`. They are declared on the
+ * generated client types (`@workspace/tis-api-client-react`) and read straight
+ * off the report — there is no local view of them any more. For a report the
+ * E2 engine produced the solve is byte-identical to the server's and
+ * `rowFallbacks` is EMPTY; scripts/check-scenario-solve.mjs pins that on two
+ * fixtures the engine itself generated.
+ *
+ * The reconstruction paths below therefore exist ONLY for reports saved BEFORE
+ * E2 — every study already in the database — which print rounded fields and
+ * nothing else. Each substitution is recorded on the solution's `rowFallbacks`
+ * / `reportFallbacks` so the UI can disclose it, and the whole machinery can
+ * be deleted once no pre-E2 report is served. The substitutions and their
+ * error bounds:
  *
  *   baseVolume   the design-hour volume is the midpoint of the intersection
  *                of every printed approach volume's round1 interval
@@ -41,7 +55,9 @@
  *   turbo        turbo-lane geometry is not printable; the base screening
  *                rides along unchanged.
  *
- * scripts/check-scenario-solve.mjs pins these bounds on a real 40-row report.
+ * These bounds are NOT gated: check-scenario-solve.mjs runs on E2 fixtures,
+ * where none of these paths fire (it asserts rowFallbacks is empty). They are
+ * the documented error budget for the legacy reports alone.
  */
 import type {
   TisReport,
@@ -52,6 +68,7 @@ import type {
   TisWeather,
   Driveway,
   UtdfIntersectionData,
+  SignalTimingOverride,
 } from "@workspace/tis-api-client-react";
 import {
   LAND_USES,
@@ -76,7 +93,7 @@ import {
   type PathTurnShare,
   type ScenarioParams,
   type AffectedIntersection,
-  type SignalTimingOverride,
+  type SignalTimingOverrideInput,
   type Weather,
   type AnalysisPeriod,
   type LandUse,
@@ -85,56 +102,12 @@ import {
 } from "@workspace/tis-engine-core";
 
 // ---------------------------------------------------------------------------
-// The report fields Track E2 adds for an exact re-solve. They are not in the
-// generated client types yet, so they are read through this local view and
-// every absence falls back (and is flagged) as documented above.
-// ---------------------------------------------------------------------------
-
-export type ExactRowFields = {
-  designHourVolumeVph?: number;
-  loadWeight?: number;
-  pathTurns?: PathTurnShare[];
-  pathTurnsIn?: PathTurnShare[];
-  mainThroughLanes?: number;
-  minorThroughLanes?: number;
-  mainThroughLanesMeasured?: boolean;
-  utdfRecordIndex?: number;
-  signalTiming?: {
-    gOverCnsExact?: number;
-    gOverCewExact?: number;
-    gOverCnsLeftExact?: number;
-    gOverCewLeftExact?: number;
-  };
-  calibration?: { delayMultiplierExact?: number };
-};
-
-export type ExactPeriodFields = {
-  periodVolumeFactor?: number;
-  inFraction?: number;
-  externalTripsExact?: number;
-  existingUseCreditExact?: number;
-};
-
-export type ExactFields = {
-  designYear?: number;
-  designYearHorizonYears?: number;
-  regionCode?: string;
-  jurisdiction?: { dotName: string; planningOfficeName: string };
-  autoModeShareSource?: string;
-  weatherFactorExact?: number;
-};
-
-type ExactRow = TisAffectedIntersection & Partial<ExactRowFields>;
-type ExactPeriod = TisPeriodReport & Partial<ExactPeriodFields> & { tripGeneration: TisPeriodReport["tripGeneration"] & Partial<ExactPeriodFields> };
-type ExactReport = TisReport & Partial<ExactFields>;
-
-// ---------------------------------------------------------------------------
 // Scenario state
 // ---------------------------------------------------------------------------
 
 /** One signal's timing plan as the Signal tab edits it: a cycle and the split
  *  (seconds, including the 5 s lost time) of every phase. Σ splits === cycle.
- *  Converted to the engine's Synchro-shaped override by `timingEditToOverride`. */
+ *  Converted to the engine's override record by `timingEditToOverride`. */
 export type SignalTimingEdit = {
   cycleLenSec: number;
   nsThroughSplitS: number;
@@ -197,7 +170,22 @@ const PHASE = { nsT: 2, ewT: 4, nsL: 1, ewL: 3 } as const;
 export const LOST_TIME_S = 5;
 export const MIN_SPLIT_S = 15; // MIN_PHASE_GREEN_S 10 + lost time
 
-export function timingEditToOverride(e: SignalTimingEdit): SignalTimingOverride {
+/** The edit as the engine's override record: the same
+ *  `SignalTimingOverrideInput` the server attaches from
+ *  `TisRequest.signalTimingOverrides`, so the client feeds `buildAffectedRow`
+ *  exactly what `/whatif` feeds it. `at` carries the signal's coordinates,
+ *  which the server snaps on and the row math ignores.
+ *
+ *  The cycle and splits are rounded to the precision the record travels at
+ *  (whole seconds, tenths) HERE — the one place the record is built — so the
+ *  local solve and the POSTed body are the same numbers. Rounding only on the
+ *  way out would make the client resolve g/C from an unrounded split and the
+ *  engine from the rounded one: a ~3e-4 g/C split between the two solves that
+ *  no amount of arithmetic downstream can close. */
+export function timingEditToOverride(
+  e: SignalTimingEdit,
+  at: { latitude: number; longitude: number; name?: string },
+): SignalTimingOverrideInput {
   const nsProt = e.nsLeftSplitS !== undefined;
   const ewProt = e.ewLeftSplitS !== undefined;
   const phaseByMovement: Record<string, number> = {
@@ -212,7 +200,15 @@ export function timingEditToOverride(e: SignalTimingEdit): SignalTimingOverride 
     ...(nsProt ? { [String(PHASE.nsL)]: e.nsLeftSplitS as number } : {}),
     ...(ewProt ? { [String(PHASE.ewL)]: e.ewLeftSplitS as number } : {}),
   };
-  return { cycleLenSec: e.cycleLenSec, phaseByMovement, splitSByPhase };
+  return {
+    latitude: at.latitude, longitude: at.longitude,
+    ...(at.name ? { name: at.name } : {}),
+    cycleLenSec: Math.round(e.cycleLenSec),
+    phaseByMovement,
+    splitSByPhase: Object.fromEntries(
+      Object.entries(splitSByPhase).map(([k, v]) => [k, Math.round(v * 10) / 10]),
+    ),
+  };
 }
 
 /** Seed a timing edit from a row's printed timing (g/C × cycle + lost time),
@@ -327,7 +323,7 @@ function landUseByCode(code: string | undefined): LandUse | undefined {
 
 /** Planning office for the "Major" summary line: E2's jurisdiction field, else
  *  the name the base summary already printed. */
-function planningOffice(report: ExactReport): { name: string; fallback: boolean } {
+function planningOffice(report: TisReport): { name: string; fallback: boolean } {
   if (report.jurisdiction?.planningOfficeName) return { name: report.jurisdiction.planningOfficeName, fallback: false };
   for (const line of report.mitigationSummary ?? []) {
     const m = /coordinate with (.+)\.$/.exec(line);
@@ -337,7 +333,7 @@ function planningOffice(report: ExactReport): { name: string; fallback: boolean 
 }
 
 /** Find the UTDF record that produced a row's measured volumes, the engine's way. */
-function attachUtdfRecord(row: ExactRow, records: UtdfIntersectionData[] | undefined): { rec?: UtdfIntersectionInput; fallback: boolean } {
+function attachUtdfRecord(row: TisAffectedIntersection, records: UtdfIntersectionData[] | undefined): { rec?: UtdfIntersectionInput; fallback: boolean } {
   if (!records || records.length === 0 || !row.volumeSource) return { rec: undefined, fallback: false };
   if (typeof row.utdfRecordIndex === "number" && records[row.utdfRecordIndex]) {
     return { rec: records[row.utdfRecordIndex] as UtdfIntersectionInput, fallback: false };
@@ -359,18 +355,17 @@ function attachUtdfRecord(row: ExactRow, records: UtdfIntersectionData[] | undef
 
 /** An override that reproduces a printed timing (used when the measured
  *  record behind a "measured"/"measured-cycle" row cannot be found). */
-function overrideFromPrintedTiming(row: ExactRow): SignalTimingOverride | undefined {
+function overrideFromPrintedTiming(row: TisAffectedIntersection): SignalTimingOverrideInput | undefined {
   const t = row.signalTiming;
   if (!t) return undefined;
-  const ex = row.signalTiming as ExactRowFields["signalTiming"] | undefined;
   const edit: SignalTimingEdit = {
     cycleLenSec: t.cycleLenSec,
-    nsThroughSplitS: (ex?.gOverCnsExact ?? t.gOverCns) * t.cycleLenSec + LOST_TIME_S,
-    ewThroughSplitS: (ex?.gOverCewExact ?? t.gOverCew) * t.cycleLenSec + LOST_TIME_S,
-    ...(t.gOverCnsLeft !== undefined ? { nsLeftSplitS: (ex?.gOverCnsLeftExact ?? t.gOverCnsLeft) * t.cycleLenSec + LOST_TIME_S } : {}),
-    ...(t.gOverCewLeft !== undefined ? { ewLeftSplitS: (ex?.gOverCewLeftExact ?? t.gOverCewLeft) * t.cycleLenSec + LOST_TIME_S } : {}),
+    nsThroughSplitS: (t.gOverCnsExact ?? t.gOverCns) * t.cycleLenSec + LOST_TIME_S,
+    ewThroughSplitS: (t.gOverCewExact ?? t.gOverCew) * t.cycleLenSec + LOST_TIME_S,
+    ...(t.gOverCnsLeft !== undefined ? { nsLeftSplitS: (t.gOverCnsLeftExact ?? t.gOverCnsLeft) * t.cycleLenSec + LOST_TIME_S } : {}),
+    ...(t.gOverCewLeft !== undefined ? { ewLeftSplitS: (t.gOverCewLeftExact ?? t.gOverCewLeft) * t.cycleLenSec + LOST_TIME_S } : {}),
   };
-  return timingEditToOverride(edit);
+  return timingEditToOverride(edit, row);
 }
 
 /** The design-hour volume from the printed per-approach volumes: every
@@ -511,7 +506,7 @@ function feasibleLedgerSums(a1: number, b1: number, A1: number, a2: number, b2: 
  *  period load equals externalTrips × weight exactly (the engine's
  *  ledgerWeight), which makes the integerized movements reproduce the printed
  *  table on the base solve. */
-function ledgerFromMovements(row: ExactRow, weight: number, inFraction: number): { out: PathTurnShare[]; in: PathTurnShare[] } | undefined {
+function ledgerFromMovements(row: TisAffectedIntersection, weight: number, inFraction: number): { out: PathTurnShare[]; in: PathTurnShare[] } | undefined {
   const mv = row.movements;
   if (!mv || mv.length === 0 || !(row.addedTripsPmPeak > 0) || !(weight > 0)) return undefined;
   // Record the pattern on whichever side carries the larger share of this
@@ -574,7 +569,7 @@ function periodInputs(args: {
  * be reconstructed passes through unchanged and is listed in `baseOnly`.
  */
 export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState): ScenarioSolution {
-  const report = reportIn as ExactReport;
+  const report = reportIn;
   const req = report.request;
   const rowFallbacks = new Map<string, Set<RowFallback>>();
   const reportFallbacks = new Set<ReportFallback>();
@@ -641,15 +636,15 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
   // Base per-period inputs (exact) — the load-weight and ledger fallbacks
   // reconstruct from the printed integer trips against these.
   const gm0 = Math.pow(1 + report.growthAppliedPct / 100, growthYears);
-  const basePeriods = (report.periodReports as ExactPeriod[])
+  const basePeriods = report.periodReports
     .filter((p) => p.period !== "daily")
     .map((p) => {
       const period = p.period as AnalysisPeriod;
-      const inF = p.inFraction ?? p.tripGeneration.inFraction;
+      const inF = p.inFraction;
       const pi = periodInputs({ lu, rates, size: baseSize, period, passByPct: basePassBy, internalCapturePct: baseIc, autoModeShare, existing, inFraction: inF });
       return {
         period,
-        ext: p.externalTripsExact ?? p.tripGeneration.externalTripsExact ?? pi.externalTrips,
+        ext: p.externalTripsExact ?? pi.externalTrips,
         inF: pi.inFraction,
         factor: p.periodVolumeFactor ?? PERIOD_VOLUME_FACTOR[period] ?? 1,
         rowsById: new Map(p.affectedIntersections.map((r) => [r.signalId, r])),
@@ -661,16 +656,16 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
 
   // ---- candidates, reconstructed from the PM rows ----
   type Cand = {
-    base: ExactRow;
+    base: TisAffectedIntersection;
     sig: AnalyzerIntersection;
     utdf?: UtdfIntersectionInput;
     calibration?: RowCalibration;
     weight: number;
-    timingOverride?: SignalTimingOverride;
+    timingOverride?: SignalTimingOverrideInput;
     ledgerExact?: { out: PathTurnShare[]; in?: PathTurnShare[] };
     ok: boolean;
   };
-  const candidates: Cand[] = (report.affectedIntersections as ExactRow[]).map((row) => {
+  const candidates: Cand[] = report.affectedIntersections.map((row) => {
     const id = row.signalId;
     const cand: Cand = { base: row, sig: { id, name: row.name, zone: row.zone, latitude: row.latitude, longitude: row.longitude, totalVolume: 0 }, weight: 0, ok: true };
 
@@ -718,7 +713,7 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
 
     // Calibration.
     if (row.calibration) {
-      const exact = (row.calibration as ExactRowFields["calibration"])?.delayMultiplierExact;
+      const exact = row.calibration.delayMultiplierExact;
       cand.calibration = {
         multiplier: exact ?? row.calibration.delayMultiplier,
         sampleCount: row.calibration.sampleCount,
@@ -743,7 +738,7 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
     // Timing: the scenario's edit wins; else a measured timing whose record is
     // missing is re-expressed from the printed g/C.
     const edit = state.timing[id];
-    if (edit) cand.timingOverride = timingEditToOverride(edit);
+    if (edit) cand.timingOverride = timingEditToOverride(edit, row);
     else if (row.signalTiming && (row.signalTiming.basis === "measured" || row.signalTiming.basis === "measured-cycle") && !cand.utdf) {
       cand.timingOverride = overrideFromPrintedTiming(row);
       flag(id, "gOverC");
@@ -755,12 +750,12 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
 
   // ---- per period ----
   const externalTrips: ScenarioSolution["externalTrips"] = {};
-  const periodReports: TisPeriodReport[] = (report.periodReports as ExactPeriod[]).map((p) => {
+  const periodReports: TisPeriodReport[] = report.periodReports.map((p) => {
     const period = p.period as AnalysisPeriod;
-    const inFractionExact = p.inFraction ?? p.tripGeneration.inFraction;
+    const inFractionExact = p.inFraction;
     const basePi = periodInputs({ lu, rates, size: baseSize, period, passByPct: basePassBy, internalCapturePct: baseIc, autoModeShare, existing, inFraction: inFractionExact });
     const pi = periodInputs({ lu, rates, size, period, passByPct, internalCapturePct, autoModeShare, existing, inFraction: inFractionExact });
-    externalTrips[period] = { base: p.externalTripsExact ?? p.tripGeneration.externalTripsExact ?? basePi.externalTrips, scenario: pi.externalTrips };
+    externalTrips[period] = { base: p.externalTripsExact ?? basePi.externalTrips, scenario: pi.externalTrips };
     const inTrips = Math.round(pi.externalTrips * pi.inFraction);
     const outTrips = Math.round(pi.externalTrips) - inTrips;
     const tripGeneration: TisPeriodReport["tripGeneration"] = {
@@ -867,35 +862,23 @@ export function solveScenario(report: TisReport, state: ScenarioState): TisRepor
 // Engine hand-off
 // ---------------------------------------------------------------------------
 
-/** The per-signal timing override as POST /whatif accepts it (Track E2's
- *  `signalTimingOverrides[]`): snapped by coordinates / name like a UTDF
- *  record, consumed as the first timing provider, volumes untouched. */
-export type SignalTimingOverrideRequest = {
-  latitude: number;
-  longitude: number;
-  name?: string;
-  cycleLenSec: number;
-  phaseByMovement: Record<string, number>;
-  splitSByPhase: Record<string, number>;
-};
+/** The body POST /tis-api/whatif takes: Track E2 put `signalTimingOverrides[]`
+ *  on `TisRequest` itself, so the generated request type IS the what-if body
+ *  (`WhatIfTisMutationBody`). Kept as a named alias for readability. */
+export type WhatIfRequest = TisRequest;
 
-export type WhatIfRequest = TisRequest & { signalTimingOverrides?: SignalTimingOverrideRequest[] };
-
-/** The base request plus every scenario edit, for the engine to re-run. */
+/** The base request plus every scenario edit, for the engine to re-run.
+ *  The override records go out exactly as the local solve consumed them
+ *  (timingEditToOverride already rounded them), which is what makes the
+ *  server's report and the client's solve agree field for field. */
 export function toWhatIfRequest(report: TisReport, state: ScenarioState): WhatIfRequest {
   const req = report.request;
   const rowsById = new Map(report.affectedIntersections.map((r) => [r.signalId, r]));
-  const overrides: SignalTimingOverrideRequest[] = [];
+  const overrides: SignalTimingOverride[] = [];
   for (const [id, edit] of Object.entries(state.timing)) {
     const row = rowsById.get(id);
     if (!row) continue;
-    const o = timingEditToOverride(edit);
-    overrides.push({
-      latitude: row.latitude, longitude: row.longitude, name: row.name,
-      cycleLenSec: Math.round(o.cycleLenSec as number),
-      phaseByMovement: o.phaseByMovement as Record<string, number>,
-      splitSByPhase: Object.fromEntries(Object.entries(o.splitSByPhase ?? {}).map(([k, v]) => [k, Math.round((v as number) * 10) / 10])),
-    });
+    overrides.push(timingEditToOverride(edit, row));
   }
   const out: WhatIfRequest = {
     ...req,

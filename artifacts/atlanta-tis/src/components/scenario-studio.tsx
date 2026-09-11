@@ -333,7 +333,9 @@ export function ScenarioStudio({ report, solution, scenario, onChange, onRerun, 
         )}
         {engineDiff && (
           <div className="text-[11px] text-muted-foreground font-mono tabular-nums" data-testid="scenario-engine-diff">
-            Engine vs client: max Δ delay {engineDiff.maxDelayDeltaSec.toFixed(1)} s, max Δ v/c {engineDiff.maxVcDelta.toFixed(2)}, {engineDiff.losMismatches} LOS mismatch{engineDiff.losMismatches === 1 ? "" : "es"} over {engineDiff.rows} rows.
+            {engineDiff.maxDelayDeltaSec === 0 && engineDiff.maxVcDelta === 0 && engineDiff.losMismatches === 0
+              ? `Engine vs client: 0 differences over ${engineDiff.rows} rows.`
+              : `Engine vs client: max Δ delay ${engineDiff.maxDelayDeltaSec.toFixed(1)} s, max Δ v/c ${engineDiff.maxVcDelta.toFixed(2)}, ${engineDiff.losMismatches} LOS mismatch${engineDiff.losMismatches === 1 ? "" : "es"} over ${engineDiff.rows} rows.`}
           </div>
         )}
         <div className="text-[11px] text-muted-foreground" data-testid="scenario-provenance">

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-09T14:41:22.891Z",
+  "generatedAt": "2026-09-10T13:41:21.421Z",
   "request": {
     "projectName": "Peachtree Multifamily",
     "address": "1100 Peachtree St NE, Atlanta, GA 30309",
@@ -46,6 +46,34 @@
       "latitude": 33.78666,
       "longitude": -84.38433,
       "distanceMi": 0.07,
+      "designHourVolumeVph": 1356,
+      "loadWeight": 0.185192989418076,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 0,
+          "exitBearingDeg": 111.85412011149936,
+          "share": 0.13615649447180578
+        }
+      ],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 262.38533850224974,
+          "exitBearingDeg": 180,
+          "share": 0.23422948436434624
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "WB",
+          "movement": "L",
+          "exact": 14.480870026939321
+        },
+        {
+          "approach": "NB",
+          "movement": "R",
+          "exact": 5.381783546677484
+        }
+      ],
       "currentVc": 0.78,
       "currentDelaySec": 21.8,
       "currentLos": "C",
@@ -165,6 +193,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.437,
         "gOverCew": 0.397,
+        "gOverCnsExact": 0.436639525935238,
+        "gOverCewExact": 0.3966938073980953,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -180,6 +210,44 @@
       "latitude": 33.78658,
       "longitude": -84.38315,
       "distanceMi": 0.13,
+      "designHourVolumeVph": 1306,
+      "loadWeight": 0.18519298941807602,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 77.66010513532666,
+          "exitBearingDeg": 111.85409212741263,
+          "share": 0.13615649447180578
+        }
+      ],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 291.8541588598971,
+          "exitBearingDeg": 294.8333499604236,
+          "share": 0.13615649447180578
+        },
+        {
+          "enterBearingDeg": 168.26217135348304,
+          "exitBearingDeg": 294.8333499604236,
+          "share": 0.09807298989254047
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "WB",
+          "movement": "T",
+          "exact": 8.417661444803244
+        },
+        {
+          "approach": "SB",
+          "movement": "R",
+          "exact": 6.063208582136078
+        },
+        {
+          "approach": "EB",
+          "movement": "T",
+          "exact": 5.381783546677484
+        }
+      ],
       "currentVc": 0.68,
       "currentDelaySec": 16.1,
       "currentLos": "B",
@@ -309,6 +377,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.483,
         "gOverCew": 0.35,
+        "gOverCnsExact": 0.483403138363757,
+        "gOverCewExact": 0.3499301949695764,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -324,6 +394,23 @@
       "latitude": 33.7866,
       "longitude": -84.38777,
       "distanceMi": 0.15,
+      "designHourVolumeVph": 1279,
+      "loadWeight": 0.2019037007340304,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 0,
+          "exitBearingDeg": 0,
+          "share": 0.4038074014680608
+        }
+      ],
+      "pathTurnsIn": [],
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "T",
+          "exact": 15.961075067905844
+        }
+      ],
       "currentVc": 0.67,
       "currentDelaySec": 16,
       "currentLos": "B",
@@ -433,6 +520,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.48,
         "gOverCew": 0.353,
+        "gOverCnsExact": 0.48011811642015695,
+        "gOverCewExact": 0.3532152169131764,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -448,6 +537,30 @@
       "latitude": 33.78433,
       "longitude": -84.38308,
       "distanceMi": 0.18,
+      "designHourVolumeVph": 1415,
+      "loadWeight": 0.41341768128096995,
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "L",
+          "exact": 16.96835326535467
+        },
+        {
+          "approach": "EB",
+          "movement": "R",
+          "exact": 10.848619300800527
+        },
+        {
+          "approach": "WB",
+          "movement": "T",
+          "exact": 8.590545631233697
+        },
+        {
+          "approach": "EB",
+          "movement": "T",
+          "exact": 5.492316059313348
+        }
+      ],
       "currentVc": 0.8,
       "currentDelaySec": 22.8,
       "currentLos": "C",
@@ -582,6 +695,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.441,
         "gOverCew": 0.392,
+        "gOverCnsExact": 0.44142547039427826,
+        "gOverCewExact": 0.3919078629390551,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -597,6 +712,34 @@
       "latitude": 33.7865,
       "longitude": -84.38216,
       "distanceMi": 0.18,
+      "designHourVolumeVph": 1214,
+      "loadWeight": 0.13615649447180578,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 89.99996941489252,
+          "exitBearingDeg": 89.99995829337348,
+          "share": 0.13615649447180578
+        }
+      ],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 270.0000417066265,
+          "exitBearingDeg": 270.0000305851075,
+          "share": 0.13615649447180578
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "WB",
+          "movement": "T",
+          "exact": 8.417661444803244
+        },
+        {
+          "approach": "EB",
+          "movement": "T",
+          "exact": 5.381783546677484
+        }
+      ],
       "currentVc": 0.65,
       "currentDelaySec": 15.9,
       "currentLos": "B",
@@ -716,6 +859,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.47,
         "gOverCew": 0.363,
+        "gOverCnsExact": 0.4703518296488528,
+        "gOverCewExact": 0.3629815036844804,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -731,6 +876,34 @@
       "latitude": 33.78449,
       "longitude": -84.38782,
       "distanceMi": 0.18,
+      "designHourVolumeVph": 1489,
+      "loadWeight": 0.1122834116738553,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 255.03088398659963,
+          "exitBearingDeg": 257.66045823758,
+          "share": 0.1122834116738553
+        }
+      ],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 0,
+          "exitBearingDeg": 75.03083394220874,
+          "share": 0.1122834116738553
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "R",
+          "exact": 6.94174559211863
+        },
+        {
+          "approach": "WB",
+          "movement": "T",
+          "exact": 4.438165214633222
+        }
+      ],
       "currentVc": 0.8,
       "currentDelaySec": 21.4,
       "currentLos": "C",
@@ -850,6 +1023,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.467,
         "gOverCew": 0.367,
+        "gOverCnsExact": 0.4666844130407087,
+        "gOverCewExact": 0.3666489202926247,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -865,6 +1040,23 @@
       "latitude": 33.78847,
       "longitude": -84.38388,
       "distanceMi": 0.18,
+      "designHourVolumeVph": 934,
+      "loadWeight": 0.049036494946270236,
+      "pathTurns": [],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 159.30488282335511,
+          "exitBearingDeg": 159.3048584902116,
+          "share": 0.09807298989254047
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "SB",
+          "movement": "T",
+          "exact": 6.063208582136078
+        }
+      ],
       "currentVc": 0.5,
       "currentDelaySec": 13.2,
       "currentLos": "B",
@@ -974,6 +1166,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.468,
         "gOverCew": 0.366,
+        "gOverCnsExact": 0.4675140197536906,
+        "gOverCewExact": 0.36581931357964287,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -989,6 +1183,30 @@
       "latitude": 33.7843,
       "longitude": -84.38224,
       "distanceMi": 0.22,
+      "designHourVolumeVph": 1032,
+      "loadWeight": 0.34081917319909305,
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "L",
+          "exact": 12.542712585356211
+        },
+        {
+          "approach": "WB",
+          "movement": "T",
+          "exact": 8.527897560836958
+        },
+        {
+          "approach": "EB",
+          "movement": "R",
+          "exact": 8.019111325063808
+        },
+        {
+          "approach": "EB",
+          "movement": "T",
+          "exact": 5.452262374961334
+        }
+      ],
       "currentVc": 0.6,
       "currentDelaySec": 16.4,
       "currentLos": "B",
@@ -1123,6 +1341,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.432,
         "gOverCew": 0.401,
+        "gOverCnsExact": 0.4321225178495491,
+        "gOverCewExact": 0.40121081548378423,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -1138,6 +1358,34 @@
       "latitude": 33.78321,
       "longitude": -84.38385,
       "distanceMi": 0.22,
+      "designHourVolumeVph": 1495,
+      "loadWeight": 0.34775269238627804,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 106.74067769002613,
+          "exitBearingDeg": 118.67372931513262,
+          "share": 0.34775269238627804
+        }
+      ],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 15.485346139299452,
+          "exitBearingDeg": 286.7407444163208,
+          "share": 0.34775269238627804
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "L",
+          "exact": 21.499264081249173
+        },
+        {
+          "approach": "EB",
+          "movement": "T",
+          "exact": 13.745431133913407
+        }
+      ],
       "currentVc": 0.89,
       "currentDelaySec": 31.1,
       "currentLos": "C",
@@ -1257,6 +1505,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.42,
         "gOverCew": 0.414,
+        "gOverCnsExact": 0.4195449961822875,
+        "gOverCewExact": 0.41378833715104585,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -1272,6 +1522,23 @@
       "latitude": 33.78857,
       "longitude": -84.38779,
       "distanceMi": 0.22,
+      "designHourVolumeVph": 1620,
+      "loadWeight": 0.17450659278642056,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 0,
+          "exitBearingDeg": 0,
+          "share": 0.3490131855728411
+        }
+      ],
+      "pathTurnsIn": [],
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "T",
+          "exact": 13.795253961083422
+        }
+      ],
       "currentVc": 0.94,
       "currentDelaySec": 36.9,
       "currentLos": "D",
@@ -1381,6 +1648,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.431,
         "gOverCew": 0.402,
+        "gOverCnsExact": 0.4310411573189041,
+        "gOverCewExact": 0.4022921760144291,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -1396,6 +1665,33 @@
       "latitude": 33.7866,
       "longitude": -84.38922,
       "distanceMi": 0.23,
+      "designHourVolumeVph": 2531,
+      "loadWeight": 0.15286720578776014,
+      "pathTurns": [],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 180,
+          "exitBearingDeg": 173.22892777130585,
+          "share": 0.2509401956803006
+        },
+        {
+          "enterBearingDeg": 89.99996385371259,
+          "exitBearingDeg": 173.22892777130585,
+          "share": 0.05479421589521968
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "SB",
+          "movement": "T",
+          "exact": 15.513983510840555
+        },
+        {
+          "approach": "EB",
+          "movement": "R",
+          "exact": 3.387566346568401
+        }
+      ],
       "currentVc": 1.26,
       "currentDelaySec": 154.7,
       "currentLos": "F",
@@ -1515,6 +1811,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.502,
         "gOverCew": 0.411,
+        "gOverCnsExact": 0.5018423410620111,
+        "gOverCewExact": 0.4112011371988584,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -1530,6 +1828,23 @@
       "latitude": 33.78326,
       "longitude": -84.38783,
       "distanceMi": 0.24,
+      "designHourVolumeVph": 1262,
+      "loadWeight": 0.05614170583692765,
+      "pathTurns": [],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 7.88667848557094,
+          "exitBearingDeg": 0,
+          "share": 0.1122834116738553
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "T",
+          "exact": 6.94174559211863
+        }
+      ],
       "currentVc": 0.74,
       "currentDelaySec": 20.5,
       "currentLos": "C",
@@ -1639,6 +1954,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.405,
         "gOverCew": 0.428,
+        "gOverCnsExact": 0.4052027341565814,
+        "gOverCewExact": 0.428130599176752,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -1654,6 +1971,23 @@
       "latitude": 33.78444,
       "longitude": -84.38921,
       "distanceMi": 0.25,
+      "designHourVolumeVph": 1480,
+      "loadWeight": 0.05614170583692765,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 270.00002780399245,
+          "exitBearingDeg": 180,
+          "share": 0.1122834116738553
+        }
+      ],
+      "pathTurnsIn": [],
+      "movementsExact": [
+        {
+          "approach": "WB",
+          "movement": "L",
+          "exact": 4.438165214633222
+        }
+      ],
       "currentVc": 0.78,
       "currentDelaySec": 20.2,
       "currentLos": "C",
@@ -1763,6 +2097,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.474,
         "gOverCew": 0.36,
+        "gOverCnsExact": 0.473564625850798,
+        "gOverCewExact": 0.35976870748253537,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -1778,6 +2114,23 @@
       "latitude": 33.78303,
       "longitude": -84.38235,
       "distanceMi": 0.27,
+      "designHourVolumeVph": 931,
+      "loadWeight": 0.17387634619313902,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 89.99998331846388,
+          "exitBearingDeg": 189.43797406629398,
+          "share": 0.34775269238627804
+        }
+      ],
+      "pathTurnsIn": [],
+      "movementsExact": [
+        {
+          "approach": "EB",
+          "movement": "R",
+          "exact": 13.745431133913407
+        }
+      ],
       "currentVc": 0.53,
       "currentDelaySec": 15,
       "currentLos": "B",
@@ -1887,6 +2240,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.436,
         "gOverCew": 0.398,
+        "gOverCnsExact": 0.43581963302199694,
+        "gOverCewExact": 0.3975137003113363,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -1902,6 +2257,23 @@
       "latitude": 33.7867,
       "longitude": -84.39025,
       "distanceMi": 0.29,
+      "designHourVolumeVph": 1809,
+      "loadWeight": 0.02739710794760984,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 270.00003614632965,
+          "exitBearingDeg": 270.00003614632965,
+          "share": 0.05479421589521968
+        }
+      ],
+      "pathTurnsIn": [],
+      "movementsExact": [
+        {
+          "approach": "WB",
+          "movement": "T",
+          "exact": 2.1658211068224205
+        }
+      ],
       "currentVc": 1.04,
       "currentDelaySec": 61.3,
       "currentLos": "E",
@@ -2011,6 +2383,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.433,
         "gOverCew": 0.4,
+        "gOverCnsExact": 0.4329731941156265,
+        "gOverCewExact": 0.4003601392177068,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -2026,6 +2400,23 @@
       "latitude": 33.78992,
       "longitude": -84.38778,
       "distanceMi": 0.3,
+      "designHourVolumeVph": 1855,
+      "loadWeight": 0.17450659278642056,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 0,
+          "exitBearingDeg": 0,
+          "share": 0.3490131855728411
+        }
+      ],
+      "pathTurnsIn": [],
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "T",
+          "exact": 13.795253961083422
+        }
+      ],
       "currentVc": 1.11,
       "currentDelaySec": 85.3,
       "currentLos": "F",
@@ -2135,6 +2526,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.416,
         "gOverCew": 0.417,
+        "gOverCnsExact": 0.41616488230060344,
+        "gOverCewExact": 0.4171684510327299,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -2150,6 +2543,33 @@
       "latitude": 33.78172,
       "longitude": -84.38402,
       "distanceMi": 0.31,
+      "designHourVolumeVph": 1488,
+      "loadWeight": 0.173876346193139,
+      "pathTurns": [],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 7.286927651665621,
+          "exitBearingDeg": 3.6582513142470816,
+          "share": 0.2376280820323146
+        },
+        {
+          "enterBearingDeg": 276.86050750185774,
+          "exitBearingDeg": 3.6582513142470816,
+          "share": 0.11012461035396337
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "T",
+          "exact": 14.690982990459982
+        },
+        {
+          "approach": "WB",
+          "movement": "R",
+          "exact": 6.808281090789187
+        }
+      ],
       "currentVc": 0.75,
       "currentDelaySec": 17.9,
       "currentLos": "B",
@@ -2269,6 +2689,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.496,
         "gOverCew": 0.338,
+        "gOverCnsExact": 0.495624873849745,
+        "gOverCewExact": 0.3377084594835883,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -2284,6 +2706,23 @@
       "latitude": 33.79069,
       "longitude": -84.38518,
       "distanceMi": 0.32,
+      "designHourVolumeVph": 1106,
+      "loadWeight": 0.049036494946270236,
+      "pathTurns": [],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 151.0113569529858,
+          "exitBearingDeg": 149.30555327088098,
+          "share": 0.09807298989254047
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "SB",
+          "movement": "T",
+          "exact": 6.063208582136078
+        }
+      ],
       "currentVc": 0.6,
       "currentDelaySec": 15.2,
       "currentLos": "B",
@@ -2393,6 +2832,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.461,
         "gOverCew": 0.372,
+        "gOverCnsExact": 0.46149468622183515,
+        "gOverCewExact": 0.3718386471114981,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -2408,6 +2849,44 @@
       "latitude": 33.78176,
       "longitude": -84.38249,
       "distanceMi": 0.34,
+      "designHourVolumeVph": 1482,
+      "loadWeight": 0.22893865137012068,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 180,
+          "exitBearingDeg": 89.99998053997552,
+          "share": 0.11012461035396337
+        },
+        {
+          "enterBearingDeg": 180,
+          "exitBearingDeg": 184.75128926493218,
+          "share": 0.2376280820323146
+        }
+      ],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 270.0000194600245,
+          "exitBearingDeg": 261.44729562150764,
+          "share": 0.11012461035396337
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "SB",
+          "movement": "T",
+          "exact": 9.392595682425235
+        },
+        {
+          "approach": "WB",
+          "movement": "T",
+          "exact": 6.808281090789187
+        },
+        {
+          "approach": "SB",
+          "movement": "L",
+          "exact": 4.352835451488168
+        }
+      ],
       "currentVc": 0.83,
       "currentDelaySec": 24.8,
       "currentLos": "C",
@@ -2532,6 +3011,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.444,
         "gOverCew": 0.39,
+        "gOverCnsExact": 0.44380227508978615,
+        "gOverCewExact": 0.3895310582435473,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -2547,6 +3028,23 @@
       "latitude": 33.78152,
       "longitude": -84.38782,
       "distanceMi": 0.35,
+      "designHourVolumeVph": 1294,
+      "loadWeight": 0.05614170583692765,
+      "pathTurns": [],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 78.6612783620701,
+          "exitBearingDeg": 352.7130664566545,
+          "share": 0.1122834116738553
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "EB",
+          "movement": "L",
+          "exact": 6.94174559211863
+        }
+      ],
       "currentVc": 0.75,
       "currentDelaySec": 21.2,
       "currentLos": "C",
@@ -2656,6 +3154,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.429,
         "gOverCew": 0.404,
+        "gOverCnsExact": 0.4291547037996148,
+        "gOverCewExact": 0.4041786295337185,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -2671,6 +3171,23 @@
       "latitude": 33.78993,
       "longitude": -84.38931,
       "distanceMi": 0.35,
+      "designHourVolumeVph": 1561,
+      "loadWeight": 0.1254700978401503,
+      "pathTurns": [],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 180,
+          "exitBearingDeg": 180,
+          "share": 0.2509401956803006
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "SB",
+          "movement": "T",
+          "exact": 15.513983510840555
+        }
+      ],
       "currentVc": 0.79,
       "currentDelaySec": 19.4,
       "currentLos": "B",
@@ -2780,6 +3297,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.496,
         "gOverCew": 0.337,
+        "gOverCnsExact": 0.4963676471163275,
+        "gOverCewExact": 0.33696568621700584,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -2795,6 +3314,23 @@
       "latitude": 33.78078,
       "longitude": -84.3841,
       "distanceMi": 0.37,
+      "designHourVolumeVph": 1321,
+      "loadWeight": 0.1188140410161573,
+      "pathTurns": [],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 5.9315424992939825,
+          "exitBearingDeg": 5.931536998966294,
+          "share": 0.2376280820323146
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "T",
+          "exact": 14.690982990459982
+        }
+      ],
       "currentVc": 0.7,
       "currentDelaySec": 17.4,
       "currentLos": "B",
@@ -2904,6 +3440,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.47,
         "gOverCew": 0.363,
+        "gOverCnsExact": 0.4701112643434409,
+        "gOverCewExact": 0.36322206898989234,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -2919,6 +3457,23 @@
       "latitude": 33.78657,
       "longitude": -84.39187,
       "distanceMi": 0.38,
+      "designHourVolumeVph": 1679,
+      "loadWeight": 0.02739710794760984,
+      "pathTurns": [],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 89.99995551162851,
+          "exitBearingDeg": 89.99997775581426,
+          "share": 0.05479421589521968
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "EB",
+          "movement": "T",
+          "exact": 3.387566346568401
+        }
+      ],
       "currentVc": 0.96,
       "currentDelaySec": 40.5,
       "currentLos": "D",
@@ -3028,6 +3583,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.436,
         "gOverCew": 0.397,
+        "gOverCnsExact": 0.4364167617547393,
+        "gOverCewExact": 0.39691657157859406,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -3043,6 +3600,34 @@
       "latitude": 33.78151,
       "longitude": -84.38917,
       "distanceMi": 0.39,
+      "designHourVolumeVph": 1453,
+      "loadWeight": 0.1122834116738553,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 168.26149548330864,
+          "exitBearingDeg": 270.0000305813322,
+          "share": 0.1122834116738553
+        }
+      ],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 89.99996941866777,
+          "exitBearingDeg": 89.99996663751983,
+          "share": 0.1122834116738553
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "EB",
+          "movement": "T",
+          "exact": 6.94174559211863
+        },
+        {
+          "approach": "SB",
+          "movement": "R",
+          "exact": 4.438165214633222
+        }
+      ],
       "currentVc": 0.78,
       "currentDelaySec": 20.6,
       "currentLos": "C",
@@ -3162,6 +3747,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.466,
         "gOverCew": 0.368,
+        "gOverCnsExact": 0.46550704498484113,
+        "gOverCewExact": 0.36782628834849224,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -3177,6 +3764,40 @@
       "latitude": 33.78428,
       "longitude": -84.3789,
       "distanceMi": 0.39,
+      "designHourVolumeVph": 1292,
+      "loadWeight": 0.14338719610493056,
+      "movementsExact": [
+        {
+          "approach": "WB",
+          "movement": "T",
+          "exact": 4.866504971828587
+        },
+        {
+          "approach": "NB",
+          "movement": "L",
+          "exact": 3.925702665454092
+        },
+        {
+          "approach": "EB",
+          "movement": "T",
+          "exact": 3.1113720311690973
+        },
+        {
+          "approach": "EB",
+          "movement": "R",
+          "exact": 2.5098754746345837
+        },
+        {
+          "approach": "SB",
+          "movement": "R",
+          "exact": 0.07248058058891842
+        },
+        {
+          "approach": "EB",
+          "movement": "L",
+          "exact": 0.04634004332734128
+        }
+      ],
       "currentVc": 0.77,
       "currentDelaySec": 22.2,
       "currentLos": "C",
@@ -3311,6 +3932,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.421,
         "gOverCew": 0.412,
+        "gOverCnsExact": 0.42093834425358023,
+        "gOverCewExact": 0.41239498907975314,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -3326,6 +3949,40 @@
       "latitude": 33.78073,
       "longitude": -84.38751,
       "distanceMi": 0.39,
+      "designHourVolumeVph": 963,
+      "loadWeight": 0.14076168852012422,
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "T",
+          "exact": 6.68096705634226
+        },
+        {
+          "approach": "SB",
+          "movement": "T",
+          "exact": 4.271437954054887
+        },
+        {
+          "approach": "EB",
+          "movement": "L",
+          "exact": 1.9004468430825736
+        },
+        {
+          "approach": "SB",
+          "movement": "R",
+          "exact": 1.2150397849216454
+        },
+        {
+          "approach": "WB",
+          "movement": "R",
+          "exact": 0.12095643522423828
+        },
+        {
+          "approach": "SB",
+          "movement": "L",
+          "exact": 0.07733280284828349
+        }
+      ],
       "currentVc": 0.54,
       "currentDelaySec": 14.8,
       "currentLos": "B",
@@ -3460,6 +4117,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.445,
         "gOverCew": 0.389,
+        "gOverCnsExact": 0.4447636590987137,
+        "gOverCewExact": 0.38856967423461963,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -3475,6 +4134,23 @@
       "latitude": 33.78645,
       "longitude": -84.37824,
       "distanceMi": 0.41,
+      "designHourVolumeVph": 968,
+      "loadWeight": 0.06807824723590289,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 76.46957050354649,
+          "exitBearingDeg": 73.25868172483217,
+          "share": 0.13615649447180578
+        }
+      ],
+      "pathTurnsIn": [],
+      "movementsExact": [
+        {
+          "approach": "EB",
+          "movement": "T",
+          "exact": 5.381783546677484
+        }
+      ],
       "currentVc": 0.54,
       "currentDelaySec": 14.4,
       "currentLos": "B",
@@ -3584,6 +4260,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.451,
         "gOverCew": 0.382,
+        "gOverCnsExact": 0.45133787650943114,
+        "gOverCewExact": 0.3819954568239021,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -3599,6 +4277,34 @@
       "latitude": 33.78179,
       "longitude": -84.38046,
       "distanceMi": 0.41,
+      "designHourVolumeVph": 1471,
+      "loadWeight": 0.11012461035396337,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 89.99996941856779,
+          "exitBearingDeg": 89.99997219686787,
+          "share": 0.11012461035396337
+        }
+      ],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 270.0000278031321,
+          "exitBearingDeg": 270.0000305814322,
+          "share": 0.11012461035396337
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "WB",
+          "movement": "T",
+          "exact": 6.808281090789187
+        },
+        {
+          "approach": "EB",
+          "movement": "T",
+          "exact": 4.352835451488168
+        }
+      ],
       "currentVc": 0.86,
       "currentDelaySec": 27.9,
       "currentLos": "C",
@@ -3718,6 +4424,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.407,
         "gOverCew": 0.426,
+        "gOverCnsExact": 0.4069129926165274,
+        "gOverCewExact": 0.426420340716806,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -3733,6 +4441,33 @@
       "latitude": 33.79186,
       "longitude": -84.38778,
       "distanceMi": 0.42,
+      "designHourVolumeVph": 1394,
+      "loadWeight": 0.17450659278642056,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 357.62054734610183,
+          "exitBearingDeg": 58.96719783069659,
+          "share": 0.09807298989254047
+        },
+        {
+          "enterBearingDeg": 357.62054734610183,
+          "exitBearingDeg": 251.8319257581103,
+          "share": 0.2509401956803006
+        }
+      ],
+      "pathTurnsIn": [],
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "L",
+          "exact": 9.918776342996422
+        },
+        {
+          "approach": "NB",
+          "movement": "R",
+          "exact": 3.876477618087001
+        }
+      ],
       "currentVc": 0.8,
       "currentDelaySec": 23,
       "currentLos": "C",
@@ -3847,6 +4582,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.436,
         "gOverCew": 0.397,
+        "gOverCnsExact": 0.43608181034346266,
+        "gOverCewExact": 0.39725152298987065,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -3862,6 +4599,30 @@
       "latitude": 33.78057,
       "longitude": -84.389,
       "distanceMi": 0.44,
+      "designHourVolumeVph": 1274,
+      "loadWeight": 0.11236913389250973,
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "T",
+          "exact": 4.889584220093177
+        },
+        {
+          "approach": "SB",
+          "movement": "T",
+          "exact": 3.1261276161251463
+        },
+        {
+          "approach": "EB",
+          "movement": "L",
+          "exact": 2.057461013571966
+        },
+        {
+          "approach": "SB",
+          "movement": "R",
+          "exact": 1.3154258939230605
+        }
+      ],
       "currentVc": 0.67,
       "currentDelaySec": 16,
       "currentLos": "B",
@@ -3996,6 +4757,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.479,
         "gOverCew": 0.355,
+        "gOverCnsExact": 0.4786600579703508,
+        "gOverCewExact": 0.35467327536298243,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -4011,6 +4774,34 @@
       "latitude": 33.78153,
       "longitude": -84.39059,
       "distanceMi": 0.44,
+      "designHourVolumeVph": 1017,
+      "loadWeight": 0.1122834116738553,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 270.0000305813394,
+          "exitBearingDeg": 270.0000305813394,
+          "share": 0.1122834116738553
+        }
+      ],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 89.99996941866061,
+          "exitBearingDeg": 89.99996941866061,
+          "share": 0.1122834116738553
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "EB",
+          "movement": "T",
+          "exact": 6.94174559211863
+        },
+        {
+          "approach": "WB",
+          "movement": "T",
+          "exact": 4.438165214633222
+        }
+      ],
       "currentVc": 0.51,
       "currentDelaySec": 12,
       "currentLos": "B",
@@ -4130,6 +4921,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.502,
         "gOverCew": 0.332,
+        "gOverCnsExact": 0.5016853840490064,
+        "gOverCewExact": 0.3316479492843268,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -4145,6 +4938,34 @@
       "latitude": 33.79251,
       "longitude": -84.38638,
       "distanceMi": 0.45,
+      "designHourVolumeVph": 1069,
+      "loadWeight": 0.09807298989254047,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 60.68428703956022,
+          "exitBearingDeg": 335.2173290293062,
+          "share": 0.09807298989254047
+        }
+      ],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 155.2173012192526,
+          "exitBearingDeg": 149.3060879030195,
+          "share": 0.09807298989254047
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "SB",
+          "movement": "T",
+          "exact": 6.063208582136078
+        },
+        {
+          "approach": "EB",
+          "movement": "L",
+          "exact": 3.876477618087001
+        }
+      ],
       "currentVc": 0.6,
       "currentDelaySec": 16.1,
       "currentLos": "B",
@@ -4264,6 +5085,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.443,
         "gOverCew": 0.391,
+        "gOverCnsExact": 0.4427184500032019,
+        "gOverCewExact": 0.3906148833301314,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -4279,6 +5102,34 @@
       "latitude": 33.7818,
       "longitude": -84.37941,
       "distanceMi": 0.45,
+      "designHourVolumeVph": 1223,
+      "loadWeight": 0.07341640690264224,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 89.99998053996643,
+          "exitBearingDeg": 89.99998331870347,
+          "share": 0.07341640690264224
+        }
+      ],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 270.00001668129653,
+          "exitBearingDeg": 270.00001946003357,
+          "share": 0.07341640690264224
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "WB",
+          "movement": "T",
+          "exact": 4.538854060526124
+        },
+        {
+          "approach": "EB",
+          "movement": "T",
+          "exact": 2.9018903009921124
+        }
+      ],
       "currentVc": 0.69,
       "currentDelaySec": 18.2,
       "currentLos": "B",
@@ -4398,6 +5249,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.443,
         "gOverCew": 0.39,
+        "gOverCnsExact": 0.4431773810001537,
+        "gOverCewExact": 0.3901559523331795,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -4413,6 +5266,33 @@
       "latitude": 33.79189,
       "longitude": -84.38908,
       "distanceMi": 0.46,
+      "designHourVolumeVph": 1267,
+      "loadWeight": 0.07643360289388007,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 289.8487728188843,
+          "exitBearingDeg": 288.1681552523928,
+          "share": 0.05479421589521968
+        },
+        {
+          "enterBearingDeg": 289.8487728188843,
+          "exitBearingDeg": 182.97335800963842,
+          "share": 0.09807298989254047
+        }
+      ],
+      "pathTurnsIn": [],
+      "movementsExact": [
+        {
+          "approach": "WB",
+          "movement": "L",
+          "exact": 3.876477618087001
+        },
+        {
+          "approach": "WB",
+          "movement": "T",
+          "exact": 2.1658211068224205
+        }
+      ],
       "currentVc": 0.71,
       "currentDelaySec": 18.9,
       "currentLos": "B",
@@ -4527,6 +5407,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.444,
         "gOverCew": 0.389,
+        "gOverCnsExact": 0.4443758449998708,
+        "gOverCewExact": 0.3889574883334625,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -4542,6 +5424,23 @@
       "latitude": 33.77953,
       "longitude": -84.38421,
       "distanceMi": 0.46,
+      "designHourVolumeVph": 1311,
+      "loadWeight": 0.1188140410161573,
+      "pathTurns": [],
+      "pathTurnsIn": [
+        {
+          "enterBearingDeg": 11.738767891491534,
+          "exitBearingDeg": 0,
+          "share": 0.2376280820323146
+        }
+      ],
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "T",
+          "exact": 14.690982990459982
+        }
+      ],
       "currentVc": 0.71,
       "currentDelaySec": 18.3,
       "currentLos": "B",
@@ -4651,6 +5550,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.459,
         "gOverCew": 0.374,
+        "gOverCnsExact": 0.45912054834174193,
+        "gOverCewExact": 0.3742127849915915,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -4666,6 +5567,40 @@
       "latitude": 33.77955,
       "longitude": -84.38728,
       "distanceMi": 0.47,
+      "designHourVolumeVph": 1303,
+      "loadWeight": 0.09699070262363749,
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "T",
+          "exact": 4.646869443312545
+        },
+        {
+          "approach": "SB",
+          "movement": "T",
+          "exact": 2.970949316216217
+        },
+        {
+          "approach": "EB",
+          "movement": "L",
+          "exact": 1.1599644622864125
+        },
+        {
+          "approach": "SB",
+          "movement": "R",
+          "exact": 0.7416166234290179
+        },
+        {
+          "approach": "WB",
+          "movement": "R",
+          "exact": 0.1894639658068837
+        },
+        {
+          "approach": "SB",
+          "movement": "L",
+          "exact": 0.12113269945030271
+        }
+      ],
       "currentVc": 0.74,
       "currentDelaySec": 19.9,
       "currentLos": "B",
@@ -4800,6 +5735,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.442,
         "gOverCew": 0.391,
+        "gOverCnsExact": 0.4419285491180157,
+        "gOverCewExact": 0.3914047842153176,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -4815,6 +5752,30 @@
       "latitude": 33.78155,
       "longitude": -84.39161,
       "distanceMi": 0.48,
+      "designHourVolumeVph": 4751,
+      "loadWeight": 0.09084214390069696,
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "R",
+          "exact": 2.9756784229968605
+        },
+        {
+          "approach": "EB",
+          "movement": "T",
+          "exact": 2.6404944613197854
+        },
+        {
+          "approach": "WB",
+          "movement": "L",
+          "exact": 1.902482926178321
+        },
+        {
+          "approach": "WB",
+          "movement": "T",
+          "exact": 1.6881849834667482
+        }
+      ],
       "currentVc": 2.64,
       "currentDelaySec": 300,
       "currentLos": "F",
@@ -4949,6 +5910,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.45,
         "gOverCew": 0.45,
+        "gOverCnsExact": 0.45,
+        "gOverCewExact": 0.45,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "default",
@@ -4964,6 +5927,23 @@
       "latitude": 33.77952,
       "longitude": -84.38263,
       "distanceMi": 0.48,
+      "designHourVolumeVph": 1422,
+      "loadWeight": 0.1188140410161573,
+      "pathTurns": [
+        {
+          "enterBearingDeg": 180,
+          "exitBearingDeg": 195.4859874407677,
+          "share": 0.2376280820323146
+        }
+      ],
+      "pathTurnsIn": [],
+      "movementsExact": [
+        {
+          "approach": "SB",
+          "movement": "T",
+          "exact": 9.392595682425235
+        }
+      ],
       "currentVc": 0.77,
       "currentDelaySec": 20.4,
       "currentLos": "C",
@@ -5073,6 +6053,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.461,
         "gOverCew": 0.372,
+        "gOverCnsExact": 0.46102597485263547,
+        "gOverCewExact": 0.3723073584806979,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -5088,6 +6070,30 @@
       "latitude": 33.79166,
       "longitude": -84.39055,
       "distanceMi": 0.49,
+      "designHourVolumeVph": 3890,
+      "loadWeight": 0.08701828627007607,
+      "movementsExact": [
+        {
+          "approach": "SB",
+          "movement": "T",
+          "exact": 3.237815423776887
+        },
+        {
+          "approach": "EB",
+          "movement": "R",
+          "exact": 2.1419534676743357
+        },
+        {
+          "approach": "NB",
+          "movement": "T",
+          "exact": 2.0700787135622716
+        },
+        {
+          "approach": "NB",
+          "movement": "L",
+          "exact": 1.3694456596606408
+        }
+      ],
       "currentVc": 2.16,
       "currentDelaySec": 300,
       "currentLos": "F",
@@ -5222,6 +6228,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.45,
         "gOverCew": 0.45,
+        "gOverCnsExact": 0.45,
+        "gOverCewExact": 0.45,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "default",
@@ -5237,6 +6245,30 @@
       "latitude": 33.77957,
       "longitude": -84.38882,
       "distanceMi": 0.49,
+      "designHourVolumeVph": 1027,
+      "loadWeight": 0.08441820241023566,
+      "movementsExact": [
+        {
+          "approach": "NB",
+          "movement": "T",
+          "exact": 3.900482170023656
+        },
+        {
+          "approach": "SB",
+          "movement": "T",
+          "exact": 2.493750895588895
+        },
+        {
+          "approach": "EB",
+          "movement": "L",
+          "exact": 1.3185406200745675
+        },
+        {
+          "approach": "SB",
+          "movement": "R",
+          "exact": 0.8430013800476744
+        }
+      ],
       "currentVc": 0.55,
       "currentDelaySec": 14,
       "currentLos": "B",
@@ -5371,6 +6403,8 @@
         "criticalPhases": 2,
         "gOverCns": 0.468,
         "gOverCew": 0.366,
+        "gOverCnsExact": 0.4675229230872401,
+        "gOverCewExact": 0.36581041024609323,
         "leftPhasingNs": "permissive",
         "leftPhasingEw": "permissive",
         "leftPhasingSource": "inferred",
@@ -5441,6 +6475,34 @@
           "latitude": 33.78666,
           "longitude": -84.38433,
           "distanceMi": 0.07,
+          "designHourVolumeVph": 1356,
+          "loadWeight": 0.185192989418076,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 0,
+              "exitBearingDeg": 111.85412011149936,
+              "share": 0.13615649447180578
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 262.38533850224974,
+              "exitBearingDeg": 180,
+              "share": 0.23422948436434624
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "R",
+              "exact": 9.32229172757809
+            },
+            {
+              "approach": "WB",
+              "movement": "L",
+              "exact": 5.064347987563478
+            }
+          ],
           "currentVc": 0.7,
           "currentDelaySec": 18.8,
           "currentLos": "B",
@@ -5560,6 +6622,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.437,
             "gOverCew": 0.397,
+            "gOverCnsExact": 0.4366395259352381,
+            "gOverCewExact": 0.3966938073980953,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -5575,6 +6639,44 @@
           "latitude": 33.78658,
           "longitude": -84.38315,
           "distanceMi": 0.13,
+          "designHourVolumeVph": 1306,
+          "loadWeight": 0.18519298941807602,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 77.66010513532666,
+              "exitBearingDeg": 111.85409212741263,
+              "share": 0.13615649447180578
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 291.8541588598971,
+              "exitBearingDeg": 294.8333499604236,
+              "share": 0.13615649447180578
+            },
+            {
+              "enterBearingDeg": 168.26217135348304,
+              "exitBearingDeg": 294.8333499604236,
+              "share": 0.09807298989254047
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 9.32229172757809
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 2.943881598182555
+            },
+            {
+              "approach": "SB",
+              "movement": "R",
+              "exact": 2.1204663893809226
+            }
+          ],
           "currentVc": 0.61,
           "currentDelaySec": 14.5,
           "currentLos": "B",
@@ -5704,6 +6806,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.483,
             "gOverCew": 0.35,
+            "gOverCnsExact": 0.483403138363757,
+            "gOverCewExact": 0.34993019496957634,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -5719,6 +6823,23 @@
           "latitude": 33.7866,
           "longitude": -84.38777,
           "distanceMi": 0.15,
+          "designHourVolumeVph": 1279,
+          "loadWeight": 0.2019037007340304,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 0,
+              "exitBearingDeg": 0,
+              "share": 0.4038074014680608
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 27.647674191700148
+            }
+          ],
           "currentVc": 0.6,
           "currentDelaySec": 14.4,
           "currentLos": "B",
@@ -5828,6 +6949,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.48,
             "gOverCew": 0.353,
+            "gOverCnsExact": 0.48011811642015695,
+            "gOverCewExact": 0.3532152169131764,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -5843,6 +6966,30 @@
           "latitude": 33.78433,
           "longitude": -84.38308,
           "distanceMi": 0.18,
+          "designHourVolumeVph": 1415,
+          "loadWeight": 0.41341768128096995,
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "R",
+              "exact": 18.79191035580262
+            },
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 9.513755453169559
+            },
+            {
+              "approach": "NB",
+              "movement": "L",
+              "exact": 5.9342874807797745
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 3.0043438273167027
+            }
+          ],
           "currentVc": 0.72,
           "currentDelaySec": 19.3,
           "currentLos": "B",
@@ -5977,6 +7124,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.441,
             "gOverCew": 0.392,
+            "gOverCnsExact": 0.44142547039427815,
+            "gOverCewExact": 0.39190786293905505,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -5992,6 +7141,34 @@
           "latitude": 33.7865,
           "longitude": -84.38216,
           "distanceMi": 0.18,
+          "designHourVolumeVph": 1214,
+          "loadWeight": 0.13615649447180578,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 89.99996941489252,
+              "exitBearingDeg": 89.99995829337348,
+              "share": 0.13615649447180578
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 270.0000417066265,
+              "exitBearingDeg": 270.0000305851075,
+              "share": 0.13615649447180578
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 9.32229172757809
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 2.943881598182555
+            }
+          ],
           "currentVc": 0.58,
           "currentDelaySec": 14.5,
           "currentLos": "B",
@@ -6111,6 +7288,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.47,
             "gOverCew": 0.363,
+            "gOverCnsExact": 0.4703518296488528,
+            "gOverCewExact": 0.3629815036844804,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -6126,6 +7305,34 @@
           "latitude": 33.78449,
           "longitude": -84.38782,
           "distanceMi": 0.18,
+          "designHourVolumeVph": 1489,
+          "loadWeight": 0.1122834116738553,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 255.03088398659963,
+              "exitBearingDeg": 257.66045823758,
+              "share": 0.1122834116738553
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 0,
+              "exitBearingDeg": 75.03083394220874,
+              "share": 0.1122834116738553
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 7.687761967227917
+            },
+            {
+              "approach": "NB",
+              "movement": "R",
+              "exact": 2.4277143054403947
+            }
+          ],
           "currentVc": 0.72,
           "currentDelaySec": 18.1,
           "currentLos": "B",
@@ -6245,6 +7452,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.467,
             "gOverCew": 0.367,
+            "gOverCnsExact": 0.4666844130407087,
+            "gOverCewExact": 0.36664892029262464,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -6260,6 +7469,23 @@
           "latitude": 33.78847,
           "longitude": -84.38388,
           "distanceMi": 0.18,
+          "designHourVolumeVph": 934,
+          "loadWeight": 0.049036494946270236,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 159.30488282335511,
+              "exitBearingDeg": 159.3048584902116,
+              "share": 0.09807298989254047
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 2.1204663893809226
+            }
+          ],
           "currentVc": 0.45,
           "currentDelaySec": 12.5,
           "currentLos": "B",
@@ -6369,6 +7595,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.468,
             "gOverCew": 0.366,
+            "gOverCnsExact": 0.4675140197536905,
+            "gOverCewExact": 0.36581931357964276,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -6384,6 +7612,30 @@
           "latitude": 33.7843,
           "longitude": -84.38224,
           "distanceMi": 0.22,
+          "designHourVolumeVph": 1032,
+          "loadWeight": 0.34081917319909305,
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "R",
+              "exact": 13.890654375039297
+            },
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 9.444374712183734
+            },
+            {
+              "approach": "NB",
+              "movement": "L",
+              "exact": 4.386522434222936
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 2.9824341196369684
+            }
+          ],
           "currentVc": 0.54,
           "currentDelaySec": 15.3,
           "currentLos": "B",
@@ -6518,6 +7770,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.432,
             "gOverCew": 0.401,
+            "gOverCnsExact": 0.4321225178495491,
+            "gOverCewExact": 0.4012108154837842,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -6533,6 +7787,34 @@
           "latitude": 33.78321,
           "longitude": -84.38385,
           "distanceMi": 0.22,
+          "designHourVolumeVph": 1495,
+          "loadWeight": 0.34775269238627804,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 106.74067769002613,
+              "exitBearingDeg": 118.67372931513262,
+              "share": 0.34775269238627804
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 15.485346139299452,
+              "exitBearingDeg": 286.7407444163208,
+              "share": 0.34775269238627804
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 23.80974965646538
+            },
+            {
+              "approach": "NB",
+              "movement": "L",
+              "exact": 7.518868312568015
+            }
+          ],
           "currentVc": 0.8,
           "currentDelaySec": 24,
           "currentLos": "C",
@@ -6652,6 +7934,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.42,
             "gOverCew": 0.414,
+            "gOverCnsExact": 0.4195449961822875,
+            "gOverCewExact": 0.41378833715104585,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -6667,6 +7951,23 @@
           "latitude": 33.78857,
           "longitude": -84.38779,
           "distanceMi": 0.22,
+          "designHourVolumeVph": 1620,
+          "loadWeight": 0.17450659278642056,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 0,
+              "exitBearingDeg": 0,
+              "share": 0.3490131855728411
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 23.89605244540946
+            }
+          ],
           "currentVc": 0.85,
           "currentDelaySec": 26.3,
           "currentLos": "C",
@@ -6776,6 +8077,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.431,
             "gOverCew": 0.402,
+            "gOverCnsExact": 0.4310411573189042,
+            "gOverCewExact": 0.4022921760144291,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -6791,6 +8094,33 @@
           "latitude": 33.7866,
           "longitude": -84.38922,
           "distanceMi": 0.23,
+          "designHourVolumeVph": 2531,
+          "loadWeight": 0.15286720578776014,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 180,
+              "exitBearingDeg": 173.22892777130585,
+              "share": 0.2509401956803006
+            },
+            {
+              "enterBearingDeg": 89.99996385371259,
+              "exitBearingDeg": 173.22892777130585,
+              "share": 0.05479421589521968
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 5.425655435485221
+            },
+            {
+              "approach": "EB",
+              "movement": "R",
+              "exact": 1.184722656723375
+            }
+          ],
           "currentVc": 1.18,
           "currentDelaySec": 115.1,
           "currentLos": "F",
@@ -6910,6 +8240,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.481,
             "gOverCew": 0.394,
+            "gOverCnsExact": 0.48093224351776065,
+            "gOverCewExact": 0.39406775648223935,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -6925,6 +8257,23 @@
           "latitude": 33.78326,
           "longitude": -84.38783,
           "distanceMi": 0.24,
+          "designHourVolumeVph": 1262,
+          "loadWeight": 0.05614170583692765,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 7.88667848557094,
+              "exitBearingDeg": 0,
+              "share": 0.1122834116738553
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 2.4277143054403947
+            }
+          ],
           "currentVc": 0.66,
           "currentDelaySec": 18.2,
           "currentLos": "B",
@@ -7034,6 +8383,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.405,
             "gOverCew": 0.428,
+            "gOverCnsExact": 0.4052027341565814,
+            "gOverCewExact": 0.428130599176752,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -7049,6 +8400,23 @@
           "latitude": 33.78444,
           "longitude": -84.38921,
           "distanceMi": 0.25,
+          "designHourVolumeVph": 1480,
+          "loadWeight": 0.05614170583692765,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 270.00002780399245,
+              "exitBearingDeg": 180,
+              "share": 0.1122834116738553
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "L",
+              "exact": 7.687761967227917
+            }
+          ],
           "currentVc": 0.7,
           "currentDelaySec": 17.3,
           "currentLos": "B",
@@ -7158,6 +8526,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.474,
             "gOverCew": 0.36,
+            "gOverCnsExact": 0.473564625850798,
+            "gOverCewExact": 0.35976870748253537,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -7173,6 +8543,23 @@
           "latitude": 33.78303,
           "longitude": -84.38235,
           "distanceMi": 0.27,
+          "designHourVolumeVph": 931,
+          "loadWeight": 0.17387634619313902,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 89.99998331846388,
+              "exitBearingDeg": 189.43797406629398,
+              "share": 0.34775269238627804
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "R",
+              "exact": 23.80974965646538
+            }
+          ],
           "currentVc": 0.48,
           "currentDelaySec": 14.2,
           "currentLos": "B",
@@ -7282,6 +8669,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.436,
             "gOverCew": 0.398,
+            "gOverCnsExact": 0.435819633021997,
+            "gOverCewExact": 0.3975137003113363,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -7297,6 +8686,23 @@
           "latitude": 33.7867,
           "longitude": -84.39025,
           "distanceMi": 0.29,
+          "designHourVolumeVph": 1809,
+          "loadWeight": 0.02739710794760984,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 270.00003614632965,
+              "exitBearingDeg": 270.00003614632965,
+              "share": 0.05479421589521968
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 3.751621746290688
+            }
+          ],
           "currentVc": 0.94,
           "currentDelaySec": 36.8,
           "currentLos": "D",
@@ -7406,6 +8812,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.433,
             "gOverCew": 0.4,
+            "gOverCnsExact": 0.4329731941156265,
+            "gOverCewExact": 0.40036013921770675,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -7421,6 +8829,23 @@
           "latitude": 33.78992,
           "longitude": -84.38778,
           "distanceMi": 0.3,
+          "designHourVolumeVph": 1855,
+          "loadWeight": 0.17450659278642056,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 0,
+              "exitBearingDeg": 0,
+              "share": 0.3490131855728411
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 23.89605244540946
+            }
+          ],
           "currentVc": 1,
           "currentDelaySec": 50.3,
           "currentLos": "D",
@@ -7530,6 +8955,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.416,
             "gOverCew": 0.417,
+            "gOverCnsExact": 0.4161648823006034,
+            "gOverCewExact": 0.4171684510327298,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -7545,6 +8972,33 @@
           "latitude": 33.78172,
           "longitude": -84.38402,
           "distanceMi": 0.31,
+          "designHourVolumeVph": 1488,
+          "loadWeight": 0.173876346193139,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 7.286927651665621,
+              "exitBearingDeg": 3.6582513142470816,
+              "share": 0.2376280820323146
+            },
+            {
+              "enterBearingDeg": 276.86050750185774,
+              "exitBearingDeg": 3.6582513142470816,
+              "share": 0.11012461035396337
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 5.137830116882179
+            },
+            {
+              "approach": "WB",
+              "movement": "R",
+              "exact": 2.3810381956858353
+            }
+          ],
           "currentVc": 0.68,
           "currentDelaySec": 15.6,
           "currentLos": "B",
@@ -7664,6 +9118,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.496,
             "gOverCew": 0.338,
+            "gOverCnsExact": 0.495624873849745,
+            "gOverCewExact": 0.3377084594835883,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -7679,6 +9135,23 @@
           "latitude": 33.79069,
           "longitude": -84.38518,
           "distanceMi": 0.32,
+          "designHourVolumeVph": 1106,
+          "loadWeight": 0.049036494946270236,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 151.0113569529858,
+              "exitBearingDeg": 149.30555327088098,
+              "share": 0.09807298989254047
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 2.1204663893809226
+            }
+          ],
           "currentVc": 0.54,
           "currentDelaySec": 14.1,
           "currentLos": "B",
@@ -7788,6 +9261,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.461,
             "gOverCew": 0.372,
+            "gOverCnsExact": 0.46149468622183515,
+            "gOverCewExact": 0.37183864711149817,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -7803,6 +9278,44 @@
           "latitude": 33.78176,
           "longitude": -84.38249,
           "distanceMi": 0.34,
+          "designHourVolumeVph": 1482,
+          "loadWeight": 0.22893865137012068,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 180,
+              "exitBearingDeg": 89.99998053997552,
+              "share": 0.11012461035396337
+            },
+            {
+              "enterBearingDeg": 180,
+              "exitBearingDeg": 184.75128926493218,
+              "share": 0.2376280820323146
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 270.0000194600245,
+              "exitBearingDeg": 261.44729562150764,
+              "share": 0.11012461035396337
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 16.2697953701269
+            },
+            {
+              "approach": "SB",
+              "movement": "L",
+              "exact": 7.539954286338479
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 2.3810381956858353
+            }
+          ],
           "currentVc": 0.75,
           "currentDelaySec": 20.4,
           "currentLos": "C",
@@ -7927,6 +9440,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.444,
             "gOverCew": 0.39,
+            "gOverCnsExact": 0.44380227508978604,
+            "gOverCewExact": 0.3895310582435472,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -7942,6 +9457,23 @@
           "latitude": 33.78152,
           "longitude": -84.38782,
           "distanceMi": 0.35,
+          "designHourVolumeVph": 1294,
+          "loadWeight": 0.05614170583692765,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 78.6612783620701,
+              "exitBearingDeg": 352.7130664566545,
+              "share": 0.1122834116738553
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "L",
+              "exact": 2.4277143054403947
+            }
+          ],
           "currentVc": 0.68,
           "currentDelaySec": 18.6,
           "currentLos": "B",
@@ -8051,6 +9583,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.429,
             "gOverCew": 0.404,
+            "gOverCnsExact": 0.4291547037996148,
+            "gOverCewExact": 0.4041786295337185,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -8066,6 +9600,23 @@
           "latitude": 33.78993,
           "longitude": -84.38931,
           "distanceMi": 0.35,
+          "designHourVolumeVph": 1561,
+          "loadWeight": 0.1254700978401503,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 180,
+              "exitBearingDeg": 180,
+              "share": 0.2509401956803006
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 5.425655435485221
+            }
+          ],
           "currentVc": 0.71,
           "currentDelaySec": 16.4,
           "currentLos": "B",
@@ -8175,6 +9726,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.496,
             "gOverCew": 0.337,
+            "gOverCnsExact": 0.49636764711632747,
+            "gOverCewExact": 0.33696568621700584,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -8190,6 +9743,23 @@
           "latitude": 33.78078,
           "longitude": -84.3841,
           "distanceMi": 0.37,
+          "designHourVolumeVph": 1321,
+          "loadWeight": 0.1188140410161573,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 5.9315424992939825,
+              "exitBearingDeg": 5.931536998966294,
+              "share": 0.2376280820323146
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 5.137830116882179
+            }
+          ],
           "currentVc": 0.63,
           "currentDelaySec": 15.6,
           "currentLos": "B",
@@ -8299,6 +9869,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.47,
             "gOverCew": 0.363,
+            "gOverCnsExact": 0.4701112643434409,
+            "gOverCewExact": 0.36322206898989234,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -8314,6 +9886,23 @@
           "latitude": 33.78657,
           "longitude": -84.39187,
           "distanceMi": 0.38,
+          "designHourVolumeVph": 1679,
+          "loadWeight": 0.02739710794760984,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 89.99995551162851,
+              "exitBearingDeg": 89.99997775581426,
+              "share": 0.05479421589521968
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 1.184722656723375
+            }
+          ],
           "currentVc": 0.87,
           "currentDelaySec": 27.6,
           "currentLos": "C",
@@ -8423,6 +10012,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.436,
             "gOverCew": 0.397,
+            "gOverCnsExact": 0.4364167617547393,
+            "gOverCewExact": 0.3969165715785941,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -8438,6 +10029,34 @@
           "latitude": 33.78151,
           "longitude": -84.38917,
           "distanceMi": 0.39,
+          "designHourVolumeVph": 1453,
+          "loadWeight": 0.1122834116738553,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 168.26149548330864,
+              "exitBearingDeg": 270.0000305813322,
+              "share": 0.1122834116738553
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 89.99996941866777,
+              "exitBearingDeg": 89.99996663751983,
+              "share": 0.1122834116738553
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "R",
+              "exact": 7.687761967227917
+            },
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 2.4277143054403947
+            }
+          ],
           "currentVc": 0.7,
           "currentDelaySec": 17.6,
           "currentLos": "B",
@@ -8557,6 +10176,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.466,
             "gOverCew": 0.368,
+            "gOverCnsExact": 0.46550704498484113,
+            "gOverCewExact": 0.36782628834849224,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -8572,6 +10193,40 @@
           "latitude": 33.78428,
           "longitude": -84.3789,
           "distanceMi": 0.39,
+          "designHourVolumeVph": 1292,
+          "loadWeight": 0.14338719610493056,
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 5.389499130913991
+            },
+            {
+              "approach": "EB",
+              "movement": "R",
+              "exact": 4.347590565748794
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 1.701947093972839
+            },
+            {
+              "approach": "NB",
+              "movement": "L",
+              "exact": 1.3729233365522504
+            },
+            {
+              "approach": "EB",
+              "movement": "L",
+              "exact": 0.08026993260120655
+            },
+            {
+              "approach": "SB",
+              "movement": "R",
+              "exact": 0.025348399768802064
+            }
+          ],
           "currentVc": 0.69,
           "currentDelaySec": 19.3,
           "currentLos": "B",
@@ -8706,6 +10361,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.421,
             "gOverCew": 0.412,
+            "gOverCnsExact": 0.4209383442535801,
+            "gOverCewExact": 0.4123949890797531,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -8721,6 +10378,40 @@
           "latitude": 33.78073,
           "longitude": -84.38751,
           "distanceMi": 0.39,
+          "designHourVolumeVph": 963,
+          "loadWeight": 0.14076168852012422,
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 7.398958051468295
+            },
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 2.3365130688847247
+            },
+            {
+              "approach": "SB",
+              "movement": "R",
+              "exact": 2.1046842998072943
+            },
+            {
+              "approach": "EB",
+              "movement": "L",
+              "exact": 0.6646371473075666
+            },
+            {
+              "approach": "SB",
+              "movement": "L",
+              "exact": 0.13395539638677026
+            },
+            {
+              "approach": "WB",
+              "movement": "R",
+              "exact": 0.042301704122137976
+            }
+          ],
           "currentVc": 0.49,
           "currentDelaySec": 13.9,
           "currentLos": "B",
@@ -8855,6 +10546,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.445,
             "gOverCew": 0.389,
+            "gOverCnsExact": 0.4447636590987137,
+            "gOverCewExact": 0.3885696742346197,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -8870,6 +10563,23 @@
           "latitude": 33.78645,
           "longitude": -84.37824,
           "distanceMi": 0.41,
+          "designHourVolumeVph": 968,
+          "loadWeight": 0.06807824723590289,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 76.46957050354649,
+              "exitBearingDeg": 73.25868172483217,
+              "share": 0.13615649447180578
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 9.32229172757809
+            }
+          ],
           "currentVc": 0.48,
           "currentDelaySec": 13.6,
           "currentLos": "B",
@@ -8979,6 +10689,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.451,
             "gOverCew": 0.382,
+            "gOverCnsExact": 0.45133787650943114,
+            "gOverCewExact": 0.3819954568239021,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -8994,6 +10706,34 @@
           "latitude": 33.78179,
           "longitude": -84.38046,
           "distanceMi": 0.41,
+          "designHourVolumeVph": 1471,
+          "loadWeight": 0.11012461035396337,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 89.99996941856779,
+              "exitBearingDeg": 89.99997219686787,
+              "share": 0.11012461035396337
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 270.0000278031321,
+              "exitBearingDeg": 270.0000305814322,
+              "share": 0.11012461035396337
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 7.539954286338479
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 2.3810381956858353
+            }
+          ],
           "currentVc": 0.78,
           "currentDelaySec": 22.3,
           "currentLos": "C",
@@ -9113,6 +10853,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.407,
             "gOverCew": 0.426,
+            "gOverCnsExact": 0.4069129926165274,
+            "gOverCewExact": 0.426420340716806,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -9128,6 +10870,33 @@
           "latitude": 33.79186,
           "longitude": -84.38778,
           "distanceMi": 0.42,
+          "designHourVolumeVph": 1394,
+          "loadWeight": 0.17450659278642056,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 357.62054734610183,
+              "exitBearingDeg": 58.96719783069659,
+              "share": 0.09807298989254047
+            },
+            {
+              "enterBearingDeg": 357.62054734610183,
+              "exitBearingDeg": 251.8319257581103,
+              "share": 0.2509401956803006
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "L",
+              "exact": 17.181242212369867
+            },
+            {
+              "approach": "NB",
+              "movement": "R",
+              "exact": 6.714810233039589
+            }
+          ],
           "currentVc": 0.72,
           "currentDelaySec": 19.5,
           "currentLos": "B",
@@ -9242,6 +11011,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.436,
             "gOverCew": 0.397,
+            "gOverCnsExact": 0.4360818103434626,
+            "gOverCewExact": 0.39725152298987065,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -9257,6 +11028,30 @@
           "latitude": 33.78057,
           "longitude": -84.389,
           "distanceMi": 0.44,
+          "designHourVolumeVph": 1274,
+          "loadWeight": 0.11236913389250973,
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 5.415058662689711
+            },
+            {
+              "approach": "SB",
+              "movement": "R",
+              "exact": 2.2785724886188623
+            },
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 1.7100185250599087
+            },
+            {
+              "approach": "EB",
+              "movement": "L",
+              "exact": 0.7195492069322722
+            }
+          ],
           "currentVc": 0.6,
           "currentDelaySec": 14.5,
           "currentLos": "B",
@@ -9391,6 +11186,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.479,
             "gOverCew": 0.355,
+            "gOverCnsExact": 0.4786600579703508,
+            "gOverCewExact": 0.35467327536298243,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -9406,6 +11203,34 @@
           "latitude": 33.78153,
           "longitude": -84.39059,
           "distanceMi": 0.44,
+          "designHourVolumeVph": 1017,
+          "loadWeight": 0.1122834116738553,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 270.0000305813394,
+              "exitBearingDeg": 270.0000305813394,
+              "share": 0.1122834116738553
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 89.99996941866061,
+              "exitBearingDeg": 89.99996941866061,
+              "share": 0.1122834116738553
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 7.687761967227917
+            },
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 2.4277143054403947
+            }
+          ],
           "currentVc": 0.46,
           "currentDelaySec": 11.3,
           "currentLos": "B",
@@ -9525,6 +11350,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.502,
             "gOverCew": 0.332,
+            "gOverCnsExact": 0.5016853840490065,
+            "gOverCewExact": 0.3316479492843269,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -9540,6 +11367,34 @@
           "latitude": 33.79251,
           "longitude": -84.38638,
           "distanceMi": 0.45,
+          "designHourVolumeVph": 1069,
+          "loadWeight": 0.09807298989254047,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 60.68428703956022,
+              "exitBearingDeg": 335.2173290293062,
+              "share": 0.09807298989254047
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 155.2173012192526,
+              "exitBearingDeg": 149.3060879030195,
+              "share": 0.09807298989254047
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "L",
+              "exact": 6.714810233039589
+            },
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 2.1204663893809226
+            }
+          ],
           "currentVc": 0.54,
           "currentDelaySec": 14.9,
           "currentLos": "B",
@@ -9659,6 +11514,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.443,
             "gOverCew": 0.391,
+            "gOverCnsExact": 0.4427184500032019,
+            "gOverCewExact": 0.3906148833301314,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -9674,6 +11531,34 @@
           "latitude": 33.7818,
           "longitude": -84.37941,
           "distanceMi": 0.45,
+          "designHourVolumeVph": 1223,
+          "loadWeight": 0.07341640690264224,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 89.99998053996643,
+              "exitBearingDeg": 89.99998331870347,
+              "share": 0.07341640690264224
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 270.00001668129653,
+              "exitBearingDeg": 270.00001946003357,
+              "share": 0.07341640690264224
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 5.026636190892319
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 1.5873587971238898
+            }
+          ],
           "currentVc": 0.62,
           "currentDelaySec": 16.5,
           "currentLos": "B",
@@ -9793,6 +11678,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.443,
             "gOverCew": 0.39,
+            "gOverCnsExact": 0.4431773810001538,
+            "gOverCewExact": 0.39015595233317957,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -9808,6 +11695,33 @@
           "latitude": 33.79189,
           "longitude": -84.38908,
           "distanceMi": 0.46,
+          "designHourVolumeVph": 1267,
+          "loadWeight": 0.07643360289388007,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 289.8487728188843,
+              "exitBearingDeg": 288.1681552523928,
+              "share": 0.05479421589521968
+            },
+            {
+              "enterBearingDeg": 289.8487728188843,
+              "exitBearingDeg": 182.97335800963842,
+              "share": 0.09807298989254047
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "L",
+              "exact": 6.714810233039589
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 3.751621746290688
+            }
+          ],
           "currentVc": 0.64,
           "currentDelaySec": 16.9,
           "currentLos": "B",
@@ -9922,6 +11836,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.444,
             "gOverCew": 0.389,
+            "gOverCnsExact": 0.4443758449998708,
+            "gOverCewExact": 0.38895748833346244,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -9937,6 +11853,23 @@
           "latitude": 33.77953,
           "longitude": -84.38421,
           "distanceMi": 0.46,
+          "designHourVolumeVph": 1311,
+          "loadWeight": 0.1188140410161573,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 11.738767891491534,
+              "exitBearingDeg": 0,
+              "share": 0.2376280820323146
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 5.137830116882179
+            }
+          ],
           "currentVc": 0.64,
           "currentDelaySec": 16.3,
           "currentLos": "B",
@@ -10046,6 +11979,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.459,
             "gOverCew": 0.374,
+            "gOverCnsExact": 0.45912054834174193,
+            "gOverCewExact": 0.3742127849915915,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -10061,6 +11996,40 @@
           "latitude": 33.77955,
           "longitude": -84.38728,
           "distanceMi": 0.47,
+          "designHourVolumeVph": 1303,
+          "loadWeight": 0.09699070262363749,
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 5.146259784214985
+            },
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 1.6251346686994688
+            },
+            {
+              "approach": "SB",
+              "movement": "R",
+              "exact": 1.284623666794424
+            },
+            {
+              "approach": "EB",
+              "movement": "L",
+              "exact": 0.40567063161929173
+            },
+            {
+              "approach": "SB",
+              "movement": "L",
+              "exact": 0.20982530275152148
+            },
+            {
+              "approach": "WB",
+              "movement": "R",
+              "exact": 0.06626062192153309
+            }
+          ],
           "currentVc": 0.66,
           "currentDelaySec": 17.6,
           "currentLos": "B",
@@ -10195,6 +12164,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.442,
             "gOverCew": 0.391,
+            "gOverCnsExact": 0.4419285491180157,
+            "gOverCewExact": 0.3914047842153176,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -10210,6 +12181,30 @@
           "latitude": 33.78155,
           "longitude": -84.39161,
           "distanceMi": 0.48,
+          "designHourVolumeVph": 4751,
+          "loadWeight": 0.09084214390069696,
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "L",
+              "exact": 3.295469000331678
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 2.9242634471446802
+            },
+            {
+              "approach": "NB",
+              "movement": "R",
+              "exact": 1.040674421157372
+            },
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 0.9234516148877938
+            }
+          ],
           "currentVc": 2.38,
           "currentDelaySec": 300,
           "currentLos": "F",
@@ -10344,6 +12339,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.45,
             "gOverCew": 0.45,
+            "gOverCnsExact": 0.45,
+            "gOverCewExact": 0.45,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "default",
@@ -10359,6 +12356,23 @@
           "latitude": 33.77952,
           "longitude": -84.38263,
           "distanceMi": 0.48,
+          "designHourVolumeVph": 1422,
+          "loadWeight": 0.1188140410161573,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 180,
+              "exitBearingDeg": 195.4859874407677,
+              "share": 0.2376280820323146
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 16.2697953701269
+            }
+          ],
           "currentVc": 0.69,
           "currentDelaySec": 17.6,
           "currentLos": "B",
@@ -10468,6 +12482,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.461,
             "gOverCew": 0.372,
+            "gOverCnsExact": 0.46102597485263547,
+            "gOverCewExact": 0.37230735848069785,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -10483,6 +12499,30 @@
           "latitude": 33.79166,
           "longitude": -84.39055,
           "distanceMi": 0.49,
+          "designHourVolumeVph": 3890,
+          "loadWeight": 0.08701828627007607,
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 3.5857773727802305
+            },
+            {
+              "approach": "NB",
+              "movement": "L",
+              "exact": 2.3721451882440725
+            },
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 1.1323507492990201
+            },
+            {
+              "approach": "EB",
+              "movement": "R",
+              "exact": 0.7490984804981282
+            }
+          ],
           "currentVc": 1.95,
           "currentDelaySec": 300,
           "currentLos": "F",
@@ -10617,6 +12657,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.45,
             "gOverCew": 0.45,
+            "gOverCnsExact": 0.45,
+            "gOverCewExact": 0.45,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "default",
@@ -10632,6 +12674,30 @@
           "latitude": 33.77957,
           "longitude": -84.38882,
           "distanceMi": 0.49,
+          "designHourVolumeVph": 1027,
+          "loadWeight": 0.08441820241023566,
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 4.319659670991588
+            },
+            {
+              "approach": "SB",
+              "movement": "R",
+              "exact": 1.4602417067492475
+            },
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 1.3641030539973436
+            },
+            {
+              "approach": "EB",
+              "movement": "L",
+              "exact": 0.46112896002607817
+            }
+          ],
           "currentVc": 0.49,
           "currentDelaySec": 13.1,
           "currentLos": "B",
@@ -10756,6 +12822,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.468,
             "gOverCew": 0.366,
+            "gOverCnsExact": 0.4675229230872402,
+            "gOverCewExact": 0.36581041024609323,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -10767,7 +12835,10 @@
       ],
       "intersectionsWithLosDrop": 3,
       "intersectionsAtLosEf": 4,
-      "worstDelayDeltaSec": 4
+      "worstDelayDeltaSec": 4,
+      "periodVolumeFactor": 0.9,
+      "inFraction": 0.24,
+      "externalTripsExact": 90.08878624075203
     },
     {
       "period": "pm_peak",
@@ -10790,6 +12861,34 @@
           "latitude": 33.78666,
           "longitude": -84.38433,
           "distanceMi": 0.07,
+          "designHourVolumeVph": 1356,
+          "loadWeight": 0.185192989418076,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 0,
+              "exitBearingDeg": 111.85412011149936,
+              "share": 0.13615649447180578
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 262.38533850224974,
+              "exitBearingDeg": 180,
+              "share": 0.23422948436434624
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "L",
+              "exact": 14.480870026939321
+            },
+            {
+              "approach": "NB",
+              "movement": "R",
+              "exact": 5.381783546677484
+            }
+          ],
           "currentVc": 0.78,
           "currentDelaySec": 21.8,
           "currentLos": "C",
@@ -10909,6 +13008,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.437,
             "gOverCew": 0.397,
+            "gOverCnsExact": 0.436639525935238,
+            "gOverCewExact": 0.3966938073980953,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -10924,6 +13025,44 @@
           "latitude": 33.78658,
           "longitude": -84.38315,
           "distanceMi": 0.13,
+          "designHourVolumeVph": 1306,
+          "loadWeight": 0.18519298941807602,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 77.66010513532666,
+              "exitBearingDeg": 111.85409212741263,
+              "share": 0.13615649447180578
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 291.8541588598971,
+              "exitBearingDeg": 294.8333499604236,
+              "share": 0.13615649447180578
+            },
+            {
+              "enterBearingDeg": 168.26217135348304,
+              "exitBearingDeg": 294.8333499604236,
+              "share": 0.09807298989254047
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 8.417661444803244
+            },
+            {
+              "approach": "SB",
+              "movement": "R",
+              "exact": 6.063208582136078
+            },
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 5.381783546677484
+            }
+          ],
           "currentVc": 0.68,
           "currentDelaySec": 16.1,
           "currentLos": "B",
@@ -11053,6 +13192,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.483,
             "gOverCew": 0.35,
+            "gOverCnsExact": 0.483403138363757,
+            "gOverCewExact": 0.3499301949695764,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -11068,6 +13209,23 @@
           "latitude": 33.7866,
           "longitude": -84.38777,
           "distanceMi": 0.15,
+          "designHourVolumeVph": 1279,
+          "loadWeight": 0.2019037007340304,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 0,
+              "exitBearingDeg": 0,
+              "share": 0.4038074014680608
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 15.961075067905844
+            }
+          ],
           "currentVc": 0.67,
           "currentDelaySec": 16,
           "currentLos": "B",
@@ -11177,6 +13335,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.48,
             "gOverCew": 0.353,
+            "gOverCnsExact": 0.48011811642015695,
+            "gOverCewExact": 0.3532152169131764,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -11192,6 +13352,30 @@
           "latitude": 33.78433,
           "longitude": -84.38308,
           "distanceMi": 0.18,
+          "designHourVolumeVph": 1415,
+          "loadWeight": 0.41341768128096995,
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "L",
+              "exact": 16.96835326535467
+            },
+            {
+              "approach": "EB",
+              "movement": "R",
+              "exact": 10.848619300800527
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 8.590545631233697
+            },
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 5.492316059313348
+            }
+          ],
           "currentVc": 0.8,
           "currentDelaySec": 22.8,
           "currentLos": "C",
@@ -11326,6 +13510,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.441,
             "gOverCew": 0.392,
+            "gOverCnsExact": 0.44142547039427826,
+            "gOverCewExact": 0.3919078629390551,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -11341,6 +13527,34 @@
           "latitude": 33.7865,
           "longitude": -84.38216,
           "distanceMi": 0.18,
+          "designHourVolumeVph": 1214,
+          "loadWeight": 0.13615649447180578,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 89.99996941489252,
+              "exitBearingDeg": 89.99995829337348,
+              "share": 0.13615649447180578
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 270.0000417066265,
+              "exitBearingDeg": 270.0000305851075,
+              "share": 0.13615649447180578
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 8.417661444803244
+            },
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 5.381783546677484
+            }
+          ],
           "currentVc": 0.65,
           "currentDelaySec": 15.9,
           "currentLos": "B",
@@ -11460,6 +13674,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.47,
             "gOverCew": 0.363,
+            "gOverCnsExact": 0.4703518296488528,
+            "gOverCewExact": 0.3629815036844804,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -11475,6 +13691,34 @@
           "latitude": 33.78449,
           "longitude": -84.38782,
           "distanceMi": 0.18,
+          "designHourVolumeVph": 1489,
+          "loadWeight": 0.1122834116738553,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 255.03088398659963,
+              "exitBearingDeg": 257.66045823758,
+              "share": 0.1122834116738553
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 0,
+              "exitBearingDeg": 75.03083394220874,
+              "share": 0.1122834116738553
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "R",
+              "exact": 6.94174559211863
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 4.438165214633222
+            }
+          ],
           "currentVc": 0.8,
           "currentDelaySec": 21.4,
           "currentLos": "C",
@@ -11594,6 +13838,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.467,
             "gOverCew": 0.367,
+            "gOverCnsExact": 0.4666844130407087,
+            "gOverCewExact": 0.3666489202926247,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -11609,6 +13855,23 @@
           "latitude": 33.78847,
           "longitude": -84.38388,
           "distanceMi": 0.18,
+          "designHourVolumeVph": 934,
+          "loadWeight": 0.049036494946270236,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 159.30488282335511,
+              "exitBearingDeg": 159.3048584902116,
+              "share": 0.09807298989254047
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 6.063208582136078
+            }
+          ],
           "currentVc": 0.5,
           "currentDelaySec": 13.2,
           "currentLos": "B",
@@ -11718,6 +13981,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.468,
             "gOverCew": 0.366,
+            "gOverCnsExact": 0.4675140197536906,
+            "gOverCewExact": 0.36581931357964287,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -11733,6 +13998,30 @@
           "latitude": 33.7843,
           "longitude": -84.38224,
           "distanceMi": 0.22,
+          "designHourVolumeVph": 1032,
+          "loadWeight": 0.34081917319909305,
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "L",
+              "exact": 12.542712585356211
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 8.527897560836958
+            },
+            {
+              "approach": "EB",
+              "movement": "R",
+              "exact": 8.019111325063808
+            },
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 5.452262374961334
+            }
+          ],
           "currentVc": 0.6,
           "currentDelaySec": 16.4,
           "currentLos": "B",
@@ -11867,6 +14156,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.432,
             "gOverCew": 0.401,
+            "gOverCnsExact": 0.4321225178495491,
+            "gOverCewExact": 0.40121081548378423,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -11882,6 +14173,34 @@
           "latitude": 33.78321,
           "longitude": -84.38385,
           "distanceMi": 0.22,
+          "designHourVolumeVph": 1495,
+          "loadWeight": 0.34775269238627804,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 106.74067769002613,
+              "exitBearingDeg": 118.67372931513262,
+              "share": 0.34775269238627804
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 15.485346139299452,
+              "exitBearingDeg": 286.7407444163208,
+              "share": 0.34775269238627804
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "L",
+              "exact": 21.499264081249173
+            },
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 13.745431133913407
+            }
+          ],
           "currentVc": 0.89,
           "currentDelaySec": 31.1,
           "currentLos": "C",
@@ -12001,6 +14320,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.42,
             "gOverCew": 0.414,
+            "gOverCnsExact": 0.4195449961822875,
+            "gOverCewExact": 0.41378833715104585,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -12016,6 +14337,23 @@
           "latitude": 33.78857,
           "longitude": -84.38779,
           "distanceMi": 0.22,
+          "designHourVolumeVph": 1620,
+          "loadWeight": 0.17450659278642056,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 0,
+              "exitBearingDeg": 0,
+              "share": 0.3490131855728411
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 13.795253961083422
+            }
+          ],
           "currentVc": 0.94,
           "currentDelaySec": 36.9,
           "currentLos": "D",
@@ -12125,6 +14463,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.431,
             "gOverCew": 0.402,
+            "gOverCnsExact": 0.4310411573189041,
+            "gOverCewExact": 0.4022921760144291,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -12140,6 +14480,33 @@
           "latitude": 33.7866,
           "longitude": -84.38922,
           "distanceMi": 0.23,
+          "designHourVolumeVph": 2531,
+          "loadWeight": 0.15286720578776014,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 180,
+              "exitBearingDeg": 173.22892777130585,
+              "share": 0.2509401956803006
+            },
+            {
+              "enterBearingDeg": 89.99996385371259,
+              "exitBearingDeg": 173.22892777130585,
+              "share": 0.05479421589521968
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 15.513983510840555
+            },
+            {
+              "approach": "EB",
+              "movement": "R",
+              "exact": 3.387566346568401
+            }
+          ],
           "currentVc": 1.26,
           "currentDelaySec": 154.7,
           "currentLos": "F",
@@ -12259,6 +14626,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.502,
             "gOverCew": 0.411,
+            "gOverCnsExact": 0.5018423410620111,
+            "gOverCewExact": 0.4112011371988584,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -12274,6 +14643,23 @@
           "latitude": 33.78326,
           "longitude": -84.38783,
           "distanceMi": 0.24,
+          "designHourVolumeVph": 1262,
+          "loadWeight": 0.05614170583692765,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 7.88667848557094,
+              "exitBearingDeg": 0,
+              "share": 0.1122834116738553
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 6.94174559211863
+            }
+          ],
           "currentVc": 0.74,
           "currentDelaySec": 20.5,
           "currentLos": "C",
@@ -12383,6 +14769,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.405,
             "gOverCew": 0.428,
+            "gOverCnsExact": 0.4052027341565814,
+            "gOverCewExact": 0.428130599176752,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -12398,6 +14786,23 @@
           "latitude": 33.78444,
           "longitude": -84.38921,
           "distanceMi": 0.25,
+          "designHourVolumeVph": 1480,
+          "loadWeight": 0.05614170583692765,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 270.00002780399245,
+              "exitBearingDeg": 180,
+              "share": 0.1122834116738553
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "L",
+              "exact": 4.438165214633222
+            }
+          ],
           "currentVc": 0.78,
           "currentDelaySec": 20.2,
           "currentLos": "C",
@@ -12507,6 +14912,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.474,
             "gOverCew": 0.36,
+            "gOverCnsExact": 0.473564625850798,
+            "gOverCewExact": 0.35976870748253537,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -12522,6 +14929,23 @@
           "latitude": 33.78303,
           "longitude": -84.38235,
           "distanceMi": 0.27,
+          "designHourVolumeVph": 931,
+          "loadWeight": 0.17387634619313902,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 89.99998331846388,
+              "exitBearingDeg": 189.43797406629398,
+              "share": 0.34775269238627804
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "R",
+              "exact": 13.745431133913407
+            }
+          ],
           "currentVc": 0.53,
           "currentDelaySec": 15,
           "currentLos": "B",
@@ -12631,6 +15055,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.436,
             "gOverCew": 0.398,
+            "gOverCnsExact": 0.43581963302199694,
+            "gOverCewExact": 0.3975137003113363,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -12646,6 +15072,23 @@
           "latitude": 33.7867,
           "longitude": -84.39025,
           "distanceMi": 0.29,
+          "designHourVolumeVph": 1809,
+          "loadWeight": 0.02739710794760984,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 270.00003614632965,
+              "exitBearingDeg": 270.00003614632965,
+              "share": 0.05479421589521968
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 2.1658211068224205
+            }
+          ],
           "currentVc": 1.04,
           "currentDelaySec": 61.3,
           "currentLos": "E",
@@ -12755,6 +15198,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.433,
             "gOverCew": 0.4,
+            "gOverCnsExact": 0.4329731941156265,
+            "gOverCewExact": 0.4003601392177068,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -12770,6 +15215,23 @@
           "latitude": 33.78992,
           "longitude": -84.38778,
           "distanceMi": 0.3,
+          "designHourVolumeVph": 1855,
+          "loadWeight": 0.17450659278642056,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 0,
+              "exitBearingDeg": 0,
+              "share": 0.3490131855728411
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 13.795253961083422
+            }
+          ],
           "currentVc": 1.11,
           "currentDelaySec": 85.3,
           "currentLos": "F",
@@ -12879,6 +15341,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.416,
             "gOverCew": 0.417,
+            "gOverCnsExact": 0.41616488230060344,
+            "gOverCewExact": 0.4171684510327299,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -12894,6 +15358,33 @@
           "latitude": 33.78172,
           "longitude": -84.38402,
           "distanceMi": 0.31,
+          "designHourVolumeVph": 1488,
+          "loadWeight": 0.173876346193139,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 7.286927651665621,
+              "exitBearingDeg": 3.6582513142470816,
+              "share": 0.2376280820323146
+            },
+            {
+              "enterBearingDeg": 276.86050750185774,
+              "exitBearingDeg": 3.6582513142470816,
+              "share": 0.11012461035396337
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 14.690982990459982
+            },
+            {
+              "approach": "WB",
+              "movement": "R",
+              "exact": 6.808281090789187
+            }
+          ],
           "currentVc": 0.75,
           "currentDelaySec": 17.9,
           "currentLos": "B",
@@ -13013,6 +15504,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.496,
             "gOverCew": 0.338,
+            "gOverCnsExact": 0.495624873849745,
+            "gOverCewExact": 0.3377084594835883,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -13028,6 +15521,23 @@
           "latitude": 33.79069,
           "longitude": -84.38518,
           "distanceMi": 0.32,
+          "designHourVolumeVph": 1106,
+          "loadWeight": 0.049036494946270236,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 151.0113569529858,
+              "exitBearingDeg": 149.30555327088098,
+              "share": 0.09807298989254047
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 6.063208582136078
+            }
+          ],
           "currentVc": 0.6,
           "currentDelaySec": 15.2,
           "currentLos": "B",
@@ -13137,6 +15647,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.461,
             "gOverCew": 0.372,
+            "gOverCnsExact": 0.46149468622183515,
+            "gOverCewExact": 0.3718386471114981,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -13152,6 +15664,44 @@
           "latitude": 33.78176,
           "longitude": -84.38249,
           "distanceMi": 0.34,
+          "designHourVolumeVph": 1482,
+          "loadWeight": 0.22893865137012068,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 180,
+              "exitBearingDeg": 89.99998053997552,
+              "share": 0.11012461035396337
+            },
+            {
+              "enterBearingDeg": 180,
+              "exitBearingDeg": 184.75128926493218,
+              "share": 0.2376280820323146
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 270.0000194600245,
+              "exitBearingDeg": 261.44729562150764,
+              "share": 0.11012461035396337
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 9.392595682425235
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 6.808281090789187
+            },
+            {
+              "approach": "SB",
+              "movement": "L",
+              "exact": 4.352835451488168
+            }
+          ],
           "currentVc": 0.83,
           "currentDelaySec": 24.8,
           "currentLos": "C",
@@ -13276,6 +15826,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.444,
             "gOverCew": 0.39,
+            "gOverCnsExact": 0.44380227508978615,
+            "gOverCewExact": 0.3895310582435473,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -13291,6 +15843,23 @@
           "latitude": 33.78152,
           "longitude": -84.38782,
           "distanceMi": 0.35,
+          "designHourVolumeVph": 1294,
+          "loadWeight": 0.05614170583692765,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 78.6612783620701,
+              "exitBearingDeg": 352.7130664566545,
+              "share": 0.1122834116738553
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "L",
+              "exact": 6.94174559211863
+            }
+          ],
           "currentVc": 0.75,
           "currentDelaySec": 21.2,
           "currentLos": "C",
@@ -13400,6 +15969,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.429,
             "gOverCew": 0.404,
+            "gOverCnsExact": 0.4291547037996148,
+            "gOverCewExact": 0.4041786295337185,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -13415,6 +15986,23 @@
           "latitude": 33.78993,
           "longitude": -84.38931,
           "distanceMi": 0.35,
+          "designHourVolumeVph": 1561,
+          "loadWeight": 0.1254700978401503,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 180,
+              "exitBearingDeg": 180,
+              "share": 0.2509401956803006
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 15.513983510840555
+            }
+          ],
           "currentVc": 0.79,
           "currentDelaySec": 19.4,
           "currentLos": "B",
@@ -13524,6 +16112,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.496,
             "gOverCew": 0.337,
+            "gOverCnsExact": 0.4963676471163275,
+            "gOverCewExact": 0.33696568621700584,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -13539,6 +16129,23 @@
           "latitude": 33.78078,
           "longitude": -84.3841,
           "distanceMi": 0.37,
+          "designHourVolumeVph": 1321,
+          "loadWeight": 0.1188140410161573,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 5.9315424992939825,
+              "exitBearingDeg": 5.931536998966294,
+              "share": 0.2376280820323146
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 14.690982990459982
+            }
+          ],
           "currentVc": 0.7,
           "currentDelaySec": 17.4,
           "currentLos": "B",
@@ -13648,6 +16255,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.47,
             "gOverCew": 0.363,
+            "gOverCnsExact": 0.4701112643434409,
+            "gOverCewExact": 0.36322206898989234,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -13663,6 +16272,23 @@
           "latitude": 33.78657,
           "longitude": -84.39187,
           "distanceMi": 0.38,
+          "designHourVolumeVph": 1679,
+          "loadWeight": 0.02739710794760984,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 89.99995551162851,
+              "exitBearingDeg": 89.99997775581426,
+              "share": 0.05479421589521968
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 3.387566346568401
+            }
+          ],
           "currentVc": 0.96,
           "currentDelaySec": 40.5,
           "currentLos": "D",
@@ -13772,6 +16398,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.436,
             "gOverCew": 0.397,
+            "gOverCnsExact": 0.4364167617547393,
+            "gOverCewExact": 0.39691657157859406,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -13787,6 +16415,34 @@
           "latitude": 33.78151,
           "longitude": -84.38917,
           "distanceMi": 0.39,
+          "designHourVolumeVph": 1453,
+          "loadWeight": 0.1122834116738553,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 168.26149548330864,
+              "exitBearingDeg": 270.0000305813322,
+              "share": 0.1122834116738553
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 89.99996941866777,
+              "exitBearingDeg": 89.99996663751983,
+              "share": 0.1122834116738553
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 6.94174559211863
+            },
+            {
+              "approach": "SB",
+              "movement": "R",
+              "exact": 4.438165214633222
+            }
+          ],
           "currentVc": 0.78,
           "currentDelaySec": 20.6,
           "currentLos": "C",
@@ -13906,6 +16562,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.466,
             "gOverCew": 0.368,
+            "gOverCnsExact": 0.46550704498484113,
+            "gOverCewExact": 0.36782628834849224,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -13921,6 +16579,40 @@
           "latitude": 33.78428,
           "longitude": -84.3789,
           "distanceMi": 0.39,
+          "designHourVolumeVph": 1292,
+          "loadWeight": 0.14338719610493056,
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 4.866504971828587
+            },
+            {
+              "approach": "NB",
+              "movement": "L",
+              "exact": 3.925702665454092
+            },
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 3.1113720311690973
+            },
+            {
+              "approach": "EB",
+              "movement": "R",
+              "exact": 2.5098754746345837
+            },
+            {
+              "approach": "SB",
+              "movement": "R",
+              "exact": 0.07248058058891842
+            },
+            {
+              "approach": "EB",
+              "movement": "L",
+              "exact": 0.04634004332734128
+            }
+          ],
           "currentVc": 0.77,
           "currentDelaySec": 22.2,
           "currentLos": "C",
@@ -14055,6 +16747,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.421,
             "gOverCew": 0.412,
+            "gOverCnsExact": 0.42093834425358023,
+            "gOverCewExact": 0.41239498907975314,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -14070,6 +16764,40 @@
           "latitude": 33.78073,
           "longitude": -84.38751,
           "distanceMi": 0.39,
+          "designHourVolumeVph": 963,
+          "loadWeight": 0.14076168852012422,
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 6.68096705634226
+            },
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 4.271437954054887
+            },
+            {
+              "approach": "EB",
+              "movement": "L",
+              "exact": 1.9004468430825736
+            },
+            {
+              "approach": "SB",
+              "movement": "R",
+              "exact": 1.2150397849216454
+            },
+            {
+              "approach": "WB",
+              "movement": "R",
+              "exact": 0.12095643522423828
+            },
+            {
+              "approach": "SB",
+              "movement": "L",
+              "exact": 0.07733280284828349
+            }
+          ],
           "currentVc": 0.54,
           "currentDelaySec": 14.8,
           "currentLos": "B",
@@ -14204,6 +16932,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.445,
             "gOverCew": 0.389,
+            "gOverCnsExact": 0.4447636590987137,
+            "gOverCewExact": 0.38856967423461963,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -14219,6 +16949,23 @@
           "latitude": 33.78645,
           "longitude": -84.37824,
           "distanceMi": 0.41,
+          "designHourVolumeVph": 968,
+          "loadWeight": 0.06807824723590289,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 76.46957050354649,
+              "exitBearingDeg": 73.25868172483217,
+              "share": 0.13615649447180578
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 5.381783546677484
+            }
+          ],
           "currentVc": 0.54,
           "currentDelaySec": 14.4,
           "currentLos": "B",
@@ -14328,6 +17075,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.451,
             "gOverCew": 0.382,
+            "gOverCnsExact": 0.45133787650943114,
+            "gOverCewExact": 0.3819954568239021,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -14343,6 +17092,34 @@
           "latitude": 33.78179,
           "longitude": -84.38046,
           "distanceMi": 0.41,
+          "designHourVolumeVph": 1471,
+          "loadWeight": 0.11012461035396337,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 89.99996941856779,
+              "exitBearingDeg": 89.99997219686787,
+              "share": 0.11012461035396337
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 270.0000278031321,
+              "exitBearingDeg": 270.0000305814322,
+              "share": 0.11012461035396337
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 6.808281090789187
+            },
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 4.352835451488168
+            }
+          ],
           "currentVc": 0.86,
           "currentDelaySec": 27.9,
           "currentLos": "C",
@@ -14462,6 +17239,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.407,
             "gOverCew": 0.426,
+            "gOverCnsExact": 0.4069129926165274,
+            "gOverCewExact": 0.426420340716806,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -14477,6 +17256,33 @@
           "latitude": 33.79186,
           "longitude": -84.38778,
           "distanceMi": 0.42,
+          "designHourVolumeVph": 1394,
+          "loadWeight": 0.17450659278642056,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 357.62054734610183,
+              "exitBearingDeg": 58.96719783069659,
+              "share": 0.09807298989254047
+            },
+            {
+              "enterBearingDeg": 357.62054734610183,
+              "exitBearingDeg": 251.8319257581103,
+              "share": 0.2509401956803006
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "L",
+              "exact": 9.918776342996422
+            },
+            {
+              "approach": "NB",
+              "movement": "R",
+              "exact": 3.876477618087001
+            }
+          ],
           "currentVc": 0.8,
           "currentDelaySec": 23,
           "currentLos": "C",
@@ -14591,6 +17397,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.436,
             "gOverCew": 0.397,
+            "gOverCnsExact": 0.43608181034346266,
+            "gOverCewExact": 0.39725152298987065,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -14606,6 +17414,30 @@
           "latitude": 33.78057,
           "longitude": -84.389,
           "distanceMi": 0.44,
+          "designHourVolumeVph": 1274,
+          "loadWeight": 0.11236913389250973,
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 4.889584220093177
+            },
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 3.1261276161251463
+            },
+            {
+              "approach": "EB",
+              "movement": "L",
+              "exact": 2.057461013571966
+            },
+            {
+              "approach": "SB",
+              "movement": "R",
+              "exact": 1.3154258939230605
+            }
+          ],
           "currentVc": 0.67,
           "currentDelaySec": 16,
           "currentLos": "B",
@@ -14740,6 +17572,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.479,
             "gOverCew": 0.355,
+            "gOverCnsExact": 0.4786600579703508,
+            "gOverCewExact": 0.35467327536298243,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -14755,6 +17589,34 @@
           "latitude": 33.78153,
           "longitude": -84.39059,
           "distanceMi": 0.44,
+          "designHourVolumeVph": 1017,
+          "loadWeight": 0.1122834116738553,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 270.0000305813394,
+              "exitBearingDeg": 270.0000305813394,
+              "share": 0.1122834116738553
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 89.99996941866061,
+              "exitBearingDeg": 89.99996941866061,
+              "share": 0.1122834116738553
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 6.94174559211863
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 4.438165214633222
+            }
+          ],
           "currentVc": 0.51,
           "currentDelaySec": 12,
           "currentLos": "B",
@@ -14874,6 +17736,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.502,
             "gOverCew": 0.332,
+            "gOverCnsExact": 0.5016853840490064,
+            "gOverCewExact": 0.3316479492843268,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -14889,6 +17753,34 @@
           "latitude": 33.79251,
           "longitude": -84.38638,
           "distanceMi": 0.45,
+          "designHourVolumeVph": 1069,
+          "loadWeight": 0.09807298989254047,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 60.68428703956022,
+              "exitBearingDeg": 335.2173290293062,
+              "share": 0.09807298989254047
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 155.2173012192526,
+              "exitBearingDeg": 149.3060879030195,
+              "share": 0.09807298989254047
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 6.063208582136078
+            },
+            {
+              "approach": "EB",
+              "movement": "L",
+              "exact": 3.876477618087001
+            }
+          ],
           "currentVc": 0.6,
           "currentDelaySec": 16.1,
           "currentLos": "B",
@@ -15008,6 +17900,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.443,
             "gOverCew": 0.391,
+            "gOverCnsExact": 0.4427184500032019,
+            "gOverCewExact": 0.3906148833301314,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -15023,6 +17917,34 @@
           "latitude": 33.7818,
           "longitude": -84.37941,
           "distanceMi": 0.45,
+          "designHourVolumeVph": 1223,
+          "loadWeight": 0.07341640690264224,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 89.99998053996643,
+              "exitBearingDeg": 89.99998331870347,
+              "share": 0.07341640690264224
+            }
+          ],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 270.00001668129653,
+              "exitBearingDeg": 270.00001946003357,
+              "share": 0.07341640690264224
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 4.538854060526124
+            },
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 2.9018903009921124
+            }
+          ],
           "currentVc": 0.69,
           "currentDelaySec": 18.2,
           "currentLos": "B",
@@ -15142,6 +18064,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.443,
             "gOverCew": 0.39,
+            "gOverCnsExact": 0.4431773810001537,
+            "gOverCewExact": 0.3901559523331795,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -15157,6 +18081,33 @@
           "latitude": 33.79189,
           "longitude": -84.38908,
           "distanceMi": 0.46,
+          "designHourVolumeVph": 1267,
+          "loadWeight": 0.07643360289388007,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 289.8487728188843,
+              "exitBearingDeg": 288.1681552523928,
+              "share": 0.05479421589521968
+            },
+            {
+              "enterBearingDeg": 289.8487728188843,
+              "exitBearingDeg": 182.97335800963842,
+              "share": 0.09807298989254047
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "WB",
+              "movement": "L",
+              "exact": 3.876477618087001
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 2.1658211068224205
+            }
+          ],
           "currentVc": 0.71,
           "currentDelaySec": 18.9,
           "currentLos": "B",
@@ -15271,6 +18222,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.444,
             "gOverCew": 0.389,
+            "gOverCnsExact": 0.4443758449998708,
+            "gOverCewExact": 0.3889574883334625,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -15286,6 +18239,23 @@
           "latitude": 33.77953,
           "longitude": -84.38421,
           "distanceMi": 0.46,
+          "designHourVolumeVph": 1311,
+          "loadWeight": 0.1188140410161573,
+          "pathTurns": [],
+          "pathTurnsIn": [
+            {
+              "enterBearingDeg": 11.738767891491534,
+              "exitBearingDeg": 0,
+              "share": 0.2376280820323146
+            }
+          ],
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 14.690982990459982
+            }
+          ],
           "currentVc": 0.71,
           "currentDelaySec": 18.3,
           "currentLos": "B",
@@ -15395,6 +18365,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.459,
             "gOverCew": 0.374,
+            "gOverCnsExact": 0.45912054834174193,
+            "gOverCewExact": 0.3742127849915915,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -15410,6 +18382,40 @@
           "latitude": 33.77955,
           "longitude": -84.38728,
           "distanceMi": 0.47,
+          "designHourVolumeVph": 1303,
+          "loadWeight": 0.09699070262363749,
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 4.646869443312545
+            },
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 2.970949316216217
+            },
+            {
+              "approach": "EB",
+              "movement": "L",
+              "exact": 1.1599644622864125
+            },
+            {
+              "approach": "SB",
+              "movement": "R",
+              "exact": 0.7416166234290179
+            },
+            {
+              "approach": "WB",
+              "movement": "R",
+              "exact": 0.1894639658068837
+            },
+            {
+              "approach": "SB",
+              "movement": "L",
+              "exact": 0.12113269945030271
+            }
+          ],
           "currentVc": 0.74,
           "currentDelaySec": 19.9,
           "currentLos": "B",
@@ -15544,6 +18550,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.442,
             "gOverCew": 0.391,
+            "gOverCnsExact": 0.4419285491180157,
+            "gOverCewExact": 0.3914047842153176,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -15559,6 +18567,30 @@
           "latitude": 33.78155,
           "longitude": -84.39161,
           "distanceMi": 0.48,
+          "designHourVolumeVph": 4751,
+          "loadWeight": 0.09084214390069696,
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "R",
+              "exact": 2.9756784229968605
+            },
+            {
+              "approach": "EB",
+              "movement": "T",
+              "exact": 2.6404944613197854
+            },
+            {
+              "approach": "WB",
+              "movement": "L",
+              "exact": 1.902482926178321
+            },
+            {
+              "approach": "WB",
+              "movement": "T",
+              "exact": 1.6881849834667482
+            }
+          ],
           "currentVc": 2.64,
           "currentDelaySec": 300,
           "currentLos": "F",
@@ -15693,6 +18725,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.45,
             "gOverCew": 0.45,
+            "gOverCnsExact": 0.45,
+            "gOverCewExact": 0.45,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "default",
@@ -15708,6 +18742,23 @@
           "latitude": 33.77952,
           "longitude": -84.38263,
           "distanceMi": 0.48,
+          "designHourVolumeVph": 1422,
+          "loadWeight": 0.1188140410161573,
+          "pathTurns": [
+            {
+              "enterBearingDeg": 180,
+              "exitBearingDeg": 195.4859874407677,
+              "share": 0.2376280820323146
+            }
+          ],
+          "pathTurnsIn": [],
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 9.392595682425235
+            }
+          ],
           "currentVc": 0.77,
           "currentDelaySec": 20.4,
           "currentLos": "C",
@@ -15817,6 +18868,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.461,
             "gOverCew": 0.372,
+            "gOverCnsExact": 0.46102597485263547,
+            "gOverCewExact": 0.3723073584806979,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -15832,6 +18885,30 @@
           "latitude": 33.79166,
           "longitude": -84.39055,
           "distanceMi": 0.49,
+          "designHourVolumeVph": 3890,
+          "loadWeight": 0.08701828627007607,
+          "movementsExact": [
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 3.237815423776887
+            },
+            {
+              "approach": "EB",
+              "movement": "R",
+              "exact": 2.1419534676743357
+            },
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 2.0700787135622716
+            },
+            {
+              "approach": "NB",
+              "movement": "L",
+              "exact": 1.3694456596606408
+            }
+          ],
           "currentVc": 2.16,
           "currentDelaySec": 300,
           "currentLos": "F",
@@ -15966,6 +19043,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.45,
             "gOverCew": 0.45,
+            "gOverCnsExact": 0.45,
+            "gOverCewExact": 0.45,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "default",
@@ -15981,6 +19060,30 @@
           "latitude": 33.77957,
           "longitude": -84.38882,
           "distanceMi": 0.49,
+          "designHourVolumeVph": 1027,
+          "loadWeight": 0.08441820241023566,
+          "movementsExact": [
+            {
+              "approach": "NB",
+              "movement": "T",
+              "exact": 3.900482170023656
+            },
+            {
+              "approach": "SB",
+              "movement": "T",
+              "exact": 2.493750895588895
+            },
+            {
+              "approach": "EB",
+              "movement": "L",
+              "exact": 1.3185406200745675
+            },
+            {
+              "approach": "SB",
+              "movement": "R",
+              "exact": 0.8430013800476744
+            }
+          ],
           "currentVc": 0.55,
           "currentDelaySec": 14,
           "currentLos": "B",
@@ -16115,6 +19218,8 @@
             "criticalPhases": 2,
             "gOverCns": 0.468,
             "gOverCew": 0.366,
+            "gOverCnsExact": 0.4675229230872401,
+            "gOverCewExact": 0.36581041024609323,
             "leftPhasingNs": "permissive",
             "leftPhasingEw": "permissive",
             "leftPhasingSource": "inferred",
@@ -16126,7 +19231,10 @@
       ],
       "intersectionsWithLosDrop": 2,
       "intersectionsAtLosEf": 5,
-      "worstDelayDeltaSec": 4
+      "worstDelayDeltaSec": 4,
+      "periodVolumeFactor": 1,
+      "inFraction": 0.61,
+      "externalTripsExact": 101.34988452084605
     },
     {
       "period": "daily",
@@ -16144,7 +19252,10 @@
       "affectedIntersections": [],
       "intersectionsWithLosDrop": 0,
       "intersectionsAtLosEf": 0,
-      "worstDelayDeltaSec": 0
+      "worstDelayDeltaSec": 0,
+      "periodVolumeFactor": 1,
+      "inFraction": 0.5,
+      "externalTripsExact": 1126.1098280094004
     }
   ],
   "growthAppliedPct": 1.5,
@@ -16157,6 +19268,13 @@
   "passByPctApplied": 0,
   "internalCapturePctApplied": 0,
   "autoModeShareApplied": 0.7820207138954169,
+  "regionCode": "atlanta_metro",
+  "jurisdiction": {
+    "dotName": "City of Atlanta DOT",
+    "planningOfficeName": "City of Atlanta Office of Mobility Planning"
+  },
+  "autoModeShareSource": "ACS 5-Year Estimates Table B08301 (US) or national-stats equivalent",
+  "weatherFactorExact": 1,
   "routeAssignment": {
     "available": true,
     "method": "network shortest-path + BPR volume-delay (MSA equilibrium)",
