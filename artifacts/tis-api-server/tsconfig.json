@@ -10,6 +10,9 @@
   "references": [
     {
       "path": "../../lib/tis-api-zod"
+    },
+    {
+      "path": "../../lib/tis-engine-core"
     }
   ]
 }

@@ -29,7 +29,7 @@
  */
 import { Router, type IRouter } from "express";
 import { generateTisReport, type TisRequest } from "../lib/tis";
-import { LAND_USES } from "../lib/land-uses";
+import { LAND_USES } from "@workspace/tis-engine-core";
 import { demoRateLimiter, geocodeRateLimiter } from "../lib/security";
 import { logEvent } from "../lib/events";
 import { renderStudyPdf } from "../lib/pdf-export";

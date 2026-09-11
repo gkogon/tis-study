@@ -33,7 +33,7 @@ import { ukCapacityForIntersection, type UkCapacityResult } from "./uk-capacity"
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { renderTisNorthCarolina, renderTisSouthCarolina } from "./pdf-export-carolinas";
 import { appliedRateRows } from "./trip-rate-rows";
-import { isGrowthOverride } from "./regional-growth-rates";
+import { isGrowthOverride } from "@workspace/tis-engine-core";
 import { renderTisState } from "./pdf-export-states";
 import { renderDiurnalCharts, drawColumnChart, drawLineChart, CHART_COLORS } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
