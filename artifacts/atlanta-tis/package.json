@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check:study-alive-sim": "node scripts/check-study-alive-sim.mjs",
     "check:study-map-sim": "node scripts/check-study-map-sim.mjs",
-    "check:queue-sim": "node scripts/check-queue-sim.mjs"
+    "check:queue-sim": "node scripts/check-queue-sim.mjs",
+    "check:scenario-solve": "node scripts/check-scenario-solve.mjs"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -50,6 +51,7 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "@workspace/tis-api-client-react": "workspace:*",
+    "@workspace/tis-engine-core": "workspace:*",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "cmdk": "^1.1.1",

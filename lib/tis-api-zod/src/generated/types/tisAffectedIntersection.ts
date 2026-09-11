@@ -16,6 +16,7 @@ import type { TisAffectedIntersectionMovementsItem } from "./tisAffectedIntersec
 import type { TisAffectedIntersectionMovementSource } from "./tisAffectedIntersectionMovementSource";
 import type { TisAffectedIntersectionSignalTiming } from "./tisAffectedIntersectionSignalTiming";
 import type { TisAffectedIntersectionTurboLane } from "./tisAffectedIntersectionTurboLane";
+import type { TisAffectedIntersectionTurboScreenInputs } from "./tisAffectedIntersectionTurboScreenInputs";
 import type { TisAffectedIntersectionVolumeSource } from "./tisAffectedIntersectionVolumeSource";
 import type { TisApproachImpact } from "./tisApproachImpact";
 import type { TisIntersectionCalibration } from "./tisIntersectionCalibration";
@@ -46,6 +47,8 @@ export interface TisAffectedIntersection {
   mainThroughLanesMeasured?: boolean;
   /** Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached. */
   utdfRecordIndex?: number;
+  /** The analyzer geometry the turbo-lane screen read for this signal (screenTurboCandidate), printed verbatim on every row the screen accepted — i.e. exactly the rows carrying `turboLane` — so a client re-solve can run the same screen against the scenario's volumes. The screen is geometry-only, so absence means it returned null for this signal and no scenario can make it a candidate. */
+  turboScreenInputs?: TisAffectedIntersectionTurboScreenInputs;
   /** Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing". */
   existingVc: number;
   addedTripsPmPeak: number;

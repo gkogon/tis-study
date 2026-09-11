@@ -797,6 +797,27 @@ export type TisAffectedIntersectionMovementsExactItem = {
   exact: number;
 };
 
+export type TisAffectedIntersectionTurboScreenInputsMedianType =
+  (typeof TisAffectedIntersectionTurboScreenInputsMedianType)[keyof typeof TisAffectedIntersectionTurboScreenInputsMedianType];
+
+export const TisAffectedIntersectionTurboScreenInputsMedianType = {
+  raised: "raised",
+  painted: "painted",
+} as const;
+
+/**
+ * The analyzer geometry the turbo-lane screen read for this signal (screenTurboCandidate), printed verbatim on every row the screen accepted — i.e. exactly the rows carrying `turboLane` — so a client re-solve can run the same screen against the scenario's volumes. The screen is geometry-only, so absence means it returned null for this signal and no scenario can make it a candidate.
+ */
+export type TisAffectedIntersectionTurboScreenInputs = {
+  legCount: number;
+  roadClass: string;
+  medianType: TisAffectedIntersectionTurboScreenInputsMedianType;
+  minorLegBearing: number;
+  /** The raw analyzer lane count the screen sizes the approach with, measured or not. */
+  mainThroughLanes?: number;
+  mainThroughLanesMeasured?: boolean;
+};
+
 export type TisAffectedIntersectionExistingLos =
   (typeof TisAffectedIntersectionExistingLos)[keyof typeof TisAffectedIntersectionExistingLos];
 
@@ -1029,6 +1050,8 @@ export interface TisAffectedIntersection {
   mainThroughLanesMeasured?: boolean;
   /** Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached. */
   utdfRecordIndex?: number;
+  /** The analyzer geometry the turbo-lane screen read for this signal (screenTurboCandidate), printed verbatim on every row the screen accepted — i.e. exactly the rows carrying `turboLane` — so a client re-solve can run the same screen against the scenario's volumes. The screen is geometry-only, so absence means it returned null for this signal and no scenario can make it a candidate. */
+  turboScreenInputs?: TisAffectedIntersectionTurboScreenInputs;
   /** Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing". */
   existingVc: number;
   addedTripsPmPeak: number;

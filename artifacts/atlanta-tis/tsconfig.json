@@ -19,6 +19,9 @@
       "path": "../../lib/tis-api-client-react"
     },
     {
+      "path": "../../lib/tis-engine-core"
+    },
+    {
       "path": "../../lib/replit-auth-web"
     }
   ]
