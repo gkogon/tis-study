@@ -26,7 +26,7 @@ import { DrivewayEditor } from "@/components/driveway-editor";
 import { LosBadge, ApproachDetailTable } from "@/components/tis-report-bits";
 import {
   type ScenarioState, type ScenarioSolution, type SignalTimingEdit, type RowFallback, type WhatIfRequest,
-  EMPTY_SCENARIO, isScenarioDirty, isClientScenarioDirty, toWhatIfRequest,
+  EMPTY_SCENARIO, isScenarioDirty, isClientScenarioDirty, toWhatIfRequest, baseOverridesBySignal,
   timingEditFromRow, withCycle, withNsShare, withProtectedLeft, withLeftSplit, throughBudgetS,
   LOST_TIME_S, MIN_SPLIT_S,
 } from "@/lib/scenario-solve";
@@ -124,11 +124,17 @@ export function ScenarioStudio({ report, solution, scenario, onChange, onRerun, 
   useEffect(() => { if (selectedId) setTab("signal"); }, [selectedId]);
 
   const set = (patch: Partial<ScenarioState>) => onChange({ ...scenario, ...patch });
-  const setTiming = (id: string, edit: SignalTimingEdit | null) => {
+  /** `undefined` removes the edit (back to the base's plan); `null` CLEARS a
+   *  plan the base report already carries, so the signal resolves to its
+   *  record or Webster and the next send drops that record. */
+  const setTiming = (id: string, edit: SignalTimingEdit | null | undefined) => {
     const timing = { ...scenario.timing };
-    if (edit) timing[id] = edit; else delete timing[id];
+    if (edit === undefined) delete timing[id]; else timing[id] = edit;
     set({ timing });
   };
+  // Signals whose base plan is an override the engine already applied (a
+  // /whatif report): "Webster optimum" must be able to undo those too.
+  const baseOverrides = useMemo(() => baseOverridesBySignal(report), [report]);
 
   const dirty = isScenarioDirty(scenario);
   const clientDirty = isClientScenarioDirty(scenario);
@@ -152,10 +158,15 @@ export function ScenarioStudio({ report, solution, scenario, onChange, onRerun, 
   const am = solution.externalTrips.am_peak;
 
   // ---- Signal tab values ----
+  // Sliders seed from the SCENARIO row's plan: the edit itself, else the plan
+  // the solve resolved (the base's — or Webster once a base override is cleared).
   const edit: SignalTimingEdit | null = selectedId
-    ? scenario.timing[selectedId] ?? (baseRow ? timingEditFromRow(baseRow) : null)
+    ? scenario.timing[selectedId] ?? (scenRow ? timingEditFromRow(scenRow) : baseRow ? timingEditFromRow(baseRow) : null)
     : null;
   const overridden = !!(selectedId && scenario.timing[selectedId]);
+  const baseOverridden = !!(selectedId && baseOverrides.has(selectedId));
+  const cleared = !!selectedId && scenario.timing[selectedId] === null;
+  const canReset = overridden || (baseOverridden && !cleared);
   const timing = scenRow?.signalTiming;
   const nsShare = edit ? edit.nsThroughSplitS / Math.max(1, throughBudgetS(edit)) : 0.5;
   const pedNs = timing?.pedMinGreenNsSec, pedEw = timing?.pedMinGreenEwSec;
@@ -219,7 +230,7 @@ export function ScenarioStudio({ report, solution, scenario, onChange, onRerun, 
             <select id="scenario-signal" value={selectedId ?? ""} onChange={(e) => set({ selectedSignalId: e.target.value || null })} className="w-full rounded-md border bg-background px-2 py-1 text-xs" data-testid="select-scenario-signal">
               <option value="">Click a signal on the map, or pick one</option>
               {report.affectedIntersections.map((r) => (
-                <option key={r.signalId} value={r.signalId}>{r.name}{scenario.timing[r.signalId] ? " (edited)" : ""}</option>
+                <option key={r.signalId} value={r.signalId}>{r.name}{scenario.timing[r.signalId] ? " (edited)" : scenario.timing[r.signalId] === null ? " (reset)" : ""}</option>
               ))}
             </select>
           </div>
@@ -277,7 +288,7 @@ export function ScenarioStudio({ report, solution, scenario, onChange, onRerun, 
                   </div>
                 )}
                 <div className="flex items-center justify-between gap-2">
-                  <button type="button" onClick={() => setTiming(baseRow.signalId, null)} disabled={!overridden} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50" data-testid="button-scenario-webster">
+                  <button type="button" onClick={() => setTiming(baseRow.signalId, baseOverridden ? null : undefined)} disabled={!canReset} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50" data-testid="button-scenario-webster">
                     <RotateCcw className="w-3 h-3" /> Webster optimum
                   </button>
                   <div className="text-[11px] text-muted-foreground text-right" data-testid="signal-timing-provenance">

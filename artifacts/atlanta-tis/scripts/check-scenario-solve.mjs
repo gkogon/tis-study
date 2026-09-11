@@ -36,6 +36,20 @@
 //    browser or approximating the feedback; the studio sends the scenario to
 //    the engine instead.
 //
+// 2b. A SENT SCENARIO AS THE NEW BASE. After "Send to engine" the studio makes
+//    the engine's report (fixture B) the base and resets the state, so B's own
+//    overrides live only in B.request.signalTimingOverrides. solveScenario(B,
+//    EMPTY) must reproduce B byte-for-byte with NO fallback (the records are
+//    fed back, not re-derived from the printed g/C), and toWhatIfRequest(B, …)
+//    must KEEP every base override the state does not edit — replacing the one
+//    it edits, dropping the one it clears (timing[id] === null) — so a second
+//    send never reverts the first send's plans to Webster.
+//
+// 2c. DESIGN-YEAR EXPONENT. The engine grows the design year by
+//    max(0, designYear − CURRENT_YEAR), NOT growthYears + horizon: the two
+//    differ whenever the opening year is before the run (the schema allows
+//    2024). designGrowthYears recovers the engine's exponent from the report.
+//
 // Run: `pnpm run check:scenario-solve` (plain node 26, no bundler).
 import fs from "node:fs";
 import path from "node:path";
@@ -43,6 +57,7 @@ import { fileURLToPath } from "node:url";
 import {
   solveScenario, solveScenarioDetailed, EMPTY_SCENARIO, toWhatIfRequest, reportDiff,
   timingEditFromRow, withCycle, withNsShare, withProtectedLeft, isScenarioDirty,
+  designGrowthYears, baseOverridesBySignal,
 } from "../src/lib/scenario-solve.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -204,6 +219,94 @@ for (const id of [rowLongCycle.signalId, rowProtLeft.signalId]) {
 }
 ok(solB.report.affectedIntersections.filter((r) => r.signalTiming?.source === "override").length === 2,
   "exactly the two overridden rows carry source \"override\"");
+
+// ---------------------------------------------------------------------------
+// 2b. Fixture B as the base: its applied overrides are fed back verbatim and
+//     survive the next toWhatIfRequest.
+// ---------------------------------------------------------------------------
+console.log("");
+{
+  const frozenB = JSON.stringify(B);
+  const baseOv = baseOverridesBySignal(B);
+  ok(baseOv.size === 2 && baseOv.get(rowLongCycle.signalId) === B.request.signalTimingOverrides[0] && baseOv.get(rowProtLeft.signalId) === B.request.signalTimingOverrides[1],
+    "baseOverridesBySignal(B): both records located at the signals the engine's summary matched them to");
+  const solBB = solveScenarioDetailed(B, EMPTY_SCENARIO);
+  ok(solBB.rowFallbacks.size === 0 && solBB.baseOnly.size === 0 && solBB.reportFallbacks.size === 0,
+    `solve(B, EMPTY) fires NO fallback — the base's overrides are fed back, not re-derived (${solBB.rowFallbacks.size} rows flagged)`);
+  const cmpBB = compareRows(B, JSON.parse(JSON.stringify(solBB.report)), "sent-as-base", {});
+  ok(true, `solve(B, EMPTY) reproduces B: compared ${cmpBB.fields} row fields with NO tolerance`);
+  ok(JSON.stringify(solBB.report.mitigationSummary) === JSON.stringify(B.mitigationSummary), "solve(B, EMPTY): mitigationSummary byte-identical");
+  const dBB = reportDiff(B, solBB.report);
+  ok(dBB.maxDelayDeltaSec === 0 && dBB.maxVcDelta === 0 && dBB.losMismatches === 0, `reportDiff(B, solve(B, EMPTY)) = ${JSON.stringify(dBB)}`);
+
+  // Edit the long-cycle signal AGAIN on top of B: the POST keeps the
+  // protected-left record untouched and carries the new plan for the edited one.
+  const again = withCycle(timingEditFromRow(bById.get(rowLongCycle.signalId)), 90);
+  const reqAgain = toWhatIfRequest(B, { ...EMPTY_SCENARIO, timing: { [rowLongCycle.signalId]: again } });
+  ok(reqAgain.signalTimingOverrides.length === 2, `second send carries ${reqAgain.signalTimingOverrides.length} overrides (base 2, one replaced)`);
+  ok(reqAgain.signalTimingOverrides.some((o) => JSON.stringify(o) === JSON.stringify(B.request.signalTimingOverrides[1])),
+    `${rowProtLeft.signalId}: the base's protected-left record goes out byte-identical (not dropped)`);
+  ok(!reqAgain.signalTimingOverrides.some((o) => JSON.stringify(o) === JSON.stringify(B.request.signalTimingOverrides[0]))
+    && reqAgain.signalTimingOverrides.some((o) => o.latitude === rowLongCycle.latitude && o.longitude === rowLongCycle.longitude && o.cycleLenSec === 90),
+    `${rowLongCycle.signalId}: the base's record is REPLACED by the 90 s plan`);
+  ok(reqAgain.size === B.request.size, "second send keeps B's size (the base's, no site edit)");
+  // The client solve of that same state uses the same two plans.
+  const solAgain = solveScenarioDetailed(B, { ...EMPTY_SCENARIO, timing: { [rowLongCycle.signalId]: again } });
+  const rAgain = solAgain.report.affectedIntersections.find((r) => r.signalId === rowLongCycle.signalId);
+  const rKept = solAgain.report.affectedIntersections.find((r) => r.signalId === rowProtLeft.signalId);
+  ok(rAgain.signalTiming.source === "override" && rAgain.signalTiming.cycleLenSec === 90, `${rowLongCycle.signalId}: client solve runs the 90 s plan (source ${rAgain.signalTiming.source})`);
+  ok(JSON.stringify(rKept) === JSON.stringify(bById.get(rowProtLeft.signalId)), `${rowProtLeft.signalId}: client solve keeps the base's protected-left row byte-identical`);
+  ok(solAgain.rowFallbacks.size === 0, "editing on top of a sent base fires no fallback");
+
+  // CLEAR the protected-left plan (Signal tab "Webster optimum" on a baked-in
+  // override): the POST drops that record, the client solve resolves Webster
+  // there, and every other row is byte-identical.
+  const cleared = { ...EMPTY_SCENARIO, timing: { [rowProtLeft.signalId]: null } };
+  ok(isScenarioDirty(cleared), "clearing a base override is an edit (dirty)");
+  const reqClear = toWhatIfRequest(B, cleared);
+  ok(reqClear.signalTimingOverrides.length === 1 && JSON.stringify(reqClear.signalTimingOverrides[0]) === JSON.stringify(B.request.signalTimingOverrides[0]),
+    `cleared send: only the long-cycle record remains (${reqClear.signalTimingOverrides?.length})`);
+  const solClear = solveScenarioDetailed(B, cleared);
+  const rClear = solClear.report.affectedIntersections.find((r) => r.signalId === rowProtLeft.signalId);
+  ok(rClear.signalTiming.source !== "override" && rClear.signalTiming.basis === "webster", `${rowProtLeft.signalId}: cleared → basis ${rClear.signalTiming.basis}, source ${rClear.signalTiming.source ?? "none"}`);
+  ok(JSON.stringify(rClear.signalTiming) !== JSON.stringify(bById.get(rowProtLeft.signalId).signalTiming), "cleared row's timing actually changed from the override");
+  const othersB = (rows) => rows.filter((x) => x.signalId !== rowProtLeft.signalId);
+  ok(JSON.stringify(othersB(solClear.report.affectedIntersections)) === JSON.stringify(othersB(B.affectedIntersections)), "cleared: every other row byte-identical to B");
+  const reqClearAll = toWhatIfRequest(B, { ...EMPTY_SCENARIO, timing: { [rowProtLeft.signalId]: null, [rowLongCycle.signalId]: null } });
+  ok(!("signalTimingOverrides" in reqClearAll), "clearing every base override omits the array from the POST");
+  ok(JSON.stringify(B) === frozenB, "no scenario on B mutated it");
+}
+
+// ---------------------------------------------------------------------------
+// 2c. Design-year exponent: the engine's max(0, designYear − CURRENT_YEAR).
+// ---------------------------------------------------------------------------
+{
+  const hdr = (openingYear, growthYears, generatedAt, designYear = openingYear + 20) =>
+    ({ growthYears, designYear, designYearHorizonYears: 20, generatedAt, request: { openingYear } });
+  ok(designGrowthYears(A) === A.growthYears + A.designYearHorizonYears && designGrowthYears(A) === A.designYear - (A.request.openingYear - A.growthYears),
+    `fixture A: ${designGrowthYears(A)} design years (opening ${A.request.openingYear}, growth ${A.growthYears}, design ${A.designYear})`);
+  ok(designGrowthYears(hdr(2027, 1, "2026-09-10T13:41:21.421Z")) === 21, "opening 2027 run in 2026: 21 (growthYears 1 + 20)");
+  ok(designGrowthYears(hdr(2026, 0, "2026-09-10T13:41:21.421Z")) === 20, "opening 2026 run in 2026: 20");
+  ok(designGrowthYears(hdr(2025, 0, "2026-09-10T13:41:21.421Z")) === 19, "opening 2025 run in 2026: 19 — growthYears + horizon would say 20 (the engine grows to 2045 from 2026)");
+  ok(designGrowthYears(hdr(2024, 0, "2026-12-31T23:59:59.000Z")) === 18, "opening 2024 run in late 2026 (UTC): 18");
+  ok(designGrowthYears(hdr(2024, 0, "2027-01-01T00:00:01.000Z")) === 17, "the run year is read from generatedAt in UTC");
+  // And it moves the solve: a past opening year re-solved with the engine's
+  // exponent gives smaller design-year growth than the shortcut would.
+  const past = { ...A, growthYears: 0, designYear: 2045, request: { ...A.request, openingYear: 2025 }, generatedAt: "2026-09-10T13:41:21.421Z" };
+  const solPast = solveScenario(past, EMPTY_SCENARIO);
+  const gPast = Math.pow(1 + A.growthAppliedPct / 100, 19), gShort = Math.pow(1 + A.growthAppliedPct / 100, 20);
+  const rowP = solPast.affectedIntersections.find((r) => r.designNoBuildVc !== undefined && r.existingVc > 0);
+  const rowA = A.affectedIntersections.find((r) => r.signalId === rowP.signalId);
+  // existingVc is the opening-year no-build v/c at growth^growthYears; design no-build scales by growth^designYears / growth^growthYears.
+  const ratio = rowP.designNoBuildVc / rowP.existingVc;
+  ok(Math.abs(ratio - gPast) < 0.02 && Math.abs(ratio - gShort) > Math.abs(ratio - gPast),
+    `past opening year: design no-build v/c / opening v/c = ${ratio.toFixed(4)} ≈ growth^19 (${gPast.toFixed(4)}), not growth^20 (${gShort.toFixed(4)}) at ${rowP.signalId}`);
+  ok(rowA.designNoBuildVc !== undefined, "fixture row carries design-year fields to compare");
+  // reportDiff sees the design year: perturb one design field and it must not read 0.
+  const bumped = JSON.parse(JSON.stringify(solA.report));
+  bumped.affectedIntersections[0].designBuildDelaySec += 0.5;
+  ok(reportDiff(solA.report, bumped).maxDelayDeltaSec === 0.5, "reportDiff covers designBuildDelaySec (a design-year drift cannot read as 0 differences)");
+}
 
 // ---------------------------------------------------------------------------
 // 3. Monotonic sanity, override isolation, determinism, immutability.

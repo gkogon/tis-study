@@ -29,9 +29,17 @@
 //  6. STRIP TRAP. Everything above survives the generated zod (WhatIfTisBody /
 //     WhatIfTisResponse), and the body schema enforces the 60-record cap.
 //  7. PARITY. runSensitivity: false (what /whatif forces) changes no row.
-//     ROADS MEMO. Repeat runs at one site skip the roads fetch; the memo is
-//     bounded (ROADS_MEMO_MAX_ENTRIES, oldest evicted) and expired entries
-//     are deleted, not merely skipped.
+//     ROADS MEMO. Repeat runs at one site skip the roads fetch.
+//  8. BOUNDED MEMO. The roads memo is capped (ROADS_MEMO_MAX_ENTRIES; the
+//     least recently USED entry is evicted, not the oldest inserted — its key
+//     is the caller's raw coordinates) and expired entries are deleted, not
+//     merely skipped.
+//  9. CLIENT PARITY where a shortcut would break it: an opening year BEFORE
+//     the run (the design-year exponent is designYear − CURRENT_YEAR, not
+//     growthYears + horizon) and a turbo-lane row (the screen's geometry is
+//     printed as turboScreenInputs so the browser re-runs the same screen).
+//     The browser solver (atlanta-tis scenario-solve.ts) is run against THIS
+//     engine's output, byte for byte, at base and under a timing edit.
 //
 // Harness mirrors verify-signal-timing-engine.mjs: esbuild-bundle tis.ts,
 // mock fetch with the pinned Miami network fixture, mock signals on real
@@ -61,8 +69,13 @@ const ring = junctionNodes.filter((i) => { const d = dist(SITE.lat, SITE.lon, g.
 const step = Math.max(1, Math.floor(ring.length / 4));
 const onNet = [0, 1, 2, 3].map((k) => ring[k * step]).filter((v) => v !== undefined);
 const MOCK_INTS = onNet.map((n, i) => ({
-  id: `sig-${i + 1}`, name: `Junction ${i + 1}`, zone: "MIA", latitude: g.nodeLat[n], longitude: g.nodeLon[n], totalVolume: 2400 + i * 300,
+  id: `sig-${i + 1}`, name: `Junction ${i + 1}`, zone: "MIA", latitude: g.nodeLat[n], longitude: g.nodeLon[n], totalVolume: i === 2 ? 1500 : 2400 + i * 300,
   ...(i === 1 ? { mainThroughLanes: 3, mainThroughLanesMeasured: true, minorThroughLanes: 1 } : {}),
+  // sig-3: a turbo-lane candidate (3-leg T on an arterial with a raised
+  // median); its lane count is UNMEASURED, which the row math ignores but the
+  // turbo screen sizes the approach with — so the printed screen inputs must
+  // carry it even though the row prints no mainThroughLanes.
+  ...(i === 2 ? { legCount: 3, roadClass: "primary", medianType: "raised", minorLegBearing: 180, mainThroughLanes: 2 } : {}),
 }));
 ok(MOCK_INTS.length === 4, `four mock signals placed on real junctions (${MOCK_INTS.length})`);
 
@@ -360,9 +373,15 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
   ok(rows(a).map((ix) => JSON.stringify(ix)).join("\n") === rows(b).map((ix) => JSON.stringify(ix)).join("\n"), "runSensitivity: false changes no row");
   ok(roadsFetches === before, `repeat runs at the same site skip the roads fetch (memo; ${roadsFetches} fetches total)`);
 }
-// The memo is bounded and expiry frees memory. Driven through the module
-// directly (same mocked fetch); each distinct coordinate is a fresh key —
-// the exact vector a caller nudging a coordinate per request would use.
+
+// ---------------------------------------------------------------------------
+// 8. The roads memo is bounded and expiry frees memory. Its key is the
+//    caller's raw lat/lon/radius — attacker-chosen on /whatif and the
+//    anonymous driveway-candidates demo — so distinct sites must evict, never
+//    accumulate. Driven through the module directly (same mocked fetch); each
+//    distinct coordinate is a fresh key — the exact vector a caller nudging a
+//    coordinate per request would use.
+// ---------------------------------------------------------------------------
 {
   const realNow = Date.now;
   const start = roadsFetches;
@@ -376,6 +395,22 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
   ok(roadsFetches === mid, "the newest site is still memoised");
   await at(0);
   ok(roadsFetches === mid + 1 && roadsMemoSize() === ROADS_MEMO_MAX_ENTRIES, "the oldest site was evicted (re-fetched) and the cap still holds");
+  // Eviction is LRU, not FIFO: a hit refreshes recency. The oldest survivor
+  // now is site n - cap + 1 (sites 0..n-cap-1 fell out of the window and
+  // site n-cap was evicted for site 0's re-fetch). Touch it, insert cap - 1
+  // fresh sites — enough to evict every entry older than it — and it must
+  // still be resident, while an untouched sibling is gone.
+  const keep = n - ROADS_MEMO_MAX_ENTRIES + 1;
+  const k0 = roadsFetches;
+  await at(keep);
+  ok(roadsFetches === k0, `site ${keep} (the oldest survivor) is still a hit`);
+  for (let i = 1; i < ROADS_MEMO_MAX_ENTRIES; i++) await fetchLocalRoads("miami_dade_metro", SITE.lat - i * 1e-9, SITE.lon, RADIUS);
+  const k1 = roadsFetches;
+  await at(keep);
+  ok(roadsFetches === k1 && roadsMemoSize() === ROADS_MEMO_MAX_ENTRIES,
+     `a recently used entry survives ${ROADS_MEMO_MAX_ENTRIES - 1} newer inserts (LRU, not FIFO — under FIFO it was the oldest and would have gone first)`);
+  await at(keep + 1);
+  ok(roadsFetches === k1 + 1, `the untouched sibling (site ${keep + 1}) was evicted in its place`);
   Date.now = () => realNow() + ROADS_MEMO_TTL_MS + 1;
   try {
     ok(roadsMemoSize() === 0, "past the TTL every entry is deleted, not merely skipped");
@@ -385,6 +420,95 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
   } finally {
     Date.now = realNow;
   }
+}
+
+// ---------------------------------------------------------------------------
+// 9. Client parity: past opening year + turbo row, against this engine.
+// ---------------------------------------------------------------------------
+{
+  const { solveScenarioDetailed, EMPTY_SCENARIO, toWhatIfRequest, timingEditFromRow, withCycle, withNsShare, designGrowthYears } =
+    await import(path.resolve(here, "../../atlanta-tis/src/lib/scenario-solve.ts"));
+  const CURRENT_YEAR = new Date().getUTCFullYear();
+  const pastRaw = await generateTisReport({ ...baseReq, openingYear: CURRENT_YEAR - 1 });
+  ok(pastRaw.growthYears === 0 && pastRaw.designYear === CURRENT_YEAR - 1 + 20, `opening ${CURRENT_YEAR - 1}: growthYears 0, designYear ${pastRaw.designYear}`);
+  const past = WhatIfTisResponse.parse(pastRaw);
+  ok(designGrowthYears(past) === 19, `client reads the engine's design exponent: ${designGrowthYears(past)} (growthYears + horizon would be 20)`);
+
+  const r3 = byId(past, "sig-3");
+  ok(r3?.turboLane?.candidate === true, "sig-3 screens as a turbo-lane candidate");
+  ok(r3?.mainThroughLanes === undefined, "sig-3 prints no mainThroughLanes (unmeasured)");
+  const tsi = r3?.turboScreenInputs;
+  ok(tsi && tsi.legCount === 3 && tsi.roadClass === "primary" && tsi.medianType === "raised" && tsi.minorLegBearing === 180 && tsi.mainThroughLanes === 2 && tsi.mainThroughLanesMeasured === undefined,
+     `sig-3 prints turboScreenInputs verbatim and it survives the response zod (${JSON.stringify(tsi)})`);
+  ok(rows(past).filter((ix) => ix.turboScreenInputs).length === 1 && rows(past).filter((ix) => ix.turboLane).length === 1, "turboScreenInputs on exactly the turboLane rows");
+  ok(r3?.turboLane?.approachLanes === 2, `the screen sized the approach with the unmeasured lane count (${r3?.turboLane?.approachLanes})`);
+
+  const firstDiffs = (a, b, n = 6) => {
+    const out = [];
+    const walk = (p, x, y) => {
+      if (out.length >= n) return;
+      if (x === y) return;
+      if (x && y && typeof x === "object" && typeof y === "object") {
+        for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) walk(`${p}.${k}`, x[k], y[k]);
+        return;
+      }
+      out.push(`${p}: ${JSON.stringify(x)} vs ${JSON.stringify(y)}`);
+    };
+    walk("$", a, b);
+    return out;
+  };
+  const sol0 = solveScenarioDetailed(past, EMPTY_SCENARIO);
+  ok(sol0.rowFallbacks.size === 0 && sol0.baseOnly.size === 0, `client solve of the past-opening-year report fires no fallback (turbo row included; ${sol0.rowFallbacks.size} flagged)`);
+  const pmOf = (r) => r.periodReports.find((p) => p.period === "pm_peak").affectedIntersections;
+  // Compared against the engine's RAW rows: the response zod strips
+  // approaches[].addedByMovement (not in the OpenAPI schema — a pre-existing
+  // strip, untouched here), which the client solve recomputes like the engine.
+  ok(JSON.stringify(pmOf(sol0.report)) === JSON.stringify(pmOf(pastRaw)), `client solve reproduces every PM row byte for byte — design-year fields and turboLane included${JSON.stringify(pmOf(sol0.report)) === JSON.stringify(pmOf(pastRaw)) ? "" : "\n  " + firstDiffs(pmOf(pastRaw), pmOf(sol0.report)).join("\n  ")}`);
+  ok(JSON.stringify(sol0.report.affectedIntersections) === JSON.stringify(pastRaw.affectedIntersections), "top-level rows byte-identical too");
+  ok(JSON.stringify(sol0.report.mitigationSummary) === JSON.stringify(past.mitigationSummary), "mitigationSummary byte-identical");
+  // The shortcut really is wrong here: a solve with growthYears + horizon would
+  // grow the design year one year too far.
+  {
+    const rr = pmOf(past).find((ix) => ix.designNoBuildVc !== undefined);
+    const g = past.growthAppliedPct / 100;
+    ok(Math.abs(rr.designNoBuildVc / rr.existingVc - Math.pow(1 + g, 19)) < Math.abs(rr.designNoBuildVc / rr.existingVc - Math.pow(1 + g, 20)),
+       `${rr.signalId}: design no-build v/c grows by growth^19 (${rr.existingVc} → ${rr.designNoBuildVc}), not growth^20`);
+  }
+
+  // A timing edit at the turbo signal plus a growth edit (a no-op on the
+  // volumes here — growthYears is 0 — but it must round-trip the report
+  // header the same way): the engine's what-if and the client solve agree
+  // byte for byte.
+  const edit = withNsShare(withCycle(timingEditFromRow(r3), 150), 0.2);
+  const state = { ...EMPTY_SCENARIO, timing: { "sig-3": edit }, growthRatePct: 4 };
+  const engRaw = await generateTisReport(toWhatIfRequest(past, state));
+  const eng = WhatIfTisResponse.parse(engRaw);
+  const cli = solveScenarioDetailed(past, state);
+  const e3 = byId(eng, "sig-3"), c3 = pmOf(cli.report).find((ix) => ix.signalId === "sig-3");
+  ok(e3?.signalTiming?.source === "override" && e3.signalTiming.cycleLenSec === 150, `engine what-if: sig-3 runs the 150 s plan (${e3?.signalTiming?.source})`);
+  ok(eng.growthAppliedPct === 4 && cli.report.growthAppliedPct === 4, "both sides applied 4 %/yr growth");
+  ok(JSON.stringify(pmOf(cli.report)) === JSON.stringify(pmOf(engRaw)), `engine what-if vs client solve: every PM row byte-identical under the edits${JSON.stringify(pmOf(cli.report)) === JSON.stringify(pmOf(engRaw)) ? "" : "\n  " + firstDiffs(pmOf(engRaw), pmOf(cli.report)).join("\n  ")}`);
+  ok(JSON.stringify(cli.report.mitigationSummary) === JSON.stringify(eng.mitigationSummary), "engine what-if vs client solve: mitigationSummary byte-identical under the edit");
+  ok(JSON.stringify(c3?.turboLane) === JSON.stringify(e3?.turboLane), "sig-3 turboLane identical between engine and client under the timing edit");
+  ok(/turbo-lane/.test(e3?.mitigation ?? "") === /turbo-lane/.test(c3?.mitigation ?? "") && e3?.mitigation === c3?.mitigation,
+     `sig-3 mitigation prose identical (turbo sentence ${/turbo-lane/.test(e3?.mitigation ?? "") ? "present" : "absent"} on both)`);
+
+  // The turbo screening reads the BUILD volumes, so a trip edit must move it:
+  // size x40 on both sides. The engine re-runs the network here (distribution
+  // feedback), so the rows are not byte-comparable — the screening block is,
+  // because its inputs (rounded approach volumes) and outputs are rounded.
+  const big = { ...EMPTY_SCENARIO, size: baseReq.size * 40 };
+  const engBig = await generateTisReport(toWhatIfRequest(past, big));
+  const cliBig = solveScenarioDetailed(past, big);
+  const eb3 = byId(engBig, "sig-3"), cb3 = pmOf(cliBig.report).find((ix) => ix.signalId === "sig-3");
+  ok(JSON.stringify(eb3?.turboLane) !== JSON.stringify(r3?.turboLane),
+     `size x40: the engine's sig-3 turboLane moved (baseline approach v/c ${r3?.turboLane?.baselineApproachVc} → ${eb3?.turboLane?.baselineApproachVc})`);
+  ok(JSON.stringify(cb3?.turboLane) === JSON.stringify(eb3?.turboLane),
+     `size x40: the client RECOMPUTED sig-3's turboLane to the engine's (v/c ${cb3?.turboLane?.baselineApproachVc}), not the base's block`);
+  ok(/turbo-lane \(continuous-green T/.test(eb3?.mitigation ?? "") && (eb3?.futureLos === "E" || eb3?.futureLos === "F"),
+     `size x40: sig-3 fails under Build (LOS ${eb3?.futureLos}) and the engine folds the turbo option into its mitigation prose`);
+  ok(eb3?.mitigation === cb3?.mitigation,
+     "size x40: the client's sig-3 mitigation prose is the engine's, turbo sentence included (the screen ran in the browser, not copied from the base)");
 }
 
 for (const f of [bundlePath, entryPath]) { try { await unlink(f); } catch { /* already gone */ } }

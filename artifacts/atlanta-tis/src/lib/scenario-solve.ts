@@ -52,8 +52,19 @@
  *                engine's 0.35-mi coordinate rule, else by normalized name.
  *   calibration  delayMultiplier (round2) in place of the exact multiplier.
  *   jurisdiction planning office parsed from the base mitigation summary.
- *   turbo        turbo-lane geometry is not printable; the base screening
- *                rides along unchanged.
+ *   turbo        a pre-E2 row prints its turbo-lane screening but not the
+ *                geometry behind it (E2 prints `turboScreenInputs`); the base
+ *                screening rides along unchanged and the mitigation prose
+ *                loses the engine's turbo sentence.
+ *
+ * Overrides the ENGINE already applied. A report /whatif returned carries the
+ * records it consumed in `request.signalTimingOverrides` and where each one
+ * landed in `timingOverrideSummary.matches`. The solve feeds that exact record
+ * back to `buildAffectedRow` for the matched signal (no reconstruction, no
+ * flag) unless the scenario edits that signal — or clears it (`timing[id] ===
+ * null`, the Signal tab's "Webster optimum" on a baked-in plan). `toWhatIfRequest`
+ * applies the same rule to the POSTed array, so a second send never drops the
+ * first send's plans.
  *
  * These bounds are NOT gated: check-scenario-solve.mjs runs on E2 fixtures,
  * where none of these paths fire (it asserts rowFallbacks is empty). They are
@@ -124,8 +135,10 @@ export type ScenarioState = {
   internalCapturePct: number | null;
   growthRatePct: number | null;
   weather: TisWeather | null;
-  /** Per-signal timing overrides keyed by signalId. */
-  timing: Record<string, SignalTimingEdit>;
+  /** Per-signal timing overrides keyed by signalId. `null` clears an override
+   *  the base report already carries (request.signalTimingOverrides) so that
+   *  signal falls back to its record or Webster — an edit in its own right. */
+  timing: Record<string, SignalTimingEdit | null>;
   /** Access-tab driveways: a local copy of request.driveways, sent only to the engine. */
   driveways: Driveway[] | null;
   selectedSignalId: string | null;
@@ -143,6 +156,29 @@ export const EMPTY_SCENARIO: ScenarioState = {
   selectedSignalId: null,
   applyToReport: false,
 };
+
+/** The engine's design-year growth exponent for this report:
+ *  max(0, designYear − CURRENT_YEAR), where CURRENT_YEAR is the year the
+ *  engine ran (tis.ts: `new Date().getUTCFullYear()`). The report never
+ *  prints that year, but it is recoverable exactly: while growth applied,
+ *  openingYear − growthYears; once growthYears was clamped at 0 (an opening
+ *  year at or before the run — the schema allows 2024) only `generatedAt`
+ *  says which year the engine ran in. `growthYears + horizon`, the obvious
+ *  shortcut, over-counts by (CURRENT_YEAR − openingYear) in exactly that
+ *  case and moves every design-year delay, v/c and LOS off the engine's. */
+export function designGrowthYears(report: Pick<TisReport, "growthYears" | "designYear" | "designYearHorizonYears" | "generatedAt" | "request">): number {
+  const horizon = report.designYearHorizonYears ?? DESIGN_YEAR_HORIZON_DEFAULT;
+  const growthYears = Math.max(0, report.growthYears);
+  const opening = report.request.openingYear;
+  const designYear = report.designYear ?? opening + horizon;
+  let currentYear: number;
+  if (growthYears > 0) currentYear = opening - growthYears;
+  else {
+    const generated = Date.parse(report.generatedAt);
+    currentYear = Number.isFinite(generated) ? new Date(generated).getUTCFullYear() : new Date().getUTCFullYear();
+  }
+  return Math.max(0, designYear - currentYear);
+}
 
 /** True when any edit differs from the base study (selection alone is not an edit). */
 export function isScenarioDirty(s: ScenarioState): boolean {
@@ -616,8 +652,7 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
   const internalCapturePct = clamp(state.internalCapturePct ?? baseIc, 0, 50);
   const growthRatePct = clamp(state.growthRatePct ?? report.growthAppliedPct, -5, 6);
   const growthYears = Math.max(0, report.growthYears);
-  const horizon = report.designYearHorizonYears ?? DESIGN_YEAR_HORIZON_DEFAULT;
-  const designYears = growthYears + horizon;
+  const designYears = designGrowthYears(report);
   const growthMultiplier = Math.pow(1 + growthRatePct / 100, growthYears);
   const designGrowthMultiplier = Math.pow(1 + growthRatePct / 100, designYears);
   const weather: TisWeather = state.weather ?? report.weather;
@@ -653,6 +688,11 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
   const basePm = basePeriods.find((p) => p.period === "pm_peak");
   const basePmExternal = basePm?.ext
     ?? periodInputs({ lu, rates, size: baseSize, period: "pm_peak", passByPct: basePassBy, internalCapturePct: baseIc, autoModeShare, existing }).externalTrips;
+
+  // Overrides the engine already applied to this base (a /whatif report):
+  // the request's own records, at the signals the engine's summary says they
+  // snapped to. Fed back verbatim — no reconstruction, no flag.
+  const baseOverrides = baseOverridesBySignal(report);
 
   // ---- candidates, reconstructed from the PM rows ----
   type Cand = {
@@ -735,15 +775,33 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
       if (solved) { cand.ledgerExact = solved; flag(id, "pathLedger"); }
     }
 
-    // Timing: the scenario's edit wins; else a measured timing whose record is
-    // missing is re-expressed from the printed g/C.
+    // Turbo-lane screen: the geometry the engine's screen read, so the same
+    // screen runs on the scenario's volumes (E2). A pre-E2 row prints only
+    // the result, which then rides along at base.
+    const tsi = row.turboScreenInputs;
+    if (tsi) {
+      cand.sig.legCount = tsi.legCount;
+      cand.sig.roadClass = tsi.roadClass;
+      cand.sig.medianType = tsi.medianType;
+      cand.sig.minorLegBearing = tsi.minorLegBearing;
+      if (tsi.mainThroughLanes !== undefined) cand.sig.mainThroughLanes = tsi.mainThroughLanes;
+      if (tsi.mainThroughLanesMeasured !== undefined) cand.sig.mainThroughLanesMeasured = tsi.mainThroughLanesMeasured;
+    } else if (row.turboLane) flag(id, "turbo");
+
+    // Timing: the scenario's edit wins; a cleared edit (null) drops a base
+    // override so the record / Webster resolve; else a base override the
+    // engine already applied is fed back verbatim; else a measured timing
+    // whose record is missing is re-expressed from the printed g/C.
     const edit = state.timing[id];
+    const baseOverride = baseOverrides.get(id);
     if (edit) cand.timingOverride = timingEditToOverride(edit, row);
-    else if (row.signalTiming && (row.signalTiming.basis === "measured" || row.signalTiming.basis === "measured-cycle") && !cand.utdf) {
+    else if (edit === null) { /* cleared */ }
+    else if (baseOverride) cand.timingOverride = baseOverride;
+    else if (row.signalTiming && (row.signalTiming.source === "override"
+      || ((row.signalTiming.basis === "measured" || row.signalTiming.basis === "measured-cycle") && !cand.utdf))) {
       cand.timingOverride = overrideFromPrintedTiming(row);
       flag(id, "gOverC");
     }
-    if (row.turboLane) flag(id, "turbo");
     if (!cand.ok) { baseOnly.add(id); flag(id, "baseOnly"); }
     return cand;
   });
@@ -805,8 +863,8 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
       }
       // The base carries measured volumes whose record is gone: keep the label.
       if (c.base.volumeSource && !c.utdf) built.volumeSource = c.base.volumeSource as AffectedIntersection["volumeSource"];
-      // Turbo geometry is not printable; the base screening rides along.
-      if (baseRow.turboLane && !built.turboLane) (built as unknown as { turboLane: unknown }).turboLane = baseRow.turboLane;
+      // A pre-E2 row's turbo screening (no geometry to re-run it) rides along.
+      if (baseRow.turboLane && !built.turboLane && !c.base.turboScreenInputs) (built as unknown as { turboLane: unknown }).turboLane = baseRow.turboLane;
       return built as unknown as TisAffectedIntersection;
     });
     const dropCount = rows.filter((r) => r.losChanged).length;
@@ -867,17 +925,55 @@ export function solveScenario(report: TisReport, state: ScenarioState): TisRepor
  *  (`WhatIfTisMutationBody`). Kept as a named alias for readability. */
 export type WhatIfRequest = TisRequest;
 
+/** The override records the engine applied to produce this report, keyed by
+ *  the signal each snapped to (timingOverrideSummary.matches → the request's
+ *  array). Empty for a report generated without overrides. A record the
+ *  studio built carries its row's coordinates verbatim, so a report without
+ *  the summary (none the E2 engine emits) still resolves by exact
+ *  coordinates. */
+export function baseOverridesBySignal(report: TisReport): Map<string, SignalTimingOverrideInput> {
+  const out = new Map<string, SignalTimingOverrideInput>();
+  const recs = report.request.signalTimingOverrides;
+  if (!recs || recs.length === 0) return out;
+  const matches = report.timingOverrideSummary?.matches;
+  if (matches) {
+    for (const m of matches) {
+      const rec = recs[m.index];
+      if (rec) out.set(m.signalId, rec as SignalTimingOverrideInput);
+    }
+    return out;
+  }
+  for (const row of report.affectedIntersections) {
+    const rec = recs.find((o) => o.latitude === row.latitude && o.longitude === row.longitude);
+    if (rec) out.set(row.signalId, rec as SignalTimingOverrideInput);
+  }
+  return out;
+}
+
 /** The base request plus every scenario edit, for the engine to re-run.
  *  The override records go out exactly as the local solve consumed them
  *  (timingEditToOverride already rounded them), which is what makes the
- *  server's report and the client's solve agree field for field. */
+ *  server's report and the client's solve agree field for field.
+ *
+ *  The base's own overrides (a /whatif report's request carries the plans
+ *  the engine applied) are KEPT: an edit replaces the base record at that
+ *  signal, a cleared edit (null) drops it, and every other record goes out
+ *  untouched — so the engine sees the same plans the client solve fed
+ *  buildAffectedRow, and a second send never reverts the first send's
+ *  signals to Webster. */
 export function toWhatIfRequest(report: TisReport, state: ScenarioState): WhatIfRequest {
   const req = report.request;
   const rowsById = new Map(report.affectedIntersections.map((r) => [r.signalId, r]));
-  const overrides: SignalTimingOverride[] = [];
+  const base = baseOverridesBySignal(report);
+  const replaced = new Set<SignalTimingOverrideInput>();
+  for (const id of Object.keys(state.timing)) {
+    const rec = base.get(id);
+    if (rec) replaced.add(rec);
+  }
+  const overrides: SignalTimingOverride[] = (req.signalTimingOverrides ?? []).filter((o) => !replaced.has(o as SignalTimingOverrideInput));
   for (const [id, edit] of Object.entries(state.timing)) {
     const row = rowsById.get(id);
-    if (!row) continue;
+    if (!row || !edit) continue;
     overrides.push(timingEditToOverride(edit, row));
   }
   const out: WhatIfRequest = {
@@ -887,9 +983,10 @@ export function toWhatIfRequest(report: TisReport, state: ScenarioState): WhatIf
     ...(state.internalCapturePct !== null ? { internalCapturePct: state.internalCapturePct } : {}),
     ...(state.growthRatePct !== null ? { growthRatePct: state.growthRatePct } : {}),
     ...(state.weather !== null ? { weather: state.weather } : {}),
-    ...(overrides.length > 0 ? { signalTimingOverrides: overrides } : {}),
     runSensitivity: false,
   };
+  if (overrides.length > 0) out.signalTimingOverrides = overrides;
+  else delete out.signalTimingOverrides;
   if (state.driveways !== null) {
     if (state.driveways.length > 0) out.driveways = state.driveways;
     else delete out.driveways;
@@ -898,7 +995,8 @@ export function toWhatIfRequest(report: TisReport, state: ScenarioState): WhatIf
 }
 
 /** Largest absolute difference between two solves of the same study, field by
- *  field over the PM rows — the "engine vs client" diff line. */
+ *  field over the PM rows — opening AND design year — the "engine vs client"
+ *  diff line. A design field present on one side only counts as Infinity. */
 export function reportDiff(a: TisReport, b: TisReport): { maxDelayDeltaSec: number; maxVcDelta: number; losMismatches: number; rows: number } {
   const byId = new Map(b.affectedIntersections.map((r) => [r.signalId, r]));
   let maxDelay = 0, maxVc = 0, los = 0, rows = 0;
@@ -906,9 +1004,11 @@ export function reportDiff(a: TisReport, b: TisReport): { maxDelayDeltaSec: numb
     const s = byId.get(r.signalId);
     if (!s) continue;
     rows++;
-    maxDelay = Math.max(maxDelay, Math.abs(r.futureDelaySec - s.futureDelaySec), Math.abs(r.existingDelaySec - s.existingDelaySec));
-    maxVc = Math.max(maxVc, Math.abs(r.futureVc - s.futureVc), Math.abs(r.existingVc - s.existingVc));
-    if (r.futureLos !== s.futureLos || r.existingLos !== s.existingLos) los++;
+    const d = (x: number | undefined, y: number | undefined) => (typeof x === "number" && typeof y === "number" ? Math.abs(x - y) : x === y ? 0 : Infinity);
+    maxDelay = Math.max(maxDelay, d(r.futureDelaySec, s.futureDelaySec), d(r.existingDelaySec, s.existingDelaySec),
+      d(r.designBuildDelaySec, s.designBuildDelaySec), d(r.designNoBuildDelaySec, s.designNoBuildDelaySec));
+    maxVc = Math.max(maxVc, d(r.futureVc, s.futureVc), d(r.existingVc, s.existingVc), d(r.designBuildVc, s.designBuildVc), d(r.designNoBuildVc, s.designNoBuildVc));
+    if (r.futureLos !== s.futureLos || r.existingLos !== s.existingLos || r.designBuildLos !== s.designBuildLos || r.designNoBuildLos !== s.designNoBuildLos) los++;
   }
   return { maxDelayDeltaSec: round1(maxDelay), maxVcDelta: round2(maxVc), losMismatches: los, rows };
 }

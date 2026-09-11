@@ -121,10 +121,13 @@ const ROADS_FETCH_TIMEOUT_MS = Math.max(6000, Number(process.env["ROADS_FETCH_TI
 // drive that by nudging a coordinate one ULP per request. Two guards: every
 // call sweeps entries past the TTL (expiry frees memory rather than merely
 // skipping the read), and the map never holds more than ROADS_MEMO_MAX_ENTRIES
-// — a miss over the cap evicts the oldest entry (Map preserves insertion
-// order, and a refreshed entry is re-inserted at the tail). The cap is a
-// per-process memory ceiling, not a hit-rate target: a what-if session
-// iterates on one site, so even a handful of live entries covers it.
+// — a miss over the cap evicts the least recently USED entry (Map preserves
+// insertion order; a hit re-inserts its key at the tail, so eviction is LRU,
+// not FIFO — a what-if session iterating on one site keeps its network
+// resident however many other sites pass through). The cap is a per-process
+// memory ceiling, not a hit-rate target: even a handful of live entries
+// covers a session. A hit does NOT extend the TTL — that guards a redeployed
+// road batch, and it runs from the fetch.
 export const ROADS_MEMO_TTL_MS = 10 * 60 * 1000;
 export const ROADS_MEMO_MAX_ENTRIES = 16;
 const roadsMemo = new Map<string, { at: number; segments: RoadSegment[] }>();
@@ -147,7 +150,14 @@ export async function fetchLocalRoads(
   const memoKey = `${regionCode}|${lat}|${lon}|${radiusMi}`;
   sweepRoadsMemo(Date.now());
   const hit = roadsMemo.get(memoKey);
-  if (hit) return hit.segments;
+  if (hit) {
+    // Refresh recency: delete + set moves the key to the tail, so the next
+    // eviction takes the least recently USED entry. `at` is kept — the TTL
+    // runs from the fetch, not the last read.
+    roadsMemo.delete(memoKey);
+    roadsMemo.set(memoKey, hit);
+    return hit.segments;
+  }
   const segments = await fetchLocalRoadsUncached(regionCode, lat, lon, radiusMi);
   if (segments) {
     // Delete-then-set so a refreshed key moves to the tail (newest) position.
