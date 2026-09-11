@@ -26,8 +26,17 @@
 //      templates, not the bare words: "Five Points Road" is a real street in
 //      the Atlanta roads file, so a legitimate "Near Five Points Road" must
 //      not trip the check.
-//   3. Ids, row count and the 6 embedded OSM names are untouched — the fix
-//      changes names only, never ids, zones, volumes or severity.
+//   3. Ids, row count and the 6 embedded OSM names are untouched — within the
+//      analyzer the fix changes names only, never ids, zones, per-signal
+//      volumes or severity.
+//
+// What this check does NOT cover: the engine's same-junction dedup
+// (tis-api-server intersection-coverage.ts dedupCloseSignals) merges
+// same-name signals 45–150 m apart. Coordinate labels were unique, so that
+// rule never fired in Atlanta; with derived names it does, and an Atlanta
+// study's set of analyzed intersections (and with it the trip shares the
+// gravity step spreads across them) can shrink. That engine-side effect is
+// pinned on the shipped data by tis-api-server check:atlanta-name-dedup.
 //
 // Run: node ./scripts/verify-atlanta-naming.mjs
 import { register } from "node:module";
@@ -79,7 +88,8 @@ const warmMs = performance.now() - t1;
 ok(again === summaries, `second call is memoized (same array, ${warmMs.toFixed(1)} ms)`);
 
 // ---------------------------------------------------------------------------
-// 2. Row count and ids are what the signals file says — the fix is names-only.
+// 2. Row count and ids are what the signals file says — inside the analyzer
+//    the fix is names-only (the engine-side dedup effect is check:atlanta-name-dedup).
 // ---------------------------------------------------------------------------
 const signals = loadSignals();
 ok(summaries.length === signals.length, `one summary per signal tuple (${summaries.length} / ${signals.length})`);
