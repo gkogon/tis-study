@@ -53,6 +53,8 @@ export * from "./tisAffectedIntersectionSignalTimingLeftPhasingEw";
 export * from "./tisAffectedIntersectionSignalTimingLeftPhasingNs";
 export * from "./tisAffectedIntersectionSignalTimingLeftPhasingSource";
 export * from "./tisAffectedIntersectionTurboLane";
+export * from "./tisAffectedIntersectionTurboScreenInputs";
+export * from "./tisAffectedIntersectionTurboScreenInputsMedianType";
 export * from "./tisAffectedIntersectionVolumeSource";
 export * from "./tisAnalysisPeriod";
 export * from "./tisApproachImpact";

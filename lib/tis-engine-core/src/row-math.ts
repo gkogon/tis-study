@@ -253,6 +253,16 @@ export type SignalTimingOverrideInput = {
   splitSByPhase: Record<string, number>;
 };
 
+/** Mirrors the OpenAPI TisAffectedIntersection.turboScreenInputs schema. */
+export type TurboScreenInputs = {
+  legCount: number;
+  roadClass: string;
+  medianType: "raised" | "painted";
+  minorLegBearing: number;
+  mainThroughLanes?: number;
+  mainThroughLanesMeasured?: boolean;
+};
+
 /** The candidate a row is built from: the inventory signal plus whatever the
  *  caller attached to it (a measured UTDF record and its index in the
  *  request's array; a what-if timing override). */
@@ -418,6 +428,11 @@ export type AffectedIntersection = {
   // a genuine 3-leg T-intersection candidate. Reported for every candidate in
   // the study area regardless of LOS (screening-study convention).
   turboLane?: TurboLaneScreening;
+  /** The analyzer geometry screenTurboCandidate read, printed verbatim on
+   *  exactly the rows it accepted (turboLane present), so a client re-solve
+   *  can run the same screen on the scenario's volumes. Geometry-only, so a
+   *  row without it can never become a candidate under any scenario. */
+  turboScreenInputs?: TurboScreenInputs;
   /** Per-turning-movement breakdown of the added project trips (NB-L/T/R …),
    *  derived from the study's directional trip distribution and the site's
    *  bearing from this intersection (assignMovements). Integer trips that
@@ -1229,6 +1244,18 @@ export function buildAffectedRow(
         }
       : undefined,
     turboLane,
+    ...(turboLane && turboCand
+      ? {
+          turboScreenInputs: {
+            legCount: c.sig.legCount as number,
+            roadClass: c.sig.roadClass as string,
+            medianType: turboCand.medianType,
+            minorLegBearing: c.sig.minorLegBearing as number,
+            ...(c.sig.mainThroughLanes !== undefined ? { mainThroughLanes: c.sig.mainThroughLanes } : {}),
+            ...(c.sig.mainThroughLanesMeasured !== undefined ? { mainThroughLanesMeasured: c.sig.mainThroughLanesMeasured } : {}),
+          } satisfies TurboScreenInputs,
+        }
+      : {}),
     ...(movements && movements.length > 0 ? { movements } : {}),
     ...(movements && movements.length > 0 && params.conservedLabeling
       ? { movementSource: (pathRows ? "path" : "octant") as "path" | "octant" }
