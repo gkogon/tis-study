@@ -11,7 +11,8 @@
     "preprocess:accidents": "node ./scripts/fetch-accidents.mjs",
     "check:road-parser": "node ./scripts/verify-road-parser.mjs",
     "check:road-file-io": "node ./scripts/verify-road-file-io.mjs",
-    "check:aadt-class-join": "node ./scripts/verify-aadt-class-join.mjs"
+    "check:aadt-class-join": "node ./scripts/verify-aadt-class-join.mjs",
+    "check:atlanta-naming": "node ./scripts/verify-atlanta-naming.mjs"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
