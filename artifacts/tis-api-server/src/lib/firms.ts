@@ -191,6 +191,27 @@ export function isSubscriptionDelinquent(
 }
 
 /**
+ * READ-ONLY "may this firm still run the engine without being charged" gate,
+ * for /whatif. Mirrors the three buckets `reserveStudySlot` draws from —
+ * unlimited (dev-auth / studyLimit<=0 sentinel / admin), the period quota on
+ * a non-delinquent subscription, a prepaid credit — WITHOUT drawing from any
+ * of them. A what-if consumes nothing, so no atomic UPDATE is needed; but an
+ * exhausted or lapsed firm must not get the full TisReport for free (the hole
+ * the demo limiter's comment warns about). Pure: firm columns + email in,
+ * verdict out, so the check script exercises every branch with plain node.
+ */
+export function firmMayRunUncharged(
+  firm: Pick<Firm, "studyLimit" | "studiesUsedThisPeriod" | "studyCreditsRemaining" | "subscriptionStatus">,
+  email?: string | null,
+): { ok: true } | { ok: false; reason: "quota_exceeded" | "subscription_delinquent" } {
+  if (isUnlimitedStudies(firm, email)) return { ok: true };
+  const delinquent = isSubscriptionDelinquent(firm);
+  if (!delinquent && firm.studiesUsedThisPeriod < firm.studyLimit) return { ok: true };
+  if (firm.studyCreditsRemaining > 0) return { ok: true };
+  return { ok: false, reason: delinquent ? "subscription_delinquent" : "quota_exceeded" };
+}
+
+/**
  * Atomically reserve one study against the firm's period quota.
  *
  * This REPLACES the old check-then-charge pair (canGenerateStudy +

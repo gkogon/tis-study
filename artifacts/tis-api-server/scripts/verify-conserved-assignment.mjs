@@ -32,6 +32,14 @@
 //     a pair). Say so in the PR: rewriting the baseline re-pins what "legacy
 //     bytes" means.
 //
+//     KEY-LEVEL DIFF MODE:  node ./scripts/verify-conserved-assignment.mjs --diff-legacy-baseline
+//     ...runs the legacy report against the PINNED segments and prints, key
+//     path by key path (array indices collapsed to []), what the current
+//     engine ADDS to, REMOVES from, or CHANGES in the pinned baseline —
+//     without asserting byte identity. This is the proof a purely additive
+//     PR pastes into its body: the "removed" and "changed" lists must be
+//     empty. Exit code is 0 unless something was removed or changed.
+//
 //  3. FLAG ON ⇒ the numbers keep their books. At every resolved intersection:
 //     Σ integer movement trips === addedTripsPmPeak, and each approach's
 //     printed +Trips === Σ of that approach's movement rows (the two integer
@@ -77,6 +85,7 @@ const ok = (cond, msg) => { if (!cond) { console.error("FAIL:", msg); fails++; }
 const SITE = { lat: 25.8456, lon: -80.2103 };
 const RADIUS = 0.5;
 const WRITE_BASELINE = process.argv.includes("--write-legacy-baseline");
+const DIFF_BASELINE = process.argv.includes("--diff-legacy-baseline");
 const segmentsPath = path.resolve(here, "fixtures/conserved-road-segments.json");
 let segments;
 if (WRITE_BASELINE) {
@@ -205,6 +214,49 @@ ok((dflt.affectedIntersections ?? []).some((ix) => ix.movementSource === "path" 
 // ---------------------------------------------------------------------------
 const flagFalse = await generateTisReport({ ...baseReq, conservedAssignment: false, signalTiming: "screening", realLaneGeometry: false });
 const baselinePath = path.resolve(here, "fixtures/conserved-legacy-baseline.json");
+if (DIFF_BASELINE) {
+  // Key-level diff against the pinned baseline: which key paths the current
+  // engine adds, removes or changes. Array indices collapse to [] so a field
+  // added to every row prints once.
+  const pinned = JSON.parse(await readFile(baselinePath, "utf8"));
+  const added = new Set(), removed = new Set(), changed = new Set();
+  const isObj = (v) => v !== null && typeof v === "object";
+  const walk = (a, b, p) => {
+    if (Array.isArray(a) && Array.isArray(b)) {
+      const n = Math.max(a.length, b.length);
+      for (let i = 0; i < n; i++) {
+        if (i >= a.length) removed.add(`${p}[]`);
+        else if (i >= b.length) added.add(`${p}[]`);
+        else walk(a[i], b[i], `${p}[]`);
+      }
+      return;
+    }
+    if (isObj(a) && isObj(b) && !Array.isArray(a) && !Array.isArray(b)) {
+      for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+        const kp = p ? `${p}.${k}` : k;
+        if (!(k in b)) added.add(kp);
+        else if (!(k in a)) removed.add(kp);
+        else walk(a[k], b[k], kp);
+      }
+      return;
+    }
+    if (JSON.stringify(a) !== JSON.stringify(b)) changed.add(p);
+  };
+  walk(stripTime(flagFalse), pinned, "");
+  const print = (label, set) => {
+    const list = [...set].sort();
+    console.log(`\n${label} (${list.length}):`);
+    for (const k of list) console.log(`  ${k}`);
+  };
+  print("ADDED keys (current engine, absent from the pinned baseline)", added);
+  print("REMOVED keys (pinned baseline, absent from the current engine)", removed);
+  print("CHANGED values", changed);
+  await rm(entryPath, { force: true });
+  await rm(bundlePath, { force: true });
+  const clean = removed.size === 0 && changed.size === 0;
+  console.log(clean ? "\nDIFF: purely additive" : "\nDIFF: NOT purely additive");
+  process.exit(clean ? 0 : 1);
+}
 if (WRITE_BASELINE) {
   await writeFile(baselinePath, JSON.stringify(stripTime(flagFalse)) + "\n", "utf8");
   console.log("REWROTE legacy baseline fixture:", baselinePath);

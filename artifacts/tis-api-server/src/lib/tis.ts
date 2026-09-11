@@ -86,6 +86,7 @@ import {
   type AnalyzerIntersection,
   type UtdfMovementValues,
   type UtdfIntersectionInput,
+  type SignalTimingOverrideInput,
   type ApproachImpact,
   type LaneGroupImpact,
   type AffectedIntersection,
@@ -134,6 +135,7 @@ export type {
   Direction,
   UtdfMovementValues,
   UtdfIntersectionInput,
+  SignalTimingOverrideInput,
   ApproachImpact,
   LaneGroupImpact,
   AffectedIntersection,
@@ -375,6 +377,14 @@ export type TisRequest = {
    *  reroute onto the network (U-turns). Absent or empty ⇒ single-site
    *  behavior, byte-identical to today. Max 12 driveways. */
   driveways?: Driveway[];
+  /** Per-signal TIMING overrides for a what-if scenario (cycle + phase map +
+   *  splits, no volumes). Snapped to study signals by the same 0.35-mi /
+   *  name rules as utdfIntersections (attachTimingOverrides) and consumed
+   *  only as the FIRST provider of the signal-timing resolver, so the
+   *  matched row's existing volumes and approach shares are untouched. Every
+   *  record's fate is reported on `timingOverrideSummary`. Absent ⇒
+   *  byte-identical output. */
+  signalTimingOverrides?: SignalTimingOverrideInput[];
 };
 
 export type StudyTier = "auto" | "worksheet" | "abbreviated" | "full";
@@ -463,6 +473,14 @@ export type PeriodReport = {
   intersectionsWithLosDrop: number;
   intersectionsAtLosEf: number;
   worstDelayDeltaSec: number;
+  // ---- Exact re-solve inputs for this period (unrounded): what the period
+  // loop handed buildAffectedRow, so a client can rebuild every row with the
+  // engine's code. Net assigned trips = max(0, externalTripsExact −
+  // (existingUseCreditExact ?? 0)), the same chain the loop applies.
+  periodVolumeFactor: number;
+  inFraction: number;
+  externalTripsExact: number;
+  existingUseCreditExact?: number;
 };
 
 export type SensitivityResult = {
@@ -516,6 +534,27 @@ export type TisReport = {
    *  PTAL-banded value. Surfaced so renderers print the actual share
    *  rather than a hard-coded constant. */
   autoModeShareApplied: number;
+  // ---- Exact re-solve inputs (report level): the region strings the text
+  // builders print, and the unrounded weather factor the capacity math used.
+  regionCode: string;
+  jurisdiction: { dotName: string; planningOfficeName: string };
+  autoModeShareSource: string;
+  weatherFactorExact: number;
+  /** The opening-year growth multiplier the engine multiplied existing
+   *  volumes by: (1 + growthAppliedPct/100) ^ growthYears. */
+  growthMultiplierExact: number;
+  /** The design-year growth multiplier the engine used for the Design-Year
+   *  scenarios. NOT derivable from growthAppliedPct / growthYears /
+   *  designYearHorizonYears alone: the engine grows the design year over
+   *  max(0, designYear - currentYear), and growthYears is clamped to 0
+   *  whenever openingYear is at or before the current year, so for a past
+   *  opening year the design span is shorter than growthYears + horizon.
+   *  Printed so a re-solve reproduces the design-year columns exactly. */
+  designGrowthMultiplierExact: number;
+  /** How request.signalTimingOverrides attached (attachTimingOverrides).
+   *  Present whenever the request carried the array, so a what-if client can
+   *  always show which overrides took. */
+  timingOverrideSummary?: TimingOverrideMatchSummary;
   /** Step-4 network route assignment (which road corridors carry the
    *  project trips). Absent when the region has no road network. */
   routeAssignment?: RouteAssignment;
@@ -663,6 +702,11 @@ type StudyCandidate = {
   /** Measured UTDF record snapped to this signal (attachUtdfData). Presence
    *  gates every measured-data path in buildAffectedRow; absent ⇒ legacy. */
   utdf?: UtdfIntersectionInput;
+  /** Index of `utdf` in req.utdfIntersections (echoed as utdfRecordIndex). */
+  utdfIndex?: number;
+  /** What-if timing override snapped to this signal (attachTimingOverrides).
+   *  Read ONLY by the timing resolver's first provider — never for volumes. */
+  timingOverride?: SignalTimingOverrideInput;
 };
 
 // ---------- UTDF measured-data attachment (opt-in, req.utdfIntersections) ----------
@@ -724,8 +768,9 @@ function attachUtdfData(
   // ---- Pass 1: coordinate records (nearest-wins per signal) ----
   // Distance from each candidate to its attached record, for nearest-wins.
   const attachedDistM = new Map<StudyCandidate, number>();
-  const nameRecords: UtdfIntersectionInput[] = [];
-  for (const rec of records) {
+  const nameRecords: Array<{ rec: UtdfIntersectionInput; index: number }> = [];
+  for (let index = 0; index < records.length; index++) {
+    const rec = records[index]!;
     if (!utdfMeasuredTotals(rec)) {
       logger.warn({ record: label(rec) }, "tis.utdf_record_no_volumes");
       unmatched(rec);
@@ -733,7 +778,7 @@ function attachUtdfData(
     }
     if (!hasCoords(rec)) {
       if (rec.name && rec.name.trim().length > 0) {
-        nameRecords.push(rec);
+        nameRecords.push({ rec, index });
       } else {
         // Neither coordinates nor a name — nothing to match on.
         logger.warn({ record: label(rec) }, "tis.utdf_record_no_coords_no_name");
@@ -776,13 +821,14 @@ function attachUtdfData(
       unmatched(best.utdf!);
     }
     best.utdf = rec;
+    best.utdfIndex = index;
     attachedDistM.set(best, bestM);
     summary.matched++;
     summary.matchedByCoordinates++;
   }
 
   // ---- Pass 2: name records (unambiguous normalized-name match) ----
-  for (const rec of nameRecords) {
+  for (const { rec, index } of nameRecords) {
     const result = matchIntersectionByName(rec.name!, candidates, (c) => c.sig.name);
     if (result.kind === "tie") {
       logger.warn(
@@ -819,9 +865,113 @@ function attachUtdfData(
       continue;
     }
     best.utdf = rec;
+    best.utdfIndex = index;
     summary.matched++;
     summary.matchedByName++;
   }
+  return summary;
+}
+
+// ---------- What-if timing overrides (req.signalTimingOverrides) ----------
+
+/** How the request's timing overrides attached. Mirrors the OpenAPI
+ *  TimingOverrideMatchSummary schema. Always emitted when the request carried
+ *  the array — a what-if client must be able to tell a dropped override from
+ *  one that resolved to the same timing. */
+export type TimingOverrideMatchSummary = {
+  total: number;
+  matched: number;
+  matchedByCoordinates: number;
+  matchedByName: number;
+  matches: Array<{ index: number; signalId: string; signalName: string; by: "coordinates" | "name" }>;
+  unmatched: Array<{
+    index: number;
+    label: string;
+    reason: "no_signal_within_snap" | "displaced_by_nearer" | "name_tie" | "name_unmatched" | "displaced_by_existing";
+  }>;
+};
+
+/**
+ * Snap what-if timing overrides onto the study candidates (mutates
+ * `candidates` by setting `timingOverride` on matched entries). SAME matching
+ * rules as attachUtdfData, minus the volume gate (overrides carry none):
+ *
+ *  - COORDINATES first: nearest candidate within SNAP_MAX_MI (~0.35 mi),
+ *    nearest-wins per signal — a second override for the same signal
+ *    displaces only if nearer, never merges.
+ *  - NAME fallback: an override whose coordinates miss every candidate, when
+ *    it carries a name, tries the unambiguous normalized-name match. Ties
+ *    match nothing; a signal already holding an override keeps it.
+ *
+ * Purely additive and timing-only: the attached record is read by exactly one
+ * consumer — the first provider of resolveTimingForRow — so a matched signal's
+ * existing volumes, approach shares, lane counts and storage are the base
+ * study's, byte for byte. No records ⇒ no-op.
+ */
+function attachTimingOverrides(
+  candidates: StudyCandidate[],
+  overrides: SignalTimingOverrideInput[],
+): TimingOverrideMatchSummary {
+  const snapMaxM = SNAP_MAX_MI * 1609.34;
+  const label = (o: SignalTimingOverrideInput, index: number): string =>
+    `${o.name ?? `override #${index + 1}`} @ (${o.latitude}, ${o.longitude})`;
+  const summary: TimingOverrideMatchSummary = {
+    total: overrides.length, matched: 0, matchedByCoordinates: 0, matchedByName: 0, matches: [], unmatched: [],
+  };
+  const attachedDistM = new Map<StudyCandidate, number>();
+  const attachedIndex = new Map<StudyCandidate, number>();
+  const nameFallback: Array<{ rec: SignalTimingOverrideInput; index: number }> = [];
+  const unmatch = (index: number, rec: SignalTimingOverrideInput, reason: TimingOverrideMatchSummary["unmatched"][number]["reason"]): void => {
+    summary.unmatched.push({ index, label: label(rec, index), reason });
+    logger.warn({ record: label(rec, index), reason }, "tis.timing_override_unmatched");
+  };
+  const hasName = (o: SignalTimingOverrideInput): boolean => typeof o.name === "string" && o.name.trim().length > 0;
+
+  // ---- Pass 1: coordinates (nearest-wins per signal) ----
+  for (let index = 0; index < overrides.length; index++) {
+    const rec = overrides[index]!;
+    let best: StudyCandidate | undefined;
+    let bestM = Infinity;
+    for (const c of candidates) {
+      const dM = haversineMeters(rec.latitude, rec.longitude, c.sig.latitude, c.sig.longitude);
+      if (dM < bestM) { bestM = dM; best = c; }
+    }
+    if (!best || bestM > snapMaxM) {
+      if (hasName(rec)) nameFallback.push({ rec, index });
+      else unmatch(index, rec, "no_signal_within_snap");
+      continue;
+    }
+    const prevM = attachedDistM.get(best);
+    if (prevM !== undefined) {
+      if (bestM >= prevM) { unmatch(index, rec, "displaced_by_nearer"); continue; }
+      const prevIndex = attachedIndex.get(best)!;
+      summary.matches = summary.matches.filter((m) => m.index !== prevIndex);
+      summary.matched--;
+      summary.matchedByCoordinates--;
+      unmatch(prevIndex, best.timingOverride!, "displaced_by_nearer");
+    }
+    best.timingOverride = rec;
+    attachedDistM.set(best, bestM);
+    attachedIndex.set(best, index);
+    summary.matched++;
+    summary.matchedByCoordinates++;
+    summary.matches.push({ index, signalId: best.sig.id, signalName: best.sig.name, by: "coordinates" });
+  }
+
+  // ---- Pass 2: name fallback (unambiguous normalized-name match) ----
+  for (const { rec, index } of nameFallback) {
+    const result = matchIntersectionByName(rec.name!, candidates, (c) => c.sig.name);
+    if (result.kind === "tie") { unmatch(index, rec, "name_tie"); continue; }
+    if (result.kind === "none") { unmatch(index, rec, "name_unmatched"); continue; }
+    const best = result.candidate;
+    if (best.timingOverride) { unmatch(index, rec, "displaced_by_existing"); continue; }
+    best.timingOverride = rec;
+    attachedIndex.set(best, index);
+    summary.matched++;
+    summary.matchedByName++;
+    summary.matches.push({ index, signalId: best.sig.id, signalName: best.sig.name, by: "name" });
+  }
+  summary.unmatched.sort((a, b) => a.index - b.index);
   return summary;
 }
 
@@ -1277,6 +1427,19 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
         byName: summary.matchedByName,
       },
       "tis.utdf_attach",
+    );
+  }
+  // What-if timing overrides: snapped AFTER the UTDF records (they never
+  // compete — a signal can hold both; the override outranks the record in the
+  // timing resolver and the record still supplies the volumes). The summary is
+  // ALWAYS surfaced when the array was sent, so a client can see which
+  // overrides took; absent array ⇒ absent summary, byte-identical payloads.
+  let timingOverrideSummary: TimingOverrideMatchSummary | undefined;
+  if (Array.isArray(req.signalTimingOverrides)) {
+    timingOverrideSummary = attachTimingOverrides(candidates, req.signalTimingOverrides);
+    logger.info(
+      { records: req.signalTimingOverrides.length, matched: timingOverrideSummary.matched, unmatched: timingOverrideSummary.unmatched.length },
+      "tis.timing_override_attach",
     );
   }
   // No signal within the study radius → almost certainly a bad geocode (open
@@ -1845,6 +2008,11 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       intersectionsWithLosDrop: dropCount,
       intersectionsAtLosEf: efCount,
       worstDelayDeltaSec: round1(worstDelta),
+      // Exact re-solve inputs: what this period handed buildAffectedRow.
+      periodVolumeFactor: params.periodVolumeFactor ?? 1,
+      inFraction,
+      externalTripsExact: externalTrips,
+      ...(existingUse ? { existingUseCreditExact: existingCredit } : {}),
     });
   }
 
@@ -2024,6 +2192,18 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
     passByPctApplied: passByPct,
     internalCapturePctApplied: internalCapturePct,
     autoModeShareApplied: autoModeShare,
+    // Exact re-solve inputs (report level): the region strings the findings
+    // and mitigation summary print, and the unrounded weather factor.
+    regionCode: region.code,
+    jurisdiction: {
+      dotName: region.jurisdiction.dotName,
+      planningOfficeName: region.jurisdiction.planningOfficeName,
+    },
+    autoModeShareSource: getAutoModeShareSource(region.code),
+    weatherFactorExact: weatherFactor,
+    growthMultiplierExact: growthMultiplier,
+    designGrowthMultiplierExact: designGrowthMultiplier,
+    ...(timingOverrideSummary ? { timingOverrideSummary } : {}),
     ...(routeAssignment ? { routeAssignment } : {}),
     ...(conservedAssignment ? { conservedAssignment } : {}),
     ...(resolvedPtalBand ? { resolvedPtalBand } : {}),
@@ -2093,6 +2273,9 @@ async function synthesizePmReport(
     intersectionsWithLosDrop: rows.filter((r) => r.losChanged).length,
     intersectionsAtLosEf: rows.filter((r) => r.futureLos === "E" || r.futureLos === "F").length,
     worstDelayDeltaSec: round1(rows.reduce((m, r) => Math.max(m, r.futureDelaySec - r.existingDelaySec), 0)),
+    periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak,
+    inFraction,
+    externalTripsExact: externalTrips,
   };
 }
 

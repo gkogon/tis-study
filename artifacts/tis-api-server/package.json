@@ -47,7 +47,10 @@
     "check:signal-timing-engine": "node ./scripts/verify-signal-timing-engine.mjs",
     "check:state-dispatch": "node ./scripts/verify-state-dispatch.mjs",
     "check:region-parity": "node ./scripts/verify-region-parity.mjs",
-    "check:engine-core-exports": "node ./scripts/verify-engine-core-exports.mjs"
+    "check:engine-core-exports": "node ./scripts/verify-engine-core-exports.mjs",
+    "check:signal-timing-overrides": "node ./scripts/verify-signal-timing-overrides.mjs",
+    "check:whatif-gate": "node ./scripts/verify-whatif-gate.mjs",
+    "check:whatif-limiter": "node ./scripts/verify-whatif-limiter.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",

@@ -213,6 +213,102 @@ export const useGenerateTis = <
 };
 
 /**
+ * Same request as /generate; same TisReport back. Recomputes the study
+with the full engine for an in-progress scenario — edited driveways,
+per-signal timing overrides (signalTimingOverrides), size / pass-by /
+growth / weather changes — WITHOUT reserving a study slot, saving a
+project, or recording a funnel event. runSensitivity is ignored
+(forced off). Signed-in only; metered per user (60/hour) and gated on
+the firm still having studies or credits available (402 otherwise);
+one what-if in flight per user (409 otherwise). Use /generate to
+commit the final scenario.
+
+ * @summary Re-run a study as a what-if scenario (no study slot, nothing saved)
+ */
+export const getWhatIfTisUrl = () => {
+  return `/tis-api/whatif`;
+};
+
+export const whatIfTis = async (
+  tisRequest: TisRequest,
+  options?: RequestInit,
+): Promise<TisReport> => {
+  return customFetch<TisReport>(getWhatIfTisUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(tisRequest),
+  });
+};
+
+export const getWhatIfTisMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof whatIfTis>>,
+    TError,
+    { data: BodyType<TisRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof whatIfTis>>,
+  TError,
+  { data: BodyType<TisRequest> },
+  TContext
+> => {
+  const mutationKey = ["whatIfTis"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof whatIfTis>>,
+    { data: BodyType<TisRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return whatIfTis(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type WhatIfTisMutationResult = NonNullable<
+  Awaited<ReturnType<typeof whatIfTis>>
+>;
+export type WhatIfTisMutationBody = BodyType<TisRequest>;
+export type WhatIfTisMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Re-run a study as a what-if scenario (no study slot, nothing saved)
+ */
+export const useWhatIfTis = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof whatIfTis>>,
+    TError,
+    { data: BodyType<TisRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof whatIfTis>>,
+  TError,
+  { data: BodyType<TisRequest> },
+  TContext
+> => {
+  return useMutation(getWhatIfTisMutationOptions(options));
+};
+
+/**
  * Accepts the raw text of a UTDF (Universal Traffic Data Format) file —
 the export Synchro produces via File → Transfer → Write UTDF — and
 returns the parsed nodes, per-movement volume/lane/timing counts, and

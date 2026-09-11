@@ -15,7 +15,11 @@
 //  4. MEASURED TIER. A Synchro record with a phase→movement map and splits
 //     resolves to "measured" with the record's cycle; cycle-only resolves to
 //     "measured-cycle".
-//  5. STRIP TRAP. The stamp and the request flag survive the generated zod.
+//  5. STRIP TRAP. The stamp and the request flag survive the generated zod —
+//     and so do the exact re-solve inputs the report prints for the browser
+//     solver (designHourVolumeVph, loadWeight, the unrounded g/C ratios,
+//     movementsExact / pathTurns, the OSM lane fields, utdfRecordIndex, the
+//     period and report-level exact fields).
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { readFile, writeFile, unlink } from "node:fs/promises";
@@ -180,6 +184,37 @@ const legacy = await generateTisReport({ ...baseReq, conservedAssignment: false,
      "GenerateTisBody accepts signalTiming: screening and rejects an unknown basis");
   const body = GenerateTisBody.parse({ ...baseReq });
   ok(body.signalTiming === "computed", `zod injects the computed default into the request echo (${body.signalTiming})`);
+
+  // Exact re-solve inputs: emitted unrounded by the engine AND kept by zod.
+  const pRows = rows(parsed);
+  ok(pRows.every((ix) => typeof ix.designHourVolumeVph === "number" && typeof ix.loadWeight === "number"),
+     "designHourVolumeVph / loadWeight survive GenerateTisResponse on every row");
+  ok(pRows.every((ix) => ix.designHourVolumeVph === MOCK_INTS.find((m) => m.id === ix.signalId)?.totalVolume),
+     "designHourVolumeVph is the inventory's unrounded design-hour volume");
+  ok(pRows.every((ix) => typeof ix.signalTiming?.gOverCnsExact === "number" && typeof ix.signalTiming?.gOverCewExact === "number"
+       && Math.round(ix.signalTiming.gOverCnsExact * 1000) / 1000 === ix.signalTiming.gOverCns),
+     "signalTiming.gOverCnsExact / gOverCewExact survive and round to the printed 3-dp ratios");
+  ok(pRows.filter((ix) => ix.movementSource === "path").every((ix) => Array.isArray(ix.pathTurns) && Array.isArray(ix.movementsExact) && ix.movementsExact.every((m) => typeof m.exact === "number")),
+     "pathTurns / movementsExact survive on path rows");
+  ok(pRows.filter((ix) => ix.movements?.length).every((ix) => Array.isArray(ix.movementsExact)), "movementsExact survives on every row with a movements table");
+  const p2 = pRows.find((ix) => ix.signalId === "sig-2");
+  ok(p2?.mainThroughLanes === 3 && p2?.mainThroughLanesMeasured === true && p2?.minorThroughLanes === 1,
+     "mainThroughLanes / mainThroughLanesMeasured / minorThroughLanes survive (sig-2: 3 measured, minor 1)");
+  const pp = parsed.periodReports?.[0];
+  ok(pp && pp.periodVolumeFactor === 1 && typeof pp.inFraction === "number" && typeof pp.externalTripsExact === "number" && Math.round(pp.externalTripsExact) === pp.tripGeneration.externalTrips,
+     `period exact fields survive (periodVolumeFactor ${pp?.periodVolumeFactor}, inFraction ${pp?.inFraction}, externalTripsExact ${pp?.externalTripsExact})`);
+  ok(parsed.designYear === 2047 && parsed.designYearHorizonYears === 20, `designYear / designYearHorizonYears survive (${parsed.designYear}, ${parsed.designYearHorizonYears})`);
+  ok(parsed.regionCode === "miami_dade_metro" && typeof parsed.jurisdiction?.dotName === "string" && typeof parsed.jurisdiction?.planningOfficeName === "string"
+       && typeof parsed.autoModeShareSource === "string" && parsed.weatherFactorExact === 1,
+     `regionCode / jurisdiction / autoModeShareSource / weatherFactorExact survive (${parsed.regionCode}, ${parsed.jurisdiction?.dotName})`);
+  const measuredParsed = GenerateTisResponse.parse(await generateTisReport({ ...baseReq, utdfIntersections: [{
+    intId: 1, latitude: Math.round(MOCK_INTS[0].latitude * 1e4) / 1e4, longitude: Math.round(MOCK_INTS[0].longitude * 1e4) / 1e4,
+    volumes: { NBL: 90, NBT: 700, NBR: 60, SBL: 80, SBT: 650, SBR: 50, EBL: 40, EBT: 300, EBR: 30, WBL: 40, WBT: 280, WBR: 30 }, cycleLenSec: 100,
+  }] }));
+  const m1 = rows(measuredParsed).find((ix) => ix.signalId === "sig-1");
+  ok(m1?.utdfRecordIndex === 0 && m1?.designHourVolumeVph === 2350, `utdfRecordIndex survives (sig-1 -> record 0) and designHourVolumeVph is the measured total (${m1?.designHourVolumeVph})`);
+  ok(GenerateTisBody.safeParse({ ...baseReq, signalTimingOverrides: [{ latitude: 1, longitude: 1, cycleLenSec: 90, phaseByMovement: { NBT: 2 }, splitSByPhase: { 2: 40 } }] }).success,
+     "GenerateTisBody accepts signalTimingOverrides (the what-if carrier)");
 }
 
 // The esbuild bundle and its entry are build artifacts, not source — remove
