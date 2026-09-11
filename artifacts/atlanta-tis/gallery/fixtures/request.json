@@ -1,0 +1,18 @@
+{
+  "projectName": "Peachtree Multifamily",
+  "address": "1100 Peachtree St NE, Atlanta, GA 30309",
+  "latitude": 33.7861,
+  "longitude": -84.3853,
+  "landUseCode": "221",
+  "size": 240,
+  "openingYear": 2027,
+  "studyRadiusMi": 0.5,
+  "analysisPeriods": [
+    "am_peak",
+    "pm_peak",
+    "daily"
+  ],
+  "growthRatePct": 1.5,
+  "weather": "clear",
+  "runSensitivity": false
+}

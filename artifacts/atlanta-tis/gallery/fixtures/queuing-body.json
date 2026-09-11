@@ -1,0 +1,13 @@
+{
+  "projectName": "Buford Highway Corridor — Sample Drive Signal Study",
+  "intersectionName": "Buford Hwy @ Sample Drive",
+  "latitude": 33.8654,
+  "longitude": -84.3199,
+  "approachStreet": "Buford Hwy EB left turn",
+  "movement": "left_turn",
+  "hourlyVolumeVph": 380,
+  "laneCount": 1,
+  "cycleLengthSec": 110,
+  "effectiveGreenSec": 22,
+  "availableStorageFt": 250
+}

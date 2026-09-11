@@ -1,0 +1,1037 @@
+{
+  "projectName": "Buford Highway Corridor — Sample Drive Signal Study",
+  "intersection": {
+    "name": "Buford Hwy @ Sample Drive",
+    "major": "Buford Hwy (SR 13)",
+    "minor": "Sample Drive",
+    "laneConfig": "Major 2+ lanes each direction · Minor 1 lane each direction"
+  },
+  "reductionApplied": false,
+  "warrants": [
+    {
+      "id": "1A",
+      "name": "Warrant 1A — Eight-Hour Vehicular Volume (Condition A)",
+      "description": "Minimum vehicular volume on major and minor for 8 hours of an average day.",
+      "met": false,
+      "hoursSatisfied": 5,
+      "hoursRequired": 8,
+      "hourBreakdown": [
+        {
+          "hour": 0,
+          "majorVolume": 120,
+          "minorVolume": 8,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 1,
+          "majorVolume": 80,
+          "minorVolume": 5,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 2,
+          "majorVolume": 60,
+          "minorVolume": 4,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 3,
+          "majorVolume": 55,
+          "minorVolume": 4,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 4,
+          "majorVolume": 90,
+          "minorVolume": 6,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 5,
+          "majorVolume": 260,
+          "minorVolume": 22,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 6,
+          "majorVolume": 640,
+          "minorVolume": 74,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 7,
+          "majorVolume": 1180,
+          "minorVolume": 168,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 8,
+          "majorVolume": 1320,
+          "minorVolume": 212,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 9,
+          "majorVolume": 980,
+          "minorVolume": 128,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 10,
+          "majorVolume": 820,
+          "minorVolume": 96,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 11,
+          "majorVolume": 860,
+          "minorVolume": 104,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 12,
+          "majorVolume": 920,
+          "minorVolume": 118,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 13,
+          "majorVolume": 900,
+          "minorVolume": 108,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 14,
+          "majorVolume": 940,
+          "minorVolume": 116,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 15,
+          "majorVolume": 1060,
+          "minorVolume": 142,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 16,
+          "majorVolume": 1240,
+          "minorVolume": 186,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 17,
+          "majorVolume": 1380,
+          "minorVolume": 238,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 18,
+          "majorVolume": 1150,
+          "minorVolume": 172,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 19,
+          "majorVolume": 820,
+          "minorVolume": 98,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 20,
+          "majorVolume": 600,
+          "minorVolume": 64,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 21,
+          "majorVolume": 460,
+          "minorVolume": 44,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 22,
+          "majorVolume": 320,
+          "minorVolume": 26,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 23,
+          "majorVolume": 200,
+          "minorVolume": 14,
+          "majorThreshold": 600,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        }
+      ],
+      "notes": [
+        "Only 5 of the required 8 hours satisfied both thresholds.",
+        "Need 3 more qualifying hour(s) for this warrant."
+      ]
+    },
+    {
+      "id": "1B",
+      "name": "Warrant 1B — Eight-Hour Vehicular Volume (Condition B)",
+      "description": "Interruption of continuous traffic: minor-street delay justifies signal. Higher major threshold, lower minor threshold than Warrant 1A.",
+      "met": true,
+      "hoursSatisfied": 10,
+      "hoursRequired": 8,
+      "hourBreakdown": [
+        {
+          "hour": 0,
+          "majorVolume": 120,
+          "minorVolume": 8,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 1,
+          "majorVolume": 80,
+          "minorVolume": 5,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 2,
+          "majorVolume": 60,
+          "minorVolume": 4,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 3,
+          "majorVolume": 55,
+          "minorVolume": 4,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 4,
+          "majorVolume": 90,
+          "minorVolume": 6,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 5,
+          "majorVolume": 260,
+          "minorVolume": 22,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 6,
+          "majorVolume": 640,
+          "minorVolume": 74,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 7,
+          "majorVolume": 1180,
+          "minorVolume": 168,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 8,
+          "majorVolume": 1320,
+          "minorVolume": 212,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 9,
+          "majorVolume": 980,
+          "minorVolume": 128,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 10,
+          "majorVolume": 820,
+          "minorVolume": 96,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": false,
+          "minorMet": true,
+          "bothMet": false
+        },
+        {
+          "hour": 11,
+          "majorVolume": 860,
+          "minorVolume": 104,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": false,
+          "minorMet": true,
+          "bothMet": false
+        },
+        {
+          "hour": 12,
+          "majorVolume": 920,
+          "minorVolume": 118,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 13,
+          "majorVolume": 900,
+          "minorVolume": 108,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 14,
+          "majorVolume": 940,
+          "minorVolume": 116,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 15,
+          "majorVolume": 1060,
+          "minorVolume": 142,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 16,
+          "majorVolume": 1240,
+          "minorVolume": 186,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 17,
+          "majorVolume": 1380,
+          "minorVolume": 238,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 18,
+          "majorVolume": 1150,
+          "minorVolume": 172,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 19,
+          "majorVolume": 820,
+          "minorVolume": 98,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": false,
+          "minorMet": true,
+          "bothMet": false
+        },
+        {
+          "hour": 20,
+          "majorVolume": 600,
+          "minorVolume": 64,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 21,
+          "majorVolume": 460,
+          "minorVolume": 44,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 22,
+          "majorVolume": 320,
+          "minorVolume": 26,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 23,
+          "majorVolume": 200,
+          "minorVolume": 14,
+          "majorThreshold": 900,
+          "minorThreshold": 75,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        }
+      ],
+      "notes": [
+        "Both major (900 vph) and minor (75 vph) thresholds met or exceeded in 10 hours."
+      ]
+    },
+    {
+      "id": "3",
+      "name": "Warrant 3 — Peak Hour",
+      "description": "Volume-only proxy: any single hour of an average day where both thresholds are exceeded.",
+      "met": true,
+      "hoursSatisfied": 5,
+      "hoursRequired": 1,
+      "hourBreakdown": [
+        {
+          "hour": 0,
+          "majorVolume": 120,
+          "minorVolume": 8,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 1,
+          "majorVolume": 80,
+          "minorVolume": 5,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 2,
+          "majorVolume": 60,
+          "minorVolume": 4,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 3,
+          "majorVolume": 55,
+          "minorVolume": 4,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 4,
+          "majorVolume": 90,
+          "minorVolume": 6,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 5,
+          "majorVolume": 260,
+          "minorVolume": 22,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 6,
+          "majorVolume": 640,
+          "minorVolume": 74,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 7,
+          "majorVolume": 1180,
+          "minorVolume": 168,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 8,
+          "majorVolume": 1320,
+          "minorVolume": 212,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 9,
+          "majorVolume": 980,
+          "minorVolume": 128,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 10,
+          "majorVolume": 820,
+          "minorVolume": 96,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 11,
+          "majorVolume": 860,
+          "minorVolume": 104,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 12,
+          "majorVolume": 920,
+          "minorVolume": 118,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 13,
+          "majorVolume": 900,
+          "minorVolume": 108,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 14,
+          "majorVolume": 940,
+          "minorVolume": 116,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 15,
+          "majorVolume": 1060,
+          "minorVolume": 142,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 16,
+          "majorVolume": 1240,
+          "minorVolume": 186,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 17,
+          "majorVolume": 1380,
+          "minorVolume": 238,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 18,
+          "majorVolume": 1150,
+          "minorVolume": 172,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 19,
+          "majorVolume": 820,
+          "minorVolume": 98,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 20,
+          "majorVolume": 600,
+          "minorVolume": 64,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 21,
+          "majorVolume": 460,
+          "minorVolume": 44,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 22,
+          "majorVolume": 320,
+          "minorVolume": 26,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 23,
+          "majorVolume": 200,
+          "minorVolume": 14,
+          "majorThreshold": 1000,
+          "minorThreshold": 150,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        }
+      ],
+      "notes": [
+        "Peak hour: 17:00 — major 1380 vph, minor 238 vph.",
+        "At least one hour cleared both the major (1000 vph) and minor (150 vph) thresholds.",
+        "Screening volume-only proxy. A full Warrant 3 analysis also requires a delay-based check against MUTCD Fig. 4C-3 thresholds (4 or 5 vehicle-hours of minor-approach delay)."
+      ]
+    },
+    {
+      "id": "7",
+      "name": "Warrant 7 — Crash Experience",
+      "description": "≥ 5 signal-correctable crashes in 12 months AND volumes at 80% of Warrant 1A or 1B for 8 hours.",
+      "met": true,
+      "hoursSatisfied": 13,
+      "hoursRequired": 8,
+      "hourBreakdown": [
+        {
+          "hour": 0,
+          "majorVolume": 120,
+          "minorVolume": 8,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 1,
+          "majorVolume": 80,
+          "minorVolume": 5,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 2,
+          "majorVolume": 60,
+          "minorVolume": 4,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 3,
+          "majorVolume": 55,
+          "minorVolume": 4,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 4,
+          "majorVolume": 90,
+          "minorVolume": 6,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 5,
+          "majorVolume": 260,
+          "minorVolume": 22,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 6,
+          "majorVolume": 640,
+          "minorVolume": 74,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": false,
+          "minorMet": true,
+          "bothMet": false
+        },
+        {
+          "hour": 7,
+          "majorVolume": 1180,
+          "minorVolume": 168,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 8,
+          "majorVolume": 1320,
+          "minorVolume": 212,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 9,
+          "majorVolume": 980,
+          "minorVolume": 128,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 10,
+          "majorVolume": 820,
+          "minorVolume": 96,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 11,
+          "majorVolume": 860,
+          "minorVolume": 104,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 12,
+          "majorVolume": 920,
+          "minorVolume": 118,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 13,
+          "majorVolume": 900,
+          "minorVolume": 108,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 14,
+          "majorVolume": 940,
+          "minorVolume": 116,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 15,
+          "majorVolume": 1060,
+          "minorVolume": 142,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 16,
+          "majorVolume": 1240,
+          "minorVolume": 186,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 17,
+          "majorVolume": 1380,
+          "minorVolume": 238,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 18,
+          "majorVolume": 1150,
+          "minorVolume": 172,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 19,
+          "majorVolume": 820,
+          "minorVolume": 98,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": true,
+          "minorMet": true,
+          "bothMet": true
+        },
+        {
+          "hour": 20,
+          "majorVolume": 600,
+          "minorVolume": 64,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": false,
+          "minorMet": true,
+          "bothMet": false
+        },
+        {
+          "hour": 21,
+          "majorVolume": 460,
+          "minorVolume": 44,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 22,
+          "majorVolume": 320,
+          "minorVolume": 26,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        },
+        {
+          "hour": 23,
+          "majorVolume": 200,
+          "minorVolume": 14,
+          "majorThreshold": 720,
+          "minorThreshold": 60,
+          "majorMet": false,
+          "minorMet": false,
+          "bothMet": false
+        }
+      ],
+      "notes": [
+        "7 crash(es) in last 12 months — ≥ 5 threshold satisfied.",
+        "80%-volume condition: 7 hours at 80% of Warrant 1A; 13 hours at 80% of Warrant 1B; need ≥ 8 in either.",
+        "Full Warrant 7 also requires that the crashes be of types correctable by signal control (right-angle, left-turn) and that less-restrictive remedies have been tried — both engineering-judgement calls beyond this screening tool."
+      ]
+    }
+  ],
+  "anyWarrantMet": true,
+  "citations": [
+    "MUTCD 2009 / 2024 amendments, Chapter 4C — Traffic Control Signal Needs Studies.",
+    "MUTCD Table 4C-1 — Warrant 1A (Minimum Vehicular Volume).",
+    "MUTCD Table 4C-2 — Warrant 1B (Interruption of Continuous Traffic).",
+    "MUTCD Figure 4C-3 — Warrant 3 (Peak Hour) volume curve, screening approximation.",
+    "MUTCD Section 4C.08 — Warrant 7 (Crash Experience)."
+  ]
+}
