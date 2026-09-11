@@ -292,6 +292,89 @@ export interface UtdfIntersectionData {
   splitSByPhase?: UtdfIntersectionDataSplitSByPhase;
 }
 
+/**
+ * Phase number serving each movement (NBL, NBT, ... WBR). A left whose phase differs from its through's phase is protected. Both axes' through movements must map to a phase that has a split, or the override does not resolve and the next provider is used.
+ */
+export type SignalTimingOverridePhaseByMovement = { [key: string]: number };
+
+/**
+ * Split (max green) seconds by phase number; effective green is split minus 5 s lost time.
+ */
+export type SignalTimingOverrideSplitSByPhase = { [key: string]: number };
+
+/**
+ * A per-signal TIMING override for a what-if scenario: cycle length plus a phase-to-movement map and split seconds, the same measured tier a Synchro record supplies — but WITHOUT turning volumes, so the intersection's existing volumes and approach split are left exactly as the base study computed them. Snapped to the nearest study intersection within ~0.35 mi by coordinates (copy latitude/longitude from the report row; nearest record wins per signal); a record whose coordinates miss falls back to an unambiguous normalized-name match when `name` is given. Consumed only by the signal-timing resolver, as its first provider (above a Synchro record, above Webster); rows it attaches to report signalTiming.source "override". Ignored under signalTiming: screening. Every record's fate is reported in the response's timingOverrideSummary.
+ */
+export interface SignalTimingOverride {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+  /** Intersection name (the report row's `name`), for the name fallback and the summary. */
+  name?: string;
+  /**
+   * @minimum 30
+   * @maximum 300
+   */
+  cycleLenSec: number;
+  /** Phase number serving each movement (NBL, NBT, ... WBR). A left whose phase differs from its through's phase is protected. Both axes' through movements must map to a phase that has a split, or the override does not resolve and the next provider is used. */
+  phaseByMovement: SignalTimingOverridePhaseByMovement;
+  /** Split (max green) seconds by phase number; effective green is split minus 5 s lost time. */
+  splitSByPhase: SignalTimingOverrideSplitSByPhase;
+}
+
+export type TimingOverrideMatchSummaryMatchesItemBy =
+  (typeof TimingOverrideMatchSummaryMatchesItemBy)[keyof typeof TimingOverrideMatchSummaryMatchesItemBy];
+
+export const TimingOverrideMatchSummaryMatchesItemBy = {
+  coordinates: "coordinates",
+  name: "name",
+} as const;
+
+export type TimingOverrideMatchSummaryMatchesItem = {
+  /** Index into request.signalTimingOverrides. */
+  index: number;
+  signalId: string;
+  signalName: string;
+  by: TimingOverrideMatchSummaryMatchesItemBy;
+};
+
+export type TimingOverrideMatchSummaryUnmatchedItemReason =
+  (typeof TimingOverrideMatchSummaryUnmatchedItemReason)[keyof typeof TimingOverrideMatchSummaryUnmatchedItemReason];
+
+export const TimingOverrideMatchSummaryUnmatchedItemReason = {
+  no_signal_within_snap: "no_signal_within_snap",
+  displaced_by_nearer: "displaced_by_nearer",
+  name_tie: "name_tie",
+  name_unmatched: "name_unmatched",
+  displaced_by_existing: "displaced_by_existing",
+} as const;
+
+export type TimingOverrideMatchSummaryUnmatchedItem = {
+  /** Index into request.signalTimingOverrides. */
+  index: number;
+  label: string;
+  reason: TimingOverrideMatchSummaryUnmatchedItemReason;
+};
+
+/**
+ * How the request's signalTimingOverrides attached to study intersections. Present whenever the request carried the array (even empty), so a what-if client can always show which overrides took and which did not.
+ */
+export interface TimingOverrideMatchSummary {
+  total: number;
+  matched: number;
+  matchedByCoordinates: number;
+  matchedByName: number;
+  matches: TimingOverrideMatchSummaryMatchesItem[];
+  unmatched: TimingOverrideMatchSummaryUnmatchedItem[];
+}
+
 export type UtdfParseResultNodesItem = {
   intId: number;
   name: string;
@@ -534,6 +617,11 @@ export interface TisRequest {
    * @maxItems 12
    */
   driveways?: Driveway[];
+  /**
+   * Per-signal timing overrides for a what-if scenario (see SignalTimingOverride). Timing only: existing volumes and approach shares at the matched signal are untouched. Absent => output byte-identical to a study without overrides.
+   * @maxItems 60
+   */
+  signalTimingOverrides?: SignalTimingOverride[];
 }
 
 export type TisTripGenerationVariableConfidence =
@@ -683,6 +771,31 @@ export interface TisApproachImpact {
   currentLos?: TisApproachImpactCurrentLos;
   laneGroups?: TisLaneGroupImpact[];
 }
+
+export type TisAffectedIntersectionMovementsExactItemApproach =
+  (typeof TisAffectedIntersectionMovementsExactItemApproach)[keyof typeof TisAffectedIntersectionMovementsExactItemApproach];
+
+export const TisAffectedIntersectionMovementsExactItemApproach = {
+  NB: "NB",
+  SB: "SB",
+  EB: "EB",
+  WB: "WB",
+} as const;
+
+export type TisAffectedIntersectionMovementsExactItemMovement =
+  (typeof TisAffectedIntersectionMovementsExactItemMovement)[keyof typeof TisAffectedIntersectionMovementsExactItemMovement];
+
+export const TisAffectedIntersectionMovementsExactItemMovement = {
+  L: "L",
+  T: "T",
+  R: "R",
+} as const;
+
+export type TisAffectedIntersectionMovementsExactItem = {
+  approach: TisAffectedIntersectionMovementsExactItemApproach;
+  movement: TisAffectedIntersectionMovementsExactItemMovement;
+  exact: number;
+};
 
 export type TisAffectedIntersectionExistingLos =
   (typeof TisAffectedIntersectionExistingLos)[keyof typeof TisAffectedIntersectionExistingLos];
@@ -857,6 +970,10 @@ export type TisAffectedIntersectionSignalTiming = {
   gOverCew: number;
   gOverCnsLeft?: number;
   gOverCewLeft?: number;
+  gOverCnsExact?: number;
+  gOverCewExact?: number;
+  gOverCnsLeftExact?: number;
+  gOverCewLeftExact?: number;
   leftPhasingNs: TisAffectedIntersectionSignalTimingLeftPhasingNs;
   leftPhasingEw: TisAffectedIntersectionSignalTimingLeftPhasingEw;
   /** import = a Synchro record mapped each left to its own phase (or not); inferred = FHWA-HRT-04-091 cross product of left-turn and opposing through volume against 50,000 / 90,000 / 110,000 by opposing through lanes; default = screening. */
@@ -868,11 +985,22 @@ export type TisAffectedIntersectionSignalTiming = {
 };
 
 /**
+ * One routed turn through a junction, in share units (fraction of project demand), from the conserved assignment.
+ */
+export interface TisPathTurnShare {
+  enterBearingDeg: number;
+  exitBearingDeg: number;
+  share: number;
+}
+
+/**
  * Per-intersection calibration metadata when ground-truth observations exist for this signal.
  */
 export interface TisIntersectionCalibration {
   sampleCount: number;
   delayMultiplier: number;
+  /** The unrounded multiplier the engine applied (delayMultiplier is 2 dp); optional on older payloads. */
+  delayMultiplierExact?: number;
   lastObservedDelaySec?: number | null;
 }
 
@@ -883,6 +1011,24 @@ export interface TisAffectedIntersection {
   latitude: number;
   longitude: number;
   distanceMi: number;
+  /** The unrounded design-hour volume this row anchors on — the inventory's AADT x K design hour, or the measured turning-movement total when a UTDF record attached (volumeSource). The period's background volume is this x the period's periodVolumeFactor. */
+  designHourVolumeVph?: number;
+  /** The per-intersection project-load weight the row was built with (exact; distance-decay, driveway share, or the conserved through-share). addedTripsPmPeak = round(externalTrips x weight), except where inbound ledgers (pathTurnsIn) re-derive the blend. */
+  loadWeight?: number;
+  /** Conserved-assignment turn ledger (outbound, site to cordon) for a movementSource "path" row: each routed turn through this junction in share units. Absent on octant rows. */
+  pathTurns?: TisPathTurnShare[];
+  /** Recorded inbound ledger, present only when the routing graph carries one-way links. An empty array is meaningful (the inbound paths do not pass this junction); absent means the inbound mirror of pathTurns applies. */
+  pathTurnsIn?: TisPathTurnShare[];
+  /** The exact (fractional) movement loads the integer `movements` table was integerized from, and the per-approach loading derives from. Sums to externalTrips x loadWeight (or the ledger blend). */
+  movementsExact?: TisAffectedIntersectionMovementsExactItem[];
+  /** Per-direction through lanes on the major approach from the OSM lanes tag, present only when measured (mainThroughLanesMeasured). */
+  mainThroughLanes?: number;
+  /** Per-direction through lanes on the minor approach from the OSM lanes tag, when tagged. */
+  minorThroughLanes?: number;
+  /** True when mainThroughLanes came from a measured OSM tag (the only case the engine uses it). */
+  mainThroughLanesMeasured?: boolean;
+  /** Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached. */
+  utdfRecordIndex?: number;
   /** Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing". */
   existingVc: number;
   addedTripsPmPeak: number;
@@ -958,6 +1104,14 @@ export interface TisPeriodReport {
   intersectionsAtLosEf: number;
   /** Largest projected delay increase across the studied intersections, in the OPENING YEAR only. Scoped, not absolute — compare against worstDelayDeltaDesignSec, which is routinely larger because background growth over the design horizon sits underneath it. */
   worstDelayDeltaSec: number;
+  /** Background-network volume as a fraction of the stored design hour for this period (PM anchors at 1.0). */
+  periodVolumeFactor?: number;
+  /** Inbound directional share of the project's external trips for this period. */
+  inFraction?: number;
+  /** The proposed use's external auto trips for this period, unrounded (tripGeneration.externalTrips is rounded). */
+  externalTripsExact?: number;
+  /** The existing-use redevelopment credit for this period, unrounded; present only when the request supplied an existing land use. Net assigned trips = max(0, externalTripsExact - existingUseCreditExact). */
+  existingUseCreditExact?: number;
 }
 
 export type TisRouteAssignmentCorridorsItem = {
@@ -1050,6 +1204,14 @@ export interface UtdfMatchSummary {
   unmatchedNames: string[];
 }
 
+/**
+ * The region's governing-agency names, as the findings and mitigation summary print them.
+ */
+export type TisReportJurisdiction = {
+  dotName: string;
+  planningOfficeName: string;
+};
+
 export type TisReportConservedAssignmentConservation = {
   nodesChecked?: number;
   maxImbalance?: number;
@@ -1108,6 +1270,23 @@ export interface TisReport {
   passByPctApplied: number;
   internalCapturePctApplied: number;
   autoModeShareApplied?: number;
+  /** Opening year + the design horizon, the year the design-year scenarios are grown to. */
+  designYear?: number;
+  /** Design horizon in years beyond the opening year (20 by default). */
+  designYearHorizonYears?: number;
+  /** The covered region the engine resolved for the site (e.g. atlanta_metro). */
+  regionCode?: string;
+  /** The region's governing-agency names, as the findings and mitigation summary print them. */
+  jurisdiction?: TisReportJurisdiction;
+  /** Citation for the region's auto-mode share, as the findings print it. */
+  autoModeShareSource?: string;
+  /** The unrounded weather capacity factor applied (weatherCapacityFactor is 2 dp). */
+  weatherFactorExact?: number;
+  /** The opening-year growth multiplier the engine applied to existing volumes, (1 + growthAppliedPct/100) ^ growthYears. */
+  growthMultiplierExact?: number;
+  /** The design-year growth multiplier the engine applied for the Design-Year scenarios. Not derivable from growthAppliedPct / growthYears / designYearHorizonYears alone: growthYears is clamped to 0 for an opening year at or before the current year while the design span is still measured from the current year, so a re-solve must take this value rather than rebuilding it from growthYears + designYearHorizonYears. */
+  designGrowthMultiplierExact?: number;
+  timingOverrideSummary?: TimingOverrideMatchSummary;
   routeAssignment?: TisRouteAssignment;
   conservedAssignment?: TisReportConservedAssignment;
   sensitivity?: TisSensitivityResult;

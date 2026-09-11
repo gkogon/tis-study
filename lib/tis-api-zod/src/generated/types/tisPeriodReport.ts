@@ -18,4 +18,12 @@ export interface TisPeriodReport {
   intersectionsAtLosEf: number;
   /** Largest projected delay increase across the studied intersections, in the OPENING YEAR only. Scoped, not absolute — compare against worstDelayDeltaDesignSec, which is routinely larger because background growth over the design horizon sits underneath it. */
   worstDelayDeltaSec: number;
+  /** Background-network volume as a fraction of the stored design hour for this period (PM anchors at 1.0). */
+  periodVolumeFactor?: number;
+  /** Inbound directional share of the project's external trips for this period. */
+  inFraction?: number;
+  /** The proposed use's external auto trips for this period, unrounded (tripGeneration.externalTrips is rounded). */
+  externalTripsExact?: number;
+  /** The existing-use redevelopment credit for this period, unrounded; present only when the request supplied an existing land use. Net assigned trips = max(0, externalTripsExact - existingUseCreditExact). */
+  existingUseCreditExact?: number;
 }

@@ -18,6 +18,12 @@ export async function resolve(specifier, context, nextResolve) {
     if (fs.existsSync(candidate)) {
       return nextResolve(pathToFileURL(candidate).href, context);
     }
+    // Directory import (`./schema` -> `./schema/index.ts`), the other form the
+    // bundler-mode convention allows; lib/db's index uses it.
+    const indexCandidate = path.resolve(path.dirname(parentPath), specifier, "index.ts");
+    if (fs.existsSync(indexCandidate)) {
+      return nextResolve(pathToFileURL(indexCandidate).href, context);
+    }
   }
   return nextResolve(specifier, context);
 }

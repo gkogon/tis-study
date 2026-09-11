@@ -6,10 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DrivewayRouteResult } from "./drivewayRouteResult";
+import type { TimingOverrideMatchSummary } from "./timingOverrideMatchSummary";
 import type { TisAffectedIntersection } from "./tisAffectedIntersection";
 import type { TisPeriodReport } from "./tisPeriodReport";
 import type { TisReportConservedAssignment } from "./tisReportConservedAssignment";
 import type { TisReportCoverageNote } from "./tisReportCoverageNote";
+import type { TisReportJurisdiction } from "./tisReportJurisdiction";
 import type { TisRequest } from "./tisRequest";
 import type { TisRouteAssignment } from "./tisRouteAssignment";
 import type { TisSensitivityResult } from "./tisSensitivityResult";
@@ -48,6 +50,23 @@ export interface TisReport {
   passByPctApplied: number;
   internalCapturePctApplied: number;
   autoModeShareApplied?: number;
+  /** Opening year + the design horizon, the year the design-year scenarios are grown to. */
+  designYear?: number;
+  /** Design horizon in years beyond the opening year (20 by default). */
+  designYearHorizonYears?: number;
+  /** The covered region the engine resolved for the site (e.g. atlanta_metro). */
+  regionCode?: string;
+  /** The region's governing-agency names, as the findings and mitigation summary print them. */
+  jurisdiction?: TisReportJurisdiction;
+  /** Citation for the region's auto-mode share, as the findings print it. */
+  autoModeShareSource?: string;
+  /** The unrounded weather capacity factor applied (weatherCapacityFactor is 2 dp). */
+  weatherFactorExact?: number;
+  /** The opening-year growth multiplier the engine applied to existing volumes, (1 + growthAppliedPct/100) ^ growthYears. */
+  growthMultiplierExact?: number;
+  /** The design-year growth multiplier the engine applied for the Design-Year scenarios. Not derivable from growthAppliedPct / growthYears / designYearHorizonYears alone: growthYears is clamped to 0 for an opening year at or before the current year while the design span is still measured from the current year, so a re-solve must take this value rather than rebuilding it from growthYears + designYearHorizonYears. */
+  designGrowthMultiplierExact?: number;
+  timingOverrideSummary?: TimingOverrideMatchSummary;
   routeAssignment?: TisRouteAssignment;
   conservedAssignment?: TisReportConservedAssignment;
   sensitivity?: TisSensitivityResult;
