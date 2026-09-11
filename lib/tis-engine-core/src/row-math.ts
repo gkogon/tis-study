@@ -33,11 +33,13 @@ import {
 } from "./webster-timing.ts";
 import {
   assignMovements,
+  assignMovementLoadsExact,
   approachAddedTripsFromMovements,
   integerizeMovementLoads,
   pathMovementLoadsExact,
   type Movement,
   type MovementLoad,
+  type MovementLoadExact,
   type PathTurnShare,
 } from "./movement-assignment.ts";
 import { screenTurboCandidate, turboLaneScreening, type TurboLaneScreening } from "./turbo-lane.ts";
@@ -237,6 +239,31 @@ export type UtdfIntersectionInput = {
   phaseByMovement?: Record<string, number>;
   splitSByPhase?: Record<string, number>;
 };
+
+/** A per-signal TIMING override for a what-if scenario — the measured tier
+ *  (cycle + phase map + splits) WITHOUT turning volumes. Mirrors the OpenAPI
+ *  SignalTimingOverride schema. Consumed only by resolveTimingForRow, as its
+ *  first provider; it never touches the row's volumes or approach shares. */
+export type SignalTimingOverrideInput = {
+  latitude: number;
+  longitude: number;
+  name?: string;
+  cycleLenSec: number;
+  phaseByMovement: Record<string, number>;
+  splitSByPhase: Record<string, number>;
+};
+
+/** The candidate a row is built from: the inventory signal plus whatever the
+ *  caller attached to it (a measured UTDF record and its index in the
+ *  request's array; a what-if timing override). */
+export type RowCandidate = {
+  sig: AnalyzerIntersection;
+  utdf?: UtdfIntersectionInput;
+  /** Index of `utdf` in request.utdfIntersections, echoed on the row so a
+   *  client can rebuild it with the same record. */
+  utdfIndex?: number;
+  timingOverride?: SignalTimingOverrideInput;
+};
 export type ApproachImpact = {
   /** Project-added trips split across left/through/right on THIS approach,
    *  from the geometric movement assignment the engine already runs off the
@@ -312,11 +339,36 @@ export type AffectedIntersection = {
    *  used. Never populated speculatively. */
   mainThroughLanes?: number;
   minorThroughLanes?: number;
+  /** True when mainThroughLanes came from a measured OSM tag — the only case
+   *  the engine uses it. Emitted beside mainThroughLanes so a client rebuilds
+   *  the same AnalyzerIntersection. */
+  mainThroughLanesMeasured?: boolean;
   name: string;
   zone: string;
   latitude: number;
   longitude: number;
   distanceMi: number;
+  // ---- Exact re-solve inputs (unrounded). The engine's own inputs to this
+  // row, printed so a client can call buildAffectedRow with the engine's code
+  // and reproduce every printed field byte for byte.
+  /** The unrounded design-hour volume the row anchors on: the inventory's
+   *  AADT x K design hour, or the measured UTDF total when a record attached.
+   *  The period's background volume is this x periodVolumeFactor. */
+  designHourVolumeVph: number;
+  /** The caller's per-intersection load weight (exact): distance decay,
+   *  driveway share, or the conserved through-share. Passed straight back to
+   *  buildAffectedRow as `weight`. */
+  loadWeight: number;
+  /** Conserved-assignment turn ledgers (share units) the row was built with.
+   *  `pathTurnsIn` is present only on one-way-bearing graphs; an empty array
+   *  is meaningful (see buildAffectedRow). */
+  pathTurns?: PathTurnShare[];
+  pathTurnsIn?: PathTurnShare[];
+  /** The exact (fractional) movement loads the integer `movements` table was
+   *  integerized from and the per-approach loading derives from. */
+  movementsExact?: MovementLoadExact[];
+  /** Index into request.utdfIntersections of the attached measured record. */
+  utdfRecordIndex?: number;
   // True current-year baseline — existing volumes WITHOUT growth applied.
   // State TIS conventions report this as "Existing Year" or "Year YYYY"
   // and renderers expect three scenarios stacked: Current → No-Build → Build.
@@ -358,6 +410,8 @@ export type AffectedIntersection = {
   calibration?: {
     sampleCount: number;
     delayMultiplier: number;
+    /** The unrounded multiplier the engine applied (delayMultiplier is 2 dp). */
+    delayMultiplierExact: number;
     lastObservedDelaySec: number | null;
   };
   // Turbo-lane (continuous-green-T) screening, present only when this signal is
@@ -414,6 +468,12 @@ export type SignalTimingProvenance = {
   gOverCew: number;
   gOverCnsLeft?: number;
   gOverCewLeft?: number;
+  /** Unrounded green ratios (the printed ones are 3 dp) — what capacity was
+   *  actually sized from. */
+  gOverCnsExact: number;
+  gOverCewExact: number;
+  gOverCnsLeftExact?: number;
+  gOverCewLeftExact?: number;
   leftPhasingNs: "protected" | "permissive";
   leftPhasingEw: "protected" | "permissive";
   leftPhasingSource: SignalTiming["leftPhasingSource"];
@@ -674,7 +734,7 @@ export type ThroughLanes = { lanes: number; source: "import" | "osm" | "default"
  * always pinned it.
  */
 export function throughLanesByApproach(
-  c: { sig: AnalyzerIntersection; utdf?: UtdfIntersectionInput },
+  c: RowCandidate,
   approachVph: Record<Direction, number>,
   realLaneGeometry: boolean | undefined,
 ): Record<Direction, ThroughLanes> {
@@ -696,7 +756,7 @@ export function throughLanesByApproach(
 }
 
 export function resolveTimingForRow(
-  c: { sig: AnalyzerIntersection; utdf?: UtdfIntersectionInput },
+  c: RowCandidate,
   measured: ReturnType<typeof utdfMeasuredTotals> | undefined,
   utdfCycleLenS: number | undefined,
   approachVph: Record<Direction, number>,
@@ -720,6 +780,17 @@ export function resolveTimingForRow(
   }
   return resolveSignalTiming({
     providers: [
+      // A what-if timing override outranks everything: it is the engineer's
+      // explicit scenario for THIS signal. Same measured-tier arithmetic as a
+      // Synchro record (cycle + phase map + splits), stamped "override" so
+      // the row says where its timing came from. Volumes are never read
+      // from it — the record has none — so the no-build baseline is exactly
+      // the base study's.
+      () => {
+        if (!c.timingOverride) return undefined;
+        const t = timingFromSynchroPhases(c.timingOverride);
+        return t ? { ...t, source: "override" } : undefined;
+      },
       () => (measured && c.utdf ? timingFromSynchroPhases(c.utdf) : undefined),
     ],
     fallback: {
@@ -734,7 +805,7 @@ export function resolveTimingForRow(
 }
 
 export function buildAffectedRow(
-  c: { sig: AnalyzerIntersection; distanceMi: number; utdf?: UtdfIntersectionInput },
+  c: RowCandidate & { distanceMi: number },
   weight: number,
   project: { lat: number; lon: number },
   params: ScenarioParams,
@@ -929,6 +1000,20 @@ export function buildAffectedRow(
           params.inFraction,
         )
       : undefined;
+  // The exact movement rows behind `movements` (path ledger rows, or the
+  // octant model's fractional rows — the same array assignMovements
+  // integerizes). Printed so a client can re-integerize at a different trip
+  // scale with the engine's own allocator.
+  const movementsExact: MovementLoadExact[] | undefined = pathRows
+    ? pathRows
+    : params.distributionOctants
+      ? assignMovementLoadsExact(
+          bearingIntersectionToSite,
+          params.distributionOctants,
+          addedTripsExact,
+          params.inFraction,
+        )
+      : undefined;
 
   // (`volShares` is defined above, beside the timing resolution.)
   // Legacy fallback (no distribution octants): cosine-similarity split with a
@@ -1095,7 +1180,7 @@ export function buildAffectedRow(
   return {
     signalId: c.sig.id,
     ...(c.sig.mainThroughLanesMeasured && c.sig.mainThroughLanes
-      ? { mainThroughLanes: c.sig.mainThroughLanes }
+      ? { mainThroughLanes: c.sig.mainThroughLanes, mainThroughLanesMeasured: true }
       : {}),
     ...(c.sig.minorThroughLanes ? { minorThroughLanes: c.sig.minorThroughLanes } : {}),
     name: c.sig.name,
@@ -1103,6 +1188,13 @@ export function buildAffectedRow(
     latitude: c.sig.latitude,
     longitude: c.sig.longitude,
     distanceMi: round2(c.distanceMi),
+    // Exact re-solve inputs — unrounded, exactly what this call received.
+    designHourVolumeVph: measured ? measured.totalVph : c.sig.totalVolume,
+    loadWeight: weight,
+    ...(pathTurns ? { pathTurns } : {}),
+    ...(pathTurnsIn !== undefined ? { pathTurnsIn } : {}),
+    ...(movementsExact && movementsExact.length > 0 ? { movementsExact } : {}),
+    ...(c.utdfIndex !== undefined ? { utdfRecordIndex: c.utdfIndex } : {}),
     currentVc: round2(currentVc),
     currentDelaySec: round1(currentDelay),
     currentLos: currentLos,
@@ -1132,6 +1224,7 @@ export function buildAffectedRow(
       ? {
           sampleCount: calibration.sampleCount,
           delayMultiplier: round2(calibration.multiplier),
+          delayMultiplierExact: calibration.multiplier,
           lastObservedDelaySec: calibration.lastObservedDelaySec,
         }
       : undefined,
@@ -1164,6 +1257,10 @@ export function buildAffectedRow(
             gOverCew: round3(timing.gOverCew),
             ...(timing.gOverCnsLeft !== undefined ? { gOverCnsLeft: round3(timing.gOverCnsLeft) } : {}),
             ...(timing.gOverCewLeft !== undefined ? { gOverCewLeft: round3(timing.gOverCewLeft) } : {}),
+            gOverCnsExact: timing.gOverCns,
+            gOverCewExact: timing.gOverCew,
+            ...(timing.gOverCnsLeft !== undefined ? { gOverCnsLeftExact: timing.gOverCnsLeft } : {}),
+            ...(timing.gOverCewLeft !== undefined ? { gOverCewLeftExact: timing.gOverCewLeft } : {}),
             leftPhasingNs: timing.leftPhasing.ns,
             leftPhasingEw: timing.leftPhasing.ew,
             leftPhasingSource: timing.leftPhasingSource,

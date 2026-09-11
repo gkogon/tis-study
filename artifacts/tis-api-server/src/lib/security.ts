@@ -1,5 +1,5 @@
 import type { CorsOptions } from "cors";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { isAdminEmail } from "./auth";
 import { makeRateLimitStore } from "./redis";
 
@@ -204,6 +204,35 @@ export const demoRateLimiter = rateLimit({
   message: { error: "You've used your free demo runs for today. Sign up free to keep generating." },
   store: makeRateLimitStore("rl:demo:"),
   passOnStoreError: true,
+  skip: (req) => {
+    if (process.env.DEV_AUTH_ENABLED === "true") return true;
+    const email = req.user?.email;
+    return !!email && isAdminEmail(email);
+  },
+});
+
+// Per-USER rate limit for /whatif (falls back to the IP when there is no
+// session — the route 401s those anyway). Deliberately NOT generateRateLimiter:
+// that one is 10/hr per IP and shared by /generate, /generate/pdf, parking,
+// warrants, sight-distance, queuing and road-diet, so an engineer iterating on
+// driveways or signal timing would burn it in minutes and then be unable to
+// save the final study — and an office NAT shares one IP. Keyed per user so
+// one engineer's burst can never lock out a colleague. 60/hr is about one run
+// a minute: a human iterating by hand, not a scraper farming the full engine.
+// Fail-open like the other compute limiters; admins / dev-auth exempt like
+// /demo.
+export const whatIfRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 60,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many what-if runs in the last hour. Save the study, or try again in a little while." },
+  store: makeRateLimitStore("rl:whatif:"),
+  passOnStoreError: true,
+  // authMiddleware runs before the router (app.ts), so req.user is already
+  // resolved here. ipKeyGenerator (not raw req.ip) keeps the IPv6 /56
+  // bucketing express-rate-limit v8 insists on.
+  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),
   skip: (req) => {
     if (process.env.DEV_AUTH_ENABLED === "true") return true;
     const email = req.user?.email;

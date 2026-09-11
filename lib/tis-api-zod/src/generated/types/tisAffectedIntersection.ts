@@ -11,6 +11,7 @@ import type { TisAffectedIntersectionDesignNoBuildLos } from "./tisAffectedInter
 import type { TisAffectedIntersectionExistingLos } from "./tisAffectedIntersectionExistingLos";
 import type { TisAffectedIntersectionFutureLos } from "./tisAffectedIntersectionFutureLos";
 import type { TisAffectedIntersectionMitigationSeverity } from "./tisAffectedIntersectionMitigationSeverity";
+import type { TisAffectedIntersectionMovementsExactItem } from "./tisAffectedIntersectionMovementsExactItem";
 import type { TisAffectedIntersectionMovementsItem } from "./tisAffectedIntersectionMovementsItem";
 import type { TisAffectedIntersectionMovementSource } from "./tisAffectedIntersectionMovementSource";
 import type { TisAffectedIntersectionSignalTiming } from "./tisAffectedIntersectionSignalTiming";
@@ -18,6 +19,7 @@ import type { TisAffectedIntersectionTurboLane } from "./tisAffectedIntersection
 import type { TisAffectedIntersectionVolumeSource } from "./tisAffectedIntersectionVolumeSource";
 import type { TisApproachImpact } from "./tisApproachImpact";
 import type { TisIntersectionCalibration } from "./tisIntersectionCalibration";
+import type { TisPathTurnShare } from "./tisPathTurnShare";
 
 export interface TisAffectedIntersection {
   signalId: string;
@@ -26,6 +28,24 @@ export interface TisAffectedIntersection {
   latitude: number;
   longitude: number;
   distanceMi: number;
+  /** The unrounded design-hour volume this row anchors on — the inventory's AADT x K design hour, or the measured turning-movement total when a UTDF record attached (volumeSource). The period's background volume is this x the period's periodVolumeFactor. */
+  designHourVolumeVph?: number;
+  /** The per-intersection project-load weight the row was built with (exact; distance-decay, driveway share, or the conserved through-share). addedTripsPmPeak = round(externalTrips x weight), except where inbound ledgers (pathTurnsIn) re-derive the blend. */
+  loadWeight?: number;
+  /** Conserved-assignment turn ledger (outbound, site to cordon) for a movementSource "path" row: each routed turn through this junction in share units. Absent on octant rows. */
+  pathTurns?: TisPathTurnShare[];
+  /** Recorded inbound ledger, present only when the routing graph carries one-way links. An empty array is meaningful (the inbound paths do not pass this junction); absent means the inbound mirror of pathTurns applies. */
+  pathTurnsIn?: TisPathTurnShare[];
+  /** The exact (fractional) movement loads the integer `movements` table was integerized from, and the per-approach loading derives from. Sums to externalTrips x loadWeight (or the ledger blend). */
+  movementsExact?: TisAffectedIntersectionMovementsExactItem[];
+  /** Per-direction through lanes on the major approach from the OSM lanes tag, present only when measured (mainThroughLanesMeasured). */
+  mainThroughLanes?: number;
+  /** Per-direction through lanes on the minor approach from the OSM lanes tag, when tagged. */
+  minorThroughLanes?: number;
+  /** True when mainThroughLanes came from a measured OSM tag (the only case the engine uses it). */
+  mainThroughLanesMeasured?: boolean;
+  /** Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached. */
+  utdfRecordIndex?: number;
   /** Opening-year NO-BUILD, i.e. existing volumes grown forward to the opening year. Despite the name this is NOT the existing/counted condition — the true current-year baseline is the current* field alongside it. Renderers must label this "No-Build", never "Existing". */
   existingVc: number;
   addedTripsPmPeak: number;

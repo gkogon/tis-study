@@ -2,6 +2,8 @@ import express, { Router, type IRouter, type Request, type Response } from "expr
 import {
   GenerateTisBody,
   GenerateTisResponse,
+  WhatIfTisBody,
+  WhatIfTisResponse,
   ListTisLandUsesResponse,
   ParseUtdfFileBody,
   ParseUtdfFileResponse,
@@ -17,12 +19,13 @@ import {
 import { validateDriveways } from "../lib/driveways";
 import { regionForCoordinate, REGIONS } from "../lib/regions";
 import { renderStudyPdf } from "../lib/pdf-export";
-import { generateRateLimiter, tricsRateLimiter } from "../lib/security";
+import { generateRateLimiter, tricsRateLimiter, whatIfRateLimiter } from "../lib/security";
 import { saveProject } from "../lib/tis-projects";
 import {
   getOrCreateFirmForUser,
   reserveStudySlot,
   releaseStudySlot,
+  firmMayRunUncharged,
 } from "../lib/firms";
 import { logEvent } from "../lib/events";
 
@@ -459,6 +462,141 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
     const msg = e instanceof Error ? e.message : String(e);
     const isUpstream = /analyzer/i.test(msg);
     res.status(isUpstream ? 503 : 400).json({ error: msg });
+  }
+});
+
+/**
+ * What-if re-run. Recomputes a study with the REAL engine for a scenario the
+ * engineer is still iterating on — edited driveways, per-signal timing
+ * overrides (signalTimingOverrides), size / pass-by / growth / weather
+ * changes — WITHOUT charging a study slot, saving a project, or logging a
+ * funnel event.
+ *
+ * Same body as /generate (the client already holds `report.request` and
+ * re-posts it to /generate/pdf the same way), same zod validation, same
+ * coverage + driveway guards, same TisReport back. What differs:
+ *   - no reserveStudySlot / saveProject / logEvent("study_generated");
+ *   - a READ-ONLY "may this firm still run studies" gate
+ *     (firmMayRunUncharged) in place of the atomic charge, so an exhausted
+ *     or lapsed firm cannot farm the paid deliverable here (the hole the
+ *     /demo limiter comment warns about);
+ *   - runSensitivity is forced off — the 100-iteration Monte Carlo is a
+ *     deliverable extra, not a scenario knob;
+ *   - its own limiter, keyed per USER (whatIfRateLimiter), so a burst of
+ *     what-ifs never eats the 10/hr/IP /generate budget the final save needs;
+ *   - one in-flight what-if per user (409 otherwise): the engine is CPU-bound
+ *     on the single Node thread.
+ * Nothing is persisted, so "this attempt didn't count" is true by
+ * construction — there is no slot to refund on the error path.
+ */
+const whatIfInFlight = new Set<string>();
+
+router.post("/whatif", whatIfRateLimiter, async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Sign in to run a what-if." });
+    return;
+  }
+  const user = req.user!;
+
+  const parsed = WhatIfTisBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid TIS request" });
+    req.log.warn({ issues: parsed.error.issues }, "tis-whatif.invalid_body");
+    return;
+  }
+
+  // Coverage guard — identical to /generate: the engine only has signal/road
+  // data for the covered metros and would otherwise fall back to Atlanta
+  // parameters and emit a misleading comparison.
+  if (!regionForCoordinate(parsed.data.latitude, parsed.data.longitude)) {
+    res.status(422).json({
+      error:
+        `Coordinates (${parsed.data.latitude.toFixed(4)}, ${parsed.data.longitude.toFixed(4)}) ` +
+        `fall outside our covered metros. Pick a site inside a covered city — see the Cities page for the full list.`,
+    });
+    req.log.info(
+      { lat: parsed.data.latitude, lon: parsed.data.longitude },
+      "tis-whatif.out_of_coverage",
+    );
+    return;
+  }
+
+  // Pure client-input check (no I/O) — same helper /generate runs.
+  const drivewayErr = validateDriveways((parsed.data as any).driveways);
+  if (drivewayErr) {
+    res.status(422).json({ error: drivewayErr });
+    return;
+  }
+
+  // Resolve user → firm (auto-creates the personal firm on first hit), then
+  // the read-only gate. Nothing is charged, so no atomic UPDATE is needed.
+  const { firm } = await getOrCreateFirmForUser(user.id, {
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+  });
+  const gate = firmMayRunUncharged(firm, user.email);
+  if (!gate.ok) {
+    res.status(402).json({
+      error:
+        "Your firm has no studies left this billing period, so what-if runs are paused. Upgrade or add credits in Settings → Billing to keep iterating.",
+      reason: gate.reason,
+      limit: firm.studyLimit,
+      planTier: firm.planTier,
+    });
+    req.log.info(
+      { firmId: firm.id, limit: firm.studyLimit, planTier: firm.planTier, reason: gate.reason },
+      "tis-whatif.quota_gate",
+    );
+    return;
+  }
+
+  if (whatIfInFlight.has(user.id)) {
+    res.status(409).json({
+      error: "A what-if is already running for your account. Wait for it to finish, then try again.",
+    });
+    return;
+  }
+  whatIfInFlight.add(user.id);
+  const startedAt = Date.now();
+  try {
+    const report = await generateTisReport({ ...parsed.data, runSensitivity: false });
+    // Bad-geocode guard — no signalized intersection within the study radius.
+    // Nothing to refund; just say so.
+    if (report.coverageWarning) {
+      res.status(422).json({
+        error: report.coverageWarning.message,
+        code: report.coverageWarning.code,
+      });
+      req.log.info(
+        { lat: parsed.data.latitude, lon: parsed.data.longitude },
+        "tis-whatif.no_signals_in_radius",
+      );
+      return;
+    }
+    const validated = WhatIfTisResponse.parse(report);
+    // Operational log only — deliberately NOT logEvent("study_generated"):
+    // what-ifs are iteration, not funnel stages.
+    req.log.info(
+      {
+        firmId: firm.id,
+        ms: Date.now() - startedAt,
+        intersections: validated.intersectionsStudied,
+        driveways: parsed.data.driveways?.length ?? 0,
+        utdfRecords: parsed.data.utdfIntersections?.length ?? 0,
+        timingOverrides: parsed.data.signalTimingOverrides?.length ?? 0,
+        timingOverridesMatched: validated.timingOverrideSummary?.matched ?? 0,
+      },
+      "tis-whatif.completed",
+    );
+    res.json(validated);
+  } catch (e) {
+    req.log.error({ err: e }, "tis-whatif failed");
+    const msg = e instanceof Error ? e.message : String(e);
+    const isUpstream = /analyzer/i.test(msg);
+    res.status(isUpstream ? 503 : 400).json({ error: msg });
+  } finally {
+    whatIfInFlight.delete(user.id);
   }
 });
 

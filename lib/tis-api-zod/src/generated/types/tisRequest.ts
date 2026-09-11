@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Driveway } from "./driveway";
+import type { SignalTimingOverride } from "./signalTimingOverride";
 import type { TisAnalysisPeriod } from "./tisAnalysisPeriod";
 import type { TisDistributionMethod } from "./tisDistributionMethod";
 import type { TisRequestAdditionalStudyPointsItem } from "./tisRequestAdditionalStudyPointsItem";
@@ -107,4 +108,9 @@ export interface TisRequest {
    * @maxItems 12
    */
   driveways?: Driveway[];
+  /**
+   * Per-signal timing overrides for a what-if scenario (see SignalTimingOverride). Timing only: existing volumes and approach shares at the matched signal are untouched. Absent => output byte-identical to a study without overrides.
+   * @maxItems 60
+   */
+  signalTimingOverrides?: SignalTimingOverride[];
 }

@@ -12,5 +12,7 @@
 export interface TisIntersectionCalibration {
   sampleCount: number;
   delayMultiplier: number;
+  /** The unrounded multiplier the engine applied (delayMultiplier is 2 dp); optional on older payloads. */
+  delayMultiplierExact?: number;
   lastObservedDelaySec?: number | null;
 }
