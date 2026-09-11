@@ -1229,6 +1229,25 @@ components:
             Index into request.utdfIntersections of the measured record that
             attached to this signal, so a client can rebuild the row with the
             same record. Absent when no record attached.
+        turboScreenInputs:
+          type: object
+          description: >-
+            The analyzer geometry the turbo-lane screen read for this signal
+            (screenTurboCandidate), printed verbatim on every row the screen
+            accepted — i.e. exactly the rows carrying `turboLane` — so a client
+            re-solve can run the same screen against the scenario's volumes.
+            The screen is geometry-only, so absence means it returned null for
+            this signal and no scenario can make it a candidate.
+          required: [legCount, roadClass, medianType, minorLegBearing]
+          properties:
+            legCount: { type: integer }
+            roadClass: { type: string }
+            medianType: { type: string, enum: [raised, painted] }
+            minorLegBearing: { type: number }
+            mainThroughLanes:
+              type: integer
+              description: The raw analyzer lane count the screen sizes the approach with, measured or not.
+            mainThroughLanesMeasured: { type: boolean }
         existingVc:
           type: number
           description: >-

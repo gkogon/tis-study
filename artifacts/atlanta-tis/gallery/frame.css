@@ -1,0 +1,20 @@
+/* Gallery page frame — unlayered so it wins over the host reset and the app's @layer base. */
+html.dark { color-scheme: dark; }
+body { margin: 0; background: hsl(var(--background)); color: hsl(var(--foreground)); font-family: var(--app-font-sans); -webkit-font-smoothing: antialiased; }
+.g-page { max-width: 1120px; margin: 0 auto; padding: 40px 24px 56px; }
+.g-header { margin-bottom: 40px; }
+.g-eyebrow { font-family: var(--app-font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: hsl(var(--muted-foreground)); margin-bottom: 8px; }
+.g-title { font-family: var(--app-font-display); font-weight: 700; font-size: 36px; line-height: 1.1; margin: 0 0 12px; letter-spacing: -.01em; }
+.g-intro { font-size: 16px; line-height: 1.55; color: hsl(var(--muted-foreground)); max-width: 62ch; margin: 0; }
+.g-section { padding: 32px 0; border-top: 1px solid hsl(var(--border)); }
+.g-heading { font-family: var(--app-font-display); font-weight: 600; font-size: 24px; line-height: 1.2; margin: 0 0 8px; }
+.g-lede { font-size: 14px; line-height: 1.55; color: hsl(var(--muted-foreground)); max-width: 78ch; margin: 0 0 20px; }
+.g-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.g-btn { font: inherit; font-size: 13px; font-weight: 500; padding: 6px 12px; border-radius: 6px; border: 1px solid hsl(var(--border)); background: transparent; color: hsl(var(--foreground)); cursor: pointer; }
+.g-btn:hover:not(:disabled) { background: hsl(var(--muted)); }
+.g-btn:disabled { opacity: .5; cursor: default; }
+.g-btn-primary { background: hsl(var(--foreground)); color: hsl(var(--background)); border-color: hsl(var(--foreground)); }
+.g-btn-primary:hover:not(:disabled) { background: hsl(var(--foreground) / .85); }
+.g-status { font-family: var(--app-font-mono); font-size: 12px; color: hsl(var(--muted-foreground)); }
+.g-status code { color: hsl(var(--foreground)); }
+.g-footer { padding-top: 24px; border-top: 1px solid hsl(var(--border)); font-size: 13px; color: hsl(var(--muted-foreground)); }

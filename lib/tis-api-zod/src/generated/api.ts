@@ -1627,6 +1627,24 @@ export const GenerateTisResponse = zod.object({
         .describe(
           "Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached.",
         ),
+      turboScreenInputs: zod
+        .object({
+          legCount: zod.number(),
+          roadClass: zod.string(),
+          medianType: zod.enum(["raised", "painted"]),
+          minorLegBearing: zod.number(),
+          mainThroughLanes: zod
+            .number()
+            .optional()
+            .describe(
+              "The raw analyzer lane count the screen sizes the approach with, measured or not.",
+            ),
+          mainThroughLanesMeasured: zod.boolean().optional(),
+        })
+        .optional()
+        .describe(
+          "The analyzer geometry the turbo-lane screen read for this signal (screenTurboCandidate), printed verbatim on every row the screen accepted — i.e. exactly the rows carrying `turboLane` — so a client re-solve can run the same screen against the scenario's volumes. The screen is geometry-only, so absence means it returned null for this signal and no scenario can make it a candidate.",
+        ),
       existingVc: zod
         .number()
         .describe(
@@ -1946,6 +1964,24 @@ export const GenerateTisResponse = zod.object({
             .optional()
             .describe(
               "Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached.",
+            ),
+          turboScreenInputs: zod
+            .object({
+              legCount: zod.number(),
+              roadClass: zod.string(),
+              medianType: zod.enum(["raised", "painted"]),
+              minorLegBearing: zod.number(),
+              mainThroughLanes: zod
+                .number()
+                .optional()
+                .describe(
+                  "The raw analyzer lane count the screen sizes the approach with, measured or not.",
+                ),
+              mainThroughLanesMeasured: zod.boolean().optional(),
+            })
+            .optional()
+            .describe(
+              "The analyzer geometry the turbo-lane screen read for this signal (screenTurboCandidate), printed verbatim on every row the screen accepted — i.e. exactly the rows carrying `turboLane` — so a client re-solve can run the same screen against the scenario's volumes. The screen is geometry-only, so absence means it returned null for this signal and no scenario can make it a candidate.",
             ),
           existingVc: zod
             .number()
@@ -4025,6 +4061,24 @@ export const WhatIfTisResponse = zod.object({
         .describe(
           "Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached.",
         ),
+      turboScreenInputs: zod
+        .object({
+          legCount: zod.number(),
+          roadClass: zod.string(),
+          medianType: zod.enum(["raised", "painted"]),
+          minorLegBearing: zod.number(),
+          mainThroughLanes: zod
+            .number()
+            .optional()
+            .describe(
+              "The raw analyzer lane count the screen sizes the approach with, measured or not.",
+            ),
+          mainThroughLanesMeasured: zod.boolean().optional(),
+        })
+        .optional()
+        .describe(
+          "The analyzer geometry the turbo-lane screen read for this signal (screenTurboCandidate), printed verbatim on every row the screen accepted — i.e. exactly the rows carrying `turboLane` — so a client re-solve can run the same screen against the scenario's volumes. The screen is geometry-only, so absence means it returned null for this signal and no scenario can make it a candidate.",
+        ),
       existingVc: zod
         .number()
         .describe(
@@ -4344,6 +4398,24 @@ export const WhatIfTisResponse = zod.object({
             .optional()
             .describe(
               "Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached.",
+            ),
+          turboScreenInputs: zod
+            .object({
+              legCount: zod.number(),
+              roadClass: zod.string(),
+              medianType: zod.enum(["raised", "painted"]),
+              minorLegBearing: zod.number(),
+              mainThroughLanes: zod
+                .number()
+                .optional()
+                .describe(
+                  "The raw analyzer lane count the screen sizes the approach with, measured or not.",
+                ),
+              mainThroughLanesMeasured: zod.boolean().optional(),
+            })
+            .optional()
+            .describe(
+              "The analyzer geometry the turbo-lane screen read for this signal (screenTurboCandidate), printed verbatim on every row the screen accepted — i.e. exactly the rows carrying `turboLane` — so a client re-solve can run the same screen against the scenario's volumes. The screen is geometry-only, so absence means it returned null for this signal and no scenario can make it a candidate.",
             ),
           existingVc: zod
             .number()
@@ -7512,6 +7584,24 @@ export const GetTisProjectResponse = zod
             .describe(
               "Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached.",
             ),
+          turboScreenInputs: zod
+            .object({
+              legCount: zod.number(),
+              roadClass: zod.string(),
+              medianType: zod.enum(["raised", "painted"]),
+              minorLegBearing: zod.number(),
+              mainThroughLanes: zod
+                .number()
+                .optional()
+                .describe(
+                  "The raw analyzer lane count the screen sizes the approach with, measured or not.",
+                ),
+              mainThroughLanesMeasured: zod.boolean().optional(),
+            })
+            .optional()
+            .describe(
+              "The analyzer geometry the turbo-lane screen read for this signal (screenTurboCandidate), printed verbatim on every row the screen accepted — i.e. exactly the rows carrying `turboLane` — so a client re-solve can run the same screen against the scenario's volumes. The screen is geometry-only, so absence means it returned null for this signal and no scenario can make it a candidate.",
+            ),
           existingVc: zod
             .number()
             .describe(
@@ -7836,6 +7926,24 @@ export const GetTisProjectResponse = zod
                 .optional()
                 .describe(
                   "Index into request.utdfIntersections of the measured record that attached to this signal, so a client can rebuild the row with the same record. Absent when no record attached.",
+                ),
+              turboScreenInputs: zod
+                .object({
+                  legCount: zod.number(),
+                  roadClass: zod.string(),
+                  medianType: zod.enum(["raised", "painted"]),
+                  minorLegBearing: zod.number(),
+                  mainThroughLanes: zod
+                    .number()
+                    .optional()
+                    .describe(
+                      "The raw analyzer lane count the screen sizes the approach with, measured or not.",
+                    ),
+                  mainThroughLanesMeasured: zod.boolean().optional(),
+                })
+                .optional()
+                .describe(
+                  "The analyzer geometry the turbo-lane screen read for this signal (screenTurboCandidate), printed verbatim on every row the screen accepted — i.e. exactly the rows carrying `turboLane` — so a client re-solve can run the same screen against the scenario's volumes. The screen is geometry-only, so absence means it returned null for this signal and no scenario can make it a candidate.",
                 ),
               existingVc: zod
                 .number()
