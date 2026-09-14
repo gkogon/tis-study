@@ -11,6 +11,14 @@
  *
  * Backed by POST /tis-api/demo/generate with the demoRateLimiter
  * (3/day/IP). Curated presets are surfaced as one-click form prefills.
+ *
+ * The result carries the same live surfaces the signed-in /tis report
+ * does — the study map (report phase), the trip-distribution rose, the
+ * capacity table, and any intersection opened as its own study with
+ * `?signal=` URL state — all on the report the generate call returned,
+ * client-side only: no session, no scenario studio, no engine hand-off,
+ * and no fetch beyond the map's own road-network and signal-inventory
+ * calls.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
@@ -20,8 +28,15 @@ import {
   Loader2, ArrowRight, AlertCircle, MapPin, FileCheck2, ChevronRight,
   ChevronDown, Hourglass, ShieldCheck, Download,
 } from "lucide-react";
+import type { TisReport } from "@workspace/tis-api-client-react";
 import { StudyMapAlive } from "../components/study-map-alive";
+import { TripDistributionCard } from "../components/trip-distribution-card";
+import { IntersectionTable as CapacityTable } from "../components/tis-report-bits";
+import { IntersectionStudy } from "../components/intersection-study";
 import { SiteFooter } from "../components/site-footer";
+import { useSignalStudyUrl } from "../hooks/use-signal-study-url";
+import type { Octant } from "../lib/distribution-rose";
+import { solveScenario, isClientScenarioDirty, EMPTY_SCENARIO, type ScenarioState } from "../lib/scenario-solve";
 
 type Preset = {
   id: string;
@@ -107,7 +122,7 @@ type AffectedIntersection = {
   calibration?: {
     sampleCount: number;
     delayMultiplier: number;
-    lastObservedDelaySec: number | null;
+    lastObservedDelaySec?: number | null;
   };
 };
 
@@ -186,7 +201,11 @@ type DemoResponse = {
   size: number;
   openingYear: number;
   studyRadiusMi: number;
-  report: DemoReport;
+  /** The full TisReport `generateTisReport` produced — the same shape the
+   *  signed-in /tis page renders, so the live map, the distribution rose and
+   *  the intersection study mount on it unchanged. The demo's own sections
+   *  below read the `DemoReport` subset of it. */
+  report: TisReport;
 };
 
 const ICONS: Record<string, typeof Building2> = {
@@ -203,22 +222,6 @@ const ICONS: Record<string, typeof Building2> = {
   global_london: Globe2,
   global_tokyo: Globe2,
   global_sydney: Globe2,
-};
-
-const LOS_CHIP: Record<string, string> = {
-  A: "bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300",
-  B: "bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300",
-  C: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-  D: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-  E: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
-  F: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
-};
-
-const SEVERITY_CHIP: Record<string, string> = {
-  major: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
-  moderate: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-  minor: "bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300",
-  none: "bg-slate-100 text-slate-600 dark:bg-slate-800/40 dark:text-slate-400",
 };
 
 /**
@@ -422,14 +425,6 @@ function recommendRadiusMi(landUseCode: string, unitShort: string, size: number)
  *  invalidates older saved drafts that may have shapes the new form
  *  can't restore cleanly. */
 const DEMO_FORM_LOCALSTORAGE_KEY = "tis-demo-form:v2";
-
-function losChip(los: string) {
-  return (
-    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${LOS_CHIP[los] ?? ""}`}>
-      {los}
-    </span>
-  );
-}
 
 function humanizeWeather(w: string) {
   return w.replace(/_/g, " ");
@@ -1565,6 +1560,56 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
 
+  // ---- the live study: map, distribution rose, capacity table, one signal's study ----
+  // The same components /tis mounts on a signed-in report, on the demo's
+  // report. There is no scenario studio and no engine hand-off here: the
+  // scenario state exists so the study's §05 What-if controls work, re-solving
+  // the edited signal in the browser with `solveScenario` (the engine's own
+  // row math) — nothing is sent anywhere, and nothing here needs a session.
+  const [scenario, setScenario] = useState<ScenarioState>(EMPTY_SCENARIO);
+  const clientDirty = isClientScenarioDirty(scenario);
+  // Keyed on every input the solve reads (as pages/tis.tsx keys it), so any
+  // scenario field that changes re-solves — not only the timing edits the
+  // page's own controls can make.
+  const solveKey = JSON.stringify([scenario.size, scenario.passByPct, scenario.internalCapturePct, scenario.growthRatePct, scenario.weather, scenario.timing]);
+  const scenarioReport = useMemo(
+    () => (clientDirty ? solveScenario(r, scenario) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [r, clientDirty, solveKey],
+  );
+  // The distribution rose's hovered sector; the map dims the rows and flows
+  // outside it. Hover-only state.
+  const [hoverOctant, setHoverOctant] = useState<Octant | null>(null);
+  // The same two-state model as /tis: `scenario.selectedSignalId` is the
+  // selection (the map's ring, the table's highlight); `openStudyId` is the
+  // signal whose study is open. A map click on a signal or a table row opens
+  // (and selects); Close / Escape / Back close and leave the selection; the
+  // URL (`?signal=`, use-signal-study-url.ts) is bound to the open study.
+  const selectedId = scenario.selectedSignalId;
+  const [openStudyId, setOpenStudyId] = useState<string | null>(null);
+  function selectSignal(id: string | null) {
+    setScenario((s) => (s.selectedSignalId === id ? s : { ...s, selectedSignalId: id }));
+  }
+  const { syncUrl } = useSignalStudyUrl({
+    basePath: "/demo",
+    report: r,
+    setOpenSignalId: (id) => { setOpenStudyId(id); if (id) selectSignal(id); },
+  });
+  function openStudy(id: string | null) {
+    setOpenStudyId(id);
+    if (id) selectSignal(id);
+    syncUrl(id);
+  }
+  const onMapSelect = (id: string | null) => { if (id) openStudy(id); else selectSignal(null); };
+  const studyRow = useMemo(
+    () => (openStudyId ? r.affectedIntersections.find((x) => x.signalId === openStudyId) ?? null : null),
+    [r, openStudyId],
+  );
+  const studyScenarioRow = useMemo(
+    () => (scenarioReport && openStudyId ? scenarioReport.affectedIntersections.find((x) => x.signalId === openStudyId) ?? null : null),
+    [scenarioReport, openStudyId],
+  );
+
   async function downloadPdf() {
     setPdfLoading(true);
     setPdfError(null);
@@ -1672,6 +1717,40 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
 
       <AssumptionsStrip r={r} />
 
+      {/* The live study — the same map, distribution rose and capacity table
+          the signed-in report shows; a signal opens as its own study. */}
+      <section className="space-y-4" data-testid="demo-live-study">
+        <SectionHead
+          step="Live study"
+          title="Trip assignment, distribution and every intersection"
+          note="Project trips leave the site along shortest routes to each studied signal. Hover a sector of the rose to follow one direction on the map; click a signal on the map or a row of the table to open that intersection as its own study — approaches, queuing, timing, simulation and what-if."
+        />
+        <StudyMapAlive
+          site={{ latitude: r.request.latitude, longitude: r.request.longitude }}
+          radiusMi={r.request.studyRadiusMi ?? response.studyRadiusMi}
+          phase="report"
+          report={r}
+          projectName={response.projectName}
+          scenarioReport={scenarioReport}
+          selectedSignalId={selectedId}
+          onSelectSignal={onMapSelect}
+          highlightOctant={hoverOctant}
+        />
+        <TripDistributionCard report={r} onHoverOctant={setHoverOctant} />
+        <CapacityTable report={r} selectedSignalId={selectedId} onSelect={openStudy} />
+      </section>
+
+      {studyRow && (
+        <IntersectionStudy
+          report={r}
+          row={studyRow}
+          scenarioRow={studyScenarioRow}
+          scenario={scenario}
+          onScenarioChange={setScenario}
+          onClose={() => openStudy(null)}
+        />
+      )}
+
       {/* Trip generation across all periods */}
       <section className="space-y-4">
         <SectionHead
@@ -1681,18 +1760,6 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
         />
         <PeriodTripGenTable periods={r.periodReports} dailyTrips={tg.dailyTrips} />
       </section>
-
-      {/* Affected intersections — full list, expandable approach detail */}
-      {r.affectedIntersections.length > 0 && (
-        <section className="space-y-4">
-          <SectionHead
-            step="Capacity analysis"
-            title={`Affected intersections (${r.affectedIntersections.length})`}
-            note="PM peak governing period. Click any row for approach-level v/c, delay, queues, and the recommended mitigation."
-          />
-          <IntersectionTable rows={r.affectedIntersections} />
-        </section>
-      )}
 
       {/* Mitigation summary */}
       {r.mitigationSummary.length > 0 && (
@@ -1857,136 +1924,6 @@ function PeriodTripGenTable({
         Daily two-way trips: {Math.round(dailyTrips).toLocaleString()}. External trips are
         what gets assigned to off-site intersections after pass-by and ULI
         internal-capture credits.
-      </div>
-    </div>
-  );
-}
-
-function IntersectionTable({ rows }: { rows: AffectedIntersection[] }) {
-  return (
-    <div className="rounded-2xl border border-border bg-background overflow-hidden">
-      <div className="px-6 py-3 border-b border-border bg-slate-50 dark:bg-slate-950/40 text-xs text-muted-foreground">
-        Sorted by distance from site
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm min-w-[640px]">
-          <thead className="bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="text-left px-4 py-2 font-medium">Signal</th>
-              <th className="text-right px-4 py-2 font-medium">Dist (mi)</th>
-              <th className="text-right px-4 py-2 font-medium">+ Trips</th>
-              <th className="text-center px-4 py-2 font-medium">No-Build</th>
-              <th className="text-center px-4 py-2 font-medium">Future</th>
-              <th className="text-right px-4 py-2 font-medium">Δ delay</th>
-              <th className="px-2 py-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((it, idx) => (
-              <IntersectionRow key={it.signalId ?? idx} it={it} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function IntersectionRow({ it }: { it: AffectedIntersection }) {
-  const [open, setOpen] = useState(false);
-  const delta = it.futureDelaySec - it.existingDelaySec;
-  return (
-    <>
-      <tr
-        className="border-t border-border cursor-pointer hover:bg-accent/40 transition-colors"
-        onClick={() => setOpen((o) => !o)}
-      >
-        <td className="px-4 py-2 font-medium">{it.name}</td>
-        <td className="px-4 py-2 text-right tabular-nums">{it.distanceMi.toFixed(2)}</td>
-        <td className="px-4 py-2 text-right tabular-nums">{Math.round(it.addedTripsPmPeak)}</td>
-        <td className="px-4 py-2 text-center">{losChip(it.existingLos)}</td>
-        <td className="px-4 py-2 text-center">
-          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${LOS_CHIP[it.futureLos] ?? ""}`}>
-            {it.losChanged ? "▲ " : ""}{it.futureLos}
-          </span>
-        </td>
-        <td className={`px-4 py-2 text-right tabular-nums ${delta > 5 ? "text-red-700 font-medium" : "text-muted-foreground"}`}>
-          +{delta.toFixed(1)}s
-        </td>
-        <td className="px-2 py-2 text-muted-foreground">
-          <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} />
-        </td>
-      </tr>
-      {open && (
-        <tr className="border-t border-border bg-muted/20">
-          <td colSpan={7} className="px-4 py-4">
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <MiniStat label="No-Build v/c" value={it.existingVc.toFixed(2)} />
-                <MiniStat label="Future v/c" value={it.futureVc.toFixed(2)} />
-                <MiniStat label="95th queue" value={`${Math.round(it.queue95thFt)} ft`} />
-                <MiniStat label="Zone" value={it.zone || "—"} />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${SEVERITY_CHIP[it.mitigationSeverity] ?? ""}`}>
-                  {it.mitigationSeverity}
-                </span>
-                <span className="text-muted-foreground">{it.mitigation}</span>
-              </div>
-
-              {it.calibration && (
-                <div className="text-xs text-muted-foreground">
-                  Calibrated against {it.calibration.sampleCount.toLocaleString()} live
-                  observation{it.calibration.sampleCount === 1 ? "" : "s"} ·
-                  delay multiplier ×{it.calibration.delayMultiplier.toFixed(2)}
-                </div>
-              )}
-
-              {it.approaches.length > 0 && (
-                <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full text-xs min-w-[560px]">
-                    <thead className="bg-muted/40 uppercase tracking-wide text-muted-foreground">
-                      <tr>
-                        <th className="text-left px-3 py-1.5 font-medium">Approach</th>
-                        <th className="text-right px-3 py-1.5 font-medium">No-Build v/c</th>
-                        <th className="text-right px-3 py-1.5 font-medium">Future v/c</th>
-                        <th className="text-center px-3 py-1.5 font-medium">No-Build LOS</th>
-                        <th className="text-center px-3 py-1.5 font-medium">Future LOS</th>
-                        <th className="text-right px-3 py-1.5 font-medium">Future delay</th>
-                        <th className="text-right px-3 py-1.5 font-medium">95th queue</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {it.approaches.map((a) => (
-                        <tr key={a.direction} className="border-t border-border">
-                          <td className="px-3 py-1.5 font-medium">{a.direction}</td>
-                          <td className="px-3 py-1.5 text-right tabular-nums">{a.existingVc.toFixed(2)}</td>
-                          <td className="px-3 py-1.5 text-right tabular-nums">{a.futureVc.toFixed(2)}</td>
-                          <td className="px-3 py-1.5 text-center">{losChip(a.existingLos)}</td>
-                          <td className="px-3 py-1.5 text-center">{losChip(a.futureLos)}</td>
-                          <td className="px-3 py-1.5 text-right tabular-nums">{a.futureDelaySec.toFixed(1)}s</td>
-                          <td className="px-3 py-1.5 text-right tabular-nums">{Math.round(a.queue95thFt)} ft</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-background px-3 py-2">
-      <div className="text-sm font-semibold tabular-nums tracking-tight">{value}</div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">
-        {label}
       </div>
     </div>
   );

@@ -15,7 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const G = path.dirname(fileURLToPath(import.meta.url));
-const APP_CSS = path.resolve(G, "../dist/public/assets/index-DZIf-2BZ.css");
+const APP_CSS = path.resolve(G, "../dist/public/assets/index-Bb8bGPY-.css");
 
 const appCss = readFileSync(APP_CSS, "utf8");
 const frameCss = readFileSync(`${G}/frame.css`, "utf8");

@@ -9,10 +9,17 @@
  * engine not doing distribution at all. Everything shown here comes straight
  * from `report.tripDistribution`; no numbers are derived client-side beyond
  * row percentages.
+ *
+ * The live rose (`TripDistributionAlive`) sits above the bars and the zone
+ * table; its numbered dots are the table's first column. Hovering a sector
+ * reports the octant through `onHoverOctant` so the page can dim the study
+ * map outside that bearing.
  */
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Compass } from "lucide-react";
 import type { TisReport } from "@workspace/tis-api-client-react";
+import { TripDistributionAlive } from "@/components/trip-distribution-alive";
+import type { Octant } from "@/lib/distribution-rose";
 
 // Octant display order: clockwise from north, matching the PDF's convention
 // and caltran-gravity's CARDINALS.
@@ -22,7 +29,7 @@ const OCTANTS = ["NNE", "ENE", "ESE", "SSE", "SSW", "WSW", "WNW", "NNW"] as cons
 // table leads with the heaviest and says how many more there are.
 const MAX_ZONE_ROWS = 10;
 
-export function TripDistributionCard({ report }: { report: TisReport }) {
+export function TripDistributionCard({ report, onHoverOctant }: { report: TisReport; onHoverOctant?: (octant: Octant | null) => void }) {
   const td = report.tripDistribution;
   if (!td) return null;
 
@@ -43,6 +50,9 @@ export function TripDistributionCard({ report }: { report: TisReport }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
+        {/* The rose: the same eight shares and every zone, drawn live. */}
+        <TripDistributionAlive report={report} onHoverOctant={onHoverOctant} />
+
         {/* Directional shares: the eight compass octants, Σ = 100%. */}
         <div>
           <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
@@ -80,6 +90,7 @@ export function TripDistributionCard({ report }: { report: TisReport }) {
               <table className="w-full text-sm" data-testid="dist-zone-table">
                 <thead>
                   <tr className="border-b text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="text-right py-1.5 pr-2 font-medium w-6" aria-label="Rank on the rose">#</th>
                     <th className="text-left py-1.5 pr-3 font-medium">Zone</th>
                     <th className="text-right py-1.5 px-3 font-medium">Dist (mi)</th>
                     <th className="text-right py-1.5 px-3 font-medium">Bearing</th>
@@ -87,8 +98,9 @@ export function TripDistributionCard({ report }: { report: TisReport }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {shown.map((z) => (
+                  {shown.map((z, i) => (
                     <tr key={z.id} className="border-b border-border/50 last:border-0">
+                      <td className="py-1.5 pr-2 text-right tabular-nums font-mono text-xs text-muted-foreground">{i + 1}</td>
                       <td className="py-1.5 pr-3">{z.name || z.id}</td>
                       <td className="py-1.5 px-3 text-right tabular-nums">{z.distanceMi.toFixed(2)}</td>
                       <td className="py-1.5 px-3 text-right tabular-nums font-mono text-xs">{z.cardinal}</td>

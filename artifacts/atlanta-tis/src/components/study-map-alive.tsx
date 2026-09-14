@@ -22,7 +22,15 @@
  * study's busiest signal so a uniform trip change is visible, a dashed ring
  * marks every signal whose LOS moved against the base, and the sim is kept
  * (rates updated in place) so the cars never restart on an edit. Clicking a
- * signal selects it (`onSelectSignal`); the selection wears a solid ring.
+ * signal reports it (`onSelectSignal`; the page opens that signal's study and
+ * selects it); the selection wears a solid ring.
+ *
+ * Octant highlight: with `highlightOctant` set (the distribution rose's
+ * hovered sector), every row and flow whose site→row bearing falls outside
+ * that 45° sector draws at 25 % alpha. The bearing is the engine's own
+ * great-circle formula (0° = north, clockwise; `lib/distribution-rose.ts`),
+ * so the sector on the map is the sector the engine filed the zone under.
+ * Absent or null, nothing changes.
  *
  * Canvas is aria-hidden; everything the reader needs is in the DOM beside it.
  */
@@ -33,6 +41,7 @@ import {
   buildRoadGraph, shortestPaths, routeFromNodes, straightRoute, pointAlong, projector, distMi,
   FlowSim, LOS_MAP_COLORS, type RoadGraph, type RoadSegment, type Route, type Flow, type LatLon,
 } from "../lib/study-map-sim";
+import { bearingDeg, bearingToOctant, isOctant, type Octant } from "../lib/distribution-rose";
 
 type Signal = { id: string; name: string; latitude: number; longitude: number };
 type NetStatus = "idle" | "loading" | "ready" | "none" | "error";
@@ -52,6 +61,9 @@ export type StudyMapAliveProps = {
   /** Fired on a canvas click: the studied signal under the pointer, or null
    *  when the click landed on empty map. */
   onSelectSignal?: (signalId: string | null) => void;
+  /** Octant (NNE…NNW) to keep at full strength; rows and flows outside its
+   *  45° sector from the site draw at 25 % alpha. Null / absent ⇒ no dim. */
+  highlightOctant?: string | null;
 };
 
 const SIM_SPEED = 20;            // simulated seconds per real second
@@ -60,6 +72,7 @@ const REVEAL_S = 1.4;            // network draws in over this many real seconds
 const ROUTING_STAGE_S = 2.5;     // paced stage after the two real fetches
 const HIT_RADIUS_PX = 14;        // hover / click hit-test radius around a signal
 const FLOW_RATE_PER_MAX = 0.05;  // cars per simulated second at the base study's busiest signal
+const DIM_ALPHA = 0.25;          // rows / flows outside the highlighted octant
 
 const CLASS_STYLE: Array<{ w: number; c: string }> = [
   { w: 5, c: "#3A4A66" }, { w: 4, c: "#33425C" }, { w: 3.2, c: "#2D3B54" }, { w: 2.4, c: "#27344B" }, { w: 1.5, c: "#212D42" },
@@ -80,7 +93,7 @@ function settle(sim: FlowSim): void {
   for (let i = 0; i < 400; i++) sim.step(0.5);
 }
 
-export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scenarioReport, selectedSignalId, onSelectSignal }: StudyMapAliveProps) {
+export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scenarioReport, selectedSignalId, onSelectSignal, highlightOctant }: StudyMapAliveProps) {
   const reduced = useReducedMotion();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -96,12 +109,14 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
     graph: RoadGraph | null; segments: RoadSegment[]; signals: Signal[]; siteNode: number;
     loadedAt: number | null; sigLoadedAt: number | null; sim: FlowSim | null; simKey: string;
     reportRows: Map<string, TisAffectedIntersection>; baseRows: Map<string, TisAffectedIntersection>;
-    phase: "pending" | "report"; scenario: Scenario; selected: string | null;
+    rowOctant: Map<string, Octant>;
+    phase: "pending" | "report"; scenario: Scenario; selected: string | null; highlight: Octant | null;
     static: HTMLCanvasElement | null; staticKey: string; hoverSig: Signal | null;
-  }>({ graph: null, segments: [], signals: [], siteNode: -1, loadedAt: null, sigLoadedAt: null, sim: null, simKey: "", reportRows: new Map(), baseRows: new Map(), phase, scenario, selected: null, static: null, staticKey: "", hoverSig: null });
+  }>({ graph: null, segments: [], signals: [], siteNode: -1, loadedAt: null, sigLoadedAt: null, sim: null, simKey: "", reportRows: new Map(), baseRows: new Map(), rowOctant: new Map(), phase, scenario, selected: null, highlight: null, static: null, staticKey: "", hoverSig: null });
   world.current.phase = phase;
   world.current.scenario = scenario;
   world.current.selected = selectedSignalId ?? null;
+  world.current.highlight = isOctant(highlightOctant) ? highlightOctant : null;
 
   const siteKey = `${site.latitude.toFixed(4)},${site.longitude.toFixed(4)},${radiusMi}`;
 
@@ -155,6 +170,10 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
     const sameIds = w.sim !== null && w.reportRows.size === shown.size && [...shown.keys()].every((id) => w.reportRows.has(id));
     w.reportRows = shown;
     w.baseRows = base;
+    // Site→row octant, the engine's convention, for the highlight dim.
+    const oct = new Map<string, Octant>();
+    for (const r of shown.values()) oct.set(r.signalId, bearingToOctant(bearingDeg(site.latitude, site.longitude, r.latitude, r.longitude)));
+    w.rowOctant = oct;
     if (sameIds && w.sim) {
       // Same study, new numbers: update the rates in place and keep the cars.
       let baseMax = 1;
@@ -170,7 +189,7 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
     } else {
       w.sim = null; w.simKey = "";
     }
-  }, [phase, report, scenarioReport, reduced]);
+  }, [phase, report, scenarioReport, reduced, site.latitude, site.longitude]);
 
   // stage list re-render while pending (the loop itself never touches React state)
   useEffect(() => {
@@ -283,12 +302,14 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
         const sim = w.sim;
         if (sim) {
           if (!reduced) { const s = dt * SIM_SPEED; sim.step(s * 0.5); sim.step(s * 0.5); }
+          const hl = w.highlight;
           for (const car of sim.cars) {
             const f = sim.flows[car.flow]; if (!f) continue;
             const p = pointAlong(f.route, car.s), q = pointAlong(f.route, Math.min(f.route.lenMi, car.s + 0.004));
             const [x, y] = proj(p), [x2, y2] = proj(q);
             const ang = Math.atan2(y2 - y, x2 - x);
             ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+            if (hl && f.signalId && w.rowOctant.get(f.signalId) !== hl) ctx.globalAlpha = DIM_ALPHA;
             if (f.tint === "project") { ctx.fillStyle = "rgba(59,130,246,0.35)"; ctx.fillRect(-7, -5, 14, 10); ctx.fillStyle = "#60A5FA"; }
             else ctx.fillStyle = "rgba(220,227,238,0.55)";
             ctx.fillRect(-4, -2, 8, 4);
@@ -312,10 +333,12 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
         }
       }
       if (w.phase === "report") {
+        const hl = w.highlight;
         for (const r of w.reportRows.values()) {
           const [x, y] = proj({ lat: r.latitude, lon: r.longitude });
           const los = w.scenario === "build" ? r.futureLos : r.existingLos;
           const bw = 22, bh = 22;
+          ctx.globalAlpha = hl && w.rowOctant.get(r.signalId) !== hl ? DIM_ALPHA : 1;
           ctx.fillStyle = LOS_MAP_COLORS[los] ?? "#94A3B8";
           ctx.beginPath(); ctx.roundRect(x - bw / 2, y - bh / 2, bw, bh, 4); ctx.fill();
           if (r.losChanged && w.scenario === "build") { ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.5; ctx.stroke(); }
@@ -335,6 +358,7 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
           ctx.fillStyle = "#0B1220"; ctx.font = '700 13px "JetBrains Mono", Menlo, monospace'; ctx.textAlign = "center"; ctx.textBaseline = "middle";
           ctx.fillText(los, x, y + 0.5);
         }
+        ctx.globalAlpha = 1;
       }
       // site pin
       ctx.fillStyle = "#FBBF24";
@@ -397,6 +421,9 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
   });
   const cur = stat(rows), baseStat = stat(baseRowsArr);
   const hoverRow = hover ? rows.find((r) => r.signalId === hover.sig.id) ?? null : null;
+  const highlightSector = phase === "report" && isOctant(highlightOctant)
+    ? { octant: highlightOctant, count: rows.filter((r) => bearingToOctant(bearingDeg(site.latitude, site.longitude, r.latitude, r.longitude)) === highlightOctant).length }
+    : null;
   const hoverBase = hover && isScenario ? baseRowsArr.find((r) => r.signalId === hover.sig.id) ?? null : null;
 
   return (
@@ -424,7 +451,7 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
             <div>
               <div className="text-sm font-semibold">{isScenario ? "Project trips on the network — scenario" : "Project trips on the network"}</div>
               <div className="text-xs text-muted-foreground mt-0.5">
-                Each studied signal shows its LOS; trips leave the site along their shortest routes at a rate proportional to the PM-peak trips it receives. Hover a signal for the numbers{onSelectSignal ? ", click one to edit its timing" : ""}.
+                Each studied signal shows its LOS; trips leave the site along their shortest routes at a rate proportional to the PM-peak trips it receives. Hover a signal for the numbers{onSelectSignal ? ", click one to open it as its own study" : ""}.
               </div>
             </div>
             <div className="grid grid-cols-3 gap-2 border-t pt-3">
@@ -456,6 +483,11 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
               <span><i className="inline-block w-2 h-2 rounded-full align-middle mr-1 bg-slate-400/60" />Signal not studied</span>
             </div>
             {net.status === "none" && <div className="text-xs text-muted-foreground">No road file for this region — routes are drawn straight-line.</div>}
+            {highlightSector && (
+              <div className="text-xs text-muted-foreground border-t pt-2" data-testid="map-highlight-octant">
+                Highlighting the <span className="font-mono font-semibold text-foreground">{highlightSector.octant}</span> sector from the site — <span className="font-mono tabular-nums">{highlightSector.count}</span> of {rows.length} studied signals; the rest are dimmed.
+              </div>
+            )}
           </>
         )}
       </div>

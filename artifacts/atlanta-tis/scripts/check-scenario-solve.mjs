@@ -65,6 +65,7 @@ import {
   solveScenario, solveScenarioDetailed, EMPTY_SCENARIO, toWhatIfRequest, reportDiff,
   timingEditFromRow, withCycle, withNsShare, withProtectedLeft, isScenarioDirty,
   designGrowthYears, printedDesignGrowthYears, reconstructedDesignGrowthYears, baseOverridesBySignal,
+  scenarioWeatherFactor,
 } from "../src/lib/scenario-solve.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -389,6 +390,13 @@ every(passBy, (r, b) => r.futureVc <= b.futureVc + 1e-9 && r.addedTripsPmPeak <=
 const snow = solveScenario(A, { ...EMPTY_SCENARIO, weather: "heavy_snow" });
 every(snow, (r, b) => r.futureDelaySec >= b.futureDelaySec - 1e-9 && r.existingDelaySec >= b.existingDelaySec - 1e-9, "heavy snow: delays never decrease");
 ok(snow.weatherCapacityFactor === 0.7 && snow.weather === "heavy_snow", "heavy snow: capacity factor 0.70 on the report");
+// The re-solved report carries the EXACT factor its rows were solved with
+// (as the engine prints it), never the base's; scenarioWeatherFactor is the
+// one answer both the solve and the intersection study read.
+ok(snow.weatherFactorExact === 0.7 && scenarioWeatherFactor(A, { weather: "heavy_snow" }) === 0.7,
+  `heavy snow: weatherFactorExact ${snow.weatherFactorExact} on the re-solved report = scenarioWeatherFactor(base, heavy_snow)`);
+ok(scenarioWeatherFactor(A, { weather: null }) === (A.weatherFactorExact ?? A.weatherCapacityFactor) && outA.weatherFactorExact === A.weatherFactorExact,
+  `no weather edit: scenarioWeatherFactor = the base's ${A.weatherFactorExact}; the untouched solve keeps weatherFactorExact ${outA.weatherFactorExact}`);
 
 if (A.growthAppliedPct > 0 && A.growthYears > 0) {
   const flat = solveScenario(A, { ...EMPTY_SCENARIO, growthRatePct: 0 });

@@ -2,15 +2,17 @@
  * Alive surfaces — gallery entry.
  *
  * Mounts the site's real React components (StudyMapAlive, ScenarioStudio,
- * WarrantsReport, QueuingReport) on real engine output. The TIS report is the
- * scenario solver's own fixture (../scripts/fixtures/scenario-base.json): the
- * Peachtree Multifamily request run through THIS branch's engine with Track
- * E2's exact re-solve inputs, so the studio section re-solves it in the page
- * with no fallback. The only gallery-specific glue is a window.fetch mock that
- * serves the network fixtures StudyMapAlive asks for, with short delays so the
- * pending-phase stage list is visible rather than instantaneous. The studio
- * runs client-side only here — no engine hand-off, so its Access tab and
- * "Send to engine" are hidden, exactly as the component does without onRerun.
+ * TripDistributionCard, IntersectionStudy, WarrantsReport, QueuingReport) on
+ * real engine output. The TIS report is the scenario solver's own fixture
+ * (../scripts/fixtures/scenario-base.json): the Peachtree Multifamily request
+ * run through THIS branch's engine with Track E2's exact re-solve inputs, so
+ * the studio section re-solves it in the page with no fallback. The only
+ * gallery-specific glue is a window.fetch mock that serves the network
+ * fixtures StudyMapAlive asks for, with short delays so the pending-phase
+ * stage list is visible rather than instantaneous. The studio and the
+ * intersection study's §05 run client-side only here — no engine hand-off, so
+ * the studio's Access tab and "Send to engine" are hidden, exactly as the
+ * component does without onRerun.
  */
 import { useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -18,9 +20,13 @@ import type { TisReport } from "@workspace/tis-api-client-react";
 import { TooltipProvider } from "../src/components/ui/tooltip";
 import { StudyMapAlive } from "../src/components/study-map-alive";
 import { ScenarioStudio } from "../src/components/scenario-studio";
+import { TripDistributionCard } from "../src/components/trip-distribution-card";
+import { IntersectionStudy } from "../src/components/intersection-study";
+import { LosBadge } from "../src/components/tis-report-bits";
 import { WarrantsReport, type WarrantsReportT } from "../src/components/warrants-report";
 import { QueuingReport, type QueuingReportT } from "../src/components/queuing-report";
-import { solveScenarioDetailed, isClientScenarioDirty, EMPTY_SCENARIO, type ScenarioState } from "../src/lib/scenario-solve";
+import { solveScenarioDetailed, solveScenario, isClientScenarioDirty, EMPTY_SCENARIO, type ScenarioState } from "../src/lib/scenario-solve";
+import type { Octant } from "../src/lib/distribution-rose";
 import region from "./fixtures/region.json";
 import roads from "./fixtures/roads.json";
 import signals from "./fixtures/signals.json";
@@ -125,6 +131,113 @@ function StudioSection() {
   );
 }
 
+/** The live distribution rose above the map it steers: hovering a sector of
+ *  the rose reports its octant, and the map dims every row and flow outside
+ *  that 45° bearing sector from the site — wired as pages/tis.tsx and
+ *  pages/demo.tsx wire it (`onHoverOctant` → `highlightOctant`). */
+function DistributionSection() {
+  const [hoverOctant, setHoverOctant] = useState<Octant | null>(null);
+  const td = TIS_REPORT.tripDistribution;
+  const zones = td?.zones?.length ?? 0;
+  return (
+    <Section
+      eyebrow="06 · trip-distribution-alive + study-map-alive · highlightOctant"
+      heading="Trip distribution"
+      lede={<>The report's own directional distribution ({td?.methodLabel ?? "gravity"}, {zones} destination zones) drawn live: eight sectors scaled to their share, particles streaming out at a rate proportional to it, the zones placed by bearing and distance and lit heaviest-first. Hover a sector — the map above it keeps only the signals and flows inside that bearing and dims the rest. Every share and every zone is <code>report.tripDistribution</code>; nothing is derived in the page beyond the drawing.</>}
+    >
+      <div className="space-y-4">
+        <StudyMapAlive site={SITE} radiusMi={RADIUS_MI} phase="report" report={TIS_REPORT} projectName={PROJECT} highlightOctant={hoverOctant} />
+        <TripDistributionCard report={TIS_REPORT} onHoverOctant={setHoverOctant} />
+      </div>
+    </Section>
+  );
+}
+
+/** One signal opened as its own study. A short list of the report's rows,
+ *  sorted as the capacity table sorts them (a LOS drop first, then by delay
+ *  delta); a button per row opens IntersectionStudy over the page — the same
+ *  full-screen view /tis and /demo open from a map click or a table row, with
+ *  §05 What-if re-solving that signal in the browser through solveScenario.
+ *  No URL state here (the page that mounts the study owns that); Close, Escape
+ *  or the list's own button return to the gallery. */
+const STUDY_ROWS = 6;
+function StudySection() {
+  const [scenario, setScenario] = useState<ScenarioState>(EMPTY_SCENARIO);
+  const clientDirty = isClientScenarioDirty(scenario);
+  const solveKey = JSON.stringify([scenario.size, scenario.passByPct, scenario.internalCapturePct, scenario.growthRatePct, scenario.weather, scenario.timing]);
+  const scenarioReport = useMemo(
+    () => (clientDirty ? solveScenario(TIS_REPORT, scenario) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [clientDirty, solveKey],
+  );
+  const rows = useMemo(
+    () => [...TIS_REPORT.affectedIntersections]
+      .sort((a, b) => (a.losChanged !== b.losChanged ? (a.losChanged ? -1 : 1) : (b.futureDelaySec - b.existingDelaySec) - (a.futureDelaySec - a.existingDelaySec)))
+      .slice(0, STUDY_ROWS),
+    [],
+  );
+  const selectedId = scenario.selectedSignalId;
+  const select = (id: string | null) => setScenario((s) => (s.selectedSignalId === id ? s : { ...s, selectedSignalId: id }));
+  const row = selectedId ? TIS_REPORT.affectedIntersections.find((r) => r.signalId === selectedId) ?? null : null;
+  const scenarioRow = scenarioReport && selectedId ? scenarioReport.affectedIntersections.find((r) => r.signalId === selectedId) ?? null : null;
+  const edited = Object.keys(scenario.timing).length;
+  return (
+    <Section
+      eyebrow="07 · intersection-study · §00–§06, client-side solve"
+      heading="An intersection as its own study"
+      lede={<>Any of the {TIS_REPORT.intersectionsStudied} signals opens as a full-screen study structured like the report: §00 Summary, §01 Approaches &amp; lanes (the plan view), §02 Queuing (each approach's Q95 against storage, and the queue-forming lane per approach), §03 Signal timing (the plan in use and the Webster optimum), §04 Simulation (the single-junction micro-sim on that row's inputs), §05 What-if (the studio's Signal controls — an edit re-solves every section with the engine's own row math), §06 Mitigation &amp; method. The {STUDY_ROWS} heaviest-impact rows are listed; Escape or Close returns here.{edited ? ` ${edited} signal${edited === 1 ? " carries" : "s carry"} a §05 edit in this page's scenario.` : ""}</>}
+    >
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full text-sm" data-testid="gallery-study-rows">
+          <thead>
+            <tr className="border-b text-xs uppercase tracking-wide text-muted-foreground">
+              <th className="text-left py-2 px-3 font-medium">Intersection</th>
+              <th className="text-right py-2 px-3 font-medium">Dist (mi)</th>
+              <th className="text-right py-2 px-3 font-medium">+Trips PM</th>
+              <th className="text-center py-2 px-3 font-medium">LOS no-build → build</th>
+              <th className="text-right py-2 px-3 font-medium">Delay Δ</th>
+              <th className="text-right py-2 px-3 font-medium">Q95 (ft)</th>
+              <th className="py-2 px-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const delta = r.futureDelaySec - r.existingDelaySec;
+              const isOpen = r.signalId === selectedId;
+              return (
+                <tr key={r.signalId} className={`border-b last:border-0 align-middle ${isOpen ? "bg-blue-50 dark:bg-blue-950/30" : ""}`}>
+                  <td className="py-2 px-3">
+                    <div className="font-medium truncate max-w-[280px]">{r.name}</div>
+                    <div className="text-xs text-muted-foreground font-mono">{r.signalId}{scenario.timing[r.signalId] !== undefined ? " · §05 edit" : ""}</div>
+                  </td>
+                  <td className="py-2 px-3 text-right tabular-nums">{r.distanceMi.toFixed(2)}</td>
+                  <td className="py-2 px-3 text-right tabular-nums">{r.addedTripsPmPeak}</td>
+                  <td className="py-2 px-3 text-center whitespace-nowrap"><LosBadge los={r.existingLos} /> <span className="text-muted-foreground">→</span> <LosBadge los={r.futureLos} /></td>
+                  <td className={`py-2 px-3 text-right tabular-nums ${delta >= 15 ? "text-red-600 font-semibold" : delta >= 5 ? "text-amber-600 font-semibold" : ""}`}>{delta >= 0 ? "+" : ""}{delta.toFixed(1)}s</td>
+                  <td className={`py-2 px-3 text-right tabular-nums ${r.queue95thFt >= 400 ? "text-red-600 font-semibold" : r.queue95thFt >= 250 ? "text-amber-600" : ""}`}>{r.queue95thFt.toFixed(0)}</td>
+                  <td className="py-2 px-3 text-right">
+                    <button type="button" className="g-btn g-btn-primary" onClick={() => select(r.signalId)} data-testid={`gallery-open-study-${r.signalId}`}>Open study →</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {row && (
+        <IntersectionStudy
+          report={TIS_REPORT}
+          row={row}
+          scenarioRow={scenarioRow}
+          scenario={scenario}
+          onScenarioChange={setScenario}
+          onClose={() => select(null)}
+        />
+      )}
+    </Section>
+  );
+}
+
 function App() {
   const w = WARRANTS;
   const q = QUEUING;
@@ -133,7 +246,7 @@ function App() {
       <header className="g-header">
         <div className="g-eyebrow">simpleimpactstudies.com · gallery</div>
         <h1 className="g-title">Alive surfaces</h1>
-        <p className="g-intro">The site's new live visualizations, running the real React components on real engine output — a 40-signal Midtown Atlanta TIS, its scenario studio re-solving in the page, an MUTCD signal-warrant screening and a Webster queue check.</p>
+        <p className="g-intro">The site's new live visualizations, running the real React components on real engine output — a 40-signal Midtown Atlanta TIS, its scenario studio re-solving in the page, an MUTCD signal-warrant screening, a Webster queue check, the study's live trip-distribution rose, and any of its intersections opened as its own study.</p>
       </header>
 
       <GeneratingSection />
@@ -163,6 +276,10 @@ function App() {
       >
         <QueuingReport report={q} />
       </Section>
+
+      <DistributionSection />
+
+      <StudySection />
 
       <footer className="g-footer">Home opener and city maps are live on simpleimpactstudies.com</footer>
     </main>
