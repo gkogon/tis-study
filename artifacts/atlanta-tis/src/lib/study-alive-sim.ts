@@ -11,6 +11,8 @@
  * saturation headway ≈ 2 s, control-delay LOS A ≤10 s … F >80 s.
  */
 
+import { CAR_L, CAR_W, VMAX, GAP, followGap, targetSpeed, stepSpeed } from "./car-following.ts";
+
 export const NS: number[] = [-1000, -500, 0, 500, 1000]; // x of north–south streets
 export const EW: number[] = [-800, -400, 0, 400, 800]; // y of east–west streets
 const SIGNAL_KEYS = [
@@ -20,12 +22,6 @@ const SIGNAL_KEYS = [
 ];
 export const SIGNAL_COUNT = SIGNAL_KEYS.length;
 
-const CAR_L = 14;
-const CAR_W = 7;
-const VMAX = 44;
-const ACC = 7;
-const BRAKE = 13;
-const GAP = 7;
 /** Tunable dynamics. headwayS is the desired time headway behind the car ahead — it sets saturation flow (≈ 1 / (headwayS + 0.5 s)). */
 export const TUNING = { headwayS: 1.8 };
 
@@ -234,7 +230,7 @@ export class StudySim {
         if (!c) continue;
         let d = Infinity;
         const ahead = i > 0 ? g.cars[i - 1] : undefined;
-        if (ahead) d = Math.min(d, dir * (ahead.s - c.s) - CAR_L - GAP - c.v * TUNING.headwayS);
+        if (ahead) d = Math.min(d, followGap(dir * (ahead.s - c.s), c.v, TUNING.headwayS));
         let bestK = -1, bestSl = 0, bestD = Infinity;
         for (let k = 0; k < 5; k++) {
           const cc = cross[k] ?? 0;
@@ -252,9 +248,7 @@ export class StudySim {
             if (mustStop && bestD > -2) d = Math.min(d, bestD);
           }
         }
-        let vt = VMAX;
-        if (d < Infinity) vt = Math.min(vt, Math.sqrt(Math.max(0, 2 * BRAKE * (d - 1))));
-        if (vt > c.v) c.v = Math.min(vt, c.v + ACC * dt); else c.v = Math.max(vt, c.v - BRAKE * dt);
+        c.v = stepSpeed(c.v, targetSpeed(d), dt);
         if (d <= 1) c.v = 0;
         if (c.sig && c.v < 12) c.wait += dt; // crawling in a queue is delay too
         c.s += dir * c.v * dt;
