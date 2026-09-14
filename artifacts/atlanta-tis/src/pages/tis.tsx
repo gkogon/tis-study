@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useSearch } from "wouter";
+import { Link } from "wouter";
 import {
   useListTisLandUses,
   useGenerateTis,
@@ -38,6 +38,7 @@ import type { Octant } from "@/lib/distribution-rose";
 import { TisLimitations } from "@/components/tis-limitations";
 import { ScenarioStudio } from "@/components/scenario-studio";
 import { IntersectionStudy } from "@/components/intersection-study";
+import { useSignalStudyUrl } from "@/hooks/use-signal-study-url";
 import { Switch } from "@/components/ui/switch";
 import {
   LOS_COLORS, SEVERITY_CONFIG, LosBadge, ApproachDetailTable, IntersectionTable, DELAY_CONFIDENCE_FRAC, delayBand,
@@ -1743,9 +1744,6 @@ export default function TisPage() {
   // and a page load with `?signal=` opens the study as soon as a report with
   // that row is present. The study draws the BASE row and, when the studio
   // has client edits, the scenario's re-solve of it.
-  const search = useSearch();
-  const [, navigate] = useLocation();
-  const urlSignalId = useMemo(() => new URLSearchParams(search).get("signal"), [search]);
   const selectedId = scenario.selectedSignalId;
   const studyRow = useMemo(
     () => (report && selectedId ? report.affectedIntersections.find((r) => r.signalId === selectedId) ?? null : null),
@@ -1755,29 +1753,13 @@ export default function TisPage() {
     () => (scenarioReport && selectedId ? scenarioReport.affectedIntersections.find((r) => r.signalId === selectedId) ?? null : null),
     [scenarioReport, selectedId],
   );
-  // URL → state: the URL is the source of truth for the open study once a
-  // report is on screen (this is what makes back/forward and deep links work).
-  useEffect(() => {
-    if (!report) return;
-    const id = urlSignalId && report.affectedIntersections.some((r) => r.signalId === urlSignalId) ? urlSignalId : null;
-    setScenario((s) => (s.selectedSignalId === id ? s : { ...s, selectedSignalId: id }));
-  }, [urlSignalId, report]);
-  // State → URL. `pushed` remembers whether THIS page pushed the `?signal=`
-  // entry, so Close pops it (one history entry per open) rather than piling
-  // up; a deep link that was never pushed is replaced instead.
-  const pushedStudy = useRef(false);
-  const withSignal = (id: string | null) => `/tis${id ? `?signal=${encodeURIComponent(id)}` : ""}`;
-  function syncStudyUrl(id: string | null) {
-    if (id) {
-      if (urlSignalId === id) return;
-      navigate(withSignal(id), { replace: !!urlSignalId });
-      if (!urlSignalId) pushedStudy.current = true;
-    } else if (urlSignalId) {
-      if (pushedStudy.current) { pushedStudy.current = false; window.history.back(); }
-      else navigate(withSignal(null), { replace: true });
-    }
-  }
-  useEffect(() => { if (!urlSignalId) pushedStudy.current = false; }, [urlSignalId]);
+  // URL ↔ state (use-signal-study-url.ts, shared with /demo): the URL is the
+  // source of truth for the open study once a report is on screen.
+  const { syncUrl: syncStudyUrl } = useSignalStudyUrl({
+    basePath: "/tis",
+    report,
+    setSelectedSignalId: (id) => setScenario((s) => (s.selectedSignalId === id ? s : { ...s, selectedSignalId: id })),
+  });
   function selectSignal(id: string | null) {
     setScenario((s) => (s.selectedSignalId === id ? s : { ...s, selectedSignalId: id }));
     syncStudyUrl(id);

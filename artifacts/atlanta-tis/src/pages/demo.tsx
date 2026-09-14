@@ -11,6 +11,14 @@
  *
  * Backed by POST /tis-api/demo/generate with the demoRateLimiter
  * (3/day/IP). Curated presets are surfaced as one-click form prefills.
+ *
+ * The result carries the same live surfaces the signed-in /tis report
+ * does — the study map (report phase), the trip-distribution rose, the
+ * capacity table, and any intersection opened as its own study with
+ * `?signal=` URL state — all on the report the generate call returned,
+ * client-side only: no session, no scenario studio, no engine hand-off,
+ * and no fetch beyond the map's own road-network and signal-inventory
+ * calls.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
@@ -20,8 +28,15 @@ import {
   Loader2, ArrowRight, AlertCircle, MapPin, FileCheck2, ChevronRight,
   ChevronDown, Hourglass, ShieldCheck, Download,
 } from "lucide-react";
+import type { TisReport } from "@workspace/tis-api-client-react";
 import { StudyMapAlive } from "../components/study-map-alive";
+import { TripDistributionCard } from "../components/trip-distribution-card";
+import { IntersectionTable as CapacityTable } from "../components/tis-report-bits";
+import { IntersectionStudy } from "../components/intersection-study";
 import { SiteFooter } from "../components/site-footer";
+import { useSignalStudyUrl } from "../hooks/use-signal-study-url";
+import type { Octant } from "../lib/distribution-rose";
+import { solveScenario, isClientScenarioDirty, EMPTY_SCENARIO, type ScenarioState } from "../lib/scenario-solve";
 
 type Preset = {
   id: string;
@@ -107,7 +122,7 @@ type AffectedIntersection = {
   calibration?: {
     sampleCount: number;
     delayMultiplier: number;
-    lastObservedDelaySec: number | null;
+    lastObservedDelaySec?: number | null;
   };
 };
 
@@ -186,7 +201,11 @@ type DemoResponse = {
   size: number;
   openingYear: number;
   studyRadiusMi: number;
-  report: DemoReport;
+  /** The full TisReport `generateTisReport` produced — the same shape the
+   *  signed-in /tis page renders, so the live map, the distribution rose and
+   *  the intersection study mount on it unchanged. The demo's own sections
+   *  below read the `DemoReport` subset of it. */
+  report: TisReport;
 };
 
 const ICONS: Record<string, typeof Building2> = {
@@ -1565,6 +1584,44 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
 
+  // ---- the live study: map, distribution rose, capacity table, one signal's study ----
+  // The same components /tis mounts on a signed-in report, on the demo's
+  // report. There is no scenario studio and no engine hand-off here: the
+  // scenario state exists so the study's §05 What-if controls work, re-solving
+  // the edited signal in the browser with `solveScenario` (the engine's own
+  // row math) — nothing is sent anywhere, and nothing here needs a session.
+  const [scenario, setScenario] = useState<ScenarioState>(EMPTY_SCENARIO);
+  const clientDirty = isClientScenarioDirty(scenario);
+  const solveKey = JSON.stringify(scenario.timing);
+  const scenarioReport = useMemo(
+    () => (clientDirty ? solveScenario(r, scenario) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [r, clientDirty, solveKey],
+  );
+  // The distribution rose's hovered sector; the map dims the rows and flows
+  // outside it. Hover-only state.
+  const [hoverOctant, setHoverOctant] = useState<Octant | null>(null);
+  // Selecting a signal (map click, table row) opens its study; the selection
+  // lives in the URL as `?signal=` exactly as on /tis (use-signal-study-url.ts).
+  const selectedId = scenario.selectedSignalId;
+  const { syncUrl } = useSignalStudyUrl({
+    basePath: "/demo",
+    report: r,
+    setSelectedSignalId: (id) => setScenario((s) => (s.selectedSignalId === id ? s : { ...s, selectedSignalId: id })),
+  });
+  function selectSignal(id: string | null) {
+    setScenario((s) => (s.selectedSignalId === id ? s : { ...s, selectedSignalId: id }));
+    syncUrl(id);
+  }
+  const studyRow = useMemo(
+    () => (selectedId ? r.affectedIntersections.find((x) => x.signalId === selectedId) ?? null : null),
+    [r, selectedId],
+  );
+  const studyScenarioRow = useMemo(
+    () => (scenarioReport && selectedId ? scenarioReport.affectedIntersections.find((x) => x.signalId === selectedId) ?? null : null),
+    [scenarioReport, selectedId],
+  );
+
   async function downloadPdf() {
     setPdfLoading(true);
     setPdfError(null);
@@ -1671,6 +1728,40 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
       </div>
 
       <AssumptionsStrip r={r} />
+
+      {/* The live study — the same map, distribution rose and capacity table
+          the signed-in report shows; a signal opens as its own study. */}
+      <section className="space-y-4" data-testid="demo-live-study">
+        <SectionHead
+          step="Live study"
+          title="Trip assignment, distribution and every intersection"
+          note="Project trips leave the site along shortest routes to each studied signal. Hover a sector of the rose to follow one direction on the map; click a signal on the map or a row of the table to open that intersection as its own study — approaches, queuing, timing, simulation and what-if."
+        />
+        <StudyMapAlive
+          site={{ latitude: r.request.latitude, longitude: r.request.longitude }}
+          radiusMi={r.request.studyRadiusMi ?? response.studyRadiusMi}
+          phase="report"
+          report={r}
+          projectName={response.projectName}
+          scenarioReport={scenarioReport}
+          selectedSignalId={selectedId}
+          onSelectSignal={selectSignal}
+          highlightOctant={hoverOctant}
+        />
+        <TripDistributionCard report={r} onHoverOctant={setHoverOctant} />
+        <CapacityTable report={r} selectedSignalId={selectedId} onSelect={selectSignal} />
+      </section>
+
+      {studyRow && (
+        <IntersectionStudy
+          report={r}
+          row={studyRow}
+          scenarioRow={studyScenarioRow}
+          scenario={scenario}
+          onScenarioChange={setScenario}
+          onClose={() => selectSignal(null)}
+        />
+      )}
 
       {/* Trip generation across all periods */}
       <section className="space-y-4">
