@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import {
   useListTisLandUses,
   useGenerateTis,
@@ -37,7 +37,7 @@ import { TripDistributionCard } from "@/components/trip-distribution-card";
 import type { Octant } from "@/lib/distribution-rose";
 import { TisLimitations } from "@/components/tis-limitations";
 import { ScenarioStudio } from "@/components/scenario-studio";
-import { IntersectionExplorer } from "@/components/intersection-explorer";
+import { IntersectionStudy } from "@/components/intersection-study";
 import { Switch } from "@/components/ui/switch";
 import {
   LOS_COLORS, SEVERITY_CONFIG, LosBadge, ApproachDetailTable, IntersectionTable, DELAY_CONFIDENCE_FRAC, delayBand,
@@ -1735,27 +1735,59 @@ export default function TisPage() {
   // flows outside it. Hover-only state — never part of the scenario.
   const [hoverOctant, setHoverOctant] = useState<Octant | null>(null);
 
-  // ---- intersection explorer ----
-  // Bound to the same selection the map and the studio share: the BASE row
-  // and, when the studio has client edits, the scenario's re-solve of it.
+  // ---- intersection study ----
+  // Selecting a signal (map click, capacity-table row, the studio's Signal
+  // tab) opens that signal's full-screen study. The selection lives in the
+  // URL — `?signal=<signalId>` — and `scenario.selectedSignalId` follows it:
+  // opening pushes a history entry, Close / Escape / the back button pop it,
+  // and a page load with `?signal=` opens the study as soon as a report with
+  // that row is present. The study draws the BASE row and, when the studio
+  // has client edits, the scenario's re-solve of it.
+  const search = useSearch();
+  const [, navigate] = useLocation();
+  const urlSignalId = useMemo(() => new URLSearchParams(search).get("signal"), [search]);
   const selectedId = scenario.selectedSignalId;
-  const explorerRow = useMemo(
+  const studyRow = useMemo(
     () => (report && selectedId ? report.affectedIntersections.find((r) => r.signalId === selectedId) ?? null : null),
     [report, selectedId],
   );
-  const explorerScenarioRow = useMemo(
+  const studyScenarioRow = useMemo(
     () => (scenarioReport && selectedId ? scenarioReport.affectedIntersections.find((r) => r.signalId === selectedId) ?? null : null),
     [scenarioReport, selectedId],
   );
-  // A click in the capacity table (far below the map) selects AND brings the
-  // explorer into view; a map click already has it on screen.
-  const explorerRef = useRef<HTMLDivElement>(null);
-  const [scrollToExplorer, setScrollToExplorer] = useState(false);
+  // URL → state: the URL is the source of truth for the open study once a
+  // report is on screen (this is what makes back/forward and deep links work).
   useEffect(() => {
-    if (!scrollToExplorer || !explorerRow) return;
-    setScrollToExplorer(false);
-    explorerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [scrollToExplorer, explorerRow]);
+    if (!report) return;
+    const id = urlSignalId && report.affectedIntersections.some((r) => r.signalId === urlSignalId) ? urlSignalId : null;
+    setScenario((s) => (s.selectedSignalId === id ? s : { ...s, selectedSignalId: id }));
+  }, [urlSignalId, report]);
+  // State → URL. `pushed` remembers whether THIS page pushed the `?signal=`
+  // entry, so Close pops it (one history entry per open) rather than piling
+  // up; a deep link that was never pushed is replaced instead.
+  const pushedStudy = useRef(false);
+  const withSignal = (id: string | null) => `/tis${id ? `?signal=${encodeURIComponent(id)}` : ""}`;
+  function syncStudyUrl(id: string | null) {
+    if (id) {
+      if (urlSignalId === id) return;
+      navigate(withSignal(id), { replace: !!urlSignalId });
+      if (!urlSignalId) pushedStudy.current = true;
+    } else if (urlSignalId) {
+      if (pushedStudy.current) { pushedStudy.current = false; window.history.back(); }
+      else navigate(withSignal(null), { replace: true });
+    }
+  }
+  useEffect(() => { if (!urlSignalId) pushedStudy.current = false; }, [urlSignalId]);
+  function selectSignal(id: string | null) {
+    setScenario((s) => (s.selectedSignalId === id ? s : { ...s, selectedSignalId: id }));
+    syncStudyUrl(id);
+  }
+  // The studio changes the selection through its Signal-tab dropdown; the
+  // URL follows that too.
+  function onStudioChange(next: ScenarioState) {
+    setScenario(next);
+    if (next.selectedSignalId !== scenario.selectedSignalId) syncStudyUrl(next.selectedSignalId);
+  }
 
   // Engine what-if: the whole scenario (timing overrides, site, driveways)
   // through POST /tis-api/whatif, which charges no study slot and saves
@@ -2000,7 +2032,7 @@ export default function TisPage() {
                 projectName={activeRun.projectName}
                 scenarioReport={generate.isPending ? null : scenarioReport}
                 selectedSignalId={scenario.selectedSignalId}
-                onSelectSignal={(id) => setScenario((s) => ({ ...s, selectedSignalId: id }))}
+                onSelectSignal={selectSignal}
                 highlightOctant={hoverOctant}
               />
               {!generate.isPending && report && solution && (
@@ -2008,7 +2040,7 @@ export default function TisPage() {
                   report={report}
                   solution={solution}
                   scenario={scenario}
-                  onChange={setScenario}
+                  onChange={onStudioChange}
                   onRerun={runWhatIf}
                   rerunPending={whatIfRun.isPending}
                   rerunError={whatIf.error}
@@ -2020,14 +2052,15 @@ export default function TisPage() {
         </Card>
       )}
 
-      {!generate.isPending && report && explorerRow && (
-        <div ref={explorerRef} className="print:hidden scroll-mt-4">
-          <IntersectionExplorer
-            row={explorerRow}
-            scenarioRow={explorerScenarioRow}
-            onClose={() => setScenario((s) => ({ ...s, selectedSignalId: null }))}
-          />
-        </div>
+      {!generate.isPending && report && studyRow && (
+        <IntersectionStudy
+          report={report}
+          row={studyRow}
+          scenarioRow={studyScenarioRow}
+          scenario={scenario}
+          onScenarioChange={setScenario}
+          onClose={() => selectSignal(null)}
+        />
       )}
 
       {generate.error && (
@@ -2077,7 +2110,7 @@ export default function TisPage() {
           <IntersectionTable
             report={shown ?? report}
             selectedSignalId={scenario.selectedSignalId}
-            onSelect={(id) => { setScenario((s) => ({ ...s, selectedSignalId: id })); setScrollToExplorer(true); }}
+            onSelect={selectSignal}
           />
           <MitigationsCard report={shown ?? report} />
           <MethodologyCard report={report} />

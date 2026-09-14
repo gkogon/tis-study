@@ -7,6 +7,8 @@
  *   Signal  the selected signal's timing plan (cycle, splits, protected
  *           lefts) as an override the engine consumes ahead of Webster;
  *           base → scenario LOS and delay, the scenario's approach table.
+ *           The controls themselves are `signal-controls.tsx`, shared with
+ *           the intersection study's §05 What-if.
  *   Access  driveways — routing needs the road network, so this tab hands
  *           the whole scenario to the engine (POST /whatif). Hidden when the
  *           page has no server to send to (the gallery).
@@ -20,15 +22,13 @@ import { useEffect, useMemo, useState } from "react";
 import type { TisReport, TisAffectedIntersection, TisWeather, Driveway } from "@workspace/tis-api-client-react";
 import { Loader2, RotateCcw, Send, AlertCircle } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import { DrivewayEditor } from "@/components/driveway-editor";
 import { LosBadge, ApproachDetailTable } from "@/components/tis-report-bits";
+import { SignalControls, SliderRow } from "@/components/signal-controls";
 import {
   type ScenarioState, type ScenarioSolution, type SignalTimingEdit, type RowFallback, type WhatIfRequest,
   EMPTY_SCENARIO, isScenarioDirty, isClientScenarioDirty, toWhatIfRequest, baseOverridesBySignal,
-  timingEditFromRow, withCycle, withNsShare, withProtectedLeft, withLeftSplit, throughBudgetS,
-  LOST_TIME_S, MIN_SPLIT_S,
+  timingEditFromRow,
 } from "@/lib/scenario-solve";
 
 export type ScenarioStudioProps = {
@@ -66,13 +66,6 @@ const FALLBACK_LABEL: Record<RowFallback, string> = {
   baseOnly: "row held at base",
 };
 
-const BASIS_LABEL: Record<string, string> = {
-  webster: "Webster optimum from no-build volumes",
-  measured: "measured plan (Synchro)",
-  "measured-cycle": "measured cycle, Webster splits",
-  "screening-default": "screening default (90 s, g/C 0.45)",
-};
-
 function fmtDelta(a: number, b: number, digits = 1, unit = ""): string {
   const d = b - a;
   if (Math.abs(d) < 0.5 * Math.pow(10, -digits)) return "no change";
@@ -88,24 +81,6 @@ function Readout({ label, base, value, unit, digits = 0, warnAbove }: { label: s
         {changed && <span className="text-muted-foreground">{base.toFixed(digits)}{unit} → </span>}
         <span className={warnAbove !== undefined && value > warnAbove ? "text-amber-600 font-semibold" : "font-semibold"}>{value.toFixed(digits)}{unit}</span>
       </span>
-    </div>
-  );
-}
-
-function SliderRow({ id, label, value, base, min, max, step, format, onChange, disabled }: {
-  id: string; label: string; value: number; base?: number; min: number; max: number; step: number;
-  format: (v: number) => string; onChange: (v: number) => void; disabled?: boolean;
-}) {
-  return (
-    <div className="space-y-1">
-      <div className="flex items-baseline justify-between text-xs">
-        <label htmlFor={id} className="font-medium">{label}</label>
-        <span className="font-mono tabular-nums">
-          {base !== undefined && format(base) !== format(value) && <span className="text-muted-foreground">{format(base)} → </span>}
-          {format(value)}
-        </span>
-      </div>
-      <Slider id={id} value={[value]} min={min} max={max} step={step} disabled={disabled} onValueChange={([v]) => { if (typeof v === "number") onChange(v); }} aria-label={label} data-testid={`slider-${id}`} />
     </div>
   );
 }
@@ -168,9 +143,6 @@ export function ScenarioStudio({ report, solution, scenario, onChange, onRerun, 
   const cleared = !!selectedId && scenario.timing[selectedId] === null;
   const canReset = overridden || (baseOverridden && !cleared);
   const timing = scenRow?.signalTiming;
-  const nsShare = edit ? edit.nsThroughSplitS / Math.max(1, throughBudgetS(edit)) : 0.5;
-  const pedNs = timing?.pedMinGreenNsSec, pedEw = timing?.pedMinGreenEwSec;
-  const pedShort = edit && ((pedNs !== undefined && edit.nsThroughSplitS - LOST_TIME_S < pedNs) || (pedEw !== undefined && edit.ewThroughSplitS - LOST_TIME_S < pedEw));
   const rowFallbacks = selectedId ? [...(solution.rowFallbacks.get(selectedId) ?? [])] : [];
 
   const sendToEngine = () => { if (onRerun) onRerun(toWhatIfRequest(report, scenario)); };
@@ -258,47 +230,15 @@ export function ScenarioStudio({ report, solution, scenario, onChange, onRerun, 
                 </div>
               </div>
 
-              <div className="border-t pt-3 space-y-3">
-                <SliderRow id="scenario-cycle" label="Cycle" value={edit.cycleLenSec} base={baseRow.signalTiming?.cycleLenSec} min={30} max={300} step={5} format={(v) => `${v.toFixed(0)} s`} onChange={(v) => setTiming(baseRow.signalId, withCycle(edit, v))} />
-                <SliderRow id="scenario-ns-share" label="Through split · NS share" value={Math.round(nsShare * 100)} min={Math.ceil((MIN_SPLIT_S / Math.max(1, throughBudgetS(edit))) * 100)} max={Math.floor(100 - (MIN_SPLIT_S / Math.max(1, throughBudgetS(edit))) * 100)} step={1}
-                  format={(v) => `NS ${v.toFixed(0)}% / EW ${(100 - v).toFixed(0)}%`} onChange={(v) => setTiming(baseRow.signalId, withNsShare(edit, v / 100))} />
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="font-mono tabular-nums text-muted-foreground">NS {edit.nsThroughSplitS.toFixed(0)} s split · g/C {timing ? timing.gOverCns.toFixed(3) : "—"}</div>
-                  <div className="font-mono tabular-nums text-muted-foreground">EW {edit.ewThroughSplitS.toFixed(0)} s split · g/C {timing ? timing.gOverCew.toFixed(3) : "—"}</div>
-                </div>
-                {(["ns", "ew"] as const).map((axis) => {
-                  const on = axis === "ns" ? edit.nsLeftSplitS !== undefined : edit.ewLeftSplitS !== undefined;
-                  const split = axis === "ns" ? edit.nsLeftSplitS : edit.ewLeftSplitS;
-                  const maxLeft = Math.max(MIN_SPLIT_S, edit.cycleLenSec - (axis === "ns" ? edit.ewLeftSplitS ?? 0 : edit.nsLeftSplitS ?? 0) - 2 * MIN_SPLIT_S);
-                  return (
-                    <div key={axis} className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <label htmlFor={`scenario-left-${axis}`} className="font-medium">Protected left · {axis.toUpperCase()}</label>
-                        <Switch id={`scenario-left-${axis}`} checked={on} onCheckedChange={(v) => setTiming(baseRow.signalId, withProtectedLeft(edit, axis, v))} data-testid={`switch-scenario-left-${axis}`} />
-                      </div>
-                      {on && split !== undefined && (
-                        <SliderRow id={`scenario-left-split-${axis}`} label={`${axis.toUpperCase()} left split`} value={split} min={MIN_SPLIT_S} max={maxLeft} step={1} format={(v) => `${v.toFixed(0)} s`} onChange={(v) => setTiming(baseRow.signalId, withLeftSplit(edit, axis, v))} />
-                      )}
-                    </div>
-                  );
-                })}
-                {(pedNs !== undefined || pedEw !== undefined) && (
-                  <div className={`text-[11px] ${pedShort ? "text-amber-600" : "text-muted-foreground"}`} data-testid="note-ped-minimum">
-                    Pedestrian minimum green: NS {pedNs?.toFixed(1) ?? "—"} s, EW {pedEw?.toFixed(1) ?? "—"} s{pedShort ? " — a through split is below its walk time plus lost time." : "."}
-                  </div>
-                )}
-                <div className="flex items-center justify-between gap-2">
-                  <button type="button" onClick={() => setTiming(baseRow.signalId, baseOverridden ? null : undefined)} disabled={!canReset} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50" data-testid="button-scenario-webster">
-                    <RotateCcw className="w-3 h-3" /> Webster optimum
-                  </button>
-                  <div className="text-[11px] text-muted-foreground text-right" data-testid="signal-timing-provenance">
-                    {timing ? (
-                      timing.source === "override"
-                        ? `Your plan · ${timing.cycleLenSec} s · ${timing.criticalPhases} critical phases`
-                        : `${BASIS_LABEL[timing.basis] ?? timing.basis} · ${timing.cycleLenSec} s`
-                    ) : "Screening basis (no timing resolved)"}
-                  </div>
-                </div>
+              <div className="border-t pt-3">
+                <SignalControls
+                  edit={edit}
+                  baseCycleLenSec={baseRow.signalTiming?.cycleLenSec}
+                  timing={timing}
+                  onChange={(next) => setTiming(baseRow.signalId, next)}
+                  onReset={() => setTiming(baseRow.signalId, baseOverridden ? null : undefined)}
+                  canReset={canReset}
+                />
               </div>
 
               <div className="border-t pt-3 overflow-x-auto">

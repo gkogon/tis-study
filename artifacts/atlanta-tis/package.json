@@ -14,7 +14,8 @@
     "check:scenario-solve": "node scripts/check-scenario-solve.mjs",
     "check:distribution-alive": "node scripts/check-distribution-alive.mjs",
     "check:intersection-geometry": "node scripts/check-intersection-geometry.mjs",
-    "check:intersection-sim": "node scripts/check-intersection-sim.mjs"
+    "check:intersection-sim": "node scripts/check-intersection-sim.mjs",
+    "check:intersection-study": "node scripts/check-intersection-study.mjs"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

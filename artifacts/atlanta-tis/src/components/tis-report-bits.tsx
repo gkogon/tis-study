@@ -4,7 +4,7 @@
  * affected-intersections capacity table and the delay confidence band.
  *
  * Extracted from pages/tis.tsx so the scenario studio and the intersection
- * explorer (components/) and the gallery can render the same rows the printed
+ * study (components/) and the gallery can render the same rows the printed
  * report renders — one palette, one badge, one table. tis.tsx imports these
  * back; nothing here changed.
  */
@@ -161,7 +161,7 @@ export type IntersectionTableProps = {
   report: TisReport;
   /** Fired on a row click, in addition to the expand toggle. */
   onSelect?: (signalId: string) => void;
-  /** Row to highlight (the explorer's selection). */
+  /** Row to highlight (the open intersection study). */
   selectedSignalId?: string | null;
 };
 
@@ -189,7 +189,7 @@ export function IntersectionTable({ report, onSelect, selectedSignalId }: Inters
         </CardTitle>
         <CardDescription>
           Per-intersection LOS before vs after build-out (PM peak). Click any row to expand
-          NB/SB/EB/WB approach detail with v/c, delay, LOS and 95th-percentile back-of-queue{onSelect ? ", and to open it in the intersection explorer under the study map" : ""}.
+          NB/SB/EB/WB approach detail with v/c, delay, LOS and 95th-percentile back-of-queue{onSelect ? ", and to open that intersection as its own study" : ""}.
           Rows are sorted by impact severity.
         </CardDescription>
       </CardHeader>

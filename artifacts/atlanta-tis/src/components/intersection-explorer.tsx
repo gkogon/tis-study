@@ -1,55 +1,41 @@
 /**
- * IntersectionExplorer — the full-width panel under the study map that opens
- * on a selected signal (map click, the studio's Signal tab, or a row click in
- * the capacity table).
+ * Intersection explorer — the section components of one signal's study,
+ * assembled by `intersection-study.tsx` (spec §3.2a): the pieces that were
+ * the tabbed panel's header, Analysis and Lanes content. The panel container
+ * itself is gone; selecting a signal opens the full-screen study instead.
  *
- *   Header    name, id, distance, LOS no-build → build, delay, worst queue,
- *             the mitigation severity, Close.
- *   Analysis  the SVG plan view (intersection-plan.tsx) beside the approach
- *             table the report prints, project trips by movement, the timing
- *             block and the mitigation text.
- *   Lanes     with an import: the per-movement lane groups (lanes, capacity,
- *             volumes, v/c, queue vs storage, deficiency) with a bar each.
- *             Without: the through-lane counts the engine sized each approach
- *             with and where they came from, the DEFAULT turn shares the
- *             engine used for background traffic — stated as the assumption
- *             they are — and where a Synchro import goes in. No lane data is
- *             invented.
- *   Simulate  a placeholder until the single-junction simulation lands.
+ *   Pair / Stat      "base → scenario" value pairs and the metric-strip cell.
+ *   ScenarioDelta    the approaches whose printed values moved between the
+ *                    base and the scenario.
+ *   TimingBlock      cycle, g/C per phase, left phasing, basis, ped minimum.
+ *   LanesSection     with an import: the per-movement lane groups (lanes,
+ *                    capacity, volumes, v/c, queue vs storage, deficiency)
+ *                    with a bar each. Without: the through-lane counts the
+ *                    engine sized each approach with and where they came
+ *                    from, the DEFAULT turn shares the engine used for
+ *                    background traffic — stated as the assumption they are —
+ *                    and where a Synchro import goes in. No lane data is
+ *                    invented.
+ *   QueueBar         one queue-vs-storage bar on a shared scale.
  *
- * Scenario-aware: with a `scenarioRow` (the studio's re-solve of this
- * signal) the panel draws the scenario and shows base → scenario pairs
- * wherever a printed value differs. Every number is the report's or the
- * client solve's (src/lib/intersection-geometry.ts reads them off the row).
+ * Every number is the report's or the client solve's
+ * (src/lib/intersection-geometry.ts reads them off the row).
  */
-import { useMemo, useState } from "react";
-import type { TisAffectedIntersection, TisLaneGroupImpact } from "@workspace/tis-api-client-react";
-import { X } from "lucide-react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { LosBadge, SEVERITY_CONFIG, ApproachDetailTable, MovementsGrid } from "@/components/tis-report-bits";
-import { IntersectionPlan } from "@/components/intersection-plan";
+import type { TisLaneGroupImpact } from "@workspace/tis-api-client-react";
+import { LosBadge } from "@/components/tis-report-bits";
 import {
-  planFromRow, lanesSourceLabel, ASSUMED_BAY_FT,
+  lanesSourceLabel, ASSUMED_BAY_FT,
   type IntersectionPlan as Plan, type ApproachPlan, type TimingSummary,
 } from "@/lib/intersection-geometry";
 
-export type IntersectionExplorerProps = {
-  /** The base report's row for the selected signal. */
-  row: TisAffectedIntersection;
-  /** The scenario re-solve of the same signal, when the studio has edits. */
-  scenarioRow?: TisAffectedIntersection | null;
-  onClose?: () => void;
-  className?: string;
-};
-
-const BASIS_LABEL: Record<string, string> = {
+export const BASIS_LABEL: Record<string, string> = {
   webster: "Webster optimum from no-build volumes",
   measured: "measured plan (Synchro)",
   "measured-cycle": "measured cycle, Webster splits",
   "screening-default": "screening default (90 s, g/C 0.45)",
 };
 
-const LEFT_SOURCE_LABEL: Record<string, string> = {
+export const LEFT_SOURCE_LABEL: Record<string, string> = {
   import: "from the Synchro record",
   explicit: "as specified",
   inferred: "inferred (FHWA-HRT-04-091 cross product)",
@@ -57,7 +43,7 @@ const LEFT_SOURCE_LABEL: Record<string, string> = {
 };
 
 /** "base → value" when the printed values differ, else the value alone. */
-function Pair({ base, value, digits = 1, unit = "" }: { base?: number; value: number; digits?: number; unit?: string }) {
+export function Pair({ base, value, digits = 1, unit = "" }: { base?: number; value: number; digits?: number; unit?: string }) {
   const changed = base !== undefined && base.toFixed(digits) !== value.toFixed(digits);
   return (
     <span className="font-mono tabular-nums">
@@ -67,7 +53,7 @@ function Pair({ base, value, digits = 1, unit = "" }: { base?: number; value: nu
   );
 }
 
-function Stat({ label, children, testId }: { label: string; children: React.ReactNode; testId?: string }) {
+export function Stat({ label, children, testId }: { label: string; children: React.ReactNode; testId?: string }) {
   return (
     <div className="flex flex-col gap-0.5 min-w-0" data-testid={testId}>
       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
@@ -76,112 +62,8 @@ function Stat({ label, children, testId }: { label: string; children: React.Reac
   );
 }
 
-export function IntersectionExplorer({ row, scenarioRow, onClose, className }: IntersectionExplorerProps) {
-  const [tab, setTab] = useState<"analysis" | "lanes" | "simulate">("analysis");
-  const plan = useMemo(() => planFromRow(row, scenarioRow ?? null), [row, scenarioRow]);
-  const drawn = scenarioRow ?? row;
-  const v = plan.verdict;
-  const bv = plan.base?.verdict;
-  const sev = SEVERITY_CONFIG[v.severity] ?? SEVERITY_CONFIG.none!;
-  const SevIcon = sev.icon;
-  const baseSev = bv && bv.severity !== v.severity ? SEVERITY_CONFIG[bv.severity] ?? SEVERITY_CONFIG.none! : null;
-  const changedApproaches = plan.approaches.filter((a) => a.changed);
-
-  return (
-    <section
-      className={`rounded-lg border bg-card text-card-foreground shadow-sm print:hidden ${className ?? ""}`}
-      aria-label={`Intersection explorer: ${plan.name}`}
-      data-testid="intersection-explorer"
-    >
-      <header className="flex items-start justify-between gap-3 flex-wrap p-4 pb-3 border-b">
-        <div className="min-w-0 space-y-0.5">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Intersection explorer{plan.scenario ? " · scenario" : ""}</div>
-          <div className="text-sm font-semibold truncate" title={plan.name} data-testid="explorer-name">{plan.name}</div>
-          <div className="text-xs text-muted-foreground font-mono">{plan.signalId} · {plan.distanceMi.toFixed(2)} mi · {plan.zone} · +{v.addedTrips} PM trips</div>
-        </div>
-        <div className="flex items-start gap-5 flex-wrap">
-          <Stat label="LOS no-build → build" testId="explorer-los">
-            {bv && (bv.los.noBuild !== v.los.noBuild || bv.los.build !== v.los.build) && (
-              <span className="flex items-center gap-1 text-muted-foreground opacity-70">
-                <LosBadge los={bv.los.noBuild} size="sm" /> → <LosBadge los={bv.los.build} size="sm" />
-                <span className="mx-1">⇒</span>
-              </span>
-            )}
-            <LosBadge los={v.los.noBuild} size="sm" /> <span className="text-muted-foreground">→</span> <LosBadge los={v.los.build} size="sm" />
-          </Stat>
-          <Stat label="Delay (build)" testId="explorer-delay">
-            <Pair base={bv?.delay.build} value={v.delay.build} digits={1} unit=" s" />
-            <span className="text-muted-foreground">(no-build <Pair base={bv?.delay.noBuild} value={v.delay.noBuild} digits={1} unit=" s" />)</span>
-          </Stat>
-          <Stat label="Worst Q95" testId="explorer-queue">
-            <Pair base={bv?.worstQueueFt} value={v.worstQueueFt} digits={0} unit=" ft" />
-          </Stat>
-          <Stat label="Mitigation" testId="explorer-severity">
-            {baseSev && <span className={`inline-flex items-center gap-1 ${baseSev.color} opacity-70`}>{baseSev.label} <span className="text-muted-foreground">→</span></span>}
-            <span className={`inline-flex items-center gap-1 font-medium ${sev.color}`}><SevIcon className="w-3.5 h-3.5" />{sev.label}</span>
-          </Stat>
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs hover:bg-muted self-start"
-              aria-label="Close the intersection explorer"
-              data-testid="button-explorer-close"
-            >
-              <X className="w-3.5 h-3.5" /> Close
-            </button>
-          )}
-        </div>
-      </header>
-
-      <div className="p-4 pt-3">
-        <Tabs value={tab} onValueChange={(t) => setTab(t as "analysis" | "lanes" | "simulate")}>
-          <TabsList>
-            <TabsTrigger value="analysis" data-testid="tab-explorer-analysis">Analysis</TabsTrigger>
-            <TabsTrigger value="lanes" data-testid="tab-explorer-lanes">Lanes</TabsTrigger>
-            <TabsTrigger value="simulate" data-testid="tab-explorer-simulate">Simulate</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="analysis">
-            <div className="grid gap-5 lg:grid-cols-2 items-start">
-              <IntersectionPlan plan={plan} />
-              <div className="space-y-4 min-w-0">
-                <div className="overflow-x-auto">
-                  <ApproachDetailTable approaches={drawn.approaches} />
-                </div>
-                {plan.scenario && (
-                  <ScenarioDelta plan={plan} changed={changedApproaches} />
-                )}
-                <MovementsGrid row={drawn} />
-                <TimingBlock timing={plan.timing} base={plan.base?.timing ?? null} changed={plan.timingChanged} />
-                <div className="space-y-1" data-testid="explorer-mitigation">
-                  <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Mitigation</div>
-                  {bv && bv.mitigation !== v.mitigation && (
-                    <div className="text-xs text-muted-foreground line-through decoration-muted-foreground/50">{bv.mitigation}</div>
-                  )}
-                  <div className="text-xs leading-snug">{v.mitigation}</div>
-                </div>
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="lanes">
-            <LanesTab plan={plan} />
-          </TabsContent>
-
-          <TabsContent value="simulate">
-            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground" data-testid="explorer-simulate-placeholder">
-              Simulation arrives with the next release.
-            </div>
-          </TabsContent>
-        </Tabs>
-      </div>
-    </section>
-  );
-}
-
 /** The approaches whose printed values moved between the base and the scenario. */
-function ScenarioDelta({ plan, changed }: { plan: Plan; changed: ApproachPlan[] }) {
+export function ScenarioDelta({ plan, changed }: { plan: Plan; changed: ApproachPlan[] }) {
   if (changed.length === 0) {
     return <div className="text-[11px] text-muted-foreground" data-testid="explorer-scenario-delta">Scenario: no approach value differs from the base study on this signal.</div>;
   }
@@ -228,7 +110,7 @@ function TimingRow({ label, children }: { label: string; children: React.ReactNo
   );
 }
 
-function TimingBlock({ timing, base, changed }: { timing: TimingSummary | null; base: TimingSummary | null; changed: boolean }) {
+export function TimingBlock({ timing, base, changed }: { timing: TimingSummary | null; base: TimingSummary | null; changed: boolean }) {
   if (!timing) {
     return (
       <div className="space-y-1" data-testid="explorer-timing">
@@ -270,8 +152,8 @@ function TimingBlock({ timing, base, changed }: { timing: TimingSummary | null; 
   );
 }
 
-function QueueBar({ queueFt, storageFt, scaleFt, deficient }: { queueFt: number; storageFt?: number; scaleFt: number; deficient?: boolean }) {
-  const W = 120, H = 10;
+export function QueueBar({ queueFt, storageFt, scaleFt, deficient, width = 120 }: { queueFt: number; storageFt?: number; scaleFt: number; deficient?: boolean; width?: number }) {
+  const W = width, H = 10;
   const px = (ft: number) => (Math.max(0, ft) / Math.max(1, scaleFt)) * W;
   const q = Math.min(W, px(queueFt));
   const s = storageFt !== undefined ? Math.min(W, px(storageFt)) : undefined;
@@ -285,7 +167,7 @@ function QueueBar({ queueFt, storageFt, scaleFt, deficient }: { queueFt: number;
   );
 }
 
-function LanesTab({ plan }: { plan: Plan }) {
+export function LanesSection({ plan }: { plan: Plan }) {
   if (plan.hasLaneGroups) {
     const rows = plan.approaches.flatMap((a) => (a.laneGroups ?? []).map((g) => ({ a, g })));
     const scaleFt = rows.reduce((m, { g }) => Math.max(m, g.queue95thFt, g.storageFt ?? 0), 1);
