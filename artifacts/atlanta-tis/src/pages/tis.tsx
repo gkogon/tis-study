@@ -34,6 +34,7 @@ import { AuthBar } from "@/components/auth-bar";
 import { TisCoverPage } from "@/components/tis-cover-page";
 import { TisMethodologyAppendix } from "@/components/tis-methodology-appendix";
 import { TripDistributionCard } from "@/components/trip-distribution-card";
+import type { Octant } from "@/lib/distribution-rose";
 import { TisLimitations } from "@/components/tis-limitations";
 import { ScenarioStudio } from "@/components/scenario-studio";
 import { Switch } from "@/components/ui/switch";
@@ -1847,6 +1848,9 @@ export default function TisPage() {
   }, [scenario.applyToReport]);
   const scenarioApplied = scenario.applyToReport && scenarioReport !== null && !printBase;
   const shown = scenarioApplied && scenarioReport ? scenarioReport : report;
+  // The distribution rose's hovered sector; the study map dims the rows and
+  // flows outside it. Hover-only state — never part of the scenario.
+  const [hoverOctant, setHoverOctant] = useState<Octant | null>(null);
 
   // Engine what-if: the whole scenario (timing overrides, site, driveways)
   // through POST /tis-api/whatif, which charges no study slot and saves
@@ -2092,6 +2096,7 @@ export default function TisPage() {
                 scenarioReport={generate.isPending ? null : scenarioReport}
                 selectedSignalId={scenario.selectedSignalId}
                 onSelectSignal={(id) => setScenario((s) => ({ ...s, selectedSignalId: id }))}
+                highlightOctant={hoverOctant}
               />
               {!generate.isPending && report && solution && (
                 <ScenarioStudio
@@ -2147,7 +2152,7 @@ export default function TisPage() {
           )}
           <ScenarioStripCard report={shown ?? report} />
           <TripGenCard report={report} />
-          <TripDistributionCard report={report} />
+          <TripDistributionCard report={report} onHoverOctant={setHoverOctant} />
           <ImpactSummaryCard report={shown ?? report} />
           <UtdfMatchCard report={report} />
           <PeriodTabsCard report={shown ?? report} />

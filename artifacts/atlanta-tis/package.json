@@ -11,7 +11,8 @@
     "check:study-alive-sim": "node scripts/check-study-alive-sim.mjs",
     "check:study-map-sim": "node scripts/check-study-map-sim.mjs",
     "check:queue-sim": "node scripts/check-queue-sim.mjs",
-    "check:scenario-solve": "node scripts/check-scenario-solve.mjs"
+    "check:scenario-solve": "node scripts/check-scenario-solve.mjs",
+    "check:distribution-alive": "node scripts/check-distribution-alive.mjs"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
