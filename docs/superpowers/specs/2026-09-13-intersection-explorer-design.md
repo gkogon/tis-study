@@ -1,0 +1,44 @@
+# Intersection explorer — live distribution, per-signal analysis, per-signal simulation
+
+**Date:** 2026-09-13 · **Status:** approved (Gerald, "do that") · **Depends on:** #215 (scenario studio) on main
+
+## 1. Goal
+On every generated study, show (1) the trip distribution as a live animated graph, (2) an in-depth analysis of any intersection — queuing, approach and lane data, timing, verdict — and (3) a full micro-simulation of any intersection driven by that intersection's real inputs. Client-side only; every number drawn comes from the report (or the engine core's own functions); nothing invented. Shown on the signed-in `/tis` report, the public `/demo` result, and the gallery.
+
+## 2. Data already in the report (all fields on main, `lib/tis-api-client-react/src/generated/api.schemas.ts`)
+- `tripDistribution.byDirection` (8 octants, Σ 100), `tripDistribution.zones[]` {name, distanceMi, bearingDeg, cardinal, sharePct}.
+- Per row: `approaches[]` {direction, existingVolumeVph, addedTripsPeak, futureVolumeVph, existingVc/futureVc, existingDelaySec/futureDelaySec, LOS, queue95thFt, throughLanes?, lanesSource?}, `movements[]` {approach, movement L|T|R, trips} (project trips by movement, present when any integer trips), `movementsExact[]`, `laneGroups[]` (ONLY with a Synchro/UTDF import: movement, volumes, futureVc, queue95thFt, storageFt, storageDeficient, lanes, capacityVph), `signalTiming` {basis, source, cycleLenSec, gOverCns, gOverCew, gOverCnsLeft?, gOverCewLeft?, leftPhasingNs/Ew, criticalPhases, pedMin…}, `existingStorageFt`/`storageMovement`, `mitigation`, `mitigationSeverity`, `designHourVolumeVph`, `mainThroughLanes`/`minorThroughLanes`, `turboScreenInputs`.
+- Honest limits: without an import there is no per-lane background count — the engine uses through-lane counts per approach and the default 0.10 left / 0.80 through share (`lib/tis-engine-core` `DEFAULT_LEFT_TURN_SHARE`/`DEFAULT_THROUGH_SHARE`). The Lanes tab must say so rather than fabricate.
+
+## 3. Components
+### 3.1 `trip-distribution-alive.tsx` (replaces the static body of `TripDistributionCard`; the table stays below)
+SVG compass rose, 8 wedges scaled to `byDirection` share; particles stream from the centre along each wedge at a rate ∝ share (base max normalised), wedges fill to their share over ~1.2 s on mount, zone dots placed by `bearingDeg`/`distanceMi` (log-scaled radius) light in descending share order with the top-10 labelled. Hover a wedge → `onHoverOctant(cardinal | null)`; `tis.tsx` passes it to `StudyMapAlive` as `highlightOctant`, which dims flows/badges outside that bearing sector (bearing from site to row, same `bearingDeg` helper). `prefers-reduced-motion` → final state, no particles. Reuses `dataviz` conventions already in the codebase (LOS colours from `tis-report-bits`).
+
+### 3.2a Shape (revised 2026-09-13, Gerald: "each individual intersection opens into its own mini TIS")
+Selecting a signal does not open a panel; it opens a **full-screen intersection study** (`intersection-study.tsx`) for that junction, structured like the report itself, with URL state (`?signal=<signalId>`; browser back closes it; the link is shareable within a session) and a sticky "On this page" nav in the drawing-set (§) language. Sections: §00 Summary (metric strip: LOS no-build → build, delay, worst queue, verdict, timing basis), §01 Approaches & lanes (plan view + approach table + movements grid + lane table / honest lane statement), §02 Queuing (per-approach 95th-percentile queue vs storage to scale; the queue-forming lane animation from `queue-animation.tsx` re-parameterised with THIS approach's vph, capacity, cycle, g/C and storage; deficiency flags), §03 Signal timing (cycle, splits, protected lefts, ped minimum, provenance, Webster optimum for comparison), §04 Simulation (3.3), §05 What-if (the studio's Signal-tab controls for this signal, re-solving every section with the engine's code), §06 Mitigation & method (verdict, turbo-lane screen, applicable method notes). Print-clean so one intersection prints on its own. The tabbed panel below (3.2) is superseded as a container: its Analysis and Lanes content become §01, its header becomes §00.
+
+### 3.2 `intersection-explorer.tsx` — section content (built first as a panel; assembled into the mini-TIS by Track M)
+Selection source: `scenario.selectedSignalId` (already fed by map click and the studio); `IntersectionTable` row click also sets it (`onSelect` prop added to the table in `tis-report-bits`/`tis.tsx`). Header: name, signalId, distance, LOS no-build → build, delay, worst queue, verdict badge, "Close". Tabs:
+- **Analysis** — `intersection-plan.tsx`: SVG plan view, four approaches (NB/SB/EB/WB) each drawn with `throughLanes` lanes (+ a left-turn bay when the axis is protected or a `laneGroups` L entry exists), no-build → build vph labels, the 95th-percentile queue drawn to scale along the approach (25 ft/veh, same constant as the engine) and the storage bay (`existingStorageFt`/`laneGroups[].storageFt`) as a hatched length where known; queue past storage turns red. Right column: `ApproachDetailTable` (existing), project trips by movement (3×4 grid from `movements`), timing block (cycle, NS/EW g/C, left g/C, phasing, basis/source, ped min), mitigation text. Scenario-aware: shows the scenario row when `applyToReport` or the studio has edits for this signal (base → scenario pairs).
+- **Lanes** — with `laneGroups`: table per approach × L/T/R (lanes, capacity, existing/added/future vph, v/c, queue vs storage, deficient) plus a bar per group (queue vs storage). Without: the through-lane counts per approach with their source (`import` / `osm` / `default`), the default turn shares the engine used, and one sentence + the existing Synchro import affordance ("Import your Synchro model to get per-lane counts"). No fabricated lane data.
+- **Simulate** — 3.3.
+
+### 3.3 `intersection-sim.ts` (pure) + `intersection-sim-view.tsx`
+A single-junction micro-sim built from `study-alive-sim.ts`'s car-following (same headway/acc/brake constants) but parameterised from the row:
+- Inputs: per approach {vph (no-build or build), throughLanes, leftShare, rightShare} — background split from the engine defaults (or `laneGroups` volumes when present), project trips added by movement from `movements`; signal: `cycleLenSec`, NS/EW effective greens = g/C × cycle, protected-left phases with their own g/C when `leftPhasing* === "protected"`, 5 s lost time per phase (engine constant), yellow 4 s / all-red 1 s inside the lost time; ped minimum ignored in the sim (documented).
+- Geometry: one approach per direction, `throughLanes` through lanes, plus a left bay when protected/lane-group L exists (length = storage ft when known, else 250 ft drawn dashed as "assumed"); right turns share the outer through lane.
+- Poisson arrivals per movement; cars queue by lane, discharge at saturation headway (3600/1800 s) during green; a measured per-approach control delay (stopped + slowed time) and 95th-percentile back-of-queue (over cycles, ft) accumulate; determinism via seeded RNG.
+- View: canvas plan view with the same palette as the opener (asphalt night), phase indicator, per-approach live readout "sim: delay X s · Q95 Y ft" beside "engine: delay A s · Q95 B ft" (engine values from the row), No-build / Build toggle, 8× time-lapse, Replay, `prefers-reduced-motion` → static frame at the engine's Q95 per approach. Caption states the model and that simulated ≠ computed.
+- Studio link: when the studio holds a timing override for this signal, the sim uses the scenario's timing and the readout compares to the scenario row.
+
+### 3.4 Placement
+- `/tis` (`pages/tis.tsx`): explorer under the map card; distribution card swapped in place.
+- `/demo` (`pages/demo.tsx` `ResultView`): add the live map (report phase, no studio rail) + explorer + live distribution above the existing tables — this is the public sales surface and currently has no map.
+- Gallery: new sections for the distribution rose and the explorer with the base fixture.
+
+## 4. Checks
+- `check:intersection-sim`: conservation (entered = exited + on-network at end), determinism (same seed → same trajectory), no NaN, protected-left phase never overlaps opposing through, saturation-flow discharge ≈ 1800 vphpl ± 5 % under continuous green, and for an undersaturated case (v/c ≤ 0.7) the simulated average delay lands within ±40 % of `vcToDelay` from `@workspace/tis-engine-core` over a 30-cycle run (documented band; stochastic vs deterministic).
+- `check:distribution-alive`: wedge angles/shares sum to 100 and zone placement is monotone in distance.
+- Existing checks stay green; typecheck 0 in all three packages.
+
+## 5. Delivery — one PR per piece, in order: D (distribution) → X (explorer: Analysis + Lanes) → S (simulation) → P (placements: demo + gallery). Each reviewed before merge.
