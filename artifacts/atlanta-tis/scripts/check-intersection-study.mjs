@@ -89,7 +89,7 @@ const deepEq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const weatherFactor = A.weatherFactorExact ?? A.weatherCapacityFactor ?? 1;
 const byIdB = new Map(B.affectedIntersections.map((r) => [r.signalId, r]));
 console.log(`fixtures: A ${A.affectedIntersections.length} rows, B ${B.affectedIntersections.length} rows, weather factor ${weatherFactor}`);
-ok(SECTIONS.length === 7 && SECTIONS.map((s) => s.n).join() === "00,01,02,03,04,05,06", "seven sections §00–§06 in order");
+ok(SECTIONS.length === 8 && SECTIONS.map((s) => s.n).join() === "00,01,01a,02,03,04,05,06", "eight sections §00–§06 in order, §01a Distribution between §01 and §02 (its model is check:intersection-distribution's)");
 
 // ---------------------------------------------------------------------------
 console.log("\n1–3. every row, base and paired: sections present, finite, flags the plan's");
@@ -451,7 +451,7 @@ console.log("\n11. like-for-like labels and quantities");
     `row-level ${rowBay.storageMovement} bay: flagged against the row's worst-approach Q95 ${r0.queue95thFt} ft (the PDF's comparison) — this approach's own ${qb.q95Ft} ft would have fit`);
 
   // M5 / m11: what the page says.
-  ok(ENGINE_RECOMPUTATIONS.length === 4 && ENGINE_RECOMPUTATIONS.every((x) => /§0[23]/.test(x)), `§00 names ${ENGINE_RECOMPUTATIONS.length} engine recomputations, each with its section`);
+  ok(ENGINE_RECOMPUTATIONS.length === 5 && ENGINE_RECOMPUTATIONS.every((x) => /§0(1a|2|3)/.test(x)), `§00 names ${ENGINE_RECOMPUTATIONS.length} engine recomputations, each with its section`);
   ok(/v\/c ≤ 0\.7/.test(SIM_AGREEMENT_CONDITIONS) && /no-build/.test(SIM_AGREEMENT_CONDITIONS) && /Webster/.test(SIM_AGREEMENT_CONDITIONS) && /uncalibrated/.test(SIM_AGREEMENT_CONDITIONS) && /seed 42/.test(SIM_AGREEMENT_CONDITIONS) && /30 cycles/.test(SIM_AGREEMENT_CONDITIONS),
     "the ±40 % caption states exactly the check's conditions (no-build, Webster basis, v/c ≤ 0.7, uncalibrated, seed 42, 30 cycles)");
 }

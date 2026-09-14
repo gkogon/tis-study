@@ -27,6 +27,7 @@ import { WarrantsReport, type WarrantsReportT } from "../src/components/warrants
 import { QueuingReport, type QueuingReportT } from "../src/components/queuing-report";
 import { solveScenarioDetailed, solveScenario, isClientScenarioDirty, EMPTY_SCENARIO, type ScenarioState } from "../src/lib/scenario-solve";
 import type { Octant } from "../src/lib/distribution-rose";
+import { buildRoadGraph, routesForRows, type RoadSegment } from "../src/lib/study-map-sim";
 import region from "./fixtures/region.json";
 import roads from "./fixtures/roads.json";
 import signals from "./fixtures/signals.json";
@@ -170,6 +171,12 @@ function StudySection() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [clientDirty, solveKey],
   );
+  // The study map's site→row routes, built once from the same road fixture
+  // the maps above route on — what the study's §01a lists other routes from.
+  const routes = useMemo(
+    () => routesForRows(buildRoadGraph((roads as { segments: RoadSegment[] }).segments), { lat: SITE.latitude, lon: SITE.longitude }, TIS_REPORT.affectedIntersections),
+    [],
+  );
   const rows = useMemo(
     () => [...TIS_REPORT.affectedIntersections]
       .sort((a, b) => (a.losChanged !== b.losChanged ? (a.losChanged ? -1 : 1) : (b.futureDelaySec - b.existingDelaySec) - (a.futureDelaySec - a.existingDelaySec)))
@@ -185,7 +192,7 @@ function StudySection() {
     <Section
       eyebrow="07 · intersection-study · §00–§06, client-side solve"
       heading="An intersection as its own study"
-      lede={<>Any of the {TIS_REPORT.intersectionsStudied} signals opens as a full-screen study structured like the report: §00 Summary, §01 Approaches &amp; lanes (the plan view), §02 Queuing (each approach's Q95 against storage, and the queue-forming lane per approach), §03 Signal timing (the plan in use and the Webster optimum), §04 Simulation (the single-junction micro-sim on that row's inputs), §05 What-if (the studio's Signal controls — an edit re-solves every section with the engine's own row math), §06 Mitigation &amp; method. The {STUDY_ROWS} heaviest-impact rows are listed; Escape or Close returns here.{edited ? ` ${edited} signal${edited === 1 ? " carries" : "s carry"} a §05 edit in this page's scenario.` : ""}</>}
+      lede={<>Any of the {TIS_REPORT.intersectionsStudied} signals opens as a full-screen study structured like the report: §00 Summary, §01 Approaches &amp; lanes (the plan view), §01a Distribution through this junction (the row's twelve turning movements as an animated junction — width ∝ trips, blue toward the site, amber away, from the row's turn ledgers or the engine's octant model re-run on its inputs — AM / PM tabs, the row's share of the study and rank, and where the trips head next), §02 Queuing (each approach's Q95 against storage, and the queue-forming lane per approach), §03 Signal timing (the plan in use and the Webster optimum), §04 Simulation (the single-junction micro-sim on that row's inputs), §05 What-if (the studio's Signal controls — an edit re-solves every section with the engine's own row math), §06 Mitigation &amp; method. The {STUDY_ROWS} heaviest-impact rows are listed; Escape or Close returns here.{edited ? ` ${edited} signal${edited === 1 ? " carries" : "s carry"} a §05 edit in this page's scenario.` : ""}</>}
     >
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-sm" data-testid="gallery-study-rows">
@@ -229,6 +236,9 @@ function StudySection() {
           report={TIS_REPORT}
           row={row}
           scenarioRow={scenarioRow}
+          scenarioReport={scenarioReport}
+          routesBySignalId={routes}
+          onOpenSignal={select}
           scenario={scenario}
           onScenarioChange={setScenario}
           onClose={() => select(null)}
