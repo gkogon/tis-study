@@ -21,9 +21,12 @@
  *       whole array rides along for the Lanes tab.
  *   existingStorageFt / storageMovement   the governing imported bay at row
  *       level (e.g. "NBL"): used for that approach when no lane group says
- *       more, compared against the approach queue the way the renderer's
- *       storage-bay table does; a left-turn record ("NBL") is itself a bay
- *       on record and is drawn as one, at its length.
+ *       more, compared against the ROW's worst 95th-percentile queue
+ *       (`queue95thFt` at row level) exactly as the PDF's storage-bay
+ *       adequacy table compares it (pdf-export.ts §9.2: existing bay vs the
+ *       intersection's Q95 Build), so the flag here is the deliverable's; a
+ *       left-turn record ("NBL") is itself a bay on record and is drawn as
+ *       one, at its length. `storageQueueFt` says which queue was compared.
  *   signalTiming.leftPhasingNs/Ew   "protected" ⇒ that axis is drawn with a
  *       left bay even without a lane record (a protected phase implies a
  *       lane); its length is ASSUMED_BAY_FT and the bay is flagged `assumed`
@@ -104,8 +107,15 @@ export type ApproachPlan = ApproachBase & {
   storageDeficient?: boolean;
   /** "lane-group" = the L group's own storage and the engine's own flag;
    *  "row" = the row-level governing bay (existingStorageFt) against the
-   *  approach queue, the renderer's comparison. */
+   *  row's worst queue, the PDF's storage-bay comparison. */
   storageBasis?: "lane-group" | "row";
+  /** The queue `storageDeficient` compared against `storageFt`, ft: the L
+   *  group's own queue95thFt ("lane-group") or the row's worst-approach
+   *  queue95thFt ("row"). Absent without storage. Not the approach Q95 —
+   *  that is `queue95Ft`, which no storage on record compares against. */
+  storageQueueFt?: number;
+  /** What `storageQueueFt` is, for a label: "left-turn group" or "row worst approach". */
+  storageQueueBasis?: "left-turn group" | "row worst approach";
   /** Project trips on this approach by movement, summed from `movements`. */
   addedByMovement: Record<Movement, number>;
   /** Per-movement lane groups, only with an import. */
@@ -288,15 +298,26 @@ function approachPlan(
   let storageFt: number | undefined;
   let storageDeficient: boolean | undefined;
   let storageBasis: "lane-group" | "row" | undefined;
+  let storageQueueFt: number | undefined;
+  let storageQueueBasis: ApproachPlan["storageQueueBasis"];
   if (leftGroup && finite(leftGroup.storageFt) && (leftGroup.storageFt as number) > 0) {
+    // The engine's own comparison: the L group's queue against the L bay
+    // (row-math.ts laneGroupsForApproach `storageDeficient: queue > bay`).
     storageFt = leftGroup.storageFt as number;
+    storageQueueFt = num(leftGroup.queue95thFt);
+    storageQueueBasis = "left-turn group";
     storageDeficient = typeof leftGroup.storageDeficient === "boolean"
       ? leftGroup.storageDeficient
-      : num(leftGroup.queue95thFt) > storageFt;
+      : storageQueueFt > storageFt;
     storageBasis = "lane-group";
   } else if (rowStorageHere) {
+    // The PDF's comparison (pdf-export.ts §9.2 Storage-Bay Adequacy): the
+    // row's existing bay against the row's Q95 Build — its WORST approach
+    // queue, not this approach's own.
     storageFt = row.existingStorageFt as number;
-    storageDeficient = queue95Ft > storageFt;
+    storageQueueFt = num(row.queue95thFt);
+    storageQueueBasis = "row worst approach";
+    storageDeficient = storageQueueFt > storageFt;
     storageBasis = "row";
   }
 
@@ -308,7 +329,7 @@ function approachPlan(
     leftBay,
     ...base,
     queue95Veh: queue95Ft / QUEUE_FT_PER_VEH,
-    ...(storageFt !== undefined ? { storageFt, storageDeficient: !!storageDeficient, storageBasis } : {}),
+    ...(storageFt !== undefined ? { storageFt, storageDeficient: !!storageDeficient, storageBasis, storageQueueFt, storageQueueBasis } : {}),
     addedByMovement: { ...movements[d] },
     ...(laneGroups ? { laneGroups } : {}),
     ...(baseValues ? { base: baseValues } : {}),

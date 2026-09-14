@@ -52,19 +52,25 @@ export type QueueLaneInputs = {
     /** Average end-of-red queue; absent ⇒ no "avg" mark and no comparison. */
     averageVehicles?: number;
     averageFt?: number;
-    /** What the average is compared against ("report", "engine Q1"). */
+    /** What the average is compared against ("report", "λ(C−g)"). */
     averageSource?: string;
     p95Vehicles: number;
     p95Ft: number;
+    /** What the 95th-percentile mark is, when it is not simply "95th" (e.g. "95th ÷ 2 lanes"). */
+    p95Label?: string;
   };
   storage: { availableFt: number | null; verdict: QueueStorageVerdict };
   /** Header label; default "Queue forming · one lane". */
   title?: string;
   /** Text before the model caption, e.g. the approach identity. */
   captionPrefix?: string;
+  /** Printed after the saturation flow in the caption, e.g. "1800 × weather 0.86". */
+  satFlowNote?: string;
   /** data-testid of the wrapper; the replay button is `button-<id sans "anim-">-replay`. */
   testId?: string;
   className?: string;
+  /** Bump to restart the lane even when every number is unchanged (a fresh report object). */
+  runKey?: number;
 };
 
 /** simulated seconds per real second — a 90 s cycle plays in 15 s */
@@ -160,7 +166,7 @@ function draw(ctx: CanvasRenderingContext2D, sc: Scene, dpr: number, sim: QueueS
   }
 
   if (r.queue.averageFt !== undefined) mark(ctx, sc, xOf(r.queue.averageFt), laneY, laneH, col.mutedFg, `avg ${r.queue.averageFt} ft`, "below");
-  mark(ctx, sc, xOf(r.queue.p95Ft), laneY, laneH, col.fg, `95th ${r.queue.p95Ft} ft`, "above");
+  mark(ctx, sc, xOf(r.queue.p95Ft), laneY, laneH, col.fg, `${r.queue.p95Label ?? "95th"} ${r.queue.p95Ft} ft`, "above");
 
   ctx.fillStyle = col.fg;
   ctx.fillRect(sc.stopX - 1.5, laneY - 3, 3, laneH + 6);
@@ -186,9 +192,14 @@ function draw(ctx: CanvasRenderingContext2D, sc: Scene, dpr: number, sim: QueueS
   }
 }
 
-/** The queuing study's report on the lane — its inputs map 1:1 onto `QueueLaneInputs`. */
+/** The queuing study's report on the lane — its inputs map 1:1 onto `QueueLaneInputs`.
+ *  A fresh report object restarts the lane even when its numbers are the
+ *  same (as the effect keyed on `report` always did): `runKey` counts
+ *  report identities. */
 export function QueueAnimation({ report }: { report: QueuingReportT }) {
+  const runs = useRef(0);
   const inputs = useMemo<QueueLaneInputs>(() => {
+    runs.current += 1;
     const lanes = Math.max(1, report.inputs.laneCount);
     return {
       arrivalVph: report.inputs.hourlyVolumeVph,
@@ -208,6 +219,7 @@ export function QueueAnimation({ report }: { report: QueuingReportT }) {
         p95Ft: report.queue.p95Ft,
       },
       storage: { availableFt: report.storage.availableFt, verdict: report.storage.verdict },
+      runKey: runs.current,
     };
   }, [report]);
   return <QueueLaneAnimation {...inputs} />;
@@ -225,11 +237,12 @@ export function QueueLaneAnimation(inputs: QueueLaneInputs) {
   const lambda = inputs.arrivalPerLaneVph;
   const {
     arrivalVph, satFlowVphpl, cycleSec, effectiveGreenSec, spacingFt, capacityPerLaneVph, vOverC,
-    queue, storage, title = "Queue forming · one lane", captionPrefix, testId = "anim-queue", className,
+    queue, storage, title = "Queue forming · one lane", captionPrefix, satFlowNote, testId = "anim-queue", className, runKey = 0,
   } = inputs;
-  // The scene re-seeds only when a number the sim or the marks read changes —
-  // not on every parent render with a fresh props object.
-  const sceneKey = JSON.stringify([lambda, satFlowVphpl, cycleSec, effectiveGreenSec, spacingFt, queue, storage]);
+  // The scene re-seeds when a number the sim or the marks read changes, or
+  // when the caller bumps runKey (a fresh report) — not on every parent
+  // render with a fresh props object.
+  const sceneKey = JSON.stringify([lambda, satFlowVphpl, cycleSec, effectiveGreenSec, spacingFt, queue, storage, runKey]);
 
   useEffect(() => {
     const canvas = canvasRef.current, wrap = wrapRef.current;
@@ -330,7 +343,7 @@ export function QueueLaneAnimation(inputs: QueueLaneInputs) {
   const fmt = (n: number) => Math.round(n).toLocaleString();
   const caption =
     `${captionPrefix ? `${captionPrefix} · ` : ""}Webster cyclic queue · λ ${fmt(lambda)} vph${lanes > 1 ? `/ln (${fmt(arrivalVph)} vph ÷ ${lanes} ln)` : ""}` +
-    ` · s ${fmt(satFlowVphpl)} vphpl × g/C ${effectiveGreenSec}/${cycleSec} s = ${gC.toFixed(2)}` +
+    ` · s ${fmt(satFlowVphpl)} vphpl${satFlowNote ? ` (${satFlowNote})` : ""} × g/C ${effectiveGreenSec}/${cycleSec} s = ${gC.toFixed(2)}` +
     ` → c ${fmt(capacityPerLaneVph)} vph/ln · X ${vOverC.toFixed(2)} · ${spacingFt} ft per queued vehicle`;
   const storageNote = storage.availableFt !== null ? `, storage ${storage.availableFt} ft (${storage.verdict})` : "";
   const averageNote = queue.averageFt !== undefined ? `average ${queue.averageFt} ft, ` : "";

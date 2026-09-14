@@ -14,27 +14,44 @@
  * is the sim's own spacing); lane widths are exaggerated so cars stay legible.
  *
  * Beside the canvas, per approach: "sim: delay X s · Q95 Y ft" — the sim's
- * running control delay and 95th-percentile back-of-queue — next to
- * "engine: delay A s · Q95 B ft" from the report row (the scenario row when
- * the studio has a timing override for this signal, whose timing the sim
- * then runs). The two are NOT expected to match: the simulated figure is a
- * stochastic measurement of the queueing process the engine's Webster d1 +
- * Akçelik d2 describe analytically; check:intersection-sim documents the
- * ±40 % band at v/c ≤ 0.7. The report's number is the engine's.
+ * control delay and 95th-percentile back-of-queue, measured over the
+ * engine's own 15-minute analysis period (ANALYSIS_PERIOD_S: Akçelik d2's
+ * T = 0.25 h), after which the run stops and Replay starts a new seed — next
+ * to the engine's figures for the same row (the scenario row when the studio
+ * has a timing override for this signal, whose timing the sim then runs).
+ * Like for like, explicitly:
+ *   - delay: the engine column is the row's vcToDelay figure with the row's
+ *     calibration multiplier divided back out (the sim is uncalibrated; the
+ *     printed, calibrated delay is shown alongside when the two differ), and
+ *     a simulated delay above the engine's 300 s cap is shown capped;
+ *   - Q95: both columns are the approach TOTAL across lanes × 25 ft — the
+ *     engine's queue95Ft basis; the sim also shows its worst single lane on
+ *     multi-lane approaches;
+ *   - the build Q95 is the row's printed figure; the no-build Q95 is the
+ *     engine's method recomputed in the browser (the row prints only build)
+ *     and is labelled so;
+ *   - the sim discharges at 1800 × the row's weather factor, the engine's own
+ *     capacity basis.
+ * The two are NOT expected to match: the simulated figure is a stochastic
+ * measurement of the queueing process the engine's Webster d1 + Akçelik d2
+ * describe analytically; check:intersection-sim documents the ±40 % band
+ * under the exact conditions the caption states. The report's number is the
+ * engine's.
  *
  * Live values go straight to refs (no re-render per frame); the canvas is
  * decorative and aria-hidden; the loop idles while the canvas is off-screen.
  * With prefers-reduced-motion nothing moves: one static frame with each
- * approach's queue drawn at the ENGINE's Q95 and the readout saying so.
+ * approach's queue drawn at the ENGINE's Q95 — the approach total spread
+ * over its through lanes — and the readout saying so.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, RotateCcw } from "lucide-react";
 import {
-  IntersectionSim, DIRECTIONS, QUEUE_SPEED, EXIT_FT, YELLOW_S, ALL_RED_S, SAT_HEADWAY_S,
+  IntersectionSim, DIRECTIONS, QUEUE_SPEED, EXIT_FT, YELLOW_S, ALL_RED_S, ANALYSIS_PERIOD_S,
   type Direction, type IntersectionSimInputs, type Movement, type SimCar, type Light, type Scenario, type PhaseState,
 } from "@/lib/intersection-sim";
 import { CAR_L, CAR_W } from "@/lib/car-following";
-import { VEH_LENGTH_FT, SATURATION_FLOW_VPH } from "@workspace/tis-engine-core";
+import { VEH_LENGTH_FT, SATURATION_FLOW_VPH, SCREENING_MAX_DELAY_SEC } from "@workspace/tis-engine-core";
 import type { SimModel } from "@/lib/intersection-study-model";
 import { LosBadge } from "@/components/tis-report-bits";
 
@@ -338,7 +355,12 @@ function draw(ctx: CanvasRenderingContext2D, sc: Scene, dpr: number, inputs: Int
   ctx.fillText(`100 ft · ${VEH_LENGTH_FT} ft/veh`, bx + bar + 5, by + 3);
 }
 
-/** The reduced-motion frame: each approach's queue at the engine's Q95, stopped cars at VEH_LENGTH_FT spacing, NS green. */
+/**
+ * The reduced-motion frame: each approach's queue at the engine's Q95 —
+ * the approach TOTAL across lanes (queue95Ft on the whole approach's vph),
+ * so the vehicles are dealt over the through lanes round-robin and each lane
+ * shows its share — stopped cars at VEH_LENGTH_FT spacing, NS green.
+ */
 function staticDrawable(inputs: IntersectionSimInputs, engineQ95: Record<Direction, number>): Drawable {
   const cars: SimCar[] = [];
   const queueFt = {} as Record<Direction, number[]>;
@@ -346,17 +368,18 @@ function staticDrawable(inputs: IntersectionSimInputs, engineQ95: Record<Directi
   for (const d of DIRECTIONS) {
     const a = inputs.approaches[d];
     const hasBay = a.leftBayFt !== undefined;
-    const n = Math.max(1, a.throughLanes) + (hasBay ? 1 : 0);
+    const lanes = Math.max(1, a.throughLanes);
+    const n = lanes + (hasBay ? 1 : 0);
     queueFt[d] = new Array<number>(n).fill(0);
     const q = Math.max(0, engineQ95[d]);
     const veh = Math.round(q / VEH_LENGTH_FT);
-    // Spread the queue over the through lanes, innermost first, so the drawn length is Q95 ÷ lanes... no:
-    // the engine's Q95 is the WORST lane's back-of-queue, so every through lane shows it.
-    for (let lane = 0; lane < Math.max(1, a.throughLanes); lane++) {
-      for (let i = 0; i < veh; i++) {
-        cars.push({ id: id++, approach: d, lane, s: -(i * VEH_LENGTH_FT + CAR_L / 2 + 2), v: 0, movement: lane === 0 && i % 7 === 3 ? "L" : lane === a.throughLanes - 1 && i % 5 === 2 ? "R" : "T", project: false });
+    const perLane = new Array<number>(lanes).fill(0);
+    for (let i = 0; i < veh; i++) perLane[i % lanes]! += 1;
+    for (let lane = 0; lane < lanes; lane++) {
+      for (let i = 0; i < perLane[lane]!; i++) {
+        cars.push({ id: id++, approach: d, lane, s: -(i * VEH_LENGTH_FT + CAR_L / 2 + 2), v: 0, movement: lane === 0 && i % 7 === 3 ? "L" : lane === lanes - 1 && i % 5 === 2 ? "R" : "T", project: false });
       }
-      queueFt[d][lane + (hasBay ? 1 : 0)] = q;
+      queueFt[d][lane + (hasBay ? 1 : 0)] = perLane[lane]! * VEH_LENGTH_FT;
     }
   }
   const lights = {} as PhaseState["lights"];
@@ -409,9 +432,9 @@ export function IntersectionSimView({ sim, className }: IntersectionSimViewProps
     if (reduced) {
       const dr = staticDrawable(inputs, engineQ95);
       draw(ctx, sc, dpr, inputs, dr);
-      text("phase", "static frame · queues at the engine's Q95");
+      text("phase", "static frame · queues at the engine's Q95 (approach total over its lanes)");
       text("cycle", "not simulated");
-      for (const d of DIRECTIONS) { text(`${d}-delay`, "—"); text(`${d}-q95`, engineQ95[d].toFixed(0)); }
+      for (const d of DIRECTIONS) { text(`${d}-delay`, "—"); text(`${d}-q95`, engineQ95[d].toFixed(0)); text(`${d}-q95worst`, "—"); text(`${d}-cap`, ""); }
       const onResize = () => { resize(); draw(ctx, sc, dpr, inputs, dr); };
       window.addEventListener("resize", onResize);
       return () => window.removeEventListener("resize", onResize);
@@ -419,19 +442,25 @@ export function IntersectionSimView({ sim, className }: IntersectionSimViewProps
 
     const s = new IntersectionSim(inputs, 1 + run);
     const paint = () => draw(ctx, sc, dpr, inputs, { cars: s.cars(), phase: s.phase(), queueFt: queuesFromCars(inputs, s.cars()) });
+    let done = false;
     const readout = () => {
       const ph = s.phase();
       const p = inputs.signal.phases.find((x) => x.key === ph.key);
       const remain = ph.key === "slack" || !p
         ? inputs.signal.slackSec - ph.timeInPhase
         : ph.state === "G" ? p.greenSec - ph.timeInPhase : ph.state === "Y" ? p.greenSec + YELLOW_S - ph.timeInPhase : p.greenSec + YELLOW_S + ALL_RED_S - ph.timeInPhase;
-      text("phase", `${PHASE_LABEL[ph.key]} · ${STATE_LABEL[ph.state]} ${Math.max(0, Math.ceil(remain))} s`);
-      text("cycle", `cycle ${s.cyclesCompleted() + 1} · ${Math.round(s.simT)} s simulated`);
+      text("phase", done ? `${ANALYSIS_PERIOD_S / 60} min analysis period complete · Replay for another seed` : `${PHASE_LABEL[ph.key]} · ${STATE_LABEL[ph.state]} ${Math.max(0, Math.ceil(remain))} s`);
+      text("cycle", `cycle ${Math.min(s.cyclesCompleted() + 1, Math.ceil(ANALYSIS_PERIOD_S / inputs.signal.cycleLenSec))} · ${Math.round(Math.min(s.simT, ANALYSIS_PERIOD_S))} of ${ANALYSIS_PERIOD_S} s simulated`);
       const m = s.metrics();
       for (const d of DIRECTIONS) {
         const a = m.approaches[d];
-        text(`${d}-delay`, a.throughput > 0 ? a.simDelaySec.toFixed(1) : "—");
+        // The engine caps its reported delay at SCREENING_MAX_DELAY_SEC; a
+        // simulated mean above it is shown at the cap, flagged.
+        const capped = a.simDelaySec > SCREENING_MAX_DELAY_SEC;
+        text(`${d}-delay`, a.throughput > 0 ? Math.min(SCREENING_MAX_DELAY_SEC, a.simDelaySec).toFixed(1) : "—");
+        text(`${d}-cap`, a.throughput > 0 && capped ? ` (capped, engine ceiling; measured ${a.simDelaySec.toFixed(0)} s)` : "");
         text(`${d}-q95`, a.cyclesSampled > 0 ? a.q95Ft.toFixed(0) : "—");
+        text(`${d}-q95worst`, a.cyclesSampled > 0 ? a.q95WorstLaneFt.toFixed(0) : "—");
       }
     };
     paint();
@@ -443,7 +472,17 @@ export function IntersectionSimView({ sim, className }: IntersectionSimViewProps
       last = now;
       const rect = canvas.getBoundingClientRect();
       if (rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) return; // off-screen: idle
-      s.step(dtReal * SIM_SPEED);
+      // The engine's figures describe a 15-minute analysis period (Akçelik
+      // d2, T = 0.25 h): the sim measures over the same window and stops,
+      // so "simulated" and "computed" are the same quantity over the same
+      // period rather than a cumulative mean over an unbounded run.
+      const left = ANALYSIS_PERIOD_S - s.simT;
+      if (left <= 1e-9) {
+        if (!done) { done = true; readout(); }
+        cancelAnimationFrame(raf); raf = 0;
+        return;
+      }
+      s.step(Math.min(left, dtReal * SIM_SPEED));
       paint();
       if ((tick++ & 7) === 0) readout();
     };
@@ -457,9 +496,13 @@ export function IntersectionSimView({ sim, className }: IntersectionSimViewProps
   const fmtG = (g: number) => `${g.toFixed(1)} s`;
   const timingLine = `${sig.cycleLenSec} s cycle · NS g ${fmtG(sig.gNs)} · EW g ${fmtG(sig.gEw)}${sig.gNsLeft !== undefined ? ` · NS left g ${fmtG(sig.gNsLeft)}` : ""}${sig.gEwLeft !== undefined ? ` · EW left g ${fmtG(sig.gEwLeft)}` : ""} · ${YELLOW_S} s yellow + ${ALL_RED_S} s all-red per phase`;
   const scenarioLabel = scenario === "build" ? "build" : "no-build";
-  const engineDelay = (d: Direction) => (scenario === "build" ? sim.engine[d].delay.build : sim.engine[d].delay.noBuild);
+  const engineDelay = (d: Direction) => (scenario === "build" ? sim.engine[d].delayUncalibrated.build : sim.engine[d].delayUncalibrated.noBuild);
+  const printedDelay = (d: Direction) => (scenario === "build" ? sim.engine[d].delay.build : sim.engine[d].delay.noBuild);
   const engineLos = (d: Direction) => (scenario === "build" ? sim.engine[d].los.build : sim.engine[d].los.noBuild);
+  const calibrated = sim.calibrationMultiplier !== 1;
   const bandPct = Math.round(sim.agreementBand * 100);
+  const headwayS = 3600 / inputs.satFlowVphpl;
+  const multiLane = DIRECTIONS.some((d) => inputs.approaches[d].vph > 0 && (inputs.approaches[d].throughLanes > 1 || inputs.approaches[d].leftBayFt !== undefined));
 
   return (
     <div ref={wrapRef} className={`space-y-3${className ? ` ${className}` : ""}`} data-testid="intersection-sim-view">
@@ -503,30 +546,41 @@ export function IntersectionSimView({ sim, className }: IntersectionSimViewProps
             <thead>
               <tr className="border-b text-[10px] uppercase tracking-wide text-muted-foreground">
                 <th className="text-left py-1 pr-2 font-medium">App.</th>
-                <th className="text-left py-1 px-2 font-medium">Simulated</th>
-                <th className="text-left py-1 pl-2 font-medium">Engine (report)</th>
+                <th className="text-left py-1 px-2 font-medium">Simulated ({ANALYSIS_PERIOD_S / 60} min)</th>
+                <th className="text-left py-1 pl-2 font-medium" data-testid="sim-engine-column">{scenario === "build" ? "Engine (report row)" : "Engine (report delay · Q95 recomputed)"}</th>
               </tr>
             </thead>
             <tbody>
               {DIRECTIONS.filter((d) => inputs.approaches[d].vph > 0).map((d) => (
                 <tr key={d} className="border-b last:border-0 align-top" data-testid={`sim-readout-${d}`}>
                   <td className="py-1 pr-2 font-mono font-semibold">{d}</td>
-                  <td className="py-1 px-2 font-mono tabular-nums whitespace-nowrap">
-                    <div>delay <span ref={bind(`${d}-delay`)} className="font-semibold">—</span> s</div>
-                    <div>Q95 <span ref={bind(`${d}-q95`)} className="font-semibold">—</span> ft</div>
+                  <td className="py-1 px-2 font-mono tabular-nums">
+                    <div className="whitespace-nowrap">delay <span ref={bind(`${d}-delay`)} className="font-semibold">—</span> s<span ref={bind(`${d}-cap`)} className="text-amber-600 whitespace-normal" /></div>
+                    <div className="whitespace-nowrap">Q95 <span ref={bind(`${d}-q95`)} className="font-semibold">—</span> ft <span className="text-muted-foreground">approach total</span></div>
+                    {(inputs.approaches[d].throughLanes > 1 || inputs.approaches[d].leftBayFt !== undefined) && (
+                      <div className="whitespace-nowrap text-muted-foreground">worst lane <span ref={bind(`${d}-q95worst`)}>—</span> ft</div>
+                    )}
                   </td>
-                  <td className="py-1 pl-2 font-mono tabular-nums whitespace-nowrap">
-                    <div>delay <span className="font-semibold">{engineDelay(d).toFixed(1)}</span> s <LosBadge los={engineLos(d)} size="sm" /></div>
-                    <div>Q95 <span className="font-semibold">{engineQ95[d].toFixed(0)}</span> ft</div>
+                  <td className="py-1 pl-2 font-mono tabular-nums">
+                    <div className="whitespace-nowrap">delay <span className="font-semibold" data-testid={`sim-engine-delay-${d}`}>{engineDelay(d).toFixed(1)}</span> s <LosBadge los={engineLos(d)} size="sm" />{calibrated ? <span className="text-muted-foreground"> (printed {printedDelay(d).toFixed(1)} s)</span> : null}</div>
+                    <div className="whitespace-nowrap">Q95 <span className="font-semibold">{engineQ95[d].toFixed(0)}</span> ft <span className="text-muted-foreground">{scenario === "build" ? "approach total, printed" : "approach total, recomputed"}</span></div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div className="text-[11px] text-muted-foreground leading-snug">
+          <div className="text-[11px] text-muted-foreground leading-snug space-y-1" data-testid="sim-readout-note">
             {reduced
-              ? "Reduced motion: nothing is simulated; the frame shows each approach's queue at the engine's 95th-percentile length."
-              : `Simulated ≠ computed. The simulated column is a stochastic measurement (Poisson arrivals, one run) of the queueing process the engine's Webster d1 + Akçelik d2 describe analytically; the two agree within ±${bandPct} % at v/c ≤ 0.7 (check:intersection-sim) and are not expected to match. The report's number is the engine's.`}
+              ? <div>Reduced motion: nothing is simulated; the frame shows each approach's queue at the engine's 95th-percentile length — the approach total, dealt over its through lanes.</div>
+              : <div>Simulated ≠ computed. The simulated column is a stochastic measurement (Poisson arrivals, one seed, the engine's {ANALYSIS_PERIOD_S / 60}-minute analysis period) of the queueing process the engine's Webster d1 + Akçelik d2 describe analytically; the two are not expected to match. check:intersection-sim pins them within ±{bandPct} % under exactly these conditions: {sim.agreementConditions}. The report's number is the engine's.</div>}
+            <div>
+              Q95 in both columns is the approach total across its lanes × {VEH_LENGTH_FT} ft — the engine's queue95Ft basis{multiLane ? "; the sim's \"worst lane\" is the single lane a bay or storage length actually sees" : ""}.
+              {scenario === "build"
+                ? " The engine's build Q95 is the row's printed figure."
+                : " The row prints only the build queue: the no-build Q95 here is the engine's method (queue95Ft on the no-build volume, same capacity) recomputed in the browser."}
+              {calibrated ? ` The engine delay shown is the raw vcToDelay figure; the report prints it × the row's calibration multiplier ${sim.calibrationMultiplier.toFixed(2)}, which the sim does not apply.` : ""}
+              {sim.weatherFactor !== 1 ? ` Saturation flow in the sim is ${SATURATION_FLOW_VPH} × weather ${sim.weatherFactor.toFixed(2)} = ${inputs.satFlowVphpl.toFixed(0)} vphpl, the capacity factor the row was solved with.` : ""}
+            </div>
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-wide text-muted-foreground" aria-hidden>
             <span><i className="inline-block w-2.5 h-1.5 rounded-sm align-middle mr-1 bg-[#DCE3EE]" />Through</span>
@@ -539,7 +593,7 @@ export function IntersectionSimView({ sim, className }: IntersectionSimViewProps
       </div>
 
       <div className="font-mono text-[11px] text-muted-foreground leading-relaxed" data-testid="sim-caption">
-        Single-junction micro-simulation (lib/intersection-sim.ts): the opener's car-following moves every vehicle; each lane's stop line admits one vehicle per saturation headway ({SAT_HEADWAY_S.toFixed(1)} s = 3600 / {SATURATION_FLOW_VPH} vphpl) while its phase is green; arrivals are Poisson per movement from a seeded stream (seed {1 + run}). Timing: {timingLine}{sig.assumed ? " (screening default — no plan on the row)" : sig.source === "override" ? " (your scenario plan)" : ""}. Lengths along each approach are to scale; lane widths are exaggerated; vehicles leave the drawing {EXIT_FT} ft past the stop line.
+        Single-junction micro-simulation (lib/intersection-sim.ts): the opener's car-following moves every vehicle; each lane's stop line admits one vehicle per saturation headway ({headwayS.toFixed(2)} s = 3600 / {inputs.satFlowVphpl.toFixed(0)} vphpl{sim.weatherFactor !== 1 ? ` = ${SATURATION_FLOW_VPH} × weather ${sim.weatherFactor.toFixed(2)}` : ""}) while its phase is green; arrivals are Poisson per movement from a seeded stream (seed {1 + run}); the run measures the engine's {ANALYSIS_PERIOD_S / 60}-minute analysis period (T = 0.25 h in Akçelik d2) and stops, and a simulated delay above the engine's {SCREENING_MAX_DELAY_SEC} s reporting ceiling is shown at the ceiling. Timing: {timingLine}{sig.assumed ? " (screening default — no plan on the row)" : sig.source === "override" ? " (your scenario plan)" : ""}. Lengths along each approach are to scale; lane widths are exaggerated; vehicles leave the drawing {EXIT_FT} ft past the stop line.
         {inputs.notes.length > 0 && (
           <> Disclosed defaults: {inputs.notes.join(" ")}</>
         )}

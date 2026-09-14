@@ -649,6 +649,22 @@ function periodInputs(args: {
 }
 
 /**
+ * The capacity weather factor a scenario's rows are solved with: the engine's
+ * WEATHER_FACTOR for the studio's weather when one is set, else the report's
+ * own (`weatherFactorExact`, falling back to the table for its printed weather
+ * and then to the rounded printed factor). This is the single place that
+ * answers "which weather factor does the DRAWN row carry" — the intersection
+ * study's §02 capacity and §04 sim size themselves with it, so a heavy-snow
+ * scenario prints capacity, v/c and queues on the same 0.70 the re-solved row
+ * was computed against.
+ */
+export function scenarioWeatherFactor(report: TisReport, state: Pick<ScenarioState, "weather">): number {
+  return state.weather === null
+    ? (report.weatherFactorExact ?? WEATHER_FACTOR[report.weather as Weather] ?? report.weatherCapacityFactor)
+    : WEATHER_FACTOR[state.weather as Weather];
+}
+
+/**
  * Re-solve the report for a scenario. Never throws on a row: a row that cannot
  * be reconstructed passes through unchanged and is listed in `baseOnly`.
  */
@@ -723,9 +739,7 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
     designGrowthMultiplier = Math.pow(1 + growthRatePct / 100, designYears);
   }
   const weather: TisWeather = state.weather ?? report.weather;
-  const weatherFactor = state.weather === null
-    ? (report.weatherFactorExact ?? WEATHER_FACTOR[report.weather as Weather] ?? report.weatherCapacityFactor)
-    : WEATHER_FACTOR[weather as Weather];
+  const weatherFactor = scenarioWeatherFactor(report, state);
   const capacityVph = PER_INTERSECTION_CAPACITY_VPH * weatherFactor;
   const approachCapacityVph = APPROACH_CAPACITY_VPH * weatherFactor;
   const octants = report.tripDistribution?.byDirection;
@@ -972,6 +986,10 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
     growthAppliedPct: growthRatePct,
     weather,
     weatherCapacityFactor: round2(weatherFactor),
+    // The exact factor the rows above were solved with — as the engine prints
+    // it (tis.ts) — so a re-solved report is self-consistent and never carries
+    // the base's factor under a scenario weather.
+    weatherFactorExact: weatherFactor,
     passByPctApplied: passByPct,
     internalCapturePctApplied: internalCapturePct,
   };

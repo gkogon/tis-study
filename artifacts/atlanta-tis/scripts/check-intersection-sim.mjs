@@ -57,6 +57,26 @@
 //                        yellow, so a single seed can tie or dip by a few
 //                        hundredths of a second on a +21 vph load whose
 //                        engine delta is +0.5 s.
+//  (w) weather           the designated row solved at weather factor 0.86
+//                        (heavy rain / light snow): the sim's saturation flow
+//                        is 1800 × 0.86 = 1548 vphpl (a standing queue under
+//                        continuous green discharges at that rate ± 5 %), the
+//                        default is disclosed in notes, and the simulated
+//                        delay lands within the band of vcToDelay on the
+//                        WEATHER-ADJUSTED capacity (1548 × g/C × lanes) —
+//                        like for like with a rain-solved row — while the
+//                        delay on every approach rises against clear weather.
+//  (l) lanes             the designated row with throughLanes = 2 synthesized
+//                        on every approach: the simulated delay is within the
+//                        band of vcToDelay on the doubled capacity; the sim's
+//                        Q95 is the APPROACH TOTAL across lanes (the engine's
+//                        queue95Ft basis) and lands within the band of the
+//                        engine's queue95Ft, while the worst single lane sits
+//                        between total ÷ lanes and total; on the one-lane row
+//                        total and worst lane are the same number.
+//  (t) analysis period   ANALYSIS_PERIOD_S is the engine's T = 0.25 h, and a
+//                        run over exactly that window (what the view shows)
+//                        still lands within the band on the designated row.
 //
 // Run: `pnpm run check:intersection-sim` (plain node 26, no bundler).
 import fs from "node:fs";
@@ -64,9 +84,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   simInputsFromRow, IntersectionSim, DIRECTIONS, OPPOSING,
-  SIM_DT, SAT_HEADWAY_S, YELLOW_S, ALL_RED_S, APPROACH_LEN_FT,
+  SIM_DT, SAT_HEADWAY_S, YELLOW_S, ALL_RED_S, APPROACH_LEN_FT, ANALYSIS_PERIOD_S,
 } from "../src/lib/intersection-sim.ts";
-import { vcToDelay, SATURATION_FLOW_VPH } from "@workspace/tis-engine-core";
+import { vcToDelay, queue95Ft, SATURATION_FLOW_VPH } from "@workspace/tis-engine-core";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const load = (n) => JSON.parse(fs.readFileSync(path.join(here, "fixtures", n), "utf8"));
@@ -82,13 +102,13 @@ const SEED = 42;
 const BAND = 0.40;
 
 const isNs = (d) => d === "NB" || d === "SB";
-/** Engine capacity for an approach: row-math.ts approachCap() = s × g/C × lanes (weather factor 1 in the fixture). */
+/** Engine capacity for an approach: row-math.ts approachCap() = s × g/C × lanes × weather (1 in the fixture; the inputs carry the factor they were built with). */
 const engineFor = (inputs, d) => {
   const a = inputs.approaches[d];
   const gc = (isNs(d) ? inputs.signal.gNs : inputs.signal.gEw) / inputs.signal.cycleLenSec;
-  const cap = SATURATION_FLOW_VPH * gc * a.throughLanes;
+  const cap = SATURATION_FLOW_VPH * gc * a.throughLanes * (inputs.weatherFactor ?? 1);
   const vc = a.vph / cap;
-  return { vc, cap, gc, delay: vcToDelay(vc, cap, inputs.signal.cycleLenSec, gc) };
+  return { vc, cap, gc, delay: vcToDelay(vc, cap, inputs.signal.cycleLenSec, gc), q95Ft: queue95Ft(a.vph, cap, inputs.signal.cycleLenSec, gc) };
 };
 const hasBadNumber = (x, seen = new Set()) => {
   if (typeof x === "number") return !Number.isFinite(x);
@@ -99,12 +119,13 @@ const hasBadNumber = (x, seen = new Set()) => {
   }
   return false;
 };
-const run = (row, scenario, seed = SEED, cycles = CYCLES) => {
-  const inputs = simInputsFromRow(row, scenario);
+const run = (row, scenario, seed = SEED, cycles = CYCLES, opts = {}) => {
+  const inputs = simInputsFromRow(row, scenario, opts);
   const sim = new IntersectionSim(inputs, seed);
   sim.runCycles(cycles);
   return { inputs, sim, m: sim.metrics() };
 };
+const inBand = (ratio) => ratio >= 1 - BAND && ratio <= 1 + BAND;
 
 // The designated undersaturated row: webster timing, v/c ≤ 0.7 on every approach.
 const ROW_ID = "ATL-69421271";
@@ -198,7 +219,7 @@ console.log("\n(d) protected lefts never overlap the opposing through");
 
 // ---------------------------------------------------------------- (e) saturation flow
 console.log("\n(e) saturation flow");
-const synthetic = ({ vphNB, lanes = 1, cycle, greenNs, greenEw = 0 }) => {
+const synthetic = ({ vphNB, lanes = 1, cycle, greenNs, greenEw = 0, weatherFactor = 1 }) => {
   const ap = (d, vph) => ({
     direction: d, vph, throughLanes: lanes, lanesSource: "default", leftShare: 0, rightShare: 0,
     movementVph: { L: 0, T: vph, R: 0 }, backgroundVph: { L: 0, T: vph, R: 0 }, projectTrips: { L: 0, T: 0, R: 0 }, splitSource: "default",
@@ -210,21 +231,23 @@ const synthetic = ({ vphNB, lanes = 1, cycle, greenNs, greenEw = 0 }) => {
     signalId: "synthetic", name: "synthetic", scenario: "nobuild",
     approaches: { NB: ap("NB", vphNB), SB: ap("SB", 0), EB: ap("EB", 0), WB: ap("WB", 0) },
     signal: { cycleLenSec: cycle, gNs: greenNs, gEw: greenEw, yellowSec: YELLOW_S, allRedSec: ALL_RED_S, basis: "webster", assumed: false, phases, slackSec: cycle - used },
+    weatherFactor, satFlowVphpl: SATURATION_FLOW_VPH * weatherFactor,
     notes: [],
   };
 };
 const measured = {};
-for (const lanes of [1, 2]) {
+for (const [lanes, weatherFactor] of [[1, 1], [2, 1], [1, 0.86]]) {
   // One 3595 s green in a 3600 s cycle = continuous green for the whole run. Demand far above capacity keeps the queue standing.
-  const sim = new IntersectionSim(synthetic({ vphNB: 3000 * lanes, lanes, cycle: 3600, greenNs: 3595 }), 3);
+  const sim = new IntersectionSim(synthetic({ vphNB: 3000 * lanes, lanes, cycle: 3600, greenNs: 3595, weatherFactor }), 3);
   sim.step(120);
   const before = sim.metrics().throughput;
   sim.step(600);
   const n = sim.metrics().throughput - before;
   const vphpl = (n * 6) / lanes;
-  measured[`sat${lanes}`] = vphpl;
-  ok(Math.abs(vphpl - SATURATION_FLOW_VPH) <= 0.05 * SATURATION_FLOW_VPH,
-    `${lanes} lane${lanes > 1 ? "s" : ""}: ${n} vehicles in 600 s of continuous green = ${vphpl.toFixed(0)} vphpl (target ${SATURATION_FLOW_VPH} ± 5 %, headway ${SAT_HEADWAY_S} s)`);
+  const target = SATURATION_FLOW_VPH * weatherFactor;
+  measured[`sat${lanes}w${weatherFactor}`] = vphpl;
+  ok(Math.abs(vphpl - target) <= 0.05 * target,
+    `${lanes} lane${lanes > 1 ? "s" : ""}${weatherFactor !== 1 ? `, weather ${weatherFactor}` : ""}: ${n} vehicles in 600 s of continuous green = ${vphpl.toFixed(0)} vphpl (target ${target} ± 5 %, headway ${sim.satHeadwayS.toFixed(3)} s${weatherFactor === 1 ? ` = SAT_HEADWAY_S ${SAT_HEADWAY_S}` : ""})`);
 }
 console.log("\n(e′) effective green");
 for (const g of [20, 26.2, 40]) {
@@ -320,6 +343,79 @@ console.log("\n(h) inputs from the row");
   const fb = simInputsFromRow(bare, "build");
   ok(fb.signal.assumed && fb.signal.basis === "screening-default" && fb.signal.cycleLenSec === 90 && fb.notes.some((n) => /screening default/.test(n)),
     `no signalTiming on the row: screening default, flagged assumed (${fb.signal.cycleLenSec} s, greens ${f1(fb.signal.gNs)}/${f1(fb.signal.gEw)} s after fitting 2 × 5 s lost time)`);
+  // No plan but an imported cycle (screening mode + import): the engine computed
+  // the row's delay and queue on that cycle (row-math.ts cyc = utdfCycleLenS), so the sim runs it.
+  const bareImport = { ...bare, utdfCycleLenSec: 120 };
+  const fbi = simInputsFromRow(bareImport, "build");
+  ok(fbi.signal.assumed && fbi.signal.cycleLenSec === 120 && Math.abs(fbi.signal.gNs - 0.45 * 120) < 1e-9 && Math.abs(fbi.signal.gEw - 0.45 * 120) < 1e-9 && Math.abs(fbi.signal.slackSec - 2) < 1e-9 && fbi.notes.some((n) => /imported 120 s cycle/.test(n)),
+    `no signalTiming but utdfCycleLenSec 120: the sim runs the imported cycle (${fbi.signal.cycleLenSec} s, greens ${f1(fbi.signal.gNs)}/${f1(fbi.signal.gEw)} s = g/C 0.45 × 120, ${f1(fbi.signal.slackSec)} s slack) and says so`);
+  // Weather: the factor rides the inputs and sizes the discharge rate.
+  const clear = simInputsFromRow(row, "build");
+  ok(clear.weatherFactor === 1 && clear.satFlowVphpl === SATURATION_FLOW_VPH && !clear.notes.some((n) => /weather/.test(n)), "no weather option: factor 1, 1800 vphpl, no weather note");
+  const wet = simInputsFromRow(row, "build", { weatherFactor: 0.86 });
+  ok(wet.weatherFactor === 0.86 && Math.abs(wet.satFlowVphpl - 1548) < 1e-9 && wet.notes.some((n) => /1800 × weather 0\.86 = 1548 vphpl/.test(n)),
+    `weatherFactor 0.86: satFlowVphpl ${wet.satFlowVphpl} = 1800 × 0.86, disclosed in notes`);
+}
+
+// ---------------------------------------------------------------- (w) weather
+console.log("\n(w) weather factor 0.86 — sim discharges at the row's weather-adjusted saturation flow");
+{
+  const WF = 0.86;
+  const clear = run(row, "nobuild");
+  const wet = run(row, "nobuild", SEED, CYCLES, { weatherFactor: WF });
+  ok(Math.abs(wet.sim.satHeadwayS - 3600 / (SATURATION_FLOW_VPH * WF)) < 1e-9, `stop-line headway ${wet.sim.satHeadwayS.toFixed(3)} s = 3600 / (1800 × ${WF})`);
+  let worstRatio = 1, clearSum = 0, wetSum = 0;
+  for (const d of DIRECTIONS) {
+    const e = engineFor(wet.inputs, d), e0 = engineFor(clear.inputs, d);
+    ok(Math.abs(e.cap - e0.cap * WF) < 1e-9 && e.delay > e0.delay, `${d}: weather-adjusted engine capacity ${e.cap.toFixed(1)} = ${e0.cap.toFixed(1)} × ${WF}; engine delay ${f1(e.delay)} s > clear ${f1(e0.delay)} s`);
+    const ratio = wet.m.approaches[d].simDelaySec / e.delay;
+    if (Math.abs(ratio - 1) > Math.abs(worstRatio - 1)) worstRatio = ratio;
+    ok(inBand(ratio), `${d}: sim ${f1(wet.m.approaches[d].simDelaySec)} s vs weather-adjusted engine ${f1(e.delay)} s → ${(ratio * 100).toFixed(0)} % (band ±${BAND * 100} %)`);
+    clearSum += clear.m.approaches[d].simDelaySec; wetSum += wet.m.approaches[d].simDelaySec;
+  }
+  ok(wetSum > clearSum, `mean simulated delay rises with the reduced saturation flow: ${f1(wetSum / 4)} s at ${WF} vs ${f1(clearSum / 4)} s clear`);
+  // Like for like the other way: the weather run against the CLEAR engine figure would understate it.
+  const under = DIRECTIONS.filter((d) => wet.m.approaches[d].simDelaySec < engineFor(clear.inputs, d).delay * (1 + BAND)).length;
+  ok(under === 4, "the weather run does not drift above the clear-weather engine band either (the comparison is only meaningful like for like)");
+}
+
+// ---------------------------------------------------------------- (l) lanes
+console.log("\n(l) two through lanes — Q95 compared as the approach total, worst lane shown separately");
+{
+  const two = structuredClone(row);
+  for (const a of two.approaches) { a.throughLanes = 2; a.lanesSource = "import"; }
+  // Q95 is a 95th percentile over cycles — two samples in thirty — so this
+  // section runs the sweep's 60 cycles for a steadier comparison.
+  const one = run(row, "nobuild", SEED, 2 * CYCLES);
+  const { inputs, m } = run(two, "nobuild", SEED, 2 * CYCLES);
+  ok(DIRECTIONS.every((d) => inputs.approaches[d].throughLanes === 2 && inputs.approaches[d].lanesSource === "import"), `sim inputs carry 2 through lanes per approach (${2 * CYCLES} cycles)`);
+  for (const d of DIRECTIONS) {
+    const e = engineFor(inputs, d), e1 = engineFor(one.inputs, d);
+    ok(Math.abs(e.cap - 2 * e1.cap) < 1e-9, `${d}: engine capacity doubles (${e.cap.toFixed(1)} vph), v/c ${e.vc.toFixed(3)}`);
+    const a = m.approaches[d];
+    const ratio = a.simDelaySec / e.delay;
+    ok(inBand(ratio), `${d}: sim delay ${f1(a.simDelaySec)} s vs engine ${f1(e.delay)} s → ${(ratio * 100).toFixed(0)} %`);
+    ok(a.q95WorstLaneFt < a.q95Ft && a.q95WorstLaneFt >= a.q95Ft / 2 - 1e-9,
+      `${d}: worst lane ${a.q95WorstLaneFt.toFixed(0)} ft sits between total ÷ 2 and the approach total ${a.q95Ft.toFixed(0)} ft`);
+    const qRatio = a.q95Ft / e.q95Ft;
+    ok(inBand(qRatio), `${d}: approach-total Q95 ${a.q95Ft.toFixed(0)} ft vs engine queue95Ft ${e.q95Ft.toFixed(0)} ft → ${(qRatio * 100).toFixed(0)} % (like for like: both the whole approach's queue in vehicles × 25 ft)`);
+  }
+  ok(DIRECTIONS.every((d) => one.m.approaches[d].q95WorstLaneFt === one.m.approaches[d].q95Ft), "one-lane row: worst lane and approach total are the same number");
+  const q1 = DIRECTIONS.map((d) => one.m.approaches[d].q95Ft / engineFor(one.inputs, d).q95Ft);
+  ok(q1.every(inBand), `one-lane row: approach-total Q95 within the band of queue95Ft on every approach (${q1.map((r) => `${(r * 100).toFixed(0)} %`).join(" / ")})`);
+}
+
+// ---------------------------------------------------------------- (t) analysis period
+console.log("\n(t) the engine's analysis period");
+{
+  ok(ANALYSIS_PERIOD_S === 0.25 * 3600, `ANALYSIS_PERIOD_S = ${ANALYSIS_PERIOD_S} s = the T = 0.25 h of Akçelik d2`);
+  const inputs = simInputsFromRow(row, "nobuild");
+  const sim = new IntersectionSim(inputs, SEED);
+  sim.step(ANALYSIS_PERIOD_S);
+  const m = sim.metrics();
+  ok(Math.abs(sim.simT - ANALYSIS_PERIOD_S) < 1e-6 && m.cycles === Math.floor(ANALYSIS_PERIOD_S / inputs.signal.cycleLenSec), `${m.cycles} cycles complete in the ${ANALYSIS_PERIOD_S} s window`);
+  const ratios = DIRECTIONS.map((d) => m.approaches[d].simDelaySec / engineFor(inputs, d).delay);
+  ok(ratios.every(inBand), `over exactly the analysis period the sim still lands in the band on every approach (${ratios.map((r) => `${(r * 100).toFixed(0)} %`).join(" / ")})`);
 }
 
 // ---------------------------------------------------------------- (g) build ≥ no-build

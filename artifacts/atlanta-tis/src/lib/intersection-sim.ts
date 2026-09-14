@@ -7,13 +7,39 @@
  * WHAT IT IS. The opener's car-following (`car-following.ts`: CAR_L, VMAX,
  * ACC, BRAKE, GAP) moves vehicles up each approach; the stop line of every
  * lane is a server that admits one vehicle per saturation headway
- * (3600 / 1800 vphpl = 2.0 s) while its phase is green; the signal is the
- * row's own timing (cycle, g/C per phase, protected lefts) with the engine's
- * 5 s lost time per phase shown as 4 s yellow + 1 s all-red. Arrivals are
- * Poisson per movement from a seeded RNG, so the same seed replays the same
- * hour. Every number in `IntersectionSimInputs` comes from the row or from
- * a documented engine default — nothing is invented, and every default is
- * flagged in `notes` so the view can say so.
+ * (3600 / (1800 vphpl × weather factor) = 2.0 s in clear weather) while its
+ * phase is green; the signal is the row's own timing (cycle, g/C per phase,
+ * protected lefts) with the engine's 5 s lost time per phase shown as 4 s
+ * yellow + 1 s all-red. Arrivals are Poisson per movement from a seeded RNG,
+ * so the same seed replays the same hour. Every number in
+ * `IntersectionSimInputs` comes from the row or from a documented engine
+ * default — nothing is invented, and every default is flagged in `notes` so
+ * the view can say so.
+ *
+ * WEATHER. The engine's approach capacity is SATURATION_FLOW_VPH × g/C ×
+ * lanes × weatherFactor (row-math.ts approachCap()), so a report solved in
+ * rain or snow prints delays and queues against a reduced saturation flow.
+ * The sim discharges at the same reduced flow: `opts.weatherFactor` (the
+ * report's `weatherFactorExact ?? weatherCapacityFactor`, or the scenario's
+ * when the studio changed the weather) scales `satFlowVphpl`, and the
+ * stop-line headway is 3600 / satFlowVphpl. Without it the sim would run dry
+ * pavement beside weather-adjusted engine figures and the readout would not
+ * be like for like.
+ *
+ * QUEUES. The engine's `queue95thFt` (signal-delay.ts queue95Ft) is computed
+ * from the WHOLE approach's vph against the whole approach's capacity — the
+ * approach TOTAL back-of-queue in vehicles × 25 ft, however many lanes carry
+ * it. `q95Ft` here is therefore the 95th percentile of the per-cycle maximum
+ * of the SUM of queued vehicles over every lane of the approach (bay
+ * included) × VEH_LENGTH_FT — like for like with the engine's figure.
+ * `q95WorstLaneFt` is the worst single lane's back-of-queue, which is what a
+ * bay or a storage length actually sees; on a one-lane approach the two are
+ * the same number.
+ *
+ * ANALYSIS PERIOD. The engine's incremental delay (Akçelik d2) is for
+ * T = 0.25 h and its reported delay is capped at SCREENING_MAX_DELAY_SEC.
+ * `ANALYSIS_PERIOD_S` (900 s) is the simulated window the view measures over
+ * before it stops, so "simulated" and "computed" describe the same 15 min.
  *
  * WHAT IT IS NOT. A calibrated Synchro/VISSIM model. Simulated delay is a
  * stochastic measurement of the SAME queueing process the engine's Webster
@@ -86,8 +112,10 @@ export const OPPOSING: Record<Direction, Direction> = { NB: "SB", SB: "NB", EB: 
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Saturation headway, s — 3600 / SATURATION_FLOW_VPH (signal-delay.ts:51). */
+/** Clear-weather saturation headway, s — 3600 / SATURATION_FLOW_VPH (signal-delay.ts:51). A run's own headway is 3600 / inputs.satFlowVphpl. */
 export const SAT_HEADWAY_S = 3600 / SATURATION_FLOW_VPH;
+/** The engine's analysis period, s — T = 0.25 h in Akçelik d2 (signal-delay.ts vcToDelay). The view measures over this window and stops. */
+export const ANALYSIS_PERIOD_S = 0.25 * 3600;
 /** Yellow inside the engine's 5 s lost time per phase (webster-timing.ts:60). */
 export const YELLOW_S = 4;
 /** All-red — the rest of the lost time. */
@@ -176,6 +204,10 @@ export type IntersectionSimInputs = {
   scenario: Scenario;
   approaches: Record<Direction, SimApproachInputs>;
   signal: SimSignalInputs;
+  /** The report's capacity weather factor (1 in clear weather). */
+  weatherFactor: number;
+  /** Discharge rate on green, vphpl — SATURATION_FLOW_VPH × weatherFactor, the engine's own capacity basis. */
+  satFlowVphpl: number;
   /** Every default or fallback that was applied, in plain words. */
   notes: string[];
 };
@@ -185,20 +217,34 @@ export type SimInputsOptions = {
   signalTiming?: TisAffectedIntersectionSignalTiming;
   /** Bay length when none is known; default ASSUMED_LEFT_BAY_FT. */
   assumedLeftBayFt?: number;
+  /** The capacity weather factor the row was solved with (report.weatherFactorExact ?? weatherCapacityFactor, or the scenario's). Default 1. */
+  weatherFactor?: number;
 };
 
 const pos = (x: unknown): number => (typeof x === "number" && Number.isFinite(x) && x > 0 ? x : 0);
 
-function screeningDefaultTiming(): TisAffectedIntersectionSignalTiming {
+/**
+ * The timing the engine ran a row with when it resolved no plan: the flat
+ * screening constants — except the cycle, which is the imported measured
+ * cycle when the row carries one (row-math.ts `cyc = timing ? timing.cycleLenS
+ * : utdfCycleLenS`; the engine feeds it to Webster d1 and to queue95Ft even
+ * in screening mode, so the row's delay and queue were computed on it).
+ */
+function screeningDefaultTiming(row: Pick<TisAffectedIntersection, "utdfCycleLenSec">): TisAffectedIntersectionSignalTiming {
   return {
     basis: "screening-default",
-    cycleLenSec: CYCLE_LEN,
+    cycleLenSec: pos(row.utdfCycleLenSec) > 0 ? (row.utdfCycleLenSec as number) : CYCLE_LEN,
     criticalPhases: 2,
     gOverCns: G_OVER_C,
     gOverCew: G_OVER_C,
     leftPhasingNs: "permissive",
     leftPhasingEw: "permissive",
   };
+}
+
+/** The cycle the engine computed a row on when it has no timing plan: the measured import cycle if any, else CYCLE_LEN. */
+export function fallbackCycleSec(row: Pick<TisAffectedIntersection, "utdfCycleLenSec">): number {
+  return screeningDefaultTiming(row).cycleLenSec;
 }
 
 /** Signal inputs from a timing record: greens = g/C × C, phases in lead-left order. */
@@ -256,8 +302,16 @@ export function simInputsFromRow(row: TisAffectedIntersection, scenario: Scenari
   const notes: string[] = [];
   const timingRec = opts.signalTiming ?? row.signalTiming;
   const timingAssumed = !timingRec;
-  if (timingAssumed) notes.push(`No signal timing on the row: screening default ${CYCLE_LEN} s cycle, g/C ${G_OVER_C} both axes, permissive lefts.`);
-  const signal = signalInputsFromTiming(timingRec ?? screeningDefaultTiming(), timingAssumed, notes);
+  const fallback = screeningDefaultTiming(row);
+  if (timingAssumed) {
+    notes.push(fallback.cycleLenSec !== CYCLE_LEN
+      ? `No signal timing plan on the row: the imported ${fallback.cycleLenSec} s cycle (the engine used it for delay and queue) with the screening g/C ${G_OVER_C} both axes, permissive lefts.`
+      : `No signal timing on the row: screening default ${CYCLE_LEN} s cycle, g/C ${G_OVER_C} both axes, permissive lefts.`);
+  }
+  const signal = signalInputsFromTiming(timingRec ?? fallback, timingAssumed, notes);
+  const weatherFactor = typeof opts.weatherFactor === "number" && Number.isFinite(opts.weatherFactor) && opts.weatherFactor > 0 ? opts.weatherFactor : 1;
+  const satFlowVphpl = SATURATION_FLOW_VPH * weatherFactor;
+  if (weatherFactor !== 1) notes.push(`Saturation flow ${SATURATION_FLOW_VPH} × weather ${weatherFactor.toFixed(2)} = ${satFlowVphpl.toFixed(0)} vphpl — the capacity factor the report's delays and queues were computed with.`);
   const protectedAxis: Record<Axis, boolean> = { ns: signal.gNsLeft !== undefined, ew: signal.gEwLeft !== undefined };
   const assumedBay = opts.assumedLeftBayFt ?? ASSUMED_LEFT_BAY_FT;
   const movements = row.movements ?? [];
@@ -334,7 +388,7 @@ export function simInputsFromRow(row: TisAffectedIntersection, scenario: Scenari
   const defaultLanes = DIRECTIONS.filter((d) => approaches[d].lanesSource === "default");
   if (defaultLanes.length > 0) notes.push(`Through lanes on ${defaultLanes.join("/")} default to ${DEFAULT_THROUGH_LANES_PER_DIR} (no lane count on the row).`);
   notes.push("Permissive lefts discharge with their through phase, as the engine assumes (no gap acceptance); pedestrian minimums are not simulated.");
-  return { signalId: row.signalId, name: row.name, scenario, approaches, signal, notes };
+  return { signalId: row.signalId, name: row.name, scenario, approaches, signal, weatherFactor, satFlowVphpl, notes };
 }
 
 // ---------------------------------------------------------------------------
@@ -402,8 +456,12 @@ type ApproachState = {
   departures: number;
   delaySum: number;
   slowSum: number;
-  cycleMaxQueue: number;
-  cycleQueues: number[];
+  /** This cycle's peak of the queued-vehicle count summed over every lane (the engine's approach-total basis). */
+  cycleMaxQueueTotal: number;
+  /** This cycle's peak of the worst single lane's queued-vehicle count. */
+  cycleMaxQueueWorst: number;
+  cycleQueuesTotal: number[];
+  cycleQueuesWorst: number[];
 };
 
 export type ApproachSimMetrics = {
@@ -415,8 +473,17 @@ export type ApproachSimMetrics = {
   simDelaySec: number;
   /** Mean time below SLOW_SPEED while approaching — the opener's stopped + slowed rule, s. */
   stoppedDelaySec: number;
-  /** 95th percentile of the per-cycle maximum back-of-queue in the worst lane, ft (VEH_LENGTH_FT per vehicle). */
+  /**
+   * 95th percentile of the per-cycle maximum back-of-queue for the WHOLE
+   * approach — queued vehicles summed over every lane (bay included) ×
+   * VEH_LENGTH_FT — the same quantity the engine's queue95Ft returns for the
+   * approach's vph against the approach's capacity. Compare this with the
+   * row's queue95thFt.
+   */
   q95Ft: number;
+  /** 95th percentile of the per-cycle maximum back-of-queue in the WORST single lane, ft — what a bay or storage length sees. Equals q95Ft on a one-lane approach. */
+  q95WorstLaneFt: number;
+  /** Longest approach-total queue seen in any cycle, ft. */
   maxQueueFt: number;
   cyclesSampled: number;
 };
@@ -454,12 +521,15 @@ export class IntersectionSim {
   private readonly ap: Record<Direction, ApproachState>;
   private readonly phaseStarts: number[];
   private readonly cycleLen: number;
+  /** This run's stop-line headway, s — 3600 / satFlowVphpl (SAT_HEADWAY_S in clear weather). */
+  readonly satHeadwayS: number;
   private lastCycleIndex = 0;
 
   constructor(inputs: IntersectionSimInputs, seed = 1) {
     this.inputs = inputs;
     this.seed = seed >>> 0;
     this.cycleLen = inputs.signal.cycleLenSec;
+    this.satHeadwayS = 3600 / (inputs.satFlowVphpl > 0 ? inputs.satFlowVphpl : SATURATION_FLOW_VPH);
     this.phaseStarts = [];
     let u = 0;
     for (const p of inputs.signal.phases) { this.phaseStarts.push(u); u += p.greenSec + YELLOW_S + ALL_RED_S; }
@@ -471,7 +541,7 @@ export class IntersectionSim {
       const bay: Lane | undefined = a.leftBayFt !== undefined
         ? { approach: d, index: -1, isBay: true, cars: [], buffer: [], lastCrossT: -Infinity, lastLight: "R" }
         : undefined;
-      this.ap[d] = { d, in: a, lanes, bay, arrivals: 0, departures: 0, delaySum: 0, slowSum: 0, cycleMaxQueue: 0, cycleQueues: [] };
+      this.ap[d] = { d, in: a, lanes, bay, arrivals: 0, departures: 0, delaySum: 0, slowSum: 0, cycleMaxQueueTotal: 0, cycleMaxQueueWorst: 0, cycleQueuesTotal: [], cycleQueuesWorst: [] };
       MOVEMENTS.forEach((m, mi) => {
         for (const project of [false, true]) {
           const rate = (project ? a.projectTrips[m] : a.backgroundVph[m]) / 3600;
@@ -598,7 +668,7 @@ export class IntersectionSim {
           // Green onset with a standing queue: start-up lost time before the
           // first vehicle crosses (a vehicle arriving at speed is not held).
           const head = lane.cars.find((c) => c.s < 0);
-          if (head && head.v < QUEUE_SPEED) lane.lastCrossT = Math.max(lane.lastCrossT, t0 + STARTUP_LOST_S - SAT_HEADWAY_S);
+          if (head && head.v < QUEUE_SPEED) lane.lastCrossT = Math.max(lane.lastCrossT, t0 + STARTUP_LOST_S - this.satHeadwayS);
         }
         if (light === "Y" && lane.lastLight !== "Y") {
           // Yellow onset: each vehicle decides once — within YELLOW_GO_FT it
@@ -638,7 +708,7 @@ export class IntersectionSim {
               headSeen = true;
               // Stop-line server: cross no earlier than one saturation headway
               // after the previous vehicle in this lane — paced, not stopped.
-              const earliest = lane.lastCrossT + SAT_HEADWAY_S;
+              const earliest = lane.lastCrossT + this.satHeadwayS;
               if (t0 < earliest) paceV = distToLine / (earliest - t0);
             }
           }
@@ -660,14 +730,18 @@ export class IntersectionSim {
         if (lane.cars.length > 0 && lane.cars[0]!.s >= EXIT_FT) lane.cars = lane.cars.filter((c) => c.s < EXIT_FT);
       }
 
-      // Back of queue this sub-step: the worst lane's queued vehicles (+ its buffer).
-      let q = 0;
+      // Back of queue this sub-step: queued vehicles (+ entry buffer) per
+      // lane — summed over the approach for the engine's total, and the worst
+      // single lane for what a bay sees.
+      let total = 0, worst = 0;
       for (const lane of laneOrder) {
         let n = lane.buffer.length;
         for (const c of lane.cars) if (c.s < 0 && c.v < QUEUE_SPEED) n++;
-        if (n > q) q = n;
+        total += n;
+        if (n > worst) worst = n;
       }
-      if (q > a.cycleMaxQueue) a.cycleMaxQueue = q;
+      if (total > a.cycleMaxQueueTotal) a.cycleMaxQueueTotal = total;
+      if (worst > a.cycleMaxQueueWorst) a.cycleMaxQueueWorst = worst;
     }
 
     this.stepN++;
@@ -675,8 +749,10 @@ export class IntersectionSim {
     if (cyc > this.lastCycleIndex) {
       for (const d of DIRECTIONS) {
         const a = this.ap[d];
-        a.cycleQueues.push(a.cycleMaxQueue);
-        a.cycleMaxQueue = 0;
+        a.cycleQueuesTotal.push(a.cycleMaxQueueTotal);
+        a.cycleQueuesWorst.push(a.cycleMaxQueueWorst);
+        a.cycleMaxQueueTotal = 0;
+        a.cycleMaxQueueWorst = 0;
       }
       this.lastCycleIndex = cyc;
     }
@@ -715,7 +791,8 @@ export class IntersectionSim {
       const all = a.bay ? [a.bay, ...a.lanes] : a.lanes;
       let on = 0;
       for (const lane of all) on += lane.cars.length + lane.buffer.length;
-      const sorted = [...a.cycleQueues].sort((x, y) => x - y);
+      const sortedTotal = [...a.cycleQueuesTotal].sort((x, y) => x - y);
+      const sortedWorst = [...a.cycleQueuesWorst].sort((x, y) => x - y);
       approaches[d] = {
         direction: d,
         arrivals: a.arrivals,
@@ -723,9 +800,10 @@ export class IntersectionSim {
         onNetwork: on,
         simDelaySec: a.departures > 0 ? a.delaySum / a.departures : 0,
         stoppedDelaySec: a.departures > 0 ? a.slowSum / a.departures : 0,
-        q95Ft: percentile(sorted, 0.95) * VEH_LENGTH_FT,
-        maxQueueFt: (sorted[sorted.length - 1] ?? 0) * VEH_LENGTH_FT,
-        cyclesSampled: sorted.length,
+        q95Ft: percentile(sortedTotal, 0.95) * VEH_LENGTH_FT,
+        q95WorstLaneFt: percentile(sortedWorst, 0.95) * VEH_LENGTH_FT,
+        maxQueueFt: (sortedTotal[sortedTotal.length - 1] ?? 0) * VEH_LENGTH_FT,
+        cyclesSampled: sortedTotal.length,
       };
       arrivals += a.arrivals; throughput += a.departures; onNetwork += on;
     }

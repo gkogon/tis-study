@@ -32,7 +32,10 @@
 //      storage on the approach, storageDeficient equal to the engine's flag
 //      (and to queue > storage), lane counts from the record, basis
 //      "lane-group"; a row-level existingStorageFt on another approach is
-//      compared against that approach's queue.
+//      compared against the ROW's worst-approach queue — the PDF's
+//      storage-bay adequacy comparison (pdf-export.ts §9.2) — and the plan
+//      says so (storageQueueFt / storageQueueBasis); a bay sized between
+//      that approach's own queue and the row's worst is flagged.
 //   5. Scenario pairs: planFromRow(baseRow, scenarioRow) keeps the base
 //      values beside the scenario's and flags exactly the approaches whose
 //      printed values differ; timingChanged is true for the override row.
@@ -176,9 +179,14 @@ console.log("\n4. a row WITH laneGroups (synthesized through the engine)");
   ok(Array.isArray(groups) && groups.length === 3, "engine produced three lane groups from the synthetic record");
   const L = groups?.find((g) => g.movement === "L");
   console.log(`  note  engine L group: Q95 ${L?.queue95thFt} ft vs storage ${L?.storageFt} ft → deficient ${L?.storageDeficient}`);
+  // A row-level bay on ANOTHER approach, sized between that approach's own
+  // queue and the row's worst so the two comparisons disagree.
+  const ebA = rowA.approaches.find((a) => a.direction === "EB");
+  const rowBayFt = Math.round((ebA.queue95thFt + rowA.queue95thFt) / 2);
+  ok(ebA.queue95thFt < rowBayFt && rowBayFt < rowA.queue95thFt, `EB's own Q95 ${ebA.queue95thFt} ft < a ${rowBayFt} ft bay < the row's worst ${rowA.queue95thFt} ft`);
   const rowLG = {
     ...rowA,
-    existingStorageFt: 90, storageMovement: "EBL",           // a row-level bay on ANOTHER approach
+    existingStorageFt: rowBayFt, storageMovement: "EBL",
     approaches: rowA.approaches.map((a) => a.direction === "NB"
       ? { ...a, throughLanes: 2, lanesSource: "import", laneGroups: groups }
       : a),
@@ -194,15 +202,16 @@ console.log("\n4. a row WITH laneGroups (synthesized through the engine)");
     `NB storageDeficient is the engine's flag (${nbp.storageDeficient}) and equals queue > storage`);
   ok(nbp.laneGroups === groups, "the lane groups ride along for the Lanes tab");
   const ebp = planLG.approaches.find((a) => a.direction === "EB");
-  ok(ebp.storageFt === 90 && ebp.storageBasis === "row" && ebp.storageDeficient === (ebp.queue95Ft > 90),
-    `EB storage from the row-level bay (90 ft) against the approach queue (${ebp.queue95Ft} ft → deficient ${ebp.storageDeficient})`);
-  ok(ebp.leftBay.present === true && ebp.leftBay.assumed === false && ebp.leftBay.basis === "storage-record" && ebp.leftBay.storageFt === 90,
-    "a row-level EBL storage record is a bay on record: drawn at its 90 ft, basis storage-record, not assumed");
+  ok(ebp.storageFt === rowBayFt && ebp.storageBasis === "row" && ebp.storageQueueFt === rowA.queue95thFt && ebp.storageQueueBasis === "row worst approach" && ebp.storageDeficient === true,
+    `EB storage from the row-level bay (${rowBayFt} ft) is flagged against the ROW's worst-approach Q95 ${rowA.queue95thFt} ft (pdf-export.ts §9.2), though EB's own ${ebp.queue95Ft} ft would fit`);
+  ok(nbp.storageQueueFt === L.queue95thFt && nbp.storageQueueBasis === "left-turn group", `NB's compared queue is the L group's own ${L.queue95thFt} ft, not the approach's ${nbp.queue95Ft} ft`);
+  ok(ebp.leftBay.present === true && ebp.leftBay.assumed === false && ebp.leftBay.basis === "storage-record" && ebp.leftBay.storageFt === rowBayFt,
+    `a row-level EBL storage record is a bay on record: drawn at its ${rowBayFt} ft, basis storage-record, not assumed`);
   const planRight = planFromRow({ ...rowLG, storageMovement: "EBR" });
   const ebr = planRight.approaches.find((a) => a.direction === "EB");
-  ok(ebr.leftBay.present === false && ebr.storageFt === 90 && ebr.storageBasis === "row",
-    "a row-level EBR record compares against the approach queue but draws no LEFT bay");
-  ok(planLG.scaleFt >= Math.max(100, L.queue95thFt, 90), "scale covers the bay and the group queue");
+  ok(ebr.leftBay.present === false && ebr.storageFt === rowBayFt && ebr.storageBasis === "row" && ebr.storageQueueFt === rowA.queue95thFt,
+    "a row-level EBR record compares the row's worst queue against the bay but draws no LEFT bay");
+  ok(planLG.scaleFt >= Math.max(100, L.queue95thFt, rowBayFt), "scale covers the bay and the group queue");
   ok(nonFinite(planLG).length === 0, "no NaN / Infinity");
 
   // A lane group with a deficient bay must flag; build one by shrinking the

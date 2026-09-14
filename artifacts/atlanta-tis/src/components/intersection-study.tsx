@@ -27,12 +27,19 @@
  *
  * Every number is the report row's, or the studio's re-solve of it with the
  * engine's own row math (`intersection-study-model.ts` builds the sections
- * and `check:intersection-study` walks them for every studied row). With a
- * scenario row the page draws the scenario and shows base → scenario pairs
- * wherever a printed value differs.
+ * and `check:intersection-study` walks them for every studied row) — except
+ * the four engine recomputations the model discloses (ENGINE_RECOMPUTATIONS)
+ * and §00 names. With a scenario row that prints anything different from the
+ * base the page draws the scenario and shows base → scenario pairs wherever
+ * a value differs; the capacity weather factor is the scenario's when the
+ * studio changed the weather (scenarioWeatherFactor).
  *
  * URL state (`?signal=<signalId>`) belongs to the page that mounts this
  * (pages/tis.tsx): opening pushes history, Close / Escape / back pops it.
+ *
+ * Dialog: Tab and Shift+Tab cycle inside the study and every other child of
+ * <body> is `inert` while it is open, so the report beneath can neither be
+ * focused nor read by assistive technology until Close.
  *
  * Print: while the study is open only the study prints — the rules at the
  * bottom hide every other child of <body> — one intersection per print.
@@ -48,9 +55,10 @@ import { Pair, Stat, ScenarioDelta, TimingBlock, LanesSection, QueueBar, BASIS_L
 import { IntersectionSimView } from "@/components/intersection-sim-view";
 import { QueueLaneAnimation, type QueueLaneInputs } from "@/components/queue-animation";
 import { SignalControls } from "@/components/signal-controls";
-import { studyModelFromRow, SECTIONS, type IntersectionStudyModel, type QueueApproachModel, type SectionId } from "@/lib/intersection-study-model";
+import { studyModelFromRow, SECTIONS, ENGINE_RECOMPUTATIONS, Q95_FACTOR, type IntersectionStudyModel, type QueueApproachModel, type SectionId } from "@/lib/intersection-study-model";
 import { QUEUE_FT_PER_VEH } from "@/lib/intersection-geometry";
-import { type ScenarioState, type SignalTimingEdit, baseOverridesBySignal } from "@/lib/scenario-solve";
+import { type ScenarioState, type SignalTimingEdit, baseOverridesBySignal, scenarioWeatherFactor } from "@/lib/scenario-solve";
+import { SATURATION_FLOW_VPH } from "@workspace/tis-engine-core";
 
 export type IntersectionStudyProps = {
   /** The base report (its rows, weather factor, base overrides). */
@@ -78,19 +86,24 @@ export function IntersectionStudy({ report, row, scenarioRow, scenario, onScenar
   const rootRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const [active, setActive] = useState<SectionId>("summary");
-  const weatherFactor = report.weatherFactorExact ?? report.weatherCapacityFactor;
+  // The weather factor the DRAWN row was solved with: the studio's scenario
+  // weather when set, else the report's own — never the base's under a
+  // scenario weather edit.
+  const weatherFactor = scenarioWeatherFactor(report, scenario);
   const model: IntersectionStudyModel = useMemo(
     () => studyModelFromRow(row, scenarioRow ?? null, { weatherFactor }),
     [row, scenarioRow, weatherFactor],
   );
-  const drawn = scenarioRow ?? row;
+  // The model decides whether the scenario row is a scenario for THIS signal
+  // (an edit elsewhere re-solves every row into an identical fresh object).
+  const drawn = model.scenario && scenarioRow ? scenarioRow : row;
   const plan = model.plan;
   const s = model.summary;
   const sev = SEVERITY_CONFIG[s.severity] ?? SEVERITY_CONFIG.none!;
   const SevIcon = sev.icon;
   const baseSev = s.base && s.base.severity !== s.severity ? SEVERITY_CONFIG[s.base.severity] ?? SEVERITY_CONFIG.none! : null;
 
-  // ---- dialog behaviour: focus in/out, Escape, body scroll lock, print class ----
+  // ---- dialog behaviour: focus in/out and trapped, Escape, the page beneath inert, body scroll lock, print class ----
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   useEffect(() => {
@@ -99,12 +112,37 @@ export function IntersectionStudy({ report, row, scenarioRow, scenario, onScenar
     const prevOverflow = body.style.overflow;
     body.style.overflow = "hidden";
     body.classList.add("intersection-study-open");
+    // Everything else under <body> (the app root, other portals present now)
+    // is inert while the study is open: unfocusable, unreachable, hidden
+    // from assistive technology — a modal in fact, not just by aria-modal.
+    const root = rootRef.current;
+    const madeInert: Element[] = [];
+    for (const el of Array.from(body.children)) {
+      if (el === root || el.hasAttribute("inert")) continue;
+      el.setAttribute("inert", "");
+      madeInert.push(el);
+    }
     closeRef.current?.focus();
-    // The listener reads the latest onClose through the ref, so it is bound once.
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); onCloseRef.current(); } };
+    // The listener reads the latest onClose through the ref, so it is bound
+    // once. Tab / Shift+Tab wrap inside the study.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); onCloseRef.current(); return; }
+      if (e.key !== "Tab" || !root) return;
+      const focusable = Array.from(root.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((el) => !el.hasAttribute("inert") && el.offsetParent !== null);
+      if (focusable.length === 0) { e.preventDefault(); root.focus(); return; }
+      const first = focusable[0]!, last = focusable[focusable.length - 1]!;
+      const current = document.activeElement as HTMLElement | null;
+      const inside = !!current && root.contains(current);
+      if (e.shiftKey) {
+        if (!inside || current === first) { e.preventDefault(); last.focus(); }
+      } else if (!inside || current === last) { e.preventDefault(); first.focus(); }
+    };
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
+      for (const el of madeInert) el.removeAttribute("inert");
       body.style.overflow = prevOverflow;
       body.classList.remove("intersection-study-open");
       previous?.focus?.();
@@ -148,7 +186,13 @@ export function IntersectionStudy({ report, row, scenarioRow, scenario, onScenar
     onScenarioChange({ ...scenario, timing });
   };
 
-  const queueScaleFt = model.queuing.reduce((m, q) => Math.max(m, q.q95Ft, q.storageFt ?? 0), 1);
+  const queueScaleFt = model.queuing.reduce((m, q) => Math.max(m, q.q95Ft, q.storageQueueFt ?? 0, q.storageFt ?? 0), 1);
+  // One lane at λ ÷ lanes, so every mark is the per-lane share of the
+  // engine's approach-total figures (Q95 ÷ lanes), and the "avg" mark is the
+  // lane's expected end-of-red queue λ(C − g) — the quantity the readout's
+  // end-of-red mean measures. The engine's Q1 is a different quantity
+  // (Webster's back-of-queue) and is quoted, not marked. The lane discharges
+  // at 1800 × the weather factor, the row's own capacity basis.
   const laneInputs = (q: QueueApproachModel): QueueLaneInputs => ({
     arrivalVph: Math.round(q.arrivalVph),
     arrivalPerLaneVph: q.arrivalPerLaneVph,
@@ -160,17 +204,31 @@ export function IntersectionStudy({ report, row, scenarioRow, scenario, onScenar
     capacityPerLaneVph: q.capacityPerLaneVph,
     vOverC: q.vOverC,
     queue: {
-      averageVehicles: round1(q.avgQueueVeh),
-      averageFt: Math.round(q.avgQueueFt),
-      averageSource: "engine Q1",
-      p95Vehicles: round1(q.q95Veh),
-      p95Ft: Math.round(q.q95Ft),
+      averageVehicles: round1(q.endOfRedMeanPerLaneVeh),
+      averageFt: Math.round(q.endOfRedMeanPerLaneVeh * QUEUE_FT_PER_VEH),
+      averageSource: "λ(C−g)",
+      p95Vehicles: round1(q.q95PerLaneVeh),
+      p95Ft: Math.round(q.q95PerLaneFt),
+      ...(q.lanes > 1 ? { p95Label: `95th ÷ ${q.lanes} ln` } : {}),
     },
-    storage: { availableFt: q.storageFt, verdict: q.verdict },
-    title: `${q.direction} approach · one lane`,
+    // Storage on record is compared by the model against the queue it names
+    // (the L group's own, or the row's worst approach) — the lane's marks are
+    // per-lane through figures, so the bay is drawn only when that queue is
+    // the approach's own single lane.
+    storage: q.storageFt !== null && q.lanes === 1 && q.storageQueueBasis === "row worst approach" && q.storageQueueFt === q.q95Ft
+      ? { availableFt: q.storageFt, verdict: q.verdict }
+      : { availableFt: null, verdict: "not_measured" },
+    title: `${q.direction} approach · one lane${q.lanes > 1 ? ` of ${q.lanes}` : ""}`,
     captionPrefix: `${q.direction} build`,
+    ...(q.weatherFactor !== 1 ? { satFlowNote: `${SATURATION_FLOW_VPH} × weather ${q.weatherFactor.toFixed(2)}` } : {}),
     testId: `anim-queue-${q.direction}`,
   });
+  const laneNote = (q: QueueApproachModel): string => {
+    const q1 = `engine Q1 ${round1(q.avgQueuePerLaneVeh)} veh${q.lanes > 1 ? " per lane" : ""} (Webster back-of-queue, Q95 ÷ ${Q95_FACTOR})`;
+    const x = Math.min(0.99, q.vOverC);
+    const factor = 1 / Math.max(0.05, 1 - x * q.gOverC);
+    return `${q.direction}: end-of-red mean λ(C−g) = ${round1(q.endOfRedMeanPerLaneVeh)} veh${q.lanes > 1 ? " per lane" : ""}; ${q1} is larger by 1/(1 − x·g/C) = ${factor.toFixed(2)}.`;
+  };
 
   const w = model.timing.webster;
   const t = model.timing.current;
@@ -294,10 +352,11 @@ export function IntersectionStudy({ report, row, scenarioRow, scenario, onScenar
                 <span className={s.losChanged ? "text-amber-600 font-medium" : "text-muted-foreground"}>{s.losChanged ? "yes — a grade drops with the project" : "no"}</span>
               </Stat>
             </div>
-            <p className="mt-3 text-xs text-muted-foreground max-w-prose">
+            <p className="mt-3 text-xs text-muted-foreground max-w-prose" data-testid="study-honesty">
               {model.scenario
-                ? "This page draws the scenario studio's re-solve of this signal — the engine's own row math on the edited inputs — with the base study's value beside every figure that moved."
-                : "Every figure on this page is the report's own row for this signal; the sections below take it apart — lanes, queues, timing, a simulation and a what-if — without estimating anything the report does not carry."}
+                ? "This page draws the scenario studio's re-solve of this signal (the engine's own row math on the edited inputs) with the base study's value beside every figure that moved"
+                : "Every figure on this page is the report's own row for this signal, taken apart below (lanes, queues, timing, a simulation and a what-if)"}
+              {" "}— except {ENGINE_RECOMPUTATIONS.length} figures the row does not print, each the engine's own function run in the browser on this row's inputs and labelled where it appears: {ENGINE_RECOMPUTATIONS.map((r, i) => `${i + 1}. ${r}`).join("; ")}. The §04 simulation is a measurement, not a report figure.
             </p>
           </section>
 
@@ -322,10 +381,10 @@ export function IntersectionStudy({ report, row, scenarioRow, scenario, onScenar
           {/* §02 */}
           <section id="study-queuing" data-section="queuing" aria-labelledby="study-queuing-title" className="scroll-mt-24" data-testid="study-section-queuing">
             <SectionHeader id="queuing" n="02" label="Queuing" />
-            <p className="text-xs text-muted-foreground max-w-prose mb-3">
-              Each approach's 95th-percentile back-of-queue (build) against the storage the report carries for it, on one scale; then the
+            <p className="text-xs text-muted-foreground max-w-prose mb-3" data-testid="study-queuing-caption">
+              Each approach's 95th-percentile back-of-queue (build) — the approach total across its lanes, as the engine computes it — beside the storage the report carries for it, on one scale; then the
               queue-forming lane those numbers imply — the Webster cyclic queue of the queuing study, parameterised with this approach's
-              volume, the engine's capacity for it (s × g/C × lanes{weatherFactor !== undefined && weatherFactor !== 1 ? ` × weather ${weatherFactor.toFixed(2)}` : ""}), its cycle and effective green.
+              volume, the engine's capacity for it (s {SATURATION_FLOW_VPH} × g/C × lanes{weatherFactor !== 1 ? ` × weather ${weatherFactor.toFixed(2)}${model.scenario && scenario.weather ? " (scenario weather)" : ""}` : ""}), its cycle and effective green.
             </p>
             {model.queuing.length === 0 ? (
               <div className="text-xs text-muted-foreground">No approach detail on this row.</div>
@@ -341,9 +400,9 @@ export function IntersectionStudy({ report, row, scenarioRow, scenario, onScenar
                         <th className="text-right py-1 px-2 font-medium">Capacity vph</th>
                         <th className="text-right py-1 px-2 font-medium">v/c</th>
                         <th className="text-right py-1 px-2 font-medium">g/C</th>
-                        <th className="text-right py-1 px-2 font-medium">Q95</th>
+                        <th className="text-right py-1 px-2 font-medium">Q95 (approach)</th>
                         <th className="text-right py-1 px-2 font-medium">Storage</th>
-                        <th className="text-left py-1 px-2 font-medium">Queue vs storage</th>
+                        <th className="text-left py-1 px-2 font-medium">Compared queue vs storage</th>
                         <th className="text-center py-1 pl-2 font-medium">Flag</th>
                       </tr>
                     </thead>
@@ -359,8 +418,15 @@ export function IntersectionStudy({ report, row, scenarioRow, scenario, onScenar
                             <td className={`py-1 px-2 text-right font-mono tabular-nums ${q.vOverC >= 0.95 ? "text-red-600 font-semibold" : q.vOverC >= 0.85 ? "text-amber-600" : ""}`}><Pair base={a?.base?.vc.build} value={q.vOverC} digits={2} /></td>
                             <td className="py-1 px-2 text-right font-mono tabular-nums">{q.gOverC.toFixed(3)}</td>
                             <td className="py-1 px-2 text-right font-mono tabular-nums whitespace-nowrap"><Pair base={a?.base?.queue95Ft} value={q.q95Ft} digits={0} unit=" ft" /> <span className="text-muted-foreground">({q.q95Veh.toFixed(1)} veh)</span></td>
-                            <td className="py-1 px-2 text-right font-mono tabular-nums">{q.storageFt !== null ? `${q.storageFt} ft` : <span className="text-muted-foreground">none on record</span>}</td>
-                            <td className="py-1 px-2"><QueueBar queueFt={q.q95Ft} storageFt={q.storageFt ?? undefined} scaleFt={queueScaleFt} deficient={q.storageDeficient ?? undefined} width={140} /></td>
+                            <td className="py-1 px-2 text-right font-mono tabular-nums">{q.storageFt !== null ? <>{q.storageFt} ft <span className="text-muted-foreground">{q.storageBasis === "lane-group" ? "L bay" : "row bay"}</span></> : <span className="text-muted-foreground">none on record</span>}</td>
+                            <td className="py-1 px-2">
+                              <QueueBar queueFt={q.storageQueueFt ?? q.q95Ft} storageFt={q.storageFt ?? undefined} scaleFt={queueScaleFt} deficient={q.storageDeficient ?? undefined} width={140} />
+                              {q.storageFt !== null && q.storageQueueFt !== null && (
+                                <div className="text-[10px] text-muted-foreground font-mono tabular-nums whitespace-nowrap" data-testid={`study-queue-compared-${q.direction}`}>
+                                  {q.storageQueueFt.toFixed(0)} ft {q.storageQueueBasis === "left-turn group" ? "left-turn group Q95" : "row worst-approach Q95"}
+                                </div>
+                              )}
+                            </td>
                             <td className={`py-1 pl-2 text-center font-mono ${q.verdict === "fail" ? "text-red-600 font-semibold" : q.verdict === "pass" ? "text-emerald-600" : "text-muted-foreground"}`}>
                               {q.verdict === "fail" ? "queue exceeds storage" : q.verdict === "pass" ? "fits" : "—"}
                             </td>
@@ -370,18 +436,24 @@ export function IntersectionStudy({ report, row, scenarioRow, scenario, onScenar
                     </tbody>
                   </table>
                 </div>
-                <div className="text-[11px] text-muted-foreground mt-1 mb-4">
-                  Bars share one scale ({queueScaleFt.toFixed(0)} ft); the outline is the storage on record and the red run the queue past it. "None on record" means the report
+                <div className="text-[11px] text-muted-foreground mt-1 mb-4" data-testid="study-queue-note">
+                  Bars share one scale ({queueScaleFt.toFixed(0)} ft); the outline is the storage on record and the red run the compared queue past it. The flag is the engine's or the
+                  deliverable's own comparison, on the queue it names: an imported left-turn group's storage against that group's Q95 (row-math.ts), a row-level governing bay against the
+                  row's worst-approach Q95 (the PDF's storage-bay adequacy table) — never this approach's total Q95 against a bay meant for one movement. "None on record" means the report
                   carries no bay length for this approach — nothing is compared, nothing is flagged. {QUEUE_FT_PER_VEH} ft per queued vehicle, the engine's own constant.
-                  {model.queuing.some((q) => q.timingAssumed) ? " Capacity here uses the screening default (90 s, g/C 0.45) because the row carries no timing plan." : ""}
+                  {model.queuing.some((q) => q.timingAssumed) ? ` Capacity here uses the screening g/C 0.45 on a ${model.queuing.find((q) => q.timingAssumed)?.cycleSec ?? 90} s cycle${(model.queuing.find((q) => q.timingAssumed)?.cycleSec ?? 90) !== 90 ? " (the imported cycle the engine computed this row on)" : ""} because the row carries no timing plan.` : ""}
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   {model.queuing.map((q) => (
                     <QueueLaneAnimation key={`${model.signalId}-${q.direction}`} {...laneInputs(q)} />
                   ))}
                 </div>
-                <div className="text-[11px] text-muted-foreground mt-2">
-                  The "engine Q1" beside each end-of-red mean is the engine's average back-of-queue, Q95 ÷ 1.65 — its own Poisson factor (signal-delay.ts queue95Ft) — not a separate measurement.
+                <div className="text-[11px] text-muted-foreground mt-2 space-y-1" data-testid="study-lane-note">
+                  <div>
+                    Each lane runs at λ ÷ lanes and is marked with the per-lane share of the engine's approach-total figures ({model.queuing.some((q) => q.lanes > 1) ? "Q95 ÷ lanes where an approach has more than one" : "one lane, so the whole Q95"}), the division the queuing study makes. The "avg" mark is the lane's expected end-of-red queue λ(C − g) — what the end-of-red mean measures — not the engine's Q1:
+                    the engine's average back-of-queue Q1 = Q95 ÷ {Q95_FACTOR} (Webster's back-of-queue, signal-delay.ts queue95Ft) counts vehicles still joining while the front discharges and is larger by 1/(1 − x·g/C).
+                  </div>
+                  <div className="font-mono">{model.queuing.map(laneNote).join(" ")}</div>
                 </div>
               </>
             )}
@@ -417,9 +489,9 @@ export function IntersectionStudy({ report, row, scenarioRow, scenario, onScenar
                 )}
               </div>
               <div className="space-y-2 rounded-lg border p-4" data-testid="study-webster">
-                <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Webster optimum, for comparison</div>
+                <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{w.basis === "measured-cycle" ? "Engine fallback plan (Webster splits on the measured cycle), for comparison" : "Webster optimum, for comparison"}</div>
                 <div className="text-xs text-muted-foreground">
-                  The engine's own computeSignalTiming on this row's printed no-build volumes and lane counts:
+                  The engine's own computeSignalTiming on this row's printed no-build volumes and lane counts{drawn.approaches.some((a) => Array.isArray(a.laneGroups) && a.laneGroups.length > 0) ? ", the measured left share from its lane groups" : ""}{typeof drawn.utdfCycleLenSec === "number" ? ` and its imported ${drawn.utdfCycleLenSec} s cycle` : ""} — exactly what row-math.ts hands the fallback:
                 </div>
                 <div className="font-mono text-xs tabular-nums space-y-0.5">
                   <div>Cycle <span className="font-semibold">{w.cycleLenS} s</span> · {w.criticalPhases} critical phases · Y {w.criticalFlowRatio.toFixed(2)}</div>
@@ -432,7 +504,7 @@ export function IntersectionStudy({ report, row, scenarioRow, scenario, onScenar
                   {model.timing.websterInUse
                     ? <span className="text-emerald-700 dark:text-emerald-300">This is the plan in use on this row.</span>
                     : t
-                      ? <span className="text-muted-foreground">The plan in use is {t.source === "override" ? "your scenario plan" : BASIS_LABEL[t.basis] ?? t.basis} ({t.cycleLenSec} s); Webster's optimum is shown for comparison only and is used in no number.</span>
+                      ? <span className="text-muted-foreground">The plan in use is {t.source === "override" ? "your scenario plan" : BASIS_LABEL[t.basis] ?? t.basis} ({t.cycleLenSec} s); the plan above is shown for comparison only and is used in no number.</span>
                       : <span className="text-muted-foreground">No plan was resolved on this row; the screening default sized its capacity.</span>}
                 </div>
               </div>
