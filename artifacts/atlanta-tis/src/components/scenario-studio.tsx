@@ -95,7 +95,10 @@ export function ScenarioStudio({ report, solution, scenario, onChange, onRerun, 
   const baseRow = selectedId ? baseRows.get(selectedId) ?? null : null;
   const scenRow = selectedId ? scenRows.get(selectedId) ?? null : null;
 
-  // A map click lands on the Signal tab.
+  // A selection (a map click, an opened study) lands on the Signal tab; the
+  // dropdown below changes the selection WITHOUT opening a study, and the
+  // selection outlives the study's Close, so this tab is on the signal the
+  // engineer last looked at.
   useEffect(() => { if (selectedId) setTab("signal"); }, [selectedId]);
 
   const set = (patch: Partial<ScenarioState>) => onChange({ ...scenario, ...patch });
@@ -200,7 +203,7 @@ export function ScenarioStudio({ report, solution, scenario, onChange, onRerun, 
           <div className="space-y-1">
             <label htmlFor="scenario-signal" className="text-xs font-medium">Signal</label>
             <select id="scenario-signal" value={selectedId ?? ""} onChange={(e) => set({ selectedSignalId: e.target.value || null })} className="w-full rounded-md border bg-background px-2 py-1 text-xs" data-testid="select-scenario-signal">
-              <option value="">Click a signal on the map, or pick one</option>
+              <option value="">Click a signal on the map (opens its study), or pick one here</option>
               {report.affectedIntersections.map((r) => (
                 <option key={r.signalId} value={r.signalId}>{r.name}{scenario.timing[r.signalId] ? " (edited)" : scenario.timing[r.signalId] === null ? " (reset)" : ""}</option>
               ))}

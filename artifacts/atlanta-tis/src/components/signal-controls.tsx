@@ -57,7 +57,10 @@ export type SignalControlsProps = {
   /** "Webster optimum": drop the edit (and clear a base override when the caller says so). */
   onReset: () => void;
   canReset: boolean;
-  /** Prefix for element ids / test ids; default "scenario" (the studio's). */
+  /** Prefix for element ids and EVERY test id (`<prefix>-signal-controls`,
+   *  `<prefix>-note-ped-minimum`, `<prefix>-signal-timing-provenance`, …);
+   *  default "scenario" (the studio's). The study passes "study", so the two
+   *  mounts never share an id. */
   idPrefix?: string;
 };
 
@@ -91,7 +94,7 @@ export function SignalControls({ edit, baseCycleLenSec, timing, onChange, onRese
         );
       })}
       {(pedNs !== undefined || pedEw !== undefined) && (
-        <div className={`text-[11px] ${pedShort ? "text-amber-600" : "text-muted-foreground"}`} data-testid="note-ped-minimum">
+        <div className={`text-[11px] ${pedShort ? "text-amber-600" : "text-muted-foreground"}`} data-testid={`${idPrefix}-note-ped-minimum`}>
           Pedestrian minimum green: NS {pedNs?.toFixed(1) ?? "—"} s, EW {pedEw?.toFixed(1) ?? "—"} s{pedShort ? " — a through split is below its walk time plus lost time." : "."}
         </div>
       )}
@@ -99,7 +102,7 @@ export function SignalControls({ edit, baseCycleLenSec, timing, onChange, onRese
         <button type="button" onClick={onReset} disabled={!canReset} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50" data-testid={`button-${idPrefix}-webster`}>
           <RotateCcw className="w-3 h-3" /> Webster optimum
         </button>
-        <div className="text-[11px] text-muted-foreground text-right" data-testid="signal-timing-provenance">
+        <div className="text-[11px] text-muted-foreground text-right" data-testid={`${idPrefix}-signal-timing-provenance`}>
           {timing ? (
             timing.source === "override"
               ? `Your plan · ${timing.cycleLenSec} s · ${timing.criticalPhases} critical phases`

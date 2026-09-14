@@ -159,9 +159,10 @@ export function MovementsGrid({ row }: { row: Pick<TisAffectedIntersection, "mov
 
 export type IntersectionTableProps = {
   report: TisReport;
-  /** Fired on a row click, in addition to the expand toggle. */
+  /** Fired on a row click — opens that intersection's study. When present the
+   *  row does NOT toggle its inline detail; the chevron does. */
   onSelect?: (signalId: string) => void;
-  /** Row to highlight (the open intersection study). */
+  /** Row to highlight (the page's selected signal). */
   selectedSignalId?: string | null;
 };
 
@@ -188,9 +189,10 @@ export function IntersectionTable({ report, onSelect, selectedSignalId }: Inters
           Affected intersections — capacity table<CitationRef tags={["HCM_19", "HCM_19_8"]} />
         </CardTitle>
         <CardDescription>
-          Per-intersection LOS before vs after build-out (PM peak). Click any row to expand
-          NB/SB/EB/WB approach detail with v/c, delay, LOS and 95th-percentile back-of-queue{onSelect ? ", and to open that intersection as its own study" : ""}.
-          Rows are sorted by impact severity.
+          Per-intersection LOS before vs after build-out (PM peak). {onSelect
+            ? "Click any row to open that intersection as its own study; the chevron expands its NB/SB/EB/WB approach detail in place."
+            : "Click any row to expand NB/SB/EB/WB approach detail with v/c, delay, LOS and 95th-percentile back-of-queue."}
+          {" "}Rows are sorted by impact severity.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -228,12 +230,24 @@ export function IntersectionTable({ report, onSelect, selectedSignalId }: Inters
                   <Fragment key={r.signalId}>
                   <tr
                     className={`border-b last:border-0 align-middle cursor-pointer ${isSelected ? "bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100/70 dark:hover:bg-blue-950/50" : "hover:bg-muted/30"}`}
-                    onClick={() => { toggle(r.signalId); onSelect?.(r.signalId); }}
+                    // With a study to open, the row opens it and ONLY the chevron
+                    // toggles the inline detail — a row is never left expanded
+                    // under the study. Without one the row toggles, as before.
+                    onClick={() => { if (onSelect) onSelect(r.signalId); else toggle(r.signalId); }}
                     aria-selected={isSelected || undefined}
                     data-testid={`row-intersection-${r.signalId}`}
                   >
                     <td className="py-2 pr-1 text-muted-foreground">
-                      {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                      <button
+                        type="button"
+                        className="inline-flex items-center rounded p-0.5 hover:bg-muted"
+                        onClick={(e) => { e.stopPropagation(); toggle(r.signalId); }}
+                        aria-expanded={isOpen}
+                        aria-label={`${isOpen ? "Collapse" : "Expand"} approach detail for ${r.name}`}
+                        data-testid={`toggle-intersection-${r.signalId}`}
+                      >
+                        {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                      </button>
                     </td>
                     <td className="py-2 pr-2">
                       <div className="font-medium truncate max-w-[200px] flex items-center gap-1.5">

@@ -22,7 +22,8 @@
  * study's busiest signal so a uniform trip change is visible, a dashed ring
  * marks every signal whose LOS moved against the base, and the sim is kept
  * (rates updated in place) so the cars never restart on an edit. Clicking a
- * signal selects it (`onSelectSignal`); the selection wears a solid ring.
+ * signal reports it (`onSelectSignal`; the page opens that signal's study and
+ * selects it); the selection wears a solid ring.
  *
  * Octant highlight: with `highlightOctant` set (the distribution rose's
  * hovered sector), every row and flow whose site→row bearing falls outside
@@ -450,7 +451,7 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
             <div>
               <div className="text-sm font-semibold">{isScenario ? "Project trips on the network — scenario" : "Project trips on the network"}</div>
               <div className="text-xs text-muted-foreground mt-0.5">
-                Each studied signal shows its LOS; trips leave the site along their shortest routes at a rate proportional to the PM-peak trips it receives. Hover a signal for the numbers{onSelectSignal ? ", click one to edit its timing" : ""}.
+                Each studied signal shows its LOS; trips leave the site along their shortest routes at a rate proportional to the PM-peak trips it receives. Hover a signal for the numbers{onSelectSignal ? ", click one to open it as its own study" : ""}.
               </div>
             </div>
             <div className="grid grid-cols-3 gap-2 border-t pt-3">

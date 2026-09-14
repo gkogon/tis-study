@@ -6,7 +6,6 @@ import {
   useWhatIfTis,
   type TisRequest,
   type TisReport,
-  type TisAffectedIntersection,
   type TisApproachImpact,
   type TisPeriodReport,
   type TisAnalysisPeriod,
@@ -1736,40 +1735,45 @@ export default function TisPage() {
   // flows outside it. Hover-only state — never part of the scenario.
   const [hoverOctant, setHoverOctant] = useState<Octant | null>(null);
 
-  // ---- intersection study ----
-  // Selecting a signal (map click, capacity-table row, the studio's Signal
-  // tab) opens that signal's full-screen study. The selection lives in the
-  // URL — `?signal=<signalId>` — and `scenario.selectedSignalId` follows it:
-  // opening pushes a history entry, Close / Escape / the back button pop it,
-  // and a page load with `?signal=` opens the study as soon as a report with
-  // that row is present. The study draws the BASE row and, when the studio
-  // has client edits, the scenario's re-solve of it.
-  const selectedId = scenario.selectedSignalId;
+  // ---- selection and the intersection study: two states, one coherent model ----
+  // `scenario.selectedSignalId` is the STUDIO's selection: the map's ring and
+  // the Signal tab's dropdown, exactly as before the study existed. The
+  // studio's dropdown selects WITHOUT opening anything.
+  // `openStudyId` is the signal whose full-screen study is open. Only explicit
+  // "open" actions set it — a map click on a signal, a capacity-table row, a
+  // `?signal=` deep link — and opening also selects, so the ring and the
+  // Signal tab follow. Close / Escape / Back clear the open study and LEAVE
+  // the selection where it was, so the studio's Signal tab is still on that
+  // signal afterwards. The URL (`?signal=`, use-signal-study-url.ts, shared
+  // with /demo) is bound to the open study only. The study draws the BASE
+  // row and, when the studio has client edits, the scenario's re-solve of it.
+  const [openStudyId, setOpenStudyId] = useState<string | null>(null);
   const studyRow = useMemo(
-    () => (report && selectedId ? report.affectedIntersections.find((r) => r.signalId === selectedId) ?? null : null),
-    [report, selectedId],
+    () => (report && openStudyId ? report.affectedIntersections.find((r) => r.signalId === openStudyId) ?? null : null),
+    [report, openStudyId],
   );
   const studyScenarioRow = useMemo(
-    () => (scenarioReport && selectedId ? scenarioReport.affectedIntersections.find((r) => r.signalId === selectedId) ?? null : null),
-    [scenarioReport, selectedId],
+    () => (scenarioReport && openStudyId ? scenarioReport.affectedIntersections.find((r) => r.signalId === openStudyId) ?? null : null),
+    [scenarioReport, openStudyId],
   );
-  // URL ↔ state (use-signal-study-url.ts, shared with /demo): the URL is the
-  // source of truth for the open study once a report is on screen.
+  function selectSignal(id: string | null) {
+    setScenario((s) => (s.selectedSignalId === id ? s : { ...s, selectedSignalId: id }));
+  }
+  // URL → state: the URL is the source of truth for the open study once a
+  // report is on screen; an open study is also the selected signal.
   const { syncUrl: syncStudyUrl } = useSignalStudyUrl({
     basePath: "/tis",
     report,
-    setSelectedSignalId: (id) => setScenario((s) => (s.selectedSignalId === id ? s : { ...s, selectedSignalId: id })),
+    setOpenSignalId: (id) => { setOpenStudyId(id); if (id) selectSignal(id); },
   });
-  function selectSignal(id: string | null) {
-    setScenario((s) => (s.selectedSignalId === id ? s : { ...s, selectedSignalId: id }));
+  function openStudy(id: string | null) {
+    setOpenStudyId(id);
+    if (id) selectSignal(id);
     syncStudyUrl(id);
   }
-  // The studio changes the selection through its Signal-tab dropdown; the
-  // URL follows that too.
-  function onStudioChange(next: ScenarioState) {
-    setScenario(next);
-    if (next.selectedSignalId !== scenario.selectedSignalId) syncStudyUrl(next.selectedSignalId);
-  }
+  // A map click on a signal opens its study (and selects it); a click on
+  // empty map clears the selection only.
+  const onMapSelect = (id: string | null) => { if (id) openStudy(id); else selectSignal(null); };
 
   // Engine what-if: the whole scenario (timing overrides, site, driveways)
   // through POST /tis-api/whatif, which charges no study slot and saves
@@ -2014,7 +2018,7 @@ export default function TisPage() {
                 projectName={activeRun.projectName}
                 scenarioReport={generate.isPending ? null : scenarioReport}
                 selectedSignalId={scenario.selectedSignalId}
-                onSelectSignal={selectSignal}
+                onSelectSignal={onMapSelect}
                 highlightOctant={hoverOctant}
               />
               {!generate.isPending && report && solution && (
@@ -2022,7 +2026,7 @@ export default function TisPage() {
                   report={report}
                   solution={solution}
                   scenario={scenario}
-                  onChange={onStudioChange}
+                  onChange={setScenario}
                   onRerun={runWhatIf}
                   rerunPending={whatIfRun.isPending}
                   rerunError={whatIf.error}
@@ -2041,7 +2045,7 @@ export default function TisPage() {
           scenarioRow={studyScenarioRow}
           scenario={scenario}
           onScenarioChange={setScenario}
-          onClose={() => selectSignal(null)}
+          onClose={() => openStudy(null)}
         />
       )}
 
@@ -2092,7 +2096,7 @@ export default function TisPage() {
           <IntersectionTable
             report={shown ?? report}
             selectedSignalId={scenario.selectedSignalId}
-            onSelect={selectSignal}
+            onSelect={openStudy}
           />
           <MitigationsCard report={shown ?? report} />
           <MethodologyCard report={report} />

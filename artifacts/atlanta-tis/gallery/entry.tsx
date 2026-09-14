@@ -164,7 +164,7 @@ const STUDY_ROWS = 6;
 function StudySection() {
   const [scenario, setScenario] = useState<ScenarioState>(EMPTY_SCENARIO);
   const clientDirty = isClientScenarioDirty(scenario);
-  const solveKey = JSON.stringify(scenario.timing);
+  const solveKey = JSON.stringify([scenario.size, scenario.passByPct, scenario.internalCapturePct, scenario.growthRatePct, scenario.weather, scenario.timing]);
   const scenarioReport = useMemo(
     () => (clientDirty ? solveScenario(TIS_REPORT, scenario) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
