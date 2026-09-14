@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import {
   useListTisLandUses,
@@ -37,9 +37,10 @@ import { TripDistributionCard } from "@/components/trip-distribution-card";
 import type { Octant } from "@/lib/distribution-rose";
 import { TisLimitations } from "@/components/tis-limitations";
 import { ScenarioStudio } from "@/components/scenario-studio";
+import { IntersectionExplorer } from "@/components/intersection-explorer";
 import { Switch } from "@/components/ui/switch";
 import {
-  LOS_COLORS, SEVERITY_CONFIG, LosBadge, ApproachDetailTable, DELAY_CONFIDENCE_FRAC, delayBand,
+  LOS_COLORS, SEVERITY_CONFIG, LosBadge, ApproachDetailTable, IntersectionTable, DELAY_CONFIDENCE_FRAC, delayBand,
 } from "@/components/tis-report-bits";
 import {
   solveScenarioDetailed, reportDiff, isClientScenarioDirty, isScenarioDirty, EMPTY_SCENARIO,
@@ -169,9 +170,10 @@ const PROJECT_TEMPLATES: ProjectTemplate[] = [
   },
 ];
 
-// LOS_COLORS, SEVERITY_CONFIG, LosBadge, ApproachDetailTable and the delay
-// confidence band live in components/tis-report-bits.tsx so the scenario
-// studio renders the same rows this page prints.
+// LOS_COLORS, SEVERITY_CONFIG, LosBadge, ApproachDetailTable, the
+// IntersectionTable and the delay confidence band live in
+// components/tis-report-bits.tsx so the scenario studio and the intersection
+// explorer render the same rows this page prints.
 
 /** The message for a failed POST /tis-api/whatif. The generated client rejects
  *  with an ApiError carrying the HTTP status and the parsed error body, so the
@@ -1326,125 +1328,6 @@ function MapCard({ report }: { report: TisReport }) {
   );
 }
 
-function IntersectionTable({ report }: { report: TisReport }) {
-  // Sort by impact severity — losChanged first, then by delay delta.
-  const sorted = [...report.affectedIntersections].sort((a, b) => {
-    if (a.losChanged !== b.losChanged) return a.losChanged ? -1 : 1;
-    return (b.futureDelaySec - b.existingDelaySec) - (a.futureDelaySec - a.existingDelaySec);
-  });
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  function toggle(id: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
-
-  return (
-    <Card className="break-inside-avoid">
-      <CardHeader>
-        <CardTitle className="text-base">
-          Affected intersections — capacity table<CitationRef tags={["HCM_19", "HCM_19_8"]} />
-        </CardTitle>
-        <CardDescription>
-          Per-intersection LOS before vs after build-out (PM peak). Click any row to expand
-          NB/SB/EB/WB approach detail with v/c, delay, LOS and 95th-percentile back-of-queue.
-          Rows are sorted by impact severity.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="w-6"></th>
-                <th className="text-left py-2 pr-2 font-medium">Intersection</th>
-                <th className="text-left py-2 px-2 font-medium">Zone</th>
-                <th className="text-right py-2 px-2 font-medium">Dist (mi)</th>
-                <th className="text-right py-2 px-2 font-medium">+Trips PM</th>
-                <th className="text-center py-2 px-2 font-medium">LOS no-build</th>
-                <th className="text-center py-2 px-2 font-medium">LOS build</th>
-                <th className="text-right py-2 px-2 font-medium">Delay Δ</th>
-                <th className="text-right py-2 px-2 font-medium">Q95 (ft)</th>
-                <th className="text-center py-2 pl-2 font-medium">Mitigation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.length === 0 && (
-                <tr>
-                  <td colSpan={10} className="text-center py-6 text-muted-foreground text-sm">
-                    No signalized intersections within the study radius.
-                  </td>
-                </tr>
-              )}
-              {sorted.map((r: TisAffectedIntersection) => {
-                const sev = SEVERITY_CONFIG[r.mitigationSeverity] ?? SEVERITY_CONFIG.none!;
-                const SevIcon = sev.icon;
-                const delta = r.futureDelaySec - r.existingDelaySec;
-                const isOpen = expanded.has(r.signalId);
-                return (
-                  <Fragment key={r.signalId}>
-                  <tr className="border-b last:border-0 hover:bg-muted/30 align-middle cursor-pointer" onClick={() => toggle(r.signalId)} data-testid={`row-intersection-${r.signalId}`}>
-                    <td className="py-2 pr-1 text-muted-foreground">
-                      {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                    </td>
-                    <td className="py-2 pr-2">
-                      <div className="font-medium truncate max-w-[200px] flex items-center gap-1.5">
-                        {r.name}
-                        {r.calibration && r.calibration.sampleCount > 0 && (
-                          <span
-                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900"
-                            title={`Screening delay calibrated against ${r.calibration.sampleCount} observed sample${r.calibration.sampleCount === 1 ? "" : "s"} (multiplier ×${r.calibration.delayMultiplier.toFixed(2)})`}
-                            data-testid={`badge-calibrated-${r.signalId}`}
-                          >
-                            Calibrated
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground font-mono">{r.signalId}</div>
-                    </td>
-                    <td className="py-2 px-2 text-muted-foreground text-xs">{r.zone}</td>
-                    <td className="py-2 px-2 text-right tabular-nums">{r.distanceMi.toFixed(2)}</td>
-                    <td className="py-2 px-2 text-right tabular-nums">{r.addedTripsPmPeak}</td>
-                    <td className="py-2 px-2 text-center"><LosBadge los={r.existingLos} /></td>
-                    <td className="py-2 px-2 text-center"><LosBadge los={r.futureLos} /></td>
-                    <td className={`py-2 px-2 text-right tabular-nums ${delta >= 15 ? "text-red-600 font-semibold" : delta >= 5 ? "text-amber-600 font-semibold" : ""}`}>
-                      {delta >= 0 ? "+" : ""}{delta.toFixed(1)}s
-                      {Math.abs(delta) >= 1 && (
-                        <div className="text-[9px] text-muted-foreground font-normal">
-                          ±{(Math.abs(delta) * DELAY_CONFIDENCE_FRAC).toFixed(1)}s
-                        </div>
-                      )}
-                    </td>
-                    <td className={`py-2 px-2 text-right tabular-nums ${r.queue95thFt >= 400 ? "text-red-600 font-semibold" : r.queue95thFt >= 250 ? "text-amber-600" : ""}`}>
-                      {r.queue95thFt.toFixed(0)}
-                    </td>
-                    <td className="py-2 pl-2 text-center">
-                      <span className={`inline-flex items-center gap-1 text-xs font-medium ${sev.color}`} title={r.mitigation}>
-                        <SevIcon className="w-3.5 h-3.5" />
-                        {sev.label}
-                      </span>
-                    </td>
-                  </tr>
-                  {isOpen && (
-                    <tr className="border-b last:border-0 bg-muted/20">
-                      <td colSpan={10} className="py-3 px-3">
-                        <ApproachDetailTable approaches={r.approaches} />
-                      </td>
-                    </tr>
-                  )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 function PeriodTabsCard({ report }: { report: TisReport }) {
   const periods = report.periodReports;
   const periodKeys = periods.map((p) => p.period).join("|");
@@ -1852,6 +1735,28 @@ export default function TisPage() {
   // flows outside it. Hover-only state — never part of the scenario.
   const [hoverOctant, setHoverOctant] = useState<Octant | null>(null);
 
+  // ---- intersection explorer ----
+  // Bound to the same selection the map and the studio share: the BASE row
+  // and, when the studio has client edits, the scenario's re-solve of it.
+  const selectedId = scenario.selectedSignalId;
+  const explorerRow = useMemo(
+    () => (report && selectedId ? report.affectedIntersections.find((r) => r.signalId === selectedId) ?? null : null),
+    [report, selectedId],
+  );
+  const explorerScenarioRow = useMemo(
+    () => (scenarioReport && selectedId ? scenarioReport.affectedIntersections.find((r) => r.signalId === selectedId) ?? null : null),
+    [scenarioReport, selectedId],
+  );
+  // A click in the capacity table (far below the map) selects AND brings the
+  // explorer into view; a map click already has it on screen.
+  const explorerRef = useRef<HTMLDivElement>(null);
+  const [scrollToExplorer, setScrollToExplorer] = useState(false);
+  useEffect(() => {
+    if (!scrollToExplorer || !explorerRow) return;
+    setScrollToExplorer(false);
+    explorerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [scrollToExplorer, explorerRow]);
+
   // Engine what-if: the whole scenario (timing overrides, site, driveways)
   // through POST /tis-api/whatif, which charges no study slot and saves
   // nothing. The server's report becomes the new base; the diff line reports
@@ -2115,6 +2020,16 @@ export default function TisPage() {
         </Card>
       )}
 
+      {!generate.isPending && report && explorerRow && (
+        <div ref={explorerRef} className="print:hidden scroll-mt-4">
+          <IntersectionExplorer
+            row={explorerRow}
+            scenarioRow={explorerScenarioRow}
+            onClose={() => setScenario((s) => ({ ...s, selectedSignalId: null }))}
+          />
+        </div>
+      )}
+
       {generate.error && (
         <Card className="border-red-300 bg-red-50 dark:bg-red-950/20 print:hidden">
           <CardContent className="p-4 text-sm text-red-700 dark:text-red-300 flex items-start gap-2">
@@ -2159,7 +2074,11 @@ export default function TisPage() {
           {report.sensitivity && <SensitivityCard report={report} />}
           <FindingsCard report={report} />
           <MapCard report={shown ?? report} />
-          <IntersectionTable report={shown ?? report} />
+          <IntersectionTable
+            report={shown ?? report}
+            selectedSignalId={scenario.selectedSignalId}
+            onSelect={(id) => { setScenario((s) => ({ ...s, selectedSignalId: id })); setScrollToExplorer(true); }}
+          />
           <MitigationsCard report={shown ?? report} />
           <MethodologyCard report={report} />
           <TisMethodologyAppendix report={report} />
