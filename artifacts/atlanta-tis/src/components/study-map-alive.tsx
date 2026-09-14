@@ -32,14 +32,23 @@
  * so the sector on the map is the sector the engine filed the zone under.
  * Absent or null, nothing changes.
  *
+ * Through-junction highlight: with `throughSignalId` set (the junction whose
+ * study is open, or the selected signal after Close), every project flow
+ * whose site→row route passes within THROUGH_ROUTE_M (60 m) of that junction
+ * draws at full alpha and every other flow at 25 % — the map's own
+ * client-side routes (study-map-sim.ts routesThrough), the same test the
+ * study's §01a route-continuation list uses. `onRoutes` hands those routes
+ * (signalId → Route) to the page once they are built, so the study computes
+ * its list from the graph the map already built rather than routing again.
+ *
  * Canvas is aria-hidden; everything the reader needs is in the DOM beside it.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { TisReport, TisAffectedIntersection } from "@workspace/tis-api-client-react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import {
-  buildRoadGraph, shortestPaths, routeFromNodes, straightRoute, pointAlong, projector, distMi,
-  FlowSim, LOS_MAP_COLORS, type RoadGraph, type RoadSegment, type Route, type Flow, type LatLon,
+  buildRoadGraph, routeToPoint, routesForRows, routesThrough, pointAlong, projector, distMi,
+  FlowSim, LOS_MAP_COLORS, THROUGH_ROUTE_M, type RoadGraph, type RoadSegment, type Route, type Flow, type LatLon,
 } from "../lib/study-map-sim";
 import { bearingDeg, bearingToOctant, isOctant, type Octant } from "../lib/distribution-rose";
 
@@ -64,6 +73,13 @@ export type StudyMapAliveProps = {
   /** Octant (NNE…NNW) to keep at full strength; rows and flows outside its
    *  45° sector from the site draw at 25 % alpha. Null / absent ⇒ no dim. */
   highlightOctant?: string | null;
+  /** Studied signal whose junction the flows are filtered by: flows on routes
+   *  passing within 60 m of it draw at full alpha, the rest at 25 %. Null /
+   *  absent ⇒ no dim. */
+  throughSignalId?: string | null;
+  /** Fired once per routing with the site→row routes the project flows ride,
+   *  keyed by signal id (report phase only). */
+  onRoutes?: (routes: Map<string, Route>) => void;
 };
 
 const SIM_SPEED = 20;            // simulated seconds per real second
@@ -93,7 +109,7 @@ function settle(sim: FlowSim): void {
   for (let i = 0; i < 400; i++) sim.step(0.5);
 }
 
-export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scenarioReport, selectedSignalId, onSelectSignal, highlightOctant }: StudyMapAliveProps) {
+export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scenarioReport, selectedSignalId, onSelectSignal, highlightOctant, throughSignalId, onRoutes }: StudyMapAliveProps) {
   const reduced = useReducedMotion();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -103,6 +119,11 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
   // card follows a slider edit while the pointer rests on a signal.
   const [hover, setHover] = useState<{ x: number; y: number; sig: Signal } | null>(null);
   const [, tick] = useState(0);
+  // The through-junction filter's result, for the stats column (the loop
+  // computes it; this mirrors the count once per change).
+  const [throughStat, setThroughStat] = useState<{ signalId: string; count: number } | null>(null);
+  const onRoutesRef = useRef(onRoutes);
+  onRoutesRef.current = onRoutes;
 
   // Everything the animation loop needs lives in one ref so the loop never closes over stale props.
   const world = useRef<{
@@ -110,13 +131,16 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
     loadedAt: number | null; sigLoadedAt: number | null; sim: FlowSim | null; simKey: string;
     reportRows: Map<string, TisAffectedIntersection>; baseRows: Map<string, TisAffectedIntersection>;
     rowOctant: Map<string, Octant>;
+    routes: Map<string, Route> | null; routesKey: string;
+    through: string | null; throughSet: Set<string> | null; throughKey: string;
     phase: "pending" | "report"; scenario: Scenario; selected: string | null; highlight: Octant | null;
     static: HTMLCanvasElement | null; staticKey: string; hoverSig: Signal | null;
-  }>({ graph: null, segments: [], signals: [], siteNode: -1, loadedAt: null, sigLoadedAt: null, sim: null, simKey: "", reportRows: new Map(), baseRows: new Map(), rowOctant: new Map(), phase, scenario, selected: null, highlight: null, static: null, staticKey: "", hoverSig: null });
+  }>({ graph: null, segments: [], signals: [], siteNode: -1, loadedAt: null, sigLoadedAt: null, sim: null, simKey: "", reportRows: new Map(), baseRows: new Map(), rowOctant: new Map(), routes: null, routesKey: "", through: null, throughSet: null, throughKey: "", phase, scenario, selected: null, highlight: null, static: null, staticKey: "", hoverSig: null });
   world.current.phase = phase;
   world.current.scenario = scenario;
   world.current.selected = selectedSignalId ?? null;
   world.current.highlight = isOctant(highlightOctant) ? highlightOctant : null;
+  world.current.through = throughSignalId ?? null;
 
   const siteKey = `${site.latitude.toFixed(4)},${site.longitude.toFixed(4)},${radiusMi}`;
 
@@ -125,6 +149,7 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
     const ctrl = new AbortController();
     const w = world.current;
     w.graph = null; w.segments = []; w.signals = []; w.siteNode = -1; w.loadedAt = null; w.sigLoadedAt = null; w.sim = null; w.simKey = ""; w.static = null; w.staticKey = "";
+    w.routes = null; w.routesKey = ""; w.throughSet = null; w.throughKey = "";
     setNet({ status: "loading", segments: 0, signals: 0, regionName: null });
     const rad = Math.min(8, radiusMi * 1.2 + 0.15);
     (async () => {
@@ -218,32 +243,48 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
       const key = `${w.phase}:${w.graph ? w.graph.links.length : 0}:${w.signals.length}:${w.reportRows.size}:${pxPerMi.toFixed(1)}`;
       if (w.sim && w.simKey === key) return;
       const flows: Flow[] = [];
-      const routeTo = (p: LatLon): Route | null => {
-        if (w.graph && w.siteNode >= 0) {
-          const n = w.graph.nearestNode(p.lat, p.lon);
-          const [path] = shortestPaths(w.graph, w.siteNode, [n]);
-          const r = path ? routeFromNodes(w.graph, path) : null;
-          if (r) return r;
-        }
-        return straightRoute(center, p);
-      };
+      const routeTo = (p: LatLon): Route => routeToPoint(w.graph, w.siteNode, center, p);
       if (w.phase === "report" && w.reportRows.size) {
         // Normalised to the BASE study's busiest signal so a scenario that
         // scales every row is visible on the map.
         const yard = w.baseRows.size ? w.baseRows : w.reportRows;
         let maxTrips = 1;
         for (const r of yard.values()) maxTrips = Math.max(maxTrips, r.addedTripsPmPeak);
-        for (const r of w.reportRows.values()) {
-          const route = routeTo({ lat: r.latitude, lon: r.longitude });
-          if (route) flows.push({ route, ratePerS: flowRate(r.addedTripsPmPeak, maxTrips), tint: "project", signalId: r.signalId });
+        // The routes are built once per graph + row set (a resize rebuilds
+        // the sim, not the routing) and handed to the page.
+        const rows = [...w.reportRows.values()];
+        const routesKey = `${w.graph ? w.graph.links.length : 0}:${rows.map((r) => r.signalId).join(",")}`;
+        if (!w.routes || w.routesKey !== routesKey) {
+          w.routes = routesForRows(w.graph, center, rows);
+          w.routesKey = routesKey;
+          w.throughSet = null; w.throughKey = "";
+          onRoutesRef.current?.(new Map(w.routes));
+        }
+        for (const r of rows) {
+          const route = w.routes.get(r.signalId) ?? routeTo({ lat: r.latitude, lon: r.longitude });
+          flows.push({ route, ratePerS: flowRate(r.addedTripsPmPeak, maxTrips), tint: "project", signalId: r.signalId });
         }
       } else if (w.phase === "pending" && w.signals.length) {
         const targets = [...w.signals].sort((a, b) => distMi(center.lat, center.lon, a.latitude, a.longitude) - distMi(center.lat, center.lon, b.latitude, b.longitude)).slice(0, MAX_PENDING_TARGETS);
         const per = Math.min(0.012, 0.12 / Math.max(1, targets.length));
-        for (const s of targets) { const route = routeTo({ lat: s.latitude, lon: s.longitude }); if (route) flows.push({ route, ratePerS: per, tint: "background" }); }
+        for (const s of targets) { const route = routeTo({ lat: s.latitude, lon: s.longitude }); flows.push({ route, ratePerS: per, tint: "background" }); }
       }
       w.sim = new FlowSim(flows); w.simKey = key;
       if (reduced && w.phase === "report") settle(w.sim); // settle to a still frame
+    }
+
+    /** The set of studied signals whose route passes the through-junction, recomputed when the junction or the routes change. */
+    function ensureThrough(): Set<string> | null {
+      const id = w.through;
+      if (!id || !w.routes || w.phase !== "report") { if (w.throughSet) { w.throughSet = null; w.throughKey = ""; setThroughStat(null); } return null; }
+      const key = `${id}:${w.routesKey}`;
+      if (w.throughSet && w.throughKey === key) return w.throughSet;
+      const row = w.reportRows.get(id);
+      const set = new Set<string>();
+      if (row) for (const h of routesThrough(w.routes, { lat: row.latitude, lon: row.longitude }, THROUGH_ROUTE_M)) set.add(h.signalId);
+      w.throughSet = set; w.throughKey = key;
+      setThroughStat(row ? { signalId: id, count: set.size } : null);
+      return set;
     }
 
     function drawStatic(pxPerMi: number, revealMi: number, complete: boolean): HTMLCanvasElement {
@@ -303,6 +344,7 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
         if (sim) {
           if (!reduced) { const s = dt * SIM_SPEED; sim.step(s * 0.5); sim.step(s * 0.5); }
           const hl = w.highlight;
+          const thr = ensureThrough();
           for (const car of sim.cars) {
             const f = sim.flows[car.flow]; if (!f) continue;
             const p = pointAlong(f.route, car.s), q = pointAlong(f.route, Math.min(f.route.lenMi, car.s + 0.004));
@@ -310,6 +352,7 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
             const ang = Math.atan2(y2 - y, x2 - x);
             ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
             if (hl && f.signalId && w.rowOctant.get(f.signalId) !== hl) ctx.globalAlpha = DIM_ALPHA;
+            else if (thr && f.signalId && !thr.has(f.signalId)) ctx.globalAlpha = DIM_ALPHA;
             if (f.tint === "project") { ctx.fillStyle = "rgba(59,130,246,0.35)"; ctx.fillRect(-7, -5, 14, 10); ctx.fillStyle = "#60A5FA"; }
             else ctx.fillStyle = "rgba(220,227,238,0.55)";
             ctx.fillRect(-4, -2, 8, 4);
@@ -354,6 +397,11 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
           if (w.selected === r.signalId) {
             ctx.strokeStyle = "#60A5FA"; ctx.lineWidth = 2;
             ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.stroke();
+          }
+          // The through-junction: the 60 m radius the route test uses, to scale.
+          if (w.through === r.signalId && w.throughSet) {
+            ctx.strokeStyle = "rgba(251,191,36,0.7)"; ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
+            ctx.beginPath(); ctx.arc(x, y, Math.max(18, (THROUGH_ROUTE_M / 1609.344) * pxPerMi), 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
           }
           ctx.fillStyle = "#0B1220"; ctx.font = '700 13px "JetBrains Mono", Menlo, monospace'; ctx.textAlign = "center"; ctx.textBaseline = "middle";
           ctx.fillText(los, x, y + 0.5);
@@ -425,6 +473,7 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
     ? { octant: highlightOctant, count: rows.filter((r) => bearingToOctant(bearingDeg(site.latitude, site.longitude, r.latitude, r.longitude)) === highlightOctant).length }
     : null;
   const hoverBase = hover && isScenario ? baseRowsArr.find((r) => r.signalId === hover.sig.id) ?? null : null;
+  const throughRow = phase === "report" && throughSignalId && throughStat?.signalId === throughSignalId ? rows.find((r) => r.signalId === throughSignalId) ?? null : null;
 
   return (
     <div ref={wrapRef} className="grid gap-4 md:grid-cols-[260px_minmax(0,1fr)]" data-testid="study-map-alive">
@@ -480,12 +529,18 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
               <span><i className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1 border border-white bg-amber-500" />LOS changed</span>
               {isScenario && <span><i className="inline-block w-2.5 h-2.5 rounded-full align-middle mr-1 border border-dashed border-blue-400" />Moved vs base</span>}
               {onSelectSignal && <span><i className="inline-block w-2.5 h-2.5 rounded-full align-middle mr-1 border-2 border-blue-400" />Selected</span>}
+              {throughRow && <span><i className="inline-block w-2.5 h-2.5 rounded-full align-middle mr-1 border border-dashed border-amber-400" />{THROUGH_ROUTE_M} m route test</span>}
               <span><i className="inline-block w-2 h-2 rounded-full align-middle mr-1 bg-slate-400/60" />Signal not studied</span>
             </div>
             {net.status === "none" && <div className="text-xs text-muted-foreground">No road file for this region — routes are drawn straight-line.</div>}
             {highlightSector && (
               <div className="text-xs text-muted-foreground border-t pt-2" data-testid="map-highlight-octant">
                 Highlighting the <span className="font-mono font-semibold text-foreground">{highlightSector.octant}</span> sector from the site — <span className="font-mono tabular-nums">{highlightSector.count}</span> of {rows.length} studied signals; the rest are dimmed.
+              </div>
+            )}
+            {throughRow && throughStat && (
+              <div className="text-xs text-muted-foreground border-t pt-2" data-testid="map-through-junction">
+                Routes through <span className="font-semibold text-foreground">{throughRow.name}</span> — <span className="font-mono tabular-nums">{throughStat.count}</span> of {rows.length} project flows pass within {THROUGH_ROUTE_M} m of it (its own included); the rest are dimmed. Client route geometry, not the engine's ledgers.
               </div>
             )}
           </>

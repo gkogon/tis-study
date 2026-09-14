@@ -12,6 +12,13 @@
  *   §01 Approaches & lanes the plan view, the approach table, project trips
  *                          by movement, the lane statement (imported lane
  *                          groups, or the honest default)
+ *   §01a Distribution      the project's trips THROUGH this junction
+ *                          (intersection-distribution.tsx): the twelve
+ *                          turning movements as an animated junction with
+ *                          their inbound / outbound split, AM / PM tabs,
+ *                          the row's share of the study and rank, where the
+ *                          trips head next (the ledgers' exit octants and
+ *                          the map's client routes that pass this junction)
  *   §02 Queuing            each approach's 95th-percentile queue against
  *                          storage on record, and the queue-forming lane
  *                          (queue-animation.tsx) parameterised with THAT
@@ -28,7 +35,7 @@
  * Every number is the report row's, or the studio's re-solve of it with the
  * engine's own row math (`intersection-study-model.ts` builds the sections
  * and `check:intersection-study` walks them for every studied row) — except
- * the four engine recomputations the model discloses (ENGINE_RECOMPUTATIONS)
+ * the five engine recomputations the model discloses (ENGINE_RECOMPUTATIONS)
  * and §00 names. With a scenario row that prints anything different from the
  * base the page draws the scenario and shows base → scenario pairs wherever
  * a value differs; the capacity weather factor is the scenario's when the
@@ -53,11 +60,13 @@ import { LosBadge, SEVERITY_CONFIG, ApproachDetailTable, MovementsGrid } from "@
 import { IntersectionPlan } from "@/components/intersection-plan";
 import { Pair, Stat, ScenarioDelta, TimingBlock, LanesSection, QueueBar, BASIS_LABEL, LEFT_SOURCE_LABEL } from "@/components/intersection-explorer";
 import { IntersectionSimView } from "@/components/intersection-sim-view";
+import { DistributionSection } from "@/components/intersection-distribution";
 import { QueueLaneAnimation, type QueueLaneInputs } from "@/components/queue-animation";
 import { SignalControls } from "@/components/signal-controls";
 import { studyModelFromRow, SECTIONS, ENGINE_RECOMPUTATIONS, Q95_FACTOR, type IntersectionStudyModel, type QueueApproachModel, type SectionId } from "@/lib/intersection-study-model";
 import { QUEUE_FT_PER_VEH } from "@/lib/intersection-geometry";
 import { type ScenarioState, type SignalTimingEdit, baseOverridesBySignal, scenarioWeatherFactor } from "@/lib/scenario-solve";
+import type { Route } from "@/lib/study-map-sim";
 import { SATURATION_FLOW_VPH } from "@workspace/tis-engine-core";
 
 export type IntersectionStudyProps = {
@@ -67,6 +76,12 @@ export type IntersectionStudyProps = {
   row: TisAffectedIntersection;
   /** The scenario re-solve of the same row when the studio has client edits. */
   scenarioRow?: TisAffectedIntersection | null;
+  /** The whole scenario re-solve (its period reports carry the AM row and the scenario's period trips for §01a). */
+  scenarioReport?: TisReport | null;
+  /** Site→row routes the study map built (StudyMapAlive `onRoutes`), for §01a's route continuation; absent ⇒ that list says the map has not routed. */
+  routesBySignalId?: ReadonlyMap<string, Route> | null;
+  /** Open another signal's study (a §01a link); absent ⇒ plain text. */
+  onOpenSignal?: (signalId: string) => void;
   scenario: ScenarioState;
   onScenarioChange: (next: ScenarioState) => void;
   onClose: () => void;
@@ -82,7 +97,7 @@ function SectionHeader({ id, n, label }: { id: SectionId; n: string; label: stri
   );
 }
 
-export function IntersectionStudy({ report, row, scenarioRow, scenario, onScenarioChange, onClose }: IntersectionStudyProps) {
+export function IntersectionStudy({ report, row, scenarioRow, scenarioReport, routesBySignalId, onOpenSignal, scenario, onScenarioChange, onClose }: IntersectionStudyProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const [active, setActive] = useState<SectionId>("summary");
@@ -376,6 +391,26 @@ export function IntersectionStudy({ report, row, scenarioRow, scenario, onScenar
             <div className="mt-6 border-t pt-4">
               <LanesSection plan={plan} />
             </div>
+          </section>
+
+          {/* §01a */}
+          <section id="study-distribution" data-section="distribution" aria-labelledby="study-distribution-title" className="scroll-mt-24" data-testid="study-section-distribution">
+            <SectionHeader id="distribution" n="01a" label="Distribution through this junction" />
+            <p className="text-xs text-muted-foreground max-w-prose mb-3" data-testid="study-distribution-caption">
+              The project's trips as they pass this junction: the row's own turning-movement table drawn as arrows (width ∝ trips), each movement's share travelling toward the site
+              (blue) or away from it (amber) from the row's turn ledgers or the engine's octant model re-run on the row's inputs, the row's share of the study's trips, and where the trips head next.
+              {model.scenario ? " The scenario re-solve is drawn; the toggle shows the base." : ""}
+            </p>
+            <DistributionSection
+              report={report}
+              row={row}
+              scenarioReport={model.scenario ? scenarioReport ?? null : null}
+              scenarioRow={model.scenario ? scenarioRow ?? null : null}
+              scenarioDiffers={model.scenario}
+              plan={plan}
+              routesBySignalId={routesBySignalId ?? null}
+              {...(onOpenSignal ? { onOpenSignal } : {})}
+            />
           </section>
 
           {/* §02 */}

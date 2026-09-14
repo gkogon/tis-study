@@ -163,6 +163,82 @@ export function straightRoute(a: LatLon, b: LatLon): Route {
   return { pts: [a, b], cum: [0, len], lenMi: len };
 }
 
+/**
+ * The map's own site→row route for one point: the shortest path on the road
+ * graph from the site's nearest node to the point's nearest node, else a
+ * straight line (no graph, or the node is unreachable). Exactly what
+ * `StudyMapAlive` runs project flows along.
+ */
+export function routeToPoint(graph: RoadGraph | null, siteNode: number, site: LatLon, p: LatLon): Route {
+  if (graph && siteNode >= 0) {
+    const n = graph.nearestNode(p.lat, p.lon);
+    const [path] = shortestPaths(graph, siteNode, [n]);
+    const r = path ? routeFromNodes(graph, path) : null;
+    if (r) return r;
+  }
+  return straightRoute(site, p);
+}
+
+/**
+ * Site→row routes for every studied row, keyed by signal id — the routes the
+ * report-phase flows ride. Pure, so the intersection study's "which other
+ * routes pass through this junction" and its check can build the same map
+ * from the same graph.
+ */
+export function routesForRows(
+  graph: RoadGraph | null,
+  site: LatLon,
+  rows: ReadonlyArray<{ signalId: string; latitude: number; longitude: number }>,
+): Map<string, Route> {
+  const siteNode = graph ? graph.nearestNode(site.lat, site.lon) : -1;
+  const out = new Map<string, Route>();
+  for (const r of rows) out.set(r.signalId, routeToPoint(graph, siteNode, site, { lat: r.latitude, lon: r.longitude }));
+  return out;
+}
+
+/** Metres per degree of latitude (WGS-84 mean). */
+const M_PER_DEG_LAT = 111195;
+
+/**
+ * Metres from a point to the nearest point of a route's polyline
+ * (equirectangular about the point — good to centimetres at junction scale).
+ */
+export function distToRouteM(route: Route, p: LatLon): number {
+  const kLat = M_PER_DEG_LAT, kLon = M_PER_DEG_LAT * Math.cos((p.lat * Math.PI) / 180);
+  let best = Infinity;
+  const pts = route.pts;
+  if (pts.length === 1) { const a = pts[0]!; return Math.hypot((a.lon - p.lon) * kLon, (a.lat - p.lat) * kLat); }
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1]!, b = pts[i]!;
+    const ax = (a.lon - p.lon) * kLon, ay = (a.lat - p.lat) * kLat;
+    const bx = (b.lon - p.lon) * kLon, by = (b.lat - p.lat) * kLat;
+    const dx = bx - ax, dy = by - ay;
+    const l2 = dx * dx + dy * dy;
+    const t = l2 > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0;
+    const d = Math.hypot(ax + t * dx, ay + t * dy);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/** A route "passes through" a junction when it comes within this many metres of it. */
+export const THROUGH_ROUTE_M = 60;
+
+/**
+ * The signal ids whose site→row route passes within `withinM` of `at`,
+ * nearest first, each with its distance. A junction's own route always
+ * ends at (or next to) it, so the junction itself is in the list; callers
+ * that want the OTHER routes filter it out.
+ */
+export function routesThrough(routes: ReadonlyMap<string, Route>, at: LatLon, withinM: number = THROUGH_ROUTE_M): Array<{ signalId: string; distanceM: number }> {
+  const out: Array<{ signalId: string; distanceM: number }> = [];
+  for (const [signalId, route] of routes) {
+    const distanceM = distToRouteM(route, at);
+    if (distanceM <= withinM) out.push({ signalId, distanceM });
+  }
+  return out.sort((a, b) => a.distanceM - b.distanceM || a.signalId.localeCompare(b.signalId));
+}
+
 export function pointAlong(r: Route, sMi: number): LatLon {
   if (sMi <= 0) return r.pts[0] ?? { lat: 0, lon: 0 };
   if (sMi >= r.lenMi) return r.pts[r.pts.length - 1] ?? { lat: 0, lon: 0 };

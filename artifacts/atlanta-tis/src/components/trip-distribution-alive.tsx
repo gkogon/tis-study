@@ -14,7 +14,10 @@
  *
  * Hover (or focus) a sector → `onHoverOctant(octant)`; the page hands it to
  * `StudyMapAlive` as `highlightOctant`, which dims every flow and badge
- * outside that bearing sector. Leaving the rose sends null.
+ * outside that bearing sector. Leaving the rose sends null. The page can
+ * also PIN a sector with `highlightOctant` (the octant of the junction whose
+ * study is open, or the selected signal): it draws exactly as a hovered one
+ * until the pointer picks another, and the readout says which junction.
  *
  * Nothing is invented: shares, bearings, distances and the method label all
  * come from `report.tripDistribution` (`lib/distribution-rose.ts` lays them
@@ -33,6 +36,10 @@ export type TripDistributionAliveProps = {
   report: TisReport;
   /** Octant under the pointer (or keyboard focus), null when none. */
   onHoverOctant?: (octant: Octant | null) => void;
+  /** A sector to keep highlighted while nothing is hovered (the open junction's octant). */
+  highlightOctant?: Octant | null;
+  /** What the pinned sector is, for the readout ("Signal … · 0.62 mi"). */
+  highlightLabel?: string | null;
 };
 
 const R = 110;           // rose radius, viewBox units
@@ -60,15 +67,20 @@ function wedgePath(g: RoseGeometry, i: number, p: number): string {
   return sectorPath(w.startDeg, w.endDeg, g.innerRadius, g.innerRadius + w.fill * p * (g.radius - g.innerRadius));
 }
 
-export function TripDistributionAlive({ report, onHoverOctant }: TripDistributionAliveProps) {
+export function TripDistributionAlive({ report, onHoverOctant, highlightOctant, highlightLabel }: TripDistributionAliveProps) {
   const td = report.tripDistribution;
   const reduced = useMemo(prefersReducedMotion, []);
   const geom = useMemo(
     () => roseGeometry(td?.byDirection, td?.zones, { radius: R, innerRadius: R0, labelCount: LABEL_COUNT }),
     [td],
   );
-  const [hovered, setHovered] = useState<Octant | null>(null);
+  const [hoveredRaw, setHovered] = useState<Octant | null>(null);
+  const pinned: Octant | null = highlightOctant ?? null;
+  // The pointer wins; the pinned sector stands in while nothing is hovered.
+  const hovered: Octant | null = hoveredRaw ?? pinned;
   const hoverRef = useRef<Octant | null>(null);
+  const pinRef = useRef<Octant | null>(pinned);
+  pinRef.current = pinned;
   const cbRef = useRef(onHoverOctant);
   cbRef.current = onHoverOctant;
   const svgRef = useRef<SVGSVGElement>(null);
@@ -156,7 +168,8 @@ export function TripDistributionAlive({ report, onHoverOctant }: TripDistributio
         const [x, y] = bearingToXY(q.deg, g.innerRadius + q.s * len);
         c.setAttribute("transform", `translate(${x.toFixed(2)} ${y.toFixed(2)})`);
         const fade = Math.min(1, q.s / 0.15, (1 - q.s) / 0.25);
-        const dim = hov && hov !== w.octant ? 0.25 : 1;
+        const shown = hov ?? pinRef.current;
+        const dim = shown && shown !== w.octant ? 0.25 : 1;
         c.setAttribute("opacity", (0.9 * fade * dim).toFixed(3));
       }
     };
@@ -291,8 +304,13 @@ export function TripDistributionAlive({ report, onHoverOctant }: TripDistributio
               </div>
               <div className="text-muted-foreground font-mono tabular-nums">
                 {hoveredWedge.startDeg}°–{hoveredWedge.endDeg}° · {hoveredZones} zone{hoveredZones === 1 ? "" : "s"}
-                {onHoverOctant ? " · study map dims the other sectors" : ""}
+                {hoveredRaw && onHoverOctant ? " · study map dims the other sectors" : ""}
               </div>
+              {!hoveredRaw && pinned && (
+                <div className="text-muted-foreground" data-testid="dist-rose-pinned">
+                  The sector of {highlightLabel ? <span className="text-foreground">{highlightLabel}</span> : "the open junction"} — hover another sector to compare.
+                </div>
+              )}
             </>
           ) : (
             <div className="text-muted-foreground">

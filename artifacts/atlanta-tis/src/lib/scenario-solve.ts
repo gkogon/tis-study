@@ -907,7 +907,15 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
       outTrips,
       ...(existing ? { existingUseCredit: Math.round(pi.existingCredit), netNewExternalTrips: Math.round(pi.externalTrips) } : {}),
     };
-    if (period === "daily") return { ...p, tripGeneration, affectedIntersections: [], intersectionsWithLosDrop: 0, intersectionsAtLosEf: 0, worstDelayDeltaSec: 0 };
+    // With trip generation edited, the period's EXACT external trips are the
+    // scenario's own (the rows below are scaled by pi.externalTrips), so a
+    // reader of the scenario report — the intersection study's §01a share of
+    // the study — divides by the figure the rows were built on. Untouched
+    // trip generation keeps the printed exact values byte-identical.
+    const exactTrips = tripsEdited
+      ? { externalTripsExact: pi.externalGross, ...(existing ? { existingUseCreditExact: pi.existingCredit } : {}) }
+      : {};
+    if (period === "daily") return { ...p, tripGeneration, ...exactTrips, affectedIntersections: [], intersectionsWithLosDrop: 0, intersectionsAtLosEf: 0, worstDelayDeltaSec: 0 };
 
     const params: ScenarioParams = {
       growthMultiplier,
@@ -951,7 +959,7 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
     const dropCount = rows.filter((r) => r.losChanged).length;
     const efCount = rows.filter((r) => r.futureLos === "E" || r.futureLos === "F").length;
     const worstDelta = rows.reduce((m, r) => Math.max(m, r.futureDelaySec - r.existingDelaySec), 0);
-    return { ...p, tripGeneration, affectedIntersections: rows, intersectionsWithLosDrop: dropCount, intersectionsAtLosEf: efCount, worstDelayDeltaSec: round1(worstDelta) };
+    return { ...p, tripGeneration, ...exactTrips, affectedIntersections: rows, intersectionsWithLosDrop: dropCount, intersectionsAtLosEf: efCount, worstDelayDeltaSec: round1(worstDelta) };
   });
 
   const pm = periodReports.find((p) => p.period === "pm_peak");

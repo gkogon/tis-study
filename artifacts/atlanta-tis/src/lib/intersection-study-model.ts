@@ -5,7 +5,7 @@
  *
  * Pure: no DOM, no React, so `scripts/check-intersection-study.mjs` builds the
  * model for every studied row headless. Nothing here computes a result
- * the report does not carry, with four disclosed exceptions, each an engine
+ * the report does not carry, with five disclosed exceptions, each an engine
  * function called with the row's own inputs (`ENGINE_RECOMPUTATIONS` lists
  * them for the §00 sentence):
  *
@@ -44,6 +44,11 @@
  *   00 summary     the verdict strip, base → scenario pairs
  *   01 approaches  the plan (intersection-geometry.ts planFromRow) — lanes,
  *                  bays, queues, movements, the honest lane statement
+ *   01a distribution  the project trips through this junction, per period:
+ *                  the row's twelve turning movements with their inbound /
+ *                  outbound split, its share of the study's trips and rank,
+ *                  where the trips head next (distributionForRow, below —
+ *                  its own header says what is read and what is derived)
  *   02 queuing     per-approach inputs for the lane animation and the
  *                  queue-vs-storage bar, with the deficiency flag exactly as
  *                  the plan carries it
@@ -56,17 +61,20 @@
  *                  exactly what the studio's Signal tab seeds from
  *   06 mitigation  verdict text, turbo-lane screen, method notes
  */
-import type { TisAffectedIntersection, TisAffectedIntersectionSignalTiming } from "@workspace/tis-api-client-react";
+import type { TisAffectedIntersection, TisAffectedIntersectionSignalTiming, TisPeriodReport, TisReport } from "@workspace/tis-api-client-react";
 import {
   SATURATION_FLOW_VPH, VEH_LENGTH_FT, G_OVER_C, LOST_TIME_PER_PHASE_S,
   DEFAULT_THROUGH_LANES_PER_DIR, queue95Ft, computeSignalTiming, type SignalTiming,
+  pathMovementLoadsExact, assignMovementLoadsExact, bearingDeg as engineBearingDeg, type MovementLoadExact,
 } from "@workspace/tis-engine-core";
 import {
-  planFromRow, timingSummary, verdictFromRow, axisOf, DIRECTIONS,
-  type IntersectionPlan, type ApproachPlan, type TimingSummary, type Verdict, type Direction, type Pair, type Los,
+  planFromRow, timingSummary, verdictFromRow, axisOf, DIRECTIONS, MOVEMENTS, movementsByApproach,
+  type IntersectionPlan, type ApproachPlan, type TimingSummary, type Verdict, type Direction, type Movement, type Pair, type Los,
 } from "./intersection-geometry.ts";
 import { simInputsFromRow, fallbackCycleSec, type IntersectionSimInputs } from "./intersection-sim.ts";
 import { timingEditFromRow, type SignalTimingEdit } from "./scenario-solve.ts";
+import { bearingToOctant, type Octant } from "./distribution-rose.ts";
+import { routesThrough, THROUGH_ROUTE_M, type Route } from "./study-map-sim.ts";
 
 export type StorageVerdict = "pass" | "fail" | "not_measured";
 
@@ -212,11 +220,12 @@ export type IntersectionStudyModel = {
   sections: readonly { id: SectionId; n: string; label: string }[];
 };
 
-export type SectionId = "summary" | "approaches" | "queuing" | "timing" | "simulation" | "whatif" | "mitigation";
+export type SectionId = "summary" | "approaches" | "distribution" | "queuing" | "timing" | "simulation" | "whatif" | "mitigation";
 
 export const SECTIONS: readonly { id: SectionId; n: string; label: string }[] = [
   { id: "summary", n: "00", label: "Summary" },
   { id: "approaches", n: "01", label: "Approaches & lanes" },
+  { id: "distribution", n: "01a", label: "Distribution through this junction" },
   { id: "queuing", n: "02", label: "Queuing" },
   { id: "timing", n: "03", label: "Signal timing" },
   { id: "simulation", n: "04", label: "Simulation" },
@@ -246,6 +255,7 @@ export const SIM_AGREEMENT_CONDITIONS = "no-build volumes, Webster-basis timing,
  * names them.
  */
 export const ENGINE_RECOMPUTATIONS: readonly string[] = [
+  "the §01a inbound / outbound share of each turning movement (pathMovementLoadsExact on the row's turn ledgers, or assignMovementLoadsExact on its bearing and the report's distribution — re-adding to the printed movementsExact)",
   "the §02 approach capacity (1800 × g/C × lanes × weather, as row-math.ts approachCap sizes it)",
   "the no-build 95th-percentile queue in §02 and §04 (queue95Ft on the no-build volume; the row prints only the build queue)",
   "the §02 average queue Q1 (the printed Q95 ÷ 1.65, the engine's own factor)",
@@ -533,5 +543,419 @@ export function studyModelFromRow(
     whatIf,
     mitigation,
     sections: SECTIONS,
+  };
+}
+
+// ===========================================================================
+// §01a — distribution through this junction (distributionForRow)
+// ===========================================================================
+//
+// What the report carries, and what this reads off it:
+//
+//   movements[] / movementsExact[]   the row's project trips by ENTERING
+//       approach × L/T/R — the engine's own table (row-math.ts), integer and
+//       exact. "Approach" is the travel direction of the vehicle entering the
+//       junction (HCM: NB = travelling north, in from the south leg); L/T/R
+//       is the turn it makes, U folded into L (movement-assignment.ts
+//       classify). Inbound trips (toward the site) enter on the approach
+//       they arrive on from their origin; outbound trips enter on the
+//       site-facing leg travelling away from the site.
+//   movementSource   "path" = the conserved assignment's routed turns through
+//       this junction (pathTurns / pathTurnsIn ledgers, share units);
+//       "octant" = the geometric octant model on the site bearing and the
+//       report's byDirection.
+//   period.inFraction / externalTripsExact / existingUseCreditExact   the
+//       period's directional split and the net external trips every row's
+//       load is a fraction of (tis.ts: externalTrips = net new external).
+//   loadWeight   the period-independent weight the row was built with;
+//       addedTrips = round(externalTrips × weight) except where a recorded
+//       inbound ledger re-derives the blend (row-math.ts ledgerWeight).
+//
+// Derived here, each labelled in `sources` and by the *Basis fields:
+//
+//   inbound / outbound per cell   PATH rows: the engine's own
+//       pathMovementLoadsExact run twice on the row's ledgers — the outbound
+//       ledger at (1 − inFraction) × external trips with an EMPTY inbound
+//       ledger (so nothing is mirrored), and the inbound side at inFraction ×
+//       external trips (the recorded pathTurnsIn as recorded, or the mirror
+//       of pathTurns when no inbound ledger was recorded — exactly the
+//       engine's rule). Their per-cell sum reproduces movementsExact to 1e-6
+//       (the check asserts it) or the model falls back to "proportional".
+//       OCTANT rows: assignMovementLoadsExact on the engine's own bearing
+//       (junction → site, row-math.ts bearingDeg) and the report's
+//       byDirection, run at inFraction 0 and 1 and scaled by the period's
+//       split — the same recomputation, same reproduction test.
+//       Without a period (no inFraction) no split is claimed.
+//   split totals   PATH: Σ of the two ledger sides (a recorded inbound
+//       ledger makes the blend differ from inFraction × total — that is the
+//       engine's ledgerWeight, printed here as `ledgerBlend`). OCTANT:
+//       inFraction × the row's exact total, by definition.
+//   share of the study   exact total ÷ the period's net external trips;
+//       rank among the period's rows by addedTripsPmPeak.
+//   exits / origins   PATH rows only: the ledger's exit bearings (outbound)
+//       and the reverse of its entry bearings (inbound) quantised to the
+//       eight octants (lib/distribution-rose.ts bearingToOctant, the engine's
+//       convention), weighted by share. Octant rows carry no path, so none.
+//   route continuation   routeContinuationForRow: which OTHER studied rows'
+//       site→row routes pass within 60 m of this junction — the MAP's own
+//       client-side shortest paths (study-map-sim.ts), not the engine's:
+//       the engine ships turn ledgers, not paths, and the label says so.
+
+export type DistributionCell = {
+  approach: Direction;
+  movement: Movement;
+  /** The printed integer trips (row.movements). */
+  trips: number;
+  /** The exact load behind it (row.movementsExact; the integer when the row prints none). */
+  exact: number;
+  /** Exact trips on this movement travelling TOWARD the site / AWAY from it (Σ = exact). */
+  inbound: number;
+  outbound: number;
+};
+
+export type DistributionApproachTotal = { trips: number; exact: number; inbound: number; outbound: number };
+
+export type OctantShare = {
+  octant: Octant;
+  /** Share of this side's turns (Σ over the list = 1). */
+  fraction: number;
+  /** Exact trips this period, when the period is known; else null. */
+  trips: number | null;
+};
+
+export type RankedRow = { signalId: string; name: string; trips: number; exact: number; rank: number };
+
+export type SplitBasis = "ledger" | "inFraction" | "none";
+export type CellDirectionBasis = "ledger" | "octant-recomputed" | "proportional" | "none";
+
+export type DistributionPeriodModel = {
+  period: string;
+  periodLabel: string;
+  signalId: string;
+  movementSource: "path" | "octant" | null;
+  /** True when the row prints a movements table. */
+  hasMovements: boolean;
+  /** Twelve cells in NB, SB, EB, WB × L, T, R order (zeros where the table has no row). */
+  cells: DistributionCell[];
+  approaches: Record<Direction, DistributionApproachTotal>;
+  total: DistributionApproachTotal;
+  /** The largest integer cell, for the diagram's stroke scale. */
+  maxCellTrips: number;
+  /** The period's inbound share (period.inFraction), null without a period. */
+  inFraction: number | null;
+  /** How the inbound / outbound TOTALS were obtained. */
+  splitBasis: SplitBasis;
+  /** How each CELL's inbound / outbound was obtained. */
+  cellDirectionBasis: CellDirectionBasis;
+  /** Σ inbound ÷ total — equals inFraction for octant rows and mirror path rows; the ledger blend otherwise. */
+  inboundShare: number | null;
+  share: {
+    /** The period's net external trips, exact when the report prints externalTripsExact. */
+    periodTrips: number | null;
+    periodTripsExact: boolean;
+    /** The printed (rounded) period trips, for the sentence. */
+    periodTripsPrinted: number | null;
+    /** exact total ÷ periodTrips. */
+    fraction: number | null;
+    loadWeight: number | null;
+    /** Σout·(1 − in) + Σin·in for a recorded-inbound path row (row-math.ts ledgerWeight); null otherwise. */
+    ledgerBlend: number | null;
+    rank: number | null;
+    of: number;
+    /** Every row of the period, heaviest first. */
+    ranked: RankedRow[];
+  };
+  /** Outbound exits by octant (path rows with outbound turns), heaviest first. */
+  exits: OctantShare[] | null;
+  /** Inbound arrivals by the octant they come FROM (path rows), heaviest first; `originsMirrored` when read off the outbound ledger. */
+  origins: OctantShare[] | null;
+  originsMirrored: boolean;
+  /** Provenance, one sentence per fact drawn. */
+  sources: string[];
+};
+
+export type DistributionModel = {
+  base: DistributionPeriodModel;
+  /** The scenario row's model when one differs from the base; null otherwise. */
+  scenario: DistributionPeriodModel | null;
+};
+
+/** "Reproduces the printed exact cells" means within this, in trips. */
+export const DISTRIBUTION_REPRODUCE_TOL = 1e-6;
+
+type PeriodTrips = { exact: number | null; exactPrinted: boolean; printed: number | null };
+
+/** The period's NET external trips — what every row's load is a fraction of (tis.ts: externalTrips = net new external). */
+export function periodAssignedTrips(period: TisPeriodReport | null | undefined): PeriodTrips {
+  if (!period) return { exact: null, exactPrinted: false, printed: null };
+  const tg = period.tripGeneration;
+  const printed = finite(tg?.netNewExternalTrips) ? tg.netNewExternalTrips : finite(tg?.externalTrips) ? tg.externalTrips : null;
+  if (finite(period.externalTripsExact)) {
+    const credit = finite(period.existingUseCreditExact) ? period.existingUseCreditExact : 0;
+    return { exact: Math.max(0, period.externalTripsExact - credit), exactPrinted: true, printed };
+  }
+  return { exact: printed, exactPrinted: false, printed };
+}
+
+function loadsToCells(loads: MovementLoadExact[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const l of loads) m.set(`${l.approach}${l.movement}`, (m.get(`${l.approach}${l.movement}`) ?? 0) + l.exact);
+  return m;
+}
+
+function octantShares(turns: ReadonlyArray<{ bearing: number; share: number }>, tripsScale: number | null): OctantShare[] {
+  const byOct = new Map<Octant, number>();
+  let sum = 0;
+  for (const t of turns) {
+    if (!(t.share > 0) || !finite(t.bearing)) continue;
+    const o = bearingToOctant(t.bearing);
+    byOct.set(o, (byOct.get(o) ?? 0) + t.share);
+    sum += t.share;
+  }
+  if (!(sum > 0)) return [];
+  return [...byOct.entries()]
+    .map(([octant, share]) => ({ octant, fraction: share / sum, trips: tripsScale !== null ? share * tripsScale : null }))
+    .sort((a, b) => b.fraction - a.fraction || a.octant.localeCompare(b.octant));
+}
+
+/** The period label the report prints, falling back to the id. */
+function periodLabelOf(period: TisPeriodReport | null | undefined, fallback: string): string {
+  return period?.periodLabel || (period?.period === "am_peak" ? "AM peak" : period?.period === "pm_peak" ? "PM peak" : fallback);
+}
+
+function periodModel(
+  row: TisAffectedIntersection,
+  period: TisPeriodReport | null | undefined,
+  report: Pick<TisReport, "request" | "tripDistribution">,
+): DistributionPeriodModel {
+  const sources: string[] = [];
+  const movementSource: "path" | "octant" | null = row.movementSource === "path" ? "path" : row.movementSource === "octant" ? "octant" : null;
+  const hasMovements = Array.isArray(row.movements) && row.movements.length > 0;
+  const ints = movementsByApproach(row);
+  const exacts = new Map<string, number>();
+  for (const m of row.movementsExact ?? []) {
+    if (finite(m.exact)) exacts.set(`${m.approach}${m.movement}`, (exacts.get(`${m.approach}${m.movement}`) ?? 0) + m.exact);
+  }
+  const hasExact = exacts.size > 0;
+  // Without an exact table the integers stand in for it (older payloads).
+  const exactOf = (d: Direction, m: Movement) => (hasExact ? exacts.get(`${d}${m}`) ?? 0 : ints[d][m]);
+  const exactTotal = DIRECTIONS.reduce((s, d) => s + MOVEMENTS.reduce((t, m) => t + exactOf(d, m), 0), 0);
+
+  sources.push(hasMovements
+    ? `Turning movements: the row's own movements table (${movementSource === "path" ? "routed paths through this junction — conserved assignment" : movementSource === "octant" ? "the geometric octant model" : "source not printed"}); the exact loads are movementsExact${hasExact ? "" : " — not printed on this row, so the integers stand in"}.`
+    : "No project-trip movement table on this row (the engine prints one only when the assignment put at least one whole trip on a movement).");
+
+  const trips = periodAssignedTrips(period);
+  const inFraction = period && finite(period.inFraction) ? Math.min(1, Math.max(0, period.inFraction)) : null;
+
+  // ---- per-cell direction ----
+  let outCells: Map<string, number> | null = null;
+  let inCells: Map<string, number> | null = null;
+  let cellDirectionBasis: CellDirectionBasis = "none";
+  let splitBasis: SplitBasis = "none";
+  let ledgerBlend: number | null = null;
+  const pathTurns = row.pathTurns;
+  const pathTurnsIn = row.pathTurnsIn;
+  const hasLedger = movementSource === "path" && Array.isArray(pathTurns);
+  if (inFraction !== null && trips.exact !== null && hasLedger) {
+    const ext = trips.exact;
+    // Outbound: the recorded ledger, scaled by (1 − in), with an EMPTY inbound
+    // ledger so the engine mirrors nothing.
+    outCells = loadsToCells(pathMovementLoadsExact(pathTurns, ext * (1 - inFraction), 0, []));
+    // Inbound: the recorded inbound ledger as recorded, or the engine's mirror
+    // of the outbound one when none was recorded — at inFraction 1 the
+    // outbound side contributes nothing.
+    inCells = loadsToCells(pathTurnsIn !== undefined
+      ? pathMovementLoadsExact([], ext * inFraction, 1, pathTurnsIn)
+      : pathMovementLoadsExact(pathTurns, ext * inFraction, 1, undefined));
+    const sumOut = pathTurns.reduce((s, t) => s + (finite(t.share) ? t.share : 0), 0);
+    if (pathTurnsIn !== undefined) {
+      const sumIn = pathTurnsIn.reduce((s, t) => s + (finite(t.share) ? t.share : 0), 0);
+      ledgerBlend = sumOut * (1 - inFraction) + sumIn * inFraction;
+    }
+    cellDirectionBasis = "ledger";
+    splitBasis = "ledger";
+    sources.push(pathTurnsIn !== undefined
+      ? `Inbound / outbound: the row's two turn ledgers (pathTurns ${pathTurns.length} outbound turn${pathTurns.length === 1 ? "" : "s"}, pathTurnsIn ${pathTurnsIn.length} recorded inbound turn${pathTurnsIn.length === 1 ? "" : "s"}) × the period's ${trips.exactPrinted ? "exact " : ""}net external trips, outbound at 1 − inFraction (${(1 - inFraction).toFixed(2)}) and inbound at inFraction (${inFraction.toFixed(2)}) — the engine's own pathMovementLoadsExact, run once per side in the browser.`
+      : `Inbound / outbound: the row's outbound turn ledger (pathTurns, ${pathTurns.length} turn${pathTurns.length === 1 ? "" : "s"}) × the period's ${trips.exactPrinted ? "exact " : ""}net external trips at 1 − inFraction (${(1 - inFraction).toFixed(2)}), and its mirror (the reverse path, the engine's rule when no inbound ledger was recorded) at inFraction (${inFraction.toFixed(2)}) — the engine's own pathMovementLoadsExact, run once per side in the browser.`);
+  } else if (inFraction !== null && hasMovements && movementSource !== "path" && report.tripDistribution?.byDirection && finite(row.latitude) && finite(row.longitude) && finite(report.request?.latitude) && finite(report.request?.longitude) && exactTotal > 0) {
+    // The octant model, re-run on the engine's own bearing and distribution.
+    const bearing = engineBearingDeg({ lat: row.latitude, lon: row.longitude }, { lat: report.request.latitude, lon: report.request.longitude });
+    const oct = report.tripDistribution.byDirection as Record<string, number>;
+    outCells = loadsToCells(assignMovementLoadsExact(bearing, oct, exactTotal * (1 - inFraction), 0));
+    inCells = loadsToCells(assignMovementLoadsExact(bearing, oct, exactTotal * inFraction, 1));
+    cellDirectionBasis = "octant-recomputed";
+    splitBasis = "inFraction";
+    sources.push(`Inbound / outbound per movement: the engine's octant model (assignMovementLoadsExact) re-run in the browser on this row's bearing to the site (${bearing.toFixed(1)}°) and the report's directional distribution, once for each side; the totals are inFraction (${inFraction.toFixed(2)}) × the row's exact trips by definition.`);
+  } else if (inFraction !== null) {
+    splitBasis = "inFraction";
+    cellDirectionBasis = hasMovements ? "proportional" : "none";
+    sources.push(`Inbound / outbound: the period's inFraction (${inFraction.toFixed(2)}) applied to the row's trips — no ledger and no distribution to place it by movement, so every movement is split alike.`);
+  } else {
+    sources.push("No period report for this row — no inbound / outbound split and no share of the study can be stated.");
+  }
+
+  // Reproduction test: the two sides must re-add to the printed exact cells.
+  if (outCells && inCells) {
+    let worst = 0;
+    for (const d of DIRECTIONS) for (const m of MOVEMENTS) {
+      const k = `${d}${m}`;
+      worst = Math.max(worst, Math.abs((outCells.get(k) ?? 0) + (inCells.get(k) ?? 0) - exactOf(d, m)));
+    }
+    if (!(worst <= DISTRIBUTION_REPRODUCE_TOL)) {
+      sources.push(`The ${cellDirectionBasis === "ledger" ? "ledger" : "octant"} recomputation did not reproduce the printed exact cells (worst gap ${worst.toExponential(2)} trips) — the per-movement split falls back to the period's inFraction applied alike.`);
+      outCells = null; inCells = null;
+      cellDirectionBasis = "proportional";
+      if (splitBasis === "ledger") { splitBasis = "inFraction"; ledgerBlend = null; }
+    }
+  }
+
+  const cells: DistributionCell[] = [];
+  const approaches = {} as Record<Direction, DistributionApproachTotal>;
+  const total: DistributionApproachTotal = { trips: 0, exact: 0, inbound: 0, outbound: 0 };
+  let maxCellTrips = 0;
+  for (const d of DIRECTIONS) {
+    const at: DistributionApproachTotal = { trips: 0, exact: 0, inbound: 0, outbound: 0 };
+    for (const m of MOVEMENTS) {
+      const k = `${d}${m}`;
+      const t = ints[d][m], e = exactOf(d, m);
+      let inbound = 0, outbound = 0;
+      if (outCells && inCells) { inbound = inCells.get(k) ?? 0; outbound = outCells.get(k) ?? 0; }
+      else if (cellDirectionBasis === "proportional" && inFraction !== null) { inbound = e * inFraction; outbound = e * (1 - inFraction); }
+      cells.push({ approach: d, movement: m, trips: t, exact: e, inbound, outbound });
+      at.trips += t; at.exact += e; at.inbound += inbound; at.outbound += outbound;
+      if (t > maxCellTrips) maxCellTrips = t;
+    }
+    approaches[d] = at;
+    total.trips += at.trips; total.exact += at.exact; total.inbound += at.inbound; total.outbound += at.outbound;
+  }
+  const inboundShare = splitBasis === "none" ? null : total.exact > 0 ? total.inbound / total.exact : inFraction;
+
+  // ---- share of the study, rank ----
+  const rowsOfPeriod = period?.affectedIntersections ?? [];
+  const exactTotalOf = (r: TisAffectedIntersection) => (r.movementsExact ?? []).reduce((s, m) => s + (finite(m.exact) ? m.exact : 0), 0) || (r.movements ?? []).reduce((s, m) => s + num(m.trips), 0);
+  const ranked: RankedRow[] = rowsOfPeriod
+    .map((r) => ({ signalId: r.signalId, name: r.name, trips: num(r.addedTripsPmPeak), exact: exactTotalOf(r), rank: 0 }))
+    .sort((a, b) => b.trips - a.trips || b.exact - a.exact || a.signalId.localeCompare(b.signalId))
+    .map((r, i) => ({ ...r, rank: i + 1 }));
+  const mine = ranked.find((r) => r.signalId === row.signalId) ?? null;
+  const fraction = trips.exact !== null && trips.exact > 0 ? exactTotal / trips.exact : null;
+  if (period) {
+    sources.push(`Share of the study: the row's exact trips ÷ the ${periodLabelOf(period, period.period)}'s net external trips (${trips.exactPrinted ? "externalTripsExact" + (finite(period.existingUseCreditExact) ? " − existingUseCreditExact" : "") : "the printed rounded figure — no exact value on this report"}); rank among the ${rowsOfPeriod.length} rows by addedTripsPmPeak.`);
+  }
+
+  // ---- where they go next: the ledgers by octant ----
+  let exits: OctantShare[] | null = null, origins: OctantShare[] | null = null, originsMirrored = false;
+  if (hasLedger) {
+    const outScale = trips.exact !== null && inFraction !== null ? trips.exact * (1 - inFraction) : null;
+    const inScale = trips.exact !== null && inFraction !== null ? trips.exact * inFraction : null;
+    const nonEmpty = (l: OctantShare[]) => (l.length > 0 ? l : null);
+    exits = nonEmpty(octantShares(pathTurns.map((t) => ({ bearing: t.exitBearingDeg, share: t.share })), outScale));
+    if (pathTurnsIn !== undefined) {
+      origins = nonEmpty(octantShares(pathTurnsIn.map((t) => ({ bearing: t.enterBearingDeg + 180, share: t.share })), inScale));
+    } else {
+      origins = nonEmpty(octantShares(pathTurns.map((t) => ({ bearing: t.exitBearingDeg, share: t.share })), inScale));
+      originsMirrored = origins !== null;
+    }
+    sources.push(`Where they go next: the outbound ledger's exit bearings${pathTurnsIn !== undefined ? " and the recorded inbound ledger's entry bearings (reversed)" : ", mirrored for the inbound side"}, quantised to the eight compass octants and weighted by share — the direction of the next link out of this junction, not the destination zone.`);
+  }
+
+  return {
+    period: period?.period ?? "pm_peak",
+    periodLabel: periodLabelOf(period, "PM peak"),
+    signalId: row.signalId,
+    movementSource,
+    hasMovements,
+    cells,
+    approaches,
+    total,
+    maxCellTrips,
+    inFraction,
+    splitBasis,
+    cellDirectionBasis,
+    inboundShare,
+    share: {
+      periodTrips: trips.exact,
+      periodTripsExact: trips.exactPrinted,
+      periodTripsPrinted: trips.printed,
+      fraction,
+      loadWeight: finite(row.loadWeight) ? row.loadWeight : null,
+      ledgerBlend,
+      rank: mine ? mine.rank : null,
+      of: ranked.length,
+      ranked,
+    },
+    exits,
+    origins,
+    originsMirrored,
+    sources,
+  };
+}
+
+/**
+ * The §01a model for `row` in `period` (the period report the row belongs
+ * to; the top-level rows are the PM peak's). With a scenario row (the
+ * studio's re-solve of the same signal, in the same period of the scenario
+ * report) the scenario's model rides beside the base's when it differs.
+ */
+export function distributionForRow(
+  row: TisAffectedIntersection,
+  period: TisPeriodReport | null | undefined,
+  report: Pick<TisReport, "request" | "tripDistribution">,
+  scenarioRow?: TisAffectedIntersection | null,
+  scenarioPeriod?: TisPeriodReport | null,
+): DistributionModel {
+  const base = periodModel(row, period, report);
+  const scenario = scenarioRow && scenarioRow !== row && scenarioRowDiffers(row, scenarioRow)
+    ? periodModel(scenarioRow, scenarioPeriod ?? period, report)
+    : null;
+  return { base, scenario };
+}
+
+export type RouteContinuation = {
+  /** False when the page has no routes yet (the map has not routed). */
+  available: boolean;
+  /** True when this junction's own route passes within the radius of it — the sanity the check asserts. */
+  onOwnRoute: boolean;
+  withinM: number;
+  /** The OTHER studied rows whose site→row route passes this junction, nearest first. */
+  through: Array<{ signalId: string; name: string; trips: number; distanceM: number; distanceMi: number }>;
+  /** Σ trips of the rows above — project trips that pass this junction on their way somewhere else, by the map's routing. */
+  throughTrips: number;
+  label: string;
+};
+
+export const ROUTE_CONTINUATION_LABEL = "client route geometry — the engine ships turn ledgers, not paths";
+
+/**
+ * Which OTHER studied intersections' site→row routes pass within `withinM`
+ * of this junction, by the study map's own client-side shortest paths
+ * (`routesForRows` in study-map-sim.ts — the routes the flows ride). This is
+ * map geometry, not the engine's assignment: the engine ships turn ledgers,
+ * not paths, and the label says so wherever it is shown.
+ */
+export function routeContinuationForRow(
+  row: Pick<TisAffectedIntersection, "signalId" | "latitude" | "longitude">,
+  rows: ReadonlyArray<Pick<TisAffectedIntersection, "signalId" | "name" | "addedTripsPmPeak" | "distanceMi">>,
+  routes: ReadonlyMap<string, Route> | null | undefined,
+  withinM: number = THROUGH_ROUTE_M,
+): RouteContinuation {
+  if (!routes || routes.size === 0) return { available: false, onOwnRoute: false, withinM, through: [], throughTrips: 0, label: ROUTE_CONTINUATION_LABEL };
+  const at = { lat: row.latitude, lon: row.longitude };
+  const hits = routesThrough(routes, at, withinM);
+  const byId = new Map(rows.map((r) => [r.signalId, r]));
+  const through = hits
+    .filter((h) => h.signalId !== row.signalId && byId.has(h.signalId))
+    .map((h) => {
+      const r = byId.get(h.signalId)!;
+      return { signalId: h.signalId, name: r.name, trips: num(r.addedTripsPmPeak), distanceM: h.distanceM, distanceMi: num(r.distanceMi) };
+    });
+  return {
+    available: true,
+    onOwnRoute: hits.some((h) => h.signalId === row.signalId),
+    withinM,
+    through,
+    throughTrips: through.reduce((s, t) => s + t.trips, 0),
+    label: ROUTE_CONTINUATION_LABEL,
   };
 }
