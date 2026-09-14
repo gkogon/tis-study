@@ -20,9 +20,14 @@ Branch from `origin/main` (#215 merged). Every PR: typecheck 0 in atlanta-tis / 
 2. `scripts/check-intersection-sim.mjs` (`check:intersection-sim`) per spec §4.
 3. `src/components/intersection-sim-view.tsx`; explorer's Simulate tab.
 
-## P — placements (`feat/explorer-placements`, after S)
+## M — mini-TIS study view (`feat/intersection-study`, after X and S)
+1. `src/components/intersection-study.tsx`: full-screen view per spec 3.2a; URL state via wouter `useSearch`/`useLocation` (`?signal=`); sticky § nav; sections composed from X's plan/tables/lanes, S's sim view, the studio's Signal controls (extract them from `scenario-studio.tsx` into `signal-controls.tsx` so both mount the same component), and `queue-animation.tsx` re-parameterised per approach (add the props it needs; keep the queuing study's usage byte-identical).
+2. `tis.tsx`: selecting a signal opens the study (replaces the under-map panel); Close/back clears `?signal=`.
+3. Print: `@media print` rules so the study prints alone (hide the rest of the report while open).
+
+## P — placements (`feat/explorer-placements`, after M)
 1. `demo.tsx` `ResultView`: live map (report phase) + explorer + live distribution above the tables.
 2. Gallery: sections for the rose and the explorer (base fixture); rebuild; do not publish.
 
 ## Review
-Three-lens review (correctness/exactness, honesty of what is shown vs what the report carries, regressions/UI state) per PR before merge; merge order D → X → S → P.
+Three-lens review (correctness/exactness, honesty of what is shown vs what the report carries, regressions/UI state) per PR before merge; merge order D → X → S → M → P.
