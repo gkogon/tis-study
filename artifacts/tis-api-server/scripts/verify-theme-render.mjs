@@ -1,7 +1,9 @@
 // Themed render smoke: each preview fixture renders under a synthetic theme
 // without throwing, embeds the theme's fonts, and keeps a sane page count;
 // then every fixture renders through every extracted corpus theme with a
-// margin guard (no body-page text outside the theme's text band).
+// margin guard (no body-page text outside the theme's text band) and a
+// page-fill gate (no near-empty or stranded pages — the failure mode of
+// layout code tuned to the default text box).
 // Run: node ./scripts/verify-theme-render.mjs
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -12,6 +14,35 @@ import { pdfPageCount } from "./lib/pdf-norm.mjs";
 
 let fails = 0;
 const ok = (c, m) => { console.log(`${c ? "PASS" : "FAIL"}  ${m}`); if (!c) fails++; };
+
+/**
+ * How far down the text band each body page's ink reaches (0–1), with the
+ * page's word count and whether it carries any figure/table ink. The cover
+ * and the last page are excluded by the caller — both end wherever they end.
+ */
+function pageFill(sc, margins) {
+  return sc.pages.slice(1).map((pg) => {
+    const top = margins.top, bottom = pg.height - margins.bottom;
+    const inBand = (y) => y > top - 2 && y < bottom + 2;
+    let ink = top, words = 0, figInk = 0;
+    for (const r of pg.runs) if (inBand(r.y)) { ink = Math.max(ink, r.y + r.h); words += r.str.trim().split(/\s+/).filter(Boolean).length; }
+    for (const r of pg.rects ?? []) if (inBand(r.y)) { ink = Math.max(ink, r.y + r.h); figInk++; }
+    for (const l of pg.lines ?? []) if (inBand(l.y1)) { ink = Math.max(ink, Math.max(l.y1, l.y2)); figInk++; }
+    for (const im of pg.images ?? []) if (inBand(im.y)) { ink = Math.max(ink, im.y + im.h); figInk++; }
+    return { page: pg.page, fill: (ink - top) / (bottom - top), words, figInk };
+  });
+}
+/** Page-fill gate for one themed render: no near-empty page, no page under 35 % full, at most two under 55 %. */
+function fillGate(label, sc, margins) {
+  const interior = pageFill(sc, margins).slice(0, -1);
+  const nearEmpty = interior.filter((p) => p.words < 40 && p.figInk === 0);
+  const under35 = interior.filter((p) => p.fill < 0.35);
+  const under55 = interior.filter((p) => p.fill < 0.55);
+  const list = (xs) => xs.map((p) => `p${p.page}@${Math.round(p.fill * 100)}%`).join(", ");
+  ok(nearEmpty.length === 0, `${label}: no near-empty body page (${nearEmpty.length}${nearEmpty.length ? `: ${list(nearEmpty)}` : ""})`);
+  ok(under35.length === 0, `${label}: no body page under 35 % full (${under35.length}${under35.length ? `: ${list(under35)}` : ""})`);
+  ok(under55.length <= 2, `${label}: at most two body pages under 55 % full (${under55.length}${under55.length ? `: ${list(under55)}` : ""})`);
+}
 
 const { mod, cleanup } = await loadRendererBundle(`export { DEFAULT_THEME } from "./report-theme/theme";
 export { extractTheme } from "./report-theme/extract";
@@ -45,9 +76,10 @@ try {
     ok(/\/BaseFont \/[A-Z]{6}\+Carlito/.test(txt), `${fam}: Carlito embedded`);
     ok(/\/BaseFont \/[A-Z]{6}\+LiberationSerif/.test(txt), `${fam}: Liberation Serif embedded`);
     {
-      const sc = await mod.scanPdf(themedBuf, { maxPages: 2 });
+      const sc = await mod.scanPdf(themedBuf, { maxPages: 120 });
       const p1 = sc.pages[0]?.runs.length ?? 0, p2 = sc.pages[1]?.runs.length ?? 0;
       ok(p1 <= 25 && p2 >= 15, `${fam}: cover is exactly one page (page 1: ${p1} runs, page 2: ${p2} runs)`);
+      fillGate(fam, sc, SYNTH.theme.page.margins);
     }
     if (BAND_FAMILIES.includes(fam)) {
       const plain = await mod.renderStudyPdf(project, { name: "Render Check Firm", logoUrl: null });
@@ -93,7 +125,7 @@ try {
       // (cover excluded). A hit means a renderer call site still assumes 50 pt.
       // Ink extent (wInk), not the advance: a right-aligned wrapped line keeps
       // its trailing spaces past the box edge without painting anything there.
-      const sc = await mod.scanPdf(buf, { maxPages: 12 });
+      const sc = await mod.scanPdf(buf, { maxPages: 120 });
       const L = stored.theme.page.margins.left;
       const R = (sc.pages[1]?.width ?? 612) - stored.theme.page.margins.right;
       const overflow = sc.pages.slice(1).flatMap((pg) => pg.runs.filter((r) => r.x < L - 2 || r.x + r.wInk > R + 2));
@@ -104,6 +136,10 @@ try {
       // carries a handful of runs; page 2 must already be the body.
       const p1 = sc.pages[0]?.runs.length ?? 0, p2 = sc.pages[1]?.runs.length ?? 0;
       ok(p1 <= 25 && p2 >= 15, `${f} × ${fam}: cover is exactly one page (page 1: ${p1} runs, page 2: ${p2} runs)`);
+      // Page-fill gate: a firm theme's smaller text box must not leave the
+      // renderer's fixed-geometry layout stranding two lines of a worksheet,
+      // or one figure, on a page of its own.
+      fillGate(`${f} × ${fam}`, sc, stored.theme.page.margins);
       // Synonym guard (one whole-document scan): the diurnal chart caption
       // "Trip Distribution by Time of Day" maps to trip-distribution too, and
       // must not take the firm's one-per-render wording away from the real
@@ -111,8 +147,7 @@ try {
       // the firm's trip-distribution synonym at most once.
       const syn = stored.theme.synonyms["trip-distribution"];
       if (f === "twisp-wa-2023.pdf" && fam === "tx" && syn) {
-        const full = await mod.scanPdf(buf, { maxPages: 80 });
-        const texts = full.pages.flatMap((pg) => pg.runs.map((r) => r.str.trim().toLowerCase()));
+        const texts = sc.pages.flatMap((pg) => pg.runs.map((r) => r.str.trim().toLowerCase()));
         const caption = texts.filter((t) => t === "trip distribution by time of day").length;
         const synCount = texts.filter((t) => t.includes(syn.toLowerCase())).length;
         ok(caption >= 1, `${f} × ${fam}: the diurnal caption is drawn in our wording (${caption} run(s))`);

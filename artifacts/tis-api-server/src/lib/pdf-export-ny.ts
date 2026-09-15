@@ -38,6 +38,7 @@ import { renderTripDistributionSection } from "./pdf-export-distribution";
 import { renderLaneGroupQueues } from "./lane-group-queues";
 import { activeTheme, isDefaultTheme, pageMargin } from "./report-theme/active";
 import * as themed from "./report-theme/draw";
+import { sectionBreak } from "./report-theme/layout";
 
 type StoredProject = {
   id: string;
@@ -1110,7 +1111,7 @@ export function renderTisNewYork(
   doc.moveDown(0.4);
 
   // --- Appendix A — Existing Volume Report -------------------------------
-  doc.addPage();
+  sectionBreak(doc);
   nySection(doc, "APPENDIX A — EXISTING VOLUME REPORT");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Per-approach existing peak-hour volumes (vph) for all affected intersections within study limits. Source: SimpleImpactStudies screening solver (Webster/Akçelik control-delay model), calibrated against the controlling DOT 511 / Regional Traffic Office data feed.",
@@ -1147,7 +1148,7 @@ export function renderTisNewYork(
   }
 
   // --- Appendix B — Existing Condition Capacity Analysis Output ----------
-  doc.addPage();
+  sectionBreak(doc);
   nySection(doc, "APPENDIX B — EXISTING CONDITION CAPACITY ANALYSIS OUTPUT");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Per-intersection screening-solver output (Webster/Akçelik control-delay model) for the Existing No-Build condition (current-year volumes; volumes grown to opening year at the §3.1 background-growth rate for No-Build comparison).",
@@ -1176,7 +1177,7 @@ export function renderTisNewYork(
   }
 
   // --- Appendix C — Proposed Condition Capacity Analysis Output ----------
-  doc.addPage();
+  sectionBreak(doc);
   nySection(doc, "APPENDIX C — PROPOSED CONDITION CAPACITY ANALYSIS OUTPUT");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Per-intersection screening-solver output (Webster/Akçelik control-delay model) for the Proposed Build condition (No-Build volumes plus project external trips at the assigned distribution).",
@@ -1205,7 +1206,7 @@ export function renderTisNewYork(
   }
 
   // --- Appendix D — Crash Analysis Diagrams and Tables -------------------
-  doc.addPage();
+  sectionBreak(doc);
   nySection(doc, "APPENDIX D — CRASH ANALYSIS DIAGRAMS AND TABLES");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "Crash analysis diagrams and tables are not produced by this screening analysis. When the §4.0 crash-analysis section is expanded for formal submittal, the following NYSDOT forms are required: TE-156a (Collision Diagram), TE-164a (Safety Benefits Evaluation Form), TE-204a (Accident Rate Summary), and TE-213 (HAL / PIL / SDL Screening Output). SIMS output and statewide-average rate references should be obtained from the controlling Regional Traffic Office per HDM Chapter 5 §5.3.4 and the NYSDOT Office of Modal Safety statewide rate tables (https://www.dot.ny.gov/divisions/operating/osss/highway/accident-rates).",
@@ -1303,7 +1304,7 @@ export function renderCeqrNyc(
   const pedAbove = peakHourPed > CEQR_PED_THRESHOLD;
   const anyAbove = vehAbove || transitAbove || pedAbove;
 
-  doc.addPage();
+  sectionBreak(doc);
   nySection(doc, "CEQR CHAPTER 16 — NYC TRANSPORTATION ANALYSIS");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "This section overlays the NYSDOT HDM Chapter 5 shell above with the CEQR Chapter 16 (Transportation) framing required for any NYC discretionary action. Reference: CEQR Technical Manual, December 2025 Edition (NYC Mayor's Office of Environmental Coordination). Chapter 16 PDF: https://www.nyc.gov/assets/oec/technical-manual/16_Transportation_2025.pdf.",

@@ -10,6 +10,7 @@ import type { TripDistributionSummary } from "./trip-distribution";
 import { drawColumnChart, drawLineChart, drawCompassRose, chartColors } from "./pdf-charts";
 import { CARDINALS } from "./caltran-gravity";
 import { isDefaultTheme, pageMargin } from "./report-theme/active";
+import { scaledHeight } from "./report-theme/layout";
 import * as themed from "./report-theme/draw";
 
 // ---- primitives table() closes over (copied per Path A) ----
@@ -62,13 +63,16 @@ export function drawDistributionPlan(
   if (zones.length === 0) return;
 
   const figW = doc.page.width - 2 * pageMargin();
-  const figH = 330;
+  const figH = scaledHeight(doc, 330);
   // Site box dimensions, declared up front: the label pass needs them to avoid
   // printing over the box, and the box itself is drawn last.
   const SITE_W = 92, SITE_H = 26;
+  const caption = `Figure — Project Trip Distribution. Study-area zones plotted to scale at their true bearing and distance from the site; leg weight is proportional to each zone's share of project trips, and the label gives that share. Derived from the ${td.methodLabel} distribution — the same shares tabulated above. Screening-grade: zone positions are the analysis locations, not a surveyed base map.`;
   // Keep the whole figure on one page — splitting a plan across a page break
-  // makes it unreadable and mis-scales the bar.
-  if (doc.y + figH > doc.page.height - pageMargin() - 40) doc.addPage();
+  // makes it unreadable and mis-scales the bar. Under a firm theme the caption
+  // is part of the figure: it must not open the next page on its own.
+  const captionH = isDefaultTheme() ? 0 : 6 + doc.font("body").fontSize(8).heightOfString(caption, { width: figW });
+  if (doc.y + figH + captionH > doc.page.height - doc.page.margins.bottom - 40) doc.addPage();
   const x0 = pageMargin();
   const y0 = doc.y;
   const cx = x0 + figW / 2;
@@ -213,7 +217,7 @@ export function drawDistributionPlan(
   doc.y = y0 + figH + 6;
   doc.x = pageMargin();
   doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-    `Figure — Project Trip Distribution. Study-area zones plotted to scale at their true bearing and distance from the site; leg weight is proportional to each zone's share of project trips, and the label gives that share. Derived from the ${td.methodLabel} distribution — the same shares tabulated above. Screening-grade: zone positions are the analysis locations, not a surveyed base map.`,
+    caption,
     pageMargin(),
     doc.y,
     { width: doc.page.width - 2 * pageMargin(), paragraphGap: 6 },

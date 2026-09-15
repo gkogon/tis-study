@@ -23,6 +23,7 @@
 
 import { profileForLandUse, distributeDaily, type ProfileLocale } from "./office-diurnal";
 import { activeTheme, isDefaultTheme, pageMargin } from "./report-theme/active";
+import { scaledHeight } from "./report-theme/layout";
 import * as themed from "./report-theme/draw";
 
 const TEXT_GRAY = "#6b7280";
@@ -79,7 +80,7 @@ function niceScale(maxValue: number, targetTicks = 5): Scale {
 
 /** Page-break if `needed` vertical points will not fit below the cursor. */
 function ensureSpace(doc: PDFKit.PDFDocument, needed: number): void {
-  if (doc.y + needed > doc.page.height - pageMargin() - 30) {
+  if (doc.y + needed > doc.page.height - doc.page.margins.bottom - 30) {
     doc.addPage();
   }
 }
@@ -223,7 +224,9 @@ export type ColumnChartSpec = {
 
 /** Vertical-bar chart — clustered by default, or stacked (Velocity Fig 2-1 is stacked). */
 export function drawColumnChart(doc: PDFKit.PDFDocument, spec: ColumnChartSpec): void {
-  const plotH = spec.height ?? 200;
+  // Plot heights were tuned to the default text box; a firm theme's smaller
+  // box gets a proportionally shorter plot so figures still pair on a page.
+  const plotH = scaledHeight(doc, spec.height ?? 200);
   const yTickFormat = spec.yTickFormat ?? ((v: number) => fmtTick(v));
   const captionH = spec.title ? 16 : 0;
   ensureSpace(doc, captionH + plotH + 30 + (spec.xLabel ? 14 : 0) + (spec.caption ? 28 : 0));
@@ -303,7 +306,7 @@ export type LineChartSpec = {
 
 /** Line / area chart (Velocity Fig 6-2). */
 export function drawLineChart(doc: PDFKit.PDFDocument, spec: LineChartSpec): void {
-  const plotH = spec.height ?? 200;
+  const plotH = scaledHeight(doc, spec.height ?? 200);
   const yTickFormat = spec.yTickFormat ?? ((v: number) => fmtTick(v));
   const color = spec.color ?? chartColors().line;
   const fillArea = spec.fillArea ?? true;
@@ -378,7 +381,7 @@ export type CompassRoseSpec = {
  * Self-contained; page-breaks via ensureSpace; leaves the y-cursor below the figure.
  */
 export function drawCompassRose(doc: PDFKit.PDFDocument, spec: CompassRoseSpec): void {
-  const size = 210; // square figure height in points
+  const size = scaledHeight(doc, 210); // square figure height in points
   ensureSpace(doc, size + 46);
   const startY = doc.y;
   doc.font("bold").fontSize(9.5).fillColor(chartColors().caption).text(spec.title, pageMargin(), startY);

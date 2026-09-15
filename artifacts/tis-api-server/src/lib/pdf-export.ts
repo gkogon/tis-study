@@ -46,6 +46,7 @@ import { activeTheme, isDefaultTheme, pageMargin, withTheme } from "./report-the
 import { DEFAULT_THEME, pageSizePoints, parseStoredTheme, type Theme } from "./report-theme/theme";
 import { installGlyphFallback, registerThemeFonts } from "./report-theme/fonts";
 import * as themed from "./report-theme/draw";
+import { keepTogether, scaledHeight, sectionBreak } from "./report-theme/layout";
 import { loadFirmTheme } from "./report-template/store";
 import { getTransitContext, type TransitContext } from "./transit-routes";
 import { enrichFdotIntersections, enrichSerpmIntersections, enrichTmsCountIntersections, fetchFdotSiteSnapshot, decodeFdotFunClass, decodeFdotAccessClass, SERPM_BASE_YEAR, SERPM_FUTURE_YEAR, type FdotSegmentSnapshot } from "./fdot-live-data";
@@ -1175,7 +1176,7 @@ function renderDrivewayFigure(doc: PDFKit.PDFDocument, result: Record<string, un
   if (canDraw) {
     const W = doc.page.width;
     const figW = W - 2 * pageMargin();
-    const figH = 340;
+    const figH = scaledHeight(doc, 340);
     const x0 = pageMargin(), y0 = doc.y;
     const cx = x0 + figW / 2, cy = y0 + figH / 2;
     const R = Math.max(78, Math.min(figW / 2 - 150, figH / 2 - 58)); // marker ring radius (room for labels)
@@ -1263,7 +1264,7 @@ function renderDrivewayAccessBlock(
   // UK studies use UK access terminology; US output is byte-identical.
   const ukAccess = (region?.country ?? "US") === "UK";
   // Reserve room so the heading + ~340pt figure stay on one page.
-  if (doc.y + 400 > doc.page.height - pageMargin()) doc.addPage();
+  if (doc.y + scaledHeight(doc, 400) > doc.page.height - doc.page.margins.bottom) doc.addPage();
   headingFn(doc, headingText);
   const figRows = renderDrivewayFigure(doc, result, ukAccess);
   if (figRows.length > 0) {
@@ -9111,7 +9112,7 @@ function renderFourStepSection(
   const autoShare = Number(result.autoModeShareApplied);
   const SPEED_MPH = 25;
 
-  doc.addPage();
+  sectionBreak(doc);
   gaSection(doc, "FOUR-STEP TRAVEL DEMAND MODEL");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "Off-site project trips are distributed and assigned with the four-step urban transportation modeling process "
@@ -9241,6 +9242,29 @@ function renderFourStepSection(
   }
 }
 
+/**
+ * Themed worksheets flow: one intersection per page is the default layout's
+ * convention, but a firm theme's smaller text box no longer holds a whole
+ * worksheet, and a forced page per intersection then strands the last two
+ * lines of every worksheet on a page of their own. Under a theme each
+ * worksheet follows the previous one after a rule, and its heading + summary
+ * rows are kept together so a worksheet never opens at the foot of a page.
+ */
+function themedWorksheetStart(doc: PDFKit.PDFDocument, first: boolean): void {
+  const t = activeTheme();
+  const headBlock = t.headings[1].style.size * 2.4 + 7 * (t.text.body.size * 1.35 + 1) + 40;
+  if (!first) {
+    if (doc.y + 30 + headBlock > doc.page.height - doc.page.margins.bottom) { doc.addPage(); return; }
+    const y = doc.y + 12;
+    doc.save().strokeColor(t.palette.rule).lineWidth(0.75)
+      .moveTo(doc.page.margins.left, y).lineTo(doc.page.width - doc.page.margins.right, y).stroke().restore();
+    doc.y = y + 14;
+    doc.x = doc.page.margins.left;
+    return;
+  }
+  keepTogether(doc, headBlock);
+}
+
 function renderCapacityAppendix(
   doc: PDFKit.PDFDocument,
   intersections: any[],
@@ -9249,7 +9273,7 @@ function renderCapacityAppendix(
   studyRadiusMi?: number,
   mergedAsDuplicates?: number,
 ) {
-  doc.addPage();
+  sectionBreak(doc);
   gaSection(doc, "APPENDIX — INTERSECTION CAPACITY ANALYSIS WORKSHEETS");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "One worksheet per study intersection: a turning-movement diagram for each analyzed peak period plus "
@@ -9311,7 +9335,8 @@ function renderCapacityAppendix(
   const peakPeriods = (Array.isArray(periods) ? periods : []).filter((p) => p && p.period !== "daily");
 
   ordered.forEach((ix, i) => {
-    doc.addPage(); // one intersection per page — clean layout, no crowding
+    if (isDefaultTheme()) doc.addPage(); // one intersection per page — clean layout, no crowding
+    else themedWorksheetStart(doc, i === 0);
     gaSubsection(doc, `A.${i + 1}  ${ix.name ?? ix.signalId ?? "Intersection"}`);
     const deltaDelay = (Number(ix.futureDelaySec) || 0) - (Number(ix.existingDelaySec) || 0);
     // A junction can receive < 1 net peak car trip — most often at high-PTAL
@@ -9435,7 +9460,9 @@ function renderCapacityAppendix(
     // Turning-movement diagrams — one per analyzed peak period (Build),
     // pulling that period's approach volumes from periodReports. Falls back
     // to the top-level (PM) No-Build + Build pair when no period detail.
-    doc.font("bold").fontSize(9.5).fillColor("black").text("Turning-Movement Diagrams (Build condition)", { paragraphGap: 4 });
+    const dh = scaledHeight(doc, 132);
+    if (!isDefaultTheme()) themed.heading(doc, 3, "Turning-Movement Diagrams (Build condition)", { synonyms: false, keepWith: dh + 20 });
+    else doc.font("bold").fontSize(9.5).fillColor("black").text("Turning-Movement Diagrams (Build condition)", { paragraphGap: 4 });
     const W = doc.page.width;
     const usable = W - pageMargin() * 2;
     type Fig = { rec: any; scenario: "nobuild" | "build"; title: string };
@@ -9461,12 +9488,11 @@ function renderCapacityAppendix(
     const perRow = Math.min(figs.length, 3);
     const gap = 10;
     const dw = (usable - gap * (perRow - 1)) / perRow;
-    const dh = 132;
     let rowY = doc.y;
     figs.forEach((f, idx) => {
       const col = idx % perRow;
       if (col === 0 && idx > 0) rowY += dh + 12;
-      if (rowY + dh > doc.page.height - pageMargin() - 30) { doc.addPage(); rowY = doc.y; }
+      if (rowY + dh > doc.page.height - doc.page.margins.bottom - 30) { doc.addPage(); rowY = doc.y; }
       const fx = pageMargin() + col * (dw + gap);
       drawTurningMovementDiagram(doc, fx, rowY, dw, dh, f.rec, f.scenario, f.title);
     });
@@ -9497,7 +9523,8 @@ function renderCapacityAppendix(
     const approaches: any[] = Array.isArray(ix.approaches) ? ix.approaches : [];
     if (approaches.length === 0) return;
 
-    doc.font("bold").fontSize(9.5).fillColor("black").text("Per-Approach Capacity (PM Peak)", { paragraphGap: 4 });
+    if (!isDefaultTheme()) themed.heading(doc, 3, "Per-Approach Capacity (PM Peak)", { synonyms: false, keepWith: 70 });
+    else doc.font("bold").fontSize(9.5).fillColor("black").text("Per-Approach Capacity (PM Peak)", { paragraphGap: 4 });
     // The engine's `existing*` approach fields are NO-BUILD values
     // (grown to opening year) — see the naming note in tis.ts. The
     // old "Exist" headers presented No-Build→Build as Existing→Build
@@ -9539,7 +9566,8 @@ function renderCapacityAppendix(
       const mv: any[] = Array.isArray(ix.movements) ? ix.movements : [];
       if (mv.length > 0) {
         doc.moveDown(0.3);
-        doc.font("bold").fontSize(9).fillColor("black").text("Affected movements (PM peak project trips)", { paragraphGap: 3 });
+        if (!isDefaultTheme()) themed.heading(doc, 3, "Affected movements (PM peak project trips)", { synonyms: false, keepWith: 70 });
+        else doc.font("bold").fontSize(9).fillColor("black").text("Affected movements (PM peak project trips)", { paragraphGap: 3 });
         const MOVE_NAME: Record<string, string> = { L: "Left", T: "Through", R: "Right" };
         const totalMv = mv.reduce((s, m) => s + (Number(m.trips) || 0), 0) || 1;
         table(doc, {
@@ -9592,7 +9620,8 @@ function renderCapacityAppendix(
           .sort((a, b) => (Number(b.addedTripsPeak) || 0) - (Number(a.addedTripsPeak) || 0));
         if (loaded.length > 0) {
           doc.moveDown(0.3);
-          doc.font("bold").fontSize(9).fillColor("black").text("Affected movements (PM peak project trips)", { paragraphGap: 2 });
+          if (!isDefaultTheme()) themed.heading(doc, 3, "Affected movements (PM peak project trips)", { synonyms: false, keepWith: 40 });
+          else doc.font("bold").fontSize(9).fillColor("black").text("Affected movements (PM peak project trips)", { paragraphGap: 2 });
           const parts = loaded.map((a) => {
             const dir = String(a.direction ?? "").toUpperCase();
             const added = Math.round(Number(a.addedTripsPeak) || 0);
@@ -9616,8 +9645,9 @@ function renderCapacityAppendix(
     const tl = ix.turboLane;
     if (tl) {
       doc.moveDown(0.5);
-      if (doc.y > doc.page.height - pageMargin() - 120) doc.addPage();
-      doc.font("bold").fontSize(9.5).fillColor(BRAND_BLUE).text("Turbo-Lane Screening (Continuous-Green T)", { paragraphGap: 4 });
+      if (doc.y > doc.page.height - doc.page.margins.bottom - 120) doc.addPage();
+      if (!isDefaultTheme()) themed.heading(doc, 3, "Turbo-Lane Screening (Continuous-Green T)", { synonyms: false, keepWith: 100 });
+      else doc.font("bold").fontSize(9.5).fillColor(BRAND_BLUE).text("Turbo-Lane Screening (Continuous-Green T)", { paragraphGap: 4 });
       doc.fillColor("black");
       rows(doc, [
         ["Configuration", `Type ${tl.turboType} · ${tl.medianType} median · ${tl.turboDirection} main-street through continuous`],

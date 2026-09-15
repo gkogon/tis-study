@@ -129,6 +129,12 @@ export type HeadingOptions = {
    * the firm's one-per-render synonym away from the real section heading.
    */
   synonyms?: boolean;
+  /**
+   * Points of the block below the heading that must share its page (default
+   * 24 — a couple of body lines). A heading over a table or a figure passes
+   * that block's height so it is never stranded at the foot of a page.
+   */
+  keepWith?: number;
 };
 
 export function heading(doc: PDFKit.PDFDocument, level: 1 | 2 | 3, title: string, opts: HeadingOptions = {}): void {
@@ -139,9 +145,11 @@ export function heading(doc: PDFKit.PDFDocument, level: 1 | 2 | 3, title: string
   const w = usable(doc);
   applyStyle(doc, h.style);
   const textH = doc.heightOfString(label, { width: w });
-  const need = h.spaceBefore + textH + (h.band ? h.band.padY * 2 : 0) + (h.rule ? h.rule.gap + h.rule.width : 0) + h.spaceAfter + 24;
+  const need = h.spaceBefore + textH + (h.band ? h.band.padY * 2 : 0) + (h.rule ? h.rule.gap + h.rule.width : 0) + h.spaceAfter + (opts.keepWith ?? 24);
   if (doc.y + need > bottomLimit(doc)) doc.addPage();
-  doc.y += h.spaceBefore;
+  // The sample's space-above-heading is the gap from the preceding text; at
+  // the top of a page there is nothing to space from.
+  if (doc.y > doc.page.margins.top + 0.01) doc.y += h.spaceBefore;
   doc.x = x;
   if (h.band) {
     doc.save().rect(x, doc.y, w, textH + h.band.padY * 2).fill(h.band.color).restore();
@@ -224,8 +232,12 @@ export function table(doc: PDFKit.PDFDocument, spec: TableSpec): void {
   };
   let y = doc.y;
   const headerH = measure(spec.headers, true);
-  const firstRowH = spec.rows.length ? measure(spec.rows[0], false) : 0;
-  if (y + headerH + firstRowH > bottomLimit(doc) - 40) {
+  const rowH = spec.rows.map((r) => measure(r, false));
+  const firstRowH = rowH[0] ?? 0;
+  // No footer slack: the themed footer lives in the bottom margin band, below
+  // bottomLimit, so rows may run to the band edge. (The default renderer's
+  // 40 pt slack kept its rows clear of a footer drawn inside the text band.)
+  if (y + headerH + firstRowH > bottomLimit(doc)) {
     doc.addPage();
     y = doc.y;
   }
@@ -234,8 +246,11 @@ export function table(doc: PDFKit.PDFDocument, spec: TableSpec): void {
   y += headerH;
   hrule(y);
   spec.rows.forEach((r, idx) => {
-    const rh = measure(r, false);
-    if (y + rh > bottomLimit(doc) - 40) {
+    const rh = rowH[idx];
+    // Widow rule: the last two rows travel together, so a page never opens
+    // with a lone final row under a repeated header.
+    const need = rh + (idx === spec.rows.length - 2 ? rowH[idx + 1] : 0);
+    if (y + need > bottomLimit(doc)) {
       doc.addPage();
       y = doc.y;
       const hh = measure(spec.headers, true);
