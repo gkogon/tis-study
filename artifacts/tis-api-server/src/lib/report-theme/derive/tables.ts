@@ -67,6 +67,13 @@ const styleOf = (r: TextRun, body: BodyStyle, headingFont: string | null): Theme
 export function detectTables(pages: ScannedPage[], body: BodyStyle, headingFont: string | null): { style: Theme["table"] | null; count: number } {
   const found: Array<{ header: Theme["table"]["header"]; bodySize: number; bodyColor: string; mode: Theme["table"]["rules"]["mode"]; ruleColor: string; ruleWidth: number; zebra: string | null; padX: number; padY: number; caption: Theme["table"]["caption"] | null }> = [];
   for (const p of interiorPages(pages)) {
+    // A "Table N" / "Figure N" caption line sits above a table for the same
+    // reason detectHeadings (typography.ts) excludes it from heading
+    // candidates: it is bold, styled like the table's own header, and often
+    // the nearest bold text above the region — so it must never be eligible
+    // as a header candidate itself.
+    const captionRuns = new Set<TextRun>();
+    for (const ln of linesOf(p)) if (/^(table|figure)\s+\d/i.test(ln.text)) for (const r of ln.runs) captionRuns.add(r);
     for (const g of findRegions(p)) {
       const inRegion = p.runs.filter((r) => r.x >= g.x1 - 2 && r.x <= g.x2 + 2 && r.y >= g.yTop - 2 && r.y <= g.yBottom + 2);
       if (!inRegion.length) continue;
@@ -80,11 +87,17 @@ export function detectTables(pages: ScannedPage[], body: BodyStyle, headingFont:
       // With no fill at all (spec §5.2: "header row = first row with bold
       // runs OR on a fill"), the header can likewise sit a row above the
       // region's raw top with nothing there to widen it the way a fill rect's
-      // own bounds do — so, absent a fill, the search also looks up to one
-      // table row (40pt) above g.yTop. Real body text sitting there is never
-      // mostly bold, so this cannot mistake a preceding paragraph for a
-      // header; it only wins when the first baseline cluster it finds is.
-      const above = headerFillRect ? [] : p.runs.filter((r) => r.x >= g.x1 - 2 && r.x <= g.x2 + 2 && r.y < g.yTop - 2 && r.y >= g.yTop - 40);
+      // own bounds do — so, absent a fill, the search also looks above
+      // g.yTop, bounded by the region's own row pitch (the median gap
+      // between its rules; 40pt when there are fewer than 2 to measure from)
+      // rather than a fixed distance, so a caption sitting further up than a
+      // real header would still be excluded even without the line-text
+      // check above. Real body text sitting there is never mostly bold, so
+      // this cannot mistake a preceding paragraph for a header either.
+      const gaps: number[] = [];
+      for (let i = 1; i < g.hlines.length; i++) gaps.push(g.hlines[i].y1 - g.hlines[i - 1].y1);
+      const rowPitch = gaps.length ? median(gaps) : 40;
+      const above = headerFillRect ? [] : p.runs.filter((r) => r.x >= g.x1 - 2 && r.x <= g.x2 + 2 && r.y < g.yTop - 2 && r.y >= g.yTop - 1.5 * rowPitch && !captionRuns.has(r));
       const regionRuns = [...above, ...inRegion];
       const firstY = Math.min(...regionRuns.map((r) => r.y));
       const firstRow = regionRuns.filter((r) => r.y - firstY <= 0.6 * r.size);

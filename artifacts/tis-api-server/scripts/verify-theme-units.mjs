@@ -372,19 +372,20 @@ ok(stackedRes.style && stackedRes.style.header.fill === "#1f4e79", `each table's
 
 // ─── tables.ts: a bold first row identifies a header with no fill at all ───
 // A rule-only table (no header fill; the luminance guard would also skip a
-// white one) whose 3 rules sit only between BODY rows — never under the
-// header itself — used to compute headerBottom at the row1/row2 rule (the
-// same off-by-one-row bug the fill-based fix addressed). Per spec §5.2
-// ("header row = first row with bold runs OR on a fill"), the first bold
-// baseline above the region is the header instead. Header and body share the
-// same 9pt size but different colours, so a leak either way is visible.
+// white one) whose 3 rules (20pt apart: 340, 360, 380) sit only between BODY
+// rows — never under the header itself — used to compute headerBottom at the
+// row1/row2 rule (the same off-by-one-row bug the fill-based fix addressed).
+// Per spec §5.2 ("header row = first row with bold runs OR on a fill"), the
+// first bold baseline above the region (here 25pt above g.yTop, within the
+// row-pitch-scaled 1.5×20=30pt reach) is the header instead. Header and body
+// share the same 9pt size but different colours, so a leak either way shows.
 const ruleOnly = mkPage(6, [
-  run(6, "Movement", 9, "#000000", 76, 300, 60, { bold: true }), run(6, "Delay (s)", 9, "#000000", 276, 300, 20, { bold: true }),
-  run(6, "EB Left", 9, "#333333", 76, 318, 40), run(6, "12.3", 9, "#333333", 276, 318, 20),
-  run(6, "WB Left", 9, "#333333", 76, 336, 40), run(6, "15.7", 9, "#333333", 276, 336, 20),
-  run(6, "NB Thru", 9, "#333333", 76, 354, 40), run(6, "9.1", 9, "#333333", 276, 354, 20),
+  run(6, "Movement", 9, "#000000", 76, 315, 60, { bold: true }), run(6, "Delay (s)", 9, "#000000", 276, 315, 20, { bold: true }),
+  run(6, "EB Left", 9, "#333333", 76, 350, 40), run(6, "12.3", 9, "#333333", 276, 350, 20),
+  run(6, "WB Left", 9, "#333333", 76, 365, 40), run(6, "15.7", 9, "#333333", 276, 365, 20),
+  run(6, "NB Thru", 9, "#333333", 76, 378, 40), run(6, "9.1", 9, "#333333", 276, 378, 20),
 ], [
-  { page: 6, x1: 72, y1: 336, x2: 372, y2: 336, color: "#000000", width: 0.75 }, { page: 6, x1: 72, y1: 354, x2: 372, y2: 354, color: "#000000", width: 0.75 }, { page: 6, x1: 72, y1: 372, x2: 372, y2: 372, color: "#000000", width: 0.75 },
+  { page: 6, x1: 72, y1: 340, x2: 372, y2: 340, color: "#000000", width: 0.75 }, { page: 6, x1: 72, y1: 360, x2: 372, y2: 360, color: "#000000", width: 0.75 }, { page: 6, x1: 72, y1: 380, x2: 372, y2: 380, color: "#000000", width: 0.75 },
 ]);
 const roRes = tbl.detectTables([pagesA[0], ruleOnly], bodyA, null);
 ok(roRes.style && roRes.style.header.fill === null, `rule-only table: no header fill (${roRes.style?.header.fill})`);
@@ -392,6 +393,29 @@ ok(roRes.style && roRes.style.header.bold === true, `rule-only table: bold first
 ok(roRes.style && roRes.style.header.size === 9, `rule-only table: header size 9 (${roRes.style?.header.size})`);
 ok(roRes.style && roRes.style.body.size === 9, `rule-only table: body size 9 (${roRes.style?.body.size})`);
 ok(roRes.style && roRes.style.body.color === "#333333", `rule-only table: body colour from the body runs, not the header's (${roRes.style?.body.color})`);
+
+// ─── tables.ts: the header search skips a caption sitting above it ─────────
+// Round-2 regression: a rule-only table (3 rules 20pt apart: 340, 360, 380 —
+// rowPitch 20, reach 1.5×20=30pt above g.yTop) whose bold black 9pt header
+// sits 25pt above g.yTop, with a bold grey "Table N" caption a further 14pt
+// above the header (39pt above g.yTop — inside the same 30pt reach, so
+// without the caption exclusion this caption, being the topmost bold run in
+// the window and not close enough to the header's own baseline to cluster
+// with it, becomes "the first row" outright and its grey leaks into
+// header.color). The caption itself must still be found and placed "above".
+const captionPage = mkPage(7, [
+  run(7, "Table 4-2: Queue Summary", 9, "#6b7280", 72, 310, 200, { bold: true }),
+  run(7, "Movement", 9, "#000000", 76, 324, 60, { bold: true }), run(7, "Delay (s)", 9, "#000000", 276, 324, 20, { bold: true }),
+  run(7, "EB Left", 9, "#333333", 76, 350, 40), run(7, "12.3", 9, "#333333", 276, 350, 20),
+  run(7, "WB Left", 9, "#333333", 76, 365, 40), run(7, "15.7", 9, "#333333", 276, 365, 20),
+  run(7, "NB Thru", 9, "#333333", 76, 378, 40), run(7, "9.1", 9, "#333333", 276, 378, 20),
+], [
+  { page: 7, x1: 72, y1: 340, x2: 372, y2: 340, color: "#000000", width: 0.75 }, { page: 7, x1: 72, y1: 360, x2: 372, y2: 360, color: "#000000", width: 0.75 }, { page: 7, x1: 72, y1: 380, x2: 372, y2: 380, color: "#000000", width: 0.75 },
+]);
+const capRes = tbl.detectTables([pagesA[0], captionPage], bodyA, null);
+ok(capRes.style && capRes.style.header.color === "#000000", `caption above a fill-less header is excluded from it (${capRes.style?.header.color})`);
+ok(capRes.style && capRes.style.header.bold === true, `caption regression: header still identified as bold (${capRes.style?.header.bold})`);
+ok(capRes.style && capRes.style.caption.position === "above", `caption regression: the caption itself is still found, above the table (${JSON.stringify(capRes.style?.caption)})`);
 
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");
