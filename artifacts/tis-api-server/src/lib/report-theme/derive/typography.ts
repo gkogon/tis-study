@@ -46,13 +46,18 @@ export type HeadingLevel = {
 };
 
 export function detectNumbering(texts: string[]): Numbering {
-  const n = texts.length || 1;
-  const share = (re: RegExp) => texts.filter((t) => re.test(t)).length / n;
-  if (share(/^\s*\d{1,2}\.0\b/) >= 0.5) return "1.0";
-  if (share(/^\s*\d{1,2}\.\s/) >= 0.5) return "1.";
-  if (share(/^\s*section\s+\d/i) >= 0.5) return "section";
-  if (share(/^\s*[A-Z]\.\s/) >= 0.5) return "letter";
-  if (share(/^\s*\d{1,2}(\.\d{1,2})*\s+\S/) >= 0.5) return "1";
+  // A firm that styles chapter and section headings identically ("3. EXISTING
+  // CONDITIONS" and "3.1 ROADWAYS" both white on a band) lands both in one
+  // level, and the sections outnumber the chapters — so the top-level FORM
+  // ("3.0" / "3." / "3") is read from the single-number lines only; the
+  // sub-numbered lines can only say that the scheme is numeric at all.
+  const top = texts.filter((t) => !/^\s*\d{1,2}\.[1-9]\d?\b/.test(t));
+  const share = (re: RegExp, over: string[]) => over.filter((t) => re.test(t)).length / (over.length || 1);
+  if (share(/^\s*\d{1,2}\.0\b/, top) >= 0.5) return "1.0";
+  if (share(/^\s*\d{1,2}\.\s/, top) >= 0.5) return "1.";
+  if (share(/^\s*section\s+\d/i, top) >= 0.5) return "section";
+  if (share(/^\s*[A-Z]\.\s/, top) >= 0.5) return "letter";
+  if (share(/^\s*\d{1,2}(\.\d{1,2})*\s+\S/, texts) >= 0.5) return "1";
   return "none";
 }
 
@@ -86,6 +91,7 @@ const gapAfter = (it: Inst) => { const next = it.all[it.idx + 1]; return next ? 
 /** Digit-normalised, whitespace-collapsed, lowercased line text — the key a
  *  running header/footer repeats under even when it carries a page number. */
 const normText = (t: string) => t.replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
+const FRONT_MATTER_RE = /^(table of contents|contents|(list|table) of (tables|figures|exhibits|appendices|acronyms|abbreviations))\s*:?$/i;
 
 /**
  * Heading levels = distinct (font, size, bold, colour) styles that stand alone
@@ -122,6 +128,10 @@ export function detectHeadings(pages: ScannedPage[], body: BodyStyle): HeadingLe
       if (runningHeaders.has(normText(ln.text))) return; // running header/footer, not a heading
       // Captions and table-header rows are bold but never headings.
       if (/^(table|figure)\s+\d/i.test(ln.text)) return;
+      // Contents-list titles are set in the firm's display style, often
+      // larger than any chapter heading, and appear once each — so they
+      // would win H1 by size while the real chapter style is demoted.
+      if (FRONT_MATTER_RE.test(ln.text)) return;
       const r = ln.runs[0];
       if (sizeKey(r.size) < body.size - 0.5) return; // a heading is never smaller than body text
       const differs = sizeKey(r.size) > body.size + 0.5 || (r.bold && !body.bold) || (r.color ?? "#000000") !== body.color;

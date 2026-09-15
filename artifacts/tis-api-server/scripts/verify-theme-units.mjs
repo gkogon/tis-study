@@ -417,6 +417,37 @@ ok(capRes.style && capRes.style.header.color === "#000000", `caption above a fil
 ok(capRes.style && capRes.style.header.bold === true, `caption regression: header still identified as bold (${capRes.style?.header.bold})`);
 ok(capRes.style && capRes.style.caption.position === "above", `caption regression: the caption itself is still found, above the table (${JSON.stringify(capRes.style?.caption)})`);
 
+// ─── corpus round (Task 14): patterns real firm PDFs broke ─────────────────
+// Each fixture below is the minimal synthetic form of a failure the public
+// TIS corpus (scripts/fixtures/tis-corpus) produced; the corpus gate
+// (check:theme-extract) is the real proof, these pin the mechanism.
+
+// typography.ts — detectNumbering reads the top-level FORM from single-number
+// lines: Kimley-Horn Stafford styles "3. EXISTING CONDITIONS" and "3.1
+// EXISTING ROADWAY CHARACTERISTICS" identically, so both land in one level
+// and the (more numerous) sections used to turn the chapters' "1." into "1".
+eq(typo.detectNumbering(["EXECUTIVE SUMMARY", "1. INTRODUCTION", "2. ANALYSIS", "3. EXISTING", "1.1 A", "1.2 B", "2.1 C", "2.2 D", "3.1 E", "3.2 F", "3.3 G"]), "1.", "numbering: chapter form '1.' wins over the more numerous '1.1' sections in the same level");
+eq(typo.detectNumbering(["3.1 A", "3.2 B", "4.1 C"]), "1", "numbering: a sub-numbered-only level is still numeric");
+eq(typo.detectNumbering(["1.0 INTRO", "1.1 Scope", "2.0 METHODS", "2.1 Data"]), "1.0", "numbering: '1.0' form kept when sections share the level");
+
+// typography.ts — contents-list titles are not headings: SCJ Twisp sets
+// "Table of Contents" / "List of Tables" / "List of Figures" in 21 pt Segoe
+// (larger than any chapter title) once each, and they won H1 by size.
+const tocTitle = (page, text, y) => run(page, text, 21, "#5c5c5c", 200, y, 170, { bold: true });
+const chapter = (page, text) => run(page, text, 16, "#5c5c5c", 72, 95, 160, { bold: true });
+const tocBody = (page, y) => run(page, "1 Introduction ............................................ 1", 11, "#000000", 72, y, 460);
+const pagesToc = [
+  mkPage(1, [run(1, "TITLE", 30, "#5c5c5c", 72, 300, 300, { bold: true })]),
+  mkPage(2, [tocTitle(2, "Table of Contents", 98), tocBody(2, 130), tocBody(2, 148), tocBody(2, 166)]),
+  mkPage(3, [tocTitle(3, "List of Tables", 98), tocBody(3, 130), tocBody(3, 148), tocTitle(3, "List of Figures", 220), tocBody(3, 250), tocBody(3, 268)]),
+  mkPage(4, [chapter(4, "1 Introduction"), run(4, "Body text line one that is long enough to count as a paragraph line.", 11, "#000000", 72, 124, 460), run(4, "Second body line of similar length to the first one here.", 11, "#000000", 72, 138, 440)]),
+  mkPage(5, [chapter(5, "2 Existing Conditions"), run(5, "Body body body body body body body body body body body.", 11, "#000000", 72, 124, 430), run(5, "More body text of typical paragraph length for the page.", 11, "#000000", 72, 138, 445)]),
+  mkPage(6, [chapter(6, "3 Conclusions"), run(6, "Closing body text that wraps like any other paragraph line.", 11, "#000000", 72, 124, 455), run(6, "Another closing body line of the usual paragraph length.", 11, "#000000", 72, 138, 450)]),
+];
+const bodyToc = typo.bodyStyle(pagesToc);
+const headsToc = typo.detectHeadings(pagesToc, bodyToc);
+eq(headsToc.map((h) => [h.size, h.numbering]), [[16, "1"]], "front matter: 21 pt contents-list titles are excluded; the 16 pt chapter style is H1 with '1' numbering");
+
 // ─── derive/cover.ts + derive/synonyms.ts ────────────────────────────────────
 const cov = await import(path.resolve(here, "../src/lib/report-theme/derive/cover.ts"));
 const syn = await import(path.resolve(here, "../src/lib/report-theme/derive/synonyms.ts"));
