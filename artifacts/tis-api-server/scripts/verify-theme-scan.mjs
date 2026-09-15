@@ -133,5 +133,14 @@ ok(T1.style && T1.style.caption.position === "above", "blue-sans caption above")
 const T2 = tbl2.detectTables(serif.pages, b2, hl2[0]?.font ?? null);
 ok(T2.style && T2.style.header.fill === "#d9d9d9" && T2.style.header.color === "#000000", `serif-black grey header (${JSON.stringify(T2.style?.header)})`);
 
+const cov2 = await import(path.resolve(here, "../src/lib/report-theme/derive/cover.ts"));
+const C1 = cov2.deriveCover(scan.pages[0], b1, hl[0]?.font ?? null, { firmName: "Acme Traffic Engineering" });
+ok(C1.coverTitle === "Maple Grove Mixed-Use Development", `blue-sans cover title (${C1.coverTitle})`);
+ok(C1.cover.bands.length === 1 && C1.cover.bands[0].color === "#1f4e79" && C1.cover.bands[0].y1 === 140, `blue-sans band (${JSON.stringify(C1.cover.bands)})`);
+ok(C1.cover.elements.map((e) => e.role).join(",") === "documentType,projectName,preparedFor,preparedBy,dateLabel", `blue-sans cover roles (${C1.cover.elements.map((e) => e.role).join(",")})`);
+ok(C1.cover.elements[0].style.size === 30 && C1.cover.elements[0].style.color === "#ffffff", "blue-sans doc-type element style");
+ok(C1.cover.hasMetaBlock, "blue-sans has meta block");
+ok(C1.cover.logo && C1.cover.logo.w === 96, `blue-sans cover logo captured (${JSON.stringify(C1.cover.logo && { x: C1.cover.logo.x, y: C1.cover.logo.y, w: C1.cover.logo.w, h: C1.cover.logo.h })})`);
+
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");

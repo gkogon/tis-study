@@ -417,5 +417,30 @@ ok(capRes.style && capRes.style.header.color === "#000000", `caption above a fil
 ok(capRes.style && capRes.style.header.bold === true, `caption regression: header still identified as bold (${capRes.style?.header.bold})`);
 ok(capRes.style && capRes.style.caption.position === "above", `caption regression: the caption itself is still found, above the table (${JSON.stringify(capRes.style?.caption)})`);
 
+// ─── derive/cover.ts + derive/synonyms.ts ────────────────────────────────────
+const cov = await import(path.resolve(here, "../src/lib/report-theme/derive/cover.ts"));
+const syn = await import(path.resolve(here, "../src/lib/report-theme/derive/synonyms.ts"));
+eq(syn.mapSynonyms(["1.0 INTRODUCTION", "2.0 SITE TRIP GENERATION", "3.0 Intersection Capacity Analysis", "4.0 Conclusions", "5.0 Conclusions Again"]), { introduction: "INTRODUCTION", "trip-generation": "SITE TRIP GENERATION", "capacity-analysis": "Intersection Capacity Analysis", conclusions: "Conclusions" }, "synonyms keyed canonically, numbering stripped, first wins");
+const coverPage = mkPage(1, [
+  run(1, "TRAFFIC IMPACT STUDY", 30, "#ffffff", 72, 100, 380, { bold: true }),
+  run(1, "Maple Grove Mixed-Use Development", 18, "#222222", 72, 320, 330),
+  run(1, "Prepared for: Maple Grove Partners LLC", 12, "#222222", 72, 432, 240),
+  run(1, "Prepared by: Acme Traffic Engineering", 12, "#222222", 72, 452, 230),
+  run(1, "March 2025", 12, "#222222", 72, 472, 70),
+  run(1, "123 Main Street, Suite 400, Springfield", 10, "#222222", 72, 700, 220),
+], [], [{ page: 1, x: 0, y: 0, w: 612, h: 140, color: "#1f4e79" }]);
+coverPage.images.push({ page: 1, x: 400, y: 20, w: 160, h: 50, objId: "logo", pixels: { width: 32, height: 10, kind: 2, data: new Uint8ClampedArray(32 * 10 * 3).fill(120) } });
+const cres = cov.deriveCover(coverPage, bodyA, "ABCDEF+Arial-Bold", { firmName: "Acme Traffic Engineering" });
+eq(cres.coverTitle, "Maple Grove Mixed-Use Development", "cover title = largest non-doctype run");
+eq(cres.cover.bands, [{ y0: 0, y1: 140, color: "#1f4e79" }], "band captured");
+ok(cres.cover.logo && cres.cover.logo.data.startsWith("data:image/png;base64,") && cres.cover.logo.w === 160, "logo exported as PNG with placement");
+eq(cres.cover.elements.map((e) => e.role), ["documentType", "projectName", "preparedFor", "preparedBy", "dateLabel"], "elements classified in page order");
+eq(cres.cover.elements.find((e) => e.role === "preparedFor").label, "Prepared for:", "preparedFor keeps its label");
+ok(cres.cover.hasMetaBlock === true, "meta block present");
+ok(!JSON.stringify(cres.cover).includes("Main Street"), "unclassified address line is NOT stored");
+ok(cres.warnings.some((w) => /Main Street/.test(w)), "dropped cover text is reported");
+const bare = cov.deriveCover(mkPage(1, [run(1, "TRAFFIC IMPACT STUDY", 24, "#000000", 72, 200, 300, { bold: true })]), bodyA, null, { firmName: "X" });
+ok(bare.cover.hasMetaBlock === false && bare.coverTitle === null, "cover with only a doc type: no meta block, no title");
+
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");
