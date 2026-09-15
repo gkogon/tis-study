@@ -243,6 +243,12 @@ eq(hf.classifyRunningText("Maple Grove Mixed-Use Development", CTX), "{{project.
 eq(hf.classifyRunningText("Prepared for Maple Grove Partners LLC", CTX), null, "client line dropped");
 eq(hf.tokenizeSegment("Acme Traffic Engineering, Inc. | Traffic Impact Study | Page 3", CTX), { text: "{{firm.name}} | {{documentType}} | Page {{page}}", dropped: [] }, "pipe-separated segment tokenised");
 eq(hf.tokenizeSegment("Maple Grove Partners LLC  –  Page 3 of 9", CTX), { text: "Page {{page}} of {{pages}}", dropped: ["Maple Grove Partners LLC"] }, "unclassified part dropped, separator collapsed");
+// §5.3 leak: a page marker matching INSIDE a larger, separator-free run of
+// text must still yield only the token — never the surrounding sample text —
+// and the surrounding text must be recoverable as dropped, not silently kept.
+eq(hf.classifyRunningText("Maple Grove Partners LLC Traffic Impact Study Page 3 of 12", CTX), "Page {{page}} of {{pages}}", "page pattern wins even when embedded in surrounding text, and returns only the token");
+const leak = hf.tokenizeSegment("Maple Grove Partners LLC Traffic Impact Study Page 3 of 12", CTX);
+ok(leak.text === "Page {{page}} of {{pages}}" && leak.dropped.some((d) => d.includes("Maple Grove Partners LLC")), `tokenizeSegment drops the remainder around an embedded page marker (${JSON.stringify(leak)})`);
 // Zones: 4 interior pages with a right-aligned header and a centred footer, one page missing the header.
 const zrun = (page, str, x, y, w, size = 8, color = "#666666") => ({ page, str, font: "ABCDEF+Arial", size, bold: false, italic: false, serif: false, mono: false, color, x, y, w, h: size });
 const bodyRun = (page, y) => ({ page, str: "Body text that is long enough to be a paragraph line for margins.", font: "ABCDEF+Arial", size: 10, bold: false, italic: false, serif: false, mono: false, color: "#000000", x: 72, y, w: 460, h: 10 });
@@ -252,7 +258,7 @@ const zbody = { font: "ABCDEF+Arial", size: 10, color: "#000000", serif: false, 
 const zones = hf.detectRunningZones(zpages, zbody, null, CTX);
 ok(zones.header && zones.header.segments.length === 1 && zones.header.segments[0].align === "right" && zones.header.segments[0].text === "{{firm.name}} | {{documentType}}", `header detected on 3/4 pages, right-aligned, tokenised (${JSON.stringify(zones.header?.segments)})`);
 ok(zones.header && zones.header.rule && zones.header.rule.color === "#1f4e79", "header rule detected");
-ok(zones.header && zones.header.height >= 38 && zones.header.height <= 52, `header height ≈ 40–50 (${zones.header?.height})`);
+ok(zones.header && zones.header.height >= 46 && zones.header.height <= 52, `header height uses the rule's own y, not a full line-height guess (${zones.header?.height})`);
 ok(zones.footer && zones.footer.segments[0].align === "center" && zones.footer.segments[0].text === "Page {{page}} of {{pages}}", `footer centred + tokenised (${JSON.stringify(zones.footer?.segments)})`);
 ok(zones.footer && zones.footer.style.size === 8 && zones.footer.style.color === "#666666", "footer style captured");
 ok(zones.footer && zones.footer.edge > 740 && zones.footer.edge < 760, `footer edge (${zones.footer?.edge})`);
@@ -262,6 +268,52 @@ eq(geom && geom.size, "LETTER", "geometry snaps to LETTER");
 eq(geom && geom.margins.left, 76, "symmetric margin = mean(72, 612-532=80) = 76");
 ok(geom && geom.margins.top >= 76 && geom.margins.top <= 84, `top margin from first body line (${geom?.margins.top})`);
 ok(geom && geom.margins.bottom >= 88 && geom.margins.bottom <= 96, `bottom margin from last body line (${geom?.margins.bottom})`);
+
+// Tab-stop footer: one Word-style footer line built from THREE separate runs
+// far apart in x (a real tab-stopped Word footer), which the scanner's
+// linesOf joins into a single TextLine.text with plain single spaces — the
+// gap-based split inside detectZone must still recover each column from the
+// underlying runs' x/w and classify (or drop) each one independently.
+const tabRun = (page, str, x, w, y = 760, size = 8) => ({ page, str, font: "ABCDEF+Arial", size, bold: false, italic: false, serif: false, mono: false, color: "#666666", x, y, w, h: size });
+const tabPage = (n) => ({ page: n, width: 612, height: 792, runs: [tabRun(n, "Maple Grove Partners LLC", 72, 150), tabRun(n, "Traffic Impact Study", 280, 140), tabRun(n, `Page ${n - 1} of 3`, 480, 90)], rects: [], lines: [], images: [] });
+const tabPages = [{ page: 1, width: 612, height: 792, runs: [], rects: [], lines: [], images: [] }, tabPage(2), tabPage(3), tabPage(4)];
+const tabCtx = { firmName: "Acme", coverTitle: null };
+const tabZones = hf.detectRunningZones(tabPages, zbody, null, tabCtx);
+const docSeg = tabZones.footer?.segments.find((s) => s.text === "{{documentType}}");
+const pageSeg = tabZones.footer?.segments.find((s) => s.text === "Page {{page}} of {{pages}}");
+ok(!!docSeg, `tab-stop footer: doctype column tokenised (${JSON.stringify(tabZones.footer?.segments)})`);
+ok(!!pageSeg, `tab-stop footer: page column tokenised (${JSON.stringify(tabZones.footer?.segments)})`);
+ok(docSeg && docSeg.align === "center", `tab-stop footer: doctype column gets its own (centred) alignment (${docSeg?.align})`);
+ok(pageSeg && pageSeg.align === "right", `tab-stop footer: page column gets its own (right) alignment (${pageSeg?.align})`);
+ok(!tabZones.footer?.segments.some((s) => /Maple Grove/.test(s.text)), "tab-stop footer: client column never reaches a segment");
+ok(tabZones.warnings.some((w) => w.includes("Maple Grove Partners LLC")), `tab-stop footer: client column dropped with a warning naming it (${JSON.stringify(tabZones.warnings)})`);
+
+// Mixed page sizes: a rogue landscape interior page (e.g. an oversize plan
+// sheet inserted into an otherwise-uniform report) recurs the SAME
+// (digit-normalised) footer text at y=590 — near ITS OWN bottom edge (page
+// height 612) but nowhere near the real pages' bottom edge (792) — and must
+// not be allowed to corrupt the zone/geometry derived from the report's
+// real (modal) page size.
+const rogue = { page: 6, width: 792, height: 612, runs: [zrun(6, "Page 5 of 4", 280, 590, 52)], rects: [], lines: [], images: [] };
+const zpagesMixed = [...zpages, rogue];
+const zonesMixed = hf.detectRunningZones(zpagesMixed, zbody, null, CTX);
+eq(zonesMixed.header?.segments, zones.header?.segments, "mixed page sizes: header segments unaffected by a rogue landscape page");
+eq(zonesMixed.footer?.segments, zones.footer?.segments, "mixed page sizes: footer segments unaffected by a rogue landscape page");
+eq(zonesMixed.footer?.edge, zones.footer?.edge, "mixed page sizes: footer edge unaffected by a rogue landscape page");
+const geomMixed = pg.pageGeometry(zpagesMixed, zbody, { headerBottom: zonesMixed.header?.edge ?? null, footerTop: zonesMixed.footer?.edge ?? null });
+eq(geomMixed, geom, "mixed page sizes: geometry unaffected by a rogue landscape page");
+
+// Minor: an unsnapped size must be stored portrait-normalised ([pw, ph]), not
+// as the raw (possibly landscape-ordered) [w, h] — pageSizePoints (theme.ts)
+// swaps the tuple for a landscape page, so storing it pre-swapped would swap
+// it a second time and hand back the wrong dimensions.
+const wideRun = (page, y) => ({ page, str: "Body text that is long enough to be a paragraph line for margins.", font: "ABCDEF+Arial", size: 10, bold: false, italic: false, serif: false, mono: false, color: "#000000", x: 40, y, w: 600, h: 10 });
+const widePage = (n) => ({ page: n, width: 700, height: 500, runs: [wideRun(n, 60), wideRun(n, 74), wideRun(n, 440)], rects: [], lines: [], images: [] });
+const widePages = [{ page: 1, width: 700, height: 500, runs: [], rects: [], lines: [], images: [] }, widePage(2), widePage(3)];
+const wideBody = { font: "ABCDEF+Arial", size: 10, color: "#000000", serif: false, mono: false, bold: false };
+const geomWide = pg.pageGeometry(widePages, wideBody, { headerBottom: null, footerTop: null });
+eq(geomWide && geomWide.orientation, "landscape", "unsnapped 700×500 page is landscape");
+eq(geomWide && geomWide.size, [500, 700], "unsnapped landscape size is stored portrait-normalised [500, 700], not raw [700, 500]");
 
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");

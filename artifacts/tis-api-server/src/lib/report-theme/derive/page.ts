@@ -3,18 +3,29 @@ import type { Theme } from "../theme";
 import { clamp, mode, type BodyStyle } from "./typography";
 
 const SNAP: Array<["LETTER" | "A4" | "LEGAL" | "TABLOID", number, number]> = [["LETTER", 612, 792], ["A4", 595.28, 841.89], ["LEGAL", 612, 1008], ["TABLOID", 792, 1224]];
-const pct = (nums: number[], q: number) => { const s = [...nums].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(q * (s.length - 1)))]; };
+const pct = (nums: number[], q: number) => { const s = [...nums].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.round(q * (s.length - 1)))]; };
+
+/** Keep only the interior pages whose (width, height), rounded to 1pt, is the most common — a stray landscape plan sheet or oversize exhibit must not corrupt the geometry math derived from the report's real page size. */
+function modalSizePages(pages: ScannedPage[]): ScannedPage[] {
+  const key = (p: ScannedPage) => `${Math.round(p.width)}x${Math.round(p.height)}`;
+  const modal = mode(pages.map(key));
+  return pages.filter((p) => key(p) === modal);
+}
 
 /** Page size (snapped to a named size within 2 pt), orientation, and symmetric margins from the body text band. */
 export function pageGeometry(pages: ScannedPage[], body: BodyStyle, zones: { headerBottom: number | null; footerTop: number | null }): Theme["page"] | null {
-  const interior = interiorPages(pages);
+  const interior = modalSizePages(interiorPages(pages));
   if (!interior.length) return null;
   const w = mode(interior.map((p) => Math.round(p.width * 100) / 100));
   const h = mode(interior.map((p) => Math.round(p.height * 100) / 100));
   const portrait = h >= w;
   const [pw, ph] = portrait ? [w, h] : [h, w];
   const snap = SNAP.find(([, sw, sh]) => Math.abs(sw - pw) <= 2 && Math.abs(sh - ph) <= 2);
-  const size: Theme["page"]["size"] = snap ? snap[0] : [w, h];
+  // Unsnapped sizes are stored portrait-normalised ([pw, ph], pw <= ph, same
+  // convention as SNAP) because pageSizePoints (theme.ts) swaps the tuple
+  // back for a landscape page — storing the raw, possibly-landscape [w, h]
+  // here would get swapped a second time and come out wrong.
+  const size: Theme["page"]["size"] = snap ? snap[0] : [pw, ph];
   const lefts: number[] = [], rights: number[] = [], tops: number[] = [], bottoms: number[] = [];
   for (const p of interior) {
     const inBand = (r: { y: number }) => !(zones.headerBottom != null && r.y < zones.headerBottom) && !(zones.footerTop != null && r.y > zones.footerTop);
