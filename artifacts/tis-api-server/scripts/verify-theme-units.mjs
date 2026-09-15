@@ -550,6 +550,109 @@ eq(pal.derivePalette(blackPages, palBody, blackHeads, [], coverBands).primary, "
 eq(pal.derivePalette(blackPages, palBody, blackHeads, []).primary, "#000000", "palette: without a cover the all-black interior stays black");
 eq(pal.derivePalette(palPages, palBody, palHeads, [], coverBands).primary, "#008080", "palette: the cover never overrides a colour the interior actually draws");
 
+// ─── tables.ts review round: zebra must alternate, caption wraps, fill bounds ──
+const hr = (page, ys, x1 = 72, x2 = 372, color = "#9dc3e6") => ys.map((y) => ({ page, x1, y1: y, x2, y2: y, color, width: 0.5 }));
+// A filled header whose group-band rows ("PM Peak Hour") reuse the header
+// fill several rows down, under a bold two-line caption whose wrapped
+// second line carries no "Table N" prefix. Recurrence alone read the top
+// fill as zebra, and the wrapped caption line — bold, just above the region
+// — became the header row: fill null, caption grey in header.color.
+const bandedPage = mkPage(10, [
+  run(10, "Table 3-1: Intersection Level of Service Summary for the", 9, "#6b7280", 72, 286, 300, { bold: true }),
+  run(10, "Existing and Future Conditions", 9, "#6b7280", 72, 298, 150, { bold: true }),
+  run(10, "Intersection", 9, "#ffffff", 76, 313, 60, { bold: true }), run(10, "AM", 9, "#ffffff", 276, 313, 20, { bold: true }),
+  run(10, "Main St", 9, "#000000", 76, 331, 40), run(10, "B", 9, "#000000", 276, 331, 8),
+  run(10, "Oak Rd", 9, "#000000", 76, 349, 40), run(10, "C", 9, "#000000", 276, 349, 8),
+  run(10, "PM Peak Hour", 9, "#ffffff", 76, 367, 70, { bold: true }),
+  run(10, "Main St", 9, "#000000", 76, 385, 40), run(10, "D", 9, "#000000", 276, 385, 8),
+  run(10, "Oak Rd", 9, "#000000", 76, 403, 40), run(10, "C", 9, "#000000", 276, 403, 8),
+  run(10, "Saturday Peak", 9, "#ffffff", 76, 421, 70, { bold: true }),
+  run(10, "Main St", 9, "#000000", 76, 439, 40), run(10, "B", 9, "#000000", 276, 439, 8),
+], hr(10, [320, 338, 356, 374, 392, 410, 428, 446]), [
+  { page: 10, x: 72, y: 302, w: 300, h: 18, color: "#1f4e79" },
+  { page: 10, x: 72, y: 356, w: 300, h: 18, color: "#1f4e79" },
+  { page: 10, x: 72, y: 410, w: 300, h: 18, color: "#1f4e79" },
+]);
+const bandedRes = tbl.detectTables([pagesA[0], bandedPage], bodyA, null);
+ok(bandedRes.style && bandedRes.style.header.fill === "#1f4e79", `group bands in the header fill: the fill is kept (recurrence is not alternation) (${bandedRes.style?.header.fill})`);
+ok(bandedRes.style && bandedRes.style.header.color === "#ffffff", `group bands: header colour from the header runs, not the wrapped caption (${bandedRes.style?.header.color})`);
+ok(bandedRes.style && bandedRes.style.caption.position === "above" && bandedRes.style.caption.style.color === "#6b7280", `group bands: the two-line caption is still found above (${JSON.stringify(bandedRes.style?.caption)})`);
+ok(zebraRes.style && zebraRes.style.header.fill === null && zebraRes.style.zebra === "#d9d9d9", "alternating rows one row apart still read as zebra");
+
+// A tint box behind the whole table (unfilled bold header above the
+// region's first rule) must not become the header fill on either path —
+// the box that starts above the region (band path) or exactly at its top
+// rule (topFill path). Both used to take it and, on the topFill path, made
+// every row "header" through headerBottom.
+const tintRuns = (page) => [
+  run(page, "Movement", 9, "#000000", 76, 315, 60, { bold: true }), run(page, "Delay (s)", 9, "#000000", 276, 315, 20, { bold: true }),
+  run(page, "EB Left", 9, "#333333", 76, 350, 40), run(page, "12.3", 9, "#333333", 276, 350, 20),
+  run(page, "WB Left", 9, "#333333", 76, 365, 40), run(page, "15.7", 9, "#333333", 276, 365, 20),
+  run(page, "NB Thru", 9, "#333333", 76, 378, 40), run(page, "9.1", 9, "#333333", 276, 378, 20),
+];
+const tintAbove = mkPage(11, tintRuns(11), hr(11, [340, 360, 380], 72, 372, "#000000"), [{ page: 11, x: 70, y: 300, w: 304, h: 90, color: "#e8e8e8" }]);
+const tintAboveRes = tbl.detectTables([pagesA[0], tintAbove], bodyA, null);
+ok(tintAboveRes.style && tintAboveRes.style.header.fill === null && tintAboveRes.style.header.bold === true, `tint box behind the table (band path): no header fill, header still the bold row (${JSON.stringify(tintAboveRes.style?.header)})`);
+const tintAtTop = mkPage(12, tintRuns(12), hr(12, [340, 360, 380], 72, 372, "#000000"), [{ page: 12, x: 72, y: 340, w: 300, h: 60, color: "#e8e8e8" }]);
+const tintAtTopRes = tbl.detectTables([pagesA[0], tintAtTop], bodyA, null);
+ok(tintAtTopRes.style && tintAtTopRes.style.header.fill === null && tintAtTopRes.style.header.bold === true && tintAtTopRes.style.body.color === "#333333", `tint box starting at the top rule (topFill path): no header fill, body rows stay body (${JSON.stringify(tintAtTopRes.style?.header)} body ${tintAtTopRes.style?.body.color})`);
+// … while a real multi-row header block (three header rows in one 45 pt
+// rect, the region's rules starting inside it — Gorove Slade Fairfax page
+// 30) still qualifies: the bound is 3 × the taller of band and row pitch.
+const blockPage = mkPage(13, [
+  run(13, "AM Peak Hour", 6, "#ffffff", 300, 95, 60, { bold: true }), run(13, "PM Peak Hour", 6, "#ffffff", 430, 95, 60, { bold: true }),
+  run(13, "LOS", 6, "#ffffff", 262, 120, 15, { bold: true }), run(13, "Delay", 6, "#ffffff", 300, 120, 25, { bold: true }),
+  run(13, "Eastbound", 6, "#000000", 262, 145, 40), run(13, "B", 6, "#000000", 300, 145, 6),
+  run(13, "Westbound", 6, "#000000", 262, 172, 40), run(13, "C", 6, "#000000", 300, 172, 6),
+], hr(13, [98, 123, 150, 180], 256, 516, "#000000"), [{ page: 13, x: 54, y: 88, w: 462, h: 45, color: "#046a38" }]);
+const blockRes = tbl.detectTables([pagesA[0], blockPage], bodyA, null);
+ok(blockRes.style && blockRes.style.header.fill === "#046a38", `a 45 pt three-row header block is still a header fill on the band path (${blockRes.style?.header.fill})`);
+
+// A header row set exactly like the caption (same font, size, weight AND
+// colour) directly under it is not a "wrapped caption": its cells are
+// separated by column gaps, a wrapped line is continuous.
+const sameStylePage = mkPage(14, [
+  run(14, "Table 5: Queue Summary", 9, "#000000", 72, 310, 150, { bold: true }),
+  run(14, "Movement", 9, "#000000", 76, 322, 50, { bold: true }), run(14, "Delay (s)", 9, "#000000", 276, 322, 40, { bold: true }),
+  run(14, "EB Left", 9, "#333333", 76, 350, 40), run(14, "12.3", 9, "#333333", 276, 350, 20),
+  run(14, "WB Left", 9, "#333333", 76, 365, 40), run(14, "15.7", 9, "#333333", 276, 365, 20),
+  run(14, "NB Thru", 9, "#333333", 76, 378, 40), run(14, "9.1", 9, "#333333", 276, 378, 20),
+], hr(14, [340, 360, 380], 72, 372, "#000000"));
+const sameStyleRes = tbl.detectTables([pagesA[0], sameStylePage], bodyA, null);
+ok(sameStyleRes.style && sameStyleRes.style.header.bold === true && sameStyleRes.style.header.color === "#000000" && sameStyleRes.style.caption.position === "above", `a caption-styled header row of cells is still the header, and the caption is still found (${JSON.stringify(sameStyleRes.style?.header)})`);
+
+// Rules drawn twice (Word: a 0.49 and a 0.5 pt stroke on the same y) used
+// to drag the row pitch to zero, so the search above the region for the
+// bold header row reached nothing and the first BODY row became the header.
+const twiceRules = [340, 360, 380].flatMap((y) => [{ page: 15, x1: 72, y1: y, x2: 372, y2: y, color: "#000000", width: 0.49 }, { page: 15, x1: 72, y1: y, x2: 372, y2: y, color: "#000000", width: 0.5 }]);
+const twicePage = mkPage(15, tintRuns(15), twiceRules);
+const twiceRes = tbl.detectTables([pagesA[0], twicePage], bodyA, null);
+ok(twiceRes.style && twiceRes.style.header.bold === true && twiceRes.style.header.color === "#000000", `duplicated rules: row pitch from distinct rules, header row above the region still found (${JSON.stringify(twiceRes.style?.header)})`);
+
+// The firm's table style is read from its captioned regions: one captioned
+// table with a filled header plus two caption-less fragments (a totals
+// sub-block, a continuation) with none — the fragments outnumber the table.
+const fragment = (page, y0, label) => [
+  run(page, label, 9, "#000000", 76, y0 - 5, 60, { bold: true }),
+  run(page, "Row a", 9, "#333333", 76, y0 + 10, 40), run(page, "1", 9, "#333333", 276, y0 + 10, 8),
+  run(page, "Row b", 9, "#333333", 76, y0 + 30, 40), run(page, "2", 9, "#333333", 276, y0 + 30, 8),
+];
+const pooledPage = mkPage(16, [
+  run(16, "Table 6: Level of Service Summary", 9, "#6b7280", 72, 296, 200, { bold: true }),
+  run(16, "Intersection", 9, "#ffffff", 76, 313, 60, { bold: true }), run(16, "AM", 9, "#ffffff", 276, 313, 20, { bold: true }),
+  run(16, "Main St", 9, "#000000", 76, 331, 40), run(16, "B", 9, "#000000", 276, 331, 8),
+  run(16, "Oak Rd", 9, "#000000", 76, 349, 40), run(16, "C", 9, "#000000", 276, 349, 8),
+  ...fragment(16, 500, "Totals"), ...fragment(16, 600, "Continued"),
+], [...hr(16, [320, 338, 356]), ...hr(16, [500, 520, 540], 72, 372, "#000000"), ...hr(16, [600, 620, 640], 72, 372, "#000000")], [{ page: 16, x: 72, y: 302, w: 300, h: 18, color: "#1f4e79" }]);
+const pooledRes = tbl.detectTables([pagesA[0], pooledPage], bodyA, null);
+ok(pooledRes.count === 3 && pooledRes.style && pooledRes.style.header.fill === "#1f4e79", `captioned pool: the captioned table's fill wins over two caption-less fragments (${pooledRes.count} regions, fill ${pooledRes.style?.header.fill})`);
+
+// A zebra table's caption sits above its HEADER row, which stands above the
+// region's first (grey) rect — the caption is sought from the header's top.
+const zebraCaptioned = { ...zebraPage, runs: [run(8, "Table 7: LOS Criteria", 9, "#6d6e71", 101, 84, 120, { bold: true }), ...zebraPage.runs] };
+const zebraCapRes = tbl.detectTables([pagesA[0], zebraCaptioned], bodyA, null);
+ok(zebraCapRes.style && zebraCapRes.style.caption.style.color === "#6d6e71" && zebraCapRes.style.header.fill === null, `zebra table: caption 34 pt above the first rect is associated via the header row's top (${JSON.stringify(zebraCapRes.style?.caption)})`);
+
 // ─── derive/cover.ts + derive/synonyms.ts ────────────────────────────────────
 const cov = await import(path.resolve(here, "../src/lib/report-theme/derive/cover.ts"));
 const syn = await import(path.resolve(here, "../src/lib/report-theme/derive/synonyms.ts"));

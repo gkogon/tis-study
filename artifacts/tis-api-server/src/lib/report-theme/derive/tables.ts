@@ -1,4 +1,4 @@
-import { interiorPages, linesOf, type ScannedPage, type StrokeLine, type TextRun } from "../pdf-scan";
+import { interiorPages, linesOf, type ScannedPage, type StrokeLine, type TextLine, type TextRun } from "../pdf-scan";
 import { luminance, type Theme } from "../theme";
 import { clamp, median, mode, type BodyStyle } from "./typography";
 
@@ -54,19 +54,47 @@ function findRegions(p: ScannedPage): Region[] {
   return regions;
 }
 
-/** The colour of the cell fills under a header row, or null when they cover less than 60 % of the region's width. */
-function headerBandFill(p: ScannedPage, g: Region, headerRuns: TextRun[]): string | null {
+/**
+ * The zebra signature: the region's row rects in `top`'s colour, read
+ * downward from `top`, are each separated from the previous one by exactly
+ * one unfilled row (a gap of 0.5–1.5 rect heights), and there is at least
+ * one of them. A touching same-coloured rect (a two-row header, a group
+ * band right under the header) or one several rows down fails it.
+ */
+function alternates(top: ScannedPage["rects"][number], rowRects: ScannedPage["rects"]): boolean {
+  const same = rowRects.filter((r) => r.color === top.color && r.y >= top.y + top.h - 1).sort((a, b) => a.y - b.y);
+  if (!same.length) return false;
+  let prev = top;
+  for (const r of same) {
+    if (Math.abs(r.y - prev.y) <= 1) continue; // another cell of the same row
+    const gap = r.y - (prev.y + prev.h);
+    if (gap < 0.5 * prev.h || gap > 1.5 * prev.h) return false;
+    prev = r;
+  }
+  return true;
+}
+
+/** The colour of the cell fills under a header row, or null when they cover less than 60 % of the region's width. Only header-sized rects count — at most 3 × the taller of the header band and the row pitch, so a multi-row header block still qualifies but a tint box behind the whole table (many rows tall) does not. */
+function headerBandFill(p: ScannedPage, g: Region, headerRuns: TextRun[], rowPitch: number): string | null {
   const top = Math.min(...headerRuns.map((r) => r.y - r.h));
   const bottom = Math.max(...headerRuns.map((r) => r.y));
+  const maxH = 3 * Math.max(bottom - top, rowPitch);
   const widthBy = new Map<string, number>();
   for (const r of p.rects) {
-    if (luminance(r.color) >= 250 || r.y > top + 1 || r.y + r.h < bottom - 1) continue;
+    if (luminance(r.color) >= 250 || r.y > top + 1 || r.y + r.h < bottom - 1 || r.h > maxH) continue;
     const x1 = Math.max(r.x, g.x1), x2 = Math.min(r.x + r.w, g.x2);
     if (x2 - x1 <= 0) continue;
     widthBy.set(r.color, (widthBy.get(r.color) ?? 0) + (x2 - x1));
   }
   const best = [...widthBy.entries()].sort((a, b) => b[1] - a[1])[0];
   return best && best[1] >= 0.6 * (g.x2 - g.x1) ? best[0] : null;
+}
+
+/** One continuous line of text: no gap over 2 × the font size between consecutive runs (a table row's cells are separated by wider gaps). */
+function contiguous(ln: TextLine): boolean {
+  const runs = [...ln.runs].sort((a, b) => a.x - b.x);
+  for (let i = 1; i < runs.length; i++) if (runs[i].x - (runs[i - 1].x + runs[i - 1].w) > 2 * ln.size) return false;
+  return true;
 }
 
 function captionNear(p: ScannedPage, yTop: number, yBottom: number, re: RegExp): { position: "above" | "below"; run: TextRun } | null {
@@ -88,7 +116,18 @@ export function detectTables(pages: ScannedPage[], body: BodyStyle, headingFont:
     // the nearest bold text above the region — so it must never be eligible
     // as a header candidate itself.
     const captionRuns = new Set<TextRun>();
-    for (const ln of linesOf(p)) if (/^(table|figure)\s+\d/i.test(ln.text)) for (const r of ln.runs) captionRuns.add(r);
+    const pageLines = linesOf(p);
+    pageLines.forEach((ln, i) => {
+      if (!/^(table|figure)\s+\d/i.test(ln.text)) return;
+      for (const r of ln.runs) captionRuns.add(r);
+      // A long caption wraps: its second line carries no "Table N" prefix
+      // but the caption's own font, size, weight and colour, one line-height
+      // below, and reads as one continuous line. It is still caption, never
+      // a header row. A header row directly under a caption differs in at
+      // least one of those, or — being cells — is broken by column gaps.
+      const next = pageLines[i + 1];
+      if (next && next.y - ln.y <= 1.6 * ln.size && next.font === ln.font && Math.abs(next.size - ln.size) <= 0.5 && next.bold === ln.bold && next.color === ln.color && contiguous(next)) for (const r of next.runs) captionRuns.add(r);
+    });
     for (const g of findRegions(p)) {
       const inRegion = p.runs.filter((r) => r.x >= g.x1 - 2 && r.x <= g.x2 + 2 && r.y >= g.yTop - 2 && r.y <= g.yBottom + 2);
       if (!inRegion.length) continue;
@@ -98,29 +137,41 @@ export function detectTables(pages: ScannedPage[], body: BodyStyle, headingFont:
       // immediately by a rule — some table styles rule only between body rows
       // — so hunting for "the next line after the top" can land on the
       // row1/row2 rule instead of the header/row1 one.
-      const topFill = [...g.rowRects, ...p.rects].find((r) => Math.abs(r.y - g.yTop) <= 2 && r.w >= (g.x2 - g.x1) * 0.9 && luminance(r.color) < 250);
+      // The region's row pitch (median gap between its DISTINCT rules; 40pt
+      // when there are fewer than 2 to measure from) scales every "one row"
+      // distance below. Distinct matters: Word draws each rule twice (a
+      // 0.49 and a 0.5 pt stroke on the same y), and the zero gaps between
+      // the twins used to drag the median to nothing.
+      const ruleYs = g.hlines.map((l) => l.y1).sort((a, b) => a - b).filter((y, i, arr) => i === 0 || y - arr[i - 1] > 1);
+      const gaps: number[] = [];
+      for (let i = 1; i < ruleYs.length; i++) gaps.push(ruleYs[i] - ruleYs[i - 1]);
+      const rowPitch = gaps.length ? median(gaps) : 40;
+      // The fill at the region's top is a header fill only if it is header-
+      // sized — at most three rows tall and ending above the region's bottom
+      // rule: a shading box drawn behind the whole table also starts at the
+      // top rule and spans the width, but reaches the bottom, and must not
+      // become the header (and make every row "header" through headerBottom).
+      const topFill = [...g.rowRects, ...p.rects].find((r) => Math.abs(r.y - g.yTop) <= 2 && r.w >= (g.x2 - g.x1) * 0.9 && r.h <= 3 * rowPitch && r.y + r.h < g.yBottom - 1 && luminance(r.color) < 250);
       // With no fill at all (spec §5.2: "header row = first row with bold
       // runs OR on a fill"), the header can likewise sit a row above the
       // region's raw top with nothing there to widen it the way a fill rect's
       // own bounds do — so, absent a fill, the search also looks above
-      // g.yTop, bounded by the region's own row pitch (the median gap
-      // between its rules; 40pt when there are fewer than 2 to measure from)
-      // rather than a fixed distance, so a caption sitting further up than a
-      // real header would still be excluded even without the line-text
-      // check above. Real body text sitting there is never mostly bold, so
-      // this cannot mistake a preceding paragraph for a header either.
-      const gaps: number[] = [];
-      for (let i = 1; i < g.hlines.length; i++) gaps.push(g.hlines[i].y1 - g.hlines[i - 1].y1);
-      const rowPitch = gaps.length ? median(gaps) : 40;
+      // g.yTop, bounded by the row pitch rather than a fixed distance, so a
+      // caption sitting further up than a real header would still be
+      // excluded even without the line-text check above. Real body text
+      // sitting there is never mostly bold, so this cannot mistake a
+      // preceding paragraph for a header either.
       const aboveRegion = p.runs.filter((r) => r.x >= g.x1 - 2 && r.x <= g.x2 + 2 && r.y < g.yTop - 2 && r.y >= g.yTop - 1.5 * rowPitch && !captionRuns.has(r));
       // A zebra table whose header row carries no fill starts its region at
       // the FIRST BODY row's fill, so that fill sits exactly where a header
-      // fill would. It is body shading, not a header, when its colour recurs
-      // on a later row of the same region (the alternating-row signature)
-      // and the bold header row sits just above it on no fill at all.
-      const zebraTop = !!topFill && g.rowRects.some((r) => r !== topFill && r.color === topFill.color && r.y >= topFill.y + topFill.h - 1);
+      // fill would. It is body shading, not a header, only when its colour
+      // ALTERNATES — every same-coloured row rect below it is separated from
+      // the previous one by exactly one unfilled row — and the bold header
+      // row sits just above it on no fill at all. Mere recurrence is not
+      // enough: a filled header whose group-band rows ("AM Peak Hour") reuse
+      // the header fill several rows down recurs too, and must keep its fill.
       const boldAbove = aboveRegion.length > 0 && aboveRegion.filter((r) => r.bold).length / aboveRegion.length >= 0.5;
-      const headerFillRect = zebraTop && boldAbove ? null : topFill;
+      const headerFillRect = topFill && boldAbove && alternates(topFill, g.rowRects) ? null : topFill;
       const above = headerFillRect ? [] : aboveRegion;
       const regionRuns = [...above, ...inRegion];
       const firstY = Math.min(...regionRuns.map((r) => r.y));
@@ -140,7 +191,7 @@ export function detectTables(pages: ScannedPage[], body: BodyStyle, headingFont:
       // fill off the header row itself: the rects covering the header runs'
       // vertical band, one colour, adding up (clipped to the region) to most
       // of the region's width.
-      const headerFill = headerFillRect?.color ?? (headerRuns.length ? headerBandFill(p, g, headerRuns) : null);
+      const headerFill = headerFillRect?.color ?? (headerRuns.length ? headerBandFill(p, g, headerRuns, rowPitch) : null);
       const vlines = p.lines.filter((l) => Math.abs(l.x1 - l.x2) <= 0.5 && l.x1 >= g.x1 - 2 && l.x1 <= g.x2 + 2 && l.y1 <= g.yBottom && l.y2 >= g.yTop);
       const rules = [...g.hlines, ...vlines];
       const rowFills = g.rowRects.filter((r) => r.y > headerBottom - 1 && luminance(r.color) < 250);
@@ -148,7 +199,11 @@ export function detectTables(pages: ScannedPage[], body: BodyStyle, headingFont:
       const zebra = fillColors.length >= 2 && new Set(fillColors).size === 1 && rowFills.length * 2 <= bodyRuns.length + 2 ? fillColors[0] : null;
       const firstCol = bodyRuns.filter((r) => r.x - g.x1 < 30);
       const padYs = g.hlines.flatMap((l) => { const below = inRegion.filter((r) => r.y - r.h >= l.y1 - 1).sort((a, b) => a.y - b.y)[0]; return below ? [clamp(below.y - below.h - l.y1, 1, 10)] : []; });
-      const cap = captionNear(p, g.yTop, g.yBottom, /^table\s+\d/i);
+      // The caption sits above the TABLE's top, which is the header row's
+      // top when that row stands above the region (unfilled header over
+      // zebra rows or between-body-row rules), not the region's first rect.
+      const tableTop = firstRowBold ? Math.min(g.yTop, ...firstRow.map((r) => r.y - r.h)) : g.yTop;
+      const cap = captionNear(p, tableTop, g.yBottom, /^table\s+\d/i);
       found.push({
         header: { fill: headerFill, color: headerRuns.length ? mode(headerRuns.map((r) => r.color ?? body.color)) : body.color, bold: headerRuns.length > 0 && headerRuns.filter((r) => r.bold).length >= headerRuns.length / 2, size: headerRuns.length ? clamp(Math.round(mode(headerRuns.map((r) => Math.round(r.size * 2) / 2))), 5, 16) : body.size },
         bodySize: bodyRuns.length ? clamp(Math.round(mode(bodyRuns.map((r) => Math.round(r.size * 2) / 2))), 5, 16) : body.size,
@@ -164,14 +219,22 @@ export function detectTables(pages: ScannedPage[], body: BodyStyle, headingFont:
     }
   }
   if (!found.length) return { style: null, count: 0 };
-  const caps = found.filter((f) => f.caption).map((f) => f.caption!);
+  // The firm's table style is read from its CAPTIONED regions when it has
+  // any: a "Table N" line marks a table's own top, while a caption-less
+  // region is a fragment of one — a totals sub-block under its own bold
+  // label, an intersection group band, a continuation on the next page —
+  // whose "header" is not the firm's header style at all, and fragments
+  // outnumber tables.
+  const captioned = found.filter((f) => f.caption);
+  const pool = captioned.length ? captioned : found;
+  const caps = captioned.map((f) => f.caption!);
   const style: Theme["table"] = {
-    header: { fill: mode(found.map((f) => f.header.fill)), color: mode(found.map((f) => f.header.color)), bold: mode(found.map((f) => f.header.bold)), size: mode(found.map((f) => f.header.size)) },
-    body: { size: mode(found.map((f) => f.bodySize)), color: mode(found.map((f) => f.bodyColor)) },
-    rules: { color: mode(found.map((f) => f.ruleColor)), width: median(found.map((f) => f.ruleWidth)), mode: mode(found.map((f) => f.mode)) },
-    zebra: mode(found.map((f) => f.zebra)),
-    padX: median(found.map((f) => f.padX)),
-    padY: median(found.map((f) => f.padY)),
+    header: { fill: mode(pool.map((f) => f.header.fill)), color: mode(pool.map((f) => f.header.color)), bold: mode(pool.map((f) => f.header.bold)), size: mode(pool.map((f) => f.header.size)) },
+    body: { size: mode(pool.map((f) => f.bodySize)), color: mode(pool.map((f) => f.bodyColor)) },
+    rules: { color: mode(pool.map((f) => f.ruleColor)), width: median(pool.map((f) => f.ruleWidth)), mode: mode(pool.map((f) => f.mode)) },
+    zebra: mode(pool.map((f) => f.zebra)),
+    padX: median(pool.map((f) => f.padX)),
+    padY: median(pool.map((f) => f.padY)),
     caption: caps.length ? { position: mode(caps.map((c) => c.position)), style: caps[0].style } : { position: "above", style: { font: "body", size: Math.max(6, body.size - 1), color: body.color, bold: true } },
   };
   return { style, count: found.length };
