@@ -318,7 +318,7 @@ async function renderTemplateReport(
     region,
     firm: { name: firm.name, logoUrl: firm.logoUrl },
   };
-  return renderTemplatePdf(sel.template, ctx, buildProviders({ locale: sel.locale }));
+  return renderTemplatePdf(sel.template, ctx, buildProviders({ locale: sel.locale }), resolveTheme(firm));
 }
 
 export async function renderStudyPdf(

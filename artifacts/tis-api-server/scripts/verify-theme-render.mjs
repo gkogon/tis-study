@@ -43,6 +43,19 @@ try {
       ok(p1 >= p0 * 0.7 && p1 <= p0 * 1.6, `${fam}: page count sane (${p0} → ${p1})`);
     }
   }
+
+  // UK smoke: a City-of-London site resolves to the built-in Velocity
+  // template, so renderStudyPdf takes the declarative template-engine path
+  // (report-template/engine.ts) rather than a hand-coded regional renderer.
+  // That path must also honor the firm's theme.
+  {
+    const ukProject = { ...projectFromFixture(loadFixture("fl")), siteLat: "51.5136", siteLon: "-0.0866" };
+    const plainBuf = await mod.renderStudyPdf(ukProject, { name: "Render Check Firm", logoUrl: null });
+    const themedBuf = await mod.renderStudyPdf(ukProject, { name: "Render Check Firm", logoUrl: null, firmId: "f1", reportTemplate: SYNTH });
+    ok(plainBuf.length > 10_000, `uk (template engine): plain render produced a PDF (${plainBuf.length} bytes)`);
+    ok(themedBuf.length > 10_000, `uk (template engine): themed render produced a PDF (${themedBuf.length} bytes)`);
+    ok(/\/BaseFont \/[A-Z]{6}\+Carlito/.test(themedBuf.toString("latin1")), "uk (template engine): Carlito embedded");
+  }
 } finally { await cleanup(); }
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");
