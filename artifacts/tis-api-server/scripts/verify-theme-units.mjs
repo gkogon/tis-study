@@ -110,6 +110,9 @@ eq(canonical.canonicalKey("Conclusions and Recommendations"), "conclusions", "ca
 eq(canonical.canonicalKey("Something Unrelated"), null, "canonical: unknown → null");
 eq(canonical.stripNumbering("3.1 Gross Trip Generation"), "Gross Trip Generation", "stripNumbering dotted");
 eq(canonical.stripNumbering("Section 2 – Existing Conditions"), "Existing Conditions", "stripNumbering Section N –");
+eq(canonical.stripNumbering("VII. Traffic Analysis"), "Traffic Analysis", "stripNumbering roman chapter number");
+eq(canonical.stripNumbering("IV. TRAFFIC OPERATIONS ANALYSIS"), "TRAFFIC OPERATIONS ANALYSIS", "stripNumbering roman, upper-case wording kept");
+eq(canonical.stripNumbering("VIA Access Study"), "VIA Access Study", "stripNumbering leaves a word of roman letters without a period alone");
 
 eq(draw.splitHeading("3.0 STUDY NETWORK"), { parts: [3], text: "STUDY NETWORK" }, "3.0 is a level-1 number");
 eq(draw.splitHeading("3.1 Gross Trip Generation"), { parts: [3, 1], text: "Gross Trip Generation" }, "3.1 split");

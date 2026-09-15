@@ -7,7 +7,7 @@
  */
 import { activeTheme, takeSynonym } from "./active";
 import { canonicalKey } from "./canonical";
-import type { Numbering, TextStyle, Theme } from "./theme";
+import { luminance, type Numbering, type TextStyle, type Theme } from "./theme";
 
 export type TokenContext = {
   firmName: string;
@@ -243,14 +243,21 @@ export function metricStrip(doc: PDFKit.PDFDocument, metrics: Array<{ label: str
   const h = 50;
   if (doc.y + h + 8 > bottomLimit(doc)) doc.addPage();
   const y = doc.y;
+  const fill = t.table.header.fill ?? "#f9fafb";
+  // A firm whose table headers are a dark band usually has palette.primary in
+  // the same hue, so primary-on-fill would vanish; the header's own text
+  // colour is what the sample proves legible on that fill.
+  const dark = luminance(fill) < 128;
+  const valueColor = dark ? t.table.header.color : t.palette.primary;
+  const labelColor = dark ? t.table.header.color : t.palette.muted;
   metrics.forEach((m, i) => {
     const x = startX + i * cellW;
-    doc.save().rect(x, y, cellW, h).fillAndStroke(t.table.header.fill ?? "#f9fafb", t.palette.rule).restore();
+    doc.save().rect(x, y, cellW, h).fillAndStroke(fill, t.palette.rule).restore();
     doc.font("headingbold");
     let fs = 20;
     while (fs > 9 && doc.fontSize(fs).widthOfString(m.value) > cellW - 14) fs -= 1;
-    doc.fontSize(fs).fillColor(t.palette.primary).text(m.value, x, y + 8 + (20 - fs) / 2, { width: cellW, align: "center", lineBreak: false });
-    doc.font("body").fontSize(8).fillColor(t.palette.muted).text(m.label.toUpperCase(), x, y + 32, { width: cellW, align: "center", characterSpacing: 1, lineBreak: false });
+    doc.fontSize(fs).fillColor(valueColor).text(m.value, x, y + 8 + (20 - fs) / 2, { width: cellW, align: "center", lineBreak: false });
+    doc.font("body").fontSize(8).fillColor(labelColor).text(m.label.toUpperCase(), x, y + 32, { width: cellW, align: "center", characterSpacing: 1, lineBreak: false });
   });
   doc.fillColor(t.text.body.color);
   doc.x = startX;
@@ -270,11 +277,17 @@ function drawZone(doc: PDFKit.PDFDocument, zone: NonNullable<Theme["header"]>, c
   applyStyle(doc, zone.style);
   const lineH = zone.style.size * 1.2;
   const y = where === "top" ? Math.max(6, doc.page.margins.top - zone.height + 2) : doc.page.height - zone.height + 2;
+  // Segments that share an alignment came from stacked lines in the sample
+  // (the extractor emits them in reading order), so stack them again rather
+  // than painting them over each other on one baseline.
+  const lines = { left: 0, center: 0, right: 0 };
   for (const seg of zone.segments) {
-    doc.text(interpolate(seg.text, ctx, page, pages), x, y, { width: w, align: seg.align, lineBreak: false });
+    doc.text(interpolate(seg.text, ctx, page, pages), x, y + lines[seg.align] * lineH, { width: w, align: seg.align, lineBreak: false });
+    lines[seg.align]++;
   }
   if (zone.rule) {
-    const ry = where === "top" ? y + lineH + 2 : y - 3;
+    const depth = Math.max(1, lines.left, lines.center, lines.right);
+    const ry = where === "top" ? y + lineH * depth + 2 : y - 3;
     doc.strokeColor(zone.rule.color).lineWidth(zone.rule.width).moveTo(x, ry).lineTo(x + w, ry).stroke();
   }
   doc.restore();

@@ -31,11 +31,14 @@ export const CANONICAL: Array<{ key: string; re: RegExp }> = [
   { key: "appendix", re: /appendi/i },
 ];
 
-/** "3.1 Title", "Section 2 – Title", "B. Title" → "Title". */
+/** "3.1 Title", "Section 2 – Title", "B. Title", "VII. Title" → "Title". */
 export function stripNumbering(text: string): string {
   return text
     .replace(/^\s*section\s+\d+\s*[-–—:.]?\s*/i, "")
-    .replace(/^\s*(?:\d+(?:\.\d+)*\.?|[A-Z]\.)\s+/, "")
+    // Roman chapter numbers ("II.", "IV.", "VII.") are a heading form the
+    // schema has no numbering style for; the wording must still come out
+    // bare, or a title-cased synonym reads "Ii. Introduction".
+    .replace(/^\s*(?:\d+(?:\.\d+)*\.?|[A-Z]\.|[IVXLC]{2,6}\.)\s+/, "")
     .trim();
 }
 

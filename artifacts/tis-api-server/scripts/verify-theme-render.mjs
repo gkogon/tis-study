@@ -1,6 +1,11 @@
 // Themed render smoke: each preview fixture renders under a synthetic theme
-// without throwing, embeds the theme's fonts, and keeps a sane page count.
+// without throwing, embeds the theme's fonts, and keeps a sane page count;
+// then every fixture renders through every extracted corpus theme with a
+// margin guard (no body-page text outside the theme's text band).
 // Run: node ./scripts/verify-theme-render.mjs
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadRendererBundle } from "./lib/bundle-renderer.mjs";
 import { FIXTURE_FAMILIES, loadFixture, projectFromFixture } from "./lib/fixture-project.mjs";
 import { pdfPageCount } from "./lib/pdf-norm.mjs";
@@ -8,7 +13,9 @@ import { pdfPageCount } from "./lib/pdf-norm.mjs";
 let fails = 0;
 const ok = (c, m) => { console.log(`${c ? "PASS" : "FAIL"}  ${m}`); if (!c) fails++; };
 
-const { mod, cleanup } = await loadRendererBundle(`export { DEFAULT_THEME } from "./report-theme/theme";`);
+const { mod, cleanup } = await loadRendererBundle(`export { DEFAULT_THEME } from "./report-theme/theme";
+export { extractTheme } from "./report-theme/extract";
+export { scanPdf } from "./report-theme/pdf-scan";`);
 try {
   const D = mod.DEFAULT_THEME;
   const SYNTH = {
@@ -55,6 +62,38 @@ try {
     ok(plainBuf.length > 10_000, `uk (template engine): plain render produced a PDF (${plainBuf.length} bytes)`);
     ok(themedBuf.length > 10_000, `uk (template engine): themed render produced a PDF (${themedBuf.length} bytes)`);
     ok(/\/BaseFont \/[A-Z]{6}\+Carlito/.test(themedBuf.toString("latin1")), "uk (template engine): Carlito embedded");
+  }
+
+  // Corpus themes: every fixture × every extracted real-world theme. Skips
+  // (with a notice) when the corpus has not been fetched (fetch:tis-corpus).
+  const corpusDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/tis-corpus");
+  const pdfs = existsSync(corpusDir) ? readdirSync(corpusDir).filter((f) => f.endsWith(".pdf")).sort() : [];
+  if (!pdfs.length) console.log("SKIP  corpus not fetched; corpus render checks skipped");
+  const FONT_RE = { "carlito": /Carlito/, "liberation-sans": /LiberationSans/, "liberation-serif": /LiberationSerif/, "liberation-mono": /LiberationMono/, "caladea": /Caladea/, "gelasio": /Gelasio/, "open-sans": /OpenSans/, "roboto": /Roboto/, "lato": /Lato/, "montserrat": /Montserrat/, "source-sans-3": /SourceSans3/, "dejavu-sans": /DejaVuSans/ };
+  for (const f of pdfs) {
+    let stored;
+    try { stored = await mod.extractTheme(readFileSync(path.join(corpusDir, f)), { firmName: "Corpus Firm", firmId: f.replace(/\.pdf$/, "") }); }
+    catch (e) { ok(false, `${f}: extractTheme threw ${e.message}`); continue; }
+    for (const fam of FIXTURE_FAMILIES) {
+      const project = projectFromFixture(loadFixture(fam));
+      let buf;
+      try { buf = await mod.renderStudyPdf(project, { name: "Corpus Firm", logoUrl: null, firmId: "c", reportTemplate: stored }); }
+      catch (e) { ok(false, `${f} × ${fam}: threw ${e.message}`); continue; }
+      const txt = buf.toString("latin1");
+      const famUsed = stored.theme.fonts.body.family;
+      ok(FONT_RE[famUsed].test(txt), `${f} × ${fam}: body font ${famUsed} embedded`);
+      const p = pdfPageCount(buf);
+      ok(p >= 4 && p <= 120, `${f} × ${fam}: ${p} pages`);
+      // Margin guard: nothing drawn outside the theme's text band on body pages
+      // (cover excluded). A hit means a renderer call site still assumes 50 pt.
+      // Ink extent (wInk), not the advance: a right-aligned wrapped line keeps
+      // its trailing spaces past the box edge without painting anything there.
+      const sc = await mod.scanPdf(buf, { maxPages: 12 });
+      const L = stored.theme.page.margins.left;
+      const R = (sc.pages[1]?.width ?? 612) - stored.theme.page.margins.right;
+      const overflow = sc.pages.slice(1).flatMap((pg) => pg.runs.filter((r) => r.x < L - 2 || r.x + r.wInk > R + 2));
+      ok(overflow.length === 0, `${f} × ${fam}: no text outside the margins (${overflow.length} runs${overflow[0] ? `, e.g. "${overflow[0].str.slice(0, 30)}" at x=${overflow[0].x} on page ${overflow[0].page}` : ""})`);
+    }
   }
 } finally { await cleanup(); }
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }

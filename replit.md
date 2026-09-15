@@ -59,6 +59,7 @@ An application to analyze and visualize traffic efficiency, predict future conge
 - **Traffic Flow Logic**: `artifacts/api-server/src/lib/atlanta-traffic-flow.ts`
 - **Parking Logic**: `artifacts/api-server/src/lib/atlanta-parking.ts` (snapshot cache + per-archetype occupancy curves)
 - **Parking Inventory (OSM dump)**: `artifacts/api-server/src/data/atlanta-parking.json` (regenerate with `pnpm --filter @workspace/scripts run fetch-parking`)
+- **Report theme (firm format import)**: `artifacts/tis-api-server/src/lib/report-theme/` — `extract.ts` (sample PDF → Theme via the pdfjs operator-list scanner `pdf-scan.ts` and `derive/*`), `theme.ts` (schema + DEFAULT_THEME), `active.ts` (per-render module state), `draw.ts` (themed primitives the regional renderers delegate to), `fonts.ts` (bundled substitute fonts under `data/fonts/<family>/`), `preview-fixtures.ts` (`data/preview-fixtures/*.json`). Routes: `POST/GET/DELETE /tis-api/firms/report-template`, `GET /tis-api/firms/report-template/preview.pdf`. Checks: `pnpm --filter @workspace/tis-api-server run check:theme`. Spec: `docs/superpowers/specs/2026-09-14-report-theme-import-design.md`.
 
 ## Architecture decisions
 
@@ -129,6 +130,13 @@ I prefer concise and clear communication. When making changes, prioritize unders
 - **`ADMIN_EMAILS` allow-list is the only admin signal**: there is no `users.role` column. Promoting/demoting an admin is an env-var change, not a DB change.
 - **`tis_usage` table is dormant**: schema kept (with `stripeCustomerId` column) so re-enabling Stripe doesn't need a migration. Currently no code reads or writes it.
 - **Cover page prints first via `print:break-after-page`**: `TisCoverPage` is `hidden print:flex` — invisible on screen, full-page on print. The `print:break-after-page` rule needs the matching CSS in the page-level `<style>` block (added to `tis.tsx`). Removing either side breaks the multi-page PDF layout.
+- **Report theme is module state**: `withTheme()` in `report-theme/active.ts` sets the active theme for the synchronous draw pass in `renderStudyPdf`. Never `await` inside that block — a concurrent request would read the wrong theme. `withTheme` throws if the callback returns a Promise.
+- **Themed margins are symmetric**: every renderer uses `pageMargin()` for both edges, so a theme's `margins.left` must equal `margins.right` (the extractor averages them). Top/bottom are independent.
+- **Default theme is byte-pinned**: `check:theme-default-identity` compares three fixture renders against `scripts/fixtures/theme-identity-baseline.json`. Re-pin (`--pin`) only for a deliberate render change, in the same PR that makes it.
+- **The V1 poppler importer is gone**: rows in `firms.report_template` with a `chapters` array are "legacy" and ignored; the settings page tells the firm to re-upload.
+- **Corpus PDFs are not committed**: `pnpm --filter @workspace/tis-api-server run fetch:tis-corpus` downloads them from the URLs in `scripts/fixtures/tis-corpus/CORPUS.md`; `check:theme-extract` and the corpus part of `check:theme-render` skip when they are absent.
+- **Themed footers carry the firm's segments only**: the screening disclaimer is part of the default footer; a firm that imports a format takes responsibility for its own footer text.
+- **Substitute fonts do not cover every glyph the renderers use**: `∝` and `⚠` exist only in DejaVu Sans; `→` is missing from Open Sans and Roboto; `▲ Δ Σ λ φ` from Caladea (and some from Gelasio/Montserrat). A missing glyph paints `.notdef` and its declared width disagrees with PDFKit's wrap measurement, so the rest of the line shifts right — the compass-rose caption is spelled out under a theme for exactly this reason. Prefer ASCII in themed text, or gate the glyph on `isDefaultTheme()`.
 
 ## Pointers
 

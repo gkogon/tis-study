@@ -478,7 +478,11 @@ export function renderTripDistributionSection(
     values: CARDINALS.map((c) => fin2(td.byDirection?.[c])),
     caption:
       "Screening-grade directional distribution of net new project trips by compass octant " +
-      "(spoke length ∝ percent of project trips). Derived from the " +
+      // "∝" exists in DejaVu Sans but in none of the substitute families
+      // (Liberation, Carlito, Caladea, …): a missing glyph paints .notdef and
+      // its declared width disagrees with PDFKit's wrap measurement, pushing
+      // the rest of the line past the right margin. Spell it out under a theme.
+      `(spoke length ${isDefaultTheme() ? "∝" : "proportional to"} percent of project trips). Derived from the ` +
       `${td.methodLabel} distribution.`,
     color: chartColors().outbound,
   });

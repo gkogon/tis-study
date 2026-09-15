@@ -56,6 +56,7 @@
     "check:theme-scan": "node ./scripts/verify-theme-scan.mjs",
     "fetch:tis-corpus": "node ./scripts/fetch-tis-corpus.mjs",
     "check:theme-extract": "node ./scripts/verify-theme-extract.mjs",
+    "check:theme": "pnpm run check:theme-units && pnpm run check:theme-scan && pnpm run check:theme-default-identity && pnpm run check:theme-extract && pnpm run check:theme-render",
     "build:preview-fixtures": "node ./scripts/build-preview-fixtures.mjs",
     "check:whatif-gate": "node ./scripts/verify-whatif-gate.mjs",
     "check:whatif-limiter": "node ./scripts/verify-whatif-limiter.mjs"

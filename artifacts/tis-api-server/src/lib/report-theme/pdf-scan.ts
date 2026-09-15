@@ -26,7 +26,8 @@
 import type { ImagePixels } from "./png";
 
 export type Matrix = [number, number, number, number, number, number];
-export type TextRun = { page: number; str: string; font: string; size: number; bold: boolean; italic: boolean; serif: boolean; mono: boolean; color: string | null; x: number; y: number; w: number; h: number };
+/** `w` is the full advance (trailing whitespace included); `wInk` stops at the last painted glyph — PDFKit right-aligns a wrapped line by its trimmed width but still emits the trailing spaces, so only `wInk` says where the ink ends. */
+export type TextRun = { page: number; str: string; font: string; size: number; bold: boolean; italic: boolean; serif: boolean; mono: boolean; color: string | null; x: number; y: number; w: number; wInk: number; h: number };
 export type FillRect = { page: number; x: number; y: number; w: number; h: number; color: string };
 export type StrokeLine = { page: number; x1: number; y1: number; x2: number; y2: number; color: string; width: number };
 export type ImagePlacement = { page: number; x: number; y: number; w: number; h: number; objId: string; pixels: ImagePixels | null };
@@ -138,6 +139,7 @@ async function scanPage(page: PdfjsPage, pageNo: number, OPS: Record<string, num
     const sizeDev = fs * Math.hypot(m[2], m[3]);
     const xScale = Math.hypot(m[0], m[1]);
     let tx = 0;
+    let txInk = 0;
     let str = "";
     for (const g of glyphs) {
       if (typeof g === "number") { tx += (-g / 1000) * fs * gs.hScale; continue; }
@@ -145,6 +147,7 @@ async function scanPage(page: PdfjsPage, pageNo: number, OPS: Record<string, num
       const w0 = Number(gl.width ?? 0) * (f.fontMatrix[0] ?? 0.001);
       tx += (w0 * fs + gs.charSpacing + (gl.isSpace ? gs.wordSpacing : 0)) * gs.hScale;
       str += gl.unicode ?? "";
+      if (!gl.isSpace && (gl.unicode ?? "").trim()) txInk = tx;
     }
     const rotated = Math.abs(m[1]) > 0.02 || Math.abs(m[2]) > 0.02;
     // Text render mode 3 is invisible (OCR layers on scanned samples) and 7 is
@@ -152,7 +155,7 @@ async function scanPage(page: PdfjsPage, pageNo: number, OPS: Record<string, num
     // paint (fill/stroke plus clip) and are kept. The matrix still advances.
     const unpainted = gs.renderMode === 3 || gs.renderMode === 7;
     if (str.trim() && !rotated && !unpainted && sizeDev > 0) {
-      out.runs.push({ page: pageNo, str, font: f.name, size: r2(sizeDev), bold: f.bold, italic: f.italic, serif: f.serif, mono: f.mono, color: gs.fill, x: r2(x0), y: r2(y0), w: r2(tx * xScale), h: r2(sizeDev) });
+      out.runs.push({ page: pageNo, str, font: f.name, size: r2(sizeDev), bold: f.bold, italic: f.italic, serif: f.serif, mono: f.mono, color: gs.fill, x: r2(x0), y: r2(y0), w: r2(tx * xScale), wInk: r2(txInk * xScale), h: r2(sizeDev) });
     }
     return mul(tm, [1, 0, 0, 1, tx, 0]);
   };

@@ -344,10 +344,19 @@ export function drawLineChart(doc: PDFKit.PDFDocument, spec: LineChartSpec): voi
   const step = spec.labelEvery ?? 1;
   for (let i = 0; i < n; i++) {
     if (i % step !== 0) continue;
-    doc.font("body").fontSize(7).fillColor(chartColors().axis).text(spec.categories[i], px(i) - stepX / 2, layout.plotBottom + 2, {
-      width: stepX,
-      align: "center",
-    });
+    doc.font("body").fontSize(7).fillColor(chartColors().axis);
+    let bx = px(i) - stepX / 2, bw = stepX, align: "center" | "right" = "center";
+    // The last point sits on plotRight (= the right margin), so a label
+    // centred on it spills half its width past the margin. Under a theme
+    // pin that label flush to the plot edge instead; the box is at least as
+    // wide as the label because PDFKit character-wraps anything wider than
+    // its box. The default render keeps the legacy placement byte-for-byte.
+    if (!isDefaultTheme() && n > 1 && i === n - 1) {
+      bw = Math.max(stepX / 2, doc.widthOfString(spec.categories[i]) + 1);
+      bx = layout.plotRight - bw;
+      align = "right";
+    }
+    doc.text(spec.categories[i], bx, layout.plotBottom + 2, { width: bw, align });
   }
 
   finish(doc, layout, spec.xLabel, spec.caption);
