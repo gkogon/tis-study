@@ -80,6 +80,32 @@ export const generateRateLimiter = rateLimit({
   passOnStoreError: true,
 });
 
+// Per-IP rate limit for the report-template preview render. Separate from
+// generateRateLimiter (10/h) so repeatedly previewing a firm's imported
+// format doesn't burn the firm's study-generation budget.
+export const previewRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many format previews. Please slow down." },
+  store: makeRateLimitStore("rl:preview:"),
+  passOnStoreError: true,
+});
+
+// Per-IP rate limit for the report-template upload: each upload runs the
+// pdfjs scan + every derivation over a 20 MB file (up to 20 s of CPU), so
+// it must not be re-postable without bound. Own prefix, 20/h.
+export const templateUploadRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many format uploads. Please slow down." },
+  store: makeRateLimitStore("rl:template-upload:"),
+  passOnStoreError: true,
+});
+
 // Per-IP rate limit for the public-by-URL /london-ta London-TA demo
 // (legacy /trics alias shares this limiter, so both paths draw from one
 // budget). Unlike the authenticated /generate (metered by firm quota), it

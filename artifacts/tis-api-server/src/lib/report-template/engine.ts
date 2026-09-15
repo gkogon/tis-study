@@ -15,7 +15,6 @@
  * ./templates/generic-us.ts for two templates over identical study data.
  */
 import PDFDocument from "pdfkit";
-import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -24,21 +23,11 @@ import {
   type ColumnChartSpec,
   type LineChartSpec,
 } from "../pdf-charts";
+import { DEFAULT_THEME, isDefaultTheme, luminance, pageSizePoints, tint, type Theme } from "../report-theme/theme";
+import { installGlyphFallback, registerThemeFonts } from "../report-theme/fonts";
+import { pageMargin, withTheme } from "../report-theme/active";
 
-const PAGE_MARGIN = 50;
-
-// Reuse the repo's bundled Unicode fonts (same resolution as pdf-export.ts).
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FONT_DIR = (() => {
-  for (const c of [
-    path.resolve(__dirname, "../../data/fonts"),
-    path.resolve(__dirname, "../../../data/fonts"),
-    path.resolve(__dirname, "../data/fonts"),
-  ]) {
-    if (existsSync(path.join(c, "DejaVuSans.ttf"))) return c;
-  }
-  return path.resolve(__dirname, "../../data/fonts");
-})();
 
 // ─────────────────────────────── Types ───────────────────────────────
 
@@ -151,8 +140,12 @@ function fmt(value: unknown, formatter?: string): string {
   }
 }
 
-/** Resolve `{{path}}` and `{{path|num}}` tokens against the context (+ page no.). */
-function interp(text: string, ctx: RenderContext, page?: number): string {
+/**
+ * Resolve `{{path}}` and `{{path|num}}` tokens against the context (+ page
+ * no.). `extra` layers in additional top-level tokens (e.g. `documentType`,
+ * `pages`) that themed footers reference but the base context doesn't carry.
+ */
+function interp(text: string, ctx: RenderContext, page?: number, extra?: Record<string, unknown>): string {
   const scope = {
     ...ctx.report,
     report: ctx.report,
@@ -160,6 +153,7 @@ function interp(text: string, ctx: RenderContext, page?: number): string {
     region: ctx.region,
     firm: ctx.firm,
     page: page ?? "",
+    ...extra,
   };
   return text.replace(/\{\{\s*([\w.]+)\s*(?:\|\s*(\w+))?\s*\}\}/g, (_m, p: string, f?: string) =>
     fmt(resolvePath(scope, p), f),
@@ -169,7 +163,7 @@ function interp(text: string, ctx: RenderContext, page?: number): string {
 // ─────────────────────────── Draw primitives ───────────────────────────
 
 function ensureSpace(doc: PDFKit.PDFDocument, needed: number): void {
-  if (doc.y + needed > doc.page.height - PAGE_MARGIN - 36) doc.addPage();
+  if (doc.y + needed > doc.page.height - pageMargin() - 36) doc.addPage();
 }
 
 function dataUrlToBuffer(dataUrl: string): Buffer | null {
@@ -188,11 +182,11 @@ function drawCover(doc: PDFKit.PDFDocument, t: ReportTemplate, ctx: RenderContex
     stops.forEach((c, i) => grad.stop(i / Math.max(1, stops.length - 1), c));
     doc.rect(0, 0, W, H).fill(grad);
     if (logoBuf) {
-      try { doc.image(logoBuf, PAGE_MARGIN, 120, { fit: [260, 96] }); } catch { /* fall back to text */ }
+      try { doc.image(logoBuf, pageMargin(), 120, { fit: [260, 96] }); } catch { /* fall back to text */ }
     } else {
-      doc.fillColor("#ffffff").font("bold").fontSize(46).text(b.cover.wordmark ?? interp(b.firmName, ctx), PAGE_MARGIN, 150, { width: W - PAGE_MARGIN * 2 });
+      doc.fillColor("#ffffff").font("bold").fontSize(46).text(b.cover.wordmark ?? interp(b.firmName, ctx), pageMargin(), 150, { width: W - pageMargin() * 2 });
     }
-    if (b.cover.tagline) doc.font("body").fontSize(15).fillColor("#eef6ff").text(b.cover.tagline, PAGE_MARGIN, 224);
+    if (b.cover.tagline) doc.font("body").fontSize(15).fillColor("#eef6ff").text(b.cover.tagline, pageMargin(), 224);
   } else if (b.cover.style === "image") {
     const coverBuf = dataUrlToBuffer(b.cover.image);
     if (coverBuf) {
@@ -201,26 +195,26 @@ function drawCover(doc: PDFKit.PDFDocument, t: ReportTemplate, ctx: RenderContex
       doc.rect(0, 0, W, H).fill(b.palette.primary);
     }
     if (logoBuf) {
-      try { doc.image(logoBuf, PAGE_MARGIN, 120, { fit: [260, 96] }); } catch { /* image-only cover */ }
+      try { doc.image(logoBuf, pageMargin(), 120, { fit: [260, 96] }); } catch { /* image-only cover */ }
     }
-    if (b.cover.tagline) doc.font("body").fontSize(15).fillColor("#ffffff").text(b.cover.tagline, PAGE_MARGIN, 224);
+    if (b.cover.tagline) doc.font("body").fontSize(15).fillColor("#ffffff").text(b.cover.tagline, pageMargin(), 224);
   } else {
     doc.rect(0, 0, W, 200).fill(b.palette.primary);
     if (logoBuf) {
-      try { doc.image(logoBuf, PAGE_MARGIN, 64, { fit: [240, 84] }); } catch { /* fall back to text */ }
+      try { doc.image(logoBuf, pageMargin(), 64, { fit: [240, 84] }); } catch { /* fall back to text */ }
     } else {
-      doc.fillColor(b.palette.onPrimary).font("bold").fontSize(30).text(interp(b.firmName, ctx), PAGE_MARGIN, 90, { width: W - PAGE_MARGIN * 2 });
+      doc.fillColor(b.palette.onPrimary).font("bold").fontSize(30).text(interp(b.firmName, ctx), pageMargin(), 90, { width: W - pageMargin() * 2 });
     }
-    if (b.cover.tagline) doc.font("body").fontSize(12).fillColor(b.palette.onPrimary).text(b.cover.tagline, PAGE_MARGIN, 156);
+    if (b.cover.tagline) doc.font("body").fontSize(12).fillColor(b.palette.onPrimary).text(b.cover.tagline, pageMargin(), 156);
   }
 
   // Title block.
   const onArt = b.cover.style === "gradient" || b.cover.style === "image";
   const ty = onArt ? 360 : 300;
   doc.fillColor(onArt ? "#ffffff" : b.palette.text);
-  doc.font("bold").fontSize(30).text(t.documentType.toUpperCase(), PAGE_MARGIN, ty, { width: W - PAGE_MARGIN * 2 });
-  doc.font("body").fontSize(16).text(interp("{{project.projectName}}", ctx), PAGE_MARGIN, ty + 44, { width: W - PAGE_MARGIN * 2 });
-  doc.font("body").fontSize(11).text(interp("{{project.address}}", ctx), PAGE_MARGIN, ty + 74, { width: W - PAGE_MARGIN * 2 });
+  doc.font("bold").fontSize(30).text(t.documentType.toUpperCase(), pageMargin(), ty, { width: W - pageMargin() * 2 });
+  doc.font("body").fontSize(16).text(interp("{{project.projectName}}", ctx), pageMargin(), ty + 44, { width: W - pageMargin() * 2 });
+  doc.font("body").fontSize(11).text(interp("{{project.address}}", ctx), pageMargin(), ty + 74, { width: W - pageMargin() * 2 });
 
   // Doc-control mini block.
   const dy = ty + 130;
@@ -232,16 +226,16 @@ function drawCover(doc: PDFKit.PDFDocument, t: ReportTemplate, ctx: RenderContex
   doc.fontSize(9);
   fields.forEach(([k, v], i) => {
     const yy = dy + i * 18;
-    doc.font("bold").text(k, PAGE_MARGIN, yy, { width: 110, continued: false });
-    doc.font("body").text(v && v !== "—" ? v : "—", PAGE_MARGIN + 120, yy, { width: W - PAGE_MARGIN * 2 - 120 });
+    doc.font("bold").text(k, pageMargin(), yy, { width: 110, continued: false });
+    doc.font("body").text(v && v !== "—" ? v : "—", pageMargin() + 120, yy, { width: W - pageMargin() * 2 - 120 });
   });
-  if (t.brand.url) doc.font("body").fontSize(10).fillColor(onArt ? "#ffffff" : b.palette.muted).text(t.brand.url, PAGE_MARGIN, H - 90);
+  if (t.brand.url) doc.font("body").fontSize(10).fillColor(onArt ? "#ffffff" : b.palette.muted).text(t.brand.url, pageMargin(), H - 90);
   doc.addPage();
 }
 
 function drawDocControl(doc: PDFKit.PDFDocument, t: ReportTemplate, ctx: RenderContext): void {
   const b = t.brand;
-  doc.fillColor(b.palette.primary).font("bold").fontSize(18).text("Document Control Sheet", PAGE_MARGIN, doc.y);
+  doc.fillColor(b.palette.primary).font("bold").fontSize(18).text("Document Control Sheet", pageMargin(), doc.y);
   doc.moveDown(0.6);
   const rows: Array<[string, string]> = [
     ["Document Title", t.documentType],
@@ -260,53 +254,53 @@ function drawDocControl(doc: PDFKit.PDFDocument, t: ReportTemplate, ctx: RenderC
 
 function drawChapterHeading(doc: PDFKit.PDFDocument, c: Chapter, b: Brand): void {
   ensureSpace(doc, 60);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
   const label = [c.number, c.title.toUpperCase()].filter(Boolean).join("  ");
   doc.font("bold").fontSize(17).fillColor(b.palette.primary).text(label, { characterSpacing: 0.3 });
   doc.moveDown(0.25);
-  doc.strokeColor(b.palette.primary).lineWidth(1.5).moveTo(PAGE_MARGIN, doc.y).lineTo(doc.page.width - PAGE_MARGIN, doc.y).stroke();
+  doc.strokeColor(b.palette.primary).lineWidth(1.5).moveTo(pageMargin(), doc.y).lineTo(doc.page.width - pageMargin(), doc.y).stroke();
   doc.moveDown(0.4);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 function drawSectionHeading(doc: PDFKit.PDFDocument, s: Section, b: Brand): void {
   ensureSpace(doc, 34);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
   const label = [s.number, s.title].filter(Boolean).join("  ");
   doc.font("bold").fontSize(11.5).fillColor(b.palette.text).text(label);
   doc.moveDown(0.2);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 function drawProse(doc: PDFKit.PDFDocument, text: string, b: Brand): void {
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
   doc.font("body").fontSize(10).fillColor(b.palette.text).text(text, { paragraphGap: 6, align: "left" });
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 function drawNote(doc: PDFKit.PDFDocument, text: string, b: Brand): void {
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
   doc.font("body").fontSize(9.5).fillColor(b.palette.muted).text(text, { paragraphGap: 6 });
   doc.fillColor(b.palette.text);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 function drawBullets(doc: PDFKit.PDFDocument, items: string[], b: Brand): void {
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
   doc.font("body").fontSize(10).fillColor(b.palette.text);
   for (const it of items) doc.text(`•  ${it}`, { paragraphGap: 3, indent: 6 });
   doc.moveDown(0.2);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 function drawKeyValues(doc: PDFKit.PDFDocument, pairs: KeyValueData, b: Brand): void {
   const labelW = 200;
-  const startX = PAGE_MARGIN;
-  const valueW = doc.page.width - startX - labelW - PAGE_MARGIN - 10;
+  const startX = pageMargin();
+  const valueW = doc.page.width - startX - labelW - pageMargin() - 10;
   // Keep a small block together so a single row doesn't widow onto the next page.
   const blockH = pairs.length * 16;
-  const pageBottom = doc.page.height - PAGE_MARGIN - 30;
-  if (pairs.length <= 8 && doc.y + blockH > pageBottom && blockH < doc.page.height - PAGE_MARGIN * 2) doc.addPage();
+  const pageBottom = doc.page.height - pageMargin() - 30;
+  if (pairs.length <= 8 && doc.y + blockH > pageBottom && blockH < doc.page.height - pageMargin() * 2) doc.addPage();
   for (const [label, value] of pairs) {
     ensureSpace(doc, 16);
     const y = doc.y;
@@ -320,14 +314,14 @@ function drawKeyValues(doc: PDFKit.PDFDocument, pairs: KeyValueData, b: Brand): 
     // leave doc.y un-advanced and collide the next row's label.
     doc.y = y + Math.max(lh, vh, 13) + 1;
   }
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 function drawTable(doc: PDFKit.PDFDocument, spec: TableData, b: Brand): void {
   const headers = spec.headers;
-  const widths = spec.widths ?? headers.map(() => (doc.page.width - PAGE_MARGIN * 2) / headers.length);
+  const widths = spec.widths ?? headers.map(() => (doc.page.width - pageMargin() * 2) / headers.length);
   const align = spec.align ?? headers.map(() => "left" as const);
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   const totalW = widths.reduce((s, w) => s + w, 0);
   const PADX = 4;
   const PADY = 4;
@@ -357,7 +351,7 @@ function drawTable(doc: PDFKit.PDFDocument, spec: TableData, b: Brand): void {
   y += hh;
   for (const r of spec.rows) {
     const rh = measure(r, false);
-    if (y + rh > doc.page.height - PAGE_MARGIN - 40) {
+    if (y + rh > doc.page.height - pageMargin() - 40) {
       doc.addPage();
       y = doc.y;
       const h2 = measure(headers, true);
@@ -369,14 +363,14 @@ function drawTable(doc: PDFKit.PDFDocument, spec: TableData, b: Brand): void {
     y += rh;
   }
   doc.y = y + 6;
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 function drawMetrics(doc: PDFKit.PDFDocument, metrics: MetricData, b: Brand): void {
   ensureSpace(doc, 60);
-  const usableW = doc.page.width - PAGE_MARGIN * 2;
+  const usableW = doc.page.width - pageMargin() * 2;
   const cellW = usableW / Math.max(1, metrics.length);
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   const y = doc.y;
   const h = 50;
   metrics.forEach((m, i) => {
@@ -454,19 +448,20 @@ function stampFooters(doc: PDFKit.PDFDocument, t: ReportTemplate, ctx: RenderCon
   const range = doc.bufferedPageRange();
   // Front matter (cover + optional Document Control Sheet) is unnumbered.
   const frontMatter = b.docControl ? 2 : 1;
+  const pages = range.count - frontMatter;
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
     const pageIdx = i - range.start;
     if (pageIdx < frontMatter) continue; // no footer on cover / control sheet
     const logicalPage = pageIdx - frontMatter + 1;
-    const y = doc.page.height - PAGE_MARGIN + 8;
+    const y = doc.page.height - pageMargin() + 8;
     // Draw into the bottom margin WITHOUT triggering PDFKit auto-pagination: a
     // text position past the bottom margin otherwise spawns a blank page per
     // stamp (which the pre-captured page range can't number → "Page 1" blanks).
     const savedBottom = doc.page.margins.bottom;
     doc.page.margins.bottom = 0;
     doc.font("body").fontSize(7.5).fillColor(b.palette.muted);
-    doc.text(interp(b.footer, ctx, logicalPage), PAGE_MARGIN, y, { width: doc.page.width - PAGE_MARGIN * 2, align: "center", lineBreak: false });
+    doc.text(interp(b.footer, ctx, logicalPage, { documentType: t.documentType, pages }), pageMargin(), y, { width: doc.page.width - pageMargin() * 2, align: "center", lineBreak: false });
     doc.page.margins.bottom = savedBottom;
   }
 }
@@ -493,20 +488,48 @@ export function renderTemplate(
   stampFooters(doc, t, ctx);
 }
 
+/**
+ * Shallow-copy `t` with its brand overridden by the firm's imported theme.
+ * Chapters/sections/blocks are untouched — only the furniture (palette,
+ * logo, footer) changes.
+ */
+function applyThemeToTemplate(t: ReportTemplate, theme: Theme): ReportTemplate {
+  return {
+    ...t,
+    brand: {
+      ...t.brand,
+      palette: {
+        ...t.brand.palette,
+        primary: theme.palette.primary,
+        accent: theme.palette.accent,
+        text: theme.palette.text,
+        muted: theme.palette.muted,
+        rule: theme.palette.rule,
+        tableHeader: theme.table.header.fill ?? tint(theme.palette.primary, 0.86),
+        onPrimary: luminance(theme.palette.primary) > 150 ? "#1a1a1a" : "#ffffff",
+      },
+      logo: t.brand.logo ?? theme.cover.logo?.data,
+      footer: theme.footer ? theme.footer.segments.map((s) => s.text).join("  ·  ") : t.brand.footer,
+    },
+  };
+}
+
 /** Build a complete PDF buffer for a template + study data. Self-contained. */
 export function renderTemplatePdf(
   t: ReportTemplate,
   ctx: RenderContext,
   providers: ProviderRegistry,
+  theme: Theme = DEFAULT_THEME,
 ): Promise<Buffer> {
+  if (!isDefaultTheme(theme)) t = applyThemeToTemplate(t, theme);
   const doc = new PDFDocument({
-    size: "LETTER",
-    margins: { top: PAGE_MARGIN, bottom: PAGE_MARGIN, left: PAGE_MARGIN, right: PAGE_MARGIN },
+    size: pageSizePoints(theme.page),
+    margins: theme.page.margins,
     bufferPages: true,
     info: { Title: `${t.documentType} — ${ctx.project?.projectName ?? ""}`, Author: interp(t.brand.firmName, ctx) },
   });
-  doc.registerFont("body", path.join(FONT_DIR, "DejaVuSans.ttf"));
-  doc.registerFont("bold", path.join(FONT_DIR, "DejaVuSans-Bold.ttf"));
+  registerThemeFonts(doc, theme);
+  installGlyphFallback(doc, theme);
   doc.font("body");
   const chunks: Buffer[] = [];
   return new Promise<Buffer>((resolve, reject) => {
@@ -514,8 +537,10 @@ export function renderTemplatePdf(
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
     try {
-      renderTemplate(doc, t, ctx, providers);
-      doc.end();
+      withTheme(theme, () => {
+        renderTemplate(doc, t, ctx, providers);
+        doc.end();
+      });
     } catch (e) {
       reject(e);
     }

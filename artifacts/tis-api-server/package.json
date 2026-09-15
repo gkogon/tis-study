@@ -50,6 +50,14 @@
     "check:region-parity": "node ./scripts/verify-region-parity.mjs",
     "check:engine-core-exports": "node ./scripts/verify-engine-core-exports.mjs",
     "check:signal-timing-overrides": "node ./scripts/verify-signal-timing-overrides.mjs",
+    "check:theme-units": "node ./scripts/verify-theme-units.mjs",
+    "check:theme-default-identity": "node ./scripts/verify-theme-default-identity.mjs",
+    "check:theme-render": "node ./scripts/verify-theme-render.mjs",
+    "check:theme-scan": "node ./scripts/verify-theme-scan.mjs",
+    "fetch:tis-corpus": "node ./scripts/fetch-tis-corpus.mjs",
+    "check:theme-extract": "node ./scripts/verify-theme-extract.mjs",
+    "check:theme": "pnpm run check:theme-units && pnpm run check:theme-scan && pnpm run check:theme-default-identity && pnpm run check:theme-extract && pnpm run check:theme-render",
+    "build:preview-fixtures": "node ./scripts/build-preview-fixtures.mjs",
     "check:whatif-gate": "node ./scripts/verify-whatif-gate.mjs",
     "check:whatif-limiter": "node ./scripts/verify-whatif-limiter.mjs"
   },
@@ -75,7 +83,8 @@
     "pino-http": "^10",
     "rate-limit-redis": "^5.0.0",
     "resend": "^4.0.0",
-    "stripe": "^17.5.0"
+    "stripe": "^17.5.0",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

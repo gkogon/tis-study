@@ -20,7 +20,9 @@
  * study with no coverage keeps its AADT x K x D estimate and stays byte-identical.
  */
 
-const PAGE_MARGIN = 50;
+import { isDefaultTheme, pageMargin } from "./report-theme/active";
+import * as themed from "./report-theme/draw";
+
 const TEXT_GRAY = "#6b7280";
 
 export type AtrSegmentRow = {
@@ -143,6 +145,7 @@ export function renderAtrMeasuredVolumes(
 
   const heading = opts.heading ?? "Measured Traffic Counts (Supplemental)";
   if (opts.headingFn) opts.headingFn(doc, heading);
+  else if (!isDefaultTheme()) themed.heading(doc, 2, heading);
   else doc.font("bold").fontSize(11).fillColor("black").text(heading, { paragraphGap: 6 });
 
   // Two different claims, because two different kinds of station. A local
@@ -188,11 +191,11 @@ export function renderAtrMeasuredVolumes(
 
   // Minimal self-contained table (Path A) — no dependency on any renderer's
   // table(), which each declares privately with different signatures.
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   const rowH = 14;
   let y = doc.y + 2;
   const drawRow = (cells: string[], bold: boolean) => {
-    if (y + rowH > doc.page.height - PAGE_MARGIN - 30) {
+    if (y + rowH > doc.page.height - pageMargin() - 30) {
       doc.addPage();
       y = doc.y;
     }
@@ -218,7 +221,7 @@ export function renderAtrMeasuredVolumes(
   drawRow(headers, true);
   for (const r of rows) drawRow(r, false);
   doc.y = y + 4;
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 
   // Measured growth, where the same station has two or more sampled years.
   // This is the one place in the report where a growth rate can be checked

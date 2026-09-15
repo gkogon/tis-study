@@ -815,6 +815,9 @@ importers:
       stripe:
         specifier: ^17.5.0
         version: 17.7.0
+      zod:
+        specifier: 'catalog:'
+        version: 3.25.76
     devDependencies:
       '@types/bcryptjs':
         specifier: ^2.4.6

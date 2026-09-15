@@ -7,11 +7,13 @@
 // prose, captions (incl. FDOT TAH §2.7), and doc.moveDown(0.2) spacing so the
 // refactored FL section is byte-identical to origin/main.
 import type { TripDistributionSummary } from "./trip-distribution";
-import { drawColumnChart, drawLineChart, drawCompassRose, CHART_COLORS } from "./pdf-charts";
+import { drawColumnChart, drawLineChart, drawCompassRose, chartColors } from "./pdf-charts";
 import { CARDINALS } from "./caltran-gravity";
+import { isDefaultTheme, pageMargin } from "./report-theme/active";
+import { scaledHeight } from "./report-theme/layout";
+import * as themed from "./report-theme/draw";
 
 // ---- primitives table() closes over (copied per Path A) ----
-const PAGE_MARGIN = 50;
 // Off for US renderers; renderTripDistributionSection flips this on for the
 // duration of a UK (flavor "uk") render so the shared tables adopt the Velocity
 // green palette that the rest of the London TA uses, then resets it in a finally.
@@ -60,15 +62,18 @@ export function drawDistributionPlan(
     .slice(0, 12);
   if (zones.length === 0) return;
 
-  const figW = doc.page.width - 2 * PAGE_MARGIN;
-  const figH = 330;
+  const figW = doc.page.width - 2 * pageMargin();
+  const figH = scaledHeight(doc, 330);
   // Site box dimensions, declared up front: the label pass needs them to avoid
   // printing over the box, and the box itself is drawn last.
   const SITE_W = 92, SITE_H = 26;
+  const caption = `Figure — Project Trip Distribution. Study-area zones plotted to scale at their true bearing and distance from the site; leg weight is proportional to each zone's share of project trips, and the label gives that share. Derived from the ${td.methodLabel} distribution — the same shares tabulated above. Screening-grade: zone positions are the analysis locations, not a surveyed base map.`;
   // Keep the whole figure on one page — splitting a plan across a page break
-  // makes it unreadable and mis-scales the bar.
-  if (doc.y + figH > doc.page.height - PAGE_MARGIN - 40) doc.addPage();
-  const x0 = PAGE_MARGIN;
+  // makes it unreadable and mis-scales the bar. Under a firm theme the caption
+  // is part of the figure: it must not open the next page on its own.
+  const captionH = isDefaultTheme() ? 0 : 6 + doc.font("body").fontSize(8).heightOfString(caption, { width: figW });
+  if (doc.y + figH + captionH > doc.page.height - doc.page.margins.bottom - 40) doc.addPage();
+  const x0 = pageMargin();
   const y0 = doc.y;
   const cx = x0 + figW / 2;
   const cy = y0 + figH / 2;
@@ -210,12 +215,12 @@ export function drawDistributionPlan(
 
   doc.restore();
   doc.y = y0 + figH + 6;
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
   doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-    `Figure — Project Trip Distribution. Study-area zones plotted to scale at their true bearing and distance from the site; leg weight is proportional to each zone's share of project trips, and the label gives that share. Derived from the ${td.methodLabel} distribution — the same shares tabulated above. Screening-grade: zone positions are the analysis locations, not a surveyed base map.`,
-    PAGE_MARGIN,
+    caption,
+    pageMargin(),
     doc.y,
-    { width: doc.page.width - 2 * PAGE_MARGIN, paragraphGap: 6 },
+    { width: doc.page.width - 2 * pageMargin(), paragraphGap: 6 },
   );
   doc.fillColor("black");
 }
@@ -240,9 +245,10 @@ function fmtNum(n: any, decimals: number = 0): string {
 
 // ---- table: VERBATIM from pdf-export.ts:8881 ----
 function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
+  if (!isDefaultTheme()) { themed.table(doc, spec); return; }
   const { headers, widths, rows: dataRows } = spec;
   const align = spec.align ?? headers.map(() => "left" as const);
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   const totalW = widths.reduce((s, w) => s + w, 0);
   const PADX = 4;
   const PADY = 4;
@@ -285,7 +291,7 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
   let y = doc.y;
   const headerH = measureRow(headers, true);
   const firstRowH = dataRows.length > 0 ? measureRow(dataRows[0], false) : 0;
-  if (y + headerH + firstRowH > doc.page.height - PAGE_MARGIN - 40) {
+  if (y + headerH + firstRowH > doc.page.height - pageMargin() - 40) {
     doc.addPage();
     y = doc.y;
   }
@@ -294,7 +300,7 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
 
   for (const r of dataRows) {
     const rh = measureRow(r, false);
-    if (y + rh > doc.page.height - PAGE_MARGIN - 40) {
+    if (y + rh > doc.page.height - pageMargin() - 40) {
       doc.addPage();
       y = doc.y;
       const hh = measureRow(headers, true);
@@ -307,7 +313,7 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
     y += rh;
   }
   doc.y = y + 4;
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 const QUADRANT_LABEL: Record<string, string> = {
@@ -468,7 +474,7 @@ export function renderTripDistributionSection(
   // ---- Distribution graphs (Task 8B): appended for every US flavor, incl. FL ----
   // (0) The plan exhibit. Goes FIRST because it is the figure a reviewer looks
   // for — the charts below quantify what this one locates.
-  drawDistributionPlan(doc, td, CHART_COLORS.outbound);
+  drawDistributionPlan(doc, td, chartColors().outbound);
   // (1) Directional distribution — compass rose over the eight octants.
   drawCompassRose(doc, {
     title: "Figure — Directional Distribution of Project Trips",
@@ -476,9 +482,13 @@ export function renderTripDistributionSection(
     values: CARDINALS.map((c) => fin2(td.byDirection?.[c])),
     caption:
       "Screening-grade directional distribution of net new project trips by compass octant " +
-      "(spoke length ∝ percent of project trips). Derived from the " +
+      // "∝" exists in DejaVu Sans but in none of the substitute families.
+      // The theme-level glyph fallback (report-theme/fonts.ts) would render
+      // it as "~"; "proportional to" reads better in a caption, so it is
+      // spelled out under a theme. Default-theme bytes are unchanged.
+      `(spoke length ${isDefaultTheme() ? "∝" : "proportional to"} percent of project trips). Derived from the ` +
       `${td.methodLabel} distribution.`,
-    color: CHART_COLORS.outbound,
+    color: chartColors().outbound,
   });
   // (2) Per-zone gravity share — top zones by trip share.
   {
@@ -487,7 +497,7 @@ export function renderTripDistributionSection(
       drawColumnChart(doc, {
         title: "Figure — Project Trip Share by Study-Area Zone",
         categories: top.map((z, i) => shortZoneLabel(z.name, i)),
-        series: [{ name: "Trip share (%)", color: CHART_COLORS.outbound, values: top.map((z) => fin2(z.sharePct)) }],
+        series: [{ name: "Trip share (%)", color: chartColors().outbound, values: top.map((z) => fin2(z.sharePct)) }],
         yLabel: "% of project trips",
         height: 190,
       });
@@ -505,7 +515,7 @@ export function renderTripDistributionSection(
             : "Figure — Trip Share vs. Distance from Site (Gravity Decay)",
         categories: byDist.map((z) => `${z.distanceMi.toFixed(2)}`),
         values: byDist.map((z) => fin2(z.sharePct)),
-        color: CHART_COLORS.line,
+        color: chartColors().line,
         yLabel: "% of project trips",
         xLabel: "distance from site (mi)",
         height: 190,

@@ -11,7 +11,14 @@
  *   POST   /firms/invites/accept        any authed user: redeem token
  */
 import crypto from "node:crypto";
-import { Router, type IRouter } from "express";
+import {
+  Router,
+  type IRouter,
+  type ErrorRequestHandler,
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import multer from "multer";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
@@ -20,6 +27,7 @@ import {
   firmMembersTable,
   firmInvitesTable,
   usersTable,
+  type Firm,
 } from "@workspace/db";
 import {
   getOrCreateFirmForUser,
@@ -37,12 +45,12 @@ import {
   LogoInvalidTypeError,
 } from "../lib/logo-storage";
 import { logger } from "../lib/logger";
-import { writeFileSync, rmSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { ingestTemplateFromPdf } from "../lib/report-template/ingest";
-import { clearFirmTemplate, saveFirmTemplate } from "../lib/report-template/store";
-import { validateTemplate } from "../lib/report-template/registry";
+import { extractTheme, ThemeExtractError } from "../lib/report-theme/extract";
+import { classifyStoredTemplate, parseStoredTheme, summarizeTheme } from "../lib/report-theme/theme";
+import { clearFirmTheme, saveFirmTheme } from "../lib/report-template/store";
+import { latestProjectFamily, loadPreviewFixture, projectFromFixture } from "../lib/report-theme/preview-fixtures";
+import { renderStudyPdf } from "../lib/pdf-export";
+import { previewRateLimiter, templateUploadRateLimiter } from "../lib/security";
 
 const router: IRouter = Router();
 
@@ -51,6 +59,12 @@ const router: IRouter = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 },
+});
+
+// Sample-report uploads: real filed TIS PDFs with figures run 5–15 MB.
+const templateUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
 });
 
 // ---------- helpers ----------
@@ -273,138 +287,123 @@ router.post(
 );
 
 /**
- * POST /firms/report-template — upload an example report PDF; the firm's studies
- * then render in that imported format (structure + branding + logo, ingested).
+ * Auth + role gate for the template-upload route, run BEFORE templateUpload
+ * buffers the request body — an unauthenticated or non-owner/admin caller is
+ * rejected before we spend up to 20 MB of memory on their upload. Stashes
+ * `firm` on res.locals so the handler doesn't re-query it.
+ */
+async function requireTemplateEditor(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Sign in to upload a report template." }); return; }
+  const user = req.user!;
+  const { firm, role } = await getOrCreateFirmForUser(user.id, { email: user.email, firstName: user.firstName, lastName: user.lastName });
+  if (!requireRole(role, ["owner", "admin"])) { res.status(403).json({ error: "Only owners or admins can set the firm report template." }); return; }
+  res.locals.firm = firm;
+  next();
+}
+
+/**
+ * Maps a multer failure (chiefly the 20 MB size cap) to a JSON error instead
+ * of falling through to Express's default HTML 500. Arity 4 is load-bearing:
+ * Express only routes errors to a handler shaped exactly like this one.
+ */
+const templateUploadErrorHandler: ErrorRequestHandler = (err, _req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") { res.status(413).json({ error: "The sample PDF is larger than 20 MB." }); return; }
+    res.status(400).json({ error: err.message });
+    return;
+  }
+  next(err);
+};
+
+/**
+ * POST /firms/report-template — upload a sample TIS PDF; the firm's studies
+ * then render in its format (page geometry, fonts, palette, headings,
+ * header/footer, tables, cover). See report-theme/extract.ts.
  */
 router.post(
   "/firms/report-template",
-  upload.single("file"),
-  async (req, res): Promise<void> => {
-    if (!req.isAuthenticated()) {
-      res.status(401).json({ error: "Sign in to upload a report template." });
-      return;
-    }
-    const user = req.user!;
-    const { firm, role } = await getOrCreateFirmForUser(user.id, {
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-    });
-    if (!requireRole(role, ["owner", "admin"])) {
-      res.status(403).json({ error: "Only owners or admins can set the firm report template." });
-      return;
-    }
+  templateUploadRateLimiter,
+  requireTemplateEditor,
+  templateUpload.single("file"),
+  templateUploadErrorHandler,
+  async (req: Request, res: Response): Promise<void> => {
+    const firm = res.locals.firm as Firm;
     const file = (req as unknown as { file?: Express.Multer.File }).file;
-    if (!file) {
-      res.status(400).json({ error: "No file uploaded. Use multipart/form-data with field 'file' (a PDF)." });
-      return;
-    }
-    if (!/pdf$/i.test(file.mimetype) && !/\.pdf$/i.test(file.originalname)) {
-      res.status(400).json({ error: "Upload a PDF of an example report." });
-      return;
-    }
-    const tmp = path.join(os.tmpdir(), `tpl-upload-${firm.id}-${Date.now()}.pdf`);
+    if (!file) { res.status(400).json({ error: "No file uploaded. Use multipart/form-data with field 'file' (a PDF)." }); return; }
+    if (!/pdf$/i.test(file.mimetype) && !/\.pdf$/i.test(file.originalname)) { res.status(400).json({ error: "Upload a PDF of an example report." }); return; }
     try {
-      writeFileSync(tmp, file.buffer);
-      const tpl = ingestTemplateFromPdf(tmp, {
-        id: `firm-${firm.id}`,
-        name: `${firm.name} report template`,
-        firmName: firm.name,
-      });
-      // Durable copy. The filesystem store below is convenient for local dev
-      // but lives on an ephemeral container filesystem in production, so the
-      // DB column is the one that actually survives a deploy.
-      await db
-        .update(firmsTable)
-        .set({ reportTemplate: tpl })
-        .where(eq(firmsTable.id, firm.id));
-      saveFirmTemplate(firm.id, tpl);
-      res.json({
-        ok: true,
-        templateId: tpl.id,
-        documentType: tpl.documentType,
-        chapters: tpl.chapters.length,
-        sections: tpl.chapters.reduce((n, c) => n + c.sections.length, 0),
-        brand: { primary: tpl.brand.palette.primary, hasLogo: !!tpl.brand.logo, cover: tpl.brand.cover.style },
-      });
-    } catch (err) {
-      req.log.error({ err }, "firms.template_upload_failed");
-      res.status(500).json({ error: "Template ingestion failed. Ensure the PDF has a text layer (and that poppler is available)." });
-    } finally {
+      const stored = await extractTheme(file.buffer, { firmName: firm.name, firmId: firm.id });
+      // DB column is the durable copy (Railway's filesystem is ephemeral); the
+      // filesystem store keeps DB-less local dev working.
+      await db.update(firmsTable).set({ reportTemplate: stored }).where(eq(firmsTable.id, firm.id));
       try {
-        rmSync(tmp, { force: true });
-      } catch {
-        /* best effort */
+        saveFirmTheme(firm.id, stored);
+      } catch (err) {
+        // The DB write above already succeeded, so the theme IS saved and will
+        // render correctly — the filesystem mirror is only a DB-less local-dev
+        // convenience, so a read-only/full disk here must not fail the request.
+        req.log.warn({ err }, "firms.template_mirror_failed");
       }
+      res.json({ ok: true, summary: summarizeTheme(stored) });
+    } catch (err) {
+      if (err instanceof ThemeExtractError) {
+        // A derivation bug is mapped to a fixed 422; its original error is only logged here.
+        if (err.cause !== undefined) req.log.warn({ err: err.cause }, "firms.template_derivation_failed");
+        res.status(err.status).json({ error: err.message });
+        return;
+      }
+      req.log.error({ err }, "firms.template_upload_failed");
+      res.status(500).json({ error: "Template import failed." });
     }
   },
 );
 
-/**
- * GET /firms/report-template — what format this firm's studies currently render
- * in. Summary only: the stored template carries a base64 logo and every section
- * of captured prose, which is far too much to ship to a settings page.
- */
+/** GET /firms/report-template — summary of the format this firm's studies render in. */
 router.get("/firms/report-template", async (req, res): Promise<void> => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: "Sign in required." });
-    return;
-  }
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Sign in required." }); return; }
   const user = req.user!;
-  const { firm } = await getOrCreateFirmForUser(user.id, {
-    email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
-  });
-  const raw = firm.reportTemplate;
-  if (!raw) {
-    res.json({ template: null });
-    return;
-  }
-  try {
-    const tpl = validateTemplate(raw);
-    res.json({
-      template: {
-        id: tpl.id,
-        name: tpl.name,
-        documentType: tpl.documentType,
-        chapters: tpl.chapters.length,
-        sections: tpl.chapters.reduce((n, c) => n + c.sections.length, 0),
-        brand: {
-          primary: tpl.brand.palette.primary,
-          hasLogo: !!tpl.brand.logo,
-          cover: tpl.brand.cover.style,
-        },
-      },
-    });
-  } catch (err) {
-    // A stored template that no longer validates renders as the region default,
-    // so report it as unusable rather than pretending it is in effect.
-    req.log.error({ err }, "firms.template_invalid");
-    res.json({ template: null, invalid: true });
+  const { firm } = await getOrCreateFirmForUser(user.id, { email: user.email, firstName: user.firstName, lastName: user.lastName });
+  switch (classifyStoredTemplate(firm.reportTemplate)) {
+    case "none": res.json({ template: null }); return;
+    case "legacy": res.json({ template: null, legacy: true }); return;
+    case "invalid": req.log.error({ firmId: firm.id }, "firms.template_invalid"); res.json({ template: null, invalid: true }); return;
+    case "v2": res.json({ template: summarizeTheme(parseStoredTheme(firm.reportTemplate)!) }); return;
+    default: res.status(500).json({ error: "Unknown template state." }); return;
   }
 });
 
 /**
- * DELETE /firms/report-template — revert to the region's default format.
+ * GET /firms/report-template/preview.pdf — a committed sample study rendered
+ * through the firm's theme, region-matched to the firm's latest project.
  */
-router.delete("/firms/report-template", async (req, res): Promise<void> => {
-  if (!req.isAuthenticated()) {
-    res.status(401).json({ error: "Sign in required." });
-    return;
-  }
+router.get("/firms/report-template/preview.pdf", previewRateLimiter, async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Sign in required." }); return; }
   const user = req.user!;
-  const { firm, role } = await getOrCreateFirmForUser(user.id, {
-    email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
-  });
-  if (!requireRole(role, ["owner", "admin"])) {
-    res.status(403).json({ error: "Only owners or admins can change the firm report template." });
-    return;
+  const { firm } = await getOrCreateFirmForUser(user.id, { email: user.email, firstName: user.firstName, lastName: user.lastName });
+  if (!parseStoredTheme(firm.reportTemplate)) { res.status(404).json({ error: "This firm has no imported report format yet." }); return; }
+  try {
+    const fixture = loadPreviewFixture(await latestProjectFamily(firm.id));
+    const buffer = await renderStudyPdf(projectFromFixture(fixture) as Parameters<typeof renderStudyPdf>[0], {
+      firmId: firm.id, reportTemplate: firm.reportTemplate, name: firm.name, logoUrl: firm.logoUrl,
+      brandColor: firm.brandColor, addressLine: firm.addressLine, phone: firm.phone, website: firm.website,
+    });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", 'inline; filename="format-preview.pdf"');
+    res.send(buffer);
+  } catch (err) {
+    req.log.error({ err }, "firms.template_preview_failed");
+    res.status(500).json({ error: "Could not render the preview." });
   }
+});
+
+/** DELETE /firms/report-template — revert to the region's default format. */
+router.delete("/firms/report-template", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Sign in required." }); return; }
+  const user = req.user!;
+  const { firm, role } = await getOrCreateFirmForUser(user.id, { email: user.email, firstName: user.firstName, lastName: user.lastName });
+  if (!requireRole(role, ["owner", "admin"])) { res.status(403).json({ error: "Only owners or admins can change the firm report template." }); return; }
   await db.update(firmsTable).set({ reportTemplate: null }).where(eq(firmsTable.id, firm.id));
-  clearFirmTemplate(firm.id);
+  clearFirmTheme(firm.id);
   res.json({ ok: true, template: null });
 });
 

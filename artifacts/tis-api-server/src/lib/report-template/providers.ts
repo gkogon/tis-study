@@ -9,7 +9,7 @@
  */
 import { ukCapacityForIntersection } from "../uk-capacity";
 import { profileForLandUse, distributeDaily, type ProfileLocale } from "../office-diurnal";
-import { CHART_COLORS } from "../pdf-charts";
+import { chartColors } from "../pdf-charts";
 import type { ProviderRegistry, RenderContext, TableData } from "./engine";
 import { buildAccuracyReport } from "./accuracy";
 import { applicableRegulations, regulationsAsOf, registryStatus } from "./regulations";
@@ -231,8 +231,8 @@ export function buildProviders(opts: { locale: ProfileLocale }): ProviderRegistr
             categories: HOURS,
             stacked: true,
             series: [
-              { name: "Outbound", color: CHART_COLORS.outbound, values: d.hourly.departuresSharePct },
-              { name: "Inbound", color: CHART_COLORS.inbound, values: d.hourly.arrivalsSharePct },
+              { name: "Outbound", color: chartColors().outbound, values: d.hourly.departuresSharePct },
+              { name: "Inbound", color: chartColors().inbound, values: d.hourly.arrivalsSharePct },
             ],
             yLabel: "% of daily total",
             xLabel: "Hour of day",
@@ -251,7 +251,7 @@ export function buildProviders(opts: { locale: ProfileLocale }): ProviderRegistr
             title: `Figure: ${cfg.accumulationTitle}`,
             categories: HOURS,
             values: d.hourly.accumulation,
-            color: CHART_COLORS.outbound,
+            color: chartColors().outbound,
             yLabel: `${cfg.unit} on site (est.)`,
             xLabel: "Hour of day",
             caption: `Peak ~${num(d.hourly.peakAccumulation)} ${cfg.unit} at ${String(d.hourly.peakAccumulationHour).padStart(2, "0")}:00, from ${num(dailyTrips(ctx))} gross daily trips on the ${d.sel.family ?? "supplied"} within-day profile.`,

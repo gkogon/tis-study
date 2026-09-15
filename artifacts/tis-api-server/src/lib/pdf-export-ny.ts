@@ -36,6 +36,9 @@ import { getMeasuredGrowthRate } from "@workspace/tis-engine-core";
 import { renderAtrMeasuredVolumes } from "./atr-measured-volumes";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
 import { renderLaneGroupQueues } from "./lane-group-queues";
+import { activeTheme, isDefaultTheme, pageMargin } from "./report-theme/active";
+import * as themed from "./report-theme/draw";
+import { sectionBreak } from "./report-theme/layout";
 
 type StoredProject = {
   id: string;
@@ -50,7 +53,6 @@ type StoredProject = {
   resultPayload: unknown;
 };
 
-const PAGE_MARGIN = 50;
 const BRAND_BLUE = "#2563eb";
 const TEXT_GRAY = "#6b7280";
 
@@ -58,31 +60,34 @@ const TEXT_GRAY = "#6b7280";
 // see file-level docstring) -------------------------------------------------
 
 function nySection(doc: PDFKit.PDFDocument, title: string) {
-  doc.x = PAGE_MARGIN;
+  if (!isDefaultTheme()) { themed.heading(doc, 1, title); return; }
+  doc.x = pageMargin();
   doc.font("bold").fontSize(13).fillColor("black").text(title, { characterSpacing: 0.5 });
   doc.moveDown(0.3);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 function nySubsection(doc: PDFKit.PDFDocument, title: string) {
-  doc.x = PAGE_MARGIN;
+  if (!isDefaultTheme()) { themed.heading(doc, 2, title); return; }
+  doc.x = pageMargin();
   doc.font("bold").fontSize(11).fillColor("black").text(title);
   doc.moveDown(0.2);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 function nyRows(doc: PDFKit.PDFDocument, pairs: [string, string | undefined][]) {
+  if (!isDefaultTheme()) { themed.rows(doc, pairs); return; }
   const labelW = 220;
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   doc.x = startX;
-  const valueW = doc.page.width - startX - labelW - PAGE_MARGIN - 10;
+  const valueW = doc.page.width - startX - labelW - pageMargin() - 10;
   for (const [label, value] of pairs) {
     const y = doc.y;
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(label, startX, y, { width: labelW, continued: false });
     doc.font("body").fontSize(10).fillColor("black").text(value ?? "—", startX + labelW + 10, y, { width: valueW });
     doc.moveDown(0.05);
   }
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 type NyTableSpec = {
@@ -93,9 +98,10 @@ type NyTableSpec = {
 };
 
 function nyTable(doc: PDFKit.PDFDocument, spec: NyTableSpec) {
+  if (!isDefaultTheme()) { themed.table(doc, spec); return; }
   const { headers, widths, rows: dataRows } = spec;
   const align = spec.align ?? headers.map(() => "left" as const);
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   const rowH = 16;
   const headerH = 18;
   const drawRow = (cells: string[], y: number, isHeader: boolean) => {
@@ -122,7 +128,7 @@ function nyTable(doc: PDFKit.PDFDocument, spec: NyTableSpec) {
   drawRow(headers, y, true);
   y += headerH;
   for (const r of dataRows) {
-    if (y + rowH > doc.page.height - PAGE_MARGIN - 40) {
+    if (y + rowH > doc.page.height - pageMargin() - 40) {
       doc.addPage();
       y = doc.y;
       drawRow(headers, y, true);
@@ -134,15 +140,16 @@ function nyTable(doc: PDFKit.PDFDocument, spec: NyTableSpec) {
     y += rowH;
   }
   doc.y = y + 4;
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 type NyMetric = { label: string; value: string };
 
 function nyMetricStrip(doc: PDFKit.PDFDocument, metrics: NyMetric[]) {
-  const usableW = doc.page.width - PAGE_MARGIN * 2;
+  if (!isDefaultTheme()) { themed.metricStrip(doc, metrics); return; }
+  const usableW = doc.page.width - pageMargin() * 2;
   const cellW = usableW / metrics.length;
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   const y = doc.y;
   const h = 50;
   for (let i = 0; i < metrics.length; i++) {
@@ -1104,7 +1111,7 @@ export function renderTisNewYork(
   doc.moveDown(0.4);
 
   // --- Appendix A — Existing Volume Report -------------------------------
-  doc.addPage();
+  sectionBreak(doc);
   nySection(doc, "APPENDIX A — EXISTING VOLUME REPORT");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Per-approach existing peak-hour volumes (vph) for all affected intersections within study limits. Source: SimpleImpactStudies screening solver (Webster/Akçelik control-delay model), calibrated against the controlling DOT 511 / Regional Traffic Office data feed.",
@@ -1141,7 +1148,7 @@ export function renderTisNewYork(
   }
 
   // --- Appendix B — Existing Condition Capacity Analysis Output ----------
-  doc.addPage();
+  sectionBreak(doc);
   nySection(doc, "APPENDIX B — EXISTING CONDITION CAPACITY ANALYSIS OUTPUT");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Per-intersection screening-solver output (Webster/Akçelik control-delay model) for the Existing No-Build condition (current-year volumes; volumes grown to opening year at the §3.1 background-growth rate for No-Build comparison).",
@@ -1170,7 +1177,7 @@ export function renderTisNewYork(
   }
 
   // --- Appendix C — Proposed Condition Capacity Analysis Output ----------
-  doc.addPage();
+  sectionBreak(doc);
   nySection(doc, "APPENDIX C — PROPOSED CONDITION CAPACITY ANALYSIS OUTPUT");
   doc.font("body").fontSize(10).fillColor("black").text(
     "Per-intersection screening-solver output (Webster/Akçelik control-delay model) for the Proposed Build condition (No-Build volumes plus project external trips at the assigned distribution).",
@@ -1199,7 +1206,7 @@ export function renderTisNewYork(
   }
 
   // --- Appendix D — Crash Analysis Diagrams and Tables -------------------
-  doc.addPage();
+  sectionBreak(doc);
   nySection(doc, "APPENDIX D — CRASH ANALYSIS DIAGRAMS AND TABLES");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "Crash analysis diagrams and tables are not produced by this screening analysis. When the §4.0 crash-analysis section is expanded for formal submittal, the following NYSDOT forms are required: TE-156a (Collision Diagram), TE-164a (Safety Benefits Evaluation Form), TE-204a (Accident Rate Summary), and TE-213 (HAL / PIL / SDL Screening Output). SIMS output and statewide-average rate references should be obtained from the controlling Regional Traffic Office per HDM Chapter 5 §5.3.4 and the NYSDOT Office of Modal Safety statewide rate tables (https://www.dot.ny.gov/divisions/operating/osss/highway/accident-rates).",
@@ -1297,7 +1304,7 @@ export function renderCeqrNyc(
   const pedAbove = peakHourPed > CEQR_PED_THRESHOLD;
   const anyAbove = vehAbove || transitAbove || pedAbove;
 
-  doc.addPage();
+  sectionBreak(doc);
   nySection(doc, "CEQR CHAPTER 16 — NYC TRANSPORTATION ANALYSIS");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
     "This section overlays the NYSDOT HDM Chapter 5 shell above with the CEQR Chapter 16 (Transportation) framing required for any NYC discretionary action. Reference: CEQR Technical Manual, December 2025 Edition (NYC Mayor's Office of Environmental Coordination). Chapter 16 PDF: https://www.nyc.gov/assets/oec/technical-manual/16_Transportation_2025.pdf.",
