@@ -122,5 +122,16 @@ const g2 = pg2.pageGeometry(serif.pages, b2, { headerBottom: null, footerTop: z2
 // lines do." blue-sans's differently-wrapping body text needs no adjustment.
 ok(g2 && g2.size === "A4" && near(g2.margins.left, 90, 9), `serif-black A4 with 90pt margins (${JSON.stringify(g2)})`);
 
+const pal2 = await import(path.resolve(here, "../src/lib/report-theme/derive/palette.ts"));
+const tbl2 = await import(path.resolve(here, "../src/lib/report-theme/derive/tables.ts"));
+const P1 = pal2.derivePalette(scan.pages, b1, hl, ["#666666"]);
+ok(P1.primary === "#1f4e79" && P1.text === "#222222" && P1.muted === "#666666", `blue-sans palette (${JSON.stringify(P1)})`);
+const T1 = tbl2.detectTables(scan.pages, b1, hl[0]?.font ?? null);
+ok(T1.count === 2, `blue-sans: two tables (${T1.count})`);
+ok(T1.style && T1.style.header.fill === "#1f4e79" && T1.style.header.color === "#ffffff" && T1.style.rules.color === "#9dc3e6" && T1.style.rules.mode === "horizontal", `blue-sans table style (${JSON.stringify(T1.style?.header)} ${JSON.stringify(T1.style?.rules)})`);
+ok(T1.style && T1.style.caption.position === "above", "blue-sans caption above");
+const T2 = tbl2.detectTables(serif.pages, b2, hl2[0]?.font ?? null);
+ok(T2.style && T2.style.header.fill === "#d9d9d9" && T2.style.header.color === "#000000", `serif-black grey header (${JSON.stringify(T2.style?.header)})`);
+
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");

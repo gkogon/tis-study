@@ -315,5 +315,36 @@ const geomWide = pg.pageGeometry(widePages, wideBody, { headerBottom: null, foot
 eq(geomWide && geomWide.orientation, "landscape", "unsnapped 700×500 page is landscape");
 eq(geomWide && geomWide.size, [500, 700], "unsnapped landscape size is stored portrait-normalised [500, 700], not raw [700, 500]");
 
+// ─── derive/palette.ts + derive/tables.ts ────────────────────────────────────
+const pal = await import(path.resolve(here, "../src/lib/report-theme/derive/palette.ts"));
+const palette = pal.derivePalette(pagesA, bodyA, heads, ["#6b7280"]);
+eq(palette.primary, "#1a5276", "primary = heading blue");
+eq(palette.text, "#000000", "text = body colour");
+eq(palette.rule, "#1a5276", "rule = most common stroke colour");
+eq(palette.muted, "#6b7280", "muted from candidates");
+const tbl = await import(path.resolve(here, "../src/lib/report-theme/derive/tables.ts"));
+// A table on page 3: header fill + 3 row rules + a caption above; vertical grid lines.
+const tp = mkPage(3, [
+  run(3, "Table 2-1: Level of Service Summary", 9, "#6b7280", 72, 296, 200, { bold: true }),
+  run(3, "Intersection", 9, "#ffffff", 76, 313, 60, { bold: true }), run(3, "AM", 9, "#ffffff", 276, 313, 20, { bold: true }),
+  run(3, "Main St", 9, "#000000", 76, 331, 40), run(3, "B", 9, "#000000", 276, 331, 8),
+  run(3, "Oak Rd", 9, "#000000", 76, 349, 40), run(3, "C", 9, "#000000", 276, 349, 8),
+  run(3, "Body paragraph text that is long enough to be a real line of text here.", 10, "#000000", 72, 420, 450),
+], [
+  { page: 3, x1: 72, y1: 320, x2: 372, y2: 320, color: "#9dc3e6", width: 0.5 }, { page: 3, x1: 72, y1: 338, x2: 372, y2: 338, color: "#9dc3e6", width: 0.5 }, { page: 3, x1: 72, y1: 356, x2: 372, y2: 356, color: "#9dc3e6", width: 0.5 },
+  { page: 3, x1: 72, y1: 302, x2: 72, y2: 356, color: "#9dc3e6", width: 0.5 }, { page: 3, x1: 272, y1: 302, x2: 272, y2: 356, color: "#9dc3e6", width: 0.5 }, { page: 3, x1: 372, y1: 302, x2: 372, y2: 356, color: "#9dc3e6", width: 0.5 },
+], [{ page: 3, x: 72, y: 302, w: 300, h: 18, color: "#1f4e79" }]);
+const tres = tbl.detectTables([pagesA[0], pagesA[1], tp], bodyA, null);
+ok(tres.count === 1, `one table region found (${tres.count})`);
+ok(tres.style && tres.style.header.fill === "#1f4e79" && tres.style.header.color === "#ffffff" && tres.style.header.bold, `header fill/colour/bold (${JSON.stringify(tres.style?.header)})`);
+ok(tres.style && tres.style.rules.mode === "grid" && tres.style.rules.color === "#9dc3e6", `grid rules in #9dc3e6 (${JSON.stringify(tres.style?.rules)})`);
+ok(tres.style && tres.style.body.size === 9, "body size 9");
+ok(tres.style && tres.style.caption.position === "above" && tres.style.caption.style.bold === true, `caption above, bold (${JSON.stringify(tres.style?.caption)})`);
+ok(tres.style && tres.style.padX >= 2 && tres.style.padX <= 6, `padX ≈ 4 (${tres.style?.padX})`);
+const fp = mkPage(4, [run(4, "Figure 3-1: Site Location Map", 9, "#6b7280", 72, 520, 200, { bold: true })], [], []);
+fp.images.push({ page: 4, x: 72, y: 300, w: 468, h: 200, objId: "img1", pixels: null });
+const fig = tbl.detectFigureCaption([pagesA[0], fp], bodyA);
+ok(fig && fig.position === "below", `figure caption below the image (${JSON.stringify(fig)})`);
+
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");
