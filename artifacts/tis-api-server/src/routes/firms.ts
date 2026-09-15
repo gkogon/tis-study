@@ -11,7 +11,14 @@
  *   POST   /firms/invites/accept        any authed user: redeem token
  */
 import crypto from "node:crypto";
-import { Router, type IRouter } from "express";
+import {
+  Router,
+  type IRouter,
+  type ErrorRequestHandler,
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import multer from "multer";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
@@ -20,6 +27,7 @@ import {
   firmMembersTable,
   firmInvitesTable,
   usersTable,
+  type Firm,
 } from "@workspace/db";
 import {
   getOrCreateFirmForUser,
@@ -42,7 +50,7 @@ import { classifyStoredTemplate, parseStoredTheme, summarizeTheme } from "../lib
 import { clearFirmTheme, saveFirmTheme } from "../lib/report-template/store";
 import { latestProjectFamily, loadPreviewFixture, projectFromFixture } from "../lib/report-theme/preview-fixtures";
 import { renderStudyPdf } from "../lib/pdf-export";
-import { generateRateLimiter } from "../lib/security";
+import { previewRateLimiter } from "../lib/security";
 
 const router: IRouter = Router();
 
@@ -279,31 +287,70 @@ router.post(
 );
 
 /**
- * POST /firms/report-template — upload a sample TIS PDF; the firm's studies
- * then render in its format (page geometry, fonts, palette, headings,
- * header/footer, tables, cover). See report-theme/extract.ts.
+ * Auth + role gate for the template-upload route, run BEFORE templateUpload
+ * buffers the request body — an unauthenticated or non-owner/admin caller is
+ * rejected before we spend up to 20 MB of memory on their upload. Stashes
+ * `firm` on res.locals so the handler doesn't re-query it.
  */
-router.post("/firms/report-template", templateUpload.single("file"), async (req, res): Promise<void> => {
+async function requireTemplateEditor(req: Request, res: Response, next: NextFunction): Promise<void> {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Sign in to upload a report template." }); return; }
   const user = req.user!;
   const { firm, role } = await getOrCreateFirmForUser(user.id, { email: user.email, firstName: user.firstName, lastName: user.lastName });
   if (!requireRole(role, ["owner", "admin"])) { res.status(403).json({ error: "Only owners or admins can set the firm report template." }); return; }
-  const file = (req as unknown as { file?: Express.Multer.File }).file;
-  if (!file) { res.status(400).json({ error: "No file uploaded. Use multipart/form-data with field 'file' (a PDF)." }); return; }
-  if (!/pdf$/i.test(file.mimetype) && !/\.pdf$/i.test(file.originalname)) { res.status(400).json({ error: "Upload a PDF of an example report." }); return; }
-  try {
-    const stored = await extractTheme(file.buffer, { firmName: firm.name, firmId: firm.id });
-    // DB column is the durable copy (Railway's filesystem is ephemeral); the
-    // filesystem store keeps DB-less local dev working.
-    await db.update(firmsTable).set({ reportTemplate: stored }).where(eq(firmsTable.id, firm.id));
-    saveFirmTheme(firm.id, stored);
-    res.json({ ok: true, summary: summarizeTheme(stored) });
-  } catch (err) {
-    if (err instanceof ThemeExtractError) { res.status(err.status).json({ error: err.message }); return; }
-    req.log.error({ err }, "firms.template_upload_failed");
-    res.status(500).json({ error: "Template import failed." });
+  res.locals.firm = firm;
+  next();
+}
+
+/**
+ * Maps a multer failure (chiefly the 20 MB size cap) to a JSON error instead
+ * of falling through to Express's default HTML 500. Arity 4 is load-bearing:
+ * Express only routes errors to a handler shaped exactly like this one.
+ */
+const templateUploadErrorHandler: ErrorRequestHandler = (err, _req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") { res.status(413).json({ error: "The sample PDF is larger than 20 MB." }); return; }
+    res.status(400).json({ error: err.message });
+    return;
   }
-});
+  next(err);
+};
+
+/**
+ * POST /firms/report-template — upload a sample TIS PDF; the firm's studies
+ * then render in its format (page geometry, fonts, palette, headings,
+ * header/footer, tables, cover). See report-theme/extract.ts.
+ */
+router.post(
+  "/firms/report-template",
+  requireTemplateEditor,
+  templateUpload.single("file"),
+  templateUploadErrorHandler,
+  async (req: Request, res: Response): Promise<void> => {
+    const firm = res.locals.firm as Firm;
+    const file = (req as unknown as { file?: Express.Multer.File }).file;
+    if (!file) { res.status(400).json({ error: "No file uploaded. Use multipart/form-data with field 'file' (a PDF)." }); return; }
+    if (!/pdf$/i.test(file.mimetype) && !/\.pdf$/i.test(file.originalname)) { res.status(400).json({ error: "Upload a PDF of an example report." }); return; }
+    try {
+      const stored = await extractTheme(file.buffer, { firmName: firm.name, firmId: firm.id });
+      // DB column is the durable copy (Railway's filesystem is ephemeral); the
+      // filesystem store keeps DB-less local dev working.
+      await db.update(firmsTable).set({ reportTemplate: stored }).where(eq(firmsTable.id, firm.id));
+      try {
+        saveFirmTheme(firm.id, stored);
+      } catch (err) {
+        // The DB write above already succeeded, so the theme IS saved and will
+        // render correctly — the filesystem mirror is only a DB-less local-dev
+        // convenience, so a read-only/full disk here must not fail the request.
+        req.log.warn({ err }, "firms.template_mirror_failed");
+      }
+      res.json({ ok: true, summary: summarizeTheme(stored) });
+    } catch (err) {
+      if (err instanceof ThemeExtractError) { res.status(err.status).json({ error: err.message }); return; }
+      req.log.error({ err }, "firms.template_upload_failed");
+      res.status(500).json({ error: "Template import failed." });
+    }
+  },
+);
 
 /** GET /firms/report-template — summary of the format this firm's studies render in. */
 router.get("/firms/report-template", async (req, res): Promise<void> => {
@@ -315,6 +362,7 @@ router.get("/firms/report-template", async (req, res): Promise<void> => {
     case "legacy": res.json({ template: null, legacy: true }); return;
     case "invalid": req.log.error({ firmId: firm.id }, "firms.template_invalid"); res.json({ template: null, invalid: true }); return;
     case "v2": res.json({ template: summarizeTheme(parseStoredTheme(firm.reportTemplate)!) }); return;
+    default: res.status(500).json({ error: "Unknown template state." }); return;
   }
 });
 
@@ -322,7 +370,7 @@ router.get("/firms/report-template", async (req, res): Promise<void> => {
  * GET /firms/report-template/preview.pdf — a committed sample study rendered
  * through the firm's theme, region-matched to the firm's latest project.
  */
-router.get("/firms/report-template/preview.pdf", generateRateLimiter, async (req, res): Promise<void> => {
+router.get("/firms/report-template/preview.pdf", previewRateLimiter, async (req, res): Promise<void> => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Sign in required." }); return; }
   const user = req.user!;
   const { firm } = await getOrCreateFirmForUser(user.id, { email: user.email, firstName: user.firstName, lastName: user.lastName });

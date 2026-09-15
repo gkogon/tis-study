@@ -790,7 +790,10 @@ eq(pf.regionFamilyForCoordinate(40.4406, -79.9959), "fl", "Pittsburgh (no PA fix
 eq(pf.regionFamilyForCoordinate(NaN, NaN), "fl", "no coordinate → fl");
 for (const fam of ["fl", "ga", "tx", "ny", "nc", "sc"]) { const fx = pf.loadPreviewFixture(fam); ok(fx.family === fam && typeof fx.report === "object" && fx.report.request, `fixture ${fam} loads with a report + request`); }
 const proj = pf.projectFromFixture(pf.loadPreviewFixture("tx"));
-ok(proj.studyType === "tis" && proj.siteLat && proj.createdAt.toISOString() === "2026-01-15T12:00:00.000Z" && proj.resultPayload === pf.loadPreviewFixture("tx").report, "projectFromFixture shape");
+const txFixtureReport = pf.loadPreviewFixture("tx").report;
+eq(proj.resultPayload, txFixtureReport, "projectFromFixture resultPayload deep-equals the fixture report");
+ok(proj.resultPayload !== txFixtureReport, "projectFromFixture clones the report rather than aliasing the cached fixture (renderStudyPdf mutates resultPayload in place)");
+ok(proj.studyType === "tis" && proj.siteLat && proj.createdAt.toISOString() === "2026-01-15T12:00:00.000Z", "projectFromFixture shape");
 
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");

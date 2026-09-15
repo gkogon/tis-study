@@ -52,8 +52,16 @@ export function loadPreviewFixture(family: FixtureFamily): PreviewFixture {
   return fx;
 }
 
-/** StoredProject-shaped record; fixed createdAt so a preview is reproducible. */
+/**
+ * StoredProject-shaped record; fixed createdAt so a preview is reproducible.
+ * Clones `fx.report` — `renderStudyPdf` mutates `resultPayload` in place
+ * (crash-summary / GDOT-snapshot / FARS-K enrichment, speed-enrichment of
+ * `affectedIntersections`, …), and `fx` is the process-wide cached fixture
+ * (see `loadPreviewFixture`), so handing it out by reference would let the
+ * first preview permanently corrupt it and race concurrent previews.
+ */
 export function projectFromFixture(fx: PreviewFixture) {
+  const report = structuredClone(fx.report);
   return {
     id: `preview-${fx.key}`,
     studyType: "tis",
@@ -63,8 +71,8 @@ export function projectFromFixture(fx: PreviewFixture) {
     siteLon: String(fx.longitude),
     version: 1,
     createdAt: new Date("2026-01-15T12:00:00Z"),
-    requestPayload: fx.report.request,
-    resultPayload: fx.report,
+    requestPayload: report.request,
+    resultPayload: report,
   };
 }
 
