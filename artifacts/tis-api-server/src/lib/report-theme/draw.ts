@@ -71,13 +71,36 @@ export function formatNumber(parts: number[], numbering: Numbering): string {
 }
 
 const SMALL_WORDS = new Set(["and", "or", "of", "for", "the", "to", "a", "an", "in", "on", "at", "by", "with"]);
+/**
+ * Acronyms that stay upper-case when an ALL-CAPS title is re-cased ("TIS
+ * APPLICABILITY" → "TIS Applicability"). A mixed-case source needs no list:
+ * its all-caps words are already deliberate and are left alone.
+ */
+const ACRONYMS = new Set([
+  "TIS", "TIA", "TIAS", "LOS", "DRI", "AOI", "AM", "PM", "HCM", "ITE", "VMT", "ADT", "AADT", "MUTCD", "ICE", "ARMS", "MSA", "CSA", "CEQR",
+  "NCDOT", "SCDOT", "GDOT", "FDOT", "TXDOT", "NYSDOT", "IDOT", "DDOT", "VDOT", "WSDOT", "TG-21", "US", "SR", "I", "NB", "SB", "EB", "WB",
+]);
+const isAllCaps = (s: string) => /[A-Z]/.test(s) && !/[a-z]/.test(s);
+/** Title-case one whitespace-delimited word; letters after `/`, `(`, `—`, `–` and `-` start a new capital. */
+function titleWord(word: string, allCapsSource: boolean): string {
+  if (allCapsSource ? ACRONYMS.has(word) : isAllCaps(word)) return word;
+  return word
+    .split(/([/(—–-])/)
+    .map((part) => {
+      if (!part || /^[/(—–-]$/.test(part)) return part;
+      if (allCapsSource ? ACRONYMS.has(part) : isAllCaps(part)) return part;
+      const rest = allCapsSource ? part.slice(1).toLowerCase() : part.slice(1);
+      return part.charAt(0).toUpperCase() + rest;
+    })
+    .join("");
+}
 export function applyCase(text: string, c: "upper" | "title" | "asis"): string {
   if (c === "upper") return text.toUpperCase();
   if (c === "title") {
+    const allCapsSource = !/[a-z]/.test(text);
     return text
-      .toLowerCase()
       .split(/\s+/)
-      .map((w, i) => (i > 0 && SMALL_WORDS.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+      .map((w, i) => (i > 0 && SMALL_WORDS.has(w.toLowerCase()) ? w.toLowerCase() : titleWord(w, allCapsSource)))
       .join(" ");
   }
   return text;
@@ -90,7 +113,7 @@ export function formatHeading(title: string, level: 1 | 2 | 3, theme: Theme, syn
   const key = canonicalKey(text);
   const wording = (key && synonymFor(key)) || text;
   const num = formatNumber(parts, h.numbering);
-  const sep = h.numbering === "section" && parts.length === 1 ? " – " : "  ";
+  const sep = h.numbering === "section" && parts.length === 1 ? " – " : " ";
   return (num ? num + sep : "") + applyCase(wording, h.case);
 }
 
@@ -321,61 +344,109 @@ function roleToken(role: Theme["cover"]["elements"][number]["role"]): string {
   }
 }
 
+/** Lowest y (in points) a cover element or the meta block may reach. */
+const COVER_BOTTOM_INSET = 12;
+
+/**
+ * Fit one cover element's text into its box: the box height is bounded by
+ * the next element below it (same column) and the page bottom; the font
+ * steps down (metricStrip-style) until the wrapped text fits, so a long
+ * project name in the sample's 24 pt title slot never spills into the date
+ * line or past the page edge, and the box always starts high enough for at
+ * least one line. Returns the y/height/font size to draw with.
+ */
+export function fitCoverElement(
+  measure: (text: string, size: number, width: number) => number,
+  el: { x: number; y: number; w: number; style: TextStyle },
+  text: string,
+  below: number | null,
+  pageH: number,
+): { y: number; height: number; size: number } {
+  const maxBottom = pageH - COVER_BOTTOM_INSET;
+  const minSize = Math.max(6, Math.round(el.style.size * 0.5));
+  const oneLine = (fs: number) => Math.ceil(fs * 1.25);
+  const limit = Math.min(maxBottom, below != null ? below - 2 : maxBottom);
+  // Start high enough that one line at the smallest size still fits above the limit.
+  const y = Math.min(el.y, Math.max(0, limit - oneLine(minSize)));
+  const avail = Math.max(oneLine(minSize), limit - y);
+  let size = el.style.size;
+  let height = measure(text, size, el.w);
+  while (height > avail && size > minSize) {
+    size = Math.max(minSize, size - (size > 14 ? 1 : 0.5));
+    height = measure(text, size, el.w);
+  }
+  return { y, height: Math.min(Math.ceil(height), avail), size };
+}
+
 export function cover(doc: PDFKit.PDFDocument, input: CoverInput): void {
   const t = activeTheme();
   const c = t.cover;
   const W = doc.page.width;
   const H = doc.page.height;
-  if (c.background.kind === "image") {
-    const b = dataUrlToBuffer(c.background.data);
-    if (b) { try { doc.image(b, 0, 0, { width: W, height: H }); } catch { /* white page */ } }
-  } else if (c.background.kind === "color") {
-    doc.rect(0, 0, W, H).fill(c.background.color);
-  }
-  for (const band of c.bands) doc.rect(0, band.y0, W, band.y1 - band.y0).fill(band.color);
-  // The firm's uploaded logo wins over the one lifted from the sample (spec §7.6).
-  const logoBuf = input.firmLogo ?? (c.logo ? dataUrlToBuffer(c.logo.data) : null);
-  if (logoBuf) {
-    const box = c.logo ?? { x: doc.page.margins.left, y: 40, w: 220, h: 64 };
-    try { doc.image(logoBuf, box.x, box.y, { fit: [box.w, box.h] }); } catch { /* ignore */ }
-  }
-  let lowest = 0;
-  let lowestAboveMid = 0;
-  let highestBelowMid = H;
-  for (const el of c.elements) {
-    const value = interpolate(roleToken(el.role), input);
-    if (!value) continue;
-    const text = el.label ? `${el.label} ${value}` : value;
-    applyStyle(doc, el.style);
-    const h = doc.heightOfString(text, { width: el.w });
-    doc.text(text, el.x, el.y, { width: el.w, align: el.align });
-    const bottom = el.y + h;
-    if (bottom > lowest) lowest = bottom;
-    if (el.y < H / 2 && bottom > lowestAboveMid) lowestAboveMid = bottom;
-    if (el.y >= H / 2 && el.y < highestBelowMid) highestBelowMid = el.y;
-  }
-  if (!c.hasMetaBlock) {
-    const x = doc.page.margins.left;
-    const w = usable(doc);
-    let yy = Math.max(lowest + 36, H - 200);
-    applyStyle(doc, t.text.body);
-    for (const [k, v] of [["Prepared for", input.client], ["Prepared by", input.firmName], ["Date", input.dateLabel]] as const) {
-      if (!v) continue;
-      doc.font("bold").text(k, x, yy, { width: 110 });
-      doc.font("body").text(v, x + 120, yy, { width: w - 120 });
-      yy += t.text.body.size * 1.6;
+  // The cover draws at absolute positions across the whole page, below the
+  // body band included. PDFKit's wrapper paginates any text whose box crosses
+  // page.maxY(), so the bottom margin is lifted for the whole cover (same
+  // trick as the running footer) and every doc.text gets an explicit height.
+  const savedBottom = doc.page.margins.bottom;
+  doc.page.margins.bottom = 0;
+  try {
+    if (c.background.kind === "image") {
+      const b = dataUrlToBuffer(c.background.data);
+      if (b) { try { doc.image(b, 0, 0, { width: W, height: H }); } catch { /* white page */ } }
+    } else if (c.background.kind === "color") {
+      doc.rect(0, 0, W, H).fill(c.background.color);
     }
-  }
-  if (input.sitePhoto && c.background.kind !== "image") {
-    const top = lowestAboveMid + 24;
-    const bottom = (c.elements.some((e) => e.y >= H / 2) ? highestBelowMid : c.hasMetaBlock ? H - 60 : H - 220) - 24;
-    if (bottom - top >= 220) {
-      try {
-        doc.save().rect(doc.page.margins.left, top, usable(doc), bottom - top).clip();
-        doc.image(input.sitePhoto, doc.page.margins.left, top, { cover: [usable(doc), bottom - top], align: "center", valign: "center" });
-        doc.restore();
-      } catch { /* no photo */ }
+    for (const band of c.bands) doc.rect(0, band.y0, W, band.y1 - band.y0).fill(band.color);
+    // The firm's uploaded logo wins over the one lifted from the sample (spec §7.6).
+    const logoBuf = input.firmLogo ?? (c.logo ? dataUrlToBuffer(c.logo.data) : null);
+    if (logoBuf) {
+      const box = c.logo ?? { x: doc.page.margins.left, y: 40, w: 220, h: 64 };
+      try { doc.image(logoBuf, box.x, box.y, { fit: [box.w, box.h] }); } catch { /* ignore */ }
     }
+    let lowest = 0;
+    let lowestAboveMid = 0;
+    let highestBelowMid = H;
+    const measure = (text: string, size: number, width: number) => doc.fontSize(size).heightOfString(text, { width });
+    const overlapsX = (a: { x: number; w: number }, b: { x: number; w: number }) => a.x < b.x + b.w && b.x < a.x + a.w;
+    for (const el of c.elements) {
+      const value = interpolate(roleToken(el.role), input);
+      if (!value) continue;
+      const text = el.label ? `${el.label} ${value}` : value;
+      applyStyle(doc, el.style);
+      const next = c.elements.filter((o) => o !== el && o.y > el.y + 1 && overlapsX(o, el)).sort((a, b) => a.y - b.y)[0];
+      const fit = fitCoverElement(measure, el, text, next ? next.y : null, H);
+      doc.fontSize(fit.size).text(text, el.x, fit.y, { width: el.w, height: fit.height, align: el.align });
+      const bottom = fit.y + fit.height;
+      if (bottom > lowest) lowest = bottom;
+      if (fit.y < H / 2 && bottom > lowestAboveMid) lowestAboveMid = bottom;
+      if (fit.y >= H / 2 && fit.y < highestBelowMid) highestBelowMid = fit.y;
+    }
+    if (!c.hasMetaBlock) {
+      const x = doc.page.margins.left;
+      const w = usable(doc);
+      const lineH = t.text.body.size * 1.6;
+      const rows: Array<[string, string]> = ([["Prepared for", input.client], ["Prepared by", input.firmName], ["Date", input.dateLabel]] as Array<[string, string]>).filter(([, v]) => !!v);
+      let yy = Math.min(Math.max(lowest + 36, H - 200), H - COVER_BOTTOM_INSET - lineH * rows.length);
+      applyStyle(doc, t.text.body);
+      for (const [k, v] of rows) {
+        doc.font("bold").text(k, x, yy, { width: 110, height: lineH, lineBreak: false });
+        doc.font("body").text(v, x + 120, yy, { width: w - 120, height: lineH, lineBreak: false });
+        yy += lineH;
+      }
+    }
+    if (input.sitePhoto && c.background.kind !== "image") {
+      const top = lowestAboveMid + 24;
+      const bottom = (c.elements.some((e) => e.y >= H / 2) ? highestBelowMid : c.hasMetaBlock ? H - 60 : H - 220) - 24;
+      if (bottom - top >= 220) {
+        try {
+          doc.save().rect(doc.page.margins.left, top, usable(doc), bottom - top).clip();
+          doc.image(input.sitePhoto, doc.page.margins.left, top, { cover: [usable(doc), bottom - top], align: "center", valign: "center" });
+          doc.restore();
+        } catch { /* no photo */ }
+      }
+    }
+    doc.fillColor(t.text.body.color);
+  } finally {
+    doc.page.margins.bottom = savedBottom;
   }
-  doc.fillColor(t.text.body.color);
 }

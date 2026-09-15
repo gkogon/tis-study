@@ -18,8 +18,13 @@ const EMPTY: Theme["cover"] = { background: { kind: "none" }, bands: [], logo: n
 function elementFor(ln: TextLine, role: CoverElement["role"], W: number, body: BodyStyle, headingFont: string | null, label?: string): CoverElement {
   const c = (ln.x + ln.w / 2) / W;
   const align: CoverElement["align"] = c < 0.4 ? "left" : c > 0.6 ? "right" : "center";
+  // Box widths are the room a NEW study's text gets, not the sample line's
+  // own extent: a centred title box exactly as wide as the sample's title
+  // would wrap a longer project name word-by-word. Centred → the full usable
+  // width; left → out to the right margin; right → from the left margin to
+  // the run's right edge.
   let x = ln.x, w = W - ln.x - 36;
-  if (align === "center") { const m = Math.max(24, Math.min(ln.x, W - (ln.x + ln.w))); x = m; w = W - 2 * m; }
+  if (align === "center") { x = 36; w = W - 72; }
   if (align === "right") { x = 36; w = ln.x + ln.w - 36; }
   return {
     role, x: Math.round(x), y: Math.round(ln.y - ln.size), w: Math.max(20, Math.round(w)), align,

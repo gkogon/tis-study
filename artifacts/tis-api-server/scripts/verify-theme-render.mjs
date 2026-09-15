@@ -44,6 +44,11 @@ try {
     ok(themedBuf.length > 10_000, `${fam}: themed render produced a PDF (${themedBuf.length} bytes)`);
     ok(/\/BaseFont \/[A-Z]{6}\+Carlito/.test(txt), `${fam}: Carlito embedded`);
     ok(/\/BaseFont \/[A-Z]{6}\+LiberationSerif/.test(txt), `${fam}: Liberation Serif embedded`);
+    {
+      const sc = await mod.scanPdf(themedBuf, { maxPages: 2 });
+      const p1 = sc.pages[0]?.runs.length ?? 0, p2 = sc.pages[1]?.runs.length ?? 0;
+      ok(p1 <= 25 && p2 >= 15, `${fam}: cover is exactly one page (page 1: ${p1} runs, page 2: ${p2} runs)`);
+    }
     if (BAND_FAMILIES.includes(fam)) {
       const plain = await mod.renderStudyPdf(project, { name: "Render Check Firm", logoUrl: null });
       const p0 = pdfPageCount(plain), p1 = pdfPageCount(themedBuf);
@@ -93,6 +98,12 @@ try {
       const R = (sc.pages[1]?.width ?? 612) - stored.theme.page.margins.right;
       const overflow = sc.pages.slice(1).flatMap((pg) => pg.runs.filter((r) => r.x < L - 2 || r.x + r.wInk > R + 2));
       ok(overflow.length === 0, `${f} × ${fam}: no text outside the margins (${overflow.length} runs${overflow[0] ? `, e.g. "${overflow[0].str.slice(0, 30)}" at x=${overflow[0].x} on page ${overflow[0].page}` : ""})`);
+      // Cover guard: the themed cover must be exactly one page — a cover
+      // element that paginates (PDFKit wraps past maxY) pushes the body to
+      // page 3+, and a cover whose title character-wraps sprays runs. Page 1
+      // carries a handful of runs; page 2 must already be the body.
+      const p1 = sc.pages[0]?.runs.length ?? 0, p2 = sc.pages[1]?.runs.length ?? 0;
+      ok(p1 <= 25 && p2 >= 15, `${f} × ${fam}: cover is exactly one page (page 1: ${p1} runs, page 2: ${p2} runs)`);
     }
   }
 } finally { await cleanup(); }
