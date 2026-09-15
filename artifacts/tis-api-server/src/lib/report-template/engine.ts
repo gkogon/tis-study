@@ -15,7 +15,6 @@
  * ./templates/generic-us.ts for two templates over identical study data.
  */
 import PDFDocument from "pdfkit";
-import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {

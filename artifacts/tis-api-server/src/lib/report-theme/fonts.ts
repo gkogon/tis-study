@@ -250,17 +250,25 @@ export function substituteMissingGlyphsForTheme(str: string, theme: Theme): stri
 }
 
 /**
- * Wrap doc.text once so every string is checked against the face in use
- * (pdfkit exposes the loaded fontkit font on doc._font.font). Never under
- * the default theme: its bytes are pinned by the identity guard.
+ * Wrap doc.text, doc.widthOfString and doc.heightOfString once so every
+ * string — drawn or measured — is checked against the face in use (pdfkit
+ * exposes the loaded fontkit font on doc._font.font). The measurers must
+ * see the same substitution as the drawer, or a table cell is sized for
+ * "⇒" and painted with "=>". Never under the default theme: its bytes are
+ * pinned by the identity guard.
  */
 export function installGlyphFallback(doc: PDFKit.PDFDocument, theme: Theme): void {
   if (isDefaultTheme(theme)) return;
-  const orig = doc.text.bind(doc) as (...a: unknown[]) => PDFKit.PDFDocument;
   const live = (cp: number): boolean => {
     const face = (doc as unknown as { _font?: { font?: Partial<FontkitFace> } })._font?.font;
     if (face && typeof face.hasGlyphForCodePoint === "function") return face.hasGlyphForCodePoint(cp);
     return familyHasGlyph(theme.fonts.body.family, "regular", cp) && familyHasGlyph(theme.fonts.heading.family, "regular", cp);
   };
-  doc.text = ((text: unknown, ...rest: unknown[]) => orig(typeof text === "string" ? substituteMissingGlyphs(text, live) : text, ...rest)) as typeof doc.text;
+  const sub = (s: unknown) => (typeof s === "string" ? substituteMissingGlyphs(s, live) : s);
+  const text = doc.text.bind(doc) as (...a: unknown[]) => PDFKit.PDFDocument;
+  const width = doc.widthOfString.bind(doc) as (...a: unknown[]) => number;
+  const height = doc.heightOfString.bind(doc) as (...a: unknown[]) => number;
+  doc.text = ((s: unknown, ...rest: unknown[]) => text(sub(s), ...rest)) as typeof doc.text;
+  doc.widthOfString = ((s: unknown, ...rest: unknown[]) => width(sub(s), ...rest)) as typeof doc.widthOfString;
+  doc.heightOfString = ((s: unknown, ...rest: unknown[]) => height(sub(s), ...rest)) as typeof doc.heightOfString;
 }

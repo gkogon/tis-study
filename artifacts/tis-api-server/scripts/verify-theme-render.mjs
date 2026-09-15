@@ -104,6 +104,20 @@ try {
       // carries a handful of runs; page 2 must already be the body.
       const p1 = sc.pages[0]?.runs.length ?? 0, p2 = sc.pages[1]?.runs.length ?? 0;
       ok(p1 <= 25 && p2 >= 15, `${f} × ${fam}: cover is exactly one page (page 1: ${p1} runs, page 2: ${p2} runs)`);
+      // Synonym guard (one whole-document scan): the diurnal chart caption
+      // "Trip Distribution by Time of Day" maps to trip-distribution too, and
+      // must not take the firm's one-per-render wording away from the real
+      // section — so the caption appears in our wording (case per theme) and
+      // the firm's trip-distribution synonym at most once.
+      const syn = stored.theme.synonyms["trip-distribution"];
+      if (f === "twisp-wa-2023.pdf" && fam === "tx" && syn) {
+        const full = await mod.scanPdf(buf, { maxPages: 80 });
+        const texts = full.pages.flatMap((pg) => pg.runs.map((r) => r.str.trim().toLowerCase()));
+        const caption = texts.filter((t) => t === "trip distribution by time of day").length;
+        const synCount = texts.filter((t) => t.includes(syn.toLowerCase())).length;
+        ok(caption >= 1, `${f} × ${fam}: the diurnal caption is drawn in our wording (${caption} run(s))`);
+        ok(synCount <= 1, `${f} × ${fam}: the firm's trip-distribution wording "${syn}" appears at most once (${synCount})`);
+      }
     }
   }
 } finally { await cleanup(); }

@@ -458,7 +458,8 @@ export function renderDiurnalCharts(doc: PDFKit.PDFDocument, r: any, locale: Pro
 
   doc.x = pageMargin();
   if (isDefaultTheme()) doc.font("bold").fontSize(11).fillColor("black").text("Trip Distribution by Time of Day", { paragraphGap: 2 });
-  else themed.heading(doc, 2, "Trip Distribution by Time of Day");
+  // A caption, not a section: it must not consume the firm's trip-distribution wording.
+  else themed.heading(doc, 2, "Trip Distribution by Time of Day", { synonyms: false });
   doc.font("body").fontSize(9).fillColor(isDefaultTheme() ? TEXT_GRAY : chartColors().axis).text(
     `Estimated within-day distribution of the ${fmtCount(daily)} gross daily trips and the resulting on-site accumulation. ${sel.profile.source}`,
     { paragraphGap: 6 },

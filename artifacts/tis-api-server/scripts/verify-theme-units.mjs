@@ -127,6 +127,10 @@ ok(fontPath("dejavu-sans", "italic").endsWith("DejaVuSans.ttf"), "DejaVu has no 
   d2.font("heading");
   d2.text("Δ delay ⇒ 4 s", 50, 80);
   eq(seen, ["^ 12.3 → LOS C", "Δ delay => 4 s"], "glyphs: under a Carlito theme the wrapper hands pdfkit the substituted string for the face in use (Carlito has Δ and →, lacks ▲ and ⇒)");
+  // Re-review minor 2: the measurers see the same substitution as the drawer.
+  d2.font("body").fontSize(10);
+  ok(d2.widthOfString("A ⇒ B") === d2.widthOfString("A => B"), `glyphs: widthOfString measures the substituted string (${d2.widthOfString("A ⇒ B")} vs ${d2.widthOfString("A => B")})`);
+  ok(d2.heightOfString("PRC ≥ 0 ⇒ within capacity ".repeat(6), { width: 120 }) === d2.heightOfString("PRC ≥ 0 => within capacity ".repeat(6), { width: 120 }), "glyphs: heightOfString wraps the substituted string");
   d2.end();
 }
 
@@ -180,6 +184,13 @@ eq(draw.applyCase("EXISTING (2024) INTERSECTION ANALYSIS", "title"), "Existing (
 eq(draw.applyCase("MIXED-USE DEVELOPMENT — NB/SB APPROACHES", "title"), "Mixed-Use Development — NB/SB Approaches", "title case: capital after a hyphen; NB/SB kept");
 eq(draw.applyCase("Existing Conditions (2024)", "title"), "Existing Conditions (2024)", "title case: mixed-case source unchanged when already title-cased");
 eq(draw.applyCase("TG-21 LEVEL OF SERVICE STANDARD", "title"), "TG-21 Level of Service Standard", "title case: hyphenated acronym kept from an all-caps source");
+// Re-review minor 3: more acronyms, whole-word, punctuation-tolerant.
+eq(draw.applyCase("CEQA-VMT SCREENING", "title"), "CEQA-VMT Screening", "title case: CEQA-VMT kept");
+eq(draw.applyCase("RECOMMENDED OPERATIONAL IMPROVEMENTS (NON-CEQA)", "title"), "Recommended Operational Improvements (Non-CEQA)", "title case: NON-CEQA → Non-CEQA");
+eq(draw.applyCase("MUTCD SIGNAL WARRANT ANALYSIS (ICE)", "title"), "MUTCD Signal Warrant Analysis (ICE)", "title case: (ICE) kept with its parentheses");
+eq(draw.applyCase("CDOT TIER 2 — TDM MEMO", "title"), "CDOT Tier 2 — TDM Memo", "title case: CDOT and TDM kept");
+eq(draw.applyCase("NYC DOT ATR VOLUMES", "title"), "NYC Dot Atr Volumes", "title case: listed NYC kept; unlisted DOT/ATR are re-cased (whole-word list)");
+eq(draw.applyCase("CAPACITY ANALYSIS FOR NC AND SC SITES", "title"), "Capacity Analysis for NC and SC Sites", "title case: state codes kept as whole words only (CAPACITY is not CA)");
 // Final-review Critical 1: cover elements fit their slot instead of paginating.
 {
   const measure = (text, size, width) => Math.ceil(text.length * size * 0.5 / width) * Math.ceil(size * 1.2);
@@ -196,6 +207,12 @@ eq(draw.applyCase("TG-21 LEVEL OF SERVICE STANDARD", "title"), "TG-21 Level of S
 const T2 = { ...DEFAULT_THEME, headings: [{ ...DEFAULT_THEME.headings[0], case: "title", numbering: "1." }, { ...DEFAULT_THEME.headings[1], case: "asis", numbering: "1." }, DEFAULT_THEME.headings[2]] };
 eq(draw.formatHeading("4.0 TRIP GENERATION", 1, T2, (k) => (k === "trip-generation" ? "Site Trip Generation" : null)), "4. Site Trip Generation", "formatHeading: number restyled, firm wording, title case, single-space separator");
 eq(draw.formatHeading("4.0 TRIP GENERATION", 1, T2, () => null), "4. Trip Generation", "formatHeading without synonym");
+// Re-review regression: a chart caption that maps to trip-distribution must keep our wording when synonyms are off.
+{
+  const TS = { ...T2, synonyms: { "trip-distribution": "Site Traffic Distribution and Assignment" } };
+  eq(draw.formatHeading("Trip Distribution by Time of Day", 2, TS, () => null), "Trip Distribution by Time of Day", "formatHeading: the diurnal caption keeps our wording with synonyms off");
+  eq(draw.formatHeading("Trip Distribution by Time of Day", 2, TS, (k) => TS.synonyms[k] ?? null), "Site Traffic Distribution and Assignment", "(control) with synonyms on the same caption would take the firm's wording");
+}
 eq(draw.formatHeading("EXECUTIVE SUMMARY", 1, { ...T2, headings: [{ ...T2.headings[0], numbering: "none" }, T2.headings[1], T2.headings[2]] }, () => null), "Executive Summary", "unnumbered heading");
 eq(draw.scaleWidths([200, 200, 200], 468), [156, 156, 156], "scaleWidths shrinks proportionally");
 eq(draw.scaleWidths([100, 100], 468), [100, 100], "scaleWidths leaves fitting widths alone");
@@ -235,6 +252,21 @@ ok(pdfText.includes(`${rgb("#c0392b")} scn`), "heading colour op present");
 ok(pdfText.includes(`${rgb("#1f3a5f")} scn`), "table header fill op present");
 ok(pdfText.includes(`${rgb("#1f3a5f")} SCN`), "grid rule stroke op present");
 eq(footerText, "Page 1 of 1", "footer interpolated");
+// Re-review regression, through heading(): the caption drawn with { synonyms: false } leaves the synonym for the real section.
+{
+  const TS = { synonyms: { "trip-distribution": "Site Traffic Distribution and Assignment" } };
+  const captured = [];
+  const dd = new PDFDocument({ size: "LETTER", margins: { top: 50, bottom: 50, left: 50, right: 50 }, compress: false, bufferPages: true });
+  fonts.registerThemeFonts(dd, { ...RED, synonyms: TS.synonyms });
+  const origText = dd.text.bind(dd);
+  dd.text = (str, ...rest) => { captured.push(str); return origText(str, ...rest); };
+  active.withTheme({ ...RED, synonyms: TS.synonyms }, () => {
+    draw.heading(dd, 2, "Trip Distribution by Time of Day", { synonyms: false });
+    draw.heading(dd, 1, "5.0 TRIP DISTRIBUTION AND ASSIGNMENT");
+    dd.end();
+  });
+  eq(captured, ["Trip Distribution by Time of Day", "5.0 Site Traffic Distribution and Assignment"], "heading(): the caption keeps our wording and the real section still gets the firm's");
+}
 
 // ─── derive/typography.ts ────────────────────────────────────────────────────
 const typo = await import(path.resolve(here, "../src/lib/report-theme/derive/typography.ts"));

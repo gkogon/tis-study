@@ -78,17 +78,21 @@ const SMALL_WORDS = new Set(["and", "or", "of", "for", "the", "to", "a", "an", "
  */
 const ACRONYMS = new Set([
   "TIS", "TIA", "TIAS", "LOS", "DRI", "AOI", "AM", "PM", "HCM", "ITE", "VMT", "ADT", "AADT", "MUTCD", "ICE", "ARMS", "MSA", "CSA", "CEQR",
-  "NCDOT", "SCDOT", "GDOT", "FDOT", "TXDOT", "NYSDOT", "IDOT", "DDOT", "VDOT", "WSDOT", "TG-21", "US", "SR", "I", "NB", "SB", "EB", "WB",
+  "CEQA", "TDM", "OPR", "CCO", "SOV", "ARC", "NYC",
+  "NCDOT", "SCDOT", "GDOT", "FDOT", "TXDOT", "NYSDOT", "IDOT", "DDOT", "VDOT", "WSDOT", "CDOT", "TG-21", "US", "SR", "I", "NB", "SB", "EB", "WB",
+  "NC", "SC", "GA", "FL", "TX", "NY", "VA", "DC", "CT", "WA", "CA", "IL", "PA",
 ]);
 const isAllCaps = (s: string) => /[A-Z]/.test(s) && !/[a-z]/.test(s);
+/** Whole-word acronym test that ignores surrounding punctuation: "(ICE)" and "ICE," both count. */
+const isAcronym = (s: string) => ACRONYMS.has(s.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, ""));
 /** Title-case one whitespace-delimited word; letters after `/`, `(`, `—`, `–` and `-` start a new capital. */
 function titleWord(word: string, allCapsSource: boolean): string {
-  if (allCapsSource ? ACRONYMS.has(word) : isAllCaps(word)) return word;
+  if (allCapsSource ? isAcronym(word) : isAllCaps(word)) return word;
   return word
     .split(/([/(—–-])/)
     .map((part) => {
       if (!part || /^[/(—–-]$/.test(part)) return part;
-      if (allCapsSource ? ACRONYMS.has(part) : isAllCaps(part)) return part;
+      if (allCapsSource ? isAcronym(part) : isAllCaps(part)) return part;
       const rest = allCapsSource ? part.slice(1).toLowerCase() : part.slice(1);
       return part.charAt(0).toUpperCase() + rest;
     })
@@ -117,10 +121,20 @@ export function formatHeading(title: string, level: 1 | 2 | 3, theme: Theme, syn
   return (num ? num + sep : "") + applyCase(wording, h.case);
 }
 
-export function heading(doc: PDFKit.PDFDocument, level: 1 | 2 | 3, title: string): void {
+export type HeadingOptions = {
+  /**
+   * Substitute the firm's wording for the title's canonical key (default
+   * true). A chart caption such as "Trip Distribution by Time of Day" must
+   * pass false: it maps to trip-distribution too, and would otherwise take
+   * the firm's one-per-render synonym away from the real section heading.
+   */
+  synonyms?: boolean;
+};
+
+export function heading(doc: PDFKit.PDFDocument, level: 1 | 2 | 3, title: string, opts: HeadingOptions = {}): void {
   const t = activeTheme();
   const h = t.headings[level - 1];
-  const label = formatHeading(title, level, t, takeSynonym);
+  const label = formatHeading(title, level, t, opts.synonyms === false ? () => null : takeSynonym);
   const x = doc.page.margins.left;
   const w = usable(doc);
   applyStyle(doc, h.style);
