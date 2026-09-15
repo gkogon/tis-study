@@ -92,3 +92,6 @@ agentdb.rvf.lock
 **/agentdb.rvf.lock
 **/.swarm/
 **/.claude-flow/
+
+# superpowers SDD scratch (ledgers, briefs, review packages)
+.superpowers/
