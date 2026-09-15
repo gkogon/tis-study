@@ -41,7 +41,7 @@ import { writeFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ingestTemplateFromPdf } from "../lib/report-template/ingest";
-import { clearFirmTemplate, saveFirmTemplate } from "../lib/report-template/store";
+import { clearFirmTheme, saveFirmTheme } from "../lib/report-template/store";
 import { validateTemplate } from "../lib/report-template/registry";
 
 const router: IRouter = Router();
@@ -305,28 +305,11 @@ router.post(
     }
     const tmp = path.join(os.tmpdir(), `tpl-upload-${firm.id}-${Date.now()}.pdf`);
     try {
-      writeFileSync(tmp, file.buffer);
-      const tpl = ingestTemplateFromPdf(tmp, {
-        id: `firm-${firm.id}`,
-        name: `${firm.name} report template`,
-        firmName: firm.name,
-      });
-      // Durable copy. The filesystem store below is convenient for local dev
-      // but lives on an ephemeral container filesystem in production, so the
-      // DB column is the one that actually survives a deploy.
-      await db
-        .update(firmsTable)
-        .set({ reportTemplate: tpl })
-        .where(eq(firmsTable.id, firm.id));
-      saveFirmTemplate(firm.id, tpl);
-      res.json({
-        ok: true,
-        templateId: tpl.id,
-        documentType: tpl.documentType,
-        chapters: tpl.chapters.length,
-        sections: tpl.chapters.reduce((n, c) => n + c.sections.length, 0),
-        brand: { primary: tpl.brand.palette.primary, hasLogo: !!tpl.brand.logo, cover: tpl.brand.cover.style },
-      });
+      // Temporary: the V1 (poppler) importer is retired and the V2 theme
+      // importer lands with the handler rewrite. Until then the upload is
+      // refused rather than writing a template nothing renders.
+      res.status(503).json({ error: "Template import is being upgraded." });
+      return;
     } catch (err) {
       req.log.error({ err }, "firms.template_upload_failed");
       res.status(500).json({ error: "Template ingestion failed. Ensure the PDF has a text layer (and that poppler is available)." });
@@ -404,7 +387,7 @@ router.delete("/firms/report-template", async (req, res): Promise<void> => {
     return;
   }
   await db.update(firmsTable).set({ reportTemplate: null }).where(eq(firmsTable.id, firm.id));
-  clearFirmTemplate(firm.id);
+  clearFirmTheme(firm.id);
   res.json({ ok: true, template: null });
 });
 

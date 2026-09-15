@@ -52,6 +52,7 @@
     "check:signal-timing-overrides": "node ./scripts/verify-signal-timing-overrides.mjs",
     "check:theme-units": "node ./scripts/verify-theme-units.mjs",
     "check:theme-default-identity": "node ./scripts/verify-theme-default-identity.mjs",
+    "check:theme-render": "node ./scripts/verify-theme-render.mjs",
     "build:preview-fixtures": "node ./scripts/build-preview-fixtures.mjs",
     "check:whatif-gate": "node ./scripts/verify-whatif-gate.mjs",
     "check:whatif-limiter": "node ./scripts/verify-whatif-limiter.mjs"

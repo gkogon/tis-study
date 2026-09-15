@@ -40,9 +40,13 @@ import { renderTripDistributionSection } from "./pdf-export-distribution";
 import { renderLaneGroupQueues } from "./lane-group-queues";
 import { profileForLandUse, distributeDaily, type ProfileLocale } from "./office-diurnal";
 import { renderTemplatePdf, type RenderContext, type ReportTemplate } from "./report-template/engine";
-import { loadTemplate, validateTemplate } from "./report-template/registry";
+import { loadTemplate } from "./report-template/registry";
 import { buildProviders } from "./report-template/providers";
-import { loadFirmTemplate } from "./report-template/store";
+import { activeTheme, isDefaultTheme, pageMargin, withTheme } from "./report-theme/active";
+import { DEFAULT_THEME, pageSizePoints, parseStoredTheme, type Theme } from "./report-theme/theme";
+import { registerThemeFonts } from "./report-theme/fonts";
+import * as themed from "./report-theme/draw";
+import { loadFirmTheme } from "./report-template/store";
 import { getTransitContext, type TransitContext } from "./transit-routes";
 import { enrichFdotIntersections, enrichSerpmIntersections, enrichTmsCountIntersections, fetchFdotSiteSnapshot, decodeFdotFunClass, decodeFdotAccessClass, SERPM_BASE_YEAR, SERPM_FUTURE_YEAR, type FdotSegmentSnapshot } from "./fdot-live-data";
 import { enrichGdotIntersections, fetchGdotSiteSnapshot } from "./gdot-live-data";
@@ -120,7 +124,6 @@ const VELOCITY_BRAND = VELOCITY_GREEN;
 // touched. Module-level avoids threading a flag through ~40 call sites.
 let velocityPaletteActive = false;
 
-const PAGE_MARGIN = 50;
 const BRAND_BLUE = "#2563eb";
 const TEXT_GRAY = "#6b7280";
 
@@ -260,11 +263,26 @@ async function fetchLogoBuffer(logoUrl: string | null): Promise<Buffer | null> {
  * memory efficiency but resolves a single Buffer for handler simplicity.
  */
 /**
- * Region/firm → declarative report template. Template-driven studies render
+ * The firm's imported theme (DB copy first, filesystem mirror second) or the
+ * default. A malformed row falls back silently — a PDF the engineer needs
+ * today must never 500 because a stored theme went stale.
+ */
+function resolveTheme(firm: FirmStamp): Theme {
+  const fromDb = parseStoredTheme(firm.reportTemplate);
+  if (fromDb) return fromDb.theme;
+  if (firm.firmId) {
+    const fromDisk = loadFirmTheme(firm.firmId);
+    if (fromDisk) return fromDisk.theme;
+  }
+  return DEFAULT_THEME;
+}
+
+/**
+ * Region → declarative report template. Template-driven studies render
  * through the generic engine (report-template/) instead of a hand-coded
- * renderer. A firm's uploaded template wins in any region; otherwise UK/London
- * uses the built-in Velocity TA. US regions return null and keep their dedicated
- * renderers.
+ * renderer. A firm's imported *theme* is applied by the renderers; the only
+ * declarative template is the built-in Velocity TA for UK sites. US regions
+ * return null and keep their dedicated renderers.
  */
 function resolveTemplate(project: StoredProject, firm: FirmStamp): { template: ReportTemplate; locale: ProfileLocale } | null {
   if (project.studyType !== "tis") return null;
@@ -273,20 +291,6 @@ function resolveTemplate(project: StoredProject, firm: FirmStamp): { template: R
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   const region = regionForCoordinate(lat, lon);
   const locale: ProfileLocale = region?.country === "UK" ? "uk" : "us";
-  // DB copy first (durable across deploys), then the filesystem store. A
-  // malformed stored template must not take the whole render down, so an
-  // invalid one falls through to the region default rather than throwing.
-  if (firm.reportTemplate) {
-    try {
-      return { template: validateTemplate(firm.reportTemplate), locale };
-    } catch {
-      /* fall through to the filesystem store / region default */
-    }
-  }
-  if (firm.firmId) {
-    const t = loadFirmTemplate(firm.firmId);
-    if (t) return { template: t, locale };
-  }
   if (region?.country === "UK") return { template: loadTemplate("velocity-ta"), locale };
   return null;
 }
@@ -325,6 +329,7 @@ export async function renderStudyPdf(
   // hand-coded renderer; this is the path the Velocity / imported formats take.
   const tplSel = resolveTemplate(project, firm);
   if (tplSel) return renderTemplateReport(project, firm, tplSel);
+  const theme = resolveTheme(firm);
 
   // Resolve the firm logo to bytes up front — the cover and header
   // both want to draw it, and fetching twice would be wasteful (and
@@ -340,9 +345,10 @@ export async function renderStudyPdf(
     ? await fetchStreetViewImage(coverLat, coverLon)
     : null;
 
+  const [pageW, pageH] = pageSizePoints(theme.page);
   const doc = new PDFDocument({
-    size: "LETTER",
-    margins: { top: PAGE_MARGIN, bottom: PAGE_MARGIN, left: PAGE_MARGIN, right: PAGE_MARGIN },
+    size: typeof theme.page.size === "string" && theme.page.orientation === "portrait" ? theme.page.size : [pageW, pageH],
+    margins: { top: theme.page.margins.top, bottom: theme.page.margins.bottom, left: theme.page.margins.left, right: theme.page.margins.right },
     // bufferPages lets us iterate every page once at the end to stamp
     // the screening-disclaimer footer without firing pageAdded
     // recursively during the draw passes.
@@ -355,9 +361,7 @@ export async function renderStudyPdf(
     },
   });
 
-  doc.registerFont("body", FONT_REGULAR);
-  doc.registerFont("bold", FONT_BOLD);
-  doc.registerFont("mono", FONT_MONO);
+  registerThemeFonts(doc, theme);
   doc.font("body");
 
   const chunks: Buffer[] = [];
@@ -588,33 +592,51 @@ export async function renderStudyPdf(
   const isVelocityLondon = docRegion?.code === "london_metro";
   const velocityMeta = isVelocityLondon ? velocityDocMeta(project) : null;
 
-  if (velocityMeta) {
-    drawVelocityCover(doc, project, firm, logoBuf, sitePhotoBuf, velocityMeta);
-    doc.addPage();
-    drawVelocityDocControlSheet(doc, velocityMeta, firm);
-  } else {
-    drawCover(doc, project, firm, logoBuf, sitePhotoBuf);
-  }
-  doc.addPage();
-  drawHeader(doc, project, firm);
-  drawBody(doc, project);
-  drawCitationsFooter(doc, project);
-
-  // Iterate every buffered page and stamp the footer. London (Velocity)
-  // gets the client's per-page footer; everyone else gets the screening
-  // disclaimer. The cover page (index 0) is skipped for the Velocity
-  // footer so it does not overprint the cover's own contact block.
-  const range = doc.bufferedPageRange();
-  for (let i = range.start; i < range.start + range.count; i++) {
-    doc.switchToPage(i);
+  const tok: themed.TokenContext = {
+    firmName: firm.name,
+    projectName: project.projectName,
+    address: String((project.resultPayload as { request?: { address?: unknown } } | null)?.request?.address ?? ""),
+    dateLabel: project.createdAt.toLocaleDateString("en-US", { year: "numeric", month: "long" }),
+    documentType: documentLabel(project),
+    client: String((project.requestPayload as { clientName?: unknown } | null)?.clientName ?? ""),
+  };
+  // Synchronous draw pass under the firm's theme. No `await` may appear in
+  // this block — the active theme is module state (see report-theme/active.ts).
+  withTheme(theme, () => {
     if (velocityMeta) {
-      if (i > range.start) drawVelocityPageFooter(doc, velocityMeta, i - range.start);
+      drawVelocityCover(doc, project, firm, logoBuf, sitePhotoBuf, velocityMeta);
+      doc.addPage();
+      drawVelocityDocControlSheet(doc, velocityMeta, firm);
+    } else if (isDefaultTheme()) {
+      drawCover(doc, project, firm, logoBuf, sitePhotoBuf);
     } else {
-      drawPageFooter(doc);
+      themed.cover(doc, { ...tok, firmLogo: logoBuf, sitePhoto: sitePhotoBuf });
     }
-  }
-  doc.flushPages();
-  doc.end();
+    doc.addPage();
+    if (isDefaultTheme()) drawHeader(doc, project, firm);
+    drawBody(doc, project);
+    drawCitationsFooter(doc, project);
+
+    // Iterate every buffered page and stamp the footer. London (Velocity)
+    // gets the client's per-page footer; everyone else gets the screening
+    // disclaimer. The cover page (index 0) is skipped for the Velocity
+    // footer so it does not overprint the cover's own contact block.
+    const range = doc.bufferedPageRange();
+    const bodyPages = range.count - 1; // cover is unnumbered
+    for (let i = range.start; i < range.start + range.count; i++) {
+      doc.switchToPage(i);
+      if (velocityMeta) {
+        if (i > range.start) drawVelocityPageFooter(doc, velocityMeta, i - range.start);
+      } else if (isDefaultTheme()) {
+        drawPageFooter(doc);
+      } else if (i > range.start) {
+        themed.pageHeader(doc, tok, i - range.start, bodyPages);
+        themed.pageFooter(doc, tok, i - range.start, bodyPages);
+      }
+    }
+    doc.flushPages();
+    doc.end();
+  });
   return done;
 }
 
@@ -625,7 +647,7 @@ export async function renderStudyPdf(
  */
 function drawPageFooter(doc: PDFKit.PDFDocument) {
   const y = doc.page.height - 32;
-  const w = doc.page.width - PAGE_MARGIN * 2;
+  const w = doc.page.width - pageMargin() * 2;
   // The footer sits in the bottom margin band, below `page.maxY()`. PDFKit's
   // text() runs an end-of-page check — `doc.y + lineHeight > maxY` — AFTER it
   // draws the line, and when tripped it appends a fresh page. `lineBreak:
@@ -639,7 +661,7 @@ function drawPageFooter(doc: PDFKit.PDFDocument) {
   doc.save();
   doc.font("body").fontSize(7).fillColor("#9ca3af").text(
     "Screening estimate — not for design submittal without independent verification by a licensed PE.   |   See /legal/disclaimer.",
-    PAGE_MARGIN, y, { width: w, align: "center", lineBreak: false },
+    pageMargin(), y, { width: w, align: "center", lineBreak: false },
   );
   doc.restore();
   doc.page.margins.bottom = savedBottom;
@@ -739,8 +761,8 @@ function drawVelocityCover(
 
   const onBrand = firmBranded ? readableOn(firm.brandColor as string) : "#ffffff";
   const subOnBrand = onBrand === "#ffffff" ? "rgba(255,255,255,0.88)" : "#333333";
-  const tX = PAGE_MARGIN;
-  const tW = W - PAGE_MARGIN * 2;
+  const tX = pageMargin();
+  const tW = W - pageMargin() * 2;
 
   // 3) Wordmark top-left: firm logo if uploaded, else Velocity's real white
   //    wordmark asset, else a styled-text fallback.
@@ -786,9 +808,9 @@ function drawVelocityCover(
 
   // 5) Velocity sign-off, bottom-left under the metadata.
   doc.font("bold").fontSize(11).fillColor(onBrand)
-    .text(VELOCITY_NAME, tX, H - PAGE_MARGIN - 28, { width: tW });
+    .text(VELOCITY_NAME, tX, H - pageMargin() - 28, { width: tW });
   doc.font("body").fontSize(10).fillColor(subOnBrand)
-    .text(VELOCITY_WEB, tX, H - PAGE_MARGIN - 13, { width: tW });
+    .text(VELOCITY_WEB, tX, H - pageMargin() - 13, { width: tW });
   doc.opacity(1).fillColor("black");
 }
 
@@ -817,8 +839,8 @@ function drawVelocityDocControlSheet(
   doc.restore();
   doc.fillColor("black");
   doc.font("bold").fontSize(16).fillColor(VELOCITY_GREEN)
-    .text("DOCUMENT CONTROL SHEET", PAGE_MARGIN, 96, { width: W - PAGE_MARGIN * 2 });
-  doc.x = PAGE_MARGIN;
+    .text("DOCUMENT CONTROL SHEET", pageMargin(), 96, { width: W - pageMargin() * 2 });
+  doc.x = pageMargin();
   doc.moveDown(0.8);
 
   rows(doc, [
@@ -875,25 +897,25 @@ function drawVelocityPageFooter(doc: PDFKit.PDFDocument, meta: VelocityMeta, pag
   doc.save();
   // Green rule above the footer (brand), grey footer text below it.
   doc.strokeColor(VELOCITY_GREEN).lineWidth(0.75)
-    .moveTo(PAGE_MARGIN, y - 6).lineTo(W - PAGE_MARGIN, y - 6).stroke();
+    .moveTo(pageMargin(), y - 6).lineTo(W - pageMargin(), y - 6).stroke();
 
   // Green multimodal icon, bottom-right, mirroring the filed report.
   const icon = velocityAsset("velocity-multimodal.png");
-  let textRight = W - PAGE_MARGIN;
+  let textRight = W - pageMargin();
   if (icon) {
     try {
       const iconW = 66;
       const iconH = iconW * (138 / 529); // preserve the asset aspect ratio
-      doc.image(icon, W - PAGE_MARGIN - iconW, y - 1, { fit: [iconW, iconH] });
-      textRight = W - PAGE_MARGIN - iconW - 8;
+      doc.image(icon, W - pageMargin() - iconW, y - 1, { fit: [iconW, iconH] });
+      textRight = W - pageMargin() - iconW - 8;
     } catch { /* fall through to text-only footer */ }
   }
-  const w = textRight - PAGE_MARGIN;
+  const w = textRight - pageMargin();
   // `lineBreak: false` disables horizontal wrapping only; the bottom-margin
   // drop above is what stops the vertical end-of-page check from paginating.
   doc.font("body").fontSize(7).fillColor("#6b7280").text(
     `${VELOCITY_NAME_LIMITED} | Transport Assessment | Project No ${meta.projectNo} Doc No ${meta.docNo} | ${meta.site} | Page ${pageNum} | ${meta.monthYear}`,
-    PAGE_MARGIN, y, { width: w, align: "left", lineBreak: false },
+    pageMargin(), y, { width: w, align: "left", lineBreak: false },
   );
   doc.restore();
   doc.page.margins.bottom = savedBottom;
@@ -983,18 +1005,18 @@ function drawCover(
   // 5) Firm logo top-left (on white), or firm name fallback.
   if (logoBuf) {
     try {
-      doc.image(logoBuf, PAGE_MARGIN, 38, { fit: [220, 64] });
+      doc.image(logoBuf, pageMargin(), 38, { fit: [220, 64] });
     } catch {
-      doc.font("bold").fontSize(16).fillColor(brand).text(firm.name.toUpperCase(), PAGE_MARGIN, 52);
+      doc.font("bold").fontSize(16).fillColor(brand).text(firm.name.toUpperCase(), pageMargin(), 52);
     }
   } else {
-    doc.font("bold").fontSize(16).fillColor(brand).text(firm.name.toUpperCase(), PAGE_MARGIN, 52);
+    doc.font("bold").fontSize(16).fillColor(brand).text(firm.name.toUpperCase(), pageMargin(), 52);
   }
 
   // 6) Title block on the brand block. Width is capped short of the
   //    right edge so a long title wraps clear of the chevron accent.
-  const titleX = PAGE_MARGIN;
-  const titleW = W - PAGE_MARGIN - 175;
+  const titleX = pageMargin();
+  const titleW = W - pageMargin() - 175;
   doc.fillColor(onBrand).font("bold").fontSize(26)
     .text(project.projectName, titleX, blockTop + 44, { width: titleW });
   // Underline rule under the title.
@@ -1017,13 +1039,13 @@ function drawCover(
   if (firm.website) contact.push(firm.website);
   const lineH = 14;
   const blockH = 18 + contact.length * lineH; // firm name line + contact lines
-  let cy = H - PAGE_MARGIN - blockH;
-  const cw = W - PAGE_MARGIN * 2;
-  doc.font("bold").fontSize(13).fillColor(onBrand).text(firm.name, PAGE_MARGIN, cy, { width: cw, align: "right" });
+  let cy = H - pageMargin() - blockH;
+  const cw = W - pageMargin() * 2;
+  doc.font("bold").fontSize(13).fillColor(onBrand).text(firm.name, pageMargin(), cy, { width: cw, align: "right" });
   cy += 20;
   doc.font("body").fontSize(10).fillColor(subOnBrand);
   for (const line of contact) {
-    doc.text(line, PAGE_MARGIN, cy, { width: cw, align: "right" });
+    doc.text(line, pageMargin(), cy, { width: cw, align: "right" });
     cy += lineH;
   }
   doc.fillColor("black");
@@ -1033,8 +1055,8 @@ function drawHeader(doc: PDFKit.PDFDocument, project: StoredProject, firm: FirmS
   doc.rect(0, 0, doc.page.width, 4).fill(BRAND_BLUE);
   doc.fillColor("black");
   doc.font("body").fontSize(8).fillColor(TEXT_GRAY)
-    .text(firm.name, PAGE_MARGIN, 12)
-    .text(documentLabel(project) + " — " + project.projectName, PAGE_MARGIN, 12, { align: "right" });
+    .text(firm.name, pageMargin(), 12)
+    .text(documentLabel(project) + " — " + project.projectName, pageMargin(), 12, { align: "right" });
   doc.fillColor("black");
   doc.moveDown(2);
 }
@@ -1043,7 +1065,7 @@ function drawCitationsFooter(doc: PDFKit.PDFDocument, project: StoredProject) {
   const result = project.resultPayload as { citations?: string[] } | null;
   if (!result?.citations?.length) return;
   doc.addPage();
-  drawHeader(doc, project, { name: "", logoUrl: null });
+  if (isDefaultTheme()) drawHeader(doc, project, { name: "", logoUrl: null });
   doc.font("bold").fontSize(14).fillColor("black").text("Citations & Methodology");
   doc.moveDown(0.5);
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
@@ -1158,9 +1180,9 @@ function renderDrivewayFigure(doc: PDFKit.PDFDocument, result: Record<string, un
 
   if (canDraw) {
     const W = doc.page.width;
-    const figW = W - 2 * PAGE_MARGIN;
+    const figW = W - 2 * pageMargin();
     const figH = 340;
-    const x0 = PAGE_MARGIN, y0 = doc.y;
+    const x0 = pageMargin(), y0 = doc.y;
     const cx = x0 + figW / 2, cy = y0 + figH / 2;
     const R = Math.max(78, Math.min(figW / 2 - 150, figH / 2 - 58)); // marker ring radius (room for labels)
 
@@ -1247,7 +1269,7 @@ function renderDrivewayAccessBlock(
   // UK studies use UK access terminology; US output is byte-identical.
   const ukAccess = (region?.country ?? "US") === "UK";
   // Reserve room so the heading + ~340pt figure stay on one page.
-  if (doc.y + 400 > doc.page.height - PAGE_MARGIN) doc.addPage();
+  if (doc.y + 400 > doc.page.height - pageMargin()) doc.addPage();
   headingFn(doc, headingText);
   const figRows = renderDrivewayFigure(doc, result, ukAccess);
   if (figRows.length > 0) {
@@ -3001,18 +3023,20 @@ function renderTisCalifornia(
 
 /** California-style section heading (uppercase, bold). Mirrors gaSection. */
 function caSection(doc: PDFKit.PDFDocument, title: string) {
-  doc.x = PAGE_MARGIN;
+  if (!isDefaultTheme()) { themed.heading(doc, 1, title); return; }
+  doc.x = pageMargin();
   doc.font("bold").fontSize(13).fillColor("black").text(title, { characterSpacing: 0.5 });
   doc.moveDown(0.3);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 /** California-style subsection heading. Mirrors gaSubsection. */
 function caSubsection(doc: PDFKit.PDFDocument, title: string) {
-  doc.x = PAGE_MARGIN;
+  if (!isDefaultTheme()) { themed.heading(doc, 2, title); return; }
+  doc.x = pageMargin();
   doc.font("bold").fontSize(11).fillColor("black").text(title);
   doc.moveDown(0.2);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 /**
@@ -3657,18 +3681,20 @@ function renderTisGeorgiaAbbreviated(
 
 /** Section heading in the GA-style numbered format (uppercase, bold). */
 function gaSection(doc: PDFKit.PDFDocument, title: string) {
-  doc.x = PAGE_MARGIN;
+  if (!isDefaultTheme()) { themed.heading(doc, 1, title); return; }
+  doc.x = pageMargin();
   doc.font("bold").fontSize(13).fillColor("black").text(title, { characterSpacing: 0.5 });
   doc.moveDown(0.3);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 /** Subsection heading (e.g. "1.1 Introduction"). */
 function gaSubsection(doc: PDFKit.PDFDocument, title: string) {
-  doc.x = PAGE_MARGIN;
+  if (!isDefaultTheme()) { themed.heading(doc, 2, title); return; }
+  doc.x = pageMargin();
   doc.font("bold").fontSize(11).fillColor("black").text(title);
   doc.moveDown(0.2);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 /**
@@ -4931,7 +4957,8 @@ function renderTisLondon(
 
 /** Section heading for the London renderer (same visual treatment as GA). */
 function ldnSection(doc: PDFKit.PDFDocument, title: string) {
-  doc.x = PAGE_MARGIN;
+  if (!isDefaultTheme()) { themed.heading(doc, 1, title); return; }
+  doc.x = pageMargin();
   // London (Velocity): green chapter/section title with a green hairline rule
   // beneath it. Non-London UK (Manchester …) keeps the original black heading
   // — gated on velocityPaletteActive so Velocity's identity stays London-only.
@@ -4939,23 +4966,24 @@ function ldnSection(doc: PDFKit.PDFDocument, title: string) {
     doc.font("bold").fontSize(13).fillColor(VELOCITY_GREEN).text(title, { characterSpacing: 0.5 });
     const ry = doc.y + 2;
     doc.save().strokeColor(VELOCITY_GREEN).lineWidth(0.75)
-      .moveTo(PAGE_MARGIN, ry).lineTo(doc.page.width - PAGE_MARGIN, ry).stroke().restore();
+      .moveTo(pageMargin(), ry).lineTo(doc.page.width - pageMargin(), ry).stroke().restore();
     doc.moveDown(0.45);
   } else {
     doc.font("bold").fontSize(13).fillColor("black").text(title, { characterSpacing: 0.5 });
     doc.moveDown(0.3);
   }
   doc.fillColor("black");
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 /** Subsection heading for the London renderer. */
 function ldnSubsection(doc: PDFKit.PDFDocument, title: string) {
-  doc.x = PAGE_MARGIN;
+  if (!isDefaultTheme()) { themed.heading(doc, 2, title); return; }
+  doc.x = pageMargin();
   doc.font("bold").fontSize(11).fillColor(velocityPaletteActive ? VELOCITY_GREEN : "black").text(title);
   doc.fillColor("black");
   doc.moveDown(0.2);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 /**
@@ -4966,10 +4994,10 @@ function ldnSubsection(doc: PDFKit.PDFDocument, title: string) {
  * exactly. London-only — the framing is TfL-specific.
  */
 function ldnChapterIntro(doc: PDFKit.PDFDocument, text: string) {
-  doc.x = PAGE_MARGIN;
-  doc.font("body").fontSize(9.5).fillColor(TEXT_GRAY).text(text, { paragraphGap: 6 });
+  doc.x = pageMargin();
+  doc.font("body").fontSize(9.5).fillColor(isDefaultTheme() ? TEXT_GRAY : activeTheme().palette.muted).text(text, { paragraphGap: 6 });
   doc.font("body").fontSize(10).fillColor("black");
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 /**
@@ -4980,10 +5008,10 @@ function ldnChapterIntro(doc: PDFKit.PDFDocument, text: string) {
  * matches the real TA's structure without fabricating analysis.
  */
 function ldnNote(doc: PDFKit.PDFDocument, text: string) {
-  doc.x = PAGE_MARGIN;
-  doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(text, { paragraphGap: 6 });
+  doc.x = pageMargin();
+  doc.font("body").fontSize(10).fillColor(isDefaultTheme() ? TEXT_GRAY : activeTheme().palette.muted).text(text, { paragraphGap: 6 });
   doc.font("body").fillColor("black");
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 /**
@@ -9415,7 +9443,7 @@ function renderCapacityAppendix(
     // to the top-level (PM) No-Build + Build pair when no period detail.
     doc.font("bold").fontSize(9.5).fillColor("black").text("Turning-Movement Diagrams (Build condition)", { paragraphGap: 4 });
     const W = doc.page.width;
-    const usable = W - PAGE_MARGIN * 2;
+    const usable = W - pageMargin() * 2;
     type Fig = { rec: any; scenario: "nobuild" | "build"; title: string };
     let figs: Fig[] = [];
     for (const p of peakPeriods) {
@@ -9444,15 +9472,15 @@ function renderCapacityAppendix(
     figs.forEach((f, idx) => {
       const col = idx % perRow;
       if (col === 0 && idx > 0) rowY += dh + 12;
-      if (rowY + dh > doc.page.height - PAGE_MARGIN - 30) { doc.addPage(); rowY = doc.y; }
-      const fx = PAGE_MARGIN + col * (dw + gap);
+      if (rowY + dh > doc.page.height - pageMargin() - 30) { doc.addPage(); rowY = doc.y; }
+      const fx = pageMargin() + col * (dw + gap);
       drawTurningMovementDiagram(doc, fx, rowY, dw, dh, f.rec, f.scenario, f.title);
     });
     // drawTurningMovementDiagram leaves the text cursor at the last (rightmost)
     // diagram's internal x. Restore the left margin before flowing the caption /
     // per-approach table, or they wrap into a narrow right-hand column and spill
     // off the bottom of every worksheet page.
-    doc.x = PAGE_MARGIN;
+    doc.x = pageMargin();
     doc.y = rowY + dh + 14;
     if (multiPeriod) {
       doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
@@ -9594,7 +9622,7 @@ function renderCapacityAppendix(
     const tl = ix.turboLane;
     if (tl) {
       doc.moveDown(0.5);
-      if (doc.y > doc.page.height - PAGE_MARGIN - 120) doc.addPage();
+      if (doc.y > doc.page.height - pageMargin() - 120) doc.addPage();
       doc.font("bold").fontSize(9.5).fillColor(BRAND_BLUE).text("Turbo-Lane Screening (Continuous-Green T)", { paragraphGap: 4 });
       doc.fillColor("black");
       rows(doc, [
@@ -9736,20 +9764,22 @@ function renderGenericJson(doc: PDFKit.PDFDocument, r: any) {
 // ---------- Layout primitives ----------
 
 function section(doc: PDFKit.PDFDocument, title: string) {
+  if (!isDefaultTheme()) { themed.heading(doc, 1, title); return; }
   // Reset to left margin — previous renderers (rows, table, text wrapped
   // across columns) leave doc.x offset, which would otherwise wrap
   // the heading into a thin column at whatever x the cursor was at.
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
   doc.font("bold").fontSize(13).fillColor("black").text(title);
   doc.moveDown(0.3);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 function rows(doc: PDFKit.PDFDocument, pairs: [string, string | undefined][]) {
+  if (!isDefaultTheme()) { themed.rows(doc, pairs); return; }
   const labelW = 220;
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   doc.x = startX;
-  const valueW = doc.page.width - startX - labelW - PAGE_MARGIN - 10;
+  const valueW = doc.page.width - startX - labelW - pageMargin() - 10;
   for (const [label, value] of pairs) {
     const val = value ?? "—";
     // Measure the row before drawing so the label and its value stay on the
@@ -9761,7 +9791,7 @@ function rows(doc: PDFKit.PDFDocument, pairs: [string, string | undefined][]) {
       doc.heightOfString(label, { width: labelW }),
       doc.heightOfString(val, { width: valueW }),
     );
-    if (doc.y + rowH > doc.page.height - PAGE_MARGIN) doc.addPage();
+    if (doc.y + rowH > doc.page.height - pageMargin()) doc.addPage();
     const y = doc.y;
     doc.fillColor(TEXT_GRAY).text(label, startX, y, { width: labelW, continued: false });
     doc.fillColor("black").text(val, startX + labelW + 10, y, { width: valueW });
@@ -9770,7 +9800,7 @@ function rows(doc: PDFKit.PDFDocument, pairs: [string, string | undefined][]) {
     doc.y = y + rowH;
     doc.moveDown(0.05);
   }
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 type TableSpec = {
@@ -9785,9 +9815,10 @@ type TableSpec = {
  * before each row and inserting a page break when needed.
  */
 function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
+  if (!isDefaultTheme()) { themed.table(doc, spec); return; }
   const { headers, widths, rows: dataRows } = spec;
   const align = spec.align ?? headers.map(() => "left" as const);
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   const totalW = widths.reduce((s, w) => s + w, 0);
   const PADX = 4;
   const PADY = 4;
@@ -9844,7 +9875,7 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
   // an orphaned header behind. If the header plus the first data row won't fit,
   // start the table on a fresh page instead.
   const firstRowH = dataRows.length > 0 ? measureRow(dataRows[0], false) : 0;
-  if (y + headerH + firstRowH > doc.page.height - PAGE_MARGIN - 40) {
+  if (y + headerH + firstRowH > doc.page.height - pageMargin() - 40) {
     doc.addPage();
     y = doc.y;
   }
@@ -9853,7 +9884,7 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
 
   for (const r of dataRows) {
     const rh = measureRow(r, false);
-    if (y + rh > doc.page.height - PAGE_MARGIN - 40) {
+    if (y + rh > doc.page.height - pageMargin() - 40) {
       doc.addPage();
       y = doc.y;
       const hh = measureRow(headers, true);
@@ -9866,15 +9897,16 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
     y += rh;
   }
   doc.y = y + 4;
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 type Metric = { label: string; value: string };
 
 function metricStrip(doc: PDFKit.PDFDocument, metrics: Metric[]) {
-  const usableW = doc.page.width - PAGE_MARGIN * 2;
+  if (!isDefaultTheme()) { themed.metricStrip(doc, metrics); return; }
+  const usableW = doc.page.width - pageMargin() * 2;
   const cellW = usableW / metrics.length;
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   const y = doc.y;
   const h = 50;
   // London (Velocity) palette, gated; other regions keep the blue accent.
