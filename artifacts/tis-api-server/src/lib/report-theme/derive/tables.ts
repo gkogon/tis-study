@@ -54,6 +54,21 @@ function findRegions(p: ScannedPage): Region[] {
   return regions;
 }
 
+/** The colour of the cell fills under a header row, or null when they cover less than 60 % of the region's width. */
+function headerBandFill(p: ScannedPage, g: Region, headerRuns: TextRun[]): string | null {
+  const top = Math.min(...headerRuns.map((r) => r.y - r.h));
+  const bottom = Math.max(...headerRuns.map((r) => r.y));
+  const widthBy = new Map<string, number>();
+  for (const r of p.rects) {
+    if (luminance(r.color) >= 250 || r.y > top + 1 || r.y + r.h < bottom - 1) continue;
+    const x1 = Math.max(r.x, g.x1), x2 = Math.min(r.x + r.w, g.x2);
+    if (x2 - x1 <= 0) continue;
+    widthBy.set(r.color, (widthBy.get(r.color) ?? 0) + (x2 - x1));
+  }
+  const best = [...widthBy.entries()].sort((a, b) => b[1] - a[1])[0];
+  return best && best[1] >= 0.6 * (g.x2 - g.x1) ? best[0] : null;
+}
+
 function captionNear(p: ScannedPage, yTop: number, yBottom: number, re: RegExp): { position: "above" | "below"; run: TextRun } | null {
   for (const ln of linesOf(p)) {
     if (!re.test(ln.text)) continue;
@@ -83,7 +98,7 @@ export function detectTables(pages: ScannedPage[], body: BodyStyle, headingFont:
       // immediately by a rule — some table styles rule only between body rows
       // — so hunting for "the next line after the top" can land on the
       // row1/row2 rule instead of the header/row1 one.
-      const headerFillRect = [...g.rowRects, ...p.rects].find((r) => Math.abs(r.y - g.yTop) <= 2 && r.w >= (g.x2 - g.x1) * 0.9 && luminance(r.color) < 250);
+      const topFill = [...g.rowRects, ...p.rects].find((r) => Math.abs(r.y - g.yTop) <= 2 && r.w >= (g.x2 - g.x1) * 0.9 && luminance(r.color) < 250);
       // With no fill at all (spec §5.2: "header row = first row with bold
       // runs OR on a fill"), the header can likewise sit a row above the
       // region's raw top with nothing there to widen it the way a fill rect's
@@ -97,7 +112,16 @@ export function detectTables(pages: ScannedPage[], body: BodyStyle, headingFont:
       const gaps: number[] = [];
       for (let i = 1; i < g.hlines.length; i++) gaps.push(g.hlines[i].y1 - g.hlines[i - 1].y1);
       const rowPitch = gaps.length ? median(gaps) : 40;
-      const above = headerFillRect ? [] : p.runs.filter((r) => r.x >= g.x1 - 2 && r.x <= g.x2 + 2 && r.y < g.yTop - 2 && r.y >= g.yTop - 1.5 * rowPitch && !captionRuns.has(r));
+      const aboveRegion = p.runs.filter((r) => r.x >= g.x1 - 2 && r.x <= g.x2 + 2 && r.y < g.yTop - 2 && r.y >= g.yTop - 1.5 * rowPitch && !captionRuns.has(r));
+      // A zebra table whose header row carries no fill starts its region at
+      // the FIRST BODY row's fill, so that fill sits exactly where a header
+      // fill would. It is body shading, not a header, when its colour recurs
+      // on a later row of the same region (the alternating-row signature)
+      // and the bold header row sits just above it on no fill at all.
+      const zebraTop = !!topFill && g.rowRects.some((r) => r !== topFill && r.color === topFill.color && r.y >= topFill.y + topFill.h - 1);
+      const boldAbove = aboveRegion.length > 0 && aboveRegion.filter((r) => r.bold).length / aboveRegion.length >= 0.5;
+      const headerFillRect = zebraTop && boldAbove ? null : topFill;
+      const above = headerFillRect ? [] : aboveRegion;
       const regionRuns = [...above, ...inRegion];
       const firstY = Math.min(...regionRuns.map((r) => r.y));
       const firstRow = regionRuns.filter((r) => r.y - firstY <= 0.6 * r.size);
@@ -109,6 +133,14 @@ export function detectTables(pages: ScannedPage[], body: BodyStyle, headingFont:
           : g.hlines.length ? (g.hlines.find((l) => l.y1 > g.yTop + 2)?.y1 ?? g.yTop + 18) : g.rowRects[0].y + g.rowRects[0].h;
       const headerRuns = firstRowBold ? firstRow : inRegion.filter((r) => r.y <= headerBottom + 1);
       const bodyRuns = (firstRowBold ? regionRuns : inRegion).filter((r) => r.y > headerBottom + 1);
+      // Word and AcroPlot fill a header row PER CELL — five narrow rects of
+      // one colour standing side by side — and when the region's first rule
+      // is the one under the header, that row sits above g.yTop as well, so
+      // no single rect ever spans 90 % of the region at its top. Read the
+      // fill off the header row itself: the rects covering the header runs'
+      // vertical band, one colour, adding up (clipped to the region) to most
+      // of the region's width.
+      const headerFill = headerFillRect?.color ?? (headerRuns.length ? headerBandFill(p, g, headerRuns) : null);
       const vlines = p.lines.filter((l) => Math.abs(l.x1 - l.x2) <= 0.5 && l.x1 >= g.x1 - 2 && l.x1 <= g.x2 + 2 && l.y1 <= g.yBottom && l.y2 >= g.yTop);
       const rules = [...g.hlines, ...vlines];
       const rowFills = g.rowRects.filter((r) => r.y > headerBottom - 1 && luminance(r.color) < 250);
@@ -118,7 +150,7 @@ export function detectTables(pages: ScannedPage[], body: BodyStyle, headingFont:
       const padYs = g.hlines.flatMap((l) => { const below = inRegion.filter((r) => r.y - r.h >= l.y1 - 1).sort((a, b) => a.y - b.y)[0]; return below ? [clamp(below.y - below.h - l.y1, 1, 10)] : []; });
       const cap = captionNear(p, g.yTop, g.yBottom, /^table\s+\d/i);
       found.push({
-        header: { fill: headerFillRect?.color ?? null, color: headerRuns.length ? mode(headerRuns.map((r) => r.color ?? body.color)) : body.color, bold: headerRuns.length > 0 && headerRuns.filter((r) => r.bold).length >= headerRuns.length / 2, size: headerRuns.length ? clamp(Math.round(mode(headerRuns.map((r) => Math.round(r.size * 2) / 2))), 5, 16) : body.size },
+        header: { fill: headerFill, color: headerRuns.length ? mode(headerRuns.map((r) => r.color ?? body.color)) : body.color, bold: headerRuns.length > 0 && headerRuns.filter((r) => r.bold).length >= headerRuns.length / 2, size: headerRuns.length ? clamp(Math.round(mode(headerRuns.map((r) => Math.round(r.size * 2) / 2))), 5, 16) : body.size },
         bodySize: bodyRuns.length ? clamp(Math.round(mode(bodyRuns.map((r) => Math.round(r.size * 2) / 2))), 5, 16) : body.size,
         bodyColor: bodyRuns.length ? mode(bodyRuns.map((r) => r.color ?? body.color)) : body.color,
         mode: vlines.length >= 2 ? "grid" : g.hlines.length >= 3 ? "horizontal" : "none",

@@ -485,6 +485,42 @@ const kernedBody = { font: "ABCDEF+Arial", size: 11, color: "#000000", serif: fa
 const kernedGeom = pg.pageGeometry(kernedPages, kernedBody, { headerBottom: null, footerTop: null });
 ok(kernedGeom && Math.abs(kernedGeom.margins.left - 82) <= 1, `kerned runs: margin from joined lines = mean(72, 612-520=92) = 82, not 140 from the dot-leader run (${kernedGeom?.margins.left})`);
 
+// tables.ts — a zebra table's first BODY row fill is not the header fill.
+// SCJ Twisp: bold unfilled header row, then #d9d9d9 on alternating body rows
+// drawn per cell; the region starts at the first grey row, so that grey sat
+// exactly where a header fill would and was reported as one.
+const zebraPage = mkPage(8, [
+  run(8, "Level of Service", 10, "#000000", 113, 101, 90, { bold: true }), run(8, "Signalized Delay", 10, "#000000", 250, 101, 150, { bold: true }),
+  run(8, "A", 10, "#000000", 126, 130, 8), run(8, "≤ 10", 10, "#000000", 300, 130, 30),
+  run(8, "B", 10, "#000000", 126, 148, 8), run(8, "> 10-20", 10, "#000000", 300, 148, 40),
+  run(8, "C", 10, "#000000", 126, 166, 8), run(8, "> 20-35", 10, "#000000", 300, 166, 40),
+  run(8, "D", 10, "#000000", 126, 184, 8), run(8, "> 35-55", 10, "#000000", 300, 184, 40),
+], [], [
+  { page: 8, x: 101, y: 118, w: 56, h: 18, color: "#d9d9d9" }, { page: 8, x: 157, y: 118, w: 183, h: 18, color: "#d9d9d9" }, { page: 8, x: 340, y: 118, w: 171, h: 18, color: "#d9d9d9" },
+  { page: 8, x: 101, y: 154, w: 56, h: 18, color: "#d9d9d9" }, { page: 8, x: 157, y: 154, w: 183, h: 18, color: "#d9d9d9" }, { page: 8, x: 340, y: 154, w: 171, h: 18, color: "#d9d9d9" },
+]);
+const zebraRes = tbl.detectTables([pagesA[0], zebraPage], bodyA, null);
+ok(zebraRes.count >= 1 && zebraRes.style && zebraRes.style.header.fill === null, `zebra table: the first body row's grey is not a header fill (${zebraRes.style?.header.fill})`);
+ok(zebraRes.style && zebraRes.style.header.bold === true, `zebra table: the bold unfilled row above is the header (${zebraRes.style?.header.bold})`);
+ok(zebraRes.style && zebraRes.style.zebra === "#d9d9d9", `zebra table: the grey is reported as the zebra colour (${zebraRes.style?.zebra})`);
+
+// tables.ts — a header filled PER CELL is still a header fill. Kimley-Horn
+// Dallas: five grey #c0c0c0 cell rects (none 90 % of the region) under the
+// bold header row, which itself sits above the region's first rule.
+const cellFillPage = mkPage(9, [
+  run(9, "Land Uses", 9, "#000000", 30, 360, 60, { bold: true }), run(9, "Amount", 9, "#000000", 180, 360, 40, { bold: true }), run(9, "Daily", 9, "#000000", 320, 360, 30, { bold: true }), run(9, "AM Peak", 9, "#000000", 470, 360, 50, { bold: true }),
+  run(9, "Single Family", 9, "#000000", 30, 385, 80), run(9, "116", 9, "#000000", 180, 385, 20), run(9, "1,157", 9, "#000000", 320, 385, 30), run(9, "85", 9, "#000000", 470, 385, 15),
+  run(9, "Multifamily", 9, "#000000", 30, 397, 80), run(9, "432", 9, "#000000", 180, 397, 20), run(9, "2,014", 9, "#000000", 320, 397, 30), run(9, "178", 9, "#000000", 470, 397, 15),
+  run(9, "Warehousing", 9, "#000000", 30, 409, 80), run(9, "373,798", 9, "#000000", 180, 409, 40), run(9, "629", 9, "#000000", 320, 409, 30), run(9, "68", 9, "#000000", 470, 409, 15),
+], [
+  { page: 9, x1: 28, y1: 364, x2: 585, y2: 364, color: "#000000", width: 0.61 }, { page: 9, x1: 28, y1: 388, x2: 585, y2: 388, color: "#000000", width: 0.61 }, { page: 9, x1: 28, y1: 400, x2: 585, y2: 400, color: "#000000", width: 0.61 }, { page: 9, x1: 28, y1: 412, x2: 585, y2: 412, color: "#000000", width: 0.61 },
+], [
+  { page: 9, x: 27, y: 348, w: 146, h: 16, color: "#c0c0c0" }, { page: 9, x: 172, y: 348, w: 96, h: 16, color: "#c0c0c0" }, { page: 9, x: 267, y: 348, w: 40, h: 16, color: "#bfbfbf" }, { page: 9, x: 307, y: 348, w: 160, h: 16, color: "#c0c0c0" }, { page: 9, x: 466, y: 348, w: 119, h: 16, color: "#c0c0c0" },
+]);
+const cellFillRes = tbl.detectTables([pagesA[0], cellFillPage], bodyA, null);
+ok(cellFillRes.style && cellFillRes.style.header.fill === "#c0c0c0", `per-cell header fill: the cells' colour is the header fill (${cellFillRes.style?.header.fill})`);
+ok(cellFillRes.style && cellFillRes.style.header.bold === true && cellFillRes.style.body.size === 9, `per-cell header fill: header row and body still read (${JSON.stringify(cellFillRes.style?.header)})`);
+
 // ─── derive/cover.ts + derive/synonyms.ts ────────────────────────────────────
 const cov = await import(path.resolve(here, "../src/lib/report-theme/derive/cover.ts"));
 const syn = await import(path.resolve(here, "../src/lib/report-theme/derive/synonyms.ts"));
