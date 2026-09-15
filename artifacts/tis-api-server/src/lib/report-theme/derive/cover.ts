@@ -5,7 +5,11 @@ import { normalizeName } from "./header-footer";
 import type { BodyStyle } from "./typography";
 
 const DOCTYPE_RE = /traffic (impact|study|assessment)|transportation impact|transport (assessment|statement)/i;
-const DATE_RE = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s+(\d{1,2},?\s+)?\d{4}\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b/i;
+// A line counts as a date only when the WHOLE line is a date (optionally
+// labelled "Date:") — a substring test would misclassify a title that merely
+// mentions a date ("Riverside Crossing – December 2024 Update") as the
+// dateLabel instead of the projectName.
+const DATE_LINE_RE = /^\s*(date:?\s*)?((jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s+(\d{1,2},?\s+)?\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4}|\d{4}-\d{2}-\d{2})\s*$/i;
 const PREPARED_FOR_RE = /^(prepared|submitted)\s+(for|to)\b:?/i;
 const PREPARED_BY_RE = /^(prepared|submitted)\s+by\b:?/i;
 
@@ -50,15 +54,18 @@ export function deriveCover(page1: ScannedPage | undefined, body: BodyStyle, hea
   const firm = normalizeName(ctx.firmName);
   const docType = lines.filter((l) => DOCTYPE_RE.test(l.text)).sort((a, b) => b.size - a.size)[0];
   if (docType) { used.add(docType); els.push(elementFor(docType, "documentType", W, body, headingFont)); }
-  const isMeta = (l: TextLine) => DATE_RE.test(l.text) || PREPARED_FOR_RE.test(l.text) || PREPARED_BY_RE.test(l.text) || normalizeName(l.text) === firm;
-  const title = lines.filter((l) => !used.has(l) && !isMeta(l) && l.size >= Math.max(body.size * 1.3, 11)).sort((a, b) => b.size - a.size || a.y - b.y)[0];
+  const isMeta = (l: TextLine) => DATE_LINE_RE.test(l.text) || PREPARED_FOR_RE.test(l.text) || PREPARED_BY_RE.test(l.text) || normalizeName(l.text) === firm;
+  // A second document-type-like line (a subtitle such as "Traffic Impact
+  // Assessment Report") must never win the projectName slot even when it is
+  // larger than the real title — it is dropped below with a warning instead.
+  const title = lines.filter((l) => !used.has(l) && !isMeta(l) && !DOCTYPE_RE.test(l.text) && l.size >= Math.max(body.size * 1.3, 11)).sort((a, b) => b.size - a.size || a.y - b.y)[0];
   if (title) { used.add(title); els.push(elementFor(title, "projectName", W, body, headingFont)); }
   let hasMeta = false;
   for (const l of lines) {
     if (used.has(l)) continue;
-    if (PREPARED_FOR_RE.test(l.text)) { used.add(l); hasMeta = true; els.push(elementFor(l, "preparedFor", W, body, headingFont, l.text.match(PREPARED_FOR_RE)![0])); continue; }
-    if (PREPARED_BY_RE.test(l.text)) { used.add(l); hasMeta = true; els.push(elementFor(l, "preparedBy", W, body, headingFont, l.text.match(PREPARED_BY_RE)![0])); continue; }
-    if (DATE_RE.test(l.text) && !els.some((e) => e.role === "dateLabel")) { used.add(l); hasMeta = true; els.push(elementFor(l, "dateLabel", W, body, headingFont)); continue; }
+    if (PREPARED_FOR_RE.test(l.text) && !els.some((e) => e.role === "preparedFor")) { used.add(l); hasMeta = true; els.push(elementFor(l, "preparedFor", W, body, headingFont, l.text.match(PREPARED_FOR_RE)![0])); continue; }
+    if (PREPARED_BY_RE.test(l.text) && !els.some((e) => e.role === "preparedBy")) { used.add(l); hasMeta = true; els.push(elementFor(l, "preparedBy", W, body, headingFont, l.text.match(PREPARED_BY_RE)![0])); continue; }
+    if (DATE_LINE_RE.test(l.text) && !els.some((e) => e.role === "dateLabel")) { used.add(l); hasMeta = true; els.push(elementFor(l, "dateLabel", W, body, headingFont)); continue; }
     if (firm && normalizeName(l.text) === firm && !els.some((e) => e.role === "firmName")) { used.add(l); els.push(elementFor(l, "firmName", W, body, headingFont)); continue; }
   }
   for (const l of lines) if (!used.has(l)) warnings.push(`Dropped cover text that could not be mapped: "${l.text.slice(0, 60)}".`);

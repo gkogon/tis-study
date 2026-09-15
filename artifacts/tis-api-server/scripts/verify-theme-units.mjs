@@ -442,5 +442,55 @@ ok(cres.warnings.some((w) => /Main Street/.test(w)), "dropped cover text is repo
 const bare = cov.deriveCover(mkPage(1, [run(1, "TRAFFIC IMPACT STUDY", 24, "#000000", 72, 200, 300, { bold: true })]), bodyA, null, { firmName: "X" });
 ok(bare.cover.hasMetaBlock === false && bare.coverTitle === null, "cover with only a doc type: no meta block, no title");
 
+// ─── cover.ts fix round: doc-type-like subtitle must never win projectName ──
+const subtitlePage = mkPage(1, [
+  run(1, "TRAFFIC IMPACT STUDY", 30, "#ffffff", 72, 100, 380, { bold: true }),
+  run(1, "Traffic Impact Assessment Report", 20, "#222222", 72, 260, 350),
+  run(1, "Riverside Crossing", 18, "#222222", 72, 320, 200),
+]);
+const subtitleRes = cov.deriveCover(subtitlePage, bodyA, "ABCDEF+Arial-Bold", { firmName: "Acme Traffic Engineering" });
+eq(subtitleRes.coverTitle, "Riverside Crossing", "a larger, second doc-type-like subtitle does not win the projectName slot");
+eq(subtitleRes.cover.elements.filter((e) => e.role === "documentType").length, 1, "exactly one documentType element");
+eq(subtitleRes.cover.elements.filter((e) => e.role === "projectName").length, 1, "exactly one projectName element");
+ok(subtitleRes.warnings.some((w) => w.includes("Traffic Impact Assessment Report")), "the doc-type-like subtitle is dropped with a warning");
+
+// ─── cover.ts fix round: a date embedded inside a title must not steal it ──
+const dateInTitlePage = mkPage(1, [
+  run(1, "TRAFFIC IMPACT STUDY", 30, "#ffffff", 72, 100, 380, { bold: true }),
+  run(1, "Riverside Crossing – December 2024 Update", 18, "#222222", 72, 320, 380),
+  run(1, "March 2025", 12, "#222222", 72, 460, 90),
+]);
+const dateInTitleRes = cov.deriveCover(dateInTitlePage, bodyA, "ABCDEF+Arial-Bold", { firmName: "Acme Traffic Engineering" });
+eq(dateInTitleRes.coverTitle, "Riverside Crossing – December 2024 Update", "a date embedded inside a longer title line is not misclassified as the date line");
+eq(dateInTitleRes.cover.elements.filter((e) => e.role === "dateLabel").length, 1, "exactly one dateLabel element");
+eq(dateInTitleRes.cover.elements.find((e) => e.role === "dateLabel").style.size, 12, "the dateLabel element comes from the standalone date line, not the title");
+
+// ─── cover.ts fix round: background derivation coverage ───────────────────
+const colorBgPage = mkPage(1, [run(1, "TRAFFIC IMPACT STUDY", 24, "#ffffff", 72, 200, 300, { bold: true })], [], [{ page: 1, x: 0, y: 0, w: 612, h: 792, color: "#0b2545" }]);
+const colorBgRes = cov.deriveCover(colorBgPage, bodyA, null, { firmName: "X" });
+eq(colorBgRes.cover.background, { kind: "color", color: "#0b2545" }, "a page-sized filled rect becomes a color background");
+eq(colorBgRes.cover.bands, [], "the background rect itself is not also reported as a band");
+
+const imageBgPage = mkPage(1, [run(1, "TRAFFIC IMPACT STUDY", 24, "#ffffff", 72, 200, 300, { bold: true })]);
+imageBgPage.images.push({ page: 1, x: 0, y: 0, w: 612, h: 792, objId: "bg", pixels: { width: 64, height: 83, kind: 2, data: new Uint8ClampedArray(64 * 83 * 3).fill(30) } });
+const imageBgRes = cov.deriveCover(imageBgPage, bodyA, null, { firmName: "X" });
+ok(imageBgRes.cover.background.kind === "image" && imageBgRes.cover.background.data.startsWith("data:image/png;base64,"), "a full-page decoded image becomes an image background");
+ok(imageBgRes.cover.logo === null, "the full-page background image is not also chosen as the logo");
+
+// ─── cover.ts fix round: preparedFor/preparedBy duplicate guard ───────────
+const dupPreparedPage = mkPage(1, [
+  run(1, "TRAFFIC IMPACT STUDY", 30, "#ffffff", 72, 100, 380, { bold: true }),
+  run(1, "Riverside Crossing", 18, "#222222", 72, 320, 200),
+  run(1, "Prepared for: Maple Grove Partners LLC", 12, "#222222", 72, 420, 240),
+  run(1, "Prepared for: Someone Else", 12, "#222222", 72, 440, 200),
+  run(1, "Prepared by: Acme Traffic Engineering", 12, "#222222", 72, 460, 230),
+  run(1, "Prepared by: Another Firm", 12, "#222222", 72, 480, 200),
+]);
+const dupRes = cov.deriveCover(dupPreparedPage, bodyA, "ABCDEF+Arial-Bold", { firmName: "Acme Traffic Engineering" });
+eq(dupRes.cover.elements.filter((e) => e.role === "preparedFor").length, 1, "only the first preparedFor line becomes an element");
+eq(dupRes.cover.elements.filter((e) => e.role === "preparedBy").length, 1, "only the first preparedBy line becomes an element");
+ok(dupRes.warnings.some((w) => w.includes("Someone Else")), "the duplicate preparedFor line is dropped with a warning");
+ok(dupRes.warnings.some((w) => w.includes("Another Firm")), "the duplicate preparedBy line is dropped with a warning");
+
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");
