@@ -36,6 +36,8 @@ import { getMeasuredGrowthRate } from "@workspace/tis-engine-core";
 import { renderAtrMeasuredVolumes } from "./atr-measured-volumes";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
 import { renderLaneGroupQueues } from "./lane-group-queues";
+import { activeTheme, isDefaultTheme, pageMargin } from "./report-theme/active";
+import * as themed from "./report-theme/draw";
 
 type StoredProject = {
   id: string;
@@ -50,7 +52,6 @@ type StoredProject = {
   resultPayload: unknown;
 };
 
-const PAGE_MARGIN = 50;
 const BRAND_BLUE = "#2563eb";
 const TEXT_GRAY = "#6b7280";
 
@@ -58,31 +59,34 @@ const TEXT_GRAY = "#6b7280";
 // see file-level docstring) -------------------------------------------------
 
 function nySection(doc: PDFKit.PDFDocument, title: string) {
-  doc.x = PAGE_MARGIN;
+  if (!isDefaultTheme()) { themed.heading(doc, 1, title); return; }
+  doc.x = pageMargin();
   doc.font("bold").fontSize(13).fillColor("black").text(title, { characterSpacing: 0.5 });
   doc.moveDown(0.3);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 function nySubsection(doc: PDFKit.PDFDocument, title: string) {
-  doc.x = PAGE_MARGIN;
+  if (!isDefaultTheme()) { themed.heading(doc, 2, title); return; }
+  doc.x = pageMargin();
   doc.font("bold").fontSize(11).fillColor("black").text(title);
   doc.moveDown(0.2);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 function nyRows(doc: PDFKit.PDFDocument, pairs: [string, string | undefined][]) {
+  if (!isDefaultTheme()) { themed.rows(doc, pairs); return; }
   const labelW = 220;
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   doc.x = startX;
-  const valueW = doc.page.width - startX - labelW - PAGE_MARGIN - 10;
+  const valueW = doc.page.width - startX - labelW - pageMargin() - 10;
   for (const [label, value] of pairs) {
     const y = doc.y;
     doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(label, startX, y, { width: labelW, continued: false });
     doc.font("body").fontSize(10).fillColor("black").text(value ?? "—", startX + labelW + 10, y, { width: valueW });
     doc.moveDown(0.05);
   }
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 type NyTableSpec = {
@@ -93,9 +97,10 @@ type NyTableSpec = {
 };
 
 function nyTable(doc: PDFKit.PDFDocument, spec: NyTableSpec) {
+  if (!isDefaultTheme()) { themed.table(doc, spec); return; }
   const { headers, widths, rows: dataRows } = spec;
   const align = spec.align ?? headers.map(() => "left" as const);
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   const rowH = 16;
   const headerH = 18;
   const drawRow = (cells: string[], y: number, isHeader: boolean) => {
@@ -122,7 +127,7 @@ function nyTable(doc: PDFKit.PDFDocument, spec: NyTableSpec) {
   drawRow(headers, y, true);
   y += headerH;
   for (const r of dataRows) {
-    if (y + rowH > doc.page.height - PAGE_MARGIN - 40) {
+    if (y + rowH > doc.page.height - pageMargin() - 40) {
       doc.addPage();
       y = doc.y;
       drawRow(headers, y, true);
@@ -134,15 +139,16 @@ function nyTable(doc: PDFKit.PDFDocument, spec: NyTableSpec) {
     y += rowH;
   }
   doc.y = y + 4;
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 type NyMetric = { label: string; value: string };
 
 function nyMetricStrip(doc: PDFKit.PDFDocument, metrics: NyMetric[]) {
-  const usableW = doc.page.width - PAGE_MARGIN * 2;
+  if (!isDefaultTheme()) { themed.metricStrip(doc, metrics); return; }
+  const usableW = doc.page.width - pageMargin() * 2;
   const cellW = usableW / metrics.length;
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   const y = doc.y;
   const h = 50;
   for (let i = 0; i < metrics.length; i++) {

@@ -13,7 +13,9 @@
  * stays byte-identical.
  */
 
-const PAGE_MARGIN = 50;
+import { isDefaultTheme, pageMargin } from "./report-theme/active";
+import * as themed from "./report-theme/draw";
+
 const TEXT_GRAY = "#6b7280";
 
 type LaneGroup = {
@@ -62,6 +64,7 @@ export function renderLaneGroupQueues(
 
   const heading = opts.heading ?? "Lane-Group Queues at Intersections with Measured Turning Movements";
   if (opts.headingFn) opts.headingFn(doc, heading);
+  else if (!isDefaultTheme()) themed.heading(doc, 2, heading);
   else doc.font("bold").fontSize(11).fillColor("black").text(heading, { paragraphGap: 6 });
 
   doc.font("body").fontSize(10).fillColor("black").text(
@@ -103,11 +106,11 @@ export function renderLaneGroupQueues(
 
   // Minimal self-contained table (Path A) — no dependency on any renderer's
   // table(), which each declares privately with different signatures.
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   const rowH = 14;
   let y = doc.y + 2;
   const drawRow = (cells: string[], bold: boolean, deficient: boolean) => {
-    if (y + rowH > doc.page.height - PAGE_MARGIN - 30) {
+    if (y + rowH > doc.page.height - pageMargin() - 30) {
       doc.addPage();
       y = doc.y;
     }
@@ -125,7 +128,7 @@ export function renderLaneGroupQueues(
   drawRow(headers, true, false);
   for (const r of rows) drawRow(r, false, r[7] === "Deficient");
   doc.y = y + 4;
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 
   const deficient = rows.filter((r) => r[7] === "Deficient").length;
   doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(

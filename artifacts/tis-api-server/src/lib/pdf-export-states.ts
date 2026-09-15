@@ -21,6 +21,8 @@ import { renderTripDistributionSection } from "./pdf-export-distribution";
 import { renderLaneGroupQueues } from "./lane-group-queues";
 import { renderAtrMeasuredVolumes } from "./atr-measured-volumes";
 import { tripGenExternalNote } from "./pdf-export";
+import { activeTheme, isDefaultTheme, pageMargin } from "./report-theme/active";
+import * as themed from "./report-theme/draw";
 
 // Re-export for use in pdf-export.ts dispatch
 export { renderTisState };
@@ -1050,7 +1052,6 @@ const CONFIGS: Record<string, StateTisConfig> = {
 
 // ---------- Helper type imports (inline — avoids circular deps) ----------
 
-const PAGE_MARGIN = 50;
 const BRAND_BLUE = "#2563eb";
 const TEXT_GRAY = "#6b7280";
 
@@ -1088,33 +1089,36 @@ function renderTisState(
   };
 
   const stateSection = (title: string) => {
-    doc.x = PAGE_MARGIN;
+    if (!isDefaultTheme()) { themed.heading(doc, 1, title); return; }
+    doc.x = pageMargin();
     doc.font("bold").fontSize(13).fillColor("black").text(title);
     doc.moveDown(0.3);
-    doc.x = PAGE_MARGIN;
+    doc.x = pageMargin();
   };
 
   const stateSub = (title: string) => {
-    doc.x = PAGE_MARGIN;
+    if (!isDefaultTheme()) { themed.heading(doc, 2, title); return; }
+    doc.x = pageMargin();
     doc.font("bold").fontSize(11).fillColor(BRAND_BLUE).text(title);
     doc.moveDown(0.2);
-    doc.x = PAGE_MARGIN;
+    doc.x = pageMargin();
   };
 
   const body = (text: string, opts: Record<string, unknown> = {}) => {
-    doc.font("body").fontSize(10).fillColor("black").text(text, { paragraphGap: 5, ...opts });
-    doc.x = PAGE_MARGIN;
+    doc.font("body").fontSize(10).fillColor(isDefaultTheme() ? "black" : activeTheme().text.body.color).text(text, { paragraphGap: 5, ...opts });
+    doc.x = pageMargin();
   };
 
   const note = (text: string) => {
-    doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(text, { paragraphGap: 4 });
-    doc.x = PAGE_MARGIN;
-    doc.fillColor("black");
+    doc.font("body").fontSize(9).fillColor(isDefaultTheme() ? TEXT_GRAY : activeTheme().palette.muted).text(text, { paragraphGap: 4 });
+    doc.x = pageMargin();
+    doc.fillColor(isDefaultTheme() ? "black" : activeTheme().text.body.color);
   };
 
   const kv = (pairs: [string, string | undefined][]) => {
+    if (!isDefaultTheme()) { themed.rows(doc, pairs); return; }
     const labelW = 220;
-    const valueW = doc.page.width - PAGE_MARGIN - labelW - PAGE_MARGIN - 10;
+    const valueW = doc.page.width - pageMargin() - labelW - pageMargin() - 10;
     for (const [label, value] of pairs) {
       const val = value ?? "—";
       // Keep each label and its value together: measure the row and break
@@ -1126,18 +1130,19 @@ function renderTisState(
         doc.heightOfString(label, { width: labelW }),
         doc.heightOfString(val, { width: valueW }),
       );
-      if (doc.y + rowH > doc.page.height - PAGE_MARGIN) doc.addPage();
+      if (doc.y + rowH > doc.page.height - pageMargin()) doc.addPage();
       const y = doc.y;
-      doc.fillColor(TEXT_GRAY).text(label, PAGE_MARGIN, y, { width: labelW });
-      doc.fillColor("black").text(val, PAGE_MARGIN + labelW + 10, y, { width: valueW });
+      doc.fillColor(TEXT_GRAY).text(label, pageMargin(), y, { width: labelW });
+      doc.fillColor("black").text(val, pageMargin() + labelW + 10, y, { width: valueW });
       doc.y = y + rowH;
       doc.moveDown(0.05);
     }
-    doc.x = PAGE_MARGIN;
+    doc.x = pageMargin();
   };
 
   const tbl = (headers: string[], widths: number[], aligns: string[], dataRows: string[][]) => {
-    const rowH = 16, headerH = 18, startX = PAGE_MARGIN;
+    if (!isDefaultTheme()) { themed.table(doc, { headers, widths, align: aligns as Array<"left" | "right" | "center">, rows: dataRows }); return; }
+    const rowH = 16, headerH = 18, startX = pageMargin();
     const drawRow = (cells: string[], y: number, isHeader: boolean) => {
       let x = startX;
       if (isHeader) doc.rect(startX, y, widths.reduce((s, w) => s + w, 0), headerH).fill("#f3f4f6");
@@ -1150,25 +1155,26 @@ function renderTisState(
     let y = doc.y;
     drawRow(headers, y, true); y += headerH;
     for (const row of dataRows) {
-      if (y + rowH > doc.page.height - PAGE_MARGIN - 40) { doc.addPage(); y = doc.y; drawRow(headers, y, true); y += headerH; }
+      if (y + rowH > doc.page.height - pageMargin() - 40) { doc.addPage(); y = doc.y; drawRow(headers, y, true); y += headerH; }
       drawRow(row, y, false);
       doc.strokeColor("#e5e7eb").lineWidth(0.5).moveTo(startX, y + rowH).lineTo(startX + widths.reduce((s, w) => s + w, 0), y + rowH).stroke();
       y += rowH;
     }
-    doc.y = y + 4; doc.x = PAGE_MARGIN;
+    doc.y = y + 4; doc.x = pageMargin();
   };
 
   const strip = (metrics: { label: string; value: string }[]) => {
-    const usableW = doc.page.width - PAGE_MARGIN * 2;
+    if (!isDefaultTheme()) { themed.metricStrip(doc, metrics); return; }
+    const usableW = doc.page.width - pageMargin() * 2;
     const cellW = usableW / metrics.length;
     const y = doc.y, h = 50;
     for (let i = 0; i < metrics.length; i++) {
-      const x = PAGE_MARGIN + i * cellW;
+      const x = pageMargin() + i * cellW;
       doc.rect(x, y, cellW, h).fillAndStroke("#f9fafb", "#e5e7eb");
       doc.font("bold").fontSize(20).fillColor(BRAND_BLUE).text(metrics[i].value, x, y + 8, { width: cellW, align: "center" });
       doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(metrics[i].label.toUpperCase(), x, y + 32, { width: cellW, align: "center", characterSpacing: 1 });
     }
-    doc.fillColor("black"); doc.x = PAGE_MARGIN; doc.y = y + h + 4;
+    doc.fillColor("black"); doc.x = pageMargin(); doc.y = y + h + 4;
   };
 
   // ─── §1 EXECUTIVE SUMMARY ───────────────────────────────────────────────
@@ -1502,13 +1508,13 @@ function renderTisState(
   doc.moveDown(0.3);
 
   // PE stamp block
-  doc.rect(PAGE_MARGIN, doc.y, 250, 70).stroke("#d1d5db");
+  doc.rect(pageMargin(), doc.y, 250, 70).stroke("#d1d5db");
   doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
     `PE Seal — ${cfg.stateName}\n${cfg.peStatuteName}\n${cfg.peStatuteRef}\n\nSignature: ___________________________\nDate: ___________________________`,
-    PAGE_MARGIN + 8, doc.y + 5, { width: 234 },
+    pageMargin() + 8, doc.y + 5, { width: 234 },
   );
   doc.y += 82;
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
   doc.fillColor("black");
   doc.moveDown(0.5);
 

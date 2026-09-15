@@ -22,6 +22,8 @@ import type { Region } from "./regions";
 import { appliedRateRows } from "./trip-rate-rows";
 import { renderAtrMeasuredVolumes } from "./atr-measured-volumes";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
+import { activeTheme, isDefaultTheme, pageMargin } from "./report-theme/active";
+import * as themed from "./report-theme/draw";
 
 type StoredProject = {
   id: string;
@@ -36,43 +38,45 @@ type StoredProject = {
   resultPayload: unknown;
 };
 
-const PAGE_MARGIN = 50;
 const BRAND_BLUE = "#2563eb";
 const TEXT_GRAY = "#6b7280";
 
 // ---- Layout primitives (duplicated intentionally; see docstring) ----------
 
 function carSection(doc: PDFKit.PDFDocument, title: string) {
-  doc.x = PAGE_MARGIN;
+  if (!isDefaultTheme()) { themed.heading(doc, 1, title); return; }
+  doc.x = pageMargin();
   doc.font("bold").fontSize(13).fillColor("black").text(title, { characterSpacing: 0.5 });
   doc.moveDown(0.3);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 function carSubsection(doc: PDFKit.PDFDocument, title: string) {
-  doc.x = PAGE_MARGIN;
+  if (!isDefaultTheme()) { themed.heading(doc, 2, title); return; }
+  doc.x = pageMargin();
   doc.font("bold").fontSize(11).fillColor("black").text(title);
   doc.moveDown(0.2);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 function carBody(doc: PDFKit.PDFDocument, text: string, gray = false) {
-  doc.font("body").fontSize(10).fillColor(gray ? TEXT_GRAY : "black").text(text, { paragraphGap: 6 });
-  doc.fillColor("black");
-  doc.x = PAGE_MARGIN;
+  doc.font("body").fontSize(10).fillColor(gray ? (isDefaultTheme() ? TEXT_GRAY : activeTheme().palette.muted) : (isDefaultTheme() ? "black" : activeTheme().text.body.color)).text(text, { paragraphGap: 6 });
+  doc.fillColor(isDefaultTheme() ? "black" : activeTheme().text.body.color);
+  doc.x = pageMargin();
 }
 
 function carRows(doc: PDFKit.PDFDocument, pairs: [string, string | undefined][]) {
+  if (!isDefaultTheme()) { themed.rows(doc, pairs); return; }
   const labelW = 220;
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   doc.x = startX;
-  const valueW = doc.page.width - startX - labelW - PAGE_MARGIN - 10;
+  const valueW = doc.page.width - startX - labelW - pageMargin() - 10;
   for (const [label, value] of pairs) {
     // Long wrapped values advance doc.y past the page bottom; without
     // this guard the next label lands off-page and pdfkit emits an
     // orphaned near-blank page (seen on the first real-data NC render).
     const estH = doc.font("body").fontSize(10).heightOfString(value ?? "—", { width: valueW });
-    if (doc.y + Math.max(estH, 14) > doc.page.height - PAGE_MARGIN - 40) {
+    if (doc.y + Math.max(estH, 14) > doc.page.height - pageMargin() - 40) {
       doc.addPage();
       doc.x = startX;
     }
@@ -82,7 +86,7 @@ function carRows(doc: PDFKit.PDFDocument, pairs: [string, string | undefined][])
     doc.y = Math.max(doc.y, y + estH) + 2;
     doc.moveDown(0.05);
   }
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 type CarTableSpec = {
@@ -93,9 +97,10 @@ type CarTableSpec = {
 };
 
 function carTable(doc: PDFKit.PDFDocument, spec: CarTableSpec) {
+  if (!isDefaultTheme()) { themed.table(doc, spec); return; }
   const { headers, widths, rows: dataRows } = spec;
   const align = spec.align ?? headers.map(() => "left" as const);
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   const padY = 3;
   // Rows grow to fit wrapped cell text: pdfkit wraps long cells at the
   // column width regardless of lineBreak/ellipsis, so a fixed row height
@@ -133,7 +138,7 @@ function carTable(doc: PDFKit.PDFDocument, spec: CarTableSpec) {
   y += headerH;
   for (const r of dataRows) {
     const rowH = rowHeightFor(r, false);
-    if (y + rowH > doc.page.height - PAGE_MARGIN - 40) {
+    if (y + rowH > doc.page.height - pageMargin() - 40) {
       doc.addPage();
       y = doc.y;
       const hh = rowHeightFor(headers, true);
@@ -146,15 +151,16 @@ function carTable(doc: PDFKit.PDFDocument, spec: CarTableSpec) {
     y += rowH;
   }
   doc.y = y + 4;
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
 }
 
 type CarMetric = { label: string; value: string };
 
 function carMetricStrip(doc: PDFKit.PDFDocument, metrics: CarMetric[]) {
-  const usableW = doc.page.width - PAGE_MARGIN * 2;
+  if (!isDefaultTheme()) { themed.metricStrip(doc, metrics); return; }
+  const usableW = doc.page.width - pageMargin() * 2;
   const cellW = usableW / metrics.length;
-  const startX = PAGE_MARGIN;
+  const startX = pageMargin();
   const y = doc.y;
   const h = 50;
   for (let i = 0; i < metrics.length; i++) {

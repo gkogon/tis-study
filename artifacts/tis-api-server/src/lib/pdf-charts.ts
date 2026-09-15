@@ -22,8 +22,8 @@
  */
 
 import { profileForLandUse, distributeDaily, type ProfileLocale } from "./office-diurnal";
+import { activeTheme, isDefaultTheme, pageMargin } from "./report-theme/active";
 
-const PAGE_MARGIN = 50;
 const TEXT_GRAY = "#6b7280";
 
 /** Coerce a chart value to a finite number so NaN/Infinity can never reach a draw op. */
@@ -40,6 +40,21 @@ export const CHART_COLORS = {
   axis: "#595959",
   baseline: "#9CA3AF",
 };
+
+/** Chart palette: the Velocity constants by default, the firm's palette under a theme. */
+function chartColors(): typeof CHART_COLORS {
+  if (isDefaultTheme()) return CHART_COLORS;
+  const t = activeTheme();
+  return {
+    inbound: t.charts.series[0],
+    outbound: t.charts.series[1] ?? t.palette.accent,
+    caption: t.palette.primary,
+    line: t.palette.primary,
+    grid: t.palette.rule,
+    axis: t.palette.muted,
+    baseline: t.palette.muted,
+  };
+}
 
 type Scale = { max: number; step: number; ticks: number[] };
 
@@ -63,7 +78,7 @@ function niceScale(maxValue: number, targetTicks = 5): Scale {
 
 /** Page-break if `needed` vertical points will not fit below the cursor. */
 function ensureSpace(doc: PDFKit.PDFDocument, needed: number): void {
-  if (doc.y + needed > doc.page.height - PAGE_MARGIN - 30) {
+  if (doc.y + needed > doc.page.height - pageMargin() - 30) {
     doc.addPage();
   }
 }
@@ -93,13 +108,13 @@ function drawFrame(
   },
 ): ChartLayout {
   const { title, yLabel, xLabel, legendW, plotH, scale, yTickFormat } = opts;
-  const chartX0 = PAGE_MARGIN;
-  const chartW = doc.page.width - PAGE_MARGIN * 2;
+  const chartX0 = pageMargin();
+  const chartW = doc.page.width - pageMargin() * 2;
 
   // Caption (Velocity green, above the plot).
   let cursorY = doc.y;
   if (title) {
-    doc.font("bold").fontSize(9.5).fillColor(CHART_COLORS.caption).text(title, chartX0, cursorY, {
+    doc.font("bold").fontSize(9.5).fillColor(chartColors().caption).text(title, chartX0, cursorY, {
       width: chartW,
     });
     cursorY = doc.y + 4;
@@ -120,15 +135,15 @@ function drawFrame(
   doc.lineWidth(0.5);
   for (const t of scale.ticks) {
     const y = plotBottom - (t / scale.max) * plotH;
-    doc.strokeColor(CHART_COLORS.grid).moveTo(plotLeft, y).lineTo(plotRight, y).stroke();
-    doc.font("body").fontSize(7).fillColor(CHART_COLORS.axis).text(yTickFormat(t), chartX0 + yTitleW, y - 4, {
+    doc.strokeColor(chartColors().grid).moveTo(plotLeft, y).lineTo(plotRight, y).stroke();
+    doc.font("body").fontSize(7).fillColor(chartColors().axis).text(yTickFormat(t), chartX0 + yTitleW, y - 4, {
       width: yLabelsW - 4,
       align: "right",
     });
   }
 
   // Baseline (x-axis).
-  doc.lineWidth(0.8).strokeColor(CHART_COLORS.baseline).moveTo(plotLeft, plotBottom).lineTo(plotRight, plotBottom).stroke();
+  doc.lineWidth(0.8).strokeColor(chartColors().baseline).moveTo(plotLeft, plotBottom).lineTo(plotRight, plotBottom).stroke();
 
   // y-axis title (rotated).
   if (yLabel) {
@@ -136,7 +151,7 @@ function drawFrame(
     const tx = chartX0 + 4;
     doc.save();
     doc.rotate(-90, { origin: [tx, cy] });
-    doc.font("body").fontSize(8).fillColor(CHART_COLORS.axis).text(yLabel, tx - 70, cy - 5, {
+    doc.font("body").fontSize(8).fillColor(chartColors().axis).text(yLabel, tx - 70, cy - 5, {
       width: 140,
       align: "center",
     });
@@ -145,7 +160,7 @@ function drawFrame(
 
   // x-axis title.
   if (xLabel) {
-    doc.font("body").fontSize(8).fillColor(CHART_COLORS.axis).text(xLabel, plotLeft, plotBottom + xLabelH + 1, {
+    doc.font("body").fontSize(8).fillColor(chartColors().axis).text(xLabel, plotLeft, plotBottom + xLabelH + 1, {
       width: plotW,
       align: "center",
     });
@@ -164,7 +179,7 @@ function drawLegend(
   let y = layout.plotTop + 2;
   for (const e of entries) {
     doc.rect(x, y, 8, 8).fill(e.color);
-    doc.font("body").fontSize(8).fillColor(CHART_COLORS.axis).text(e.name, x + 11, y, { width: layout.chartX0 + layout.chartW - x - 11 });
+    doc.font("body").fontSize(8).fillColor(chartColors().axis).text(e.name, x + 11, y, { width: layout.chartX0 + layout.chartW - x - 11 });
     y += 14;
   }
 }
@@ -173,14 +188,14 @@ function finish(doc: PDFKit.PDFDocument, layout: ChartLayout, xLabel?: string, c
   const xTitleH = xLabel ? 14 : 0;
   let endY = layout.plotBottom + 12 + xTitleH + 4;
   if (caption) {
-    doc.font("body").fontSize(7.5).fillColor(CHART_COLORS.axis).text(caption, layout.chartX0, endY, {
+    doc.font("body").fontSize(7.5).fillColor(chartColors().axis).text(caption, layout.chartX0, endY, {
       width: layout.chartW,
       paragraphGap: 2,
     });
     endY = doc.y;
   }
   doc.fillColor("black").lineWidth(1);
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
   doc.y = endY + 6;
 }
 
@@ -258,7 +273,7 @@ export function drawColumnChart(doc: PDFKit.PDFDocument, spec: ColumnChartSpec):
       }
     }
     // x label centred under the group.
-    doc.font("body").fontSize(7).fillColor(CHART_COLORS.axis).text(spec.categories[i], layout.plotLeft + i * groupW, layout.plotBottom + 2, {
+    doc.font("body").fontSize(7).fillColor(chartColors().axis).text(spec.categories[i], layout.plotLeft + i * groupW, layout.plotBottom + 2, {
       width: groupW,
       align: "center",
     });
@@ -289,7 +304,7 @@ export type LineChartSpec = {
 export function drawLineChart(doc: PDFKit.PDFDocument, spec: LineChartSpec): void {
   const plotH = spec.height ?? 200;
   const yTickFormat = spec.yTickFormat ?? ((v: number) => fmtTick(v));
-  const color = spec.color ?? CHART_COLORS.line;
+  const color = spec.color ?? chartColors().line;
   const fillArea = spec.fillArea ?? true;
   const captionH = spec.title ? 16 : 0;
   ensureSpace(doc, captionH + plotH + 30 + (spec.xLabel ? 14 : 0) + (spec.caption ? 28 : 0));
@@ -329,7 +344,7 @@ export function drawLineChart(doc: PDFKit.PDFDocument, spec: LineChartSpec): voi
   const step = spec.labelEvery ?? 1;
   for (let i = 0; i < n; i++) {
     if (i % step !== 0) continue;
-    doc.font("body").fontSize(7).fillColor(CHART_COLORS.axis).text(spec.categories[i], px(i) - stepX / 2, layout.plotBottom + 2, {
+    doc.font("body").fontSize(7).fillColor(chartColors().axis).text(spec.categories[i], px(i) - stepX / 2, layout.plotBottom + 2, {
       width: stepX,
       align: "center",
     });
@@ -356,17 +371,17 @@ export function drawCompassRose(doc: PDFKit.PDFDocument, spec: CompassRoseSpec):
   const size = 210; // square figure height in points
   ensureSpace(doc, size + 46);
   const startY = doc.y;
-  doc.font("bold").fontSize(9.5).fillColor(CHART_COLORS.caption).text(spec.title, PAGE_MARGIN, startY);
+  doc.font("bold").fontSize(9.5).fillColor(chartColors().caption).text(spec.title, pageMargin(), startY);
   const top = doc.y + 6;
   const cx = doc.page.width / 2;
   const cy = top + size / 2;
   const rMax = size / 2 - 22; // leave room for edge labels
   const vals = spec.values.map(fin);
   const maxV = Math.max(1e-9, ...vals);
-  const color = spec.color || CHART_COLORS.outbound;
+  const color = spec.color || chartColors().outbound;
   const n = spec.labels.length;
   // reference rings
-  doc.lineWidth(0.5).strokeColor(CHART_COLORS.grid);
+  doc.lineWidth(0.5).strokeColor(chartColors().grid);
   doc.circle(cx, cy, rMax).stroke();
   doc.circle(cx, cy, rMax * 0.5).stroke();
   for (let i = 0; i < n; i++) {
@@ -375,7 +390,7 @@ export function drawCompassRose(doc: PDFKit.PDFDocument, spec: CompassRoseSpec):
     const fx = cx + rMax * Math.cos(ang);
     const fy = cy + rMax * Math.sin(ang);
     // faint full-length spoke
-    doc.lineWidth(0.4).strokeColor(CHART_COLORS.grid).moveTo(cx, cy).lineTo(fx, fy).stroke();
+    doc.lineWidth(0.4).strokeColor(chartColors().grid).moveTo(cx, cy).lineTo(fx, fy).stroke();
     // value spoke
     const r = rMax * (vals[i]! / maxV);
     const x = cx + r * Math.cos(ang);
@@ -385,15 +400,15 @@ export function drawCompassRose(doc: PDFKit.PDFDocument, spec: CompassRoseSpec):
     // edge label
     const lx = cx + (rMax + 12) * Math.cos(ang);
     const ly = cy + (rMax + 12) * Math.sin(ang);
-    doc.font("body").fontSize(7).fillColor(CHART_COLORS.axis)
+    doc.font("body").fontSize(7).fillColor(chartColors().axis)
       .text(`${spec.labels[i]} ${Math.round(vals[i]!)}%`, lx - 20, ly - 4, { width: 40, align: "center" });
   }
   doc.y = cy + size / 2 + 8;
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
   if (spec.caption) {
-    doc.font("body").fontSize(9).fillColor(TEXT_GRAY)
-      .text(spec.caption, PAGE_MARGIN, doc.y, { width: doc.page.width - PAGE_MARGIN * 2, paragraphGap: 6 });
-    doc.x = PAGE_MARGIN;
+    doc.font("body").fontSize(9).fillColor(isDefaultTheme() ? TEXT_GRAY : chartColors().axis)
+      .text(spec.caption, pageMargin(), doc.y, { width: doc.page.width - pageMargin() * 2, paragraphGap: 6 });
+    doc.x = pageMargin();
   }
 }
 
@@ -431,9 +446,9 @@ export function renderDiurnalCharts(doc: PDFKit.PDFDocument, r: any, locale: Pro
   const hourly = distributeDaily(daily, sel.profile);
   const hourLabels = Array.from({ length: 24 }, (_, h) => String(h));
 
-  doc.x = PAGE_MARGIN;
+  doc.x = pageMargin();
   doc.font("bold").fontSize(11).fillColor("black").text("Trip Distribution by Time of Day", { paragraphGap: 2 });
-  doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(
+  doc.font("body").fontSize(9).fillColor(isDefaultTheme() ? TEXT_GRAY : chartColors().axis).text(
     `Estimated within-day distribution of the ${fmtCount(daily)} gross daily trips and the resulting on-site accumulation. ${sel.profile.source}`,
     { paragraphGap: 6 },
   );
@@ -444,8 +459,8 @@ export function renderDiurnalCharts(doc: PDFKit.PDFDocument, r: any, locale: Pro
     categories: hourLabels,
     stacked: true,
     series: [
-      { name: "Outbound", color: CHART_COLORS.outbound, values: hourly.departuresSharePct },
-      { name: "Inbound", color: CHART_COLORS.inbound, values: hourly.arrivalsSharePct },
+      { name: "Outbound", color: chartColors().outbound, values: hourly.departuresSharePct },
+      { name: "Inbound", color: chartColors().inbound, values: hourly.arrivalsSharePct },
     ],
     yLabel: "% of daily total",
     xLabel: "Hour of day",
@@ -456,7 +471,7 @@ export function renderDiurnalCharts(doc: PDFKit.PDFDocument, r: any, locale: Pro
     title: "Figure — Daily Trip Accumulation",
     categories: hourLabels,
     values: hourly.accumulation,
-    color: CHART_COLORS.outbound,
+    color: chartColors().outbound,
     yLabel: "On-site (est.)",
     xLabel: "Hour of day",
     caption: `Peak on-site accumulation ~${fmtCount(hourly.peakAccumulation)} at ${String(hourly.peakAccumulationHour).padStart(2, "0")}:00, from ${fmtCount(daily)} gross daily trips on the ${sel.family ?? "supplied"} within-day profile. Screening estimate; not a substitute for a calibrated time-of-day model.`,
