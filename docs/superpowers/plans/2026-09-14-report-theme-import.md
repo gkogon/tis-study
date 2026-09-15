@@ -612,6 +612,8 @@ eq(matchFamily("Garamond", { serif: true }), { family: "liberation-serif", exact
 eq(matchFamily("Futura"), { family: "liberation-sans", exact: false }, "unknown sans → Liberation Sans");
 eq(matchFamily("Consolas", { mono: true }), { family: "liberation-mono", exact: false }, "unknown mono → Liberation Mono");
 eq(matchFamily("DejaVu Sans"), { family: "dejavu-sans", exact: true }, "DejaVu exact");
+eq(matchFamily(parsePostScriptName("ABCDEF+DejaVuSans-Bold").family), { family: "dejavu-sans", exact: true }, "DejaVuSans PostScript name round-trips");
+eq(matchFamily(parsePostScriptName("SourceSans3-BoldIt").family), { family: "source-sans-3", exact: true }, "SourceSans3 PostScript name round-trips");
 for (const fam of ["carlito", "liberation-serif", "open-sans"]) for (const st of ["regular", "bold", "italic", "bolditalic"]) ok(existsSync(fontPath(fam, st)), `fontPath(${fam}, ${st}) exists`);
 ok(fontPath("dejavu-sans", "bold").endsWith("DejaVuSans-Bold.ttf"), "DejaVu bold maps to the existing file");
 ok(fontPath("dejavu-sans", "italic").endsWith("DejaVuSans.ttf"), "DejaVu has no italic → regular");
@@ -701,8 +703,8 @@ const ALIASES: Array<{ re: RegExp; family: BundledFamily; exact: boolean }> = [
   { re: /^roboto$/i, family: "roboto", exact: true },
   { re: /^lato$/i, family: "lato", exact: true },
   { re: /^montserrat$/i, family: "montserrat", exact: true },
-  { re: /^source sans( pro| 3)?$/i, family: "source-sans-3", exact: true },
-  { re: /^dejavu sans$/i, family: "dejavu-sans", exact: true },
+  { re: /^source ?sans ?(pro|3)?$/i, family: "source-sans-3", exact: true },
+  { re: /^deja ?vu sans$/i, family: "dejavu-sans", exact: true },
   { re: /^(verdana|tahoma)$/i, family: "dejavu-sans", exact: false },
 ];
 
@@ -1036,12 +1038,13 @@ const pdfBytes = await new Promise((resolve, reject) => {
   });
 });
 const pdfText = pdfBytes.toString("latin1");
-const rg = (hex) => [1, 3, 5].map((i) => Math.round((parseInt(hex.slice(i, i + 2), 16) / 255) * 1e6) / 1e6).join(" ");
+// PDFKit writes colours as `r g b scn` / `SCN` under /DeviceRGB with full JS precision (verified on 0.15).
+const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).join(" ");
 ok(/\/BaseFont \/[A-Z]{6}\+LiberationSerif-Bold/.test(pdfText), "heading embeds Liberation Serif Bold");
 ok(/\/BaseFont \/[A-Z]{6}\+Carlito/.test(pdfText), "body embeds Carlito");
-ok(pdfText.includes(`${rg("#c0392b")} rg`), "heading colour op present");
-ok(pdfText.includes(`${rg("#1f3a5f")} rg`), "table header fill op present");
-ok(pdfText.includes(`${rg("#1f3a5f")} RG`), "grid rule stroke op present");
+ok(pdfText.includes(`${rgb("#c0392b")} scn`), "heading colour op present");
+ok(pdfText.includes(`${rgb("#1f3a5f")} scn`), "table header fill op present");
+ok(pdfText.includes(`${rgb("#1f3a5f")} SCN`), "grid rule stroke op present");
 ok(pdfText.includes("Page 1 of 1"), "footer interpolated");
 ```
 
@@ -1532,7 +1535,7 @@ export function cover(doc: PDFKit.PDFDocument, input: CoverInput): void {
 node ./scripts/verify-theme-units.mjs && pnpm --filter @workspace/tis-api-server run typecheck
 ```
 
-Expected: `ALL PASS`. If the `rg` colour assertions fail, print the content stream (`pdfText.match(/\d\.\d+ \d\.\d+ \d\.\d+ rg/g)`) and confirm PDFKit's rounding; adjust the `rg` helper in the check to match PDFKit's `PDFObject.number` (6-decimal rounding), never the primitives.
+Expected: `ALL PASS`. If a colour assertion fails, print the content stream (`pdfText.match(/[\d.]+ [\d.]+ [\d.]+ (scn|SCN)/g)`) and compare with the `rgb()` helper's output; fix the helper's formatting, never the primitives.
 
 - [ ] **Step 6: Commit**
 
