@@ -753,6 +753,27 @@ ok(zebraCapRes.style && zebraCapRes.style.caption.style.color === "#6d6e71" && z
 const cov = await import(path.resolve(here, "../src/lib/report-theme/derive/cover.ts"));
 const syn = await import(path.resolve(here, "../src/lib/report-theme/derive/synonyms.ts"));
 eq(syn.mapSynonyms(["1.0 INTRODUCTION", "2.0 SITE TRIP GENERATION", "3.0 Intersection Capacity Analysis", "4.0 Conclusions", "5.0 Conclusions Again"]), { introduction: "INTRODUCTION", "trip-generation": "SITE TRIP GENERATION", "capacity-analysis": "Intersection Capacity Analysis", conclusions: "Conclusions" }, "synonyms keyed canonically, numbering stripped, first wins");
+// Final-review Important 4: sample-specific wording never becomes a synonym,
+// and a loose regex cannot retitle a section with a different meaning.
+eq(syn.mapSynonyms(["Existing Conditions (2024)"]), {}, "synonyms: a year in parentheses is the sample's, not a synonym");
+eq(syn.mapSynonyms(["Existing (2024) Intersection Analysis"]), {}, "synonyms: a digit anywhere rejects the wording");
+eq(syn.mapSynonyms(["Annual Growth Rate and Nearby Developments"]), {}, "synonyms: more than five words is a sentence, not a title");
+eq(syn.mapSynonyms(["Project Site Distribution and Assignment"]), { "trip-distribution": "Project Site Distribution and Assignment" }, "synonyms: 'Project Site Distribution and Assignment' is trip distribution, not the site description");
+eq(syn.mapSynonyms(["Area Land Uses"]), {}, "synonyms: 'land use' alone is not the site description");
+eq(syn.mapSynonyms(["Planned Future Transportation Improvements"]), {}, "synonyms: bare 'improvements' is not mitigation (fairfax)");
+eq(syn.mapSynonyms(["PROFFERED IMPROVEMENTS"]), {}, "synonyms: 'Proffered Improvements' is not mitigation (stafford)");
+eq(syn.mapSynonyms(["Roadway Network Improvements"]), {}, "synonyms: 'Roadway Network Improvements' is not mitigation (twisp)");
+eq(syn.mapSynonyms(["Background"]), {}, "synonyms: bare 'Background' is not the introduction");
+eq(syn.mapSynonyms(["Trip Generation Summary"]), { "trip-generation": "Trip Generation Summary" }, "synonyms: generic words (summary) are neither evidence nor foreign");
+eq(syn.mapSynonyms(["Existing Land Use"]), {}, "synonyms: a heading whose other word belongs to another key (existing → existing-conditions) is rejected");
+eq(syn.mapSynonyms(["RECOMMENDED IMPROVEMENTS", "Summary and Conclusions", "Site Traffic Distribution and Assignment", "PROJECTED NO-BUILD CONDITIONS", "Crash History", "Traffic Operations Analysis", "Conclusions and Recommendations"]),
+  { mitigation: "RECOMMENDED IMPROVEMENTS", conclusions: "Summary and Conclusions", "trip-distribution": "Site Traffic Distribution and Assignment", "background-growth": "PROJECTED NO-BUILD CONDITIONS", safety: "Crash History", "capacity-analysis": "Traffic Operations Analysis" },
+  "synonyms: the corpus's good wordings still map (and 'Conclusions and Recommendations' is not taken twice)");
+eq(canonical.canonicalKey("Background"), null, "canonical: bare background → null");
+eq(canonical.canonicalKey("8.0 INFRASTRUCTURE IMPROVEMENTS"), null, "canonical: bare improvements → null");
+eq(canonical.canonicalKey("2.0 EXISTING AND PROPOSED LAND USE"), "site-description", "canonical: qualified land use → site-description");
+eq(canonical.canonicalKey("6.4 Mitigation"), "mitigation", "canonical: mitigation still maps");
+eq(canonical.canonicalKey("1.0 LOCATION DESCRIPTION"), "site-description", "canonical: location description → site-description");
 const coverPage = mkPage(1, [
   run(1, "TRAFFIC IMPACT STUDY", 30, "#ffffff", 72, 100, 380, { bold: true }),
   run(1, "Maple Grove Mixed-Use Development", 18, "#222222", 72, 320, 330),
