@@ -86,7 +86,7 @@ async function main() {
     /idApplyBtn|idOKBtn|GoBtn/i.test(b.id)
   );
   console.log(`After-popup OK/Done/Apply candidates (${newButtons.length}):`);
-  for (const b of newButtons.slice(0, 20)) console.log(`  <${b.tag} id="${b.id}" name="${b.name}" cls="${b.cls}" @(${b.x},${b.y})> "${b.text}"`);
+  for (const b of newButtons.slice(0, 20) as any[]) console.log(`  <${b.tag} id="${b.id}" name="${b.name}" cls="${b.cls}" @(${b.x},${b.y})> "${b.text}"`);
 
   // Also list all checkboxRadioButtonLabel elements that are visible
   const checkboxLabels = await page.evaluate(() => {

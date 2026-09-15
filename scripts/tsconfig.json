@@ -1,9 +1,10 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
-    "types": ["node"]
+    "noEmit": true,
+    "types": ["node"],
+    "lib": ["es2022", "dom"],
+    "allowImportingTsExtensions": true
   },
   "include": ["src"]
 }
