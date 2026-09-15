@@ -83,24 +83,43 @@ function detectBand(insts: Inst[]): HeadingLevel["band"] {
 const gapBefore = (it: Inst) => { const prev = it.all[it.idx - 1]; return prev ? clamp(it.line.y - it.line.size - prev.y, 0, 48) : 12; };
 const gapAfter = (it: Inst) => { const next = it.all[it.idx + 1]; return next ? clamp(next.y - next.size - it.line.y, 0, 36) : 6; };
 
+/** Digit-normalised, whitespace-collapsed, lowercased line text — the key a
+ *  running header/footer repeats under even when it carries a page number. */
+const normText = (t: string) => t.replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
+
 /**
  * Heading levels = distinct (font, size, bold, colour) styles that stand alone
  * on a line, differ from the body, and recur (or are much larger), ranked by
- * size. At most three; running header/footer zones are excluded.
+ * size. At most three; running headers/footers are excluded by their
+ * structural signature — the same (digit-normalised) text repeating at
+ * nearly the same baseline on most interior pages — not by page position,
+ * which a real margin can put anywhere near a genuine heading too.
  */
 export function detectHeadings(pages: ScannedPage[], body: BodyStyle): HeadingLevel[] {
+  const perPage = interiorPages(pages).map((p) => ({ page: p, lines: linesOf(p) }));
+
+  const occurrences = new Map<string, Array<{ page: number; y: number }>>();
+  for (const { page: p, lines } of perPage) for (const ln of lines) {
+    const key = normText(ln.text);
+    if (!key) continue;
+    const arr = occurrences.get(key) ?? [];
+    arr.push({ page: p.page, y: ln.y });
+    occurrences.set(key, arr);
+  }
+  const minPages = Math.max(2, Math.ceil(perPage.length * 0.6));
+  const runningHeaders = new Set<string>();
+  for (const [key, occ] of occurrences) {
+    const pageCount = new Set(occ.map((o) => o.page)).size;
+    if (pageCount < minPages) continue;
+    const ys = occ.map((o) => o.y);
+    if (Math.max(...ys) - Math.min(...ys) <= 3) runningHeaders.add(key);
+  }
+
   const groups = new Map<string, { insts: Inst[]; run: TextRun }>();
-  for (const p of interiorPages(pages)) {
-    const lines = linesOf(p);
+  for (const { page: p, lines } of perPage) {
     lines.forEach((ln, idx) => {
       if (!ln.uniform || !ln.text.trim() || ln.text.length > 90 || ln.text.split(" ").length > 14) return;
-      // Running headers/footers sit within a roughly fixed distance of the
-      // physical page edge, unlike heading content (which tracks the page's
-      // top margin and so can land close to the edge on a tall page with a
-      // small margin) — so exclude by an absolute band, not a page-height
-      // fraction, which would wrongly clip a heading on e.g. an A4 page with
-      // a 54pt top margin.
-      if (ln.y < 45 || ln.y > p.height - 45) return;
+      if (runningHeaders.has(normText(ln.text))) return; // running header/footer, not a heading
       // Captions and table-header rows are bold but never headings.
       if (/^(table|figure)\s+\d/i.test(ln.text)) return;
       const r = ln.runs[0];

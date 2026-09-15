@@ -189,5 +189,43 @@ ok(heads[0].rule && heads[0].rule.color === "#1a5276" && heads[0].rule.width ===
 ok(heads[1].rule === null, "H2 has no rule");
 ok(heads[0].spaceAfter >= 8 && heads[0].spaceAfter <= 20, `H1 spaceAfter measured (${heads[0].spaceAfter})`);
 
+// ─── running header/footer excluded by recurrence, not position ────────────
+// A 1-inch (72pt) margin can put a running header's baseline at y=48 — well
+// inside the band a position-based cutoff would need to exclude real
+// headers, yet close enough to a genuine heading's own baseline that a
+// position rule can't tell them apart. Recurrence can: a running header
+// repeats the same (digit-normalised) text at nearly the same baseline on
+// most interior pages; a heading's text does not.
+const header = (page, text) => run(page, text, 9, "#1a5276", 72, 48, 260, { bold: true });
+const h1B = (page, text) => run(page, text, 14, "#000000", 72, 84, 200, { bold: true });
+const bodyLineB = (page, text) => run(page, text, 8, "#000000", 72, 110, 400);
+const bodyTextsB = [
+  "Body text line one that is long enough to count as a paragraph line for this fixture.",
+  "Second body line of similar length appearing on this page for the same fixture here.",
+  "Third body line again with enough words to be a paragraph for this test fixture too.",
+  "Fourth body line closing out the section with enough length to match the others here.",
+];
+const h1TextsB = ["1.0 ONE", "2.0 TWO", "3.0 THREE", "4.0 FOUR"];
+const pageNumsB = [2, 3, 4, 5];
+
+// Fixture 1: the header text is IDENTICAL on every page (a real running
+// header) at y=48 — it must be excluded even though that baseline sits
+// nowhere a page-height percentage or an absolute edge band could safely cut.
+const pagesB = pageNumsB.map((n, i) => mkPage(n, [header(n, "Acme Engineering | Traffic Impact Study"), h1B(n, h1TextsB[i]), bodyLineB(n, bodyTextsB[i])]));
+const bodyB = typo.bodyStyle(pagesB);
+eq(bodyB && [bodyB.size, bodyB.color, bodyB.bold], [8, "#000000", false], "bodyStyle for the recurring-header fixture");
+const headsB = typo.detectHeadings(pagesB, bodyB);
+eq(headsB.map((h) => h.size), [14], "recurring same-text header at y=48 excluded; only the 14pt H1 remains");
+
+// Fixture 2: same style and the same y=48 position, but the header text
+// differs on every page (no real running header repeats different words per
+// page). Recurrence no longer sees it as a header, so position alone must
+// not exclude it either — it is picked up as its own heading level under the
+// ordinary style rules. Pinned explicitly so this behaviour is intended.
+const pagesC = pageNumsB.map((n, i) => mkPage(n, [header(n, ["Northbound Corridor", "Southbound Corridor", "Eastbound Corridor", "Westbound Corridor"][i]), h1B(n, h1TextsB[i]), bodyLineB(n, bodyTextsB[i])]));
+const bodyC = typo.bodyStyle(pagesC);
+const headsC = typo.detectHeadings(pagesC, bodyC);
+eq(headsC.map((h) => [h.size, h.color]), [[14, "#000000"], [9, "#1a5276"]], "non-recurring header-styled line at the same position is not excluded by position alone");
+
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");
