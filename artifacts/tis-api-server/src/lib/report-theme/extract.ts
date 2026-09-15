@@ -120,7 +120,7 @@ export async function extractTheme(pdf: Buffer, opts: ExtractOptions): Promise<S
     const fig = detectFigureCaption(interiorPages(prefix), body);
 
     const mutedCandidates = [tables.style?.caption.style.color, zones.header?.style.color, zones.footer?.style.color, fig?.style.color].filter((c): c is string => !!c);
-    const palette = derivePalette(report, body, heads, mutedCandidates);
+    const palette = derivePalette(report, body, heads, mutedCandidates, coverRes.cover);
 
     if (fallbacks >= 4) throw new ThemeExtractError(422, "No formatting could be detected (is this a scanned image?).");
 

@@ -521,6 +521,35 @@ const cellFillRes = tbl.detectTables([pagesA[0], cellFillPage], bodyA, null);
 ok(cellFillRes.style && cellFillRes.style.header.fill === "#c0c0c0", `per-cell header fill: the cells' colour is the header fill (${cellFillRes.style?.header.fill})`);
 ok(cellFillRes.style && cellFillRes.style.header.bold === true && cellFillRes.style.body.size === 9, `per-cell header fill: header row and body still read (${JSON.stringify(cellFillRes.style?.header)})`);
 
+// palette.ts — a colour counts once per page, not once per rect, and pale
+// tints are shading. AMT DC: one LOS table page with 40 pale-green #ccffcc
+// cells outvoted the teal every heading is set in.
+const tealHead = (page, text) => run(page, text, 11, "#008080", 72, 105, 110, { bold: true });
+const losCells = (page) => [...Array(40)].map((_, i) => ({ page, x: 72 + (i % 4) * 110, y: 200 + Math.floor(i / 4) * 14, w: 100, h: 12, color: "#ccffcc" }));
+const palPages = [
+  mkPage(1, []),
+  mkPage(2, [tealHead(2, "Existing Conditions"), run(2, "Body text line one that is long enough to count as a paragraph line.", 11, "#000000", 72, 130, 440)]),
+  mkPage(3, [tealHead(3, "Site Development"), run(3, "Body text line one that is long enough to count as a paragraph line.", 11, "#000000", 72, 130, 440)], [], losCells(3)),
+  mkPage(4, [tealHead(4, "Conclusions"), run(4, "Body text line one that is long enough to count as a paragraph line.", 11, "#000000", 72, 130, 440)]),
+];
+const palBody = { font: "ABCDEF+Arial", size: 11, color: "#000000", serif: false, mono: false, bold: false };
+const palHeads = typo.detectHeadings(palPages, palBody);
+const palLos = pal.derivePalette(palPages, palBody, palHeads, []);
+eq(palLos.primary, "#008080", "palette: 40 pale-green LOS cells on one page do not outvote the teal headings");
+const darkCells = (page) => losCells(page).map((r) => ({ ...r, color: "#1f7a1f" }));
+const palDark = pal.derivePalette(palPages.map((p) => (p.page === 3 ? { ...p, rects: darkCells(3) } : p)), palBody, palHeads, []);
+eq(palDark.primary, "#008080", "palette: even saturated cells count once per page — 1 page < 3 heading lines × 3");
+const palNoHead = pal.derivePalette(palPages.map((p) => ({ ...p, runs: p.runs.filter((r) => r.color !== "#008080") })), palBody, [], []);
+ok(palNoHead.primary !== "#ccffcc", `palette: a pale tint (luminance ≥ 220) is never the primary (${palNoHead.primary})`);
+// … and a report set entirely in black borrows the cover's band colour
+// (McMahon Mansfield: blue #005984 bands on the cover, nothing but black inside).
+const blackPages = palPages.map((p) => ({ ...p, rects: [], runs: p.runs.map((r) => ({ ...r, color: "#000000" })) }));
+const blackHeads = typo.detectHeadings(blackPages, palBody);
+const coverBands = { background: { kind: "none" }, bands: [{ y0: 0, y1: 29, color: "#005984" }, { y0: 100, y1: 160, color: "#005984" }, { y0: 729, y1: 792, color: "#7ebc52" }], logo: null, elements: [], hasMetaBlock: false };
+eq(pal.derivePalette(blackPages, palBody, blackHeads, [], coverBands).primary, "#005984", "palette: all-black interior falls back to the cover colour covering the most band height (two blue strips 29+60 beat one 63 pt green)");
+eq(pal.derivePalette(blackPages, palBody, blackHeads, []).primary, "#000000", "palette: without a cover the all-black interior stays black");
+eq(pal.derivePalette(palPages, palBody, palHeads, [], coverBands).primary, "#008080", "palette: the cover never overrides a colour the interior actually draws");
+
 // ─── derive/cover.ts + derive/synonyms.ts ────────────────────────────────────
 const cov = await import(path.resolve(here, "../src/lib/report-theme/derive/cover.ts"));
 const syn = await import(path.resolve(here, "../src/lib/report-theme/derive/synonyms.ts"));
