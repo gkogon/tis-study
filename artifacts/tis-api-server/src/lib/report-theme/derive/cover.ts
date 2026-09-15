@@ -1,6 +1,6 @@
 import { linesOf, type ImagePlacement, type ScannedPage, type TextLine } from "../pdf-scan";
-import { imagePixelsToPngDataUrl } from "../png";
-import { luminance, type CoverElement, type Theme } from "../theme";
+import { imagePixelsToPngDataUrl, toRgba, type ImagePixels } from "../png";
+import { luminance, rgbToHex, type CoverElement, type Theme } from "../theme";
 import { normalizeName } from "./header-footer";
 import type { BodyStyle } from "./typography";
 
@@ -14,6 +14,14 @@ const PREPARED_FOR_RE = /^(prepared|submitted)\s+(for|to)\b:?/i;
 const PREPARED_BY_RE = /^(prepared|submitted)\s+by\b:?/i;
 
 const EMPTY: Theme["cover"] = { background: { kind: "none" }, bands: [], logo: null, elements: [], hasMetaBlock: false };
+
+/** Mean RGB of a decoded image (every 7th pixel), as a hex colour. */
+export function meanColor(px: ImagePixels): string {
+  const img = toRgba(px);
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < img.width * img.height; i += 7) { r += img.rgba[i * 4]; g += img.rgba[i * 4 + 1]; b += img.rgba[i * 4 + 2]; n++; }
+  return n ? rgbToHex(r / n, g / n, b / n) : "#ffffff";
+}
 
 /** Stored images are downsampled to this multiple of their placement size in points. */
 const STORED_IMAGE_SCALE = 2;
@@ -112,10 +120,20 @@ export function deriveCover(page1: ScannedPage | undefined, body: BodyStyle, hea
   const bgRect = page1.rects.find((r) => r.w * r.h >= 0.9 * area && luminance(r.color) < 250);
   const background: Theme["cover"]["background"] = bgData ? { kind: "image", data: bgData } : bgRect ? { kind: "color", color: bgRect.color } : { kind: "none" };
   if (bgImage && !bgData) warnings.push("Cover background image could not be decoded; using a plain cover.");
-  const bands = page1.rects
-    .filter((r) => r !== bgRect && r.w >= 0.9 * W && r.h >= 12 && r.h < 0.7 * H && luminance(r.color) < 250)
-    .sort((a, b) => a.y - b.y).slice(0, 8)
-    .map((r) => ({ y0: Math.round(r.y), y1: Math.round(r.y + r.h), color: r.color }));
+  // A full-width picture that is not the background (a hero band of cover
+  // art under the title, a footer banner) is kept as a band in its mean
+  // colour — the schema has no partial-page image, and the title the sample
+  // sets in white on that art must land on a coloured surface, not on white.
+  const imageBands = page1.images
+    .filter((im) => im !== bgImage && im.pixels && im.w >= 0.9 * W && im.h >= 0.2 * H && im.h < 0.7 * H)
+    .map((im) => ({ y0: Math.round(im.y), y1: Math.round(im.y + im.h), color: meanColor(im.pixels!) }))
+    .filter((b) => luminance(b.color) < 250);
+  const bands = [
+    ...page1.rects
+      .filter((r) => r !== bgRect && r.w >= 0.9 * W && r.h >= 12 && r.h < 0.7 * H && luminance(r.color) < 250)
+      .map((r) => ({ y0: Math.round(r.y), y1: Math.round(r.y + r.h), color: r.color })),
+    ...imageBands,
+  ].sort((a, b) => a.y0 - b.y0).slice(0, 8);
   const logoIm = pickLogo(page1, bgImage, interior);
   const logoData = logoIm?.pixels ? imagePixelsToPngDataUrl(logoIm.pixels, { w: logoIm.w * STORED_IMAGE_SCALE, h: logoIm.h * STORED_IMAGE_SCALE }) : null;
   const logo = logoIm && logoData ? { x: Math.round(logoIm.x), y: Math.round(logoIm.y), w: Math.round(logoIm.w), h: Math.round(logoIm.h), data: logoData } : null;
@@ -144,6 +162,17 @@ export function deriveCover(page1: ScannedPage | undefined, body: BodyStyle, hea
   }
   // A stray glyph or a bare number is not text worth a warning (fewer than three alphanumerics).
   for (const l of lines) if (!used.has(l) && (l.text.match(/[a-z0-9]/gi) ?? []).length >= 3) warnings.push(`Dropped cover text that could not be mapped: "${l.text.slice(0, 60)}".`);
+  // Light text needs a dark surface under it. The sample may have set the
+  // title in white over cover art this theme cannot carry (a partial-page
+  // picture, a gradient the mean-colour band flattens); when nothing dark
+  // sits under an element, its colour falls back to the body colour rather
+  // than vanishing white-on-white.
+  const darkUnder = (el: CoverElement): boolean => {
+    if (background.kind === "image") return true;
+    if (background.kind === "color" && luminance(background.color) < 200) return true;
+    return bands.some((b) => luminance(b.color) < 200 && b.y0 <= el.y + el.style.size && b.y1 >= el.y);
+  };
+  for (const el of els) if (luminance(el.style.color) > 200 && !darkUnder(el)) el.style.color = body.color;
   const elements = els.sort((a, b) => a.y - b.y).slice(0, 12);
   return { cover: { background, bands, logo, elements, hasMetaBlock: hasMeta }, coverTitle: title ? title.text : null, warnings };
 }

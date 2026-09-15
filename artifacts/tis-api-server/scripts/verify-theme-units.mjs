@@ -919,6 +919,25 @@ const scanMod = await import(path.resolve(here, "../src/lib/report-theme/pdf-sca
   ok(capped.length < full.length, `png: the capped encoding is smaller (${capped.length} < ${full.length})`);
 }
 
+// ─── final review follow-up: hero art → mean-colour band; light text needs a dark surface ──
+{
+  const green = (w, h) => { const d = new Uint8ClampedArray(w * h * 3); for (let i = 0; i < w * h; i++) { d[i * 3] = 100; d[i * 3 + 1] = 180; d[i * 3 + 2] = 120; } return { width: w, height: h, kind: 2, data: d }; };
+  const hero = mkPage(1, [
+    run(1, "TRAFFIC IMPACT ANALYSIS", 28, "#ffffff", 72, 300, 380, { bold: true }),
+    run(1, "Orchard Hills", 16, "#ffffff", 72, 340, 200),
+    run(1, "Prepared By: SCJ Alliance", 10, "#ffffff", 72, 560, 200),
+    run(1, "April 2023", 12, "#222222", 72, 640, 90),
+  ]);
+  hero.images.push({ page: 1, x: 0, y: 0, w: 612, h: 493, objId: "art", pixels: green(120, 97) });
+  hero.images.push({ page: 1, x: 0, y: 636, w: 612, h: 155, objId: "banner", pixels: { width: 120, height: 30, kind: 2, data: new Uint8ClampedArray(120 * 30 * 3).fill(252) } });
+  const heroRes = cov.deriveCover(hero, bodyA, null, { firmName: "SCJ Alliance" }, []);
+  eq(heroRes.cover.background.kind, "none", "hero: a 62 %-of-page picture is not the background");
+  eq(heroRes.cover.bands, [{ y0: 0, y1: 493, color: "#64b478" }], "hero: the full-width picture becomes a band in its mean colour; the near-white banner does not");
+  eq(heroRes.cover.elements.find((e) => e.role === "documentType").style.color, "#ffffff", "hero: white text over the dark band stays white");
+  eq(heroRes.cover.elements.find((e) => e.role === "preparedBy").style.color, bodyA.color, "hero: white text with nothing dark under it falls back to the body colour");
+  eq(heroRes.cover.elements.find((e) => e.role === "dateLabel").style.color, "#222222", "hero: dark text is left alone");
+}
+
 // ─── final review minors (e) + (f) on the cover ────────────────────────────
 {
   const dmy = mkPage(1, [
