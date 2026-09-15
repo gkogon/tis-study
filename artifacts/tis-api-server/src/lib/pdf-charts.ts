@@ -42,7 +42,7 @@ export const CHART_COLORS = {
 };
 
 /** Chart palette: the Velocity constants by default, the firm's palette under a theme. */
-function chartColors(): typeof CHART_COLORS {
+export function chartColors(): typeof CHART_COLORS {
   if (isDefaultTheme()) return CHART_COLORS;
   const t = activeTheme();
   return {

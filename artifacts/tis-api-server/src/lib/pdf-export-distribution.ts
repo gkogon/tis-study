@@ -7,9 +7,9 @@
 // prose, captions (incl. FDOT TAH §2.7), and doc.moveDown(0.2) spacing so the
 // refactored FL section is byte-identical to origin/main.
 import type { TripDistributionSummary } from "./trip-distribution";
-import { drawColumnChart, drawLineChart, drawCompassRose, CHART_COLORS } from "./pdf-charts";
+import { drawColumnChart, drawLineChart, drawCompassRose, chartColors } from "./pdf-charts";
 import { CARDINALS } from "./caltran-gravity";
-import { activeTheme, isDefaultTheme, pageMargin } from "./report-theme/active";
+import { isDefaultTheme, pageMargin } from "./report-theme/active";
 import * as themed from "./report-theme/draw";
 
 // ---- primitives table() closes over (copied per Path A) ----
@@ -470,7 +470,7 @@ export function renderTripDistributionSection(
   // ---- Distribution graphs (Task 8B): appended for every US flavor, incl. FL ----
   // (0) The plan exhibit. Goes FIRST because it is the figure a reviewer looks
   // for — the charts below quantify what this one locates.
-  drawDistributionPlan(doc, td, CHART_COLORS.outbound);
+  drawDistributionPlan(doc, td, chartColors().outbound);
   // (1) Directional distribution — compass rose over the eight octants.
   drawCompassRose(doc, {
     title: "Figure — Directional Distribution of Project Trips",
@@ -480,7 +480,7 @@ export function renderTripDistributionSection(
       "Screening-grade directional distribution of net new project trips by compass octant " +
       "(spoke length ∝ percent of project trips). Derived from the " +
       `${td.methodLabel} distribution.`,
-    color: CHART_COLORS.outbound,
+    color: chartColors().outbound,
   });
   // (2) Per-zone gravity share — top zones by trip share.
   {
@@ -489,7 +489,7 @@ export function renderTripDistributionSection(
       drawColumnChart(doc, {
         title: "Figure — Project Trip Share by Study-Area Zone",
         categories: top.map((z, i) => shortZoneLabel(z.name, i)),
-        series: [{ name: "Trip share (%)", color: CHART_COLORS.outbound, values: top.map((z) => fin2(z.sharePct)) }],
+        series: [{ name: "Trip share (%)", color: chartColors().outbound, values: top.map((z) => fin2(z.sharePct)) }],
         yLabel: "% of project trips",
         height: 190,
       });
@@ -507,7 +507,7 @@ export function renderTripDistributionSection(
             : "Figure — Trip Share vs. Distance from Site (Gravity Decay)",
         categories: byDist.map((z) => `${z.distanceMi.toFixed(2)}`),
         values: byDist.map((z) => fin2(z.sharePct)),
-        color: CHART_COLORS.line,
+        color: chartColors().line,
         yLabel: "% of project trips",
         xLabel: "distance from site (mi)",
         height: 190,

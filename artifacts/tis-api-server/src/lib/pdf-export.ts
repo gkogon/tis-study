@@ -35,7 +35,7 @@ import { renderTisNorthCarolina, renderTisSouthCarolina } from "./pdf-export-car
 import { appliedRateRows } from "./trip-rate-rows";
 import { isGrowthOverride } from "@workspace/tis-engine-core";
 import { renderTisState } from "./pdf-export-states";
-import { renderDiurnalCharts, drawColumnChart, drawLineChart, CHART_COLORS } from "./pdf-charts";
+import { renderDiurnalCharts, drawColumnChart, drawLineChart, chartColors } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
 import { renderLaneGroupQueues } from "./lane-group-queues";
 import { profileForLandUse, distributeDaily, type ProfileLocale } from "./office-diurnal";
@@ -4122,8 +4122,8 @@ function renderTisLondon(
       categories: diurnalHourLabels,
       stacked: true,
       series: [
-        { name: "Outbound", color: CHART_COLORS.outbound, values: diurnalHourly.departuresSharePct },
-        { name: "Inbound", color: CHART_COLORS.inbound, values: diurnalHourly.arrivalsSharePct },
+        { name: "Outbound", color: chartColors().outbound, values: diurnalHourly.departuresSharePct },
+        { name: "Inbound", color: chartColors().inbound, values: diurnalHourly.arrivalsSharePct },
       ],
       yLabel: "% of daily total",
       xLabel: "Hour of day",
@@ -4456,7 +4456,7 @@ function renderTisLondon(
       title: "Figure 6-2: Daily Person Accumulation",
       categories: diurnalHourLabels,
       values: diurnalHourly.accumulation,
-      color: CHART_COLORS.outbound,
+      color: chartColors().outbound,
       yLabel: "On-site (est.)",
       xLabel: "Hour of day",
       caption: `Peak on-site accumulation ~${fmtNum(diurnalHourly.peakAccumulation)} at ${String(diurnalHourly.peakAccumulationHour).padStart(2, "0")}:00, from ${fmtNum(tg.dailyTrips)} gross daily trips on the ${diurnalBasis} within-day profile. Screening estimate; not a substitute for a calibrated time-of-day model.`,
