@@ -3,6 +3,7 @@
 import { register } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
+import PDFDocument from "pdfkit";
 import { makeSyntheticTis } from "./lib/synthetic-pdf.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -141,6 +142,37 @@ ok(C1.cover.elements.map((e) => e.role).join(",") === "documentType,projectName,
 ok(C1.cover.elements[0].style.size === 30 && C1.cover.elements[0].style.color === "#ffffff", "blue-sans doc-type element style");
 ok(C1.cover.hasMetaBlock, "blue-sans has meta block");
 ok(C1.cover.logo && C1.cover.logo.w === 96, `blue-sans cover logo captured (${JSON.stringify(C1.cover.logo && { x: C1.cover.logo.x, y: C1.cover.logo.y, w: C1.cover.logo.w, h: C1.cover.logo.h })})`);
+
+// ─── extract.ts end-to-end ───────────────────────────────────────────────────
+const ex = await import(path.resolve(here, "../src/lib/report-theme/extract.ts"));
+const themeMod = await import(path.resolve(here, "../src/lib/report-theme/theme.ts"));
+const stored1 = await ex.extractTheme(blue, { firmName: "Acme Traffic Engineering", firmId: "f-1", now: new Date("2026-09-14T00:00:00Z") });
+ok(themeMod.StoredThemeSchema.safeParse(stored1).success, "blue-sans: stored theme validates");
+const t1 = stored1.theme;
+ok(t1.id === "firm-f-1", "theme id from firm");
+ok(t1.fonts.body.family === "carlito" && t1.fonts.body.requested === "Carlito", `body font Carlito (${JSON.stringify(t1.fonts.body)})`);
+ok(t1.page.size === "LETTER" && near(t1.page.margins.left, 72, 8) && near(t1.page.margins.top, 72, 6), `page geometry (${JSON.stringify(t1.page)})`);
+ok(t1.headings[0].style.size === 16 && t1.headings[0].style.color === "#1f4e79" && t1.headings[0].numbering === "1." && t1.headings[0].case === "title" && t1.headings[0].rule, `H1 style (${JSON.stringify(t1.headings[0])})`);
+ok(t1.headings[1].style.size === 13, `H2 size 13 (${t1.headings[1].style.size})`);
+ok(t1.headings[2].style.size < 13 && t1.headings[2].style.size >= 11, `H3 derived from H2 (${t1.headings[2].style.size})`);
+ok(t1.palette.primary === "#1f4e79" && t1.palette.text === "#222222", `palette (${JSON.stringify(t1.palette)})`);
+ok(t1.table.header.fill === "#1f4e79" && t1.table.rules.color === "#9dc3e6", `table (${JSON.stringify(t1.table.header)})`);
+ok(t1.header && t1.header.segments[0].text === "{{firm.name}} | {{documentType}}", `header tokens (${JSON.stringify(t1.header?.segments)})`);
+ok(t1.footer && t1.footer.segments[0].text === "Page {{page}} of {{pages}}", `footer tokens (${JSON.stringify(t1.footer?.segments)})`);
+ok(t1.cover.bands.length === 1 && t1.cover.elements.length === 5 && t1.cover.hasMetaBlock, "cover carried through");
+ok(t1.synonyms["trip-generation"] === "Trip Generation" && t1.synonyms["capacity-analysis"] === "Capacity Analysis", `synonyms (${JSON.stringify(t1.synonyms)})`);
+ok(t1.charts.series.length >= 2 && t1.charts.series[0] === "#1f4e79", "chart series from palette");
+ok(stored1.source.pages === 6 && stored1.source.extractedAt === "2026-09-14T00:00:00.000Z", "source metadata");
+ok(!JSON.stringify(stored1).includes("Maple Grove Partners"), "the sample's client name never reaches the theme");
+const stored2 = await ex.extractTheme(await makeSyntheticTis("serif-black"), { firmName: "Riverside Consulting", firmId: "f-2" });
+ok(stored2.theme.fonts.body.family === "liberation-serif" && stored2.theme.page.size === "A4" && stored2.theme.headings[0].numbering === "1.0" && stored2.theme.headings[0].case === "upper", `serif-black theme (${stored2.theme.fonts.body.family} ${stored2.theme.page.size} ${stored2.theme.headings[0].numbering} ${stored2.theme.headings[0].case})`);
+ok(stored2.theme.header === null && stored2.theme.footer && stored2.theme.footer.segments[0].text === "{{firm.name}} - {{page}}", "serif-black zones");
+// Error paths
+let e1 = null; try { await ex.extractTheme(Buffer.from("not a pdf at all"), { firmName: "X", firmId: "f" }); } catch (e) { e1 = e; }
+ok(e1 instanceof ex.ThemeExtractError && e1.status === 400, `non-PDF → 400 (${e1?.message})`);
+const onePage = await new Promise((res) => { const d = new PDFDocument(); const c = []; d.on("data", (x) => c.push(x)); d.on("end", () => res(Buffer.concat(c))); d.text("hello"); d.end(); });
+let e2 = null; try { await ex.extractTheme(onePage, { firmName: "X", firmId: "f" }); } catch (e) { e2 = e; }
+ok(e2 instanceof ex.ThemeExtractError && e2.status === 422, `one-page PDF → 422 (${e2?.message})`);
 
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");
