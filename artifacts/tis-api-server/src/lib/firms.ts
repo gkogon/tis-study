@@ -5,7 +5,7 @@
  * app (quota check, project save, settings) always has a `firmId` to
  * scope against — even before the user has gone through onboarding.
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, getTableColumns, sql } from "drizzle-orm";
 import {
   db,
   firmsTable,
@@ -16,10 +16,34 @@ import {
 import { logger } from "./logger";
 import { isAdminEmail } from "./auth";
 
+/**
+ * The firm as every authenticated request sees it: everything except
+ * `report_template`, the imported report theme. That jsonb column carries
+ * the sample's cover images (tens of KB after downsampling, more for a
+ * photographic cover) and only the PDF render and the template routes need
+ * it — they fetch it with `loadFirmReportTemplate`. Keeping it out of the
+ * per-request projection stops every quota check and project listing from
+ * dragging the theme through the database connection.
+ */
+export type FirmLite = Omit<Firm, "reportTemplate">;
+
 export type FirmWithRole = {
-  firm: Firm;
+  firm: FirmLite;
   role: FirmMember["role"];
 };
+
+const { reportTemplate: _reportTemplate, ...firmLiteColumns } = getTableColumns(firmsTable);
+void _reportTemplate;
+
+/** The firm's stored report theme (`firms.report_template`) — raw jsonb, `null` when unset. */
+export async function loadFirmReportTemplate(firmId: string): Promise<unknown> {
+  const [row] = await db
+    .select({ reportTemplate: firmsTable.reportTemplate })
+    .from(firmsTable)
+    .where(eq(firmsTable.id, firmId))
+    .limit(1);
+  return row?.reportTemplate ?? null;
+}
 
 /**
  * Trial defaults — applied to any firm with no active subscription.
@@ -47,7 +71,7 @@ export async function getActiveFirmForUser(
   userId: string,
 ): Promise<FirmWithRole | null> {
   const [row] = await db
-    .select({ firm: firmsTable, role: firmMembersTable.role })
+    .select({ firm: firmLiteColumns, role: firmMembersTable.role })
     .from(firmMembersTable)
     .innerJoin(firmsTable, eq(firmMembersTable.firmId, firmsTable.id))
     .where(eq(firmMembersTable.userId, userId))
@@ -100,7 +124,9 @@ export async function getOrCreateFirmForUser(
       { userId, firmId: firm.id, name: firm.name },
       "firms.personal_firm_created",
     );
-    return { firm, role: "owner" };
+    const { reportTemplate: _unused, ...lite } = firm;
+    void _unused;
+    return { firm: lite, role: "owner" };
   } catch (err) {
     // Possible race: another concurrent request created the firm. Re-read.
     const after = await getActiveFirmForUser(userId);
@@ -235,7 +261,7 @@ export function firmMayRunUncharged(
  * unlimited sentinel) are never blocked.
  */
 export async function reserveStudySlot(
-  firm: Firm,
+  firm: FirmLite,
   opts?: { email?: string | null },
 ): Promise<QuotaCheck> {
   if (isUnlimitedStudies(firm, opts?.email)) {
@@ -331,7 +357,7 @@ export async function reserveStudySlot(
  * thrown — the caller is already on an error path.
  */
 export async function releaseStudySlot(
-  firm: Firm,
+  firm: FirmLite,
   opts?: { email?: string | null; source?: QuotaSource },
 ): Promise<void> {
   if (isUnlimitedStudies(firm, opts?.email)) return;
