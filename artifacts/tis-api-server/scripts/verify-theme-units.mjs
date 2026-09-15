@@ -346,5 +346,52 @@ fp.images.push({ page: 4, x: 72, y: 300, w: 468, h: 200, objId: "img1", pixels: 
 const fig = tbl.detectFigureCaption([pagesA[0], fp], bodyA);
 ok(fig && fig.position === "below", `figure caption below the image (${JSON.stringify(fig)})`);
 
+// ─── tables.ts: merge tolerance is directional, not symmetric ──────────────
+// Two tables on one page sharing the same left/right columns, stacked 30pt
+// apart (table 1's last rule at y=374, table 2's header fill at y=404): the
+// widened "header sits above its region" tolerance must not also let a
+// second table's header fill — or a shaded note box — fuse in from BELOW a
+// region just because it is close. Each table keeps its own header fill.
+const stacked = mkPage(5, [
+  run(5, "Intersection", 9, "#ffffff", 76, 313, 60, { bold: true }), run(5, "AM", 9, "#ffffff", 276, 313, 20, { bold: true }),
+  run(5, "Main St", 9, "#000000", 76, 331, 40), run(5, "B", 9, "#000000", 276, 331, 8),
+  run(5, "Oak Rd", 9, "#000000", 76, 349, 40), run(5, "C", 9, "#000000", 276, 349, 8),
+  run(5, "Intersection", 9, "#ffffff", 76, 415, 60, { bold: true }), run(5, "AM", 9, "#ffffff", 276, 415, 20, { bold: true }),
+  run(5, "Pine St", 9, "#000000", 76, 433, 40), run(5, "B", 9, "#000000", 276, 433, 8),
+  run(5, "Cedar Rd", 9, "#000000", 76, 451, 40), run(5, "C", 9, "#000000", 276, 451, 8),
+], [
+  { page: 5, x1: 72, y1: 320, x2: 372, y2: 320, color: "#9dc3e6", width: 0.5 }, { page: 5, x1: 72, y1: 338, x2: 372, y2: 338, color: "#9dc3e6", width: 0.5 }, { page: 5, x1: 72, y1: 356, x2: 372, y2: 356, color: "#9dc3e6", width: 0.5 },
+  { page: 5, x1: 72, y1: 422, x2: 372, y2: 422, color: "#9dc3e6", width: 0.5 }, { page: 5, x1: 72, y1: 440, x2: 372, y2: 440, color: "#9dc3e6", width: 0.5 }, { page: 5, x1: 72, y1: 458, x2: 372, y2: 458, color: "#9dc3e6", width: 0.5 },
+], [
+  { page: 5, x: 72, y: 302, w: 300, h: 18, color: "#1f4e79" },
+  { page: 5, x: 72, y: 404, w: 300, h: 18, color: "#1f4e79" },
+]);
+const stackedRes = tbl.detectTables([pagesA[0], stacked], bodyA, null);
+ok(stackedRes.count === 2, `two same-column tables stacked 30pt apart stay separate (${stackedRes.count})`);
+ok(stackedRes.style && stackedRes.style.header.fill === "#1f4e79", `each table's header fill still found after the directional fix (${stackedRes.style?.header.fill})`);
+
+// ─── tables.ts: a bold first row identifies a header with no fill at all ───
+// A rule-only table (no header fill; the luminance guard would also skip a
+// white one) whose 3 rules sit only between BODY rows — never under the
+// header itself — used to compute headerBottom at the row1/row2 rule (the
+// same off-by-one-row bug the fill-based fix addressed). Per spec §5.2
+// ("header row = first row with bold runs OR on a fill"), the first bold
+// baseline above the region is the header instead. Header and body share the
+// same 9pt size but different colours, so a leak either way is visible.
+const ruleOnly = mkPage(6, [
+  run(6, "Movement", 9, "#000000", 76, 300, 60, { bold: true }), run(6, "Delay (s)", 9, "#000000", 276, 300, 20, { bold: true }),
+  run(6, "EB Left", 9, "#333333", 76, 318, 40), run(6, "12.3", 9, "#333333", 276, 318, 20),
+  run(6, "WB Left", 9, "#333333", 76, 336, 40), run(6, "15.7", 9, "#333333", 276, 336, 20),
+  run(6, "NB Thru", 9, "#333333", 76, 354, 40), run(6, "9.1", 9, "#333333", 276, 354, 20),
+], [
+  { page: 6, x1: 72, y1: 336, x2: 372, y2: 336, color: "#000000", width: 0.75 }, { page: 6, x1: 72, y1: 354, x2: 372, y2: 354, color: "#000000", width: 0.75 }, { page: 6, x1: 72, y1: 372, x2: 372, y2: 372, color: "#000000", width: 0.75 },
+]);
+const roRes = tbl.detectTables([pagesA[0], ruleOnly], bodyA, null);
+ok(roRes.style && roRes.style.header.fill === null, `rule-only table: no header fill (${roRes.style?.header.fill})`);
+ok(roRes.style && roRes.style.header.bold === true, `rule-only table: bold first row identifies the header (${roRes.style?.header.bold})`);
+ok(roRes.style && roRes.style.header.size === 9, `rule-only table: header size 9 (${roRes.style?.header.size})`);
+ok(roRes.style && roRes.style.body.size === 9, `rule-only table: body size 9 (${roRes.style?.body.size})`);
+ok(roRes.style && roRes.style.body.color === "#333333", `rule-only table: body colour from the body runs, not the header's (${roRes.style?.body.color})`);
+
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");
