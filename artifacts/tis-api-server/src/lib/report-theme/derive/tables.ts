@@ -54,26 +54,6 @@ function findRegions(p: ScannedPage): Region[] {
   return regions;
 }
 
-/**
- * The zebra signature: the region's row rects in `top`'s colour, read
- * downward from `top`, are each separated from the previous one by exactly
- * one unfilled row (a gap of 0.5–1.5 rect heights), and there is at least
- * one of them. A touching same-coloured rect (a two-row header, a group
- * band right under the header) or one several rows down fails it.
- */
-function alternates(top: ScannedPage["rects"][number], rowRects: ScannedPage["rects"]): boolean {
-  const same = rowRects.filter((r) => r.color === top.color && r.y >= top.y + top.h - 1).sort((a, b) => a.y - b.y);
-  if (!same.length) return false;
-  let prev = top;
-  for (const r of same) {
-    if (Math.abs(r.y - prev.y) <= 1) continue; // another cell of the same row
-    const gap = r.y - (prev.y + prev.h);
-    if (gap < 0.5 * prev.h || gap > 1.5 * prev.h) return false;
-    prev = r;
-  }
-  return true;
-}
-
 /** The colour of the cell fills under a header row, or null when they cover less than 60 % of the region's width. Only header-sized rects count — at most 3 × the taller of the header band and the row pitch, so a multi-row header block still qualifies but a tint box behind the whole table (many rows tall) does not. */
 function headerBandFill(p: ScannedPage, g: Region, headerRuns: TextRun[], rowPitch: number): string | null {
   const top = Math.min(...headerRuns.map((r) => r.y - r.h));
@@ -137,15 +117,16 @@ export function detectTables(pages: ScannedPage[], body: BodyStyle, headingFont:
       // immediately by a rule — some table styles rule only between body rows
       // — so hunting for "the next line after the top" can land on the
       // row1/row2 rule instead of the header/row1 one.
-      // The region's row pitch (median gap between its DISTINCT rules; 40pt
-      // when there are fewer than 2 to measure from) scales every "one row"
-      // distance below. Distinct matters: Word draws each rule twice (a
-      // 0.49 and a 0.5 pt stroke on the same y), and the zero gaps between
-      // the twins used to drag the median to nothing.
+      // The region's row pitch scales every "one row" distance below: the
+      // median gap between its DISTINCT rules, else the median height of its
+      // row rects (a rect-only region has no rules to measure), else 40pt.
+      // Distinct matters: Word draws each rule twice (a 0.49 and a 0.5 pt
+      // stroke on the same y), and the zero gaps between the twins used to
+      // drag the median to nothing.
       const ruleYs = g.hlines.map((l) => l.y1).sort((a, b) => a - b).filter((y, i, arr) => i === 0 || y - arr[i - 1] > 1);
       const gaps: number[] = [];
       for (let i = 1; i < ruleYs.length; i++) gaps.push(ruleYs[i] - ruleYs[i - 1]);
-      const rowPitch = gaps.length ? median(gaps) : 40;
+      const rowPitch = gaps.length ? median(gaps) : g.rowRects.length ? median(g.rowRects.map((r) => r.h)) : 40;
       // The fill at the region's top is a header fill only if it is header-
       // sized — at most three rows tall and ending above the region's bottom
       // rule: a shading box drawn behind the whole table also starts at the
@@ -164,14 +145,18 @@ export function detectTables(pages: ScannedPage[], body: BodyStyle, headingFont:
       const aboveRegion = p.runs.filter((r) => r.x >= g.x1 - 2 && r.x <= g.x2 + 2 && r.y < g.yTop - 2 && r.y >= g.yTop - 1.5 * rowPitch && !captionRuns.has(r));
       // A zebra table whose header row carries no fill starts its region at
       // the FIRST BODY row's fill, so that fill sits exactly where a header
-      // fill would. It is body shading, not a header, only when its colour
-      // ALTERNATES — every same-coloured row rect below it is separated from
-      // the previous one by exactly one unfilled row — and the bold header
-      // row sits just above it on no fill at all. Mere recurrence is not
-      // enough: a filled header whose group-band rows ("AM Peak Hour") reuse
-      // the header fill several rows down recurs too, and must keep its fill.
+      // fill would. It is body shading, not a header, when the bold header
+      // row sits just above it on no fill at all AND the text sitting on it
+      // is mostly regular weight — body text. A filled header, or a group
+      // band ("AM Peak Hour") under a filled header, carries bold text and
+      // keeps its fill. Weight is the discriminator because geometry is
+      // not: recurrence of the colour is shared by group bands, and the
+      // spacing of the alternating rows is broken by any wrapped two-line
+      // row, so neither can be trusted.
       const boldAbove = aboveRegion.length > 0 && aboveRegion.filter((r) => r.bold).length / aboveRegion.length >= 0.5;
-      const headerFillRect = topFill && boldAbove && alternates(topFill, g.rowRects) ? null : topFill;
+      const onTopFill = topFill ? inRegion.filter((r) => r.y >= topFill.y && r.y <= topFill.y + topFill.h + 1) : [];
+      const topFillRegular = onTopFill.length > 0 && onTopFill.filter((r) => !r.bold).length / onTopFill.length >= 0.5;
+      const headerFillRect = topFill && boldAbove && topFillRegular ? null : topFill;
       const above = headerFillRect ? [] : aboveRegion;
       const regionRuns = [...above, ...inRegion];
       const firstY = Math.min(...regionRuns.map((r) => r.y));

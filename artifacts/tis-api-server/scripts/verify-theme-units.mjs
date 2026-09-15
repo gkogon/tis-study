@@ -579,6 +579,41 @@ ok(bandedRes.style && bandedRes.style.header.color === "#ffffff", `group bands: 
 ok(bandedRes.style && bandedRes.style.caption.position === "above" && bandedRes.style.caption.style.color === "#6b7280", `group bands: the two-line caption is still found above (${JSON.stringify(bandedRes.style?.caption)})`);
 ok(zebraRes.style && zebraRes.style.header.fill === null && zebraRes.style.zebra === "#d9d9d9", "alternating rows one row apart still read as zebra");
 
+// Round 2: the zebra decision is made by WEIGHT, not by pixel spacing. A
+// zebra table whose row 2 wraps to two lines (grey on rows 1/3/5, row 2
+// twice as tall) breaks any gap arithmetic; the text sitting on the first
+// grey row is regular weight, the header above is bold — that is enough.
+const wrappedZebra = mkPage(17, [
+  run(17, "Level of Service", 10, "#000000", 113, 101, 90, { bold: true }), run(17, "Signalized Delay", 10, "#000000", 250, 101, 150, { bold: true }),
+  run(17, "A", 10, "#000000", 126, 130, 8), run(17, "≤ 10", 10, "#000000", 300, 130, 30),
+  run(17, "B", 10, "#000000", 126, 148, 8), run(17, "> 10-20 seconds per vehicle,", 10, "#000000", 300, 148, 150),
+  run(17, "stable flow", 10, "#000000", 300, 162, 60),
+  run(17, "C", 10, "#000000", 126, 184, 8), run(17, "> 20-35", 10, "#000000", 300, 184, 40),
+  run(17, "D", 10, "#000000", 126, 202, 8), run(17, "> 35-55", 10, "#000000", 300, 202, 40),
+  run(17, "E", 10, "#000000", 126, 220, 8), run(17, "> 55-80", 10, "#000000", 300, 220, 40),
+], [], [
+  { page: 17, x: 101, y: 118, w: 56, h: 18, color: "#d9d9d9" }, { page: 17, x: 157, y: 118, w: 183, h: 18, color: "#d9d9d9" }, { page: 17, x: 340, y: 118, w: 171, h: 18, color: "#d9d9d9" },
+  { page: 17, x: 101, y: 172, w: 56, h: 18, color: "#d9d9d9" }, { page: 17, x: 157, y: 172, w: 183, h: 18, color: "#d9d9d9" }, { page: 17, x: 340, y: 172, w: 171, h: 18, color: "#d9d9d9" },
+  { page: 17, x: 101, y: 208, w: 56, h: 18, color: "#d9d9d9" }, { page: 17, x: 157, y: 208, w: 183, h: 18, color: "#d9d9d9" }, { page: 17, x: 340, y: 208, w: 171, h: 18, color: "#d9d9d9" },
+]);
+const wrappedZebraRes = tbl.detectTables([pagesA[0], wrappedZebra], bodyA, null);
+ok(wrappedZebraRes.style && wrappedZebraRes.style.header.fill === null && wrappedZebraRes.style.header.bold === true, `zebra with a two-line row: first grey row is body (regular text under a bold header), fill null (${JSON.stringify(wrappedZebraRes.style?.header)})`);
+// … and a two-line FILLED header (bold text on both lines) whose colour
+// recurs on a group band below keeps its fill: the text on it is bold.
+const tallHeader = mkPage(18, [
+  run(18, "Intersection", 9, "#ffffff", 76, 313, 60, { bold: true }), run(18, "AM Peak Hour", 9, "#ffffff", 276, 313, 60, { bold: true }),
+  run(18, "(name)", 9, "#ffffff", 76, 331, 30, { bold: true }), run(18, "Delay / LOS", 9, "#ffffff", 276, 331, 50, { bold: true }),
+  run(18, "Main St", 9, "#000000", 76, 349, 40), run(18, "12.3 / B", 9, "#000000", 276, 349, 40),
+  run(18, "Oak Rd", 9, "#000000", 76, 367, 40), run(18, "15.7 / C", 9, "#000000", 276, 367, 40),
+  run(18, "PM Peak Hour", 9, "#ffffff", 76, 385, 70, { bold: true }),
+  run(18, "Main St", 9, "#000000", 76, 403, 40), run(18, "9.1 / A", 9, "#000000", 276, 403, 40),
+], hr(18, [338, 356, 374, 392, 410]), [
+  { page: 18, x: 72, y: 302, w: 300, h: 36, color: "#1f4e79" },
+  { page: 18, x: 72, y: 374, w: 300, h: 18, color: "#1f4e79" },
+]);
+const tallHeaderRes = tbl.detectTables([pagesA[0], tallHeader], bodyA, null);
+ok(tallHeaderRes.style && tallHeaderRes.style.header.fill === "#1f4e79" && tallHeaderRes.style.header.color === "#ffffff", `two-line filled header with a group band below keeps its fill (${JSON.stringify(tallHeaderRes.style?.header)})`);
+
 // A tint box behind the whole table (unfilled bold header above the
 // region's first rule) must not become the header fill on either path —
 // the box that starts above the region (band path) or exactly at its top
