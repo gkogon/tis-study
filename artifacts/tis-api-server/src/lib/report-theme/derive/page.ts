@@ -1,4 +1,4 @@
-import { interiorPages, type ScannedPage } from "../pdf-scan";
+import { interiorPages, linesOf, type ScannedPage } from "../pdf-scan";
 import type { Theme } from "../theme";
 import { clamp, mode, type BodyStyle } from "./typography";
 
@@ -29,8 +29,13 @@ export function pageGeometry(pages: ScannedPage[], body: BodyStyle, zones: { hea
   const lefts: number[] = [], rights: number[] = [], tops: number[] = [], bottoms: number[] = [];
   for (const p of interior) {
     const inBand = (r: { y: number }) => !(zones.headerBottom != null && r.y < zones.headerBottom) && !(zones.footerTop != null && r.y > zones.footerTop);
-    // Left/right come from body-style lines wide enough to be paragraph text.
-    const rs = p.runs.filter((r) => r.font === body.font && Math.abs(r.size - body.size) <= 0.5 && r.w >= 0.45 * p.width && inBand(r));
+    // Left/right come from body-style LINES wide enough to be paragraph
+    // text — lines, not runs: a Distiller/CID print splits one justified
+    // Palatino line into ten kerned runs, none of them 45 % of the page, so a
+    // run-based census sees no paragraph text at all and the margin ends up
+    // read off whatever stray wide run exists (a contents page's dot
+    // leaders, indented 200 pt).
+    const rs = linesOf(p).filter((l) => l.font === body.font && Math.abs(l.size - body.size) <= 0.5 && l.w >= 0.45 * p.width && inBand(l));
     // Top/bottom come from EVERY run in the band — pages usually open with a heading, not body text.
     const all = p.runs.filter(inBand);
     if (rs.length) {

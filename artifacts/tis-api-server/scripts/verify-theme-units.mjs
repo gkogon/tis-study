@@ -473,6 +473,18 @@ eq(rp.reportPages(pagesRp, bodyRp).map((p) => p.page), [3, 4, 7], "reportPages: 
 eq(rp.tablePages(pagesRp, bodyRp).map((p) => p.page), [3, 4, 6, 7], "tablePages: report pages plus a captioned full-page table inside the report's span");
 eq(rp.beforeAppendix([pagesRp[0], mkPage(2, [run(2, "Appendix A Traffic Scoping Letter", 11, "#000000", 77, 430, 167), ...PARA.map((t, i) => run(2, t, 11, "#000000", 72, 120 + 14 * i, 440)), ...PARA.map((t, i) => run(2, t, 11, "#000000", 72, 200 + 14 * i, 440))])]).length, 2, "beforeAppendix: a contents-list 'Appendix A …' line on a full text page is not a divider");
 
+// page.ts — margins are measured from body LINES, not runs: a Distiller/CID
+// print (McMahon Mansfield) splits each justified Palatino line into ~10
+// kerned runs, none of them 45 % of the page, so the run census found no
+// paragraph text and read the margin off a contents page's dot leaders
+// (x=207) — a 143 pt margin on a 72 pt document.
+const kernedLine = (page, y) => ["Birch Road and", " Hunting Lodge", " Road to the west", " connecting to", " the Celeron Trail"].map((s, i) => run(page, s, 11, "#000000", 72 + 90 * i, y, 88));
+const kernedPage = (n) => mkPage(n, [...kernedLine(n, 104), ...kernedLine(n, 119), ...kernedLine(n, 134), ...kernedLine(n, 700)]);
+const kernedPages = [mkPage(1, []), kernedPage(2), kernedPage(3), mkPage(4, [run(4, "INTRODUCTION.......................................................", 12, "#000000", 207, 127, 333, { bold: true }), ...kernedLine(4, 200), ...kernedLine(4, 215), ...kernedLine(4, 230)])];
+const kernedBody = { font: "ABCDEF+Arial", size: 11, color: "#000000", serif: false, mono: false, bold: false };
+const kernedGeom = pg.pageGeometry(kernedPages, kernedBody, { headerBottom: null, footerTop: null });
+ok(kernedGeom && Math.abs(kernedGeom.margins.left - 82) <= 1, `kerned runs: margin from joined lines = mean(72, 612-520=92) = 82, not 140 from the dot-leader run (${kernedGeom?.margins.left})`);
+
 // ─── derive/cover.ts + derive/synonyms.ts ────────────────────────────────────
 const cov = await import(path.resolve(here, "../src/lib/report-theme/derive/cover.ts"));
 const syn = await import(path.resolve(here, "../src/lib/report-theme/derive/synonyms.ts"));
