@@ -38,23 +38,88 @@ export function fontPath(family: BundledFamily, style: FontStyle): string {
   return existsSync(regular) ? regular : path.join(FONT_DIR, "DejaVuSans.ttf");
 }
 
-const STYLE_WORDS = /(bold|black|heavy|semibold|demibold|extrabold|ultrabold|italic|oblique|regular|roman|book|medium|light|thin|condensed)/gi;
+// Whole-segment style tokens (longest first, so e.g. "semibold" wins over
+// "semi"+"bold" — either decomposition is still "all style", but this keeps
+// the token list a segment decomposes into meaningful for the italic check).
+const STYLE_TOKENS = [
+  "extrabold", "ultrabold", "demibold", "condensed", "semibold",
+  "oblique", "regular", "italic", "medium",
+  "black", "heavy", "light", "extra", "ultra",
+  "bold", "book", "demi", "semi", "thin",
+  "it",
+];
+
+/**
+ * A separator-delimited segment (or a trailing camel-split word of `base`)
+ * is a "style segment" only when it is, in full, a concatenation of style
+ * tokens with nothing left over — never a substring match inside an
+ * unrelated word. Returns the matched tokens (so callers can tell whether
+ * "it" specifically was one of them) or null if the segment doesn't fully
+ * decompose.
+ */
+function tokenizeStyle(segment: string): string[] | null {
+  let s = segment.toLowerCase();
+  const tokens: string[] = [];
+  while (s.length > 0) {
+    const tok = STYLE_TOKENS.find((t) => s.startsWith(t));
+    if (!tok) return null;
+    tokens.push(tok);
+    s = s.slice(tok.length);
+  }
+  return tokens;
+}
+
+function camelSplitWords(s: string): string[] {
+  return s
+    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .split(/\s+/)
+    .filter(Boolean);
+}
 
 export function parsePostScriptName(name: string): { family: string; bold: boolean; italic: boolean } {
-  const n = name.replace(/^[A-Z]{6}\+/, "");
-  const lower = n.toLowerCase();
-  const bold = /bold|black|heavy|semibold|demibold|extrabold|ultrabold/.test(lower);
-  const italic = /italic|oblique/.test(lower);
-  let family = n
-    .replace(/[-,_ ]?(?:bold|black|heavy|semibold|demibold|extrabold|ultrabold|italic|oblique|regular|book|medium|light|thin|condensed)+/gi, "")
-    .replace(/it$/i, "")
-    .replace(/(PSMT|PS|MT)$/, "")
-    .replace(/[-,_]+$/, "")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!family) family = n.replace(STYLE_WORDS, "").trim() || n;
+  const n = name.replace(/^[A-Z]{6}\+/, "").replace(/(PSMT|PS|MT)$/, "");
+  const bold = /bold|black|heavy|semibold|demibold|extrabold|ultrabold/i.test(n);
+  let italic = /italic|oblique/i.test(n);
+
+  // Split on explicit separators only — never inside a camelCase run — so a
+  // style word is only recognized when it stands as its own whole segment.
+  const segments = n.split(/[-,_ ]+/).filter(Boolean);
+  const base = segments[0] ?? n;
+  const rest = segments.slice(1);
+
+  // Camel-split the base ("TimesNewRoman" → ["Times","New","Roman"]), then
+  // drop trailing style words (e.g. "CalibriBold" → "Calibri") — but never
+  // "roman": it's part of the family name here ("Times New Roman"), not a
+  // style suffix, whenever it's attached to base with no separator.
+  const baseWords = camelSplitWords(base);
+  while (baseWords.length > 1) {
+    const last = baseWords[baseWords.length - 1];
+    if (last.toLowerCase() === "roman") break;
+    const toks = tokenizeStyle(last);
+    if (!toks) break;
+    if (toks.includes("it")) italic = true;
+    baseWords.pop();
+  }
+
+  // Drop whole-segment style words from `rest` ("Bold", "SemiBold", "It").
+  // "Roman" is not a generic style token (it collides with real family
+  // names like "Bookman"), so it's kept unless, after the generic drop, it
+  // is the *only* thing left in `rest` — that's the "-Roman" style suffix
+  // ("Times-Roman", "Bookman-Roman"), as opposed to "New Roman" where
+  // "Roman" survives alongside a kept non-style segment.
+  const keptRest: string[] = [];
+  for (const seg of rest) {
+    const toks = tokenizeStyle(seg);
+    if (toks) {
+      if (toks.includes("it")) italic = true;
+      continue;
+    }
+    keptRest.push(seg);
+  }
+  if (keptRest.length === 1 && keptRest[0].toLowerCase() === "roman") keptRest.length = 0;
+
+  const family = [...baseWords, ...keptRest].join(" ") || n;
   return { family, bold, italic };
 }
 

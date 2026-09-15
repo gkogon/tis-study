@@ -55,6 +55,16 @@ eq(parsePostScriptName("Helvetica-BoldOblique"), { family: "Helvetica", bold: tr
 eq(parsePostScriptName("OpenSans-SemiBold"), { family: "Open Sans", bold: true, italic: false }, "SemiBold counts as bold");
 eq(parsePostScriptName("SegoeUI"), { family: "Segoe UI", bold: false, italic: false }, "SegoeUI split");
 eq(parsePostScriptName("Cambria"), { family: "Cambria", bold: false, italic: false }, "plain name");
+eq(parsePostScriptName("Times-Roman"), { family: "Times", bold: false, italic: false }, "-Roman suffix strips to base");
+eq(parsePostScriptName("Merit"), { family: "Merit", bold: false, italic: false }, "ordinary name ending in -it is untouched");
+eq(parsePostScriptName("Exhibit-Regular"), { family: "Exhibit", bold: false, italic: false }, "ordinary name ending in -it, Regular suffix dropped");
+eq(parsePostScriptName("Circuit-Bold"), { family: "Circuit", bold: true, italic: false }, "ordinary name ending in -it, Bold suffix dropped");
+eq(parsePostScriptName("Bookman-Roman"), { family: "Bookman", bold: false, italic: false }, "-Roman suffix doesn't eat Book from Bookman");
+eq(parsePostScriptName("NewCenturySchlbk-Roman"), { family: "New Century Schlbk", bold: false, italic: false }, "camel-split base + -Roman suffix");
+eq(parsePostScriptName("Times New Roman,Bold"), { family: "Times New Roman", bold: true, italic: false }, "Roman kept when preceded by a non-style rest segment");
+eq(parsePostScriptName("CalibriBold"), { family: "Calibri", bold: true, italic: false }, "trailing style word on unseparated base");
+eq(parsePostScriptName("MinionPro-It"), { family: "Minion Pro", bold: false, italic: true }, "It suffix means italic, Pro kept");
+eq(matchFamily(parsePostScriptName("Times-Roman").family), { family: "liberation-serif", exact: false }, "Times-Roman round-trips to Liberation Serif");
 eq(matchFamily("Calibri"), { family: "carlito", exact: false }, "Calibri → Carlito");
 eq(matchFamily("Times New Roman"), { family: "liberation-serif", exact: false }, "Times → Liberation Serif");
 eq(matchFamily("Arial"), { family: "liberation-sans", exact: false }, "Arial → Liberation Sans");
