@@ -1,0 +1,15 @@
+{
+  "firmName": "McMahon Associates, Inc.",
+  "bodyFamily": "liberation-serif",
+  "bodySize": 11,
+  "h1Size": 12,
+  "h1Color": "#000000",
+  "primary": "#005984",
+  "pageSize": "LETTER",
+  "marginLeft": 72,
+  "numbering": "none",
+  "footerHasPage": true,
+  "headerPresent": true,
+  "tableHeaderFill": null,
+  "_verified": "Body: PalatinoLinotype-Roman 10.98 pt black (32k chars; serif with no bundled Palatino → liberation-serif). H1: 'INTRODUCTION', 'EXISTING CONDITIONS', 'FUTURE CONDITIONS' — PalatinoLinotype-Bold 12 pt black, all caps, unnumbered (pages 4, 7, 13); H2 is 11 pt bold italic title case. Primary: the interior pages draw nothing but black; the brand is the cover's blue #005984 bands (top strip, title band, prepared-by band) in the cover rect list. Margin: body lines at x=72.0 on every page (page 6 dump). Header: three right-aligned lines 'Traffic Impact Study / Haven Communities Development / Mansfield, Connecticut' at y=46-74; footer: bare centred page number ('5' at y=753). Tables (page 8 raster): rule-only — 1.5 pt top/bottom rules, a 0.72 pt rule under the bold header row, no fill."
+}

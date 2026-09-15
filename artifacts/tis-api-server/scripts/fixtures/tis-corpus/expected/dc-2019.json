@@ -1,0 +1,15 @@
+{
+  "firmName": "AMT LLC",
+  "bodyFamily": "dejavu-sans",
+  "bodySize": 11,
+  "h1Size": 11,
+  "h1Color": "#008080",
+  "primary": "#008080",
+  "pageSize": "LETTER",
+  "marginLeft": 72,
+  "numbering": "none",
+  "footerHasPage": true,
+  "headerPresent": true,
+  "tableHeaderFill": null,
+  "_verified": "Body: Tahoma 10.98 pt black (Tahoma → dejavu-sans). H1: 'Existing Conditions', 'Site Development' — Tahoma-Bold 10.98 pt TEAL #008080 at the top of each chapter page (page 6 raster + dump); H2 is Arial-BoldMT 11 black, H3 an underlined regular line. Primary: the heading teal; the pale green #ccffcc on page 13 is LOS row shading, not a brand colour. Margin: body at x=72.0. Header: AMT logo left, bold Gill Sans '1601 W Street Bus Terminal / Traffic Impact Study' right at y=45-57; footer 'Page 3 of 17' right with bold numbers (y≈750). Tables: grid with an unfilled bold header row (Table 2 on page 13; Tables 3-4 on page 14 — the #fff2cc cells there are body highlights)."
+}

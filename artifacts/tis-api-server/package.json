@@ -54,6 +54,8 @@
     "check:theme-default-identity": "node ./scripts/verify-theme-default-identity.mjs",
     "check:theme-render": "node ./scripts/verify-theme-render.mjs",
     "check:theme-scan": "node ./scripts/verify-theme-scan.mjs",
+    "fetch:tis-corpus": "node ./scripts/fetch-tis-corpus.mjs",
+    "check:theme-extract": "node ./scripts/verify-theme-extract.mjs",
     "build:preview-fixtures": "node ./scripts/build-preview-fixtures.mjs",
     "check:whatif-gate": "node ./scripts/verify-whatif-gate.mjs",
     "check:whatif-limiter": "node ./scripts/verify-whatif-limiter.mjs"

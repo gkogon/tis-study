@@ -1,0 +1,15 @@
+{
+  "firmName": "Kimley-Horn and Associates, Inc.",
+  "bodyFamily": "liberation-sans",
+  "bodySize": 11,
+  "h1Size": 14,
+  "h1Color": "#000000",
+  "primary": "#a20c33",
+  "pageSize": "LETTER",
+  "marginLeft": 90,
+  "numbering": "none",
+  "footerHasPage": false,
+  "headerPresent": true,
+  "tableHeaderFill": "#c0c0c0",
+  "_verified": "Body: ArialMT 11.04 pt black (25k chars). H1: 'EXECUTIVE SUMMARY', 'III. PROJECT TRAFFIC CHARACTERISTICS' — Arial-BoldMT 13.92 pt black caps (page 15 dump); a roman prefix appears on some chapters only, so the numbering is 'none'. Primary: the crimson #a20c33 footer address band on every page (page 15 rects) and the cover art. Margin: hanging-indent layout — headings and the 'A.'/'B.' labels sit at x=90, paragraphs at x=117, right edge 552 (page 16 raster); 90 is the outer text edge. Header: Kimley-Horn logo left and 'Page 8' right at y=62 (grey italic); the footer is the crimson address band with no page number. Tables: 'Table 1 – Trip Generation' (page 15) and the full-page 'Table 2' (pages 27-28): grid with grey #c0c0c0 header cells filled per cell."
+}

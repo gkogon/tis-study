@@ -98,3 +98,6 @@ agentdb.rvf.lock
 
 # esbuild temp bundles written by the theme check scripts
 artifacts/tis-api-server/src/lib/.theme-bundle-*
+
+# Public TIS corpus for the theme-extractor accuracy gate (fetched by scripts/fetch-tis-corpus.mjs; copyrighted filings, never committed)
+artifacts/tis-api-server/scripts/fixtures/tis-corpus/*.pdf

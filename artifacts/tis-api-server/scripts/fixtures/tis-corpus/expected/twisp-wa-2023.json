@@ -1,0 +1,15 @@
+{
+  "firmName": "SCJ Alliance",
+  "bodyFamily": "carlito",
+  "bodySize": 11,
+  "h1Size": 16,
+  "h1Color": "#5c5c5c",
+  "primary": "#63bc55",
+  "pageSize": "LETTER",
+  "marginLeft": 72,
+  "numbering": "1",
+  "footerHasPage": true,
+  "headerPresent": true,
+  "tableHeaderFill": null,
+  "_verified": "Body: Calibri 11 black (pdffonts BCDEEE+Calibri; 19k chars on interior pages). H1: chapter titles '1 Introduction' … '7 Summary and Conclusions' in SegoeUI-Semibold 15.96 pt #5c5c5c (page 6/7/8 dump); the 21-24 pt Segoe titles on the title, signature and contents pages are front matter, not headings. Primary: the 2.2 pt green footer rule #63bc55 drawn on every report page (page 8 rect list); table rules are Word's lighter #92d050. Margin: body lines start at x=72.0. Numbering: single numbers without a point. Footer 'SCJ Alliance   April 2023 | Page 3' at y=753.7; header 'Traffic Impact Analysis / Orchard Hills' at y=45-58 with a black hairline under it. Tables (pages 10, 14, 15): bold unfilled header row over a green top rule, zebra #d9d9d9 body rows — no header fill."
+}
