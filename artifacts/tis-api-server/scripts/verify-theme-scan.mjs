@@ -79,6 +79,28 @@ const mk = (str, x, y) => ({ page: 9, str, font: "F", size: 10, bold: false, ita
 const jag = linesOf({ page: 9, width: 612, height: 792, runs: [mk("Beta", 300, 100), mk("Alpha", 50, 100.4)], rects: [], lines: [], images: [] });
 ok(jag.length === 1 && jag[0].text === "Alpha Beta" && near(jag[0].x, 50, 0.01), `linesOf joins jagged-baseline runs in x order ("${jag[0]?.text}", x ${jag[0]?.x})`);
 
+// Corpus round: Word and AcroPlot draw every table border as a FILLED rect
+// 0.48 pt tall (Kimley-Horn Stafford, page 7). asRect's corner-dedup
+// tolerance used to be 0.5 pt, so both long edges of such a rect collapsed
+// into one y, the "rect" had one unique y, and the border vanished — no
+// rect, no line, a grid table with no rules at all.
+const hairline = await new Promise((res) => {
+  const d = new PDFDocument({ size: "LETTER", margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+  const c = []; d.on("data", (x) => c.push(x)); d.on("end", () => res(Buffer.concat(c)));
+  d.rect(72, 300, 468, 0.48).fill("#000000");   // horizontal hairline border
+  d.rect(72, 300, 0.48, 120).fill("#000000");   // vertical hairline border
+  d.rect(72, 420, 468, 18).fill("#a20c33");     // a real header fill, for contrast
+  d.text("hairlines");
+  d.end();
+});
+const hairScan = await scanPdf(hairline);
+const hp = hairScan.pages[0];
+const hLine = hp.lines.find((l) => near(l.y1, l.y2, 0.01) && near(l.y1, 300.24, 0.3) && near(l.x1, 72, 0.5) && near(l.x2, 540, 0.5));
+ok(!!hLine && near(hLine.width, 0.48, 0.02), `0.48 pt filled rect becomes a horizontal hairline (${JSON.stringify(hLine)})`);
+const vLine = hp.lines.find((l) => near(l.x1, l.x2, 0.01) && near(l.x1, 72.24, 0.3) && near(l.y1, 300, 0.5) && near(l.y2, 420, 0.5));
+ok(!!vLine && near(vLine.width, 0.48, 0.02), `0.48 pt filled rect becomes a vertical hairline (${JSON.stringify(vLine)})`);
+ok(hp.rects.some((r) => r.color === "#a20c33" && near(r.h, 18, 0.01)), "a real 18 pt fill is still a rect");
+
 const serif = await scanPdf(await makeSyntheticTis("serif-black"));
 const s2 = serif.pages[1];
 ok(near(s2.width, 595.28, 0.5) && near(s2.height, 841.89, 0.5), "serif-black is A4");

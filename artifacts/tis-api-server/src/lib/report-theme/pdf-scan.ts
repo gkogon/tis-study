@@ -161,7 +161,12 @@ async function scanPage(page: PdfjsPage, pageNo: number, OPS: Record<string, num
     const near = (a: [number, number], b: [number, number]) => Math.abs(a[0] - b[0]) < 0.5 && Math.abs(a[1] - b[1]) < 0.5;
     const p = pts.length === 5 && near(pts[0], pts[4]) ? pts.slice(0, 4) : pts;
     if (p.length !== 4) return null;
-    const uniq = (vals: number[]) => vals.reduce<number[]>((acc, v) => (acc.some((u) => Math.abs(u - v) < 0.5) ? acc : [...acc, v]), []);
+    // Corners of one `re` share exact float32 coordinates, so the tolerance
+    // only has to absorb rounding — it must stay well under the thinnest rule
+    // a producer draws as a filled rect (Word/AcroPlot table borders are
+    // 0.48 pt tall): at 0.5 both edges of such a rect collapsed into one
+    // value and the whole border silently vanished.
+    const uniq = (vals: number[]) => vals.reduce<number[]>((acc, v) => (acc.some((u) => Math.abs(u - v) < 0.05) ? acc : [...acc, v]), []);
     const ux = uniq(p.map((q) => q[0]));
     const uy = uniq(p.map((q) => q[1]));
     if (ux.length !== 2 || uy.length !== 2) return null;
