@@ -1,4 +1,4 @@
-import { linesOf, type ImagePlacement, type ScannedPage, type TextLine } from "../pdf-scan";
+import { isGarbledText, linesOf, type ImagePlacement, type ScannedPage, type TextLine } from "../pdf-scan";
 import { imagePixelsToPngDataUrl, toRgba, type ImagePixels } from "../png";
 import { luminance, rgbToHex, type CoverElement, type Theme } from "../theme";
 import { normalizeName } from "./header-footer";
@@ -139,7 +139,7 @@ export function deriveCover(page1: ScannedPage | undefined, body: BodyStyle, hea
   const logo = logoIm && logoData ? { x: Math.round(logoIm.x), y: Math.round(logoIm.y), w: Math.round(logoIm.w), h: Math.round(logoIm.h), data: logoData } : null;
   if (page1.images.length && !logo && !bgData) warnings.push("No logo-shaped image found on the cover.");
 
-  const lines = linesOf(page1).filter((l) => l.text.length > 0);
+  const lines = linesOf(page1).filter((l) => l.text.length > 0 && !isGarbledText(l.text));
   const layout = { lines, images: page1.images };
   const used = new Set<TextLine>();
   const els: CoverElement[] = [];

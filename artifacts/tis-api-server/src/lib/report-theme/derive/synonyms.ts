@@ -1,4 +1,5 @@
 import { canonicalKey, headingWords, stripNumbering, synonymFitsKey } from "../canonical";
+import { isGarbledText } from "../pdf-scan";
 
 /**
  * A sample heading is only a reusable synonym when it is generic wording:
@@ -18,7 +19,7 @@ export function mapSynonyms(headingTexts: string[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const text of headingTexts) {
     const clean = stripNumbering(text).trim();
-    if (!clean || clean.length > 80) continue;
+    if (!clean || clean.length > 80 || isGarbledText(clean)) continue;
     if (!isReusableWording(clean)) continue;
     const key = canonicalKey(clean);
     if (!key || out[key]) continue;

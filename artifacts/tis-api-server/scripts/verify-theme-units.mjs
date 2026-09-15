@@ -842,6 +842,17 @@ eq(syn.mapSynonyms(["Roadway Network Improvements"]), {}, "synonyms: 'Roadway Ne
 eq(syn.mapSynonyms(["Background"]), {}, "synonyms: bare 'Background' is not the introduction");
 eq(syn.mapSynonyms(["Trip Generation Summary"]), { "trip-generation": "Trip Generation Summary" }, "synonyms: generic words (summary) are neither evidence nor foreign");
 eq(syn.mapSynonyms(["Existing Land Use"]), {}, "synonyms: a heading whose other word belongs to another key (existing → existing-conditions) is rejected");
+eq(syn.mapSynonyms(["Planned Roadway Improvements"]), { "programmed-projects": "Planned Roadway Improvements" }, "synonyms: 'roadway' is generic, not existing-conditions evidence");
+eq(syn.mapSynonyms(["Pedestrian and Bicycle Facilities"]), { multimodal: "Pedestrian and Bicycle Facilities" }, "synonyms: 'facilities' is generic");
+eq(syn.mapSynonyms(["Future Traffic Volumes"]), { "future-conditions": "Future Traffic Volumes" }, "synonyms: 'volumes' is generic");
+{
+  const scanMod = await import(path.resolve(here, "../src/lib/report-theme/pdf-scan.ts"));
+  ok(scanMod.isGarbledText("\u0007\u0015\u0004 \u0017"), "garbled: raw glyph codes from a font with no ToUnicode map");
+  ok(!scanMod.isGarbledText("DRAFT"), "garbled: plain caps are not garbled");
+  ok(!scanMod.isGarbledText("Café – résumé (Δ 3%)"), "garbled: accented and symbol text is not garbled");
+  ok(!scanMod.isGarbledText("a\u0003b"), "garbled: a single stray control character is tolerated");
+  eq(syn.mapSynonyms(["\u0007\u0015\u0004 \u0017"]), {}, "synonyms: garbled heading text never becomes a synonym");
+}
 eq(syn.mapSynonyms(["RECOMMENDED IMPROVEMENTS", "Summary and Conclusions", "Site Traffic Distribution and Assignment", "PROJECTED NO-BUILD CONDITIONS", "Crash History", "Traffic Operations Analysis", "Conclusions and Recommendations"]),
   { mitigation: "RECOMMENDED IMPROVEMENTS", conclusions: "Summary and Conclusions", "trip-distribution": "Site Traffic Distribution and Assignment", "background-growth": "PROJECTED NO-BUILD CONDITIONS", safety: "Crash History", "capacity-analysis": "Traffic Operations Analysis" },
   "synonyms: the corpus's good wordings still map (and 'Conclusions and Recommendations' is not taken twice)");
