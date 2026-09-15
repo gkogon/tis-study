@@ -1,7 +1,7 @@
 /**
- * Minimal PNG encoder (RGBA) and the pdfjs decoded-image → PNG data URL helper
- * used by the report-theme extractor. Pure Node (`node:zlib`) — no native
- * image dependency.
+ * Minimal PNG encoder (RGBA), a box-filter downsampler, and the pdfjs
+ * decoded-image → PNG data URL helper used by the report-theme extractor.
+ * Pure Node (`node:zlib`) — no native image dependency.
  */
 import { deflateSync } from "node:zlib";
 
@@ -46,11 +46,11 @@ export function encodePngRGBA(width: number, height: number, rgba: Uint8Array): 
 }
 
 export type ImagePixels = { width: number; height: number; kind: 1 | 2 | 3; data: Uint8ClampedArray };
+export type RgbaImage = { width: number; height: number; rgba: Uint8Array };
 
-/** pdfjs decoded image (ImageKind GRAYSCALE_1BPP / RGB_24BPP / RGBA_32BPP) → PNG data URL. */
-export function imagePixelsToPngDataUrl(px: ImagePixels): string | null {
+/** pdfjs decoded image (ImageKind GRAYSCALE_1BPP / RGB_24BPP / RGBA_32BPP) → straight RGBA. */
+export function toRgba(px: ImagePixels): RgbaImage {
   const n = px.width * px.height;
-  if (n === 0 || n > 4_000_000) return null;
   const rgba = new Uint8Array(n * 4);
   if (px.kind === 3) {
     rgba.set(px.data.subarray(0, n * 4));
@@ -65,5 +65,46 @@ export function imagePixelsToPngDataUrl(px: ImagePixels): string | null {
       rgba[o] = v; rgba[o + 1] = v; rgba[o + 2] = v; rgba[o + 3] = 255;
     }
   }
-  return `data:image/png;base64,${encodePngRGBA(px.width, px.height, rgba).toString("base64")}`;
+  return { width: px.width, height: px.height, rgba };
+}
+
+/**
+ * Box-filter downsample so the image fits `maxW × maxH` (aspect kept). A
+ * sample's logo arrives at print resolution (a 329 × 133 pt box holding
+ * 685 × 277 px); stored at 2× its placement it is indistinguishable in the
+ * rendered PDF and a fraction of the row size. Returns the input untouched
+ * when it already fits.
+ */
+export function downsampleRgba(img: RgbaImage, maxW: number, maxH: number): RgbaImage {
+  const scale = Math.min(1, maxW / img.width, maxH / img.height);
+  if (scale >= 1) return img;
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const out = new Uint8Array(w * h * 4);
+  for (let oy = 0; oy < h; oy++) {
+    const y0 = Math.floor((oy * img.height) / h), y1 = Math.max(y0 + 1, Math.floor(((oy + 1) * img.height) / h));
+    for (let ox = 0; ox < w; ox++) {
+      const x0 = Math.floor((ox * img.width) / w), x1 = Math.max(x0 + 1, Math.floor(((ox + 1) * img.width) / w));
+      let r = 0, g = 0, b = 0, a = 0, n = 0;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const i = (y * img.width + x) * 4;
+        r += img.rgba[i]; g += img.rgba[i + 1]; b += img.rgba[i + 2]; a += img.rgba[i + 3]; n++;
+      }
+      const o = (oy * w + ox) * 4;
+      out[o] = Math.round(r / n); out[o + 1] = Math.round(g / n); out[o + 2] = Math.round(b / n); out[o + 3] = Math.round(a / n);
+    }
+  }
+  return { width: w, height: h, rgba: out };
+}
+
+/**
+ * pdfjs decoded image → PNG data URL, downsampled to at most `maxDims`
+ * (pixels) when given — callers pass 2× the placement size in points.
+ */
+export function imagePixelsToPngDataUrl(px: ImagePixels, maxDims?: { w: number; h: number }): string | null {
+  const n = px.width * px.height;
+  if (n === 0 || n > 4_000_000) return null;
+  let img = toRgba(px);
+  if (maxDims) img = downsampleRgba(img, Math.max(1, Math.ceil(maxDims.w)), Math.max(1, Math.ceil(maxDims.h)));
+  return `data:image/png;base64,${encodePngRGBA(img.width, img.height, img.rgba).toString("base64")}`;
 }

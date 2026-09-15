@@ -12,6 +12,8 @@
   "footerHasPage": true,
   "headerPresent": true,
   "tableHeaderFill": null,
+  "logo": null,
   "_verified": "Body: Calibri 11 black (pdffonts BCDEEE+Calibri; 19k chars on interior pages). H1: chapter titles '1 Introduction' … '7 Summary and Conclusions' in SegoeUI-Semibold 15.96 pt #5c5c5c (page 6/7/8 dump); the 21-24 pt Segoe titles on the title, signature and contents pages are front matter, not headings. Primary: the 2.2 pt green footer rule #63bc55 drawn on every report page (page 8 rect list); table rules are Word's lighter #92d050. Margin: body lines start at x=72.0. Numbering: single numbers without a point. Footer 'SCJ Alliance   April 2023 | Page 3' at y=753.7; header 'Traffic Impact Analysis / Orchard Hills' at y=45-58 with a black hairline under it. Tables (pages 10, 14, 15): bold unfilled header row over a green top rule, zebra #d9d9d9 body rows — no header fill.",
-  "_verifiedMarginBottom": "Bottom margin 90: census above the footer zone (edge 740) p14=86.2 (body prose 'Street.'), p6=93.1, then p13=114.6 and higher; cluster median 89.7. The p80 rule read the short pages and gave 115."
+  "_verifiedMarginBottom": "Bottom margin 90: census above the footer zone (edge 740) p14=86.2 (body prose 'Street.'), p6=93.1, then p13=114.6 and higher; cluster median 89.7. The p80 rule read the short pages and gave 115.",
+  "_verifiedLogo": "Logo: none — the cover's images are the 612x493 pt art (aspect 1.24) and the 612x155 pt footer banner (too tall for the fallback tier, no header/footer recurrence); the 21x6 pt mark is below the 24 pt floor."
 }

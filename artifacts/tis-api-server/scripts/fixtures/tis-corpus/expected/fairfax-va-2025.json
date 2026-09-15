@@ -12,6 +12,11 @@
   "footerHasPage": false,
   "headerPresent": true,
   "tableHeaderFill": "#046a38",
+  "logo": {
+    "w": 181,
+    "h": 41
+  },
   "_verified": "Body: ArialMT 9 pt black (34k chars; the prose on page 9 really is 9 pt). H1: 'Introduction', 'Executive Summary', 'Existing Conditions (2024)' — ArialMT 14.04 pt regular in green #046a38, unnumbered. Primary: the same green (headings and table header fill; the header rule #267150 is a tint of it). Margin: body lines start at x=54 (0.75 in) on every prose page — page 9 raster. Header: 'project name / date' left and 'Page N' right at y≈30-40 over a green rule; the footer is the office address and 'goroveslade.com' only (no page number). Tables (page 26 onward; page 30 raster): grid, green #046a38 header cells with white text, pale zebra.",
-  "_verifiedMarginBottom": "Bottom margin 62: the address-only footer is a zone with no surviving segments (edge 759, height 33); above it p3=57.1 (contents entry), p4=61.0 (figure caption), p6=62.3 (body prose 'The analysis presented in th...'), p7=73.1; cluster median 61.7. Before the zone kept its extent the footer line itself read as body (bottom 20)."
+  "_verifiedMarginBottom": "Bottom margin 62: the address-only footer is a zone with no surviving segments (edge 759, height 33); above it p3=57.1 (contents entry), p4=61.0 (figure caption), p6=62.3 (body prose 'The analysis presented in th...'), p7=73.1; cluster median 61.7. Before the zone kept its extent the footer line itself read as body (bottom 20).",
+  "_verifiedLogo": "Logo: the Gorove Slade wordmark 181x41 pt at (216,582) (fallback tier: foot placement); no interior images."
 }

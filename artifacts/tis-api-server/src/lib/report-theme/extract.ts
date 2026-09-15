@@ -110,7 +110,7 @@ export async function extractTheme(pdf: Buffer, opts: ExtractOptions): Promise<S
     const headPs = heads[0] ? parsePostScriptName(heads[0].font) : bodyPs;
     const headFont = heads[0] ? matchFamily(headPs.family, { serif: heads[0].lines[0]?.runs[0]?.serif ?? body.serif }) : bodyFont;
 
-    const coverRes = deriveCover(scan.pages.find((p) => p.page === 1), body, heads[0]?.font ?? null, { firmName: opts.firmName });
+    const coverRes = deriveCover(scan.pages.find((p) => p.page === 1), body, heads[0]?.font ?? null, { firmName: opts.firmName }, interiorPages(scan.pages));
     warnings.push(...coverRes.warnings);
 
     const zones = detectRunningZones(report, body, heads[0]?.font ?? null, { firmName: opts.firmName, coverTitle: coverRes.coverTitle });

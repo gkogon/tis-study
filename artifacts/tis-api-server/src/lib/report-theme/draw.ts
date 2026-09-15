@@ -413,7 +413,11 @@ export function cover(doc: PDFKit.PDFDocument, input: CoverInput): void {
       if (!value) continue;
       const text = el.label ? `${el.label} ${value}` : value;
       applyStyle(doc, el.style);
-      const next = c.elements.filter((o) => o !== el && o.y > el.y + 1 && overlapsX(o, el)).sort((a, b) => a.y - b.y)[0];
+      // The next element below in the same column bounds the box; so does the
+      // logo when it sits under this element (a "Prepared by:" label with the
+      // firm's mark beneath it).
+      const obstacles: Array<{ x: number; y: number; w: number }> = [...c.elements.filter((o) => o !== el), ...(logoBuf && c.logo ? [c.logo] : [])];
+      const next = obstacles.filter((o) => o.y > el.y + 1 && overlapsX(o, el)).sort((a, b) => a.y - b.y)[0];
       const fit = fitCoverElement(measure, el, text, next ? next.y : null, H);
       doc.fontSize(fit.size).text(text, el.x, fit.y, { width: el.w, height: fit.height, align: el.align });
       const bottom = fit.y + fit.height;

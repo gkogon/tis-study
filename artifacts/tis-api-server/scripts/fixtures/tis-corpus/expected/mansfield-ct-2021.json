@@ -12,6 +12,11 @@
   "footerHasPage": true,
   "headerPresent": true,
   "tableHeaderFill": null,
+  "logo": {
+    "w": 218,
+    "h": 39
+  },
   "_verified": "Body: PalatinoLinotype-Roman 10.98 pt black (32k chars; serif with no bundled Palatino → liberation-serif). H1: 'INTRODUCTION', 'EXISTING CONDITIONS', 'FUTURE CONDITIONS' — PalatinoLinotype-Bold 12 pt black, all caps, unnumbered (pages 4, 7, 13); H2 is 11 pt bold italic title case. Primary: the interior pages draw nothing but black; the brand is the cover's blue #005984 bands (top strip, title band, prepared-by band) in the cover rect list. Margin: body lines at x=72.0 on every page (page 6 dump). Header: three right-aligned lines 'Traffic Impact Study / Haven Communities Development / Mansfield, Connecticut' at y=46-74; footer: bare centred page number ('5' at y=753). Tables (page 8 raster): rule-only — 1.5 pt top/bottom rules, a 0.72 pt rule under the bold header row, no fill.",
-  "_verifiedMarginBottom": "Bottom margin 63: census above the footer zone (edge 738) p26=59.2, p19=62.2, p7=62.9, p13=62.9, p28=64.3, p8=71.0, p6=79.1 — 1-inch text block over the centred page number; cluster median 62.9."
+  "_verifiedMarginBottom": "Bottom margin 63: census above the footer zone (edge 738) p26=59.2, p19=62.2, p7=62.9, p13=62.9, p28=64.3, p8=71.0, p6=79.1 — 1-inch text block over the centred page number; cluster median 62.9.",
+  "_verifiedLogo": "Logo: the McMahon masthead 218x39 pt at (36,47). The larger 327x113 pt image mid-page is the CLIENT's (Haven Communities) logo and must not be stored; no interior images, so the masthead placement wins the fallback tier."
 }

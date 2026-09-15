@@ -12,6 +12,8 @@
   "footerHasPage": true,
   "headerPresent": false,
   "tableHeaderFill": "#a20c33",
+  "logo": null,
   "_verified": "Body: ArialMT 10.08 pt black (29k chars). H1: '3. EXISTING CONDITIONS' etc. — Arial-BoldMT 12 pt WHITE text on a full-width crimson #a20c33 band (page 7 dump + raster); sections '3.1 …' share the exact style on a slightly inset band. Primary: the crimson of the heading bands, the footer page block and the table header cells. Margin: body at x=72.0. Numbering: chapters are '1.', '2.' …; sections '3.1'. Footer: 'Traffic Impact Analysis / Buc-ee's Stafford County' left, 'Version 1 / February 2024' right, page number in a crimson block at bottom-left (y=752-763); no running header (the page top is body text). Tables: full grid of 0.48 pt hairline filled rects, crimson header cells with white ArialNarrow-Bold text (page 7 rects).",
-  "_verifiedMarginBottom": "Bottom margin 85: census above the footer zone (edge 734) p14=75.4 (a stray bullet glyph), p7=81.1, p12=85.0, p11=85.2, p13=85.5, p10=87.6, p15=90.0, p6=90.5; cluster median 85.5 — the stray bullet does not set the margin alone."
+  "_verifiedMarginBottom": "Bottom margin 85: census above the footer zone (edge 734) p14=75.4 (a stray bullet glyph), p7=81.1, p12=85.0, p11=85.2, p13=85.5, p10=87.6, p15=90.0, p6=90.5; cluster median 85.5 — the stray bullet does not set the margin alone.",
+  "_verifiedLogo": "Logo: none — the cover has no images."
 }

@@ -795,6 +795,86 @@ ok(cres.warnings.some((w) => /Main Street/.test(w)), "dropped cover text is repo
 const bare = cov.deriveCover(mkPage(1, [run(1, "TRAFFIC IMPACT STUDY", 24, "#000000", 72, 200, 300, { bold: true })]), bodyA, null, { firmName: "X" });
 ok(bare.cover.hasMetaBlock === false && bare.coverTitle === null, "cover with only a doc type: no meta block, no title");
 
+// ─── final review Important 6: the logo heuristic ─────────────────────────
+{
+  const px = (w, h) => ({ width: w, height: h, kind: 2, data: new Uint8ClampedArray(w * h * 3).fill(90) });
+  const im = (x, y, w, h, objId, withPixels = true) => ({ page: 1, x, y, w, h, objId, pixels: withPixels ? px(Math.round(w * 2), Math.round(h * 2)) : null });
+  // Three same-width strips stacked edge to edge (a sliced site map) → no logo.
+  const strips = mkPage(1, [run(1, "TRAFFIC IMPACT STUDY", 24, "#000000", 72, 600, 300, { bold: true })]);
+  strips.images.push(im(74.64, 153.84, 328.8, 132.96, "s1"), im(74.64, 286.8, 328.8, 132.96, "s2"), im(74.64, 419.76, 328.8, 132.96, "s3"));
+  const stripRes = cov.deriveCover(strips, bodyA, null, { firmName: "X" }, []);
+  ok(stripRes.cover.logo === null, "logo: three stacked same-width strips are never a logo");
+  ok(stripRes.warnings.some((w) => /No logo-shaped image/.test(w)), "logo: the strips case reports no logo");
+  // The same strips plus a small wide mark that recurs in the running header of interior pages → that mark is the logo.
+  const withMark = mkPage(1, [run(1, "TRAFFIC IMPACT STUDY", 24, "#000000", 72, 600, 300, { bold: true })]);
+  withMark.images.push(im(74.64, 153.84, 328.8, 132.96, "s1"), im(74.64, 286.8, 328.8, 132.96, "s2"), im(74.64, 419.76, 328.8, 132.96, "s3"), im(446.64, 628.8, 109.92, 46.32, "mark"));
+  const interiorWithMark = [2, 3, 4].map((n) => ({ page: n, width: 612, height: 792, runs: [], rects: [], lines: [], images: [{ page: n, x: 36, y: 30, w: 97.44, h: 41.52, objId: "g_mark", pixels: null }] }));
+  const markRes = cov.deriveCover(withMark, bodyA, null, { firmName: "X" }, interiorWithMark);
+  ok(markRes.cover.logo && markRes.cover.logo.w === 110 && markRes.cover.logo.h === 46, `logo: the small mark that recurs in interior running headers wins (${JSON.stringify(markRes.cover.logo && [markRes.cover.logo.w, markRes.cover.logo.h])})`);
+  // Recurrence beats size: a big client logo mid-page vs a small firm mark that recurs in the footer.
+  const big = mkPage(1, [run(1, "TRAFFIC IMPACT STUDY", 24, "#000000", 72, 100, 300, { bold: true })]);
+  big.images.push(im(142, 438, 327, 113, "client"), im(36, 47, 218, 39, "firm"));
+  const bigRes = cov.deriveCover(big, bodyA, null, { firmName: "X" }, [2, 3].map((n) => ({ page: n, width: 612, height: 792, runs: [], rects: [], lines: [], images: [{ page: n, x: 36, y: 740, w: 109, h: 19.5, objId: "g_firm", pixels: null }] })));
+  ok(bigRes.cover.logo && bigRes.cover.logo.w === 218, `logo: a recurring footer mark beats a larger mid-page image (${bigRes.cover.logo?.w})`);
+  // No interior evidence: a masthead placement beats a larger mid-page one; a 155 pt banner is too tall.
+  const noRecur = cov.deriveCover(big, bodyA, null, { firmName: "X" }, []);
+  ok(noRecur.cover.logo && noRecur.cover.logo.w === 218, `logo: without recurrence the masthead placement beats the larger mid-page image (${noRecur.cover.logo?.w})`);
+  const banner = mkPage(1, [run(1, "TRAFFIC IMPACT STUDY", 24, "#000000", 72, 100, 300, { bold: true })]);
+  banner.images.push(im(0, 636, 612, 155, "banner"));
+  ok(cov.deriveCover(banner, bodyA, null, { firmName: "X" }, []).cover.logo === null, "logo: a 155 pt full-width banner is too tall for the fallback tier");
+  // An interior image with the same aspect but in the body (a figure) is not recurrence evidence.
+  const figInterior = [2, 3, 4].map((n) => ({ page: n, width: 612, height: 792, runs: [], rects: [], lines: [], images: [{ page: n, x: 72, y: 300, w: 468, h: 118.5, objId: "fig", pixels: null }] }));
+  ok(cov.deriveCover(banner, bodyA, null, { firmName: "X" }, figInterior).cover.logo === null, "logo: same-aspect figures in the body of interior pages do not count as recurrence");
+}
+
+// ─── final review Critical 1 (geometry): alignment from shared edges ──────
+const scanMod = await import(path.resolve(here, "../src/lib/report-theme/pdf-scan.ts"));
+{
+  // dc-2019's title block: three lines of differing length right-aligned at
+  // x=414 in the left column; their centres sit at 0.48–0.57 W, which the
+  // position rule alone calls "centred".
+  const col = mkPage(1, [
+    run(1, "BUS TERMINAL", 14, "#000000", 282, 644, 132, { bold: true }),
+    run(1, "1601 W Street, NE, Washington, DC", 9, "#000000", 168, 658, 246, { bold: true }),
+    run(1, "TRAFFIC IMPACT STUDY", 12, "#000000", 222, 674, 192, { bold: true }),
+    run(1, "PREPARED BY:", 9, "#000000", 447, 615, 70, { bold: true }),
+  ]);
+  col.images.push({ page: 1, x: 446.64, y: 628.8, w: 109.92, h: 46.32, objId: "mark", pixels: { width: 220, height: 93, kind: 2, data: new Uint8ClampedArray(220 * 93 * 3).fill(50) } });
+  const colLines = scanMod.linesOf(col);
+  const titleLine = colLines.find((l) => l.text === "BUS TERMINAL");
+  eq(cov.alignOfLine(titleLine, colLines, 612), "right", "alignOfLine: lines sharing a right edge with differing lengths are right-aligned");
+  const colRes = cov.deriveCover(col, bodyA, null, { firmName: "X" }, []);
+  const titleEl = colRes.cover.elements.find((e) => e.role === "projectName");
+  ok(titleEl && titleEl.align === "right" && titleEl.x + titleEl.w <= 415, `cover: the right-aligned title's box ends at the column edge, clear of the logo (${JSON.stringify(titleEl && [titleEl.align, titleEl.x, titleEl.w])})`);
+  // A centred line with a logo beside it in the same y band gets a box that stops short of the logo.
+  const beside = mkPage(1, [run(1, "TRAFFIC IMPACT STUDY", 24, "#000000", 120, 300, 260, { bold: true })]);
+  beside.images.push({ page: 1, x: 460, y: 270, w: 120, h: 50, objId: "mark", pixels: { width: 240, height: 100, kind: 2, data: new Uint8ClampedArray(240 * 100 * 3).fill(50) } });
+  const besideEl = cov.deriveCover(beside, bodyA, null, { firmName: "X" }, []).cover.elements[0];
+  ok(besideEl.align === "center" && besideEl.x === 36 && besideEl.x + besideEl.w <= 452, `cover: a centred box is clipped at an image beside it (${JSON.stringify([besideEl.align, besideEl.x, besideEl.w])})`);
+  eq(cov.alignOfLine(scanMod.linesOf(beside)[0], scanMod.linesOf(beside), 612), "center", "alignOfLine: a lone line falls back to its position");
+}
+
+// ─── final review Important 7(a): stored images are downsampled ───────────
+{
+  const pngMod = await import(path.resolve(here, "../src/lib/report-theme/png.ts"));
+  const solid = { width: 400, height: 100, rgba: new Uint8Array(400 * 100 * 4).fill(200) };
+  const small = pngMod.downsampleRgba(solid, 100, 25);
+  eq([small.width, small.height], [100, 25], "downsample: 400×100 → 100×25 keeps the aspect");
+  ok(small.rgba.every((v) => v === 200), "downsample: a solid image stays solid");
+  ok(pngMod.downsampleRgba(solid, 800, 800) === solid, "downsample: an image that already fits is returned untouched");
+  const tall = pngMod.downsampleRgba(solid, 300, 10);
+  eq([tall.width, tall.height], [40, 10], "downsample: the tighter axis wins (max 300×10 → 40×10)");
+  const checker = { width: 2, height: 2, rgba: new Uint8Array([0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 255]) };
+  eq(Array.from(pngMod.downsampleRgba(checker, 1, 1).rgba), [128, 128, 128, 255], "downsample: a 2×2 checker box-filters to mid grey");
+  const logoPx = { width: 685, height: 277, kind: 2, data: new Uint8ClampedArray(685 * 277 * 3).fill(10) };
+  const full = pngMod.imagePixelsToPngDataUrl(logoPx);
+  const capped = pngMod.imagePixelsToPngDataUrl(logoPx, { w: 329 * 2, h: 133 * 2 });
+  const dims = (dataUrl) => { const b = Buffer.from(dataUrl.split(",")[1], "base64"); return [b.readUInt32BE(16), b.readUInt32BE(20)]; };
+  eq(dims(full), [685, 277], "png: without a cap the pixels are stored as decoded");
+  eq(dims(capped), [658, 266], "png: capped at 2× the 329×133 pt placement → 658×266 px");
+  ok(capped.length < full.length, `png: the capped encoding is smaller (${capped.length} < ${full.length})`);
+}
+
 // ─── cover.ts fix round: doc-type-like subtitle must never win projectName ──
 const subtitlePage = mkPage(1, [
   run(1, "TRAFFIC IMPACT STUDY", 30, "#ffffff", 72, 100, 380, { bold: true }),

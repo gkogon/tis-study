@@ -37,6 +37,12 @@ for (const name of present) {
   ok(!!t.footer?.segments.some((s) => s.text.includes("{{page}}")) === exp.footerHasPage, `${name}: footer page token ${exp.footerHasPage ? "present" : "absent"}`);
   ok((t.header !== null) === exp.headerPresent, `${name}: header ${exp.headerPresent ? "present" : "absent"}`);
   if (exp.tableHeaderFill !== undefined) ok((t.table.header.fill === null) === (exp.tableHeaderFill === null) && (exp.tableHeaderFill === null || dE(t.table.header.fill, exp.tableHeaderFill) < 8), `${name}: table header fill ${t.table.header.fill} (expected ${exp.tableHeaderFill})`);
+  const storedBytes = JSON.stringify(stored).length;
+  ok(storedBytes < 300_000, `${name}: stored theme is ${storedBytes} B (< 300 KB — logo/background downsampled to 2× placement)`);
+  if (exp.logo !== undefined) {
+    const l = t.cover.logo;
+    ok((l === null) === (exp.logo === null) && (exp.logo === null || (Math.abs(l.w - exp.logo.w) <= 2 && Math.abs(l.h - exp.logo.h) <= 2)), `${name}: cover logo ${l ? `${l.w}×${l.h} pt` : "none"} (expected ${exp.logo ? `${exp.logo.w}×${exp.logo.h} pt` : "none"})`);
+  }
   const leaked = stored.source.warnings.filter((w) => /^Dropped/.test(w));
   console.log(`      ${name}: ${stored.source.warnings.length} warning(s), ${leaked.length} dropped segment(s)`);
 }
