@@ -37,6 +37,20 @@ function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
 
 const sameFamily = (a: string, b: string) => parsePostScriptName(a).family === parsePostScriptName(b).family;
 
+/** Copies every key of `z` except `edge` (the running-zone detector's internal margin hint, never part of the stored `Theme`). */
+function omitEdge<T extends { edge: number }>(z: T | null): Omit<T, "edge"> | null {
+  if (!z) return null;
+  const out = {} as Omit<T, "edge">;
+  for (const k in z) if (k !== "edge") (out as Record<string, unknown>)[k] = (z as Record<string, unknown>)[k];
+  return out;
+}
+
+/** A thrown `ThemeExtractError` (e.g. a derivation's own `if (!x) throw ...`) passes through unchanged; anything else — a bug surfacing as a plain `Error` — becomes a 422 so a malformed-but-`%PDF-`-prefixed upload never escapes as an unhandled crash. */
+export function mapDerivationError(e: unknown): ThemeExtractError {
+  if (e instanceof ThemeExtractError) return e;
+  return new ThemeExtractError(422, `Could not derive formatting from this PDF: ${(e as Error).message}`);
+}
+
 function headingStyles(heads: HeadingLevel[], body: BodyStyle, headingFontName: string | null): Theme["headings"] {
   const out: HeadingStyle[] = [];
   for (let i = 0; i < 3; i++) {
@@ -53,7 +67,7 @@ function headingStyles(heads: HeadingLevel[], body: BodyStyle, headingFontName: 
       });
     } else {
       const prev = out[i - 1] ?? DEFAULT_THEME.headings[0];
-      out.push({ ...prev, style: { ...prev.style, size: Math.max(body.size, Math.round(prev.style.size * 0.85 * 2) / 2) }, rule: null, band: null, numbering: prev.numbering === "none" ? "none" : prev.numbering, spaceBefore: Math.round(prev.spaceBefore * 0.8), spaceAfter: Math.round(prev.spaceAfter * 0.8) });
+      out.push({ ...prev, style: { ...prev.style, size: Math.max(body.size, Math.round(prev.style.size * 0.85 * 2) / 2) }, rule: null, band: null, numbering: prev.numbering, spaceBefore: Math.round(prev.spaceBefore * 0.8), spaceAfter: Math.round(prev.spaceAfter * 0.8) });
     }
   }
   return [out[0], out[1], out[2]];
@@ -71,63 +85,67 @@ export async function extractTheme(pdf: Buffer, opts: ExtractOptions): Promise<S
   let fallbacks = 0;
   const fallback = (msg: string) => { warnings.push(msg); fallbacks++; };
 
-  const body = bodyStyle(scan.pages);
-  if (!body) throw new ThemeExtractError(422, "No formatting could be detected (is this a scanned image?).");
-  const bodyPs = parsePostScriptName(body.font);
-  const bodyFont = matchFamily(bodyPs.family, { serif: body.serif, mono: body.mono });
+  let theme: Theme;
+  try {
+    const body = bodyStyle(scan.pages);
+    if (!body) throw new ThemeExtractError(422, "No formatting could be detected (is this a scanned image?).");
+    const bodyPs = parsePostScriptName(body.font);
+    const bodyFont = matchFamily(bodyPs.family, { serif: body.serif, mono: body.mono });
 
-  const heads = detectHeadings(scan.pages, body);
-  if (!heads.length) fallback("No headings detected; using default heading styles.");
-  const headPs = heads[0] ? parsePostScriptName(heads[0].font) : bodyPs;
-  const headFont = heads[0] ? matchFamily(headPs.family, { serif: heads[0].lines[0]?.runs[0]?.serif ?? body.serif }) : bodyFont;
+    const heads = detectHeadings(scan.pages, body);
+    if (!heads.length) fallback("No headings detected; using default heading styles.");
+    const headPs = heads[0] ? parsePostScriptName(heads[0].font) : bodyPs;
+    const headFont = heads[0] ? matchFamily(headPs.family, { serif: heads[0].lines[0]?.runs[0]?.serif ?? body.serif }) : bodyFont;
 
-  const coverRes = deriveCover(scan.pages.find((p) => p.page === 1), body, heads[0]?.font ?? null, { firmName: opts.firmName });
-  warnings.push(...coverRes.warnings);
+    const coverRes = deriveCover(scan.pages.find((p) => p.page === 1), body, heads[0]?.font ?? null, { firmName: opts.firmName });
+    warnings.push(...coverRes.warnings);
 
-  const zones = detectRunningZones(scan.pages, body, heads[0]?.font ?? null, { firmName: opts.firmName, coverTitle: coverRes.coverTitle });
-  warnings.push(...zones.warnings);
-  if (!zones.header && !zones.footer) fallback("No running header or footer detected; using the default footer.");
+    const zones = detectRunningZones(scan.pages, body, heads[0]?.font ?? null, { firmName: opts.firmName, coverTitle: coverRes.coverTitle });
+    warnings.push(...zones.warnings);
+    if (!zones.header && !zones.footer) fallback("No running header or footer detected; using the default footer.");
 
-  const geom = pageGeometry(scan.pages, body, { headerBottom: zones.header?.edge ?? null, footerTop: zones.footer?.edge ?? null });
-  if (!geom) fallback("Page margins not detected; using 50 pt margins.");
+    const geom = pageGeometry(scan.pages, body, { headerBottom: zones.header?.edge ?? null, footerTop: zones.footer?.edge ?? null });
+    if (!geom) fallback("Page margins not detected; using 50 pt margins.");
 
-  const tables = detectTables(scan.pages, body, heads[0]?.font ?? null);
-  if (!tables.style) fallback("No tables detected; using the default table style.");
-  const fig = detectFigureCaption(scan.pages, body);
+    const tables = detectTables(scan.pages, body, heads[0]?.font ?? null);
+    if (!tables.style) fallback("No tables detected; using the default table style.");
+    const fig = detectFigureCaption(scan.pages, body);
 
-  const mutedCandidates = [tables.style?.caption.style.color, zones.header?.style.color, zones.footer?.style.color, fig?.style.color].filter((c): c is string => !!c);
-  const palette = derivePalette(scan.pages, body, heads, mutedCandidates);
+    const mutedCandidates = [tables.style?.caption.style.color, zones.header?.style.color, zones.footer?.style.color, fig?.style.color].filter((c): c is string => !!c);
+    const palette = derivePalette(scan.pages, body, heads, mutedCandidates);
 
-  if (fallbacks >= 4) throw new ThemeExtractError(422, "No formatting could be detected (is this a scanned image?).");
+    if (fallbacks >= 4) throw new ThemeExtractError(422, "No formatting could be detected (is this a scanned image?).");
 
-  const captionStyle: TextStyle = tables.style?.caption.style ?? { font: "body", size: Math.max(6, body.size - 1), color: palette.muted, bold: true };
-  const strip = <T extends { edge: number }>(z: T | null) => { if (!z) return null; const { edge: _e, ...rest } = z; return rest; };
-  const theme: Theme = {
-    id: `firm-${opts.firmId}`,
-    page: geom ?? DEFAULT_THEME.page,
-    fonts: {
-      body: { family: bodyFont.family, requested: bodyPs.family, exact: bodyFont.exact },
-      heading: { family: headFont.family, requested: headPs.family, exact: headFont.exact },
-    },
-    text: {
-      body: { font: "body", size: body.size, color: body.color },
-      caption: captionStyle,
-      muted: { font: "body", size: Math.max(6, body.size - 1), color: palette.muted },
-    },
-    headings: headingStyles(heads, body, heads[0]?.font ?? null),
-    palette,
-    table: tables.style ?? {
-      ...DEFAULT_THEME.table,
-      header: { ...DEFAULT_THEME.table.header, fill: tint(palette.primary, 0.86), color: palette.primary },
-      rules: { ...DEFAULT_THEME.table.rules, color: palette.rule },
-    },
-    figure: { caption: fig ?? { position: "below", style: { ...captionStyle, bold: false } } },
-    header: strip(zones.header),
-    footer: strip(zones.footer),
-    cover: coverRes.cover,
-    charts: { series: [palette.primary, palette.accent !== palette.primary ? palette.accent : tint(palette.primary, 0.5), tint(palette.primary, 0.3), tint(palette.primary, 0.7)] },
-    synonyms: mapSynonyms(heads.slice(0, 2).flatMap((h) => h.lines.map((l) => l.text))),
-  };
+    const captionStyle: TextStyle = tables.style?.caption.style ?? { font: "body", size: Math.max(6, body.size - 1), color: palette.muted, bold: true };
+    theme = {
+      id: `firm-${opts.firmId}`,
+      page: geom ?? DEFAULT_THEME.page,
+      fonts: {
+        body: { family: bodyFont.family, requested: bodyPs.family, exact: bodyFont.exact },
+        heading: { family: headFont.family, requested: headPs.family, exact: headFont.exact },
+      },
+      text: {
+        body: { font: "body", size: body.size, color: body.color },
+        caption: captionStyle,
+        muted: { font: "body", size: Math.max(6, body.size - 1), color: palette.muted },
+      },
+      headings: headingStyles(heads, body, heads[0]?.font ?? null),
+      palette,
+      table: tables.style ?? {
+        ...DEFAULT_THEME.table,
+        header: { ...DEFAULT_THEME.table.header, fill: tint(palette.primary, 0.86), color: palette.primary },
+        rules: { ...DEFAULT_THEME.table.rules, color: palette.rule },
+      },
+      figure: { caption: fig ?? { position: "below", style: { ...captionStyle, bold: false } } },
+      header: omitEdge(zones.header),
+      footer: omitEdge(zones.footer),
+      cover: coverRes.cover,
+      charts: { series: [palette.primary, palette.accent !== palette.primary ? palette.accent : tint(palette.primary, 0.5), tint(palette.primary, 0.3), tint(palette.primary, 0.7)] },
+      synonyms: mapSynonyms(heads.slice(0, 2).flatMap((h) => h.lines.map((l) => l.text))),
+    };
+  } catch (e) {
+    throw mapDerivationError(e);
+  }
 
   const stored = {
     version: 2 as const,

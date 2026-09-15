@@ -492,5 +492,13 @@ eq(dupRes.cover.elements.filter((e) => e.role === "preparedBy").length, 1, "only
 ok(dupRes.warnings.some((w) => w.includes("Someone Else")), "the duplicate preparedFor line is dropped with a warning");
 ok(dupRes.warnings.some((w) => w.includes("Another Firm")), "the duplicate preparedBy line is dropped with a warning");
 
+// ─── extract.ts fix round: mapDerivationError ──────────────────────────────
+const extractMod = await import(path.resolve(here, "../src/lib/report-theme/extract.ts"));
+const { mapDerivationError, ThemeExtractError } = extractMod;
+const mapped = mapDerivationError(new Error("boom"));
+ok(mapped instanceof ThemeExtractError && mapped.status === 422 && mapped.message.includes("boom"), `a plain Error becomes a 422 ThemeExtractError naming it (${mapped.status} ${mapped.message})`);
+const already = new ThemeExtractError(400, "x");
+ok(mapDerivationError(already) === already, "an existing ThemeExtractError passes through unchanged");
+
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");
