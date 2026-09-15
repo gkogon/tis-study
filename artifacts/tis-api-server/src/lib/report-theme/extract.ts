@@ -38,9 +38,14 @@ function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
 
 const sameFamily = (a: string, b: string) => parsePostScriptName(a).family === parsePostScriptName(b).family;
 
-/** Copies every key of `z` except `edge` (the running-zone detector's internal margin hint, never part of the stored `Theme`). */
-function omitEdge<T extends { edge: number }>(z: T | null): Omit<T, "edge"> | null {
-  if (!z) return null;
+/**
+ * Copies every key of `z` except `edge` (the running-zone detector's internal
+ * margin hint, never part of the stored `Theme`). A zone with no surviving
+ * segments is stored as null: its extent has already shaped the page
+ * geometry, and a zone with nothing to draw is not a zone.
+ */
+function omitEdge<T extends { edge: number; segments: unknown[] }>(z: T | null): Omit<T, "edge"> | null {
+  if (!z || !z.segments.length) return null;
   const out = {} as Omit<T, "edge">;
   for (const k in z) if (k !== "edge") (out as Record<string, unknown>)[k] = (z as Record<string, unknown>)[k];
   return out;
@@ -111,6 +116,9 @@ export async function extractTheme(pdf: Buffer, opts: ExtractOptions): Promise<S
     const zones = detectRunningZones(report, body, heads[0]?.font ?? null, { firmName: opts.firmName, coverTitle: coverRes.coverTitle });
     warnings.push(...zones.warnings);
     if (!zones.header && !zones.footer) fallback("No running header or footer detected; using the default footer.");
+    for (const [name, z] of [["header", zones.header], ["footer", zones.footer]] as const) {
+      if (z && !z.segments.length) warnings.push(`The running ${name} carried only text that could not be mapped to tokens; its band is kept clear.`);
+    }
 
     const geom = pageGeometry(report, body, { headerBottom: zones.header?.edge ?? null, footerTop: zones.footer?.edge ?? null });
     if (!geom) fallback("Page margins not detected; using 50 pt margins.");

@@ -138,7 +138,11 @@ function detectZone(pages: ScannedPage[], where: "top" | "bottom", body: BodySty
       if (!segments.some((s) => s.text === text && s.align === align)) segments.push({ align, text });
     }
   }
-  if (!segments.length) return null;
+  // A zone whose every segment was dropped (an address-only footer, a firm's
+  // contact band) still occupies its band on every page: its extent must
+  // reach the geometry pass or the footer lines count as body text and the
+  // bottom margin collapses onto them. It is returned with `segments: []`;
+  // the assembler stores null for it (a zone with no segments draws nothing).
   const all = kept.flatMap(([, ls]) => ls);
   const ref = all.reduce((a, b) => (b.text.length > a.text.length ? b : a));
   const style = { font: (headingFont && ref.font === headingFont && ref.font !== body.font ? "heading" : "body") as "heading" | "body", size: clamp(Math.round(ref.size * 2) / 2, 5, 14), color: ref.color ?? body.color, bold: ref.bold };

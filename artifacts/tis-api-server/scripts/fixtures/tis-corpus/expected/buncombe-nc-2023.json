@@ -7,9 +7,11 @@
   "primary": "#112b57",
   "pageSize": "LETTER",
   "marginLeft": 78,
+  "marginBottom": 109,
   "numbering": "none",
   "footerHasPage": true,
   "headerPresent": true,
   "tableHeaderFill": "#0a4593",
-  "_verified": "Body: Cambria 11 pt in #2c2e35 (22k chars; Word export → caladea). H1: 'I. Executive Summary', 'IV. Traffic Generation', 'V. Traffic Distribution' — Calibri-Bold 16.02 pt navy #112b57 (pages 4, 11). The numbering is roman ('I.', 'II.', 'IV.'), which the Numbering enum cannot represent — recorded as 'none'; it must NOT be read as 'letter'. Primary: the heading navy. Margin: the page has a binding offset — body lines run from x=90 to x=545 (left 90, right 67); the theme stores symmetric margins (spec §7.3), so the representable value is their mean, 78. Header: right-aligned '24 Queen Road / Traffic Impact Analysis' over a 2.25 pt rule at y=60; footer: Gannett Fleming logo left, bare page number right ('8' at y≈745). Tables (page 11 raster + rects): grid, blue #0a4593 header cells with white Calibri-Bold text."
+  "_verified": "Body: Cambria 11 pt in #2c2e35 (22k chars; Word export → caladea). H1: 'I. Executive Summary', 'IV. Traffic Generation', 'V. Traffic Distribution' — Calibri-Bold 16.02 pt navy #112b57 (pages 4, 11). The numbering is roman ('I.', 'II.', 'IV.'), which the Numbering enum cannot represent — recorded as 'none'; it must NOT be read as 'letter'. Primary: the heading navy. Margin: the page has a binding offset — body lines run from x=90 to x=545 (left 90, right 67); the theme stores symmetric margins (spec §7.3), so the representable value is their mean, 78. Header: right-aligned '24 Queen Road / Traffic Impact Analysis' over a 2.25 pt rule at y=60; footer: Gannett Fleming logo left, bare page number right ('8' at y≈745). Tables (page 11 raster + rects): grid, blue #0a4593 header cells with white Calibri-Bold text.",
+  "_verifiedMarginBottom": "Bottom margin 109: per-page census (H - max body baseline above the footer zone, edge 737) p4=108.7 (body prose 'appropriate tapers be constructed...'), p8=140.7 (a figure caption), p11=159.6, every other prose page ends higher (237-594). One page fills the body band; its baseline sets the margin."
 }

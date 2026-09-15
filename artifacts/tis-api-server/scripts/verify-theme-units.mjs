@@ -128,9 +128,32 @@ eq(draw.formatNumber([3], "none"), "", "none drops");
 eq(draw.applyCase("STUDY NETWORK", "title"), "Study Network", "title case");
 eq(draw.applyCase("trip distribution and assignment", "title"), "Trip Distribution and Assignment", "title case keeps small words");
 eq(draw.applyCase("Study Network", "upper"), "STUDY NETWORK", "upper");
+// Final-review Important 5: title case must not mangle acronyms.
+eq(draw.applyCase("TG-21 Level of Service Standard — LOS C", "title"), "TG-21 Level of Service Standard — LOS C", "title case: mixed-case source keeps its all-caps words (TG-21, LOS, C)");
+eq(draw.applyCase("TIS APPLICABILITY", "title"), "TIS Applicability", "title case: all-caps source keeps a listed acronym (TIS)");
+eq(draw.applyCase("PROPOSED DRI", "title"), "Proposed DRI", "title case: all-caps source keeps DRI");
+eq(draw.applyCase("INGRESS/EGRESS ANALYSIS", "title"), "Ingress/Egress Analysis", "title case: capital after a slash");
+eq(draw.applyCase("TRIP DISTRIBUTION (GRAVITY MODEL)", "title"), "Trip Distribution (Gravity Model)", "title case: capital after an opening parenthesis");
+eq(draw.applyCase("EXISTING (2024) INTERSECTION ANALYSIS", "title"), "Existing (2024) Intersection Analysis", "title case: digits pass through");
+eq(draw.applyCase("MIXED-USE DEVELOPMENT — NB/SB APPROACHES", "title"), "Mixed-Use Development — NB/SB Approaches", "title case: capital after a hyphen; NB/SB kept");
+eq(draw.applyCase("Existing Conditions (2024)", "title"), "Existing Conditions (2024)", "title case: mixed-case source unchanged when already title-cased");
+eq(draw.applyCase("TG-21 LEVEL OF SERVICE STANDARD", "title"), "TG-21 Level of Service Standard", "title case: hyphenated acronym kept from an all-caps source");
+// Final-review Critical 1: cover elements fit their slot instead of paginating.
+{
+  const measure = (text, size, width) => Math.ceil(text.length * size * 0.5 / width) * Math.ceil(size * 1.2);
+  const el = { x: 36, y: 400, w: 540, style: { font: "body", size: 24, color: "#000000" } };
+  const short = draw.fitCoverElement(measure, el, "Bexar County Sample", null, 792);
+  eq([short.y, short.size], [400, 24], `fitCoverElement: a short title keeps its y and size (h=${short.height})`);
+  const long = draw.fitCoverElement(measure, el, "A".repeat(200), 430, 792);
+  ok(long.size < 24 && long.y + long.height <= 428, `fitCoverElement: a long title above a near element shrinks to fit (size ${long.size}, bottom ${long.y + long.height})`);
+  const low = draw.fitCoverElement(measure, { ...el, y: 785 }, "May 2026", null, 792);
+  ok(low.y + low.height <= 780, `fitCoverElement: an element at the page edge is lifted so it ends above H-12 (y=${low.y}, h=${low.height})`);
+  const tall = draw.fitCoverElement(measure, el, "A".repeat(20000), null, 792);
+  ok(tall.y + tall.height <= 780 && tall.size === 12, `fitCoverElement: an unfittable text is clamped at the floor size and page bottom (size ${tall.size}, bottom ${tall.y + tall.height})`);
+}
 const T2 = { ...DEFAULT_THEME, headings: [{ ...DEFAULT_THEME.headings[0], case: "title", numbering: "1." }, { ...DEFAULT_THEME.headings[1], case: "asis", numbering: "1." }, DEFAULT_THEME.headings[2]] };
-eq(draw.formatHeading("4.0 TRIP GENERATION", 1, T2, (k) => (k === "trip-generation" ? "Site Trip Generation" : null)), "4.  Site Trip Generation", "formatHeading: number restyled, firm wording, title case");
-eq(draw.formatHeading("4.0 TRIP GENERATION", 1, T2, () => null), "4.  Trip Generation", "formatHeading without synonym");
+eq(draw.formatHeading("4.0 TRIP GENERATION", 1, T2, (k) => (k === "trip-generation" ? "Site Trip Generation" : null)), "4. Site Trip Generation", "formatHeading: number restyled, firm wording, title case, single-space separator");
+eq(draw.formatHeading("4.0 TRIP GENERATION", 1, T2, () => null), "4. Trip Generation", "formatHeading without synonym");
 eq(draw.formatHeading("EXECUTIVE SUMMARY", 1, { ...T2, headings: [{ ...T2.headings[0], numbering: "none" }, T2.headings[1], T2.headings[2]] }, () => null), "Executive Summary", "unnumbered heading");
 eq(draw.scaleWidths([200, 200, 200], 468), [156, 156, 156], "scaleWidths shrinks proportionally");
 eq(draw.scaleWidths([100, 100], 468), [100, 100], "scaleWidths leaves fitting widths alone");
@@ -297,6 +320,34 @@ ok(docSeg && docSeg.align === "center", `tab-stop footer: doctype column gets it
 ok(pageSeg && pageSeg.align === "right", `tab-stop footer: page column gets its own (right) alignment (${pageSeg?.align})`);
 ok(!tabZones.footer?.segments.some((s) => /Maple Grove/.test(s.text)), "tab-stop footer: client column never reaches a segment");
 ok(tabZones.warnings.some((w) => w.includes("Maple Grove Partners LLC")), `tab-stop footer: client column dropped with a warning naming it (${JSON.stringify(tabZones.warnings)})`);
+
+// Final-review Important 2: a running zone whose every segment is dropped (an
+// address-only footer) must still report its extent, so the geometry pass
+// keeps the footer lines out of the body band — and the stored theme gets
+// null for it (nothing to draw).
+{
+  const addrPage = (n) => ({ page: n, width: 612, height: 792, runs: [tabRun(n, "4114 Legato Road / Suite 650 / Fairfax, VA 22033", 72, 300, 772, 7), bodyRun(n, 90), bodyRun(n, 104), bodyRun(n, 720)], rects: [], lines: [], images: [] });
+  const addrPages = [{ page: 1, width: 612, height: 792, runs: [], rects: [], lines: [], images: [] }, addrPage(2), addrPage(3), addrPage(4)];
+  const addrZones = hf.detectRunningZones(addrPages, zbody, null, tabCtx);
+  ok(addrZones.footer !== null && addrZones.footer.segments.length === 0, `all-dropped footer: zone kept with no segments (${JSON.stringify(addrZones.footer?.segments)})`);
+  ok(addrZones.footer && addrZones.footer.edge > 755 && addrZones.footer.edge < 770, `all-dropped footer: edge reported (${addrZones.footer?.edge})`);
+  ok(addrZones.warnings.some((w) => w.includes("4114 Legato Road")), "all-dropped footer: the address is reported as dropped");
+  const addrGeom = pg.pageGeometry(addrPages, zbody, { headerBottom: null, footerTop: addrZones.footer?.edge ?? null });
+  eq(addrGeom && addrGeom.margins.bottom, 72, "all-dropped footer: bottom margin comes from the last body line (792-720), not the address line");
+  const noZoneGeom = pg.pageGeometry(addrPages, zbody, { headerBottom: null, footerTop: null });
+  eq(noZoneGeom && noZoneGeom.margins.bottom, 20, "(control) without the zone's extent the address line would set a 20 pt margin");
+}
+// Final-review Important 3: most report pages end early (figures, tables,
+// chapter breaks); the bottom margin must come from the pages that reach it.
+{
+  const shortPage = (n, lastY) => ({ page: n, width: 612, height: 792, runs: [bodyRun(n, 90), bodyRun(n, 104), bodyRun(n, lastY)], rects: [], lines: [], images: [] });
+  const mixed = [{ page: 1, width: 612, height: 792, runs: [], rects: [], lines: [], images: [] }, shortPage(2, 683), shortPage(3, 400), shortPage(4, 520), shortPage(5, 651), shortPage(6, 300), shortPage(7, 450), shortPage(8, 610), shortPage(9, 380), shortPage(10, 500), shortPage(11, 560)];
+  const g = pg.pageGeometry(mixed, zbody, { headerBottom: null, footerTop: null });
+  eq(g && g.margins.bottom, 109, `short pages: bottom margin from the one page that fills the band (792-683), not a percentile of short pages (${g?.margins.bottom})`);
+  const stray = [...mixed, shortPage(12, 700), shortPage(13, 690), shortPage(14, 686)];
+  const g2 = pg.pageGeometry(stray, zbody, { headerBottom: null, footerTop: null });
+  ok(g2 && g2.margins.bottom >= 100 && g2.margins.bottom <= 106, `short pages: when several pages reach the margin their median sets it, so one deeper stray run does not (${g2?.margins.bottom})`);
+}
 
 // Mixed page sizes: a rogue landscape interior page (e.g. an oversize plan
 // sheet inserted into an otherwise-uniform report) recurs the SAME

@@ -32,6 +32,7 @@ for (const name of present) {
   ok(dE(t.palette.primary, exp.primary) < 8, `${name}: primary ${t.palette.primary} (expected ${exp.primary})`);
   ok(String(t.page.size) === String(exp.pageSize), `${name}: page size ${t.page.size} (expected ${exp.pageSize})`);
   ok(Math.abs(t.page.margins.left - exp.marginLeft) <= 4, `${name}: left margin ${t.page.margins.left} (expected ${exp.marginLeft} ± 4)`);
+  ok(Math.abs(t.page.margins.bottom - exp.marginBottom) <= 6, `${name}: bottom margin ${t.page.margins.bottom} (expected ${exp.marginBottom} ± 6)`);
   ok(t.headings[0].numbering === exp.numbering, `${name}: numbering ${t.headings[0].numbering} (expected ${exp.numbering})`);
   ok(!!t.footer?.segments.some((s) => s.text.includes("{{page}}")) === exp.footerHasPage, `${name}: footer page token ${exp.footerHasPage ? "present" : "absent"}`);
   ok((t.header !== null) === exp.headerPresent, `${name}: header ${exp.headerPresent ? "present" : "absent"}`);

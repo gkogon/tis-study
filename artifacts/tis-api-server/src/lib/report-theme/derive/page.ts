@@ -1,6 +1,6 @@
 import { interiorPages, linesOf, type ScannedPage } from "../pdf-scan";
 import type { Theme } from "../theme";
-import { clamp, mode, type BodyStyle } from "./typography";
+import { clamp, median, mode, type BodyStyle } from "./typography";
 
 const SNAP: Array<["LETTER" | "A4" | "LEGAL" | "TABLOID", number, number]> = [["LETTER", 612, 792], ["A4", 595.28, 841.89], ["LEGAL", 612, 1008], ["TABLOID", 792, 1224]];
 const pct = (nums: number[], q: number) => { const s = [...nums].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.round(q * (s.length - 1)))]; };
@@ -53,6 +53,15 @@ export function pageGeometry(pages: ScannedPage[], body: BodyStyle, zones: { hea
   const right = w - pct(rights, 0.95);
   const lr = clamp(Math.round((left + right) / 2), 18, 144);
   const top = clamp(Math.round(pct(tops, 0.2)), 18, 144);
-  const bottom = clamp(Math.round(h - pct(bottoms, 0.8)), 18, 144);
+  // Bottom: read the pages that reach the margin. Most report pages end
+  // early (a figure, a table, a chapter break), so a percentile over every
+  // page reads the short ones instead of the margin — Buncombe's 13 prose
+  // pages have exactly one that fills the page, and both p80 and p95 land on
+  // a figure page 30 pt short of it (144-clamped). Take the deepest page and
+  // every page within 1.5 body lines of it, then their median, so one stray
+  // run cannot set the margin on its own when other pages reach it.
+  const deepest = Math.max(...bottoms);
+  const reach = bottoms.filter((b) => b >= deepest - Math.max(16, body.size * 1.5));
+  const bottom = clamp(Math.round(h - median(reach)), 18, 144);
   return { size, orientation: portrait ? "portrait" : "landscape", margins: { top, right: lr, bottom, left: lr } };
 }
