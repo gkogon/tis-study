@@ -448,6 +448,31 @@ const bodyToc = typo.bodyStyle(pagesToc);
 const headsToc = typo.detectHeadings(pagesToc, bodyToc);
 eq(headsToc.map((h) => [h.size, h.numbering]), [[16, "1"]], "front matter: 21 pt contents-list titles are excluded; the 16 pt chapter style is H1 with '1' numbering");
 
+// report-pages.ts — the pages the derivations may read. A public filing is a
+// short report inside a long tail (Synchro sheets, count data) behind
+// "Appendix A" divider pages, and front matter (a second title page, a
+// signature page) ahead of it; recurrence-based zones and census-based
+// styles were captured by all of that.
+const rp = await import(path.resolve(here, "../src/lib/report-theme/derive/report-pages.ts"));
+const prose = (page, texts) => mkPage(page, texts.map((t, i) => run(page, t, 11, "#000000", 72, 120 + 14 * i, 440)));
+const PARA = ["Body text line one that is long enough to count as a paragraph line.", "Second body line of similar length to the first one here.", "Third body line again with enough words to be a paragraph."];
+const synchro = (page) => mkPage(page, [...Array(30)].map((_, i) => ({ ...run(page, "HCM 6th Signalized Intersection Summary Lane Group EBL EBT", 6.5, "#000000", 40, 60 + 12 * i, 300), font: "Calibri" })));
+const pagesRp = [
+  mkPage(1, [run(1, "TITLE", 30, "#5c5c5c", 72, 300, 300, { bold: true })]),
+  mkPage(2, [run(2, "Traffic Impact Analysis", 24, "#5c5c5c", 180, 98, 245, { bold: true }), run(2, "Prepared for: Someone Development LLC, 123 Main Street", 11, "#000000", 72, 500, 300)]),
+  prose(3, PARA), prose(4, PARA),
+  mkPage(5, [run(5, "Figure 3. Site Plan", 11, "#6d6e71", 200, 83, 217)]),
+  mkPage(6, [run(6, "Table 4. LOS Summary", 11, "#000000", 200, 83, 200, { bold: true }), run(6, "Intersection", 9, "#000000", 76, 110, 60, { bold: true })]),
+  prose(7, PARA),
+  mkPage(8, [run(8, "Appendix A", 22, "#5c5c5c", 423, 96, 117, { bold: true }), run(8, "Traffic Counts", 16, "#9d9d9d", 384, 119, 155, { bold: true })]),
+  prose(9, PARA), synchro(10), synchro(11),
+];
+const bodyRp = { font: "ABCDEF+Arial", size: 11, color: "#000000", serif: false, mono: false, bold: false };
+eq(rp.beforeAppendix(pagesRp).map((p) => p.page), [1, 2, 3, 4, 5, 6, 7], "beforeAppendix stops at the 'Appendix A' divider page, dropping it and everything after");
+eq(rp.reportPages(pagesRp, bodyRp).map((p) => p.page), [3, 4, 7], "reportPages: only pages with ≥3 paragraph-width body lines — not the second title page, the figure page, the table page or the appendix");
+eq(rp.tablePages(pagesRp, bodyRp).map((p) => p.page), [3, 4, 6, 7], "tablePages: report pages plus a captioned full-page table inside the report's span");
+eq(rp.beforeAppendix([pagesRp[0], mkPage(2, [run(2, "Appendix A Traffic Scoping Letter", 11, "#000000", 77, 430, 167), ...PARA.map((t, i) => run(2, t, 11, "#000000", 72, 120 + 14 * i, 440)), ...PARA.map((t, i) => run(2, t, 11, "#000000", 72, 200 + 14 * i, 440))])]).length, 2, "beforeAppendix: a contents-list 'Appendix A …' line on a full text page is not a divider");
+
 // ─── derive/cover.ts + derive/synonyms.ts ────────────────────────────────────
 const cov = await import(path.resolve(here, "../src/lib/report-theme/derive/cover.ts"));
 const syn = await import(path.resolve(here, "../src/lib/report-theme/derive/synonyms.ts"));

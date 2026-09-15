@@ -6,8 +6,9 @@
  */
 import { DEFAULT_THEME, StoredThemeSchema, tint, type HeadingStyle, type StoredTheme, type TextStyle, type Theme } from "./theme";
 import { matchFamily, parsePostScriptName } from "./fonts";
-import { scanPdf } from "./pdf-scan";
+import { interiorPages, scanPdf } from "./pdf-scan";
 import { bodyStyle, detectHeadings, type BodyStyle, type HeadingLevel } from "./derive/typography";
+import { beforeAppendix, reportPages, tablePages } from "./derive/report-pages";
 import { pageGeometry } from "./derive/page";
 import { detectRunningZones } from "./derive/header-footer";
 import { derivePalette } from "./derive/palette";
@@ -87,12 +88,19 @@ export async function extractTheme(pdf: Buffer, opts: ExtractOptions): Promise<S
 
   let theme: Theme;
   try {
-    const body = bodyStyle(scan.pages);
+    // Everything the firm designed lives before the first appendix divider;
+    // every derivation below reads only the pages that carry the report's
+    // own prose (see derive/report-pages.ts). A report too short to yield
+    // two such pages falls back to the whole pre-appendix interior.
+    const prefix = beforeAppendix(scan.pages);
+    const body = bodyStyle(prefix);
     if (!body) throw new ThemeExtractError(422, "No formatting could be detected (is this a scanned image?).");
     const bodyPs = parsePostScriptName(body.font);
     const bodyFont = matchFamily(bodyPs.family, { serif: body.serif, mono: body.mono });
+    let report = reportPages(prefix, body);
+    if (report.length < 2) report = interiorPages(prefix);
 
-    const heads = detectHeadings(scan.pages, body);
+    const heads = detectHeadings(report, body);
     if (!heads.length) fallback("No headings detected; using default heading styles.");
     const headPs = heads[0] ? parsePostScriptName(heads[0].font) : bodyPs;
     const headFont = heads[0] ? matchFamily(headPs.family, { serif: heads[0].lines[0]?.runs[0]?.serif ?? body.serif }) : bodyFont;
@@ -100,19 +108,19 @@ export async function extractTheme(pdf: Buffer, opts: ExtractOptions): Promise<S
     const coverRes = deriveCover(scan.pages.find((p) => p.page === 1), body, heads[0]?.font ?? null, { firmName: opts.firmName });
     warnings.push(...coverRes.warnings);
 
-    const zones = detectRunningZones(scan.pages, body, heads[0]?.font ?? null, { firmName: opts.firmName, coverTitle: coverRes.coverTitle });
+    const zones = detectRunningZones(report, body, heads[0]?.font ?? null, { firmName: opts.firmName, coverTitle: coverRes.coverTitle });
     warnings.push(...zones.warnings);
     if (!zones.header && !zones.footer) fallback("No running header or footer detected; using the default footer.");
 
-    const geom = pageGeometry(scan.pages, body, { headerBottom: zones.header?.edge ?? null, footerTop: zones.footer?.edge ?? null });
+    const geom = pageGeometry(report, body, { headerBottom: zones.header?.edge ?? null, footerTop: zones.footer?.edge ?? null });
     if (!geom) fallback("Page margins not detected; using 50 pt margins.");
 
-    const tables = detectTables(scan.pages, body, heads[0]?.font ?? null);
+    const tables = detectTables(tablePages(scan.pages, body), body, heads[0]?.font ?? null);
     if (!tables.style) fallback("No tables detected; using the default table style.");
-    const fig = detectFigureCaption(scan.pages, body);
+    const fig = detectFigureCaption(interiorPages(prefix), body);
 
     const mutedCandidates = [tables.style?.caption.style.color, zones.header?.style.color, zones.footer?.style.color, fig?.style.color].filter((c): c is string => !!c);
-    const palette = derivePalette(scan.pages, body, heads, mutedCandidates);
+    const palette = derivePalette(report, body, heads, mutedCandidates);
 
     if (fallbacks >= 4) throw new ThemeExtractError(422, "No formatting could be detected (is this a scanned image?).");
 
