@@ -88,6 +88,48 @@ for (const fam of ["carlito", "liberation-serif", "open-sans"]) for (const st of
 ok(fontPath("dejavu-sans", "bold").endsWith("DejaVuSans-Bold.ttf"), "DejaVu bold maps to the existing file");
 ok(fontPath("dejavu-sans", "italic").endsWith("DejaVuSans.ttf"), "DejaVu has no italic → regular");
 
+// ─── final review Important 8: glyph fallback for substitute faces ────────
+{
+  const { BUNDLED_FAMILIES } = theme;
+  const sample = "▲ → ⇒ Δ ∝ ⚠ ≤ ≥ • — – · LOS";
+  let inspectable = 0;
+  for (const fam of BUNDLED_FAMILIES) {
+    const T = { ...DEFAULT_THEME, id: `firm-${fam}`, fonts: { body: { family: fam, requested: fam, exact: true }, heading: { family: fam, requested: fam, exact: true } } };
+    const out = fonts.substituteMissingGlyphsForTheme(sample, T);
+    const missing = [...out].filter((ch) => ch.codePointAt(0) >= 128 && !fonts.familyHasGlyph(fam, "regular", ch.codePointAt(0)));
+    ok(missing.length === 0, `glyphs: ${fam} — every code point of "${out}" has a glyph in the Regular face`);
+    if (!fonts.familyHasGlyph(fam, "regular", 0x0378 /* unassigned code point: no face can carry it */)) inspectable++;
+  }
+  ok(inspectable === BUNDLED_FAMILIES.length, `glyphs: fontkit inspected every bundled family (${inspectable}/${BUNDLED_FAMILIES.length}) — a face that cannot be opened would silently disable the fallback`);
+  ok(fonts.familyHasGlyph("dejavu-sans", "regular", "▲".codePointAt(0)), "glyphs: DejaVu Sans carries ▲");
+  ok(!fonts.familyHasGlyph("carlito", "regular", "▲".codePointAt(0)), "glyphs: Carlito lacks ▲ (the case the wrapper exists for)");
+  eq(fonts.substituteMissingGlyphs("▲ → ⇒ Δ", () => false), "^ -> => d", "glyphs: every listed symbol has an ASCII stand-in");
+  eq(fonts.substituteMissingGlyphs("▲ → ⇒ Δ", () => true), "▲ → ⇒ Δ", "glyphs: nothing is substituted when the face has the glyph");
+  eq(fonts.substituteMissingGlyphs("LOS C — 12.3 s", () => false).length, "LOS C - 12.3 s".length, "glyphs: ASCII passes through untouched");
+  // The live wrapper: under a Carlito theme, doc.text receives the substituted string; under the default theme doc.text is untouched.
+  const PDFDocumentMod = (await import("pdfkit")).default;
+  const T = { ...DEFAULT_THEME, id: "firm-carlito", fonts: { body: { family: "carlito", requested: "Calibri", exact: false }, heading: { family: "carlito", requested: "Calibri", exact: false } } };
+  const d1 = new PDFDocumentMod({ size: "LETTER", bufferPages: true });
+  const before = d1.text;
+  fonts.registerThemeFonts(d1, DEFAULT_THEME);
+  fonts.installGlyphFallback(d1, DEFAULT_THEME);
+  ok(d1.text === before, "glyphs: the default theme never wraps doc.text (identity guard)");
+  d1.end();
+  const d2 = new PDFDocumentMod({ size: "LETTER", bufferPages: true });
+  fonts.registerThemeFonts(d2, T);
+  // Spy on the underlying text() before the wrapper binds it, so the string the wrapper hands down is observable.
+  const seen = [];
+  const underlying = d2.text;
+  d2.text = function (s, ...rest) { seen.push(s); return underlying.call(this, s, ...rest); };
+  fonts.installGlyphFallback(d2, T);
+  d2.font("body");
+  d2.text("▲ 12.3 → LOS C", 50, 50);
+  d2.font("heading");
+  d2.text("Δ delay ⇒ 4 s", 50, 80);
+  eq(seen, ["^ 12.3 → LOS C", "Δ delay => 4 s"], "glyphs: under a Carlito theme the wrapper hands pdfkit the substituted string for the face in use (Carlito has Δ and →, lacks ▲ and ⇒)");
+  d2.end();
+}
+
 // ─── active.ts / canonical.ts / draw.ts ─────────────────────────────────────
 const active = await import(path.resolve(here, "../src/lib/report-theme/active.ts"));
 const canonical = await import(path.resolve(here, "../src/lib/report-theme/canonical.ts"));

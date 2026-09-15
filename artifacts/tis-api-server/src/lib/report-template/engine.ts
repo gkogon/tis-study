@@ -25,7 +25,7 @@ import {
   type LineChartSpec,
 } from "../pdf-charts";
 import { DEFAULT_THEME, isDefaultTheme, luminance, pageSizePoints, tint, type Theme } from "../report-theme/theme";
-import { registerThemeFonts } from "../report-theme/fonts";
+import { installGlyphFallback, registerThemeFonts } from "../report-theme/fonts";
 import { pageMargin, withTheme } from "../report-theme/active";
 
 // Reuse the repo's bundled Unicode fonts (same resolution as pdf-export.ts).
@@ -541,6 +541,7 @@ export function renderTemplatePdf(
     info: { Title: `${t.documentType} — ${ctx.project?.projectName ?? ""}`, Author: interp(t.brand.firmName, ctx) },
   });
   registerThemeFonts(doc, theme);
+  installGlyphFallback(doc, theme);
   doc.font("body");
   const chunks: Buffer[] = [];
   return new Promise<Buffer>((resolve, reject) => {

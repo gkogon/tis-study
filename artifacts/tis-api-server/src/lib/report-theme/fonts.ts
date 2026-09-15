@@ -7,6 +7,7 @@
  * `exact` is false when a substitute stands in — the settings page says so.
  */
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDefaultTheme, type BundledFamily, type Theme } from "./theme";
@@ -181,4 +182,85 @@ export function registerThemeFonts(doc: PDFKit.PDFDocument, theme: Theme): void 
   doc.registerFont("headingbold", fontPath(h, "bold"));
   const lm = fontPath("liberation-mono", "regular");
   doc.registerFont("mono", existsSync(lm) ? lm : mono);
+}
+
+// ─── Glyph fallback for substitute faces ────────────────────────────────────
+//
+// DejaVu Sans (the default) carries every symbol the LOS tables use; the
+// metric-compatible substitutes do not (▲ is missing from Carlito, Caladea,
+// Gelasio, Lato, Open Sans and Roboto; ⇒ from all but Source Sans 3). PDFKit
+// paints .notdef for a missing glyph, and its declared width disagrees with
+// the wrap measurement, so the line spills past the margin. Under a
+// non-default theme every string handed to doc.text is passed through
+// substituteMissingGlyphs against the face in use.
+
+type FontkitFace = { hasGlyphForCodePoint(cp: number): boolean };
+type Fontkit = { openSync(file: string): FontkitFace };
+
+let fontkitMod: Fontkit | null | undefined;
+/** pdfkit's own fontkit. pnpm keeps it beside pdfkit rather than in our node_modules, so resolve it from pdfkit's location. */
+function loadFontkit(): Fontkit | null {
+  if (fontkitMod !== undefined) return fontkitMod;
+  try {
+    const here = createRequire(import.meta.url);
+    fontkitMod = createRequire(here.resolve("pdfkit"))("fontkit") as Fontkit;
+  } catch {
+    fontkitMod = null;
+  }
+  return fontkitMod;
+}
+
+const faceCache = new Map<string, FontkitFace | null>();
+function faceForFile(file: string): FontkitFace | null {
+  const hit = faceCache.get(file);
+  if (hit !== undefined) return hit;
+  let face: FontkitFace | null = null;
+  try { face = loadFontkit()?.openSync(file) ?? null; } catch { face = null; }
+  faceCache.set(file, face);
+  return face;
+}
+
+/** Whether a bundled face has a glyph for the code point; true when the face cannot be inspected (never substitute blindly). */
+export function familyHasGlyph(family: BundledFamily, style: FontStyle, cp: number): boolean {
+  const face = faceForFile(fontPath(family, style));
+  return face ? face.hasGlyphForCodePoint(cp) : true;
+}
+
+/** ASCII stand-ins for the symbols the renderers use that substitute faces may lack. */
+export const GLYPH_FALLBACK: Record<string, string> = {
+  "▲": "^", "▼": "v", "→": "->", "⇒": "=>", "←": "<-", "↑": "^", "↓": "v", "∝": "~", "Δ": "d", "Σ": "sum", "λ": "lambda", "⚠": "!",
+  "≤": "<=", "≥": ">=", "•": "*", "—": "-", "–": "-", "−": "-", "·": "*", "×": "x", "±": "+/-", "≈": "~", "≠": "!=", "…": "...",
+};
+
+/** Replace every non-ASCII code point the face lacks with its ASCII stand-in (unlisted ones are left as they are). */
+export function substituteMissingGlyphs(str: string, hasGlyph: (cp: number) => boolean): string {
+  let out = "";
+  for (const ch of str) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (cp < 128 || hasGlyph(cp)) { out += ch; continue; }
+    out += GLYPH_FALLBACK[ch] ?? ch;
+  }
+  return out;
+}
+
+/** substituteMissingGlyphs against the theme's body and heading Regular faces (a glyph counts as present only when both have it). */
+export function substituteMissingGlyphsForTheme(str: string, theme: Theme): string {
+  const b = theme.fonts.body.family, h = theme.fonts.heading.family;
+  return substituteMissingGlyphs(str, (cp) => familyHasGlyph(b, "regular", cp) && familyHasGlyph(h, "regular", cp));
+}
+
+/**
+ * Wrap doc.text once so every string is checked against the face in use
+ * (pdfkit exposes the loaded fontkit font on doc._font.font). Never under
+ * the default theme: its bytes are pinned by the identity guard.
+ */
+export function installGlyphFallback(doc: PDFKit.PDFDocument, theme: Theme): void {
+  if (isDefaultTheme(theme)) return;
+  const orig = doc.text.bind(doc) as (...a: unknown[]) => PDFKit.PDFDocument;
+  const live = (cp: number): boolean => {
+    const face = (doc as unknown as { _font?: { font?: Partial<FontkitFace> } })._font?.font;
+    if (face && typeof face.hasGlyphForCodePoint === "function") return face.hasGlyphForCodePoint(cp);
+    return familyHasGlyph(theme.fonts.body.family, "regular", cp) && familyHasGlyph(theme.fonts.heading.family, "regular", cp);
+  };
+  doc.text = ((text: unknown, ...rest: unknown[]) => orig(typeof text === "string" ? substituteMissingGlyphs(text, live) : text, ...rest)) as typeof doc.text;
 }

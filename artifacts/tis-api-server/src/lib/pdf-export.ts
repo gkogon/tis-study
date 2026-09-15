@@ -44,7 +44,7 @@ import { loadTemplate } from "./report-template/registry";
 import { buildProviders } from "./report-template/providers";
 import { activeTheme, isDefaultTheme, pageMargin, withTheme } from "./report-theme/active";
 import { DEFAULT_THEME, pageSizePoints, parseStoredTheme, type Theme } from "./report-theme/theme";
-import { registerThemeFonts } from "./report-theme/fonts";
+import { installGlyphFallback, registerThemeFonts } from "./report-theme/fonts";
 import * as themed from "./report-theme/draw";
 import { loadFirmTheme } from "./report-template/store";
 import { getTransitContext, type TransitContext } from "./transit-routes";
@@ -362,6 +362,10 @@ export async function renderStudyPdf(
   });
 
   registerThemeFonts(doc, theme);
+  // Substitute faces lack some of the symbols the LOS tables use (▲, ⇒, Δ);
+  // under a firm theme every doc.text string is checked against the face in
+  // use and given ASCII stand-ins. A no-op for the default theme.
+  installGlyphFallback(doc, theme);
   doc.font("body");
 
   const chunks: Buffer[] = [];
