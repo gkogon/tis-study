@@ -425,7 +425,18 @@ export function cover(doc: PDFKit.PDFDocument, input: CoverInput): void {
     } else if (c.background.kind === "color") {
       doc.rect(0, 0, W, H).fill(c.background.color);
     }
-    for (const band of c.bands) doc.rect(0, band.y0, W, band.y1 - band.y0).fill(band.color);
+    let photoPlaced = false;
+    for (const band of c.bands) {
+      doc.rect(0, band.y0, W, band.y1 - band.y0).fill(band.color);
+      if (band.photo && input.sitePhoto) {
+        try {
+          doc.save().rect(0, band.y0, W, band.y1 - band.y0).clip();
+          doc.image(input.sitePhoto, 0, band.y0, { cover: [W, band.y1 - band.y0], align: "center", valign: "center" });
+          doc.restore();
+          photoPlaced = true;
+        } catch { /* the mean-colour band stays */ }
+      }
+    }
     // The firm's uploaded logo wins over the one lifted from the sample (spec §7.6).
     const logoBuf = input.firmLogo ?? (c.logo ? dataUrlToBuffer(c.logo.data) : null);
     if (logoBuf) {
@@ -467,7 +478,7 @@ export function cover(doc: PDFKit.PDFDocument, input: CoverInput): void {
         yy += lineH;
       }
     }
-    if (input.sitePhoto && c.background.kind !== "image") {
+    if (input.sitePhoto && !photoPlaced && c.background.kind !== "image") {
       const top = lowestAboveMid + 24;
       const bottom = (c.elements.some((e) => e.y >= H / 2) ? highestBelowMid : c.hasMetaBlock ? H - 60 : H - 220) - 24;
       if (bottom - top >= 220) {

@@ -121,12 +121,14 @@ export function deriveCover(page1: ScannedPage | undefined, body: BodyStyle, hea
   const background: Theme["cover"]["background"] = bgData ? { kind: "image", data: bgData } : bgRect ? { kind: "color", color: bgRect.color } : { kind: "none" };
   if (bgImage && !bgData) warnings.push("Cover background image could not be decoded; using a plain cover.");
   // A full-width picture that is not the background (a hero band of cover
-  // art under the title, a footer banner) is kept as a band in its mean
-  // colour — the schema has no partial-page image, and the title the sample
-  // sets in white on that art must land on a coloured surface, not on white.
+  // art under the title, a footer banner) becomes a photo band: the renderer
+  // fills it with the project's own site photo — the sample's picture is
+  // another project's site — and with the band's mean colour when the
+  // project has none, so a title the sample sets in white still lands on a
+  // coloured surface rather than on white.
   const imageBands = page1.images
     .filter((im) => im !== bgImage && im.pixels && im.w >= 0.9 * W && im.h >= 0.2 * H && im.h < 0.7 * H)
-    .map((im) => ({ y0: Math.round(im.y), y1: Math.round(im.y + im.h), color: meanColor(im.pixels!) }))
+    .map((im) => ({ y0: Math.round(im.y), y1: Math.round(im.y + im.h), color: meanColor(im.pixels!), photo: true as const }))
     .filter((b) => luminance(b.color) < 250);
   const bands = [
     ...page1.rects

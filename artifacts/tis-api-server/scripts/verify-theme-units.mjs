@@ -268,6 +268,34 @@ eq(footerText, "Page 1 of 1", "footer interpolated");
   eq(captured, ["Trip Distribution by Time of Day", "5.0 Site Traffic Distribution and Assignment"], "heading(): the caption keeps our wording and the real section still gets the firm's");
 }
 
+// Photo band: the sample's hero art is a slot for the project's own site photo;
+// with no photo the band's mean colour stays. The image is spied through
+// doc.image (PDFKit inlines the XObject; the draw op is what we care about).
+{
+  const pngMod0 = await import(path.resolve(here, "../src/lib/report-theme/png.ts"));
+  const px = Buffer.alloc(4 * 4 * 4, 0x80);
+  const photo = pngMod0.encodePngRGBA(4, 4, px);
+  const PHOTO = { ...RED, cover: { background: { kind: "none" }, bands: [{ y0: 200, y1: 480, color: "#3a5a40", photo: true }], logo: null, elements: [{ role: "projectName", x: 60, y: 240, w: 480, align: "left", style: { font: "heading", size: 24, color: "#ffffff", bold: true } }], hasMetaBlock: false } };
+  const tok = { firmName: "F", projectName: "P", address: "", dateLabel: "May 2026", documentType: "D", client: "C" };
+  const images = [];
+  const run = (sitePhoto) => new Promise((resolve, reject) => {
+    const d = new PDFDocument({ size: "LETTER", margins: { top: 50, bottom: 50, left: 50, right: 50 }, compress: false, bufferPages: true });
+    fonts.registerThemeFonts(d, PHOTO);
+    const chunks = []; d.on("data", (c) => chunks.push(c)); d.on("end", () => resolve(Buffer.concat(chunks))); d.on("error", reject);
+    const origImage = d.image.bind(d);
+    d.image = (src, x, y, opts) => { images.push({ x, y, opts }); return origImage(src, x, y, opts); };
+    active.withTheme(PHOTO, () => { draw.cover(d, { ...tok, firmLogo: null, sitePhoto }); d.end(); });
+  });
+  await run(photo);
+  eq(images.length, 1, "cover: one image drawn for a photo band with a site photo");
+  eq(images[0] && [images[0].x, images[0].y, images[0].opts.cover], [0, 200, [612, 280]], "cover: the site photo fills the photo band, full width");
+  images.length = 0;
+  const bytes = await run(null);
+  eq(images.length, 0, "cover: no photo → no image, the mean-colour band stays");
+  ok(bytes.toString("latin1").includes(`${rgb("#3a5a40")} scn`), "cover: the band's mean colour is painted");
+  eq(theme.summarizeTheme({ version: 2, theme: PHOTO, source: { pages: 1, fontsSeen: [], extractedAt: "2026-09-15T00:00:00Z", warnings: [] } }).cover, "photo", "summary: a photo band reads as a photo cover");
+}
+
 // ─── derive/typography.ts ────────────────────────────────────────────────────
 const typo = await import(path.resolve(here, "../src/lib/report-theme/derive/typography.ts"));
 eq(typo.detectNumbering(["1.0 INTRO", "2.0 METHODS", "3.0 RESULTS"]), "1.0", "numbering 1.0");
@@ -975,7 +1003,7 @@ const scanMod = await import(path.resolve(here, "../src/lib/report-theme/pdf-sca
   hero.images.push({ page: 1, x: 0, y: 636, w: 612, h: 155, objId: "banner", pixels: { width: 120, height: 30, kind: 2, data: new Uint8ClampedArray(120 * 30 * 3).fill(252) } });
   const heroRes = cov.deriveCover(hero, bodyA, null, { firmName: "SCJ Alliance" }, []);
   eq(heroRes.cover.background.kind, "none", "hero: a 62 %-of-page picture is not the background");
-  eq(heroRes.cover.bands, [{ y0: 0, y1: 493, color: "#64b478" }], "hero: the full-width picture becomes a band in its mean colour; the near-white banner does not");
+  eq(heroRes.cover.bands, [{ y0: 0, y1: 493, color: "#64b478", photo: true }], "hero: the full-width picture becomes a photo band in its mean colour; the near-white banner does not");
   eq(heroRes.cover.elements.find((e) => e.role === "documentType").style.color, "#ffffff", "hero: white text over the dark band stays white");
   eq(heroRes.cover.elements.find((e) => e.role === "preparedBy").style.color, bodyA.color, "hero: white text with nothing dark under it falls back to the body colour");
   eq(heroRes.cover.elements.find((e) => e.role === "dateLabel").style.color, "#222222", "hero: dark text is left alone");
