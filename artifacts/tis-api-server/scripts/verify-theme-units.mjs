@@ -227,5 +227,41 @@ const bodyC = typo.bodyStyle(pagesC);
 const headsC = typo.detectHeadings(pagesC, bodyC);
 eq(headsC.map((h) => [h.size, h.color]), [[14, "#000000"], [9, "#1a5276"]], "non-recurring header-styled line at the same position is not excluded by position alone");
 
+// ─── derive/header-footer.ts + derive/page.ts ────────────────────────────────
+const hf = await import(path.resolve(here, "../src/lib/report-theme/derive/header-footer.ts"));
+const CTX = { firmName: "Acme Traffic Engineering, Inc.", coverTitle: "Maple Grove Mixed-Use Development" };
+eq(hf.classifyRunningText("Page 3 of 12", CTX), "Page {{page}} of {{pages}}", "page N of M");
+eq(hf.classifyRunningText("Page 7", CTX), "Page {{page}}", "page N");
+eq(hf.classifyRunningText("- 7 -", CTX), "{{page}}", "dashed number");
+eq(hf.classifyRunningText("12", CTX), "{{page}}", "bare number");
+eq(hf.classifyRunningText("Acme Traffic Engineering Inc", CTX), "{{firm.name}}", "firm name (punctuation-insensitive)");
+eq(hf.classifyRunningText("Traffic Impact Study", CTX), "{{documentType}}", "document type");
+eq(hf.classifyRunningText("Transport Assessment", CTX), "{{documentType}}", "UK document type");
+eq(hf.classifyRunningText("March 2025", CTX), "{{project.dateLabel}}", "month year");
+eq(hf.classifyRunningText("03/14/2025", CTX), "{{project.dateLabel}}", "numeric date");
+eq(hf.classifyRunningText("Maple Grove Mixed-Use Development", CTX), "{{project.projectName}}", "cover title → project name");
+eq(hf.classifyRunningText("Prepared for Maple Grove Partners LLC", CTX), null, "client line dropped");
+eq(hf.tokenizeSegment("Acme Traffic Engineering, Inc. | Traffic Impact Study | Page 3", CTX), { text: "{{firm.name}} | {{documentType}} | Page {{page}}", dropped: [] }, "pipe-separated segment tokenised");
+eq(hf.tokenizeSegment("Maple Grove Partners LLC  –  Page 3 of 9", CTX), { text: "Page {{page}} of {{pages}}", dropped: ["Maple Grove Partners LLC"] }, "unclassified part dropped, separator collapsed");
+// Zones: 4 interior pages with a right-aligned header and a centred footer, one page missing the header.
+const zrun = (page, str, x, y, w, size = 8, color = "#666666") => ({ page, str, font: "ABCDEF+Arial", size, bold: false, italic: false, serif: false, mono: false, color, x, y, w, h: size });
+const bodyRun = (page, y) => ({ page, str: "Body text that is long enough to be a paragraph line for margins.", font: "ABCDEF+Arial", size: 10, bold: false, italic: false, serif: false, mono: false, color: "#000000", x: 72, y, w: 460, h: 10 });
+const zpage = (n, withHeader) => ({ page: n, width: 612, height: 792, runs: [...(withHeader ? [zrun(n, "Acme Traffic Engineering, Inc. | Traffic Impact Study", 300, 34, 232)] : []), zrun(n, `Page ${n - 1} of 4`, 280, 760, 52), bodyRun(n, 90), bodyRun(n, 104), bodyRun(n, 700)], rects: [], lines: withHeader ? [{ page: n, x1: 72, y1: 44, x2: 540, y2: 44, color: "#1f4e79", width: 0.5 }] : [], images: [] });
+const zpages = [{ page: 1, width: 612, height: 792, runs: [], rects: [], lines: [], images: [] }, zpage(2, true), zpage(3, true), zpage(4, false), zpage(5, true)];
+const zbody = { font: "ABCDEF+Arial", size: 10, color: "#000000", serif: false, mono: false, bold: false };
+const zones = hf.detectRunningZones(zpages, zbody, null, CTX);
+ok(zones.header && zones.header.segments.length === 1 && zones.header.segments[0].align === "right" && zones.header.segments[0].text === "{{firm.name}} | {{documentType}}", `header detected on 3/4 pages, right-aligned, tokenised (${JSON.stringify(zones.header?.segments)})`);
+ok(zones.header && zones.header.rule && zones.header.rule.color === "#1f4e79", "header rule detected");
+ok(zones.header && zones.header.height >= 38 && zones.header.height <= 52, `header height ≈ 40–50 (${zones.header?.height})`);
+ok(zones.footer && zones.footer.segments[0].align === "center" && zones.footer.segments[0].text === "Page {{page}} of {{pages}}", `footer centred + tokenised (${JSON.stringify(zones.footer?.segments)})`);
+ok(zones.footer && zones.footer.style.size === 8 && zones.footer.style.color === "#666666", "footer style captured");
+ok(zones.footer && zones.footer.edge > 740 && zones.footer.edge < 760, `footer edge (${zones.footer?.edge})`);
+const pg = await import(path.resolve(here, "../src/lib/report-theme/derive/page.ts"));
+const geom = pg.pageGeometry(zpages, zbody, { headerBottom: zones.header?.edge ?? null, footerTop: zones.footer?.edge ?? null });
+eq(geom && geom.size, "LETTER", "geometry snaps to LETTER");
+eq(geom && geom.margins.left, 76, "symmetric margin = mean(72, 612-532=80) = 76");
+ok(geom && geom.margins.top >= 76 && geom.margins.top <= 84, `top margin from first body line (${geom?.margins.top})`);
+ok(geom && geom.margins.bottom >= 88 && geom.margins.bottom <= 96, `bottom margin from last body line (${geom?.margins.bottom})`);
+
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");
