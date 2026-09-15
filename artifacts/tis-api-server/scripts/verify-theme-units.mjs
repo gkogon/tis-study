@@ -4,6 +4,13 @@ import { register } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 
+// preview-fixtures.ts imports @workspace/db (for latestProjectFamily, which
+// this check never calls) and lib/db's index throws at module evaluation
+// without DATABASE_URL — same stub scripts/lib/bundle-renderer.mjs uses.
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = "postgres://localhost/tis_check_stub_db";
+}
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(path.resolve(here, "ts-loader.mjs")).href, import.meta.url);
 
@@ -770,6 +777,20 @@ const mapped = mapDerivationError(new Error("boom"));
 ok(mapped instanceof ThemeExtractError && mapped.status === 422 && mapped.message.includes("boom"), `a plain Error becomes a 422 ThemeExtractError naming it (${mapped.status} ${mapped.message})`);
 const already = new ThemeExtractError(400, "x");
 ok(mapDerivationError(already) === already, "an existing ThemeExtractError passes through unchanged");
+
+// ─── preview-fixtures.ts ─────────────────────────────────────────────────────
+const pf = await import(path.resolve(here, "../src/lib/report-theme/preview-fixtures.ts"));
+eq(pf.regionFamilyForCoordinate(25.8456, -80.2103), "fl", "Miami → fl");
+eq(pf.regionFamilyForCoordinate(33.749, -84.388), "ga", "Atlanta → ga");
+eq(pf.regionFamilyForCoordinate(29.4241, -98.4936), "tx", "San Antonio → tx");
+eq(pf.regionFamilyForCoordinate(40.7128, -74.006), "ny", "NYC → ny");
+eq(pf.regionFamilyForCoordinate(35.7796, -78.6382), "nc", "Raleigh → nc");
+eq(pf.regionFamilyForCoordinate(34.0007, -81.0348), "sc", "Columbia → sc");
+eq(pf.regionFamilyForCoordinate(40.4406, -79.9959), "fl", "Pittsburgh (no PA fixture) → fl fallback");
+eq(pf.regionFamilyForCoordinate(NaN, NaN), "fl", "no coordinate → fl");
+for (const fam of ["fl", "ga", "tx", "ny", "nc", "sc"]) { const fx = pf.loadPreviewFixture(fam); ok(fx.family === fam && typeof fx.report === "object" && fx.report.request, `fixture ${fam} loads with a report + request`); }
+const proj = pf.projectFromFixture(pf.loadPreviewFixture("tx"));
+ok(proj.studyType === "tis" && proj.siteLat && proj.createdAt.toISOString() === "2026-01-15T12:00:00.000Z" && proj.resultPayload === pf.loadPreviewFixture("tx").report, "projectFromFixture shape");
 
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");
