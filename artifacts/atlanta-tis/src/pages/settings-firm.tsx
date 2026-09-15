@@ -29,18 +29,20 @@ type Firm = {
   seatLimit: number;
 };
 
-/**
- * Summary of the firm's imported report format (GET /firms/report-template).
- * Summary only — the stored template carries the logo bytes and every section
- * of captured prose, which has no business on a settings page.
- */
+/** Summary of the firm's imported report format (GET /firms/report-template). */
 type FirmTemplate = {
-  id: string;
-  name: string;
-  documentType: string;
-  chapters: number;
-  sections: number;
-  brand: { primary: string; hasLogo: boolean; cover: string };
+  pageSize: string;
+  orientation: "portrait" | "landscape";
+  margins: { top: number; right: number; bottom: number; left: number };
+  fonts: Array<{ role: "body" | "heading"; requested: string; used: string; exact: boolean }>;
+  palette: { primary: string; accent: string; text: string; muted: string; rule: string };
+  header: string | null;
+  footer: string | null;
+  cover: "image" | "color" | "plain";
+  table: { headerFill: string | null; mode: "horizontal" | "grid" | "none" };
+  numbering: string;
+  warnings: string[];
+  extractedAt: string;
 };
 
 const DEFAULT_BRAND_COLOR = "#7a1420";
@@ -84,6 +86,7 @@ export default function SettingsFirmPage() {
   const [info, setInfo] = useState<string | null>(null);
   const [template, setTemplate] = useState<FirmTemplate | null>(null);
   const [templateInvalid, setTemplateInvalid] = useState(false);
+  const [templateLegacy, setTemplateLegacy] = useState(false);
   const [uploadingTemplate, setUploadingTemplate] = useState(false);
 
   useEffect(() => {
@@ -98,6 +101,7 @@ export default function SettingsFirmPage() {
         if (cancelled) return;
         setTemplate(tpl?.template ?? null);
         setTemplateInvalid(!!tpl?.invalid);
+        setTemplateLegacy(!!tpl?.legacy);
         if (me?.firm) {
           setFirm(me.firm);
           setRole(me.role);
@@ -168,9 +172,13 @@ export default function SettingsFirmPage() {
       const next = await fetch("/tis-api/firms/report-template", { credentials: "include" }).then((x) => x.json());
       setTemplate(next?.template ?? null);
       setTemplateInvalid(!!next?.invalid);
+      setTemplateLegacy(!!next?.legacy);
+      const s = data.summary as FirmTemplate | undefined;
+      const subs = s?.fonts.filter((f) => !f.exact).map((f) => `${f.requested} → ${f.used}`) ?? [];
       setInfo(
-        `Format imported — ${data.chapters} chapters, ${data.sections} sections.` +
-          (data.brand?.hasLogo ? " Logo and palette picked up from the cover." : " No logo found on the cover; the palette was still read."),
+        `Format imported — ${s?.pageSize ?? "?"} pages, ${s?.fonts.map((f) => f.requested).join(" / ") ?? "?"}` +
+          (subs.length ? ` (substituted: ${subs.join(", ")})` : "") +
+          (s?.warnings.length ? `. ${s.warnings.length} note${s.warnings.length === 1 ? "" : "s"} below.` : "."),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Template import failed.");
@@ -193,6 +201,7 @@ export default function SettingsFirmPage() {
       if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
       setTemplate(null);
       setTemplateInvalid(false);
+      setTemplateLegacy(false);
       setInfo("Reverted to the standard format for each study's region.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not remove the template.");
@@ -396,25 +405,46 @@ export default function SettingsFirmPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Report format</label>
               {template ? (
-                <div className="border rounded-md p-3 bg-muted/20 space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span
-                      className="inline-block w-3 h-3 rounded-sm border"
-                      style={{ backgroundColor: template.brand.primary }}
-                      aria-hidden="true"
-                    />
-                    <span className="text-sm font-medium">{template.name}</span>
-                    <span className="text-xs text-muted-foreground">{template.documentType}</span>
+                <div className="border rounded-md p-3 bg-muted/20 space-y-2" data-testid="card-firm-template">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {(["primary", "accent", "text", "muted", "rule"] as const).map((k) => (
+                      <span key={k} title={`${k} ${template.palette[k]}`} className="inline-block w-4 h-4 rounded-sm border" style={{ backgroundColor: template.palette[k] }} aria-label={`${k} colour ${template.palette[k]}`} />
+                    ))}
+                    <span className="text-sm font-medium ml-1">{template.pageSize} {template.orientation}</span>
+                    <span className="text-xs text-muted-foreground">· margins {Math.round(template.margins.left)} / {Math.round(template.margins.top)} pt</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {template.chapters} chapters · {template.sections} sections ·{" "}
-                    {template.brand.hasLogo ? "logo imported" : "no logo found"} · {template.brand.cover} cover
+                    {template.fonts.map((f) => (
+                      <span key={f.role} className="mr-3">
+                        {f.role}: <span className="font-medium text-foreground">{f.requested}</span>
+                        {!f.exact && <span className="ml-1 rounded bg-amber-100 text-amber-800 px-1">substituted → {f.used}</span>}
+                      </span>
+                    ))}
                   </p>
+                  <p className="text-xs text-muted-foreground">
+                    Headings {template.numbering === "none" ? "unnumbered" : `numbered "${template.numbering}"`} · tables {template.table.mode}
+                    {template.table.headerFill ? " with filled header" : ""} · {template.cover} cover
+                  </p>
+                  {(template.header || template.footer) && (
+                    <p className="text-xs text-muted-foreground font-mono">
+                      {template.header && <span className="block">header: {template.header}</span>}
+                      {template.footer && <span className="block">footer: {template.footer}</span>}
+                    </p>
+                  )}
+                  {template.warnings.length > 0 && (
+                    <ul className="text-xs text-amber-700 list-disc pl-4" data-testid="list-firm-template-warnings">
+                      {template.warnings.slice(0, 6).map((w, i) => <li key={i}>{w}</li>)}
+                      {template.warnings.length > 6 && <li>…and {template.warnings.length - 6} more</li>}
+                    </ul>
+                  )}
                 </div>
+              ) : templateLegacy ? (
+                <p className="text-xs text-amber-700" data-testid="text-firm-template-legacy">
+                  Your example report was uploaded with an earlier version. Re-upload it to enable the new format matching; until then studies render in the standard format.
+                </p>
               ) : templateInvalid ? (
                 <p className="text-xs text-amber-700">
-                  A format was uploaded but can no longer be read, so studies are rendering in the
-                  standard format. Re-upload the example report to fix it.
+                  A format was uploaded but can no longer be read, so studies are rendering in the standard format. Re-upload the example report to fix it.
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">
@@ -434,6 +464,17 @@ export default function SettingsFirmPage() {
                     data-testid="input-firm-template-file"
                   />
                 </label>
+                {template && (
+                  <a
+                    href="/tis-api/firms/report-template/preview.pdf"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 text-sm rounded-md border hover:bg-accent"
+                    data-testid="link-firm-template-preview"
+                  >
+                    Preview PDF
+                  </a>
+                )}
                 {template && canEdit && (
                   <button
                     type="button"
@@ -447,9 +488,10 @@ export default function SettingsFirmPage() {
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                Upload one of your own finished studies as a PDF. We read its chapter structure,
-                headings, colours and logo, and your future studies come out in that format. It needs a
-                text layer — a scanned report won't import.
+                Upload one of your own finished studies as a PDF (up to 20 MB). We read its page size and
+                margins, fonts, colours, heading style, running header and footer, table style and cover,
+                and your future studies come out in that format. It needs a text layer — a scanned report
+                won't import.
               </p>
             </div>
             <div className="space-y-1.5">
