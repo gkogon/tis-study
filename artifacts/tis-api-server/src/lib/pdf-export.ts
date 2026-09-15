@@ -184,25 +184,15 @@ function rateConfidenceLabel(c: unknown, note?: string): string | null {
 
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// In prod __dirname is dist/, so ../data/fonts works (same convention as
-// atlanta-leads.ts). In tsx/test runs __dirname is src/lib/ so we need
-// ../../data/fonts. Probe both so the file is portable across builds.
-const FONT_DIR = (() => {
-  for (const c of [path.resolve(__dirname, "../data/fonts"), path.resolve(__dirname, "../../data/fonts")]) {
-    if (existsSync(path.join(c, "DejaVuSans.ttf"))) return c;
-  }
-  return path.resolve(__dirname, "../data/fonts");
-})();
-const FONT_REGULAR = path.join(FONT_DIR, "DejaVuSans.ttf");
-const FONT_BOLD = path.join(FONT_DIR, "DejaVuSans-Bold.ttf");
-const FONT_MONO = path.join(FONT_DIR, "DejaVuSansMono.ttf");
+// Fonts are registered by report-theme/fonts.ts (registerThemeFonts), which
+// resolves data/fonts for both the dist/ build and tsx/test runs.
 
 // Velocity logo assets (real, extracted from the filed 60 Gracechurch TA):
 // the white cover wordmark, plus the grey wordmark + green multimodal icon
-// for the title/footer furniture. Probed beside the bundled fonts (same
-// ../data vs ../../data dual-path as FONT_DIR so it resolves in both the
-// dist/ build and tsx/test runs). London-only — never loaded for other
-// regions.
+// for the title/footer furniture. Probed beside the bundled fonts (in prod
+// __dirname is dist/, so ../data works; in tsx/test runs __dirname is
+// src/lib/, so ../../data — both are probed so the file is portable across
+// builds). London-only — never loaded for other regions.
 const VELOCITY_ASSET_DIR = (() => {
   for (const c of [path.resolve(__dirname, "../data/velocity"), path.resolve(__dirname, "../../data/velocity")]) {
     if (existsSync(path.join(c, "velocity-wordmark-white.png"))) return c;
@@ -284,7 +274,7 @@ function resolveTheme(firm: FirmStamp): Theme {
  * declarative template is the built-in Velocity TA for UK sites. US regions
  * return null and keep their dedicated renderers.
  */
-function resolveTemplate(project: StoredProject, firm: FirmStamp): { template: ReportTemplate; locale: ProfileLocale } | null {
+function resolveTemplate(project: StoredProject): { template: ReportTemplate; locale: ProfileLocale } | null {
   if (project.studyType !== "tis") return null;
   const lat = Number(project.siteLat ?? NaN);
   const lon = Number(project.siteLon ?? NaN);
@@ -327,7 +317,7 @@ export async function renderStudyPdf(
 ): Promise<Buffer> {
   // Template-driven studies render through the declarative engine rather than a
   // hand-coded renderer; this is the path the Velocity / imported formats take.
-  const tplSel = resolveTemplate(project, firm);
+  const tplSel = resolveTemplate(project);
   if (tplSel) return renderTemplateReport(project, firm, tplSel);
   const theme = resolveTheme(firm);
 
@@ -6465,7 +6455,7 @@ function loadChicagoStateRoutesGrid(): Map<string, StateRoutePoint[]> | null {
   }
   chicagoStateRoutesLoadAttempted = true;
   // Probe both dist (prod, __dirname = dist/lib) and src (tsx/test,
-  // __dirname = src/lib) — same convention as FONT_DIR.
+  // __dirname = src/lib) — same convention as VELOCITY_ASSET_DIR.
   const candidates = [
     path.resolve(__dirname, "../data/chicago-state-routes.json"),
     path.resolve(__dirname, "../../data/chicago-state-routes.json"),

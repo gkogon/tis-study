@@ -18,8 +18,8 @@ import { mapSynonyms } from "./derive/synonyms";
 
 export class ThemeExtractError extends Error {
   readonly status: 400 | 422;
-  constructor(status: 400 | 422, message: string) {
-    super(message);
+  constructor(status: 400 | 422, message: string, options?: { cause?: unknown }) {
+    super(message, options);
     this.status = status;
     this.name = "ThemeExtractError";
   }
@@ -51,10 +51,17 @@ function omitEdge<T extends { edge: number; segments: unknown[] }>(z: T | null):
   return out;
 }
 
-/** A thrown `ThemeExtractError` (e.g. a derivation's own `if (!x) throw ...`) passes through unchanged; anything else — a bug surfacing as a plain `Error` — becomes a 422 so a malformed-but-`%PDF-`-prefixed upload never escapes as an unhandled crash. */
+/**
+ * A thrown `ThemeExtractError` (e.g. a derivation's own `if (!x) throw ...`)
+ * passes through unchanged; anything else — a bug surfacing as a plain
+ * `Error` — becomes a 422 with a fixed message so a malformed-but-`%PDF-`-
+ * prefixed upload never escapes as an unhandled crash and no internal
+ * message reaches the client. The original is kept as `cause` for the
+ * route's log.
+ */
 export function mapDerivationError(e: unknown): ThemeExtractError {
   if (e instanceof ThemeExtractError) return e;
-  return new ThemeExtractError(422, `Could not derive formatting from this PDF: ${(e as Error).message}`);
+  return new ThemeExtractError(422, "Could not derive formatting from this PDF.", { cause: e });
 }
 
 function headingStyles(heads: HeadingLevel[], body: BodyStyle, headingFontName: string | null): Theme["headings"] {

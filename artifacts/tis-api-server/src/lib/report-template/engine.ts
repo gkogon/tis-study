@@ -15,7 +15,7 @@
  * ./templates/generic-us.ts for two templates over identical study data.
  */
 import PDFDocument from "pdfkit";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -28,18 +28,7 @@ import { DEFAULT_THEME, isDefaultTheme, luminance, pageSizePoints, tint, type Th
 import { installGlyphFallback, registerThemeFonts } from "../report-theme/fonts";
 import { pageMargin, withTheme } from "../report-theme/active";
 
-// Reuse the repo's bundled Unicode fonts (same resolution as pdf-export.ts).
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FONT_DIR = (() => {
-  for (const c of [
-    path.resolve(__dirname, "../../data/fonts"),
-    path.resolve(__dirname, "../../../data/fonts"),
-    path.resolve(__dirname, "../data/fonts"),
-  ]) {
-    if (existsSync(path.join(c, "DejaVuSans.ttf"))) return c;
-  }
-  return path.resolve(__dirname, "../../data/fonts");
-})();
 
 // ─────────────────────────────── Types ───────────────────────────────
 

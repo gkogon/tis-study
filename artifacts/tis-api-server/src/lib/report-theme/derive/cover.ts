@@ -9,7 +9,7 @@ const DOCTYPE_RE = /traffic (impact|study|assessment)|transportation impact|tran
 // labelled "Date:") — a substring test would misclassify a title that merely
 // mentions a date ("Riverside Crossing – December 2024 Update") as the
 // dateLabel instead of the projectName.
-const DATE_LINE_RE = /^\s*(date:?\s*)?((jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s+(\d{1,2},?\s+)?\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4}|\d{4}-\d{2}-\d{2})\s*$/i;
+const DATE_LINE_RE = /^\s*(date:?\s*)?((jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s+(\d{1,2},?\s+)?\d{4}|\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4}|\d{4}-\d{2}-\d{2})\s*$/i;
 const PREPARED_FOR_RE = /^(prepared|submitted)\s+(for|to)\b:?/i;
 const PREPARED_BY_RE = /^(prepared|submitted)\s+by\b:?/i;
 
@@ -142,7 +142,8 @@ export function deriveCover(page1: ScannedPage | undefined, body: BodyStyle, hea
     if (DATE_LINE_RE.test(l.text) && !els.some((e) => e.role === "dateLabel")) { used.add(l); hasMeta = true; els.push(elementFor(l, "dateLabel", W, body, headingFont, layout)); continue; }
     if (firm && normalizeName(l.text) === firm && !els.some((e) => e.role === "firmName")) { used.add(l); els.push(elementFor(l, "firmName", W, body, headingFont, layout)); continue; }
   }
-  for (const l of lines) if (!used.has(l)) warnings.push(`Dropped cover text that could not be mapped: "${l.text.slice(0, 60)}".`);
+  // A stray glyph or a bare number is not text worth a warning (fewer than three alphanumerics).
+  for (const l of lines) if (!used.has(l) && (l.text.match(/[a-z0-9]/gi) ?? []).length >= 3) warnings.push(`Dropped cover text that could not be mapped: "${l.text.slice(0, 60)}".`);
   const elements = els.sort((a, b) => a.y - b.y).slice(0, 12);
   return { cover: { background, bands, logo, elements, hasMetaBlock: hasMeta }, coverTitle: title ? title.text : null, warnings };
 }

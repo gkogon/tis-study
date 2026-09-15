@@ -314,6 +314,8 @@ eq(hf.classifyRunningText("Traffic Impact Study", CTX), "{{documentType}}", "doc
 eq(hf.classifyRunningText("Transport Assessment", CTX), "{{documentType}}", "UK document type");
 eq(hf.classifyRunningText("March 2025", CTX), "{{project.dateLabel}}", "month year");
 eq(hf.classifyRunningText("03/14/2025", CTX), "{{project.dateLabel}}", "numeric date");
+eq(hf.classifyRunningText("5 April 2023", CTX), "{{project.dateLabel}}", "D Month YYYY date (minor e)");
+eq(hf.classifyRunningText("April 5, 2023", CTX), "{{project.dateLabel}}", "Month D, YYYY date");
 eq(hf.classifyRunningText("Maple Grove Mixed-Use Development", CTX), "{{project.projectName}}", "cover title → project name");
 eq(hf.classifyRunningText("Prepared for Maple Grove Partners LLC", CTX), null, "client line dropped");
 eq(hf.tokenizeSegment("Acme Traffic Engineering, Inc. | Traffic Impact Study | Page 3", CTX), { text: "{{firm.name}} | {{documentType}} | Page {{page}}", dropped: [] }, "pipe-separated segment tokenised");
@@ -917,6 +919,21 @@ const scanMod = await import(path.resolve(here, "../src/lib/report-theme/pdf-sca
   ok(capped.length < full.length, `png: the capped encoding is smaller (${capped.length} < ${full.length})`);
 }
 
+// ─── final review minors (e) + (f) on the cover ────────────────────────────
+{
+  const dmy = mkPage(1, [
+    run(1, "TRAFFIC IMPACT ANALYSIS", 24, "#000000", 72, 100, 300, { bold: true }),
+    run(1, "Riverside Crossing", 18, "#222222", 72, 320, 200),
+    run(1, "5 April 2023", 12, "#222222", 72, 460, 90),
+    run(1, "§", 10, "#222222", 72, 500, 8),
+    run(1, "F-0270", 10, "#222222", 72, 520, 40),
+  ]);
+  const dmyRes = cov.deriveCover(dmy, bodyA, "ABCDEF+Arial-Bold", { firmName: "X" }, []);
+  eq(dmyRes.cover.elements.filter((e) => e.role === "dateLabel").length, 1, "cover: '5 April 2023' is a date line (minor e)");
+  ok(!dmyRes.warnings.some((w) => w.includes('"§"')), "cover: a dropped part with fewer than three alphanumerics is not warned about (minor f)");
+  ok(dmyRes.warnings.some((w) => w.includes("F-0270")), "cover: a dropped part with three or more alphanumerics still is");
+}
+
 // ─── cover.ts fix round: doc-type-like subtitle must never win projectName ──
 const subtitlePage = mkPage(1, [
   run(1, "TRAFFIC IMPACT STUDY", 30, "#ffffff", 72, 100, 380, { bold: true }),
@@ -970,8 +987,10 @@ ok(dupRes.warnings.some((w) => w.includes("Another Firm")), "the duplicate prepa
 // ─── extract.ts fix round: mapDerivationError ──────────────────────────────
 const extractMod = await import(path.resolve(here, "../src/lib/report-theme/extract.ts"));
 const { mapDerivationError, ThemeExtractError } = extractMod;
-const mapped = mapDerivationError(new Error("boom"));
-ok(mapped instanceof ThemeExtractError && mapped.status === 422 && mapped.message.includes("boom"), `a plain Error becomes a 422 ThemeExtractError naming it (${mapped.status} ${mapped.message})`);
+const boom = new Error("boom: internal detail");
+const mapped = mapDerivationError(boom);
+ok(mapped instanceof ThemeExtractError && mapped.status === 422 && mapped.message === "Could not derive formatting from this PDF." && !mapped.message.includes("boom"), `a plain Error becomes a fixed-message 422 ThemeExtractError with no internal text (${mapped.status} ${mapped.message})`);
+ok(mapped.cause === boom, "the original error is kept as `cause` for the route's log");
 const already = new ThemeExtractError(400, "x");
 ok(mapDerivationError(already) === already, "an existing ThemeExtractError passes through unchanged");
 

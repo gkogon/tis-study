@@ -8,7 +8,7 @@ export type DetectedZone = NonNullable<Theme["header"]> & { edge: number };
 export function normalizeName(s: string): string {
   return s.toLowerCase().replace(/\b(inc|llc|ltd|pllc|plc|pc|pa|corp|co|company|limited)\b\.?/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 }
-const DATE_RE = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s+(\d{1,2},?\s+)?\d{4}\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b/i;
+const DATE_RE = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s+(\d{1,2},?\s+)?\d{4}\b|\b\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s+\d{4}\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b/i;
 const DOCTYPE_RE = /traffic (impact|study|assessment)|transportation impact|transport (assessment|statement)|trip generation (memo|letter)/i;
 const PAGE_OF_RE = /\bpage\s+\d+\s+of\s+\d+\b/i;
 const PAGE_N_RE = /\bpage\s+\d+\b/i;

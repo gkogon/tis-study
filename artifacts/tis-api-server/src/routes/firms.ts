@@ -50,7 +50,7 @@ import { classifyStoredTemplate, parseStoredTheme, summarizeTheme } from "../lib
 import { clearFirmTheme, saveFirmTheme } from "../lib/report-template/store";
 import { latestProjectFamily, loadPreviewFixture, projectFromFixture } from "../lib/report-theme/preview-fixtures";
 import { renderStudyPdf } from "../lib/pdf-export";
-import { previewRateLimiter } from "../lib/security";
+import { previewRateLimiter, templateUploadRateLimiter } from "../lib/security";
 
 const router: IRouter = Router();
 
@@ -322,6 +322,7 @@ const templateUploadErrorHandler: ErrorRequestHandler = (err, _req, res, next) =
  */
 router.post(
   "/firms/report-template",
+  templateUploadRateLimiter,
   requireTemplateEditor,
   templateUpload.single("file"),
   templateUploadErrorHandler,
@@ -345,7 +346,12 @@ router.post(
       }
       res.json({ ok: true, summary: summarizeTheme(stored) });
     } catch (err) {
-      if (err instanceof ThemeExtractError) { res.status(err.status).json({ error: err.message }); return; }
+      if (err instanceof ThemeExtractError) {
+        // A derivation bug is mapped to a fixed 422; its original error is only logged here.
+        if (err.cause !== undefined) req.log.warn({ err: err.cause }, "firms.template_derivation_failed");
+        res.status(err.status).json({ error: err.message });
+        return;
+      }
       req.log.error({ err }, "firms.template_upload_failed");
       res.status(500).json({ error: "Template import failed." });
     }

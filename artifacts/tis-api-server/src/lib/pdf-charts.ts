@@ -23,6 +23,7 @@
 
 import { profileForLandUse, distributeDaily, type ProfileLocale } from "./office-diurnal";
 import { activeTheme, isDefaultTheme, pageMargin } from "./report-theme/active";
+import * as themed from "./report-theme/draw";
 
 const TEXT_GRAY = "#6b7280";
 
@@ -456,7 +457,8 @@ export function renderDiurnalCharts(doc: PDFKit.PDFDocument, r: any, locale: Pro
   const hourLabels = Array.from({ length: 24 }, (_, h) => String(h));
 
   doc.x = pageMargin();
-  doc.font("bold").fontSize(11).fillColor("black").text("Trip Distribution by Time of Day", { paragraphGap: 2 });
+  if (isDefaultTheme()) doc.font("bold").fontSize(11).fillColor("black").text("Trip Distribution by Time of Day", { paragraphGap: 2 });
+  else themed.heading(doc, 2, "Trip Distribution by Time of Day");
   doc.font("body").fontSize(9).fillColor(isDefaultTheme() ? TEXT_GRAY : chartColors().axis).text(
     `Estimated within-day distribution of the ${fmtCount(daily)} gross daily trips and the resulting on-site accumulation. ${sel.profile.source}`,
     { paragraphGap: 6 },
