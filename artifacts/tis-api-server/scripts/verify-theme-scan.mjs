@@ -12,6 +12,7 @@ const ok = (c, m) => { console.log(`${c ? "PASS" : "FAIL"}  ${m}`); if (!c) fail
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 
 const { scanPdf, linesOf } = await import(path.resolve(here, "../src/lib/report-theme/pdf-scan.ts"));
+const { imagePixelsToPngDataUrl } = await import(path.resolve(here, "../src/lib/report-theme/png.ts"));
 
 const blue = await makeSyntheticTis("blue-sans");
 const scan = await scanPdf(blue);
@@ -50,12 +51,42 @@ const cover = scan.pages[0];
 ok(cover.rects.some((r) => r.color === "#1f4e79" && near(r.w, 612, 0.5) && near(r.h, 140, 0.5) && near(r.y, 0, 0.5)), "cover band rect 612×140 at top");
 ok(cover.runs.some((r) => r.str === "TRAFFIC IMPACT STUDY" && near(r.size, 30, 0.3) && r.color === "#ffffff"), "cover title 30pt white");
 
+// Image pixel path: the cover logo is decoded (default imagePixelsOnPage = 1).
+const logo = cover.images.find((i) => i.pixels);
+ok(!!logo, `cover has an image placement with pixels (${cover.images.length} image(s))`);
+ok(!!logo && logo.pixels.width === 48 && logo.pixels.height === 16, `logo pixels are 48×16 (${logo?.pixels?.width}×${logo?.pixels?.height})`);
+ok(!!logo && (logo.pixels.kind === 2 || logo.pixels.kind === 3), `logo pixel kind is RGB or RGBA (${logo?.pixels?.kind})`);
+ok(!!logo && (imagePixelsToPngDataUrl(logo.pixels) ?? "").startsWith("data:image/png;base64,"), "logo pixels encode to a PNG data URL");
+ok(!!logo && near(logo.w, 96, 0.5) && near(logo.x, 72, 0.5) && near(logo.y, 20, 0.5), `logo placed 96 wide at (72, 20) (x ${logo?.x}, y ${logo?.y}, w ${logo?.w})`);
+const p2img = p2.images[0];
+ok(!!p2img && p2img.pixels === null, `page-2 image has no pixels under the default imagePixelsOnPage = 1 (${p2img?.objId})`);
+// The page-2 logo shares the cover's XObject, so pdfjs promotes it to the
+// global "g_" store; its pixels must resolve from commonObjs, promptly.
+const t0 = Date.now();
+const scanP2 = await scanPdf(blue, { imagePixelsOnPage: 2 });
+const elapsed = Date.now() - t0;
+const shared = scanP2.pages[1].images[0];
+ok(!!shared && shared.objId.startsWith("g_"), `page-2 logo is a global-store image (${shared?.objId})`);
+ok(!!shared && !!shared.pixels && shared.pixels.width === 48, `page-2 logo pixels resolve from commonObjs (pixels ${shared?.pixels ? "yes" : "no"})`);
+ok(elapsed < 4000, `imagePixelsOnPage: 2 scan did not stall on the 5 s timeout (${elapsed} ms)`);
+ok(scanP2.pages[0].images.every((i) => i.pixels === null), "cover images have no pixels when imagePixelsOnPage = 2");
+// Text render mode 3 (invisible, the OCR-layer case) is not a text layer.
+ok(!cover.runs.some((r) => /HIDDEN/.test(r.str)), "render-mode-3 text is not recorded as a run");
+ok(cover.runs.some((r) => r.str === "Project No. 2025-041"), "visible text after the render-mode restore is recorded");
+// linesOf: runs on one line with sub-point baseline jitter are joined in x order.
+const mk = (str, x, y) => ({ page: 9, str, font: "F", size: 10, bold: false, italic: false, serif: false, mono: false, color: "#000000", x, y, w: 30, h: 10 });
+const jag = linesOf({ page: 9, width: 612, height: 792, runs: [mk("Beta", 300, 100), mk("Alpha", 50, 100.4)], rects: [], lines: [], images: [] });
+ok(jag.length === 1 && jag[0].text === "Alpha Beta" && near(jag[0].x, 50, 0.01), `linesOf joins jagged-baseline runs in x order ("${jag[0]?.text}", x ${jag[0]?.x})`);
+
 const serif = await scanPdf(await makeSyntheticTis("serif-black"));
 const s2 = serif.pages[1];
 ok(near(s2.width, 595.28, 0.5) && near(s2.height, 841.89, 0.5), "serif-black is A4");
 const sh1 = s2.runs.find((r) => r.str.startsWith("1.0 INTRODUCTION"));
 ok(sh1 && sh1.serif === true, "serif flag set for Liberation Serif");
 ok(sh1 && near(sh1.x, 90, 1), `serif left margin 90 (${sh1?.x})`);
+const sc = serif.pages[0];
+ok(sc.images.some((i) => i.pixels && i.pixels.width === 48 && near(i.x, 90, 0.5) && near(i.w, 96, 0.5)), "serif-black cover logo 96 wide at x=90 with pixels");
+ok(!sc.runs.some((r) => /HIDDEN/.test(r.str)), "serif-black: render-mode-3 text is not recorded");
 
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");

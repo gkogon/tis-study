@@ -46,7 +46,7 @@ const toM = (a: ArrayLike<number>): Matrix => [a[0], a[1], a[2], a[3], a[4], a[5
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
 type FontInfo = { name: string; bold: boolean; italic: boolean; serif: boolean; mono: boolean; type3: boolean; fontMatrix: number[] };
-type GState = { ctm: Matrix; fill: string | null; stroke: string | null; lineWidth: number; font: FontInfo | null; fontSize: number; charSpacing: number; wordSpacing: number; hScale: number; leading: number; rise: number };
+type GState = { ctm: Matrix; fill: string | null; stroke: string | null; lineWidth: number; font: FontInfo | null; fontSize: number; charSpacing: number; wordSpacing: number; hScale: number; leading: number; rise: number; renderMode: number };
 
 // pdfjs-dist@5 constructs a DOMMatrix at module load; Node has none. Inert shim (same as synchro-pdf-import.ts).
 function shimDomGlobals(): void {
@@ -66,7 +66,7 @@ function shimDomGlobals(): void {
 type PdfjsPage = {
   getViewport(o: { scale: number }): { width: number; height: number; transform: number[] };
   getOperatorList(): Promise<{ fnArray: number[]; argsArray: unknown[] }>;
-  commonObjs: { get(id: string): unknown };
+  commonObjs: { get(id: string, callback?: (obj: unknown) => void): unknown };
   objs: { get(id: string, callback?: (obj: unknown) => void): unknown };
   cleanup(): void;
 };
@@ -87,7 +87,7 @@ export async function scanPdf(pdf: Buffer, opts: ScanOptions = {}): Promise<Scan
     for (let p = 1; p <= maxPages; p++) {
       let page: PdfjsPage | null = null;
       try { page = await doc.getPage(p); } catch { warnings.push(`Page ${p} could not be opened.`); continue; }
-      try { pages.push(await scanPage(page, p, OPS, opts, fontsSeen)); }
+      try { pages.push(await scanPage(page, p, OPS, opts, fontsSeen, warnings)); }
       catch (e) { warnings.push(`Page ${p} skipped: ${(e as Error).message}`); }
       finally { try { page.cleanup(); } catch { /* ignore */ } }
     }
@@ -97,7 +97,7 @@ export async function scanPdf(pdf: Buffer, opts: ScanOptions = {}): Promise<Scan
   return { numPages: doc.numPages, pages, fontsSeen: [...fontsSeen], warnings };
 }
 
-async function scanPage(page: PdfjsPage, pageNo: number, OPS: Record<string, number>, opts: ScanOptions, fontsSeen: Set<string>): Promise<ScannedPage> {
+async function scanPage(page: PdfjsPage, pageNo: number, OPS: Record<string, number>, opts: ScanOptions, fontsSeen: Set<string>, warnings: string[]): Promise<ScannedPage> {
   const vp = page.getViewport({ scale: 1 });
   const ol = await page.getOperatorList();
   const out: ScannedPage = { page: pageNo, width: vp.width, height: vp.height, runs: [], rects: [], lines: [], images: [] };
@@ -106,6 +106,8 @@ async function scanPage(page: PdfjsPage, pageNo: number, OPS: Record<string, num
     if (fontCache.has(id)) return fontCache.get(id)!;
     let f: Record<string, unknown> | null = null;
     try { f = page.commonObjs.get(id) as Record<string, unknown>; } catch { f = null; }
+    // The cache makes this one warning per unresolved font id per page.
+    if (!f) warnings.push(`Page ${pageNo}: font ${id} could not be resolved; its text was skipped.`);
     const name = f ? String(f.name ?? id) : id;
     const info: FontInfo | null = f ? {
       name,
@@ -121,7 +123,7 @@ async function scanPage(page: PdfjsPage, pageNo: number, OPS: Record<string, num
     return info;
   };
 
-  let gs: GState = { ctm: toM(vp.transform), fill: "#000000", stroke: "#000000", lineWidth: 1, font: null, fontSize: 0, charSpacing: 0, wordSpacing: 0, hScale: 1, leading: 0, rise: 0 };
+  let gs: GState = { ctm: toM(vp.transform), fill: "#000000", stroke: "#000000", lineWidth: 1, font: null, fontSize: 0, charSpacing: 0, wordSpacing: 0, hScale: 1, leading: 0, rise: 0, renderMode: 0 };
   const stack: GState[] = [];
   let tm: Matrix = IDENTITY;
   let tlm: Matrix = IDENTITY;
@@ -145,7 +147,11 @@ async function scanPage(page: PdfjsPage, pageNo: number, OPS: Record<string, num
       str += gl.unicode ?? "";
     }
     const rotated = Math.abs(m[1]) > 0.02 || Math.abs(m[2]) > 0.02;
-    if (str.trim() && !rotated && sizeDev > 0) {
+    // Text render mode 3 is invisible (OCR layers on scanned samples) and 7 is
+    // clip-only; neither paints, so neither is a real text layer. Modes 4-6
+    // paint (fill/stroke plus clip) and are kept. The matrix still advances.
+    const unpainted = gs.renderMode === 3 || gs.renderMode === 7;
+    if (str.trim() && !rotated && !unpainted && sizeDev > 0) {
       out.runs.push({ page: pageNo, str, font: f.name, size: r2(sizeDev), bold: f.bold, italic: f.italic, serif: f.serif, mono: f.mono, color: gs.fill, x: r2(x0), y: r2(y0), w: r2(tx * xScale), h: r2(sizeDev) });
     }
     return mul(tm, [1, 0, 0, 1, tx, 0]);
@@ -226,10 +232,14 @@ async function scanPage(page: PdfjsPage, pageNo: number, OPS: Record<string, num
     if (pageNo === (opts.imagePixelsOnPage ?? 1)) pendingPixels.push(placement);
     out.images.push(placement);
   };
+  // pdfjs promotes an image seen on >= 2 pages to the document-wide store
+  // under a "g_"-prefixed id, and routes those to commonObjs (pdf.mjs
+  // getObject: data.startsWith("g_") ? commonObjs.get(data) : objs.get(data)).
   const getImageObj = (objId: string, timeoutMs = 5000): Promise<unknown> =>
     new Promise((res) => {
+      const store = objId.startsWith("g_") ? page.commonObjs : page.objs;
       const t = setTimeout(() => res(null), timeoutMs);
-      try { page.objs.get(objId, (o: unknown) => { clearTimeout(t); res(o); }); }
+      try { store.get(objId, (o: unknown) => { clearTimeout(t); res(o); }); }
       catch { clearTimeout(t); res(null); }
     });
   const resolvePendingPixels = async () => {
@@ -275,13 +285,14 @@ async function scanPage(page: PdfjsPage, pageNo: number, OPS: Record<string, num
       case OPS.setWordSpacing: gs.wordSpacing = Number(a[0]); break;
       case OPS.setHScale: gs.hScale = Number(a[0]) / 100; break;
       case OPS.setTextRise: gs.rise = Number(a[0]); break;
+      case OPS.setTextRenderingMode: gs.renderMode = Number(a[0] ?? 0); break;
       case OPS.setFont: gs.font = fontInfo(String(a[0])); gs.fontSize = Number(a[1]); break;
       case OPS.showText: tm = showText(a[0] as unknown[]); break;
       case OPS.showSpacedText: tm = showText(((a[0] ?? []) as unknown[]).flatMap((x) => (Array.isArray(x) ? x : [x]))); break;
       case OPS.nextLineShowText: tlm = mul(tlm, [1, 0, 0, 1, 0, -gs.leading]); tm = tlm; tm = showText(a[0] as unknown[]); break;
       case OPS.nextLineSetSpacingShowText: gs.wordSpacing = Number(a[0]); gs.charSpacing = Number(a[1]); tlm = mul(tlm, [1, 0, 0, 1, 0, -gs.leading]); tm = tlm; tm = showText(a[2] as unknown[]); break;
       case OPS.constructPath: handlePath(a[0] as number, (a[1] as Array<Float32Array | null>)?.[0]); break;
-      case OPS.paintImageXObject: case OPS.paintJpegXObject: handleImage(String(a[0])); break;
+      case OPS.paintImageXObject: handleImage(String(a[0])); break;
       default: break;
     }
   }
@@ -295,19 +306,30 @@ export type TextLine = { page: number; x: number; y: number; w: number; size: nu
 
 /** Group a page's runs into baseline-aligned lines (top → bottom, left → right). */
 export function linesOf(page: ScannedPage): TextLine[] {
-  const runs = [...page.runs].sort((a, b) => a.y - b.y || a.x - b.x);
+  // 1. Group by baseline (tolerance against the group's first baseline and
+  //    its largest size so far), in y order.
+  const sorted = [...page.runs].sort((a, b) => a.y - b.y || a.x - b.x);
+  const groups: Array<{ y: number; size: number; runs: TextRun[] }> = [];
+  for (const r of sorted) {
+    const g = groups[groups.length - 1];
+    if (g && Math.abs(g.y - r.y) <= Math.max(1.5, 0.3 * Math.min(g.size, r.size))) { g.runs.push(r); g.size = Math.max(g.size, r.size); }
+    else groups.push({ y: r.y, size: r.size, runs: [r] });
+  }
+  // 2. Order each line's runs by x before building text/w, so sub-point
+  //    baseline differences cannot interleave words.
   const lines: TextLine[] = [];
-  for (const r of runs) {
-    const last = lines[lines.length - 1];
-    if (last && Math.abs(last.y - r.y) <= Math.max(1.5, 0.3 * Math.min(last.size, r.size))) {
-      const gap = r.x - (last.x + last.w);
-      last.text += (gap > 0.2 * r.size && !last.text.endsWith(" ") && !r.str.startsWith(" ") ? " " : "") + r.str;
-      last.w = Math.max(last.x + last.w, r.x + r.w) - last.x;
-      last.size = Math.max(last.size, r.size);
-      last.runs.push(r);
-    } else {
-      lines.push({ page: page.page, x: r.x, y: r.y, w: r.w, size: r.size, text: r.str, runs: [r], font: r.font, bold: r.bold, italic: r.italic, color: r.color, uniform: true });
+  for (const g of groups) {
+    const runs = [...g.runs].sort((a, b) => a.x - b.x);
+    const first = runs[0];
+    const ln: TextLine = { page: page.page, x: first.x, y: g.y, w: first.w, size: first.size, text: first.str, runs: [first], font: first.font, bold: first.bold, italic: first.italic, color: first.color, uniform: true };
+    for (const r of runs.slice(1)) {
+      const gap = r.x - (ln.x + ln.w);
+      ln.text += (gap > 0.2 * r.size && !ln.text.endsWith(" ") && !r.str.startsWith(" ") ? " " : "") + r.str;
+      ln.w = Math.max(ln.x + ln.w, r.x + r.w) - ln.x;
+      ln.size = Math.max(ln.size, r.size);
+      ln.runs.push(r);
     }
+    lines.push(ln);
   }
   for (const ln of lines) {
     ln.text = ln.text.replace(/\s+/g, " ").trim();
