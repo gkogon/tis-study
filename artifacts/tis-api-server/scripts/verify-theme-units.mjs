@@ -161,5 +161,33 @@ ok(pdfText.includes(`${rgb("#1f3a5f")} scn`), "table header fill op present");
 ok(pdfText.includes(`${rgb("#1f3a5f")} SCN`), "grid rule stroke op present");
 eq(footerText, "Page 1 of 1", "footer interpolated");
 
+// ─── derive/typography.ts ────────────────────────────────────────────────────
+const typo = await import(path.resolve(here, "../src/lib/report-theme/derive/typography.ts"));
+eq(typo.detectNumbering(["1.0 INTRO", "2.0 METHODS", "3.0 RESULTS"]), "1.0", "numbering 1.0");
+eq(typo.detectNumbering(["1. Intro", "2. Methods"]), "1.", "numbering 1.");
+eq(typo.detectNumbering(["1 Intro", "2 Methods"]), "1", "numbering bare");
+eq(typo.detectNumbering(["Section 1 – Intro", "Section 2: Methods"]), "section", "numbering section");
+eq(typo.detectNumbering(["A. Intro", "B. Methods"]), "letter", "numbering letter");
+eq(typo.detectNumbering(["Introduction", "Methods", "3. Results"]), "none", "numbering none when < 50%");
+eq(typo.median([5, 1, 3]), 3, "median odd");
+eq(typo.median([1, 2, 3, 4]), 2.5, "median even");
+eq(typo.mode([1, 2, 2, 3]), 2, "mode");
+// Synthetic pages: body 10pt black; H1 14pt blue bold ×3; H2 12pt bold ×2; one 30pt cover-ish run on page 1 (ignored).
+const run = (page, str, size, color, x, y, w, extra = {}) => ({ page, str, font: extra.bold ? "ABCDEF+Arial-Bold" : "ABCDEF+Arial", size, bold: !!extra.bold, italic: false, serif: false, mono: false, color, x, y, w, h: size });
+const mkPage = (n, runs, lines = [], rects = []) => ({ page: n, width: 612, height: 792, runs, rects, lines, images: [] });
+const pagesA = [
+  mkPage(1, [run(1, "BIG TITLE", 30, "#1a5276", 72, 300, 300, { bold: true })]),
+  mkPage(2, [run(2, "1.0 INTRODUCTION", 14, "#1a5276", 72, 100, 200, { bold: true }), run(2, "Body text line one that is long enough to count as a paragraph line.", 10, "#000000", 72, 124, 460), run(2, "Second body line of similar length to the first one here.", 10, "#000000", 72, 138, 440), run(2, "1.1 Study Area", 12, "#000000", 72, 170, 120, { bold: true }), run(2, "Third body line again with enough words to be a paragraph.", 10, "#000000", 72, 190, 450)], [{ page: 2, x1: 72, y1: 104, x2: 540, y2: 104, color: "#1a5276", width: 1 }]),
+  mkPage(3, [run(3, "2.0 EXISTING CONDITIONS", 14, "#1a5276", 72, 100, 240, { bold: true }), run(3, "Body body body body body body body body body body body.", 10, "#000000", 72, 124, 430), run(3, "2.1 Roadways", 12, "#000000", 72, 160, 100, { bold: true }), run(3, "More body text of typical paragraph length for the page.", 10, "#000000", 72, 180, 445)], [{ page: 3, x1: 72, y1: 104, x2: 540, y2: 104, color: "#1a5276", width: 1 }]),
+  mkPage(4, [run(4, "3.0 CONCLUSIONS", 14, "#1a5276", 72, 100, 200, { bold: true }), run(4, "Closing body text that wraps like any other paragraph line.", 10, "#000000", 72, 124, 455)], [{ page: 4, x1: 72, y1: 104, x2: 540, y2: 104, color: "#1a5276", width: 1 }]),
+];
+const bodyA = typo.bodyStyle(pagesA);
+eq(bodyA && [bodyA.size, bodyA.color, bodyA.bold], [10, "#000000", false], "bodyStyle picks 10pt black");
+const heads = typo.detectHeadings(pagesA, bodyA);
+eq(heads.map((h) => [h.size, h.color, h.numbering, h.upper]), [[14, "#1a5276", "1.0", true], [12, "#000000", "1", false]], "two heading levels, numbering and case per level");
+ok(heads[0].rule && heads[0].rule.color === "#1a5276" && heads[0].rule.width === 1, "H1 rule detected");
+ok(heads[1].rule === null, "H2 has no rule");
+ok(heads[0].spaceAfter >= 8 && heads[0].spaceAfter <= 20, `H1 spaceAfter measured (${heads[0].spaceAfter})`);
+
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");

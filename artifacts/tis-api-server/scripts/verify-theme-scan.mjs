@@ -88,5 +88,16 @@ const sc = serif.pages[0];
 ok(sc.images.some((i) => i.pixels && i.pixels.width === 48 && near(i.x, 90, 0.5) && near(i.w, 96, 0.5)), "serif-black cover logo 96 wide at x=90 with pixels");
 ok(!sc.runs.some((r) => /HIDDEN/.test(r.str)), "serif-black: render-mode-3 text is not recorded");
 
+const typo2 = await import(path.resolve(here, "../src/lib/report-theme/derive/typography.ts"));
+const b1 = typo2.bodyStyle(scan.pages);
+ok(b1 && near(b1.size, 11, 0.3) && b1.color === "#222222" && /Carlito/.test(b1.font), `blue-sans body = Carlito 11 #222222 (${JSON.stringify(b1)})`);
+const hl = typo2.detectHeadings(scan.pages, b1);
+ok(hl.length >= 2, `blue-sans: ≥2 heading levels (${hl.length})`);
+ok(hl[0] && near(hl[0].size, 16, 0.3) && hl[0].color === "#1f4e79" && hl[0].numbering === "1." && hl[0].rule, `blue-sans H1 16pt blue, "1." numbering, ruled (${JSON.stringify({ s: hl[0]?.size, c: hl[0]?.color, n: hl[0]?.numbering, r: !!hl[0]?.rule })})`);
+ok(hl[1] && near(hl[1].size, 13, 0.3) && hl[1].numbering === "1", `blue-sans H2 13pt with x.y numbering (${hl[1]?.numbering})`);
+const b2 = typo2.bodyStyle(serif.pages);
+const hl2 = typo2.detectHeadings(serif.pages, b2);
+ok(hl2[0] && hl2[0].numbering === "1.0" && hl2[0].upper, "serif-black H1 uses 1.0 UPPER");
+
 if (fails) { console.log(`\n${fails} FAILED`); process.exit(1); }
 console.log("\nALL PASS");
