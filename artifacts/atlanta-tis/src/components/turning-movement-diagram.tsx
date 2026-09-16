@@ -70,7 +70,6 @@ type Frame = {
   approachW: Record<Direction, number>;
   /** Width of each direction's departure lanes (through lanes only). */
   departW: Record<Direction, number>;
-  bayW: Record<Direction, number>;
   /** Distance from the centre to the junction box edge on the side an approach comes from. */
   stopOff: Record<Direction, number>;
   /** Distance from the centre to the frame edge along each travel direction. */
@@ -79,12 +78,11 @@ type Frame = {
 
 function frameFromPlan(plan: Plan): Frame {
   const byDir = new Map(plan.approaches.map((a) => [a.direction, a]));
-  const approachW = {} as Record<Direction, number>, departW = {} as Record<Direction, number>, bayW = {} as Record<Direction, number>;
+  const approachW = {} as Record<Direction, number>, departW = {} as Record<Direction, number>;
   for (const d of DIRECTIONS) {
     const a = byDir.get(d);
     const bay = a?.leftBay.present ? LW : 0;
     const through = Math.max(1, a?.throughLanes ?? 1) * LW;
-    bayW[d] = bay;
     approachW[d] = Math.max(MIN_HALF_W, bay + through);
     departW[d] = Math.max(MIN_HALF_W, through);
   }
@@ -97,7 +95,7 @@ function frameFromPlan(plan: Plan): Frame {
     stopOff[d] = approachW[side];
   }
   const legEnd: Record<Direction, number> = { NB: CY - EDGE, SB: H - CY - EDGE, EB: W - CX - EDGE, WB: CX - EDGE };
-  return { approachW, departW, bayW, stopOff, legEnd };
+  return { approachW, departW, stopOff, legEnd };
 }
 
 /** Offset of a movement's lane from the centreline, on the approach and on the departure. */
@@ -109,7 +107,7 @@ function laneOffsets(fr: Frame, d: Direction, m: Movement): { a: number; b: numb
 }
 
 /** The arrow's path: outer end of the approach → stop line → (curve) → box edge on the exit leg → outer end of the exit leg. */
-function arrowPath(fr: Frame, d: Direction, m: Movement): { d: string; end: Vec; exitF: Vec; exitR: Vec; label: Vec; b: number } {
+function arrowPath(fr: Frame, d: Direction, m: Movement): { d: string; end: Vec; exitF: Vec; exitR: Vec; label: Vec } {
   const C: Vec = [CX, CY];
   const f = FORWARD[d], r = rightOf(f);
   const f2 = exitVector(d, m), r2 = rightOf(f2);
@@ -136,7 +134,7 @@ function arrowPath(fr: Frame, d: Direction, m: Movement): { d: string; end: Vec;
     mid = `Q ${fmt(pc)} ${fmt(p2)}`;
   }
   const label = add(add(C, mul(f2, exitOff + 0.58 * (fr.legEnd[exitDir] - exitOff))), mul(r2, b));
-  return { d: `M ${fmt(p0)} L ${fmt(p1)} ${mid} L ${fmt(p3)}`, end: p3, exitF: f2, exitR: r2, label, b };
+  return { d: `M ${fmt(p0)} L ${fmt(p1)} ${mid} L ${fmt(p3)}`, end: p3, exitF: f2, exitR: r2, label };
 }
 
 function prefersReducedMotion(): boolean {

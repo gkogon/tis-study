@@ -196,6 +196,18 @@ export function routesForRows(
   return out;
 }
 
+/**
+ * The key under which `StudyMapAlive` caches the routes `routesForRows`
+ * built: the graph (its link count) and the row set (ids, in order). Blind
+ * to report identity and to every trip value on purpose — a new report
+ * object for the same study (an engine what-if, a same-site regenerate, a
+ * scenario re-solve) keeps the cached routes and re-announces them, while a
+ * changed row set or a new graph routes again.
+ */
+export function routesKeyFor(graph: RoadGraph | null, rows: ReadonlyArray<{ signalId: string }>): string {
+  return `${graph ? graph.links.length : 0}:${rows.map((r) => r.signalId).join(",")}`;
+}
+
 /** Metres per degree of latitude (WGS-84 mean). */
 const M_PER_DEG_LAT = 111195;
 

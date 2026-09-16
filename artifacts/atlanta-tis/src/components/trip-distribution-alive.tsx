@@ -18,6 +18,10 @@
  * also PIN a sector with `highlightOctant` (the octant of the junction whose
  * study is open, or the selected signal): it draws exactly as a hovered one
  * until the pointer picks another, and the readout says which junction.
+ * Every dim and lit state is a class with a `print:` override, so a printed
+ * report (the card prints; the selection outlives Close) shows the rose
+ * undimmed, and the particles — whose opacity is written per frame — are
+ * hidden in print.
  *
  * Nothing is invented: shares, bearings, distances and the method label all
  * come from `report.tripDistribution` (`lib/distribution-rose.ts` lays them
@@ -208,8 +212,8 @@ export function TripDistributionAlive({ report, onHoverOctant, highlightOctant, 
             const [x, y] = bearingToXY(w.midDeg, RIM_LABEL_R);
             const dimmed = hovered !== null && hovered !== w.octant;
             return (
-              <text key={w.octant} x={x} y={y} textAnchor="middle" opacity={dimmed ? 0.4 : 1} className="transition-opacity duration-150 motion-reduce:transition-none">
-                <tspan x={x} dy={-2} className={hovered === w.octant ? "fill-foreground font-semibold" : ""}>{w.octant}</tspan>
+              <text key={w.octant} x={x} y={y} textAnchor="middle" className={`transition-opacity duration-150 motion-reduce:transition-none ${dimmed ? "opacity-40 print:opacity-100" : ""}`}>
+                <tspan x={x} dy={-2} className={hovered === w.octant ? "fill-foreground font-semibold print:fill-muted-foreground print:font-normal" : ""}>{w.octant}</tspan>
                 <tspan x={x} dy={9} className="fill-foreground">{w.sharePct.toFixed(1)}%</tspan>
               </text>
             );
@@ -225,8 +229,7 @@ export function TripDistributionAlive({ report, onHoverOctant, highlightOctant, 
                 key={w.octant}
                 ref={(el) => { wedgeRefs.current[i] = el; }}
                 d={wedgePath(geom, i, initialP)}
-                className={`transition-opacity duration-150 motion-reduce:transition-none ${hovered === w.octant ? "fill-blue-500 dark:fill-blue-400" : "fill-blue-500/60 dark:fill-blue-400/55"}`}
-                opacity={dimmed ? 0.3 : 1}
+                className={`transition-opacity duration-150 motion-reduce:transition-none ${hovered === w.octant ? "fill-blue-500 dark:fill-blue-400 print:fill-blue-500/60" : "fill-blue-500/60 dark:fill-blue-400/55"} ${dimmed ? "opacity-30 print:opacity-100" : ""}`}
                 data-testid={`dist-rose-wedge-${w.octant}`}
               >
                 <title>{`${w.octant} · ${w.sharePct.toFixed(1)}% of project trips`}</title>
@@ -235,9 +238,12 @@ export function TripDistributionAlive({ report, onHoverOctant, highlightOctant, 
           })}
         </g>
 
-        {/* particles: project trips streaming outward, rate ∝ share */}
+        {/* particles: project trips streaming outward, rate ∝ share. Their
+            opacity (the pinned-sector dim included) is written per frame, so
+            print hides them outright — the still frame prints as it does under
+            reduced motion. */}
         {!reduced && (
-          <g aria-hidden className="fill-blue-700 dark:fill-blue-200 pointer-events-none">
+          <g aria-hidden className="fill-blue-700 dark:fill-blue-200 pointer-events-none print:hidden">
             {Array.from({ length: PARTICLE_POOL }, (_, k) => (
               <circle key={k} ref={(el) => { particleRefs.current[k] = el; }} r={1.6} opacity={0} />
             ))}
@@ -251,7 +257,7 @@ export function TripDistributionAlive({ report, onHoverOctant, highlightOctant, 
             const lx = z.x + (z.x >= 0 ? 4.5 : -4.5), ly = z.y + (z.y >= 0 ? 7.5 : -3.5);
             return (
               <g key={z.id} ref={(el) => { zoneRefs.current[i] = el; }} opacity={initialP}>
-                <g className={`transition-opacity duration-150 motion-reduce:transition-none ${dimmed ? "opacity-30" : ""}`}>
+                <g className={`transition-opacity duration-150 motion-reduce:transition-none ${dimmed ? "opacity-30 print:opacity-100" : ""}`}>
                   <title>{`${z.name} · ${z.distanceMi.toFixed(2)} mi ${z.octant} · ${z.sharePct.toFixed(1)}%`}</title>
                   <circle cx={z.x} cy={z.y} r={z.labelled ? 3 : 1.8} className={z.labelled ? "fill-foreground stroke-background" : "fill-muted-foreground"} strokeWidth={z.labelled ? 1 : 0} />
                   {z.labelled && (

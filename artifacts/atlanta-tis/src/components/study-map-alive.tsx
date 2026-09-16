@@ -39,7 +39,12 @@
  * client-side routes (study-map-sim.ts routesThrough), the same test the
  * study's §01a route-continuation list uses. `onRoutes` hands those routes
  * (signalId → Route) to the page once they are built, so the study computes
- * its list from the graph the map already built rather than routing again.
+ * its list from the graph the map already built rather than routing again —
+ * and the map OWNS that hand-off: it announces the same routes again on every
+ * new report or scenario whose row set they still cover (an engine what-if,
+ * a same-site regenerate), and announces null the moment they stop being
+ * valid (a new site, a changed row set), so a page that simply mirrors
+ * `onRoutes` never holds stale routes and never loses live ones.
  *
  * Canvas is aria-hidden; everything the reader needs is in the DOM beside it.
  */
@@ -47,7 +52,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { TisReport, TisAffectedIntersection } from "@workspace/tis-api-client-react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import {
-  buildRoadGraph, routeToPoint, routesForRows, routesThrough, pointAlong, projector, distMi,
+  buildRoadGraph, routeToPoint, routesForRows, routesKeyFor, routesThrough, pointAlong, projector, distMi,
   FlowSim, LOS_MAP_COLORS, THROUGH_ROUTE_M, type RoadGraph, type RoadSegment, type Route, type Flow, type LatLon,
 } from "../lib/study-map-sim";
 import { bearingDeg, bearingToOctant, isOctant, type Octant } from "../lib/distribution-rose";
@@ -77,9 +82,12 @@ export type StudyMapAliveProps = {
    *  passing within 60 m of it draw at full alpha, the rest at 25 %. Null /
    *  absent ⇒ no dim. */
   throughSignalId?: string | null;
-  /** Fired once per routing with the site→row routes the project flows ride,
-   *  keyed by signal id (report phase only). */
-  onRoutes?: (routes: Map<string, Route>) => void;
+  /** The site→row routes the project flows ride, keyed by signal id (report
+   *  phase only). Fired with a fresh Map whenever the routes are built, and
+   *  again on every new `report` / `scenarioReport` whose row set they still
+   *  cover; fired with null when they are invalidated (a new site, a changed
+   *  row set) until the next routing. Mirror it — do not clear it yourself. */
+  onRoutes?: (routes: Map<string, Route> | null) => void;
 };
 
 const SIM_SPEED = 20;            // simulated seconds per real second
@@ -121,7 +129,7 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
   const [, tick] = useState(0);
   // The through-junction filter's result, for the stats column (the loop
   // computes it; this mirrors the count once per change).
-  const [throughStat, setThroughStat] = useState<{ signalId: string; count: number } | null>(null);
+  const [throughStat, setThroughStat] = useState<{ signalId: string; count: number; own: boolean } | null>(null);
   const onRoutesRef = useRef(onRoutes);
   onRoutesRef.current = onRoutes;
 
@@ -150,6 +158,7 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
     const w = world.current;
     w.graph = null; w.segments = []; w.signals = []; w.siteNode = -1; w.loadedAt = null; w.sigLoadedAt = null; w.sim = null; w.simKey = ""; w.static = null; w.staticKey = "";
     w.routes = null; w.routesKey = ""; w.throughSet = null; w.throughKey = "";
+    onRoutesRef.current?.(null);
     setNet({ status: "loading", segments: 0, signals: 0, regionName: null });
     const rad = Math.min(8, radiusMi * 1.2 + 0.15);
     (async () => {
@@ -214,6 +223,19 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
     } else {
       w.sim = null; w.simKey = "";
     }
+    // The routes outlive the sim: a new report object for the same row set
+    // (an engine what-if, a same-site regenerate, a scenario re-solve) keeps
+    // them, so announce them again — the page keys its own state on the
+    // report and would otherwise wait for a routing that never re-runs. A
+    // changed row set invalidates them until ensureSim routes; no rows at
+    // all (the pending phase of a regenerate) keeps the cache idle, so the
+    // report that follows at the same site is announced from here at once.
+    if (w.routes && w.routesKey === routesKeyFor(w.graph, [...shown.values()])) {
+      onRoutesRef.current?.(new Map(w.routes));
+    } else if (w.routes && shown.size > 0) {
+      w.routes = null; w.routesKey = ""; w.throughSet = null; w.throughKey = "";
+      onRoutesRef.current?.(null);
+    }
   }, [phase, report, scenarioReport, reduced, site.latitude, site.longitude]);
 
   // stage list re-render while pending (the loop itself never touches React state)
@@ -253,7 +275,7 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
         // The routes are built once per graph + row set (a resize rebuilds
         // the sim, not the routing) and handed to the page.
         const rows = [...w.reportRows.values()];
-        const routesKey = `${w.graph ? w.graph.links.length : 0}:${rows.map((r) => r.signalId).join(",")}`;
+        const routesKey = routesKeyFor(w.graph, rows);
         if (!w.routes || w.routesKey !== routesKey) {
           w.routes = routesForRows(w.graph, center, rows);
           w.routesKey = routesKey;
@@ -283,7 +305,7 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
       const set = new Set<string>();
       if (row) for (const h of routesThrough(w.routes, { lat: row.latitude, lon: row.longitude }, THROUGH_ROUTE_M)) set.add(h.signalId);
       w.throughSet = set; w.throughKey = key;
-      setThroughStat(row ? { signalId: id, count: set.size } : null);
+      setThroughStat(row ? { signalId: id, count: set.size, own: set.has(id) } : null);
       return set;
     }
 
@@ -540,7 +562,7 @@ export function StudyMapAlive({ site, radiusMi, phase, report, projectName, scen
             )}
             {throughRow && throughStat && (
               <div className="text-xs text-muted-foreground border-t pt-2" data-testid="map-through-junction">
-                Routes through <span className="font-semibold text-foreground">{throughRow.name}</span> — <span className="font-mono tabular-nums">{throughStat.count}</span> of {rows.length} project flows pass within {THROUGH_ROUTE_M} m of it (its own included); the rest are dimmed. Client route geometry, not the engine's ledgers.
+                Routes through <span className="font-semibold text-foreground">{throughRow.name}</span> — <span className="font-mono tabular-nums">{throughStat.count}</span> of {rows.length} project flows ride a route that comes within {THROUGH_ROUTE_M} m of it{throughStat.own ? " (its own included)" : ` (its own route ends at the network's nearest node, more than ${THROUGH_ROUTE_M} m away, so it is not counted)`}; the rest are dimmed. Client route geometry, not the engine's ledgers.
               </div>
             )}
           </>

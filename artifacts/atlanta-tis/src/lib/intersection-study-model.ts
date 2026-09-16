@@ -591,15 +591,25 @@ export function studyModelFromRow(
 //       engine's ledgerWeight, printed here as `ledgerBlend`). OCTANT:
 //       inFraction × the row's exact total, by definition.
 //   share of the study   exact total ÷ the period's net external trips;
-//       rank among the period's rows by addedTripsPmPeak.
+//       rank among the period's rows by addedTripsPmPeak, ties broken by
+//       the exact load, then signal id.
 //   exits / origins   PATH rows only: the ledger's exit bearings (outbound)
 //       and the reverse of its entry bearings (inbound) quantised to the
 //       eight octants (lib/distribution-rose.ts bearingToOctant, the engine's
 //       convention), weighted by share. Octant rows carry no path, so none.
+//   synthesised ledgers   a CLIENT scenario row built from a pre-E2 path row
+//       (no printed pathTurns) carries ledgers scenario-solve.ts solved from
+//       the printed movement tables (rowFallbacks "pathLedger"): their
+//       bearings are the cardinal travel directions, not the network's. With
+//       `ledgerSynthesised` the split is still the ledgers' (the cells cross-
+//       foot) but is labelled approximated, `ledgerRecorded` is false, and
+//       no exits / origins are read off them.
 //   route continuation   routeContinuationForRow: which OTHER studied rows'
-//       site→row routes pass within 60 m of this junction — the MAP's own
-//       client-side shortest paths (study-map-sim.ts), not the engine's:
-//       the engine ships turn ledgers, not paths, and the label says so.
+//       site→row routes come within 60 m of this junction (a point-to-
+//       polyline test: a route that ends nearby, or passes on a neighbouring
+//       carriageway, counts) — the MAP's own client-side shortest paths
+//       (study-map-sim.ts), not the engine's: the engine ships turn ledgers,
+//       not paths, and the label says so.
 
 export type DistributionCell = {
   approach: Direction;
@@ -665,9 +675,13 @@ export type DistributionPeriodModel = {
     /** Every row of the period, heaviest first. */
     ranked: RankedRow[];
   };
-  /** Outbound exits by octant (path rows with outbound turns), heaviest first. */
+  /** True when the ledgers the split reads are the engine's printed ones; false when the browser synthesised them
+   *  (a client scenario row from a pre-E2 path row — scenario-solve.ts rowFallbacks "pathLedger") and the split is
+   *  an approximation. True on every row without a ledger (nothing was synthesised). */
+  ledgerRecorded: boolean;
+  /** Outbound exits by octant (path rows with outbound turns), heaviest first; null on a synthesised ledger. */
   exits: OctantShare[] | null;
-  /** Inbound arrivals by the octant they come FROM (path rows), heaviest first; `originsMirrored` when read off the outbound ledger. */
+  /** Inbound arrivals by the octant they come FROM (path rows), heaviest first; `originsMirrored` when read off the outbound ledger; null on a synthesised ledger. */
   origins: OctantShare[] | null;
   originsMirrored: boolean;
   /** Provenance, one sentence per fact drawn. */
@@ -680,8 +694,29 @@ export type DistributionModel = {
   scenario: DistributionPeriodModel | null;
 };
 
+export type DistributionOptions = {
+  /** The SCENARIO row's turn ledgers were synthesised by the browser (scenario-solve.ts rowFallbacks has "pathLedger"
+   *  for the signal): its split is labelled approximated and no exits / origins are read off them. */
+  scenarioLedgerSynthesised?: boolean;
+};
+
 /** "Reproduces the printed exact cells" means within this, in trips. */
 export const DISTRIBUTION_REPRODUCE_TOL = 1e-6;
+
+/** The period trips the §01a share sentence prints: the report's own rounded figure, else the exact one rounded. */
+export function printedPeriodTrips(share: Pick<DistributionPeriodModel["share"], "periodTrips" | "periodTripsPrinted">): number | null {
+  if (share.periodTripsPrinted !== null && finite(share.periodTripsPrinted)) return share.periodTripsPrinted;
+  return share.periodTrips !== null && finite(share.periodTrips) ? Math.round(share.periodTrips) : null;
+}
+
+/**
+ * The share the sentence prints, as a fraction of its OWN two integers —
+ * "3 of 120" reads 2.5 %, never the exact-value ratio the printed integers
+ * cannot reproduce (that one is printed beside them as the exact share).
+ */
+export function printedShareFraction(trips: number, printedTotal: number | null): number | null {
+  return printedTotal !== null && printedTotal > 0 && finite(trips) ? trips / printedTotal : null;
+}
 
 type PeriodTrips = { exact: number | null; exactPrinted: boolean; printed: number | null };
 
@@ -727,6 +762,7 @@ function periodModel(
   row: TisAffectedIntersection,
   period: TisPeriodReport | null | undefined,
   report: Pick<TisReport, "request" | "tripDistribution">,
+  ledgerSynthesised: boolean,
 ): DistributionPeriodModel {
   const sources: string[] = [];
   const movementSource: "path" | "octant" | null = row.movementSource === "path" ? "path" : row.movementSource === "octant" ? "octant" : null;
@@ -757,6 +793,10 @@ function periodModel(
   const pathTurns = row.pathTurns;
   const pathTurnsIn = row.pathTurnsIn;
   const hasLedger = movementSource === "path" && Array.isArray(pathTurns);
+  // A ledger the browser synthesised (scenario-solve.ts, pre-E2 path row) is
+  // still what the scenario row's cells were built from, so the split below
+  // cross-foots — but it is an approximation of the engine's, and says so.
+  const ledgerRecorded = !(hasLedger && ledgerSynthesised);
   if (inFraction !== null && trips.exact !== null && hasLedger) {
     const ext = trips.exact;
     // Outbound: the recorded ledger, scaled by (1 − in), with an EMPTY inbound
@@ -775,7 +815,9 @@ function periodModel(
     }
     cellDirectionBasis = "ledger";
     splitBasis = "ledger";
-    sources.push(pathTurnsIn !== undefined
+    sources.push(!ledgerRecorded
+      ? `Inbound / outbound: approximated — no recorded ledger on this report. The scenario row's turn ledgers (${pathTurns.length} outbound, ${pathTurnsIn?.length ?? 0} inbound turn${(pathTurnsIn?.length ?? 0) === 1 ? "" : "s"}) were solved by the browser from the report's printed movement tables (scenario-solve.ts "pathLedger"), then × the period's ${trips.exactPrinted ? "exact " : ""}net external trips, outbound at 1 − inFraction (${(1 - inFraction).toFixed(2)}) and inbound at inFraction (${inFraction.toFixed(2)}) through the engine's pathMovementLoadsExact; the cells cross-foot, the blend is not the engine's.`
+      : pathTurnsIn !== undefined
       ? `Inbound / outbound: the row's two turn ledgers (pathTurns ${pathTurns.length} outbound turn${pathTurns.length === 1 ? "" : "s"}, pathTurnsIn ${pathTurnsIn.length} recorded inbound turn${pathTurnsIn.length === 1 ? "" : "s"}) × the period's ${trips.exactPrinted ? "exact " : ""}net external trips, outbound at 1 − inFraction (${(1 - inFraction).toFixed(2)}) and inbound at inFraction (${inFraction.toFixed(2)}) — the engine's own pathMovementLoadsExact, run once per side in the browser.`
       : `Inbound / outbound: the row's outbound turn ledger (pathTurns, ${pathTurns.length} turn${pathTurns.length === 1 ? "" : "s"}) × the period's ${trips.exactPrinted ? "exact " : ""}net external trips at 1 − inFraction (${(1 - inFraction).toFixed(2)}), and its mirror (the reverse path, the engine's rule when no inbound ledger was recorded) at inFraction (${inFraction.toFixed(2)}) — the engine's own pathMovementLoadsExact, run once per side in the browser.`);
   } else if (inFraction !== null && hasMovements && movementSource !== "path" && report.tripDistribution?.byDirection && finite(row.latitude) && finite(row.longitude) && finite(report.request?.latitude) && finite(report.request?.longitude) && exactTotal > 0) {
@@ -841,12 +883,16 @@ function periodModel(
   const mine = ranked.find((r) => r.signalId === row.signalId) ?? null;
   const fraction = trips.exact !== null && trips.exact > 0 ? exactTotal / trips.exact : null;
   if (period) {
-    sources.push(`Share of the study: the row's exact trips ÷ the ${periodLabelOf(period, period.period)}'s net external trips (${trips.exactPrinted ? "externalTripsExact" + (finite(period.existingUseCreditExact) ? " − existingUseCreditExact" : "") : "the printed rounded figure — no exact value on this report"}); rank among the ${rowsOfPeriod.length} rows by addedTripsPmPeak.`);
+    sources.push(`Share of the study: the row's exact trips ÷ the ${periodLabelOf(period, period.period)}'s net external trips (${trips.exactPrinted ? "externalTripsExact" + (finite(period.existingUseCreditExact) ? " − existingUseCreditExact" : "") : "the printed rounded figure — no exact value on this report"}); rank among the ${rowsOfPeriod.length} rows by addedTripsPmPeak, ties broken by the exact load, then signal id.`);
   }
 
   // ---- where they go next: the ledgers by octant ----
+  // A synthesised ledger's bearings are the cardinal travel directions of the
+  // printed movements, not the network's links: no exit direction can be read.
   let exits: OctantShare[] | null = null, origins: OctantShare[] | null = null, originsMirrored = false;
-  if (hasLedger) {
+  if (hasLedger && !ledgerRecorded) {
+    sources.push("Where they go next: not read — the scenario row's ledgers were approximated by the browser from the printed movement tables, and carry no recorded exit or entry bearings.");
+  } else if (hasLedger) {
     const outScale = trips.exact !== null && inFraction !== null ? trips.exact * (1 - inFraction) : null;
     const inScale = trips.exact !== null && inFraction !== null ? trips.exact * inFraction : null;
     const nonEmpty = (l: OctantShare[]) => (l.length > 0 ? l : null);
@@ -885,6 +931,7 @@ function periodModel(
       of: ranked.length,
       ranked,
     },
+    ledgerRecorded,
     exits,
     origins,
     originsMirrored,
@@ -896,7 +943,9 @@ function periodModel(
  * The §01a model for `row` in `period` (the period report the row belongs
  * to; the top-level rows are the PM peak's). With a scenario row (the
  * studio's re-solve of the same signal, in the same period of the scenario
- * report) the scenario's model rides beside the base's when it differs.
+ * report) the scenario's model rides beside the base's when it differs. The
+ * base row is the engine's, so its ledgers are always recorded; only the
+ * scenario row can carry browser-synthesised ones (`options`).
  */
 export function distributionForRow(
   row: TisAffectedIntersection,
@@ -904,10 +953,11 @@ export function distributionForRow(
   report: Pick<TisReport, "request" | "tripDistribution">,
   scenarioRow?: TisAffectedIntersection | null,
   scenarioPeriod?: TisPeriodReport | null,
+  options: DistributionOptions = {},
 ): DistributionModel {
-  const base = periodModel(row, period, report);
+  const base = periodModel(row, period, report, false);
   const scenario = scenarioRow && scenarioRow !== row && scenarioRowDiffers(row, scenarioRow)
-    ? periodModel(scenarioRow, scenarioPeriod ?? period, report)
+    ? periodModel(scenarioRow, scenarioPeriod ?? period, report, options.scenarioLedgerSynthesised === true)
     : null;
   return { base, scenario };
 }
@@ -915,12 +965,16 @@ export function distributionForRow(
 export type RouteContinuation = {
   /** False when the page has no routes yet (the map has not routed). */
   available: boolean;
-  /** True when this junction's own route passes within the radius of it — the sanity the check asserts. */
+  /** True when this junction's own route comes within `withinM` of it. A graph route ends at the network's nearest
+   *  node to the signal and a straight-line route ends exactly on it, so this is false only when the road network has
+   *  no node within `withinM` of the signal — the sanity the check asserts on the fixture. */
   onOwnRoute: boolean;
   withinM: number;
-  /** The OTHER studied rows whose site→row route passes this junction, nearest first. */
+  /** The OTHER studied rows whose site→row route comes within `withinM` of this junction (a point-to-polyline
+   *  distance — a route that ends nearby, or passes on a neighbouring carriageway, counts), nearest first. Each
+   *  carries its row's trips for the period `rows` came from. */
   through: Array<{ signalId: string; name: string; trips: number; distanceM: number; distanceMi: number }>;
-  /** Σ trips of the rows above — project trips that pass this junction on their way somewhere else, by the map's routing. */
+  /** Σ trips of the rows above, by the map's routing. */
   throughTrips: number;
   label: string;
 };
@@ -928,11 +982,15 @@ export type RouteContinuation = {
 export const ROUTE_CONTINUATION_LABEL = "client route geometry — the engine ships turn ledgers, not paths";
 
 /**
- * Which OTHER studied intersections' site→row routes pass within `withinM`
+ * Which OTHER studied intersections' site→row routes come within `withinM`
  * of this junction, by the study map's own client-side shortest paths
  * (`routesForRows` in study-map-sim.ts — the routes the flows ride). This is
  * map geometry, not the engine's assignment: the engine ships turn ledgers,
- * not paths, and the label says so wherever it is shown.
+ * not paths, and the label says so wherever it is shown. `rows` are the rows
+ * of the period (and report — base or scenario) whose trips the list should
+ * carry; the routes are the same for every period, since they are built on
+ * the signals' positions alone. Pure: the same routes reused across two
+ * report objects with the same ids yield the same continuation.
  */
 export function routeContinuationForRow(
   row: Pick<TisAffectedIntersection, "signalId" | "latitude" | "longitude">,

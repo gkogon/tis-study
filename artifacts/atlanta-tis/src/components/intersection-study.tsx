@@ -65,7 +65,7 @@ import { QueueLaneAnimation, type QueueLaneInputs } from "@/components/queue-ani
 import { SignalControls } from "@/components/signal-controls";
 import { studyModelFromRow, SECTIONS, ENGINE_RECOMPUTATIONS, Q95_FACTOR, type IntersectionStudyModel, type QueueApproachModel, type SectionId } from "@/lib/intersection-study-model";
 import { QUEUE_FT_PER_VEH } from "@/lib/intersection-geometry";
-import { type ScenarioState, type SignalTimingEdit, baseOverridesBySignal, scenarioWeatherFactor } from "@/lib/scenario-solve";
+import { type ScenarioState, type SignalTimingEdit, type RowFallback, baseOverridesBySignal, scenarioWeatherFactor } from "@/lib/scenario-solve";
 import type { Route } from "@/lib/study-map-sim";
 import { SATURATION_FLOW_VPH } from "@workspace/tis-engine-core";
 
@@ -78,6 +78,9 @@ export type IntersectionStudyProps = {
   scenarioRow?: TisAffectedIntersection | null;
   /** The whole scenario re-solve (its period reports carry the AM row and the scenario's period trips for §01a). */
   scenarioReport?: TisReport | null;
+  /** The studio's substitutions for THIS signal's scenario row (ScenarioSolution.rowFallbacks.get(signalId)) — with
+   *  "pathLedger" the scenario's turn ledgers are the browser's, not the engine's, and §01a labels them approximated. */
+  scenarioRowFallbacks?: ReadonlySet<RowFallback> | null;
   /** Site→row routes the study map built (StudyMapAlive `onRoutes`), for §01a's route continuation; absent ⇒ that list says the map has not routed. */
   routesBySignalId?: ReadonlyMap<string, Route> | null;
   /** Open another signal's study (a §01a link); absent ⇒ plain text. */
@@ -97,7 +100,7 @@ function SectionHeader({ id, n, label }: { id: SectionId; n: string; label: stri
   );
 }
 
-export function IntersectionStudy({ report, row, scenarioRow, scenarioReport, routesBySignalId, onOpenSignal, scenario, onScenarioChange, onClose }: IntersectionStudyProps) {
+export function IntersectionStudy({ report, row, scenarioRow, scenarioReport, scenarioRowFallbacks, routesBySignalId, onOpenSignal, scenario, onScenarioChange, onClose }: IntersectionStudyProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const [active, setActive] = useState<SectionId>("summary");
@@ -406,6 +409,7 @@ export function IntersectionStudy({ report, row, scenarioRow, scenarioReport, ro
               row={row}
               scenarioReport={model.scenario ? scenarioReport ?? null : null}
               scenarioRow={model.scenario ? scenarioRow ?? null : null}
+              scenarioLedgerSynthesised={model.scenario && !!scenarioRowFallbacks?.has("pathLedger")}
               scenarioDiffers={model.scenario}
               plan={plan}
               routesBySignalId={routesBySignalId ?? null}

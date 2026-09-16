@@ -1780,12 +1780,15 @@ export default function TisPage() {
   // and the rose's pinned sector are what a user sees after Close — the
   // selection outlives it). The map hands its site→row routes up once built
   // so the study's §01a lists which other routes pass its junction from the
-  // graph the map already built.
+  // graph the map already built. The map owns that state: it re-announces
+  // the routes on a new report for the same row set (an engine what-if, a
+  // same-site regenerate) and sends null when they are invalidated — the
+  // page only mirrors it. (Clearing here on `report` raced the map's own
+  // re-announce in the same commit and left §01a "not routed yet" forever.)
   const focusSignalId = openStudyId ?? scenario.selectedSignalId;
   const focusRow = report && focusSignalId ? report.affectedIntersections.find((r) => r.signalId === focusSignalId) ?? null : null;
   const focusOctant: Octant | null = focusRow && report ? bearingToOctant(bearingDeg(report.request.latitude, report.request.longitude, focusRow.latitude, focusRow.longitude)) : null;
   const [mapRoutes, setMapRoutes] = useState<Map<string, Route> | null>(null);
-  useEffect(() => { setMapRoutes(null); }, [report]);
 
   // Engine what-if: the whole scenario (timing overrides, site, driveways)
   // through POST /tis-api/whatif, which charges no study slot and saves
@@ -2058,6 +2061,7 @@ export default function TisPage() {
           row={studyRow}
           scenarioRow={studyScenarioRow}
           scenarioReport={scenarioReport}
+          scenarioRowFallbacks={scenarioReport && solution ? solution.rowFallbacks.get(studyRow.signalId) ?? null : null}
           routesBySignalId={mapRoutes}
           onOpenSignal={openStudy}
           scenario={scenario}

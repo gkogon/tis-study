@@ -45,17 +45,33 @@
 //      contains the junction itself, every listed signal's route really
 //      passes within 60 m (recomputed directly with distToRouteM), at least
 //      one junction has routes through it, and without routes the model
-//      says so rather than listing nothing as if it were true.
+//      says so rather than listing nothing as if it were true;
+//  10. review fixes (#220): (A1) the routes survive a new report object —
+//      routeContinuationForRow reused across two report objects with the
+//      same ids yields the same, available continuation; the map's cache
+//      key (routesKeyFor) is blind to report identity and trip values and
+//      changes only with the row set or the graph; and the map SOURCE
+//      re-announces the routes from its rows effect and neither page clears
+//      them on the report (the emit path — components cannot be mounted
+//      here); (A2) the rose's dims are classes with a print:opacity-100
+//      override, no opacity attribute is driven by the hover / pin, and the
+//      per-frame particles are print:hidden; (m2) the continuation carries
+//      the trips of the rows it is given (AM ≠ PM, scenario ≠ base); (m3)
+//      the printed share is of its own two integers; (m4) the rank sentence
+//      names its tie-break; (m7) a scenario row with browser-synthesised
+//      ledgers is labelled approximated, reads no exits / origins, still
+//      cross-foots, and the base row is never so labelled.
 //
 // Run: `pnpm run check:intersection-distribution` (plain node 26, no bundler).
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  distributionForRow, routeContinuationForRow, periodAssignedTrips, DISTRIBUTION_REPRODUCE_TOL, ROUTE_CONTINUATION_LABEL, SECTIONS,
+  distributionForRow, routeContinuationForRow, periodAssignedTrips, printedPeriodTrips, printedShareFraction,
+  DISTRIBUTION_REPRODUCE_TOL, ROUTE_CONTINUATION_LABEL, SECTIONS,
 } from "../src/lib/intersection-study-model.ts";
-import { buildRoadGraph, routesForRows, routesThrough, distToRouteM, THROUGH_ROUTE_M } from "../src/lib/study-map-sim.ts";
-import { solveScenario, EMPTY_SCENARIO } from "../src/lib/scenario-solve.ts";
+import { buildRoadGraph, routesForRows, routesKeyFor, routesThrough, distToRouteM, THROUGH_ROUTE_M } from "../src/lib/study-map-sim.ts";
+import { solveScenario, solveScenarioDetailed, EMPTY_SCENARIO } from "../src/lib/scenario-solve.ts";
 import { DIRECTIONS, MOVEMENTS } from "../src/lib/intersection-geometry.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -284,6 +300,152 @@ console.log("\n9. routes through a junction — the map's client-side graph");
   ok(Math.abs(dEast - 30) < 0.05, `distToRouteM: 30 m east of a N–S segment reads ${dEast.toFixed(3)} m`);
   const dBeyond = distToRouteM(seg, { lat: 33.7905, lon: -84.39 });
   ok(Math.abs(dBeyond - 0.0005 * 111195) < 0.1, `distToRouteM: beyond the end it measures to the endpoint (${dBeyond.toFixed(1)} m)`);
+}
+
+// ---------------------------------------------------------------------------
+console.log("\n10. review fixes (#220)");
+const src = (rel) => fs.readFileSync(path.join(here, "..", rel), "utf8");
+const clone = (v) => JSON.parse(JSON.stringify(v));
+{
+  // ---- A1: the §01a continuation survives a new report object with the same ids ----
+  const g = buildRoadGraph(roads.segments);
+  const site = { lat: A.request.latitude, lon: A.request.longitude };
+  const routes = routesForRows(g, site, A.affectedIntersections);
+  // A second report object: same study, same ids, new identities and new numbers
+  // (an engine what-if or a same-site regenerate hands the page exactly this).
+  const A2 = clone(A);
+  for (const r of A2.affectedIntersections) r.addedTripsPmPeak += 1;
+  const withThrough = A.affectedIntersections.filter((r) => routeContinuationForRow(r, A.affectedIntersections, routes).through.length > 0);
+  let reused = 0;
+  for (const r of withThrough) {
+    const r2 = A2.affectedIntersections.find((x) => x.signalId === r.signalId);
+    const c1 = routeContinuationForRow(r, A.affectedIntersections, routes), c2 = routeContinuationForRow(r2, A2.affectedIntersections, routes);
+    if (c2.available && c2.through.length === c1.through.length && c2.through.every((t, i) => t.signalId === c1.through[i].signalId && Math.abs(t.distanceM - c1.through[i].distanceM) < 1e-12 && t.trips === c1.through[i].trips + 1)) reused++;
+  }
+  ok(withThrough.length > 0 && reused === withThrough.length, `A1: the same routes reused across two report objects with the same ids keep the continuation available on all ${withThrough.length} junctions that have one — same routes, the new report's trips`);
+  // The map's cache key: blind to report identity and trip values, sensitive to the row set and the graph.
+  const rows = A.affectedIntersections, rows2 = A2.affectedIntersections;
+  const k = routesKeyFor(g, rows);
+  ok(k === routesKeyFor(g, rows2) && k === routesKeyFor(g, clone(rows)), "A1: routesKeyFor is the same for a new report object with the same ids (and new trip values) — the cached routes are kept and re-announced");
+  ok(k !== routesKeyFor(g, rows.slice(1)) && k !== routesKeyFor(g, [...rows.slice(1), rows[0]]) && k !== routesKeyFor(null, rows) && k !== routesKeyFor(g, []),
+    "A1: routesKeyFor changes when a row is dropped, the order changes, the graph is absent, or there are no rows — those route again");
+  // The emit path itself (StudyMapAlive cannot be mounted here): the rows effect re-announces
+  // the routes on every report identity change while the key still matches, invalidates
+  // them (null) otherwise, and the pages mirror `onRoutes` instead of clearing it on `report`.
+  const map = src("src/components/study-map-alive.tsx");
+  const rowsEffect = map.slice(map.indexOf("// ---- report rows keyed by signal id"), map.indexOf("// stage list re-render"));
+  ok(rowsEffect.length > 0 && /if \(w\.routes && w\.routesKey === routesKeyFor\(w\.graph, \[\.\.\.shown\.values\(\)\]\)\) \{\s*onRoutesRef\.current\?\.\(new Map\(w\.routes\)\);/.test(rowsEffect),
+    "A1 (emit path): the map's rows effect re-announces the cached routes when the new report's row set still matches the key");
+  ok(/else if \(w\.routes && shown\.size > 0\) \{[^}]*w\.routes = null;[^}]*onRoutesRef\.current\?\.\(null\);/.test(rowsEffect) && /w\.routes = null; w\.routesKey = "";[^\n]*\n\s*onRoutesRef\.current\?\.\(null\);/.test(map),
+    "A1 (emit path): the rows effect (a changed row set) and the site effect announce null when they invalidate the routes; an empty row set (pending phase) keeps the cache for the report that follows");
+  ok(/onRoutes\?: \(routes: Map<string, Route> \| null\) => void;/.test(map), "A1 (emit path): onRoutes is declared to carry null on invalidation");
+  ok(rowsEffect.includes("[phase, report, scenarioReport, reduced, site.latitude, site.longitude]"), "A1 (emit path): the rows effect runs on every report / scenarioReport identity change");
+  for (const page of ["src/pages/tis.tsx", "src/pages/demo.tsx"]) {
+    const p = src(page);
+    ok(!p.includes("setMapRoutes(null)") && p.includes("onRoutes={setMapRoutes}") && p.includes("routesBySignalId={mapRoutes}"),
+      `A1 (emit path): ${page} mirrors onRoutes into the study and never clears the routes itself (a clear on [report] raced the map's re-announce in the same commit)`);
+  }
+
+  // ---- A2: the rose's pinned dim is class-based with a print override ----
+  const rose = src("src/components/trip-distribution-alive.tsx");
+  ok(rose.includes("const hovered: Octant | null = hoveredRaw ?? pinned;"), "A2: the pinned sector still feeds the same dim path as a hover (the fix is the print override, not the pin)");
+  ok(!/opacity=\{dimmed/.test(rose) && !/opacity=\{hovered/.test(rose), "A2: no SVG opacity ATTRIBUTE is driven by the hover / pin any more");
+  const dimClasses = [...rose.matchAll(/dimmed \? "([^"]*)"/g)].map((m) => m[1]);
+  ok(dimClasses.length >= 3 && dimClasses.every((c) => /\bopacity-\d+\b/.test(c) && c.includes("print:opacity-100")),
+    `A2: every dim (${dimClasses.length}: octant labels, wedges, zone dots) is a class with print:opacity-100 — ${JSON.stringify(dimClasses)}`);
+  ok(/hovered === w\.octant \? "fill-blue-500 dark:fill-blue-400 print:fill-blue-500\/60"/.test(rose), "A2: the lit wedge's fill has a print override back to the resting fill");
+  ok(/hovered === w\.octant \? "fill-foreground font-semibold print:fill-muted-foreground print:font-normal"/.test(rose), "A2: the lit octant label has a print override back to the resting style");
+  ok(/<g aria-hidden className="[^"]*print:hidden"[^>]*>\s*\{Array\.from\(\{ length: PARTICLE_POOL \}/.test(rose), "A2: the particles (opacity written per frame, pin dim included) are print:hidden");
+  const card = src("src/components/trip-distribution-card.tsx");
+  ok(!/<Card className="[^"]*print:hidden/.test(card), "A2: the distribution card still prints (which is why the dim had to be print-safe)");
+
+  // ---- m2: the continuation carries the trips of the rows it is given ----
+  const am = A.periodReports.find((p) => p.period === "am_peak"), pm = A.periodReports.find((p) => p.period === "pm_peak");
+  const S = solveScenario(A, { ...EMPTY_SCENARIO, size: A.request.size * 1.5 });
+  const pmS = S.periodReports.find((p) => p.period === "pm_peak");
+  let amDiffers = 0, scenDiffers = 0, listed = 0;
+  for (const r of withThrough) {
+    const cPm = routeContinuationForRow(r, pm.affectedIntersections, routes);
+    const cAm = routeContinuationForRow(r, am.affectedIntersections, routes);
+    const cS = routeContinuationForRow(r, pmS.affectedIntersections, routes);
+    listed += cPm.through.length;
+    if (cAm.through.length === cPm.through.length && cAm.through.some((t, i) => t.trips !== cPm.through[i].trips)) amDiffers++;
+    if (cS.through.length === cPm.through.length && cS.through.some((t, i) => t.trips !== cPm.through[i].trips)) scenDiffers++;
+    for (const t of cAm.through) if (t.trips !== am.affectedIntersections.find((x) => x.signalId === t.signalId).addedTripsPmPeak) amDiffers = -1e9;
+  }
+  ok(amDiffers > 0 && scenDiffers > 0, `m2: given the AM rows the continuation lists AM trips (${amDiffers} of ${withThrough.length} junctions differ from PM), given the scenario's rows its trips (${scenDiffers} differ) — the same routes, ${listed} listings`);
+  const dist = src("src/components/intersection-distribution.tsx");
+  ok(/const continuationRows = useMemo/.test(dist) && /routeContinuationForRow\(row, continuationRows, routesBySignalId \?\? null\)/.test(dist) && !/routeContinuationForRow\(row, report\.affectedIntersections/.test(dist),
+    "m2: the view hands the selected period's (and view's) rows to routeContinuationForRow, not the base PM rows");
+
+  // ---- m3: the printed share is of its own two integers ----
+  ok(printedShareFraction(3, 120) === 0.025 && printedShareFraction(3, 0) === null && printedShareFraction(3, null) === null, "m3: printedShareFraction(3, 120) = 2.5 %, null without a printed total");
+  ok(printedPeriodTrips({ periodTrips: 119.6, periodTripsPrinted: 120 }) === 120 && printedPeriodTrips({ periodTrips: 119.6, periodTripsPrinted: null }) === 120 && printedPeriodTrips({ periodTrips: null, periodTripsPrinted: null }) === null,
+    "m3: printedPeriodTrips is the report's rounded figure, else the exact one rounded, else null");
+  let worstGap = 0, checked = 0;
+  for (const p of peaks(A)) for (const r of p.affectedIntersections) {
+    const m = distributionForRow(r, p, A).base;
+    const printedTotal = printedPeriodTrips(m.share);
+    const f = printedShareFraction(m.total.trips, printedTotal);
+    checked++;
+    worstGap = Math.max(worstGap, Math.abs(f - m.share.fraction) * printedTotal);
+  }
+  ok(checked === 80 && worstGap <= 1, `m3: on all ${checked} row-periods the printed-integer share differs from the exact share by at most 1 ÷ M (worst ${worstGap.toFixed(3)} ÷ M) — the two are printed side by side, each labelled`);
+  ok(/pct\(printedShareFraction\(model\.total\.trips, printedPeriodTrips\(s\)\)\)/.test(dist) && /exact share \{\(100 \* s\.fraction\)\.toFixed\(2\)\} %/.test(dist),
+    "m3: the sentence prints the integer share and the sources line the exact one");
+
+  // ---- m4: the rank sentence names its tie-break, and the tie-break is real ----
+  const r0 = pm.affectedIntersections[0];
+  const tie = (id, exact) => ({ ...r0, signalId: id, name: id, addedTripsPmPeak: 10, movements: [{ approach: "NB", movement: "T", trips: 10 }], movementsExact: [{ approach: "NB", movement: "T", exact }] });
+  const pTie = { ...pm, affectedIntersections: [tie("X-b", 9.6), tie("X-a", 9.7), tie("X-c", 9.7)] };
+  const mt = distributionForRow(pTie.affectedIntersections[0], pTie, A).base;
+  ok(mt.share.ranked.map((x) => x.signalId).join() === "X-a,X-c,X-b" && mt.share.rank === 3, `m4: equal addedTripsPmPeak ranks by exact load, then signal id (${mt.share.ranked.map((x) => `${x.signalId} ${x.exact}`).join(", ")})`);
+  ok(mt.sources.some((s) => /rank among the 3 rows by addedTripsPmPeak, ties broken by the exact load, then signal id\./.test(s)), "m4: the provenance sentence says so");
+
+  // ---- m5 / m6: the Σ sentence and the map's stats line say what the 60 m test is ----
+  ok(/ride routes that come within \{continuation\.withinM\} m of this junction — a point-to-polyline test/.test(dist) && !dist.includes("straight-line fallback") && /ends at the road network's nearest node, more than \$\{continuation\.withinM\} m away/.test(dist),
+    "m5 / m6: the Σ sentence names the point-to-polyline test and explains onOwnRoute = false correctly (no 'straight-line fallback')");
+  ok(/throughStat\.own \? " \(its own included\)" : `[^`]*more than \$\{THROUGH_ROUTE_M\} m away/.test(map) && /own: set\.has\(id\)/.test(map),
+    "m6: the map says '(its own included)' only when the junction's own route is in the set, and says why otherwise");
+  // onOwnRoute is false exactly when the own route never comes within 60 m — a straight route never triggers it.
+  const straight = routesForRows(null, site, rows);
+  ok(rows.every((r) => routeContinuationForRow(r, rows, straight).onOwnRoute), "m6: on straight-line routes every junction is on its own route (distance 0) — a straight line is never the reason for onOwnRoute = false");
+
+  // ---- m7: a scenario row with browser-synthesised ledgers is labelled approximated ----
+  // Strip the printed ledgers from one path row (a pre-E2 report) and re-solve: the
+  // client synthesises them (rowFallbacks "pathLedger") and §01a must not call them recorded.
+  const target = pm.affectedIntersections.find((r) => r.movementSource === "path" && r.pathTurns.length > 0 && r.pathTurnsIn.length > 0);
+  const P = clone(A);
+  const strip = (r) => { if (r.signalId === target.signalId) { delete r.pathTurns; delete r.pathTurnsIn; } };
+  P.affectedIntersections.forEach(strip);
+  for (const p of P.periodReports) p.affectedIntersections.forEach(strip);
+  const sol = solveScenarioDetailed(P, { ...EMPTY_SCENARIO, size: A.request.size * 1.5 });
+  const flags = sol.rowFallbacks.get(target.signalId);
+  ok(flags && flags.has("pathLedger"), `m7: ${target.signalId} without printed ledgers is flagged pathLedger by the client solve`);
+  const pmP = P.periodReports.find((p) => p.period === "pm_peak"), pmSol = sol.report.periodReports.find((p) => p.period === "pm_peak");
+  const baseP = pmP.affectedIntersections.find((r) => r.signalId === target.signalId), scenP = pmSol.affectedIntersections.find((r) => r.signalId === target.signalId);
+  ok(Array.isArray(scenP.pathTurns), "m7: the scenario row carries the synthesised ledgers (which is what §01a must label)");
+  const m7 = distributionForRow(baseP, pmP, P, scenP, pmSol, { scenarioLedgerSynthesised: flags.has("pathLedger") });
+  ok(m7.scenario !== null && m7.scenario.ledgerRecorded === false && m7.scenario.exits === null && m7.scenario.origins === null,
+    "m7: with the flag the scenario model says ledgerRecorded = false and reads no exits / origins");
+  ok(m7.scenario.sources.some((s) => /^Inbound \/ outbound: approximated — no recorded ledger on this report\./.test(s)) && m7.scenario.sources.some((s) => /^Where they go next: not read — /.test(s)) && !m7.scenario.sources.some((s) => /the engine's own pathMovementLoadsExact, run once per side/.test(s)),
+    "m7: the scenario's provenance says approximated, never 'the engine's own ledgers'");
+  ok(m7.scenario.cellDirectionBasis === "ledger" && m7.scenario.cells.every((c) => Math.abs(c.inbound + c.outbound - c.exact) <= DISTRIBUTION_REPRODUCE_TOL) && Math.abs(m7.scenario.total.trips - scenP.addedTripsPmPeak) === 0,
+    "m7: the approximated split still cross-foots to the scenario row's own cells (they were built from the same ledgers)");
+  ok(m7.base.ledgerRecorded === true && m7.base.splitBasis === "inFraction" && m7.base.exits === null, "m7: the base row (no ledger printed) is never labelled synthesised — nothing was synthesised for it");
+  const m7off = distributionForRow(baseP, pmP, P, scenP, pmSol);
+  ok(m7off.scenario !== null && m7off.scenario.ledgerRecorded === true, "m7: the model trusts the caller's flag — without it the ledgers read as recorded (the study threads ScenarioSolution.rowFallbacks)");
+  const mE2 = distributionForRow(target, pm, A, pmS.affectedIntersections.find((r) => r.signalId === target.signalId), pmS, { scenarioLedgerSynthesised: false });
+  ok(mE2.base.ledgerRecorded === true && mE2.scenario !== null && mE2.scenario.ledgerRecorded === true && mE2.scenario.exits !== null, "m7: an E2 row's scenario (printed ledgers carried through) stays recorded with its exits");
+  const study = src("src/components/intersection-study.tsx");
+  ok(/scenarioRowFallbacks\?: ReadonlySet<RowFallback> \| null;/.test(study) && /scenarioLedgerSynthesised=\{model\.scenario && !!scenarioRowFallbacks\?\.has\("pathLedger"\)\}/.test(study),
+    "m7: the study takes the solve's rowFallbacks for the signal and hands §01a the pathLedger flag");
+  for (const page of ["src/pages/tis.tsx", "src/pages/demo.tsx"]) ok(/scenarioRowFallbacks=\{[^}]*solution\.rowFallbacks\.get\(studyRow\.signalId\)/.test(src(page)), `m7: ${page} threads solution.rowFallbacks into the study`);
+  ok(/study-distribution-split-approximated/.test(dist) && /study-distribution-exits-approximated/.test(dist) && /!model\.ledgerRecorded/.test(dist), "m7: the view labels the approximated split and hides exits / origins behind it");
+
+  // ---- m1: the dead code is gone ----
+  const tmd = src("src/components/turning-movement-diagram.tsx");
+  ok(!/bayW/.test(tmd) && !/label, b \}/.test(tmd) && !/label: Vec; b: number/.test(tmd), "m1: Frame.bayW and arrowPath's unread `b` are gone");
 }
 
 console.log(failed ? `\n${failed} check(s) FAILED` : "\ncheck:intersection-distribution passed");

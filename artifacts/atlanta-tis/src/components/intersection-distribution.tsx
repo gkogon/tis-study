@@ -10,22 +10,25 @@
  *   2. "share of the study": carries N of the project's M peak trips — x % —
  *      ranked k of n, with a ranked bar per studied row (this one lit);
  *   3. "where they go next": for a path row the ledger's exit octants (and
- *      the octants inbound trips arrive from); for every row the OTHER
- *      studied intersections whose site→row route passes within 60 m of this
- *      junction — the map's own client-side routes, labelled as such;
+ *      the octants inbound trips arrive from) — unless the scenario's ledgers
+ *      are the browser's approximation (`scenarioLedgerSynthesised`), which
+ *      is said instead; for every row the OTHER studied intersections whose
+ *      site→row route comes within 60 m of this junction — the map's own
+ *      client-side routes, labelled as such, carrying the trips of the
+ *      period and view on show;
  *   4. the provenance sentences the model wrote for what it drew.
  *
  * Everything here is `distributionForRow` / `routeContinuationForRow`
  * (lib/intersection-study-model.ts); nothing is computed in the view beyond
  * layout. The period and view chosen here drive every readout below the
- * tabs.
+ * tabs, the continuation list included.
  */
 import { useEffect, useMemo, useState } from "react";
 import type { TisReport, TisAffectedIntersection, TisPeriodReport } from "@workspace/tis-api-client-react";
 import { bearingDeg as engineBearingDeg } from "@workspace/tis-engine-core";
 import { TurningMovementDiagram, INBOUND_COLOR, OUTBOUND_COLOR } from "@/components/turning-movement-diagram";
 import {
-  distributionForRow, routeContinuationForRow, ROUTE_CONTINUATION_LABEL,
+  distributionForRow, routeContinuationForRow, printedPeriodTrips, printedShareFraction, ROUTE_CONTINUATION_LABEL,
   type DistributionPeriodModel, type DistributionModel,
 } from "@/lib/intersection-study-model";
 import { DIRECTIONS, MOVEMENTS, type IntersectionPlan } from "@/lib/intersection-geometry";
@@ -39,6 +42,9 @@ export type DistributionSectionProps = {
   scenarioReport?: TisReport | null;
   /** The scenario's PM row alone, when the page has no whole re-solve to hand over (the PM tab still pairs). */
   scenarioRow?: TisAffectedIntersection | null;
+  /** True when the scenario row's turn ledgers were synthesised by the browser (a pre-E2 path row; scenario-solve
+   *  rowFallbacks "pathLedger"): the scenario's split is labelled approximated and no exits / origins are read. */
+  scenarioLedgerSynthesised?: boolean;
   /** True when the study decided the scenario differs for this signal (the base / scenario toggle appears). */
   scenarioDiffers: boolean;
   plan: IntersectionPlan;
@@ -55,7 +61,7 @@ function periodsWithRows(report: TisReport): TisPeriodReport[] {
   return (report.periodReports ?? []).filter((p) => Array.isArray(p.affectedIntersections) && p.affectedIntersections.length > 0);
 }
 
-export function DistributionSection({ report, row, scenarioReport, scenarioRow: scenarioPmRow, scenarioDiffers, plan, routesBySignalId, onOpenSignal }: DistributionSectionProps) {
+export function DistributionSection({ report, row, scenarioReport, scenarioRow: scenarioPmRow, scenarioLedgerSynthesised = false, scenarioDiffers, plan, routesBySignalId, onOpenSignal }: DistributionSectionProps) {
   const periods = useMemo(() => periodsWithRows(report), [report]);
   const tabs = useMemo(() => {
     const t = periods.map((p) => ({ key: p.period, label: p.period === "am_peak" ? "AM peak" : p.period === "pm_peak" ? "PM peak" : p.periodLabel || p.period }));
@@ -80,19 +86,33 @@ export function DistributionSection({ report, row, scenarioReport, scenarioRow: 
       const scenarioRow = scenarioDiffers
         ? (scenarioPeriod?.affectedIntersections ?? scenarioReport?.affectedIntersections ?? (t.key === "pm_peak" && scenarioPmRow ? [scenarioPmRow] : [])).find((r) => r.signalId === row.signalId) ?? null
         : null;
-      out.set(t.key, distributionForRow(baseRow, period, report, scenarioRow, scenarioPeriod));
+      out.set(t.key, distributionForRow(baseRow, period, report, scenarioRow, scenarioPeriod, { scenarioLedgerSynthesised }));
     }
     return out;
-  }, [tabs, periods, row, report, scenarioReport, scenarioPmRow, scenarioDiffers]);
+  }, [tabs, periods, row, report, scenarioReport, scenarioPmRow, scenarioLedgerSynthesised, scenarioDiffers]);
 
-  const dm = models.get(periodKey) ?? models.get(tabs[0]!.key) ?? null;
+  const activeKey = models.has(periodKey) ? periodKey : tabs[0]!.key;
+  const dm = models.get(activeKey) ?? null;
   const hasScenario = !!dm?.scenario;
-  const model: DistributionPeriodModel | null = dm ? (view === "scenario" && dm.scenario ? dm.scenario : dm.base) : null;
+  const scenarioShown = hasScenario && view === "scenario";
+  const model: DistributionPeriodModel | null = dm ? (scenarioShown && dm.scenario ? dm.scenario : dm.base) : null;
   const other: DistributionPeriodModel | null = dm && dm.scenario ? (view === "scenario" ? dm.base : dm.scenario) : null;
 
+  // The continuation list carries the trips of the period and view on show:
+  // the selected period's rows, from the scenario report in scenario view.
+  // (The routes themselves are the same for every period — built on the
+  // signals' positions alone.)
+  const continuationRows = useMemo(() => {
+    const rowsOf = (R: TisReport): TisAffectedIntersection[] | null => {
+      const p = (R.periodReports ?? []).find((x) => x.period === activeKey);
+      if (p && Array.isArray(p.affectedIntersections) && p.affectedIntersections.length > 0) return p.affectedIntersections;
+      return activeKey === "pm_peak" ? R.affectedIntersections : null; // the top-level rows are the PM's
+    };
+    return (scenarioShown && scenarioReport ? rowsOf(scenarioReport) : null) ?? rowsOf(report) ?? report.affectedIntersections;
+  }, [report, scenarioReport, scenarioShown, activeKey]);
   const continuation = useMemo(
-    () => routeContinuationForRow(row, report.affectedIntersections, routesBySignalId ?? null),
-    [row, report.affectedIntersections, routesBySignalId],
+    () => routeContinuationForRow(row, continuationRows, routesBySignalId ?? null),
+    [row, continuationRows, routesBySignalId],
   );
   const siteBearing = engineBearingDeg({ lat: row.latitude, lon: row.longitude }, { lat: report.request.latitude, lon: report.request.longitude });
 
@@ -170,7 +190,9 @@ export function DistributionSection({ report, row, scenarioReport, scenarioRow: 
               </table>
             </div>
             <div className="text-[11px] text-muted-foreground leading-snug" data-testid="study-distribution-split">
-              {model.splitBasis === "ledger" && model.inboundShare !== null && model.inFraction !== null ? (
+              {model.splitBasis === "ledger" && model.inboundShare !== null && model.inFraction !== null && !model.ledgerRecorded ? (
+                <span data-testid="study-distribution-split-approximated">Inbound share at this junction <span className="font-mono tabular-nums text-foreground">{pct(model.inboundShare)}</span> — <span className="text-foreground">approximated — no recorded ledger on this report</span>: the scenario's turn ledgers were solved by the browser from the printed movement tables, against the period's inFraction {pct(model.inFraction)}; the cells cross-foot, but this is not the engine's blend.</span>
+              ) : model.splitBasis === "ledger" && model.inboundShare !== null && model.inFraction !== null ? (
                 <>Inbound share at this junction <span className="font-mono tabular-nums text-foreground">{pct(model.inboundShare)}</span> — from the row's turn ledgers ({model.share.ledgerBlend !== null ? "outbound and recorded inbound sides" : "the outbound ledger and its mirror"}), against the period's inFraction {pct(model.inFraction)}{model.share.ledgerBlend !== null
                   ? (Math.abs(model.inboundShare - model.inFraction) > 5e-4 ? "; the recorded inbound ledger makes the two differ, exactly as the engine blends them" : " — the two coincide here because both ledgers carry the same share of the project")
                   : " — identical by construction on a mirrored ledger"}.</>
@@ -188,8 +210,8 @@ export function DistributionSection({ report, row, scenarioReport, scenarioRow: 
             {s.periodTrips !== null && s.rank !== null ? (
               <p className="text-sm leading-snug" data-testid="study-distribution-share-line">
                 Carries <span className="font-mono font-semibold tabular-nums">{model.total.trips}</span> of the project's{" "}
-                <span className="font-mono font-semibold tabular-nums">{s.periodTripsPrinted ?? Math.round(s.periodTrips)}</span> {model.period === "am_peak" ? "AM-peak" : model.period === "pm_peak" ? "PM-peak" : model.periodLabel} trips
-                {" — "}<span className="font-mono font-semibold tabular-nums">{pct(s.fraction)}</span>{" — "}
+                <span className="font-mono font-semibold tabular-nums">{printedPeriodTrips(s)}</span> {model.period === "am_peak" ? "AM-peak" : model.period === "pm_peak" ? "PM-peak" : model.periodLabel} trips
+                {" — "}<span className="font-mono font-semibold tabular-nums">{pct(printedShareFraction(model.total.trips, printedPeriodTrips(s)))}</span>{" — "}
                 ranked <span className="font-mono font-semibold tabular-nums">{s.rank}</span> of {s.of} studied intersections
                 {other && other.share.rank !== null && (other.share.rank !== s.rank || other.total.trips !== model.total.trips) && (
                   <span className="text-muted-foreground"> ({view === "scenario" ? "base" : "scenario"}: {other.total.trips} trips, rank {other.share.rank})</span>
@@ -198,10 +220,10 @@ export function DistributionSection({ report, row, scenarioReport, scenarioRow: 
             ) : (
               <p className="text-xs text-muted-foreground">No period report carries this row, so its share of the study cannot be stated.</p>
             )}
-            <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
-              {s.loadWeight !== null && <>loadWeight {s.loadWeight.toFixed(4)}</>}
-              {s.ledgerBlend !== null && <> · ledger blend {s.ledgerBlend.toFixed(4)}{s.loadWeight !== null && Math.abs(s.ledgerBlend - s.loadWeight) > 1e-9 ? " (the recorded inbound ledger re-derives it)" : ""}</>}
-              {s.periodTrips !== null && <> · period net external {s.periodTrips.toFixed(3)}{s.periodTripsExact ? "" : " (rounded — no exact figure on this report)"}</>}
+            <div className="text-[11px] text-muted-foreground font-mono tabular-nums" data-testid="study-distribution-share-exact">
+              {s.fraction !== null && s.periodTrips !== null && <>exact share {(100 * s.fraction).toFixed(2)} % ({model.total.exact.toFixed(3)} ÷ {s.periodTrips.toFixed(3)}{s.periodTripsExact ? "" : ", rounded — no exact figure on this report"}) — the sentence's percentage is of its two printed integers</>}
+              {s.loadWeight !== null && <> · loadWeight {s.loadWeight.toFixed(4)}</>}
+              {s.ledgerBlend !== null && <> · ledger blend {s.ledgerBlend.toFixed(4)}{s.loadWeight !== null && Math.abs(s.ledgerBlend - s.loadWeight) > 1e-9 ? (model.ledgerRecorded ? " (the recorded inbound ledger re-derives it)" : " (from the browser's approximated ledgers)") : ""}</>}
             </div>
             {s.ranked.length > 0 && (
               <RankedBars ranked={s.ranked} signalId={row.signalId} max={rankMax} onOpen={onOpenSignal} />
@@ -214,7 +236,11 @@ export function DistributionSection({ report, row, scenarioReport, scenarioRow: 
       <div className="grid gap-6 lg:grid-cols-2 items-start border-t pt-4" data-testid="study-distribution-next">
         <div className="space-y-2">
           <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Where they go next · from the turn ledgers</div>
-          {model.movementSource === "path" ? (
+          {model.movementSource === "path" && !model.ledgerRecorded ? (
+            <div className="text-xs text-muted-foreground" data-testid="study-distribution-exits-approximated">
+              Approximated — no recorded ledger on this report. The scenario row's turn ledgers were solved by the browser from the printed movement tables and carry no recorded exit or entry bearings, so no direction is read off them. Toggle to the base row for the engine's, where it printed one.
+            </div>
+          ) : model.movementSource === "path" ? (
             <div className="grid gap-3 sm:grid-cols-2 text-xs">
               <OctantList title="Leaving this junction toward" list={model.exits} color={OUTBOUND_COLOR} empty="The outbound paths do not pass this junction (only the inbound ledger does)." testId="study-distribution-exits" />
               <OctantList title={`Arriving at this junction from${model.originsMirrored ? " (mirror of the outbound ledger)" : ""}`} list={model.origins} color={INBOUND_COLOR} empty="The inbound paths do not pass this junction (only the outbound ledger does)." testId="study-distribution-origins" />
@@ -229,11 +255,11 @@ export function DistributionSection({ report, row, scenarioReport, scenarioRow: 
           </div>
         </div>
         <div className="space-y-2">
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Other studied intersections on routes through here</div>
+          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Other studied intersections on routes through here · {model.periodLabel}{hasScenario ? (scenarioShown ? " · scenario" : " · base") : ""}</div>
           {!continuation.available ? (
             <div className="text-xs text-muted-foreground" data-testid="study-distribution-routes-pending">The study map has not routed yet — open this study from a report with the map on screen.</div>
           ) : continuation.through.length === 0 ? (
-            <div className="text-xs text-muted-foreground" data-testid="study-distribution-routes-none">No other studied intersection's site→row route passes within {continuation.withinM} m of this junction — on the map's routing, trips to this junction end here.</div>
+            <div className="text-xs text-muted-foreground" data-testid="study-distribution-routes-none">No other studied intersection's site→row route comes within {continuation.withinM} m of this junction — on the map's routing, trips to this junction end here.</div>
           ) : (
             <ul className="text-xs divide-y rounded-md border" data-testid="study-distribution-routes">
               {continuation.through.map((t) => (
@@ -251,7 +277,7 @@ export function DistributionSection({ report, row, scenarioReport, scenarioRow: 
           )}
           {continuation.available && continuation.through.length > 0 && (
             <div className="text-[11px] font-mono tabular-nums text-muted-foreground" data-testid="study-distribution-routes-sum">
-              Σ {continuation.throughTrips} PM trips bound for {continuation.through.length} other signal{continuation.through.length === 1 ? "" : "s"} pass this junction on the map's routes{!continuation.onOwnRoute ? " (this junction's own route does not reach it within the radius — a straight-line fallback)" : ""}.
+              Σ {continuation.throughTrips} {model.periodLabel} trips bound for {continuation.through.length} other signal{continuation.through.length === 1 ? "" : "s"} ride routes that come within {continuation.withinM} m of this junction — a point-to-polyline test on the map's routes, so a route that ends nearby or passes on a neighbouring carriageway counts{!continuation.onOwnRoute ? ` (this junction's own route ends at the road network's nearest node, more than ${continuation.withinM} m away — the map's network has no node at this signal)` : ""}.
             </div>
           )}
           <div className="text-[11px] text-muted-foreground leading-snug italic">{ROUTE_CONTINUATION_LABEL}: the study map's shortest paths from the site to each studied signal, tested within {continuation.withinM} m of this junction.</div>
