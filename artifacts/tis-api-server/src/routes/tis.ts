@@ -21,12 +21,7 @@ import { regionForCoordinate, REGIONS } from "../lib/regions";
 import { renderStudyPdf } from "../lib/pdf-export";
 import { generateRateLimiter, tricsRateLimiter, whatIfRateLimiter } from "../lib/security";
 import { saveProject } from "../lib/tis-projects";
-import {
-  getOrCreateFirmForUser,
-  reserveStudySlot,
-  releaseStudySlot,
-  firmMayRunUncharged,
-} from "../lib/firms";
+import { getOrCreateFirmForUser, reserveStudySlot, releaseStudySlot, firmMayRunUncharged, loadFirmReportTemplate } from "../lib/firms";
 import { logEvent } from "../lib/events";
 
 const router: IRouter = Router();
@@ -672,7 +667,7 @@ router.post("/generate/pdf", generateRateLimiter, async (req, res): Promise<void
       },
       {
         firmId: firm.id,
-        reportTemplate: firm.reportTemplate,
+        reportTemplate: await loadFirmReportTemplate(firm.id),
         name: firm.name,
         logoUrl: firm.logoUrl,
         brandColor: firm.brandColor,
@@ -785,7 +780,7 @@ const londonTaPdfHandler = async (req: Request, res: Response): Promise<void> =>
       // is the London/Velocity path, which is exactly where an imported
       // template is most likely to exist.
       firmId: firm.id,
-      reportTemplate: firm.reportTemplate,
+      reportTemplate: await loadFirmReportTemplate(firm.id),
       name: firm.name,
       logoUrl: firm.logoUrl,
       brandColor: firm.brandColor,

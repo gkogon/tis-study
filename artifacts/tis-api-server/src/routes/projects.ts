@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { listProjects, getProject } from "../lib/tis-projects";
-import { getOrCreateFirmForUser } from "../lib/firms";
+import { getOrCreateFirmForUser, loadFirmReportTemplate } from "../lib/firms";
 import { renderStudyPdf } from "../lib/pdf-export";
 import { generateUtdf } from "../lib/utdf-export";
 
@@ -92,7 +92,7 @@ router.get("/projects/:id/pdf", async (req, res): Promise<void> => {
     }
     const buffer = await renderStudyPdf(project, {
       firmId: firm.id,
-      reportTemplate: firm.reportTemplate,
+      reportTemplate: await loadFirmReportTemplate(firm.id),
       name: firm.name,
       logoUrl: firm.logoUrl,
       brandColor: firm.brandColor,

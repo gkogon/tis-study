@@ -102,7 +102,10 @@ export const ThemeSchema = z.object({
       z.object({ kind: z.literal("color"), color: HexSchema }),
       z.object({ kind: z.literal("none") }),
     ]),
-    bands: z.array(z.object({ y0: z.number(), y1: z.number(), color: HexSchema })).max(8),
+    // A band is a solid strip of colour; `photo: true` marks a strip the sample
+    // filled with a picture (cover art under the title). The renderer puts the
+    // project's own site photo there and falls back to the band's mean colour.
+    bands: z.array(z.object({ y0: z.number(), y1: z.number(), color: HexSchema, photo: z.boolean().optional() })).max(8),
     logo: z.object({ x: z.number(), y: z.number(), w: z.number().min(4), h: z.number().min(4), data: DataUrlSchema }).nullable(),
     elements: z.array(CoverElementSchema).max(12),
     hasMetaBlock: z.boolean(),
@@ -248,7 +251,7 @@ export type ThemeSummary = {
   palette: Theme["palette"];
   header: string | null;
   footer: string | null;
-  cover: "image" | "color" | "plain";
+  cover: "image" | "photo" | "color" | "plain";
   table: { headerFill: string | null; mode: Theme["table"]["rules"]["mode"] };
   numbering: Numbering;
   warnings: string[];
@@ -269,7 +272,7 @@ export function summarizeTheme(s: StoredTheme): ThemeSummary {
     palette: t.palette,
     header: zone(t.header),
     footer: zone(t.footer),
-    cover: t.cover.background.kind === "image" ? "image" : t.cover.background.kind === "color" || t.cover.bands.length ? "color" : "plain",
+    cover: t.cover.background.kind === "image" ? "image" : t.cover.bands.some((b) => b.photo) ? "photo" : t.cover.background.kind === "color" || t.cover.bands.length ? "color" : "plain",
     table: { headerFill: t.table.header.fill, mode: t.table.rules.mode },
     numbering: t.headings[0].numbering,
     warnings: s.source.warnings,

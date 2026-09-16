@@ -19,7 +19,8 @@ export const CANONICAL: Array<{ key: string; re: RegExp; words: string[] }> = [
   // "Project Site Distribution and Assignment" is trip distribution; "Area Land Uses" alone is a planning chapter, not the site description.
   { key: "site-description", re: /site (description|plan|location)|project site(?!.*\b(distribution|assignment)\b)|location description|\b(site|proposed|existing|surrounding|adjacent|anticipated|future) land use/i, words: ["description", "plan", "location", "land", "use", "uses"] },
   { key: "study-area", re: /study (area|network|intersections)|scope of (the )?study/i, words: ["area", "network", "intersections", "scope"] },
-  { key: "existing-conditions", re: /existing (conditions|traffic|roadway|facilities|volumes|network)/i, words: ["existing", "roadway", "facilities", "volumes", "network"] },
+  // "roadway", "volumes" and "facilities" are generic across TIS headings ("Planned Roadway Improvements", "Future Traffic Volumes", "Pedestrian and Bicycle Facilities"); only "existing" is this key's evidence.
+  { key: "existing-conditions", re: /existing (conditions|traffic|roadway|facilities|volumes|network)/i, words: ["existing", "network"] },
   { key: "methodology", re: /methodolog|analysis (approach|assumptions)|\bassumptions\b/i, words: ["methodology", "methodologies", "method", "methods", "approach", "assumptions"] },
   { key: "background-growth", re: /background (traffic|growth)|growth rate|no[- ]build/i, words: ["background", "growth", "rate", "rates", "no-build", "build"] },
   { key: "trip-generation", re: /trip generation|site trips|trip gen\b/i, words: ["trip", "trips", "generation", "gen"] },
@@ -44,7 +45,8 @@ export const CANONICAL: Array<{ key: string; re: RegExp; words: string[] }> = [
 /** Words every TIS heading uses; never evidence for or against a key. */
 export const GENERIC_HEADING_WORDS = new Set([
   "traffic", "transportation", "transport", "analysis", "analyses", "study", "site", "project", "conditions", "condition", "summary",
-  "report", "evaluation", "assessment", "overview", "and", "or", "of", "the", "for", "to", "a", "an", "in", "on", "with", "by", "at",
+  "report", "evaluation", "assessment", "overview", "roadway", "volumes", "facilities",
+  "and", "or", "of", "the", "for", "to", "a", "an", "in", "on", "with", "by", "at",
 ]);
 
 /** "3.1 Title", "Section 2 – Title", "B. Title", "VII. Title" → "Title". */

@@ -312,6 +312,22 @@ async function scanPage(page: PdfjsPage, pageNo: number, OPS: Record<string, num
 
 export type TextLine = { page: number; x: number; y: number; w: number; size: number; text: string; runs: TextRun[]; font: string; bold: boolean; italic: boolean; color: string | null; uniform: boolean };
 
+/**
+ * Text a font without a ToUnicode map yields as raw glyph codes — control
+ * characters and private-use points instead of letters ("DRAFT" set in a
+ * subsetted display face comes out as "\u0007\u0015\u0004\u0017"). Such a
+ * line is unreadable and must not take a cover role or raise a warning.
+ */
+export function isGarbledText(text: string): boolean {
+  const chars = [...text].filter((c) => !/\s/.test(c));
+  if (chars.length === 0) return false;
+  const bad = chars.filter((c) => {
+    const cp = c.codePointAt(0) ?? 0;
+    return cp < 0x20 || (cp >= 0x7f && cp <= 0x9f) || (cp >= 0xe000 && cp <= 0xf8ff) || cp === 0xfffd;
+  }).length;
+  return bad >= 2 && bad / chars.length >= 0.25;
+}
+
 /** Group a page's runs into baseline-aligned lines (top → bottom, left → right). */
 export function linesOf(page: ScannedPage): TextLine[] {
   // 1. Group by baseline (tolerance against the group's first baseline and

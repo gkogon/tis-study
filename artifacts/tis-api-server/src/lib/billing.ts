@@ -9,7 +9,8 @@
  */
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
-import { db, firmsTable, type Firm } from "@workspace/db";
+import { db, firmsTable } from "@workspace/db";
+import type { FirmLite } from "./firms";
 import {
   stripe,
   resolvePriceId,
@@ -39,7 +40,7 @@ function requireStripe(): Stripe {
  * checkout starts don't create duplicate customers.
  */
 export async function ensureStripeCustomer(
-  firm: Firm,
+  firm: FirmLite,
   email: string | null,
 ): Promise<string> {
   if (firm.stripeCustomerId) return firm.stripeCustomerId;
@@ -63,7 +64,7 @@ export async function ensureStripeCustomer(
 export type CheckoutSessionResult = { url: string };
 
 export async function createCheckoutSession(args: {
-  firm: Firm;
+  firm: FirmLite;
   email: string | null;
   plan: PaidPlanId;
   cadence?: BillingCadence;
@@ -119,7 +120,7 @@ export type StudyPurchaseResult = { url: string; rate: StudyRate };
  * webhook can grant exactly what was paid for.
  */
 export async function createStudyPurchaseCheckout(args: {
-  firm: Firm;
+  firm: FirmLite;
   email: string | null;
 }): Promise<StudyPurchaseResult> {
   const s = requireStripe();
@@ -156,7 +157,7 @@ export async function createStudyPurchaseCheckout(args: {
 }
 
 export async function createPortalSession(args: {
-  firm: Firm;
+  firm: FirmLite;
   email: string | null;
 }): Promise<{ url: string }> {
   const s = requireStripe();

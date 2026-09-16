@@ -177,8 +177,12 @@ export async function extractTheme(pdf: Buffer, opts: ExtractOptions): Promise<S
   };
   const parsed = StoredThemeSchema.safeParse(stored);
   if (!parsed.success) {
+    // The client sees one fixed sentence; the schema path rides on `cause`
+    // for the route's error log — an engineer cannot act on "cover.logo.w".
     const issue = parsed.error.issues[0];
-    throw new ThemeExtractError(422, `Detected formatting failed validation at ${issue?.path.join(".") ?? "?"}: ${issue?.message ?? "unknown"}`);
+    throw new ThemeExtractError(422, "The formatting detected in this PDF could not be stored — try a different sample from the same report series.", {
+      cause: new Error(`theme validation failed at ${issue?.path.join(".") ?? "?"}: ${issue?.message ?? "unknown"}`),
+    });
   }
   return parsed.data;
 }
