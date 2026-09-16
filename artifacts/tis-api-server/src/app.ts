@@ -68,6 +68,12 @@ if (process.env.NODE_ENV === "production") {
 app.use(
   helmet({
     crossOriginEmbedderPolicy: false,
+    // The browser default rather than helmet's `no-referrer`: tile providers
+    // (CARTO, ArcGIS, OSM) identify an app by the Referer, and OSM's abuse
+    // system blocks tile requests that carry none ("App is not following
+    // the tile usage policy"). Only the origin is sent cross-origin — no
+    // paths, no query strings.
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
     contentSecurityPolicy:
       process.env.DISABLE_CSP === "true"
         ? false
