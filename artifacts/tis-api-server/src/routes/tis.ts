@@ -26,13 +26,17 @@ import { isUuid, resolveProjectTheme } from "../lib/report-themes";
 import { logEvent } from "../lib/events";
 
 /**
- * The report format a generate/PDF call asked for, as `?reportThemeId=<uuid>`
- * (the body is the engine request and stays untouched). Null when absent or
- * malformed; a foreign or deleted id is ignored by the resolver.
+ * The report format a generate/PDF call asked for: `?reportThemeId=<uuid>`,
+ * or `reportThemeId` in the JSON body (the generated client cannot add a
+ * query string; GenerateTisBody strips the key before the engine sees it).
+ * Null when absent or malformed; a foreign or deleted id is ignored by the
+ * resolver.
  */
 function themeIdFromQuery(req: Request): string | null {
-  const v = req.query.reportThemeId;
-  return isUuid(v) ? v : null;
+  const q = req.query.reportThemeId;
+  if (isUuid(q)) return q;
+  const b = (req.body as { reportThemeId?: unknown } | undefined)?.reportThemeId;
+  return isUuid(b) ? b : null;
 }
 
 const router: IRouter = Router();

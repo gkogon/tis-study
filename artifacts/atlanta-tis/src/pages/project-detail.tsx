@@ -7,6 +7,7 @@
  * Falls back to a JSON dump for unknown types so we never lose data.
  */
 import { useEffect, useState } from "react";
+import { fetchThemes, type ThemeList } from "@/lib/report-themes";
 import { Link, useParams } from "wouter";
 import { useAuth } from "@workspace/replit-auth-web";
 import { ArrowLeft, Download, FileText, Loader2, MapPin } from "lucide-react";
@@ -26,6 +27,8 @@ interface ProjectDetail {
   siteLon: string | null;
   version: number;
   createdAt: string;
+  /** The report format the study renders in (firm_report_themes id); null → the firm default. */
+  reportThemeId: string | null;
   request: unknown;
   result: unknown;
 }
@@ -43,6 +46,34 @@ export default function ProjectDetailPage() {
   const params = useParams<{ id: string }>();
   const { isAuthenticated, isLoading: authLoading, login } = useAuth();
   const [project, setProject] = useState<ProjectDetail | null>(null);
+  // The firm's report formats, for the per-project picker; null while loading
+  // or when the firm has none (the picker is then hidden).
+  const [themeList, setThemeList] = useState<ThemeList | null>(null);
+  const [themeSaving, setThemeSaving] = useState(false);
+  const [themeError, setThemeError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchThemes().then((l) => { if (!cancelled) setThemeList(l); }).catch(() => { if (!cancelled) setThemeList({ themes: [], legacy: false }); });
+    return () => { cancelled = true; };
+  }, []);
+
+  async function changeTheme(value: string) {
+    if (!project) return;
+    setThemeSaving(true);
+    setThemeError(null);
+    try {
+      const r = await fetch(`/tis-api/projects/${encodeURIComponent(project.id)}`, {
+        method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportThemeId: value || null }),
+      });
+      if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? `HTTP ${r.status}`);
+      setProject({ ...project, reportThemeId: value || null });
+    } catch (e) {
+      setThemeError(e instanceof Error ? e.message : "Could not change the format.");
+    } finally {
+      setThemeSaving(false);
+    }
+  }
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -136,6 +167,25 @@ export default function ProjectDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {themeList && themeList.themes.length > 0 && (
+            <label className="inline-flex items-center gap-1.5 text-sm" title="The report format this project's PDF renders in">
+              <span className="text-muted-foreground">Format</span>
+              <select
+                value={project.reportThemeId ?? ""}
+                disabled={themeSaving}
+                onChange={(e) => void changeTheme(e.target.value)}
+                className="px-2 py-1.5 text-sm rounded-md border bg-background"
+                data-testid="select-project-format"
+              >
+                <option value="">{themeList.themes.some((t) => t.isDefault) ? "Firm default" : "Standard format"}</option>
+                {themeList.themes.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}{t.isDefault ? " (default)" : ""}</option>
+                ))}
+              </select>
+              {themeSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {themeError && <span className="text-xs text-red-600">{themeError}</span>}
+            </label>
+          )}
           <a
             href={`/tis-api/projects/${encodeURIComponent(project.id)}/pdf`}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-blue-600 text-white hover:bg-blue-700"
