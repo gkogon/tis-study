@@ -34,7 +34,8 @@ import { AuthBar } from "@/components/auth-bar";
 import { TisCoverPage } from "@/components/tis-cover-page";
 import { TisMethodologyAppendix } from "@/components/tis-methodology-appendix";
 import { TripDistributionCard } from "@/components/trip-distribution-card";
-import type { Octant } from "@/lib/distribution-rose";
+import { bearingDeg, bearingToOctant, type Octant } from "@/lib/distribution-rose";
+import type { Route } from "@/lib/study-map-sim";
 import { TisLimitations } from "@/components/tis-limitations";
 import { ScenarioStudio } from "@/components/scenario-studio";
 import { IntersectionStudy } from "@/components/intersection-study";
@@ -1772,6 +1773,20 @@ export default function TisPage() {
   // A map click on a signal opens its study (and selects it); a click on
   // empty map clears the selection only.
   const onMapSelect = (id: string | null) => { if (id) openStudy(id); else selectSignal(null); };
+  // The junction in focus: the open study's, else the selected signal (the
+  // study covers the page while open, so the map's through-route highlight
+  // and the rose's pinned sector are what a user sees after Close — the
+  // selection outlives it). The map hands its site→row routes up once built
+  // so the study's §01a lists which other routes pass its junction from the
+  // graph the map already built. The map owns that state: it re-announces
+  // the routes on a new report for the same row set (an engine what-if, a
+  // same-site regenerate) and sends null when they are invalidated — the
+  // page only mirrors it. (Clearing here on `report` raced the map's own
+  // re-announce in the same commit and left §01a "not routed yet" forever.)
+  const focusSignalId = openStudyId ?? scenario.selectedSignalId;
+  const focusRow = report && focusSignalId ? report.affectedIntersections.find((r) => r.signalId === focusSignalId) ?? null : null;
+  const focusOctant: Octant | null = focusRow && report ? bearingToOctant(bearingDeg(report.request.latitude, report.request.longitude, focusRow.latitude, focusRow.longitude)) : null;
+  const [mapRoutes, setMapRoutes] = useState<Map<string, Route> | null>(null);
 
   // Engine what-if: the whole scenario (timing overrides, site, driveways)
   // through POST /tis-api/whatif, which charges no study slot and saves
@@ -2018,6 +2033,8 @@ export default function TisPage() {
                 selectedSignalId={scenario.selectedSignalId}
                 onSelectSignal={onMapSelect}
                 highlightOctant={hoverOctant}
+                throughSignalId={generate.isPending ? null : focusSignalId}
+                onRoutes={setMapRoutes}
               />
               {!generate.isPending && report && solution && (
                 <ScenarioStudio
@@ -2041,6 +2058,10 @@ export default function TisPage() {
           report={report}
           row={studyRow}
           scenarioRow={studyScenarioRow}
+          scenarioReport={scenarioReport}
+          scenarioRowFallbacks={scenarioReport && solution ? solution.rowFallbacks.get(studyRow.signalId) ?? null : null}
+          routesBySignalId={mapRoutes}
+          onOpenSignal={openStudy}
           scenario={scenario}
           onScenarioChange={setScenario}
           onClose={() => openStudy(null)}
@@ -2084,7 +2105,7 @@ export default function TisPage() {
           )}
           <ScenarioStripCard report={shown ?? report} />
           <TripGenCard report={report} />
-          <TripDistributionCard report={report} onHoverOctant={setHoverOctant} />
+          <TripDistributionCard report={report} onHoverOctant={setHoverOctant} highlightOctant={focusOctant} highlightLabel={focusRow ? `${focusRow.name} · ${focusRow.distanceMi.toFixed(2)} mi` : null} />
           <ImpactSummaryCard report={shown ?? report} />
           <UtdfMatchCard report={report} />
           <PeriodTabsCard report={shown ?? report} />

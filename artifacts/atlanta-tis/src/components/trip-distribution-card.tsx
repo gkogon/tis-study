@@ -29,7 +29,13 @@ const OCTANTS = ["NNE", "ENE", "ESE", "SSE", "SSW", "WSW", "WNW", "NNW"] as cons
 // table leads with the heaviest and says how many more there are.
 const MAX_ZONE_ROWS = 10;
 
-export function TripDistributionCard({ report, onHoverOctant }: { report: TisReport; onHoverOctant?: (octant: Octant | null) => void }) {
+export function TripDistributionCard({ report, onHoverOctant, highlightOctant, highlightLabel }: {
+  report: TisReport;
+  onHoverOctant?: (octant: Octant | null) => void;
+  /** A sector to keep lit while nothing is hovered — the open junction's octant (see TripDistributionAlive). */
+  highlightOctant?: Octant | null;
+  highlightLabel?: string | null;
+}) {
   const td = report.tripDistribution;
   if (!td) return null;
 
@@ -51,7 +57,7 @@ export function TripDistributionCard({ report, onHoverOctant }: { report: TisRep
       </CardHeader>
       <CardContent className="space-y-5">
         {/* The rose: the same eight shares and every zone, drawn live. */}
-        <TripDistributionAlive report={report} onHoverOctant={onHoverOctant} />
+        <TripDistributionAlive report={report} onHoverOctant={onHoverOctant} highlightOctant={highlightOctant} highlightLabel={highlightLabel} />
 
         {/* Directional shares: the eight compass octants, Σ = 100%. */}
         <div>

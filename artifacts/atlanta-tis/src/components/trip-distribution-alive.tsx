@@ -14,7 +14,14 @@
  *
  * Hover (or focus) a sector → `onHoverOctant(octant)`; the page hands it to
  * `StudyMapAlive` as `highlightOctant`, which dims every flow and badge
- * outside that bearing sector. Leaving the rose sends null.
+ * outside that bearing sector. Leaving the rose sends null. The page can
+ * also PIN a sector with `highlightOctant` (the octant of the junction whose
+ * study is open, or the selected signal): it draws exactly as a hovered one
+ * until the pointer picks another, and the readout says which junction.
+ * Every dim and lit state is a class with a `print:` override, so a printed
+ * report (the card prints; the selection outlives Close) shows the rose
+ * undimmed, and the particles — whose opacity is written per frame — are
+ * hidden in print.
  *
  * Nothing is invented: shares, bearings, distances and the method label all
  * come from `report.tripDistribution` (`lib/distribution-rose.ts` lays them
@@ -33,6 +40,10 @@ export type TripDistributionAliveProps = {
   report: TisReport;
   /** Octant under the pointer (or keyboard focus), null when none. */
   onHoverOctant?: (octant: Octant | null) => void;
+  /** A sector to keep highlighted while nothing is hovered (the open junction's octant). */
+  highlightOctant?: Octant | null;
+  /** What the pinned sector is, for the readout ("Signal … · 0.62 mi"). */
+  highlightLabel?: string | null;
 };
 
 const R = 110;           // rose radius, viewBox units
@@ -60,15 +71,20 @@ function wedgePath(g: RoseGeometry, i: number, p: number): string {
   return sectorPath(w.startDeg, w.endDeg, g.innerRadius, g.innerRadius + w.fill * p * (g.radius - g.innerRadius));
 }
 
-export function TripDistributionAlive({ report, onHoverOctant }: TripDistributionAliveProps) {
+export function TripDistributionAlive({ report, onHoverOctant, highlightOctant, highlightLabel }: TripDistributionAliveProps) {
   const td = report.tripDistribution;
   const reduced = useMemo(prefersReducedMotion, []);
   const geom = useMemo(
     () => roseGeometry(td?.byDirection, td?.zones, { radius: R, innerRadius: R0, labelCount: LABEL_COUNT }),
     [td],
   );
-  const [hovered, setHovered] = useState<Octant | null>(null);
+  const [hoveredRaw, setHovered] = useState<Octant | null>(null);
+  const pinned: Octant | null = highlightOctant ?? null;
+  // The pointer wins; the pinned sector stands in while nothing is hovered.
+  const hovered: Octant | null = hoveredRaw ?? pinned;
   const hoverRef = useRef<Octant | null>(null);
+  const pinRef = useRef<Octant | null>(pinned);
+  pinRef.current = pinned;
   const cbRef = useRef(onHoverOctant);
   cbRef.current = onHoverOctant;
   const svgRef = useRef<SVGSVGElement>(null);
@@ -156,7 +172,8 @@ export function TripDistributionAlive({ report, onHoverOctant }: TripDistributio
         const [x, y] = bearingToXY(q.deg, g.innerRadius + q.s * len);
         c.setAttribute("transform", `translate(${x.toFixed(2)} ${y.toFixed(2)})`);
         const fade = Math.min(1, q.s / 0.15, (1 - q.s) / 0.25);
-        const dim = hov && hov !== w.octant ? 0.25 : 1;
+        const shown = hov ?? pinRef.current;
+        const dim = shown && shown !== w.octant ? 0.25 : 1;
         c.setAttribute("opacity", (0.9 * fade * dim).toFixed(3));
       }
     };
@@ -195,8 +212,8 @@ export function TripDistributionAlive({ report, onHoverOctant }: TripDistributio
             const [x, y] = bearingToXY(w.midDeg, RIM_LABEL_R);
             const dimmed = hovered !== null && hovered !== w.octant;
             return (
-              <text key={w.octant} x={x} y={y} textAnchor="middle" opacity={dimmed ? 0.4 : 1} className="transition-opacity duration-150 motion-reduce:transition-none">
-                <tspan x={x} dy={-2} className={hovered === w.octant ? "fill-foreground font-semibold" : ""}>{w.octant}</tspan>
+              <text key={w.octant} x={x} y={y} textAnchor="middle" className={`transition-opacity duration-150 motion-reduce:transition-none ${dimmed ? "opacity-40 print:opacity-100" : ""}`}>
+                <tspan x={x} dy={-2} className={hovered === w.octant ? "fill-foreground font-semibold print:fill-muted-foreground print:font-normal" : ""}>{w.octant}</tspan>
                 <tspan x={x} dy={9} className="fill-foreground">{w.sharePct.toFixed(1)}%</tspan>
               </text>
             );
@@ -212,8 +229,7 @@ export function TripDistributionAlive({ report, onHoverOctant }: TripDistributio
                 key={w.octant}
                 ref={(el) => { wedgeRefs.current[i] = el; }}
                 d={wedgePath(geom, i, initialP)}
-                className={`transition-opacity duration-150 motion-reduce:transition-none ${hovered === w.octant ? "fill-blue-500 dark:fill-blue-400" : "fill-blue-500/60 dark:fill-blue-400/55"}`}
-                opacity={dimmed ? 0.3 : 1}
+                className={`transition-opacity duration-150 motion-reduce:transition-none ${hovered === w.octant ? "fill-blue-500 dark:fill-blue-400 print:fill-blue-500/60" : "fill-blue-500/60 dark:fill-blue-400/55"} ${dimmed ? "opacity-30 print:opacity-100" : ""}`}
                 data-testid={`dist-rose-wedge-${w.octant}`}
               >
                 <title>{`${w.octant} · ${w.sharePct.toFixed(1)}% of project trips`}</title>
@@ -222,9 +238,12 @@ export function TripDistributionAlive({ report, onHoverOctant }: TripDistributio
           })}
         </g>
 
-        {/* particles: project trips streaming outward, rate ∝ share */}
+        {/* particles: project trips streaming outward, rate ∝ share. Their
+            opacity (the pinned-sector dim included) is written per frame, so
+            print hides them outright — the still frame prints as it does under
+            reduced motion. */}
         {!reduced && (
-          <g aria-hidden className="fill-blue-700 dark:fill-blue-200 pointer-events-none">
+          <g aria-hidden className="fill-blue-700 dark:fill-blue-200 pointer-events-none print:hidden">
             {Array.from({ length: PARTICLE_POOL }, (_, k) => (
               <circle key={k} ref={(el) => { particleRefs.current[k] = el; }} r={1.6} opacity={0} />
             ))}
@@ -238,7 +257,7 @@ export function TripDistributionAlive({ report, onHoverOctant }: TripDistributio
             const lx = z.x + (z.x >= 0 ? 4.5 : -4.5), ly = z.y + (z.y >= 0 ? 7.5 : -3.5);
             return (
               <g key={z.id} ref={(el) => { zoneRefs.current[i] = el; }} opacity={initialP}>
-                <g className={`transition-opacity duration-150 motion-reduce:transition-none ${dimmed ? "opacity-30" : ""}`}>
+                <g className={`transition-opacity duration-150 motion-reduce:transition-none ${dimmed ? "opacity-30 print:opacity-100" : ""}`}>
                   <title>{`${z.name} · ${z.distanceMi.toFixed(2)} mi ${z.octant} · ${z.sharePct.toFixed(1)}%`}</title>
                   <circle cx={z.x} cy={z.y} r={z.labelled ? 3 : 1.8} className={z.labelled ? "fill-foreground stroke-background" : "fill-muted-foreground"} strokeWidth={z.labelled ? 1 : 0} />
                   {z.labelled && (
@@ -291,8 +310,13 @@ export function TripDistributionAlive({ report, onHoverOctant }: TripDistributio
               </div>
               <div className="text-muted-foreground font-mono tabular-nums">
                 {hoveredWedge.startDeg}°–{hoveredWedge.endDeg}° · {hoveredZones} zone{hoveredZones === 1 ? "" : "s"}
-                {onHoverOctant ? " · study map dims the other sectors" : ""}
+                {hoveredRaw && onHoverOctant ? " · study map dims the other sectors" : ""}
               </div>
+              {!hoveredRaw && pinned && (
+                <div className="text-muted-foreground" data-testid="dist-rose-pinned">
+                  The sector of {highlightLabel ? <span className="text-foreground">{highlightLabel}</span> : "the open junction"} — hover another sector to compare.
+                </div>
+              )}
             </>
           ) : (
             <div className="text-muted-foreground">

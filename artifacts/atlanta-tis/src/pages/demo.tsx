@@ -35,8 +35,9 @@ import { IntersectionTable as CapacityTable } from "../components/tis-report-bit
 import { IntersectionStudy } from "../components/intersection-study";
 import { SiteFooter } from "../components/site-footer";
 import { useSignalStudyUrl } from "../hooks/use-signal-study-url";
-import type { Octant } from "../lib/distribution-rose";
-import { solveScenario, isClientScenarioDirty, EMPTY_SCENARIO, type ScenarioState } from "../lib/scenario-solve";
+import { bearingDeg, bearingToOctant, type Octant } from "../lib/distribution-rose";
+import type { Route } from "../lib/study-map-sim";
+import { solveScenarioDetailed, isClientScenarioDirty, EMPTY_SCENARIO, type ScenarioState } from "../lib/scenario-solve";
 
 type Preset = {
   id: string;
@@ -1572,11 +1573,15 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
   // scenario field that changes re-solves — not only the timing edits the
   // page's own controls can make.
   const solveKey = JSON.stringify([scenario.size, scenario.passByPct, scenario.internalCapturePct, scenario.growthRatePct, scenario.weather, scenario.timing]);
-  const scenarioReport = useMemo(
-    () => (clientDirty ? solveScenario(r, scenario) : null),
+  // The detailed solve, so the study can say which of the scenario row's
+  // inputs the browser reconstructed (a pre-E2 path row's ledgers — §01a
+  // labels those approximated rather than recorded).
+  const solution = useMemo(
+    () => (clientDirty ? solveScenarioDetailed(r, scenario) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [r, clientDirty, solveKey],
   );
+  const scenarioReport = solution ? solution.report : null;
   // The distribution rose's hovered sector; the map dims the rows and flows
   // outside it. Hover-only state.
   const [hoverOctant, setHoverOctant] = useState<Octant | null>(null);
@@ -1609,6 +1614,16 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
     () => (scenarioReport && openStudyId ? scenarioReport.affectedIntersections.find((x) => x.signalId === openStudyId) ?? null : null),
     [scenarioReport, openStudyId],
   );
+  // The junction in focus (the open study's, else the selected signal — the
+  // selection outlives Close, so the map's through-route highlight and the
+  // rose's pinned sector are visible once the study closes), and the map's
+  // site→row routes for the study's §01a, as on /tis — the map owns them
+  // (re-announced on a new report for the same rows, null when invalid);
+  // the page only mirrors `onRoutes`.
+  const focusSignalId = openStudyId ?? selectedId;
+  const focusRow = focusSignalId ? r.affectedIntersections.find((x) => x.signalId === focusSignalId) ?? null : null;
+  const focusOctant: Octant | null = focusRow ? bearingToOctant(bearingDeg(r.request.latitude, r.request.longitude, focusRow.latitude, focusRow.longitude)) : null;
+  const [mapRoutes, setMapRoutes] = useState<Map<string, Route> | null>(null);
 
   async function downloadPdf() {
     setPdfLoading(true);
@@ -1735,8 +1750,10 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
           selectedSignalId={selectedId}
           onSelectSignal={onMapSelect}
           highlightOctant={hoverOctant}
+          throughSignalId={focusSignalId}
+          onRoutes={setMapRoutes}
         />
-        <TripDistributionCard report={r} onHoverOctant={setHoverOctant} />
+        <TripDistributionCard report={r} onHoverOctant={setHoverOctant} highlightOctant={focusOctant} highlightLabel={focusRow ? `${focusRow.name} · ${focusRow.distanceMi.toFixed(2)} mi` : null} />
         <CapacityTable report={r} selectedSignalId={selectedId} onSelect={openStudy} />
       </section>
 
@@ -1745,6 +1762,10 @@ function ResultView({ response, onReset }: { response: DemoResponse; onReset: ()
           report={r}
           row={studyRow}
           scenarioRow={studyScenarioRow}
+          scenarioReport={scenarioReport}
+          scenarioRowFallbacks={solution ? solution.rowFallbacks.get(studyRow.signalId) ?? null : null}
+          routesBySignalId={mapRoutes}
+          onOpenSignal={openStudy}
           scenario={scenario}
           onScenarioChange={setScenario}
           onClose={() => openStudy(null)}
