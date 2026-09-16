@@ -31,6 +31,8 @@ export type SaveProjectArgs = {
   siteLon: number | null;
   request: unknown;
   result: unknown;
+  /** The report format the study was generated with (firm_report_themes id); null → firm default. */
+  reportThemeId?: string | null;
 };
 
 export async function saveProject(args: SaveProjectArgs): Promise<TisProject | null> {
@@ -48,6 +50,7 @@ export async function saveProject(args: SaveProjectArgs): Promise<TisProject | n
         siteLon: args.siteLon !== null ? String(args.siteLon) : null,
         requestPayload: args.request as object,
         resultPayload: args.result as object,
+        reportThemeId: args.reportThemeId ?? null,
         version: 1,
       })
       .returning();
@@ -112,4 +115,14 @@ export async function getProject(
     .where(and(eq(tisProjectsTable.id, id), eq(tisProjectsTable.firmId, firmId)))
     .limit(1);
   return row ?? null;
+}
+
+/** Pin (or clear, with null) the report format a project renders in. False when the project is not the firm's. */
+export async function setProjectTheme(firmId: string, projectId: string, reportThemeId: string | null): Promise<boolean> {
+  const rows = await db
+    .update(tisProjectsTable)
+    .set({ reportThemeId })
+    .where(and(eq(tisProjectsTable.firmId, firmId), eq(tisProjectsTable.id, projectId)))
+    .returning({ id: tisProjectsTable.id });
+  return rows.length > 0;
 }

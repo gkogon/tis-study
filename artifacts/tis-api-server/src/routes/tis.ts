@@ -21,8 +21,19 @@ import { regionForCoordinate, REGIONS } from "../lib/regions";
 import { renderStudyPdf } from "../lib/pdf-export";
 import { generateRateLimiter, tricsRateLimiter, whatIfRateLimiter } from "../lib/security";
 import { saveProject } from "../lib/tis-projects";
-import { getOrCreateFirmForUser, reserveStudySlot, releaseStudySlot, firmMayRunUncharged, loadFirmReportTemplate } from "../lib/firms";
+import { getOrCreateFirmForUser, reserveStudySlot, releaseStudySlot, firmMayRunUncharged } from "../lib/firms";
+import { isUuid, resolveProjectTheme } from "../lib/report-themes";
 import { logEvent } from "../lib/events";
+
+/**
+ * The report format a generate/PDF call asked for, as `?reportThemeId=<uuid>`
+ * (the body is the engine request and stays untouched). Null when absent or
+ * malformed; a foreign or deleted id is ignored by the resolver.
+ */
+function themeIdFromQuery(req: Request): string | null {
+  const v = req.query.reportThemeId;
+  return isUuid(v) ? v : null;
+}
 
 const router: IRouter = Router();
 
@@ -437,6 +448,7 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
       siteLon: parsed.data.longitude,
       request: parsed.data,
       result: validated,
+      reportThemeId: themeIdFromQuery(req),
     });
     if (!saved) {
       await releaseStudySlot(firm, { email: user.email, source: quota.source });
@@ -667,7 +679,7 @@ router.post("/generate/pdf", generateRateLimiter, async (req, res): Promise<void
       },
       {
         firmId: firm.id,
-        reportTemplate: await loadFirmReportTemplate(firm.id),
+        reportTemplate: await resolveProjectTheme(firm.id, themeIdFromQuery(req)),
         name: firm.name,
         logoUrl: firm.logoUrl,
         brandColor: firm.brandColor,
@@ -780,7 +792,7 @@ const londonTaPdfHandler = async (req: Request, res: Response): Promise<void> =>
       // is the London/Velocity path, which is exactly where an imported
       // template is most likely to exist.
       firmId: firm.id,
-      reportTemplate: await loadFirmReportTemplate(firm.id),
+      reportTemplate: await resolveProjectTheme(firm.id, themeIdFromQuery(req)),
       name: firm.name,
       logoUrl: firm.logoUrl,
       brandColor: firm.brandColor,

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
-import { listProjects, getProject } from "../lib/tis-projects";
-import { getOrCreateFirmForUser, loadFirmReportTemplate } from "../lib/firms";
+import { listProjects, getProject, setProjectTheme } from "../lib/tis-projects";
+import { getOrCreateFirmForUser } from "../lib/firms";
+import { isUuid, getFirmTheme, resolveProjectTheme } from "../lib/report-themes";
 import { renderStudyPdf } from "../lib/pdf-export";
 import { generateUtdf } from "../lib/utdf-export";
 
@@ -55,6 +56,7 @@ router.get("/projects/:id", async (req, res): Promise<void> => {
       studyType: project.studyType,
       projectName: project.projectName,
       landUseCode: project.landUseCode,
+      reportThemeId: project.reportThemeId ?? null,
       siteLat: project.siteLat,
       siteLon: project.siteLon,
       version: project.version,
@@ -65,6 +67,25 @@ router.get("/projects/:id", async (req, res): Promise<void> => {
   } catch (err) {
     req.log.error({ err }, "tis-projects.get_failed");
     res.status(500).json({ error: "Failed to load project." });
+  }
+});
+
+/** PATCH /projects/:id — pin the report format the project renders in ({ reportThemeId: id | null }). */
+router.patch("/projects/:id", async (req, res): Promise<void> => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Sign in required." }); return; }
+  const id = String(req.params.id);
+  const body = (req.body ?? {}) as { reportThemeId?: unknown };
+  const themeId = body.reportThemeId === null ? null : isUuid(body.reportThemeId) ? body.reportThemeId : undefined;
+  if (themeId === undefined) { res.status(400).json({ error: "reportThemeId must be a format id or null." }); return; }
+  try {
+    const user = req.user!;
+    const { firm } = await getOrCreateFirmForUser(user.id, { email: user.email, firstName: user.firstName, lastName: user.lastName });
+    if (themeId !== null && !(await getFirmTheme(firm.id, themeId))) { res.status(404).json({ error: "Format not found." }); return; }
+    if (!(await setProjectTheme(firm.id, id, themeId))) { res.status(404).json({ error: "Project not found." }); return; }
+    res.json({ ok: true, reportThemeId: themeId });
+  } catch (err) {
+    req.log.error({ err }, "tis-projects.patch_failed");
+    res.status(500).json({ error: "Failed to update project." });
   }
 });
 
@@ -92,7 +113,7 @@ router.get("/projects/:id/pdf", async (req, res): Promise<void> => {
     }
     const buffer = await renderStudyPdf(project, {
       firmId: firm.id,
-      reportTemplate: await loadFirmReportTemplate(firm.id),
+      reportTemplate: await resolveProjectTheme(firm.id, project.reportThemeId),
       name: firm.name,
       logoUrl: firm.logoUrl,
       brandColor: firm.brandColor,
