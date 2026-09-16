@@ -38,6 +38,12 @@ export const firmsTable = pgTable("firms", {
   // an ephemeral container filesystem — an uploaded template silently vanished
   // on the next deploy. The DB is the only durable home we have.
   reportTemplate: jsonb("report_template"),
+  // The firm's default report format — a row of `firmReportThemesTable`
+  // (declared below; the FK lives in lib/db/migrate.mjs because drizzle
+  // cannot reference a table declared later in this file). Null → the
+  // region's standard format. Since the theme library shipped,
+  // `reportTemplate` above only ever holds a V1 ("legacy") row.
+  defaultReportThemeId: uuid("default_report_theme_id"),
 
   // Stripe linkage. customerId is created on first billing action;
   // subscriptionId is set after Checkout completes.
@@ -111,6 +117,35 @@ export const firmsTable = pgTable("firms", {
 
 export type Firm = typeof firmsTable.$inferSelect;
 export type InsertFirm = typeof firmsTable.$inferInsert;
+
+/**
+ * A firm's library of report formats ("themes"): each row is a StoredTheme
+ * (artifacts/tis-api-server/src/lib/report-theme/theme.ts) extracted from
+ * one sample PDF. The firm's default is `firmsTable.defaultReportThemeId`; a
+ * project may pin another one (`tisProjectsTable.reportThemeId`). Both FKs
+ * set null on delete, so a deleted format falls its projects back to the
+ * firm default.
+ */
+export const firmReportThemesTable = pgTable(
+  "firm_report_themes",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    firmId: uuid("firm_id")
+      .notNull()
+      .references(() => firmsTable.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    stored: jsonb("stored").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [index("IDX_firm_report_themes_firm").on(table.firmId)],
+);
+export type FirmReportTheme = typeof firmReportThemesTable.$inferSelect;
 
 /**
  * Join table: which users belong to which firm and in what role.
