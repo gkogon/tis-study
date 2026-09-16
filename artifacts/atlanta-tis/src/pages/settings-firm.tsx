@@ -38,7 +38,7 @@ type FirmTemplate = {
   palette: { primary: string; accent: string; text: string; muted: string; rule: string };
   header: string | null;
   footer: string | null;
-  cover: "image" | "color" | "plain";
+  cover: "image" | "photo" | "color" | "plain";
   table: { headerFill: string | null; mode: "horizontal" | "grid" | "none" };
   numbering: string;
   warnings: string[];
@@ -423,7 +423,7 @@ export default function SettingsFirmPage() {
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Headings {template.numbering === "none" ? "unnumbered" : `numbered "${template.numbering}"`} · tables {template.table.mode}
-                    {template.table.headerFill ? " with filled header" : ""} · {template.cover} cover
+                    {template.table.headerFill ? " with filled header" : ""} · {template.cover === "photo" ? "site-photo" : template.cover} cover
                   </p>
                   {(template.header || template.footer) && (
                     <p className="text-xs text-muted-foreground font-mono">

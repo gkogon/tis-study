@@ -36,8 +36,8 @@ for (const code of codes) {
   console.log(`  AM peak rate:      ${lu.amRate} ${lu.unitShort} (in ${(lu.amDirectionalIn * 100).toFixed(0)}% / out ${((1 - lu.amDirectionalIn) * 100).toFixed(0)}%)`);
   console.log(`  PM peak rate:      ${lu.pmRate} ${lu.unitShort} (in ${(lu.directionalSplitPm.in * 100).toFixed(0)}% / out ${(lu.directionalSplitPm.out * 100).toFixed(0)}%)`);
   console.log(`  Sat multiplier:    ${lu.satMultiplier}`);
-  console.log(`  Default pass-by:   ${lu.defaultPassByPct ?? 0}%`);
-  console.log(`  Internal capture:  ${lu.defaultInternalCapturePct ?? 0}%\n`);
+  console.log(`  Default pass-by:   ${lu.passByPctPm ?? 0}%`);
+  console.log(`  Internal capture:  ${lu.internalCapturePctPm ?? 0}%\n`);
 
   console.log(`London auto-mode-share applied: ${londonShare} (mode-share.ts)`);
   console.log(`  → all-mode totals from ITE rates are multiplied by ${londonShare}`);

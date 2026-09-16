@@ -29,14 +29,7 @@ import {
   usersTable,
   type Firm,
 } from "@workspace/db";
-import {
-  getOrCreateFirmForUser,
-  getActiveFirmForUser,
-  getMembership,
-  listFirmMembers,
-  TRIAL_SEAT_LIMIT,
-  TRIAL_STUDY_LIMIT,
-} from "../lib/firms";
+import { getOrCreateFirmForUser, getActiveFirmForUser, getMembership, listFirmMembers, TRIAL_SEAT_LIMIT, TRIAL_STUDY_LIMIT, loadFirmReportTemplate } from "../lib/firms";
 import { sendInviteEmail } from "../lib/email";
 import { getPublicAppOrigin } from "../lib/stripe";
 import {
@@ -363,11 +356,12 @@ router.get("/firms/report-template", async (req, res): Promise<void> => {
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Sign in required." }); return; }
   const user = req.user!;
   const { firm } = await getOrCreateFirmForUser(user.id, { email: user.email, firstName: user.firstName, lastName: user.lastName });
-  switch (classifyStoredTemplate(firm.reportTemplate)) {
+  const stored = await loadFirmReportTemplate(firm.id);
+  switch (classifyStoredTemplate(stored)) {
     case "none": res.json({ template: null }); return;
     case "legacy": res.json({ template: null, legacy: true }); return;
     case "invalid": req.log.error({ firmId: firm.id }, "firms.template_invalid"); res.json({ template: null, invalid: true }); return;
-    case "v2": res.json({ template: summarizeTheme(parseStoredTheme(firm.reportTemplate)!) }); return;
+    case "v2": res.json({ template: summarizeTheme(parseStoredTheme(stored)!) }); return;
     default: res.status(500).json({ error: "Unknown template state." }); return;
   }
 });
@@ -380,11 +374,12 @@ router.get("/firms/report-template/preview.pdf", previewRateLimiter, async (req,
   if (!req.isAuthenticated()) { res.status(401).json({ error: "Sign in required." }); return; }
   const user = req.user!;
   const { firm } = await getOrCreateFirmForUser(user.id, { email: user.email, firstName: user.firstName, lastName: user.lastName });
-  if (!parseStoredTheme(firm.reportTemplate)) { res.status(404).json({ error: "This firm has no imported report format yet." }); return; }
+  const stored = await loadFirmReportTemplate(firm.id);
+  if (!parseStoredTheme(stored)) { res.status(404).json({ error: "This firm has no imported report format yet." }); return; }
   try {
     const fixture = loadPreviewFixture(await latestProjectFamily(firm.id));
     const buffer = await renderStudyPdf(projectFromFixture(fixture) as Parameters<typeof renderStudyPdf>[0], {
-      firmId: firm.id, reportTemplate: firm.reportTemplate, name: firm.name, logoUrl: firm.logoUrl,
+      firmId: firm.id, reportTemplate: stored, name: firm.name, logoUrl: firm.logoUrl,
       brandColor: firm.brandColor, addressLine: firm.addressLine, phone: firm.phone, website: firm.website,
     });
     res.setHeader("Content-Type", "application/pdf");
