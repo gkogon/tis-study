@@ -404,7 +404,7 @@ export function renderTisNorthCarolina(
   carSubsection(doc, "3.1 Intersection MOE Summary (NCDOT format)");
   carBody(doc,
     "Approaches are ordered EB, WB, NB, SB and movements left–through–right per the Best Practices reporting format. Signalized intersections report control delay and LOS overall and per lane group (any v/c > 1.0 is reported as LOS F regardless of delay); unsignalized intersections report no overall LOS — results are per lane group with the conflicting movement. SimTraffic maximum-queue columns are populated at submittal.", true);
-  const moeRows = intersections.slice(0, 20).map((it: any, i: number) => {
+  const moeRows = intersections.map((it: any, i: number) => {
     const s = scenarioTriplet(it);
     return [
       String(i + 1),
@@ -441,7 +441,7 @@ export function renderTisNorthCarolina(
   carSection(doc, "4.0 MITIGATION CRITERIA CHECK (POLICY CH. 5.J)");
   carBody(doc,
     "NCDOT requires improvements when, comparing base-network and project conditions: total average delay increases by 25% or more while remaining at the same LOS; the LOS degrades by one level; or the intersection operates at LOS F. Turn-lane mitigation applies where the 95th-percentile queue exceeds existing storage. Signal-timing changes alone are not considered mitigation. The District Engineer makes the final mitigation determination.");
-  const mitRows = intersections.slice(0, 20).map((it: any, i: number) => {
+  const mitRows = intersections.map((it: any, i: number) => {
     const s = scenarioTriplet(it);
     const deltaPct = Number.isFinite(s.nbDelay) && s.nbDelay > 0 && Number.isFinite(s.bDelay)
       ? ((s.bDelay - s.nbDelay) / s.nbDelay) * 100 : NaN;
@@ -561,7 +561,7 @@ export function renderTisSouthCarolina(
   carSubsection(doc, "3.1 TG-21 Level of Service Standard — LOS C");
   carBody(doc,
     "Per SCDOT Traffic Engineering Guideline TG-21 (Mitigation of Traffic Impacts), the acceptable level of service for the design (peak) hour is LOS C or better for all roadway types statewide, applied in lieu of locally preferred thresholds. Where the baseline already operates at or below LOS C, the baseline LOS must be maintained or improved; where the baseline is LOS F in a congested urban area, mitigation is at the DTE's determination. Note: this is a stricter standard than the LOS D convention applied in several neighboring states.");
-  const scRows = intersections.slice(0, 20).map((it: any, i: number) => {
+  const scRows = intersections.map((it: any, i: number) => {
     const s = scenarioTriplet(it);
     const belowC = LOS_ORDER.indexOf(s.bLos) > LOS_ORDER.indexOf("C");
     const baselineBelowC = LOS_ORDER.indexOf(s.nbLos) > LOS_ORDER.indexOf("C");
