@@ -296,6 +296,45 @@ eq(footerText, "Page 1 of 1", "footer interpolated");
   eq(theme.summarizeTheme({ version: 2, theme: PHOTO, source: { pages: 1, fontsSeen: [], extractedAt: "2026-09-15T00:00:00Z", warnings: [] } }).cover, "photo", "summary: a photo band reads as a photo cover");
 }
 
+// ─── figure conventions ──────────────────────────────────────────────────────
+{
+  const figs = await import(path.resolve(here, "../src/lib/report-theme/derive/figures.ts"));
+  const seq = { label: "Figure", numbering: "sequential", separator: " – " };
+  eq(theme.formatFigureCaption(seq, 3, 5, "Site Plan"), "Figure 3 – Site Plan", "caption: sequential ignores the chapter");
+  eq(theme.formatFigureCaption({ ...seq, numbering: "chapter", separator: ": " }, 2, 5, "Site Plan"), "Figure 5-2: Site Plan", "caption: chapter numbering");
+  eq(theme.formatFigureCaption({ ...seq, numbering: "chapter", separator: ": " }, 2, null, "Site Plan"), "Figure 2: Site Plan", "caption: chapter style with no chapter falls back to the count");
+  eq(theme.formatFigureCaption({ label: "Exhibit", numbering: "sequential", separator: ". " }, 7, null, "Site Plan"), "Exhibit 7. Site Plan", "caption: exhibit label and period separator");
+  eq(theme.formatFigureCaption({ label: "Figure", numbering: "none", separator: " – " }, 7, 2, "Site Plan"), "Figure — Site Plan", "caption: none keeps our wording");
+  eq(theme.figureConvention(DEFAULT_THEME), { label: "Figure", numbering: "none", separator: " — " }, "convention: default theme → none");
+  const parsedOld = theme.ThemeSchema.safeParse({ ...DEFAULT_THEME, figure: { caption: DEFAULT_THEME.figure.caption } });
+  ok(parsedOld.success, "schema: a theme stored without figure.label/numbering/separator still parses");
+  // per-render counter through active.ts
+  const T = { ...DEFAULT_THEME, id: "fig-test", figure: { ...DEFAULT_THEME.figure, label: "Figure", numbering: "chapter", separator: ": " } };
+  const seen = [];
+  active.withTheme(T, () => {
+    active.noteChapter(3);
+    seen.push(active.nextFigureNumber());
+    seen.push(active.nextFigureNumber());
+    active.noteChapter(4);
+    seen.push(active.nextFigureNumber());
+    active.noteChapter(null);
+    seen.push(active.nextFigureNumber());
+  });
+  eq(seen, [{ n: 1, chapter: 3 }, { n: 2, chapter: 3 }, { n: 1, chapter: 4 }, { n: 1, chapter: null }], "counter: chapter numbering restarts per chapter");
+  const seen2 = [];
+  active.withTheme({ ...T, figure: { ...T.figure, numbering: "sequential" } }, () => { active.noteChapter(3); seen2.push(active.nextFigureNumber().n); active.noteChapter(4); seen2.push(active.nextFigureNumber().n); });
+  eq(seen2, [1, 2], "counter: sequential numbering runs on across chapters");
+  // derivation from synthetic caption lines
+  const page = (lines) => ({ page: 2, width: 612, height: 792, runs: lines.map((str, i) => ({ page: 2, str, font: "F1", size: 10, bold: true, italic: false, serif: false, mono: false, color: "#000000", x: 72, y: 100 + i * 40, w: 200, wInk: 200, h: 10 })), rects: [], lines: [], images: [] });
+  const pages = (lines) => [page([]), page(lines), page([]), page([])];
+  eq(figs.deriveFigureConvention(pages(["Figure 1 – Site Location", "Figure 2 – Access Points"])), { label: "Figure", numbering: "sequential", separator: " – " }, "derive: sequential with en dash");
+  eq(figs.deriveFigureConvention(pages(["Figure 3-1: Study Area", "Figure 3-2: Volumes", "Figure 4-1: LOS"])), { label: "Figure", numbering: "chapter", separator: ": " }, "derive: chapter numbering with colon");
+  eq(figs.deriveFigureConvention(pages(["Exhibit 1. Site Vicinity", "Exhibit 2. Site Plan"])), { label: "Exhibit", numbering: "sequential", separator: ". " }, "derive: exhibit label with period");
+  eq(figs.deriveFigureConvention(pages(["Figure 1. A conceptual site plan is included in Appendix A and referenced throughout the operations analysis that follows in this report.", "Figure 1: Project Location Map", "Figure 2: Existing Lanes"])), { label: "Figure", numbering: "sequential", separator: ": " }, "derive: a prose sentence starting with a figure reference is not a caption");
+  eq(figs.deriveFigureConvention(pages(["Figure 1 – Only one"])), null, "derive: fewer than two captions → null");
+  eq(theme.summarizeTheme({ version: 2, theme: T, source: { pages: 1, fontsSeen: [], extractedAt: "2026-09-16T00:00:00Z", warnings: [] } }).figures, "Figure 3-2: Title", "summary: figures example line");
+}
+
 // ─── derive/typography.ts ────────────────────────────────────────────────────
 const typo = await import(path.resolve(here, "../src/lib/report-theme/derive/typography.ts"));
 eq(typo.detectNumbering(["1.0 INTRO", "2.0 METHODS", "3.0 RESULTS"]), "1.0", "numbering 1.0");

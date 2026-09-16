@@ -55,6 +55,10 @@ export const tisProjectsTable = pgTable(
     regionCode: varchar("region_code", { length: 32 })
       .notNull()
       .default("atlanta_metro"),
+    // The report format this study renders in (a firm_report_themes row;
+    // FK in lib/db/migrate.mjs, SET NULL on delete). Null → the firm's
+    // default format at render time.
+    reportThemeId: uuid("report_theme_id"),
     requestPayload: jsonb("request_payload").notNull(),
     resultPayload: jsonb("result_payload").notNull(),
     // Sequential per-user version counter so engineers can talk about

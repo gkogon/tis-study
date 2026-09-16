@@ -13,6 +13,7 @@ import { pageGeometry } from "./derive/page";
 import { detectRunningZones } from "./derive/header-footer";
 import { derivePalette } from "./derive/palette";
 import { detectFigureCaption, detectTables } from "./derive/tables";
+import { deriveFigureConvention } from "./derive/figures";
 import { deriveCover } from "./derive/cover";
 import { mapSynonyms } from "./derive/synonyms";
 
@@ -133,6 +134,7 @@ export async function extractTheme(pdf: Buffer, opts: ExtractOptions): Promise<S
     const tables = detectTables(tablePages(scan.pages, body), body, heads[0]?.font ?? null);
     if (!tables.style) fallback("No tables detected; using the default table style.");
     const fig = detectFigureCaption(interiorPages(prefix), body);
+    const figConv = deriveFigureConvention(prefix);
 
     const mutedCandidates = [tables.style?.caption.style.color, zones.header?.style.color, zones.footer?.style.color, fig?.style.color].filter((c): c is string => !!c);
     const palette = derivePalette(report, body, heads, mutedCandidates, coverRes.cover);
@@ -159,7 +161,7 @@ export async function extractTheme(pdf: Buffer, opts: ExtractOptions): Promise<S
         header: { ...DEFAULT_THEME.table.header, fill: tint(palette.primary, 0.86), color: palette.primary },
         rules: { ...DEFAULT_THEME.table.rules, color: palette.rule },
       },
-      figure: { caption: fig ?? { position: "below", style: { ...captionStyle, bold: false } } },
+      figure: { caption: fig ?? { position: "below", style: { ...captionStyle, bold: false } }, ...(figConv ?? {}) },
       header: omitEdge(zones.header),
       footer: omitEdge(zones.footer),
       cover: coverRes.cover,

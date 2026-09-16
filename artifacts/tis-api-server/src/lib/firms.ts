@@ -35,15 +35,6 @@ export type FirmWithRole = {
 const { reportTemplate: _reportTemplate, ...firmLiteColumns } = getTableColumns(firmsTable);
 void _reportTemplate;
 
-/** The firm's stored report theme (`firms.report_template`) — raw jsonb, `null` when unset. */
-export async function loadFirmReportTemplate(firmId: string): Promise<unknown> {
-  const [row] = await db
-    .select({ reportTemplate: firmsTable.reportTemplate })
-    .from(firmsTable)
-    .where(eq(firmsTable.id, firmId))
-    .limit(1);
-  return row?.reportTemplate ?? null;
-}
 
 /**
  * Trial defaults — applied to any firm with no active subscription.

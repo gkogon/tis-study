@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { defaultThemeId, fetchThemes, type ThemeList } from "@/lib/report-themes";
+import { FormatSetupCard } from "@/components/format-setup-card";
 import { Link } from "wouter";
 import {
   useListTisLandUses,
@@ -1701,6 +1703,19 @@ export default function TisPage() {
   const generate = useGenerateTis();
   const [report, setReport] = useState<TisReport | null>(null);
 
+  // The firm's report formats (settings → Firm → Report formats). "" = the
+  // region's standard format. Defaults to the firm default; sent with every
+  // generate and PDF call so the study is stored and rendered in that format.
+  const [themeList, setThemeList] = useState<ThemeList | null>(null);
+  const [themeId, setThemeId] = useState<string>("");
+  useEffect(() => {
+    let cancelled = false;
+    fetchThemes()
+      .then((l) => { if (!cancelled) { setThemeList(l); setThemeId(defaultThemeId(l)); } })
+      .catch(() => { if (!cancelled) setThemeList({ themes: [], legacy: false }); });
+    return () => { cancelled = true; };
+  }, []);
+
   // ---- scenario studio ----
   // The scenario re-solves the report in the browser with the engine's own
   // row math; the memo keys on the inputs the solve reads, so a map click
@@ -1855,7 +1870,7 @@ export default function TisPage() {
   function handleGenerate(req: TisRequest) {
     setActiveRun({ latitude: req.latitude, longitude: req.longitude, radiusMi: req.studyRadiusMi ?? 0.5, projectName: req.projectName });
     generate.mutate(
-      { data: req },
+      { data: (themeId ? { ...req, reportThemeId: themeId } : req) as TisRequest },
       {
         onSuccess: (data) => {
           setReport(data);
@@ -1879,7 +1894,7 @@ export default function TisPage() {
     setDownloadingPdf(true);
     setPdfError(null);
     try {
-      const res = await fetch("/tis-api/generate/pdf", {
+      const res = await fetch(`/tis-api/generate/pdf${themeId ? `?reportThemeId=${encodeURIComponent(themeId)}` : ""}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -1911,6 +1926,7 @@ export default function TisPage() {
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6 print:py-0 print:max-w-none print:px-0">
       <div className="print:hidden">
         <QuotaBanner />
+        <FormatSetupCard />
       </div>
       <div className="flex items-center justify-between print:hidden">
         <Link
@@ -1939,6 +1955,22 @@ export default function TisPage() {
             <Settings className="w-4 h-4" />
             {isFirmConfigured(firm) ? firm.firmName : "Firm branding"}
           </button>
+          {themeList && themeList.themes.length > 0 && (
+            <label className="inline-flex items-center gap-1.5 text-sm" title="The report format this study is generated and downloaded in">
+              <span className="text-muted-foreground">Format</span>
+              <select
+                value={themeId}
+                onChange={(e) => setThemeId(e.target.value)}
+                className="px-2 py-1.5 text-sm rounded-md border bg-background"
+                data-testid="select-report-format"
+              >
+                <option value="">Standard format</option>
+                {themeList.themes.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}{t.isDefault ? " (default)" : ""}</option>
+                ))}
+              </select>
+            </label>
+          )}
           {report && (
             <>
               <button

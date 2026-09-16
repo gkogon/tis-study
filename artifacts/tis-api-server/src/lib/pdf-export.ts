@@ -47,7 +47,6 @@ import { DEFAULT_THEME, pageSizePoints, parseStoredTheme, type Theme } from "./r
 import { installGlyphFallback, registerThemeFonts } from "./report-theme/fonts";
 import * as themed from "./report-theme/draw";
 import { keepTogether, scaledHeight, sectionBreak } from "./report-theme/layout";
-import { loadFirmTheme } from "./report-template/store";
 import { getTransitContext, type TransitContext } from "./transit-routes";
 import { enrichFdotIntersections, enrichSerpmIntersections, enrichTmsCountIntersections, fetchFdotSiteSnapshot, decodeFdotFunClass, decodeFdotAccessClass, SERPM_BASE_YEAR, SERPM_FUTURE_YEAR, type FdotSegmentSnapshot } from "./fdot-live-data";
 import { enrichGdotIntersections, fetchGdotSiteSnapshot } from "./gdot-live-data";
@@ -89,10 +88,10 @@ type FirmStamp = {
   /** When set and the firm has an uploaded template, the study renders in it. */
   firmId?: string | null;
   /**
-   * The firm's imported report format, read from `firms.report_template`.
-   * Passed down rather than looked up here so the render path stays
-   * synchronous. When absent we fall back to the filesystem store, which is
-   * how local dev works; in production the DB column is the durable copy.
+   * The report format to render in — a StoredTheme from the firm's library
+   * (lib/report-themes.ts resolveProjectTheme: the project's, else the firm
+   * default). Passed down rather than looked up here so the render path
+   * stays synchronous. Absent or unparseable → the region's standard format.
    */
   reportTemplate?: unknown;
 };
@@ -254,18 +253,12 @@ async function fetchLogoBuffer(logoUrl: string | null): Promise<Buffer | null> {
  * memory efficiency but resolves a single Buffer for handler simplicity.
  */
 /**
- * The firm's imported theme (DB copy first, filesystem mirror second) or the
- * default. A malformed row falls back silently — a PDF the engineer needs
- * today must never 500 because a stored theme went stale.
+ * The theme handed in by the caller, or the default. A malformed row falls
+ * back silently — a PDF the engineer needs today must never 500 because a
+ * stored theme went stale.
  */
 function resolveTheme(firm: FirmStamp): Theme {
-  const fromDb = parseStoredTheme(firm.reportTemplate);
-  if (fromDb) return fromDb.theme;
-  if (firm.firmId) {
-    const fromDisk = loadFirmTheme(firm.firmId);
-    if (fromDisk) return fromDisk.theme;
-  }
-  return DEFAULT_THEME;
+  return parseStoredTheme(firm.reportTemplate)?.theme ?? DEFAULT_THEME;
 }
 
 /**

@@ -9,7 +9,7 @@
 import type { TripDistributionSummary } from "./trip-distribution";
 import { drawColumnChart, drawLineChart, drawCompassRose, chartColors } from "./pdf-charts";
 import { CARDINALS } from "./caltran-gravity";
-import { isDefaultTheme, pageMargin } from "./report-theme/active";
+import { activeTheme, isDefaultTheme, pageMargin } from "./report-theme/active";
 import { scaledHeight } from "./report-theme/layout";
 import * as themed from "./report-theme/draw";
 
@@ -71,8 +71,14 @@ export function drawDistributionPlan(
   // Keep the whole figure on one page — splitting a plan across a page break
   // makes it unreadable and mis-scales the bar. Under a firm theme the caption
   // is part of the figure: it must not open the next page on its own.
-  const captionH = isDefaultTheme() ? 0 : 6 + doc.font("body").fontSize(8).heightOfString(caption, { width: figW });
+  // Under a firm theme the figure gets a numbered caption in the sample's
+  // convention (above or below the plan, as the sample does) and the
+  // description becomes a muted note under it.
+  const themedTitle = "Figure — Project Trip Distribution";
+  const description = caption.replace(/^Figure — Project Trip Distribution\. /, "");
+  const captionH = isDefaultTheme() ? 0 : 24 + 6 + doc.font("body").fontSize(8).heightOfString(description, { width: figW });
   if (doc.y + figH + captionH > doc.page.height - doc.page.margins.bottom - 40) doc.addPage();
+  if (!isDefaultTheme() && activeTheme().figure.caption.position === "above") themed.figureCaption(doc, themedTitle);
   const x0 = pageMargin();
   const y0 = doc.y;
   const cx = x0 + figW / 2;
@@ -216,8 +222,9 @@ export function drawDistributionPlan(
   doc.restore();
   doc.y = y0 + figH + 6;
   doc.x = pageMargin();
-  doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-    caption,
+  if (!isDefaultTheme() && activeTheme().figure.caption.position === "below") themed.figureCaption(doc, themedTitle);
+  doc.font("body").fontSize(8).fillColor(isDefaultTheme() ? TEXT_GRAY : activeTheme().text.muted.color).text(
+    isDefaultTheme() ? caption : description,
     pageMargin(),
     doc.y,
     { width: doc.page.width - 2 * pageMargin(), paragraphGap: 6 },
