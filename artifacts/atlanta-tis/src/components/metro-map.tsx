@@ -15,6 +15,12 @@ type Pt = { m: MetroCoverage; lat: number; lon: number };
 export const DARK_TILES = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
 export const DARK_TILES_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+// The light basemap for the study maps. CARTO, like the dark map above —
+// not tile.openstreetmap.org, whose usage policy excludes production apps
+// and whose abuse filter 403s every tile once it decides an app is one.
+export const LIGHT_TILES = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+export const LIGHT_TILES_ATTRIBUTION = DARK_TILES_ATTRIBUTION;
+export const LIGHT_TILES_SUBDOMAINS = "abcd";
 
 export function metroTone(m: MetroCoverage): { color: string; label: string } {
   const quality = m.aadtQuality ?? "measured";

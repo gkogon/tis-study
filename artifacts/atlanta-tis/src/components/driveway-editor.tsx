@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { MapContainer, TileLayer, Marker, Tooltip as LeafletTooltip, useMapEvents } from "react-leaflet";
+import { LIGHT_TILES, LIGHT_TILES_ATTRIBUTION, LIGHT_TILES_SUBDOMAINS } from "./metro-map";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Driveway, DrivewayAccessType, DrivewayMovements } from "@workspace/tis-api-client-react";
@@ -184,7 +185,7 @@ export function DrivewayEditor({ site, driveways, onChange }: DrivewayEditorProp
               />
             </>
           ) : (
-            <TileLayer attribution="&copy; OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxZoom={20} />
+            <TileLayer attribution={LIGHT_TILES_ATTRIBUTION} url={LIGHT_TILES} subdomains={LIGHT_TILES_SUBDOMAINS} maxZoom={20} />
           )}
           <MapClickHandler onAdd={addAt} />
           <Marker position={center} icon={siteIcon()}>

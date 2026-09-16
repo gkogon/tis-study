@@ -14,6 +14,7 @@ import {
   type TisDistributionMethod,
 } from "@workspace/tis-api-client-react";
 import { MapContainer, TileLayer, CircleMarker, Marker, Tooltip as LeafletTooltip } from "react-leaflet";
+import { LIGHT_TILES, LIGHT_TILES_ATTRIBUTION, LIGHT_TILES_SUBDOMAINS } from "@/components/metro-map";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -1291,10 +1292,7 @@ function MapCard({ report }: { report: TisReport }) {
             scrollWheelZoom={false}
             style={{ height: "100%", width: "100%" }}
           >
-            <TileLayer
-              attribution='&copy; OpenStreetMap'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+            <TileLayer attribution={LIGHT_TILES_ATTRIBUTION} url={LIGHT_TILES} subdomains={LIGHT_TILES_SUBDOMAINS} maxZoom={20} />
             <Marker position={center} icon={siteIcon()}>
               <LeafletTooltip permanent direction="top" offset={[0, -32]}>
                 <div className="text-xs font-semibold">{report.request.projectName}</div>
