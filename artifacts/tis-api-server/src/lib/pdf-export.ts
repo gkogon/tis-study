@@ -9265,6 +9265,44 @@ function themedWorksheetStart(doc: PDFKit.PDFDocument, first: boolean): void {
   keepTogether(doc, headBlock);
 }
 
+const MOVEMENTS_HEADING = "Affected movements (PM peak project trips)";
+
+/**
+ * Height of the free-flowing block a worksheet draws under its "Affected
+ * movements" heading — the table (when there is one) and the small notes
+ * that follow it — measured at the font each piece is drawn in, with the
+ * gaps between them. `gap` is the paragraphGap that follows each note; the
+ * last note's trailing gap can hang past the margin, so pass 0 for it.
+ */
+function movementsBlockHeight(
+  doc: PDFKit.PDFDocument,
+  spec: TableSpec | null,
+  notes: Array<{ text: string; size: number; gap: number }>,
+): number {
+  const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  let h = spec ? tableHeight(doc, spec) : 0;
+  doc.font("body").fontSize(9);
+  h += doc.currentLineHeight(true) * 0.15; // the moveDown after the table
+  for (const n of notes) {
+    doc.font("body").fontSize(n.size);
+    h += doc.heightOfString(n.text, { width }) + n.gap;
+  }
+  return h;
+}
+
+/**
+ * Default-theme counterpart of themed.heading's `keepWith`: break the page
+ * before a bold 9-pt heading when the heading plus `blockH` of content will
+ * not fit above the bottom margin, so the heading is never stranded and the
+ * block never spills a few orphan lines onto the next page.
+ */
+function keepHeadingWith(doc: PDFKit.PDFDocument, heading: string, paragraphGap: number, blockH: number) {
+  const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  doc.font("bold").fontSize(9);
+  const need = doc.heightOfString(heading, { width }) + paragraphGap + blockH;
+  if (doc.y + need > doc.page.height - doc.page.margins.bottom) doc.addPage();
+}
+
 function renderCapacityAppendix(
   doc: PDFKit.PDFDocument,
   intersections: any[],
@@ -9565,12 +9603,9 @@ function renderCapacityAppendix(
     if (!addedNegligible) {
       const mv: any[] = Array.isArray(ix.movements) ? ix.movements : [];
       if (mv.length > 0) {
-        doc.moveDown(0.3);
-        if (!isDefaultTheme()) themed.heading(doc, 3, "Affected movements (PM peak project trips)", { synonyms: false, keepWith: 70 });
-        else doc.font("bold").fontSize(9).fillColor("black").text("Affected movements (PM peak project trips)", { paragraphGap: 3 });
         const MOVE_NAME: Record<string, string> = { L: "Left", T: "Through", R: "Right" };
         const totalMv = mv.reduce((s, m) => s + (Number(m.trips) || 0), 0) || 1;
-        table(doc, {
+        const mvTable: TableSpec = {
           headers: ["Movement", "Project trips", "% of project trips"],
           widths: [190, 100, 120],
           align: ["left", "right", "right"],
@@ -9579,22 +9614,17 @@ function renderCapacityAppendix(
             fmtNum(m.trips),
             `${((Number(m.trips) || 0) / totalMv * 100).toFixed(0)}%`,
           ]),
-        });
-        doc.moveDown(0.15);
+        };
         // Conserved-assignment source label. Present only on payloads generated
         // with the flag, so stored studies render byte-identically. The mixed
         // model (path here, octant there) is exactly what makes the label
         // load-bearing: a reviewer must know which rows they can trace on the
         // network and which came from the geometric screen.
-        if (ix.movementSource === "path" || ix.movementSource === "octant") {
-          doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-            ix.movementSource === "path"
-              ? "Source: routed network paths through this junction (conserved assignment — the trips in these rows are the same vehicles counted at the adjacent studied junctions along their paths)."
-              : "Source: geometric octant model (this signal did not resolve to a junction on the modeled road network — no junction within 100 m, or its minor legs are below the network's road-class floor).",
-            { paragraphGap: 3 },
-          );
-          doc.fillColor("black");
-        }
+        const sourceNote = ix.movementSource === "path"
+          ? "Source: routed network paths through this junction (conserved assignment — the trips in these rows are the same vehicles counted at the adjacent studied junctions along their paths)."
+          : ix.movementSource === "octant"
+          ? "Source: geometric octant model (this signal did not resolve to a junction on the modeled road network — no junction within 100 m, or its minor legs are below the network's road-class floor)."
+          : null;
         // Stored studies re-render through this path: a payload generated
         // before the movement-derived loading shipped still carries the legacy
         // floor-smeared +Trips split next to this movements table — the very
@@ -9607,21 +9637,41 @@ function renderCapacityAppendix(
           );
           return Math.round(Number(a.addedTripsPeak) || 0) === mvSum;
         });
-        doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-          reconciled
-            ? "Movement loads are derived from the study's directional trip distribution and the site's bearing from this intersection (outbound trips enter from the site leg and turn toward their destination sector; inbound trips mirror). U-turns are folded into the left-turn movement. The same assignment drives the per-approach capacity loading above, so the movement rows cross-foot with the junction's added project trips in total and with the +Trips column approach-by-approach (each trip is counted on its entering approach). The turning-movement diagrams show TOTAL approach volumes under the screening 15/70/15 split, not the project increment. Screening-level: replace with measured turning-movement counts and the site's access-point routing at submittal."
-            : "Movement loads are derived from the study's directional trip distribution and the site's bearing from this intersection (outbound trips enter from the site leg and turn toward their destination sector; inbound trips mirror). U-turns are folded into the left-turn movement. Totals cross-foot with the junction's added project trips — but NOT approach-by-approach with the +Trips column above: this study was generated before the per-approach loading derived from the movement assignment (that column used a smoothed directional spread with a floor share on every leg), while the movement rows are named by entering approach only. Re-generate the study to reconcile the two. Likewise the turning-movement diagrams show TOTAL approach volumes under the screening 15/70/15 split, not the project increment. Screening-level: replace with measured turning-movement counts and the site's access-point routing at submittal.",
-          { paragraphGap: 6 },
-        );
+        const loadsNote = reconciled
+          ? "Movement loads are derived from the study's directional trip distribution and the site's bearing from this intersection (outbound trips enter from the site leg and turn toward their destination sector; inbound trips mirror). U-turns are folded into the left-turn movement. The same assignment drives the per-approach capacity loading above, so the movement rows cross-foot with the junction's added project trips in total and with the +Trips column approach-by-approach (each trip is counted on its entering approach). The turning-movement diagrams show TOTAL approach volumes under the screening 15/70/15 split, not the project increment. Screening-level: replace with measured turning-movement counts and the site's access-point routing at submittal."
+          : "Movement loads are derived from the study's directional trip distribution and the site's bearing from this intersection (outbound trips enter from the site leg and turn toward their destination sector; inbound trips mirror). U-turns are folded into the left-turn movement. Totals cross-foot with the junction's added project trips — but NOT approach-by-approach with the +Trips column above: this study was generated before the per-approach loading derived from the movement assignment (that column used a smoothed directional spread with a floor share on every leg), while the movement rows are named by entering approach only. Re-generate the study to reconcile the two. Likewise the turning-movement diagrams show TOTAL approach volumes under the screening 15/70/15 split, not the project increment. Screening-level: replace with measured turning-movement counts and the site's access-point routing at submittal.";
+        // Keep-together. The worksheet opened with an unconditional addPage()
+        // ("one intersection per page") but nothing measured the page, and the
+        // content below the diagrams has grown since: this table, its source
+        // line, the signal-timing paragraph above. On a full worksheet the
+        // last 2–4 lines of `loadsNote` ran past the bottom margin, PDFKit
+        // flowed them onto a fresh page, and the next worksheet's addPage()
+        // stranded them there — a page carrying two lines of an 8-pt note and
+        // the footer. The themed heading already breaks for `keepWith`; it was
+        // handed a flat 70 pt, smaller than the block. Measure the block.
+        const blockH = movementsBlockHeight(doc, mvTable, [
+          ...(sourceNote ? [{ text: sourceNote, size: 8, gap: 3 }] : []),
+          { text: loadsNote, size: 8, gap: 0 },
+        ]);
+        doc.moveDown(0.3);
+        if (!isDefaultTheme()) themed.heading(doc, 3, MOVEMENTS_HEADING, { synonyms: false, keepWith: blockH });
+        else {
+          keepHeadingWith(doc, MOVEMENTS_HEADING, 3, blockH);
+          doc.font("bold").fontSize(9).fillColor("black").text(MOVEMENTS_HEADING, { paragraphGap: 3 });
+        }
+        table(doc, mvTable);
+        doc.moveDown(0.15);
+        if (sourceNote) {
+          doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(sourceNote, { paragraphGap: 3 });
+          doc.fillColor("black");
+        }
+        doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(loadsNote, { paragraphGap: 6 });
         doc.fillColor("black");
       } else {
         const loaded = approaches
           .filter((a) => Math.round(Number(a.addedTripsPeak) || 0) > 0)
           .sort((a, b) => (Number(b.addedTripsPeak) || 0) - (Number(a.addedTripsPeak) || 0));
         if (loaded.length > 0) {
-          doc.moveDown(0.3);
-          if (!isDefaultTheme()) themed.heading(doc, 3, "Affected movements (PM peak project trips)", { synonyms: false, keepWith: 40 });
-          else doc.font("bold").fontSize(9).fillColor("black").text("Affected movements (PM peak project trips)", { paragraphGap: 2 });
           const parts = loaded.map((a) => {
             const dir = String(a.direction ?? "").toUpperCase();
             const added = Math.round(Number(a.addedTripsPeak) || 0);
@@ -9630,11 +9680,21 @@ function renderCapacityAppendix(
             const right = added - thru - left;
             return `${dir} approach +${added} (≈ ${dir}-Thru ${thru} / ${dir}-Left ${left} / ${dir}-Right ${right})`;
           });
-          doc.font("body").fontSize(8.5).fillColor(TEXT_GRAY).text(parts.join(";  ") + ".", { paragraphGap: 3 });
-          doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-            "Project trips are resolved at the approach level; the Left/Through/Right split shown is the screening 15/70/15 estimate and should be replaced with measured turning-movement counts and the site's access-point directional routing at submittal.",
-            { paragraphGap: 6 },
-          );
+          const splitLine = parts.join(";  ") + ".";
+          const splitNote = "Project trips are resolved at the approach level; the Left/Through/Right split shown is the screening 15/70/15 estimate and should be replaced with measured turning-movement counts and the site's access-point directional routing at submittal.";
+          // Same keep-together as the movements-table branch above.
+          const blockH = movementsBlockHeight(doc, null, [
+            { text: splitLine, size: 8.5, gap: 3 },
+            { text: splitNote, size: 8, gap: 0 },
+          ]);
+          doc.moveDown(0.3);
+          if (!isDefaultTheme()) themed.heading(doc, 3, MOVEMENTS_HEADING, { synonyms: false, keepWith: blockH });
+          else {
+            keepHeadingWith(doc, MOVEMENTS_HEADING, 2, blockH);
+            doc.font("bold").fontSize(9).fillColor("black").text(MOVEMENTS_HEADING, { paragraphGap: 2 });
+          }
+          doc.font("body").fontSize(8.5).fillColor(TEXT_GRAY).text(splitLine, { paragraphGap: 3 });
+          doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(splitNote, { paragraphGap: 6 });
           doc.fillColor("black");
         }
       }
@@ -9834,6 +9894,43 @@ type TableSpec = {
   rows: string[][];
 };
 
+const TABLE_PADX = 4;
+const TABLE_PADY = 4;
+
+/**
+ * Measure the height a table row needs by wrapping every cell within its
+ * column width and taking the tallest. This is what prevents the old
+ * overlap bug: long street names wrap and the row grows to fit instead
+ * of colliding with the next row. Shared by table() and tableHeight() so a
+ * keep-together check can never disagree with the drawn table.
+ */
+function tableRowHeight(doc: PDFKit.PDFDocument, spec: TableSpec, cells: string[], isHeader: boolean): number {
+  const align = spec.align ?? spec.headers.map(() => "left" as const);
+  doc.font(isHeader ? "bold" : "body").fontSize(9);
+  let maxH = 0;
+  for (let i = 0; i < cells.length; i++) {
+    const w = (spec.widths[i] ?? 60) - TABLE_PADX * 2;
+    const h = doc.heightOfString(cells[i] ?? "", { width: w, align: align[i] ?? "left" });
+    if (h > maxH) maxH = h;
+  }
+  return Math.max(13, maxH) + TABLE_PADY * 2;
+}
+
+/**
+ * Height table() will occupy for `spec` if it starts at the current cursor
+ * and does not break: header, every row, and the 4 pt it leaves below.
+ * Callers that flow free text after a table use it to keep the whole unit
+ * on one page — table() only guards its OWN rows, so text that follows it
+ * could still run past the margin and strand a few lines on a page of their
+ * own (the appendix worksheets did exactly that).
+ */
+function tableHeight(doc: PDFKit.PDFDocument, spec: TableSpec): number {
+  if (!isDefaultTheme()) return themed.tableHeight(doc, spec);
+  return tableRowHeight(doc, spec, spec.headers, true)
+    + spec.rows.reduce((s, r) => s + tableRowHeight(doc, spec, r, false), 0)
+    + 4;
+}
+
 /**
  * Lightweight tabular layout. Auto-paginates by checking remaining space
  * before each row and inserting a page break when needed.
@@ -9844,8 +9941,8 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
   const align = spec.align ?? headers.map(() => "left" as const);
   const startX = pageMargin();
   const totalW = widths.reduce((s, w) => s + w, 0);
-  const PADX = 4;
-  const PADY = 4;
+  const PADX = TABLE_PADX;
+  const PADY = TABLE_PADY;
   // London (Velocity) palette, gated; every other region keeps the neutral
   // greys. Header: pale-green fill + green text; rule under header + row
   // separators in green. Body text stays dark.
@@ -9854,20 +9951,7 @@ function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
   const headerText = velo ? VELOCITY_GREEN : "black";
   const sepColor = velo ? VELOCITY_GREEN : "#e5e7eb";
 
-  // Measure the height a row needs by wrapping every cell within its
-  // column width and taking the tallest. This is what prevents the old
-  // overlap bug: long street names wrap and the row grows to fit instead
-  // of colliding with the next row.
-  const measureRow = (cells: string[], isHeader: boolean): number => {
-    doc.font(isHeader ? "bold" : "body").fontSize(9);
-    let maxH = 0;
-    for (let i = 0; i < cells.length; i++) {
-      const w = (widths[i] ?? 60) - PADX * 2;
-      const h = doc.heightOfString(cells[i] ?? "", { width: w, align: align[i] ?? "left" });
-      if (h > maxH) maxH = h;
-    }
-    return Math.max(13, maxH) + PADY * 2;
-  };
+  const measureRow = (cells: string[], isHeader: boolean): number => tableRowHeight(doc, spec, cells, isHeader);
 
   const drawRow = (cells: string[], y: number, isHeader: boolean, h: number) => {
     if (isHeader) {
