@@ -187,12 +187,11 @@ export function scaleWidths(widths: number[], usableW: number): number[] {
   return widths.map((w) => Math.floor(w * k * 100) / 100);
 }
 
-export function table(doc: PDFKit.PDFDocument, spec: TableSpec): void {
-  const t = activeTheme();
-  const tb = t.table;
-  const startX = doc.page.margins.left;
+/** Row measurer shared by table() and tableHeight(): wrap every cell in its
+ *  column and take the tallest, so the two can never disagree. */
+function tableRowMeasurer(doc: PDFKit.PDFDocument, spec: TableSpec) {
+  const tb = activeTheme().table;
   const widths = scaleWidths(spec.widths, usable(doc));
-  const totalW = widths.reduce((s, w) => s + w, 0);
   const align = spec.align ?? spec.headers.map(() => "left" as const);
   const headerStyle: TextStyle = { font: "body", size: tb.header.size, color: tb.header.color, bold: tb.header.bold };
   const bodyStyle: TextStyle = { font: "body", size: tb.body.size, color: tb.body.color };
@@ -205,6 +204,23 @@ export function table(doc: PDFKit.PDFDocument, spec: TableSpec): void {
     });
     return Math.max(tb.body.size + 4, h) + tb.padY * 2;
   };
+  return { widths, align, headerStyle, bodyStyle, measure };
+}
+
+/** Height table() will occupy for `spec` if it starts at the current cursor
+ *  and does not break — header, every row, and the 6 pt it leaves below. For
+ *  keep-together checks by callers that flow text after the table. */
+export function tableHeight(doc: PDFKit.PDFDocument, spec: TableSpec): number {
+  const { measure } = tableRowMeasurer(doc, spec);
+  return measure(spec.headers, true) + spec.rows.reduce((s, r) => s + measure(r, false), 0) + 6;
+}
+
+export function table(doc: PDFKit.PDFDocument, spec: TableSpec): void {
+  const t = activeTheme();
+  const tb = t.table;
+  const startX = doc.page.margins.left;
+  const { widths, align, headerStyle, bodyStyle, measure } = tableRowMeasurer(doc, spec);
+  const totalW = widths.reduce((s, w) => s + w, 0);
   const hrule = (y: number) => {
     if (tb.rules.mode === "none") return;
     doc.save().strokeColor(tb.rules.color).lineWidth(tb.rules.width).moveTo(startX, y).lineTo(startX + totalW, y).stroke().restore();
