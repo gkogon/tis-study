@@ -18,5 +18,8 @@
   },
   "_verified": "Body: Tahoma 10.98 pt black (Tahoma → dejavu-sans). H1: 'Existing Conditions', 'Site Development' — Tahoma-Bold 10.98 pt TEAL #008080 at the top of each chapter page (page 6 raster + dump); H2 is Arial-BoldMT 11 black, H3 an underlined regular line. Primary: the heading teal; the pale green #ccffcc on page 13 is LOS row shading, not a brand colour. Margin: body at x=72.0. Header: AMT logo left, bold Gill Sans '1601 W Street Bus Terminal / Traffic Impact Study' right at y=45-57; footer 'Page 3 of 17' right with bold numbers (y≈750). Tables: grid, header fills MIXED across the document — Table 1 (page 12) and Table 5 (page 15) have a pale-green #ccffcc header row; Table 2 (page 13; its intersection group bands are #9affcc, not header) and Tables 3-4 (page 14; the #fff2cc cells are body highlights) have an unfilled bold header. The expectation records the majority, null (3 of 5 captioned tables), which is what detectTables' captioned-region mode yields.",
   "_verifiedMarginBottom": "Bottom margin 87: census above the footer zone (edge 726) p10=75.6 (a figure caption 'Figure 6 - MWCOG Model Links'), p6=87.1 ('Figure 4 - Montana Avenue'), p14=88.1 (body prose); the deepest-cluster median is 87.",
-  "_verifiedLogo": "Logo: the AMT mark 110x46 pt at (447,629) under 'PREPARED BY:'; its aspect (2.37) recurs as the 97x42 header mark on 20 interior pages. The three 329x133 pt bands at x=74.6 (y 154/287/420) are the cover's site map sliced into strips and share full edges, so they are never candidates."
+  "_verifiedLogo": "Logo: the AMT mark 110x46 pt at (447,629) under 'PREPARED BY:'; its aspect (2.37) recurs as the 97x42 header mark on 20 interior pages. The three 329x133 pt bands at x=74.6 (y 154/287/420) are the cover's site map sliced into strips and share full edges, so they are never candidates.",
+  "figureLabel": "Figure",
+  "figureNumbering": "sequential",
+  "figureSeparator": " – "
 }

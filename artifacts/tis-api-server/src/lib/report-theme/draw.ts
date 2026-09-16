@@ -5,9 +5,9 @@
  * is active; with the default theme they keep their original code paths so
  * output stays byte-identical.
  */
-import { activeTheme, takeSynonym } from "./active";
+import { activeTheme, nextFigureNumber, noteChapter, takeSynonym } from "./active";
 import { canonicalKey } from "./canonical";
-import { luminance, type Numbering, type TextStyle, type Theme } from "./theme";
+import { figureConvention, formatFigureCaption, luminance, type Numbering, type TextStyle, type Theme } from "./theme";
 
 export type TokenContext = {
   firmName: string;
@@ -141,6 +141,7 @@ export function heading(doc: PDFKit.PDFDocument, level: 1 | 2 | 3, title: string
   const t = activeTheme();
   const h = t.headings[level - 1];
   const label = formatHeading(title, level, t, opts.synonyms === false ? () => null : takeSynonym);
+  if (level === 1) noteChapter(splitHeading(title).parts[0] ?? null);
   const x = doc.page.margins.left;
   const w = usable(doc);
   applyStyle(doc, h.style);
@@ -166,6 +167,30 @@ export function heading(doc: PDFKit.PDFDocument, level: 1 | 2 | 3, title: string
     doc.y = ry + h.rule.width;
   }
   doc.y += h.spaceAfter;
+  doc.x = x;
+  doc.fillColor(t.text.body.color);
+}
+
+// ─── Figure captions ─────────────────────────────────────────────────────────
+
+/**
+ * Draw a figure caption in the sample's convention, numbered per render.
+ * `title` is our wording — "Figure — Daily Trip Accumulation" — whose label
+ * prefix is stripped before the theme's label, number and separator are
+ * applied. Full usable width, the theme's caption style, cursor left below.
+ */
+export function figureCaption(doc: PDFKit.PDFDocument, title: string): void {
+  const t = activeTheme();
+  const bare = title.replace(/^\s*(Figure|Exhibit)\s*[—–-]\s*/i, "").trim();
+  const { n, chapter } = nextFigureNumber();
+  const text = formatFigureCaption(figureConvention(t), n, chapter, bare);
+  const x = doc.page.margins.left;
+  // Breathing room from whatever sits above (the previous chart's axis
+  // labels, a paragraph) — not at the top of a page.
+  if (doc.y > doc.page.margins.top + 1) doc.y += 8;
+  applyStyle(doc, t.figure.caption.style);
+  doc.text(text, x, doc.y, { width: usable(doc) });
+  doc.y += 4;
   doc.x = x;
   doc.fillColor(t.text.body.color);
 }

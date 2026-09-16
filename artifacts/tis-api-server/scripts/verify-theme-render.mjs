@@ -62,6 +62,8 @@ try {
       footer: { segments: [{ align: "center", text: "Page {{page}} of {{pages}}" }], style: { font: "body", size: 8, color: "#666666" }, rule: null, height: 40 },
       cover: { background: { kind: "none" }, bands: [{ y0: 0, y1: 120, color: "#1f3a5f" }], logo: null, elements: [{ role: "documentType", x: 72, y: 300, w: 468, align: "left", style: { font: "heading", size: 28, color: "#1f3a5f", bold: true } }, { role: "projectName", x: 72, y: 350, w: 468, align: "left", style: { font: "body", size: 16, color: "#222222" } }], hasMetaBlock: false },
       charts: { series: ["#1f3a5f", "#c0392b"] },
+      // Chapter-numbered captions ("Figure 5-2: …") in the sample's caption style, above the plot.
+      figure: { caption: { position: "above", style: { font: "body", size: 9, color: "#1f3a5f", bold: true } }, label: "Figure", numbering: "chapter", separator: ": " },
       synonyms: { "trip-generation": "Site Trip Generation" },
     },
     source: { pages: 10, fontsSeen: [], extractedAt: "2026-09-14T00:00:00Z", warnings: [] },
@@ -80,6 +82,20 @@ try {
       const p1 = sc.pages[0]?.runs.length ?? 0, p2 = sc.pages[1]?.runs.length ?? 0;
       ok(p1 <= 25 && p2 >= 15, `${fam}: cover is exactly one page (page 1: ${p1} runs, page 2: ${p2} runs)`);
       fillGate(fam, sc, SYNTH.theme.page.margins);
+      // Figure captions follow the theme's convention: chapter-numbered here,
+      // each figure numbered once (no duplicate "Figure 5-1"), no leftover
+      // "Figure —" wording. The TX fixture carries every chart the renderer draws.
+      if (fam === "tx") {
+        const caps = sc.pages.flatMap((pg) => pg.runs.map((r) => r.str.trim())).filter((t) => /^Figure \d+-\d+: /.test(t));
+        ok(caps.length >= 5, `${fam}: chapter-numbered figure captions drawn (${caps.length}: ${caps.slice(0, 3).map((c) => c.slice(0, 22)).join(" | ")}…)`);
+        ok(new Set(caps.map((c) => c.split(":")[0])).size === caps.length, `${fam}: every figure number is unique`);
+        const stale = sc.pages.flatMap((pg) => pg.runs.map((r) => r.str.trim())).filter((t) => /^Figure — /.test(t));
+        ok(stale.length === 0, `${fam}: no unnumbered "Figure —" caption left under a numbered convention (${stale.length})`);
+        const seq = await mod.renderStudyPdf(project, { name: "Render Check Firm", logoUrl: null, firmId: "f1", reportTemplate: { ...SYNTH, theme: { ...SYNTH.theme, figure: { ...SYNTH.theme.figure, numbering: "sequential", separator: " – " } } } });
+        const scSeq = await mod.scanPdf(seq, { maxPages: 60 });
+        const seqCaps = scSeq.pages.flatMap((pg) => pg.runs.map((r) => r.str.trim())).filter((t) => /^Figure \d+ – /.test(t));
+        ok(seqCaps.length === caps.length && seqCaps[0]?.startsWith("Figure 1 – "), `${fam}: sequential convention numbers the same figures 1…${seqCaps.length} (first: ${seqCaps[0]?.slice(0, 30)})`);
+      }
     }
     if (BAND_FAMILIES.includes(fam)) {
       const plain = await mod.renderStudyPdf(project, { name: "Render Check Firm", logoUrl: null });

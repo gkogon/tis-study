@@ -93,7 +93,14 @@ export const ThemeSchema = z.object({
     padY: z.number().min(0).max(20),
     caption: z.object({ position: z.enum(["above", "below"]), style: TextStyleSchema }),
   }),
-  figure: z.object({ caption: z.object({ position: z.enum(["above", "below"]), style: TextStyleSchema }) }),
+  figure: z.object({
+    caption: z.object({ position: z.enum(["above", "below"]), style: TextStyleSchema }),
+    // The sample's caption convention ("Figure 3 – Title"). Optional so themes
+    // stored before it existed still parse; absent → our "Figure — Title".
+    label: z.enum(["Figure", "Exhibit"]).optional(),
+    numbering: z.enum(["sequential", "chapter", "none"]).optional(),
+    separator: z.string().max(6).optional(),
+  }),
   header: RunningZoneSchema.nullable(),
   footer: RunningZoneSchema.nullable(),
   cover: z.object({
@@ -254,9 +261,28 @@ export type ThemeSummary = {
   cover: "image" | "photo" | "color" | "plain";
   table: { headerFill: string | null; mode: Theme["table"]["rules"]["mode"] };
   numbering: Numbering;
+  /** How a figure caption reads in this format, e.g. `Figure 3 – Title`. */
+  figures: string;
   warnings: string[];
   extractedAt: string;
 };
+
+export type FigureConvention = { label: "Figure" | "Exhibit"; numbering: "sequential" | "chapter" | "none"; separator: string };
+
+export function figureConvention(t: Theme): FigureConvention {
+  return { label: t.figure.label ?? "Figure", numbering: t.figure.numbering ?? "none", separator: t.figure.separator ?? " — " };
+}
+
+/**
+ * "Figure 3 – Title" in the sample's convention. `none` keeps our own
+ * "Figure — Title" wording; `chapter` reads "Figure 4-2" when the current
+ * chapter is numbered and falls back to the running count when it is not.
+ */
+export function formatFigureCaption(conv: FigureConvention, n: number, chapter: number | null, title: string): string {
+  if (conv.numbering === "none") return `${conv.label} — ${title}`;
+  const number = conv.numbering === "chapter" && chapter !== null ? `${chapter}-${n}` : String(n);
+  return `${conv.label} ${number}${conv.separator}${title}`;
+}
 
 export function summarizeTheme(s: StoredTheme): ThemeSummary {
   const t = s.theme;
@@ -275,6 +301,7 @@ export function summarizeTheme(s: StoredTheme): ThemeSummary {
     cover: t.cover.background.kind === "image" ? "image" : t.cover.bands.some((b) => b.photo) ? "photo" : t.cover.background.kind === "color" || t.cover.bands.length ? "color" : "plain",
     table: { headerFill: t.table.header.fill, mode: t.table.rules.mode },
     numbering: t.headings[0].numbering,
+    figures: formatFigureCaption(figureConvention(t), figureConvention(t).numbering === "chapter" ? 2 : 3, 3, "Title"),
     warnings: s.source.warnings,
     extractedAt: s.source.extractedAt,
   };

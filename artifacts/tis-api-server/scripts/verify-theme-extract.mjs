@@ -35,6 +35,10 @@ for (const name of present) {
   ok(Math.abs(t.page.margins.bottom - exp.marginBottom) <= 6, `${name}: bottom margin ${t.page.margins.bottom} (expected ${exp.marginBottom} ± 6)`);
   ok(t.headings[0].numbering === exp.numbering, `${name}: numbering ${t.headings[0].numbering} (expected ${exp.numbering})`);
   ok(!!t.footer?.segments.some((s) => s.text.includes("{{page}}")) === exp.footerHasPage, `${name}: footer page token ${exp.footerHasPage ? "present" : "absent"}`);
+  // Figure caption convention (label / numbering / separator) read off the sample's caption lines.
+  const conv = { label: t.figure.label ?? "Figure", numbering: t.figure.numbering ?? "none", separator: t.figure.separator ?? null };
+  ok(conv.label === exp.figureLabel && conv.numbering === exp.figureNumbering && (exp.figureNumbering === "none" || conv.separator === exp.figureSeparator),
+    `${name}: figure convention ${JSON.stringify(conv)} (expected ${exp.figureLabel} / ${exp.figureNumbering}${exp.figureSeparator ? ` / ${JSON.stringify(exp.figureSeparator)}` : ""})`);
   ok((t.header !== null) === exp.headerPresent, `${name}: header ${exp.headerPresent ? "present" : "absent"}`);
   if (exp.tableHeaderFill !== undefined) ok((t.table.header.fill === null) === (exp.tableHeaderFill === null) && (exp.tableHeaderFill === null || dE(t.table.header.fill, exp.tableHeaderFill) < 8), `${name}: table header fill ${t.table.header.fill} (expected ${exp.tableHeaderFill})`);
   const storedBytes = JSON.stringify(stored).length;

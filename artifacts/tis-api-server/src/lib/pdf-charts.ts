@@ -113,13 +113,18 @@ function drawFrame(
   const chartX0 = pageMargin();
   const chartW = doc.page.width - pageMargin() * 2;
 
-  // Caption (Velocity green, above the plot).
+  // Caption (Velocity green, above the plot). Under a firm theme the
+  // caption is drawn in the sample's convention, above or below the plot as
+  // the sample does; a "below" caption is drawn by the chart after the plot.
   let cursorY = doc.y;
-  if (title) {
+  if (title && isDefaultTheme()) {
     doc.font("bold").fontSize(9.5).fillColor(chartColors().caption).text(title, chartX0, cursorY, {
       width: chartW,
     });
     cursorY = doc.y + 4;
+  } else if (title && activeTheme().figure.caption.position === "above") {
+    themed.figureCaption(doc, title);
+    cursorY = doc.y;
   }
 
   const yTitleW = yLabel ? 14 : 0;
@@ -186,9 +191,14 @@ function drawLegend(
   }
 }
 
-function finish(doc: PDFKit.PDFDocument, layout: ChartLayout, xLabel?: string, caption?: string): void {
+function finish(doc: PDFKit.PDFDocument, layout: ChartLayout, xLabel?: string, caption?: string, title?: string): void {
   const xTitleH = xLabel ? 14 : 0;
   let endY = layout.plotBottom + 12 + xTitleH + 4;
+  if (title && !isDefaultTheme() && activeTheme().figure.caption.position === "below") {
+    doc.y = endY;
+    themed.figureCaption(doc, title);
+    endY = doc.y;
+  }
   if (caption) {
     doc.font("body").fontSize(7.5).fillColor(chartColors().axis).text(caption, layout.chartX0, endY, {
       width: layout.chartW,
@@ -223,6 +233,11 @@ export type ColumnChartSpec = {
 };
 
 /** Vertical-bar chart — clustered by default, or stacked (Velocity Fig 2-1 is stacked). */
+/** A "below" caption under a firm theme, once the plot (and its x labels) is drawn. */
+function captionBelow(doc: PDFKit.PDFDocument, title: string | undefined): void {
+  if (title && !isDefaultTheme() && activeTheme().figure.caption.position === "below") themed.figureCaption(doc, title);
+}
+
 export function drawColumnChart(doc: PDFKit.PDFDocument, spec: ColumnChartSpec): void {
   // Plot heights were tuned to the default text box; a firm theme's smaller
   // box gets a proportionally shorter plot so figures still pair on a page.
@@ -284,7 +299,7 @@ export function drawColumnChart(doc: PDFKit.PDFDocument, spec: ColumnChartSpec):
   }
 
   if (legendW > 0) drawLegend(doc, layout, spec.series.map((s) => ({ name: s.name, color: s.color })));
-  finish(doc, layout, spec.xLabel, spec.caption);
+  finish(doc, layout, spec.xLabel, spec.caption, spec.title);
 }
 
 export type LineChartSpec = {
@@ -363,7 +378,7 @@ export function drawLineChart(doc: PDFKit.PDFDocument, spec: LineChartSpec): voi
     doc.text(spec.categories[i], bx, layout.plotBottom + 2, { width: bw, align });
   }
 
-  finish(doc, layout, spec.xLabel, spec.caption);
+  finish(doc, layout, spec.xLabel, spec.caption, spec.title);
 }
 
 export type CompassRoseSpec = {
@@ -384,7 +399,8 @@ export function drawCompassRose(doc: PDFKit.PDFDocument, spec: CompassRoseSpec):
   const size = scaledHeight(doc, 210); // square figure height in points
   ensureSpace(doc, size + 46);
   const startY = doc.y;
-  doc.font("bold").fontSize(9.5).fillColor(chartColors().caption).text(spec.title, pageMargin(), startY);
+  if (isDefaultTheme()) doc.font("bold").fontSize(9.5).fillColor(chartColors().caption).text(spec.title, pageMargin(), startY);
+  else if (activeTheme().figure.caption.position === "above") themed.figureCaption(doc, spec.title);
   const top = doc.y + 6;
   const cx = doc.page.width / 2;
   const cy = top + size / 2;
@@ -418,6 +434,7 @@ export function drawCompassRose(doc: PDFKit.PDFDocument, spec: CompassRoseSpec):
   }
   doc.y = cy + size / 2 + 8;
   doc.x = pageMargin();
+  captionBelow(doc, spec.title);
   if (spec.caption) {
     doc.font("body").fontSize(9).fillColor(isDefaultTheme() ? TEXT_GRAY : chartColors().axis)
       .text(spec.caption, pageMargin(), doc.y, { width: doc.page.width - pageMargin() * 2, paragraphGap: 6 });
