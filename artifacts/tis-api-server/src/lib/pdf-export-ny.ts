@@ -562,7 +562,7 @@ export function renderTisNewYork(
       headers: ["Street", "Functional class", "Posted speed", "85th-pctile operating speed"],
       widths: [140, 180, 80, 120],
       align: ["left", "left", "center", "center"],
-      rows: intersections.slice(0, 6).map((it) => {
+      rows: intersections.map((it) => {
         const intName = String(it.name ?? it.signalId ?? "—").split(/[@&]|\s+at\s+/i)[0].trim() || "—";
         const ingestedName = typeof it.nysdotRoadwayName === "string" ? it.nysdotRoadwayName : null;
         const street = ingestedName
