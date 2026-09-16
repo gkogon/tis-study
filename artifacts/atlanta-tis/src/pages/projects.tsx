@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@workspace/replit-auth-web";
+import { FormatSetupCard } from "../components/format-setup-card";
 import {
   FileText, MapPin, ArrowLeft, Loader2, MapIcon, ParkingCircle, ChevronRight, Eye, Activity,
 } from "lucide-react";
@@ -103,6 +104,7 @@ export default function ProjectsPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 space-y-6">
+      <FormatSetupCard />
       <div className="flex items-center justify-between">
         <div>
           <Link
