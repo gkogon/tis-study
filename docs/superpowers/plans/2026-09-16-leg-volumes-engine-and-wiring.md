@@ -220,10 +220,14 @@ const DIR_AT_ORIGIN: Record<number, Direction> = { 0: "SB", 90: "WB", 180: "NB",
 
 /** The approach whose leg a movement from `from` exits through (spec §4.3). */
 export const EXIT_LEG: Record<Direction, Record<Movement, Direction>> = {
+  // From the spec's formula — approach origin bearing β: through exits via
+  // the leg at β+180°, left via β+90°, right via β−90° — mapped to the
+  // approach whose ORIGIN_BEARING is that leg. An eastbound driver (from the
+  // west, β = 270°) turning left heads north: the north leg is SB's origin.
   NB: { T: "SB", L: "EB", R: "WB" },
   SB: { T: "NB", L: "WB", R: "EB" },
-  EB: { T: "WB", L: "NB", R: "SB" },
-  WB: { T: "EB", L: "SB", R: "NB" },
+  EB: { T: "WB", L: "SB", R: "NB" },
+  WB: { T: "EB", L: "NB", R: "SB" },
 };
 
 /**
