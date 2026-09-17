@@ -51,6 +51,7 @@
     "check:engine-core-exports": "node ./scripts/verify-engine-core-exports.mjs",
     "check:signal-timing-overrides": "node ./scripts/verify-signal-timing-overrides.mjs",
     "check:leg-volumes": "node ./scripts/verify-leg-volumes.mjs",
+    "check:leg-volumes-render": "node ./scripts/verify-leg-volumes-render.mjs",
     "check:theme-units": "node ./scripts/verify-theme-units.mjs",
     "check:theme-default-identity": "node ./scripts/verify-theme-default-identity.mjs",
     "check:theme-render": "node ./scripts/verify-theme-render.mjs",

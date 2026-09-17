@@ -9047,7 +9047,19 @@ function drawTurningMovementDiagram(
   for (const a of approaches) byDir[String(a.direction).toUpperCase()] = a;
   const volOf = (a: any) =>
     Math.round(Number(scenario === "build" ? a.futureVolumeVph : a.existingVolumeVph) || 0);
-  const split = (v: number) => { const l = Math.round(v * 0.15), r = Math.round(v * 0.15); return { l, t: v - l - r, r }; };
+  // Background L/T/R: the balanced estimate's shares when the row carries
+  // one (legVolumes: network), else the screening 15/70/15 the appendix
+  // intro discloses. Left and right round; through takes the remainder so
+  // the three always sum to the approach total.
+  const estShares: Record<string, { L: number; T: number; R: number }> | undefined =
+    ix.movementEstimate && ix.movementEstimate.shares ? ix.movementEstimate.shares : undefined;
+  const split = (v: number, dir: string) => {
+    const s = estShares?.[dir];
+    const lS = s && Number.isFinite(s.L) ? s.L : 0.15;
+    const rS = s && Number.isFinite(s.R) ? s.R : 0.15;
+    const l = Math.round(v * lS), r = Math.round(v * rS);
+    return { l, t: v - l - r, r };
+  };
 
   doc.font("bold").fontSize(8).fillColor("#0f172a").text(title, x, y, { width: w, align: "center" });
   const bx = x, by = y + 12, bw = w, bh = h - 12;
@@ -9065,7 +9077,7 @@ function drawTurningMovementDiagram(
 
   const block = (dir: string, gl: { l: string; t: string; r: string }) => {
     const a = byDir[dir]; if (!a) return null;
-    const m = split(volOf(a));
+    const m = split(volOf(a), dir);
     return `${dir}   L${gl.l}${m.l}   T${gl.t}${m.t}   R${gl.r}${m.r}`;
   };
   doc.font("body").fontSize(7).fillColor("#0f172a");
@@ -9328,11 +9340,14 @@ function renderCapacityAppendix(
   if (scopeNote) {
     doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(scopeNote, { paragraphGap: 8 });
   }
+  const anyLegEstimate = Array.isArray(intersections) && intersections.some((x: any) => Array.isArray(x?.legVolumes) && x?.movementEstimate);
   doc.font("body").fontSize(9).fillColor("#b45309").text(
-    "Background turning-movement volumes in the diagrams are distributed from each approach total using an "
-    + "estimated 15/70/15 (Left/Through/Right) split. Project-trip movements are assigned geometrically from "
-    + "the study's directional trip distribution (see each worksheet's Affected movements table). Replace both "
-    + "with measured turning-movement counts (TMCs) before a formal submittal.",
+    anyLegEstimate
+      ? "Background approach volumes are resolved per leg — the signal's counted design hour on the main road, the road-class baseline on uncounted legs, client link counts where supplied — and the background turning movements in the diagrams are balanced to the exit legs by iterative proportional fitting (NCHRP 255/765 refinement) from a geometry seed; each worksheet states its leg sources and residual. Project-trip movements are assigned geometrically from the study's directional trip distribution (see each worksheet's Affected movements table). Replace both with measured turning-movement counts (TMCs) before a formal submittal."
+      : "Background turning-movement volumes in the diagrams are distributed from each approach total using an "
+        + "estimated 15/70/15 (Left/Through/Right) split. Project-trip movements are assigned geometrically from "
+        + "the study's directional trip distribution (see each worksheet's Affected movements table). Replace both "
+        + "with measured turning-movement counts (TMCs) before a formal submittal.",
     { paragraphGap: 8 },
   );
   doc.fillColor("black");
@@ -9479,6 +9494,27 @@ function renderCapacityAppendix(
       doc.fillColor("black");
       doc.moveDown(0.2);
     }
+    // Leg-volume provenance (legVolumes: network). Presence-gated on the
+    // fields the row carries, so screening-mode and legacy payloads print
+    // nothing here and stay byte-identical.
+    if (Array.isArray(ix.legVolumes) && ix.legVolumes.length > 0 && ix.movementEstimate) {
+      const legs: any[] = ix.legVolumes;
+      const n = legs.length;
+      const count = (src: string) => legs.filter((l) => l.source === src).length;
+      const parts: string[] = [];
+      if (count("csv") > 0) parts.push(`${count("csv")} of ${n} from client link counts (CSV)`);
+      if (count("signal_aadt") > 0) parts.push(`${count("signal_aadt")} of ${n} from the signal's counted design hour (half per direction)`);
+      if (count("class_default") > 0) parts.push(`${count("class_default")} of ${n} from the road-class baseline (no count on that leg)`);
+      const me = ix.movementEstimate;
+      const mv = me.method === "ipf"
+        ? `balanced estimate (Furness/IPF, ${me.iterations} iterations, residual ${Number(me.maxResidualVph).toFixed(1)} vph${me.exitsNormalized ? `; exits scaled to entries, ${(Number(me.imbalancePct) * 100).toFixed(0)}% imbalance` : ""})`
+        : "geometry seed only (no exit volume to balance against)";
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        `Leg volumes: ${parts.join("; ")}. Turning movements: ${mv}.${me.legsDropped > 0 ? ` ${me.legsDropped} extra leg not carried (4×4 matrix).` : ""}`,
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+    }
     if (addedNegligible) {
       doc.font("body").fontSize(8.5).fillColor(TEXT_GRAY).text(
         "The development distributes fewer than one net PM peak car trip to this junction, so the Existing (No-Build) and Build conditions are numerically identical at reporting precision. The junction is reproduced here for completeness; the scheme's net car-mode trip generation is below the level at which junction capacity governs.",
@@ -9549,6 +9585,32 @@ function renderCapacityAppendix(
       );
       doc.fillColor("black");
       doc.moveDown(0.2);
+    }
+
+    // The balanced 4×4 in vph so a reviewer can check Σin = Σout by hand.
+    if (ix.movementEstimate && ix.movementEstimate.matrix) {
+      const mx: Record<string, Record<string, number>> = ix.movementEstimate.matrix;
+      const dirs = ["NB", "SB", "EB", "WB"];
+      const present = dirs.filter((d) => dirs.some((t) => (mx[d]?.[t] ?? 0) > 0) || dirs.some((f) => (mx[f]?.[d] ?? 0) > 0));
+      const rowsOut = present.map((d) => [
+        `${d} approach`,
+        ...present.map((t) => (t === d ? "—" : fmtNum(mx[d]?.[t] ?? 0))),
+        fmtNum(present.reduce((s, t) => s + (mx[d]?.[t] ?? 0), 0)),
+      ]);
+      rowsOut.push(["Σ exiting", ...present.map((t) => fmtNum(present.reduce((s, d) => s + (mx[d]?.[t] ?? 0), 0))), ""]);
+      const spec: TableSpec = {
+        headers: ["Balanced turning movements (vph)", ...present.map((t) => `→ ${t} leg`), "Σ entering"],
+        widths: [150, ...present.map(() => 66), 70],
+        align: ["left", ...present.map(() => "right" as const), "right"],
+        rows: rowsOut,
+      };
+      keepHeadingWith(doc, "Balanced turning movements (vph)", 0, tableHeight(doc, spec));
+      table(doc, spec);
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        "Columns are the leg each movement exits through; the diagonal (U-turn) is folded into the left turn. Entries equal exits at this junction within the stated residual.",
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
     }
 
     const approaches: any[] = Array.isArray(ix.approaches) ? ix.approaches : [];
