@@ -787,7 +787,11 @@ Append before `OVERALL` in `verify-leg-volumes.mjs`:
 ```js
 // ---- 4. row-math consumption: screening/absent byte-identical; network uses the estimate; measured wins ----
 {
-  const sig = { id: "sig-1", name: "Main St & Oak Ave", zone: "Z", latitude: 40.5, longitude: -80.0, totalVolume: 2700 };
+  // 1200 vph design hour (not the McKnight-scale 2700): with one lane per
+  // direction the leg volumes must keep the critical flow ratio under the
+  // Webster saturation guard (Y ≥ 0.85 → basis "screening-default"), or the
+  // timing assertion below would be testing the guard, not the estimate.
+  const sig = { id: "sig-1", name: "Main St & Oak Ave", zone: "Z", latitude: 40.5, longitude: -80.0, totalVolume: 1200 };
   const project = { lat: 40.51, lon: -80.01 };
   // distributionOctants so project trips get per-movement rows — without it the
   // lane-group allocator has no movement basis and (correctly) prints none.
@@ -797,7 +801,7 @@ Append before `OVERALL` in `verify-leg-volumes.mjs`:
     { bearingDeg: 180, cls: 2, oneWay: null }, { bearingDeg: 0, cls: 2, oneWay: null },
     { bearingDeg: 270, cls: 4, oneWay: null }, { bearingDeg: 90, cls: 4, oneWay: null },
   ];
-  const estimate = core.buildLegEstimate(junction, { signalDesignHourVph: 2700 });
+  const estimate = core.buildLegEstimate(junction, { signalDesignHourVph: 1200 });
   const cand = (extra) => ({ sig, distanceMi: 0.4, ...extra });
 
   const legacy = core.buildAffectedRow(cand({}), 0.5, project, base);
@@ -808,10 +812,10 @@ Append before `OVERALL` in `verify-leg-volumes.mjs`:
 
   const network = core.buildAffectedRow(cand({ legEstimate: estimate }), 0.5, project, { ...base, legVolumes: "network" });
   ok(network.volumeSource === "network_estimate", "row: network mode labels volumeSource network_estimate");
-  ok(close(network.designHourVolumeVph, 2700 + 700, 1e-6), "row: design hour = Σ entering (main 2×1350 + minor 2×350)");
+  ok(close(network.designHourVolumeVph, 1200 + 700, 1e-6), "row: design hour = Σ entering (main 2×600 + minor 2×350)");
   const nb = network.approaches.find((a) => a.direction === "NB");
   const eb = network.approaches.find((a) => a.direction === "EB");
-  ok(close(nb.existingVolumeVph, 1350 * 1.05, 0.2) && close(eb.existingVolumeVph, 350 * 1.05, 0.2), "row: approach no-build volumes are the leg volumes grown");
+  ok(close(nb.existingVolumeVph, 600 * 1.05, 0.2) && close(eb.existingVolumeVph, 350 * 1.05, 0.2), "row: approach no-build volumes are the leg volumes grown");
   ok(Array.isArray(network.legVolumes) && network.legVolumes.length === 4 && network.legVolumes.find((l) => l.direction === "EB").source === "class_default", "row: legVolumes provenance rides the row");
   ok(network.movementEstimate && network.movementEstimate.method === "ipf" && network.movementEstimate.matrix.NB.NB === 0, "row: movementEstimate diagnostics + matrix ride the row");
   ok(Array.isArray(nb.laneGroups) && nb.laneGroups.length === 3, "row: lane groups (L/T/R) exist without a UTDF record");
