@@ -205,3 +205,151 @@ export function resolveLegVolumes(
   }
   return out;
 }
+
+export const IPF_TOLERANCE_VPH = 0.5;
+export const IPF_MAX_ITER = 50;
+export const EXIT_IMBALANCE_NORMALIZE_PCT = 0.05;
+
+/** Four-leg prior — today's 15/70/15, now only a seed. */
+const SEED_SHARE: Record<Movement, number> = { L: 0.15, T: 0.70, R: 0.15 };
+/** Through-road approach at a T (one turn possible): 85/15. */
+const SEED_T_THROUGH = 0.85;
+
+export type MovementEstimate = {
+  /** matrix[from][to] in vph — `to` is the approach whose leg the movement exits through. Diagonal always 0. */
+  matrix: Record<Direction, Record<Direction, number>>;
+  /** Per-approach L/T/R shares, Σ = 1 (finite even on a zero or absent approach). */
+  shares: Record<Direction, Record<Movement, number>>;
+  leftVph: Record<Direction, number>;
+  /** Each leg's entering volume over the total, Σ = 1; 0 on absent legs. */
+  enteringShares: Record<Direction, number>;
+  totalEnteringVph: number;
+  diagnostics: {
+    method: "ipf" | "seed_only";
+    iterations: number;
+    maxResidualVph: number;
+    imbalancePct: number;
+    exitsNormalized: boolean;
+    constrainedExits: number;
+  };
+};
+
+const zeroMatrix = (): Record<Direction, Record<Direction, number>> => ({
+  NB: { NB: 0, SB: 0, EB: 0, WB: 0 }, SB: { NB: 0, SB: 0, EB: 0, WB: 0 },
+  EB: { NB: 0, SB: 0, EB: 0, WB: 0 }, WB: { NB: 0, SB: 0, EB: 0, WB: 0 },
+});
+
+/** Seed shares for one approach, respecting which exits physically exist. */
+function seedRow(from: Direction, legs: LegVolumes): Record<Movement, number> {
+  const fromLeg = legs[from];
+  const can = (m: Movement): boolean => {
+    const to = legs[EXIT_LEG[from][m]];
+    return !!fromLeg && fromLeg.oneWay !== "out" && !!to && to.oneWay !== "in";
+  };
+  const avail: Movement[] = (["L", "T", "R"] as const).filter(can);
+  const w: Record<Movement, number> = { L: 0, T: 0, R: 0 };
+  if (avail.length === 0) return w;
+  if (avail.length === 3) { w.L = SEED_SHARE.L; w.T = SEED_SHARE.T; w.R = SEED_SHARE.R; return w; }
+  if (!avail.includes("T")) { for (const m of avail) w[m] = 1 / avail.length; return w; }   // a stem: L/R only
+  w.T = avail.length === 1 ? 1 : SEED_T_THROUGH;                                              // through road at a T
+  for (const m of avail) if (m !== "T") w[m] = (1 - w.T) / (avail.length - 1);
+  return w;
+}
+
+/**
+ * Balance the movements against the legs (spec §4.3): seed by geometry, then
+ * Furness/IPF — rows to entering, constrained columns to exiting — until the
+ * largest residual is ≤ 0.5 vph or 50 iterations. Never NaN.
+ */
+export function estimateMovements(legs: LegVolumes): MovementEstimate {
+  const entering: Record<Direction, number> = { NB: 0, SB: 0, EB: 0, WB: 0 };
+  const exiting: Record<Direction, number | null> = { NB: null, SB: null, EB: null, WB: null };
+  for (const d of DIRS) {
+    const l = legs[d];
+    if (!l) continue;
+    entering[d] = pos(l.enteringVph);
+    exiting[d] = l.exitingVph === null ? null : pos(l.exitingVph);
+  }
+  const totalEnteringVph = DIRS.reduce((s, d) => s + entering[d], 0);
+
+  // Seed matrix in vph.
+  const seedShares: Record<Direction, Record<Movement, number>> = { NB: seedRow("NB", legs), SB: seedRow("SB", legs), EB: seedRow("EB", legs), WB: seedRow("WB", legs) };
+  const m = zeroMatrix();
+  for (const from of DIRS) for (const mv of ["L", "T", "R"] as const) m[from][EXIT_LEG[from][mv]] = entering[from] * seedShares[from][mv];
+
+  // Column targets: only legs with a known exit volume constrain.
+  const present = DIRS.filter((d) => legs[d]);
+  const constrained = present.filter((d) => exiting[d] !== null);
+  const sumExit = constrained.reduce((s, d) => s + (exiting[d] as number), 0);
+  const allConstrained = constrained.length === present.length && present.length > 0;
+  const imbalancePct = allConstrained && totalEnteringVph > 0 ? Math.abs(sumExit - totalEnteringVph) / totalEnteringVph : 0;
+  let exitsNormalized = false;
+  const target: Record<Direction, number | null> = { ...exiting };
+  if (allConstrained && imbalancePct > EXIT_IMBALANCE_NORMALIZE_PCT && sumExit > 0) {
+    const k = totalEnteringVph / sumExit;
+    for (const d of constrained) target[d] = (exiting[d] as number) * k;
+    exitsNormalized = true;
+  }
+
+  let iterations = 0;
+  let maxResidualVph = 0;
+  const residual = (): number => {
+    let r = 0;
+    for (const d of DIRS) r = Math.max(r, Math.abs(DIRS.reduce((s, t) => s + m[d][t], 0) - entering[d]));
+    for (const t of constrained) r = Math.max(r, Math.abs(DIRS.reduce((s, d) => s + m[d][t], 0) - (target[t] as number)));
+    return r;
+  };
+  if (constrained.length > 0) {
+    for (iterations = 1; iterations <= IPF_MAX_ITER; iterations++) {
+      for (const d of DIRS) {
+        const rs = DIRS.reduce((s, t) => s + m[d][t], 0);
+        if (rs > 0) { const k = entering[d] / rs; for (const t of DIRS) m[d][t] *= k; }
+      }
+      for (const t of constrained) {
+        const cs = DIRS.reduce((s, d) => s + m[d][t], 0);
+        if (cs > 0) { const k = (target[t] as number) / cs; for (const d of DIRS) m[d][t] *= k; }
+      }
+      maxResidualVph = residual();
+      if (maxResidualVph <= IPF_TOLERANCE_VPH) break;
+    }
+    if (iterations > IPF_MAX_ITER) iterations = IPF_MAX_ITER;
+    // Rows are what capacity consumes: land on them exactly after the last column pass.
+    for (const d of DIRS) {
+      const rs = DIRS.reduce((s, t) => s + m[d][t], 0);
+      if (rs > 0) { const k = entering[d] / rs; for (const t of DIRS) m[d][t] *= k; }
+    }
+    maxResidualVph = residual();
+  }
+
+  const shares: Record<Direction, Record<Movement, number>> = { NB: { L: 0, T: 0, R: 0 }, SB: { L: 0, T: 0, R: 0 }, EB: { L: 0, T: 0, R: 0 }, WB: { L: 0, T: 0, R: 0 } };
+  const leftVph: Record<Direction, number> = { NB: 0, SB: 0, EB: 0, WB: 0 };
+  const enteringShares: Record<Direction, number> = { NB: 0, SB: 0, EB: 0, WB: 0 };
+  for (const from of DIRS) {
+    const rs = DIRS.reduce((s, t) => s + m[from][t], 0);
+    const seedSum = seedShares[from].L + seedShares[from].T + seedShares[from].R;
+    for (const mv of ["L", "T", "R"] as const) {
+      shares[from][mv] = rs > 0
+        ? m[from][EXIT_LEG[from][mv]] / rs
+        : seedSum > 0 ? seedShares[from][mv] / seedSum : SEED_SHARE[mv];   // zero/absent approach: finite prior
+    }
+    leftVph[from] = m[from][EXIT_LEG[from].L];
+    enteringShares[from] = totalEnteringVph > 0 ? entering[from] / totalEnteringVph : 0;
+  }
+  for (const d of DIRS) for (const t of DIRS) if (!Number.isFinite(m[d][t])) m[d][t] = 0;
+
+  return {
+    matrix: m, shares, leftVph, enteringShares, totalEnteringVph,
+    diagnostics: { method: constrained.length > 0 ? "ipf" : "seed_only", iterations, maxResidualVph, imbalancePct, exitsNormalized, constrainedExits: constrained.length },
+  };
+}
+
+/** One call for the server: legs → estimate, or undefined when nothing is present. */
+export type LegEstimate = { legs: LegVolumes; movements: MovementEstimate; legsDropped: number; anyCsv: boolean };
+export function buildLegEstimate(junctionLegs: JunctionLeg[], inputs: LegVolumeInputs): LegEstimate | undefined {
+  const { byDir, dropped } = assignLegsToApproaches(junctionLegs);
+  if (DIRS.every((d) => !byDir[d])) return undefined;
+  const legs = resolveLegVolumes(byDir, inputs);
+  const movements = estimateMovements(legs);
+  const anyCsv = DIRS.some((d) => legs[d]?.source === "csv");
+  return { legs, movements, legsDropped: dropped, anyCsv };
+}

@@ -142,5 +142,87 @@ const DIRS = ["NB", "SB", "EB", "WB"];
     "resolve: csv exit-only count keeps the entering side on the baseline (never 0) and labels the entering source");
 }
 
+// ---- 3. movement estimation (spec §4.3, §9 items 1–7) ----
+const legsFrom = (spec) => {
+  const out = { NB: null, SB: null, EB: null, WB: null };
+  for (const d of DIRS) {
+    const s = spec[d]; if (!s) continue;
+    out[d] = { dir: d, enteringVph: s.in, exitingVph: s.out === undefined ? null : s.out, oneWay: s.oneWay ?? null, source: "signal_aadt", cls: 2 };
+  }
+  return out;
+};
+const rowSum = (m, d) => DIRS.reduce((s, t) => s + m[d][t], 0);
+const colSum = (m, t) => DIRS.reduce((s, d) => s + m[d][t], 0);
+{
+  // 1. Reference four-leg: entering (600, 400, 300, 200) exiting (550, 450, 280, 220). Σ both = 1500.
+  //    Seed 15/70/15 → IPF with the exact row-then-column order and the final
+  //    row pass of the implementation. Reference values from an independent
+  //    Python run of the same algorithm (13 iterations, final residual 0.318):
+  //      NB→SB 398.9  NB→EB 130.6  NB→WB  70.5   | 600.0
+  //      SB→NB 353.4  SB→EB  30.2  SB→WB  16.3   | 400.0
+  //      EB→NB 132.3  EB→SB  34.6  EB→WB 133.1   | 300.0
+  //      WB→NB  64.0  WB→SB  16.7  WB→EB 119.3   | 200.0
+  //      cols  549.7        450.3        280.1        220.0
+  const est = core.estimateMovements(legsFrom({ NB: { in: 600, out: 550 }, SB: { in: 400, out: 450 }, EB: { in: 300, out: 280 }, WB: { in: 200, out: 220 } }));
+  ok(est.diagnostics.method === "ipf" && est.diagnostics.constrainedExits === 4, "ipf: four constrained exit columns");
+  ok(DIRS.every((d) => close(rowSum(est.matrix, d), { NB: 600, SB: 400, EB: 300, WB: 200 }[d])), "ipf: every row sums to its entering volume ±0.5");
+  ok(DIRS.every((t) => close(colSum(est.matrix, t), { NB: 550, SB: 450, EB: 280, WB: 220 }[t])), "ipf: every column sums to its exiting volume ±0.5");
+  ok(DIRS.every((d) => est.matrix[d][d] === 0), "ipf: diagonal (U-turn) is 0");
+  ok(close(est.matrix.NB.SB, 398.9, 0.3) && close(est.matrix.SB.NB, 353.4, 0.3) && close(est.matrix.EB.WB, 133.1, 0.3) && close(est.matrix.WB.EB, 119.3, 0.3),
+    "ipf: reproduces the reference through cells within 0.3 vph");
+  ok(close(est.matrix.NB.EB, 130.6, 0.3) && close(est.matrix.SB.WB, 16.3, 0.3), "ipf: reproduces the reference turn cells within 0.3 vph");
+  ok(est.diagnostics.iterations === 13 && close(est.diagnostics.maxResidualVph, 0.318, 0.01), "ipf: 13 iterations, final residual 0.318 — the exact reference trajectory");
+  ok(est.diagnostics.maxResidualVph <= 0.5 && est.diagnostics.iterations <= 50, "ipf: converged within tolerance and the iteration cap");
+  ok(DIRS.every((d) => close(est.shares[d].L + est.shares[d].T + est.shares[d].R, 1, 1e-9)), "ipf: shares sum to 1 per approach");
+  ok(close(est.leftVph.NB, est.matrix.NB.EB, 1e-9), "ipf: NB left exits through the EB approach's leg (west), β+90°");
+  ok(close(est.totalEnteringVph, 1500, 1e-9) && close(est.enteringShares.NB, 0.4, 1e-9), "ipf: total and entering shares");
+}
+{
+  // 2. T-intersection: no WB leg. NB/SB through road, EB stem.
+  const est = core.estimateMovements(legsFrom({ NB: { in: 500, out: 480 }, SB: { in: 450, out: 470 }, EB: { in: 200, out: 200 } }));
+  ok(est.matrix.EB.WB === 0 && est.matrix.EB.SB > 0 && est.matrix.EB.NB > 0, "T: stem row has no through, only L and R");
+  ok(DIRS.every((d) => est.matrix[d].WB === 0) && DIRS.every((t) => est.matrix.WB[t] === 0), "T: absent leg's row and column are all-zero");
+  ok(close(est.shares.EB.T, 0, 1e-9) && close(est.shares.EB.L + est.shares.EB.R, 1, 1e-9), "T: stem shares are L+R = 1");
+  ok(close(rowSum(est.matrix, "NB"), 500) && close(colSum(est.matrix, "EB"), 200), "T: rows and constrained columns balance");
+}
+{
+  // 3. One-way main road: the SB leg only enters (in 600, out 0), the NB leg only exits (in 0, out 600) —
+  //    exactly what resolveLegVolumes produces for a one-way pair. Reference: 6 iterations, residual 0.140.
+  const est = core.estimateMovements(legsFrom({ NB: { in: 0, out: 600, oneWay: "out" }, SB: { in: 600, out: 0, oneWay: "in" }, EB: { in: 200, out: 250 }, WB: { in: 250, out: 200 } }));
+  ok(DIRS.every((d) => est.matrix[d].SB === 0), "one-way: nothing exits through a one-way-in leg");
+  ok(close(rowSum(est.matrix, "SB"), 600) && rowSum(est.matrix, "NB") === 0, "one-way: one-way-out leg has an empty row, one-way-in row balances");
+  ok(close(colSum(est.matrix, "NB"), 600), "one-way: everything exiting north goes through the one-way-out leg");
+}
+{
+  // 4. Missing exits on two legs: those columns unconstrained; constrained ones hit target; rows exact.
+  //    Reference: 17 iterations; the final row pass leaves the constrained columns at 549.5 / 449.9.
+  const est = core.estimateMovements(legsFrom({ NB: { in: 600, out: 550 }, SB: { in: 400, out: 450 }, EB: { in: 300 }, WB: { in: 200 } }));
+  ok(est.diagnostics.constrainedExits === 2, "missing exits: two constrained columns");
+  ok(close(colSum(est.matrix, "NB"), 550, 1.0) && close(colSum(est.matrix, "SB"), 450, 1.0), "missing exits: constrained columns within 1 vph of target after the final row pass");
+  ok(DIRS.every((d) => close(rowSum(est.matrix, d), { NB: 600, SB: 400, EB: 300, WB: 200 }[d], 1e-6)), "missing exits: rows exact (the final pass lands on entering)");
+}
+{
+  // 5. Imbalance > 5%: exits (1800) vs entering (1500) → normalized to 1500, flagged; rows exact.
+  const est = core.estimateMovements(legsFrom({ NB: { in: 600, out: 660 }, SB: { in: 400, out: 540 }, EB: { in: 300, out: 336 }, WB: { in: 200, out: 264 } }));
+  ok(est.diagnostics.exitsNormalized === true && close(est.diagnostics.imbalancePct, 0.2, 1e-6), "imbalance: exits normalized, 20% recorded");
+  ok(close(colSum(est.matrix, "NB"), 550) && DIRS.every((d) => close(rowSum(est.matrix, d), { NB: 600, SB: 400, EB: 300, WB: 200 }[d])), "imbalance: columns scaled to entering, rows exact");
+}
+{
+  // 6. Pathological: exits concentrated on a leg the seed barely feeds. Terminates, finite, no NaN.
+  const est = core.estimateMovements(legsFrom({ NB: { in: 1000, out: 10 }, SB: { in: 10, out: 10 }, EB: { in: 10, out: 1000 }, WB: { in: 10, out: 10 } }));
+  ok(est.diagnostics.iterations <= 50 && Number.isFinite(est.diagnostics.maxResidualVph), "pathological: terminates at the cap with a finite residual");
+  ok(DIRS.every((d) => DIRS.every((t) => Number.isFinite(est.matrix[d][t]))), "pathological: no NaN anywhere in the matrix");
+}
+{
+  // 7. No exit volumes at all → seed only: 15/70/15 on a four-leg.
+  const est = core.estimateMovements(legsFrom({ NB: { in: 600 }, SB: { in: 400 }, EB: { in: 300 }, WB: { in: 200 } }));
+  ok(est.diagnostics.method === "seed_only" && close(est.shares.NB.T, 0.70, 1e-9) && close(est.shares.NB.L, 0.15, 1e-9), "seed_only: no constraints → 15/70/15 prior");
+}
+{
+  // Zero-entering approach keeps finite default shares so downstream never divides by zero.
+  const est = core.estimateMovements(legsFrom({ NB: { in: 0, out: 100 }, SB: { in: 300, out: 100 }, EB: { in: 100, out: 100 }, WB: { in: 100, out: 200 } }));
+  ok(close(est.shares.NB.L + est.shares.NB.T + est.shares.NB.R, 1, 1e-9) && est.leftVph.NB === 0, "zero entering: shares finite (seed), left 0");
+}
+
 console.log(fails === 0 ? "\nOVERALL: PASS" : `\nOVERALL: FAIL (${fails})`);
 process.exit(fails === 0 ? 0 : 1);
