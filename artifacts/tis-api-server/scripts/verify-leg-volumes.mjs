@@ -119,6 +119,28 @@ const DIRS = ["NB", "SB", "EB", "WB"];
   const legs = core.resolveLegVolumes({ NB: { bearingDeg: 180, cls: 2, oneWay: null }, SB: { bearingDeg: 0, cls: 2, oneWay: null } }, { signalDesignHourVph: 0 });
   ok(legs.NB.enteringVph === 0 && legs.NB.exitingVph === 0 && !Number.isNaN(legs.NB.enteringVph), "resolve: zero design hour → zero, never NaN");
 }
+{
+  // One clearly-best leg (NB trunk, cls 1) among three same-class minors: its partner is the
+  // opposite leg (SB), not a same-class side leg — the single-best-leg branch of mainRoadLegs.
+  const byDir = {
+    NB: { bearingDeg: 180, cls: 1, oneWay: null }, SB: { bearingDeg: 0, cls: 3, oneWay: null },
+    EB: { bearingDeg: 270, cls: 3, oneWay: null }, WB: { bearingDeg: 90, cls: 3, oneWay: null },
+  };
+  const main = core.mainRoadLegs(byDir);
+  ok(main.length === 2 && main.includes("NB") && main.includes("SB"), "resolve: a single best-class leg pairs with the leg opposite it");
+  const legs = core.resolveLegVolumes(byDir, { signalDesignHourVph: 2000 });
+  ok(legs.NB.source === "signal_aadt" && legs.SB.source === "signal_aadt" && legs.EB.source === "class_default" && legs.WB.source === "class_default",
+    "resolve: main road = the best leg + its opposite; the side legs stay class_default");
+}
+{
+  const byDir = {
+    NB: { bearingDeg: 180, cls: 2, oneWay: null }, SB: { bearingDeg: 0, cls: 2, oneWay: null },
+    EB: { bearingDeg: 270, cls: 4, oneWay: null }, WB: { bearingDeg: 90, cls: 4, oneWay: null },
+  };
+  const exitOnly = core.resolveLegVolumes(byDir, { signalDesignHourVph: 2700, csv: { EB: { exitingVph: 480 } } });
+  ok(exitOnly.EB.enteringVph === 350 && exitOnly.EB.exitingVph === 480 && exitOnly.EB.source === "class_default",
+    "resolve: csv exit-only count keeps the entering side on the baseline (never 0) and labels the entering source");
+}
 
 console.log(fails === 0 ? "\nOVERALL: PASS" : `\nOVERALL: FAIL (${fails})`);
 process.exit(fails === 0 ? 0 : 1);

@@ -182,19 +182,26 @@ export function resolveLegVolumes(
   for (const d of DIRS) {
     const leg = byDir[d];
     if (!leg) continue;
+    const isMain = main.has(d);
+    const twoWay = isMain ? designHour : (MINOR_LEG_DESIGN_HOUR_VPH_BY_CLASS[leg.cls] ?? DEFAULT_MINOR_LEG_VPH);
+    const base = splitLeg(twoWay, leg.oneWay);
+    const baseSource: LegSource = isMain ? "signal_aadt" : "class_default";
     const csv = inputs.csv?.[d];
     const csvIn = csv && typeof csv.enteringVph === "number" && Number.isFinite(csv.enteringVph) && csv.enteringVph >= 0 ? csv.enteringVph : undefined;
     const csvOut = csv && typeof csv.exitingVph === "number" && Number.isFinite(csv.exitingVph) && csv.exitingVph >= 0 ? csv.exitingVph : undefined;
-    if (csvIn !== undefined || csvOut !== undefined) {
-      // A count on this leg. Whichever direction the client did not count
-      // stays unknown (null) rather than being filled from a baseline — the
-      // worksheet says "csv" for this leg and must not mix sources inside it.
-      out[d] = { dir: d, enteringVph: csvIn ?? 0, exitingVph: csvOut ?? null, oneWay: leg.oneWay, source: "csv", cls: leg.cls };
-      continue;
-    }
-    const twoWay = main.has(d) ? designHour : (MINOR_LEG_DESIGN_HOUR_VPH_BY_CLASS[leg.cls] ?? DEFAULT_MINOR_LEG_VPH);
-    const { entering, exiting } = splitLeg(twoWay, leg.oneWay);
-    out[d] = { dir: d, enteringVph: entering, exitingVph: exiting, oneWay: leg.oneWay, source: main.has(d) ? "signal_aadt" : "class_default", cls: leg.cls };
+    // A client count overlays the baseline per direction. enteringVph is the
+    // capacity input and must be a number, so an exit-only count leaves the
+    // entering side on the baseline (and the leg's source describes that
+    // entering volume); an entering-only count leaves the exit UNKNOWN (null)
+    // rather than inventing one from a baseline the client did not measure.
+    out[d] = {
+      dir: d,
+      enteringVph: csvIn ?? base.entering,
+      exitingVph: csvOut ?? (csvIn !== undefined ? null : base.exiting),
+      oneWay: leg.oneWay,
+      source: csvIn !== undefined ? "csv" : baseSource,
+      cls: leg.cls,
+    };
   }
   return out;
 }
