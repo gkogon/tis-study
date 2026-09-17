@@ -48,6 +48,17 @@ const DIRS = ["NB", "SB", "EB", "WB"];
   ok(core.MINOR_LEG_DESIGN_HOUR_VPH_BY_CLASS[4] === 700 && core.MINOR_LEG_DESIGN_HOUR_VPH_BY_CLASS[0] === 2500,
     "ladder mirrors the analyzer's VOLUME_BY_CLASS (tertiary 700 … motorway 2500)");
 }
+{
+  // EXIT_LEG follows the spec rule: through at β+180°, left at β+90°, right at β−90°,
+  // where β is the approach's origin bearing and the exit is the approach whose origin leg sits there.
+  const legAt = (bearing) => DIRS.find((d) => core.ORIGIN_BEARING[d] === ((bearing % 360) + 360) % 360);
+  const rule = DIRS.every((d) => {
+    const b = core.ORIGIN_BEARING[d];
+    return core.EXIT_LEG[d].T === legAt(b + 180) && core.EXIT_LEG[d].L === legAt(b + 90) && core.EXIT_LEG[d].R === legAt(b - 90);
+  });
+  ok(rule, "EXIT_LEG: every row follows through=β+180°, left=β+90°, right=β−90°");
+  ok(core.EXIT_LEG.EB.L === "SB" && core.EXIT_LEG.WB.L === "NB", "EXIT_LEG: eastbound left exits north (SB's leg), westbound left exits south (NB's leg)");
+}
 
 console.log(fails === 0 ? "\nOVERALL: PASS" : `\nOVERALL: FAIL (${fails})`);
 process.exit(fails === 0 ? 0 : 1);
