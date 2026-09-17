@@ -24,7 +24,7 @@
 import type { TisLaneGroupImpact } from "@workspace/tis-api-client-react";
 import { LosBadge } from "@/components/tis-report-bits";
 import {
-  lanesSourceLabel, ASSUMED_BAY_FT,
+  lanesSourceLabel, legSourceLabel, ASSUMED_BAY_FT,
   type IntersectionPlan as Plan, type ApproachPlan, type TimingSummary,
 } from "@/lib/intersection-geometry";
 
@@ -247,7 +247,7 @@ export function LanesSection({ plan }: { plan: Plan }) {
               <tr key={a.direction} className="border-b last:border-0" data-testid={`lanes-approach-${a.direction}`}>
                 <td className="py-1 pr-3 font-mono font-semibold">{a.direction}</td>
                 <td className="py-1 px-3 text-right font-mono tabular-nums">{a.throughLanes}</td>
-                <td className={`py-1 px-3 ${a.lanesSource === "default" ? "text-muted-foreground" : ""}`}>{lanesSourceLabel(a.lanesSource)}</td>
+                <td className={`py-1 px-3 ${a.lanesSource === "default" ? "text-muted-foreground" : ""}`}>{lanesSourceLabel(a.lanesSource)}{a.legSource ? <span className="text-muted-foreground"> · volume: {legSourceLabel(a.legSource)}</span> : null}</td>
                 <td className="py-1 px-3 text-muted-foreground">
                   {a.leftBay.present
                     ? a.leftBay.basis === "protected-phase"

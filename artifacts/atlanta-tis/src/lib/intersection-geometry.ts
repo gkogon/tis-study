@@ -124,6 +124,8 @@ export type ApproachPlan = ApproachBase & {
   base?: ApproachBase;
   /** True when any printed base value differs from the scenario's. */
   changed: boolean;
+  /** Where this approach's background volume came from (legVolumes: network rows). */
+  legSource?: "csv" | "signal_aadt" | "class_default";
 };
 
 export type TimingSummary = {
@@ -334,6 +336,10 @@ function approachPlan(
     ...(laneGroups ? { laneGroups } : {}),
     ...(baseValues ? { base: baseValues } : {}),
     changed: baseValues ? !sameBase(base, baseValues) : false,
+    ...(() => {
+      const leg = Array.isArray((row as any).legVolumes) ? (row as any).legVolumes.find((l: any) => l.direction === a.direction) : undefined;
+      return leg?.source ? { legSource: leg.source } : {};
+    })(),
   };
 }
 
@@ -392,5 +398,14 @@ export function lanesSourceLabel(s: LanesSource): string {
     case "import": return "Synchro import";
     case "osm": return "OSM lanes tag";
     default: return "engine default (1 lane)";
+  }
+}
+
+/** Human label for a leg-volume provenance. */
+export function legSourceLabel(s: NonNullable<ApproachPlan["legSource"]>): string {
+  switch (s) {
+    case "csv": return "client link count";
+    case "signal_aadt": return "signal's counted design hour";
+    default: return "road-class baseline";
   }
 }
