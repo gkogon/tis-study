@@ -33,7 +33,7 @@ import { ukCapacityForIntersection, type UkCapacityResult } from "./uk-capacity"
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { renderTisNorthCarolina, renderTisSouthCarolina } from "./pdf-export-carolinas";
 import { appliedRateRows } from "./trip-rate-rows";
-import { isGrowthOverride } from "@workspace/tis-engine-core";
+import { isGrowthOverride, IPF_MAX_ITER, IPF_TOLERANCE_VPH } from "@workspace/tis-engine-core";
 import { renderTisState } from "./pdf-export-states";
 import { renderDiurnalCharts, drawColumnChart, drawLineChart, chartColors } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
@@ -9514,10 +9514,10 @@ function renderCapacityAppendix(
       // not the residual reached 0.5 vph; a row that hit the cap with a
       // residual still above tolerance did NOT balance and must say so (the
       // final row pass still lands every row on its entering volume exactly).
-      const hitCap = Number(me.iterations) >= 50 && Number(me.maxResidualVph) > 0.5;
+      const hitCap = Number(me.iterations) >= IPF_MAX_ITER && Number(me.maxResidualVph) > IPF_TOLERANCE_VPH;
       const mv = me.method === "ipf"
         ? (hitCap
-            ? `did not balance within 50 iterations (residual ${Number(me.maxResidualVph).toFixed(1)} vph; rows held exact)${me.exitsNormalized ? `; exits scaled to entries, ${(Number(me.imbalancePct) * 100).toFixed(0)}% imbalance` : ""}`
+            ? `did not balance within ${IPF_MAX_ITER} iterations (residual ${Number(me.maxResidualVph).toFixed(1)} vph; rows held exact)${me.exitsNormalized ? `; exits scaled to entries, ${(Number(me.imbalancePct) * 100).toFixed(0)}% imbalance` : ""}`
             : `balanced estimate (Furness/IPF, ${me.iterations} iterations, residual ${Number(me.maxResidualVph).toFixed(1)} vph${me.exitsNormalized ? `; exits scaled to entries, ${(Number(me.imbalancePct) * 100).toFixed(0)}% imbalance` : ""})`)
         : "geometry seed only (no exit volume to balance against)";
       // A one-way leg is one carriageway of a two-way road (OSM maps a divided
