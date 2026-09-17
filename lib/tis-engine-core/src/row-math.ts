@@ -321,11 +321,14 @@ export type ApproachImpact = {
    *  legacy payloads are byte-identical. */
   throughLanes?: number;
   lanesSource?: "import" | "osm";
-  /** Per-turn-movement detail, present ONLY when an imported Synchro/UTDF
-   *  record supplied measured turning-movement volumes for this intersection.
-   *  Without measured movements the approach total is the finest granularity
-   *  this screen can report honestly, so this stays absent rather than being
-   *  filled from an assumed turn split. */
+  /** Per-turn-movement detail, present when an imported Synchro/UTDF record
+   *  supplied measured turning-movement volumes for this intersection
+   *  (volumeSource utdf_tmc / synchro_pdf_tmc) OR, under legVolumes: network,
+   *  when the row's turning movements are the balanced estimate of its leg
+   *  volumes (volumeSource network_estimate / link_csv; legVolumes and
+   *  movementEstimate state the basis). A screening row has neither, and the
+   *  approach total is the finest granularity it can report honestly, so this
+   *  stays absent rather than being filled from the flat 15/70/15 split. */
   laneGroups?: LaneGroupImpact[];
 };
 

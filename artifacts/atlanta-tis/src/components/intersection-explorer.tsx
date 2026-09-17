@@ -8,9 +8,14 @@
  *   ScenarioDelta    the approaches whose printed values moved between the
  *                    base and the scenario.
  *   TimingBlock      cycle, g/C per phase, left phasing, basis, ped minimum.
- *   LanesSection     with an import: the per-movement lane groups (lanes,
- *                    capacity, volumes, v/c, queue vs storage, deficiency)
- *                    with a bar each. Without: the through-lane counts the
+ *   LanesSection     with lane groups — a Synchro import's measured turning
+ *                    movements, or the balanced estimate of the study's leg
+ *                    volumes under legVolumes: network (plan.laneGroupBasis
+ *                    says which, and every sentence is worded for it) — the
+ *                    per-movement lane groups (lanes, capacity, volumes, v/c,
+ *                    queue vs storage, deficiency) with a bar each, plus each
+ *                    approach's background-volume source where the row
+ *                    carries one. Without: the through-lane counts the
  *                    engine sized each approach with and where they came
  *                    from, the DEFAULT turn shares the engine used for
  *                    background traffic — stated as the assumption they are —
@@ -171,9 +176,14 @@ export function LanesSection({ plan }: { plan: Plan }) {
   if (plan.hasLaneGroups) {
     const rows = plan.approaches.flatMap((a) => (a.laneGroups ?? []).map((g) => ({ a, g })));
     const scaleFt = rows.reduce((m, { g }) => Math.max(m, g.queue95thFt, g.storageFt ?? 0), 1);
+    // Lane groups come from a measured record OR, under legVolumes: network,
+    // from the balanced estimate of the study's leg volumes; the row's
+    // volumeSource (plan.laneGroupBasis) decides which the copy claims.
+    const estimated = plan.laneGroupBasis === "estimated";
+    const legSourced = plan.approaches.filter((a) => a.legSource);
     return (
-      <div className="space-y-2" data-testid="explorer-lanes-groups">
-        <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Lane groups (from the imported Synchro record)</div>
+      <div className="space-y-2" data-testid="explorer-lanes-groups" data-basis={plan.laneGroupBasis}>
+        <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{estimated ? "Lane groups (balanced estimate from the study's leg volumes)" : "Lane groups (from the imported Synchro record)"}</div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -212,15 +222,24 @@ export function LanesSection({ plan }: { plan: Plan }) {
             </tbody>
           </table>
         </div>
-        <div className="text-[11px] text-muted-foreground">
-          Movement shares within each approach come from the record's measured turning movements applied to the approach's no-build volume;
-          lane counts marked "import" are the record's [Lanes] section, "osm" the OSM lanes tag on the through movement, and a
-          blank count is the engine's one-critical-lane basis. Bars share one scale ({scaleFt.toFixed(0)} ft); the outline is the
-          bay's storage and the red run is the queue past it.
+        <div className="text-[11px] text-muted-foreground" data-testid="explorer-lanes-groups-note">
+          {estimated
+            ? <>Movement shares within each approach are the balanced estimate from the study's leg volumes (Furness/IPF) applied to the
+              approach's no-build volume — nothing in this table was measured; lane counts marked "osm" are the OSM lanes tag on the
+              through movement, and a blank count is the engine's one-critical-lane basis. No turn-bay storage is on record. </>
+            : <>Movement shares within each approach come from the record's measured turning movements applied to the approach's no-build volume;
+              lane counts marked "import" are the record's [Lanes] section, "osm" the OSM lanes tag on the through movement, and a
+              blank count is the engine's one-critical-lane basis. </>}
+          Bars share one scale ({scaleFt.toFixed(0)} ft); the outline is the bay's storage and the red run is the queue past it.
         </div>
+        {legSourced.length > 0 && (
+          <div className="text-[11px] text-muted-foreground" data-testid="explorer-lanes-leg-sources">
+            Approach volumes: {legSourced.map((a) => `${a.direction} — ${legSourceLabel(a.legSource!)}`).join("; ")}.
+          </div>
+        )}
         {plan.approaches.some((a) => !a.laneGroups) && (
-          <div className="text-[11px] text-muted-foreground">
-            Approaches without a row here ({plan.approaches.filter((a) => !a.laneGroups).map((a) => a.direction).join(", ")}) had no measured movement in the record.
+          <div className="text-[11px] text-muted-foreground" data-testid="explorer-lanes-groups-missing">
+            Approaches without a row here ({plan.approaches.filter((a) => !a.laneGroups).map((a) => a.direction).join(", ")}) {estimated ? "have no leg on this side." : "had no measured movement in the record."}
           </div>
         )}
       </div>
