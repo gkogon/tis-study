@@ -1244,7 +1244,7 @@ const RESOLVED_SIGNAL_CLAUSE =
 
 const FLAT_LEG_CLAUSE = "(deterministic per-signal allocation perturbed ±15% from a 30/25/25/20 base)";
 const RESOLVED_LEG_CLAUSE =
-  "(each leg from its own volume: the signal's counted design hour on the two main-road legs, half per direction; the road-class baseline on uncounted minor legs; a client link count where supplied — each worksheet states the source per leg. Turning movements are then balanced to the exit legs by iterative proportional fitting from a geometry seed, the refinement method of NCHRP Report 255 / NCHRP Report 765, so entries equal exits at every resolved junction; a junction that does not resolve to the road network keeps the screening allocation and says so)";
+  "(each leg from its own volume: the signal's counted design hour on the two main-road legs, half per direction, and half in the physical direction of a one-way carriageway; the road-class baseline on uncounted minor legs; a client link count where supplied — each worksheet states the source per leg. Turning movements are then balanced to the exit legs by iterative proportional fitting from a geometry seed, the refinement method of NCHRP Report 255 / NCHRP Report 765, so entries equal exits at every resolved junction; a junction that does not resolve to the road network keeps the screening allocation and says so)";
 
 function tisMethodologyForRegion(region: Region, signalTiming: "computed" | "screening" = "computed", legVolumes: "network" | "screening" = "network"): string[] {
   const base = TIS_METHODOLOGY.map((m) => {

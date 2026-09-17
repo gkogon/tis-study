@@ -95,13 +95,31 @@ const DIRS = ["NB", "SB", "EB", "WB"];
 }
 {
   // One-way main road: SB leg carries traffic INTO the node only, NB leg OUT only.
+  // The design hour is a TWO-WAY count and OSM maps a divided arterial as a
+  // pair of one-way carriageways, so a one-way leg carries HALF of the
+  // two-way count in its direction and 0 the other way — never the whole
+  // count (which doubled the through approach at every divided arterial).
   const byDir = {
     NB: { bearingDeg: 180, cls: 2, oneWay: "out" }, SB: { bearingDeg: 0, cls: 2, oneWay: "in" },
     EB: { bearingDeg: 270, cls: 4, oneWay: null }, WB: { bearingDeg: 90, cls: 4, oneWay: null },
   };
   const legs = core.resolveLegVolumes(byDir, { signalDesignHourVph: 1800 });
-  ok(close(legs.SB.enteringVph, 1800) && legs.SB.exitingVph === 0, "resolve: one-way-in main leg takes the whole design hour entering, 0 exiting");
-  ok(legs.NB.enteringVph === 0 && close(legs.NB.exitingVph, 1800), "resolve: one-way-out main leg takes it all exiting, 0 entering");
+  ok(close(legs.SB.enteringVph, 900) && legs.SB.exitingVph === 0, "resolve: one-way-in main leg carries half of the two-way count entering (900 of 1800), 0 exiting");
+  ok(legs.NB.enteringVph === 0 && close(legs.NB.exitingVph, 900), "resolve: one-way-out main leg carries half of the two-way count exiting (900 of 1800), 0 entering");
+  ok(legs.SB.oneWay === "in" && legs.NB.oneWay === "out", "resolve: the one-way sense rides the leg for the worksheet's carriageway sentence");
+}
+{
+  // The same half rule on a class-default leg: a one-way tertiary (700 two-way
+  // baseline) carries 350 in its direction and 0 the other way.
+  const byDir = {
+    NB: { bearingDeg: 180, cls: 2, oneWay: null }, SB: { bearingDeg: 0, cls: 2, oneWay: null },
+    EB: { bearingDeg: 270, cls: 4, oneWay: "in" }, WB: { bearingDeg: 90, cls: 4, oneWay: "out" },
+  };
+  const legs = core.resolveLegVolumes(byDir, { signalDesignHourVph: 2700 });
+  ok(legs.EB.source === "class_default" && close(legs.EB.enteringVph, 350) && legs.EB.exitingVph === 0,
+    "resolve: one-way-in class-4 minor leg carries 350 (= 700 / 2) entering, 0 exiting");
+  ok(legs.WB.source === "class_default" && legs.WB.enteringVph === 0 && close(legs.WB.exitingVph, 350),
+    "resolve: one-way-out class-4 minor leg carries 0 entering, 350 (= 700 / 2) exiting");
 }
 {
   // CSV override wins on its leg; other legs unchanged.

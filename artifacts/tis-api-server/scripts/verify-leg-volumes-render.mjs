@@ -55,6 +55,23 @@ try {
   ok(t.includes("balanced estimate (Furness/IPF, 6 iterations, residual 0.3 vph)"), "injected row prints the movement diagnostics");
   ok(t.includes("Balanced turning movements (vph)"), "injected row prints the 4×4 matrix table");
   ok(t.includes("balanced to the exit legs"), "appendix intro switches to the resolved wording when any row carries an estimate");
+  ok(t.includes("half per direction, and half in the physical direction of a one-way carriageway"), "appendix intro states the per-direction and one-way carriageway rule");
+  ok(!t.includes("A one-way carriageway carries half"), "two-way legs only: no one-way carriageway sentence on the worksheet");
+
+  // A one-way pair (a divided arterial's two carriageways): the worksheet
+  // says the leg carries half of the two-way count and names the couplet
+  // limitation, so a reviewer at a downtown couplet knows the leg reads light.
+  const oneWay = JSON.parse(JSON.stringify(injected));
+  const owRow = oneWay.report.affectedIntersections[0];
+  owRow.legVolumes = [
+    { direction: "NB", enteringVph: 0, exitingVph: 1350, source: "signal_aadt", oneWay: "out" },
+    { direction: "SB", enteringVph: 1350, exitingVph: 0, source: "signal_aadt", oneWay: "in" },
+    { direction: "EB", enteringVph: 350, exitingVph: 350, source: "class_default", oneWay: null },
+    { direction: "WB", enteringVph: 350, exitingVph: 350, source: "class_default", oneWay: null },
+  ];
+  const owText = await text(await mod.renderStudyPdf(projectFromFixture(oneWay), { name: "Leg Render Check", logoUrl: null }));
+  ok(owText.includes("A one-way carriageway carries half of the two-way count in its direction (a one-way couplet street is understated)."),
+    "one-way legs: the worksheet states the half-of-two-way rule and the couplet limitation");
 
   // Pagination under real data: the stored preview fixtures carry none of
   // the new fields, so check:appendix-worksheet-pages never exercises the

@@ -26,7 +26,17 @@
  * DATA REALITY. The AADT join is per signal (one nearest count, class-gated),
  * not per segment; `totalVolume` is already vph. So "network" is honest
  * about what is counted (the main road) and what is a baseline (the rest),
- * and every leg carries its source.
+ * and every leg carries its source. Both quantities are TWO-WAY roadway
+ * counts (the design hour of a two-way AADT; the class ladder is a two-way
+ * baseline), and OSM maps a divided arterial as a PAIR of one-way
+ * carriageways (every McKnight Road way is `oneway`). A one-way leg
+ * therefore carries HALF of the two-way quantity in its physical direction
+ * and 0 the other way — the same per-direction share a two-way leg gets —
+ * never the whole two-way count, which would double the through approach at
+ * every divided arterial. Known limitation: a true one-way COUPLET street
+ * (two parallel one-way streets a block apart, each carrying the whole
+ * direction) is understated by ~2× under this rule; twin-carriageway
+ * detection (pairing the two carriageways of one road) is a follow-up.
  *
  * Pure: no I/O, no DB, no clock. Spec:
  * docs/superpowers/specs/2026-09-16-leg-volumes-and-movement-estimation-design.md
@@ -133,11 +143,18 @@ export type LegVolumeInputs = {
 const pos = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
 const angDiff = (a: number, b: number): number => { const d = Math.abs(((a - b) % 360 + 360) % 360); return d > 180 ? 360 - d : d; };
 
-/** Split a two-way volume onto one leg's two directions, honoring one-way. */
+/**
+ * Split a two-way volume onto one leg's two directions, honoring one-way.
+ * `twoWayVph` is a two-way roadway count, so each direction is half of it;
+ * a one-way leg is one carriageway of that road and carries its half in its
+ * physical direction and 0 the other way (see DATA REALITY above — a couplet
+ * street is understated by this rule, a divided arterial is not doubled).
+ */
 function splitLeg(twoWayVph: number, oneWay: "in" | "out" | null): { entering: number; exiting: number } {
-  if (oneWay === "in") return { entering: twoWayVph, exiting: 0 };
-  if (oneWay === "out") return { entering: 0, exiting: twoWayVph };
-  return { entering: twoWayVph / 2, exiting: twoWayVph / 2 };
+  const perDirection = twoWayVph / 2;
+  if (oneWay === "in") return { entering: perDirection, exiting: 0 };
+  if (oneWay === "out") return { entering: 0, exiting: perDirection };
+  return { entering: perDirection, exiting: perDirection };
 }
 
 /**

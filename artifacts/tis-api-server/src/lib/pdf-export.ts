@@ -9343,7 +9343,7 @@ function renderCapacityAppendix(
   const anyLegEstimate = Array.isArray(intersections) && intersections.some((x: any) => Array.isArray(x?.legVolumes) && x?.movementEstimate);
   doc.font("body").fontSize(9).fillColor("#b45309").text(
     anyLegEstimate
-      ? "Background approach volumes are resolved per leg — the signal's counted design hour on the main road, the road-class baseline on uncounted legs, client link counts where supplied — and the background turning movements in the diagrams are balanced to the exit legs by iterative proportional fitting (NCHRP 255/765 refinement) from a geometry seed; each worksheet states its leg sources and residual. Project-trip movements are assigned geometrically from the study's directional trip distribution (see each worksheet's Affected movements table). Replace both with measured turning-movement counts (TMCs) before a formal submittal."
+      ? "Background approach volumes are resolved per leg — the signal's counted design hour on the main road, the road-class baseline on uncounted legs, client link counts where supplied; half per direction, and half in the physical direction of a one-way carriageway — and the background turning movements in the diagrams are balanced to the exit legs by iterative proportional fitting (NCHRP 255/765 refinement) from a geometry seed; each worksheet states its leg sources and residual. Project-trip movements are assigned geometrically from the study's directional trip distribution (see each worksheet's Affected movements table). Replace both with measured turning-movement counts (TMCs) before a formal submittal."
       : "Background turning-movement volumes in the diagrams are distributed from each approach total using an "
         + "estimated 15/70/15 (Left/Through/Right) split. Project-trip movements are assigned geometrically from "
         + "the study's directional trip distribution (see each worksheet's Affected movements table). Replace both "
@@ -9509,8 +9509,14 @@ function renderCapacityAppendix(
       const mv = me.method === "ipf"
         ? `balanced estimate (Furness/IPF, ${me.iterations} iterations, residual ${Number(me.maxResidualVph).toFixed(1)} vph${me.exitsNormalized ? `; exits scaled to entries, ${(Number(me.imbalancePct) * 100).toFixed(0)}% imbalance` : ""})`
         : "geometry seed only (no exit volume to balance against)";
+      // A one-way leg is one carriageway of a two-way road (OSM maps a divided
+      // arterial as two one-way ways), so the engine gives it half of the
+      // two-way count in its direction; the reviewer must know that a true
+      // one-way couplet street reads light under that rule (leg-volumes.ts).
+      const anyOneWay = legs.some((l) => l.oneWay === "in" || l.oneWay === "out");
       doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-        `Leg volumes: ${parts.join("; ")}. Turning movements: ${mv}.${me.legsDropped > 0 ? ` ${me.legsDropped} extra leg not carried (4×4 matrix).` : ""}`,
+        `Leg volumes: ${parts.join("; ")}. Turning movements: ${mv}.${me.legsDropped > 0 ? ` ${me.legsDropped} extra leg not carried (4×4 matrix).` : ""}`
+          + (anyOneWay ? " A one-way carriageway carries half of the two-way count in its direction (a one-way couplet street is understated)." : ""),
         { paragraphGap: 4 },
       );
       doc.fillColor("black");
