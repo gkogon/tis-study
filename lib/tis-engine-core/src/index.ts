@@ -15,6 +15,7 @@ export * from "./trip-loading.ts";
 export * from "./land-uses.ts";
 export * from "./regional-growth-rates.ts";
 export * from "./utdf-import.ts";
+export * from "./leg-volumes.ts";
 export * from "./volume-plausibility.ts";
 export * from "./turbo-lane.ts";
 export * from "./row-math.ts";
