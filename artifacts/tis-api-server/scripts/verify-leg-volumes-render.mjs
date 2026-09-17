@@ -57,6 +57,9 @@ try {
   ok(t.includes("Balanced turning movements (vph)"), "injected row prints the 4×4 matrix table");
   ok(t.includes("balanced to the exit legs"), "appendix intro switches to the resolved wording when any row carries an estimate");
   ok(t.includes("half per direction, and half in the physical direction of a one-way carriageway"), "appendix intro states the per-direction and one-way carriageway rule");
+  ok(t.includes("the signal's design hour on the main road (its counted volume where the analyzer had a compatible count, else the road-class baseline it assigned")
+    && !t.includes("the signal's counted design hour on the main road"),
+    "appendix intro does not call every main-road leg counted — counted where a compatible count was joined, else the analyzer's baseline");
   ok(!t.includes("A one-way carriageway carries half"), "two-way legs only: no one-way carriageway sentence on the worksheet");
 
   // A one-way pair (a divided arterial's two carriageways): the worksheet
