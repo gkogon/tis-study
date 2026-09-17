@@ -122,3 +122,79 @@ export function assignLegsToApproaches(legs: JunctionLeg[]): {
   }
   return { byDir, dropped };
 }
+
+export type LegVolumeInputs = {
+  /** The signal's design hour (vph) — AnalyzerIntersection.totalVolume (AADT × K, or the analyzer's class baseline). */
+  signalDesignHourVph: number;
+  /** Client link counts already snapped to this junction's legs. Empty until the CSV importer ships. */
+  csv?: Partial<Record<Direction, { enteringVph?: number; exitingVph?: number }>>;
+};
+
+const pos = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
+const angDiff = (a: number, b: number): number => { const d = Math.abs(((a - b) % 360 + 360) % 360); return d > 180 ? 360 - d : d; };
+
+/** Split a two-way volume onto one leg's two directions, honoring one-way. */
+function splitLeg(twoWayVph: number, oneWay: "in" | "out" | null): { entering: number; exiting: number } {
+  if (oneWay === "in") return { entering: twoWayVph, exiting: 0 };
+  if (oneWay === "out") return { entering: 0, exiting: twoWayVph };
+  return { entering: twoWayVph / 2, exiting: twoWayVph / 2 };
+}
+
+/**
+ * Which two legs are the main road: the two highest-class legs (lowest cls);
+ * among more than two tied at the best class, the pair closest to opposite
+ * (a through road), so a same-class stem never displaces a through leg.
+ */
+export function mainRoadLegs(byDir: Partial<Record<Direction, JunctionLeg>>): Direction[] {
+  const present = DIRS.filter((d) => byDir[d]);
+  if (present.length <= 2) return present;
+  const best = Math.min(...present.map((d) => byDir[d]!.cls));
+  const tied = present.filter((d) => byDir[d]!.cls === best);
+  if (tied.length <= 2) {
+    if (tied.length === 2) return tied;
+    // One best leg: pair it with the closest-to-opposite among the rest, preferring class.
+    const a = tied[0]!;
+    const rest = present.filter((d) => d !== a).sort((x, y) =>
+      (byDir[x]!.cls - byDir[y]!.cls) || (angDiff(byDir[a]!.bearingDeg, byDir[y]!.bearingDeg) - angDiff(byDir[a]!.bearingDeg, byDir[x]!.bearingDeg)));
+    return [a, rest[0]!];
+  }
+  let bestPair: Direction[] = [tied[0]!, tied[1]!];
+  let bestOpp = -1;
+  for (let i = 0; i < tied.length; i++) for (let j = i + 1; j < tied.length; j++) {
+    const opp = angDiff(byDir[tied[i]!]!.bearingDeg, byDir[tied[j]!]!.bearingDeg);
+    if (opp > bestOpp) { bestOpp = opp; bestPair = [tied[i]!, tied[j]!]; }
+  }
+  return bestPair;
+}
+
+/**
+ * Per-leg entering / exiting volume with a source label (spec §4.2, amended
+ * for per-signal data): csv → signal design hour on the main road → class
+ * baseline on the rest. Absent legs are null. Never NaN.
+ */
+export function resolveLegVolumes(
+  byDir: Partial<Record<Direction, JunctionLeg>>,
+  inputs: LegVolumeInputs,
+): LegVolumes {
+  const out: LegVolumes = { NB: null, SB: null, EB: null, WB: null };
+  const main = new Set(mainRoadLegs(byDir));
+  const designHour = pos(inputs.signalDesignHourVph);
+  for (const d of DIRS) {
+    const leg = byDir[d];
+    if (!leg) continue;
+    const csv = inputs.csv?.[d];
+    const csvIn = csv && typeof csv.enteringVph === "number" && Number.isFinite(csv.enteringVph) && csv.enteringVph >= 0 ? csv.enteringVph : undefined;
+    const csvOut = csv && typeof csv.exitingVph === "number" && Number.isFinite(csv.exitingVph) && csv.exitingVph >= 0 ? csv.exitingVph : undefined;
+    if (csvIn !== undefined || csvOut !== undefined) {
+      // A count on this leg. Whichever direction the client did not count
+      // stays unknown (null) rather than being filled from a baseline — the
+      // worksheet says "csv" for this leg and must not mix sources inside it.
+      out[d] = { dir: d, enteringVph: csvIn ?? 0, exitingVph: csvOut ?? null, oneWay: leg.oneWay, source: "csv", cls: leg.cls };
+      continue;
+    }
+    const twoWay = main.has(d) ? designHour : (MINOR_LEG_DESIGN_HOUR_VPH_BY_CLASS[leg.cls] ?? DEFAULT_MINOR_LEG_VPH);
+    const { entering, exiting } = splitLeg(twoWay, leg.oneWay);
+    out[d] = { dir: d, enteringVph: entering, exitingVph: exiting, oneWay: leg.oneWay, source: main.has(d) ? "signal_aadt" : "class_default", cls: leg.cls };
+  }
+  return out;
+}

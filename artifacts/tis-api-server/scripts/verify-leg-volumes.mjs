@@ -60,5 +60,65 @@ const DIRS = ["NB", "SB", "EB", "WB"];
   ok(core.EXIT_LEG.EB.L === "SB" && core.EXIT_LEG.WB.L === "NB", "EXIT_LEG: eastbound left exits north (SB's leg), westbound left exits south (NB's leg)");
 }
 
+// ---- 2. per-leg resolution (spec §4.2 steps 2–4, amended: per-signal data) ----
+{
+  // Four-leg: NB/SB on a primary (cls 2), EB/WB on a tertiary (cls 4). Design hour 2700.
+  const byDir = {
+    NB: { bearingDeg: 180, cls: 2, oneWay: null }, SB: { bearingDeg: 0, cls: 2, oneWay: null },
+    EB: { bearingDeg: 270, cls: 4, oneWay: null }, WB: { bearingDeg: 90, cls: 4, oneWay: null },
+  };
+  const legs = core.resolveLegVolumes(byDir, { signalDesignHourVph: 2700 });
+  ok(legs.NB.source === "signal_aadt" && legs.SB.source === "signal_aadt", "resolve: the two highest-class legs are the main road");
+  ok(close(legs.NB.enteringVph, 1350) && close(legs.NB.exitingVph, 1350) && close(legs.SB.enteringVph, 1350), "resolve: main road = design hour / 2 each way, each leg");
+  ok(legs.EB.source === "class_default" && close(legs.EB.enteringVph, 350) && close(legs.EB.exitingVph, 350), "resolve: tertiary minor leg = 700 two-way baseline / 2");
+  ok(DIRS.every((d) => legs[d].cls === byDir[d].cls), "resolve: each leg carries its class");
+}
+{
+  // Tie on class among three legs: the most opposite pair is the main road.
+  const byDir = {
+    NB: { bearingDeg: 180, cls: 3, oneWay: null }, SB: { bearingDeg: 0, cls: 3, oneWay: null },
+    EB: { bearingDeg: 270, cls: 3, oneWay: null }, WB: { bearingDeg: 90, cls: 4, oneWay: null },
+  };
+  const legs = core.resolveLegVolumes(byDir, { signalDesignHourVph: 1000 });
+  ok(legs.NB.source === "signal_aadt" && legs.SB.source === "signal_aadt" && legs.EB.source === "class_default",
+    "resolve: class tie breaks toward the opposite pair (NB/SB), not the third leg");
+}
+{
+  // T-intersection: no WB leg.
+  const byDir = {
+    NB: { bearingDeg: 180, cls: 2, oneWay: null }, SB: { bearingDeg: 0, cls: 2, oneWay: null },
+    EB: { bearingDeg: 270, cls: 4, oneWay: null },
+  };
+  const legs = core.resolveLegVolumes(byDir, { signalDesignHourVph: 2000 });
+  ok(legs.WB === null, "resolve: absent leg is null");
+  ok(legs.EB.source === "class_default", "resolve: T stem is the minor leg");
+}
+{
+  // One-way main road: SB leg carries traffic INTO the node only, NB leg OUT only.
+  const byDir = {
+    NB: { bearingDeg: 180, cls: 2, oneWay: "out" }, SB: { bearingDeg: 0, cls: 2, oneWay: "in" },
+    EB: { bearingDeg: 270, cls: 4, oneWay: null }, WB: { bearingDeg: 90, cls: 4, oneWay: null },
+  };
+  const legs = core.resolveLegVolumes(byDir, { signalDesignHourVph: 1800 });
+  ok(close(legs.SB.enteringVph, 1800) && legs.SB.exitingVph === 0, "resolve: one-way-in main leg takes the whole design hour entering, 0 exiting");
+  ok(legs.NB.enteringVph === 0 && close(legs.NB.exitingVph, 1800), "resolve: one-way-out main leg takes it all exiting, 0 entering");
+}
+{
+  // CSV override wins on its leg; other legs unchanged.
+  const byDir = {
+    NB: { bearingDeg: 180, cls: 2, oneWay: null }, SB: { bearingDeg: 0, cls: 2, oneWay: null },
+    EB: { bearingDeg: 270, cls: 4, oneWay: null }, WB: { bearingDeg: 90, cls: 4, oneWay: null },
+  };
+  const legs = core.resolveLegVolumes(byDir, { signalDesignHourVph: 2700, csv: { EB: { enteringVph: 520, exitingVph: 480 } } });
+  ok(legs.EB.source === "csv" && legs.EB.enteringVph === 520 && legs.EB.exitingVph === 480, "resolve: csv leg overrides the class default");
+  ok(legs.WB.source === "class_default" && close(legs.WB.enteringVph, 350), "resolve: csv on one leg leaves the others alone");
+  const half = core.resolveLegVolumes(byDir, { signalDesignHourVph: 2700, csv: { EB: { enteringVph: 520 } } });
+  ok(half.EB.source === "csv" && half.EB.enteringVph === 520 && half.EB.exitingVph === null, "resolve: csv entering-only leaves exiting unknown (null), never invented");
+}
+{
+  const legs = core.resolveLegVolumes({ NB: { bearingDeg: 180, cls: 2, oneWay: null }, SB: { bearingDeg: 0, cls: 2, oneWay: null } }, { signalDesignHourVph: 0 });
+  ok(legs.NB.enteringVph === 0 && legs.NB.exitingVph === 0 && !Number.isNaN(legs.NB.enteringVph), "resolve: zero design hour → zero, never NaN");
+}
+
 console.log(fails === 0 ? "\nOVERALL: PASS" : `\nOVERALL: FAIL (${fails})`);
 process.exit(fails === 0 ? 0 : 1);
