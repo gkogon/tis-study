@@ -9504,10 +9504,10 @@ function renderCapacityAppendix(
       const parts: string[] = [];
       if (count("csv") > 0) parts.push(`${count("csv")} of ${n} from client link counts (CSV)`);
       if (count("signal_aadt") > 0) parts.push(`${count("signal_aadt")} of ${n} from the signal's counted design hour (half per direction)`);
-      // The analyzer fell back to its road-class ladder for this SIGNAL (no
-      // compatible AADT record): the main-road legs are a baseline too and
-      // must not be called "counted".
-      if (count("signal_baseline") > 0) parts.push(`${count("signal_baseline")} of ${n} from the road-class baseline the analyzer assigned this signal (no compatible count)`);
+      // The analyzer had no compatible count for this SIGNAL — its design
+      // hour is the road-class ladder or the synthetic OSM-class model — so
+      // the main-road legs are a baseline too and must not be called "counted".
+      if (count("signal_baseline") > 0) parts.push(`${count("signal_baseline")} of ${n} from the analyzer's baseline volume for this signal (no compatible count — road-class or synthetic)`);
       if (count("class_default") > 0) parts.push(`${count("class_default")} of ${n} from the road-class baseline (no count on that leg)`);
       const me = ix.movementEstimate;
       // IPF stops at 50 iterations (leg-volumes.ts IPF_MAX_ITER) whether or

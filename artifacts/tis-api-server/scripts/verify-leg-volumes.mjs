@@ -157,8 +157,12 @@ const DIRS = ["NB", "SB", "EB", "WB"];
   ok(counted.NB.source === "signal_aadt" && counted.SB.source === "signal_aadt", "resolve: signalVolumeSource penndot (a count) → main legs signal_aadt");
   const absent = core.resolveLegVolumes(byDir, { signalDesignHourVph: 2700 });
   ok(absent.NB.source === "signal_aadt" && absent.SB.source === "signal_aadt", "resolve: absent signalVolumeSource (pre-provenance analyzer payload) → signal_aadt, unchanged");
-  ok(core.BASELINE_SIGNAL_VOLUME_SOURCES.has("road_class_baseline") && core.BASELINE_SIGNAL_VOLUME_SOURCES.has("road_class_baseline_aadt_class_mismatch") && core.BASELINE_SIGNAL_VOLUME_SOURCES.size === 2,
-    "BASELINE_SIGNAL_VOLUME_SOURCES = exactly the analyzer's two no-count slugs");
+  ok(core.BASELINE_SIGNAL_VOLUME_SOURCES.has("road_class_baseline") && core.BASELINE_SIGNAL_VOLUME_SOURCES.has("road_class_baseline_aadt_class_mismatch")
+    && core.BASELINE_SIGNAL_VOLUME_SOURCES.has("synthetic_osm_class") && core.BASELINE_SIGNAL_VOLUME_SOURCES.size === 3,
+    "BASELINE_SIGNAL_VOLUME_SOURCES = exactly the analyzer's three no-count slugs (road-class, refused record, synthetic OSM-class model)");
+  const synthetic = core.resolveLegVolumes(byDir, { signalDesignHourVph: 1500, signalVolumeSource: "synthetic_osm_class" });
+  ok(synthetic.NB.source === "signal_baseline" && synthetic.SB.source === "signal_baseline" && synthetic.EB.source === "class_default",
+    "resolve: signalVolumeSource synthetic_osm_class (an AADT modeled from OSM class, not a count) → main legs signal_baseline");
   const viaEstimate = core.buildLegEstimate(
     [{ bearingDeg: 180, cls: 2, oneWay: null }, { bearingDeg: 0, cls: 2, oneWay: null }, { bearingDeg: 270, cls: 4, oneWay: null }, { bearingDeg: 90, cls: 4, oneWay: null }],
     { signalDesignHourVph: 1500, signalVolumeSource: "road_class_baseline" },

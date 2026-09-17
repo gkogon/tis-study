@@ -317,8 +317,8 @@ console.log("\n7. lane-group basis and leg sources (C: legVolumes: network + one
   const sources = new Set(estimatedRows.flatMap((r) => planFromRow(r).approaches.map((a) => a.legSource)).filter(Boolean));
   ok(sources.has("signal_aadt") && sources.has("class_default") && [...sources].every((s) => legSourceLabel(s).length > 0),
     `leg sources seen: ${[...sources].join(", ")} — each has a label (${[...sources].map((s) => `"${legSourceLabel(s)}"`).join(", ")})`);
-  ok(legSourceLabel("signal_baseline").includes("no compatible count") && legSourceLabel("csv") === "client link count",
-    "legSourceLabel covers signal_baseline (\"no compatible count\") and csv");
+  ok(legSourceLabel("signal_baseline") === "analyzer's baseline volume for this signal (no compatible count — road-class or synthetic)" && legSourceLabel("csv") === "client link count",
+    "legSourceLabel covers signal_baseline (the analyzer's baseline — road-class or synthetic, not a count) and csv");
 
   const pm = planFromRow(measuredRow);
   ok(pm.hasLaneGroups && pm.laneGroupBasis === "measured" && pm.approaches.every((a) => a.legSource === undefined && !!a.laneGroups),

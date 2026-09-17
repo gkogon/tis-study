@@ -85,9 +85,9 @@ try {
   const bsText = await text(await mod.renderStudyPdf(projectFromFixture(baselineSig), { name: "Leg Render Check", logoUrl: null }));
   // (pdf.js joins a wrapped line with a space, so the assertion stops short of
   // the wrap; the second clause is checked on its own.)
-  ok(bsText.includes("Leg volumes: 2 of 4 from the road-class baseline the analyzer assigned this signal (no compatible count); 2 of 4 from the")
+  ok(bsText.includes("Leg volumes: 2 of 4 from the analyzer's baseline volume for this signal (no compatible count — road-class or synthetic); 2 of 4 from the")
     && bsText.includes("class baseline (no count on that leg). Turning movements: balanced estimate"),
-    "signal_baseline legs: the worksheet names the analyzer's baseline, not a counted design hour");
+    "signal_baseline legs: the worksheet names the analyzer's baseline (road-class or synthetic), not a counted design hour");
   ok(!bsText.includes("counted design hour (half per direction)"), "signal_baseline legs: no leg is called counted");
 
   ok(t.includes("Design-hour basis — existing year, before growth and period scaling, so it is identical for every analysis period and will not tie to the grown No-Build volumes above."),

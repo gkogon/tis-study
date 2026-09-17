@@ -433,7 +433,7 @@ export function legSourceLabel(s: NonNullable<ApproachPlan["legSource"]>): strin
   switch (s) {
     case "csv": return "client link count";
     case "signal_aadt": return "signal's counted design hour";
-    case "signal_baseline": return "road-class baseline assigned to this signal (no compatible count)";
+    case "signal_baseline": return "analyzer's baseline volume for this signal (no compatible count — road-class or synthetic)";
     default: return "road-class baseline";
   }
 }

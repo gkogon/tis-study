@@ -51,10 +51,11 @@ import type { Direction, Movement } from "./webster-timing.ts";
  *   csv             a client link count snapped to this leg;
  *   signal_aadt     the signal's COUNTED design hour (a compatible AADT
  *                   record was joined to the signal), half per direction;
- *   signal_baseline the signal's design hour is itself the analyzer's
- *                   road-class baseline (no compatible count — none within
+ *   signal_baseline the signal's design hour is itself an analyzer baseline
+ *                   — its road-class ladder (no compatible count within
  *                   reach, or the nearest record was refused as a different
- *                   facility), so the main-road legs are a baseline too;
+ *                   facility) or its synthetic OSM-class model — so the
+ *                   main-road legs are a baseline too;
  *   class_default   the road-class ladder below, for a leg the signal's
  *                   volume does not describe (the minor road).
  */
@@ -73,6 +74,10 @@ export const BASELINE_SIGNAL_VOLUME_SOURCES: ReadonlySet<string> = new Set([
   // refused as functionally incompatible (e.g. a freeway mainline count
   // snapped to a surface-street signal), so the baseline was used instead.
   "road_class_baseline_aadt_class_mismatch",
+  // scripts/src/precompute-tier10-synthetic-aadt.ts: an AADT modeled from OSM
+  // class by the analyzer's synthetic tier (kNN over counted signals) — not
+  // a count, so a main leg carrying it is a baseline, not "counted".
+  "synthetic_osm_class",
 ]);
 
 /** One incident link at a junction, as the routing graph knows it. */
