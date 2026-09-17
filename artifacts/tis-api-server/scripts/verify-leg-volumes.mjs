@@ -282,7 +282,7 @@ const colSum = (m, t) => DIRS.reduce((s, d) => s + m[d][t], 0);
 // ---- 5. server: incident links → JunctionLeg[] (bearing, class, one-way sense) ----
 {
   const { buildGraph } = await import(path.resolve(here, "../src/lib/network-assignment.ts"));
-  const { junctionLegsAtNode, incidentLinks } = await import(path.resolve(here, "../src/lib/junction-legs.ts"));
+  const { junctionLegsAtNode, incidentLinks, legVolumesBasisFor } = await import(path.resolve(here, "../src/lib/junction-legs.ts"));
   // RoadSegment tuple: [cls, lat1, lon1, lat2, lon2, lanes|null, maxspeed|null, name?, oneway?]
   // (oneway: 1 = a→b only, -1 = b→a only, 0 = two-way). Cross at (40.5, -80.0):
   // N and S legs primary two-way; E leg tertiary one-way b→a i.e. INTO the node; W leg tertiary two-way.
@@ -300,6 +300,15 @@ const colSum = (m, t) => DIRS.reduce((s, d) => s + m[d][t], 0);
   ok(byCard[0]?.cls === 2 && byCard[180]?.cls === 2 && byCard[90]?.cls === 4 && byCard[270]?.cls === 4, "legs: bearing and class per leg");
   ok(byCard[90]?.oneWay === "in" && byCard[0]?.oneWay === null && byCard[270]?.oneWay === null, "legs: one-way sense is relative to the node (east leg enters only)");
   ok(g.adj[node].length === 3, "legs: (sanity) routing adjacency at the node has only 3 links — why incidentLinks() exists");
+
+  // The methodology's leg-volume clause describes what the study DID, not what
+  // was requested: network only when the request allowed it AND a junction
+  // actually received an estimate. No estimate (conservedAssignment off, or no
+  // road network) ⇒ the study IS the screening allocation, text included.
+  ok(legVolumesBasisFor("network", true) === "network" && legVolumesBasisFor(undefined, true) === "network",
+    "methodology basis: network when requested (or defaulted) AND a junction received an estimate");
+  ok(legVolumesBasisFor("network", false) === "screening" && legVolumesBasisFor("screening", true) === "screening",
+    "methodology basis: screening when nothing resolved, or when screening was requested");
 }
 
 console.log(fails === 0 ? "\nOVERALL: PASS" : `\nOVERALL: FAIL (${fails})`);

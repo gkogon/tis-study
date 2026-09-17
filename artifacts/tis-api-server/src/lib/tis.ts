@@ -37,7 +37,7 @@ import { modeChoiceLogit, type DemandZone } from "./four-step-model";
 import { type CardinalDir } from "./caltran-gravity";
 import { fetchLocalRoads, assignRoutes, assignRoutesWithTurns, assignWithDriveways, buildGraph, directedReachability, type ConservationReport, type RouteAssignment, type DrivewayAssignment, type DrivewayResult, type TurnFlow } from "./network-assignment";
 import { selectCordonGateways, snapSignalsToJunctions } from "./cordon-gateways";
-import { incidentLinks, junctionLegsAtNode } from "./junction-legs";
+import { incidentLinks, junctionLegsAtNode, legVolumesBasisFor } from "./junction-legs";
 import { type Driveway } from "./driveways";
 import { getTransitContext } from "./transit-routes";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
@@ -2201,7 +2201,15 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       // Disclosures first: both of these qualify every number below them.
       ...volumeDisclosures,
       ...(coverageNote ? [coverageNote.message] : []),
-      ...tisMethodologyForRegion(region, req.signalTiming === "screening" ? "screening" : "computed", req.legVolumes === "screening" ? "screening" : "network"),
+      ...tisMethodologyForRegion(
+        region,
+        req.signalTiming === "screening" ? "screening" : "computed",
+        // The clause describes what this study DID: only when at least one
+        // junction resolved and received a leg estimate is the network method
+        // in effect. With conservedAssignment off, or no road network, every
+        // row kept the screening allocation, and the text must say so.
+        legVolumesBasisFor(req.legVolumes, candidates.some((c) => c.legEstimate)),
+      ),
     ],
     periodReports,
     growthAppliedPct: growthRatePct,

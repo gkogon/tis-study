@@ -47,3 +47,11 @@ export function junctionLegsAtNode(g: Graph, node: number, incidence: Map<number
   }
   return out;
 }
+
+/** Which leg-volume clause the methodology prints: the resolved (network) clause
+ *  only when the request asked for it AND at least one junction actually received
+ *  an estimate. Kept pure and here (not in tis.ts, which pulls in the db package
+ *  at import time) so it can be pinned by the check script without a database. */
+export function legVolumesBasisFor(requested: "network" | "screening" | undefined, anyEstimate: boolean): "network" | "screening" {
+  return requested !== "screening" && anyEstimate ? "network" : "screening";
+}
