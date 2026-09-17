@@ -118,6 +118,7 @@ import {
   type LandUse,
   type ResolvedRates,
   type Direction,
+  type LegEstimate,
 } from "@workspace/tis-engine-core";
 
 // ---------------------------------------------------------------------------
@@ -783,6 +784,7 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
     calibration?: RowCalibration;
     weight: number;
     timingOverride?: SignalTimingOverrideInput;
+    legEstimate?: LegEstimate;
     ledgerExact?: { out: PathTurnShare[]; in?: PathTurnShare[] };
     ok: boolean;
   };
@@ -793,12 +795,19 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
     // UTDF record (measured volumes replace totalVolume inside buildAffectedRow).
     const att = attachUtdfRecord(row, req.utdfIntersections);
     if (att.rec) { cand.utdf = att.rec; if (att.fallback) flag(id, "utdfAttach"); }
-    else if (row.volumeSource) {
+    else if (row.volumeSource === "utdf_tmc" || row.volumeSource === "synchro_pdf_tmc") {
       // The measured record is gone: keep the printed measured volume as the
       // design-hour anchor and the printed timing (below). Approach shares
       // fall back to the deterministic model, so the row is disclosed.
+      // (volumeSource "network_estimate" / "link_csv" is not a measured
+      // record at all — that's legEstimateExact below, fed back exactly.)
       flag(id, "utdfAttach");
     }
+
+    // The exact leg estimate the server solved this row from (legVolumes:
+    // network). Feeding it back is what makes the re-solve byte-identical;
+    // without it the row would fall back to the screening allocation.
+    if (row.legEstimateExact) cand.legEstimate = row.legEstimateExact as LegEstimate;
 
     // Design-hour volume.
     if (typeof row.designHourVolumeVph === "number" && row.designHourVolumeVph > 0) {
@@ -929,6 +938,7 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
       ...(conservedLabeling ? { conservedLabeling: true } : {}),
       ...(req.realLaneGeometry === false ? { realLaneGeometry: false } : {}),
       signalTiming,
+      legVolumes: "network",
       weatherFactor,
     };
     const baseRowsById = new Map(p.affectedIntersections.map((r) => [r.signalId, r]));
@@ -943,7 +953,13 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
       let built: AffectedIntersection;
       try {
         built = buildAffectedRow(
-          { sig: c.sig, distanceMi: c.base.distanceMi, ...(c.utdf ? { utdf: c.utdf } : {}), ...(c.timingOverride ? { timingOverride: c.timingOverride } : {}) },
+          {
+            sig: c.sig,
+            distanceMi: c.base.distanceMi,
+            ...(c.utdf ? { utdf: c.utdf } : {}),
+            ...(c.timingOverride ? { timingOverride: c.timingOverride } : {}),
+            ...(c.legEstimate ? { legEstimate: c.legEstimate } : {}),
+          },
           c.weight, project, params, c.calibration, turns, turnsIn,
         );
       } catch {

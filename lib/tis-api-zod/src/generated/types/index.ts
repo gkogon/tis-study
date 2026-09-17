@@ -39,6 +39,7 @@ export * from "./tisAffectedIntersectionDesignBuildLos";
 export * from "./tisAffectedIntersectionDesignNoBuildLos";
 export * from "./tisAffectedIntersectionExistingLos";
 export * from "./tisAffectedIntersectionFutureLos";
+export * from "./tisAffectedIntersectionLegEstimateExact";
 export * from "./tisAffectedIntersectionLegVolumesItem";
 export * from "./tisAffectedIntersectionLegVolumesItemDirection";
 export * from "./tisAffectedIntersectionLegVolumesItemOneWay";

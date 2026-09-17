@@ -6,6 +6,11 @@
 //     (basis measured, source "override", the override's cycle) and nothing
 //     else: its existing volumes / approach shares / designHourVolumeVph are
 //     the base study's byte for byte, and every OTHER row is byte-identical.
+//     Under legVolumes: network (the default) a resolved row's
+//     designHourVolumeVph is the Σ entering of its leg estimate and
+//     volumeSource is network_estimate — "byte for byte the base study's"
+//     means equal to the base run's own (possibly network-estimated) value,
+//     not the raw inventory design hour.
 //  2. FIRST PROVIDER. With a Synchro record AND an override on the same
 //     signal, the override's timing wins while the record still supplies the
 //     volumes (volumeSource utdf_tmc, utdfRecordIndex 0).
@@ -130,8 +135,8 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
   ok(near(r?.signalTiming?.gOverCns ?? 0, 45 / 120, 0.002) && near(r?.signalTiming?.gOverCnsLeft ?? 0, 15 / 120, 0.002),
      `sig-1: g/C from the override splits (NS through ${r?.signalTiming?.gOverCns}, NS left ${r?.signalTiming?.gOverCnsLeft})`);
   ok(JSON.stringify(r?.signalTiming) !== JSON.stringify(b?.signalTiming), "sig-1: the timing actually changed vs the base run");
-  ok(r?.designHourVolumeVph === b?.designHourVolumeVph && r?.volumeSource === undefined && r?.utdfRecordIndex === undefined,
-     `sig-1: volumes untouched — designHourVolumeVph ${r?.designHourVolumeVph} === base, no volumeSource, no utdfRecordIndex`);
+  ok(r?.designHourVolumeVph === b?.designHourVolumeVph && r?.volumeSource === b?.volumeSource && r?.utdfRecordIndex === undefined,
+     "sig-1: volumes untouched — designHourVolumeVph and volumeSource equal the base run's, no utdfRecordIndex");
   const sameVols = (r?.approaches ?? []).every((ap, i) => ap.existingVolumeVph === b.approaches[i].existingVolumeVph && ap.currentVolumeVph === b.approaches[i].currentVolumeVph && ap.direction === b.approaches[i].direction);
   ok(sameVols, "sig-1: every approach's existing / current volume is the base study's, byte for byte");
   ok(r?.loadWeight === b?.loadWeight && r?.addedTripsPmPeak === b?.addedTripsPmPeak, "sig-1: project load unchanged (loadWeight, addedTripsPmPeak)");
@@ -222,7 +227,8 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
 {
   const bRows = rows(base);
   ok(bRows.every((ix) => typeof ix.designHourVolumeVph === "number" && typeof ix.loadWeight === "number"), "every row carries designHourVolumeVph and loadWeight");
-  ok(bRows.every((ix) => ix.designHourVolumeVph === MOCK_INTS.find((m) => m.id === ix.signalId)?.totalVolume), "designHourVolumeVph is the inventory's unrounded design-hour volume");
+  ok(bRows.every((ix) => ix.designHourVolumeVph === (ix.legEstimateExact ? ix.legEstimateExact.movements.totalEnteringVph : MOCK_INTS.find((m) => m.id === ix.signalId)?.totalVolume)),
+     "designHourVolumeVph is the unrounded basis the row was solved from (Σ entering of legEstimateExact when present, else the inventory's design hour)");
   ok(bRows.every((ix) => typeof ix.signalTiming?.gOverCnsExact === "number" && typeof ix.signalTiming?.gOverCewExact === "number"
        && core.round3(ix.signalTiming.gOverCnsExact) === ix.signalTiming.gOverCns && core.round3(ix.signalTiming.gOverCewExact) === ix.signalTiming.gOverCew),
      "signalTiming carries unrounded g/C ratios that round to the printed 3-dp ones");
@@ -282,10 +288,11 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
       distributionOctants: base.tripDistribution.byDirection,
       conservedLabeling: true,
       signalTiming: "computed",
+      legVolumes: "network",
       weatherFactor: base.weatherFactorExact,
     };
     const rebuilt = core.buildAffectedRow(
-      { sig, distanceMi: row.distanceMi }, row.loadWeight, { lat: SITE.lat, lon: SITE.lon }, params, undefined, row.pathTurns, row.pathTurnsIn,
+      { sig, distanceMi: row.distanceMi, ...(row.legEstimateExact ? { legEstimate: row.legEstimateExact } : {}) }, row.loadWeight, { lat: SITE.lat, lon: SITE.lon }, params, undefined, row.pathTurns, row.pathTurnsIn,
     );
     const strip = (r) => { const c = { ...r }; delete c.distanceMi; return JSON.stringify(c); };
     ok(strip(rebuilt) === strip(row), "buildAffectedRow from the printed exact inputs reproduces sig-1 byte for byte (distanceMi aside — the row prints it rounded)");
@@ -318,9 +325,10 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
       distributionOctants: past.tripDistribution.byDirection,
       conservedLabeling: true,
       signalTiming: "computed",
+      legVolumes: "network",
       weatherFactor: past.weatherFactorExact,
     };
-    const build = (p) => core.buildAffectedRow({ sig, distanceMi: row.distanceMi }, row.loadWeight, { lat: SITE.lat, lon: SITE.lon }, p, undefined, row.pathTurns, row.pathTurnsIn);
+    const build = (p) => core.buildAffectedRow({ sig, distanceMi: row.distanceMi, ...(row.legEstimateExact ? { legEstimate: row.legEstimateExact } : {}) }, row.loadWeight, { lat: SITE.lat, lon: SITE.lon }, p, undefined, row.pathTurns, row.pathTurnsIn);
     const strip = (r) => { const c = { ...r }; delete c.distanceMi; return JSON.stringify(c); };
     ok(strip(build(params)) === strip(row), "openingYear 2024: buildAffectedRow from the printed multipliers reproduces sig-1 byte for byte");
     const wrong = build({ ...params, designGrowthMultiplier: naive });

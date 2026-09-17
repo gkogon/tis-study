@@ -1834,6 +1834,12 @@ export const GenerateTisResponse = zod.object({
         .describe(
           "Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).",
         ),
+      legEstimateExact: zod
+        .record(zod.string(), zod.unknown())
+        .optional()
+        .describe(
+          "The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes \/ movementEstimate.",
+        ),
       existingStorageFt: zod.number().optional(),
       storageMovement: zod.string().optional(),
       utdfCycleLenSec: zod.number().optional(),
@@ -2218,6 +2224,12 @@ export const GenerateTisResponse = zod.object({
             .optional()
             .describe(
               "Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).",
+            ),
+          legEstimateExact: zod
+            .record(zod.string(), zod.unknown())
+            .optional()
+            .describe(
+              "The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes \/ movementEstimate.",
             ),
           existingStorageFt: zod.number().optional(),
           storageMovement: zod.string().optional(),
@@ -4371,6 +4383,12 @@ export const WhatIfTisResponse = zod.object({
         .describe(
           "Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).",
         ),
+      legEstimateExact: zod
+        .record(zod.string(), zod.unknown())
+        .optional()
+        .describe(
+          "The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes \/ movementEstimate.",
+        ),
       existingStorageFt: zod.number().optional(),
       storageMovement: zod.string().optional(),
       utdfCycleLenSec: zod.number().optional(),
@@ -4755,6 +4773,12 @@ export const WhatIfTisResponse = zod.object({
             .optional()
             .describe(
               "Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).",
+            ),
+          legEstimateExact: zod
+            .record(zod.string(), zod.unknown())
+            .optional()
+            .describe(
+              "The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes \/ movementEstimate.",
             ),
           existingStorageFt: zod.number().optional(),
           storageMovement: zod.string().optional(),
@@ -8002,6 +8026,12 @@ export const GetTisProjectResponse = zod
             .describe(
               "Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).",
             ),
+          legEstimateExact: zod
+            .record(zod.string(), zod.unknown())
+            .optional()
+            .describe(
+              "The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes \/ movementEstimate.",
+            ),
           existingStorageFt: zod.number().optional(),
           storageMovement: zod.string().optional(),
           utdfCycleLenSec: zod.number().optional(),
@@ -8402,6 +8432,12 @@ export const GetTisProjectResponse = zod
                 .optional()
                 .describe(
                   "Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).",
+                ),
+              legEstimateExact: zod
+                .record(zod.string(), zod.unknown())
+                .optional()
+                .describe(
+                  "The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes \/ movementEstimate.",
                 ),
               existingStorageFt: zod.number().optional(),
               storageMovement: zod.string().optional(),

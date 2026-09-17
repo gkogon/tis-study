@@ -1021,6 +1021,13 @@ export type TisAffectedIntersectionMovementEstimate = {
 };
 
 /**
+ * The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes / movementEstimate.
+ */
+export type TisAffectedIntersectionLegEstimateExact = {
+  [key: string]: unknown;
+};
+
+/**
  * measured = cycle AND per-movement splits from a source; measured-cycle = cycle from a source, splits computed; webster = computed from no-build volumes; screening-default = volumes absent or the intersection is at/over saturation (Y >= 0.85), where Webster is not applicable and the flat 90 s / 0.45 is reported instead.
  */
 export type TisAffectedIntersectionSignalTimingBasis =
@@ -1171,6 +1178,8 @@ export interface TisAffectedIntersection {
   legVolumes?: TisAffectedIntersectionLegVolumesItem[];
   /** Balanced turning-movement estimate and diagnostics (legVolumes:network rows only). */
   movementEstimate?: TisAffectedIntersectionMovementEstimate;
+  /** The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes / movementEstimate. */
+  legEstimateExact?: TisAffectedIntersectionLegEstimateExact;
   existingStorageFt?: number;
   storageMovement?: string;
   utdfCycleLenSec?: number;

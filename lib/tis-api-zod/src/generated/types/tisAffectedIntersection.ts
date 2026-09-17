@@ -10,6 +10,7 @@ import type { TisAffectedIntersectionDesignBuildLos } from "./tisAffectedInterse
 import type { TisAffectedIntersectionDesignNoBuildLos } from "./tisAffectedIntersectionDesignNoBuildLos";
 import type { TisAffectedIntersectionExistingLos } from "./tisAffectedIntersectionExistingLos";
 import type { TisAffectedIntersectionFutureLos } from "./tisAffectedIntersectionFutureLos";
+import type { TisAffectedIntersectionLegEstimateExact } from "./tisAffectedIntersectionLegEstimateExact";
 import type { TisAffectedIntersectionLegVolumesItem } from "./tisAffectedIntersectionLegVolumesItem";
 import type { TisAffectedIntersectionMitigationSeverity } from "./tisAffectedIntersectionMitigationSeverity";
 import type { TisAffectedIntersectionMovementEstimate } from "./tisAffectedIntersectionMovementEstimate";
@@ -84,6 +85,8 @@ export interface TisAffectedIntersection {
   legVolumes?: TisAffectedIntersectionLegVolumesItem[];
   /** Balanced turning-movement estimate and diagnostics (legVolumes:network rows only). */
   movementEstimate?: TisAffectedIntersectionMovementEstimate;
+  /** The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes / movementEstimate. */
+  legEstimateExact?: TisAffectedIntersectionLegEstimateExact;
   existingStorageFt?: number;
   storageMovement?: string;
   utdfCycleLenSec?: number;

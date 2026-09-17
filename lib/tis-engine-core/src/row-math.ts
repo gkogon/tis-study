@@ -475,6 +475,11 @@ export type AffectedIntersection = {
     matrix: Record<Direction, Record<Direction, number>>;
     shares: Record<Direction, Record<Movement, number>>;
   };
+  /** The unrounded estimate this row was solved from — the browser re-solve
+   *  feeds it back to buildAffectedRow as RowCandidate.legEstimate so a
+   *  what-if reproduces the row byte for byte (the movementsExact precedent).
+   *  Display consumers read legVolumes / movementEstimate, not this. */
+  legEstimateExact?: LegEstimate;
   /** Field-measured existing turn-bay storage (ft) for the governing
    *  movement (see storageMovement), imported from the UTDF [Lanes] Storage
    *  record. Activates the renderers' storage-bay-adequacy tables, which
@@ -1326,6 +1331,7 @@ export function buildAffectedRow(
     ...(est
       ? {
           volumeSource: (est.anyCsv ? "link_csv" : "network_estimate") as "link_csv" | "network_estimate",
+          legEstimateExact: est,
           legVolumes: DIRECTIONS.flatMap((d) => {
             const l = est.legs[d];
             return l ? [{ direction: d, enteringVph: round1(l.enteringVph), exitingVph: l.exitingVph === null ? null : round1(l.exitingVph), source: l.source, oneWay: l.oneWay }] : [];
