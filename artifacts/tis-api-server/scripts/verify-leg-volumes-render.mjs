@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { loadRendererBundle } from "./lib/bundle-renderer.mjs";
 import { loadFixture, projectFromFixture } from "./lib/fixture-project.mjs";
+import { pageTexts, orphanPages } from "./lib/pdf-text.mjs";
+import { syntheticTheme } from "./lib/synthetic-theme.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -27,7 +29,7 @@ async function text(buf) {
   return out.replace(/\s+/g, " ");
 }
 
-const { mod, cleanup } = await loadRendererBundle();
+const { mod, cleanup } = await loadRendererBundle(`export { DEFAULT_THEME } from "./report-theme/theme";`);
 try {
   const fx = loadFixture("ny");
   const legacy = await text(await mod.renderStudyPdf(projectFromFixture(fx), { name: "Leg Render Check", logoUrl: null }));
@@ -53,6 +55,29 @@ try {
   ok(t.includes("balanced estimate (Furness/IPF, 6 iterations, residual 0.3 vph)"), "injected row prints the movement diagnostics");
   ok(t.includes("Balanced turning movements (vph)"), "injected row prints the 4×4 matrix table");
   ok(t.includes("balanced to the exit legs"), "appendix intro switches to the resolved wording when any row carries an estimate");
+
+  // Pagination under real data: the stored preview fixtures carry none of
+  // the new fields, so check:appendix-worksheet-pages never exercises the
+  // matrix table's keep-together budget. Inject the same estimate onto
+  // EVERY row (not just row 0) and reuse the pagination check's own orphan
+  // classifier so this assertion can never drift from that check's definition.
+  const all = JSON.parse(JSON.stringify(fx));
+  for (const r of all.report.affectedIntersections) { r.volumeSource = row.volumeSource; r.legVolumes = row.legVolumes; r.movementEstimate = row.movementEstimate; }
+  const allBuf = await mod.renderStudyPdf(projectFromFixture(all), { name: "Leg Render Check", logoUrl: null });
+  const orphans = orphanPages(await pageTexts(allBuf));
+  ok(orphans.length === 0, `every-row injection: ${orphans.length} orphan page(s) — the matrix table keeps together with its heading`);
+  for (const o of orphans) console.log(`      p${o.page} (${o.chars} chars): "${o.head}…"`);
+  const allText = (await pageTexts(allBuf)).join(" ").replace(/\s+/g, " ");
+  const n = all.report.affectedIntersections.length;
+  ok((allText.match(/Balanced turning movements \(vph\)/g) ?? []).length >= n, `every-row injection: the matrix table prints on all ${n} worksheets`);
+
+  // Themed render of the new blocks: verify-theme-render.mjs's synthetic
+  // corporate theme exercises the report-theme layout path (not the default
+  // PDFKit layout), which the render check above never touches.
+  const themed = await mod.renderStudyPdf(projectFromFixture(all), { name: "Leg Render Check", logoUrl: null, firmId: "f1", reportTemplate: syntheticTheme(mod.DEFAULT_THEME) });
+  const themedText = (await pageTexts(themed)).join(" ").replace(/\s+/g, " ");
+  ok(themedText.includes("Leg volumes: 2 of 4 from the signal's counted design hour") && themedText.includes("Balanced turning movements (vph)"), "themed render prints the provenance line and the matrix table");
+  ok(orphanPages(await pageTexts(themed)).length === 0, "themed render: no orphan pages with every row injected");
 } finally {
   await cleanup();
 }
