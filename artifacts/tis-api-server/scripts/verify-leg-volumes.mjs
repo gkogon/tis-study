@@ -224,5 +224,47 @@ const colSum = (m, t) => DIRS.reduce((s, d) => s + m[d][t], 0);
   ok(close(est.shares.NB.L + est.shares.NB.T + est.shares.NB.R, 1, 1e-9) && est.leftVph.NB === 0, "zero entering: shares finite (seed), left 0");
 }
 
+// ---- 4. row-math consumption: screening/absent byte-identical; network uses the estimate; measured wins ----
+{
+  // 1200 vph design hour (not the McKnight-scale 2700): with one lane per
+  // direction the leg volumes must keep the critical flow ratio under the
+  // Webster saturation guard (Y ≥ 0.85 → basis "screening-default"), or the
+  // timing assertion below would be testing the guard, not the estimate.
+  const sig = { id: "sig-1", name: "Main St & Oak Ave", zone: "Z", latitude: 40.5, longitude: -80.0, totalVolume: 1200 };
+  const project = { lat: 40.51, lon: -80.01 };
+  // distributionOctants so project trips get per-movement rows — without it the
+  // lane-group allocator has no movement basis and (correctly) prints none.
+  const octants = { NNE: 12.5, ENE: 12.5, ESE: 12.5, SSE: 12.5, SSW: 12.5, WSW: 12.5, WNW: 12.5, NNW: 12.5 };
+  const base = { growthMultiplier: 1.05, capacityVph: 3240, approachCapacityVph: 810, externalTrips: 120, inFraction: 0.6, signalTiming: "computed", weatherFactor: 1, distributionOctants: octants };
+  const junction = [
+    { bearingDeg: 180, cls: 2, oneWay: null }, { bearingDeg: 0, cls: 2, oneWay: null },
+    { bearingDeg: 270, cls: 4, oneWay: null }, { bearingDeg: 90, cls: 4, oneWay: null },
+  ];
+  const estimate = core.buildLegEstimate(junction, { signalDesignHourVph: 1200 });
+  const cand = (extra) => ({ sig, distanceMi: 0.4, ...extra });
+
+  const legacy = core.buildAffectedRow(cand({}), 0.5, project, base);
+  const screening = core.buildAffectedRow(cand({ legEstimate: estimate }), 0.5, project, { ...base, legVolumes: "screening" });
+  const absent = core.buildAffectedRow(cand({}), 0.5, project, { ...base, legVolumes: "network" });
+  ok(JSON.stringify(screening) === JSON.stringify(legacy), "row: legVolumes:screening with an estimate attached is byte-identical to today");
+  ok(JSON.stringify(absent) === JSON.stringify(legacy), "row: legVolumes:network with NO estimate is byte-identical to today");
+
+  const network = core.buildAffectedRow(cand({ legEstimate: estimate }), 0.5, project, { ...base, legVolumes: "network" });
+  ok(network.volumeSource === "network_estimate", "row: network mode labels volumeSource network_estimate");
+  ok(close(network.designHourVolumeVph, 1200 + 700, 1e-6), "row: design hour = Σ entering (main 2×600 + minor 2×350)");
+  const nb = network.approaches.find((a) => a.direction === "NB");
+  const eb = network.approaches.find((a) => a.direction === "EB");
+  ok(close(nb.existingVolumeVph, 600 * 1.05, 0.2) && close(eb.existingVolumeVph, 350 * 1.05, 0.2), "row: approach no-build volumes are the leg volumes grown");
+  ok(Array.isArray(network.legVolumes) && network.legVolumes.length === 4 && network.legVolumes.find((l) => l.direction === "EB").source === "class_default", "row: legVolumes provenance rides the row");
+  ok(network.movementEstimate && network.movementEstimate.method === "ipf" && network.movementEstimate.matrix.NB.NB === 0, "row: movementEstimate diagnostics + matrix ride the row");
+  ok(Array.isArray(nb.laneGroups) && nb.laneGroups.length === 3, "row: lane groups (L/T/R) exist without a UTDF record");
+  ok(network.signalTiming && network.signalTiming.basis === "webster", "row: timing still resolves (Webster) from the leg volumes");
+
+  // Measured UTDF record wins outright over the estimate.
+  const utdf = { latitude: 40.5, longitude: -80.0, volumes: { NBL: 100, NBT: 800, NBR: 100, SBL: 90, SBT: 700, SBR: 90, EBL: 40, EBT: 200, EBR: 40, WBL: 30, WBT: 150, WBR: 30 } };
+  const measured = core.buildAffectedRow(cand({ utdf, legEstimate: estimate }), 0.5, project, { ...base, legVolumes: "network" });
+  ok(measured.volumeSource === "utdf_tmc" && measured.legVolumes === undefined, "row: a measured record wins outright; no estimate fields printed");
+}
+
 console.log(fails === 0 ? "\nOVERALL: PASS" : `\nOVERALL: FAIL (${fails})`);
 process.exit(fails === 0 ? 0 : 1);
