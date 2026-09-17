@@ -26,10 +26,12 @@
  *   §02 Q1           the engine's average back-of-queue, Q95 ÷ 1.65 — its own
  *                    Poisson factor, backed out, not a separate measurement.
  *   §03 Webster      computeSignalTiming() on the printed no-build volumes and
- *                    lane counts — plus, when the row carries an import, the
- *                    measured left share (lane groups) and the measured cycle
- *                    (utdfCycleLenSec), exactly what row-math.ts hands the
- *                    fallback — for comparison beside the plan in use. On a
+ *                    lane counts — plus, when the row carries lane groups,
+ *                    their left share (a record's measured split, or the
+ *                    balanced estimate's under legVolumes: network) and, with
+ *                    an import, the measured cycle (utdfCycleLenSec), exactly
+ *                    what row-math.ts hands the fallback — for comparison
+ *                    beside the plan in use. On a
  *                    row whose basis already is "webster" (or "measured-cycle")
  *                    this reproduces the printed plan.
  *
@@ -354,7 +356,8 @@ export function websterForRow(row: TisAffectedIntersection): SignalTiming {
     approachVph[d] = num(a.existingVolumeVph);
     const known = finite(a.throughLanes) && a.throughLanes > 0 && (a.lanesSource === "import" || a.lanesSource === "osm");
     lanes[d] = known ? Math.round(a.throughLanes as number) : 0;
-    // Measured left share: row-math.ts leftVph[d] = approachVph[d] × (L ÷ Σ LTR of the record);
+    // Left share — a record's measured split, or the balanced estimate's under
+    // legVolumes: network: row-math.ts leftVph[d] = approachVph[d] × (L ÷ Σ LTR);
     // the lane groups carry that split as existingVolumeVph per movement.
     const lg = Array.isArray(a.laneGroups) ? a.laneGroups : undefined;
     if (lg && lg.length > 0) {
