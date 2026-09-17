@@ -1354,8 +1354,14 @@ components:
         # "synchro_pdf_tmc" = the same substitution, but the counts came from
         # an imported Synchro report PDF and the record was matched to this
         # intersection by normalized name (report PDFs carry no coordinates).
-        # Absent = AADT-derived estimate (legacy behavior, byte-identical
-        # payloads).
+        # "network_estimate" = no record; under legVolumes: network the
+        # junction resolved to the road network and its existing volumes are
+        # the per-leg estimate (legVolumes[]) with turning movements balanced
+        # by Furness/IPF (movementEstimate). "link_csv" = the same, with a
+        # client link count on at least one leg. Absent = the screening
+        # allocation of the AADT-derived design hour — a legacy payload,
+        # legVolumes: screening, or a junction that did not resolve to the
+        # road network (the worksheet says which).
         volumeSource:
           type: string
           enum: [utdf_tmc, synchro_pdf_tmc, network_estimate, link_csv]

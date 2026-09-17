@@ -361,7 +361,9 @@ function approachPlan(
     ...(baseValues ? { base: baseValues } : {}),
     changed: baseValues ? !sameBase(base, baseValues) : false,
     ...(() => {
-      const leg = Array.isArray((row as any).legVolumes) ? (row as any).legVolumes.find((l: any) => l.direction === a.direction) : undefined;
+      // The row's legVolumes (generated TisAffectedIntersection type): the
+      // approach's leg, if the row carries one, names its volume source.
+      const leg = row.legVolumes?.find((l) => l.direction === a.direction);
       return leg?.source ? { legSource: leg.source } : {};
     })(),
   };

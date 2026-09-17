@@ -469,8 +469,13 @@ export type AffectedIntersection = {
    *  top; the measurement anchors PM, other periods scale by the period
    *  factors). "synchro_pdf_tmc" = the same substitution, but the counts came
    *  from an imported Synchro report PDF and the record matched this signal
-   *  by normalized name (report PDFs carry no coordinates). Absent =
-   *  AADT-derived estimate — legacy payloads unchanged. */
+   *  by normalized name (report PDFs carry no coordinates). "network_estimate"
+   *  = no record; the junction resolved to the road network under
+   *  legVolumes: network and the existing volumes are the per-leg estimate
+   *  (legVolumes) with movements balanced by Furness/IPF (movementEstimate);
+   *  "link_csv" = the same with a client link count on at least one leg.
+   *  Absent = the screening allocation of the AADT-derived design hour (a
+   *  legacy payload, legVolumes: screening, or an unresolved junction). */
   volumeSource?: "utdf_tmc" | "synchro_pdf_tmc" | "network_estimate" | "link_csv";
   /** Per-leg background volumes and where each came from (legVolumes: network). */
   legVolumes?: Array<{ direction: Direction; enteringVph: number; exitingVph: number | null; source: LegSource; oneWay: "in" | "out" | null }>;
@@ -1162,9 +1167,10 @@ export function buildAffectedRow(
         }
         return any ? { addedByMovement: byMv } : {};
       })(),
-      // Per-movement queues, but only where an imported record supplies a real
-      // turn split for the background traffic. Absent everywhere else on
-      // purpose — see laneGroupsForApproach.
+      // Per-movement queues, but only where the background turn split is more
+      // than the flat 15/70/15: an imported record's measured movements, or
+      // the balanced estimate's shares (legVolumes: network). Absent on a
+      // screening row on purpose — see laneGroupsForApproach.
       ...(() => {
         if (!c.utdf && !est) return {};
         const addedExactByMovement: Record<Movement, number> = { L: 0, T: 0, R: 0 };
