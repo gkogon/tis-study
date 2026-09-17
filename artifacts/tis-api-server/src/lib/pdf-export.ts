@@ -9510,8 +9510,15 @@ function renderCapacityAppendix(
       if (count("signal_baseline") > 0) parts.push(`${count("signal_baseline")} of ${n} from the road-class baseline the analyzer assigned this signal (no compatible count)`);
       if (count("class_default") > 0) parts.push(`${count("class_default")} of ${n} from the road-class baseline (no count on that leg)`);
       const me = ix.movementEstimate;
+      // IPF stops at 50 iterations (leg-volumes.ts IPF_MAX_ITER) whether or
+      // not the residual reached 0.5 vph; a row that hit the cap with a
+      // residual still above tolerance did NOT balance and must say so (the
+      // final row pass still lands every row on its entering volume exactly).
+      const hitCap = Number(me.iterations) >= 50 && Number(me.maxResidualVph) > 0.5;
       const mv = me.method === "ipf"
-        ? `balanced estimate (Furness/IPF, ${me.iterations} iterations, residual ${Number(me.maxResidualVph).toFixed(1)} vph${me.exitsNormalized ? `; exits scaled to entries, ${(Number(me.imbalancePct) * 100).toFixed(0)}% imbalance` : ""})`
+        ? (hitCap
+            ? `did not balance within 50 iterations (residual ${Number(me.maxResidualVph).toFixed(1)} vph; rows held exact)${me.exitsNormalized ? `; exits scaled to entries, ${(Number(me.imbalancePct) * 100).toFixed(0)}% imbalance` : ""}`
+            : `balanced estimate (Furness/IPF, ${me.iterations} iterations, residual ${Number(me.maxResidualVph).toFixed(1)} vph${me.exitsNormalized ? `; exits scaled to entries, ${(Number(me.imbalancePct) * 100).toFixed(0)}% imbalance` : ""})`)
         : "geometry seed only (no exit volume to balance against)";
       // A one-way leg is one carriageway of a two-way road (OSM maps a divided
       // arterial as two one-way ways), so the engine gives it half of the
@@ -9521,6 +9528,19 @@ function renderCapacityAppendix(
       doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
         `Leg volumes: ${parts.join("; ")}. Turning movements: ${mv}.${me.legsDropped > 0 ? ` ${me.legsDropped} extra leg not carried (4×4 matrix).` : ""}`
           + (anyOneWay ? " A one-way carriageway carries half of the two-way count in its direction (a one-way couplet street is understated)." : ""),
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+    } else if (anyLegEstimate && ix.volumeSource !== "utdf_tmc" && ix.volumeSource !== "synchro_pdf_tmc") {
+      // The appendix intro promises that a junction which did not resolve to
+      // the road network "keeps the screening allocation and says so": this
+      // is the saying so. Gated on anyLegEstimate so a legacy or
+      // screening-mode study (no row carries an estimate) prints nothing and
+      // stays byte-identical; a measured row is excluded because its volumes
+      // are the record's, not a screening allocation (its own provenance
+      // sentence above already describes them).
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        "Leg volumes: screening allocation (this junction did not resolve to the road network); turning movements: screening 15/70/15.",
         { paragraphGap: 4 },
       );
       doc.fillColor("black");
@@ -9601,7 +9621,14 @@ function renderCapacityAppendix(
     if (ix.movementEstimate && ix.movementEstimate.matrix) {
       const mx: Record<string, Record<string, number>> = ix.movementEstimate.matrix;
       const dirs = ["NB", "SB", "EB", "WB"];
-      const present = dirs.filter((d) => dirs.some((t) => (mx[d]?.[t] ?? 0) > 0) || dirs.some((f) => (mx[f]?.[d] ?? 0) > 0));
+      // The legs that exist are the row's legVolumes (a T prints three), not
+      // the non-zero cells: a leg whose row AND column balance to zero (a
+      // zero design hour, or a one-way pair at a stem) is still a leg and
+      // must keep its line rather than vanish from the matrix.
+      const legDirs = new Set<string>(Array.isArray(ix.legVolumes) ? ix.legVolumes.map((l: any) => String(l.direction)) : []);
+      const present = legDirs.size > 0
+        ? dirs.filter((d) => legDirs.has(d))
+        : dirs.filter((d) => dirs.some((t) => (mx[d]?.[t] ?? 0) > 0) || dirs.some((f) => (mx[f]?.[d] ?? 0) > 0));
       const rowsOut = present.map((d) => [
         `${d} approach`,
         ...present.map((t) => (t === d ? "—" : fmtNum(mx[d]?.[t] ?? 0))),
@@ -9616,8 +9643,12 @@ function renderCapacityAppendix(
       };
       keepHeadingWith(doc, "Balanced turning movements (vph)", 0, tableHeight(doc, spec));
       table(doc, spec);
+      // The matrix is the estimate's EXISTING-year design-hour basis (what
+      // buildLegEstimate balanced); the No-Build approach volumes above are
+      // that basis grown and period-scaled, so a reviewer must be told why
+      // the two do not tie.
       doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-        "Columns are the leg each movement exits through; the diagonal (U-turn) is folded into the left turn. Entries equal exits at this junction within the stated residual.",
+        "Design-hour basis — existing year, before growth and period scaling, so it is identical for every analysis period and will not tie to the grown No-Build volumes above. Columns are the leg each movement exits through; the diagonal (U-turn) is folded into the left turn. Entries equal exits at this junction within the stated residual.",
         { paragraphGap: 4 },
       );
       doc.fillColor("black");

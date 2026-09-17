@@ -35,6 +35,7 @@ try {
   const legacy = await text(await mod.renderStudyPdf(projectFromFixture(fx), { name: "Leg Render Check", logoUrl: null }));
   ok(!legacy.includes("Leg volumes:"), "legacy fixture prints no provenance line");
   ok(!legacy.includes("balanced to the exit legs"), "legacy fixture keeps the screening appendix wording");
+  ok(!legacy.includes("screening allocation"), "legacy fixture prints no screening-allocation line (no row carries an estimate)");
 
   const injected = JSON.parse(JSON.stringify(fx));
   const row = injected.report.affectedIntersections[0];
@@ -86,20 +87,60 @@ try {
     "signal_baseline legs: the worksheet names the analyzer's baseline, not a counted design hour");
   ok(!bsText.includes("counted design hour (half per direction)"), "signal_baseline legs: no leg is called counted");
 
+  ok(t.includes("Design-hour basis — existing year, before growth and period scaling, so it is identical for every analysis period and will not tie to the grown No-Build volumes above."),
+    "matrix caption states its basis: existing-year design hour, before growth and period scaling");
+
+  // A T-junction (three legs): the matrix prints the three legs the row
+  // carries — the absent WB leg has no line or column — even though its
+  // presence is read from legVolumes, not from non-zero cells.
+  const tee = JSON.parse(JSON.stringify(injected));
+  const teeRow = tee.report.affectedIntersections[0];
+  teeRow.legVolumes = row.legVolumes.filter((l) => l.direction !== "WB");
+  teeRow.movementEstimate = { ...row.movementEstimate, matrix: { NB: { NB: 0, SB: 1000, EB: 200, WB: 0 }, SB: { NB: 1000, SB: 0, EB: 150, WB: 0 }, EB: { NB: 100, SB: 50, EB: 0, WB: 0 }, WB: { NB: 0, SB: 0, EB: 0, WB: 0 } } };
+  const teeText = await text(await mod.renderStudyPdf(projectFromFixture(tee), { name: "Leg Render Check", logoUrl: null }));
+  ok(teeText.includes("→ EB leg") && !teeText.includes("→ WB leg") && !teeText.includes("WB approach"), "T-junction: the matrix prints NB/SB/EB and no WB line or column");
+  // A leg that exists but carries nothing (zero design hour on a one-way
+  // stem, say): its row and column are all zero, yet it is a leg and keeps
+  // its line — present legs come from legVolumes, not from non-zero cells.
+  const zeroLeg = JSON.parse(JSON.stringify(injected));
+  const zRow = zeroLeg.report.affectedIntersections[0];
+  zRow.legVolumes = row.legVolumes.map((l) => (l.direction === "WB" ? { ...l, enteringVph: 0, exitingVph: 0 } : l));
+  zRow.movementEstimate = teeRow.movementEstimate;
+  const zText = await text(await mod.renderStudyPdf(projectFromFixture(zeroLeg), { name: "Leg Render Check", logoUrl: null }));
+  ok(zText.includes("→ WB leg") && zText.includes("WB approach"), "zero-volume leg: the WB line and column stay in the matrix because the row's legVolumes carry the leg");
+
   // Pagination under real data: the stored preview fixtures carry none of
   // the new fields, so check:appendix-worksheet-pages never exercises the
-  // matrix table's keep-together budget. Inject the same estimate onto
-  // EVERY row (not just row 0) and reuse the pagination check's own orphan
-  // classifier so this assertion can never drift from that check's definition.
+  // matrix table's keep-together budget. Inject the estimate onto EVERY
+  // row (not just row 0) and reuse the pagination check's own orphan
+  // classifier so this assertion can never drift from that check's
+  // definition. Rows 1–3 and 6 carry variants that exercise the other
+  // provenance wordings; row 3 is left WITHOUT an estimate (an unresolved
+  // junction in a study that resolved others) and row 6 is a measured row.
   const all = JSON.parse(JSON.stringify(fx));
-  for (const r of all.report.affectedIntersections) { r.volumeSource = row.volumeSource; r.legVolumes = row.legVolumes; r.movementEstimate = row.movementEstimate; }
+  const rowsAll = all.report.affectedIntersections;
+  for (const r of rowsAll) { r.volumeSource = row.volumeSource; r.legVolumes = row.legVolumes; r.movementEstimate = row.movementEstimate; }
+  rowsAll[1].movementEstimate = { ...row.movementEstimate, legsDropped: 1, exitsNormalized: true, imbalancePct: 0.2 };
+  rowsAll[2].movementEstimate = { ...row.movementEstimate, iterations: 50, maxResidualVph: 3.4 };
+  delete rowsAll[3].volumeSource; delete rowsAll[3].legVolumes; delete rowsAll[3].movementEstimate;
+  rowsAll[6].volumeSource = "utdf_tmc"; delete rowsAll[6].legVolumes; delete rowsAll[6].movementEstimate;
   const allBuf = await mod.renderStudyPdf(projectFromFixture(all), { name: "Leg Render Check", logoUrl: null });
   const orphans = orphanPages(await pageTexts(allBuf));
   ok(orphans.length === 0, `every-row injection: ${orphans.length} orphan page(s) — the matrix table keeps together with its heading`);
   for (const o of orphans) console.log(`      p${o.page} (${o.chars} chars): "${o.head}…"`);
   const allText = (await pageTexts(allBuf)).join(" ").replace(/\s+/g, " ");
-  const n = all.report.affectedIntersections.length;
-  ok((allText.match(/Balanced turning movements \(vph\)/g) ?? []).length >= n, `every-row injection: the matrix table prints on all ${n} worksheets`);
+  const n = rowsAll.length;
+  ok((allText.match(/Balanced turning movements \(vph\)/g) ?? []).length >= n - 2, `every-row injection: the matrix table prints on all ${n - 2} worksheets that carry an estimate`);
+  ok(allText.includes("1 extra leg not carried (4×4 matrix)."), "legsDropped > 0: the worksheet notes the leg the 4×4 could not carry");
+  ok(allText.includes("exits scaled to entries, 20% imbalance"), "exitsNormalized: the worksheet states the exit scaling and the imbalance");
+  ok(allText.includes("Turning movements: did not balance within 50 iterations (residual 3.4 vph; rows held exact)."),
+    "IPF at the iteration cap with residual > 0.5 vph: the worksheet says it did not balance, not that it converged");
+  ok(!allText.includes("Furness/IPF, 50 iterations"), "IPF at the cap: no worksheet calls the capped run a balanced estimate");
+  const screeningLine = "Leg volumes: screening allocation (this junction did not resolve to the road network); turning movements: screening 15/70/15.";
+  ok((allText.match(/screening allocation \(this junction did not resolve/g) ?? []).length === 1 && allText.includes(screeningLine),
+    "the ONE row without an estimate in a study that resolved others prints the screening-allocation line, exactly once");
+  ok(allText.includes("Existing volumes: measured turning-movement counts (UTDF import"),
+    "the measured row prints its own measured provenance and (count above) NOT the screening line — its volumes are the record's");
 
   // Themed render of the new blocks: verify-theme-render.mjs's synthetic
   // corporate theme exercises the report-theme layout path (not the default
