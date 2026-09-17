@@ -970,6 +970,20 @@ components:
             90 s cycle / g/C 0.45 for every intersection, byte-identical to the
             pre-change output. Each intersection reports which basis it used
             in `signalTiming`.
+        legVolumes:
+          type: string
+          enum: [network, screening]
+          default: network
+          description: >-
+            Background volume basis per study intersection (default network).
+            `network`: each leg carries its own volume — the signal's counted
+            design hour on the two main-road legs (half per direction), the
+            road-class baseline on uncounted minor legs, a client link count
+            where supplied — and turning movements are balanced against the
+            exit legs by iterative proportional fitting (NCHRP 255/765
+            refinement). `screening`: the legacy 30/25/25/20 approach split
+            and 15/70/15 turn shares, byte-identical to the pre-change output.
+            A measured Synchro/UTDF record on a junction wins over either.
         realLaneGeometry:
           type: boolean
           description: >-
@@ -1339,7 +1353,44 @@ components:
         # payloads).
         volumeSource:
           type: string
-          enum: [utdf_tmc, synchro_pdf_tmc]
+          enum: [utdf_tmc, synchro_pdf_tmc, network_estimate, link_csv]
+        legVolumes:
+          type: array
+          description: Per-leg background volumes and their source (legVolumes:network rows only).
+          items:
+            type: object
+            required: [direction, enteringVph, exitingVph, source, oneWay]
+            properties:
+              direction: { type: string, enum: [NB, SB, EB, WB] }
+              enteringVph: { type: number }
+              exitingVph: { type: number, nullable: true }
+              source: { type: string, enum: [csv, signal_aadt, class_default] }
+              oneWay: { type: string, enum: ["in", "out"], nullable: true }
+        movementEstimate:
+          type: object
+          description: Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).
+          required: [method, iterations, maxResidualVph, imbalancePct, exitsNormalized, constrainedExits, legsDropped, matrix, shares]
+          properties:
+            method: { type: string, enum: [ipf, seed_only] }
+            iterations: { type: integer }
+            maxResidualVph: { type: number }
+            imbalancePct: { type: number }
+            exitsNormalized: { type: boolean }
+            constrainedExits: { type: integer }
+            legsDropped: { type: integer }
+            matrix:
+              type: object
+              additionalProperties:
+                type: object
+                additionalProperties: { type: number }
+            shares:
+              type: object
+              additionalProperties:
+                type: object
+                properties:
+                  L: { type: number }
+                  T: { type: number }
+                  R: { type: number }
         # Field-measured existing turn-bay storage (ft) for the governing
         # movement, imported from the UTDF [Lanes] Storage record — activates
         # the storage-bay-adequacy comparison the renderers already gate on

@@ -37,6 +37,7 @@ import { modeChoiceLogit, type DemandZone } from "./four-step-model";
 import { type CardinalDir } from "./caltran-gravity";
 import { fetchLocalRoads, assignRoutes, assignRoutesWithTurns, assignWithDriveways, buildGraph, directedReachability, type ConservationReport, type RouteAssignment, type DrivewayAssignment, type DrivewayResult, type TurnFlow } from "./network-assignment";
 import { selectCordonGateways, snapSignalsToJunctions } from "./cordon-gateways";
+import { incidentLinks, junctionLegsAtNode } from "./junction-legs";
 import { type Driveway } from "./driveways";
 import { getTransitContext } from "./transit-routes";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
@@ -95,6 +96,8 @@ import {
   laneGroupsForApproach,
   type ScenarioParams,
   buildAffectedRow,
+  buildLegEstimate,
+  type LegEstimate,
   clamp,
   round1,
   round2,
@@ -373,6 +376,14 @@ export type TisRequest = {
    *  90 s / g/C 0.45 for every intersection, byte-identical to the pre-change
    *  output. */
   signalTiming?: "computed" | "screening";
+  /** Background volume basis per study intersection. Omitted / "network" =
+   *  each leg carries its own volume (signal design hour on the main-road
+   *  legs, road-class baseline on minor legs, a client link count where
+   *  supplied) and turning movements are balanced against the exit legs by
+   *  iterative proportional fitting. "screening" = the legacy 30/25/25/20
+   *  approach split and 15/70/15 turn shares, byte-identical to the
+   *  pre-change output. A measured Synchro/UTDF record wins over either. */
+  legVolumes?: "network" | "screening";
   /** Site access points with per-movement turn restrictions. When present,
    *  project trips route through these driveways and forbidden movements
    *  reroute onto the network (U-turns). Absent or empty ⇒ single-site
@@ -705,6 +716,10 @@ type StudyCandidate = {
   utdf?: UtdfIntersectionInput;
   /** Index of `utdf` in req.utdfIntersections (echoed as utdfRecordIndex). */
   utdfIndex?: number;
+  /** Per-leg volumes + balanced movements for this junction (buildLegEstimate),
+   *  computed from the conserved-assignment graph once the signal resolved to
+   *  a node. Consumed by buildAffectedRow under legVolumes: network only. */
+  legEstimate?: LegEstimate;
   /** What-if timing override snapped to this signal (attachTimingOverrides).
    *  Read ONLY by the timing resolver's first provider — never for volumes. */
   timingOverride?: SignalTimingOverrideInput;
@@ -1227,10 +1242,17 @@ const FLAT_SIGNAL_CLAUSE = "with a 90s cycle, g/C = 0.45, 1,800 vphpl saturation
 const RESOLVED_SIGNAL_CLAUSE =
   "with each intersection's own cycle length and green splits from the signal-timing resolver — a client Synchro record's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle (60–120 s) with Critical Movement Method splits derived from the no-build approach volumes (FHWA-HOP-07-006), a protected-left phase where the FHWA-HRT-04-091 cross product of left-turn and opposing through volume warrants one, and a pedestrian minimum green from the crossing width; timing is resolved once from no-build volumes and held fixed across every scenario, approach capacity is 1,800 vphpl saturation flow × that phase's g/C (× weather factor), and an intersection at or beyond saturation (Y ≥ 0.85) reports the flat 90s / g/C 0.45 screening default instead";
 
-function tisMethodologyForRegion(region: Region, signalTiming: "computed" | "screening" = "computed"): string[] {
-  const base = signalTiming === "computed"
-    ? TIS_METHODOLOGY.map((m) => (m.includes(FLAT_SIGNAL_CLAUSE) ? m.replace(FLAT_SIGNAL_CLAUSE, RESOLVED_SIGNAL_CLAUSE) : m))
-    : TIS_METHODOLOGY;
+const FLAT_LEG_CLAUSE = "(deterministic per-signal allocation perturbed ±15% from a 30/25/25/20 base)";
+const RESOLVED_LEG_CLAUSE =
+  "(each leg from its own volume: the signal's counted design hour on the two main-road legs, half per direction; the road-class baseline on uncounted minor legs; a client link count where supplied — each worksheet states the source per leg. Turning movements are then balanced to the exit legs by iterative proportional fitting from a geometry seed, the refinement method of NCHRP Report 255 / NCHRP Report 765, so entries equal exits at every resolved junction; a junction that does not resolve to the road network keeps the screening allocation and says so)";
+
+function tisMethodologyForRegion(region: Region, signalTiming: "computed" | "screening" = "computed", legVolumes: "network" | "screening" = "network"): string[] {
+  const base = TIS_METHODOLOGY.map((m) => {
+    let s = m;
+    if (signalTiming === "computed" && s.includes(FLAT_SIGNAL_CLAUSE)) s = s.replace(FLAT_SIGNAL_CLAUSE, RESOLVED_SIGNAL_CLAUSE);
+    if (legVolumes === "network" && s.includes(FLAT_LEG_CLAUSE)) s = s.replace(FLAT_LEG_CLAUSE, RESOLVED_LEG_CLAUSE);
+    return s;
+  });
   if (!isFloridaRegion(region)) return base;
   return base.map((m) =>
     m.includes("NCHRP-716 gamma function")
@@ -1828,6 +1850,21 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
           cg,
           candidates.map((c) => ({ lat: c.sig.latitude, lon: c.sig.longitude })),
         );
+        // Per-leg background volumes + balanced movements for every resolved
+        // junction (legVolumes: network). Computed here because this is the
+        // one place the study holds the routing graph and each signal's node.
+        // Unresolved signals get no estimate and keep the screening split,
+        // labeled — never a blend. Pure and cheap (a 4×4 IPF per signal).
+        if (req.legVolumes !== "screening") {
+          const incidence = incidentLinks(cg);
+          for (let i = 0; i < candidates.length; i++) {
+            const snap = snaps[i]!;
+            if (snap.node < 0) continue;
+            const c = candidates[i]!;
+            const est = buildLegEstimate(junctionLegsAtNode(cg, snap.node, incidence), { signalDesignHourVph: c.sig.totalVolume });
+            if (est) c.legEstimate = est;
+          }
+        }
         // Bearing of travel along a link INTO / OUT OF a node.
         const other = (li: number, node: number): number => {
           const lk = cg.links[li]!;
@@ -1957,6 +1994,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       // Signal timing resolves per intersection unless the request pins the
       // legacy flat basis.
       signalTiming: req.signalTiming === "screening" ? "screening" : "computed",
+      legVolumes: req.legVolumes === "screening" ? "screening" : "network",
       weatherFactor,
     };
 
@@ -2163,7 +2201,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
       // Disclosures first: both of these qualify every number below them.
       ...volumeDisclosures,
       ...(coverageNote ? [coverageNote.message] : []),
-      ...tisMethodologyForRegion(region, req.signalTiming === "screening" ? "screening" : "computed"),
+      ...tisMethodologyForRegion(region, req.signalTiming === "screening" ? "screening" : "computed", req.legVolumes === "screening" ? "screening" : "network"),
     ],
     periodReports,
     growthAppliedPct: growthRatePct,
@@ -2251,7 +2289,7 @@ async function synthesizePmReport(
   const internalCredit = (raw - passByCredit) * (internalCapturePct / 100);
   const externalTrips = Math.max(0, raw - passByCredit - internalCredit);
   const inFraction = lu.directionalSplitPm.in;
-  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak, ...(distributionOctants ? { distributionOctants } : {}), ...(pathTurnsByCandidate ? { conservedLabeling: true } : {}), ...(req.realLaneGeometry === false ? { realLaneGeometry: false } : {}), signalTiming: req.signalTiming === "screening" ? "screening" : "computed", weatherFactor: capacityVph / PER_INTERSECTION_CAPACITY_VPH };
+  const params: ScenarioParams = { growthMultiplier, designGrowthMultiplier, capacityVph, approachCapacityVph, externalTrips, inFraction, periodVolumeFactor: PERIOD_VOLUME_FACTOR.pm_peak, ...(distributionOctants ? { distributionOctants } : {}), ...(pathTurnsByCandidate ? { conservedLabeling: true } : {}), ...(req.realLaneGeometry === false ? { realLaneGeometry: false } : {}), signalTiming: req.signalTiming === "screening" ? "screening" : "computed", legVolumes: req.legVolumes === "screening" ? "screening" : "network", weatherFactor: capacityVph / PER_INTERSECTION_CAPACITY_VPH };
   const calibrationMap = await loadCalibrationMap();
   const allRows = candidates.map((c, i) =>
     buildAffectedRow(c, loadWeights[i]!, project, params, calibrationMap.get(c.sig.id), pathTurnsByCandidate?.[i], pathTurnsInByCandidate?.[i]),

@@ -279,5 +279,28 @@ const colSum = (m, t) => DIRS.reduce((s, d) => s + m[d][t], 0);
   ok(Array.isArray(tNb.laneGroups) && tNb.laneGroups.length === 3 && tRow.legVolumes.length === 3, "row: the T's three real legs keep their lane groups and provenance");
 }
 
+// ---- 5. server: incident links → JunctionLeg[] (bearing, class, one-way sense) ----
+{
+  const { buildGraph } = await import(path.resolve(here, "../src/lib/network-assignment.ts"));
+  const { junctionLegsAtNode, incidentLinks } = await import(path.resolve(here, "../src/lib/junction-legs.ts"));
+  // RoadSegment tuple: [cls, lat1, lon1, lat2, lon2, lanes|null, maxspeed|null, name?, oneway?]
+  // (oneway: 1 = a→b only, -1 = b→a only, 0 = two-way). Cross at (40.5, -80.0):
+  // N and S legs primary two-way; E leg tertiary one-way b→a i.e. INTO the node; W leg tertiary two-way.
+  const segs = [
+    [2, 40.5, -80.0, 40.51, -80.0, null, null, "Main St", 0],
+    [2, 40.49, -80.0, 40.5, -80.0, null, null, "Main St", 0],
+    [4, 40.5, -80.0, 40.5, -79.99, null, null, "Oak Ave", -1],   // a = node, b = east; b→a only = travel toward the node
+    [4, 40.5, -80.01, 40.5, -80.0, null, null, "Oak Ave", 0],    // a = west, b = node
+  ];
+  const g = buildGraph(segs);
+  const node = g.nodeOf(40.5, -80.0);
+  const legs = junctionLegsAtNode(g, node, incidentLinks(g));
+  ok(legs.length === 4, "legs: four incident links — including the one-way link INTO the node that routing adjacency omits");
+  const byCard = Object.fromEntries(legs.map((l) => [Math.round(l.bearingDeg / 90) * 90 % 360, l]));
+  ok(byCard[0]?.cls === 2 && byCard[180]?.cls === 2 && byCard[90]?.cls === 4 && byCard[270]?.cls === 4, "legs: bearing and class per leg");
+  ok(byCard[90]?.oneWay === "in" && byCard[0]?.oneWay === null && byCard[270]?.oneWay === null, "legs: one-way sense is relative to the node (east leg enters only)");
+  ok(g.adj[node].length === 3, "legs: (sanity) routing adjacency at the node has only 3 links — why incidentLinks() exists");
+}
+
 console.log(fails === 0 ? "\nOVERALL: PASS" : `\nOVERALL: FAIL (${fails})`);
 process.exit(fails === 0 ? 0 : 1);

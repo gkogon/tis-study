@@ -10,7 +10,9 @@ import type { TisAffectedIntersectionDesignBuildLos } from "./tisAffectedInterse
 import type { TisAffectedIntersectionDesignNoBuildLos } from "./tisAffectedIntersectionDesignNoBuildLos";
 import type { TisAffectedIntersectionExistingLos } from "./tisAffectedIntersectionExistingLos";
 import type { TisAffectedIntersectionFutureLos } from "./tisAffectedIntersectionFutureLos";
+import type { TisAffectedIntersectionLegVolumesItem } from "./tisAffectedIntersectionLegVolumesItem";
 import type { TisAffectedIntersectionMitigationSeverity } from "./tisAffectedIntersectionMitigationSeverity";
+import type { TisAffectedIntersectionMovementEstimate } from "./tisAffectedIntersectionMovementEstimate";
 import type { TisAffectedIntersectionMovementsExactItem } from "./tisAffectedIntersectionMovementsExactItem";
 import type { TisAffectedIntersectionMovementsItem } from "./tisAffectedIntersectionMovementsItem";
 import type { TisAffectedIntersectionMovementSource } from "./tisAffectedIntersectionMovementSource";
@@ -78,6 +80,10 @@ export interface TisAffectedIntersection {
   movementSource?: TisAffectedIntersectionMovementSource;
   movements?: TisAffectedIntersectionMovementsItem[];
   volumeSource?: TisAffectedIntersectionVolumeSource;
+  /** Per-leg background volumes and their source (legVolumes:network rows only). */
+  legVolumes?: TisAffectedIntersectionLegVolumesItem[];
+  /** Balanced turning-movement estimate and diagnostics (legVolumes:network rows only). */
+  movementEstimate?: TisAffectedIntersectionMovementEstimate;
   existingStorageFt?: number;
   storageMovement?: string;
   utdfCycleLenSec?: number;
