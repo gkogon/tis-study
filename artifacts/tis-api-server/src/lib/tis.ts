@@ -1861,7 +1861,14 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
             const snap = snaps[i]!;
             if (snap.node < 0) continue;
             const c = candidates[i]!;
-            const est = buildLegEstimate(junctionLegsAtNode(cg, snap.node, incidence), { signalDesignHourVph: c.sig.totalVolume });
+            // The analyzer's provenance slug decides whether the main-road
+            // legs are labeled "counted" (signal_aadt) or "baseline"
+            // (signal_baseline); the inventory passes through from the
+            // analyzer response untouched, so the field rides c.sig.
+            const est = buildLegEstimate(junctionLegsAtNode(cg, snap.node, incidence), {
+              signalDesignHourVph: c.sig.totalVolume,
+              ...(typeof c.sig.volumeSource === "string" ? { signalVolumeSource: c.sig.volumeSource } : {}),
+            });
             if (est) c.legEstimate = est;
           }
         }

@@ -73,6 +73,19 @@ try {
   ok(owText.includes("A one-way carriageway carries half of the two-way count in its direction (a one-way couplet street is understated)."),
     "one-way legs: the worksheet states the half-of-two-way rule and the couplet limitation");
 
+  // A signal the analyzer never counted (its design hour IS the road-class
+  // ladder): the main legs are signal_baseline and the worksheet must not
+  // call them "counted".
+  const baselineSig = JSON.parse(JSON.stringify(injected));
+  for (const l of baselineSig.report.affectedIntersections[0].legVolumes) if (l.source === "signal_aadt") l.source = "signal_baseline";
+  const bsText = await text(await mod.renderStudyPdf(projectFromFixture(baselineSig), { name: "Leg Render Check", logoUrl: null }));
+  // (pdf.js joins a wrapped line with a space, so the assertion stops short of
+  // the wrap; the second clause is checked on its own.)
+  ok(bsText.includes("Leg volumes: 2 of 4 from the road-class baseline the analyzer assigned this signal (no compatible count); 2 of 4 from the")
+    && bsText.includes("class baseline (no count on that leg). Turning movements: balanced estimate"),
+    "signal_baseline legs: the worksheet names the analyzer's baseline, not a counted design hour");
+  ok(!bsText.includes("counted design hour (half per direction)"), "signal_baseline legs: no leg is called counted");
+
   // Pagination under real data: the stored preview fixtures carry none of
   // the new fields, so check:appendix-worksheet-pages never exercises the
   // matrix table's keep-together budget. Inject the same estimate onto

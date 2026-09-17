@@ -138,6 +138,36 @@ const DIRS = ["NB", "SB", "EB", "WB"];
   ok(legs.NB.enteringVph === 0 && legs.NB.exitingVph === 0 && !Number.isNaN(legs.NB.enteringVph), "resolve: zero design hour → zero, never NaN");
 }
 {
+  // "Counted" only when the signal was counted. The analyzer stamps
+  // volumeSource per signal: an AADT source slug when a compatible count
+  // produced totalVolume, else "road_class_baseline" (or the refused-record
+  // slug). A baseline signal's main legs are signal_baseline, never
+  // signal_aadt; an ABSENT slug (older analyzer payloads) keeps signal_aadt.
+  const byDir = {
+    NB: { bearingDeg: 180, cls: 2, oneWay: null }, SB: { bearingDeg: 0, cls: 2, oneWay: null },
+    EB: { bearingDeg: 270, cls: 4, oneWay: null }, WB: { bearingDeg: 90, cls: 4, oneWay: null },
+  };
+  const baseline = core.resolveLegVolumes(byDir, { signalDesignHourVph: 1500, signalVolumeSource: "road_class_baseline" });
+  ok(baseline.NB.source === "signal_baseline" && baseline.SB.source === "signal_baseline" && close(baseline.NB.enteringVph, 750),
+    "resolve: signalVolumeSource road_class_baseline → main legs signal_baseline (same 750 per direction, honest label)");
+  ok(baseline.EB.source === "class_default" && baseline.WB.source === "class_default", "resolve: the minor legs stay class_default under a baseline signal");
+  const refused = core.resolveLegVolumes(byDir, { signalDesignHourVph: 1500, signalVolumeSource: "road_class_baseline_aadt_class_mismatch" });
+  ok(refused.NB.source === "signal_baseline" && refused.SB.source === "signal_baseline", "resolve: a refused-record slug (class mismatch) → signal_baseline too");
+  const counted = core.resolveLegVolumes(byDir, { signalDesignHourVph: 2700, signalVolumeSource: "penndot" });
+  ok(counted.NB.source === "signal_aadt" && counted.SB.source === "signal_aadt", "resolve: signalVolumeSource penndot (a count) → main legs signal_aadt");
+  const absent = core.resolveLegVolumes(byDir, { signalDesignHourVph: 2700 });
+  ok(absent.NB.source === "signal_aadt" && absent.SB.source === "signal_aadt", "resolve: absent signalVolumeSource (pre-provenance analyzer payload) → signal_aadt, unchanged");
+  ok(core.BASELINE_SIGNAL_VOLUME_SOURCES.has("road_class_baseline") && core.BASELINE_SIGNAL_VOLUME_SOURCES.has("road_class_baseline_aadt_class_mismatch") && core.BASELINE_SIGNAL_VOLUME_SOURCES.size === 2,
+    "BASELINE_SIGNAL_VOLUME_SOURCES = exactly the analyzer's two no-count slugs");
+  const viaEstimate = core.buildLegEstimate(
+    [{ bearingDeg: 180, cls: 2, oneWay: null }, { bearingDeg: 0, cls: 2, oneWay: null }, { bearingDeg: 270, cls: 4, oneWay: null }, { bearingDeg: 90, cls: 4, oneWay: null }],
+    { signalDesignHourVph: 1500, signalVolumeSource: "road_class_baseline" },
+  );
+  ok(viaEstimate.legs.NB.source === "signal_baseline" && viaEstimate.legs.EB.source === "class_default", "buildLegEstimate passes signalVolumeSource through to the resolver");
+  const csvOnBaseline = core.resolveLegVolumes(byDir, { signalDesignHourVph: 1500, signalVolumeSource: "road_class_baseline", csv: { NB: { enteringVph: 800, exitingVph: 700 } } });
+  ok(csvOnBaseline.NB.source === "csv" && csvOnBaseline.SB.source === "signal_baseline", "resolve: a csv count still wins on its leg over a baseline signal");
+}
+{
   // One clearly-best leg (NB trunk, cls 1) among three same-class minors: its partner is the
   // opposite leg (SB), not a same-class side leg — the single-best-leg branch of mainRoadLegs.
   const byDir = {

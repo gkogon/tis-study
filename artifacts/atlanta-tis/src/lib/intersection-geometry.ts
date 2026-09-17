@@ -125,7 +125,7 @@ export type ApproachPlan = ApproachBase & {
   /** True when any printed base value differs from the scenario's. */
   changed: boolean;
   /** Where this approach's background volume came from (legVolumes: network rows). */
-  legSource?: "csv" | "signal_aadt" | "class_default";
+  legSource?: "csv" | "signal_aadt" | "signal_baseline" | "class_default";
 };
 
 export type TimingSummary = {
@@ -406,6 +406,7 @@ export function legSourceLabel(s: NonNullable<ApproachPlan["legSource"]>): strin
   switch (s) {
     case "csv": return "client link count";
     case "signal_aadt": return "signal's counted design hour";
+    case "signal_baseline": return "road-class baseline assigned to this signal (no compatible count)";
     default: return "road-class baseline";
   }
 }

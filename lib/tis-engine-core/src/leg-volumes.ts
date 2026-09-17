@@ -11,11 +11,14 @@
  * a design hour that is really ~50% per direction.
  *
  * WHAT. Three modes, one resolver:
- *   network   (default) main-road legs = the signal's counted design hour,
- *             half per direction; other legs = the road-class baseline the
- *             analyzer itself falls back to (VOLUME_BY_CLASS), half per
- *             direction, labeled class_default; a client link count (CSV)
- *             overrides either on its leg.
+ *   network   (default) main-road legs = the signal's design hour, half per
+ *             direction — labeled signal_aadt when the analyzer joined a
+ *             compatible count to the signal, signal_baseline when that
+ *             design hour is itself the analyzer's road-class fallback;
+ *             other legs = the road-class baseline the analyzer itself
+ *             falls back to (VOLUME_BY_CLASS), half per direction, labeled
+ *             class_default; a client link count (CSV) overrides either on
+ *             its leg.
  *   screening today's shares — the engine simply does not consult this
  *             module (row-math), so the row is byte-identical.
  * Movements are then BALANCED against the exit legs by iterative
@@ -43,7 +46,34 @@
  */
 import type { Direction, Movement } from "./webster-timing.ts";
 
-export type LegSource = "csv" | "signal_aadt" | "class_default";
+/**
+ * Where a leg's entering volume came from:
+ *   csv             a client link count snapped to this leg;
+ *   signal_aadt     the signal's COUNTED design hour (a compatible AADT
+ *                   record was joined to the signal), half per direction;
+ *   signal_baseline the signal's design hour is itself the analyzer's
+ *                   road-class baseline (no compatible count — none within
+ *                   reach, or the nearest record was refused as a different
+ *                   facility), so the main-road legs are a baseline too;
+ *   class_default   the road-class ladder below, for a leg the signal's
+ *                   volume does not describe (the minor road).
+ */
+export type LegSource = "csv" | "signal_aadt" | "signal_baseline" | "class_default";
+
+/**
+ * The analyzer's `volumeSource` slugs that mean "no compatible count was used
+ * for this signal" (artifacts/api-server/src/lib/regional-intersections.ts
+ * stamps an AADT source slug when a count was used, else one of these).
+ * A main-road leg under either is labeled `signal_baseline`, never
+ * `signal_aadt` — the worksheet must not call a baseline "counted".
+ */
+export const BASELINE_SIGNAL_VOLUME_SOURCES: ReadonlySet<string> = new Set([
+  "road_class_baseline",
+  // aadt-plausibility.ts REJECTED_VOLUME_SOURCE: a record existed but was
+  // refused as functionally incompatible (e.g. a freeway mainline count
+  // snapped to a surface-street signal), so the baseline was used instead.
+  "road_class_baseline_aadt_class_mismatch",
+]);
 
 /** One incident link at a junction, as the routing graph knows it. */
 export type JunctionLeg = {
@@ -136,6 +166,14 @@ export function assignLegsToApproaches(legs: JunctionLeg[]): {
 export type LegVolumeInputs = {
   /** The signal's design hour (vph) — AnalyzerIntersection.totalVolume (AADT × K, or the analyzer's class baseline). */
   signalDesignHourVph: number;
+  /** The analyzer's provenance slug for that design hour
+   *  (AnalyzerIntersection.volumeSource): an AADT source when a compatible
+   *  count was joined, else a BASELINE_SIGNAL_VOLUME_SOURCES member. Decides
+   *  whether the main-road legs are labeled signal_aadt or signal_baseline.
+   *  ABSENT (older analyzer payloads that predate the field) is treated as
+   *  counted, i.e. signal_aadt — the label the engine gave before the slug
+   *  was threaded through, so such payloads do not change. */
+  signalVolumeSource?: string;
   /** Client link counts already snapped to this junction's legs. Empty until the CSV importer ships. */
   csv?: Partial<Record<Direction, { enteringVph?: number; exitingVph?: number }>>;
 };
@@ -185,8 +223,21 @@ export function mainRoadLegs(byDir: Partial<Record<Direction, JunctionLeg>>): Di
 }
 
 /**
+ * The main-road legs' label: `signal_aadt` only when the analyzer says a
+ * compatible count produced the signal's design hour. A baseline slug (or a
+ * refused record's slug) ⇒ `signal_baseline`. An absent slug (an analyzer
+ * payload from before volumeSource was stamped) keeps the historical
+ * `signal_aadt` label — see LegVolumeInputs.signalVolumeSource.
+ */
+function mainLegSource(signalVolumeSource: string | undefined): LegSource {
+  if (signalVolumeSource === undefined) return "signal_aadt";
+  return BASELINE_SIGNAL_VOLUME_SOURCES.has(signalVolumeSource) ? "signal_baseline" : "signal_aadt";
+}
+
+/**
  * Per-leg entering / exiting volume with a source label (spec §4.2, amended
- * for per-signal data): csv → signal design hour on the main road → class
+ * for per-signal data): csv → signal design hour on the main road (labeled
+ * signal_aadt or signal_baseline by the analyzer's provenance) → class
  * baseline on the rest. Absent legs are null. Never NaN.
  */
 export function resolveLegVolumes(
@@ -202,7 +253,7 @@ export function resolveLegVolumes(
     const isMain = main.has(d);
     const twoWay = isMain ? designHour : (MINOR_LEG_DESIGN_HOUR_VPH_BY_CLASS[leg.cls] ?? DEFAULT_MINOR_LEG_VPH);
     const base = splitLeg(twoWay, leg.oneWay);
-    const baseSource: LegSource = isMain ? "signal_aadt" : "class_default";
+    const baseSource: LegSource = isMain ? mainLegSource(inputs.signalVolumeSource) : "class_default";
     const csv = inputs.csv?.[d];
     const csvIn = csv && typeof csv.enteringVph === "number" && Number.isFinite(csv.enteringVph) && csv.enteringVph >= 0 ? csv.enteringVph : undefined;
     const csvOut = csv && typeof csv.exitingVph === "number" && Number.isFinite(csv.exitingVph) && csv.exitingVph >= 0 ? csv.exitingVph : undefined;

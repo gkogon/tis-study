@@ -1800,7 +1800,12 @@ export const GenerateTisResponse = zod.object({
             direction: zod.enum(["NB", "SB", "EB", "WB"]),
             enteringVph: zod.number(),
             exitingVph: zod.number().nullable(),
-            source: zod.enum(["csv", "signal_aadt", "class_default"]),
+            source: zod.enum([
+              "csv",
+              "signal_aadt",
+              "signal_baseline",
+              "class_default",
+            ]),
             oneWay: zod.enum(["in", "out"]).nullable(),
           }),
         )
@@ -2191,7 +2196,12 @@ export const GenerateTisResponse = zod.object({
                 direction: zod.enum(["NB", "SB", "EB", "WB"]),
                 enteringVph: zod.number(),
                 exitingVph: zod.number().nullable(),
-                source: zod.enum(["csv", "signal_aadt", "class_default"]),
+                source: zod.enum([
+                  "csv",
+                  "signal_aadt",
+                  "signal_baseline",
+                  "class_default",
+                ]),
                 oneWay: zod.enum(["in", "out"]).nullable(),
               }),
             )
@@ -4349,7 +4359,12 @@ export const WhatIfTisResponse = zod.object({
             direction: zod.enum(["NB", "SB", "EB", "WB"]),
             enteringVph: zod.number(),
             exitingVph: zod.number().nullable(),
-            source: zod.enum(["csv", "signal_aadt", "class_default"]),
+            source: zod.enum([
+              "csv",
+              "signal_aadt",
+              "signal_baseline",
+              "class_default",
+            ]),
             oneWay: zod.enum(["in", "out"]).nullable(),
           }),
         )
@@ -4740,7 +4755,12 @@ export const WhatIfTisResponse = zod.object({
                 direction: zod.enum(["NB", "SB", "EB", "WB"]),
                 enteringVph: zod.number(),
                 exitingVph: zod.number().nullable(),
-                source: zod.enum(["csv", "signal_aadt", "class_default"]),
+                source: zod.enum([
+                  "csv",
+                  "signal_aadt",
+                  "signal_baseline",
+                  "class_default",
+                ]),
                 oneWay: zod.enum(["in", "out"]).nullable(),
               }),
             )
@@ -7992,7 +8012,12 @@ export const GetTisProjectResponse = zod
                 direction: zod.enum(["NB", "SB", "EB", "WB"]),
                 enteringVph: zod.number(),
                 exitingVph: zod.number().nullable(),
-                source: zod.enum(["csv", "signal_aadt", "class_default"]),
+                source: zod.enum([
+                  "csv",
+                  "signal_aadt",
+                  "signal_baseline",
+                  "class_default",
+                ]),
                 oneWay: zod.enum(["in", "out"]).nullable(),
               }),
             )
@@ -8399,7 +8424,12 @@ export const GetTisProjectResponse = zod
                     direction: zod.enum(["NB", "SB", "EB", "WB"]),
                     enteringVph: zod.number(),
                     exitingVph: zod.number().nullable(),
-                    source: zod.enum(["csv", "signal_aadt", "class_default"]),
+                    source: zod.enum([
+                      "csv",
+                      "signal_aadt",
+                      "signal_baseline",
+                      "class_default",
+                    ]),
                     oneWay: zod.enum(["in", "out"]).nullable(),
                   }),
                 )

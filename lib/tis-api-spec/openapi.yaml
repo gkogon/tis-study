@@ -1364,7 +1364,13 @@ components:
               direction: { type: string, enum: [NB, SB, EB, WB] }
               enteringVph: { type: number }
               exitingVph: { type: number, nullable: true }
-              source: { type: string, enum: [csv, signal_aadt, class_default] }
+              # csv = a client link count on this leg; signal_aadt = the
+              # signal's COUNTED design hour (a compatible AADT record was
+              # joined), half per direction; signal_baseline = the signal's
+              # design hour is itself the analyzer's road-class baseline (no
+              # compatible count), so the main-road legs are a baseline too;
+              # class_default = the road-class ladder on a minor leg.
+              source: { type: string, enum: [csv, signal_aadt, signal_baseline, class_default] }
               oneWay: { type: string, enum: ["in", "out"], nullable: true }
         movementEstimate:
           type: object

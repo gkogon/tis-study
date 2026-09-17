@@ -12,5 +12,6 @@ export type TisAffectedIntersectionLegVolumesItemSource =
 export const TisAffectedIntersectionLegVolumesItemSource = {
   csv: "csv",
   signal_aadt: "signal_aadt",
+  signal_baseline: "signal_baseline",
   class_default: "class_default",
 } as const;

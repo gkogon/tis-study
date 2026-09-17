@@ -194,6 +194,14 @@ export type AnalyzerIntersection = {
   /** Per-direction through lanes on the minor (cross-street) approach, from
    *  OSM `lanes`. Absent when the matched way carries no tag. */
   minorThroughLanes?: number;
+  /** The analyzer's provenance slug for `totalVolume` (passthrough, never
+   *  read by the row math itself): an AADT source slug when a compatible
+   *  count produced the design hour, else "road_class_baseline" or the
+   *  refused-record slug (regional-intersections.ts). The leg-volume
+   *  resolver reads it to label the main-road legs signal_aadt vs
+   *  signal_baseline (leg-volumes.ts BASELINE_SIGNAL_VOLUME_SOURCES).
+   *  Absent on analyzer payloads that predate the field. */
+  volumeSource?: string;
 };
 /** Per-movement numeric values keyed by the twelve standard Synchro
  *  movements — turning-movement volumes (vph) or turn-bay storage (ft).
