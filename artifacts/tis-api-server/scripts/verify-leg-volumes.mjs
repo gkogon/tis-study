@@ -264,6 +264,19 @@ const colSum = (m, t) => DIRS.reduce((s, d) => s + m[d][t], 0);
   const utdf = { latitude: 40.5, longitude: -80.0, volumes: { NBL: 100, NBT: 800, NBR: 100, SBL: 90, SBT: 700, SBR: 90, EBL: 40, EBT: 200, EBR: 40, WBL: 30, WBT: 150, WBR: 30 } };
   const measured = core.buildAffectedRow(cand({ utdf, legEstimate: estimate }), 0.5, project, { ...base, legVolumes: "network" });
   ok(measured.volumeSource === "utdf_tmc" && measured.legVolumes === undefined, "row: a measured record wins outright; no estimate fields printed");
+
+  // A T-intersection (no WB leg): the absent leg prints no lane-group rows —
+  // the estimate never invents a breakdown for a leg that is not there.
+  const tJunction = [
+    { bearingDeg: 180, cls: 2, oneWay: null }, { bearingDeg: 0, cls: 2, oneWay: null },
+    { bearingDeg: 270, cls: 4, oneWay: null },
+  ];
+  const tEstimate = core.buildLegEstimate(tJunction, { signalDesignHourVph: 1200 });
+  const tRow = core.buildAffectedRow(cand({ legEstimate: tEstimate }), 0.5, project, { ...base, legVolumes: "network" });
+  const wb = tRow.approaches.find((a) => a.direction === "WB");
+  const tNb = tRow.approaches.find((a) => a.direction === "NB");
+  ok(wb.existingVolumeVph === 0 && wb.laneGroups === undefined, "row: a T's absent leg carries 0 volume and NO lane groups");
+  ok(Array.isArray(tNb.laneGroups) && tNb.laneGroups.length === 3 && tRow.legVolumes.length === 3, "row: the T's three real legs keep their lane groups and provenance");
 }
 
 console.log(fails === 0 ? "\nOVERALL: PASS" : `\nOVERALL: FAIL (${fails})`);

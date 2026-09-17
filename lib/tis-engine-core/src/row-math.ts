@@ -1173,7 +1173,7 @@ export function buildAffectedRow(
         }
         const laneGroups = laneGroupsForApproach({
           approach: d,
-          ...(c.utdf ? { utdf: c.utdf } : { shares: est!.movements.shares[d] }),
+          ...(c.utdf ? { utdf: c.utdf } : est!.legs[d] ? { shares: est!.movements.shares[d] } : {}),
           approachVolumeVph: baseVol,
           addedExactByMovement,
           addedTripsPeak,
