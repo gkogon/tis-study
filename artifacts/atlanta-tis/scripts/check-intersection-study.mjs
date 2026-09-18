@@ -450,6 +450,25 @@ console.log("\n11. like-for-like labels and quantities");
   ok(qb.storageFt === bayFt && qb.storageBasis === "row" && qb.storageQueueFt === r0.queue95thFt && qb.storageQueueBasis === "row worst approach" && qb.storageDeficient === true && qb.verdict === "fail",
     `row-level ${rowBay.storageMovement} bay: flagged against the row's worst-approach Q95 ${r0.queue95thFt} ft (the PDF's comparison) — this approach's own ${qb.q95Ft} ft would have fit`);
 
+  // The method notes attribute lane groups and background volumes to what
+  // produced them. Fixture C (legVolumes: network + one UTDF record, real
+  // engine output): a network-estimated row says "balanced estimate", never
+  // "attached Synchro record" / "measured"; the measured row says measured.
+  const C = JSON.parse(fs.readFileSync(path.join(here, "fixtures", "scenario-network-utdf.json"), "utf8"));
+  const est = C.affectedIntersections.find((x) => x.volumeSource === "network_estimate");
+  const meas = C.affectedIntersections.find((x) => x.volumeSource === "utdf_tmc");
+  const notesOf = (row) => studyModelFromRow(row, null, { weatherFactor }).mitigation.methodNotes;
+  const nEst = notesOf(est), nMeas = notesOf(meas);
+  ok(nEst.some((x) => x.startsWith("Background volumes: balanced estimate from the study's leg volumes (Furness/IPF)")) && nEst.some((x) => /the sum of the entering legs/.test(x)),
+    `${est.signalId} (network_estimate): background volumes are the balanced estimate, design hour = Σ entering legs`);
+  ok(nEst.some((x) => x === "Per-movement lane groups come from the balanced estimate of the study's leg volumes (Furness/IPF); no turning counts or turn-bay storage were measured."),
+    `${est.signalId}: lane groups attributed to the balanced estimate`);
+  ok(!nEst.some((x) => /attached Synchro record|measured turning-movement total|attached UTDF record/.test(x)),
+    `${est.signalId}: no note calls the estimate measured or attributes it to a record`);
+  ok(nMeas.some((x) => x.startsWith("Background volumes: measured turning-movement total from the attached UTDF record")) && nMeas.some((x) => x === "Per-movement lane groups, storage and turning counts come from the attached Synchro record."),
+    `${meas.signalId} (utdf_tmc): the measured wording stays`);
+  ok(!nMeas.some((x) => /balanced estimate/.test(x)), `${meas.signalId}: nothing on the measured row is called an estimate`);
+
   // M5 / m11: what the page says.
   ok(ENGINE_RECOMPUTATIONS.length === 5 && ENGINE_RECOMPUTATIONS.every((x) => /§0(1a|2|3)/.test(x)), `§00 names ${ENGINE_RECOMPUTATIONS.length} engine recomputations, each with its section`);
   ok(/v\/c ≤ 0\.7/.test(SIM_AGREEMENT_CONDITIONS) && /no-build/.test(SIM_AGREEMENT_CONDITIONS) && /Webster/.test(SIM_AGREEMENT_CONDITIONS) && /uncalibrated/.test(SIM_AGREEMENT_CONDITIONS) && /seed 42/.test(SIM_AGREEMENT_CONDITIONS) && /30 cycles/.test(SIM_AGREEMENT_CONDITIONS),

@@ -171,6 +171,7 @@ export const generateTisBodyExistingSizeMin = 0;
 
 export const generateTisBodyConservedAssignmentDefault = true;
 export const generateTisBodySignalTimingDefault = `computed`;
+export const generateTisBodyLegVolumesDefault = `network`;
 export const generateTisBodyDrivewaysItemLatitudeMin = -90;
 export const generateTisBodyDrivewaysItemLatitudeMax = 90;
 
@@ -593,6 +594,12 @@ export const GenerateTisBody = zod.object({
     .describe(
       "Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g\/C. `screening`: the legacy flat 90 s cycle \/ g\/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`.",
     ),
+  legVolumes: zod
+    .enum(["network", "screening"])
+    .default(generateTisBodyLegVolumesDefault)
+    .describe(
+      "Background volume basis per study intersection (default network). `network`: each leg carries its own volume — the signal's counted design hour on the two main-road legs (half per direction), the road-class baseline on uncounted minor legs, a client link count where supplied — and turning movements are balanced against the exit legs by iterative proportional fitting (NCHRP 255\/765 refinement). `screening`: the legacy 30\/25\/25\/20 approach split and 15\/70\/15 turn shares, byte-identical to the pre-change output. A measured Synchro\/UTDF record on a junction wins over either.",
+    ),
   realLaneGeometry: zod
     .boolean()
     .optional()
@@ -847,6 +854,7 @@ export const generateTisResponseRequestExistingSizeMin = 0;
 
 export const generateTisResponseRequestConservedAssignmentDefault = true;
 export const generateTisResponseRequestSignalTimingDefault = `computed`;
+export const generateTisResponseRequestLegVolumesDefault = `network`;
 export const generateTisResponseRequestDrivewaysItemLatitudeMin = -90;
 export const generateTisResponseRequestDrivewaysItemLatitudeMax = 90;
 
@@ -1385,6 +1393,12 @@ export const GenerateTisResponse = zod.object({
       .describe(
         "Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g\/C. `screening`: the legacy flat 90 s cycle \/ g\/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`.",
       ),
+    legVolumes: zod
+      .enum(["network", "screening"])
+      .default(generateTisResponseRequestLegVolumesDefault)
+      .describe(
+        "Background volume basis per study intersection (default network). `network`: each leg carries its own volume — the signal's counted design hour on the two main-road legs (half per direction), the road-class baseline on uncounted minor legs, a client link count where supplied — and turning movements are balanced against the exit legs by iterative proportional fitting (NCHRP 255\/765 refinement). `screening`: the legacy 30\/25\/25\/20 approach split and 15\/70\/15 turn shares, byte-identical to the pre-change output. A measured Synchro\/UTDF record on a junction wins over either.",
+      ),
     realLaneGeometry: zod
       .boolean()
       .optional()
@@ -1777,7 +1791,60 @@ export const GenerateTisResponse = zod.object({
           }),
         )
         .optional(),
-      volumeSource: zod.enum(["utdf_tmc", "synchro_pdf_tmc"]).optional(),
+      volumeSource: zod
+        .enum(["utdf_tmc", "synchro_pdf_tmc", "network_estimate", "link_csv"])
+        .optional(),
+      legVolumes: zod
+        .array(
+          zod.object({
+            direction: zod.enum(["NB", "SB", "EB", "WB"]),
+            enteringVph: zod.number(),
+            exitingVph: zod.number().nullable(),
+            source: zod.enum([
+              "csv",
+              "signal_aadt",
+              "signal_baseline",
+              "class_default",
+            ]),
+            oneWay: zod.enum(["in", "out"]).nullable(),
+          }),
+        )
+        .optional()
+        .describe(
+          "Per-leg background volumes and their source (legVolumes:network rows only).",
+        ),
+      movementEstimate: zod
+        .object({
+          method: zod.enum(["ipf", "seed_only"]),
+          iterations: zod.number(),
+          maxResidualVph: zod.number(),
+          imbalancePct: zod.number(),
+          exitsNormalized: zod.boolean(),
+          constrainedExits: zod.number(),
+          legsDropped: zod.number(),
+          matrix: zod.record(
+            zod.string(),
+            zod.record(zod.string(), zod.number()),
+          ),
+          shares: zod.record(
+            zod.string(),
+            zod.object({
+              L: zod.number().optional(),
+              T: zod.number().optional(),
+              R: zod.number().optional(),
+            }),
+          ),
+        })
+        .optional()
+        .describe(
+          "Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).",
+        ),
+      legEstimateExact: zod
+        .record(zod.string(), zod.unknown())
+        .optional()
+        .describe(
+          "The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes \/ movementEstimate.",
+        ),
       existingStorageFt: zod.number().optional(),
       storageMovement: zod.string().optional(),
       utdfCycleLenSec: zod.number().optional(),
@@ -2115,7 +2182,65 @@ export const GenerateTisResponse = zod.object({
               }),
             )
             .optional(),
-          volumeSource: zod.enum(["utdf_tmc", "synchro_pdf_tmc"]).optional(),
+          volumeSource: zod
+            .enum([
+              "utdf_tmc",
+              "synchro_pdf_tmc",
+              "network_estimate",
+              "link_csv",
+            ])
+            .optional(),
+          legVolumes: zod
+            .array(
+              zod.object({
+                direction: zod.enum(["NB", "SB", "EB", "WB"]),
+                enteringVph: zod.number(),
+                exitingVph: zod.number().nullable(),
+                source: zod.enum([
+                  "csv",
+                  "signal_aadt",
+                  "signal_baseline",
+                  "class_default",
+                ]),
+                oneWay: zod.enum(["in", "out"]).nullable(),
+              }),
+            )
+            .optional()
+            .describe(
+              "Per-leg background volumes and their source (legVolumes:network rows only).",
+            ),
+          movementEstimate: zod
+            .object({
+              method: zod.enum(["ipf", "seed_only"]),
+              iterations: zod.number(),
+              maxResidualVph: zod.number(),
+              imbalancePct: zod.number(),
+              exitsNormalized: zod.boolean(),
+              constrainedExits: zod.number(),
+              legsDropped: zod.number(),
+              matrix: zod.record(
+                zod.string(),
+                zod.record(zod.string(), zod.number()),
+              ),
+              shares: zod.record(
+                zod.string(),
+                zod.object({
+                  L: zod.number().optional(),
+                  T: zod.number().optional(),
+                  R: zod.number().optional(),
+                }),
+              ),
+            })
+            .optional()
+            .describe(
+              "Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).",
+            ),
+          legEstimateExact: zod
+            .record(zod.string(), zod.unknown())
+            .optional()
+            .describe(
+              "The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes \/ movementEstimate.",
+            ),
           existingStorageFt: zod.number().optional(),
           storageMovement: zod.string().optional(),
           utdfCycleLenSec: zod.number().optional(),
@@ -2621,6 +2746,7 @@ export const whatIfTisBodyExistingSizeMin = 0;
 
 export const whatIfTisBodyConservedAssignmentDefault = true;
 export const whatIfTisBodySignalTimingDefault = `computed`;
+export const whatIfTisBodyLegVolumesDefault = `network`;
 export const whatIfTisBodyDrivewaysItemLatitudeMin = -90;
 export const whatIfTisBodyDrivewaysItemLatitudeMax = 90;
 
@@ -3043,6 +3169,12 @@ export const WhatIfTisBody = zod.object({
     .describe(
       "Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g\/C. `screening`: the legacy flat 90 s cycle \/ g\/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`.",
     ),
+  legVolumes: zod
+    .enum(["network", "screening"])
+    .default(whatIfTisBodyLegVolumesDefault)
+    .describe(
+      "Background volume basis per study intersection (default network). `network`: each leg carries its own volume — the signal's counted design hour on the two main-road legs (half per direction), the road-class baseline on uncounted minor legs, a client link count where supplied — and turning movements are balanced against the exit legs by iterative proportional fitting (NCHRP 255\/765 refinement). `screening`: the legacy 30\/25\/25\/20 approach split and 15\/70\/15 turn shares, byte-identical to the pre-change output. A measured Synchro\/UTDF record on a junction wins over either.",
+    ),
   realLaneGeometry: zod
     .boolean()
     .optional()
@@ -3294,6 +3426,7 @@ export const whatIfTisResponseRequestExistingSizeMin = 0;
 
 export const whatIfTisResponseRequestConservedAssignmentDefault = true;
 export const whatIfTisResponseRequestSignalTimingDefault = `computed`;
+export const whatIfTisResponseRequestLegVolumesDefault = `network`;
 export const whatIfTisResponseRequestDrivewaysItemLatitudeMin = -90;
 export const whatIfTisResponseRequestDrivewaysItemLatitudeMax = 90;
 
@@ -3821,6 +3954,12 @@ export const WhatIfTisResponse = zod.object({
       .describe(
         "Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g\/C. `screening`: the legacy flat 90 s cycle \/ g\/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`.",
       ),
+    legVolumes: zod
+      .enum(["network", "screening"])
+      .default(whatIfTisResponseRequestLegVolumesDefault)
+      .describe(
+        "Background volume basis per study intersection (default network). `network`: each leg carries its own volume — the signal's counted design hour on the two main-road legs (half per direction), the road-class baseline on uncounted minor legs, a client link count where supplied — and turning movements are balanced against the exit legs by iterative proportional fitting (NCHRP 255\/765 refinement). `screening`: the legacy 30\/25\/25\/20 approach split and 15\/70\/15 turn shares, byte-identical to the pre-change output. A measured Synchro\/UTDF record on a junction wins over either.",
+      ),
     realLaneGeometry: zod
       .boolean()
       .optional()
@@ -4211,7 +4350,60 @@ export const WhatIfTisResponse = zod.object({
           }),
         )
         .optional(),
-      volumeSource: zod.enum(["utdf_tmc", "synchro_pdf_tmc"]).optional(),
+      volumeSource: zod
+        .enum(["utdf_tmc", "synchro_pdf_tmc", "network_estimate", "link_csv"])
+        .optional(),
+      legVolumes: zod
+        .array(
+          zod.object({
+            direction: zod.enum(["NB", "SB", "EB", "WB"]),
+            enteringVph: zod.number(),
+            exitingVph: zod.number().nullable(),
+            source: zod.enum([
+              "csv",
+              "signal_aadt",
+              "signal_baseline",
+              "class_default",
+            ]),
+            oneWay: zod.enum(["in", "out"]).nullable(),
+          }),
+        )
+        .optional()
+        .describe(
+          "Per-leg background volumes and their source (legVolumes:network rows only).",
+        ),
+      movementEstimate: zod
+        .object({
+          method: zod.enum(["ipf", "seed_only"]),
+          iterations: zod.number(),
+          maxResidualVph: zod.number(),
+          imbalancePct: zod.number(),
+          exitsNormalized: zod.boolean(),
+          constrainedExits: zod.number(),
+          legsDropped: zod.number(),
+          matrix: zod.record(
+            zod.string(),
+            zod.record(zod.string(), zod.number()),
+          ),
+          shares: zod.record(
+            zod.string(),
+            zod.object({
+              L: zod.number().optional(),
+              T: zod.number().optional(),
+              R: zod.number().optional(),
+            }),
+          ),
+        })
+        .optional()
+        .describe(
+          "Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).",
+        ),
+      legEstimateExact: zod
+        .record(zod.string(), zod.unknown())
+        .optional()
+        .describe(
+          "The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes \/ movementEstimate.",
+        ),
       existingStorageFt: zod.number().optional(),
       storageMovement: zod.string().optional(),
       utdfCycleLenSec: zod.number().optional(),
@@ -4549,7 +4741,65 @@ export const WhatIfTisResponse = zod.object({
               }),
             )
             .optional(),
-          volumeSource: zod.enum(["utdf_tmc", "synchro_pdf_tmc"]).optional(),
+          volumeSource: zod
+            .enum([
+              "utdf_tmc",
+              "synchro_pdf_tmc",
+              "network_estimate",
+              "link_csv",
+            ])
+            .optional(),
+          legVolumes: zod
+            .array(
+              zod.object({
+                direction: zod.enum(["NB", "SB", "EB", "WB"]),
+                enteringVph: zod.number(),
+                exitingVph: zod.number().nullable(),
+                source: zod.enum([
+                  "csv",
+                  "signal_aadt",
+                  "signal_baseline",
+                  "class_default",
+                ]),
+                oneWay: zod.enum(["in", "out"]).nullable(),
+              }),
+            )
+            .optional()
+            .describe(
+              "Per-leg background volumes and their source (legVolumes:network rows only).",
+            ),
+          movementEstimate: zod
+            .object({
+              method: zod.enum(["ipf", "seed_only"]),
+              iterations: zod.number(),
+              maxResidualVph: zod.number(),
+              imbalancePct: zod.number(),
+              exitsNormalized: zod.boolean(),
+              constrainedExits: zod.number(),
+              legsDropped: zod.number(),
+              matrix: zod.record(
+                zod.string(),
+                zod.record(zod.string(), zod.number()),
+              ),
+              shares: zod.record(
+                zod.string(),
+                zod.object({
+                  L: zod.number().optional(),
+                  T: zod.number().optional(),
+                  R: zod.number().optional(),
+                }),
+              ),
+            })
+            .optional()
+            .describe(
+              "Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).",
+            ),
+          legEstimateExact: zod
+            .record(zod.string(), zod.unknown())
+            .optional()
+            .describe(
+              "The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes \/ movementEstimate.",
+            ),
           existingStorageFt: zod.number().optional(),
           storageMovement: zod.string().optional(),
           utdfCycleLenSec: zod.number().optional(),
@@ -5925,6 +6175,7 @@ export const getTisProjectResponseRequestOneExistingSizeMin = 0;
 
 export const getTisProjectResponseRequestOneConservedAssignmentDefault = true;
 export const getTisProjectResponseRequestOneSignalTimingDefault = `computed`;
+export const getTisProjectResponseRequestOneLegVolumesDefault = `network`;
 export const getTisProjectResponseRequestOneDrivewaysItemLatitudeMin = -90;
 export const getTisProjectResponseRequestOneDrivewaysItemLatitudeMax = 90;
 
@@ -6098,6 +6349,7 @@ export const getTisProjectResponseResultRequestExistingSizeMin = 0;
 
 export const getTisProjectResponseResultRequestConservedAssignmentDefault = true;
 export const getTisProjectResponseResultRequestSignalTimingDefault = `computed`;
+export const getTisProjectResponseResultRequestLegVolumesDefault = `network`;
 export const getTisProjectResponseResultRequestDrivewaysItemLatitudeMin = -90;
 export const getTisProjectResponseResultRequestDrivewaysItemLatitudeMax = 90;
 
@@ -6676,6 +6928,12 @@ export const GetTisProjectResponse = zod
             .default(getTisProjectResponseRequestOneSignalTimingDefault)
             .describe(
               "Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g\/C. `screening`: the legacy flat 90 s cycle \/ g\/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`.",
+            ),
+          legVolumes: zod
+            .enum(["network", "screening"])
+            .default(getTisProjectResponseRequestOneLegVolumesDefault)
+            .describe(
+              "Background volume basis per study intersection (default network). `network`: each leg carries its own volume — the signal's counted design hour on the two main-road legs (half per direction), the road-class baseline on uncounted minor legs, a client link count where supplied — and turning movements are balanced against the exit legs by iterative proportional fitting (NCHRP 255\/765 refinement). `screening`: the legacy 30\/25\/25\/20 approach split and 15\/70\/15 turn shares, byte-identical to the pre-change output. A measured Synchro\/UTDF record on a junction wins over either.",
             ),
           realLaneGeometry: zod
             .boolean()
@@ -7334,6 +7592,12 @@ export const GetTisProjectResponse = zod
           .describe(
             "Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g\/C. `screening`: the legacy flat 90 s cycle \/ g\/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`.",
           ),
+        legVolumes: zod
+          .enum(["network", "screening"])
+          .default(getTisProjectResponseResultRequestLegVolumesDefault)
+          .describe(
+            "Background volume basis per study intersection (default network). `network`: each leg carries its own volume — the signal's counted design hour on the two main-road legs (half per direction), the road-class baseline on uncounted minor legs, a client link count where supplied — and turning movements are balanced against the exit legs by iterative proportional fitting (NCHRP 255\/765 refinement). `screening`: the legacy 30\/25\/25\/20 approach split and 15\/70\/15 turn shares, byte-identical to the pre-change output. A measured Synchro\/UTDF record on a junction wins over either.",
+          ),
         realLaneGeometry: zod
           .boolean()
           .optional()
@@ -7734,7 +7998,65 @@ export const GetTisProjectResponse = zod
               }),
             )
             .optional(),
-          volumeSource: zod.enum(["utdf_tmc", "synchro_pdf_tmc"]).optional(),
+          volumeSource: zod
+            .enum([
+              "utdf_tmc",
+              "synchro_pdf_tmc",
+              "network_estimate",
+              "link_csv",
+            ])
+            .optional(),
+          legVolumes: zod
+            .array(
+              zod.object({
+                direction: zod.enum(["NB", "SB", "EB", "WB"]),
+                enteringVph: zod.number(),
+                exitingVph: zod.number().nullable(),
+                source: zod.enum([
+                  "csv",
+                  "signal_aadt",
+                  "signal_baseline",
+                  "class_default",
+                ]),
+                oneWay: zod.enum(["in", "out"]).nullable(),
+              }),
+            )
+            .optional()
+            .describe(
+              "Per-leg background volumes and their source (legVolumes:network rows only).",
+            ),
+          movementEstimate: zod
+            .object({
+              method: zod.enum(["ipf", "seed_only"]),
+              iterations: zod.number(),
+              maxResidualVph: zod.number(),
+              imbalancePct: zod.number(),
+              exitsNormalized: zod.boolean(),
+              constrainedExits: zod.number(),
+              legsDropped: zod.number(),
+              matrix: zod.record(
+                zod.string(),
+                zod.record(zod.string(), zod.number()),
+              ),
+              shares: zod.record(
+                zod.string(),
+                zod.object({
+                  L: zod.number().optional(),
+                  T: zod.number().optional(),
+                  R: zod.number().optional(),
+                }),
+              ),
+            })
+            .optional()
+            .describe(
+              "Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).",
+            ),
+          legEstimateExact: zod
+            .record(zod.string(), zod.unknown())
+            .optional()
+            .describe(
+              "The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes \/ movementEstimate.",
+            ),
           existingStorageFt: zod.number().optional(),
           storageMovement: zod.string().optional(),
           utdfCycleLenSec: zod.number().optional(),
@@ -8089,8 +8411,64 @@ export const GetTisProjectResponse = zod
                 )
                 .optional(),
               volumeSource: zod
-                .enum(["utdf_tmc", "synchro_pdf_tmc"])
+                .enum([
+                  "utdf_tmc",
+                  "synchro_pdf_tmc",
+                  "network_estimate",
+                  "link_csv",
+                ])
                 .optional(),
+              legVolumes: zod
+                .array(
+                  zod.object({
+                    direction: zod.enum(["NB", "SB", "EB", "WB"]),
+                    enteringVph: zod.number(),
+                    exitingVph: zod.number().nullable(),
+                    source: zod.enum([
+                      "csv",
+                      "signal_aadt",
+                      "signal_baseline",
+                      "class_default",
+                    ]),
+                    oneWay: zod.enum(["in", "out"]).nullable(),
+                  }),
+                )
+                .optional()
+                .describe(
+                  "Per-leg background volumes and their source (legVolumes:network rows only).",
+                ),
+              movementEstimate: zod
+                .object({
+                  method: zod.enum(["ipf", "seed_only"]),
+                  iterations: zod.number(),
+                  maxResidualVph: zod.number(),
+                  imbalancePct: zod.number(),
+                  exitsNormalized: zod.boolean(),
+                  constrainedExits: zod.number(),
+                  legsDropped: zod.number(),
+                  matrix: zod.record(
+                    zod.string(),
+                    zod.record(zod.string(), zod.number()),
+                  ),
+                  shares: zod.record(
+                    zod.string(),
+                    zod.object({
+                      L: zod.number().optional(),
+                      T: zod.number().optional(),
+                      R: zod.number().optional(),
+                    }),
+                  ),
+                })
+                .optional()
+                .describe(
+                  "Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).",
+                ),
+              legEstimateExact: zod
+                .record(zod.string(), zod.unknown())
+                .optional()
+                .describe(
+                  "The unrounded leg estimate this row was solved from (legs, balanced movements, diagnostics), printed so the browser scenario solver can feed it back to buildAffectedRow and reproduce the row byte for byte. Present only on legVolumes:network rows that received an estimate. Display consumers read legVolumes \/ movementEstimate.",
+                ),
               existingStorageFt: zod.number().optional(),
               storageMovement: zod.string().optional(),
               utdfCycleLenSec: zod.number().optional(),

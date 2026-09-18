@@ -53,6 +53,21 @@ const webster = (Y, nPhases) => Math.min(MAX_CYCLE_S, Math.max(MIN_CYCLE_S, Math
   ok(explicit.leftPhasing.ns === "permissive" && explicit.leftPhasing.ew === "protected", "an explicit (imported) phasing overrides the inference");
 }
 
+// --- 2b. critical LANE volume: an axis's through lanes divide its flow ---
+{
+  const perm = { ns: "permissive", ew: "permissive" };
+  const oneLane = computeSignalTiming({ approachVph: { NB: 1350, SB: 1300, EB: 350, WB: 340 }, leftPhasing: perm });
+  ok(oneLane.basis === "screening-default", `1,350 vph on a single lane trips the saturation guard (Y ${oneLane.criticalFlowRatio})`);
+  const threeLane = computeSignalTiming({ approachVph: { NB: 1350, SB: 1300, EB: 350, WB: 340 }, leftPhasing: perm, opposingLanes: { ns: 3, ew: 1 } });
+  const Y3 = (1350 / 3 + 350) / SATURATION_FLOW_VPH;
+  ok(threeLane.basis === "webster" && near(threeLane.criticalFlowRatio, Math.round(Y3 * 100) / 100, 1e-9) && threeLane.cycleLenS === webster(Y3, 2),
+     `the same volumes on three through lanes read 450 vph per lane: Y ${threeLane.criticalFlowRatio}, Webster ${threeLane.cycleLenS} s`);
+  ok(threeLane.gOverCns > threeLane.gOverCew, `splits follow per-lane critical flow (ns ${threeLane.gOverCns} > ew ${threeLane.gOverCew})`);
+  const sameAsBefore = computeSignalTiming({ approachVph: { NB: 800, SB: 700, EB: 600, WB: 500 }, leftPhasing: perm, opposingLanes: { ns: 1, ew: 1 } });
+  const noLanes = computeSignalTiming({ approachVph: { NB: 800, SB: 700, EB: 600, WB: 500 }, leftPhasing: perm });
+  ok(JSON.stringify(sameAsBefore) === JSON.stringify(noLanes), "one lane per direction (or no count) is byte-identical to the pre-change arithmetic");
+}
+
 // --- 3. critical phases drive lost time: published numerators 20 / 27.5 / 35 ---
 {
   const Y = 0.5;

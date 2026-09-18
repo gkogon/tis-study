@@ -118,6 +118,7 @@ import {
   type LandUse,
   type ResolvedRates,
   type Direction,
+  type LegEstimate,
 } from "@workspace/tis-engine-core";
 
 // ---------------------------------------------------------------------------
@@ -417,8 +418,18 @@ function planningOffice(report: TisReport): { name: string; fallback: boolean } 
 }
 
 /** Find the UTDF record that produced a row's measured volumes, the engine's way. */
-function attachUtdfRecord(row: TisAffectedIntersection, records: UtdfIntersectionData[] | undefined): { rec?: UtdfIntersectionInput; fallback: boolean } {
-  if (!records || records.length === 0 || !row.volumeSource) return { rec: undefined, fallback: false };
+export function attachUtdfRecord(row: TisAffectedIntersection, records: UtdfIntersectionData[] | undefined): { rec?: UtdfIntersectionInput; fallback: boolean } {
+  // Only a row whose volumes CAME from a record has a record to find.
+  // volumeSource used to exist only on such rows; under legVolumes: network
+  // a resolved row carries "network_estimate" / "link_csv" and no
+  // utdfRecordIndex, and the nearest-record scan below would attach a
+  // NEIGHBOURING junction's Synchro counts to it (one record within
+  // SNAP_MAX_M of two signals: the engine gave it to the nearer one, the
+  // other is estimated) — a re-solve on someone else's traffic, disclosed
+  // as a fallback but wrong. Narrow to the measured labels, the same test
+  // the utdfAttach flag below already applies.
+  if (!records || records.length === 0) return { rec: undefined, fallback: false };
+  if (row.volumeSource !== "utdf_tmc" && row.volumeSource !== "synchro_pdf_tmc") return { rec: undefined, fallback: false };
   if (typeof row.utdfRecordIndex === "number" && records[row.utdfRecordIndex]) {
     return { rec: records[row.utdfRecordIndex] as UtdfIntersectionInput, fallback: false };
   }
@@ -780,9 +791,12 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
     base: TisAffectedIntersection;
     sig: AnalyzerIntersection;
     utdf?: UtdfIntersectionInput;
+    /** `utdf`'s index in req.utdfIntersections — echoed as utdfRecordIndex. */
+    utdfIndex?: number;
     calibration?: RowCalibration;
     weight: number;
     timingOverride?: SignalTimingOverrideInput;
+    legEstimate?: LegEstimate;
     ledgerExact?: { out: PathTurnShare[]; in?: PathTurnShare[] };
     ok: boolean;
   };
@@ -792,13 +806,27 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
 
     // UTDF record (measured volumes replace totalVolume inside buildAffectedRow).
     const att = attachUtdfRecord(row, req.utdfIntersections);
-    if (att.rec) { cand.utdf = att.rec; if (att.fallback) flag(id, "utdfAttach"); }
-    else if (row.volumeSource) {
+    if (att.rec) {
+      cand.utdf = att.rec;
+      // The engine echoes the record's index (RowCandidate.utdfIndex →
+      // utdfRecordIndex); feed it so the measured row reproduces byte for byte.
+      const idx = (req.utdfIntersections ?? []).indexOf(att.rec as UtdfIntersectionData);
+      if (idx >= 0) cand.utdfIndex = idx;
+      if (att.fallback) flag(id, "utdfAttach");
+    }
+    else if (row.volumeSource === "utdf_tmc" || row.volumeSource === "synchro_pdf_tmc") {
       // The measured record is gone: keep the printed measured volume as the
       // design-hour anchor and the printed timing (below). Approach shares
       // fall back to the deterministic model, so the row is disclosed.
+      // (volumeSource "network_estimate" / "link_csv" is not a measured
+      // record at all — that's legEstimateExact below, fed back exactly.)
       flag(id, "utdfAttach");
     }
+
+    // The exact leg estimate the server solved this row from (legVolumes:
+    // network). Feeding it back is what makes the re-solve byte-identical;
+    // without it the row would fall back to the screening allocation.
+    if (row.legEstimateExact) cand.legEstimate = row.legEstimateExact as LegEstimate;
 
     // Design-hour volume.
     if (typeof row.designHourVolumeVph === "number" && row.designHourVolumeVph > 0) {
@@ -929,6 +957,7 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
       ...(conservedLabeling ? { conservedLabeling: true } : {}),
       ...(req.realLaneGeometry === false ? { realLaneGeometry: false } : {}),
       signalTiming,
+      legVolumes: "network",
       weatherFactor,
     };
     const baseRowsById = new Map(p.affectedIntersections.map((r) => [r.signalId, r]));
@@ -943,7 +972,14 @@ export function solveScenarioDetailed(reportIn: TisReport, state: ScenarioState)
       let built: AffectedIntersection;
       try {
         built = buildAffectedRow(
-          { sig: c.sig, distanceMi: c.base.distanceMi, ...(c.utdf ? { utdf: c.utdf } : {}), ...(c.timingOverride ? { timingOverride: c.timingOverride } : {}) },
+          {
+            sig: c.sig,
+            distanceMi: c.base.distanceMi,
+            ...(c.utdf ? { utdf: c.utdf } : {}),
+            ...(c.utdfIndex !== undefined ? { utdfIndex: c.utdfIndex } : {}),
+            ...(c.timingOverride ? { timingOverride: c.timingOverride } : {}),
+            ...(c.legEstimate ? { legEstimate: c.legEstimate } : {}),
+          },
           c.weight, project, params, c.calibration, turns, turnsIn,
         );
       } catch {

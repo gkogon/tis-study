@@ -1,12 +1,17 @@
 // Exactness gate, engine parity, and sanity for the browser scenario solver.
 //
-// Both fixtures are REAL output of THIS branch's engine (generateTisReport
+// All three fixtures are REAL output of this branch's engine (generateTisReport
 // against the live analyzer — see scripts/fixtures/README.md):
 //
-//   A  scenario-base.json       the Peachtree Multifamily request, verbatim.
-//   B  scenario-overrides.json  the same request + two signalTimingOverrides
-//                               (one longer cycle, one protected NS left)
-//                               + size x1.5.
+//   A  scenario-base.json         the Peachtree Multifamily request, verbatim.
+//   B  scenario-overrides.json    the same request + two signalTimingOverrides
+//                                 (one longer cycle, one protected NS left)
+//                                 + size x1.5.
+//   C  scenario-network-utdf.json the same request under the default
+//                                 legVolumes: network + ONE UTDF record on the
+//                                 nearest studied signal, with 16 other
+//                                 studied signals inside the 0.35 mi snap
+//                                 radius (section 1b).
 //
 // 1. EXACTNESS.  solveScenario(A, EMPTY_SCENARIO) must give back A: every
 //    printed field of every row, approach and movement, every period, the
@@ -65,14 +70,16 @@ import {
   solveScenario, solveScenarioDetailed, EMPTY_SCENARIO, toWhatIfRequest, reportDiff,
   timingEditFromRow, withCycle, withNsShare, withProtectedLeft, isScenarioDirty,
   designGrowthYears, printedDesignGrowthYears, reconstructedDesignGrowthYears, baseOverridesBySignal,
-  scenarioWeatherFactor,
+  scenarioWeatherFactor, attachUtdfRecord,
 } from "../src/lib/scenario-solve.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const load = (n) => JSON.parse(fs.readFileSync(path.join(here, "fixtures", n), "utf8"));
 const A = load("scenario-base.json");
 const B = load("scenario-overrides.json");
+const C = load("scenario-network-utdf.json");
 const frozenA = JSON.stringify(A);
+const frozenC = JSON.stringify(C);
 
 let failed = 0;
 const ok = (c, m) => { if (c) console.log("  ok  " + m); else { failed++; console.log("  FAIL " + m); } };
@@ -173,6 +180,68 @@ ok(solA.report.request === A.request, "request object identity preserved (metada
 const d0 = reportDiff(A, solA.report);
 ok(d0.rows === A.affectedIntersections.length && d0.maxDelayDeltaSec === 0 && d0.maxVcDelta === 0 && d0.losMismatches === 0,
   `reportDiff(A, solve(A, EMPTY)) = ${JSON.stringify(d0)} — 0 differences`);
+
+// ---------------------------------------------------------------------------
+// 1b. Network mode + a measured neighbour: fixture C is the same request
+//     under the default legVolumes: network with ONE UTDF record 40 m from
+//     the nearest studied signal. The engine attached it to THAT signal only
+//     (utdf_tmc, utdfRecordIndex 0); the other signals inside the 0.35 mi
+//     snap radius are network-estimated and carry legEstimateExact. The
+//     client solve must reproduce every row byte for byte with NO fallback —
+//     in particular attachUtdfRecord must not re-snap the record onto a
+//     network-estimated neighbour (a row whose volumes never came from a
+//     record has no record to find; before the guard it re-solved on the
+//     neighbouring junction's Synchro counts and called it a fallback).
+// ---------------------------------------------------------------------------
+console.log(`\nfixture C: ${C.affectedIntersections.length} rows, ${C.request.utdfIntersections.length} UTDF record, periods ${C.periodReports.map((p) => p.period).join("/")}`);
+{
+  const SNAP_MAX_M = 0.35 * 1609.34;
+  const haversineM = (a, b, c, d) => { const R = 6371000, p = Math.PI / 180; const s = Math.sin((c - a) * p / 2) ** 2 + Math.cos(a * p) * Math.cos(c * p) * Math.sin((d - b) * p / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(s)); };
+  const rec = C.request.utdfIntersections[0];
+  const distM = (r) => haversineM(rec.latitude, rec.longitude, r.latitude, r.longitude);
+  const measured = C.affectedIntersections.filter((r) => r.volumeSource === "utdf_tmc");
+  ok(measured.length === 1 && measured[0].utdfRecordIndex === 0 && distM(measured[0]) < 100,
+    `exactly one row is measured: ${measured[0]?.signalId} (utdfRecordIndex ${measured[0]?.utdfRecordIndex}, ${Math.round(distM(measured[0]))} m from the record)`);
+  const neighbours = C.affectedIntersections
+    .filter((r) => r.signalId !== measured[0].signalId && distM(r) <= SNAP_MAX_M)
+    .sort((x, y) => distM(x) - distM(y));
+  const estimated = neighbours.filter((r) => r.volumeSource === "network_estimate" && r.legEstimateExact && r.utdfRecordIndex === undefined);
+  ok(neighbours.length >= 1 && estimated.length === neighbours.length,
+    `${neighbours.length} other studied signal(s) inside the ${Math.round(SNAP_MAX_M)} m snap radius, all network-estimated with legEstimateExact and no utdfRecordIndex`);
+  const nearest = estimated[0];
+  ok(nearest && distM(nearest) < SNAP_MAX_M / 2, `nearest estimated neighbour ${nearest?.signalId} is ${Math.round(distM(nearest))} m from the record — well inside the radius the old scan re-snapped within`);
+  ok(C.affectedIntersections.filter((r) => r.legEstimateExact).length >= C.affectedIntersections.length - 2,
+    `${C.affectedIntersections.filter((r) => r.legEstimateExact).length} of ${C.affectedIntersections.length} rows carry legEstimateExact (network mode by default)`);
+
+  // The rule itself, on the fixture's own rows.
+  const direct = attachUtdfRecord(measured[0], C.request.utdfIntersections);
+  ok(direct.rec === C.request.utdfIntersections[0] && direct.fallback === false, "attachUtdfRecord: the measured row (utdf_tmc, index 0) → its record, no fallback");
+  const onNeighbour = attachUtdfRecord(nearest, C.request.utdfIntersections);
+  ok(onNeighbour.rec === undefined && onNeighbour.fallback === false, `attachUtdfRecord: the network-estimated neighbour ${Math.round(distM(nearest))} m away → no record, no fallback`);
+  const stripped = { ...measured[0] }; delete stripped.utdfRecordIndex;
+  const legacy = attachUtdfRecord(stripped, C.request.utdfIntersections);
+  ok(legacy.rec === C.request.utdfIntersections[0] && legacy.fallback === true, "attachUtdfRecord: a measured row WITHOUT utdfRecordIndex (pre-E2) still re-snaps to the nearest record and says so");
+  const linkCsv = attachUtdfRecord({ ...nearest, volumeSource: "link_csv" }, C.request.utdfIntersections);
+  ok(linkCsv.rec === undefined && linkCsv.fallback === false, "attachUtdfRecord: a link_csv row is not a measured record either — no scan");
+
+  // The whole solve: byte-identical, nothing flagged.
+  const solC = solveScenarioDetailed(C, EMPTY_SCENARIO);
+  ok(JSON.stringify(C) === frozenC, "solve(C, EMPTY) does not mutate its input");
+  ok(solC.rowFallbacks.size === 0 && solC.baseOnly.size === 0 && solC.reportFallbacks.size === 0,
+    `solve(C, EMPTY) fires NO fallback (${[...solC.rowFallbacks].map(([id, s]) => `${id}: ${[...s].join("/")}`).join(", ") || "none"})`);
+  ok(![...solC.rowFallbacks.values()].some((s) => s.has("utdfAttach")), "no row reports a utdfAttach fallback — the neighbours were not re-snapped");
+  const outC = JSON.parse(JSON.stringify(solC.report));
+  const cmpC = compareRows(C, outC, "network+utdf", {});
+  ok(true, `solve(C, EMPTY) reproduces C: compared ${cmpC.fields} row fields across ${C.periodReports.length + 1} surfaces with NO tolerance`);
+  const solvedNearest = solC.report.affectedIntersections.find((r) => r.signalId === nearest.signalId);
+  ok(JSON.stringify(solvedNearest) === JSON.stringify(nearest), `${nearest.signalId}: the network-estimated neighbour reproduces byte for byte (volumeSource ${solvedNearest?.volumeSource}, no utdfRecordIndex)`);
+  const solvedMeasured = solC.report.affectedIntersections.find((r) => r.signalId === measured[0].signalId);
+  ok(solvedMeasured?.volumeSource === "utdf_tmc" && solvedMeasured?.utdfRecordIndex === 0 && JSON.stringify(solvedMeasured) === JSON.stringify(measured[0]),
+    `${measured[0].signalId}: the measured row reproduces byte for byte from the fed-back record`);
+  ok(JSON.stringify(solC.report.mitigationSummary) === JSON.stringify(C.mitigationSummary), "solve(C, EMPTY): mitigationSummary byte-identical");
+  const dC = reportDiff(C, solC.report);
+  ok(dC.maxDelayDeltaSec === 0 && dC.maxVcDelta === 0 && dC.losMismatches === 0, `reportDiff(C, solve(C, EMPTY)) = ${JSON.stringify(dC)}`);
+}
 
 // ---------------------------------------------------------------------------
 // 2. Parity with the engine: fixture B's scenario, re-derived from A alone.

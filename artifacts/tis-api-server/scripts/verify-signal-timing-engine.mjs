@@ -1,3 +1,7 @@
+// Runs under the default legVolumes: network — a resolved signal's approach
+// volumes are its leg estimate (main road half per direction, minor legs the
+// class baseline), so the fixture volumes below sit where the Critical
+// Movement Method still resolves to Webster with real lane counts.
 // End-to-end: the signal-timing resolver wired into generateTisReport.
 //
 //  1. DEFAULT ON. Every study intersection carries a `signalTiming` stamp;
@@ -90,7 +94,12 @@ ok(aRows.some((ix) => ix.signalTiming?.basis === "webster"), "at least one inter
   for (const ix of aRows) {
     const t = ix.signalTiming; if (!t || t.basis === "screening-default") continue;
     for (const ap of ix.approaches ?? []) {
-      if (!(ap.futureVc > 0)) continue;
+      // v/c prints to two decimals, so an approach carrying only a handful
+      // of vehicles (a T's absent leg under the leg estimate: 0 background,
+      // a few project trips) cannot reproduce its capacity from the printed
+      // ratio — 20 vph / 0.03 is anything from 570 to 800. Measure only
+      // where the ratio has resolution.
+      if (!(ap.futureVc >= 0.05)) continue;
       const implied = ap.futureVolumeVph / ap.futureVc;
       const gc = ap.direction === "NB" || ap.direction === "SB" ? t.gOverCns : t.gOverCew;
       const lanes = ap.throughLanes ?? 1;
@@ -110,7 +119,9 @@ ok(aRows.some((ix) => ix.signalTiming?.basis === "webster"), "at least one inter
   ok((s1?.approaches ?? []).every((ap) => ap.throughLanes === undefined && ap.lanesSource === undefined), "sig-1 (no OSM tag, no record): no lane stamp — one-lane basis, legacy-identical fields");
   const noGeo = await generateTisReport({ ...baseReq, realLaneGeometry: false });
   const s2n = rows(noGeo).find((ix) => ix.signalId === "sig-2");
-  ok((s2n?.approaches ?? []).every((ap) => ap.throughLanes === undefined) && (s2n?.approaches ?? []).every((ap) => near(ap.futureVolumeVph / ap.futureVc, SATURATION_FLOW_VPH * (ap.direction === "NB" || ap.direction === "SB" ? s2n.signalTiming.gOverCns : s2n.signalTiming.gOverCew) * wx, 0.03)),
+  // Same resolution guard as the capacity loop above: a near-empty approach's
+  // printed v/c cannot reproduce its capacity within 3%.
+  ok((s2n?.approaches ?? []).every((ap) => ap.throughLanes === undefined) && (s2n?.approaches ?? []).filter((ap) => ap.futureVc >= 0.05).every((ap) => near(ap.futureVolumeVph / ap.futureVc, SATURATION_FLOW_VPH * (ap.direction === "NB" || ap.direction === "SB" ? s2n.signalTiming.gOverCns : s2n.signalTiming.gOverCew) * wx, 0.03)),
      "realLaneGeometry: false pins sig-2 back to one lane per approach with no stamp");
   const cycles = aRows.map((ix) => ix.signalTiming?.cycleLenSec);
   ok(cycles.every((c) => c >= 60 && c <= 300), `cycles within [60, 300] s (${cycles.join(", ")})`);
@@ -189,8 +200,12 @@ const legacy = await generateTisReport({ ...baseReq, conservedAssignment: false,
   const pRows = rows(parsed);
   ok(pRows.every((ix) => typeof ix.designHourVolumeVph === "number" && typeof ix.loadWeight === "number"),
      "designHourVolumeVph / loadWeight survive GenerateTisResponse on every row");
-  ok(pRows.every((ix) => ix.designHourVolumeVph === MOCK_INTS.find((m) => m.id === ix.signalId)?.totalVolume),
-     "designHourVolumeVph is the inventory's unrounded design-hour volume");
+  // Under legVolumes: network (the default) a resolved row's design hour is
+  // Σ entering of its leg estimate — printed unrounded as legEstimateExact —
+  // and only a row that did not resolve to the road network keeps the
+  // inventory's value.
+  ok(pRows.every((ix) => ix.designHourVolumeVph === (ix.legEstimateExact ? ix.legEstimateExact.movements.totalEnteringVph : MOCK_INTS.find((m) => m.id === ix.signalId)?.totalVolume)),
+     "designHourVolumeVph is the unrounded basis the row was solved from (Σ entering of legEstimateExact when present, else the inventory's design hour)");
   ok(pRows.every((ix) => typeof ix.signalTiming?.gOverCnsExact === "number" && typeof ix.signalTiming?.gOverCewExact === "number"
        && Math.round(ix.signalTiming.gOverCnsExact * 1000) / 1000 === ix.signalTiming.gOverCns),
      "signalTiming.gOverCnsExact / gOverCewExact survive and round to the printed 3-dp ratios");

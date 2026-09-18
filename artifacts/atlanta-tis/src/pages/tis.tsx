@@ -720,6 +720,20 @@ function TisFormSection({
               </label>
               <label className="space-y-1">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Leg volumes
+                </span>
+                <select
+                  className="w-full px-3 py-2 rounded-md border bg-background text-sm"
+                  value={form.legVolumes ?? "network"}
+                  onChange={(e) => setForm({ ...form, legVolumes: e.target.value as NonNullable<TisRequest["legVolumes"]> })}
+                  data-testid="select-leg-volumes"
+                >
+                  <option value="network">Network estimate — each leg its own volume, movements balanced (default)</option>
+                  <option value="screening">Screening split — 30/25/25/20 and 15/70/15 (legacy)</option>
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Trip-distribution method
                 </span>
                 <select

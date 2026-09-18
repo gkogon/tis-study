@@ -31,6 +31,7 @@ import {
   type Direction,
   type SignalTiming,
 } from "./webster-timing.ts";
+import type { LegEstimate, LegSource } from "./leg-volumes.ts";
 import {
   assignMovements,
   assignMovementLoadsExact,
@@ -193,6 +194,14 @@ export type AnalyzerIntersection = {
   /** Per-direction through lanes on the minor (cross-street) approach, from
    *  OSM `lanes`. Absent when the matched way carries no tag. */
   minorThroughLanes?: number;
+  /** The analyzer's provenance slug for `totalVolume` (passthrough, never
+   *  read by the row math itself): an AADT source slug when a compatible
+   *  count produced the design hour, else "road_class_baseline" or the
+   *  refused-record slug (regional-intersections.ts). The leg-volume
+   *  resolver reads it to label the main-road legs signal_aadt vs
+   *  signal_baseline (leg-volumes.ts BASELINE_SIGNAL_VOLUME_SOURCES).
+   *  Absent on analyzer payloads that predate the field. */
+  volumeSource?: string;
 };
 /** Per-movement numeric values keyed by the twelve standard Synchro
  *  movements — turning-movement volumes (vph) or turn-bay storage (ft).
@@ -273,6 +282,11 @@ export type RowCandidate = {
    *  client can rebuild it with the same record. */
   utdfIndex?: number;
   timingOverride?: SignalTimingOverrideInput;
+  /** Per-leg volumes + balanced movements for this junction (buildLegEstimate),
+   *  computed by the server from the routing graph. Consumed only under
+   *  params.legVolumes === "network" and only when no measured record is
+   *  attached. */
+  legEstimate?: LegEstimate;
 };
 export type ApproachImpact = {
   /** Project-added trips split across left/through/right on THIS approach,
@@ -307,11 +321,14 @@ export type ApproachImpact = {
    *  legacy payloads are byte-identical. */
   throughLanes?: number;
   lanesSource?: "import" | "osm";
-  /** Per-turn-movement detail, present ONLY when an imported Synchro/UTDF
-   *  record supplied measured turning-movement volumes for this intersection.
-   *  Without measured movements the approach total is the finest granularity
-   *  this screen can report honestly, so this stays absent rather than being
-   *  filled from an assumed turn split. */
+  /** Per-turn-movement detail, present when an imported Synchro/UTDF record
+   *  supplied measured turning-movement volumes for this intersection
+   *  (volumeSource utdf_tmc / synchro_pdf_tmc) OR, under legVolumes: network,
+   *  when the row's turning movements are the balanced estimate of its leg
+   *  volumes (volumeSource network_estimate / link_csv; legVolumes and
+   *  movementEstimate state the basis). A screening row has neither, and the
+   *  approach total is the finest granularity it can report honestly, so this
+   *  stays absent rather than being filled from the flat 15/70/15 split. */
   laneGroups?: LaneGroupImpact[];
 };
 
@@ -452,9 +469,33 @@ export type AffectedIntersection = {
    *  top; the measurement anchors PM, other periods scale by the period
    *  factors). "synchro_pdf_tmc" = the same substitution, but the counts came
    *  from an imported Synchro report PDF and the record matched this signal
-   *  by normalized name (report PDFs carry no coordinates). Absent =
-   *  AADT-derived estimate — legacy payloads unchanged. */
-  volumeSource?: "utdf_tmc" | "synchro_pdf_tmc";
+   *  by normalized name (report PDFs carry no coordinates). "network_estimate"
+   *  = no record; the junction resolved to the road network under
+   *  legVolumes: network and the existing volumes are the per-leg estimate
+   *  (legVolumes) with movements balanced by Furness/IPF (movementEstimate);
+   *  "link_csv" = the same with a client link count on at least one leg.
+   *  Absent = the screening allocation of the AADT-derived design hour (a
+   *  legacy payload, legVolumes: screening, or an unresolved junction). */
+  volumeSource?: "utdf_tmc" | "synchro_pdf_tmc" | "network_estimate" | "link_csv";
+  /** Per-leg background volumes and where each came from (legVolumes: network). */
+  legVolumes?: Array<{ direction: Direction; enteringVph: number; exitingVph: number | null; source: LegSource; oneWay: "in" | "out" | null }>;
+  /** Balanced turning-movement estimate and its diagnostics (legVolumes: network). */
+  movementEstimate?: {
+    method: "ipf" | "seed_only";
+    iterations: number;
+    maxResidualVph: number;
+    imbalancePct: number;
+    exitsNormalized: boolean;
+    constrainedExits: number;
+    legsDropped: number;
+    matrix: Record<Direction, Record<Direction, number>>;
+    shares: Record<Direction, Record<Movement, number>>;
+  };
+  /** The unrounded estimate this row was solved from — the browser re-solve
+   *  feeds it back to buildAffectedRow as RowCandidate.legEstimate so a
+   *  what-if reproduces the row byte for byte (the movementsExact precedent).
+   *  Display consumers read legVolumes / movementEstimate, not this. */
+  legEstimateExact?: LegEstimate;
   /** Field-measured existing turn-bay storage (ft) for the governing
    *  movement (see storageMovement), imported from the UTDF [Lanes] Storage
    *  record. Activates the renderers' storage-bay-adequacy tables, which
@@ -575,7 +616,10 @@ export function utdfGoverningStorage(
  */
 export function laneGroupsForApproach(opts: {
   approach: Direction;
-  utdf: UtdfIntersectionInput;
+  /** Measured record; when absent, `shares` supplies the background L/T/R split. */
+  utdf?: UtdfIntersectionInput;
+  /** Background L/T/R shares from the movement estimate (Σ = 1). Used only when `utdf` is absent. */
+  shares?: Record<Movement, number>;
   approachVolumeVph: number;
   addedExactByMovement: Record<Movement, number>;
   addedTripsPeak: number;
@@ -597,14 +641,24 @@ export function laneGroupsForApproach(opts: {
   useRealLaneGeometry?: boolean;
 }): LaneGroupImpact[] | undefined {
   const { approach, utdf, approachVolumeVph, addedExactByMovement } = opts;
-  const vols = utdf.volumes ?? {};
+  const vols = utdf?.volumes ?? {};
   const measured: Record<Movement, number> = { L: 0, T: 0, R: 0 };
   let measuredApproachTotal = 0;
-  for (const m of ["L", "T", "R"] as const) {
-    const v = vols[`${approach}${m}` as UtdfMovement];
-    if (typeof v === "number" && Number.isFinite(v) && v > 0) {
-      measured[m] = v;
-      measuredApproachTotal += v;
+  if (utdf) {
+    for (const m of ["L", "T", "R"] as const) {
+      const v = vols[`${approach}${m}` as UtdfMovement];
+      if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+        measured[m] = v;
+        measuredApproachTotal += v;
+      }
+    }
+  } else if (opts.shares) {
+    for (const m of ["L", "T", "R"] as const) {
+      const v = opts.shares[m];
+      if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+        measured[m] = v;
+        measuredApproachTotal += v;
+      }
     }
   }
   // No measured volume on this approach: nothing to split. A zero total would
@@ -641,8 +695,8 @@ export function laneGroupsForApproach(opts: {
     remainder -= 1;
   }
 
-  const storage = utdf.storageFt ?? {};
-  const laneCounts = utdf.lanes ?? {};
+  const storage = utdf?.storageFt ?? {};
+  const laneCounts = utdf?.lanes ?? {};
   return (["L", "T", "R"] as const).map((m, idx) => {
     const share = measured[m] / measuredApproachTotal;
     const existingVolumeVph = approachVolumeVph * share;
@@ -707,6 +761,11 @@ export type ScenarioParams = {
    *  that predate the resolver) keeps the flat 90 s / 0.45 capacity basis;
    *  "computed" resolves timing per intersection and re-derives capacity. */
   signalTiming?: "computed" | "screening";
+  /** Mirrors TisRequest.legVolumes. "network" consumes the candidate's
+   *  legEstimate (per-leg volumes + balanced movements); "screening" or
+   *  absent ignores it and keeps the 30/25/25/20 + 15/70/15 basis, byte for
+   *  byte. */
+  legVolumes?: "network" | "screening";
   /** Weather capacity factor already folded into capacityVph /
    *  approachCapacityVph; carried separately so a re-derived capacity applies
    *  the same factor. Absent → recovered from approachCapacityVph. */
@@ -777,6 +836,7 @@ export function resolveTimingForRow(
   approachVph: Record<Direction, number>,
   lanesPerDir: { ns: number; ew: number },
   params: ScenarioParams,
+  est?: LegEstimate,
 ): SignalTiming | undefined {
   if (params.signalTiming !== "computed") return undefined;
   // Measured left share per approach, applied to the SAME no-build approach
@@ -792,6 +852,10 @@ export function resolveTimingForRow(
       const tot: number = posv(l) + posv(t) + posv(r);
       if (tot > 0 && typeof l === "number" && Number.isFinite(l) && l >= 0) leftVph[d] = approachVph[d] * (l / tot);
     }
+  } else if (est) {
+    // Estimated left share, applied to the same no-build approach volume.
+    leftVph = {};
+    for (const d of DIRECTIONS) leftVph[d] = approachVph[d] * est.movements.shares[d].L;
   }
   return resolveSignalTiming({
     providers: [
@@ -839,6 +903,12 @@ export function buildAffectedRow(
   // Webster d1, and the imported turn-bay storage rides the row for the
   // storage-adequacy comparison. Absent ⇒ every path below is unchanged.
   const measured = c.utdf ? utdfMeasuredTotals(c.utdf) : undefined;
+  // Per-leg volumes + balanced movements (legVolumes: network). A measured
+  // record wins outright — never blended — and "screening" / absent ignores
+  // the estimate entirely so the row stays byte-identical to today.
+  const est = !measured && params.legVolumes === "network" && c.legEstimate && c.legEstimate.movements.totalEnteringVph > 0
+    ? c.legEstimate
+    : undefined;
   const utdfCycleLenS =
     measured && typeof c.utdf?.cycleLenSec === "number" && Number.isFinite(c.utdf.cycleLenSec)
       ? Math.min(300, Math.max(30, c.utdf.cycleLenSec))
@@ -851,13 +921,13 @@ export function buildAffectedRow(
   // at 1.0, AM/Saturday carry a smaller share). Drives every background-volume
   // figure below so each period's diagrams and v/c differ instead of reusing
   // one design hour.
-  const baseVolume = (measured ? measured.totalVph : c.sig.totalVolume) * (params.periodVolumeFactor ?? 1);
+  const baseVolume = (measured ? measured.totalVph : est ? est.movements.totalEnteringVph : c.sig.totalVolume) * (params.periodVolumeFactor ?? 1);
 
   // Approach split: the MEASURED per-approach shares when a UTDF record is
   // attached (real counted geometry), else the deterministic screening
   // perturbation of the 30/25/25/20 base. Needed here (not just in the
   // approach loop) because the signal timing is resolved from these shares.
-  const volShares = measured ? measured.shares : approachVolumeShares(c.sig.id);
+  const volShares = measured ? measured.shares : est ? est.movements.enteringShares : approachVolumeShares(c.sig.id);
 
   // ---- Signal timing: resolved once from NO-BUILD volumes, held fixed ----
   // Under signalTiming: "screening" `timing` is undefined and every capacity,
@@ -878,7 +948,7 @@ export function buildAffectedRow(
   };
   const nsMajor = noBuildByApproach.NB + noBuildByApproach.SB >= noBuildByApproach.EB + noBuildByApproach.WB;
   const criticalLanes = nsMajor ? lanesPerDir.ns : lanesPerDir.ew;
-  const timing = resolveTimingForRow(c, measured, utdfCycleLenS, noBuildByApproach, lanesPerDir, params);
+  const timing = resolveTimingForRow(c, measured, utdfCycleLenS, noBuildByApproach, lanesPerDir, params, est);
   // Intersection-level capacity: the critical-movement fraction of the total
   // is a per-lane critical volume, so the major axis's lane count scales it.
   const capacityVph = (timing ? SATURATION_FLOW_VPH * criticalGOverC(timing) * weatherFactor : params.capacityVph) * criticalLanes;
@@ -1097,11 +1167,12 @@ export function buildAffectedRow(
         }
         return any ? { addedByMovement: byMv } : {};
       })(),
-      // Per-movement queues, but only where an imported record supplies a real
-      // turn split for the background traffic. Absent everywhere else on
-      // purpose — see laneGroupsForApproach.
+      // Per-movement queues, but only where the background turn split is more
+      // than the flat 15/70/15: an imported record's measured movements, or
+      // the balanced estimate's shares (legVolumes: network). Absent on a
+      // screening row on purpose — see laneGroupsForApproach.
       ...(() => {
-        if (!c.utdf) return {};
+        if (!c.utdf && !est) return {};
         const addedExactByMovement: Record<Movement, number> = { L: 0, T: 0, R: 0 };
         if (pathRows && pathRows.length > 0) {
           for (const r of pathRows) {
@@ -1124,7 +1195,7 @@ export function buildAffectedRow(
         }
         const laneGroups = laneGroupsForApproach({
           approach: d,
-          utdf: c.utdf,
+          ...(c.utdf ? { utdf: c.utdf } : est!.legs[d] ? { shares: est!.movements.shares[d] } : {}),
           approachVolumeVph: baseVol,
           addedExactByMovement,
           addedTripsPeak,
@@ -1204,7 +1275,7 @@ export function buildAffectedRow(
     longitude: c.sig.longitude,
     distanceMi: round2(c.distanceMi),
     // Exact re-solve inputs — unrounded, exactly what this call received.
-    designHourVolumeVph: measured ? measured.totalVph : c.sig.totalVolume,
+    designHourVolumeVph: measured ? measured.totalVph : est ? est.movements.totalEnteringVph : c.sig.totalVolume,
     loadWeight: weight,
     ...(pathTurns ? { pathTurns } : {}),
     ...(pathTurnsIn !== undefined ? { pathTurnsIn } : {}),
@@ -1270,6 +1341,29 @@ export function buildAffectedRow(
           volumeSource: (c.utdf?.source === "synchro_pdf"
             ? "synchro_pdf_tmc"
             : "utdf_tmc") as "utdf_tmc" | "synchro_pdf_tmc",
+        }
+      : {}),
+    // Leg-volume provenance, presence-gated on the estimate having been
+    // consumed, so screening-mode and legacy rows carry no new field.
+    ...(est
+      ? {
+          volumeSource: (est.anyCsv ? "link_csv" : "network_estimate") as "link_csv" | "network_estimate",
+          legEstimateExact: est,
+          legVolumes: DIRECTIONS.flatMap((d) => {
+            const l = est.legs[d];
+            return l ? [{ direction: d, enteringVph: round1(l.enteringVph), exitingVph: l.exitingVph === null ? null : round1(l.exitingVph), source: l.source, oneWay: l.oneWay }] : [];
+          }),
+          movementEstimate: {
+            method: est.movements.diagnostics.method,
+            iterations: est.movements.diagnostics.iterations,
+            maxResidualVph: round2(est.movements.diagnostics.maxResidualVph),
+            imbalancePct: round3(est.movements.diagnostics.imbalancePct),
+            exitsNormalized: est.movements.diagnostics.exitsNormalized,
+            constrainedExits: est.movements.diagnostics.constrainedExits,
+            legsDropped: est.legsDropped,
+            matrix: Object.fromEntries(DIRECTIONS.map((d) => [d, Object.fromEntries(DIRECTIONS.map((t) => [t, round1(est.movements.matrix[d][t])]))])) as Record<Direction, Record<Direction, number>>,
+            shares: Object.fromEntries(DIRECTIONS.map((d) => [d, { L: round3(est.movements.shares[d].L), T: round3(est.movements.shares[d].T), R: round3(est.movements.shares[d].R) }])) as Record<Direction, Record<Movement, number>>,
+          },
         }
       : {}),
     ...(utdfCycleLenS !== undefined ? { utdfCycleLenSec: utdfCycleLenS } : {}),

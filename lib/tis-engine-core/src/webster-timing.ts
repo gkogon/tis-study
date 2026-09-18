@@ -282,13 +282,27 @@ export function computeSignalTiming(args: ComputeSignalTimingArgs): SignalTiming
     ew: pedestrianMinGreenS(args.crossingLanes?.ew ?? 2 * DEFAULT_THROUGH_LANES_PER_DIR),
   };
 
+  // Critical LANE volume, as the Critical Movement Method defines it: the
+  // heavier through approach on an axis divided by that axis's through lanes
+  // per direction (the same count row-math uses to size capacity as
+  // 1,800 × g/C × lanes). Without this a three-lane arterial carrying
+  // 1,350 vph read as a saturated single lane (Y ≈ 0.95), tripped the
+  // saturation guard and fell back to the flat screening default — on exactly
+  // the roads whose timing matters. Absent lane count → one lane, so every
+  // caller that never passed lanes is unchanged. Left phases stay single-lane
+  // bays by the engine's convention.
+  const throughLanesOn = (axis: Axis): number => {
+    const n = args.opposingLanes?.[axis];
+    return typeof n === "number" && Number.isFinite(n) && n >= 1 ? n : DEFAULT_THROUGH_LANES_PER_DIR;
+  };
   const clvFor = (axis: Axis): { through: number; left: number } => {
     const [a, b]: Direction[] = axis === "ns" ? ["NB", "SB"] : ["EB", "WB"];
+    const lanes = throughLanesOn(axis);
     if (phasing[axis] === "permissive") {
-      return { through: Math.max(pos(args.approachVph[a]), pos(args.approachVph[b])), left: 0 };
+      return { through: Math.max(pos(args.approachVph[a]), pos(args.approachVph[b])) / lanes, left: 0 };
     }
     const la = leftAndThrough(args, a), lb = leftAndThrough(args, b);
-    return { through: Math.max(la.through, lb.through), left: Math.max(la.left, lb.left) };
+    return { through: Math.max(la.through, lb.through) / lanes, left: Math.max(la.left, lb.left) };
   };
   const ns = clvFor("ns"), ew = clvFor("ew");
   const phases: Phase[] = [

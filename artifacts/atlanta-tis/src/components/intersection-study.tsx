@@ -64,7 +64,7 @@ import { DistributionSection } from "@/components/intersection-distribution";
 import { QueueLaneAnimation, type QueueLaneInputs } from "@/components/queue-animation";
 import { SignalControls } from "@/components/signal-controls";
 import { studyModelFromRow, SECTIONS, ENGINE_RECOMPUTATIONS, Q95_FACTOR, type IntersectionStudyModel, type QueueApproachModel, type SectionId } from "@/lib/intersection-study-model";
-import { QUEUE_FT_PER_VEH } from "@/lib/intersection-geometry";
+import { QUEUE_FT_PER_VEH, laneGroupBasis } from "@/lib/intersection-geometry";
 import { type ScenarioState, type SignalTimingEdit, type RowFallback, baseOverridesBySignal, scenarioWeatherFactor } from "@/lib/scenario-solve";
 import type { Route } from "@/lib/study-map-sim";
 import { SATURATION_FLOW_VPH } from "@workspace/tis-engine-core";
@@ -530,7 +530,7 @@ export function IntersectionStudy({ report, row, scenarioRow, scenarioReport, sc
               <div className="space-y-2 rounded-lg border p-4" data-testid="study-webster">
                 <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{w.basis === "measured-cycle" ? "Engine fallback plan (Webster splits on the measured cycle), for comparison" : "Webster optimum, for comparison"}</div>
                 <div className="text-xs text-muted-foreground">
-                  The engine's own computeSignalTiming on this row's printed no-build volumes and lane counts{drawn.approaches.some((a) => Array.isArray(a.laneGroups) && a.laneGroups.length > 0) ? ", the measured left share from its lane groups" : ""}{typeof drawn.utdfCycleLenSec === "number" ? ` and its imported ${drawn.utdfCycleLenSec} s cycle` : ""} — exactly what row-math.ts hands the fallback:
+                  The engine's own computeSignalTiming on this row's printed no-build volumes and lane counts{drawn.approaches.some((a) => Array.isArray(a.laneGroups) && a.laneGroups.length > 0) ? (laneGroupBasis(drawn.volumeSource) === "estimated" ? ", the estimated left share from its lane groups (balanced estimate)" : ", the measured left share from its lane groups") : ""}{typeof drawn.utdfCycleLenSec === "number" ? ` and its imported ${drawn.utdfCycleLenSec} s cycle` : ""} — exactly what row-math.ts hands the fallback:
                 </div>
                 <div className="font-mono text-xs tabular-nums space-y-0.5">
                   <div>Cycle <span className="font-semibold">{w.cycleLenS} s</span> · {w.criticalPhases} critical phases · Y {w.criticalFlowRatio.toFixed(2)}</div>

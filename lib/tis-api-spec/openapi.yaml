@@ -970,6 +970,20 @@ components:
             90 s cycle / g/C 0.45 for every intersection, byte-identical to the
             pre-change output. Each intersection reports which basis it used
             in `signalTiming`.
+        legVolumes:
+          type: string
+          enum: [network, screening]
+          default: network
+          description: >-
+            Background volume basis per study intersection (default network).
+            `network`: each leg carries its own volume — the signal's counted
+            design hour on the two main-road legs (half per direction), the
+            road-class baseline on uncounted minor legs, a client link count
+            where supplied — and turning movements are balanced against the
+            exit legs by iterative proportional fitting (NCHRP 255/765
+            refinement). `screening`: the legacy 30/25/25/20 approach split
+            and 15/70/15 turn shares, byte-identical to the pre-change output.
+            A measured Synchro/UTDF record on a junction wins over either.
         realLaneGeometry:
           type: boolean
           description: >-
@@ -1099,11 +1113,16 @@ components:
         currentVc: { type: number }
         currentDelaySec: { type: number }
         currentLos: { type: string, enum: [A, B, C, D, E, F] }
-        # Per-lane-group (turn-movement) detail. Present ONLY when an imported
-        # Synchro/UTDF record supplied real measured turning-movement volumes
-        # for this intersection. Without measured movements the approach total
-        # is the finest granularity the screen can honestly report, so this is
-        # absent rather than filled with an assumed turn split.
+        # Per-lane-group (turn-movement) detail. Present when an imported
+        # Synchro/UTDF record supplied measured turning-movement volumes for
+        # this intersection (volumeSource utdf_tmc / synchro_pdf_tmc), OR,
+        # under legVolumes: network, when the row's turning movements are the
+        # balanced estimate of its leg volumes (volumeSource network_estimate /
+        # link_csv — legVolumes[] and movementEstimate state the basis). A
+        # screening row (legVolumes: screening, or a junction that did not
+        # resolve to the road network) has neither, and the approach total is
+        # the finest granularity it can honestly report, so this stays absent
+        # rather than being filled from the flat 15/70/15 split.
         laneGroups:
           type: array
           items: { $ref: "#/components/schemas/TisLaneGroupImpact" }
@@ -1335,11 +1354,71 @@ components:
         # "synchro_pdf_tmc" = the same substitution, but the counts came from
         # an imported Synchro report PDF and the record was matched to this
         # intersection by normalized name (report PDFs carry no coordinates).
-        # Absent = AADT-derived estimate (legacy behavior, byte-identical
-        # payloads).
+        # "network_estimate" = no record; under legVolumes: network the
+        # junction resolved to the road network and its existing volumes are
+        # the per-leg estimate (legVolumes[]) with turning movements balanced
+        # by Furness/IPF (movementEstimate). "link_csv" = the same, with a
+        # client link count on at least one leg. Absent = the screening
+        # allocation of the AADT-derived design hour — a legacy payload,
+        # legVolumes: screening, or a junction that did not resolve to the
+        # road network (the worksheet says which).
         volumeSource:
           type: string
-          enum: [utdf_tmc, synchro_pdf_tmc]
+          enum: [utdf_tmc, synchro_pdf_tmc, network_estimate, link_csv]
+        legVolumes:
+          type: array
+          description: Per-leg background volumes and their source (legVolumes:network rows only).
+          items:
+            type: object
+            required: [direction, enteringVph, exitingVph, source, oneWay]
+            properties:
+              direction: { type: string, enum: [NB, SB, EB, WB] }
+              enteringVph: { type: number }
+              exitingVph: { type: number, nullable: true }
+              # csv = a client link count on this leg; signal_aadt = the
+              # signal's COUNTED design hour (a compatible AADT record was
+              # joined), half per direction; signal_baseline = the signal's
+              # design hour is itself the analyzer's baseline volume for the
+              # signal (no compatible count — its road-class ladder or its
+              # synthetic OSM-class model), so the main-road legs are a
+              # baseline too;
+              # class_default = the road-class ladder on a minor leg.
+              source: { type: string, enum: [csv, signal_aadt, signal_baseline, class_default] }
+              oneWay: { type: string, enum: ["in", "out"], nullable: true }
+        movementEstimate:
+          type: object
+          description: Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).
+          required: [method, iterations, maxResidualVph, imbalancePct, exitsNormalized, constrainedExits, legsDropped, matrix, shares]
+          properties:
+            method: { type: string, enum: [ipf, seed_only] }
+            iterations: { type: integer }
+            maxResidualVph: { type: number }
+            imbalancePct: { type: number }
+            exitsNormalized: { type: boolean }
+            constrainedExits: { type: integer }
+            legsDropped: { type: integer }
+            matrix:
+              type: object
+              additionalProperties:
+                type: object
+                additionalProperties: { type: number }
+            shares:
+              type: object
+              additionalProperties:
+                type: object
+                properties:
+                  L: { type: number }
+                  T: { type: number }
+                  R: { type: number }
+        legEstimateExact:
+          type: object
+          additionalProperties: true
+          description: >-
+            The unrounded leg estimate this row was solved from (legs, balanced
+            movements, diagnostics), printed so the browser scenario solver can
+            feed it back to buildAffectedRow and reproduce the row byte for
+            byte. Present only on legVolumes:network rows that received an
+            estimate. Display consumers read legVolumes / movementEstimate.
         # Field-measured existing turn-bay storage (ft) for the governing
         # movement, imported from the UTDF [Lanes] Storage record — activates
         # the storage-bay-adequacy comparison the renderers already gate on

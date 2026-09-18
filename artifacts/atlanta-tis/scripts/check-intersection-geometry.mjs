@@ -40,6 +40,11 @@
 //      values beside the scenario's and flags exactly the approaches whose
 //      printed values differ; timingChanged is true for the override row.
 //   6. No NaN / Infinity anywhere in any plan (deep walk).
+//   7. Fixture C (scenario-network-utdf.json: legVolumes: network + one UTDF
+//      record, real engine output): a network-estimated row's lane groups
+//      are the balanced estimate's — laneGroupBasis "estimated", legSource
+//      per approach from the row's legVolumes, none on a T's missing leg —
+//      and the one measured row keeps the measured path.
 //
 // Run: `pnpm run check:intersection-geometry` (plain node 26, no bundler).
 import fs from "node:fs";
@@ -47,6 +52,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   planFromRow, movementsByApproach, QUEUE_FT_PER_VEH, ASSUMED_BAY_FT, DEFAULT_TURN_SHARES, DIRECTIONS,
+  laneGroupBasis, legSourceLabel,
 } from "../src/lib/intersection-geometry.ts";
 import { laneGroupsForApproach, VEH_LENGTH_FT, DEFAULT_LEFT_TURN_SHARE, DEFAULT_THROUGH_SHARE } from "@workspace/tis-engine-core";
 
@@ -273,6 +279,60 @@ console.log("\n6. every row in both fixtures, base and paired");
   const bare = planFromRow({ ...rowA, approaches: [], signalTiming: undefined, movements: undefined, movementSource: undefined });
   ok(bare.approaches.length === 0 && bare.timing === null && bare.hasMovements === false && bare.scaleFt === 0 && nonFinite(bare).length === 0,
     "a row with no approaches, timing or movements yields an empty, finite plan");
+}
+
+// ---------------------------------------------------------------------------
+console.log("\n7. lane-group basis and leg sources (C: legVolumes: network + one UTDF record, real engine output)");
+{
+  // Under legVolumes: network a resolved row carries lane groups from the
+  // BALANCED ESTIMATE, not a record; the plan must say so (laneGroupBasis
+  // "estimated") and hand the Lanes tab each approach's leg source, so no
+  // sentence attributes the estimate to "the imported Synchro record". The
+  // one measured row keeps the measured path. All rows are the engine's.
+  const C = load("scenario-network-utdf.json");
+  const estimatedRows = C.affectedIntersections.filter((r) => r.volumeSource === "network_estimate");
+  const measuredRow = C.affectedIntersections.find((r) => r.volumeSource === "utdf_tmc");
+  const unresolvedRow = C.affectedIntersections.find((r) => !r.volumeSource);
+  ok(estimatedRows.length >= 30 && !!measuredRow && !!unresolvedRow,
+    `${estimatedRows.length} network-estimated rows, one measured (${measuredRow?.signalId}), one unresolved (${unresolvedRow?.signalId})`);
+
+  ok(laneGroupBasis("network_estimate") === "estimated" && laneGroupBasis("link_csv") === "estimated"
+    && laneGroupBasis("utdf_tmc") === "measured" && laneGroupBasis("synchro_pdf_tmc") === "measured" && laneGroupBasis(undefined) === "measured",
+    "laneGroupBasis: network_estimate / link_csv → estimated; utdf_tmc / synchro_pdf_tmc / absent → measured");
+
+  let badBasis = 0, badSource = 0, badAbsent = 0;
+  for (const r of estimatedRows) {
+    const p = planFromRow(r);
+    if (!p.hasLaneGroups || p.laneGroupBasis !== "estimated") badBasis++;
+    for (const a of p.approaches) {
+      const leg = r.legVolumes.find((l) => l.direction === a.direction);
+      if (leg) { if (a.legSource !== leg.source || !a.laneGroups) badSource++; }
+      else if (a.legSource !== undefined || a.laneGroups !== undefined) badAbsent++;
+    }
+  }
+  ok(badBasis === 0, `every network-estimated row: hasLaneGroups with laneGroupBasis "estimated" (${badBasis} wrong)`);
+  ok(badSource === 0, `every present leg: the approach's legSource is the row's legVolumes source and it has lane groups (${badSource} wrong)`);
+  const tRows = estimatedRows.filter((r) => r.legVolumes.length < 4);
+  ok(tRows.length >= 1 && badAbsent === 0, `${tRows.length} T-junction row(s): the approach with no leg has NO legSource and NO lane groups (${badAbsent} wrong) — the Lanes tab says "no leg on this side"`);
+  const sources = new Set(estimatedRows.flatMap((r) => planFromRow(r).approaches.map((a) => a.legSource)).filter(Boolean));
+  ok(sources.has("signal_aadt") && sources.has("class_default") && [...sources].every((s) => legSourceLabel(s).length > 0),
+    `leg sources seen: ${[...sources].join(", ")} — each has a label (${[...sources].map((s) => `"${legSourceLabel(s)}"`).join(", ")})`);
+  ok(legSourceLabel("signal_baseline") === "analyzer's baseline volume for this signal (no compatible count — road-class or synthetic)" && legSourceLabel("csv") === "client link count",
+    "legSourceLabel covers signal_baseline (the analyzer's baseline — road-class or synthetic, not a count) and csv");
+
+  const pm = planFromRow(measuredRow);
+  ok(pm.hasLaneGroups && pm.laneGroupBasis === "measured" && pm.approaches.every((a) => a.legSource === undefined && !!a.laneGroups),
+    `${measuredRow.signalId}: the measured row takes the measured path — laneGroupBasis "measured", lane groups on every approach, no legSource`);
+  const pu = planFromRow(unresolvedRow);
+  ok(!pu.hasLaneGroups && pu.laneGroupBasis === undefined && pu.approaches.every((a) => a.legSource === undefined),
+    `${unresolvedRow.signalId}: the unresolved (screening) row has no lane groups, no basis, no legSource`);
+
+  // Scenario pair: the basis follows the DRAWN row.
+  const pair = planFromRow(measuredRow, estimatedRows[0]);
+  ok(pair.laneGroupBasis === "estimated", "a scenario plan takes the basis of the drawn (scenario) row");
+  let nf = 0;
+  for (const r of C.affectedIntersections) nf += nonFinite(planFromRow(r)).length;
+  ok(nf === 0, `no NaN / Infinity across all ${C.affectedIntersections.length} rows of C`);
 }
 
 console.log(failed ? `\n${failed} check(s) FAILED` : "\ncheck:intersection-geometry passed");

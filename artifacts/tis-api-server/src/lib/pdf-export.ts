@@ -33,7 +33,7 @@ import { ukCapacityForIntersection, type UkCapacityResult } from "./uk-capacity"
 import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { renderTisNorthCarolina, renderTisSouthCarolina } from "./pdf-export-carolinas";
 import { appliedRateRows } from "./trip-rate-rows";
-import { isGrowthOverride } from "@workspace/tis-engine-core";
+import { isGrowthOverride, IPF_MAX_ITER, IPF_TOLERANCE_VPH } from "@workspace/tis-engine-core";
 import { renderTisState } from "./pdf-export-states";
 import { renderDiurnalCharts, drawColumnChart, drawLineChart, chartColors } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
@@ -9047,7 +9047,19 @@ function drawTurningMovementDiagram(
   for (const a of approaches) byDir[String(a.direction).toUpperCase()] = a;
   const volOf = (a: any) =>
     Math.round(Number(scenario === "build" ? a.futureVolumeVph : a.existingVolumeVph) || 0);
-  const split = (v: number) => { const l = Math.round(v * 0.15), r = Math.round(v * 0.15); return { l, t: v - l - r, r }; };
+  // Background L/T/R: the balanced estimate's shares when the row carries
+  // one (legVolumes: network), else the screening 15/70/15 the appendix
+  // intro discloses. Left and right round; through takes the remainder so
+  // the three always sum to the approach total.
+  const estShares: Record<string, { L: number; T: number; R: number }> | undefined =
+    ix.movementEstimate && ix.movementEstimate.shares ? ix.movementEstimate.shares : undefined;
+  const split = (v: number, dir: string) => {
+    const s = estShares?.[dir];
+    const lS = s && Number.isFinite(s.L) ? s.L : 0.15;
+    const rS = s && Number.isFinite(s.R) ? s.R : 0.15;
+    const l = Math.round(v * lS), r = Math.round(v * rS);
+    return { l, t: v - l - r, r };
+  };
 
   doc.font("bold").fontSize(8).fillColor("#0f172a").text(title, x, y, { width: w, align: "center" });
   const bx = x, by = y + 12, bw = w, bh = h - 12;
@@ -9065,7 +9077,7 @@ function drawTurningMovementDiagram(
 
   const block = (dir: string, gl: { l: string; t: string; r: string }) => {
     const a = byDir[dir]; if (!a) return null;
-    const m = split(volOf(a));
+    const m = split(volOf(a), dir);
     return `${dir}   L${gl.l}${m.l}   T${gl.t}${m.t}   R${gl.r}${m.r}`;
   };
   doc.font("body").fontSize(7).fillColor("#0f172a");
@@ -9328,11 +9340,14 @@ function renderCapacityAppendix(
   if (scopeNote) {
     doc.font("body").fontSize(9).fillColor(TEXT_GRAY).text(scopeNote, { paragraphGap: 8 });
   }
+  const anyLegEstimate = Array.isArray(intersections) && intersections.some((x: any) => Array.isArray(x?.legVolumes) && x?.movementEstimate);
   doc.font("body").fontSize(9).fillColor("#b45309").text(
-    "Background turning-movement volumes in the diagrams are distributed from each approach total using an "
-    + "estimated 15/70/15 (Left/Through/Right) split. Project-trip movements are assigned geometrically from "
-    + "the study's directional trip distribution (see each worksheet's Affected movements table). Replace both "
-    + "with measured turning-movement counts (TMCs) before a formal submittal.",
+    anyLegEstimate
+      ? "Background approach volumes are resolved per leg — the signal's design hour on the main road (its counted volume where the analyzer had a compatible count, else the road-class baseline it assigned — each worksheet says which), the road-class baseline on uncounted legs, client link counts where supplied; half per direction, and half in the physical direction of a one-way carriageway — and the background turning movements in the diagrams are balanced to the exit legs by iterative proportional fitting (NCHRP 255/765 refinement) from a geometry seed; each worksheet states its leg sources and residual. Project-trip movements are assigned geometrically from the study's directional trip distribution (see each worksheet's Affected movements table). Replace both with measured turning-movement counts (TMCs) before a formal submittal."
+      : "Background turning-movement volumes in the diagrams are distributed from each approach total using an "
+        + "estimated 15/70/15 (Left/Through/Right) split. Project-trip movements are assigned geometrically from "
+        + "the study's directional trip distribution (see each worksheet's Affected movements table). Replace both "
+        + "with measured turning-movement counts (TMCs) before a formal submittal.",
     { paragraphGap: 8 },
   );
   doc.fillColor("black");
@@ -9479,6 +9494,57 @@ function renderCapacityAppendix(
       doc.fillColor("black");
       doc.moveDown(0.2);
     }
+    // Leg-volume provenance (legVolumes: network). Presence-gated on the
+    // fields the row carries, so screening-mode and legacy payloads print
+    // nothing here and stay byte-identical.
+    if (Array.isArray(ix.legVolumes) && ix.legVolumes.length > 0 && ix.movementEstimate) {
+      const legs: any[] = ix.legVolumes;
+      const n = legs.length;
+      const count = (src: string) => legs.filter((l) => l.source === src).length;
+      const parts: string[] = [];
+      if (count("csv") > 0) parts.push(`${count("csv")} of ${n} from client link counts (CSV)`);
+      if (count("signal_aadt") > 0) parts.push(`${count("signal_aadt")} of ${n} from the signal's counted design hour (half per direction)`);
+      // The analyzer had no compatible count for this SIGNAL — its design
+      // hour is the road-class ladder or the synthetic OSM-class model — so
+      // the main-road legs are a baseline too and must not be called "counted".
+      if (count("signal_baseline") > 0) parts.push(`${count("signal_baseline")} of ${n} from the analyzer's baseline volume for this signal (no compatible count — road-class or synthetic)`);
+      if (count("class_default") > 0) parts.push(`${count("class_default")} of ${n} from the road-class baseline (no count on that leg)`);
+      const me = ix.movementEstimate;
+      // IPF stops at 50 iterations (leg-volumes.ts IPF_MAX_ITER) whether or
+      // not the residual reached 0.5 vph; a row that hit the cap with a
+      // residual still above tolerance did NOT balance and must say so (the
+      // final row pass still lands every row on its entering volume exactly).
+      const hitCap = Number(me.iterations) >= IPF_MAX_ITER && Number(me.maxResidualVph) > IPF_TOLERANCE_VPH;
+      const mv = me.method === "ipf"
+        ? (hitCap
+            ? `did not balance within ${IPF_MAX_ITER} iterations (residual ${Number(me.maxResidualVph).toFixed(1)} vph; rows held exact)${me.exitsNormalized ? `; exits scaled to entries, ${(Number(me.imbalancePct) * 100).toFixed(0)}% imbalance` : ""}`
+            : `balanced estimate (Furness/IPF, ${me.iterations} iterations, residual ${Number(me.maxResidualVph).toFixed(1)} vph${me.exitsNormalized ? `; exits scaled to entries, ${(Number(me.imbalancePct) * 100).toFixed(0)}% imbalance` : ""})`)
+        : "geometry seed only (no exit volume to balance against)";
+      // A one-way leg is one carriageway of a two-way road (OSM maps a divided
+      // arterial as two one-way ways), so the engine gives it half of the
+      // two-way count in its direction; the reviewer must know that a true
+      // one-way couplet street reads light under that rule (leg-volumes.ts).
+      const anyOneWay = legs.some((l) => l.oneWay === "in" || l.oneWay === "out");
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        `Leg volumes: ${parts.join("; ")}. Turning movements: ${mv}.${me.legsDropped > 0 ? ` ${me.legsDropped} extra leg not carried (4×4 matrix).` : ""}`
+          + (anyOneWay ? " A one-way carriageway carries half of the two-way count in its direction (a one-way couplet street is understated)." : ""),
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+    } else if (anyLegEstimate && ix.volumeSource !== "utdf_tmc" && ix.volumeSource !== "synchro_pdf_tmc") {
+      // The appendix intro promises that a junction which did not resolve to
+      // the road network "keeps the screening allocation and says so": this
+      // is the saying so. Gated on anyLegEstimate so a legacy or
+      // screening-mode study (no row carries an estimate) prints nothing and
+      // stays byte-identical; a measured row is excluded because its volumes
+      // are the record's, not a screening allocation (its own provenance
+      // sentence above already describes them).
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        "Leg volumes: screening allocation (this junction did not resolve to the road network); turning movements: screening 15/70/15.",
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+    }
     if (addedNegligible) {
       doc.font("body").fontSize(8.5).fillColor(TEXT_GRAY).text(
         "The development distributes fewer than one net PM peak car trip to this junction, so the Existing (No-Build) and Build conditions are numerically identical at reporting precision. The junction is reproduced here for completeness; the scheme's net car-mode trip generation is below the level at which junction capacity governs.",
@@ -9549,6 +9615,43 @@ function renderCapacityAppendix(
       );
       doc.fillColor("black");
       doc.moveDown(0.2);
+    }
+
+    // The balanced 4×4 in vph so a reviewer can check Σin = Σout by hand.
+    if (ix.movementEstimate && ix.movementEstimate.matrix) {
+      const mx: Record<string, Record<string, number>> = ix.movementEstimate.matrix;
+      const dirs = ["NB", "SB", "EB", "WB"];
+      // The legs that exist are the row's legVolumes (a T prints three), not
+      // the non-zero cells: a leg whose row AND column balance to zero (a
+      // zero design hour, or a one-way pair at a stem) is still a leg and
+      // must keep its line rather than vanish from the matrix.
+      const legDirs = new Set<string>(Array.isArray(ix.legVolumes) ? ix.legVolumes.map((l: any) => String(l.direction)) : []);
+      const present = legDirs.size > 0
+        ? dirs.filter((d) => legDirs.has(d))
+        : dirs.filter((d) => dirs.some((t) => (mx[d]?.[t] ?? 0) > 0) || dirs.some((f) => (mx[f]?.[d] ?? 0) > 0));
+      const rowsOut = present.map((d) => [
+        `${d} approach`,
+        ...present.map((t) => (t === d ? "—" : fmtNum(mx[d]?.[t] ?? 0))),
+        fmtNum(present.reduce((s, t) => s + (mx[d]?.[t] ?? 0), 0)),
+      ]);
+      rowsOut.push(["Σ exiting", ...present.map((t) => fmtNum(present.reduce((s, d) => s + (mx[d]?.[t] ?? 0), 0))), ""]);
+      const spec: TableSpec = {
+        headers: ["Balanced turning movements (vph)", ...present.map((t) => `→ ${t} leg`), "Σ entering"],
+        widths: [150, ...present.map(() => 66), 70],
+        align: ["left", ...present.map(() => "right" as const), "right"],
+        rows: rowsOut,
+      };
+      keepHeadingWith(doc, "Balanced turning movements (vph)", 0, tableHeight(doc, spec));
+      table(doc, spec);
+      // The matrix is the estimate's EXISTING-year design-hour basis (what
+      // buildLegEstimate balanced); the No-Build approach volumes above are
+      // that basis grown and period-scaled, so a reviewer must be told why
+      // the two do not tie.
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+        "Design-hour basis — existing year, before growth and period scaling, so it is identical for every analysis period and will not tie to the grown No-Build volumes above. Columns are the leg each movement exits through; the diagonal (U-turn) is folded into the left turn. Entries equal exits at this junction within the stated residual.",
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
     }
 
     const approaches: any[] = Array.isArray(ix.approaches) ? ix.approaches : [];

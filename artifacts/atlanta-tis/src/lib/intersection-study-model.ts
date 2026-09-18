@@ -26,10 +26,12 @@
  *   §02 Q1           the engine's average back-of-queue, Q95 ÷ 1.65 — its own
  *                    Poisson factor, backed out, not a separate measurement.
  *   §03 Webster      computeSignalTiming() on the printed no-build volumes and
- *                    lane counts — plus, when the row carries an import, the
- *                    measured left share (lane groups) and the measured cycle
- *                    (utdfCycleLenSec), exactly what row-math.ts hands the
- *                    fallback — for comparison beside the plan in use. On a
+ *                    lane counts — plus, when the row carries lane groups,
+ *                    their left share (a record's measured split, or the
+ *                    balanced estimate's under legVolumes: network) and, with
+ *                    an import, the measured cycle (utdfCycleLenSec), exactly
+ *                    what row-math.ts hands the fallback — for comparison
+ *                    beside the plan in use. On a
  *                    row whose basis already is "webster" (or "measured-cycle")
  *                    this reproduces the printed plan.
  *
@@ -354,7 +356,8 @@ export function websterForRow(row: TisAffectedIntersection): SignalTiming {
     approachVph[d] = num(a.existingVolumeVph);
     const known = finite(a.throughLanes) && a.throughLanes > 0 && (a.lanesSource === "import" || a.lanesSource === "osm");
     lanes[d] = known ? Math.round(a.throughLanes as number) : 0;
-    // Measured left share: row-math.ts leftVph[d] = approachVph[d] × (L ÷ Σ LTR of the record);
+    // Left share — a record's measured split, or the balanced estimate's under
+    // legVolumes: network: row-math.ts leftVph[d] = approachVph[d] × (L ÷ Σ LTR);
     // the lane groups carry that split as existingVolumeVph per movement.
     const lg = Array.isArray(a.laneGroups) ? a.laneGroups : undefined;
     if (lg && lg.length > 0) {
@@ -405,9 +408,16 @@ function methodNotes(row: TisAffectedIntersection, plan: IntersectionPlan, sim: 
     ? `Signal timing: ${timingBasisLabel(t)}${t.source && t.source !== "override" ? ` (source ${t.source})` : ""}; ${t.cycleLenSec} s cycle, ${t.criticalPhases} critical phases, ${LOST_TIME_PER_PHASE_S} s lost time per phase.`
     : `Signal timing: no plan resolved on this row — the screening g/C ${G_OVER_C} sized its capacity${fallbackCycleSec(row) !== 90 ? ` on the imported ${fallbackCycleSec(row)} s cycle` : " on the 90 s default cycle"}.`);
   notes.push(`Approach capacity = ${SATURATION_FLOW_VPH} vphpl × g/C × through lanes × weather factor${weatherFactor !== 1 ? ` (${weatherFactor.toFixed(2)} on this row)` : ""}; delay by Webster d1 + Akçelik d2 (vcToDelay, T = 0.25 h, capped at 300 s); 95th-percentile queue = Q1 × ${Q95_FACTOR} at ${VEH_LENGTH_FT} ft per vehicle, the approach total across its lanes.`);
-  if (row.volumeSource) notes.push(`Background volumes: measured turning-movement total from the attached ${row.volumeSource === "synchro_pdf_tmc" ? "Synchro report" : "UTDF record"}${finite(row.designHourVolumeVph) ? ` (design hour ${row.designHourVolumeVph.toFixed(0)} vph)` : ""}.`);
+  // volumeSource says what the background volumes ARE: a measured record's
+  // total, or (legVolumes: network) the Σ entering of the study's leg
+  // volumes with turning movements balanced by Furness/IPF — never call the
+  // estimate "measured".
+  const measured = row.volumeSource === "utdf_tmc" || row.volumeSource === "synchro_pdf_tmc";
+  if (measured) notes.push(`Background volumes: measured turning-movement total from the attached ${row.volumeSource === "synchro_pdf_tmc" ? "Synchro report" : "UTDF record"}${finite(row.designHourVolumeVph) ? ` (design hour ${row.designHourVolumeVph.toFixed(0)} vph)` : ""}.`);
+  else if (row.volumeSource === "network_estimate" || row.volumeSource === "link_csv") notes.push(`Background volumes: balanced estimate from the study's leg volumes (Furness/IPF)${row.volumeSource === "link_csv" ? ", with client link counts on some legs" : ""}${finite(row.designHourVolumeVph) ? ` — design hour ${row.designHourVolumeVph.toFixed(0)} vph, the sum of the entering legs` : ""}, grown to the opening year.`);
   else if (finite(row.designHourVolumeVph)) notes.push(`Background volumes: inventory design hour ${row.designHourVolumeVph.toFixed(0)} vph, grown to the opening year.`);
-  if (plan.hasLaneGroups) notes.push("Per-movement lane groups, storage and turning counts come from the attached Synchro record.");
+  if (plan.hasLaneGroups && plan.laneGroupBasis === "estimated") notes.push("Per-movement lane groups come from the balanced estimate of the study's leg volumes (Furness/IPF); no turning counts or turn-bay storage were measured.");
+  else if (plan.hasLaneGroups) notes.push("Per-movement lane groups, storage and turning counts come from the attached Synchro record.");
   else notes.push(`No Synchro record on this signal: through lanes ${plan.approaches.map((a) => `${a.direction} ${a.throughLanes} (${a.lanesSource})`).join(", ")}; background turns at the engine's ${(plan.defaultTurnShares.left * 100).toFixed(0)}/${(plan.defaultTurnShares.through * 100).toFixed(0)}/${(plan.defaultTurnShares.right * 100).toFixed(0)} L/T/R convention.`);
   if (plan.hasMovements) notes.push(`Project trips by movement ${plan.movementSource === "path" ? "from the routed paths through this junction (conserved assignment)" : plan.movementSource === "octant" ? "from the geometric octant model" : ""}.`.replace(" .", "."));
   if (row.calibration && row.calibration.sampleCount > 0) notes.push(`Screening delay calibrated against ${row.calibration.sampleCount} observed sample${row.calibration.sampleCount === 1 ? "" : "s"} (multiplier ×${row.calibration.delayMultiplier.toFixed(2)}).`);

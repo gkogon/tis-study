@@ -56,6 +56,11 @@ const EXPECTED = [
   "verdictForHorizon", "recommendMitigation", "buildSummaryMitigations",
   // trips
   "periodRawTrips", "periodDirectionalIn", "externalTripsForPeriod",
+  // leg-volumes.ts — per-leg volumes + balanced movements
+  "DIRS", "ORIGIN_BEARING", "EXIT_LEG", "MINOR_LEG_DESIGN_HOUR_VPH_BY_CLASS", "BASELINE_SIGNAL_VOLUME_SOURCES",
+  "IPF_TOLERANCE_VPH", "IPF_MAX_ITER", "EXIT_IMBALANCE_NORMALIZE_PCT",
+  "assignLegsToApproaches", "mainRoadLegs", "resolveLegVolumes", "estimateMovements",
+  "buildLegEstimate",
 ];
 
 let fails = 0;

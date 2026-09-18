@@ -10,6 +10,7 @@ import type { SignalTimingOverride } from "./signalTimingOverride";
 import type { TisAnalysisPeriod } from "./tisAnalysisPeriod";
 import type { TisDistributionMethod } from "./tisDistributionMethod";
 import type { TisRequestAdditionalStudyPointsItem } from "./tisRequestAdditionalStudyPointsItem";
+import type { TisRequestLegVolumes } from "./tisRequestLegVolumes";
 import type { TisRequestSignalTiming } from "./tisRequestSignalTiming";
 import type { TisTripProfile } from "./tisTripProfile";
 import type { TisWeather } from "./tisWeather";
@@ -101,6 +102,8 @@ export interface TisRequest {
   conservedAssignment?: boolean;
   /** Signal timing basis for delay, LOS and queue (default computed). `computed`: each study intersection gets its own cycle length and green splits — a client Synchro upload's measured cycle and per-phase splits where the record carries them, otherwise a Webster optimum cycle with Critical Movement Method splits from the no-build approach volumes (FHWA-HOP-07-006), with a protected-left phase inferred from the FHWA-HRT-04-091 cross-product guidance and a pedestrian minimum green from the crossing width. Timing is resolved once from no-build volumes and held fixed across every scenario, so the model never retimes the signal to absorb the project's own trips. Per-approach capacity is re-derived as saturation flow x that phase's g/C. `screening`: the legacy flat 90 s cycle / g/C 0.45 for every intersection, byte-identical to the pre-change output. Each intersection reports which basis it used in `signalTiming`. */
   signalTiming?: TisRequestSignalTiming;
+  /** Background volume basis per study intersection (default network). `network`: each leg carries its own volume — the signal's counted design hour on the two main-road legs (half per direction), the road-class baseline on uncounted minor legs, a client link count where supplied — and turning movements are balanced against the exit legs by iterative proportional fitting (NCHRP 255/765 refinement). `screening`: the legacy 30/25/25/20 approach split and 15/70/15 turn shares, byte-identical to the pre-change output. A measured Synchro/UTDF record on a junction wins over either. */
+  legVolumes?: TisRequestLegVolumes;
   /** Size approach and lane-group capacity with real through-lane counts (lanes x saturation flow x g/C) instead of the one-critical-lane screening assumption. Precedence per approach: the imported Synchro [Lanes] count > the OSM through-lane count on the road the signal was matched to > one lane. Each approach reports throughLanes and lanesSource. Omitted or true uses real geometry; explicit false pins the one-lane legacy basis everywhere, byte-identical to the pre-change output. */
   realLaneGeometry?: boolean;
   /**

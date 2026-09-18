@@ -16,9 +16,15 @@
  *   approaches[].throughLanes / lanesSource   drawn as that many lanes; absent
  *       ⇒ the engine sized the approach with ONE lane (its screening default)
  *       and the plan says "default".
- *   approaches[].laneGroups[]   present ONLY with a Synchro/UTDF import. The
- *       L group's storageFt / storageDeficient / queue95thFt are the bay; the
- *       whole array rides along for the Lanes tab.
+ *   approaches[].laneGroups[]   present with a Synchro/UTDF import (measured
+ *       turning movements) OR, under legVolumes: network, from the balanced
+ *       estimate of the study's leg volumes; the row's `volumeSource` says
+ *       which (`laneGroupBasis`), and the Lanes tab words each accordingly.
+ *       The L group's storageFt / storageDeficient / queue95thFt are the bay
+ *       (a storage length only ever comes from an import); the whole array
+ *       rides along for the Lanes tab.
+ *   legVolumes[] / volumeSource   under legVolumes: network, each approach's
+ *       background-volume source (`legSource`) for the Lanes tab.
  *   existingStorageFt / storageMovement   the governing imported bay at row
  *       level (e.g. "NBL"): used for that approach when no lane group says
  *       more, compared against the ROW's worst 95th-percentile queue
@@ -118,12 +124,15 @@ export type ApproachPlan = ApproachBase & {
   storageQueueBasis?: "left-turn group" | "row worst approach";
   /** Project trips on this approach by movement, summed from `movements`. */
   addedByMovement: Record<Movement, number>;
-  /** Per-movement lane groups, only with an import. */
+  /** Per-movement lane groups: an import's, or the balanced estimate's (the
+   *  plan's laneGroupBasis says which). */
   laneGroups?: TisLaneGroupImpact[];
   /** The base row's values when a scenario row was drawn. */
   base?: ApproachBase;
   /** True when any printed base value differs from the scenario's. */
   changed: boolean;
+  /** Where this approach's background volume came from (legVolumes: network rows). */
+  legSource?: "csv" | "signal_aadt" | "signal_baseline" | "class_default";
 };
 
 export type TimingSummary = {
@@ -149,6 +158,20 @@ export type Verdict = {
   losChanged: boolean;
 };
 
+/** What a plan's lane groups were built from: a measured Synchro/UTDF
+ *  record's turning movements, or the balanced estimate of the study's leg
+ *  volumes (Furness/IPF) under legVolumes: network. */
+export type LaneGroupBasis = "measured" | "estimated";
+
+/** The lane-group basis a row's `volumeSource` implies. "network_estimate" /
+ *  "link_csv" rows carry the estimate; "utdf_tmc" / "synchro_pdf_tmc" rows
+ *  carry a record. The engine prints one of those four on every row that
+ *  has lane groups, so an absent label (a report saved before volumeSource
+ *  existed, when lane groups came only with a record) reads as measured. */
+export function laneGroupBasis(volumeSource: TisAffectedIntersection["volumeSource"] | undefined): LaneGroupBasis {
+  return volumeSource === "network_estimate" || volumeSource === "link_csv" ? "estimated" : "measured";
+}
+
 export type IntersectionPlan = {
   signalId: string;
   name: string;
@@ -156,8 +179,11 @@ export type IntersectionPlan = {
   distanceMi: number;
   /** Present approaches in NB, SB, EB, WB order. */
   approaches: ApproachPlan[];
-  /** True when any approach carries lane groups (an import attached). */
+  /** True when any approach carries lane groups (an import attached, or the
+   *  balanced estimate under legVolumes: network — see laneGroupBasis). */
   hasLaneGroups: boolean;
+  /** Where those lane groups came from; present only with hasLaneGroups. */
+  laneGroupBasis?: LaneGroupBasis;
   timing: TimingSummary | null;
   verdict: Verdict;
   /** Project trips by approach × movement (0 where the table has no row). */
@@ -334,6 +360,12 @@ function approachPlan(
     ...(laneGroups ? { laneGroups } : {}),
     ...(baseValues ? { base: baseValues } : {}),
     changed: baseValues ? !sameBase(base, baseValues) : false,
+    ...(() => {
+      // The row's legVolumes (generated TisAffectedIntersection type): the
+      // approach's leg, if the row carries one, names its volume source.
+      const leg = row.legVolumes?.find((l) => l.direction === a.direction);
+      return leg?.source ? { legSource: leg.source } : {};
+    })(),
   };
 }
 
@@ -373,6 +405,7 @@ export function planFromRow(row: TisAffectedIntersection, scenarioRow?: TisAffec
     distanceMi: num(drawn.distanceMi),
     approaches,
     hasLaneGroups: approaches.some((a) => !!a.laneGroups),
+    ...(approaches.some((a) => !!a.laneGroups) ? { laneGroupBasis: laneGroupBasis(drawn.volumeSource) } : {}),
     timing,
     verdict,
     movements,
@@ -392,5 +425,15 @@ export function lanesSourceLabel(s: LanesSource): string {
     case "import": return "Synchro import";
     case "osm": return "OSM lanes tag";
     default: return "engine default (1 lane)";
+  }
+}
+
+/** Human label for a leg-volume provenance. */
+export function legSourceLabel(s: NonNullable<ApproachPlan["legSource"]>): string {
+  switch (s) {
+    case "csv": return "client link count";
+    case "signal_aadt": return "signal's counted design hour";
+    case "signal_baseline": return "analyzer's baseline volume for this signal (no compatible count — road-class or synthetic)";
+    default: return "road-class baseline";
   }
 }

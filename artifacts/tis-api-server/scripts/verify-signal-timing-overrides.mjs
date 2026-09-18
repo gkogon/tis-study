@@ -6,6 +6,11 @@
 //     (basis measured, source "override", the override's cycle) and nothing
 //     else: its existing volumes / approach shares / designHourVolumeVph are
 //     the base study's byte for byte, and every OTHER row is byte-identical.
+//     Under legVolumes: network (the default) a resolved row's
+//     designHourVolumeVph is the Σ entering of its leg estimate and
+//     volumeSource is network_estimate — "byte for byte the base study's"
+//     means equal to the base run's own (possibly network-estimated) value,
+//     not the raw inventory design hour.
 //  2. FIRST PROVIDER. With a Synchro record AND an override on the same
 //     signal, the override's timing wins while the record still supplies the
 //     volumes (volumeSource utdf_tmc, utdfRecordIndex 0).
@@ -77,6 +82,11 @@ const MOCK_INTS = onNet.map((n, i) => ({
   // turbo screen sizes the approach with — so the printed screen inputs must
   // carry it even though the row prints no mainThroughLanes.
   ...(i === 2 ? { legCount: 3, roadClass: "primary", medianType: "raised", minorLegBearing: 180, mainThroughLanes: 2 } : {}),
+  // The analyzer's per-signal provenance slug rides the inventory object into
+  // tis.ts: sig-2 was counted (an AADT source), sig-4's design hour is the
+  // analyzer's road-class fallback, sig-1 / sig-3 predate the field.
+  ...(i === 1 ? { volumeSource: "fdot" } : {}),
+  ...(i === 3 ? { volumeSource: "road_class_baseline" } : {}),
 }));
 ok(MOCK_INTS.length === 4, `four mock signals placed on real junctions (${MOCK_INTS.length})`);
 
@@ -130,8 +140,8 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
   ok(near(r?.signalTiming?.gOverCns ?? 0, 45 / 120, 0.002) && near(r?.signalTiming?.gOverCnsLeft ?? 0, 15 / 120, 0.002),
      `sig-1: g/C from the override splits (NS through ${r?.signalTiming?.gOverCns}, NS left ${r?.signalTiming?.gOverCnsLeft})`);
   ok(JSON.stringify(r?.signalTiming) !== JSON.stringify(b?.signalTiming), "sig-1: the timing actually changed vs the base run");
-  ok(r?.designHourVolumeVph === b?.designHourVolumeVph && r?.volumeSource === undefined && r?.utdfRecordIndex === undefined,
-     `sig-1: volumes untouched — designHourVolumeVph ${r?.designHourVolumeVph} === base, no volumeSource, no utdfRecordIndex`);
+  ok(r?.designHourVolumeVph === b?.designHourVolumeVph && r?.volumeSource === b?.volumeSource && r?.utdfRecordIndex === undefined,
+     "sig-1: volumes untouched — designHourVolumeVph and volumeSource equal the base run's, no utdfRecordIndex");
   const sameVols = (r?.approaches ?? []).every((ap, i) => ap.existingVolumeVph === b.approaches[i].existingVolumeVph && ap.currentVolumeVph === b.approaches[i].currentVolumeVph && ap.direction === b.approaches[i].direction);
   ok(sameVols, "sig-1: every approach's existing / current volume is the base study's, byte for byte");
   ok(r?.loadWeight === b?.loadWeight && r?.addedTripsPmPeak === b?.addedTripsPmPeak, "sig-1: project load unchanged (loadWeight, addedTripsPmPeak)");
@@ -222,7 +232,22 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
 {
   const bRows = rows(base);
   ok(bRows.every((ix) => typeof ix.designHourVolumeVph === "number" && typeof ix.loadWeight === "number"), "every row carries designHourVolumeVph and loadWeight");
-  ok(bRows.every((ix) => ix.designHourVolumeVph === MOCK_INTS.find((m) => m.id === ix.signalId)?.totalVolume), "designHourVolumeVph is the inventory's unrounded design-hour volume");
+  ok(bRows.every((ix) => ix.designHourVolumeVph === (ix.legEstimateExact ? ix.legEstimateExact.movements.totalEnteringVph : MOCK_INTS.find((m) => m.id === ix.signalId)?.totalVolume)),
+     "designHourVolumeVph is the unrounded basis the row was solved from (Σ entering of legEstimateExact when present, else the inventory's design hour)");
+  // "Counted design hour" only when the signal was counted: the analyzer's
+  // volumeSource slug passes through tis.ts into the leg resolver, so a
+  // baseline signal's main legs print signal_baseline, a counted signal's
+  // (and a pre-provenance payload's) print signal_aadt.
+  {
+    const mainSources = (id) => (byId(base, id)?.legVolumes ?? []).map((l) => l.source).filter((src) => src !== "class_default" && src !== "csv");
+    const resolved = ["sig-1", "sig-2", "sig-4"].filter((id) => Array.isArray(byId(base, id)?.legVolumes));
+    ok(resolved.length >= 2, `leg provenance: ${resolved.length} of sig-1 / sig-2 / sig-4 resolved to the network (${resolved.join(", ")})`);
+    for (const id of resolved) {
+      const want = id === "sig-4" ? "signal_baseline" : "signal_aadt";
+      const got = mainSources(id);
+      ok(got.length > 0 && got.every((src) => src === want), `${id}: main-road legs labeled ${want} (analyzer volumeSource ${MOCK_INTS.find((m) => m.id === id)?.volumeSource ?? "absent"}) — got ${got.join(", ") || "none"}`);
+    }
+  }
   ok(bRows.every((ix) => typeof ix.signalTiming?.gOverCnsExact === "number" && typeof ix.signalTiming?.gOverCewExact === "number"
        && core.round3(ix.signalTiming.gOverCnsExact) === ix.signalTiming.gOverCns && core.round3(ix.signalTiming.gOverCewExact) === ix.signalTiming.gOverCew),
      "signalTiming carries unrounded g/C ratios that round to the printed 3-dp ones");
@@ -282,10 +307,11 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
       distributionOctants: base.tripDistribution.byDirection,
       conservedLabeling: true,
       signalTiming: "computed",
+      legVolumes: "network",
       weatherFactor: base.weatherFactorExact,
     };
     const rebuilt = core.buildAffectedRow(
-      { sig, distanceMi: row.distanceMi }, row.loadWeight, { lat: SITE.lat, lon: SITE.lon }, params, undefined, row.pathTurns, row.pathTurnsIn,
+      { sig, distanceMi: row.distanceMi, ...(row.legEstimateExact ? { legEstimate: row.legEstimateExact } : {}) }, row.loadWeight, { lat: SITE.lat, lon: SITE.lon }, params, undefined, row.pathTurns, row.pathTurnsIn,
     );
     const strip = (r) => { const c = { ...r }; delete c.distanceMi; return JSON.stringify(c); };
     ok(strip(rebuilt) === strip(row), "buildAffectedRow from the printed exact inputs reproduces sig-1 byte for byte (distanceMi aside — the row prints it rounded)");
@@ -318,9 +344,10 @@ const ov = await generateTisReport({ ...baseReq, signalTimingOverrides: [OVERRID
       distributionOctants: past.tripDistribution.byDirection,
       conservedLabeling: true,
       signalTiming: "computed",
+      legVolumes: "network",
       weatherFactor: past.weatherFactorExact,
     };
-    const build = (p) => core.buildAffectedRow({ sig, distanceMi: row.distanceMi }, row.loadWeight, { lat: SITE.lat, lon: SITE.lon }, p, undefined, row.pathTurns, row.pathTurnsIn);
+    const build = (p) => core.buildAffectedRow({ sig, distanceMi: row.distanceMi, ...(row.legEstimateExact ? { legEstimate: row.legEstimateExact } : {}) }, row.loadWeight, { lat: SITE.lat, lon: SITE.lon }, p, undefined, row.pathTurns, row.pathTurnsIn);
     const strip = (r) => { const c = { ...r }; delete c.distanceMi; return JSON.stringify(c); };
     ok(strip(build(params)) === strip(row), "openingYear 2024: buildAffectedRow from the printed multipliers reproduces sig-1 byte for byte");
     const wrong = build({ ...params, designGrowthMultiplier: naive });
