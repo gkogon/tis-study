@@ -1237,7 +1237,7 @@ function renderTisState(
   doc.moveDown(0.3);
 
   stateSub("3.3 Study Area and Analysis Periods");
-  body(`Study area: all signalized and unsignalized intersections and roadway segments within ${fmt(r.studyRadiusMi ?? req.studyRadiusMi, 2)} miles of the site that receive ≥10% of project traffic. Primary analysis periods: weekday AM peak hour and weekday PM peak hour. Additional periods (Saturday peak, midday) are required only where special characteristics warrant, consistent with ${cfg.primaryDoc}.`);
+  body(`Study area as screened: all signalized intersections within ${fmt(r.studyRadiusMi ?? req.studyRadiusMi, 2)} miles of the site that receive ≥10% of project traffic. Unsignalized intersections, site driveways and roadway segments are NOT screened by this analysis — ${cfg.primaryDoc} scoping normally includes them, and they must be added at the methodology meeting and analyzed with collected counts in a calibrated tool before submittal. Primary analysis periods: weekday AM peak hour and weekday PM peak hour. Additional periods (Saturday peak, midday) are required only where special characteristics warrant, consistent with ${cfg.primaryDoc}.`);
   doc.moveDown(0.3);
 
   stateSub("3.4 Analysis Scenarios");
@@ -1381,7 +1381,7 @@ function renderTisState(
 
   // ─── §8 FUTURE BUILD CONDITIONS ─────────────────────────────────────────
   stateSection("8.0 FUTURE CONDITIONS — BUILD");
-  body(`The Build scenario adds distributed project-generated trips to the No-Build network for the ${req.openingYear ?? "opening year"} analysis horizon. All ${intersections.length} study-area intersections and roadway segments are evaluated for LOS under Build conditions.`);
+  body(`The Build scenario adds distributed project-generated trips to the No-Build network for the ${req.openingYear ?? "opening year"} analysis horizon. All ${intersections.length} signalized study-area intersections are evaluated for LOS under Build conditions; roadway segments and unsignalized intersections are outside the screened scope (see §3.3).`);
   doc.moveDown(0.3);
 
   if (intersections.length) {
