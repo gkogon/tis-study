@@ -13,7 +13,7 @@ import { Marker } from "../components/section-marker";
 
 const STEPS: Array<[string, string]> = [
   ["Sign up & name your firm", "Email + password, then a single firm name. Your team can join later under the same firm — every study they run rolls up to your shared project history."],
-  ["Drop a pin on your site", "Anywhere in the Atlanta MSA. The generator pulls live GDOT counts and signal data for every intersection in your study radius (up to 6.5 mi)."],
+  ["Drop a pin on your site", "Anywhere in a covered metro — 316 of them across 73 countries. The generator pulls measured state-DOT counts and signal data for every intersection in your study radius (up to 6.5 mi)."],
   ["Pick a land use + size", "Public-data land-use codes — multifamily, office, retail, school, industrial. Enter unit count or square footage; pass-by capture is computed automatically."],
   ["Download the report", "Cover page, executive summary, intersection table, mitigations, methodology and limitations appendices. White-labeled with your firm's logo if you've uploaded one."],
 ];
@@ -93,7 +93,7 @@ export default function HelpPage() {
             <FAQ q="What inputs does the generator need?">
               <p>Three required fields:</p>
               <ul className="list-disc pl-5 space-y-1 mt-2">
-                <li><strong>Site coordinates</strong> — drop a pin on the map or paste a lat/lon. Must fall inside the Atlanta MSA box (lat 33.4–34.2, lon −84.9 to −83.9).</li>
+                <li><strong>Site coordinates</strong> — drop a pin on the map or paste a lat/lon. Must fall inside a covered metro; see the Cities page for the list.</li>
                 <li><strong>Land-use code</strong> — picked from a dropdown. Each code carries its own daily/AM-peak/PM-peak rates from public data (SANDAG 2002, corroborated by NHTS 2017 / NCHRP 716).</li>
                 <li><strong>Project size</strong> — usually dwelling units (multifamily), 1,000-sqft GFA (office/retail), or fueling positions (gas stations). The unit auto-updates based on the chosen land use.</li>
               </ul>
@@ -101,18 +101,21 @@ export default function HelpPage() {
             </FAQ>
             <FAQ q="How long does generation take?">
               Most studies complete in 30–90 seconds. The generator pulls
-              live GDOT 511 data + intersection inventory in parallel with
-              the trip generation math; if GDOT's API is slow that day, the
-              run can take up to 2 minutes. There's no queue — runs are not
+              the metro's measured count layer + intersection inventory in
+              parallel with the trip generation math; on a slow upstream day
+              the run can take up to 2 minutes. There's no queue — runs are not
               throttled unless you've hit your firm's monthly study cap.
             </FAQ>
-            <FAQ q="What if my project site is outside the Atlanta MSA?">
-              Today the engine only services the Atlanta MSA box (the GDOT
-              data feed is Georgia-specific). Adjacent metros — Charlotte,
-              Nashville, Birmingham, Jacksonville — are on the roadmap; each
-              one needs its state DOT integration before launch.{" "}
-              <Link href="/contact" className="text-blue-700 hover:underline">Contact us</Link> if your firm wants
-              to be a beta partner in a specific metro.
+            <FAQ q="What if my project site is outside a covered metro?">
+              The engine covers 316 metros across 73 countries — every US
+              state, plus Canada, the UK, Europe, Latin America, Asia and
+              Australia. See the{" "}
+              <Link href="/cities" className="text-blue-700 hover:underline">Cities page</Link> for the
+              full list and each metro's indexed signal count. A site outside
+              a covered metro is rejected with a clear message rather than
+              silently falling back to another region's parameters.{" "}
+              <Link href="/contact" className="text-blue-700 hover:underline">Contact us</Link> if your firm
+              works somewhere we haven't wired yet.
             </FAQ>
             <FAQ q="Can I save and re-print a past study?">
               Yes. Every successful run saves to your firm's project history
@@ -218,12 +221,14 @@ export default function HelpPage() {
           </h2>
           <FaqList>
             <FAQ q="Where do the intersection counts come from?">
-              GDOT 511 NaviGAtor v2 — Georgia DOT's public ITS feed. The
-              engine pulls live signal volumes and incident data. For
-              intersections where we have ground-truth observations, we
-              calibrate the screening delay model against observed delay; report
-              text notes which signals are calibrated and against how many
-              samples.
+              Each metro's own measured layer — the state DOT's published
+              AADT and count records (GDOT 511 NaviGAtor v2 in Georgia,
+              PennDOT, NCDOT, FDOT and their equivalents elsewhere), joined to
+              the signal inventory for that metro. Every report names its own
+              source and vintage. For intersections where we have ground-truth
+              observations, we calibrate the screening delay model against
+              observed delay; report text notes which signals are calibrated
+              and against how many samples.
             </FAQ>
             <FAQ q="What standards are referenced?">
               Openly-published capacity methods — Webster 1958 / Akçelik 1980 (delay, LOS, queuing). Public trip-generation
