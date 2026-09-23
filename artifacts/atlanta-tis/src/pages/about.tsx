@@ -95,7 +95,8 @@ export default function AboutPage() {
             Plus a{" "}
             <strong className="text-foreground">post-build verification SKU</strong>{" "}
             that tracks observed traffic against your original forecast using
-            live GDOT 511 data — months after the development opens.
+            the metro's own live count feed — months after the development
+            opens.
           </p>
         </section>
 

@@ -34,8 +34,8 @@ const ROWS: CompareRow[] = [
     outsourced: { v: "no", note: "5–10 days typical" },
   },
   {
-    feature: "Atlanta-MSA-specific data baked in",
-    us: { v: "yes", note: "GDOT 511 live, 49 metro signals indexed" },
+    feature: "Metro-specific measured data baked in",
+    us: { v: "yes", note: "316 metros in 73 countries, 920,187 signals indexed, state-DOT AADT" },
     synchro: { v: "no", note: "you supply counts" },
     vistro: { v: "no", note: "you supply counts" },
     outsourced: { v: "partial", note: "depends on the sub" },
@@ -49,7 +49,7 @@ const ROWS: CompareRow[] = [
   },
   {
     feature: "Public-data trip generation",
-    us: { v: "yes", note: "80 land-use codes shipped" },
+    us: { v: "yes", note: "51 land-use codes shipped" },
     synchro: { v: "partial", note: "TripGen add-on $649" },
     vistro: { v: "yes" },
     outsourced: { v: "yes" },
@@ -225,7 +225,9 @@ export default function ComparePage() {
           <p className="text-xs text-muted-foreground leading-relaxed mt-3 max-w-2xl">
             Sources: published vendor price sheets (Caliper, McTrans), leaked
             enterprise quotes (PDF4PRO), and consultant rate benchmarks from
-            the Atlanta civil-engineering market (eng-tips, Salary.com 2025).
+            the Atlanta civil-engineering market (eng-tips, Salary.com 2025) —
+            a single-metro benchmark, so treat the outsourced range as
+            indicative rather than national.
           </p>
         </section>
 
