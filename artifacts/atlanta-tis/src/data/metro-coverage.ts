@@ -180,13 +180,13 @@ export const METROS: MetroCoverage[] = [
     hasNeighborhoodPolygons: true },
 
   // AL
-  { code: "birmingham_metro", slug: "birmingham", shortName: "Birmingham", longName: "Birmingham MSA", state: "AL", signals: 1854, namedPct: 95.0, aadtPct: 83.2, liveSource: null, aadtSource: "ALDOT TDM 2024-2025 AADT",
+  { code: "birmingham_metro", slug: "birmingham", shortName: "Birmingham", longName: "Birmingham MSA", state: "AL", signals: 1854, namedPct: 95.0, aadtPct: 95, liveSource: null, aadtSource: "ALDOT TDM 2024-2025 AADT + ALDOT historical deep-fill (2014-2025)",
     dotName: "City of Birmingham Department of Transportation", planningOfficeName: "Birmingham Department of Planning, Engineering & Permits",
     parkingCodeCitation: "Birmingham Zoning Ordinance, Article 5 — Off-Street Parking and Loading." },
-  { code: "huntsville_metro", slug: "huntsville", shortName: "Huntsville", longName: "Huntsville MSA", state: "AL", signals: 968, namedPct: 98.2, aadtPct: 98.8, liveSource: null, aadtSource: "ALDOT TDM 2024-2025 AADT (state highways) + FHWA HPMS 2018",
+  { code: "huntsville_metro", slug: "huntsville", shortName: "Huntsville", longName: "Huntsville MSA", state: "AL", signals: 968, namedPct: 98.2, aadtPct: 99.2, liveSource: null, aadtSource: "ALDOT TDM 2024-2025 AADT (state highways) + FHWA HPMS 2018 + ALDOT historical deep-fill (2014-2025)",
     dotName: "Huntsville Traffic Engineering Department", planningOfficeName: "Huntsville City Planning Division",
     parkingCodeCitation: "Huntsville Zoning Ordinance, Article 7 — Off-Street Parking and Loading." },
-  { code: "mobile_metro", slug: "mobile", shortName: "Mobile", longName: "Mobile MSA", state: "AL", signals: 900, namedPct: 95.9, aadtPct: 87.9, liveSource: null, aadtSource: "ALDOT TDM 2024-2025 AADT",
+  { code: "mobile_metro", slug: "mobile", shortName: "Mobile", longName: "Mobile MSA", state: "AL", signals: 900, namedPct: 95.9, aadtPct: 97.8, liveSource: null, aadtSource: "ALDOT TDM 2024-2025 AADT + ALDOT historical deep-fill (2014-2025)",
     dotName: "City of Mobile Public Works", planningOfficeName: "Mobile City Planning Department",
     parkingCodeCitation: "Mobile Zoning Ordinance, Section 64-9 — Off-Street Parking." },
 
