@@ -8640,7 +8640,7 @@ function renderTisFlorida(
     });
     doc.moveDown(0.2);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "Target LOS is the No-Build (without-project) grade the improvement is sized to restore, not a re-run HCM result. Confirm the achieved delay / LOS with a detailed HCS / Synchro analysis of the specific geometry and signal timing at submittal.",
+      "Target LOS is the No-Build (without-project) grade the improvement is sized to restore, not a recomputed capacity result. Confirm the achieved delay / LOS with a detailed HCS / Synchro analysis of the specific geometry and signal timing at submittal.",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
@@ -9223,14 +9223,15 @@ function renderFourStepSection(
     const cons = (result as Record<string, any>).conservedAssignment;
     if (cons?.enabled && cons.conservation) {
       const c = cons.conservation;
-      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      const consNote =
         `Conserved assignment: project trips routed to ${fmtNum(cons.gatewayCount)} cordon gateways on the study `
         + `boundary (weighted by the directional distribution above). Flow conservation verified at render input: `
         + `Σ entering = Σ leaving at ${fmtNum(c.nodesChecked)} network junctions, max imbalance `
         + `${Number(c.maxImbalance ?? 0).toFixed(2)} veh${c.balanced ? "" : " — IMBALANCE EXCEEDS TOLERANCE"}. `
         + `${fmtNum(cons.resolvedIntersections)} study intersection(s) carry path-derived movements; `
-        + `${fmtNum(cons.octantFallbacks)} retain the geometric octant model (labeled per intersection).`,
-        { paragraphGap: 6 });
+        + `${fmtNum(cons.octantFallbacks)} retain the geometric octant model (labeled per intersection).`;
+      keepParagraph(doc, consNote, 8, 6);
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(consNote, { paragraphGap: 6 });
       doc.fillColor("black");
     }
   } else {
@@ -9305,6 +9306,20 @@ function keepHeadingWith(doc: PDFKit.PDFDocument, heading: string, paragraphGap:
   const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   doc.font("bold").fontSize(9);
   const need = doc.heightOfString(heading, { width }) + paragraphGap + blockH;
+  if (doc.y + need > doc.page.height - doc.page.margins.bottom) doc.addPage();
+}
+
+/**
+ * Keep a body paragraph whole. PDFKit paginates mid-paragraph, which strands a
+ * trailing fragment on the next page — the conserved-assignment diagnostic was
+ * leaving its last two words ("intersection).") alone on an otherwise empty
+ * page in two of five regenerated samples. Break before the paragraph when the
+ * whole of it will not fit above the bottom margin.
+ */
+function keepParagraph(doc: PDFKit.PDFDocument, text: string, size: number, paragraphGap: number) {
+  const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  doc.font("body").fontSize(size);
+  const need = doc.heightOfString(text, { width }) + paragraphGap;
   if (doc.y + need > doc.page.height - doc.page.margins.bottom) doc.addPage();
 }
 
