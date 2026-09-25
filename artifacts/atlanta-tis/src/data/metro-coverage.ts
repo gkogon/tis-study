@@ -242,7 +242,7 @@ export const METROS: MetroCoverage[] = [
   { code: "philadelphia_metro", slug: "philadelphia", shortName: "Philadelphia", longName: "Philadelphia MSA", state: "PA", signals: 8924, namedPct: 96.7, aadtPct: 92.6, liveSource: null, aadtSource: "PennDOT RMS + NJDOT AADT",
     dotName: "Philadelphia Streets Department", planningOfficeName: "Philadelphia City Planning Commission",
     parkingCodeCitation: "Philadelphia Zoning Code, Chapter 14-800 — Parking and Loading." },
-  { code: "pittsburgh_metro", slug: "pittsburgh", shortName: "Pittsburgh", longName: "Pittsburgh MSA", state: "PA", signals: 2973, namedPct: 99.2, aadtPct: 93.7, liveSource: null, aadtSource: "PennDOT RMS Traffic Volumes",
+  { code: "pittsburgh_metro", slug: "pittsburgh", shortName: "Pittsburgh", longName: "Pittsburgh MSA", state: "PA", signals: 3697, namedPct: 99.2, aadtPct: 94.5, liveSource: null, aadtSource: "PennDOT RMS Traffic Volumes (Butler, Westmoreland and Washington County signals added 2026-09)",
     dotName: "Pittsburgh Department of Mobility and Infrastructure (DOMI)", planningOfficeName: "Pittsburgh Department of City Planning",
     parkingCodeCitation: "Pittsburgh Zoning Code, Chapter 914 — Parking, Loading and Access." },
   // NY

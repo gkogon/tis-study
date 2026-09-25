@@ -380,7 +380,7 @@ const REGIONS: RegionConfig[] = [
   ...(["philadelphia", "pittsburgh"].flatMap((slug) => {
     const bboxes: Record<string, RegionConfig["bbox"]> = {
       "philadelphia": { latMin: 39.7, latMax: 40.3, lonMin: -75.6, lonMax: -74.7 },
-      "pittsburgh": { latMin: 40.2, latMax: 40.7, lonMin: -80.3, lonMax: -79.6 },
+      "pittsburgh": { latMin: 40.1, latMax: 40.92, lonMin: -80.45, lonMax: -79.3 },
     };
     return [{
       slug,
