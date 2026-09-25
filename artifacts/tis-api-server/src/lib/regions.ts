@@ -949,7 +949,16 @@ export const REGIONS: Record<RegionCode, Region> = {
   pittsburgh_metro: {
     code: "pittsburgh_metro",
     displayName: "Pittsburgh MSA",
-    bounds: { latMin: 40.2, latMax: 40.7, lonMin: -80.4, lonMax: -79.6 },
+    // Widened 2026-09 from 40.2-40.7 / -80.4 to -79.6, which cut off Butler
+    // County above Cranberry (Zelienople, Butler), Westmoreland east of
+    // Monroeville (Greensburg, Latrobe) and Washington PA -- all Pittsburgh MSA,
+    // all outside the old box, so a study there hard-failed as out-of-coverage.
+    // Signals were appended to the existing set (ids 2973+), never re-extracted:
+    // AADT is keyed by signal id, so the original 2,973 keep their ids and data.
+    // The zone-label origin in regional-intersections.ts deliberately keeps the
+    // OLD box, so existing signals keep their zone labels (same precedent as
+    // new_york_metro there).
+    bounds: { latMin: 40.1, latMax: 40.92, lonMin: -80.45, lonMax: -79.3 },
     stateCode: "PA",
     jurisdiction: {
       dotName: "Pittsburgh Department of Mobility and Infrastructure (DOMI)",
