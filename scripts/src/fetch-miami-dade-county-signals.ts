@@ -8,11 +8,11 @@
  *   - Coverage: 6,033 total signals across Miami-Dade County
  *   - Name field: INTRSECTN (already in "Street A & Street B" form — just
  *     normalize whitespace; no underscore reformat like Charlotte's UNITDESC)
- *   - No SERVSTAT filter — Miami-Dade exposes a CNSTRSTAT code instead. We
- *     keep everything (no public data dictionary maps the codes); a future
- *     pass can filter out specific construction states once we have the key.
+ *   - No SERVSTAT filter — Miami-Dade exposes a CNSTRSTAT code instead. This
+ *     script kept everything; the layer's own ASSETTYPE and CNSTRSTAT domains
+ *     do name the codes, and fetch-city-signals.ts classifies by them.
  *
- * Run: pnpm --filter @workspace/scripts exec tsx src/fetch-miami-dade-county-signals.ts
+ * Superseded: exits without merging (see the note at the bottom).
  */
 
 import { writeFileSync, readFileSync, mkdirSync, copyFileSync, existsSync } from "node:fs";
@@ -186,7 +186,10 @@ async function main(): Promise<void> {
   console.log(`Wrote → ${signalsPath}`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Superseded by fetch-city-signals.ts (miami-dade), which keeps only existing
+// traffic signals. This merge keeps every record, so running it would put the
+// county's school signs, flashing beacons, cameras and Future/Removed records
+// back into the signal inventory. main() stays as the record of the original
+// discovery work.
+console.error("Superseded: run `pnpm --filter @workspace/scripts exec tsx src/fetch-city-signals.ts miami-dade`.");
+process.exit(1);
