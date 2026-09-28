@@ -190,8 +190,38 @@ const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8
 // Per-region caches. The Atlanta cache hydrates from the legacy
 // /atlanta/intersections endpoint for back-compat; other regions hydrate
 // from the new region-aware /intersections?regionCode=... endpoint.
-const intersectionCache = new Map<string, AnalyzerIntersection[]>();
+//
+// A cached inventory is served for INVENTORY_REVALIDATE_MS, then the next
+// study re-checks it with the analyzer. It used to be kept for the life of the
+// process, so a change to analyzer data (signals, roads-derived names, AADT)
+// never reached a web process that had already loaded the region: on
+// 2026-09-25 web finished deploying before the analyzer, cached the OLD
+// Pittsburgh inventory for a Butler, PA study, and kept printing 2
+// intersections instead of ~27 until it was restarted.
+//
+// The re-check is a conditional GET on the cached copy's ETag. The analyzer's
+// Express hashes the response body into the ETag, so it changes exactly when
+// the inventory does. Unchanged is a 304 with no body (measured locally: ~20 ms
+// of analyzer time for Pittsburgh, ~200 ms for the 33k-signal New York
+// inventory, against a 1-10 MB download and parse); changed replaces the
+// cached copy. scripts/verify-inventory-revalidation.mjs pins this contract.
+type InventoryEntry = {
+  inventory: AnalyzerIntersection[];
+  /** The analyzer's ETag for `inventory`; null when it sent none, which makes
+   *  the re-check an unconditional GET. */
+  etag: string | null;
+  /** When the analyzer last served or confirmed this copy, or last failed to. */
+  checkedAt: number;
+};
+const intersectionCache = new Map<string, InventoryEntry>();
 const inFlightByRegion = new Map<string, Promise<AnalyzerIntersection[]>>();
+// Short enough that an analyzer deploy takes effect within a minute; long
+// enough that a burst of studies (or a what-if session) costs one re-check.
+// Tunable via env.
+export const INVENTORY_REVALIDATE_MS = Math.max(
+  0,
+  Number(process.env["ANALYZER_INVENTORY_REVALIDATE_MS"]) || 60_000,
+);
 // Large metros (NY, LA, SF, Seattle…) and freshly-loaded regions can take well
 // over 5s to serve their intersection inventory on a cold analyzer cache, which
 // failed the study outright. Default to 30s and allow tuning via env.
@@ -200,9 +230,11 @@ const ANALYZER_FETCH_TIMEOUT_MS = Math.max(
   Number(process.env["ANALYZER_FETCH_TIMEOUT_MS"]) || 30000,
 );
 
-async function fetchIntersections(regionCode: string = "atlanta_metro"): Promise<AnalyzerIntersection[]> {
+export async function fetchIntersections(regionCode: string = "atlanta_metro"): Promise<AnalyzerIntersection[]> {
   const cached = intersectionCache.get(regionCode);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.checkedAt < INVENTORY_REVALIDATE_MS) return cached.inventory;
+  // One request per region at a time: concurrent studies share a cold load
+  // and a re-check alike.
   const existing = inFlightByRegion.get(regionCode);
   if (existing) return existing;
 
@@ -212,11 +244,24 @@ async function fetchIntersections(regionCode: string = "atlanta_metro"): Promise
     ? `${ANALYZER_BASE_URL}/api/atlanta/intersections`
     : `${ANALYZER_BASE_URL}/api/intersections?regionCode=${encodeURIComponent(regionCode)}`;
 
+  // The explicit Cache-Control is load-bearing: fetch() adds
+  // "Cache-Control: no-cache" to any request carrying If-None-Match unless one
+  // is set, and Express never answers 304 to no-cache, so every unchanged
+  // re-check would re-download the whole inventory.
+  const headers: Record<string, string> = cached?.etag
+    ? { "If-None-Match": cached.etag, "Cache-Control": "max-age=0" }
+    : {};
+
   const promise = (async (): Promise<AnalyzerIntersection[]> => {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), ANALYZER_FETCH_TIMEOUT_MS);
     try {
-      const res = await fetch(url, { signal: ac.signal });
+      const res = await fetch(url, { signal: ac.signal, headers });
+      if (res.status === 304 && cached) {
+        cached.checkedAt = Date.now();
+        logger.debug({ regionCode, count: cached.inventory.length }, "tis.intersections_unchanged");
+        return cached.inventory;
+      }
       if (!res.ok) {
         throw new Error(
           `Failed to fetch intersection inventory from analyzer at ${url}: ${res.status} ${res.statusText}`,
@@ -227,16 +272,27 @@ async function fetchIntersections(regionCode: string = "atlanta_metro"): Promise
         throw new Error(`Analyzer intersection response was not an array (got ${typeof json}).`);
       }
       const inventory = json as AnalyzerIntersection[];
-      intersectionCache.set(regionCode, inventory);
-      logger.info({ regionCode, count: inventory.length, url }, "tis.intersections_loaded");
+      intersectionCache.set(regionCode, { inventory, etag: res.headers.get("etag"), checkedAt: Date.now() });
+      logger.info(
+        { regionCode, count: inventory.length, previousCount: cached?.inventory.length, url },
+        "tis.intersections_loaded",
+      );
       return inventory;
     } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
-        throw new Error(
-          `Analyzer intersection inventory fetch timed out after ${ANALYZER_FETCH_TIMEOUT_MS}ms (${url}).`,
-        );
-      }
-      throw err;
+      const error = err instanceof Error && err.name === "AbortError"
+        ? new Error(`Analyzer intersection inventory fetch timed out after ${ANALYZER_FETCH_TIMEOUT_MS}ms (${url}).`)
+        : err;
+      if (!cached) throw error;
+      // A failed re-check must not fail the study: serve the copy every study
+      // used until now, and wait a full window before asking again, so an
+      // unreachable analyzer costs one timeout per window rather than one per
+      // study.
+      cached.checkedAt = Date.now();
+      logger.warn(
+        { regionCode, count: cached.inventory.length, url, err: String(error) },
+        "tis.intersections_recheck_failed",
+      );
+      return cached.inventory;
     } finally {
       clearTimeout(timer);
     }

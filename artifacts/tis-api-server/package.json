@@ -62,7 +62,8 @@
     "check:theme": "pnpm run check:theme-units && pnpm run check:theme-scan && pnpm run check:theme-default-identity && pnpm run check:theme-extract && pnpm run check:theme-render",
     "build:preview-fixtures": "node ./scripts/build-preview-fixtures.mjs",
     "check:whatif-gate": "node ./scripts/verify-whatif-gate.mjs",
-    "check:whatif-limiter": "node ./scripts/verify-whatif-limiter.mjs"
+    "check:whatif-limiter": "node ./scripts/verify-whatif-limiter.mjs",
+    "check:inventory-revalidation": "node ./scripts/verify-inventory-revalidation.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",
