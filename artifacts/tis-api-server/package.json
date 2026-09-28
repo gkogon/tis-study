@@ -63,7 +63,10 @@
     "build:preview-fixtures": "node ./scripts/build-preview-fixtures.mjs",
     "check:whatif-gate": "node ./scripts/verify-whatif-gate.mjs",
     "check:whatif-limiter": "node ./scripts/verify-whatif-limiter.mjs",
-    "check:inventory-revalidation": "node ./scripts/verify-inventory-revalidation.mjs"
+    "check:inventory-revalidation": "node ./scripts/verify-inventory-revalidation.mjs",
+    "check:lookup-caches": "node ./scripts/verify-lookup-caches.mjs",
+    "check:streetview-geolocate-caches": "node ./scripts/verify-streetview-geolocate-caches.mjs",
+    "check:nyc-transit-disclosure": "node ./scripts/verify-nyc-transit-disclosure.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",

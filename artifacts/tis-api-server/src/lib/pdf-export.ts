@@ -423,7 +423,10 @@ export async function renderStudyPdf(
         // (e) NYC transit + active-mode context — MTA subway stations
         //     within 0.5 mi + nearest NYC DOT bike counter within 1 mi.
         //     Only meaningful inside the five boroughs; the adapter
-        //     returns empty results harmlessly for non-NYC coords.
+        //     returns empty results harmlessly for non-NYC coords. A
+        //     failed lookup comes back flagged lookupFailed and is
+        //     stashed as-is, so the renderers disclose it rather than
+        //     report "no station".
         const transitTask = getNycTransitContext(lat, lon).then((ctx) => {
           if (ctx && result && typeof result === "object") {
             (result as Record<string, unknown>).nyTransitContext = ctx;

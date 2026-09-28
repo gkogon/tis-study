@@ -21,12 +21,15 @@
  *
  * Failure mode: any error / timeout returns null for that intersection.
  * The renderer falls back to the existing placeholder ("Speed study
- * required") so a network glitch doesn't break the PDF.
+ * required") so a network glitch doesn't break the PDF. The failure is
+ * not cached, so the next render asks NYSDOT again.
  *
  * Spec: REGIONAL-SPECS — none specific to NY; surfaced from NY queue
  * item "NY speed-study ingest" in the regional renderer architecture
  * memory.
  */
+
+import { createBoundedCache } from "./bounded-cache";
 
 const NYSDOT_RDM_URL =
   "https://gis.dot.ny.gov/hostingny/rest/services/Roadways/RDM_Roadway_Current/FeatureServer/0/query";
@@ -64,19 +67,32 @@ type Intersection = {
   [key: string]: unknown;
 };
 
-// In-process cache: coords rounded to ~30m grid → result.
-const cache = new Map<string, NyRoadwayData | null>();
+// In-process cache: coords rounded to ~30m grid → result. It holds
+// DEFINITIVE answers only: a segment record, or null for "no segment within
+// SEARCH_RADIUS_METERS". A transient failure (non-OK status, ArcGIS error
+// body, timeout, network error) is never stored. It used to be, as null, and
+// from then on every study at that coordinate printed the "Speed study
+// required" placeholder until the process restarted. Bounded like
+// network-assignment.ts's roadsMemo (bounded-cache.ts): the TTL picks up a
+// republished RDM posting within a day, and the cap covers dozens of studies
+// (a render looks up every study intersection; an entry is a few hundred
+// bytes).
+export const NY_LOOKUP_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+export const NY_ROADWAY_CACHE_MAX_ENTRIES = 2000;
+const cache = createBoundedCache<NyRoadwayData | null>(NY_LOOKUP_CACHE_TTL_MS, NY_ROADWAY_CACHE_MAX_ENTRIES);
 const cacheKey = (lat: number, lon: number) => `${lat.toFixed(4)},${lon.toFixed(4)}`;
 
 /**
  * Query NYSDOT RDM_Roadway_Current FeatureServer for the closest
  * road-segment record to the given lat/lon. Returns a normalized
  * record or null if no segment is found within SEARCH_RADIUS_METERS,
- * or if the request errors / times out.
+ * or if the request errors / times out. Only the first two outcomes
+ * are cached; a failed request is asked again on the next call.
  */
 async function fetchOnePoint(lat: number, lon: number): Promise<NyRoadwayData | null> {
   const key = cacheKey(lat, lon);
-  if (cache.has(key)) return cache.get(key) ?? null;
+  const cached = cache.get(key);
+  if (cached !== undefined) return cached;
 
   const params = new URLSearchParams({
     where: "1=1",
@@ -103,12 +119,12 @@ async function fetchOnePoint(lat: number, lon: number): Promise<NyRoadwayData | 
       signal: ctrl.signal,
       headers: { Accept: "application/json" },
     });
-    if (!r.ok) {
-      cache.set(key, null);
-      return null;
-    }
+    if (!r.ok) return null;
     const j: any = await r.json();
-    const feats: any[] = Array.isArray(j?.features) ? j.features : [];
+    // ArcGIS reports a server-side fault as HTTP 200 with an `error` body and
+    // no feature set: a failure to retry, not an empty answer to cache.
+    if (!Array.isArray(j?.features)) return null;
+    const feats: any[] = j.features;
     if (feats.length === 0) {
       cache.set(key, null);
       return null;
@@ -135,7 +151,6 @@ async function fetchOnePoint(lat: number, lon: number): Promise<NyRoadwayData | 
     cache.set(key, out);
     return out;
   } catch {
-    cache.set(key, null);
     return null;
   } finally {
     clearTimeout(timer);
@@ -251,7 +266,15 @@ export type NyCountyCrashSummary = {
   totalAccidents: number;
 };
 
-const crashCache = new Map<string, NyCountyCrashSummary | null>();
+// Keyed by county name (NY has 62). Definitive answers only, bounded the
+// same way as the roadway cache above.
+export const NY_CRASH_CACHE_MAX_ENTRIES = 128;
+const crashCache = createBoundedCache<NyCountyCrashSummary | null>(NY_LOOKUP_CACHE_TTL_MS, NY_CRASH_CACHE_MAX_ENTRIES);
+
+/** Live entry counts of the two lookup caches. Test hook. */
+export function nyLookupCacheSizes(): { roadway: number; crash: number } {
+  return { roadway: cache.size(), crash: crashCache.size() };
+}
 
 /**
  * Query the NY State Police Case Information dataset for crash counts
@@ -259,7 +282,8 @@ const crashCache = new Map<string, NyCountyCrashSummary | null>();
  * rolling 3-year window. Uses Socrata SoQL $select aggregation so the
  * server returns one row per descriptor — minimal payload.
  *
- * Returns null on any error (renderer falls back to escape-hatch).
+ * Returns null on any error (renderer falls back to escape-hatch). An
+ * error is not cached; a county with no crash rows is.
  *
  * County name MUST match the NY State DMV uppercase convention
  * (e.g., "NEW YORK", "ALBANY", "ERIE") — the NYSDOT RDM County_Name
@@ -270,7 +294,8 @@ export async function getNyCountyCrashSummary(
 ): Promise<NyCountyCrashSummary | null> {
   if (!countyName) return null;
   const key = countyName.toUpperCase();
-  if (crashCache.has(key)) return crashCache.get(key) ?? null;
+  const cached = crashCache.get(key);
+  if (cached !== undefined) return cached;
 
   const params = new URLSearchParams({
     $select: "accident_descriptor,count(*) as cnt",
@@ -286,15 +311,14 @@ export async function getNyCountyCrashSummary(
       signal: ctrl.signal,
       headers: { Accept: "application/json" },
     });
-    if (!r.ok) {
-      crashCache.set(key, null);
-      return null;
-    }
+    if (!r.ok) return null;
     const rows = (await r.json()) as Array<{
       accident_descriptor?: string;
       cnt?: string | number;
     }>;
-    if (!Array.isArray(rows) || rows.length === 0) {
+    // SODA answers every query with a JSON array; anything else is a failure.
+    if (!Array.isArray(rows)) return null;
+    if (rows.length === 0) {
       crashCache.set(key, null);
       return null;
     }
@@ -328,7 +352,6 @@ export async function getNyCountyCrashSummary(
     crashCache.set(key, out);
     return out;
   } catch {
-    crashCache.set(key, null);
     return null;
   } finally {
     clearTimeout(timer);

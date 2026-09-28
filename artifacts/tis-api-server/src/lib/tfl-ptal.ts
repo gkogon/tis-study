@@ -25,6 +25,7 @@
  *     network changes).
  */
 
+import { createBoundedCache } from "./bounded-cache";
 import { logger } from "./logger";
 import type { PTALBand } from "./mode-share";
 
@@ -47,8 +48,17 @@ const REQUEST_TIMEOUT_MS = 3500;
 // Cache keyed by quantized lat/lon (4 decimal places ≈ 11 m, finer than
 // the 100 m grid, so different snaps inside one cell collapse). Map is
 // process-local; that's fine — TIS reports are deterministic per coord
-// and the working set is tiny.
-const cache = new Map<string, PtalLookupResult | null>();
+// and the working set is tiny. It holds DEFINITIVE answers only: a band,
+// or null for a point the grid has no usable cell for. A transient
+// failure (non-OK status, ArcGIS error body, timeout, network error) is
+// never stored. It used to be, as null, and one blip then pinned that
+// coordinate to the flat london_metro fallback until the process
+// restarted. Bounded like network-assignment.ts's roadsMemo
+// (bounded-cache.ts): the TTL picks up a new WebCAT grid without a
+// restart, and the cap bounds a long-lived process that sees many sites.
+export const PTAL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+export const PTAL_CACHE_MAX_ENTRIES = 1000;
+const cache = createBoundedCache<PtalLookupResult | null>(PTAL_CACHE_TTL_MS, PTAL_CACHE_MAX_ENTRIES);
 
 export type PtalLookupResult = {
   band: PTALBand;
@@ -72,6 +82,8 @@ function isLondonBand(s: string): s is PTALBand {
  *     gap in the grid — e.g. inside a river polygon, or just outside
  *     the published grid extent).
  *   - The query times out or errors.
+ * A grid gap is cached like a found band; a timeout or error is not, so
+ * the next call asks TfL again.
  *
  * Callers (the engine) MUST treat null as "no PTAL band — fall back to
  * the flat london_metro auto-mode share". Never throw on lookup failure.
@@ -86,7 +98,7 @@ export async function lookupLondonPtal(
 
   const key = cacheKey(lat, lon);
   const cached = cache.get(key);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) return cached; // a stored null is a grid gap, not a failure
 
   const geometry = JSON.stringify({
     x: lon,
@@ -109,7 +121,6 @@ export async function lookupLondonPtal(
     const resp = await fetch(url, { signal: controller.signal });
     if (!resp.ok) {
       logger.warn(`TfL PTAL lookup HTTP ${resp.status} for (${lat}, ${lon})`);
-      cache.set(key, null);
       return null;
     }
     const body = await resp.json() as {
@@ -118,10 +129,13 @@ export async function lookupLondonPtal(
     };
     if (body.error) {
       logger.warn(`TfL PTAL lookup error ${body.error.code} ${body.error.message}`);
-      cache.set(key, null);
       return null;
     }
-    const feature = body.features?.[0];
+    if (!Array.isArray(body.features)) {
+      logger.warn(`TfL PTAL lookup returned no feature set for (${lat}, ${lon})`);
+      return null;
+    }
+    const feature = body.features[0];
     const band = feature?.attributes?.PTAL_2023;
     const ai = feature?.attributes?.AI;
     if (!band || !isLondonBand(band) || typeof ai !== "number") {
@@ -134,7 +148,6 @@ export async function lookupLondonPtal(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.warn(`TfL PTAL lookup failed for (${lat}, ${lon}): ${msg}`);
-    cache.set(key, null);
     return null;
   } finally {
     clearTimeout(timer);
@@ -147,4 +160,9 @@ export async function lookupLondonPtal(
  */
 export function _clearPtalCacheForTests(): void {
   cache.clear();
+}
+
+/** Live entry count of the lookup cache. Test hook. */
+export function ptalCacheSize(): number {
+  return cache.size();
 }
