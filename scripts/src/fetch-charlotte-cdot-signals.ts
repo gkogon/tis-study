@@ -24,7 +24,8 @@
  *               (caller falls back to OSM roads-based naming)
  *   roadClass → left at 2 (placeholder, derived at serve time)
  *
- * Run: pnpm --filter @workspace/scripts exec tsx src/fetch-charlotte-cdot-signals.ts
+ * Superseded: exits without merging. Run fetch-city-signals.ts charlotte,
+ * which excludes CDOT's non-signal devices (see the note at the bottom).
  */
 
 import { writeFileSync, readFileSync, mkdirSync, copyFileSync, existsSync } from "node:fs";
@@ -226,7 +227,10 @@ async function main(): Promise<void> {
   console.log(`Wrote → ${signalsPath}`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Superseded by fetch-city-signals.ts (charlotte), which keeps only CDOT's
+// traffic-signal records. This merge filters on SERVSTAT alone, so running it
+// would put CDOT's school flashers, ped beacons, stop flashers, fire-station
+// signals and wayfinding signs back into the signal inventory. main() stays
+// as the record of the original discovery work.
+console.error("Superseded: run `pnpm --filter @workspace/scripts exec tsx src/fetch-city-signals.ts charlotte`.");
+process.exit(1);
