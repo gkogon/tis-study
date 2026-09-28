@@ -19,7 +19,8 @@
  * documentation of the original discovery work.
  *
  * Cities surveyed:
- *   - charlotte_metro  → CDOT layer (UNITDESC "A_B" → "A & B")
+ *   - charlotte_metro  → CDOT layer (UNITDESC "A_B" → "A & B"; traffic-signal
+ *                        UNITTYPEs only, see isSignal)
  *   - miami_dade_metro → County layer (INTRSECTN already "A & B")
  *   - orlando_metro    → ITS Devices layer/3 (Intersecti + Intersec_1)
  *   - raleigh_durham_metro → Raleigh signals (Intersecti "A / B" → "A & B")
@@ -34,6 +35,10 @@
 import { writeFileSync, readFileSync, mkdirSync, copyFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  dropNodesAtNonSignalDevices,
+  isCdotTrafficSignal,
+} from "../../artifacts/api-server/src/lib/signal-device-types";
 
 const MATCH_RADIUS_M = 50;
 const PAGE_SIZE = 1000;
@@ -56,6 +61,14 @@ type CityConfig = {
   fallbackIdField?: string;
   /** Build the canonical "Street A & Street B" label from a feature. */
   buildName: (attrs: Record<string, unknown>) => string | null;
+  /**
+   * For layers that mix traffic signals with other devices: true for the
+   * records that are traffic signals. When set, only those overlay the
+   * baseline, OSM nodes that map one of the other devices are dropped, and
+   * the merge starts from the archived OSM baseline so that devices merged
+   * by an earlier, unclassified run cannot carry over.
+   */
+  isSignal?: (attrs: Record<string, unknown>) => boolean;
 };
 
 /** Title-case helper; preserves common acronyms / road suffixes. */
@@ -76,7 +89,7 @@ const CITIES: CityConfig[] = [
     regionCode: "charlotte_metro",
     slug: "charlotte",
     layerUrl: "https://gis.charlottenc.gov/arcgis/rest/services/Accela/Accela/MapServer/11",
-    outFields: "OBJECTID,SIGNAL_ID,UNITDESC,SERVSTAT",
+    outFields: "OBJECTID,SIGNAL_ID,UNITDESC,UNITTYPE,UNITTYPEDESC,SERVSTAT",
     where: "SERVSTAT='OP'",
     idField: "SIGNAL_ID",
     fallbackIdField: "OBJECTID",
@@ -88,6 +101,11 @@ const CITIES: CityConfig[] = [
       if (parts.length < 2) return titleCase(d);
       return `${titleCase(parts[0]!.trim())} & ${titleCase(parts.slice(1).join("_").trim())}`;
     },
+    // The layer holds every device CDOT maintains: a third of its operational
+    // records are school flashers, ped beacons, stop flashers, fire-station
+    // signals, RRFBs and wayfinding signs (UNITDESC "OAKHURST ELEMENTARY
+    // SCHOOL", "FLASHER SHEFFIELD DR_WOODLAND DR").
+    isSignal: (a) => isCdotTrafficSignal(a["UNITTYPE"] as string | null, a["UNITTYPEDESC"] as string | null),
   },
   {
     regionCode: "miami_dade_metro",
@@ -212,6 +230,15 @@ async function fetchAllFeatures(cfg: CityConfig): Promise<ArcFeature[]> {
   return out;
 }
 
+/** Prefer geometry (server-projected to WGS84); some layers also stash
+ *  LAT/LON as attribute fields. */
+function featurePoint(f: ArcFeature): { lat: number; lon: number } | null {
+  const lat = f.geometry?.y ?? (f.attributes["LAT"] as number | undefined);
+  const lon = f.geometry?.x ?? (f.attributes["LON"] as number | undefined);
+  if (typeof lat !== "number" || typeof lon !== "number" || !isFinite(lat) || !isFinite(lon)) return null;
+  return { lat, lon };
+}
+
 function distMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const M_PER_DEG_LAT = 111_320;
   const midLat = (lat1 + lat2) / 2;
@@ -273,11 +300,27 @@ async function mergeOne(cfg: CityConfig): Promise<void> {
   }
 
   console.log(`\n=== ${cfg.regionCode} ===`);
-  const osm = JSON.parse(readFileSync(signalsPath, "utf8")) as SignalTuple[];
-  console.log(`  OSM baseline: ${osm.length} signals`);
+  // A classified layer starts from the archived OSM baseline. Merging onto the
+  // previous output would carry forward every device an earlier, unclassified
+  // run added, since those tuples look like baseline to this run.
+  const baselinePath = cfg.isSignal ? archivePath : signalsPath;
+  let osm = JSON.parse(readFileSync(baselinePath, "utf8")) as SignalTuple[];
+  console.log(`  OSM baseline: ${osm.length} signals${cfg.isSignal ? " (archived)" : ""}`);
 
-  const features = await fetchAllFeatures(cfg);
-  console.log(`  ${cfg.slug} city signals: ${features.length}`);
+  let features = await fetchAllFeatures(cfg);
+  console.log(`  ${cfg.slug} city records: ${features.length}`);
+
+  if (cfg.isSignal) {
+    const isSignal = cfg.isSignal;
+    const signals = features.filter((f) => isSignal(f.attributes));
+    const devices = features.filter((f) => !isSignal(f.attributes));
+    const pointsOf = (fs: ArcFeature[]) => fs.map(featurePoint).filter((p) => p !== null);
+    const { kept, dropped } = dropNodesAtNonSignalDevices(osm, pointsOf(signals), pointsOf(devices), MATCH_RADIUS_M);
+    console.log(`  Non-signal devices excluded:  ${devices.length}`);
+    console.log(`  OSM nodes at those, dropped:  ${dropped.length}`);
+    osm = kept;
+    features = signals;
+  }
 
   const idx = buildOsmIndex(osm);
   const merged: SignalTuple[] = osm.map((t) => [...t] as SignalTuple);
@@ -287,14 +330,12 @@ async function mergeOne(cfg: CityConfig): Promise<void> {
   const newTuples: SignalTuple[] = [];
 
   for (const f of features) {
-    // Prefer geometry (server-projected to WGS84); some layers also stash
-    // LAT/LON as attribute fields.
-    const lat = f.geometry?.y ?? (f.attributes["LAT"] as number | undefined);
-    const lon = f.geometry?.x ?? (f.attributes["LON"] as number | undefined);
-    if (typeof lat !== "number" || typeof lon !== "number" || !isFinite(lat) || !isFinite(lon)) {
+    const p = featurePoint(f);
+    if (!p) {
       badCoord++;
       continue;
     }
+    const { lat, lon } = p;
     const idRaw =
       (f.attributes[cfg.idField] as number | null | undefined) ??
       (cfg.fallbackIdField ? (f.attributes[cfg.fallbackIdField] as number | null | undefined) : undefined);
@@ -326,6 +367,14 @@ async function mergeOne(cfg: CityConfig): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // Rebuilding from the archive would discard whatever an earlier pass for the
+  // same slug merged (orlando, tampa and miami-dade take two passes each).
+  for (const c of CITIES) {
+    if (c.isSignal && CITIES.some((o) => o !== c && o.slug === c.slug)) {
+      throw new Error(`${c.slug}: a classified layer rebuilds from the OSM archive, so it must be the slug's only pass`);
+    }
+  }
+
   const args = process.argv.slice(2);
   const wantAll = args.includes("--all");
   const requested = args.filter((a) => !a.startsWith("--"));
