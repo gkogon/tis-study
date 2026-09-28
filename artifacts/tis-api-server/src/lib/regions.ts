@@ -280,6 +280,9 @@ export type Region = {
    * `coverageBoxes` is set this is the *envelope* of those boxes — it stays
    * the value used for centroid math (`nearestRegionForCoordinate`, the
    * api-server zone labeler) but no longer decides membership on its own.
+   * The zone labeler keeps its own copy (REGION_INFO in api-server's
+   * regional-intersections.ts), which must match this one except for its
+   * documented zone-origin overrides (check:region-parity enforces both).
    */
   bounds: LatLonBox;
   /**
