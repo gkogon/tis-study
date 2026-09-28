@@ -168,10 +168,25 @@ export function servedRegionCodes(): string[] {
 }
 
 /**
+ * The zone-label bounds this loader holds for a region. check:region-parity
+ * compares them with the engine registry's.
+ */
+export function servedRegionBounds(regionCode: string): RegionBoundsInfo["bounds"] | undefined {
+  return REGION_INFO[regionCode]?.bounds;
+}
+
+/**
  * Region bounds + display name for zone labeling. Duplicates the canonical
  * registry in artifacts/tis-api-server/src/lib/regions.ts because api-server
  * and tis-api-server are independent workspaces and we don't want a runtime
- * cross-package import. Keep these in sync when a new region is added.
+ * cross-package import. Keep these in sync when a region is added or its
+ * regions.ts bounds change; check:region-parity fails on any difference.
+ *
+ * The one reason to differ: `bounds` here only sets computeZone's zone-label
+ * origin, so where regions.ts widened a box lopsidedly the entry keeps its
+ * historical core box instead of dragging "Central <metro>" off the city.
+ * new_york_metro and pittsburgh_metro do this (see their comments), and the
+ * check lists them as deliberate overrides.
  */
 type RegionBoundsInfo = {
   displayName: string;
@@ -219,6 +234,13 @@ const REGION_INFO: Record<string, RegionBoundsInfo> = {
   washington_dc_metro: { displayName: "Washington-Arlington-Alexandria MSA", bounds: { latMin: 38.6, latMax: 39.2, lonMin: -77.6, lonMax: -76.7 } },
   baltimore_metro: { displayName: "Baltimore-Columbia-Towson MSA", bounds: { latMin: 39.0, latMax: 39.7, lonMin: -77.0, lonMax: -76.2 } },
   philadelphia_metro: { displayName: "Philadelphia MSA", bounds: { latMin: 39.7, latMax: 40.4, lonMin: -75.5, lonMax: -74.95 } },
+  // Deliberately the pre-#233 box, NOT regions.ts's (lat 40.10-40.92, lon
+  // -80.45 to -79.30). #233 widened coverage mostly north and east (Butler,
+  // Latrobe), so that box's midpoint sits 7.8 mi NE of this one, in Fox Chapel:
+  // syncing would relabel downtown and Oakland "SW Pittsburgh", make Fox Chapel
+  // "Central Pittsburgh", and change 1,597 of 3,697 labels. This origin is 0.7
+  // mi from downtown and already labels the new ring correctly (Butler NE,
+  // Greensburg SE, Washington SW). Membership is regionForCoordinate's job.
   pittsburgh_metro: { displayName: "Pittsburgh MSA", bounds: { latMin: 40.2, latMax: 40.7, lonMin: -80.4, lonMax: -79.6 } },
   // Deliberately box A of new_york_metro's three coverage boxes, NOT the
   // envelope. `bounds` is consumed here by exactly one caller — computeZone,
