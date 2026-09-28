@@ -56,6 +56,39 @@ const CONTINUITY_RADIUS_M = 2;
 const norm = (s: string | null | undefined): string => (s ?? "").trim().toUpperCase();
 const FIRE_STATION = /\bFIRE STATION\b/i;
 
+// ── names ───────────────────────────────────────────────────────────────────
+
+/** Title-case a street label; keeps common acronyms and directionals upper case. */
+export function titleCase(s: string): string {
+  return s
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => {
+      const up = w.toUpperCase();
+      if (["NC", "SC", "FL", "US", "I", "II", "III", "IV", "NW", "NE", "SW", "SE", "SR"].includes(up)) return up;
+      return w.length === 0 ? w : w[0]!.toUpperCase() + w.slice(1);
+    })
+    .join(" ");
+}
+
+/**
+ * Charlotte CDOT UNITDESC names every street at the signal, separated by
+ * underscores: "IDLEWILD RD_MONROE RD_RAMA RD". Splitting on the first
+ * underscore only printed "Idlewild Rd & Monroe Rd_rama Rd" (219 of 894
+ * embedded names). Every street is kept, joined with " & "; empty parts from
+ * doubled or trailing underscores are dropped. One signal (SIGNAL_ID 1997)
+ * reads "BRAWLEY LN & ... ROBINSON CHURCH RD TRAFFIC SIGNAL"; the type tag is
+ * not part of the name.
+ */
+export function formatCdotIntersectionName(unitdesc: string | null | undefined): string | null {
+  const parts = (unitdesc ?? "")
+    .replace(/\s*\btraffic signal\s*$/i, "")
+    .split("_")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  return parts.length === 0 ? null : parts.map(titleCase).join(" & ");
+}
+
 // ── classifiers ─────────────────────────────────────────────────────────────
 
 /** CDOT UNITTYPE codes for a traffic signal: fixed time, loops, video. */

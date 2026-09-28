@@ -57,7 +57,9 @@
 //     puts a signal within 50 m;
 //   - an id stays with its location across rebuilds, and no two tuples share
 //     one;
-//   - an AADT record survives only on the tuple it was snapped to.
+//   - an AADT record survives only on the tuple it was snapped to;
+//   - a CDOT name lists every street UNITDESC names at the junction, and no
+//     signal-type tag.
 //
 // Run: node ./scripts/verify-signal-device-types.mjs
 import { register } from "node:module";
@@ -79,6 +81,7 @@ const {
   reconcileCoarseSignals,
   buildSignalInventory,
   reconcileAadtKeys,
+  formatCdotIntersectionName,
   FDOT_ID_NAMESPACE,
 } = await import(path.resolve(here, "../src/lib/signal-device-types.ts"));
 const { loadRegionalIntersections } = await import(path.resolve(here, "../src/lib/regional-intersections.ts"));
@@ -93,12 +96,12 @@ const ok = (cond, msg) => {
 const S = "signal", D = "device", X = "exclude";
 
 /** Run a classifier over a table of [args..., want] rows; report each miss. */
-function table(label, rows, fn) {
+function table(label, rows, fn, verb = "classify") {
   const wrong = rows.filter((r) => fn(...r.slice(0, -1)) !== r[r.length - 1]);
   for (const r of wrong) {
-    ok(false, `${label} ${JSON.stringify(r.slice(0, -1))} should be ${r[r.length - 1]} (got ${fn(...r.slice(0, -1))})`);
+    ok(false, `${label} ${JSON.stringify(r.slice(0, -1))} should be ${JSON.stringify(r[r.length - 1])} (got ${JSON.stringify(fn(...r.slice(0, -1)))})`);
   }
-  ok(wrong.length === 0, `${label}: all ${rows.length} rows classify as expected`);
+  ok(wrong.length === 0, `${label}: all ${rows.length} rows ${verb} as expected`);
 }
 
 // ── 1. Classifiers, one table per layer ─────────────────────────────────────
@@ -468,6 +471,49 @@ for (const slug of SLUGS) {
     const orphan = keys.filter((k) => !seen.has(Number(k)));
     ok(orphan.length === 0, `${slug}: every AADT key names an existing tuple (${orphan.length} orphaned of ${keys.length})`);
   }
+}
+
+// ── 7. CDOT names every street at a junction ────────────────────────────────
+// UNITDESC separates every street with an underscore. Splitting on the first
+// one only left "Idlewild Rd & Monroe Rd_rama Rd" in the hosted Mecklenburg
+// sample, and 219 of 894 embedded Charlotte names like it. Rows are CDOT
+// UNITDESC values as served on 2026-09-28 (SIGNAL_ID noted) unless marked.
+table("CDOT name", [
+  ["IDLEWILD RD_MONROE RD_RAMA RD", "Idlewild Rd & Monroe Rd & Rama Rd"], // 480
+  ["E TRADE ST_N TRYON ST_S TRYON ST_W TRADE ST", "E Trade St & N Tryon St & S Tryon St & W Trade St"], // 62
+  ["E 5TH ST_E 7TH ST_FIREFIGHTER PL", "E 5th St & E 7th St & Firefighter Pl"], // 470
+  ["FRAZIER AV_ W TRADE ST_ WESLEY HEIGHTS WY", "Frazier Av & W Trade St & Wesley Heights Wy"], // 1847
+  ["W ARROWOOD RD__SAVOY CORPORATE DR", "W Arrowood Rd & Savoy Corporate Dr"], // 1856, doubled
+  ["HAWTHORNE LN _ SUNNYSIDE AV", "Hawthorne Ln & Sunnyside Av"], // 1850
+  [" 16TH ST _ PARKWOOD AV", "16th St & Parkwood Av"], // 1835
+  ["NC 160_BYRUM DR", "NC 160 & Byrum Dr"], // 1942; acronyms stay upper case
+  ["E 4TH ST CROSSING DR", "E 4th St Crossing Dr"], // 140; no separator
+  // 1997: already joined with "&", and tagged with its type.
+  ["Brawley Ln & Castle Garden Ln & Robinson Church Rd Traffic Signal", "Brawley Ln & Castle Garden Ln & Robinson Church Rd"],
+  ["OAK ST_", "Oak St"], // made up: trailing separator
+  ["TRAFFIC SIGNAL", null], // made up: nothing but the tag
+  ["  ", null],
+  [null, null],
+], formatCdotIntersectionName, "format");
+{
+  const byId = new Map(tuplesOf("charlotte").map((t) => [t[0], t]));
+  const leftover = tuplesOf("charlotte").filter((t) => typeof t[3] === "string" && t[3].includes("_"));
+  ok(leftover.length === 0,
+    `no embedded Charlotte name keeps an underscore (found ${leftover.length}${leftover.length ? `, e.g. ${JSON.stringify(leftover[0][3])}` : ""})`);
+  for (const [id, want] of [
+    [7945928189, "Idlewild Rd & Monroe Rd & Rama Rd"], // the Mecklenburg sample's row
+    [1832734046, "W Arrowood Rd & Savoy Corporate Dr"],
+    [172358289, "E Trade St & N Tryon St & S Tryon St & W Trade St"],
+    [-1997, "Brawley Ln & Castle Garden Ln & Robinson Church Rd"],
+  ]) {
+    const label = id < 0 ? `charlotte-cdot-${-id}` : `charlotte-${id}`;
+    ok(byId.get(id)?.[3] === want, `${label} is named ${JSON.stringify(want)} (got ${JSON.stringify(byId.get(id)?.[3])})`);
+  }
+}
+for (const slug of SLUGS) {
+  const tagged = tuplesOf(slug).filter((t) => typeof t[3] === "string" && /\btraffic signal\b/i.test(t[3]));
+  ok(tagged.length === 0,
+    `${slug}: no embedded name carries a signal-type tag (found ${tagged.length}${tagged.length ? `, e.g. ${JSON.stringify(tagged[0][3])}` : ""})`);
 }
 
 console.log(fails === 0 ? "\nAll signal-device-type checks passed." : `\n${fails} check(s) failed.`);

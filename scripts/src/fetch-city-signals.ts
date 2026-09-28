@@ -27,7 +27,7 @@
  * merging; they are kept as documentation of the original discovery work.
  *
  * Layers:
- *   - charlotte_metro      → CDOT layer (UNITDESC "A_B" → "A & B")
+ *   - charlotte_metro      → CDOT layer (UNITDESC "A_B_C" → "A & B & C")
  *   - miami_dade_metro     → County layer (INTRSECTN already "A & B"), then FDOT
  *   - orlando_metro        → City of Orlando ITS Devices layer/3, then FDOT
  *   - raleigh_durham_metro → Raleigh signals (Intersecti "A / B" → "A & B")
@@ -50,7 +50,9 @@ import {
   classifyMiamiDadeCounty,
   classifyOrlandoCity,
   classifyRaleigh,
+  formatCdotIntersectionName,
   reconcileAadtKeys,
+  titleCase,
   type AuthorityRecord,
   type Pass,
   type RecordClass,
@@ -83,19 +85,6 @@ type CityConfig = {
   coarseSignalType?: boolean;
 };
 
-/** Title-case helper; preserves common acronyms / road suffixes. */
-function titleCase(s: string): string {
-  return s
-    .toLowerCase()
-    .split(/\s+/)
-    .map((w) => {
-      const up = w.toUpperCase();
-      if (["NC", "SC", "FL", "US", "I", "II", "III", "IV", "NW", "NE", "SW", "SE", "SR"].includes(up)) return up;
-      return w.length === 0 ? w : w[0]!.toUpperCase() + w.slice(1);
-    })
-    .join(" ");
-}
-
 const str = (a: Record<string, unknown>, k: string) => (a[k] as string | null | undefined) ?? null;
 const num = (a: Record<string, unknown>, k: string) => (a[k] as number | null | undefined) ?? null;
 
@@ -108,14 +97,7 @@ const CITIES: CityConfig[] = [
     where: "SERVSTAT='OP'",
     idField: "SIGNAL_ID",
     fallbackIdField: "OBJECTID",
-    buildName: (a) => {
-      const d = (a["UNITDESC"] as string | null)?.trim();
-      if (!d) return null;
-      // CDOT uses "STREET A_STREET B" (single underscore).
-      const parts = d.split("_");
-      if (parts.length < 2) return titleCase(d);
-      return `${titleCase(parts[0]!.trim())} & ${titleCase(parts.slice(1).join("_").trim())}`;
-    },
+    buildName: (a) => formatCdotIntersectionName(str(a, "UNITDESC")),
     // The layer holds every device CDOT maintains: a third of its operational
     // records are school flashers, ped beacons, stop flashers, fire-station
     // signals, RRFBs and wayfinding signs (UNITDESC "OAKHURST ELEMENTARY
