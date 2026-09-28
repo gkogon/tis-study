@@ -1055,6 +1055,67 @@ const CONFIGS: Record<string, StateTisConfig> = {
 const BRAND_BLUE = "#2563eb";
 const TEXT_GRAY = "#6b7280";
 
+// ---------- Background-volume provenance ----------
+
+type SignalVolumeBasis = "aadt" | "baseline" | "tmc" | "csv" | "unitemized";
+
+/**
+ * Where one study signal's background volume came from, read only from what
+ * its row carries. Under legVolumes: network the main-road legs are
+ * signal_aadt when the analyzer joined a compatible AADT record to the signal
+ * and signal_baseline when its design hour is the road-class ladder or the
+ * synthetic OSM-class model (tis-engine-core leg-volumes.ts mainLegSource). A
+ * measured import replaces the estimate and carries no legVolumes. Screening-
+ * mode, unresolved and legacy rows carry neither, so they are not itemized.
+ */
+function signalVolumeBasis(it: any): SignalVolumeBasis {
+  if (it?.volumeSource === "utdf_tmc" || it?.volumeSource === "synchro_pdf_tmc") return "tmc";
+  const legs: any[] = Array.isArray(it?.legVolumes) ? it.legVolumes : [];
+  if (legs.some((l) => l?.source === "signal_aadt")) return "aadt";
+  if (legs.some((l) => l?.source === "signal_baseline")) return "baseline";
+  // A client link count on both main-road legs hides the signal's own source.
+  if (it?.volumeSource === "link_csv") return "csv";
+  return "unitemized";
+}
+
+type VolumeBasisTally = Record<SignalVolumeBasis, number>;
+
+function volumeBasisTally(intersections: any[]): VolumeBasisTally {
+  const tally: VolumeBasisTally = { aadt: 0, baseline: 0, tmc: 0, csv: 0, unitemized: 0 };
+  for (const it of intersections) tally[signalVolumeBasis(it)]++;
+  return tally;
+}
+
+/**
+ * The §4.1 background-volume sentence, counted from the study's own rows.
+ * Each clause speaks only for the signals whose rows show it: an imported
+ * count, a main-road link count or an unitemized row hides whether an AADT
+ * record was joined to that signal, so no clause ever says "none of the N".
+ * The state DOT is deliberately not named as the count source: each signal's
+ * record comes from whatever feed was snapped to it (the state DOT, a
+ * neighboring state's DOT in a cross-border metro, or FHWA HPMS), and the
+ * row does not say which.
+ */
+function backgroundVolumeSentence(intersections: any[], tally: VolumeBasisTally): string {
+  const n = intersections.length;
+  if (tally.unitemized === n) {
+    return "Background volumes: each study signal's design-hour volume is AADT × K-factor from an AADT count record joined to the signal where a compatible record exists, and otherwise a baseline volume estimated from road class; this study's output does not itemize which signals carry a joined count.";
+  }
+  const count = (k: number) => (n === 1 ? "it" : k === n ? `all ${k}` : String(k));
+  const verb = (k: number, one: string, many: string) => (k === 1 ? one : many);
+  const clauses: string[] = [];
+  if (tally.aadt > 0) clauses.push(`${count(tally.aadt)} ${verb(tally.aadt, "carries", "carry")} an AADT count record joined to the signal (the signal's design-hour volume, AADT × K-factor, is applied to its main-road legs)`);
+  if (tally.baseline > 0) clauses.push(`${count(tally.baseline)} ${verb(tally.baseline, "has", "have")} no compatible count record and ${verb(tally.baseline, "uses", "use")} a baseline volume estimated from road class`);
+  if (tally.tmc > 0) clauses.push(`${count(tally.tmc)} ${verb(tally.tmc, "uses", "use")} imported turning-movement counts`);
+  if (tally.csv > 0) clauses.push(`${count(tally.csv)} ${verb(tally.csv, "uses", "use")} client link counts on the main road`);
+  if (tally.unitemized > 0) clauses.push(`the source at the remaining ${tally.unitemized === 1 ? "one" : tally.unitemized} is not itemized in this study's output (a joined AADT count record where one exists, otherwise a baseline volume estimated from road class)`);
+  // Only itemized (network) rows split by leg; an unitemized row keeps the
+  // screening allocation of its one design hour, so the note is scoped.
+  const minorLegs = intersections.some((it) => Array.isArray(it?.legVolumes) && it.legVolumes.some((l: any) => l?.source === "class_default"));
+  const lead = n === 1 ? "Background volume at the one study signal" : `Background volumes at the ${n} study signals`;
+  return `${lead}: ${clauses.join("; ")}.${minorLegs ? " Where a signal's legs are itemized, legs off the main road carry the road-class baseline unless a client link count covers them." : ""}`;
+}
+
 // ---------- Renderer ----------
 
 /**
@@ -1243,7 +1304,7 @@ function renderTisState(
   stateSub("3.4 Analysis Scenarios");
   body("Three scenarios evaluated at each study location:");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
-  doc.text("• Scenario 1 — Existing Conditions: field-collected counts for current peak-hour volumes and geometric conditions.", { paragraphGap: 2 });
+  doc.text("• Scenario 1 — Existing Conditions: current peak-hour volumes from the sources described in §4.1 on the existing network.", { paragraphGap: 2 });
   doc.text(`• Scenario 2 — Future No-Build (${req.openingYear ?? "Opening Year"}): background growth applied at ${fmt(r.growthAppliedPct, 2)}%/yr compound over ${fmt(r.growthYears)} year${r.growthYears === 1 ? "" : "s"}, without project traffic.`, { paragraphGap: 2 });
   doc.text(`• Scenario 3 — Future Build (${req.openingYear ?? "Opening Year"}): No-Build volumes plus distributed project-generated trips.`, { paragraphGap: 4 });
   doc.fillColor("black").moveDown(0.3);
@@ -1265,16 +1326,41 @@ function renderTisState(
   stateSection("4.0 EXISTING CONDITIONS");
 
   stateSub("4.1 Roadway Network");
-  body(`The existing roadway network within the study area was inventoried to document functional classification, number of travel lanes, posted speed limits, traffic control, and access management characteristics. Data sources: ${cfg.agencyAbbrev} functional classification maps, field observations, and ${r.growthSource ?? `${cfg.agencyAbbrev} AADT databases`}.`);
+  // What the engine actually reads: OSM traffic-signal nodes for the study
+  // signals, and the OSM road file's class / name / lanes / maxspeed / oneway
+  // for naming, routing and leg geometry. Nothing is surveyed, and the growth
+  // basis (r.growthSource) is not a network or volume source — it is cited in
+  // §3.6 and §4.2 only. No "as mapped" claim: the road file stores maxspeed
+  // in km/h and network-assignment reads it as mph, and lanes are halved to
+  // a per-direction count.
+  const volTally = volumeBasisTally(intersections);
+  body(`The study network is taken from OpenStreetMap and was not surveyed. Study signals are OpenStreetMap traffic-signal nodes, and the road network is OpenStreetMap road geometry carrying each road's highway classification (used in place of ${cfg.agencyAbbrev} functional classification), street name, lane count and speed limit where tagged, and one-way direction. Traffic control other than signal locations, and access management, are not documented by this screening. ${backgroundVolumeSentence(intersections, volTally)}`);
   doc.moveDown(0.3);
 
   stateSub("4.2 Traffic Volumes");
-  body(`Traffic counts were collected during weekday AM (7–9 AM) and PM (4–6 PM) peak periods. Count data represents typical weekday conditions, adjusted to peak-season or peak-annual-day volumes per ${cfg.agencyAbbrev} count methodology. AADT base: ${fmt(r.baseAadt)} vehicles per day (${r.aadtYear ?? req.openingYear ?? "current year"}).`);
+  // Imported Synchro/UTDF counts are real counts the engineer supplied, so
+  // §4.2 must not tell the reader to collect them again; neither importer
+  // carries a collection date, so their period is stated as unrecorded.
+  const nSig = intersections.length;
+  const tmcAt = volTally.tmc;
+  const countsText = tmcAt === 0
+    ? `This screening collected no traffic counts; existing peak-hour volumes at the study signals come from the sources in §4.1. Peak-period turning-movement counts collected per ${cfg.agencyAbbrev} count methodology should replace them before submittal.`
+    : tmcAt === nSig
+      ? `This screening collected no traffic counts. Existing peak-hour volumes at ${nSig === 1 ? "the study signal are" : `all ${nSig} study signals are`} turning-movement counts imported from the engineer's Synchro model; the import carries no collection date or period, so confirm the counts against ${cfg.agencyAbbrev} count methodology before submittal.`
+      : `This screening collected no traffic counts. Turning-movement counts imported from the engineer's Synchro model are used at ${tmcAt} of the ${nSig} study signals; the import carries no collection date or period, so confirm them against ${cfg.agencyAbbrev} count methodology before submittal. Existing peak-hour volumes at the remaining ${nSig - tmcAt === 1 ? "signal come" : `${nSig - tmcAt} come`} from the other sources in §4.1, and peak-period turning-movement counts collected per ${cfg.agencyAbbrev} count methodology should replace them before submittal.`;
+  // The engine does not emit baseAadt / aadtYear, so the line printed "AADT
+  // base: — vehicles per day (<opening year>)", passing the opening year off
+  // as a count year. Print it only when a value exists, and never borrow a year.
+  const hasBaseAadt = Number.isFinite(r.baseAadt);
+  const aadtBase = hasBaseAadt ? ` AADT base: ${fmt(r.baseAadt)} vehicles per day${r.aadtYear ? ` (${r.aadtYear})` : ""}.` : "";
+  body(`${countsText}${aadtBase}`);
   kv([
-    ["Base AADT", `${fmt(r.baseAadt)} vpd`],
+    ...(hasBaseAadt ? [["Base AADT", `${fmt(r.baseAadt)} vpd`] as [string, string]] : []),
     ["Growth rate applied", `${fmt(r.growthAppliedPct, 2)}%/yr`],
     ["Growth source", r.growthSource ?? `${cfg.agencyAbbrev} count stations`],
-    ["Count collection period", r.countPeriod ?? "Weekday AM + PM peak (field-collected)"],
+    ["Count collection period", r.countPeriod ?? (tmcAt === 0
+      ? "None — no counts collected for this screening"
+      : "Not recorded — the imported turning-movement counts carry no collection date")],
   ]);
   doc.moveDown(0.3);
 
@@ -1290,7 +1376,9 @@ function renderTisState(
   renderAtrMeasuredVolumes(doc, (r as any).atrSummary, {
     headingFn: (_doc, title) => stateSub(title),
     heading: "4.2a Measured Traffic Counts (Supplemental)",
-    estimateBasis: "the AADT-derived volumes in §4.2",
+    // Not "AADT-derived volumes in §4.2": §4.2 holds no volumes, and imported
+    // counts are not estimates.
+    estimateBasis: tmcAt === 0 ? "the estimated existing volumes described in §4.1" : "the existing volumes described in §4.1",
   });
 
   if (intersections.length) {
@@ -1371,7 +1459,7 @@ function renderTisState(
 
   // ─── §7 FUTURE NO-BUILD CONDITIONS ──────────────────────────────────────
   stateSection("7.0 FUTURE CONDITIONS — NO-BUILD");
-  body(`The No-Build scenario represents future traffic volumes in the ${req.openingYear ?? "opening year"} without the proposed development. Background traffic growth is applied at ${fmt(r.growthAppliedPct, 2)}% per year (compound) over ${fmt(r.growthYears)} year${r.growthYears === 1 ? "" : "s"} to current counts. Programmed improvements from the ${cfg.agencyAbbrev} Statewide Transportation Improvement Program (STIP) and local capital programs are incorporated into the No-Build network where construction is funded and committed within the analysis horizon.`);
+  body(`The No-Build scenario represents future traffic volumes in the ${req.openingYear ?? "opening year"} without the proposed development. Background traffic growth is applied at ${fmt(r.growthAppliedPct, 2)}% per year (compound) over ${fmt(r.growthYears)} year${r.growthYears === 1 ? "" : "s"} to the existing volumes. Programmed improvements from the ${cfg.agencyAbbrev} Statewide Transportation Improvement Program (STIP) and local capital programs are incorporated into the No-Build network where construction is funded and committed within the analysis horizon.`);
   kv([
     ["No-Build horizon year", String(req.openingYear ?? "—")],
     ["Growth applied", `${fmt(r.growthAppliedPct, 2)}%/yr × ${fmt(r.growthYears)} yr`],
@@ -1483,7 +1571,7 @@ function renderTisState(
 
   // ─── §11 TRANSIT AND MULTIMODAL CONSIDERATIONS ──────────────────────────
   stateSection("11.0 TRANSIT AND MULTIMODAL CONSIDERATIONS");
-  body(`Existing transit service, bicycle facilities, and pedestrian infrastructure within ${fmt(r.studyRadiusMi ?? req.studyRadiusMi, 2)} miles of the site were inventoried. Any transit-mode reduction applied to trip generation reflects the transit availability factor approved at the methodology meeting. Multimodal improvements (transit shelter upgrades, bicycle parking, pedestrian connections) should be coordinated with the applicable transit provider and included in the site-plan submittal.`);
+  body(`Existing transit service, bicycle facilities, and pedestrian infrastructure within ${fmt(r.studyRadiusMi ?? req.studyRadiusMi, 2)} miles of the site are not inventoried by this screening and should be documented before submittal. Any transit-mode reduction applied to trip generation reflects the transit availability factor approved at the methodology meeting. Multimodal improvements (transit shelter upgrades, bicycle parking, pedestrian connections) should be coordinated with the applicable transit provider and included in the site-plan submittal.`);
   kv([
     ["Transit reduction applied", r.altModeReductionPct ? `${fmt(r.altModeReductionPct)}%` : "None"],
     ["Nearest transit stop", r.nearestTransitStop ?? "Verify field"],
