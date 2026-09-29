@@ -43,9 +43,17 @@ export const CHART_COLORS = {
   baseline: "#9CA3AF",
 };
 
-/** Chart palette: the Velocity constants by default, the firm's palette under a theme. */
-export function chartColors(): typeof CHART_COLORS {
-  if (isDefaultTheme()) return CHART_COLORS;
+export type ChartColors = typeof CHART_COLORS;
+
+/** Colours a declarative template supplies for its own draw pass (see withChartColors); null = CHART_COLORS. */
+let templateChartColors: ChartColors | null = null;
+
+/**
+ * Chart palette: the Velocity constants by default (or the colours a template
+ * set with withChartColors), the firm's palette under a theme.
+ */
+export function chartColors(): ChartColors {
+  if (isDefaultTheme()) return templateChartColors ?? CHART_COLORS;
   const t = activeTheme();
   return {
     inbound: t.charts.series[0],
@@ -56,6 +64,27 @@ export function chartColors(): typeof CHART_COLORS {
     axis: t.palette.muted,
     baseline: t.palette.muted,
   };
+}
+
+/**
+ * Run `fn` with `colors` standing in for CHART_COLORS, so a report template
+ * that is not Velocity's draws its figures (series, captions, gridlines, axes)
+ * in its own colours. A firm theme still wins, exactly as it does over
+ * CHART_COLORS. Module state like withTheme, so `fn` must be synchronous.
+ * Only report-template/engine.ts calls this, for a template that opts in
+ * (Brand.charts); every other renderer, and Velocity's own template, keeps
+ * CHART_COLORS byte-for-byte.
+ */
+export function withChartColors<T>(colors: ChartColors, fn: () => T): T {
+  const prev = templateChartColors;
+  templateChartColors = colors;
+  try {
+    const out = fn();
+    if (out instanceof Promise) throw new Error("withChartColors(fn): fn must be synchronous — the chart colours are module state");
+    return out;
+  } finally {
+    templateChartColors = prev;
+  }
 }
 
 type Scale = { max: number; step: number; ticks: number[] };

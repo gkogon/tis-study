@@ -87,9 +87,11 @@ try {
     }
   }
 
-  // UK smoke: a City-of-London site resolves to the built-in Velocity
-  // template, so renderStudyPdf takes the declarative template-engine path
-  // (report-template/engine.ts) rather than a hand-coded regional renderer.
+  // UK smoke: a City-of-London site resolves to the built-in neutral UK
+  // template (this firm is not Velocity's account; see
+  // check:uk-template-ownership), so renderStudyPdf takes the declarative
+  // template-engine path (report-template/engine.ts) rather than a hand-coded
+  // regional renderer.
   // That path must also honor the firm's theme.
   {
     const ukProject = { ...projectFromFixture(loadFixture("fl")), siteLat: "51.5136", siteLon: "-0.0866" };

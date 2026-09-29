@@ -792,9 +792,9 @@ const londonTaPdfHandler = async (req: Request, res: Response): Promise<void> =>
       lastName: req.user.lastName,
     });
     firmBranding = {
-      // Carried so a firm that uploaded its own format gets it here too — this
-      // is the London/Velocity path, which is exactly where an imported
-      // template is most likely to exist.
+      // Carried so a firm that uploaded its own format gets it here too, and
+      // so UK template selection knows whose study this is: only Velocity's
+      // own account renders in their TA format (registry.ts TEMPLATE_OWNERS).
       firmId: firm.id,
       reportTemplate: await resolveProjectTheme(firm.id, themeIdFromQuery(req)),
       name: firm.name,

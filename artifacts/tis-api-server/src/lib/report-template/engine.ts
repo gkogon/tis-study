@@ -20,6 +20,8 @@ import { fileURLToPath } from "node:url";
 import {
   drawColumnChart,
   drawLineChart,
+  withChartColors,
+  type ChartColors,
   type ColumnChartSpec,
   type LineChartSpec,
 } from "../pdf-charts";
@@ -40,7 +42,7 @@ export type RenderContext = {
   /** The resolved Region. */
   region: any;
   /** Firm identity for branding interpolation. */
-  firm: { name: string; logoUrl?: string | null };
+  firm: { name: string; logoUrl?: string | null; website?: string | null };
 };
 
 export type TableData = {
@@ -86,6 +88,7 @@ export type Chapter = { number?: string; title: string; intro?: string; sections
 export type Brand = {
   /** Static firm name, or `{{firm.name}}` to bind to the running firm. */
   firmName: string;
+  /** Static URL, or `{{firm.website}}` to bind to the running firm (omitted when it has none). */
   url?: string;
   /** Cover logo as a PNG/JPEG data URL (e.g. extracted from an imported PDF). */
   logo?: string;
@@ -106,6 +109,24 @@ export type Brand = {
   footer: string;
   /** Render a Velocity-style Document Control Sheet as page i. */
   docControl?: boolean;
+  /**
+   * The Document Control Sheet's copyright line, interpolated. Omitted: the
+   * reproduction notice the Velocity TA prints, under `firmName`. A template
+   * that is not Velocity's supplies its own wording here.
+   */
+  copyright?: string;
+  /**
+   * The Client row on the cover and the Document Control Sheet, interpolated.
+   * Omitted: the running firm (`{{firm.name}}`), as the Velocity TA prints it.
+   * When set, a value that resolves to nothing leaves the row out entirely.
+   */
+  client?: string;
+  /**
+   * Where figure colours come from. Omitted: pdf-charts CHART_COLORS, which
+   * were sampled from Velocity's filed TA. "palette": this brand's own palette
+   * (paletteChartColors). A firm theme overrides either.
+   */
+  charts?: "palette";
 };
 
 export type ReportTemplate = {
@@ -171,6 +192,13 @@ function dataUrlToBuffer(dataUrl: string): Buffer | null {
   return m ? Buffer.from(m[2], "base64") : null;
 }
 
+/** The Client row's value, or null to leave the row out (see Brand.client). */
+function clientLine(t: ReportTemplate, ctx: RenderContext): string | null {
+  if (t.brand.client === undefined) return interp("{{firm.name}}", ctx);
+  const v = interp(t.brand.client, ctx).trim();
+  return v && v !== "—" ? v : null;
+}
+
 function drawCover(doc: PDFKit.PDFDocument, t: ReportTemplate, ctx: RenderContext): void {
   const W = doc.page.width;
   const H = doc.page.height;
@@ -218,9 +246,10 @@ function drawCover(doc: PDFKit.PDFDocument, t: ReportTemplate, ctx: RenderContex
 
   // Doc-control mini block.
   const dy = ty + 130;
+  const client = clientLine(t, ctx);
   const fields: Array<[string, string]> = [
     ["DATE", interp("{{project.dateLabel}}", ctx)],
-    ["CLIENT", interp("{{firm.name}}", ctx)],
+    ...(client === null ? [] : [["CLIENT", client] as [string, string]]),
     ["PREPARED BY", interp(t.brand.firmName, ctx)],
   ];
   doc.fontSize(9);
@@ -229,7 +258,9 @@ function drawCover(doc: PDFKit.PDFDocument, t: ReportTemplate, ctx: RenderContex
     doc.font("bold").text(k, pageMargin(), yy, { width: 110, continued: false });
     doc.font("body").text(v && v !== "—" ? v : "—", pageMargin() + 120, yy, { width: W - pageMargin() * 2 - 120 });
   });
-  if (t.brand.url) doc.font("body").fontSize(10).fillColor(onArt ? "#ffffff" : b.palette.muted).text(t.brand.url, pageMargin(), H - 90);
+  // A firm-bound URL resolves to "—" when the firm has no website: print nothing then.
+  const url = t.brand.url ? interp(t.brand.url, ctx) : "";
+  if (url && url !== "—") doc.font("body").fontSize(10).fillColor(onArt ? "#ffffff" : b.palette.muted).text(url, pageMargin(), H - 90);
   doc.addPage();
 }
 
@@ -237,17 +268,21 @@ function drawDocControl(doc: PDFKit.PDFDocument, t: ReportTemplate, ctx: RenderC
   const b = t.brand;
   doc.fillColor(b.palette.primary).font("bold").fontSize(18).text("Document Control Sheet", pageMargin(), doc.y);
   doc.moveDown(0.6);
+  const client = clientLine(t, ctx);
   const rows: Array<[string, string]> = [
     ["Document Title", t.documentType],
     ["Project", interp("{{project.projectName}}", ctx)],
     ["Site", interp("{{project.address}}", ctx)],
     ["Date", interp("{{project.dateLabel}}", ctx)],
     ["Prepared By", interp(b.firmName, ctx)],
-    ["Client", interp("{{firm.name}}", ctx)],
+    ...(client === null ? [] : [["Client", client] as [string, string]]),
   ];
   drawKeyValues(doc, rows, b);
   doc.moveDown(0.5);
-  doc.font("body").fontSize(8).fillColor(b.palette.muted).text(`© ${interp(b.firmName, ctx)} — extracts may be reproduced provided the source is acknowledged.`);
+  const copyright = b.copyright !== undefined
+    ? interp(b.copyright, ctx)
+    : `© ${interp(b.firmName, ctx)} — extracts may be reproduced provided the source is acknowledged.`;
+  doc.font("body").fontSize(8).fillColor(b.palette.muted).text(copyright);
   doc.fillColor(b.palette.text);
   doc.addPage();
 }
@@ -466,6 +501,24 @@ function stampFooters(doc: PDFKit.PDFDocument, t: ReportTemplate, ctx: RenderCon
   }
 }
 
+/**
+ * Figure colours drawn from a brand palette (Brand.charts === "palette"):
+ * outbound series, captions and the accumulation line in the primary colour,
+ * inbound in a light tint of the accent so the two stacked series stay apart,
+ * gridlines in the rule colour, axes and baseline in the muted colour.
+ */
+export function paletteChartColors(p: Brand["palette"]): ChartColors {
+  return {
+    inbound: tint(p.accent, 0.4),
+    outbound: p.primary,
+    caption: p.primary,
+    line: p.primary,
+    grid: p.rule,
+    axis: p.muted,
+    baseline: p.muted,
+  };
+}
+
 /** Draw an entire template into an existing doc (cover → chapters → footers). */
 export function renderTemplate(
   doc: PDFKit.PDFDocument,
@@ -473,19 +526,25 @@ export function renderTemplate(
   ctx: RenderContext,
   providers: ProviderRegistry,
 ): void {
-  drawCover(doc, t, ctx);
-  if (t.brand.docControl) drawDocControl(doc, t, ctx);
-  for (const ch of t.chapters) {
-    drawChapterHeading(doc, ch, t.brand);
-    if (ch.intro) drawNote(doc, interp(ch.intro, ctx), t.brand);
-    for (const s of ch.sections) {
-      drawSectionHeading(doc, s, t.brand);
-      renderBlocks(doc, s.blocks, t, ctx, providers);
-      doc.moveDown(0.3);
+  const draw = (): void => {
+    drawCover(doc, t, ctx);
+    if (t.brand.docControl) drawDocControl(doc, t, ctx);
+    for (const ch of t.chapters) {
+      drawChapterHeading(doc, ch, t.brand);
+      if (ch.intro) drawNote(doc, interp(ch.intro, ctx), t.brand);
+      for (const s of ch.sections) {
+        drawSectionHeading(doc, s, t.brand);
+        renderBlocks(doc, s.blocks, t, ctx, providers);
+        doc.moveDown(0.3);
+      }
+      doc.moveDown(0.4);
     }
-    doc.moveDown(0.4);
-  }
-  stampFooters(doc, t, ctx);
+    stampFooters(doc, t, ctx);
+  };
+  // Providers read chartColors() while the blocks draw, so the override must
+  // span the whole pass. Templates without `charts` keep CHART_COLORS.
+  if (t.brand.charts === "palette") withChartColors(paletteChartColors(t.brand.palette), draw);
+  else draw();
 }
 
 /**
