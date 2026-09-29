@@ -1149,6 +1149,30 @@ function renderTisState(
     return d > 0 ? Number(n).toFixed(d) : Math.round(Number(n)).toLocaleString();
   };
 
+  // The engine sets growthSource only for a measured or overridden rate. When
+  // it is absent the applied rate is the engine's flat default, so the report
+  // must not attribute it to agency count stations.
+  const growthSourceText: string = r.growthSource
+    ?? `Engine default of ${fmt(r.growthAppliedPct, 2)}%/yr. No measured growth rate is wired for this region; the rate is not derived from ${cfg.agencyAbbrev} count stations and its basis must be stated before submittal.`;
+
+  // The engine reports the auto-mode share it applied before assignment
+  // (autoModeShareApplied, 0–1); the non-auto remainder never loads the network.
+  const autoShare = Number(r.autoModeShareApplied);
+  const nonAutoPct = Number.isFinite(autoShare) ? Math.round((1 - autoShare) * 100) : 0;
+  // autoModeShareApplied is the metro share after the engine's site-density
+  // logit shift, so the source table is the metro basis, not this number.
+  const modeReductionText = nonAutoPct > 0
+    ? `${nonAutoPct}% non-auto, removed before assignment (metro auto-mode share${r.autoModeShareSource ? ` per ${r.autoModeShareSource}` : ""}, adjusted for site density)`
+    : "Not applied";
+  const td: any = r.tripDistribution;
+  // tg.pmPeakTrips is GROSS; the vehicle trips actually assigned are the PM
+  // period's externalTrips (after pass-by, internal capture and mode share).
+  const pmExt = Number(periods.find((p: any) => p?.period === "pm_peak")?.tripGeneration?.externalTrips);
+  const pmNetExternal: number | null = Number.isFinite(pmExt) ? pmExt : null;
+  const pmTripsClause = pmNetExternal != null
+    ? `${fmt(pmNetExternal)} net new external PM peak-hour vehicle trips (${fmt(tg.pmPeakTrips)} gross)`
+    : `${fmt(tg.pmPeakTrips)} gross PM peak-hour trips`;
+
   const stateSection = (title: string) => {
     if (!isDefaultTheme()) { themed.heading(doc, 1, title); return; }
     doc.x = pageMargin();
@@ -1241,7 +1265,7 @@ function renderTisState(
   // ─── §1 EXECUTIVE SUMMARY ───────────────────────────────────────────────
   stateSection("1.0 EXECUTIVE SUMMARY");
 
-  const execSummary = `This ${cfg.processName} evaluates the transportation impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, ${cfg.stateName}. Analysis follows ${cfg.primaryDoc}${cfg.primaryDocYear ? ` (${cfg.primaryDocYear})` : ""} and applicable ${cfg.agencyAbbrev} standards. The study area encompasses ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmt(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile radius from the site, analyzed for Land Use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) with a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
+  const execSummary = `This ${cfg.processName} evaluates the transportation impacts of the proposed ${project.projectName || "development"} located within ${region.displayName}, ${cfg.stateName}. This screening follows the report structure of ${cfg.primaryDoc}${cfg.primaryDocYear ? ` (${cfg.primaryDocYear})` : ""} and is not a submittal prepared in conformance with it (§3.1). The study area encompasses ${intersections.length} intersection${intersections.length === 1 ? "" : "s"} within a ${fmt(r.studyRadiusMi ?? req.studyRadiusMi, 2)}-mile radius from the site, analyzed for Land Use ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) with a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}.`;
   body(execSummary);
 
   body("Key Findings:", { paragraphGap: 2 });
@@ -1251,7 +1275,7 @@ function renderTisState(
     doc.text(`• The proposed development does not create unacceptable LOS deterioration under ${cfg.agencyAbbrev} standards (LOS ${cfg.losUrban} acceptable).`, { paragraphGap: 4 });
   } else {
     doc.text(`• ${losDrops} intersection${losDrops === 1 ? " is" : "s are"} projected to drop one or more LOS grades under Build conditions.`, { paragraphGap: 2 });
-    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate${losEf === 1 ? "s" : ""} at LOS E or F under Build conditions — mitigation analysis is required per ${cfg.primaryDoc}.`, { paragraphGap: 4 });
+    doc.text(`• ${losEf} intersection${losEf === 1 ? "" : "s"} operate${losEf === 1 ? "s" : ""} at LOS E or F under Build conditions — screening-level mitigation candidates are listed in §9.`, { paragraphGap: 4 });
   }
   doc.fillColor("black");
   doc.moveDown(0.5);
@@ -1286,7 +1310,7 @@ function renderTisState(
   stateSection("3.0 METHODOLOGY");
 
   stateSub("3.1 Governing Documents and Controlling Agency");
-  body(`This study is prepared in conformance with ${cfg.primaryDoc}${cfg.primaryDocYear ? ` (${cfg.primaryDocYear})` : ""}. The reviewing agency is the ${cfg.agency} (${cfg.agencyAbbrev}).${cfg.agencyAbbrev === "VDOT" ? " Note: 24VAC30-155 is a Virginia State regulation, not guidance — mandatory procedural compliance is required." : ""}`);
+  body(`This screening follows the report structure of ${cfg.primaryDoc}${cfg.primaryDocYear ? ` (${cfg.primaryDocYear})` : ""}. It is not a submittal prepared in conformance with that guidance: the traffic counts, field review and calibrated capacity analysis it requires are not performed here (§3.3, §3.7, §4). The reviewing agency is the ${cfg.agency} (${cfg.agencyAbbrev}).${cfg.agencyAbbrev === "VDOT" ? " Note: 24VAC30-155 is a Virginia State regulation, not guidance — mandatory procedural compliance is required." : ""}`);
   doc.moveDown(0.3);
 
   stateSub("3.2 Pre-Application Methodology Meeting");
@@ -1298,7 +1322,7 @@ function renderTisState(
   doc.moveDown(0.3);
 
   stateSub("3.3 Study Area and Analysis Periods");
-  body(`Study area as screened: all signalized intersections within ${fmt(r.studyRadiusMi ?? req.studyRadiusMi, 2)} miles of the site that receive ≥10% of project traffic. Unsignalized intersections, site driveways and roadway segments are NOT screened by this analysis — ${cfg.primaryDoc} scoping normally includes them, and they must be added at the methodology meeting and analyzed with collected counts in a calibrated tool before submittal. Primary analysis periods: weekday AM peak hour and weekday PM peak hour. Additional periods (Saturday peak, midday) are required only where special characteristics warrant, consistent with ${cfg.primaryDoc}.`);
+  body(`Study area as screened: all signalized intersections within ${fmt(r.studyRadiusMi ?? req.studyRadiusMi, 2)} miles of the site, including any that receive few or no project trips (§6.2). Unsignalized intersections, site driveways and roadway segments are NOT screened by this analysis — ${cfg.primaryDoc} scoping normally includes them, and they must be added at the methodology meeting and analyzed with collected counts in a calibrated tool before submittal. Level of service, delay and queues are reported for the weekday PM peak hour only. AM peak and Saturday midday trip generation is shown in §5.1, but those periods are not graded in this report; ${cfg.primaryDoc} scoping normally requires the AM peak, and a Saturday peak where the land use warrants it (for example retail).`);
   doc.moveDown(0.3);
 
   stateSub("3.4 Analysis Scenarios");
@@ -1311,11 +1335,11 @@ function renderTisState(
 
   stateSub("3.5 Trip Generation");
   const tgSrc = splitTripGenSource(cfg.tripGenSource);
-  body(`Trip generation is calculated using ${tgSrc.head}, as used in ${cfg.stateName} screening practice.${tgSrc.tail ? ` ${tgSrc.tail}` : ""} The published rate or equation for Land Use Code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) is applied to a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Pass-by credit of ${fmt(r.passByPctApplied ?? 0)}% and internal capture of ${fmt(r.internalCapturePctApplied ?? 0)}% are applied per standard screening procedures and agreed in the methodology meeting.`);
+  body(`Trip generation is calculated using ${tgSrc.head}, as used in ${cfg.stateName} screening practice.${tgSrc.tail ? ` ${tgSrc.tail}` : ""} The published rate for Land Use Code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}) is applied to a development size of ${tg.size ?? "—"} ${tg.unit ?? ""}. Pass-by credit of ${fmt(r.passByPctApplied ?? 0)}% and internal capture of ${fmt(r.internalCapturePctApplied ?? 0)}% are applied as screening defaults. No methodology meeting has been held; both must be confirmed there.`);
   doc.moveDown(0.3);
 
   stateSub("3.6 Background Growth Rate");
-  body(`Background traffic growth: ${fmt(r.growthAppliedPct, 2)}% per year (${cfg.growthRateNote}). Source: ${r.growthSource ?? `${cfg.agencyAbbrev} historical AADT count stations`}.`);
+  body(`Background traffic growth: ${fmt(r.growthAppliedPct, 2)}% per year. Source: ${growthSourceText.replace(/\.$/, "")}. ${cfg.agencyAbbrev} guidance on the growth basis: ${cfg.growthRateNote}`);
   doc.moveDown(0.3);
 
   stateSub("3.7 Level of Service Standards");
@@ -1357,7 +1381,7 @@ function renderTisState(
   kv([
     ...(hasBaseAadt ? [["Base AADT", `${fmt(r.baseAadt)} vpd`] as [string, string]] : []),
     ["Growth rate applied", `${fmt(r.growthAppliedPct, 2)}%/yr`],
-    ["Growth source", r.growthSource ?? `${cfg.agencyAbbrev} count stations`],
+    ["Growth source", growthSourceText],
     ["Count collection period", r.countPeriod ?? (tmcAt === 0
       ? "None — no counts collected for this screening"
       : "Not recorded — the imported turning-movement counts carry no collection date")],
@@ -1401,18 +1425,19 @@ function renderTisState(
 
   // ─── §5 TRIP GENERATION ──────────────────────────────────────────────────
   stateSection("5.0 TRIP GENERATION ANALYSIS");
-  body(`Trip generation for the proposed ${project.projectName || "development"} was estimated using public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for Land Use Code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}). A ${fmt(r.passByPctApplied ?? 0)}% pass-by credit and ${fmt(r.internalCapturePctApplied ?? 0)}% internal capture credit are applied per methodology meeting agreement, yielding the following net new external trips:`);
+  body(`Trip generation for the proposed ${project.projectName || "development"} was estimated using public-data screening rates (NHTS 2017 / SANDAG 2002 / NCHRP 716) for Land Use Code ${tg.landUseCode ?? "—"} (${tg.landUseName ?? "—"}). A ${fmt(r.passByPctApplied ?? 0)}% pass-by credit and ${fmt(r.internalCapturePctApplied ?? 0)}% internal capture credit are applied as screening defaults (to be confirmed at the methodology meeting), yielding the following net new external trips:`);
   doc.moveDown(0.3);
 
   kv([
     ["Land Use Code", `${tg.landUseCode ?? "—"} — ${tg.landUseName ?? "—"}`],
     ["Development size", tg.size != null ? `${tg.size} ${tg.unit ?? ""}`.trim() : "—"],
     ["Weekday daily (gross)", fmt(tg.dailyTrips)],
-    ["AM peak hour (net new)", `${fmt(tg.amPeakTrips)} trips (${fmt(tg.amIn)} in / ${fmt(tg.amOut)} out)`],
-    ["PM peak hour (net new)", `${fmt(tg.pmPeakTrips)} trips (${fmt(tg.pmIn)} in / ${fmt(tg.pmOut)} out)`],
+    ["AM peak hour (gross)", `${fmt(tg.amPeakTrips)} trips (${fmt(tg.amIn)} in / ${fmt(tg.amOut)} out)`],
+    ["PM peak hour (gross)", `${fmt(tg.pmPeakTrips)} trips (${fmt(tg.pmIn)} in / ${fmt(tg.pmOut)} out)`],
+    ...(pmNetExternal != null ? [["PM peak hour (net external, assigned)", `${fmt(pmNetExternal)} trips — see §5.1`] as [string, string]] : []),
     ["Pass-by credit applied", `${fmt(r.passByPctApplied ?? 0)}%`],
     ["Internal capture applied", `${fmt(r.internalCapturePctApplied ?? 0)}%`],
-    ["Transit/mode reduction", r.altModeReductionPct ? `${fmt(r.altModeReductionPct)}%` : "Not applied"],
+    ["Transit/mode reduction", modeReductionText],
   ]);
   doc.moveDown(0.3);
 
@@ -1443,10 +1468,12 @@ function renderTisState(
 
   // ─── §6 TRIP DISTRIBUTION AND ASSIGNMENT ────────────────────────────────
   stateSection("6.0 TRIP DISTRIBUTION AND ASSIGNMENT");
-  body(`Project-generated trips are distributed to the roadway network based on the existing directional distribution observed at the study-area count locations, proximity to the site access points, and the regional travel-demand model (${cfg.growthRateNote.split(";")[0].split("(")[0].trim()}).`);
+  body(td?.methodLabel
+    ? `Project-generated trips are distributed by the engine's ${td.methodLabel} method, set out in §6.1. No directional counts and no regional travel-demand-model run are used.`
+    : "Project-generated trips are distributed by the engine's screening method. No directional counts and no regional travel-demand-model run are used.");
   kv([
-    ["Distribution method", r.distributionMethod ?? "Existing traffic directional distribution + engineering judgment"],
-    ["Assignment method", r.assignmentMethod ?? "Site-access-proportional; confirmed at methodology meeting"],
+    ["Distribution method", td?.methodLabel ?? "Not reported for this study"],
+    ["Assignment method", "Distribution shares loaded onto the study signals by the engine (§6.2); not reviewed at a methodology meeting"],
   ]);
   note("Directional distribution percentages and trip assignment maps should be verified at the methodology meeting with the reviewing agency and attached as Appendix B.");
   renderTripDistributionSection(doc, r as any, {
@@ -1459,11 +1486,11 @@ function renderTisState(
 
   // ─── §7 FUTURE NO-BUILD CONDITIONS ──────────────────────────────────────
   stateSection("7.0 FUTURE CONDITIONS — NO-BUILD");
-  body(`The No-Build scenario represents future traffic volumes in the ${req.openingYear ?? "opening year"} without the proposed development. Background traffic growth is applied at ${fmt(r.growthAppliedPct, 2)}% per year (compound) over ${fmt(r.growthYears)} year${r.growthYears === 1 ? "" : "s"} to the existing volumes. Programmed improvements from the ${cfg.agencyAbbrev} Statewide Transportation Improvement Program (STIP) and local capital programs are incorporated into the No-Build network where construction is funded and committed within the analysis horizon.`);
+  body(`The No-Build scenario represents future traffic volumes in the ${req.openingYear ?? "opening year"} without the proposed development. Background traffic growth is applied at ${fmt(r.growthAppliedPct, 2)}% per year (compound) over ${fmt(r.growthYears)} year${r.growthYears === 1 ? "" : "s"} to the existing volumes. No programmed improvements are modeled: the No-Build network is the existing network. Improvements in the ${cfg.agencyAbbrev} Statewide Transportation Improvement Program (STIP) and local capital programs that are funded and committed within the analysis horizon must be identified and added before submittal.`);
   kv([
     ["No-Build horizon year", String(req.openingYear ?? "—")],
     ["Growth applied", `${fmt(r.growthAppliedPct, 2)}%/yr × ${fmt(r.growthYears)} yr`],
-    ["Programmed projects", r.committedProjects ?? "Per STIP and local CIP — confirm at methodology meeting"],
+    ["Programmed projects", r.committedProjects ?? "None modeled — identify from the STIP and local CIP"],
   ]);
   doc.moveDown(0.8);
 
@@ -1491,7 +1518,7 @@ function renderTisState(
       ]),
     );
     doc.moveDown(0.3);
-    note(`Acceptable ${cfg.agencyAbbrev} LOS threshold: LOS ${cfg.losUrban} (urban) / LOS ${cfg.losRural} (rural). Locations shown at Build LOS E or F require mitigation analysis in §9.`);
+    note(`Acceptable ${cfg.agencyAbbrev} LOS threshold: LOS ${cfg.losUrban} (urban) / LOS ${cfg.losRural} (rural). Screening-level mitigation candidates for locations shown at Build LOS E or F are listed in §9.`);
   }
   // Measured lane-group queues, where an import supplied a real turn split.
   // No-ops (byte-identical output) for studies without one.
@@ -1506,10 +1533,10 @@ function renderTisState(
   if (losDrops === 0 && losEf === 0) {
     body(`No study-area intersections operate below the acceptable LOS ${cfg.losUrban} threshold under Build conditions. No off-site roadway mitigation is required to maintain ${cfg.agencyAbbrev} LOS standards.`);
   } else {
-    body(`The following mitigation measures are proposed to address Build-scenario LOS deficiencies identified in §8. Mitigation must be incorporated as permit conditions in the ${cfg.agencyAbbrev} access permit and local site-plan approval.`);
+    body(`The measures below are screening-level candidates for the Build-scenario LOS deficiencies identified in §8, not an engineering recommendation. Whether any mitigation is required, and whether it becomes a condition of the ${cfg.agencyAbbrev} access permit or local site-plan approval, is determined by the engineer of record and the reviewing agency after analysis with collected counts.`);
     doc.moveDown(0.3);
     stateSub("9.1 Signal Timing Optimization");
-    body(`Signal retiming at affected intersections is proposed to improve cycle lengths and phase splits to accommodate the added project volume. Synchro timing plans should be submitted to the applicable signal operations authority (${cfg.agencyAbbrev} or local traffic engineering) for review and implementation.`);
+    body(`Signal retiming at affected intersections is a candidate to improve cycle lengths and phase splits to accommodate the added project volume. Synchro timing plans should be submitted to the applicable signal operations authority (${cfg.agencyAbbrev} or local traffic engineering) for review and implementation.`);
     doc.moveDown(0.3);
 
     stateSub("9.2 Geometric Improvements");
@@ -1522,7 +1549,7 @@ function renderTisState(
 
   doc.moveDown(0.3);
   stateSub("9.4 Storage Bay Adequacy");
-  body(`95th-percentile queue analysis was performed at driveways and adjacent signalized intersections. Storage bay adequacy was evaluated against projected Build-scenario left-turn and right-turn queue lengths. Where storage deficiencies exist (95th-percentile queue exceeds available storage), turn-lane extensions or new auxiliary lanes are identified as required mitigation.`);
+  body(`95th-percentile queues are estimated on the critical approach of each study signal. Site driveways are not screened (§3.3). Storage bay adequacy can be evaluated only where a measured storage length is supplied; where the Build 95th-percentile queue exceeds it, turn-lane extensions or new auxiliary lanes are candidate mitigation.`);
   const storageRows = intersections.filter((it: any) => Number.isFinite(Number(it.existingStorageFt)) && Number.isFinite(Number(it.queue95thFt)));
   if (storageRows.length > 0) {
     tbl(
@@ -1560,7 +1587,7 @@ function renderTisState(
 
   // ─── §10 SITE ACCESS AND CIRCULATION ────────────────────────────────────
   stateSection("10.0 SITE ACCESS AND INTERNAL CIRCULATION");
-  body(`Driveway access geometry, sight distance, and on-site circulation are reviewed per ${cfg.primaryDoc} and the applicable access management standards. Access permit requirements: ${cfg.tripThresholdNote} The analysis horizon for access-permit purposes is ${cfg.horizons}.`);
+  body(`Driveway access geometry, sight distance, and on-site circulation are not reviewed by this screening; they must be reviewed per ${cfg.primaryDoc} and the applicable access management standards once the site plan is final. Access permit requirements: ${cfg.tripThresholdNote} The analysis horizon for access-permit purposes is ${cfg.horizons}.`);
   kv([
     ["Study horizons", cfg.horizons],
     ["Access permit authority", cfg.agencyAbbrev],
@@ -1571,9 +1598,9 @@ function renderTisState(
 
   // ─── §11 TRANSIT AND MULTIMODAL CONSIDERATIONS ──────────────────────────
   stateSection("11.0 TRANSIT AND MULTIMODAL CONSIDERATIONS");
-  body(`Existing transit service, bicycle facilities, and pedestrian infrastructure within ${fmt(r.studyRadiusMi ?? req.studyRadiusMi, 2)} miles of the site are not inventoried by this screening and should be documented before submittal. Any transit-mode reduction applied to trip generation reflects the transit availability factor approved at the methodology meeting. Multimodal improvements (transit shelter upgrades, bicycle parking, pedestrian connections) should be coordinated with the applicable transit provider and included in the site-plan submittal.`);
+  body(`Existing transit service, bicycle facilities, and pedestrian infrastructure within ${fmt(r.studyRadiusMi ?? req.studyRadiusMi, 2)} miles of the site are not inventoried by this screening and should be documented before submittal. ${nonAutoPct > 0 ? `A ${nonAutoPct}% non-auto share (the metro auto-mode share${r.autoModeShareSource ? ` per ${r.autoModeShareSource}` : ""}, adjusted for site density) is removed before trips are assigned to the network; it has not been approved at a methodology meeting and must be confirmed there.` : "No transit-mode reduction is applied."} Multimodal improvements (transit shelter upgrades, bicycle parking, pedestrian connections) should be coordinated with the applicable transit provider and included in the site-plan submittal.`);
   kv([
-    ["Transit reduction applied", r.altModeReductionPct ? `${fmt(r.altModeReductionPct)}%` : "None"],
+    ["Transit reduction applied", modeReductionText],
     ["Nearest transit stop", r.nearestTransitStop ?? "Verify field"],
     ["Bicycle facility", r.bikeInfraNote ?? "Verify field inventory"],
   ]);
@@ -1585,14 +1612,14 @@ function renderTisState(
   // ─── §12 CONCLUSIONS ────────────────────────────────────────────────────
   stateSection("12.0 CONCLUSIONS AND RECOMMENDATIONS");
   if (losDrops === 0 && losEf === 0) {
-    body(`The proposed ${project.projectName || "development"} is projected to generate ${fmt(tg.pmPeakTrips)} net new external PM peak-hour trips. No study-area intersections are projected to drop a LOS grade or exceed the ${cfg.agencyAbbrev} LOS ${cfg.losUrban} threshold under Build conditions. The project does not create unacceptable impacts on the surrounding roadway network and no off-site mitigation is required.`);
+    body(`The proposed ${project.projectName || "development"} is projected to generate ${pmTripsClause}. No study-area intersections are projected to drop a LOS grade or exceed the ${cfg.agencyAbbrev} LOS ${cfg.losUrban} threshold under Build conditions. The project does not create unacceptable impacts on the surrounding roadway network and no off-site mitigation is required.`);
   } else {
-    body(`The proposed ${project.projectName || "development"} is projected to generate ${fmt(tg.pmPeakTrips)} net new external PM peak-hour trips. ${losDrops} intersection${losDrops === 1 ? "" : "s"} drop${losDrops === 1 ? "s" : ""} one or more LOS grade${losDrops === 1 ? "" : "s"} and ${losEf} location${losEf === 1 ? "" : "s"} operate${losEf === 1 ? "s" : ""} at LOS E or F under Build conditions. The mitigation measures identified in §9 are required as conditions of the ${cfg.agencyAbbrev} access permit to maintain acceptable operations.`);
+    body(`The proposed ${project.projectName || "development"} is projected to generate ${pmTripsClause}. ${losDrops} intersection${losDrops === 1 ? "" : "s"} drop${losDrops === 1 ? "s" : ""} one or more LOS grade${losDrops === 1 ? "" : "s"} and ${losEf} location${losEf === 1 ? "" : "s"} operate${losEf === 1 ? "s" : ""} at LOS E or F under Build conditions. These are screening results: whether mitigation is required, and in what form, is determined by the engineer of record and ${cfg.agencyAbbrev} after analysis with collected counts. §9 lists screening-level candidates.`);
   }
   doc.moveDown(0.3);
 
   stateSub("Professional Engineer Certification");
-  body(`This ${cfg.processName} has been prepared and reviewed by a Professional Engineer licensed in the State of ${cfg.stateName} under ${cfg.peStatuteName} (${cfg.peStatuteRef}). The signing PE attests to the accuracy and completeness of this study to the degree specified by the controlling ${cfg.agencyAbbrev} guidelines.`);
+  body(`To be completed by the Professional Engineer of record. By signing below, a Professional Engineer licensed in the State of ${cfg.stateName} under ${cfg.peStatuteName} (${cfg.peStatuteRef}) attests that this ${cfg.processName} was prepared or reviewed under their responsible charge, and to its accuracy and completeness to the degree specified by the controlling ${cfg.agencyAbbrev} guidelines. Unsigned, this document is a screening estimate and carries no engineering certification.`);
   doc.moveDown(0.3);
 
   // PE stamp block
@@ -1608,10 +1635,10 @@ function renderTisState(
 
   stateSub("Appendices (referenced — not auto-generated)");
   doc.font("body").fontSize(10).fillColor(TEXT_GRAY);
-  doc.text("• Appendix A — Methodology Meeting Notes / Scope Letter", { paragraphGap: 2 });
-  doc.text("• Appendix B — Trip Generation Worksheets (public-data rates)", { paragraphGap: 2 });
-  doc.text("• Appendix C — Traffic Count Data", { paragraphGap: 2 });
-  doc.text("• Appendix D — Intersection Capacity Analysis Output (HCS / Synchro)", { paragraphGap: 2 });
+  doc.text("• Appendix A — Methodology Meeting Notes / Scope Letter (to be supplied; no meeting has been held)", { paragraphGap: 2 });
+  doc.text("• Appendix B — Trip Generation Worksheets (public-data rates) and trip distribution / assignment maps", { paragraphGap: 2 });
+  doc.text("• Appendix C — Traffic Count Data (to be supplied; no counts were collected for this screening)", { paragraphGap: 2 });
+  doc.text("• Appendix D — Intersection Capacity Analysis Output from HCS / Synchro (to be supplied; not run for this screening)", { paragraphGap: 2 });
   doc.text("• Appendix E — Signal Warrant Analyses (where applicable)", { paragraphGap: 2 });
   doc.text("• Appendix F — Crash Data (3-year, where required by reviewing agency)", { paragraphGap: 4 });
   doc.fillColor("black");

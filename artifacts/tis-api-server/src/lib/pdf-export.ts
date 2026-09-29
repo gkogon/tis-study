@@ -150,8 +150,8 @@ export function tripGenExternalNote(doc: PDFKit.PDFDocument, periods: any[]): vo
     (x) => Number(x?.tripGeneration?.existingUseCredit) > 0,
   );
   const msg = hasCredit
-    ? `The external column is gross vehicle trips = (gross − pass-by − internal-capture) × auto-mode share (${pct}% for this metro); the net-new external column then deducts the existing-use credit. Walk / bike / transit person-trips are excluded from off-site assignment, so In + Out equals the net-new external column.`
-    : `The external / net-external column is net-new vehicle trips assigned to the roadway = (gross − pass-by − internal-capture) × auto-mode share (${pct}% for this metro). Walk / bike / transit person-trips are excluded from off-site assignment, so In + Out equals the external column.`;
+    ? `The external column is gross vehicle trips = (gross − pass-by − internal-capture) × auto-mode share (${pct}%, the metro share adjusted for site density); the net-new external column then deducts the existing-use credit. Walk / bike / transit person-trips are excluded from off-site assignment, so In + Out equals the net-new external column.`
+    : `The external / net-external column is net-new vehicle trips assigned to the roadway = (gross − pass-by − internal-capture) × auto-mode share (${pct}%, the metro share adjusted for site density). Walk / bike / transit person-trips are excluded from off-site assignment, so In + Out equals the external column.`;
   doc
     .font("body")
     .fontSize(8)
@@ -8655,8 +8655,11 @@ function renderTisFlorida(
   // Lane-group rows exist only where an imported Synchro/UTDF record gave a
   // measured turn split (see laneGroupsForApproach in tis.ts). When any are
   // present the section stops describing itself as worst-approach-only.
+  // laneGroups are also filled from estimated (IPF) shares on network rows, so
+  // only rows whose volumes came from an imported Synchro record count here.
   const laneGroupIts = intersections.filter(
-    (it: any) => Array.isArray(it.approaches) && it.approaches.some((a: any) => Array.isArray(a.laneGroups) && a.laneGroups.length > 0),
+    (it: any) => (it.volumeSource === "utdf_tmc" || it.volumeSource === "synchro_pdf_tmc")
+      && Array.isArray(it.approaches) && it.approaches.some((a: any) => Array.isArray(a.laneGroups) && a.laneGroups.length > 0),
   );
   if (queueRows.length > 0) {
     doc.font("body").fontSize(10).fillColor("black").text(
@@ -9361,7 +9364,7 @@ function renderCapacityAppendix(
   const anyLegEstimate = Array.isArray(intersections) && intersections.some((x: any) => Array.isArray(x?.legVolumes) && x?.movementEstimate);
   doc.font("body").fontSize(9).fillColor("#b45309").text(
     anyLegEstimate
-      ? "Background approach volumes are resolved per leg — the signal's design hour on the main road (its counted volume where the analyzer had a compatible count, else the road-class baseline it assigned — each worksheet says which), the road-class baseline on uncounted legs, client link counts where supplied; half per direction, and half in the physical direction of a one-way carriageway — and the background turning movements in the diagrams are balanced to the exit legs by iterative proportional fitting (NCHRP 255/765 refinement) from a geometry seed; each worksheet states its leg sources and residual. Project-trip movements are assigned geometrically from the study's directional trip distribution (see each worksheet's Affected movements table). Replace both with measured turning-movement counts (TMCs) before a formal submittal."
+      ? "Background approach volumes are resolved per leg — the signal's design hour on the main road (AADT × K-factor from a compatible AADT count record where the analyzer had one, else the road-class baseline it assigned — each worksheet says which), the road-class baseline on uncounted legs, client link counts where supplied; half per direction, and half in the physical direction of a one-way carriageway — and the background turning movements in the diagrams are balanced to the exit legs by iterative proportional fitting (NCHRP 255/765 refinement) from a geometry seed; each worksheet states its leg sources and residual. Project-trip movements are assigned geometrically from the study's directional trip distribution (see each worksheet's Affected movements table). Replace both with measured turning-movement counts (TMCs) before a formal submittal."
       : "Background turning-movement volumes in the diagrams are distributed from each approach total using an "
         + "estimated 15/70/15 (Left/Through/Right) split. Project-trip movements are assigned geometrically from "
         + "the study's directional trip distribution (see each worksheet's Affected movements table). Replace both "
@@ -9521,7 +9524,7 @@ function renderCapacityAppendix(
       const count = (src: string) => legs.filter((l) => l.source === src).length;
       const parts: string[] = [];
       if (count("csv") > 0) parts.push(`${count("csv")} of ${n} from client link counts (CSV)`);
-      if (count("signal_aadt") > 0) parts.push(`${count("signal_aadt")} of ${n} from the signal's counted design hour (half per direction)`);
+      if (count("signal_aadt") > 0) parts.push(`${count("signal_aadt")} of ${n} from the signal's AADT-derived design hour (AADT × K-factor, half per direction)`);
       // The analyzer had no compatible count for this SIGNAL — its design
       // hour is the road-class ladder or the synthetic OSM-class model — so
       // the main-road legs are a baseline too and must not be called "counted".
@@ -9701,7 +9704,7 @@ function renderCapacityAppendix(
       ]),
     });
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "NB = No-Build: existing counts grown to the opening year, without project trips. Build = No-Build plus assigned project trips. Current-year Existing conditions appear in the scenario tables of the main report body.",
+      "NB = No-Build: existing estimated volumes grown to the opening year, without project trips. Build = No-Build plus assigned project trips. Current-year Existing conditions appear in the scenario tables of the main report body.",
       { paragraphGap: 4 },
     );
     doc.fillColor("black");
