@@ -103,6 +103,27 @@ const crossSegments = [
 }
 
 // ---------------------------------------------------------------------------
+// 4b. Direction-aware weight: capVph is per direction, so a 4-lane one-way arm
+//     (4 lanes one way) and a 4-lane two-way arm (2 each way) carry the same
+//     total and must split their octant evenly. Counting capVph once per link
+//     gave the one-way arm 2/3 once one-way ways stopped being halved.
+// ---------------------------------------------------------------------------
+{
+  const g = buildGraph([
+    [2, LAT, LON, LAT + 0.005, LON + 0.010, 4, 50, "One-way", 1], // ~59°, ENE
+    [2, LAT, LON, LAT + 0.001, LON + 0.012, 4, 50, "Two-way", 0], // ~84°, ENE
+  ]);
+  const sel = selectCordonGateways(g, { lat: LAT, lon: LON }, 0.5,
+    { NNE: 0, ENE: 100, ESE: 0, SSE: 0, SSW: 0, WSW: 0, WNW: 0, NNW: 0 });
+  const oneWay = sel?.gateways.find((gw) => gw.lat > LAT + 0.003);
+  const twoWay = sel?.gateways.find((gw) => gw.lat < LAT + 0.003);
+  ok(sel !== null && sel.gateways.length === 2 && oneWay?.octant === "ENE" && twoWay?.octant === "ENE",
+    `equal-total arms: both tips are ENE gateways (${sel?.gateways.map((gw) => gw.octant).join(",")})`);
+  ok(Math.abs((oneWay?.share ?? 0) - 0.5) < 1e-9 && Math.abs((twoWay?.share ?? 0) - 0.5) < 1e-9,
+    `equal-total arms: a 4-lane one-way and a 4-lane two-way arm split 50/50 (got ${oneWay?.share?.toFixed(4)}/${twoWay?.share?.toFixed(4)})`);
+}
+
+// ---------------------------------------------------------------------------
 // 5. THE REAL NETWORK — Peralta's corridor. Gateways ring the site, demand is
 //    conserved, and routing site→gateways passes THROUGH interior junctions
 //    with exact node balance. This is the property the whole build exists for.

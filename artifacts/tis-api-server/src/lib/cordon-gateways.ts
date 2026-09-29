@@ -17,8 +17,8 @@
  *
  * Gateways are weighted by the study's own §6.1 directional distribution
  * (dist.byDirection): octant k receives byDirection[k]% of the demand, split
- * within the octant by corridor importance (Σ capVph of the gateway's incident
- * links). This is deliberate: the printed distribution section stays the
+ * within the octant by corridor importance (the total capacity of the
+ * gateway's incident links, both directions of a two-way link). This is deliberate: the printed distribution section stays the
  * single source of truth for WHERE trips go, and the network only decides
  * WHICH ROADS carry them there — so the § "Trip Distribution" table and the
  * derived movements can never disagree about direction.
@@ -102,14 +102,19 @@ export function selectCordonGateways(
   const RING_MIN = Math.max(0.05, radiusMi - 0.05);
 
   // Highest road class (lowest code) incident to each node, and the summed
-  // capacity used as the within-octant importance weight.
+  // capacity used as the within-octant importance weight. capVph is per
+  // direction, so a two-way link counts it twice: the weight is the total
+  // capacity of the node's links, and a one-way and a two-way road with the
+  // same total lanes weigh the same. Counting capVph once let a 4-lane one-way
+  // carriageway (7600) outrank a 4-lane two-way arterial (3800 each way) 2:1.
   const bestCls = new Array<number>(n).fill(99);
   const capSum = new Array<number>(n).fill(0);
   for (const lk of g.links) {
     if (lk.cls < bestCls[lk.a]!) bestCls[lk.a] = lk.cls;
     if (lk.cls < bestCls[lk.b]!) bestCls[lk.b] = lk.cls;
-    capSum[lk.a]! += lk.capVph;
-    capSum[lk.b]! += lk.capVph;
+    const capTotal = lk.capVph * (lk.dir === 0 ? 2 : 1);
+    capSum[lk.a]! += capTotal;
+    capSum[lk.b]! += capTotal;
   }
 
   type Cand = { node: number; octant: CardinalDir; cap: number };

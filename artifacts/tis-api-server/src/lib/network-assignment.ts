@@ -271,15 +271,22 @@ export function buildGraph(segments: RoadSegment[], volumeRefs: VolumeRef[] = []
     // defaults are mph. Unconverted, a 35 mph street routed at 56 mph.
     const maxspeedKmh = s[6];
     const mph = (typeof maxspeedKmh === "number" && maxspeedKmh > 0) ? maxspeedKmh / KMH_PER_MPH : CLASS_FREE_MPH[cls]!;
-    const lanesPerDir = (typeof s[5] === "number" && s[5]! > 0) ? Math.max(1, Math.round(s[5]! / 2)) : CLASS_LANES_PER_DIR[cls]!;
-    const li = links.length;
-    const capVph = lanesPerDir * PER_LANE_CAP_VPH;
-    const baseVc = seedBaseVc((s[1] + s[3]) / 2, (s[2] + s[4]) / 2, cls, capVph);
     // One-way capture (RoadSegment[8], present on post-2026-08 road files).
     // Absent or 0 = two-way, which is exactly the old behaviour — so every
     // pre-rollout region routes byte-identically.
     const rawDir: unknown = s[8];
     const dir: 0 | 1 | -1 = rawDir === 1 ? 1 : rawDir === -1 ? -1 : 0;
+    // capVph is per direction. OSM `lanes` counts both directions on a two-way
+    // way but only the direction of travel on a one-way way, so only two-way
+    // ways are halved (as regional-signal-naming.ts does). Halving every way
+    // left a 3-lane one-way carriageway with 2.
+    const lanes = s[5];
+    const lanesPerDir = (typeof lanes === "number" && lanes > 0)
+      ? (dir !== 0 ? lanes : Math.max(1, Math.round(lanes / 2)))
+      : CLASS_LANES_PER_DIR[cls]!;
+    const li = links.length;
+    const capVph = lanesPerDir * PER_LANE_CAP_VPH;
+    const baseVc = seedBaseVc((s[1] + s[3]) / 2, (s[2] + s[4]) / 2, cls, capVph);
     links.push({ a, b, lenMi, freeMin: (lenMi / mph) * 60, capVph, cls, baseVc, vol: 0, dir });
     // Travelling a→b is legal unless the way is b→a-only, and vice versa. A
     // one-way link appears in ONE node's adjacency, so the router cannot even
