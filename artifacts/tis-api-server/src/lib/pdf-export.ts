@@ -40,7 +40,7 @@ import { renderTripDistributionSection } from "./pdf-export-distribution";
 import { renderLaneGroupQueues } from "./lane-group-queues";
 import { profileForLandUse, distributeDaily, type ProfileLocale } from "./office-diurnal";
 import { renderTemplatePdf, type RenderContext, type ReportTemplate } from "./report-template/engine";
-import { loadTemplate } from "./report-template/registry";
+import { loadTemplate, ukTemplateIdForFirm } from "./report-template/registry";
 import { buildProviders } from "./report-template/providers";
 import { activeTheme, isDefaultTheme, pageMargin, withTheme } from "./report-theme/active";
 import { DEFAULT_THEME, pageSizePoints, parseStoredTheme, type Theme } from "./report-theme/theme";
@@ -262,21 +262,25 @@ function resolveTheme(firm: FirmStamp): Theme {
 }
 
 /**
- * Region → declarative report template. Template-driven studies render
+ * Region + firm → declarative report template. Template-driven studies render
  * through the generic engine (report-template/) instead of a hand-coded
- * renderer. A firm's imported *theme* is applied by the renderers; the only
- * declarative template is the built-in Velocity TA for UK sites. US regions
- * return null and keep their dedicated renderers.
+ * renderer. A firm's imported *theme* is applied by the renderers; UK sites
+ * render in a built-in TA chosen by who is asking (registry.ts
+ * ukTemplateIdForFirm). US regions return null and keep their dedicated
+ * renderers.
  */
-function resolveTemplate(project: StoredProject): { template: ReportTemplate; locale: ProfileLocale } | null {
+function resolveTemplate(project: StoredProject, firm: FirmStamp): { template: ReportTemplate; locale: ProfileLocale } | null {
   if (project.studyType !== "tis") return null;
   const lat = Number(project.siteLat ?? NaN);
   const lon = Number(project.siteLon ?? NaN);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   const region = regionForCoordinate(lat, lon);
-  const locale: ProfileLocale = region?.country === "UK" ? "uk" : "us";
-  if (region?.country === "UK") return { template: loadTemplate("velocity-ta"), locale };
-  return null;
+  if (region?.country !== "UK") return null;
+  const id = ukTemplateIdForFirm(firm.firmId);
+  // The "uk" locale's only content is an office within-day curve digitised from
+  // Velocity's own filed TA (office-diurnal.ts), so it travels with their
+  // template; the neutral TA takes "us", which ships no office curve.
+  return { template: loadTemplate(id), locale: id === "velocity-ta" ? "uk" : "us" };
 }
 
 /** Render a study through the declarative template engine. */
@@ -296,11 +300,14 @@ async function renderTemplateReport(
   const dateLabel = project.createdAt
     ? new Date(project.createdAt).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
     : "";
+  // The study's client, read from the same request field as the themed
+  // renderer's tok.client; empty when the request names none.
+  const clientName = String((project.requestPayload as { clientName?: unknown } | null)?.clientName ?? "").trim();
   const ctx: RenderContext = {
     report,
-    project: { ...project, address, dateLabel },
+    project: { ...project, address, dateLabel, clientName },
     region,
-    firm: { name: firm.name, logoUrl: firm.logoUrl },
+    firm: { name: firm.name, logoUrl: firm.logoUrl, website: firm.website },
   };
   return renderTemplatePdf(sel.template, ctx, buildProviders({ locale: sel.locale }), resolveTheme(firm));
 }
@@ -310,8 +317,8 @@ export async function renderStudyPdf(
   firm: FirmStamp,
 ): Promise<Buffer> {
   // Template-driven studies render through the declarative engine rather than a
-  // hand-coded renderer; this is the path the Velocity / imported formats take.
-  const tplSel = resolveTemplate(project);
+  // hand-coded renderer; this is the path the UK TA formats take.
+  const tplSel = resolveTemplate(project, firm);
   if (tplSel) return renderTemplateReport(project, firm, tplSel);
   const theme = resolveTheme(firm);
 

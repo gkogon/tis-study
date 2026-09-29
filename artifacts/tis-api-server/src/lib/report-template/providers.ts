@@ -14,6 +14,7 @@ import type { ProviderRegistry, RenderContext, TableData } from "./engine";
 import { buildAccuracyReport } from "./accuracy";
 import { applicableRegulations, regulationsAsOf, registryStatus } from "./regulations";
 import { detectStudyType } from "./study-type";
+import { nationScopedRegulations } from "./uk-nations";
 
 const num = (n: unknown, d = 0): string => {
   if (n == null || !Number.isFinite(Number(n))) return "—";
@@ -53,6 +54,12 @@ export function buildProviders(opts: { locale: ProfileLocale }): ProviderRegistr
     return { sel, hourly: distributeDaily(daily, sel.profile) };
   };
 
+  // Neutral UK TA only (templates/neutral-uk.ts): the registry entries that
+  // apply in the site's home nation (uk-nations.ts). The Velocity TA binds the
+  // unfiltered accuracyOverall / regulations providers, which read the shared
+  // registry as it stands, so nothing it prints depends on this.
+  const regsByNation = (ctx: RenderContext) => nationScopedRegulations(ctx.region, detectStudyType(ctx.report, ctx.project).kind);
+
   return {
     metrics: {
       headline: (ctx) => {
@@ -73,6 +80,17 @@ export function buildProviders(opts: { locale: ProfileLocale }): ProviderRegistr
         return [
           { label: "Study confidence", value: rep.overall },
           { label: "Study type", value: cfg.kind },
+          { label: "Standards as of", value: asOf || "—" },
+        ];
+      },
+      // accuracyOverall, with "Standards as of" taken from the entries the
+      // neutral TA's own table lists (regulationsByNation).
+      accuracyOverallByNation: (ctx) => {
+        const asOf = regulationsAsOf(regsByNation(ctx));
+        const rep = buildAccuracyReport(ctx.report, { asOf });
+        return [
+          { label: "Study confidence", value: rep.overall },
+          { label: "Study type", value: detectStudyType(ctx.report, ctx.project).kind },
           { label: "Standards as of", value: asOf || "—" },
         ];
       },
@@ -218,6 +236,19 @@ export function buildProviders(opts: { locale: ProfileLocale }): ProviderRegistr
           rows: regs.map((r) => [r.code, r.title, r.edition, r.effective]),
         };
       },
+
+      // The `regulations` table, limited to the entries that apply in the
+      // site's home nation; null (nothing drawn) when none do.
+      regulationsByNation: (ctx): TableData | null => {
+        const regs = regsByNation(ctx);
+        if (!regs.length) return null;
+        return {
+          headers: ["Code", "Standard", "Edition", "Effective"],
+          widths: [85, 238, 112, 77],
+          align: ["left", "left", "left", "left"],
+          rows: regs.map((r) => [r.code, r.title, r.edition, r.effective]),
+        };
+      },
     },
 
     charts: {
@@ -269,6 +300,10 @@ export function buildProviders(opts: { locale: ProfileLocale }): ProviderRegistr
       isPedestrian: (ctx) => detectStudyType(ctx.report, ctx.project).kind === "pedestrian",
       isParking: (ctx) => detectStudyType(ctx.report, ctx.project).kind === "parking",
       isVehicular: (ctx) => detectStudyType(ctx.report, ctx.project).kind === "vehicular",
+      // Neutral UK TA only: the `regulationsByNation` table has rows (it draws
+      // nothing when none apply, e.g. a Scottish pedestrian study), so its
+      // lead-in can depend on it.
+      hasRegulationsByNation: (ctx) => regsByNation(ctx).length > 0,
     },
   };
 }

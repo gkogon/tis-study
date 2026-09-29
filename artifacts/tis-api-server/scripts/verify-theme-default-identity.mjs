@@ -2,9 +2,10 @@
 // the bytes it produced before the theme layer existed (after masking PDFKit's
 // clock-derived CreationDate/ID). TX, NC and SC render offline as they are;
 // FL, GA and NY enrich from live services, and the UK path (the FL fixture
-// relocated to the City of London, which selects the Velocity template
-// engine) does too — those four render with `fetch` stubbed to fail, which
-// pins the deterministic no-network fallback of each renderer.
+// relocated to the City of London, which selects the template engine's
+// neutral UK TA — this firm is not Velocity's account) does too — those four
+// render with `fetch` stubbed to fail, which pins the deterministic
+// no-network fallback of each renderer.
 // `--pin` re-baselines (only when a deliberate render change lands).
 // Run: node ./scripts/verify-theme-default-identity.mjs [--pin]
 import path from "node:path";
