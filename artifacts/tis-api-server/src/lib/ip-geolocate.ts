@@ -18,9 +18,10 @@
  * blocks a demo run.
  */
 
+import { createBoundedCache } from "./bounded-cache";
+
 const PROVIDER_URL = "http://ip-api.com/json";
 const LOOKUP_TIMEOUT_MS = 1500;
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export type IpLocation = {
   lat: number;
@@ -31,9 +32,41 @@ export type IpLocation = {
   source: "ip-api.com";
 };
 
-type CacheEntry = { value: IpLocation | null; expires: number };
+// The cache holds DEFINITIVE answers only: a location, or null for a success
+// without usable coordinates or for a fail message ip-api documents (private
+// range, reserved range, invalid query), each of which depends only on the
+// IP. An HTTP error (a 429 throttle included), a body that is not JSON, an
+// undocumented fail, a timeout or a network error is never stored. It used to
+// be, for the full hour, so one blip or one throttled minute left that
+// visitor's presets unlocalized for an hour. Bounded like
+// network-assignment.ts's roadsMemo (bounded-cache.ts): expired entries are
+// deleted (the old map only skipped them, growing by one entry per visitor IP
+// for the life of the process), and at most IP_GEO_CACHE_MAX_ENTRIES are kept.
+export const IP_GEO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+export const IP_GEO_CACHE_MAX_ENTRIES = 5000;
+const cache = createBoundedCache<IpLocation | null>(IP_GEO_CACHE_TTL_MS, IP_GEO_CACHE_MAX_ENTRIES);
+const DEFINITIVE_FAILS = new Set(["private range", "reserved range", "invalid query"]);
 
-const cache = new Map<string, CacheEntry>();
+/** Live entry count of the lookup cache. Test hook. */
+export function ipGeoCacheSize(): number {
+  return cache.size();
+}
+
+// ip-api.com throttles past 45 requests a minute from our server IP (HTTP
+// 429) and bans a caller that keeps going for an hour. X-Rl counts the
+// requests left in the window and X-Ttl the seconds until it resets: once a
+// 429 arrives or X-Rl reaches 0, every lookup returns null without a request
+// until the window resets. Nothing is cached per IP for it — the throttle
+// says nothing about the visitor — and cached answers are still served.
+let rateLimitedUntil = 0;
+
+function noteRateLimit(res: Response): void {
+  if (res.status !== 429 && res.headers.get("x-rl") !== "0") return;
+  const ttlSec = Number.parseInt(res.headers.get("x-ttl") ?? "", 10);
+  // The window is a minute; a missing or implausible X-Ttl waits it out.
+  const waitSec = Number.isFinite(ttlSec) && ttlSec >= 0 ? Math.min(ttlSec, 60) : 60;
+  rateLimitedUntil = Date.now() + waitSec * 1000;
+}
 
 const PRIVATE_RX = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|fc|fd|::1|0:0:0:0:0:0:0:1)/i;
 
@@ -60,20 +93,21 @@ function isPrivateIp(ip: string): boolean {
 export async function geolocateIp(ip: string | null): Promise<IpLocation | null> {
   if (!ip || isPrivateIp(ip)) return null;
   const cached = cache.get(ip);
-  if (cached && cached.expires > Date.now()) return cached.value;
+  if (cached !== undefined) return cached;
+  if (Date.now() < rateLimitedUntil) return null;
 
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), LOOKUP_TIMEOUT_MS);
   try {
-    const res = await fetch(`${PROVIDER_URL}/${encodeURIComponent(ip)}?fields=status,country,city,lat,lon`, {
+    // `message` comes back only on a fail; it tells a documented fail from any other.
+    const res = await fetch(`${PROVIDER_URL}/${encodeURIComponent(ip)}?fields=status,message,country,city,lat,lon`, {
       signal: ac.signal,
     });
-    if (!res.ok) {
-      cache.set(ip, { value: null, expires: Date.now() + CACHE_TTL_MS });
-      return null;
-    }
+    noteRateLimit(res);
+    if (!res.ok) return null;
     const json = (await res.json()) as {
       status?: string;
+      message?: string;
       country?: string;
       city?: string;
       lat?: number;
@@ -85,7 +119,9 @@ export async function geolocateIp(ip: string | null): Promise<IpLocation | null>
       typeof json.lon !== "number" ||
       !json.country
     ) {
-      cache.set(ip, { value: null, expires: Date.now() + CACHE_TTL_MS });
+      if (json.status === "success" || (json.status === "fail" && DEFINITIVE_FAILS.has(json.message ?? ""))) {
+        cache.set(ip, null);
+      }
       return null;
     }
     const loc: IpLocation = {
@@ -95,10 +131,9 @@ export async function geolocateIp(ip: string | null): Promise<IpLocation | null>
       city: json.city,
       source: "ip-api.com",
     };
-    cache.set(ip, { value: loc, expires: Date.now() + CACHE_TTL_MS });
+    cache.set(ip, loc);
     return loc;
   } catch {
-    cache.set(ip, { value: null, expires: Date.now() + CACHE_TTL_MS });
     return null;
   } finally {
     clearTimeout(timer);

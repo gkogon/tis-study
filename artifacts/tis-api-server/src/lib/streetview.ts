@@ -15,15 +15,35 @@
  * In-process LRU cache keyed by 4-decimal coord so re-rendering the same
  * project doesn't re-hit the API.
  */
+import { createBoundedCache } from "./bounded-cache";
 import { logger } from "./logger";
 
 const META_URL = "https://maps.googleapis.com/maps/api/streetview/metadata";
 const IMG_URL = "https://maps.googleapis.com/maps/api/streetview";
 const TIMEOUT_MS = 6000;
-const CACHE_MAX = 200;
 
-// `undefined` = not cached; `null` = cached miss (no key / no imagery / error).
-const cache = new Map<string, Buffer | null>();
+// The cache holds DEFINITIVE answers only: an image, or null for "no panorama
+// here" (metadata ZERO_RESULTS / NOT_FOUND). A transient failure (non-OK
+// status, a metadata status such as OVER_QUERY_LIMIT or UNKNOWN_ERROR, a body
+// that is not a plausible image, a timeout, a network error) is never stored.
+// It used to be, with no expiry, so one blip took a site's cover photo off
+// every later render until the process restarted; and the cap refused inserts
+// once full, freezing the cache. Bounded like network-assignment.ts's
+// roadsMemo (bounded-cache.ts): a day's TTL and an LRU cap (a 640×400 JPEG is
+// tens of KB, so a few MB at most).
+export const STREETVIEW_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+export const STREETVIEW_CACHE_MAX_ENTRIES = 200;
+const cache = createBoundedCache<Buffer | null>(STREETVIEW_CACHE_TTL_MS, STREETVIEW_CACHE_MAX_ENTRIES);
+
+/** Metadata statuses that answer "no panorama at this point". Every other
+ *  non-OK status (OVER_QUERY_LIMIT, REQUEST_DENIED, INVALID_REQUEST,
+ *  UNKNOWN_ERROR) is a failure, retried on the next render. */
+const NO_PANORAMA = new Set(["ZERO_RESULTS", "NOT_FOUND"]);
+
+/** Live entry count of the image cache. Test hook. */
+export function streetViewCacheSize(): number {
+  return cache.size();
+}
 
 function keyOf(lat: number, lon: number): string {
   return `${lat.toFixed(4)},${lon.toFixed(4)}`;
@@ -43,7 +63,8 @@ export async function fetchStreetViewImage(
   if (!key) return null;
 
   const ck = keyOf(lat, lon);
-  if (cache.has(ck)) return cache.get(ck) ?? null;
+  const cached = cache.get(ck);
+  if (cached !== undefined) return cached;
 
   const loc = `${lat},${lon}`;
   try {
@@ -53,9 +74,12 @@ export async function fetchStreetViewImage(
     const metaT = setTimeout(() => metaCtrl.abort(), TIMEOUT_MS);
     const metaRes = await fetch(metaUrl, { signal: metaCtrl.signal });
     clearTimeout(metaT);
-    if (!metaRes.ok) return cacheMiss(ck);
+    if (!metaRes.ok) return null;
     const meta = (await metaRes.json()) as { status?: string };
-    if (meta.status !== "OK") return cacheMiss(ck);
+    if (meta.status !== "OK") {
+      if (NO_PANORAMA.has(meta.status ?? "")) cache.set(ck, null);
+      return null;
+    }
 
     // 2. Fetch the image. return_error_code keeps a no-imagery response a
     //    real HTTP error rather than a gray placeholder JPEG.
@@ -66,20 +90,15 @@ export async function fetchStreetViewImage(
     const imgT = setTimeout(() => imgCtrl.abort(), TIMEOUT_MS);
     const imgRes = await fetch(imgUrl, { signal: imgCtrl.signal });
     clearTimeout(imgT);
-    if (!imgRes.ok) return cacheMiss(ck);
+    if (!imgRes.ok) return null;
     const ct = imgRes.headers.get("content-type") ?? "";
-    if (!ct.includes("image")) return cacheMiss(ck);
+    if (!ct.includes("image")) return null;
     const buf = Buffer.from(await imgRes.arrayBuffer());
-    if (buf.length < 1000) return cacheMiss(ck); // implausibly small → treat as miss
-    if (cache.size < CACHE_MAX) cache.set(ck, buf);
+    if (buf.length < 1000) return null; // implausibly small (truncated?) → retry next render
+    cache.set(ck, buf);
     return buf;
   } catch (err) {
     logger.warn({ err, lat, lon }, "streetview.fetch_failed");
-    return cacheMiss(ck);
+    return null;
   }
-}
-
-function cacheMiss(ck: string): null {
-  if (cache.size < CACHE_MAX) cache.set(ck, null);
-  return null;
 }
