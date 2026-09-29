@@ -37,6 +37,7 @@
     "check:oneway-routing": "node ./scripts/verify-oneway-routing.mjs",
     "check:oneway-inbound": "node ./scripts/verify-oneway-inbound.mjs",
     "check:cordon-gateways": "node ./scripts/verify-cordon-gateways.mjs",
+    "check:road-units": "node ./scripts/verify-road-units.mjs",
     "check:utdf-import": "node ./scripts/verify-utdf-import.mjs",
     "check:utdf-vigorous": "node ./scripts/verify-utdf-vigorous.mjs",
     "check:utdf-engine": "node ./scripts/verify-utdf-engine.mjs",

@@ -1354,9 +1354,10 @@ function renderTisState(
   // signals, and the OSM road file's class / name / lanes / maxspeed / oneway
   // for naming, routing and leg geometry. Nothing is surveyed, and the growth
   // basis (r.growthSource) is not a network or volume source — it is cited in
-  // §3.6 and §4.2 only. No "as mapped" claim: the road file stores maxspeed
-  // in km/h and network-assignment reads it as mph, and lanes are halved to
-  // a per-direction count.
+  // §3.6 and §4.2 only. No "as mapped" claim: the router transforms the
+  // attributes (buildGraph): maxspeed is converted from km/h to mph, lanes
+  // become a per-direction count, residential and unclassified ways route as
+  // class 4, and untagged ways take class defaults.
   const volTally = volumeBasisTally(intersections);
   body(`The study network is taken from OpenStreetMap and was not surveyed. Study signals are OpenStreetMap traffic-signal nodes, and the road network is OpenStreetMap road geometry carrying each road's highway classification (used in place of ${cfg.agencyAbbrev} functional classification), street name, lane count and speed limit where tagged, and one-way direction. Traffic control other than signal locations, and access management, are not documented by this screening. ${backgroundVolumeSentence(intersections, volTally)}`);
   doc.moveDown(0.3);

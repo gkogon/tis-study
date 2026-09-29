@@ -61,6 +61,8 @@ const EXPECTED = [
   "IPF_TOLERANCE_VPH", "IPF_MAX_ITER", "EXIT_IMBALANCE_NORMALIZE_PCT",
   "assignLegsToApproaches", "mainRoadLegs", "resolveLegVolumes", "estimateMovements",
   "buildLegEstimate",
+  // units
+  "KMH_PER_MPH",
 ];
 
 let fails = 0;

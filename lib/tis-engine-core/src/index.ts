@@ -21,6 +21,7 @@ export * from "./turbo-lane.ts";
 export * from "./row-math.ts";
 export * from "./mitigation.ts";
 export * from "./trips.ts";
+export * from "./units.ts";
 // webster-timing.ts and movement-assignment.ts both declare `Movement`
 // ("L" | "T" | "R"); the engine has always imported it from movement-assignment.
 export type { Movement } from "./movement-assignment.ts";
