@@ -58,8 +58,11 @@
 //   - an id stays with its location across rebuilds, and no two tuples share
 //     one;
 //   - an AADT record survives only on the tuple it was snapped to;
-//   - a CDOT name lists every street UNITDESC names at the junction, and no
-//     signal-type tag.
+//   - a CDOT or Raleigh name lists every street the source names at the
+//     junction, and no signal-type tag;
+//   - an authority name is capitalized after "/" and "-" as after a space
+//     ("Independence/I-277 Ramp", "US 441/SR 7/NW 7 Ave"), and CDOT's street
+//     types Bv/Py/Hy/Wy/Ra/Dy/Dw read Blvd/Pkwy/Hwy/Way/Ramp/Dwy.
 //
 // Run: node ./scripts/verify-signal-device-types.mjs
 import { register } from "node:module";
@@ -82,6 +85,8 @@ const {
   buildSignalInventory,
   reconcileAadtKeys,
   formatCdotIntersectionName,
+  formatRaleighIntersectionName,
+  titleCase,
   FDOT_ID_NAMESPACE,
 } = await import(path.resolve(here, "../src/lib/signal-device-types.ts"));
 const { loadRegionalIntersections } = await import(path.resolve(here, "../src/lib/regional-intersections.ts"));
@@ -348,6 +353,11 @@ table("Raleigh", [
     [[-3023, 28.1856, -82.37162, "Some Other Rd", 2]]);
   ok(JSON.stringify(ids(c3.tuples)) === JSON.stringify([-10000043]),
     "a previous tuple under a different name does not lend its id");
+  // A capitalization fix must not cost an FDOT tuple its id (and AADT record).
+  const c5 = buildSignalInventory([], [{ idNamespace: FDOT_ID_NAMESPACE, records: [rec(2525, 25.73, -80.47, "SR 997/Krome Ave", S)] }],
+    [[-2197, 25.73, -80.47, "SR 997/krome Ave", 2]]);
+  ok(JSON.stringify(ids(c5.tuples)) === JSON.stringify([-2197]),
+    `a previous tuple whose name differs only in capitalization keeps its id (got ${JSON.stringify(ids(c5.tuples))})`);
   const c4 = buildSignalInventory([], [{ idNamespace: 0, records: [rec(5983, 25.586181, -80.387103, "Quail Roost Dr", S)] }], []);
   ok(JSON.stringify(ids(c4.tuples)) === JSON.stringify([-5983]), "a new record from a stable-id source keeps -id");
 
@@ -482,7 +492,7 @@ table("CDOT name", [
   ["IDLEWILD RD_MONROE RD_RAMA RD", "Idlewild Rd & Monroe Rd & Rama Rd"], // 480
   ["E TRADE ST_N TRYON ST_S TRYON ST_W TRADE ST", "E Trade St & N Tryon St & S Tryon St & W Trade St"], // 62
   ["E 5TH ST_E 7TH ST_FIREFIGHTER PL", "E 5th St & E 7th St & Firefighter Pl"], // 470
-  ["FRAZIER AV_ W TRADE ST_ WESLEY HEIGHTS WY", "Frazier Av & W Trade St & Wesley Heights Wy"], // 1847
+  ["FRAZIER AV_ W TRADE ST_ WESLEY HEIGHTS WY", "Frazier Av & W Trade St & Wesley Heights Way"], // 1847
   ["W ARROWOOD RD__SAVOY CORPORATE DR", "W Arrowood Rd & Savoy Corporate Dr"], // 1856, doubled
   ["HAWTHORNE LN _ SUNNYSIDE AV", "Hawthorne Ln & Sunnyside Av"], // 1850
   [" 16TH ST _ PARKWOOD AV", "16th St & Parkwood Av"], // 1835
@@ -514,6 +524,92 @@ for (const slug of SLUGS) {
   const tagged = tuplesOf(slug).filter((t) => typeof t[3] === "string" && /\btraffic signal\b/i.test(t[3]));
   ok(tagged.length === 0,
     `${slug}: no embedded name carries a signal-type tag (found ${tagged.length}${tagged.length ? `, e.g. ${JSON.stringify(tagged[0][3])}` : ""})`);
+}
+
+// ── 8. Capitalization, street types and Raleigh's separators ────────────────
+// titleCase split words on whitespace only, so everything after a "/" or "-"
+// stayed lower case: "Independence/i-277 Ra", "US 441/sr 7/nw 7 Ave". CDOT
+// writes street types as two-letter codes ("Bv", "Ra", "Dy"). Raleigh
+// separates every street with a slash, but its builder split at the first
+// one only: "Athens Dr. & Avent Ferry Rd. / Lake Dam Rd. / Pineview Dr.".
+// Rows are raw values served on 2026-09-29 (record id noted).
+table("CDOT name", [
+  ["INDEPENDENCE/I-277 RA_N SHARON AMITY RD", "Independence/I-277 Ramp & N Sharon Amity Rd"], // 1682, 1683
+  ["BILLY GRAHAM/TYVOLA RA_W TYVOLA RD", "Billy Graham/Tyvola Ramp & W Tyvola Rd"], // 951
+  ["CENTRAL AV_EASTLAND MALL DY_BELL SOUTH DY", "Central Av & Eastland Mall Dwy & Bell South Dwy"], // 461
+  ["CAROLINA ACADEMY RD_FOXHOLE LANDFILL DW_LANCASTER HY", "Carolina Academy Rd & Foxhole Landfill Dwy & Lancaster Hwy"], // 1852
+  ["BALLANTYNE COMMONS PY_DURANT BV_JOHN J DELANEY DR", "Ballantyne Commons Pkwy & Durant Blvd & John J Delaney Dr"], // 1597
+  ["BROOKSHIRE BV SB_PLEASANT GROVE RD U TURN", "Brookshire Blvd Sb & Pleasant Grove Rd U Turn"], // 1907; a type before a direction
+  ["ELM LN_PINEVILLE-MATTHEWS RD", "Elm Ln & Pineville-Matthews Rd"], // 1435
+  ["BROWN-GRIER RD_SANDY PORTER RD_W ARROWOOD RD", "Brown-Grier Rd & Sandy Porter Rd & W Arrowood Rd"], // 791
+  ["E MOREHEAD ST_S COLLEGE ST_S TRYON/COLLEGE CONNECTOR ST", "E Morehead St & S College St & S Tryon/College Connector St"], // 5
+], formatCdotIntersectionName, "format");
+table("FDOT and Orlando street", [
+  ["US 441/SR 7/NW 7 AVE", "US 441/SR 7/NW 7 Ave"], // FDOT FID 218, Miami-Dade
+  ["SW/NW 6 AVE", "SW/NW 6 Ave"], // FDOT FID 3221
+  ["SR 997/KROME AVE", "SR 997/Krome Ave"], // FDOT FID 2525
+  ["DUNCAN/KRYCUL", "Duncan/Krycul"], // FDOT FID 7151, Tampa
+  ["EB I-4 ON/OFF RAMPS", "Eb I-4 On/Off Ramps"], // FDOT FID 173; bound directions are not in the acronym list
+  ["GOLDENROD RD/HEINTZELMAN BV", "Goldenrod Rd/Heintzelman Bv"], // Orlando 937; street types expand for CDOT only
+  ["SR 438(PRINCETON ST)", "SR 438(Princeton St)"], // FDOT FID 72, Orlando
+  ["SR 500(US 441-OBT)", "SR 500(US 441-Obt)"], // FDOT FID 179
+], titleCase, "format");
+table("Raleigh name", [
+  ["ATHENS DR. / AVENT FERRY RD. / LAKE DAM RD. / PINEVIEW DR.", "Athens Dr. & Avent Ferry Rd. & Lake Dam Rd. & Pineview Dr."], // FID 15
+  ["INMAN PARK DR./LEAD MINE RD./SUGAR BUSH RD.", "Inman Park Dr. & Lead Mine Rd. & Sugar Bush Rd."], // FID 1438
+  ["BLUE RIDGE RD./ CRABTREE VALLEY AVE / SUMMIT PARK LANE", "Blue Ridge Rd. & Crabtree Valley Ave & Summit Park Lane"], // mixed spacing
+  ["ANDERSON DR. / GLENWOOD AVE. / ST. MARY'S", "Anderson Dr. & Glenwood Ave. & St. Mary's"], // FID 8
+  ["OLD WAKE FOREST RD./ TOWN CENTER DR.", "Old Wake Forest Rd. & Town Center Dr."], // FID 553
+  ["Edwards Mill Rd & Macon Pond Rd", "Edwards Mill Rd & Macon Pond Rd"], // FID 644, no slash
+  ["FOX RD. / MALONE CT. / SUMNER BLVD.", "Fox Rd. & Malone Ct. & Sumner Blvd."], // FID 297, Wake sample A.13
+  ["FOX RD. / OLD WAKE FOREST / SEGAL (WALMART)", "Fox Rd. & Old Wake Forest & Segal (Walmart)"], // FID 298, A.14
+  ["OLD POOLE RD./POOLE RD. (EAST)", "Old Poole Rd. & Poole Rd. (East)"],
+  ["  ", null],
+  [null, null],
+], formatRaleighIntersectionName, "format");
+{
+  const named = (slug) => tuplesOf(slug).filter((t) => typeof t[3] === "string");
+  // Miami-Dade county names are kept as the county writes them, and two of
+  // its spellings are right in lower case: the City of Opa-locka, and leg
+  // designations ("SW 132 Av S-leg").
+  const asWritten = /Opa-locka|\b[NSEW]-leg\b/g;
+  for (const slug of SLUGS) {
+    const low = named(slug).filter((t) => /[/(-][a-z]/.test(t[3].replace(asWritten, "")));
+    ok(low.length === 0, `${slug}: no embedded name is lower case after "/", "-" or "(" (found ${low.length}${low.length ? `, e.g. ${JSON.stringify(low[0][3])}` : ""})`);
+  }
+  const terse = named("charlotte").filter((t) => /\b(Bv|Py|Hy|Wy|Ra|Dy|Dw)\b/.test(t[3]));
+  ok(terse.length === 0, `charlotte: no CDOT street type is left as a two-letter code (found ${terse.length}${terse.length ? `, e.g. ${JSON.stringify(terse[0][3])}` : ""})`);
+  const slashed = named("raleigh-durham").filter((t) => t[3].includes("/"));
+  ok(slashed.length === 0, `raleigh-durham: no embedded name keeps a slash between streets (found ${slashed.length}${slashed.length ? `, e.g. ${JSON.stringify(slashed[0][3])}` : ""})`);
+  for (const [slug, id, want] of [
+    ["charlotte", 5427889963, "Independence/I-277 Ramp & N Sharon Amity Rd"],
+    ["charlotte", 7810838987, "Independence/I-277 Ramp & N Sharon Amity Rd"],
+    ["charlotte", 3580842693, "Central Av & Eastland Mall Dwy & Bell South Dwy"],
+    ["miami-dade", 99341686, "US 441/SR 7/NW 7 Ave"],
+    ["miami-dade", 13160930819, "SW/NW 6 Ave"],
+    ["raleigh-durham", 195515404, "Athens Dr. & Avent Ferry Rd. & Lake Dam Rd. & Pineview Dr."],
+    ["raleigh-durham", -1438, "Inman Park Dr. & Lead Mine Rd. & Sugar Bush Rd."],
+    ["raleigh-durham", 195473089, "Fox Rd. & Old Wake Forest & Segal (Walmart)"],
+  ]) {
+    const got = tuplesOf(slug).find((t) => t[0] === id)?.[3];
+    ok(got === want, `${slug} ${id} is named ${JSON.stringify(want)} (got ${JSON.stringify(got)})`);
+  }
+}
+// A turning-movement diagram has two street labels. With three or more
+// streets in a name, the third must not vanish from it: the second label
+// carries every street after the first.
+{
+  const { diagramStreetLabels } = await import(path.resolve(here, "../../tis-api-server/src/lib/diagram-labels.ts"));
+  for (const [name, want] of [
+    ["Fox Rd. & Malone Ct. & Sumner Blvd.", ["Fox Rd.", "Malone Ct. / Sumner Blvd."]], // Wake A.13
+    ["Idlewild Rd & Monroe Rd & Rama Rd", ["Idlewild Rd", "Monroe Rd / Rama Rd"]], // Mecklenburg A.6
+    ["Albemarle Rd & Reddman Rd", ["Albemarle Rd", "Reddman Rd"]],
+    ["Signal #1234", ["Signal #1234", ""]],
+    [null, ["", ""]],
+  ]) {
+    const got = diagramStreetLabels(name);
+    ok(JSON.stringify(got) === JSON.stringify(want), `diagram labels for ${JSON.stringify(name)} are ${JSON.stringify(want)} (got ${JSON.stringify(got)})`);
+  }
 }
 
 console.log(fails === 0 ? "\nAll signal-device-type checks passed." : `\n${fails} check(s) failed.`);
