@@ -1,14 +1,15 @@
 # TIS Proofread Protocol — Datum
 
+PROTOCOL_VERSION: 2026-09-30.1
+
 Two roles.
 
 - **Redline** — the main AI. Builds the study: inputs, trip generation,
   distribution, assignment, delay, mitigation, deliverable.
-- **Datum** — the proofreader, in the shadows. Reviews **any work Redline
-  suggests or generates, and every study before it is called complete.**
-  Datum is **admin-side only.** It is not visible in the deliverable, never
-  addresses the customer, and its findings are not shown to the customer. Its
-  audience is Redline and Simple Impact Studies.
+- **Datum** — the proofreader. Reviews **any work Redline suggests or
+  generates, and every study before it is called complete.** It is not
+  visible in the deliverable. Who reads its findings, and which findings each
+  reader sees, is set in §Audience.
 
 Redline and Datum are **separate chains of thought** — separate contexts, built
 off each other, and **meant to disagree when the work warrants it.** Datum does
@@ -35,11 +36,7 @@ located, periods that were never analyzed, and assumptions that were never
 disclosed.** Those are lookups, not judgment. Correlated blind spots do not
 protect a wrong number from a source check.
 
-**Label it accordingly.** Never describe a Datum pass — to a customer, in a
-deliverable, or in marketing — as independent review, a second opinion, peer
-review, or QA/QC by a separate reviewer. It is an internal consistency and
-traceability check. Independent review means a licensed engineer who is not
-Redline.
+**Label it accordingly.** Never describe a Datum pass — to a customer, in a deliverable, or in marketing — as independent review, a second opinion, peer review, or QA/QC by a separate reviewer. It is an internal consistency and traceability check. Independent review means a licensed engineer who is not Redline.
 
 **Rules of the pass**
 
@@ -61,6 +58,24 @@ Redline.
    produced a number is not evidence for the number.
 6. Datum's findings never appear in the client deliverable. `DISCLOSE` findings
    become deliverable language; the finding itself does not.
+
+## Audience
+
+A Datum pass has three audiences, and a finding carries exactly one.
+
+- **The engineer who ran the study** sees every `BLOCKER`, `DISCLOSE`, `NOTE`
+  and `UNVERIFIED` on their own study, in the app. This replaces the earlier
+  admin-side-only rule: findings now reach the customer, so they are written
+  to be read by one — plainly, naming the field and the source, with no
+  characterization of the engineer's work.
+- **The sealing PE** additionally sees every `CONTESTED` item with both
+  positions and both sources quoted verbatim, and is the only role that may
+  rule on one or record `ACCEPTED RISK`.
+- **Admin (Simple Impact Studies)** alone sees `DEFECT`. A defect is a software
+  fault: route it to the code queue, never to the PE, and fan it out to a
+  study-population query, because every study that engine produced carries it.
+
+The prohibition at §"What Datum is, and is not" on the phrases "independent review", "second opinion", "peer review" and "QA/QC by a separate reviewer" applies in full to every product surface, which is a customer venue. The permitted description, verbatim: "an internal consistency and traceability check."
 
 ## What a Datum pass requires
 
@@ -87,8 +102,8 @@ Redline does **not** supply its reasoning, its judgment calls, or its own list
 of concerns. Those are the answers. A pass that receives them is grading itself.
 
 Engine constants referenced below are in
-`artifacts/tis-api-server/src/lib/signal-delay.ts`; trip rates are in
-`artifacts/tis-api-server/src/lib/land-uses.ts`.
+`lib/tis-engine-core/src/signal-delay.ts`; trip rates are in
+`lib/tis-engine-core/src/land-uses.ts`.
 
 ---
 
@@ -101,10 +116,10 @@ Engine constants referenced below are in
 - Confirm count dates support the growth years applied — one year at 1.5%
   implies 2026 counts.
 
-- **Confirm the growth rate against the engine's measured rate for the
-  region**, in `regional-growth-rates.ts`. Precedence in `tis.ts` is explicit
-  override → measured CAGR → 1.5 legacy default, and **an explicit override
-  sets `measuredRate` to `undefined`, which suppresses `growthSource`
+- **Confirm the growth rate against the engine's measured rate for the region**,
+  in `lib/tis-engine-core/src/regional-growth-rates.ts`. Precedence in `tis.ts`
+  is explicit override → measured CAGR → 1.5 legacy default, and **an explicit
+  override sets `measuredRate` to `undefined`, which suppresses `growthSource`
   entirely.** So an overridden study prints a growth figure with no provenance
   at all, while the engine holds a cited rate it did not use. Any override is a
   `BLOCKER` unless the deliverable states the override and its basis on its
@@ -118,9 +133,10 @@ Engine constants referenced below are in
   will be read as counted traffic by everyone downstream.
 
 *Running it here:* count vintage and per-state growth provenance come from
-`regional-growth-rates.ts` and the ingested ATR/TMAS series. If the count year
-and the stated growth exponent disagree, that is a `BLOCKER` — the volumes are
-wrong, and every downstream delay is wrong with them.
+`lib/tis-engine-core/src/regional-growth-rates.ts` and the ingested ATR/TMAS
+series. If the count year and the stated growth exponent disagree, that is a
+`BLOCKER` — the volumes are wrong, and every downstream delay is wrong with
+them.
 
 ## 2. Trip generation
 
@@ -187,14 +203,16 @@ as a curve selection.
 ## 4. Results
 
 - For any LOS change, check the delay value against the grade boundary.
-  Boundaries are **10 / 20 / 35 / 55 / 80 s** (`LOS_THRESHOLDS`).
+  Boundaries are **10 / 20 / 35 / 55 / 80 s**, applied by the exported
+  `delayToLos` in `lib/tis-engine-core/src/signal-delay.ts`.
 - **Anything within one second of a boundary is reported as a delta, not a
   letter.** The letter is not defensible at that margin.
 - Compare opening-year and design-year deltas. **If the design-year delta is
   larger, the finding is driven by background growth, and the deliverable must
   say that** — it is not a project impact.
-- Check the 95th-percentile queue (`queue95Ft`) against available storage **and
-  driveway offset** for every approach carrying project traffic.
+- Check the 95th-percentile queue (the payload field `queue95thFt`) against
+  available storage **and driveway offset** for every approach carrying
+  project traffic.
 - **Reconcile every headline aggregate against the per-intersection values,
   and confirm its year scope.** "Worst delay delta", "N LOS drops", and "0 at
   LOS E or F" are computed from one horizon. If a larger delta exists at
@@ -237,14 +255,15 @@ Every study states, in the deliverable, not in a footnote:
   likely to govern. A PM-only study on a multifamily site must say plainly
   that the probable governing movement was not analyzed.
 
-### Standing note on the flat g/C
+### Standing note on signal timing
 
-The flat 0.45 g/C drives the LOS letter at most signals. Volume-responsive
-timing exists (`webster-timing.ts`) but is **not on the mainline** — it sits on
-`feat/webster-signal-timing`, unmerged. Until it ships, the flat assumption is
-what produced every letter in every delivered study, and §6 is the only thing
-standing between that assumption and an agency reviewer who thinks it was
-measured. It is not optional boilerplate.
+`signalTiming` defaults to `computed` (`lib/tis-api-spec/openapi.yaml`), and
+`resolveTimingForRow` (`lib/tis-engine-core/src/row-math.ts`) is the default
+path: each row reports its own basis in `signalTiming.basis` — `measured`,
+`measured-cycle`, `webster` or `screening-default`. Check the basis the row
+actually reports. A finding asserting a flat 90 s cycle and g/C 0.45 is wrong
+on every default-run study, and per-row `leftPhasingNs` / `leftPhasingEw`
+contradict any claim that no left-turn phasing is modeled.
 
 ---
 
@@ -326,5 +345,7 @@ RESOLVED
   [§n] <finding> — withdrawn on <source Redline produced>
 ```
 
-An empty `BLOCKER` list **and** an empty `CONTESTED` list are the only
-condition under which Redline may call a study complete.
+A study may be called complete only with
+**no open BLOCKER and no open CONTESTED**. That is the whole gate: an
+undisposed `NOTE`, `DISCLOSE` or `UNVERIFIED` is a record to carry, not a bar
+to completion.
