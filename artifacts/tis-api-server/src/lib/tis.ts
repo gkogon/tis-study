@@ -1855,17 +1855,19 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   if (req.conservedAssignment !== false && segsForConserved && segsForConserved.length > 0) {
     try {
       const cg = buildGraph(segsForConserved, conservedVolumeRefs);
-      // Directed-reachability screen — one-way-bearing graphs ONLY. The ring/
-      // octant/capacity selection is purely geometric: on a heavily one-way
-      // grid it can pick a gateway no legal path serves in EITHER direction,
-      // whose demand share then silently evaporates at routing time (the
-      // pred=-1 skip), deflating routed/onNetworkPct and every resolved
-      // weight with no diagnostic. The screen runs inside the selection, so
-      // such a node is never a candidate and its octant takes its next-best
-      // ring crossing (or relaxes the class ceiling) instead of losing the
-      // slot; no routable candidate at all means null and the legacy path
-      // stands. On all-two-way graphs no screen is passed and the selection
-      // is byte-identical.
+      // Directed reachability — one-way-bearing graphs ONLY. The router's
+      // outbound (site → gateway) and inbound (gateway → site) passes each
+      // drop the share of a gateway they cannot reach (the pred=-1 skip),
+      // with no renormalisation, deflating every resolved weight with no
+      // diagnostic. On a one-way graph a ring node is often reachable one way
+      // only (a divided road's carriageway, a ramp), so each direction's
+      // cordon is selected from the nodes that direction reaches: an octant's
+      // outbound share goes only to outbound-reachable gateways, its inbound
+      // share only to inbound-reachable ones, each direction keeps the §6.1
+      // octant totals, and a node neither direction reaches is never a
+      // candidate. If either direction has no routable cordon the selection
+      // is null and the legacy path stands. On all-two-way graphs no
+      // reachability is passed and the selection is byte-identical.
       const reach = cg.links.some((lk) => lk.dir !== 0)
         ? directedReachability(cg, cg.nearestNode(req.latitude, req.longitude))
         : undefined;
@@ -1874,12 +1876,17 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
         { lat: req.latitude, lon: req.longitude },
         radiusMi,
         dist.byDirection,
-        reach && ((node) => reach.outbound[node] === 1 || reach.inbound[node] === 1),
+        reach,
       );
       if (cordon) {
         const net = assignRoutesWithTurns(
           { lat: req.latitude, lon: req.longitude },
-          cordon.gateways.map((gw) => ({ lat: gw.lat, lon: gw.lon, trips: gw.share })),
+          cordon.gateways.map((gw) => ({
+            lat: gw.lat,
+            lon: gw.lon,
+            trips: gw.share,
+            ...(gw.shareIn !== undefined ? { tripsIn: gw.shareIn } : {}),
+          })),
           segsForConserved,
           { volumeRefs: conservedVolumeRefs },
         );

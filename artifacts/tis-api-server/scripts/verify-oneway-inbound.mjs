@@ -20,7 +20,9 @@
 //      single largest-remainder pass.
 //   4. Engine E2E on a synthetic one-way grid: movementSource:"path" rows
 //      carry no wrong-way approaches, both printed integer cross-foots hold,
-//      output is deterministic.
+//      output is deterministic. 4b: a single-access site with an outbound-
+//      only and an inbound-only ramp on the ring loses no share in either
+//      pass (its access junction carries every external trip).
 //   5. Full-strength real one-way data (env ONEWAY_ROADS_FILE, or the in-repo
 //      Miami file once the refetch data merges): every ledger row in BOTH
 //      directions reconstructs to a legal traversal; ledger totals cross-foot
@@ -28,6 +30,9 @@
 //      pre-rollout data.
 //   6. directedReachability screens gateways: unreachable-both-ways flagged,
 //      reachable-one-way kept, two-way graphs symmetric.
+//   7. Gateways one pass cannot reach (a divided road's carriageways): each
+//      pass gets gateways it can reach, carries the whole demand across the
+//      site cut, and the router loads tripsIn on the inbound pass.
 //
 // Run: node ./scripts/verify-oneway-inbound.mjs
 import { register } from "node:module";
@@ -50,6 +55,7 @@ const { pathMovementLoadsExact, integerizeMovementLoads } = await import(
 const { roadSegmentsNear } = await import(
   path.resolve(here, "../../api-server/src/lib/regional-roads.ts")
 );
+const { selectCordonGateways } = await import(path.resolve(here, "../src/lib/cordon-gateways.ts"));
 
 let fails = 0;
 const ok = (cond, msg) => { if (!cond) { console.error("FAIL:", msg); fails++; } else console.log("ok:", msg); };
@@ -273,10 +279,56 @@ const DESTS = [
   }
   for (const x of XS) eSegments.push([3, eLatN, ex(x), eLatS, ex(x), 2, 30, "Cross", 0]);
 
+  // Second engine fixture (4b below), ~3.9 mi from the grid so neither study
+  // area sees the other's signals: a site whose ONLY access is one junction J
+  // on Main St (two-way, E-W), with Cross Ave (two-way) north from J to the
+  // ring, a one-way Out Ramp from Main St to the ring SSE (outbound pass
+  // only) and a one-way In Ramp from the ring SSW onto Main St (inbound pass
+  // only). Units are miles from the site F.
+  const F = { lat: 25.80, lon: -80.25 };
+  const fLat = 1 / 69.05, fLon = 1 / (69.17 * Math.cos(F.lat * Math.PI / 180));
+  const fp = (x, y) => [F.lat + y * fLat, F.lon + x * fLon];
+  const fs = (cls, a, b, lanes, name, dir) => [cls, a[0], a[1], b[0], b[1], lanes, 48, name, dir];
+  const fJ = fp(0, 0.1), fM1 = fp(0.35, 0.1), fM2 = fp(-0.35, 0.1);
+  const fSegments = [
+    // Listed first and drawn against its travel direction (oneway=-1), so
+    // node 0 is the ramp's ring end, from which nothing is reachable:
+    // reachability must be rooted at the site, not at whatever node is first.
+    fs(2, fp(0.45, -0.55), fM1, 3, "Out Ramp", -1),
+    fs(4, fp(0, 0), fJ, 2, "Site Access", 0),
+    fs(3, fM2, fJ, 2, "Main St", 0), fs(3, fJ, fM1, 2, "Main St", 0),
+    fs(3, fp(-0.7, 0.1), fM2, 2, "Main St", 0), fs(3, fM1, fp(0.7, 0.1), 2, "Main St", 0),
+    fs(3, fJ, fp(0, 0.8), 2, "Cross Ave", 0),
+    fs(2, fp(-0.45, -0.55), fM2, 3, "In Ramp", 1),
+  ];
+
+  // Third engine fixture (4c), all two-way, ~5 mi from the others: the same
+  // single-access layout without ramps, plus a two-way fragment on the ring
+  // NNE that touches nothing else. On an all-two-way graph no reachability
+  // screen runs, so the fragment keeps its slot in the cordon exactly as
+  // before this change (and its share is still dropped at routing — the
+  // two-way case is deliberately left byte-identical).
+  const F2 = { lat: 25.76, lon: -80.30 };
+  const f2p = (x, y) => [F2.lat + y * fLat, F2.lon + x * fLon];
+  const f2J = f2p(0, 0.1);
+  const f2Segments = [
+    fs(4, f2p(0, 0), f2J, 2, "Site Access", 0),
+    fs(3, f2p(-0.7, 0.1), f2J, 2, "Main St", 0), fs(3, f2J, f2p(0.7, 0.1), 2, "Main St", 0),
+    fs(3, f2J, f2p(0, 0.8), 2, "Cross Ave", 0),
+    fs(2, f2p(0.1, 0.75), f2p(0.3, 0.9), 3, "Fragment", 0),
+  ];
+
   const MOCK_INTS = [
     { id: "sig-eb-mid", name: "EB-only mid", zone: "MIA", latitude: eLatN, longitude: ex(0.15), totalVolume: 9000 },
     { id: "sig-return", name: "Return-street mid", zone: "MIA", latitude: eLatS, longitude: ex(-0.15), totalVolume: 8600 },
     { id: "sig-eb-west", name: "EB-only west", zone: "MIA", latitude: eLatN, longitude: ex(-0.3), totalVolume: 8200 },
+    // 4b: J, plus two unresolved signals SSE and SSW of the site that give
+    // the gravity distribution demand in the ramps' octants.
+    { id: "sig-access", name: "Main St & Site Access", zone: "MIA", latitude: fJ[0], longitude: fJ[1], totalVolume: 9000 },
+    { id: "sig-sse", name: "SSE zone", zone: "MIA", latitude: fp(0.2, -0.35)[0], longitude: fp(0.2, -0.35)[1], totalVolume: 9000 },
+    { id: "sig-ssw", name: "SSW zone", zone: "MIA", latitude: fp(-0.2, -0.35)[0], longitude: fp(-0.2, -0.35)[1], totalVolume: 9000 },
+    // 4c: its access junction.
+    { id: "sig-access-2w", name: "Main St & Site Access (two-way)", zone: "MIA", latitude: f2J[0], longitude: f2J[1], totalVolume: 9000 },
   ];
 
   const SERVER = path.resolve(here, "..");
@@ -295,7 +347,10 @@ const DESTS = [
   globalThis.fetch = async (url) => {
     const u = String(url);
     if (u.includes("/api/roads")) {
-      return new Response(JSON.stringify({ available: true, segments: eSegments }), {
+      const qLat = Number(new URL(u).searchParams.get("lat"));
+      const segments = Math.abs(qLat - F.lat) < 0.01 ? fSegments
+        : Math.abs(qLat - F2.lat) < 0.01 ? f2Segments : eSegments;
+      return new Response(JSON.stringify({ available: true, segments }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
     }
@@ -392,6 +447,47 @@ const DESTS = [
       && conservedView(withIsland) === conservedView(on),
     `engine: an unreachable one-way fragment on the ring changes no conserved output (gateways ${on.conservedAssignment?.gatewayCount} → ${withIsland.conservedAssignment?.gatewayCount})`);
 
+  // 4b. Single-access site with one-direction ramps on the ring. Every
+  //     project trip, in both directions, crosses J, so J's path load is the
+  //     whole of the period's external trips: loadWeight (Σout + Σin) / 2 = 1,
+  //     the NB approach (leaving the site) carries every outbound trip and
+  //     the rest (arriving) every inbound trip. The old cordon gave the Out
+  //     Ramp inbound share and the In Ramp outbound share, and the router
+  //     dropped both: at J that was 188 of 226 PM trips, weight 0.834.
+  {
+    const fRep = await generateTisReport({ ...baseReq, projectName: "Single access E2E",
+      latitude: F.lat, longitude: F.lon });
+    const pmTg = (fRep.periodReports ?? []).find((p) => p.period === "pm_peak")?.tripGeneration;
+    const fDir = fRep.tripDistribution?.byDirection ?? {};
+    ok(fDir.SSE > 0 && fDir.SSW > 0,
+      `engine 4b: the distribution puts demand in both ramps' octants (SSE ${fDir.SSE?.toFixed(1)}%, SSW ${fDir.SSW?.toFixed(1)}%)`);
+    const j = (fRep.affectedIntersections ?? []).find((ix) => ix.signalId === "sig-access");
+    ok(j?.movementSource === "path", `engine 4b: J is path-resolved (${j?.movementSource})`);
+    ok(Math.abs((j?.loadWeight ?? 0) - 1) < 1e-9,
+      `engine 4b: J's weight (Σout + Σin) / 2 is 1 (got ${j?.loadWeight})`);
+    ok(j?.addedTripsPmPeak === pmTg?.externalTrips,
+      `engine 4b: J carries every PM external trip (${j?.addedTripsPmPeak} of ${pmTg?.externalTrips})`);
+    const exactOut = (j?.movementsExact ?? []).filter((m) => m.approach === "NB").reduce((s, m) => s + m.exact, 0);
+    const exactIn = (j?.movementsExact ?? []).filter((m) => m.approach !== "NB").reduce((s, m) => s + m.exact, 0);
+    ok(Math.abs(exactOut - pmTg?.outTrips) < 1 && Math.abs(exactIn - pmTg?.inTrips) < 1,
+      `engine 4b: J's outbound rows carry all ${pmTg?.outTrips} outbound trips (${exactOut.toFixed(2)}), the rest all ${pmTg?.inTrips} inbound (${exactIn.toFixed(2)})`);
+  }
+
+  // 4c. All-two-way graph: the engine's cordon is the unscreened selection.
+  {
+    const rep2 = await generateTisReport({ ...baseReq, projectName: "Two-way gate E2E",
+      latitude: F2.lat, longitude: F2.lon });
+    const g2 = buildGraph(f2Segments);
+    ok(g2.links.every((lk) => lk.dir === 0), "engine 4c: fixture is all two-way");
+    const plain = selectCordonGateways(g2, F2, 0.5, rep2.tripDistribution.byDirection);
+    const frag = g2.nodeOf(...f2p(0.1, 0.75));
+    ok(plain?.gateways.some((gw) => gw.node === frag),
+      `engine 4c: the unscreened cordon includes the unconnected fragment (${plain?.gateways.length} gateways)`);
+    ok(rep2.conservedAssignment?.gatewayCount === plain?.gateways.length
+      && JSON.stringify(rep2.conservedAssignment?.emptyOctants) === JSON.stringify(plain?.emptyOctants),
+      `engine 4c: the engine ran no reachability screen (gateways ${rep2.conservedAssignment?.gatewayCount} === ${plain?.gateways.length})`);
+  }
+
   await rm(entryPath, { force: true });
   await rm(bundlePath, { force: true });
 }
@@ -480,6 +576,112 @@ const DESTS = [
       `full-strength: Σ outbound site-cut ledger (${outCut.toFixed(4)}) === Σ outbound-reachable gateway demand (${outDemand})`);
     ok(Math.abs(inCut - inDemand) < 1e-6,
       `full-strength: Σ inbound site-cut ledger (${inCut.toFixed(4)}) === Σ inbound-reachable gateway demand (${inDemand})`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 7. A gateway one pass cannot reach. The router drops the share of a
+//    gateway its pass cannot reach, with no renormalisation, so each pass
+//    must be given only gateways it can reach. A divided road leaving to the
+//    ENE: its eastbound carriageway ends at the ring (Eo: the outbound pass
+//    reaches it, nothing leads back), its westbound carriageway starts there
+//    (Ei: it reaches the site, the site cannot reach it). Two-way arms go to
+//    N, S and W tips. Distribution NNE 20 / ENE 50 / SSW 20 / WNW 10.
+//
+//                Nt                     Eo  (ENE, outbound only)
+//                |          P1 ──────▶ ╱
+//         Wt ─── C ════════╡              (EB C→P1→Eo, WB Ei→P2→C)
+//                |          P2 ◀────── ╲
+//                St                     Ei  (ENE, inbound only)
+//
+//    Hand answer: outbound Nt .2, Eo .5, St .2, Wt .1; inbound Nt .2, Ei .5,
+//    St .2, Wt .1; each pass carries 1.0 across the site cut, and the whole
+//    ENE share (.5) crosses P1 outbound and P2 inbound. The old cordon split
+//    ENE .25/.25 over Eo and Ei in BOTH passes, so each pass lost .25.
+// ---------------------------------------------------------------------------
+{
+  const s7 = (a, b, dir, name) => [3, a[0], a[1], b[0], b[1], 2, 48, name, dir];
+  const C = [LAT, LON];
+  const Nm = [LAT + 0.004, LON], Nt = [LAT + 0.01, LON];
+  const Sm = [LAT - 0.004, LON], St = [LAT - 0.01, LON];
+  const Wm = [LAT, LON - 0.005], Wt = [LAT, LON - 0.01];
+  const P1 = [LAT + 0.0027, LON + 0.005], Eo = [LAT + 0.0052, LON + 0.010];
+  const P2 = [LAT + 0.0023, LON + 0.005], Ei = [LAT + 0.0048, LON + 0.010];
+  const segments = [
+    s7(C, Nm, 0, "North Rd"), s7(Nm, Nt, 0, "North Rd"),
+    s7(C, Sm, 0, "South Rd"), s7(Sm, St, 0, "South Rd"),
+    s7(C, Wm, 0, "West Rd"), s7(Wm, Wt, 0, "West Rd"),
+    s7(C, P1, 1, "Divided Rd EB"), s7(P1, Eo, 1, "Divided Rd EB"),
+    s7(Ei, P2, 1, "Divided Rd WB"), s7(P2, C, 1, "Divided Rd WB"),
+  ];
+  const SITE7 = { lat: C[0], lon: C[1] };
+  const g = buildGraph(segments);
+  const node = (p) => g.nodeOf(p[0], p[1]);
+  const siteNode = g.nearestNode(SITE7.lat, SITE7.lon);
+  const reach = directedReachability(g, siteNode);
+  ok(reach.outbound[node(Eo)] === 1 && reach.inbound[node(Eo)] === 0
+    && reach.outbound[node(Ei)] === 0 && reach.inbound[node(Ei)] === 1,
+    "divided road: Eo is outbound-only, Ei inbound-only");
+
+  const dirs = { NNE: 20, ENE: 50, ESE: 0, SSE: 0, SSW: 20, WSW: 0, WNW: 10, NNW: 0 };
+  const sel = selectCordonGateways(g, SITE7, 0.5, dirs, reach);
+  const byNode = (key) => Object.fromEntries((sel?.gateways ?? [])
+    .filter((gw) => (gw[key] ?? gw.share) > 0)
+    .map((gw) => [gw.node, Math.round((gw[key] ?? gw.share) * 1e9) / 1e9]));
+  const same = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
+  ok(same(byNode("share"), { [node(Nt)]: 0.2, [node(Eo)]: 0.5, [node(St)]: 0.2, [node(Wt)]: 0.1 }),
+    `divided road: outbound shares Nt .2, Eo .5, St .2, Wt .1 (got ${JSON.stringify(byNode("share"))})`);
+  ok(same(byNode("shareIn"), { [node(Nt)]: 0.2, [node(Ei)]: 0.5, [node(St)]: 0.2, [node(Wt)]: 0.1 }),
+    `divided road: inbound shares Nt .2, Ei .5, St .2, Wt .1 (got ${JSON.stringify(byNode("shareIn"))})`);
+
+  // Route exactly as tis.ts does and sum each ledger at the site cut.
+  const incident = (li) => g.links[li].a === siteNode || g.links[li].b === siteNode;
+  const cut = (net) => ({
+    out: net.turns.filter((t) => incident(t.inLink)).reduce((s, t) => s + t.trips, 0),
+    in: (net.turnsInbound ?? []).filter((t) => incident(t.outLink)).reduce((s, t) => s + t.trips, 0),
+  });
+  const through = (rows, p) => rows.filter((t) => t.node === node(p)).reduce((s, t) => s + t.trips, 0);
+  const net = assignRoutesWithTurns(SITE7, (sel?.gateways ?? []).map((gw) => ({
+    lat: gw.lat, lon: gw.lon, trips: gw.share, ...(gw.shareIn !== undefined ? { tripsIn: gw.shareIn } : {}),
+  })), segments);
+  const c = cut(net);
+  ok(Math.abs(c.out - 1) < 1e-9 && Math.abs(c.in - 1) < 1e-9,
+    `divided road: each pass carries the whole demand across the site cut (out ${c.out.toFixed(6)}, in ${c.in.toFixed(6)})`);
+  ok(Math.abs(through(net.turns, P1) - 0.5) < 1e-9 && Math.abs(through(net.turnsInbound ?? [], P2) - 0.5) < 1e-9,
+    `divided road: ENE's .5 crosses P1 outbound and P2 inbound (P1 ${through(net.turns, P1).toFixed(6)}, P2 ${through(net.turnsInbound ?? [], P2).toFixed(6)})`);
+
+  // The router on its own: the inbound pass loads tripsIn, the outbound pass
+  // trips, per destination.
+  const raw = assignRoutesWithTurns(SITE7, [
+    { lat: Eo[0], lon: Eo[1], trips: 0.5, tripsIn: 0 },
+    { lat: Ei[0], lon: Ei[1], trips: 0, tripsIn: 0.5 },
+  ], segments);
+  const rc = cut(raw);
+  ok(Math.abs(rc.out - 0.5) < 1e-9 && Math.abs(rc.in - 0.5) < 1e-9
+    && Math.abs(through(raw.turnsInbound ?? [], P2) - 0.5) < 1e-9,
+    `router: outbound pass loads trips, inbound pass loads tripsIn (out ${rc.out.toFixed(6)}, in ${rc.in.toFixed(6)}, P2 ${through(raw.turnsInbound ?? [], P2).toFixed(6)})`);
+
+  // 7b. The inbound pass's congestion is loaded with tripsIn too. A gateway G
+  //     reaches the site by two mirror-image one-way routes, via U1 (north)
+  //     or U2 (south), and sends 1000 trips inbound, 0 outbound. Four MSA
+  //     iterations, each all-or-nothing onto the currently quicker route
+  //     (ties either way): T on one route; then T on the other, blend ½ →
+  //     T/2 each; tie, blend ⅓ → 2T/3 and T/3; the lighter one, blend ¼ →
+  //     T/2 each. So 500 through U1 and 500 through U2. Loading the pass's
+  //     congestion with the outbound 0 instead leaves every iteration an
+  //     uncongested all-or-nothing: 1000 on one route.
+  {
+    const G = [LAT, LON + 0.01], U1 = [LAT + 0.002, LON + 0.005], U2 = [LAT - 0.002, LON + 0.005];
+    const twin = [
+      s7(C, [LAT, LON - 0.005], 0, "Stub"),
+      s7(G, U1, 1, "North Route"), s7(U1, C, 1, "North Route"),
+      s7(G, U2, 1, "South Route"), s7(U2, C, 1, "South Route"),
+    ];
+    const gt = buildGraph(twin);
+    const tnet = assignRoutesWithTurns(SITE7, [{ lat: G[0], lon: G[1], trips: 0, tripsIn: 1000 }], twin);
+    const at = (p) => (tnet.turnsInbound ?? []).filter((t) => t.node === gt.nodeOf(p[0], p[1])).reduce((s, t) => s + t.trips, 0);
+    ok(Math.abs(at(U1) - 500) < 1e-6 && Math.abs(at(U2) - 500) < 1e-6,
+      `router: the inbound pass's congestion splits tripsIn 1000 over twin routes 500/500 (U1 ${at(U1).toFixed(3)}, U2 ${at(U2).toFixed(3)})`);
   }
 }
 
