@@ -18,17 +18,23 @@
 import { bprTime } from "./four-step-model.ts";
 import { classifyMovement, sideOfStreet, resolveMovements, maskOneWayMovements, type Driveway } from "./driveways.ts";
 import { logger } from "./logger.ts";
+import { KMH_PER_MPH } from "@workspace/tis-engine-core";
 
 const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8080";
 
 export type RoadSegment = [
-  number, number, number, number, number,
-  number | null, number | null,
+  cls: number, aLat: number, aLon: number, bLat: number, bLon: number,
+  /** OSM `lanes` as tagged: both directions on a two-way way, the one
+   *  direction of travel on a one-way way. */
+  lanes: number | null,
+  /** OSM maxspeed in km/h, as every road file stores it (the analyzer serves
+   *  it unconverted). buildGraph converts to mph. */
+  maxspeedKmh: number | null,
   /** Street name; null on unnamed ways, absent on old payloads. Carried for
    *  consumers/diagnostics — buildGraph does not read it. */
-  (string | null)?,
+  name?: string | null,
   /** 1 = a->b only, -1 = b->a only, 0/absent = two-way. */
-  (number | null)?,
+  oneway?: number | null,
 ];
 
 export type RouteDestination = { lat: number; lon: number; trips: number };
@@ -261,7 +267,10 @@ export function buildGraph(segments: RoadSegment[], volumeRefs: VolumeRef[] = []
     if (a === b) continue;
     const lenMi = distMi(s[1], s[2], s[3], s[4]);
     if (lenMi <= 0) continue;
-    const mph = (typeof s[6] === "number" && s[6]! > 0) ? s[6]! : CLASS_FREE_MPH[cls]!;
+    // The road file stores maxspeed in km/h; free-flow time and the class
+    // defaults are mph. Unconverted, a 35 mph street routed at 56 mph.
+    const maxspeedKmh = s[6];
+    const mph = (typeof maxspeedKmh === "number" && maxspeedKmh > 0) ? maxspeedKmh / KMH_PER_MPH : CLASS_FREE_MPH[cls]!;
     const lanesPerDir = (typeof s[5] === "number" && s[5]! > 0) ? Math.max(1, Math.round(s[5]! / 2)) : CLASS_LANES_PER_DIR[cls]!;
     const li = links.length;
     const capVph = lanesPerDir * PER_LANE_CAP_VPH;
@@ -303,7 +312,9 @@ export function buildGraph(segments: RoadSegment[], volumeRefs: VolumeRef[] = []
  * every resolved intersection's weight with no diagnostic. Callers drop such
  * gateways and renormalize BEFORE routing. On all-two-way graphs outbound and
  * inbound are identical (undirected connectivity), and callers must not
- * change behaviour there — today's shipped regions carry no one-way links.
+ * change behaviour there — the regions whose road files predate oneway
+ * capture still route all-two-way; every other shipped region carries
+ * one-way links.
  */
 export function directedReachability(g: Graph, rootNode: number): { outbound: Uint8Array; inbound: Uint8Array } {
   const n = g.nodeLat.length;

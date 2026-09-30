@@ -170,8 +170,9 @@ try {
       `${c.label}: §4.1 claims no field observations, inventory, posted speeds or agency classification maps`);
     ok(!new RegExp(`${c.abbrev} (AADT|count)`).test(s41), `${c.label}: §4.1 does not attribute the AADT records to ${c.abbrev}`);
     ok(!BANNED.test(s41), `${c.label}: §4.1 uses no banned wording`);
-    // maxspeed is stored in km/h and read as mph (network-assignment.ts), so
-    // the attributes must not be claimed to be used as mapped.
+    // The router transforms the attributes (km/h to mph, per-direction lanes,
+    // class clamping and defaults — network-assignment.ts buildGraph), so they
+    // must not be claimed to be used as mapped.
     ok(!/as mapped/i.test(s41), `${c.label}: §4.1 does not claim the OSM attributes are used as mapped`);
 
     // The fix: the real network source and a volume source matching the payload.

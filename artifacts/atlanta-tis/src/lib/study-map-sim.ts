@@ -8,14 +8,20 @@
  * on 5-decimal lat/lon, one-way honoured at adjacency-build time, link cost
  * = free-flow minutes from the segment's maxspeed or its class default.
  */
+import { KMH_PER_MPH } from "@workspace/tis-engine-core";
 
-/** [classCode, aLat, aLon, bLat, bLon, lanes|null, maxspeed|null, name?, oneway?] — api-server RoadSegment */
-export type RoadSegment = [number, number, number, number, number, number | null, number | null, (string | null)?, (number | null)?];
+/** api-server RoadSegment, as /api/roads serves it. maxspeed is km/h. */
+export type RoadSegment = [
+  cls: number, aLat: number, aLon: number, bLat: number, bLon: number,
+  lanes: number | null, maxspeedKmh: number | null, name?: string | null, oneway?: number | null,
+];
 
 export type LatLon = { lat: number; lon: number };
 
-/** free-flow speed per functional class, mph — network-assignment.ts CLASS_FREE_MPH */
-const CLASS_FREE_MPH = [60, 45, 40, 35, 30];
+/** free-flow speed per functional class, mph — the same values as
+ *  network-assignment.ts CLASS_FREE_MPH, so untagged links cost what the
+ *  engine charged and the map's routes follow the report's. */
+const CLASS_FREE_MPH = [60, 50, 40, 30, 25];
 
 export function distMi(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 3958.8;
@@ -51,7 +57,9 @@ export function buildRoadGraph(segments: RoadSegment[]): RoadGraph {
     if (a === b) continue;
     const lenMi = distMi(s[1], s[2], s[3], s[4]);
     if (!(lenMi > 0)) continue;
-    const mph = typeof s[6] === "number" && s[6] > 0 ? s[6] : (CLASS_FREE_MPH[cls] ?? 30);
+    // km/h in the road file, mph here — same conversion as the engine's buildGraph.
+    const maxspeedKmh = s[6];
+    const mph = typeof maxspeedKmh === "number" && maxspeedKmh > 0 ? maxspeedKmh / KMH_PER_MPH : (CLASS_FREE_MPH[cls] ?? 25);
     const raw = s[8];
     const dir: 0 | 1 | -1 = raw === 1 ? 1 : raw === -1 ? -1 : 0;
     const li = links.length;
