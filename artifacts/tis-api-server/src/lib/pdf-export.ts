@@ -56,6 +56,7 @@ import { crashesNearPoint } from "./crashes";
 import { atrSegmentsNearPoint, atrSourceForRegion, atrTimeZoneForRegion, atrRadiusForSource, atrWindowYearsForSource } from "./atr-counts";
 import { renderAtrMeasuredVolumes, hasAtrVolumes } from "./atr-measured-volumes";
 import { jurisdictionTierLabel, resolveStudyTier, type TierInput } from "./study-tier";
+import { diagramStreetLabels } from "./diagram-labels";
 import type { StudyTier } from "./tis";
 import {
   FDOT_ARTERIAL_GSVT,
@@ -9068,12 +9069,12 @@ function drawTurningMovementDiagram(
   doc.rect(cx - rw, by + 1, 2 * rw, bh - 2).fill("#eef2f6");
   doc.rect(bx + 1, cy - rw, bw - 2, 2 * rw).fill("#eef2f6");
 
-  // Street labels (split "A & B": A = N-S street top, B = E-W street).
-  const parts = String(ix.name ?? "").split(/\s*&\s*/);
+  // Street labels ("A & B & C": A = N-S street top, B / C = E-W street).
+  const [nsLabel, ewLabel] = diagramStreetLabels(ix.name);
   const clip = (s: string, n: number) => (s && s.length > n ? s.slice(0, n - 1) + "…" : (s ?? ""));
   doc.font("body").fontSize(6).fillColor("#64748b");
-  if (parts[0]) doc.text(clip(parts[0], 30), bx + 2, by + 2, { width: bw - 4, align: "center" });
-  if (parts[1]) doc.text(clip(parts[1], 16), cx + rw + 2, by + 14, { width: bw / 2 - rw - 4, align: "left" });
+  if (nsLabel) doc.text(clip(nsLabel, 30), bx + 2, by + 2, { width: bw - 4, align: "center" });
+  if (ewLabel) doc.text(clip(ewLabel, 16), cx + rw + 2, by + 14, { width: bw / 2 - rw - 4, align: "left" });
 
   const block = (dir: string, gl: { l: string; t: string; r: string }) => {
     const a = byDir[dir]; if (!a) return null;

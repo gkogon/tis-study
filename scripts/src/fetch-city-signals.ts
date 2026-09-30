@@ -30,7 +30,7 @@
  *   - charlotte_metro      → CDOT layer (UNITDESC "A_B_C" → "A & B & C")
  *   - miami_dade_metro     → County layer (INTRSECTN already "A & B"), then FDOT
  *   - orlando_metro        → City of Orlando ITS Devices layer/3, then FDOT
- *   - raleigh_durham_metro → Raleigh signals (Intersecti "A / B" → "A & B")
+ *   - raleigh_durham_metro → Raleigh signals (Intersecti "A / B/C" → "A & B & C")
  *   - tampa_metro          → FDOT only; no public city inventory surfaced
  *   - nashville_metro      → no public vehicle-signal dataset surfaced
  *
@@ -51,6 +51,7 @@ import {
   classifyOrlandoCity,
   classifyRaleigh,
   formatCdotIntersectionName,
+  formatRaleighIntersectionName,
   reconcileAadtKeys,
   titleCase,
   type AuthorityRecord,
@@ -158,15 +159,9 @@ const CITIES: CityConfig[] = [
     outFields: "FID,Intersecti,Intersec_1,Signal_Status,Subtype",
     where: "Signal_Status='Existing'",
     idField: "FID",
-    buildName: (a) => {
-      const d = (a["Intersecti"] as string | null)?.trim();
-      if (!d) return null;
-      // Raleigh uses "STREET A / STREET B" (slash). HAWK and ped-only signals
-      // carry a "(HAWK)" / "(PED ONLY)" prefix; the classifier excludes them.
-      const parts = d.split("/");
-      if (parts.length < 2) return titleCase(d);
-      return `${titleCase(parts[0]!.trim())} & ${titleCase(parts.slice(1).join("/").trim())}`;
-    },
+    // Raleigh separates every street with a slash. HAWK and ped-only signals
+    // carry a "(HAWK)" / "(PED ONLY)" prefix; the classifier excludes them.
+    buildName: (a) => formatRaleighIntersectionName(str(a, "Intersecti")),
     classify: (a) => classifyRaleigh(str(a, "Subtype"), str(a, "Intersecti") ?? ""),
   },
   // ── FDOT statewide overlay ────────────────────────────────────────────

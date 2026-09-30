@@ -55,21 +55,45 @@ const CONTINUITY_RADIUS_M = 2;
 
 const norm = (s: string | null | undefined): string => (s ?? "").trim().toUpperCase();
 const FIRE_STATION = /\bFIRE STATION\b/i;
+/** Names match for id continuity when equal ignoring capitalization. */
+const sameName = (a: string | null, b: string | null): boolean =>
+  a === b || (a !== null && b !== null && a.toLowerCase() === b.toLowerCase());
 
 // ── names ───────────────────────────────────────────────────────────────────
 
-/** Title-case a street label; keeps common acronyms and directionals upper case. */
+const ACRONYMS = new Set(["NC", "SC", "FL", "US", "I", "II", "III", "IV", "NW", "NE", "SW", "SE", "SR"]);
+
+/**
+ * Title-case a street label; keeps common acronyms and directionals upper case.
+ * A word is capitalized after "/", "-" and "(" as after a space, so an FDOT
+ * "US 441/SR 7/NW 7 AVE" reads "US 441/SR 7/NW 7 Ave", not "US 441/sr 7/nw 7
+ * Ave", CDOT's "INDEPENDENCE/I-277" reads "Independence/I-277", and Raleigh's
+ * "SEGAL (WALMART)" reads "Segal (Walmart)".
+ */
 export function titleCase(s: string): string {
   return s
     .toLowerCase()
     .split(/\s+/)
-    .map((w) => {
-      const up = w.toUpperCase();
-      if (["NC", "SC", "FL", "US", "I", "II", "III", "IV", "NW", "NE", "SW", "SE", "SR"].includes(up)) return up;
-      return w.length === 0 ? w : w[0]!.toUpperCase() + w.slice(1);
-    })
+    .map((w) =>
+      w
+        .split(/([/(-])/)
+        .map((p) => {
+          if (p === "/" || p === "-" || p === "(" || p.length === 0) return p;
+          const up = p.toUpperCase();
+          return ACRONYMS.has(up) ? up : p[0]!.toUpperCase() + p.slice(1);
+        })
+        .join(""),
+    )
     .join(" ");
 }
+
+/**
+ * CDOT's two-letter street types, as the standard abbreviations. Rd, St, Dr,
+ * Av and Ln are kept as CDOT writes them.
+ */
+const CDOT_STREET_TYPES: Record<string, string> = {
+  Bv: "Blvd", Py: "Pkwy", Hy: "Hwy", Wy: "Way", Ra: "Ramp", Dy: "Dwy", Dw: "Dwy",
+};
 
 /**
  * Charlotte CDOT UNITDESC names every street at the signal, separated by
@@ -78,12 +102,31 @@ export function titleCase(s: string): string {
  * embedded names). Every street is kept, joined with " & "; empty parts from
  * doubled or trailing underscores are dropped. One signal (SIGNAL_ID 1997)
  * reads "BRAWLEY LN & ... ROBINSON CHURCH RD TRAFFIC SIGNAL"; the type tag is
- * not part of the name.
+ * not part of the name. Two-letter street types are spelled as the standard
+ * abbreviations ("DURANT BV" reads "Durant Blvd").
  */
 export function formatCdotIntersectionName(unitdesc: string | null | undefined): string | null {
   const parts = (unitdesc ?? "")
     .replace(/\s*\btraffic signal\s*$/i, "")
     .split("_")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  if (parts.length === 0) return null;
+  return parts
+    .map((p) => titleCase(p).split(" ").map((w) => CDOT_STREET_TYPES[w] ?? w).join(" "))
+    .join(" & ");
+}
+
+/**
+ * Raleigh's Intersecti separates every street at the signal with a slash,
+ * spaced or not: "ATHENS DR. / AVENT FERRY RD. / LAKE DAM RD. / PINEVIEW DR.",
+ * "INMAN PARK DR./LEAD MINE RD./SUGAR BUSH RD.". Splitting on the first slash
+ * only left the rest joined by slashes (94 + 16 of 638 names on 2026-09-29).
+ * Every street is kept, joined with " & ".
+ */
+export function formatRaleighIntersectionName(intersecti: string | null | undefined): string | null {
+  const parts = (intersecti ?? "")
+    .split("/")
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
   return parts.length === 0 ? null : parts.map(titleCase).join(" & ");
@@ -329,9 +372,9 @@ export function reconcileCoarseSignals(passes: Pass[]): { passes: Pass[]; reclas
  * cannot drop a node that a county signal confirms.
  *
  * An appended tuple keeps the id a previous output gave the same record: the
- * tuple within 2 m under the same name, if exactly one. AADT records are keyed
- * by these ids, and FDOT's FIDs change between fetches. Otherwise it gets
- * -(idNamespace + record id).
+ * tuple within 2 m under the same name (ignoring capitalization), if exactly
+ * one. AADT records are keyed by these ids, and FDOT's FIDs change between
+ * fetches. Otherwise it gets -(idNamespace + record id).
  */
 export function buildSignalInventory(archive: SignalTuple[], passes: Pass[], previous: SignalTuple[]): {
   tuples: SignalTuple[];
@@ -352,7 +395,7 @@ export function buildSignalInventory(archive: SignalTuple[], passes: Pass[], pre
   const used = new Set<number>(kept.map((t) => t[0]));
   const ids = { continued: 0, fresh: 0 };
   const assignId = (r: AuthorityRecord, ns: number, at: Point): number => {
-    const same = within(prevIndex, tuplePoint, at, CONTINUITY_RADIUS_M).filter((t) => t[3] === r.name);
+    const same = within(prevIndex, tuplePoint, at, CONTINUITY_RADIUS_M).filter((t) => sameName(t[3], r.name));
     if (same.length === 1 && !used.has(same[0]![0])) {
       used.add(same[0]![0]);
       ids.continued++;
