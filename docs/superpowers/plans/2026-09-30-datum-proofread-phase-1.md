@@ -83,11 +83,13 @@ for (const who of ["engineer", "sealing PE", "admin"]) {
 const BANNED = ["independent review", "second opinion", "peer review", "QA/QC"];
 for (const file of [["protocol", protocol], ["datum.md", agent]]) {
   for (const phrase of BANNED) {
+    // A line that is ABOUT the ban may name the phrases; a line that uses one
+    // as a description of the pass may not.
     const offending = file[1]
       .split("\n")
       .filter((l) => l.toLowerCase().includes(phrase.toLowerCase()))
-      .filter((l) => !/^\s*[-*]?\s*NEVER\b/i.test(l.trim()));
-    ok(offending.length === 0, `${file[0]}: "${phrase}" appears only as a prohibition (${offending.length} stray)`);
+      .filter((l) => !/prohibit|NEVER|banned|permitted|never say/i.test(l));
+    ok(offending.length === 0, `${file[0]}: "${phrase}" appears only where the ban is stated (${offending.length} stray)`);
   }
 }
 
@@ -400,7 +402,13 @@ process.exit(fails === 0 ? 0 : 1);
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run: `pnpm --filter @workspace/tis-api-server run check:proofread` (after registering the script key as in Step 6)
+First register the key in `artifacts/tis-api-server/package.json` so the step can actually run:
+
+```json
+    "check:proofread": "node ./scripts/verify-proofread.mjs"
+```
+
+Run: `pnpm --filter @workspace/tis-api-server run check:proofread`
 Expected: FAIL — `Cannot find module .../src/lib/proofread/index.ts`
 
 - [ ] **Step 4: Write `types.ts`**
