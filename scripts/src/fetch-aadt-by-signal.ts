@@ -904,6 +904,21 @@ const REGIONS: RegionConfig[] = [
       sourceTag: "wvdot",
     },
   },
+  // WVDOT — Morgantown (Monongalia County), same Segment AADT layer.
+  {
+    slug: "morgantown",
+    source: "polyline_bbox",
+    counties: [],
+    bbox: { latMin: 39.5, latMax: 39.72, lonMin: -80.15, lonMax: -79.8 },
+    sourceLabel: "WVDOT Segment AADT",
+    polylineConfig: {
+      url: "https://gis.transportation.wv.gov/arcgis/rest/services/Projects/AADT/FeatureServer/2",
+      aadtField: "Value_Nume",
+      yearExtractor: { kind: "field_int", field: "Year_Recor" },
+      snapM: 200,
+      sourceTag: "wvdot",
+    },
+  },
 
   // ODOT-OK — OKC + Tulsa, polyline AADT_Network
   ...(["oklahoma-city", "tulsa"].flatMap((slug) => {
@@ -1107,12 +1122,13 @@ const REGIONS: RegionConfig[] = [
   })),
 
   // PennDOT (4)
-  ...(["allentown", "harrisburg", "scranton", "erie"].flatMap((slug) => {
+  ...(["allentown", "harrisburg", "scranton", "erie", "state-college"].flatMap((slug) => {
     const bboxes: Record<string, RegionConfig["bbox"]> = {
       "allentown": { latMin: 40.5, latMax: 40.8, lonMin: -75.7, lonMax: -75.2 },
       "harrisburg": { latMin: 40.1, latMax: 40.4, lonMin: -77.0, lonMax: -76.6 },
       "scranton": { latMin: 41.3, latMax: 41.6, lonMin: -75.9, lonMax: -75.4 },
       "erie": { latMin: 42.0, latMax: 42.2, lonMin: -80.3, lonMax: -79.9 },
+      "state-college": { latMin: 40.7, latMax: 40.95, lonMin: -78.05, lonMax: -77.7 },
     };
     return [{ slug, source: "polyline_bbox", counties: [], bbox: bboxes[slug], sourceLabel: "PennDOT RMS Traffic Volumes", polylineConfig: { url: "https://gis.penndot.gov/arcgis/rest/services/opendata/roadwaytraffic/MapServer/0", aadtField: "CUR_AADT", yearExtractor: { kind: "field_int", field: "BASE_ADT_YR" }, snapM: 200, sourceTag: "penndot" } } as RegionConfig];
   })),

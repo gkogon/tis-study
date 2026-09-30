@@ -112,6 +112,7 @@ export type RegionCode =
   | "portland_me_metro"
   | "trenton_metro"
   | "charleston_wv_metro"
+  | "morgantown_metro"
   | "jackson_ms_metro"
   | "little_rock_metro"
   | "oklahoma_city_metro"
@@ -161,6 +162,7 @@ export type RegionCode =
   | "toledo_metro" | "akron_metro" | "dayton_metro" | "youngstown_metro"
   | "grand_rapids_metro" | "lansing_metro" | "ann_arbor_metro" | "flint_metro"
   | "allentown_metro" | "harrisburg_metro" | "scranton_metro" | "erie_metro"
+  | "state_college_metro"
   | "worcester_metro" | "springfield_ma_metro"
   | "new_haven_metro" | "bridgeport_metro"
   | "fort_wayne_metro" | "south_bend_metro" | "evansville_metro"
@@ -1513,6 +1515,26 @@ export const REGIONS: Record<RegionCode, Region> = {
     dataSourceId: "wvdot",
     active: true,
   },
+  // Morgantown MSA core (Monongalia County). Added 2026-09 -- charleston_wv
+  // was the only WV region. Box covers Morgantown, Star City, Westover,
+  // Granville and Cheat Lake; latMax 39.72 stays south of the Mason-Dixon line
+  // (39.7212) so no PA point resolves here, latMin 39.5 stops north of
+  // Fairmont (Marion County). dotName is WVDOH District 4 (Clarksburg), which
+  // covers Monongalia; the MPO is MMMPO. Parking: generic wording (city and
+  // county codes both apply depending on the site).
+  morgantown_metro: {
+    code: "morgantown_metro",
+    displayName: "Morgantown MSA",
+    bounds: { latMin: 39.5, latMax: 39.72, lonMin: -80.15, lonMax: -79.8 },
+    stateCode: "WV",
+    jurisdiction: {
+      dotName: "WVDOT Division of Highways District 4",
+      planningOfficeName: "Morgantown Monongalia Metropolitan Planning Organization (MMMPO)",
+      parkingCodeCitation: "Off-street parking per the controlling municipal or county zoning ordinance for the site.",
+    },
+    dataSourceId: "wvdot",
+    active: true,
+  },
   jackson_ms_metro: {
     code: "jackson_ms_metro",
     displayName: "Jackson (MS) MSA",
@@ -2116,6 +2138,27 @@ export const REGIONS: Record<RegionCode, Region> = {
   harrisburg_metro: { code: "harrisburg_metro", displayName: "Harrisburg-Carlisle MSA", bounds: { latMin: 40.1, latMax: 40.4, lonMin: -77.0, lonMax: -76.6 }, stateCode: "PA", jurisdiction: { dotName: "Harrisburg Department of Public Works", planningOfficeName: "Harrisburg Bureau of Planning", parkingCodeCitation: "Harrisburg Zoning Code, Chapter 7-329 — Off-Street Parking." }, dataSourceId: "penndot", active: true },
   scranton_metro: { code: "scranton_metro", displayName: "Scranton-Wilkes-Barre MSA", bounds: { latMin: 41.3, latMax: 41.6, lonMin: -75.9, lonMax: -75.4 }, stateCode: "PA", jurisdiction: { dotName: "Scranton Department of Public Works", planningOfficeName: "Scranton Office of Economic and Community Development", parkingCodeCitation: "Scranton Zoning Ordinance, Article VII — Off-Street Parking." }, dataSourceId: "penndot", active: true },
   erie_metro: { code: "erie_metro", displayName: "Erie MSA", bounds: { latMin: 42.0, latMax: 42.2, lonMin: -80.3, lonMax: -79.9 }, stateCode: "PA", jurisdiction: { dotName: "Erie Department of Public Works", planningOfficeName: "Erie Department of Planning", parkingCodeCitation: "Erie Zoning Ordinance, Section 209-71 — Off-Street Parking." }, dataSourceId: "penndot", active: true },
+  // State College MSA (Centre County). Added 2026-09: a study at N Atherton St
+  // hard-failed as "outside our 300 covered metros" -- the nearest PA boxes
+  // (Pittsburgh lonMax -79.3, Harrisburg lonMin -77.0) stop well short.
+  // Box covers State College Borough and College, Ferguson, Patton, Harris and
+  // Benner townships plus Bellefonte/Pleasant Gap; no other region overlaps it.
+  // dotName is the PennDOT district (2-0, Clearfield, covers Centre County):
+  // the arterials here are state routes, and the area spans six+ municipalities
+  // with separate zoning codes, so parking uses the generic statewide wording.
+  state_college_metro: {
+    code: "state_college_metro",
+    displayName: "State College MSA",
+    bounds: { latMin: 40.7, latMax: 40.95, lonMin: -78.05, lonMax: -77.7 },
+    stateCode: "PA",
+    jurisdiction: {
+      dotName: "PennDOT Engineering District 2-0",
+      planningOfficeName: "Centre County Metropolitan Planning Organization (CCMPO)",
+      parkingCodeCitation: "Off-street parking per the controlling municipal or county zoning ordinance for the site.",
+    },
+    dataSourceId: "penndot",
+    active: true,
+  },
   // MA (2) — MassDOT
   worcester_metro: { code: "worcester_metro", displayName: "Worcester MSA", bounds: { latMin: 42.1, latMax: 42.5, lonMin: -72.0, lonMax: -71.6 }, stateCode: "MA", jurisdiction: { dotName: "Worcester Department of Public Works and Parks", planningOfficeName: "Worcester Division of Planning and Regulatory Services", parkingCodeCitation: "Worcester Zoning Ordinance, Article IV — Parking and Loading." }, dataSourceId: "massdot", active: true },
   springfield_ma_metro: { code: "springfield_ma_metro", displayName: "Springfield (MA) MSA", bounds: { latMin: 42.0, latMax: 42.2, lonMin: -72.8, lonMax: -72.4 }, stateCode: "MA", jurisdiction: { dotName: "Springfield Department of Public Works", planningOfficeName: "Springfield Office of Planning and Economic Development", parkingCodeCitation: "Springfield Zoning Ordinance, Article 7 — Off-Street Parking." }, dataSourceId: "massdot", active: true },
