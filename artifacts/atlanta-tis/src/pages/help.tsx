@@ -220,15 +220,19 @@ export default function HelpPage() {
             Data sources &amp; methodology
           </h2>
           <FaqList>
-            <FAQ q="Where do the intersection counts come from?">
-              Each metro's own measured layer — the state DOT's published
-              AADT and count records (GDOT 511 NaviGAtor v2 in Georgia,
-              PennDOT, NCDOT, FDOT and their equivalents elsewhere), joined to
-              the signal inventory for that metro. Every report names its own
-              source and vintage. For intersections where we have ground-truth
-              observations, we calibrate the screening delay model against
-              observed delay; report text notes which signals are calibrated
-              and against how many samples.
+            <FAQ q="Where do the intersection volumes come from?">
+              No traffic counts are collected; volumes are estimated unless you
+              import your own turning-movement counts (Synchro or UTDF). In most
+              metros each signal's design-hour volume is AADT × K-factor from a
+              nearby AADT count record on a compatible road (the state DOT's
+              published layer, or FHWA HPMS where that is what exists), and a
+              road-class baseline where there is none. In the Atlanta MSA the
+              volume is modeled from road class, distance from downtown and a
+              fixed per-signal factor, with no count joined. Atlanta is also the
+              only metro where GDOT 511 is used: at signals with frequent 511
+              incident reports nearby, computed delay is multiplied by an
+              incident-based factor of up to 1.20. That factor is not fitted to
+              measured delay.
             </FAQ>
             <FAQ q="What standards are referenced?">
               Openly-published capacity methods — Webster 1958 / Akçelik 1980 (delay, LOS, queuing). Public trip-generation
