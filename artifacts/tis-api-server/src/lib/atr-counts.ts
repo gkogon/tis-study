@@ -116,6 +116,7 @@ const ATR_SOURCE_BY_REGION: Record<string, string> = {
   harrisburg_metro: "fhwa_tmas",
   scranton_metro: "fhwa_tmas",
   erie_metro: "fhwa_tmas",
+  state_college_metro: "fhwa_tmas",
 
   // CALIFORNIA
   los_angeles_metro: "fhwa_tmas",

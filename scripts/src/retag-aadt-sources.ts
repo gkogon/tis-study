@@ -189,6 +189,7 @@ const SLUG_TO_DOT: Record<string, string> = {
   "portland-me": "medot",
   trenton: "njdot",
   "charleston-wv": "wvdot",
+  morgantown: "wvdot",
   providence: "ridot",
   "des-moines": "iadot",
   "cedar-rapids": "iadot",
@@ -250,6 +251,7 @@ const SLUG_TO_DOT: Record<string, string> = {
   youngstown: "odot_oh",
   // More PennDOT
   erie: "penndot",
+  "state-college": "penndot",
   // Combined-metro slugs
   "dallas-fort-worth": "txdot",
   charlottesville: "vdot",

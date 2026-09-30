@@ -130,6 +130,8 @@ const PROBES: Probe[] = [
   { regionCode: "portland_me_metro", lat: 43.6591, lon: -70.2568, expectDotIncludes: "Portland" },
   { regionCode: "trenton_metro", lat: 40.2206, lon: -74.7565, expectDotIncludes: "Trenton" },
   { regionCode: "charleston_wv_metro", lat: 38.3498, lon: -81.6326, expectDotIncludes: "Charleston" },
+  { regionCode: "morgantown_metro", lat: 39.6408, lon: -79.9709, expectDotIncludes: "District 4" }, // University Ave / Patteson Dr
+  { regionCode: "morgantown_metro", lat: 39.6620, lon: -79.8520, expectDotIncludes: "District 4" }, // Cheat Lake
   { regionCode: "jackson_ms_metro", lat: 32.2988, lon: -90.1848, expectDotIncludes: "Jackson" },
   { regionCode: "little_rock_metro", lat: 34.7465, lon: -92.2896, expectDotIncludes: "Little Rock" },
   { regionCode: "oklahoma_city_metro", lat: 35.4676, lon: -97.5164, expectDotIncludes: "Oklahoma City" },
@@ -161,6 +163,8 @@ const PROBES: Probe[] = [
   { regionCode: "harrisburg_metro", lat: 40.2732, lon: -76.8867, expectDotIncludes: "Harrisburg" },
   { regionCode: "scranton_metro", lat: 41.4090, lon: -75.6624, expectDotIncludes: "Scranton" },
   { regionCode: "erie_metro", lat: 42.1292, lon: -80.0851, expectDotIncludes: "Erie" },
+  { regionCode: "state_college_metro", lat: 40.8021, lon: -77.8660, expectDotIncludes: "District 2-0" }, // N Atherton St
+  { regionCode: "state_college_metro", lat: 40.9134, lon: -77.7785, expectDotIncludes: "District 2-0" }, // Bellefonte
   { regionCode: "worcester_metro", lat: 42.2626, lon: -71.8023, expectDotIncludes: "Worcester" },
   { regionCode: "springfield_ma_metro", lat: 42.1015, lon: -72.5898, expectDotIncludes: "Springfield" },
   { regionCode: "new_haven_metro", lat: 41.3083, lon: -72.9279, expectDotIncludes: "New Haven" },
