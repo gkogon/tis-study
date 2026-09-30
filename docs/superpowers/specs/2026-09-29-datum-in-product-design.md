@@ -100,7 +100,7 @@ Pure functions over `(requestPayload, resultPayload)`. **Scenario field names in
 | `growthOverrideDisclosed` | 1 | `requestPayload.growthRatePct` present ⇒ `growthSource` exists and `isGrowthOverride(growthSource)` |
 | `growthMultiplierReproduces` | 1 | `growthMultiplierExact` vs `(1 + growthAppliedPct/100) ^ growthYears` |
 | `rateReproducesTotal` | 2 | the printed rate × size reproduces the printed total; `not-run` on legacy payloads where the rate fields are absent |
-| `passByExplicitVsOmitted` | 2 | an explicit zero pass-by is distinguishable from an omitted one. **Only `passByPctPm`** (nonzero on 19 of 51 land uses); the same clause on `internalCapturePctPm` is vacuous — it is 0 on all 51, and internal capture is nonzero only when the request supplies it (`tis.ts:1364`) |
+| `passByBasisNamed` | 2 | an applied pass-by reduction is stated in the deliverable. **Only `passByPctPm`** (nonzero on 19 of 51 land uses); the same clause on `internalCapturePctPm` is vacuous — it is 0 on all 51, and internal capture is nonzero only when the request supplies it (`tis.ts:1364`) |
 | `vcPlausibilityIntersection` | 4 | `implausibleVolumeDisclosures` over the saved rows against `PLAUSIBLE_MAX_INTERSECTION_VC` (`signal-delay.ts:98`) |
 | `vcPlausibilityApproach` | 4 | **new** — per-approach v/c above the ceiling. Fires today on the shipped Wake sample (NB 3.11/3.16, 3.22/3.27/3.34, 2.86/2.90/2.97) where the intersection-level guard is silent at max 1.87 |
 | `vcPlausibilityDesignYear` | 4 | **new** — design-year v/c above the ceiling. Fires today on Wake (`designBuildVc` 2.54) and Bexar (3.04), both silent |
