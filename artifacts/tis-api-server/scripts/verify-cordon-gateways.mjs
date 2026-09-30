@@ -21,7 +21,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(path.resolve(here, "ts-loader.mjs")).href, import.meta.url);
 
 const { selectCordonGateways } = await import(path.resolve(here, "../src/lib/cordon-gateways.ts"));
-const { buildGraph, assignRoutesWithTurns } = await import(path.resolve(here, "../src/lib/network-assignment.ts"));
+const { buildGraph, assignRoutesWithTurns, directedReachability } = await import(path.resolve(here, "../src/lib/network-assignment.ts"));
 const { roadSegmentsNear } = await import(path.resolve(here, "../../api-server/src/lib/regional-roads.ts"));
 
 let fails = 0;
@@ -121,6 +121,33 @@ const crossSegments = [
     `equal-total arms: both tips are ENE gateways (${sel?.gateways.map((gw) => gw.octant).join(",")})`);
   ok(Math.abs((oneWay?.share ?? 0) - 0.5) < 1e-9 && Math.abs((twoWay?.share ?? 0) - 0.5) < 1e-9,
     `equal-total arms: a 4-lane one-way and a 4-lane two-way arm split 50/50 (got ${oneWay?.share?.toFixed(4)}/${twoWay?.share?.toFixed(4)})`);
+}
+
+// ---------------------------------------------------------------------------
+// 4c. Backfill: the reachability screen must act on CANDIDATES. Two one-way
+//     motorway fragments cross the ENE ring with no connection to the site
+//     (the fetch clipped them), and their four endpoints outrank the one
+//     connected arm. Screening the finished top-3 dropped all three picks and
+//     left ENE with nothing; screening candidates hands ENE to the arm.
+// ---------------------------------------------------------------------------
+{
+  const g = buildGraph([
+    [3, LAT, LON, LAT + 0.001, LON + 0.012, 2, 50, "Arm", 0],                  // connected, 3800
+    [0, LAT + 0.004, LON + 0.011, LAT + 0.006, LON + 0.011, 3, 113, "Isle", 1], // island, 5700
+    [0, LAT + 0.006, LON + 0.013, LAT + 0.004, LON + 0.013, 3, 113, "Isle", 1], // island, 5700
+  ]);
+  const ene = { NNE: 0, ENE: 100, ESE: 0, SSE: 0, SSW: 0, WSW: 0, WNW: 0, NNW: 0 };
+  const reach = directedReachability(g, g.nearestNode(LAT, LON));
+  const routable = (node) => reach.outbound[node] === 1 || reach.inbound[node] === 1;
+  const unscreened = selectCordonGateways(g, { lat: LAT, lon: LON }, 0.5, ene);
+  ok(unscreened !== null && unscreened.gateways.length === 3 && unscreened.gateways.every((gw) => !routable(gw.node)),
+    `backfill fixture: unscreened, the 3 ENE slots all go to unreachable fragment ends (${unscreened?.gateways.map((gw) => routable(gw.node)).join(",")})`);
+  const sel = selectCordonGateways(g, { lat: LAT, lon: LON }, 0.5, ene, routable);
+  ok(sel !== null && sel.gateways.length === 1 && routable(sel.gateways[0].node)
+      && Math.abs(sel.gateways[0].share - 1) < 1e-9 && sel.gateways[0].lat < LAT + 0.003,
+    `backfill: screened candidates give ENE's whole share to the connected arm (${sel?.gateways.map((gw) => `${gw.lat.toFixed(4)}:${gw.share.toFixed(3)}`).join(",")})`);
+  ok(selectCordonGateways(g, { lat: LAT, lon: LON }, 0.5, ene, () => false) === null,
+    "backfill: no routable candidate at any class ceiling → null (legacy path)");
 }
 
 // ---------------------------------------------------------------------------

@@ -85,6 +85,13 @@ function octantSteps(a: CardinalDir, b: CardinalDir): number {
  * @param radiusMi   the study radius the fetch was made for
  * @param byDirection the §6.1 directional distribution, percentages summing
  *                    to ~100 (the engine's rollup guarantees this)
+ * @param routable   optional screen: a node it rejects is never a candidate.
+ *                    tis.ts passes directed reachability from the site on
+ *                    one-way-bearing graphs. Screening candidates, not the
+ *                    finished selection, lets an octant whose best ring
+ *                    crossing cannot route fall through to its next best;
+ *                    dropping a selected gateway afterwards left its slot
+ *                    empty and spread its share over every other octant.
  * @returns null when no usable cordon exists (caller keeps the legacy path)
  */
 export function selectCordonGateways(
@@ -92,6 +99,7 @@ export function selectCordonGateways(
   site: { lat: number; lon: number },
   radiusMi: number,
   byDirection: Record<CardinalDir, number>,
+  routable?: (node: number) => boolean,
 ): CordonSelection | null {
   const n = g.nodeLat.length;
   if (n === 0) return null;
@@ -128,6 +136,7 @@ export function selectCordonGateways(
       if (bestCls[i]! > ceiling) continue;
       const d = distMi(site.lat, site.lon, g.nodeLat[i]!, g.nodeLon[i]!);
       if (d < RING_MIN) continue;
+      if (routable && !routable(i)) continue;
       cands.push({
         node: i,
         octant: bearingToCardinal(bearingDeg(site.lat, site.lon, g.nodeLat[i]!, g.nodeLon[i]!)),
