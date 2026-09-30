@@ -365,6 +365,33 @@ const DESTS = [
     && (off.affectedIntersections ?? []).every((ix) => ix.movementSource === undefined),
     "engine: explicit conservedAssignment:false — legacy path, no conserved fields");
 
+  // Reachability screen, end to end. A 5-lane one-way motorway fragment
+  // crosses the ENE ring with no connection to the grid (a fetch clipped at
+  // the ring does this); its nodes outrank the grid's ENE ring nodes. tis.ts
+  // must screen it out as a CANDIDATE, so adding it changes no conserved
+  // output. Screening only the finished selection dropped its slots with no
+  // backfill; not screening hands them to nodes no path reaches. A fresh
+  // module instance (?island) gets a fresh road memo.
+  const islandLat = E_SITE.lat + 0.1 * MI_LAT;
+  const island = [
+    [0, islandLat, ex(0.48), islandLat + 0.02 * MI_LAT, ex(0.52), 5, 113, "Fragment", 1],
+    [0, islandLat + 0.02 * MI_LAT, ex(0.52), islandLat + 0.04 * MI_LAT, ex(0.56), 5, 113, "Fragment", 1],
+  ];
+  eSegments.push(...island);
+  const fresh = await import(`${pathToFileURL(bundlePath).href}?island`);
+  await fresh.generateTisReport({ ...baseReq }); // warm-up, as above
+  const withIsland = await fresh.generateTisReport({ ...baseReq, conservedAssignment: true });
+  eSegments.splice(eSegments.length - island.length, island.length);
+  const conservedView = (r) => JSON.stringify({
+    ca: r.conservedAssignment,
+    ix: (r.affectedIntersections ?? []).map((ix) => ({
+      id: ix.signalId, src: ix.movementSource, t: ix.addedTripsPmPeak, mv: ix.movements, ap: ix.approaches,
+    })),
+  });
+  ok(withIsland.conservedAssignment?.enabled === true
+      && conservedView(withIsland) === conservedView(on),
+    `engine: an unreachable one-way fragment on the ring changes no conserved output (gateways ${on.conservedAssignment?.gatewayCount} → ${withIsland.conservedAssignment?.gatewayCount})`);
+
   await rm(entryPath, { force: true });
   await rm(bundlePath, { force: true });
 }

@@ -1,4 +1,5 @@
-// The routers read the road file's maxspeed in the unit the file stores it.
+// The routers read the road file's maxspeed and lanes in the units the file
+// stores them.
 //
 // Every <slug>-roads.json stores OSM maxspeed in km/h (the extractors'
 // parseMaxspeedKmh converts "N mph" tags on write), the analyzer serves it
@@ -35,6 +36,11 @@
 //     55, so raw-mph files would pass. Scoped to US and UK files: km/h
 //     countries tag round km/h (Montevideo is mostly 45), which says nothing
 //     about the unit.
+//  5. Lanes: buildGraph's capVph is per direction. OSM `lanes` is both
+//     directions on a two-way way but one direction on a one-way way, and
+//     buildGraph halved both, so a 3-lane one-way carriageway (the probe in 3)
+//     got 2 lanes. One-way 3 -> 3 per direction, two-way 4 -> 2, untagged
+//     -> the class default.
 //
 // Run: pnpm run check:road-units   (or: node ./scripts/verify-road-units.mjs)
 import { register } from "node:module";
@@ -68,7 +74,12 @@ const CLASS_FREE_MPH = [60, 50, 40, 30, 25];
 const EXTRACTOR_KMH_PER_MPH = 1.60934;
 // What parseMaxspeedKmh writes for 5, 10, ..., 85 mph: 8, 16, 24, ..., 137.
 const MPH5_KMH = new Set(Array.from({ length: 17 }, (_, i) => Math.round(5 * (i + 1) * EXTRACTOR_KMH_PER_MPH)));
+// network-assignment.ts CLASS_LANES_PER_DIR and PER_LANE_CAP_VPH, pinned for
+// section 5.
+const CLASS_LANES_PER_DIR = [3, 2, 2, 1, 1];
+const PER_LANE_CAP_VPH = 1900;
 const mphOf = (lk) => (lk.lenMi / lk.freeMin) * 60;
+const lanesOf = (lk) => lk.capVph / PER_LANE_CAP_VPH;
 const near = (a, b, tol = 0.05) => Math.abs(a - b) <= tol;
 
 // A 0.1 mi east-west segment. cls, lanes, maxspeed and oneway are the slots
@@ -133,7 +144,7 @@ const readRoadFile = (p) => {
     ? `pittsburgh road file holds a one-way motorway carriageway to probe: ${way[1]}, ${way[3]} lanes, stored at ${way[4]} (${Math.round(way[4] / EXTRACTOR_KMH_PER_MPH)} mph)`
     : "pittsburgh road file holds no one-way class-0 way with 3+ lanes and a 55+ mph tag to probe (was it refetched without lanes, oneway or maxspeed?)");
   if (way) {
-    const [name, kmh, oneway] = [way[1], way[4], way[5]];
+    const [name, lanes, kmh, oneway] = [way[1], way[3], way[4], way[5]];
     const mph = kmh / KMH_PER_MPH;
     const [a, b] = way[2];
     const analyzer = `${process.env["ANALYZER_API_URL"] ?? "http://localhost:8080"}/api/roads`;
@@ -153,6 +164,7 @@ const readRoadFile = (p) => {
     const linkOf = (g) => g.links.find((lk) => g.nodeLat[lk.a] === a[0] && g.nodeLon[lk.a] === a[1] && g.nodeLat[lk.b] === b[0] && g.nodeLon[lk.b] === b[1]);
     const eng = linkOf(buildGraph(served ?? []));
     ok(eng && near(mphOf(eng), mph), `buildGraph routes the carriageway at ${mph.toFixed(1)} mph (got ${eng ? mphOf(eng).toFixed(2) : "no link"})`);
+    ok(eng && lanesOf(eng) === lanes, `buildGraph gives the one-way carriageway its ${lanes} lanes (got ${eng ? lanesOf(eng) : "no link"})`);
     const map = linkOf(buildRoadGraph(served ?? []));
     ok(map && near(mphOf(map), mph), `buildRoadGraph routes the carriageway at ${mph.toFixed(1)} mph (got ${map ? mphOf(map).toFixed(2) : "no link"})`);
   }
@@ -203,6 +215,44 @@ const readRoadFile = (p) => {
     `${checked} US and UK road files checked, London included (${untagged} carry no maxspeed, ${small} under ${MIN_TAGGED} tagged)`);
   ok(worst.share >= MIN_SHARE, `every checked file stores km/h: lowest conversion share ${(worst.share * 100).toFixed(1)}% (${worst.file})`);
   ok(bestRaw.share < MIN_SHARE, `the guard would catch raw mph in every file: highest raw-mph share ${(bestRaw.share * 100).toFixed(1)}% (${bestRaw.file})`);
+}
+
+// ---------------------------------------------------------------------------
+// 5. Lanes per direction: one-way as tagged, two-way halved
+// ---------------------------------------------------------------------------
+{
+  const LANE_CASES = [
+    // [label, lanes, oneway, expected lanes per direction]
+    ["one-way (a->b) 3 lanes", 3, 1, 3],
+    ["one-way (b->a) 3 lanes", 3, -1, 3],
+    ["one-way 2 lanes", 2, 1, 2],
+    ["one-way 1 lane", 1, 1, 1],
+    ["two-way 4 lanes", 4, 0, 2],
+    ["two-way 2 lanes", 2, 0, 1],
+    ["two-way 1 lane", 1, 0, 1],
+  ];
+  for (const [label, lanes, oneway, want] of LANE_CASES) {
+    const lk = buildGraph([seg(2, lanes, null, oneway)]).links[0];
+    ok(lk && lanesOf(lk) === want, `buildGraph: ${label} -> ${want} per direction (got ${lk ? lanesOf(lk) : "no link"})`);
+  }
+  // An absent oneway slot is two-way, the pre-oneway road files' behaviour.
+  {
+    const lk = buildGraph([seg(2, 4, null).slice(0, 8)]).links[0];
+    ok(lk && lanesOf(lk) === 2, `buildGraph: 4 lanes with oneway absent -> 2 per direction (got ${lk ? lanesOf(lk) : "no link"})`);
+  }
+  for (let cls = 0; cls <= 4; cls++) {
+    for (const oneway of [0, 1]) {
+      const variants = [["null", seg(cls, null, null, oneway)], ["0", seg(cls, 0, null, oneway)]];
+      for (const [label, s] of variants) {
+        const lk = buildGraph([s]).links[0];
+        ok(lk && lanesOf(lk) === CLASS_LANES_PER_DIR[cls],
+          `buildGraph: class ${cls} ${oneway ? "one-way" : "two-way"} with lanes ${label} takes the class default ${CLASS_LANES_PER_DIR[cls]} (got ${lk ? lanesOf(lk) : "no link"})`);
+      }
+    }
+    const lk = buildGraph([seg(cls, null, null).slice(0, 5)]).links[0];
+    ok(lk && lanesOf(lk) === CLASS_LANES_PER_DIR[cls],
+      `buildGraph: class ${cls} with lanes absent takes the class default ${CLASS_LANES_PER_DIR[cls]} (got ${lk ? lanesOf(lk) : "no link"})`);
+  }
 }
 
 console.log(fails === 0 ? "\ncheck:road-units passed" : `\n${fails} check(s) FAILED`);
