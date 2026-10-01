@@ -108,10 +108,23 @@ ok(!/\bqueue95Ft\b\s*(field|payload)/.test(protocol), "protocol does not call qu
 ok(!protocol.includes("LOS_THRESHOLDS"), "protocol does not reference the module-private LOS_THRESHOLDS");
 
 // 6. One completion gate, stated once, requiring BOTH lists empty.
-ok(/empty\s+`?BLOCKER`?\s+list\s+\*\*and\*\*\s+an?\s+empty\s+`?CONTESTED`?/i.test(protocol)
-  || /no open BLOCKER and no open CONTESTED/i.test(protocol),
-  "completion gate requires empty BLOCKER and empty CONTESTED");
-ok(!/BLOCKER list is empty\s*$/im.test(agent), "datum.md no longer states a BLOCKER-only gate");
+// \s+ throughout: the replacement text wraps across lines, so a literal space
+// would fail against correctly-amended markdown.
+ok(
+  /no\s+open\s+`?BLOCKER`?\s+and\s+no\s+open\s+`?CONTESTED`?/i.test(protocol),
+  "completion gate requires empty BLOCKER and empty CONTESTED",
+);
+// Assert against the sentence that is actually there, and positively — the
+// earlier form (/BLOCKER list is empty$/) matched neither the old text nor the
+// new one, so it passed vacuously.
+ok(
+  !/empty\s+`?BLOCKER`?\s+list\s+is\s+the\s+only\s+condition/i.test(agent),
+  "datum.md no longer states a BLOCKER-only gate",
+);
+ok(
+  /no\s+open\s+`?BLOCKER`?\s+and\s+no\s+open\s+`?CONTESTED`?/i.test(agent),
+  "datum.md states the two-way gate",
+);
 
 // 7. The taxonomy includes DEFECT in the agent's frontmatter description.
 const fm = agent.split("---")[1] ?? "";
@@ -1442,11 +1455,15 @@ ok(/readPaths[\s\S]{0,120}notNull\(\)/.test(schema), "read_paths is NOT NULL");
 
 // Every new statement is idempotent and nothing destructive slipped in.
 const stmts = [...migrate.matchAll(/id: "(study_proofread[^"]+)",\s*sql: `([^`]+)`/g)];
-ok(stmts.length >= 6, `migrate has the proofread statements (${stmts.length})`);
+ok(stmts.length >= 8, `migrate has the proofread statements (${stmts.length})`);
+// Idempotency of the findings insert rests on this key existing.
+ok(/UQ_study_proofread_findings_run_fp/.test(migrate) && /UQ_study_proofread_findings_run_fp/.test(schema),
+  "the (run_id, fingerprint) unique key exists in both the schema and the migration");
+ok(/UQ_study_proofread_runs_project_revision/.test(migrate), "the (project_id, revision) unique key exists in the migration");
 for (const [, id, sql] of stmts) {
   ok(/IF NOT EXISTS/.test(sql), `${id}: idempotent (IF NOT EXISTS)`);
   ok(!/\bDROP\b|\bRENAME\b|ADD CONSTRAINT/.test(sql), `${id}: no DROP / RENAME / ADD CONSTRAINT`);
-  if (/CREATE INDEX/.test(sql)) ok(/"IDX_/.test(sql), `${id}: mixed-case index name is quoted`);
+  if (/CREATE (UNIQUE )?INDEX/.test(sql)) ok(/"(IDX|UQ)_/.test(sql), `${id}: mixed-case index name is quoted`);
 }
 
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);
@@ -1468,7 +1485,7 @@ Expected: FAIL — `ENOENT lib/db/src/schema/study-proofread.ts`
 
 ```ts
 import { sql } from "drizzle-orm";
-import { index, integer, jsonb, pgTable, smallint, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, smallint, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 import { firmsTable } from "./firms";
 import { tisProjectsTable } from "./tis-projects";
 
@@ -1524,7 +1541,11 @@ export const studyProofreadRunsTable = pgTable(
     finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
   (table) => [
-    index("IDX_study_proofread_runs_project").on(table.projectId, table.revision),
+    // UNIQUE, not a plain index: the revision is derived in SQL (see
+    // insertQueuedRun) and two concurrent re-run requests must not both land
+    // revision N — a duplicate would make `orderBy(desc(revision)).limit(1)`
+    // nondeterministic and split one study's findings across two rows.
+    uniqueIndex("UQ_study_proofread_runs_project_revision").on(table.projectId, table.revision),
     index("IDX_study_proofread_runs_status").on(table.status, table.createdAt),
   ],
 );
@@ -1565,6 +1586,10 @@ export const studyProofreadFindingsTable = pgTable(
   (table) => [
     index("IDX_study_proofread_findings_run").on(table.runId),
     index("IDX_study_proofread_findings_fingerprint").on(table.fingerprint),
+    // A retried run re-derives the same findings. The unique key plus
+    // onConflictDoNothing makes the insert idempotent instead of duplicating
+    // every finding on the second attempt.
+    uniqueIndex("UQ_study_proofread_findings_run_fp").on(table.runId, table.fingerprint),
   ],
 );
 
@@ -1636,7 +1661,7 @@ Append to `SQL_STATEMENTS` in `lib/db/migrate.mjs`, after the theme backfill ent
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       finished_at TIMESTAMPTZ
     );` },
-  { id: "study_proofread_runs.idx_project", sql: `CREATE INDEX IF NOT EXISTS "IDX_study_proofread_runs_project" ON study_proofread_runs (project_id, revision);` },
+  { id: "study_proofread_runs.uq_project_revision", sql: `CREATE UNIQUE INDEX IF NOT EXISTS "UQ_study_proofread_runs_project_revision" ON study_proofread_runs (project_id, revision);` },
   { id: "study_proofread_runs.idx_status",  sql: `CREATE INDEX IF NOT EXISTS "IDX_study_proofread_runs_status" ON study_proofread_runs (status, created_at);` },
   { id: "study_proofread_findings.create", sql: `CREATE TABLE IF NOT EXISTS study_proofread_findings (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1656,6 +1681,7 @@ Append to `SQL_STATEMENTS` in `lib/db/migrate.mjs`, after the theme backfill ent
     );` },
   { id: "study_proofread_findings.idx_run", sql: `CREATE INDEX IF NOT EXISTS "IDX_study_proofread_findings_run" ON study_proofread_findings (run_id);` },
   { id: "study_proofread_findings.idx_fp",  sql: `CREATE INDEX IF NOT EXISTS "IDX_study_proofread_findings_fingerprint" ON study_proofread_findings (fingerprint);` },
+  { id: "study_proofread_findings.uq_run_fp", sql: `CREATE UNIQUE INDEX IF NOT EXISTS "UQ_study_proofread_findings_run_fp" ON study_proofread_findings (run_id, fingerprint);` },
   { id: "study_proofread_dispositions.create", sql: `CREATE TABLE IF NOT EXISTS study_proofread_dispositions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       finding_id UUID NOT NULL REFERENCES study_proofread_findings(id) ON DELETE CASCADE,
@@ -1851,11 +1877,16 @@ const lines = tis.split("\n");
 const idx = (needle) => lines.findIndex((l) => l.includes(needle));
 const enqueue = idx("enqueueProofread(");
 const refund = idx("if (!saved)");
-const respond = lines.findIndex((l) => /res\.json\(validated\)/.test(l));
+// Anchor on the POST-edit text. `res.json(validated)` no longer exists in the
+// generate handler after Step 5, and findIndex would silently match the
+// /whatif handler's identical line further down the file.
+const respond = lines.findIndex((l) => /res\.json\(\{\s*\.\.\.validated,\s*projectId/.test(l));
 
 ok(enqueue > 0, "the generate handler enqueues a proofread");
 ok(enqueue > refund, "the enqueue sits after the !saved refund branch");
-ok(enqueue < respond, "the enqueue sits before res.json(validated)");
+ok(respond > 0, "the generate handler responds with the merged payload");
+ok(enqueue < respond, "the enqueue sits before the response");
+ok(respond - enqueue < 12, "the enqueue is adjacent to the response, not stranded elsewhere in the handler");
 ok(/void enqueueProofread\(/.test(tis), "the enqueue is fire-and-forget (void), like the adjacent logEvent");
 ok(/enqueueProofread\([^)]*\)[\s\S]{0,200}?\.catch\(/.test(tis), "the fire-and-forget call has its own .catch");
 ok(!/await enqueueProofread/.test(tis), "the enqueue never delays the engineer's response");
@@ -1900,7 +1931,7 @@ Expected: FAIL — no `enqueueProofread` in `tis.ts`, no `projectId` merge.
  * Every read is firm-scoped in its WHERE clause; there is no middleware that
  * does it, and a findings read by project id alone would leak across firms.
  */
-import { and, desc, eq, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import {
   db,
   studyProofreadDispositionsTable,
@@ -1922,18 +1953,16 @@ export async function insertQueuedRun(args: {
   rulesVersion: string;
   engineStamp: string;
 }): Promise<StudyProofreadRun | null> {
-  const [prev] = await db
-    .select({ revision: studyProofreadRunsTable.revision })
-    .from(studyProofreadRunsTable)
-    .where(eq(studyProofreadRunsTable.projectId, args.projectId))
-    .orderBy(desc(studyProofreadRunsTable.revision))
-    .limit(1);
+  // The revision is derived inside the INSERT so the read and the write are one
+  // statement. Read-then-insert would let two quick presses of "Run again" both
+  // read the same max and both write revision N; the (project_id, revision)
+  // unique key then rejects the loser instead of silently duplicating it.
   const [row] = await db
     .insert(studyProofreadRunsTable)
     .values({
       projectId: args.projectId,
       firmId: args.firmId,
-      revision: (prev?.revision ?? 0) + 1,
+      revision: sql`(SELECT coalesce(max(revision), 0) + 1 FROM study_proofread_runs WHERE project_id = ${args.projectId})`,
       status: "queued",
       protocolVersion: args.protocolVersion,
       rulesVersion: args.rulesVersion,
@@ -1946,11 +1975,44 @@ export async function insertQueuedRun(args: {
   return row ?? null;
 }
 
-/** Claim one queued or lease-expired row for this instance. Null when there is nothing to do. */
+/**
+ * Claim one queued or lease-expired row for this instance. Null when there is
+ * nothing to do.
+ *
+ * Goes through the query builder, NOT `db.execute(sql.raw(...))`: `execute`
+ * passes no field map (drizzle pg-core `db.js` → `prepareQuery(builtQuery,
+ * void 0, ...)`), so a raw `RETURNING *` comes back keyed by the literal
+ * Postgres column names. The repo's only other raw query types its result in
+ * snake_case for exactly that reason (`src/lib/atr-counts.ts:408`). A cast to
+ * the camelCase `$inferSelect` shape would type-check and then hand every
+ * caller `projectId: undefined`. `.returning()` maps the columns properly, and
+ * binding `claimedBy` as a parameter also removes the string interpolation the
+ * raw form needed.
+ *
+ * The predicate is the one in CLAIM_SQL: a queued row, or a running row whose
+ * lease has expired.
+ */
 export async function claimOneRun(instanceId: string): Promise<StudyProofreadRun | null> {
-  const res = await db.execute(sql.raw(CLAIM_SQL.replace("$1", `'${instanceId.replace(/'/g, "")}'`)));
-  const rows = (res as unknown as { rows?: StudyProofreadRun[] }).rows ?? [];
-  return rows[0] ?? null;
+  const [row] = await db
+    .update(studyProofreadRunsTable)
+    .set({
+      status: "running",
+      claimedAt: new Date(),
+      claimedBy: instanceId,
+      attempts: sql`${studyProofreadRunsTable.attempts} + 1`,
+    })
+    .where(
+      sql`${studyProofreadRunsTable.id} = (
+        SELECT id FROM study_proofread_runs
+         WHERE status = 'queued'
+            OR (status = 'running' AND claimed_at IS NOT NULL AND claimed_at < now() - interval '10 minutes')
+         ORDER BY created_at
+         FOR UPDATE SKIP LOCKED
+         LIMIT 1
+      )`,
+    )
+    .returning();
+  return row ?? null;
 }
 
 export async function loadStudyForRun(run: StudyProofreadRun) {
@@ -1962,11 +2024,16 @@ export async function loadStudyForRun(run: StudyProofreadRun) {
   return row ?? null;
 }
 
+/**
+ * Write a run's outcome. Safe to call twice for the same run: a requeue after
+ * a partial success must not duplicate findings, and must not erase the
+ * coverage the successful clause pass already recorded.
+ */
 export async function completeRun(args: {
   runId: string;
   status: "rules_ready" | "failed" | "queued";
-  coverage: unknown;
-  inputManifest: unknown;
+  coverage?: unknown;
+  inputManifest?: unknown;
   findings: ProofreadFinding[];
   error?: string;
 }): Promise<void> {
@@ -1974,8 +2041,9 @@ export async function completeRun(args: {
     .update(studyProofreadRunsTable)
     .set({
       status: args.status,
-      coverage: args.coverage as object,
-      inputManifest: args.inputManifest as object,
+      // Omitted on a requeue: the previous attempt's coverage is better than {}.
+      ...(args.coverage === undefined ? {} : { coverage: args.coverage as object }),
+      ...(args.inputManifest === undefined ? {} : { inputManifest: args.inputManifest as object }),
       error: args.error ?? null,
       finishedAt: args.status === "queued" ? null : new Date(),
     })
@@ -1996,7 +2064,9 @@ export async function completeRun(args: {
       audience: f.audience,
       fingerprint: findingFingerprint(f),
     })),
-  );
+  ).onConflictDoNothing({
+    target: [studyProofreadFindingsTable.runId, studyProofreadFindingsTable.fingerprint],
+  });
 }
 
 export async function latestRunForProject(firmId: string, projectId: string) {
@@ -2011,13 +2081,17 @@ export async function latestRunForProject(firmId: string, projectId: string) {
     .select()
     .from(studyProofreadFindingsTable)
     .where(eq(studyProofreadFindingsTable.runId, run.id));
+  // Scoped in SQL, not filtered in JS: this is the read the panel polls, and
+  // an unbounded select over every firm's triage rows grows with the table.
+  // Uses the (finding_id, created_at) index.
   const dispositions = findings.length
     ? await db
         .select()
         .from(studyProofreadDispositionsTable)
+        .where(inArray(studyProofreadDispositionsTable.findingId, findings.map((f) => f.id)))
         .orderBy(desc(studyProofreadDispositionsTable.createdAt))
     : [];
-  return { run, findings, dispositions: dispositions.filter((d) => findings.some((f) => f.id === d.findingId)) };
+  return { run, findings, dispositions };
 }
 
 /** The run before `revision` on this project, with the engine it judged — the source of a carry-forward. */
@@ -2028,7 +2102,17 @@ export async function previousRunForProject(
   const [row] = await db
     .select({ id: studyProofreadRunsTable.id, engineStamp: studyProofreadRunsTable.engineStamp })
     .from(studyProofreadRunsTable)
-    .where(and(eq(studyProofreadRunsTable.projectId, projectId), lt(studyProofreadRunsTable.revision, beforeRevision)))
+    .where(
+      and(
+        eq(studyProofreadRunsTable.projectId, projectId),
+        lt(studyProofreadRunsTable.revision, beforeRevision),
+        // Only a run that finished its clause pass holds dispositions worth
+        // carrying. A failed or still-queued revision would carry nothing and,
+        // because this looks exactly one revision back, would strand the
+        // dispositions recorded on the revision before it.
+        eq(studyProofreadRunsTable.status, "rules_ready"),
+      ),
+    )
     .orderBy(desc(studyProofreadRunsTable.revision))
     .limit(1);
   return row ?? null;
@@ -2081,12 +2165,25 @@ export async function insertDisposition(args: {
   });
 }
 
-export async function findingBelongsToFirm(firmId: string, findingId: string): Promise<boolean> {
+/** The URL asserts firm → project → run → finding; verify all of it in one query. */
+export async function findingInFirmRun(
+  firmId: string,
+  projectId: string,
+  runId: string,
+  findingId: string,
+): Promise<boolean> {
   const [row] = await db
     .select({ id: studyProofreadFindingsTable.id })
     .from(studyProofreadFindingsTable)
     .innerJoin(studyProofreadRunsTable, eq(studyProofreadFindingsTable.runId, studyProofreadRunsTable.id))
-    .where(and(eq(studyProofreadFindingsTable.id, findingId), eq(studyProofreadRunsTable.firmId, firmId)))
+    .where(
+      and(
+        eq(studyProofreadFindingsTable.id, findingId),
+        eq(studyProofreadRunsTable.id, runId),
+        eq(studyProofreadRunsTable.projectId, projectId),
+        eq(studyProofreadRunsTable.firmId, firmId),
+      ),
+    )
     .limit(1);
   return !!row;
 }
@@ -2237,14 +2334,21 @@ Replace the `logEvent(...)` + `res.json(validated)` tail of the `/generate` hand
 
 - [ ] **Step 6: Document `projectId` in the spec and regenerate**
 
-In `lib/tis-api-spec/openapi.yaml`, on the generate response schema, add:
+`/generate`'s 200 is `$ref: "#/components/schemas/TisReport"`, and that same `TisReport` is also `/whatif`'s 200 and `TisProjectDetail.result` — so adding the property to `TisReport` would document a project id on an endpoint that saves nothing and on a stored result that has no such field. Add a new schema beside `TisReport` instead, and repoint only `/generate`:
 
 ```yaml
-        projectId:
-          type: string
-          format: uuid
-          description: The saved project this study was persisted as. Poll GET /projects/{id}/proofread with it.
+    TisGenerateResponse:
+      allOf:
+        - $ref: "#/components/schemas/TisReport"
+        - type: object
+          properties:
+            projectId:
+              type: string
+              format: uuid
+              description: The saved project this study was persisted as. Poll GET /projects/{id}/proofread with it.
 ```
+
+Then change `/generate`'s 200 `$ref` to `#/components/schemas/TisGenerateResponse`, leaving `/whatif` and `TisProjectDetail.result` pointed at `TisReport`.
 
 Run: `pnpm --filter @workspace/tis-api-spec run codegen`
 Note: `clean: true` wipes both generated trees, so never hand-edit anything under `generated/`.
@@ -2281,7 +2385,7 @@ git commit -m "feat(proofread): runner, lease claim, and the post-save enqueue t
 
 **Interfaces:**
 - Consumes: `latestRunForProject`, `insertDisposition`, `findingBelongsToFirm`, `insertQueuedRun` (Task 6); `claimAndRunOne` (Task 6).
-- Produces: `ProofreadDispositionBody` (zod); routes `GET /projects/:id/proofread`, `POST /projects/:id/proofread`, `POST /projects/:id/proofread/:runId/findings/:findingId/dispositions`; limiters `proofreadReadLimiter`, `proofreadRunLimiter`.
+- Produces: `ProofreadDispositionBody` (zod); routes `GET /projects/:id/proofread`, `POST /projects/:id/proofread`, `POST /projects/:id/proofread/:runId/findings/:findingId/dispositions`; limiters `proofreadReadLimiter`, `proofreadRunLimiter`, `proofreadDispositionLimiter`; `projectExistsForFirm(firmId, id)` in `src/lib/tis-projects.ts`; `findingInFirmRun(firmId, projectId, runId, findingId)` replacing `findingBelongsToFirm`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2303,6 +2407,7 @@ const routes = src("../src/routes/proofread.ts");
 const index = src("../src/routes/index.ts");
 const security = src("../src/lib/security.ts");
 const contract = src("../../../lib/tis-api-zod/src/proofread.ts");
+const store = src("../src/lib/proofread-store.ts");
 
 let fails = 0;
 const ok = (cond, msg) => {
@@ -2319,6 +2424,14 @@ ok(/Project not found\./.test(routes), "a foreign id 404s rather than 403s, per 
 ok(!/requestPayload|resultPayload/.test(routes), "no route touches request_payload or result_payload");
 ok(!/tisProjectsTable/.test(routes), "no route writes tis_projects");
 ok(!/\.update\(/.test(routes), "routes record dispositions by insert, never by mutation");
+// The store is where writes actually live, so the advisor boundary is asserted there too.
+ok(
+  !/\.update\(\s*tisProjectsTable/.test(store) &&
+    !/\.insert\(\s*tisProjectsTable/.test(store) &&
+    !/\.delete\(\s*tisProjectsTable/.test(store),
+  "the store never writes tis_projects",
+);
+ok(/db\.update\(studyProofread/.test(store), "the store does write its own run table (the assertion above is not vacuous)");
 
 // Disposition rules from the protocol.
 ok(/WITHDRAWN/.test(contract) && /sourceLabel/.test(contract), "the contract knows WITHDRAWN needs a source");
@@ -2328,6 +2441,8 @@ ok(/PE_ONLY|pe-only|phase 4/i.test(routes), "PE-only dispositions are explicitly
 
 // Its own limiters — generateRateLimiter is per-IP 10/hr and shared by seven engine routes.
 ok(/proofreadRunLimiter/.test(security), "a dedicated run limiter exists");
+ok(/proofreadDispositionLimiter/.test(security), "triage has its own limiter, separate from the run budget");
+ok(!/standardHeaders: true/.test(security), 'new limiters pin standardHeaders: "draft-7" like every existing one');
 ok(/rl:proofread:/.test(security), "the limiter has its own Redis key prefix");
 ok(!/generateRateLimiter/.test(routes), "the proofread routes do not reuse the engine limiter");
 ok(/ipKeyGenerator/.test(security), "custom keyGenerators use ipKeyGenerator (express-rate-limit v8)");
@@ -2416,18 +2531,45 @@ In `artifacts/tis-api-server/src/lib/security.ts`, alongside the existing limite
 export const proofreadRunLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 30,
-  standardHeaders: true,
+  standardHeaders: "draft-7",
   legacyHeaders: false,
   passOnStoreError: true,
   keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),
   store: makeRateLimitStore("rl:proofread:"),
+  // Same exemption every compute limiter in this file carries, so demoing the
+  // feature does not 429 the operator.
+  skip: (req) => {
+    if (process.env.DEV_AUTH_ENABLED === "true") return true;
+    const email = req.user?.email;
+    return !!email && isAdminEmail(email);
+  },
   message: { error: "Too many proofread runs this hour. Try again shortly." },
+});
+
+export const proofreadDispositionLimiter = rateLimit({
+  // Triage must not share the re-run budget: twelve clauses over a
+  // per-intersection payload routinely produce more findings than the run
+  // limit, and an engineer recording decisions would lock themselves out of
+  // re-running.
+  windowMs: 60 * 60 * 1000,
+  limit: 300,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  passOnStoreError: true,
+  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),
+  store: makeRateLimitStore("rl:proofread-disp:"),
+  skip: (req) => {
+    if (process.env.DEV_AUTH_ENABLED === "true") return true;
+    const email = req.user?.email;
+    return !!email && isAdminEmail(email);
+  },
+  message: { error: "Too many requests. Try again shortly." },
 });
 
 export const proofreadReadLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 120,
-  standardHeaders: true,
+  standardHeaders: "draft-7",
   legacyHeaders: false,
   passOnStoreError: true,
   keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),
@@ -2452,10 +2594,10 @@ export const proofreadReadLimiter = rateLimit({
 import { Router, type IRouter } from "express";
 import { ProofreadDispositionBody } from "@workspace/tis-api-zod";
 import { getOrCreateFirmForUser } from "../lib/firms";
-import { getProject } from "../lib/tis-projects";
-import { proofreadReadLimiter, proofreadRunLimiter } from "../lib/security";
+import { projectExistsForFirm } from "../lib/tis-projects";
+import { proofreadDispositionLimiter, proofreadReadLimiter, proofreadRunLimiter } from "../lib/security";
 import { claimAndRunOne, enqueueProofread } from "../lib/proofread-run";
-import { findingBelongsToFirm, insertDisposition, latestRunForProject } from "../lib/proofread-store";
+import { findingInFirmRun, insertDisposition, latestRunForProject } from "../lib/proofread-store";
 
 const router: IRouter = Router();
 
@@ -2481,7 +2623,9 @@ router.get("/projects/:id/proofread", proofreadReadLimiter, async (req, res): Pr
       firstName: user.firstName,
       lastName: user.lastName,
     });
-    if (!(await getProject(firm.id, id))) {
+    // Existence only — getProject would pull both large jsonb study payloads
+    // out of Postgres on every poll just to discard them.
+    if (!(await projectExistsForFirm(firm.id, id))) {
       res.status(404).json({ error: "Project not found." });
       return;
     }
@@ -2495,6 +2639,7 @@ router.get("/projects/:id/proofread", proofreadReadLimiter, async (req, res): Pr
     const { run, findings, dispositions } = latest;
     res.json({
       status: run.status,
+      runId: run.id,
       revision: run.revision,
       protocolVersion: run.protocolVersion,
       rulesVersion: run.rulesVersion,
@@ -2549,7 +2694,9 @@ router.post("/projects/:id/proofread", proofreadRunLimiter, async (req, res): Pr
       firstName: user.firstName,
       lastName: user.lastName,
     });
-    if (!(await getProject(firm.id, id))) {
+    // Existence only — getProject would pull both large jsonb study payloads
+    // out of Postgres on every poll just to discard them.
+    if (!(await projectExistsForFirm(firm.id, id))) {
       res.status(404).json({ error: "Project not found." });
       return;
     }
@@ -2563,7 +2710,7 @@ router.post("/projects/:id/proofread", proofreadRunLimiter, async (req, res): Pr
 
 router.post(
   "/projects/:id/proofread/:runId/findings/:findingId/dispositions",
-  proofreadRunLimiter,
+  proofreadDispositionLimiter,
   async (req, res): Promise<void> => {
     if (!req.isAuthenticated()) {
       res.status(401).json({ error: "Sign in required." });
@@ -2580,8 +2727,10 @@ router.post(
       });
       return;
     }
+    const projectId = String(req.params.id);
+    const runId = String(req.params.runId);
     const findingId = String(req.params.findingId);
-    if (!UUID.test(findingId)) {
+    if (!UUID.test(projectId) || !UUID.test(runId) || !UUID.test(findingId)) {
       res.status(404).json({ error: "Finding not found." });
       return;
     }
@@ -2592,7 +2741,10 @@ router.post(
         firstName: user.firstName,
         lastName: user.lastName,
       });
-      if (!(await findingBelongsToFirm(firm.id, findingId))) {
+      // Verifies the whole chain the URL asserts — firm owns the run, the run
+      // belongs to this project, the finding belongs to that run — so a
+      // disposition cannot be recorded under an unrelated project or run id.
+      if (!(await findingInFirmRun(firm.id, projectId, runId, findingId))) {
         res.status(404).json({ error: "Finding not found." });
         return;
       }
@@ -2693,6 +2845,7 @@ for (const rel of files) {
 
 const panel = readFileSync(path.join(repo, files[0]), "utf8");
 ok(/internal consistency and traceability check/i.test(panel), "the panel uses the permitted description verbatim");
+ok(/status === "none"/.test(panel), "the panel distinguishes never-checked from nothing-found");
 ok(!/\bapply\b|\bfix it\b|\bauto-?fix\b/i.test(panel), "the panel offers no control that changes the study");
 
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);
@@ -2745,6 +2898,8 @@ export type DispositionT = {
 
 export type ProofreadRun = {
   status: "none" | "queued" | "running" | "rules_ready" | "ready" | "failed";
+  /** The run's uuid. The disposition route validates it, so the panel must send the real id, not the revision. */
+  runId?: string;
   revision?: number;
   protocolVersion?: string;
   engineStamp?: string;
@@ -2761,6 +2916,7 @@ export async function fetchProofread(projectId: string): Promise<ProofreadRun> {
   const data = (await r.json()) as Partial<ProofreadRun>;
   return {
     status: data.status ?? "none",
+    runId: data.runId,
     revision: data.revision,
     protocolVersion: data.protocolVersion,
     engineStamp: data.engineStamp,
@@ -2843,6 +2999,10 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
   const [run, setRun] = useState<ProofreadRun | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Bumping this re-runs the effect, which re-arms the interval. The effect
+  // clears its own timer on a terminal status, so without this a re-run would
+  // refetch exactly once and then never poll again.
+  const [nonce, setNonce] = useState(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -2868,14 +3028,15 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
       if (timer.current) clearInterval(timer.current);
       timer.current = null;
     };
-  }, [projectId]);
+  }, [projectId, nonce]);
 
   const rerun = async () => {
     setBusy(true);
     try {
       await requestProofread(projectId);
-      setRun(await fetchProofread(projectId));
       setError(null);
+      setNonce((v) => v + 1); // re-arms the poll and refetches
+      return;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -2884,13 +3045,13 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
   };
 
   const triage = async (f: ProofreadFindingT, disposition: string) => {
-    if (!run?.revision) return;
+    if (!run?.runId) return;
     const sourceLabel =
       disposition === "WITHDRAWN" ? (window.prompt("Name the source this is withdrawn on:") ?? "").trim() : undefined;
     if (disposition === "WITHDRAWN" && !sourceLabel) return;
     setBusy(true);
     try {
-      await recordDisposition(projectId, String(run.revision), f.id, { disposition, sourceLabel });
+      await recordDisposition(projectId, run.runId, f.id, { disposition, sourceLabel });
       setRun(await fetchProofread(projectId));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -2939,7 +3100,17 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
           </div>
         )}
 
-        {run.findings.length === 0 && !PENDING.has(run.status) && (
+        {/* A study that was never checked must not render as clean. "none" is
+            not a result; conflating it with "nothing found" is the false-coverage
+            failure the protocol forbids. */}
+        {run.status === "none" && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <HelpCircle className="w-4 h-4" />
+            This study has not been checked yet. Run the check to see what can be verified from the saved record.
+          </div>
+        )}
+
+        {run.status !== "none" && run.findings.length === 0 && !PENDING.has(run.status) && (
           <div className="flex items-center gap-2 text-sm">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             Nothing flagged in the clauses that could run.
