@@ -595,9 +595,10 @@ table("Raleigh name", [
     ok(got === want, `${slug} ${id} is named ${JSON.stringify(want)} (got ${JSON.stringify(got)})`);
   }
 }
-// A turning-movement diagram has two street labels. With three or more
-// streets in a name, the third must not vanish from it: the second label
-// carries every street after the first.
+// A turning-movement diagram has two street labels. When its legs carry no
+// street (older payloads; check:diagram-axis-labels covers the leg-based
+// labels) they follow the name, and with three or more streets in a name the
+// third must not vanish: the second label carries every street after the first.
 {
   const { diagramStreetLabels } = await import(path.resolve(here, "../../tis-api-server/src/lib/diagram-labels.ts"));
   for (const [name, want] of [

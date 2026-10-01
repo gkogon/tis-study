@@ -9069,8 +9069,10 @@ function drawTurningMovementDiagram(
   doc.rect(cx - rw, by + 1, 2 * rw, bh - 2).fill("#eef2f6");
   doc.rect(bx + 1, cy - rw, bw - 2, 2 * rw).fill("#eef2f6");
 
-  // Street labels ("A & B & C": A = N-S street top, B / C = E-W street).
-  const [nsLabel, ewLabel] = diagramStreetLabels(ix.name);
+  // Street labels: N-S on top, E-W beside the crossroads, each naming the
+  // street its legs lie on (legVolumes[].street); name order ("A & B & C":
+  // A = N-S, B / C = E-W) when no leg carries a street.
+  const [nsLabel, ewLabel] = diagramStreetLabels(ix.name, ix.legVolumes);
   const clip = (s: string, n: number) => (s && s.length > n ? s.slice(0, n - 1) + "…" : (s ?? ""));
   doc.font("body").fontSize(6).fillColor("#64748b");
   if (nsLabel) doc.text(clip(nsLabel, 30), bx + 2, by + 2, { width: bw - 4, align: "center" });

@@ -477,8 +477,11 @@ export type AffectedIntersection = {
    *  Absent = the screening allocation of the AADT-derived design hour (a
    *  legacy payload, legVolumes: screening, or an unresolved junction). */
   volumeSource?: "utdf_tmc" | "synchro_pdf_tmc" | "network_estimate" | "link_csv";
-  /** Per-leg background volumes and where each came from (legVolumes: network). */
-  legVolumes?: Array<{ direction: Direction; enteringVph: number; exitingVph: number | null; source: LegSource; oneWay: "in" | "out" | null }>;
+  /** Per-leg background volumes and where each came from (legVolumes: network).
+   *  `street` is the road the leg lies on (null on an unnamed way; absent when
+   *  the estimate carried no street) — the turning-movement diagram labels
+   *  each axis from it. */
+  legVolumes?: Array<{ direction: Direction; enteringVph: number; exitingVph: number | null; source: LegSource; oneWay: "in" | "out" | null; street?: string | null }>;
   /** Balanced turning-movement estimate and its diagnostics (legVolumes: network). */
   movementEstimate?: {
     method: "ipf" | "seed_only";
@@ -1351,7 +1354,7 @@ export function buildAffectedRow(
           legEstimateExact: est,
           legVolumes: DIRECTIONS.flatMap((d) => {
             const l = est.legs[d];
-            return l ? [{ direction: d, enteringVph: round1(l.enteringVph), exitingVph: l.exitingVph === null ? null : round1(l.exitingVph), source: l.source, oneWay: l.oneWay }] : [];
+            return l ? [{ direction: d, enteringVph: round1(l.enteringVph), exitingVph: l.exitingVph === null ? null : round1(l.exitingVph), source: l.source, oneWay: l.oneWay, ...(l.street !== undefined ? { street: l.street } : {}) }] : [];
           }),
           movementEstimate: {
             method: est.movements.diagnostics.method,

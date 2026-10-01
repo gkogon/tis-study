@@ -984,6 +984,7 @@ export type TisAffectedIntersectionLegVolumesItem = {
   exitingVph: number | null;
   source: TisAffectedIntersectionLegVolumesItemSource;
   oneWay: TisAffectedIntersectionLegVolumesItemOneWay;
+  street?: string | null;
 };
 
 export type TisAffectedIntersectionMovementEstimateMethod =

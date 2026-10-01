@@ -24,8 +24,9 @@ const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8
 export type RoadSegment = [
   number, number, number, number, number,
   number | null, number | null,
-  /** Street name; null on unnamed ways, absent on old payloads. Carried for
-   *  consumers/diagnostics — buildGraph does not read it. */
+  /** Street name; null on unnamed ways, absent on old payloads. Routing never
+   *  reads it; buildGraph keeps it on the link so a junction leg can say
+   *  which street it is. */
   (string | null)?,
   /** 1 = a->b only, -1 = b->a only, 0/absent = two-way. */
   (number | null)?,
@@ -217,8 +218,12 @@ function distMi(la1: number, lo1: number, la2: number, lo2: number): number {
  * Enforced at ADJACENCY-BUILD time, so Dijkstra, the MSA loading, the turn
  * ledger and the driveway router all inherit it without any of them knowing
  * one-way exists: a forbidden direction simply is not an edge.
+ *
+ * `name` is the segment's street (RoadSegment[7]; null on an unnamed way or a
+ * pre-name road file). Nothing in routing reads it. The two halves of a link
+ * split by insertDriveway keep it; the site→driveway access link has none.
  */
-export type Link = { a: number; b: number; lenMi: number; freeMin: number; capVph: number; cls: number; baseVc: number; vol: number; dir: 0 | 1 | -1 };
+export type Link = { a: number; b: number; lenMi: number; freeMin: number; capVph: number; cls: number; baseVc: number; vol: number; dir: 0 | 1 | -1; name?: string | null };
 
 export type Graph = {
   links: Link[];
@@ -271,7 +276,8 @@ export function buildGraph(segments: RoadSegment[], volumeRefs: VolumeRef[] = []
     // pre-rollout region routes byte-identically.
     const rawDir: unknown = s[8];
     const dir: 0 | 1 | -1 = rawDir === 1 ? 1 : rawDir === -1 ? -1 : 0;
-    links.push({ a, b, lenMi, freeMin: (lenMi / mph) * 60, capVph, cls, baseVc, vol: 0, dir });
+    const name = typeof s[7] === "string" ? s[7] : null;
+    links.push({ a, b, lenMi, freeMin: (lenMi / mph) * 60, capVph, cls, baseVc, vol: 0, dir, name });
     // Travelling a→b is legal unless the way is b→a-only, and vice versa. A
     // one-way link appears in ONE node's adjacency, so the router cannot even
     // consider the illegal direction — no penalty tuning, no special cases in

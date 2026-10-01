@@ -1,0 +1,283 @@
+{
+ "_source": "PM-peak rows (signalId, name, legVolumes) of the Mecklenburg County sample, regenerated 2026-09-30 by POST /tis-api/demo/generate with the hosted sample's request (35.1954, -80.7643; LU 820, 85 ksf, 2027, 1.0 mi, full tier) against the analyzer's charlotte_metro road network. Each leg's street is the road network's name for the link the engine resolved that leg to.",
+ "rows": [
+  {
+   "signalId": "charlotte-172660814",
+   "name": "North Sharon Amity Road & Holbrook Drive",
+   "legVolumes": [
+    {
+     "direction": "SB",
+     "enteringVph": 0,
+     "exitingVph": 500,
+     "source": "class_default",
+     "oneWay": "out",
+     "street": "Holbrook Drive"
+    },
+    {
+     "direction": "EB",
+     "enteringVph": 99,
+     "exitingVph": 0,
+     "source": "signal_aadt",
+     "oneWay": "in",
+     "street": "North Sharon Amity Road"
+    },
+    {
+     "direction": "WB",
+     "enteringVph": 0,
+     "exitingVph": 99,
+     "source": "signal_aadt",
+     "oneWay": "out",
+     "street": "North Sharon Amity Road"
+    }
+   ]
+  },
+  {
+   "signalId": "charlotte-2181076118",
+   "name": "North Sharon Amity Road & Pierson Drive",
+   "legVolumes": [
+    {
+     "direction": "EB",
+     "enteringVph": 0,
+     "exitingVph": 1305,
+     "source": "signal_aadt",
+     "oneWay": "out",
+     "street": "North Sharon Amity Road"
+    },
+    {
+     "direction": "WB",
+     "enteringVph": 1305,
+     "exitingVph": 0,
+     "source": "signal_aadt",
+     "oneWay": "in",
+     "street": "North Sharon Amity Road"
+    }
+   ]
+  },
+  {
+   "signalId": "charlotte-7810838990",
+   "name": "North Sharon Amity Road & Charleston Drive",
+   "legVolumes": [
+    {
+     "direction": "NB",
+     "enteringVph": 500,
+     "exitingVph": 0,
+     "source": "class_default",
+     "oneWay": "in",
+     "street": "Charleston Drive"
+    },
+    {
+     "direction": "EB",
+     "enteringVph": 0,
+     "exitingVph": 238.5,
+     "source": "signal_aadt",
+     "oneWay": "out",
+     "street": "North Sharon Amity Road"
+    },
+    {
+     "direction": "WB",
+     "enteringVph": 238.5,
+     "exitingVph": 0,
+     "source": "signal_aadt",
+     "oneWay": "in",
+     "street": "North Sharon Amity Road"
+    }
+   ]
+  },
+  {
+   "signalId": "charlotte-2181076171",
+   "name": "Albemarle Road & North Sharon Amity Road",
+   "legVolumes": [
+    {
+     "direction": "NB",
+     "enteringVph": 0,
+     "exitingVph": 500,
+     "source": "class_default",
+     "oneWay": "out",
+     "street": "North Sharon Amity Road"
+    },
+    {
+     "direction": "SB",
+     "enteringVph": 500,
+     "exitingVph": 0,
+     "source": "class_default",
+     "oneWay": "in",
+     "street": "North Sharon Amity Road"
+    },
+    {
+     "direction": "EB",
+     "enteringVph": 1755,
+     "exitingVph": 0,
+     "source": "signal_aadt",
+     "oneWay": "in",
+     "street": "Albemarle Road"
+    },
+    {
+     "direction": "WB",
+     "enteringVph": 0,
+     "exitingVph": 1755,
+     "source": "signal_aadt",
+     "oneWay": "out",
+     "street": "Albemarle Road"
+    }
+   ]
+  },
+  {
+   "signalId": "charlotte-1711278797",
+   "name": "Albemarle Road & Pierson Drive",
+   "legVolumes": [
+    {
+     "direction": "SB",
+     "enteringVph": 350,
+     "exitingVph": 350,
+     "source": "class_default",
+     "oneWay": null,
+     "street": "Wilshire Place"
+    },
+    {
+     "direction": "EB",
+     "enteringVph": 0,
+     "exitingVph": 50,
+     "source": "signal_aadt",
+     "oneWay": "out",
+     "street": "East Independence Expressway"
+    },
+    {
+     "direction": "WB",
+     "enteringVph": 50,
+     "exitingVph": 0,
+     "source": "signal_aadt",
+     "oneWay": "in",
+     "street": "East Independence Boulevard"
+    }
+   ]
+  },
+  {
+   "signalId": "charlotte-5527699422",
+   "name": "North Sharon Amity Road & Monroe Road",
+   "legVolumes": [
+    {
+     "direction": "NB",
+     "enteringVph": 1260,
+     "exitingVph": 0,
+     "source": "signal_aadt",
+     "oneWay": "in",
+     "street": "North Sharon Amity Road"
+    },
+    {
+     "direction": "SB",
+     "enteringVph": 0,
+     "exitingVph": 1260,
+     "source": "signal_aadt",
+     "oneWay": "out",
+     "street": "North Sharon Amity Road"
+    },
+    {
+     "direction": "EB",
+     "enteringVph": 0,
+     "exitingVph": 500,
+     "source": "class_default",
+     "oneWay": "out",
+     "street": "Monroe Road"
+    },
+    {
+     "direction": "WB",
+     "enteringVph": 500,
+     "exitingVph": 0,
+     "source": "class_default",
+     "oneWay": "in",
+     "street": "Monroe Road"
+    }
+   ]
+  },
+  {
+   "signalId": "charlotte-7945928189",
+   "name": "Idlewild Rd & Monroe Rd & Rama Rd",
+   "legVolumes": [
+    {
+     "direction": "EB",
+     "enteringVph": 1012.5,
+     "exitingVph": 0,
+     "source": "signal_aadt",
+     "oneWay": "in",
+     "street": "Monroe Road"
+    },
+    {
+     "direction": "WB",
+     "enteringVph": 0,
+     "exitingVph": 1012.5,
+     "source": "signal_aadt",
+     "oneWay": "out",
+     "street": "Monroe Road"
+    }
+   ]
+  },
+  {
+   "signalId": "charlotte-5516526369",
+   "name": "Idlewild Road & Connection Point Boulevard",
+   "legVolumes": [
+    {
+     "direction": "SB",
+     "enteringVph": 350,
+     "exitingVph": 0,
+     "source": "class_default",
+     "oneWay": "in",
+     "street": "Connection Point Boulevard"
+    },
+    {
+     "direction": "EB",
+     "enteringVph": 0,
+     "exitingVph": 945,
+     "source": "signal_aadt",
+     "oneWay": "out",
+     "street": "Idlewild Road"
+    },
+    {
+     "direction": "WB",
+     "enteringVph": 945,
+     "exitingVph": 0,
+     "source": "signal_aadt",
+     "oneWay": "in",
+     "street": "Idlewild Road"
+    }
+   ]
+  },
+  {
+   "signalId": "charlotte-172211825",
+   "name": "Albemarle Rd & Reddman Rd",
+   "legVolumes": [
+    {
+     "direction": "NB",
+     "enteringVph": 350,
+     "exitingVph": 350,
+     "source": "class_default",
+     "oneWay": null,
+     "street": "Reddman Road"
+    },
+    {
+     "direction": "SB",
+     "enteringVph": 500,
+     "exitingVph": 500,
+     "source": "class_default",
+     "oneWay": null,
+     "street": "Reddman Road"
+    },
+    {
+     "direction": "EB",
+     "enteringVph": 2182.5,
+     "exitingVph": 2182.5,
+     "source": "signal_aadt",
+     "oneWay": null,
+     "street": "Albemarle Road"
+    },
+    {
+     "direction": "WB",
+     "enteringVph": 0,
+     "exitingVph": 2182.5,
+     "source": "signal_aadt",
+     "oneWay": "out",
+     "street": "Albemarle Road"
+    }
+   ]
+  }
+ ]
+}

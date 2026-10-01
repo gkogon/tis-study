@@ -1385,6 +1385,11 @@ components:
               # class_default = the road-class ladder on a minor leg.
               source: { type: string, enum: [csv, signal_aadt, signal_baseline, class_default] }
               oneWay: { type: string, enum: ["in", "out"], nullable: true }
+              # The street this leg lies on (the road network's name for the
+              # link); null on an unnamed way, absent on rows solved before
+              # legs carried it. The turning-movement diagram labels each
+              # axis from it.
+              street: { type: string, nullable: true }
         movementEstimate:
           type: object
           description: Balanced turning-movement estimate and diagnostics (legVolumes:network rows only).

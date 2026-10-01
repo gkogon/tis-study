@@ -88,6 +88,9 @@ export type JunctionLeg = {
   cls: number;
   /** "in": travel only toward the node; "out": only away; null: two-way. */
   oneWay: "in" | "out" | null;
+  /** The link's street name (OSM `name`); null on an unnamed way. Absent when
+   *  the caller does not know it. Never read by the volume or movement math. */
+  street?: string | null;
 };
 
 export type LegVolume = {
@@ -99,6 +102,9 @@ export type LegVolume = {
   oneWay: "in" | "out" | null;
   source: LegSource;
   cls: number;
+  /** The street of the leg this volume sits on (JunctionLeg.street), for
+   *  labeling; absent when the junction leg carried none. */
+  street?: string | null;
 };
 
 /** null on a side with no leg (a T-intersection). */
@@ -274,6 +280,7 @@ export function resolveLegVolumes(
       oneWay: leg.oneWay,
       source: csvIn !== undefined ? "csv" : baseSource,
       cls: leg.cls,
+      ...(leg.street !== undefined ? { street: leg.street } : {}),
     };
   }
   return out;

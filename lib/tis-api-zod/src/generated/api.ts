@@ -1807,6 +1807,7 @@ export const GenerateTisResponse = zod.object({
               "class_default",
             ]),
             oneWay: zod.enum(["in", "out"]).nullable(),
+            street: zod.string().nullish(),
           }),
         )
         .optional()
@@ -2203,6 +2204,7 @@ export const GenerateTisResponse = zod.object({
                   "class_default",
                 ]),
                 oneWay: zod.enum(["in", "out"]).nullable(),
+                street: zod.string().nullish(),
               }),
             )
             .optional()
@@ -4366,6 +4368,7 @@ export const WhatIfTisResponse = zod.object({
               "class_default",
             ]),
             oneWay: zod.enum(["in", "out"]).nullable(),
+            street: zod.string().nullish(),
           }),
         )
         .optional()
@@ -4762,6 +4765,7 @@ export const WhatIfTisResponse = zod.object({
                   "class_default",
                 ]),
                 oneWay: zod.enum(["in", "out"]).nullable(),
+                street: zod.string().nullish(),
               }),
             )
             .optional()
@@ -8019,6 +8023,7 @@ export const GetTisProjectResponse = zod
                   "class_default",
                 ]),
                 oneWay: zod.enum(["in", "out"]).nullable(),
+                street: zod.string().nullish(),
               }),
             )
             .optional()
@@ -8431,6 +8436,7 @@ export const GetTisProjectResponse = zod
                       "class_default",
                     ]),
                     oneWay: zod.enum(["in", "out"]).nullable(),
+                    street: zod.string().nullish(),
                   }),
                 )
                 .optional()
