@@ -19,10 +19,17 @@
  *    value recorded beside it.
  *  - The ceiling is an INTERSECTION v/c constant. Applied to anything else it is
  *    a screen, and the finding's source label and text say so.
+ *  - A clause that judged only part of what the record carries says so at the top
+ *    level too — `note` on its coverage entry — not just inside a finding, so a
+ *    clean result cannot hide what was never looked at.
+ *
+ * `numeric` (types.ts) is the reading guard: Number(null) is 0 and Number("n/a")
+ * is NaN, and either slips past a threshold test.
  */
-import { PLAUSIBLE_MAX_INTERSECTION_VC } from "@workspace/tis-engine-core";
+import { PLAUSIBLE_MAX_INTERSECTION_VC, SCREENING_MAX_DELAY_SEC, delayToLos } from "@workspace/tis-engine-core";
 import type { Clause, ProofreadFinding, ProofreadType, ReadPath, RowBucket, StudyRecord } from "./types.ts";
-import { rowBuckets } from "./types.ts";
+import { judgedNote, numeric, rowBuckets } from "./types.ts";
+import { authoredProse } from "./prose.ts";
 
 const CEIL = PLAUSIBLE_MAX_INTERSECTION_VC;
 const ENGINE_FILE = "lib/tis-engine-core/src/signal-delay.ts";
@@ -44,9 +51,6 @@ const REMEDY_DISCLOSE =
 const CAUSES =
   "Either the background volume is a limited-access count matched to a surface street, or the volume is a " +
   "legitimately high arterial volume the screening capacity understates.";
-
-/** A usable reading. Not `Number(v)`: Number(null) is 0 and Number("n/a") is NaN, and either slips past a v/c test. */
-const numeric = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 type Reading = { vc: number; field: "currentVc" | "existingVc" };
 
@@ -132,9 +136,11 @@ export const vcPlausibilityIntersection: Clause = {
     if (buckets.length === 0) return { status: "not-run", reason: "no affectedIntersections on the record" };
     const { tally, offenders } = scanNoProject(buckets, (b, r, i) => [{ label: `${r?.name} [${b.period}]`, at: `${b.at}[${i}]`, src: r }]);
     if (tally.judged === 0) return { status: "not-run", reason: "no row carries a numeric currentVc/existingVc" };
-    if (offenders.length === 0) return { status: "ran", findings: [] };
+    const note = judgedNote(tally.judged, tally.judged + tally.skipped, "study intersections", "carried no numeric currentVc/existingVc");
+    if (offenders.length === 0) return { status: "ran", findings: [], note };
     return {
       status: "ran",
+      note,
       findings: [
         build({
           clauseId: "vcPlausibilityIntersection",
@@ -169,9 +175,11 @@ export const vcPlausibilityApproach: Clause = {
     );
     if (tally.judged + tally.skipped === 0) return { status: "not-run", reason: "no approach detail on the record" };
     if (tally.judged === 0) return { status: "not-run", reason: "no approach carries a numeric currentVc/existingVc" };
-    if (offenders.length === 0) return { status: "ran", findings: [] };
+    const note = judgedNote(tally.judged, tally.judged + tally.skipped, "study approaches", "carried no numeric currentVc/existingVc");
+    if (offenders.length === 0) return { status: "ran", findings: [], note };
     return {
       status: "ran",
+      note,
       findings: [
         build({
           clauseId: "vcPlausibilityApproach",
@@ -282,6 +290,192 @@ export const vcPlausibilityDesignYear: Clause = {
         }),
       );
     }
-    return { status: "ran", findings };
+    const note =
+      [
+        judgedNote(noBuildT.judged, noBuildT.judged + noBuildT.skipped, "design-year No-Build scenarios", "carried no numeric designNoBuildVc"),
+        judgedNote(buildT.judged, buildT.judged + buildT.skipped, "design-year Build scenarios", "carried no numeric designBuildVc"),
+      ]
+        .filter(Boolean)
+        .join(" | ") || undefined;
+    return { status: "ran", findings, note };
+  },
+};
+
+const LOS_PAIRS: Array<[delayKey: string, losKey: string]> = [
+  ["currentDelaySec", "currentLos"],
+  ["existingDelaySec", "existingLos"],
+  ["futureDelaySec", "futureLos"],
+  ["designNoBuildDelaySec", "designNoBuildLos"],
+  ["designBuildDelaySec", "designBuildLos"],
+];
+
+const rowName = (r: any): string => String(r?.name ?? "(unnamed)");
+
+/** How many offenders a finding names before saying "and N more"; the count and the list use the same number. */
+const LOS_NAMED = 5;
+const CLAMP_NAMED = 3;
+
+/**
+ * A row's LOS letter must be the letter its own delay maps to.
+ *
+ * The engine derives the letter from the UNROUNDED delay and then prints the delay to 0.1 s
+ * (row-math.ts: `delayToLos(delay)` beside `round1(delay)`), so a printed delay one tick from a band edge can
+ * legitimately sit beside either neighbouring letter — real payloads in the repo do exactly that. A letter is
+ * flagged only if it is wrong across the whole rounding interval, otherwise this files a DEFECT accusing the
+ * engine of losing a value it never lost.
+ *
+ * A pair is judged only if a number sits beside a letter. One side present and the other null, a string or
+ * missing is "reported but not judged" — Number(null) is 0, which maps to LOS A and would manufacture a DEFECT.
+ *
+ * One finding for the whole record, not one per pair: it is one fault, and what the admin needs is its extent.
+ */
+export const losMatchesDelay: Clause = {
+  id: "losMatchesDelay",
+  section: 4,
+  title: "Each reported LOS letter matches its reported delay",
+  run(rec: StudyRecord) {
+    const buckets = rowBuckets(rec);
+    if (buckets.length === 0) return { status: "not-run", reason: "no affectedIntersections on the record" };
+    type Offender = { label: string; delayKey: string; losKey: string; delay: number; los: string; expected: string; at: string };
+    const offenders: Offender[] = [];
+    let rowsTotal = 0;
+    let rowsEmpty = 0;
+    let reported = 0;
+    let judged = 0;
+    for (const b of buckets) {
+      b.rows.forEach((r: any, i: number) => {
+        rowsTotal++;
+        let rowReported = 0;
+        for (const [delayKey, losKey] of LOS_PAIRS) {
+          const delay = r?.[delayKey];
+          const los = r?.[losKey];
+          if (delay === undefined && los === undefined) continue; // this scenario is not on the row
+          rowReported++;
+          reported++;
+          if (!numeric(delay) || typeof los !== "string") continue;
+          judged++;
+          const expected = delayToLos(delay);
+          if (expected === los) continue;
+          if (delayToLos(delay - 0.05) === los || delayToLos(delay + 0.05) === los) continue;
+          offenders.push({ label: `${rowName(r)} [${b.period}]`, delayKey, losKey, delay, los, expected, at: `${b.at}[${i}]` });
+        }
+        if (rowReported === 0) rowsEmpty++;
+      });
+    }
+    if (judged === 0) return { status: "not-run", reason: "no row carries a numeric delay beside a LOS letter" };
+    const pairsNote = judgedNote(judged, reported, "reported delay/LOS pairs", "carried a delay that is not a number or no letter beside it");
+    const rowsNote = rowsEmpty > 0 ? `${rowsEmpty} of ${rowsTotal} rows reported no delay/LOS` : undefined;
+    const note = [pairsNote, rowsNote].filter(Boolean).join("; ") || undefined;
+    if (offenders.length === 0) return { status: "ran", findings: [], note };
+    const notJudged =
+      (reported > judged ? ` Not judged: ${reported - judged} of ${reported} reported delay/LOS pairs with a delay that is not a number or no letter beside it.` : "") +
+      (rowsEmpty > 0 ? ` Not judged: ${rowsEmpty} of ${rowsTotal} rows reported no delay/LOS.` : "");
+    const listed = offenders
+      .slice(0, LOS_NAMED)
+      .map((o) => `${o.label}: ${o.delayKey} ${o.delay} s maps to LOS ${o.expected}, but the row reports ${o.losKey} ${o.los}`)
+      .join("; ");
+    return {
+      status: "ran",
+      note,
+      findings: [
+        {
+          clauseId: "losMatchesDelay",
+          section: 4,
+          type: "DEFECT",
+          title: "Reported LOS does not match reported delay",
+          detail:
+            `${offenders.length} of ${judged} reported delay/LOS pairs carry a letter that its own delay does not map to: ${listed}` +
+            `${offenders.length > LOS_NAMED ? `, and ${offenders.length - LOS_NAMED} more` : ""}. ` +
+            `A letter that disagrees with its own delay means the value was lost or overwritten between computation and ` +
+            `response, so every study this engine produced may carry it.` +
+            notJudged,
+          sourceLabel: `${ENGINE_FILE} — delayToLos`,
+          readPaths: offenders.flatMap((o) => [
+            { path: `${o.at}.${o.delayKey}`, value: o.delay },
+            { path: `${o.at}.${o.losKey}`, value: o.los },
+          ]),
+          remedy: "File against the engine: the LOS letter and the delay are computed from one value and must not diverge.",
+          audience: "admin",
+        },
+      ],
+    };
+  },
+};
+
+const DELAY_KEYS = ["currentDelaySec", "existingDelaySec", "futureDelaySec", "designNoBuildDelaySec", "designBuildDelaySec"];
+const CLAMP_DISCLOSURE = /clamp|ceiling|capped/i;
+
+/**
+ * A delay at the screening ceiling is a clamp, not a measurement. The calibration multiplier is applied
+ * AFTER the clamp at every call site (row-math.ts: `vcToDelay(...) * calMul`, with calMul clamped to
+ * 0.25-5), so the maximum printable delay is SCREENING_MAX_DELAY_SEC x calMul — not 300. A calibrated
+ * signal with a multiplier below 1 prints a clamped delay well under 300, which a fixed `>= 300` test misses;
+ * one above 1 prints a legitimate 300 that a fixed test calls a clamp.
+ *
+ * The disclosure is looked for in `findings` only (prose.ts). The engine's methodology boilerplate says
+ * "capped at 300 s" on every study but does not say WHICH delays are capped, and a gate it satisfies would
+ * never fire.
+ */
+export const screeningClampDisclosed: Clause = {
+  id: "screeningClampDisclosed",
+  section: 4,
+  title: "Delays reported at the screening ceiling are disclosed as clamped",
+  run(rec: StudyRecord) {
+    const buckets = rowBuckets(rec);
+    if (buckets.length === 0) return { status: "not-run", reason: "no affectedIntersections on the record" };
+    const clamped: Array<{ label: string; delay: number; path: string; remark: string }> = [];
+    let rowsTotal = 0;
+    let rowsJudged = 0;
+    for (const b of buckets) {
+      b.rows.forEach((r: any, i: number) => {
+        rowsTotal++;
+        // Mirror the engine: a numeric multiplier is clamped to 0.25-5; an absent or unusable one is 1.
+        const cal = r?.calibration as { delayMultiplier?: unknown; delayMultiplierExact?: unknown } | null | undefined;
+        const raw = numeric(cal?.delayMultiplierExact) ? cal?.delayMultiplierExact : cal?.delayMultiplier;
+        const mul = numeric(raw) ? Math.min(5, Math.max(0.25, raw)) : 1;
+        const ceiling = SCREENING_MAX_DELAY_SEC * mul;
+        let readable = false;
+        for (const key of DELAY_KEYS) {
+          const d = r?.[key];
+          if (!numeric(d)) continue;
+          readable = true;
+          // -0.05 because the payload rounds delay to 0.1 s; 1e-9 so that boundary is not at the mercy of float error.
+          if (d >= ceiling - 0.05 - 1e-9) {
+            const remark = mul === 1 ? "" : ` (ceiling ${Number(ceiling.toFixed(2))} s at calibration x${Number(mul.toFixed(4))})`;
+            clamped.push({ label: `${rowName(r)} ${key} [${b.period}]`, delay: d, path: `${b.at}[${i}].${key}`, remark });
+          }
+        }
+        if (readable) rowsJudged++;
+      });
+    }
+    if (rowsJudged === 0) return { status: "not-run", reason: "no row carries a numeric delay" };
+    const note = judgedNote(rowsJudged, rowsTotal, "rows", "carried no numeric delay");
+    if (clamped.length === 0) return { status: "ran", findings: [], note };
+    if (CLAMP_DISCLOSURE.test(authoredProse(rec))) return { status: "ran", findings: [], note };
+    const listed = clamped
+      .slice(0, CLAMP_NAMED)
+      .map((c) => `${c.label} ${c.delay} s${c.remark}`)
+      .join("; ");
+    return {
+      status: "ran",
+      note,
+      findings: [
+        {
+          clauseId: "screeningClampDisclosed",
+          section: 4,
+          type: "DISCLOSE",
+          title: "Delays sit at the screening ceiling without disclosure",
+          detail:
+            `${clamped.length} reported delay(s) are at or above the ${SCREENING_MAX_DELAY_SEC} s screening ceiling ` +
+            `(${listed}${clamped.length > CLAMP_NAMED ? `, and ${clamped.length - CLAMP_NAMED} more` : ""}). At the ceiling the number is a cap, ` +
+            `not an estimate, and the study's findings do not say which delays are capped.` +
+            (rowsTotal > rowsJudged ? ` Not judged: ${rowsTotal - rowsJudged} of ${rowsTotal} rows carried no numeric delay.` : ""),
+          sourceLabel: `${ENGINE_FILE} — SCREENING_MAX_DELAY_SEC = ${SCREENING_MAX_DELAY_SEC} (times the regional calibration multiplier)`,
+          readPaths: clamped.map((c) => ({ path: c.path, value: c.delay })),
+          remedy: "State in the results section that delays at the ceiling are capped screening values, not estimates of actual delay.",
+          audience: "engineer",
+        },
+      ],
+    };
   },
 };

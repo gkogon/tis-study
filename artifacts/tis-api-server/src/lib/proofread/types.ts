@@ -44,7 +44,12 @@ export type StudyRecord = {
 };
 
 export type ClauseOutcome =
-  | { status: "ran"; findings: ProofreadFinding[] }
+  /**
+   * `note` is set when the clause judged only PART of what the record carries — see CoverageEntry.note. It is
+   * the top-level counterpart of the "Not judged" sentence a finding carries: a clean result that hides
+   * what was never looked at is the false coverage TIS-PROOFREAD-PROTOCOL.md forbids.
+   */
+  | { status: "ran"; findings: ProofreadFinding[]; note?: string }
   /** The clause did not run because a declared input was absent. NOT a finding, and never rendered as coverage. */
   | { status: "not-run"; reason: string };
 
@@ -60,6 +65,12 @@ export type CoverageEntry = {
   section: ProofreadSection;
   status: "ran" | "not-run";
   reason?: string;
+  /**
+   * Present only on a `ran` entry whose clause judged part of the record, e.g. "judged 3 of 20 rows; 17 carried
+   * no numeric currentVc/existingVc". `ran` with no note means every unit the clause reads was judged. Never set
+   * on a `not-run` entry (that carries a `reason`). The panel renders it beside the clause's coverage.
+   */
+  note?: string;
 };
 
 export type ClauseRunResult = { findings: ProofreadFinding[]; coverage: CoverageEntry[] };
@@ -106,3 +117,16 @@ export function rowBuckets(rec: StudyRecord): RowBucket[] {
   });
   return out;
 }
+
+/**
+ * A usable reading. Not `Number(v)`: Number(null) is 0 and Number("n/a") is NaN, and either slips past a
+ * threshold test — a clause that judged a null as 0 reports a clean study that was not clean.
+ */
+export const numeric = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+/**
+ * The coverage note for a clause that judged `judged` of `total` units, or undefined when it judged them all.
+ * `why` completes "<n> …", e.g. `carried no numeric currentVc/existingVc`.
+ */
+export const judgedNote = (judged: number, total: number, noun: string, why: string): string | undefined =>
+  judged < total ? `judged ${judged} of ${total} ${noun}; ${total - judged} ${why}` : undefined;
