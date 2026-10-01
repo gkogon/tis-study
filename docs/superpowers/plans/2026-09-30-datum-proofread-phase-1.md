@@ -299,7 +299,9 @@ const byClause = (res, id) => res.findings.filter((f) => f.clauseId === id);
   const hits = byClause(res, "vcPlausibilityIntersection");
   ok(hits.length === 1, `intersection v/c fires once with all offenders (${hits.length})`);
   ok(hits[0].type === "BLOCKER", "implausible background v/c is a BLOCKER");
-  ok(/2\.84|3\.93/.test(hits[0].detail), "detail names the offending values");
+  // The clause reports max(currentVc, existingVc) — the same basis as the engine
+  // guard — so row 1 surfaces as 2.90 (not its currentVc 2.84) and row 3 as 3.94.
+  ok(/2\.90|3\.94/.test(hits[0].detail), "detail names the offending values");
   ok(hits[0].readPaths.length >= 5, `readPaths cover the offending rows (${hits[0].readPaths.length})`);
 }
 
@@ -493,16 +495,26 @@ export type CoverageEntry = {
 
 export type ClauseRunResult = { findings: ProofreadFinding[]; coverage: CoverageEntry[] };
 
-/** Every scenario/period bucket of rows a record carries. Top-level rows are the PM anchor. */
+/**
+ * Every period bucket of rows a record carries.
+ *
+ * `result.affectedIntersections` is NOT a separate set: the engine assigns it
+ * `pmReport.affectedIntersections` (`tis.ts:2178`, declared "PM peak
+ * (back-compat)" at `:514`), so on a real study it is the same array as the
+ * pm_peak period report. Counting both would list every PM offender twice and
+ * inflate the "N of M" in every finding. So the top-level array is scanned only
+ * when periodReports carries no pm_peak entry — which is the case for a trimmed
+ * fixture, and for a legacy payload saved before periodReports existed.
+ */
 export function rowBuckets(rec: StudyRecord): Array<{ period: string; rows: any[] }> {
   const out: Array<{ period: string; rows: any[] }> = [];
-  const top = rec.result.affectedIntersections;
-  if (Array.isArray(top)) out.push({ period: "pm_peak", rows: top });
   const periods = rec.result.periodReports;
-  if (Array.isArray(periods)) {
-    for (const p of periods as any[]) {
-      if (Array.isArray(p?.affectedIntersections)) out.push({ period: String(p.period ?? "unknown"), rows: p.affectedIntersections });
-    }
+  const reports: any[] = Array.isArray(periods) ? (periods as any[]) : [];
+  const pmReported = reports.some((p) => p?.period === "pm_peak" && Array.isArray(p?.affectedIntersections));
+  const top = rec.result.affectedIntersections;
+  if (Array.isArray(top) && !pmReported) out.push({ period: "pm_peak", rows: top });
+  for (const p of reports) {
+    if (Array.isArray(p?.affectedIntersections)) out.push({ period: String(p.period ?? "unknown"), rows: p.affectedIntersections });
   }
   return out;
 }
