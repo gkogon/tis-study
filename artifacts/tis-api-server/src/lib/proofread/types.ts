@@ -64,6 +64,21 @@ export type CoverageEntry = {
 
 export type ClauseRunResult = { findings: ProofreadFinding[]; coverage: CoverageEntry[] };
 
+/** One array of affected-intersection rows, with where it sits in the record. */
+export type RowBucket = {
+  /** The analysis period the rows belong to. A LABEL for finding text only — never part of a path. */
+  period: string;
+  /**
+   * The literal payload path of the rows array, resolvable against the record:
+   * `result.affectedIntersections`, or `result.periodReports[k].affectedIntersections`
+   * with k the entry's real index in `periodReports`. Clauses build every
+   * `readPaths[].path` from this (`${at}[${i}].${field}`) so that each recorded
+   * path resolves, in the saved payload, to the value recorded beside it.
+   */
+  at: string;
+  rows: any[];
+};
+
 /**
  * Every scenario/period bucket of rows a record carries. Rows live in two
  * places: `result.affectedIntersections` (the PM anchor) and one array per
@@ -77,15 +92,17 @@ export type ClauseRunResult = { findings: ProofreadFinding[]; coverage: Coverage
  * carries those rows: PM excluded from `analysisPeriods`, where the engine
  * synthesizes the top-level block, or a record that predates `periodReports`.
  */
-export function rowBuckets(rec: StudyRecord): Array<{ period: string; rows: any[] }> {
-  const out: Array<{ period: string; rows: any[] }> = [];
+export function rowBuckets(rec: StudyRecord): RowBucket[] {
+  const out: RowBucket[] = [];
   const periods = rec.result.periodReports;
   const reports: any[] = Array.isArray(periods) ? (periods as any[]) : [];
   const pmReported = reports.some((p) => p?.period === "pm_peak" && Array.isArray(p?.affectedIntersections));
   const top = rec.result.affectedIntersections;
-  if (Array.isArray(top) && !pmReported) out.push({ period: "pm_peak", rows: top });
-  for (const p of reports) {
-    if (Array.isArray(p?.affectedIntersections)) out.push({ period: String(p.period ?? "unknown"), rows: p.affectedIntersections });
-  }
+  if (Array.isArray(top) && !pmReported) out.push({ period: "pm_peak", at: "result.affectedIntersections", rows: top });
+  reports.forEach((p, k) => {
+    if (Array.isArray(p?.affectedIntersections)) {
+      out.push({ period: String(p.period ?? "unknown"), at: `result.periodReports[${k}].affectedIntersections`, rows: p.affectedIntersections });
+    }
+  });
   return out;
 }
