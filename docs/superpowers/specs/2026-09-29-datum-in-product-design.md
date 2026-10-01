@@ -48,8 +48,8 @@ The word "findings" is taken: `TisReport.findings` is required (`openapi.yaml:17
 
 | Layer | Path | Why |
 |---|---|---|
-| Pure clause functions | `lib/tis-engine-core/src/proofread/` | Testable under plain `node` with no env. Importing `@workspace/db` throws at module evaluation when `DATABASE_URL` is unset (`lib/db/src/index.ts:7-11`), so the check script must never reach the runner. |
-| Runner, persistence, model call | `artifacts/tis-api-server/src/lib/proofread/` | Needs the db and the network. |
+| Pure clause functions | `artifacts/tis-api-server/src/lib/proofread/` | Testable under plain `node` with no env. Importing `@workspace/db` throws at module evaluation when `DATABASE_URL` is unset (`lib/db/src/index.ts:7-11`), so the check script must never reach the runner, and this directory imports no db, logger or `fetch`. It lives here rather than in `lib/tis-engine-core/` because any new engine-core export breaks the hand-maintained `EXPECTED` array in `scripts/verify-engine-core-exports.mjs`, which asserts an exact export count; the clauses only *import* existing engine-core exports. `await import` of a `src/lib/*.ts` module under plain `node` is already the pattern `verify-screening-clamp.mjs` uses, provided relative imports inside `proofread/` carry an explicit `.ts` extension. |
+| Runner, persistence, model call | `artifacts/tis-api-server/src/lib/proofread-run.ts`, `proofread-store.ts` (beside, not inside, `proofread/`) | Needs the db and the network, so it stays out of the pure directory above. |
 | Routes | `artifacts/tis-api-server/src/routes/proofread.ts`, registered in `routes/index.ts` | Mounts under `/tis-api` via `app.ts:123`; absolute paths inside the router, per convention. |
 | Schema | `lib/db/src/schema/study-proofread.ts` + `export * from "./study-proofread"` in `schema/index.ts` | That one line covers the drizzle client, the `@workspace/db` barrel and drizzle-kit's entry. |
 | Panel | `artifacts/atlanta-tis/src/components/proofread-panel.tsx` | One self-contained component. |

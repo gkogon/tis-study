@@ -63,6 +63,7 @@
     "build:preview-fixtures": "node ./scripts/build-preview-fixtures.mjs",
     "check:whatif-gate": "node ./scripts/verify-whatif-gate.mjs",
     "check:whatif-limiter": "node ./scripts/verify-whatif-limiter.mjs",
+    "check:proofread": "node ./scripts/verify-proofread.mjs",
     "check:proofread-protocol": "node ./scripts/verify-proofread-protocol.mjs"
   },
   "dependencies": {
