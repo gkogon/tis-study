@@ -36,7 +36,11 @@ located, periods that were never analyzed, and assumptions that were never
 disclosed.** Those are lookups, not judgment. Correlated blind spots do not
 protect a wrong number from a source check.
 
-**Label it accordingly.** Never describe a Datum pass — to a customer, in a deliverable, or in marketing — as independent review, a second opinion, peer review, or QA/QC by a separate reviewer. It is an internal consistency and traceability check. Independent review means a licensed engineer who is not Redline.
+**Label it accordingly.** Never describe a Datum pass — to a customer, in a
+deliverable, or in marketing — as independent review, a second opinion, peer
+review, or QA/QC by a separate reviewer. It is an internal consistency and
+traceability check. Independent review means a licensed engineer who is not
+Redline.
 
 **Rules of the pass**
 
@@ -75,7 +79,11 @@ A Datum pass has three audiences, and a finding carries exactly one.
   fault: route it to the code queue, never to the PE, and fan it out to a
   study-population query, because every study that engine produced carries it.
 
-The prohibition at §"What Datum is, and is not" on the phrases "independent review", "second opinion", "peer review" and "QA/QC by a separate reviewer" applies in full to every product surface, which is a customer venue. The permitted description, verbatim: "an internal consistency and traceability check."
+The prohibition at §"What Datum is, and is not" on the phrases "independent
+review", "second opinion", "peer review" and "QA/QC by a separate reviewer"
+applies in full to every product surface, which is a customer venue. The
+permitted description, verbatim: "an internal consistency and traceability
+check."
 
 ## What a Datum pass requires
 
@@ -243,11 +251,20 @@ as a curve selection.
 
 Every study states, in the deliverable, not in a footnote:
 
-- **Cycle length 90 s**, **green ratio g/C 0.45**, **saturation flow 1,800
-  vphgpl** — applied flat at every signal. These are screening assumptions, not
-  measured timing.
-- **No left-turn phasing is modeled.** One critical lane per approach,
-  critical-movement fraction 0.45.
+- **The signal-timing basis every analyzed row actually reports**, named from
+  that row's `signalTiming.basis` — `measured`, `measured-cycle`, `webster` or
+  `screening-default` — together with the cycle length, green ratio and
+  saturation flow that basis produced for it. Where a row reports
+  `screening-default`, state that its timing is a screening assumption, not
+  measured timing. Do **not** state one cycle length or one g/C for the whole
+  network: that is only true if every row reports the same basis and the same
+  values, and the standing note below says why asserting it blind is wrong on
+  every default-run study.
+- **The left-turn phasing every analyzed row reports** (`leftPhasingNs` /
+  `leftPhasingEw`), and where a row models none, that it models none — one
+  critical lane per approach, critical-movement fraction 0.45. A blanket "no
+  left-turn phasing is modeled" is a claim about every row and must be checked
+  against every row before it is written.
 - **Reported delay is capped at 300 s.**
 - The **analysis period**, and **every period not analyzed.**
 - **An absent AM peak is a disclosure item, not a footnote.** Multifamily is
@@ -309,9 +326,12 @@ finding with its type **and its disposition** —
 - `CONTESTED → PE` — escalated; record the ruling when it comes.
 - `ACCEPTED RISK` — someone decided to ship anyway. Record **who** and **when**.
 
-A finding with no disposition is an open finding, and an open finding is an
-open study. `ACCEPTED RISK` exists so that shipping past a known issue is a
-recorded decision by a named person rather than something that quietly happened.
+A finding with no disposition is an open **finding** — a record that must be
+carried, in the log and in the deliverable where it belongs. It is **not by
+itself an open study**: completion turns on the single gate at the end of this
+document and on nothing else. `ACCEPTED RISK` exists so that shipping past a
+known issue is a recorded decision by a named person rather than something that
+quietly happened.
 
 ---
 
