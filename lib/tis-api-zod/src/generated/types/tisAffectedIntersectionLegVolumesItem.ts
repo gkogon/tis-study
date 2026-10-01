@@ -15,4 +15,5 @@ export type TisAffectedIntersectionLegVolumesItem = {
   exitingVph: number | null;
   source: TisAffectedIntersectionLegVolumesItemSource;
   oneWay: TisAffectedIntersectionLegVolumesItemOneWay;
+  street?: string | null;
 };

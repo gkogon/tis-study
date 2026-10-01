@@ -329,6 +329,24 @@ const colSum = (m, t) => DIRS.reduce((s, d) => s + m[d][t], 0);
   const tNb = tRow.approaches.find((a) => a.direction === "NB");
   ok(wb.existingVolumeVph === 0 && wb.laneGroups === undefined, "row: a T's absent leg carries 0 volume and NO lane groups");
   ok(Array.isArray(tNb.laneGroups) && tNb.laneGroups.length === 3 && tRow.legVolumes.length === 3, "row: the T's three real legs keep their lane groups and provenance");
+
+  // Each leg's street rides to the row, so the turning-movement diagram can
+  // label an axis by the street whose legs lie on it instead of by the order
+  // of the intersection name. Legs that never knew a street add no key.
+  const named = core.buildLegEstimate([
+    { bearingDeg: 180, cls: 2, oneWay: null, street: "Main St" }, { bearingDeg: 0, cls: 2, oneWay: null, street: "Main St" },
+    { bearingDeg: 270, cls: 4, oneWay: null, street: "Oak Ave" }, { bearingDeg: 90, cls: 4, oneWay: null, street: null },
+  ], { signalDesignHourVph: 1200 });
+  ok(named.legs.NB.street === "Main St" && named.legs.EB.street === "Oak Ave" && named.legs.WB.street === null,
+    "estimate: each resolved leg keeps its street (null on an unnamed way)");
+  const namedRow = core.buildAffectedRow(cand({ legEstimate: named }), 0.5, project, { ...base, legVolumes: "network" });
+  const streetOf = (row, d) => row.legVolumes.find((l) => l.direction === d)?.street;
+  ok(streetOf(namedRow, "SB") === "Main St" && streetOf(namedRow, "EB") === "Oak Ave" && streetOf(namedRow, "WB") === null,
+    "row: legVolumes carry each leg's street");
+  ok(network.legVolumes.every((l) => !("street" in l)), "row: legs built without a street print no street key (older callers unchanged)");
+  const { legVolumes: _nl, legEstimateExact: _ne, ...namedRest } = namedRow;
+  const { legVolumes: _ul, legEstimateExact: _ue, ...unnamedRest } = network;
+  ok(JSON.stringify(namedRest) === JSON.stringify(unnamedRest), "row: a leg's street changes no number on the row");
 }
 
 // ---- 5. server: incident links → JunctionLeg[] (bearing, class, one-way sense) ----
@@ -351,7 +369,20 @@ const colSum = (m, t) => DIRS.reduce((s, d) => s + m[d][t], 0);
   const byCard = Object.fromEntries(legs.map((l) => [Math.round(l.bearingDeg / 90) * 90 % 360, l]));
   ok(byCard[0]?.cls === 2 && byCard[180]?.cls === 2 && byCard[90]?.cls === 4 && byCard[270]?.cls === 4, "legs: bearing and class per leg");
   ok(byCard[90]?.oneWay === "in" && byCard[0]?.oneWay === null && byCard[270]?.oneWay === null, "legs: one-way sense is relative to the node (east leg enters only)");
+  ok(byCard[0]?.street === "Main St" && byCard[180]?.street === "Main St" && byCard[90]?.street === "Oak Ave" && byCard[270]?.street === "Oak Ave",
+    "legs: each leg carries the street name of its road segment");
   ok(g.adj[node].length === 3, "legs: (sanity) routing adjacency at the node has only 3 links — why incidentLinks() exists");
+  // An unnamed way, and a segment from a road file that predates the name
+  // slot, both give a leg with no street (null), never a borrowed name.
+  const g2 = buildGraph([
+    [2, 40.5, -80.0, 40.51, -80.0, null, null, null, 0],
+    [2, 40.49, -80.0, 40.5, -80.0, null, null],
+    [4, 40.5, -80.0, 40.5, -79.99, null, null, "Oak Ave", 0],
+  ]);
+  const legs2 = junctionLegsAtNode(g2, g2.nodeOf(40.5, -80.0), incidentLinks(g2));
+  const byCard2 = Object.fromEntries(legs2.map((l) => [Math.round(l.bearingDeg / 90) * 90 % 360, l]));
+  ok(byCard2[0]?.street === null && byCard2[180]?.street === null && byCard2[90]?.street === "Oak Ave",
+    "legs: an unnamed way or a pre-name segment gives street null");
 
   // The methodology's leg-volume clause describes what the study DID, not what
   // was requested: network only when the request allowed it AND a junction

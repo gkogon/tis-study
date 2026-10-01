@@ -1,9 +1,10 @@
 /**
  * Incident links at a routing-graph node, described the way the leg-volume
- * resolver wants them: bearing from the node to the far end, OSM class, and
- * the one-way sense RELATIVE TO THE NODE ("in" = traffic can only travel
- * toward it). Link.dir is stored a→b (+1), b→a (-1), two-way (0), so the
- * sense flips depending on which end the node is.
+ * resolver wants them: bearing from the node to the far end, OSM class, the
+ * one-way sense RELATIVE TO THE NODE ("in" = traffic can only travel toward
+ * it), and the link's street name (null when the way has none). Link.dir is
+ * stored a→b (+1), b→a (-1), two-way (0), so the sense flips depending on
+ * which end the node is.
  *
  * NOT built from Graph.adj: that is the ROUTING adjacency, and a one-way link
  * is deliberately listed at only the node it can be traversed FROM
@@ -43,6 +44,7 @@ export function junctionLegsAtNode(g: Graph, node: number, incidence: Map<number
       bearingDeg: bearingDeg(g.nodeLat[node]!, g.nodeLon[node]!, g.nodeLat[far]!, g.nodeLon[far]!),
       cls: lk.cls,
       oneWay,
+      street: lk.name ?? null,
     });
   }
   return out;
