@@ -574,7 +574,7 @@ export function engineStamp(): string {
   return sha ? `${hex(hash32(constants))}-${sha.slice(0, 7)}` : hex(hash32(constants));
 }
 
-export const RULES_VERSION = "1";
+export const RULES_VERSION = "2"; // "1" was the three v/c clauses; twelve as of Task 3
 ```
 
 - [ ] **Step 6: Write `s4-results.ts` (the three v/c clauses) and `index.ts`**
@@ -800,6 +800,7 @@ git commit -m "feat(proofread): clause framework and the three v/c plausibility 
 ### Task 3: The remaining nine clauses
 
 **Files:**
+- Create: `artifacts/tis-api-server/src/lib/proofread/prose.ts`
 - Create: `artifacts/tis-api-server/src/lib/proofread/s1-inputs.ts`
 - Create: `artifacts/tis-api-server/src/lib/proofread/s2-trip-gen.ts`
 - Create: `artifacts/tis-api-server/src/lib/proofread/s5-criteria.ts`
@@ -811,6 +812,12 @@ git commit -m "feat(proofread): clause framework and the three v/c plausibility 
 
 **Interfaces:**
 - Consumes: `Clause`, `StudyRecord`, `ProofreadFinding`, `rowBuckets` from Task 2.
+- Modifies: `proofread/types.ts` — `CoverageEntry` gains `note?: string` (see below).
+
+**Two mechanisms Task 2 established that every clause here must use.** Task 2's fix round introduced them after a reviewer found a garbage `readPaths` prefix passing all of its assertions:
+
+1. **Literal read paths.** `rowBuckets` returns a literal `at` base per bucket (`result.affectedIntersections`, or `` `result.periodReports[${k}].affectedIntersections` ``). Build every `readPaths` entry as `` `${b.at}[${i}].${field}` ``, naming the field whose value you recorded — never from `b.period`, which is a label, not a path. `verify-proofread.mjs` resolves every read path of every finding against the record and requires it to equal the recorded value, so a path that addresses nothing fails the suite.
+2. **Partial coverage is not clean coverage.** A clause that judged only some rows must say so: set `note` on its `CoverageEntry` (e.g. `"judged 3 of 20 rows; 17 carried no numeric currentVc/existingVc"`) and, when it emits a finding, carry the same count in the detail. `status: "ran"` with a silent skip is the false-coverage failure `TIS-PROOFREAD-PROTOCOL.md:65-69` forbids — a clean result that hides what was never looked at. Add `note?: string` to `CoverageEntry` in `types.ts` for this.
 - Produces: clauses `growthOverrideDisclosed`, `growthMultiplierReproduces`, `rateReproducesTotal`, `passByBasisNamed`, `losMatchesDelay`, `screeningClampDisclosed`, `criteriaNamed`, `periodScopeDisclosed`, `scopeNoteConsistent` — all added to `ALL_CLAUSES`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -912,7 +919,36 @@ Create `artifacts/tis-api-server/scripts/fixtures/proofread/legacy-minimal.json`
 Run: `pnpm --filter @workspace/tis-api-server run check:proofread`
 Expected: FAIL — every new clause id returns no findings because no clause with that id is registered.
 
-- [ ] **Step 3: Write `s1-inputs.ts`**
+- [ ] **Step 3: Write `prose.ts` — the disclosure corpus**
+
+Four clauses ask "does the deliverable say this?". They must not ask it of the generated boilerplate.
+
+```ts
+/**
+ * What counts as this study's OWN disclosure prose.
+ *
+ * `result.methodology` is not an engineer-authored list: the engine splices a
+ * fixed 15-line methodology boilerplate into it on every study
+ * (`TIS_METHODOLOGY`, mapped in at `tis.ts:1250`). That text already contains
+ * the words a naive keyword gate looks for — "Pass-by and internal-capture
+ * credits are applied…", "Reported control delay is capped at 300 s…",
+ * "de-duplicated within a 45m clustering threshold", "within the study radius"
+ * — so a clause gated on `[...findings, ...methodology]` matches the
+ * boilerplate on EVERY study and never fires. Four clauses in this file set
+ * would have been silently dead.
+ *
+ * So the corpus is `findings` only: the study-specific lines. The plausibility
+ * guard already writes its disclosure to the head of both arrays, so nothing
+ * that matters is lost by ignoring `methodology`.
+ */
+import type { StudyRecord } from "./types.ts";
+
+export function authoredProse(rec: StudyRecord): string {
+  return ((rec.result.findings as string[]) ?? []).join(" ");
+}
+```
+
+- [ ] **Step 4: Write `s1-inputs.ts`**
 
 ```ts
 /**
@@ -999,7 +1035,7 @@ export const growthMultiplierReproduces: Clause = {
 };
 ```
 
-- [ ] **Step 4: Write `s2-trip-gen.ts`**
+- [ ] **Step 5: Write `s2-trip-gen.ts`**
 
 ```ts
 /**
@@ -1012,6 +1048,7 @@ export const growthMultiplierReproduces: Clause = {
  */
 import { LAND_USES } from "@workspace/tis-engine-core";
 import type { Clause, ProofreadFinding, StudyRecord } from "./types.ts";
+import { authoredProse } from "./prose.ts";
 
 const TOLERANCE = 1.0; // trips; the payload rounds totals
 
@@ -1067,10 +1104,15 @@ export const passByBasisNamed: Clause = {
     const code = String((rec.result.tripGeneration as any)?.landUseCode ?? rec.request.landUseCode ?? "");
     const lu = LAND_USES.find((l) => l.code === code);
     if (!lu) return { status: "not-run", reason: `land use ${code || "(absent)"} not in the registry` };
+    // The engine records what it actually applied (clamped) as
+    // result.passByPctApplied. Re-deriving it from LAND_USES would diverge from
+    // the study the moment a default is edited — in a finding whose only job is
+    // traceability. LAND_USES is still the source of the `source` string.
+    const applied = Number(rec.result.passByPctApplied);
+    if (!Number.isFinite(applied)) return { status: "not-run", reason: "payload predates result.passByPctApplied" };
+    if (applied === 0) return { status: "ran", findings: [] };
     const requested = rec.request.passByPct;
-    const applied = requested === undefined || requested === null ? lu.passByPctPm : Number(requested);
-    if (!applied) return { status: "ran", findings: [] };
-    const prose = [...((rec.result.findings as string[]) ?? []), ...((rec.result.methodology as string[]) ?? [])].join(" ");
+    const prose = authoredProse(rec);
     if (/pass-?by/i.test(prose)) return { status: "ran", findings: [] };
     return {
       status: "ran",
@@ -1086,6 +1128,7 @@ export const passByBasisNamed: Clause = {
             `but neither findings nor methodology mentions pass-by. A trip reduction the reader cannot see is a trip reduction a reviewer will disallow.`,
           sourceLabel: `lib/tis-engine-core/src/land-uses.ts — ${lu.code} passByPctPm ${lu.passByPctPm}, source "${lu.source}"`,
           readPaths: [
+            { path: "result.passByPctApplied", value: applied },
             { path: "request.passByPct", value: requested === undefined ? null : Number(requested) },
             { path: `LAND_USES[${code}].passByPctPm`, value: lu.passByPctPm },
           ],
@@ -1100,7 +1143,7 @@ export const passByBasisNamed: Clause = {
 
 Note for the implementer: there is deliberately **no** internal-capture counterpart. `internalCapturePctPm` is 0 on all 51 land uses, so a "matches the land-use default" clause would be vacuously true on every study in existence.
 
-- [ ] **Step 5: Add the two §4 clauses to `s4-results.ts`**
+- [ ] **Step 6: Add the two §4 clauses to `s4-results.ts`**
 
 ```ts
 import { delayToLos, SCREENING_MAX_DELAY_SEC } from "@workspace/tis-engine-core";
@@ -1129,6 +1172,12 @@ export const losMatchesDelay: Clause = {
           if (!Number.isFinite(delay) || typeof los !== "string") continue;
           const expected = delayToLos(delay);
           if (expected === los) continue;
+          // The payload rounds delay to 0.1 s while the letter was derived from
+          // the unrounded value, so a delay within half a tick of a band edge
+          // disagrees harmlessly. Flag only a letter that is wrong across the
+          // whole rounding interval — otherwise this files a DEFECT accusing the
+          // engine of losing a value it never lost.
+          if (delayToLos(delay - 0.05) === los || delayToLos(delay + 0.05) === los) continue;
           findings.push({
             clauseId: "losMatchesDelay",
             section: 4,
@@ -1169,16 +1218,24 @@ export const screeningClampDisclosed: Clause = {
     const clamped: Array<{ label: string; delay: number; path: string }> = [];
     for (const b of buckets) {
       b.rows.forEach((r: any, i: number) => {
+        // The regional calibration multiplier is applied AFTER the clamp at
+        // every call site, so the ceiling this row can print is 300 x calMul.
+        // Testing `>= 300` misses every calibrated row with a multiplier below
+        // 1 — exactly the clamped rows the clause exists to catch.
+        const cal = r?.calibration as { delayMultiplier?: number; delayMultiplierExact?: number } | undefined;
+        const mul = Number(cal?.delayMultiplierExact ?? cal?.delayMultiplier ?? 1);
+        const ceiling = SCREENING_MAX_DELAY_SEC * (Number.isFinite(mul) && mul > 0 ? mul : 1);
         for (const key of ["currentDelaySec", "existingDelaySec", "futureDelaySec", "designNoBuildDelaySec", "designBuildDelaySec"]) {
           const d = Number(r?.[key]);
-          if (Number.isFinite(d) && d >= SCREENING_MAX_DELAY_SEC) {
+          // -0.05 because the payload rounds delay to 0.1 s.
+          if (Number.isFinite(d) && d >= ceiling - 0.05) {
             clamped.push({ label: `${r.name} ${key} [${b.period}]`, delay: d, path: `result.${b.period}.affectedIntersections[${i}].${key}` });
           }
         }
       });
     }
     if (clamped.length === 0) return { status: "ran", findings: [] };
-    const prose = [...((rec.result.findings as string[]) ?? []), ...((rec.result.methodology as string[]) ?? [])].join(" ");
+    const prose = authoredProse(rec);
     if (/clamp|ceiling|capped/i.test(prose)) return { status: "ran", findings: [] };
     return {
       status: "ran",
@@ -1203,7 +1260,7 @@ export const screeningClampDisclosed: Clause = {
 };
 ```
 
-- [ ] **Step 6: Write `s5-criteria.ts`**
+- [ ] **Step 7: Write `s5-criteria.ts`**
 
 ```ts
 /**
@@ -1222,11 +1279,17 @@ export const criteriaNamed: Clause = {
   section: 5,
   title: "The governing agency and its criteria are named with a source",
   run(rec: StudyRecord) {
-    const agencies = rec.result.agencies as string[] | undefined;
-    if (!agencies || agencies.length === 0) {
-      return { status: "not-run", reason: "record names no governing agency (result.agencies absent); no agency document is stored anywhere in this system" };
+    // The agency names live in `jurisdiction`, whose own doc comment says it is
+    // "the region's governing-agency names, as the findings ... print them".
+    // There is no `agencies` key on TisReport — reading one would make this
+    // clause not-run on every study ever proofread, which is a dead clause
+    // masquerading as coverage.
+    const j = rec.result.jurisdiction as { dotName?: string; planningOfficeName?: string } | undefined;
+    const agencies = [j?.dotName, j?.planningOfficeName].filter((x): x is string => !!x);
+    if (agencies.length === 0) {
+      return { status: "not-run", reason: "record carries no jurisdiction (result.jurisdiction absent); no agency document is stored anywhere in this system" };
     }
-    const prose = [...((rec.result.findings as string[]) ?? []), ...((rec.result.methodology as string[]) ?? [])].join(" ");
+    const prose = authoredProse(rec);
     const named = agencies.filter((a) => prose.includes(a));
     if (named.length === agencies.length) return { status: "ran", findings: [] };
     const missing = agencies.filter((a) => !prose.includes(a));
@@ -1242,9 +1305,10 @@ export const criteriaNamed: Clause = {
             `The record names ${agencies.join(", ")} as the governing agency(ies), but ` +
             `${missing.join(", ")} appears nowhere in findings or methodology. Which standard the LOS ` +
             `verdicts were judged against cannot be established from this study.`,
-          sourceLabel: "result.agencies, compared against result.findings and result.methodology",
+          sourceLabel: "result.jurisdiction (dotName, planningOfficeName), compared against result.findings",
           readPaths: [
-            { path: "result.agencies", value: agencies.join("; ") },
+            { path: "result.jurisdiction.dotName", value: j?.dotName ?? null },
+            { path: "result.jurisdiction.planningOfficeName", value: j?.planningOfficeName ?? null },
             { path: "result.findings.length", value: ((rec.result.findings as string[]) ?? []).length },
           ],
           remedy: "Name the governing agency and the criteria applied, with the published document and section they come from.",
@@ -1256,7 +1320,7 @@ export const criteriaNamed: Clause = {
 };
 ```
 
-- [ ] **Step 7: Write `s6-limitations.ts`**
+- [ ] **Step 8: Write `s6-limitations.ts`**
 
 ```ts
 /**
@@ -1284,7 +1348,7 @@ export const periodScopeDisclosed: Clause = {
     if (reported.size === 0 && Array.isArray(rec.result.affectedIntersections)) reported.add("pm_peak");
     const missing = asked.filter((p) => !reported.has(p));
     if (missing.length === 0) return { status: "ran", findings: [] };
-    const prose = [...((rec.result.findings as string[]) ?? []), ...((rec.result.methodology as string[]) ?? [])].join(" ");
+    const prose = authoredProse(rec);
     const undisclosed = missing.filter((p) => !prose.includes(p) && !prose.toLowerCase().includes(p.replace("_", " ")));
     if (undisclosed.length === 0) return { status: "ran", findings: [] };
     return {
@@ -1324,7 +1388,7 @@ export const scopeNoteConsistent: Clause = {
     if (!Number.isFinite(studied)) return { status: "not-run", reason: "intersectionsStudied absent" };
     // Force-included signals come from outside the radius, so studied > inArea is legitimate.
     if (merged === 0 && studied >= inArea) return { status: "ran", findings: [] };
-    const prose = [...((rec.result.findings as string[]) ?? []), ...((rec.result.methodology as string[]) ?? [])].join(" ");
+    const prose = authoredProse(rec);
     if (/merged|duplicate|study area/i.test(prose)) return { status: "ran", findings: [] };
     return {
       status: "ran",
@@ -1332,20 +1396,23 @@ export const scopeNoteConsistent: Clause = {
         {
           clauseId: "scopeNoteConsistent",
           section: 6,
-          type: "DISCLOSE",
+          // NOTE, not DISCLOSE: buildStudyScopeNote runs inside the PDF
+          // renderer and its sentence is never written to findings or
+          // methodology, so this clause cannot see whether the deliverable
+          // discloses the gap. It reports what the saved record does establish.
+          type: "NOTE",
           title: "The set analyzed is not the set in the study radius",
           detail:
             `The inventory holds ${inArea} signalized intersection(s) within the ${rec.result.studyRadiusMi} mi radius, ` +
             `${merged} were absorbed as duplicate records of a junction already kept, and ${studied} were analyzed. ` +
-            `Merges above 45 m rest on name equality, so this is a prompt to verify, not proof of duplication — and the ` +
-            `deliverable says nothing about it.`,
+            `Merges above 45 m rest on name equality, so this is a prompt to verify, not proof of duplication.`,
           sourceLabel: "artifacts/tis-api-server/src/lib/study-scope-note.ts — buildStudyScopeNote inputs",
           readPaths: [
             { path: "result.intersectionsInStudyArea", value: inArea },
             { path: "result.intersectionsMergedAsDuplicates", value: merged },
             { path: "result.intersectionsStudied", value: studied },
           ],
-          remedy: "Carry the study-scope note into the deliverable, stating the radius population, the merges, and the set analyzed.",
+          remedy: "Confirm the merged records are the same physical junction before relying on the analyzed set; the scope note the PDF prints states these counts.",
           audience: "engineer",
         },
       ],
@@ -1354,7 +1421,7 @@ export const scopeNoteConsistent: Clause = {
 };
 ```
 
-- [ ] **Step 8: Register all nine in `index.ts`**
+- [ ] **Step 9: Register all nine in `index.ts`**
 
 ```ts
 import { growthMultiplierReproduces, growthOverrideDisclosed } from "./s1-inputs.ts";
@@ -1385,12 +1452,12 @@ export const ALL_CLAUSES: Clause[] = [
 ];
 ```
 
-- [ ] **Step 9: Run the tests to verify they pass**
+- [ ] **Step 10: Run the tests to verify they pass**
 
 Run: `pnpm --filter @workspace/tis-api-server run check:proofread`
 Expected: `ALL CHECKS PASSED`
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add artifacts/tis-api-server/src/lib/proofread artifacts/tis-api-server/scripts/verify-proofread.mjs \
@@ -2898,7 +2965,14 @@ export type ProofreadFindingT = {
   fingerprint: string;
 };
 
-export type CoverageEntryT = { clauseId: string; section: number; status: "ran" | "not-run"; reason?: string };
+export type CoverageEntryT = {
+  clauseId: string;
+  section: number;
+  status: "ran" | "not-run";
+  reason?: string;
+  /** Set when the clause ran but judged only part of the record. */
+  note?: string;
+};
 
 export type DispositionT = {
   findingId: string;
@@ -3076,6 +3150,10 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
 
   const latestFor = (id: string) => run.dispositions.find((d) => d.findingId === id);
   const notRun = run.coverage.filter((c) => c.status === "not-run");
+  // A clause that ran but judged only part of the record says so here. Rendering
+  // it beside the findings is the difference between "nothing found" and
+  // "nothing found in the part I could read".
+  const partial = run.coverage.filter((c) => c.status === "ran" && !!c.note);
 
   return (
     <section className="border rounded-lg" data-testid="panel-proofread">
@@ -3183,6 +3261,16 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
             </div>
           );
         })}
+
+        {partial.length > 0 && (
+          <ul className="text-xs text-muted-foreground list-disc pl-5 space-y-0.5">
+            {partial.map((c) => (
+              <li key={c.clauseId}>
+                §{c.section} {c.clauseId} — {c.note}
+              </li>
+            ))}
+          </ul>
+        )}
 
         {notRun.length > 0 && (
           <details className="text-xs text-muted-foreground">
