@@ -359,9 +359,16 @@ ok(/export \* from "\.\/study-proofread";/.test(barrelCode), "schema barrel re-e
 for (const sym of ["studyProofreadRunsTable", "studyProofreadFindingsTable", "studyProofreadDispositionsTable"]) {
   ok(new RegExp(`export const ${sym}\\s*=\\s*pgTable\\(`).test(proofreadCode), `exports table ${sym}`);
 }
-for (const t of ["StudyProofreadRun", "StudyProofreadFinding", "StudyProofreadDisposition"]) {
-  ok(new RegExp(`export type ${t}\\s*=\\s*typeof \\w+\\.\\$inferSelect;`).test(proofreadCode), `exports type ${t}`);
-  ok(new RegExp(`export type Insert${t}\\s*=\\s*typeof \\w+\\.\\$inferInsert;`).test(proofreadCode), `exports type Insert${t}`);
+// Each type must be derived from ITS OWN table: `\w+` here would let
+// `StudyProofreadRun = typeof studyProofreadFindingsTable.$inferSelect` pass.
+const TYPE_TABLE = {
+  StudyProofreadRun: "studyProofreadRunsTable",
+  StudyProofreadFinding: "studyProofreadFindingsTable",
+  StudyProofreadDisposition: "studyProofreadDispositionsTable",
+};
+for (const [t, table] of Object.entries(TYPE_TABLE)) {
+  ok(new RegExp(`export type ${t}\\s*=\\s*typeof ${table}\\.\\$inferSelect;`).test(proofreadCode), `exports type ${t} from ${table}`);
+  ok(new RegExp(`export type Insert${t}\\s*=\\s*typeof ${table}\\.\\$inferInsert;`).test(proofreadCode), `exports type Insert${t} from ${table}`);
 }
 
 // ===========================================================================
@@ -395,7 +402,16 @@ ok(
   `the proofread statements are exactly the ${EXPECTED_IDS.length} expected, no more, no fewer`,
   `got [${mineIds.join(", ")}]`,
 );
-ok(new Set(mineIds).size === mineIds.length, "no duplicate proofread statement ids");
+// (A duplicated id needs another to go missing, so the exact-set check above already sees it.)
+
+// No proofread statement may destroy or rewrite anything. The shape rule below is
+// stricter (only two CREATE forms pass), so this is the readable statement of intent.
+const destructive = mine.filter((s) => /\b(DROP|RENAME|TRUNCATE|ALTER)\b|ADD\s+CONSTRAINT/i.test(s.sql));
+ok(
+  destructive.length === 0,
+  "no proofread statement uses DROP, RENAME, TRUNCATE, ALTER or ADD CONSTRAINT",
+  `offending: ${destructive.map((s) => s.id).join(", ")}`,
+);
 
 const sqlTables = new Map();
 const sqlIndexes = [];
@@ -403,10 +419,6 @@ const created = new Set();
 for (const s of mine) {
   const body = s.sql.trim();
   ok((body.match(/;/g) ?? []).length === 1 && body.endsWith(";"), `${s.id}: exactly one statement, ending in a single ;`);
-  ok(
-    !/\b(DROP|RENAME|TRUNCATE|ALTER)\b|ADD\s+CONSTRAINT|\b(INSERT|UPDATE)\b|DELETE\s+FROM/i.test(body),
-    `${s.id}: no DROP / RENAME / ALTER / ADD CONSTRAINT / data write`,
-  );
   const table = parseSqlTable(s.sql);
   const index = table ? null : parseSqlIndex(s.sql);
   ok(
@@ -517,10 +529,40 @@ function sortKeys(o) {
   return Object.fromEntries(Object.entries(o).sort(([a], [b]) => a.localeCompare(b)));
 }
 
-// A finding with no named source is an opinion, not a finding.
-for (const [label, cols] of [["drizzle", dz.study_proofread_findings ? dzCols("study_proofread_findings") : new Map()], ["migration", sqlTables.get("study_proofread_findings")?.columns ?? new Map()]]) {
-  ok(cols.get("source_label")?.notNull === true, `findings.source_label is NOT NULL in the ${label}`);
-  ok(cols.get("read_paths")?.notNull === true, `findings.read_paths is NOT NULL in the ${label}`);
+// Absolute pins. The per-column check above only proves the two sides AGREE, and two
+// sides can agree on the wrong thing. These columns carry a guarantee, so each is
+// pinned to a fixed type and nullability on BOTH sides:
+//   - Postgres treats NULLs as distinct in a unique index, so a nullable
+//     findings.fingerprint / findings.run_id / runs.project_id / runs.revision
+//     silently re-admits the duplicates UQ_study_proofread_findings_run_fp and
+//     UQ_study_proofread_runs_project_revision exist to prevent.
+//   - each table's id must stay the PRIMARY KEY: a foreign key can only point at a
+//     unique column, so losing runs.id's key makes the findings CREATE TABLE fail,
+//     which is fatal at boot.
+//   - coverage / input_manifest / read_paths are jsonb and NOT NULL: a finding with
+//     no named source (source_label) or no read paths is an opinion, not a finding.
+const PINS = [
+  ["study_proofread_runs", "id", "UUID", "pk"],
+  ["study_proofread_runs", "project_id", "UUID", "nn"],
+  ["study_proofread_runs", "revision", "INTEGER", "nn"],
+  ["study_proofread_runs", "input_manifest", "JSONB", "nn"],
+  ["study_proofread_runs", "coverage", "JSONB", "nn"],
+  ["study_proofread_findings", "id", "UUID", "pk"],
+  ["study_proofread_findings", "run_id", "UUID", "nn"],
+  ["study_proofread_findings", "fingerprint", "VARCHAR(32)", "nn"],
+  ["study_proofread_findings", "source_label", "TEXT", "nn"],
+  ["study_proofread_findings", "read_paths", "JSONB", "nn"],
+  ["study_proofread_dispositions", "id", "UUID", "pk"],
+];
+for (const [t, col, type, kind] of PINS) {
+  for (const [side, cols] of [["drizzle", dz[t] ? dzCols(t) : new Map()], ["migration", sqlTables.get(t)?.columns ?? new Map()]]) {
+    const c = cols.get(col);
+    ok(
+      Boolean(c) && c.type === type && (kind === "pk" ? c.pk === true : c.notNull === true),
+      `${t}.${col} is pinned: ${type} ${kind === "pk" ? "PRIMARY KEY" : "NOT NULL"} in the ${side}`,
+      c ? `found ${c.type}, notNull=${c.notNull}, pk=${c.pk}` : "column missing",
+    );
+  }
 }
 
 // ===========================================================================
@@ -556,6 +598,12 @@ ok(
 // ===========================================================================
 // 6. The advisor boundary: Datum cannot write to a study because there is
 //    nowhere for it to write. No tis_projects column, no tis_projects ALTER.
+//
+//    This is a TRIPWIRE, not proof. It forbids the two words and any statement
+//    that mentions proofread; a neutral-named plain column such as
+//    `latest_review_id UUID` (no FK) on tis_projects is invisible to it. The
+//    structural boundary is the store guard in Task 7, which asserts the proofread
+//    store never writes tis_projects.
 // ===========================================================================
 
 ok(!/proofread|datum/i.test(projectsCode), "tis_projects (drizzle) has no proofread or datum column or reference");
@@ -564,10 +612,6 @@ ok(
   touchesProjects.every((s) => !/proofread|datum/i.test(s.sql)),
   "no migration ALTERs tis_projects for proofread or datum",
   `offending: ${touchesProjects.filter((s) => /proofread|datum/i.test(s.sql)).map((s) => s.id).join(", ")}`,
-);
-ok(
-  !mine.some((s) => !/^\s*CREATE\b/i.test(s.sql)),
-  "every proofread statement is a CREATE (it can add nothing to an existing table)",
 );
 
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);
