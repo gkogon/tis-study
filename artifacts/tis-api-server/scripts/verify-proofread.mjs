@@ -9,9 +9,9 @@
  * Every assertion here has been mutation-checked: for each one there is a
  * one-line break of the clause code that turns it red. An assertion that passes
  * against a broken clause is worse than none, so keep that property when editing.
- * The exceptions are the `precondition:` assertions, which test no clause: they pin
+ * The exceptions are the `precondition [<fixture>.json]` assertions, which test no clause: they pin
  * the premise of a real-payload test (the fixture still holds the sentence, the
- * rounding-edge row, the boilerplate) and go red if the fixture stops holding it.
+ * rounding-edge row, the boilerplate) and go red, naming the fixture, if it stops holding it. They are never skips.
  * Two helper pitfalls this file has already paid for: a helper that silently ignores
  * an argument (an assertion then passes against input nobody edited), and a clause
  * that throws (runClauses reports it as not-run, which satisfies every not-run
@@ -43,11 +43,17 @@ const { runClauses: runClausesRaw, ALL_CLAUSES, findingFingerprint, engineStamp 
  * runClauses reports a clause that THROWS as not-run ("clause threw: …"), so a clause that crashes on a record
  * satisfies every `status === "not-run"` assertion below. Every run in this file goes through this wrapper, and
  * the last assertion fails if any clause threw on any record (the deliberate `boom` clause excepted).
+ * It also collects findings of type UNVERIFIED: no registered clause may emit one, because an unverifiable that is true
+ * of every study belongs in a coverage note, not the findings list.
  */
 const threw = [];
+const unverified = [];
 const runClauses = (rec, clauses) => {
   const res = runClausesRaw(rec, clauses);
-  if (!clauses) for (const c of res.coverage) if (/clause threw/.test(c.reason ?? "")) threw.push(`${c.clauseId}: ${c.reason}`);
+  if (!clauses) {
+    for (const c of res.coverage) if (/clause threw/.test(c.reason ?? "")) threw.push(`${c.clauseId}: ${c.reason}`);
+    for (const f of res.findings) if (f.type === "UNVERIFIED") unverified.push(f.clauseId);
+  }
   return res;
 };
 const { delayToLos, LAND_USES } = await import("@workspace/tis-engine-core");
@@ -121,6 +127,15 @@ withNoBuildBreach.result.affectedIntersections.push({
 // REAL generateTisReport payloads (artifacts/atlanta-tis/scripts/fixtures/README.md), as study records.
 const REAL_DIR = path.resolve(here, "../../atlanta-tis/scripts/fixtures");
 const REAL = ["scenario-base", "scenario-overrides", "scenario-network-utdf"];
+/**
+ * An assertion about the FIXTURE, not about a clause. Red means the fixture no longer holds what a real-payload test
+ * needs, so the test would be vacuous; it is never softened into a skip (a check that quietly skips when its input
+ * changes is a check that stopped looking). The message names the fixture and the likely cause so nobody reads it as a
+ * clause regression.
+ */
+const FIXTURE_HINT =
+  "artifacts/atlanta-tis/scripts/fixtures was probably regenerated (make-scenario-fixtures.mjs) and no longer exercises this clause — a fixture change, not evidence that a clause broke";
+const pre = (file, cond, what) => ok(cond, `precondition [${file}.json]: ${what} — ${FIXTURE_HINT}`);
 const realRec = (name) => {
   const r = JSON.parse(readFileSync(path.resolve(REAL_DIR, `${name}.json`), "utf8"));
   return { request: r.request, result: r };
@@ -557,10 +572,11 @@ const REAL_FINDINGS = baseReal.result.findings;
 const S_PASSBY =
   "Pass-by credit 30% and internal-capture credit 0% applied at the PM peak (25% of that credit at the AM and Saturday-midday periods, per the industry rule of thumb that off-peak shopping diverts less) before off-site assignment (standard pass-by methodology; ULI Internal Capture).";
 {
-  ok(!!S_TRIPS && !!S_AREA && !!S_DOT && !!S_SENS, "precondition: the real payload's findings carry the trip, study-area, DOT and sensitivity sentences the prose gates are tested against");
-  ok(
+  pre("scenario-base", !!S_TRIPS && !!S_AREA && !!S_DOT && !!S_SENS, "its findings carry the trip, study-area, DOT and sensitivity sentences the prose gates are tested against");
+  pre(
+    "scenario-base",
     REAL_METHODOLOGY.some((m) => /Pass-by and internal-capture credits are applied/.test(m)) && REAL_METHODOLOGY.some((m) => /capped at 300 s/.test(m)),
-    "precondition: the real payload's methodology boilerplate already contains the pass-by and 300 s wording a naive gate would match",
+    "its methodology boilerplate already contains the pass-by and 300 s wording a naive gate would match",
   );
 }
 
@@ -573,18 +589,23 @@ const S_PASSBY =
     const quiet = (id) => cover(res, id)?.status === "ran" && byClause(res, id).length === 0;
     const complete = (id) => quiet(id) && cover(res, id).note === undefined;
     ok(TWELVE.every((id) => cover(res, id)?.status === "ran"), `${name}: all twelve clauses ran on a complete payload (nothing not-run, nothing unregistered)`);
-    ok(r.request.growthRatePct !== undefined && quiet("growthOverrideDisclosed"), `${name}: the engine's own override tag satisfies growthOverrideDisclosed`);
+    pre(name, r.request.growthRatePct !== undefined && /^Explicit override/.test(r.result.growthSource ?? ""), "the request carries a growth override and the engine tagged its growthSource");
+    ok(quiet("growthOverrideDisclosed"), `${name}: the engine's own override tag satisfies growthOverrideDisclosed`);
     ok(quiet("growthMultiplierReproduces"), `${name}: the applied growth multiplier reproduces`);
     ok(complete("rateReproducesTotal"), `${name}: PM, AM and daily totals reproduce from their rates, none left unjudged`);
     ok(quiet("passByBasisNamed"), `${name}: no pass-by applied, none to disclose`);
     ok(complete("losMatchesDelay"), `${name}: every LOS letter matches its delay (including rows at a rounding edge), none left unjudged`);
+    pre(name, r.result.findings.some((f) => f.includes(r.result.jurisdiction?.dotName ?? "\u0000")), "a finding names jurisdiction.dotName");
     ok(quiet("criteriaNamed"), `${name}: the findings name the governing DOT, so criteriaNamed is quiet`);
+    ok(/criteria values/.test(cover(res, "criteriaNamed")?.note ?? "") && /published document/.test(cover(res, "criteriaNamed")?.note ?? ""), `${name}: …and it still says, in the coverage note, that the criteria values were not checked against a published document`);
     ok(complete("periodScopeDisclosed"), `${name}: every requested period is reported`);
     const clampRows = r.result.periodReports.flatMap((p) => p.affectedIntersections).filter((x) => x.futureDelaySec >= 299.95);
     const clamp = byClause(res, "screeningClampDisclosed");
-    ok(clampRows.length > 0 && clamp.length === 1 && clamp[0].type === "DISCLOSE", `${name}: delays at the 300 s ceiling (${clampRows.length} rows) with no finding saying so → one DISCLOSE`);
+    pre(name, clampRows.length > 0 && !r.result.findings.some((f) => /clamp|ceiling|capped/i.test(f)), "some row's futureDelaySec sits at the 300 s ceiling and no finding mentions a clamp");
+    ok(clamp.length === 1 && clamp[0].type === "DISCLOSE", `${name}: delays at the 300 s ceiling (${clampRows.length} rows) with no finding saying so → one DISCLOSE`);
     const scope = byClause(res, "scopeNoteConsistent");
-    ok(r.result.intersectionsMergedAsDuplicates > 0 && r.result.findings.some((f) => /study area/.test(f)) && scope.length === 1 && scope[0].type === "NOTE", `${name}: merged records fire the scope NOTE even though a real finding says "study area"`);
+    pre(name, r.result.intersectionsMergedAsDuplicates > 0 && r.result.findings.some((f) => /study area/.test(f)), "records were merged as duplicates and a finding says \"study area\"");
+    ok(scope.length === 1 && scope[0].type === "NOTE", `${name}: merged records fire the scope NOTE even though a real finding says "study area"`);
     const bad = pathProblems(res.findings, r);
     ok(bad.length === 0, `${name}: every readPath of every finding resolves (${res.findings.reduce((n, f) => n + f.readPaths.length, 0)} paths${bad.length ? `; ${bad.slice(0, 3).join("; ")}` : ""})`);
   }
@@ -598,7 +619,9 @@ const S_PASSBY =
           if (typeof x[d] === "number" && delayToLos(x[d]) !== x[l]) n++;
     return n;
   };
-  ok(strict("scenario-overrides") >= 1 && strict("scenario-network-utdf") >= 1, "precondition: real rows exist whose letter differs from delayToLos(printed delay) — the 0.1 s rounding case the LOS clause must tolerate");
+  for (const name of ["scenario-overrides", "scenario-network-utdf"]) {
+    pre(name, strict(name) >= 1, "a row's letter differs from delayToLos(printed delay) — the 0.1 s rounding case the LOS clause must tolerate");
+  }
 }
 
 // --- §1 growth ---------------------------------------------------------------
@@ -909,7 +932,8 @@ const S_PASSBY =
 
   const quiet = jr(["Project will generate 100 new daily vehicle trips."]);
   const hits = byClause(runClauses(quiet), "criteriaNamed");
-  ok(hits.length === 1 && hits[0].type === "UNVERIFIED", "a study whose findings never name the governing DOT is UNVERIFIED on its criteria");
+  ok(hits.length === 1 && hits[0].type === "DISCLOSE", "a study whose findings never name the governing DOT is a DISCLOSE: the absence is verified, the deliverable must say it");
+  ok(hits.length === 1 && hits[0].audience === "engineer" && hits[0].title === "The governing agency is not named in the study's findings", "…titled as the absence it is, for the engineer");
   ok(/Raleigh Department of Transportation/.test(hits[0]?.detail) && /Raleigh Department of City Planning/.test(hits[0]?.detail) && !/appears nowhere in findings or methodology/.test(hits[0]?.detail), "detail names the DOT (and the planning office as context), and states the corpus accurately (findings, not methodology)");
   ok(hits[0]?.readPaths.map((p) => `${p.path}=${p.value}`).join() === `result.jurisdiction.dotName=${JUR.dotName},result.jurisdiction.planningOfficeName=${JUR.planningOfficeName},result.findings.length=1`, "readPaths: the DOT, the planning office, and how many findings were searched");
   resolves("criteria not named", quiet);
@@ -924,6 +948,20 @@ const S_PASSBY =
   const stripped = realRec("scenario-base");
   stripped.result.findings = stripped.result.findings.filter((f) => f !== S_DOT);
   ok(byClause(runClauses(stripped), "criteriaNamed").length === 1, "…and fires once that one sentence is removed");
+
+  // What genuinely cannot be checked — the criteria VALUES, for want of an agency document — is a coverage note on every
+  // run of the clause, never a finding (an unverifiable on every study is the padding the protocol forbids).
+  const NOTE_RE = [/criteria values/, /not checked/, /published document/, /no agency document is on file/];
+  const noteOf = (r) => cover(runClauses(r), "criteriaNamed")?.note ?? "";
+  const fireNote = noteOf(quiet);
+  const cleanRec = jr([`per ${JUR.dotName} TIS guidance`]);
+  const cleanNote = noteOf(cleanRec);
+  ok(NOTE_RE.every((re) => re.test(fireNote)), "a run that fires a finding carries the criteria-values note");
+  ok(NOTE_RE.every((re) => re.test(cleanNote)) && byClause(runClauses(cleanRec), "criteriaNamed").length === 0, "a CLEAN run (agency named) carries the same note, with no finding");
+  ok(fireNote === cleanNote && !/[.;!?]\s/.test(fireNote), "…one sentence, identical on every run");
+  ok(!runClauses(quiet).findings.concat(runClauses(cleanRec).findings).some((f) => /published document|could not be checked|not checked against/i.test(f.title + " " + f.detail)), "…and the unverifiable criteria values appear in no finding's title or detail");
+  const nrCov = cover(runClauses({ request: {}, result: { findings: [], methodology: [], affectedIntersections: [], periodReports: [] } }), "criteriaNamed");
+  ok(nrCov?.status === "not-run" && !("note" in nrCov), "a not-run criteria entry has a reason and no note");
 
   const noDot = runClauses(jr([], { jurisdiction: { planningOfficeName: JUR.planningOfficeName } }));
   ok(cover(noDot, "criteriaNamed")?.status === "not-run" && /dotName/.test(cover(noDot, "criteriaNamed").reason), "a jurisdiction with no dotName → not-run (reason names dotName)");
@@ -1150,6 +1188,7 @@ const S_PASSBY =
   resolves("the mutated real payload", everyClause);
 }
 
+ok(unverified.length === 0, `no registered clause emitted UNVERIFIED on any record in this suite (what cannot be checked rides CoverageEntry.note, not the findings list — TIS-PROOFREAD-PROTOCOL.md:65-69)${unverified.length ? `: ${[...new Set(unverified)].join(", ")}` : ""}`);
 ok(threw.length === 0, `no clause threw on any record in this suite (a throw is reported as not-run and would pass every not-run assertion)${threw.length ? `: ${[...new Set(threw)].slice(0, 5).join("; ")}` : ""}`);
 
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);

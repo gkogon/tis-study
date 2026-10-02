@@ -2,13 +2,26 @@
  * §5 Criteria — the study must name the criteria it was judged against, and
  * their source.
  *
- * This repo stores no agency document, so nothing can verify a threshold
- * against the agency's own published PDF. That is a standing gap, reported as
- * not-run coverage rather than an assumed pass — and never as UNVERIFIED,
- * which is reserved for a source that was reachable in principle.
+ * Two different facts, kept apart:
+ *
+ *  - "The study's findings do not name the governing agency" is a VERIFIED
+ *    absence: `findings` was read and the name is not in it. It is a DISCLOSE
+ *    finding — the analysis stands, the deliverable has to say it out loud.
+ *
+ *  - "The criteria VALUES were not checked against the agency's published
+ *    document" is a standing gap, true of every study, because this repo stores
+ *    no agency document. It is NOT a finding: an unverifiable attached to every
+ *    study is the padding TIS-PROOFREAD-PROTOCOL.md forbids, and a findings
+ *    list that long reads as coverage. It rides the coverage note instead, on
+ *    every run of this clause, so the manifest says what was not checked
+ *    without the findings list pretending to.
  */
 import type { Clause, ReadPath, StudyRecord } from "./types.ts";
 import { authoredProse } from "./prose.ts";
+
+/** What this clause never checked, on every run. One sentence, in the coverage manifest, not the findings list. */
+export const CRITERIA_VALUES_NOTE =
+  "the criteria values themselves (thresholds, horizons, v/c tests) were not checked against the agency's published document, because no agency document is on file in this system";
 
 export const criteriaNamed: Clause = {
   id: "criteriaNamed",
@@ -31,17 +44,18 @@ export const criteriaNamed: Clause = {
     // this clause fire on every engine-generated study, including one whose finding reads "…per City of Atlanta
     // DOT TIS guidance". The DOT's name appears in findings exactly when the engine cites its guidance (tis.ts).
     const findings = rec.result.findings as unknown;
-    if (authoredProse(rec).includes(dot)) return { status: "ran", findings: [] };
+    if (authoredProse(rec).includes(dot)) return { status: "ran", findings: [], note: CRITERIA_VALUES_NOTE };
     const readPaths: ReadPath[] = [{ path: "result.jurisdiction.dotName", value: dot }];
     if (office) readPaths.push({ path: "result.jurisdiction.planningOfficeName", value: office });
     if (Array.isArray(findings)) readPaths.push({ path: "result.findings.length", value: findings.length });
     return {
       status: "ran",
+      note: CRITERIA_VALUES_NOTE,
       findings: [
         {
           clauseId: "criteriaNamed",
           section: 5,
-          type: "UNVERIFIED",
+          type: "DISCLOSE",
           title: "The governing agency is not named in the study's findings",
           detail:
             `The record names ${dot} as the governing agency${office ? ` (planning office: ${office})` : ""}, but ${dot} ` +
