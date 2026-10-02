@@ -64,7 +64,8 @@
     "check:whatif-gate": "node ./scripts/verify-whatif-gate.mjs",
     "check:whatif-limiter": "node ./scripts/verify-whatif-limiter.mjs",
     "check:proofread": "node ./scripts/verify-proofread.mjs",
-    "check:proofread-protocol": "node ./scripts/verify-proofread-protocol.mjs"
+    "check:proofread-protocol": "node ./scripts/verify-proofread-protocol.mjs",
+    "check:proofread-schema": "node ./scripts/verify-proofread-schema.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",
