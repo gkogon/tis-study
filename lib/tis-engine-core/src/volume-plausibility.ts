@@ -41,14 +41,19 @@ export type PlausibilityRow = {
   currentVc: number;
   /** Opening-year no-build v/c (grown existing volumes, no project). */
   existingVc: number;
+  /** The same two scenarios at each approach. The intersection v/c is a
+   *  green-weighted figure built from its approaches, so one approach can
+   *  pass the ceiling while the intersection does not. */
+  approaches?: Array<{ direction: string; currentVc: number; existingVc: number }>;
 };
 
 /**
  * Disclosure lines for any study intersection whose PRE-DEVELOPMENT volume
  * implies an impossible v/c. Empty when every volume is plausible.
  *
- * Judged on the no-project scenarios: if the existing network already implies
- * an impossible v/c, the background volume is the defect, not the project.
+ * Judged on the no-project scenarios, at the intersection and at each of its
+ * approaches: if the existing network already implies an impossible v/c, the
+ * background volume is the defect, not the project.
  *
  * Callers put these at the head of both `findings` and `methodology` — every
  * renderer already prints both, so the disclosure reaches the PDF without a
@@ -56,14 +61,21 @@ export type PlausibilityRow = {
  */
 export function implausibleVolumeDisclosures(rows: PlausibilityRow[]): string[] {
   const offenders = rows
-    .map((r) => ({ row: r, vc: Math.max(r.currentVc, r.existingVc) }))
+    .map((r) => {
+      let worst: { vc: number; where?: string } = { vc: Math.max(r.currentVc, r.existingVc) };
+      for (const a of r.approaches ?? []) {
+        const vc = Math.max(a.currentVc, a.existingVc);
+        if (vc > worst.vc) worst = { vc, where: `${a.direction} approach` };
+      }
+      return { row: r, ...worst };
+    })
     .filter((o) => Number.isFinite(o.vc) && o.vc > PLAUSIBLE_MAX_INTERSECTION_VC)
     .sort((a, b) => b.vc - a.vc);
   if (offenders.length === 0) return [];
 
   const named = offenders
     .slice(0, 5)
-    .map((o) => `${o.row.name} (v/c ${o.vc.toFixed(2)})`)
+    .map((o) => `${o.row.name} (${o.where ? `${o.where} ` : ""}v/c ${o.vc.toFixed(2)})`)
     .join("; ");
   const more = offenders.length > 5 ? `, and ${offenders.length - 5} more` : "";
   return [

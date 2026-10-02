@@ -1,0 +1,586 @@
+{
+ "note": "Inputs of printed rows from regenerated hosted samples (2026-10-01), used by verify-intersection-delay.mjs. Outputs are deliberately not stored: the check derives every expectation from the engine's own approach rows.",
+ "cases": [
+  {
+   "label": "pittsburgh_metro · Perry Highway & Highland Avenue · pm_peak",
+   "site": {
+    "lat": 40.525,
+    "lon": -80.013
+   },
+   "sig": {
+    "id": "pittsburgh-2229",
+    "name": "Perry Highway & Highland Avenue",
+    "zone": "NW Pittsburgh",
+    "latitude": 40.52229,
+    "longitude": -80.03441,
+    "totalVolume": 1324
+   },
+   "distanceMi": 1.14,
+   "legEstimate": {
+    "legs": {
+     "NB": {
+      "dir": "NB",
+      "enteringVph": 312,
+      "exitingVph": 312,
+      "oneWay": null,
+      "source": "signal_aadt",
+      "cls": 2
+     },
+     "SB": {
+      "dir": "SB",
+      "enteringVph": 312,
+      "exitingVph": 312,
+      "oneWay": null,
+      "source": "signal_aadt",
+      "cls": 2
+     },
+     "EB": {
+      "dir": "EB",
+      "enteringVph": 350,
+      "exitingVph": 350,
+      "oneWay": null,
+      "source": "class_default",
+      "cls": 4
+     },
+     "WB": {
+      "dir": "WB",
+      "enteringVph": 350,
+      "exitingVph": 0,
+      "oneWay": "in",
+      "source": "class_default",
+      "cls": 4
+     }
+    },
+    "movements": {
+     "matrix": {
+      "NB": {
+       "NB": 0,
+       "SB": 221.83996784722942,
+       "EB": 90.16003215277057,
+       "WB": 0
+      },
+      "SB": {
+       "NB": 221.83996784722942,
+       "SB": 0,
+       "EB": 90.16003215277057,
+       "WB": 0
+      },
+      "EB": {
+       "NB": 175,
+       "SB": 175,
+       "EB": 0,
+       "WB": 0
+      },
+      "WB": {
+       "NB": 27.456296933097434,
+       "SB": 27.456296933097434,
+       "EB": 295.08740613380513,
+       "WB": 0
+      }
+     },
+     "shares": {
+      "NB": {
+       "L": 0.2889744620281108,
+       "T": 0.7110255379718892,
+       "R": 0
+      },
+      "SB": {
+       "L": 0,
+       "T": 0.7110255379718892,
+       "R": 0.2889744620281108
+      },
+      "EB": {
+       "L": 0.5,
+       "T": 0,
+       "R": 0.5
+      },
+      "WB": {
+       "L": 0.07844656266599268,
+       "T": 0.8431068746680147,
+       "R": 0.07844656266599268
+      }
+     },
+     "leftVph": {
+      "NB": 90.16003215277057,
+      "SB": 0,
+      "EB": 175,
+      "WB": 27.456296933097434
+     },
+     "enteringShares": {
+      "NB": 0.23564954682779457,
+      "SB": 0.23564954682779457,
+      "EB": 0.26435045317220546,
+      "WB": 0.26435045317220546
+     },
+     "totalEnteringVph": 1324,
+     "diagnostics": {
+      "method": "ipf",
+      "iterations": 7,
+      "maxResidualVph": 0.36255009453464027,
+      "imbalancePct": 0.26435045317220546,
+      "exitsNormalized": true,
+      "constrainedExits": 4
+     }
+    },
+    "legsDropped": 0,
+    "anyCsv": false
+   },
+   "loadWeight": 0.0033468227533324053,
+   "params": {
+    "growthMultiplier": 1.0302249999999997,
+    "designGrowthMultiplier": 1.3875636991230285,
+    "weatherFactor": 1,
+    "externalTrips": 859.9464720673603,
+    "inFraction": 0.48,
+    "periodVolumeFactor": 1,
+    "distributionOctants": {
+     "NNE": 11.116953477010105,
+     "ENE": 5.193547913356948,
+     "ESE": 13.086212650010959,
+     "SSE": 8.292111493059993,
+     "SSW": 14.534263357404397,
+     "WSW": 14.660732615658535,
+     "WNW": 6.917192412698467,
+     "NNW": 26.198986080800605
+    },
+    "conservedLabeling": true,
+    "signalTiming": "computed",
+    "legVolumes": "network"
+   }
+  },
+  {
+   "label": "pittsburgh_metro · Perry Highway & Highland Avenue · am_peak",
+   "site": {
+    "lat": 40.525,
+    "lon": -80.013
+   },
+   "sig": {
+    "id": "pittsburgh-2229",
+    "name": "Perry Highway & Highland Avenue",
+    "zone": "NW Pittsburgh",
+    "latitude": 40.52229,
+    "longitude": -80.03441,
+    "totalVolume": 1324
+   },
+   "distanceMi": 1.14,
+   "legEstimate": {
+    "legs": {
+     "NB": {
+      "dir": "NB",
+      "enteringVph": 312,
+      "exitingVph": 312,
+      "oneWay": null,
+      "source": "signal_aadt",
+      "cls": 2
+     },
+     "SB": {
+      "dir": "SB",
+      "enteringVph": 312,
+      "exitingVph": 312,
+      "oneWay": null,
+      "source": "signal_aadt",
+      "cls": 2
+     },
+     "EB": {
+      "dir": "EB",
+      "enteringVph": 350,
+      "exitingVph": 350,
+      "oneWay": null,
+      "source": "class_default",
+      "cls": 4
+     },
+     "WB": {
+      "dir": "WB",
+      "enteringVph": 350,
+      "exitingVph": 0,
+      "oneWay": "in",
+      "source": "class_default",
+      "cls": 4
+     }
+    },
+    "movements": {
+     "matrix": {
+      "NB": {
+       "NB": 0,
+       "SB": 221.83996784722942,
+       "EB": 90.16003215277057,
+       "WB": 0
+      },
+      "SB": {
+       "NB": 221.83996784722942,
+       "SB": 0,
+       "EB": 90.16003215277057,
+       "WB": 0
+      },
+      "EB": {
+       "NB": 175,
+       "SB": 175,
+       "EB": 0,
+       "WB": 0
+      },
+      "WB": {
+       "NB": 27.456296933097434,
+       "SB": 27.456296933097434,
+       "EB": 295.08740613380513,
+       "WB": 0
+      }
+     },
+     "shares": {
+      "NB": {
+       "L": 0.2889744620281108,
+       "T": 0.7110255379718892,
+       "R": 0
+      },
+      "SB": {
+       "L": 0,
+       "T": 0.7110255379718892,
+       "R": 0.2889744620281108
+      },
+      "EB": {
+       "L": 0.5,
+       "T": 0,
+       "R": 0.5
+      },
+      "WB": {
+       "L": 0.07844656266599268,
+       "T": 0.8431068746680147,
+       "R": 0.07844656266599268
+      }
+     },
+     "leftVph": {
+      "NB": 90.16003215277057,
+      "SB": 0,
+      "EB": 175,
+      "WB": 27.456296933097434
+     },
+     "enteringShares": {
+      "NB": 0.23564954682779457,
+      "SB": 0.23564954682779457,
+      "EB": 0.26435045317220546,
+      "WB": 0.26435045317220546
+     },
+     "totalEnteringVph": 1324,
+     "diagnostics": {
+      "method": "ipf",
+      "iterations": 7,
+      "maxResidualVph": 0.36255009453464027,
+      "imbalancePct": 0.26435045317220546,
+      "exitsNormalized": true,
+      "constrainedExits": 4
+     }
+    },
+    "legsDropped": 0,
+    "anyCsv": false
+   },
+   "loadWeight": 0.0033468227533324053,
+   "params": {
+    "growthMultiplier": 1.0302249999999997,
+    "designGrowthMultiplier": 1.3875636991230285,
+    "weatherFactor": 1,
+    "externalTrips": 454.5431352356048,
+    "inFraction": 0.61,
+    "periodVolumeFactor": 0.9,
+    "distributionOctants": {
+     "NNE": 11.116953477010105,
+     "ENE": 5.193547913356948,
+     "ESE": 13.086212650010959,
+     "SSE": 8.292111493059993,
+     "SSW": 14.534263357404397,
+     "WSW": 14.660732615658535,
+     "WNW": 6.917192412698467,
+     "NNW": 26.198986080800605
+    },
+    "conservedLabeling": true,
+    "signalTiming": "computed",
+    "legVolumes": "network"
+   }
+  },
+  {
+   "label": "pittsburgh_metro · Perry Highway & Highland Avenue · saturday_midday",
+   "site": {
+    "lat": 40.525,
+    "lon": -80.013
+   },
+   "sig": {
+    "id": "pittsburgh-2229",
+    "name": "Perry Highway & Highland Avenue",
+    "zone": "NW Pittsburgh",
+    "latitude": 40.52229,
+    "longitude": -80.03441,
+    "totalVolume": 1324
+   },
+   "distanceMi": 1.14,
+   "legEstimate": {
+    "legs": {
+     "NB": {
+      "dir": "NB",
+      "enteringVph": 312,
+      "exitingVph": 312,
+      "oneWay": null,
+      "source": "signal_aadt",
+      "cls": 2
+     },
+     "SB": {
+      "dir": "SB",
+      "enteringVph": 312,
+      "exitingVph": 312,
+      "oneWay": null,
+      "source": "signal_aadt",
+      "cls": 2
+     },
+     "EB": {
+      "dir": "EB",
+      "enteringVph": 350,
+      "exitingVph": 350,
+      "oneWay": null,
+      "source": "class_default",
+      "cls": 4
+     },
+     "WB": {
+      "dir": "WB",
+      "enteringVph": 350,
+      "exitingVph": 0,
+      "oneWay": "in",
+      "source": "class_default",
+      "cls": 4
+     }
+    },
+    "movements": {
+     "matrix": {
+      "NB": {
+       "NB": 0,
+       "SB": 221.83996784722942,
+       "EB": 90.16003215277057,
+       "WB": 0
+      },
+      "SB": {
+       "NB": 221.83996784722942,
+       "SB": 0,
+       "EB": 90.16003215277057,
+       "WB": 0
+      },
+      "EB": {
+       "NB": 175,
+       "SB": 175,
+       "EB": 0,
+       "WB": 0
+      },
+      "WB": {
+       "NB": 27.456296933097434,
+       "SB": 27.456296933097434,
+       "EB": 295.08740613380513,
+       "WB": 0
+      }
+     },
+     "shares": {
+      "NB": {
+       "L": 0.2889744620281108,
+       "T": 0.7110255379718892,
+       "R": 0
+      },
+      "SB": {
+       "L": 0,
+       "T": 0.7110255379718892,
+       "R": 0.2889744620281108
+      },
+      "EB": {
+       "L": 0.5,
+       "T": 0,
+       "R": 0.5
+      },
+      "WB": {
+       "L": 0.07844656266599268,
+       "T": 0.8431068746680147,
+       "R": 0.07844656266599268
+      }
+     },
+     "leftVph": {
+      "NB": 90.16003215277057,
+      "SB": 0,
+      "EB": 175,
+      "WB": 27.456296933097434
+     },
+     "enteringShares": {
+      "NB": 0.23564954682779457,
+      "SB": 0.23564954682779457,
+      "EB": 0.26435045317220546,
+      "WB": 0.26435045317220546
+     },
+     "totalEnteringVph": 1324,
+     "diagnostics": {
+      "method": "ipf",
+      "iterations": 7,
+      "maxResidualVph": 0.36255009453464027,
+      "imbalancePct": 0.26435045317220546,
+      "exitsNormalized": true,
+      "constrainedExits": 4
+     }
+    },
+    "legsDropped": 0,
+    "anyCsv": false
+   },
+   "loadWeight": 0.0033468227533324053,
+   "params": {
+    "growthMultiplier": 1.0302249999999997,
+    "designGrowthMultiplier": 1.3875636991230285,
+    "weatherFactor": 1,
+    "externalTrips": 1249.9936218979133,
+    "inFraction": 0.5,
+    "periodVolumeFactor": 0.8,
+    "distributionOctants": {
+     "NNE": 11.116953477010105,
+     "ENE": 5.193547913356948,
+     "ESE": 13.086212650010959,
+     "SSE": 8.292111493059993,
+     "SSW": 14.534263357404397,
+     "WSW": 14.660732615658535,
+     "WNW": 6.917192412698467,
+     "NNW": 26.198986080800605
+    },
+    "conservedLabeling": true,
+    "signalTiming": "computed",
+    "legVolumes": "network"
+   }
+  },
+  {
+   "label": "fort_lauderdale_metro · North University Drive & Green Tree Lane · pm_peak",
+   "site": {
+    "lat": 26.1212,
+    "lon": -80.2521
+   },
+   "sig": {
+    "id": "fort-lauderdale-1861",
+    "name": "North University Drive & Green Tree Lane",
+    "zone": "SW Fort Lauderdale (Broward County)",
+    "latitude": 26.12626,
+    "longitude": -80.25637,
+    "totalVolume": 4715
+   },
+   "distanceMi": 0.44,
+   "legEstimate": {
+    "legs": {
+     "NB": {
+      "dir": "NB",
+      "enteringVph": 2182.5,
+      "exitingVph": 2182.5,
+      "oneWay": null,
+      "source": "signal_aadt",
+      "cls": 4
+     },
+     "SB": {
+      "dir": "SB",
+      "enteringVph": 2182.5,
+      "exitingVph": 2182.5,
+      "oneWay": null,
+      "source": "signal_aadt",
+      "cls": 4
+     },
+     "EB": null,
+     "WB": {
+      "dir": "WB",
+      "enteringVph": 350,
+      "exitingVph": 350,
+      "oneWay": null,
+      "source": "class_default",
+      "cls": 4
+     }
+    },
+    "movements": {
+     "matrix": {
+      "NB": {
+       "NB": 0,
+       "SB": 2007.4931839964936,
+       "EB": 0,
+       "WB": 175.00681600350632
+      },
+      "SB": {
+       "NB": 2007.4931839964936,
+       "SB": 0,
+       "EB": 0,
+       "WB": 175.00681600350632
+      },
+      "EB": {
+       "NB": 0,
+       "SB": 0,
+       "EB": 0,
+       "WB": 0
+      },
+      "WB": {
+       "NB": 175,
+       "SB": 175,
+       "EB": 0,
+       "WB": 0
+      }
+     },
+     "shares": {
+      "NB": {
+       "L": 0,
+       "T": 0.9198136009147737,
+       "R": 0.08018639908522626
+      },
+      "SB": {
+       "L": 0.08018639908522626,
+       "T": 0.9198136009147737,
+       "R": 0
+      },
+      "EB": {
+       "L": 0.15,
+       "T": 0.7,
+       "R": 0.15
+      },
+      "WB": {
+       "L": 0.5,
+       "T": 0,
+       "R": 0.5
+      }
+     },
+     "leftVph": {
+      "NB": 0,
+      "SB": 175.00681600350632,
+      "EB": 0,
+      "WB": 175
+     },
+     "enteringShares": {
+      "NB": 0.4628844114528102,
+      "SB": 0.4628844114528102,
+      "EB": 0,
+      "WB": 0.07423117709437964
+     },
+     "totalEnteringVph": 4715,
+     "diagnostics": {
+      "method": "ipf",
+      "iterations": 2,
+      "maxResidualVph": 0.013632007012631675,
+      "imbalancePct": 0,
+      "exitsNormalized": false,
+      "constrainedExits": 3
+     }
+    },
+    "legsDropped": 0,
+    "anyCsv": false
+   },
+   "loadWeight": 0.15041165345767873,
+   "params": {
+    "growthMultiplier": 1.015,
+    "designGrowthMultiplier": 1.3670578316483042,
+    "weatherFactor": 1,
+    "externalTrips": 399.1334214211223,
+    "inFraction": 0.48,
+    "periodVolumeFactor": 1,
+    "distributionOctants": {
+     "NNE": 0,
+     "ENE": 0,
+     "ESE": 19.079237554533666,
+     "SSE": 9.67287259700922,
+     "SSW": 42.0444018441679,
+     "WSW": 4.318880756324585,
+     "WNW": 0,
+     "NNW": 24.884607247964635
+    },
+    "conservedLabeling": true,
+    "signalTiming": "computed",
+    "legVolumes": "network"
+   }
+  }
+ ]
+}

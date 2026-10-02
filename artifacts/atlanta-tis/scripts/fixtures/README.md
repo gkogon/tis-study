@@ -11,6 +11,22 @@ A and B are pinned from a 2026-09-11 run, before rows carried
 C was generated after `legVolumes: network` shipped: 39 of its 40 rows carry
 `legEstimateExact` and reproduce through the fed-back estimate.
 
+**Re-pinned 2026-10-02 for the intersection-from-approaches change.** The
+intersection row's v/c, delay and LOS are now built from its approaches
+(`intersectionFromApproaches` in lib/tis-engine-core/src/row-math.ts), so
+every row's intersection values moved. All three files were re-pinned in place
+from their own printed exact inputs, not regenerated: each row was rebuilt by
+the engine's `buildAffectedRow` through `solveScenarioDetailed(file, EMPTY)`
+with zero fallbacks, and the write was refused if any field outside the
+row-derived set changed. The fields that moved are the intersection-level
+`*Vc` / `*DelaySec` / `*Los`, `losChanged`, `mitigation` /
+`mitigationSeverity`, the LOS-drop / LOS E–F / worst-delay counts, and
+`mitigationSummary`. Every input (`request`, volumes, approaches, movements,
+path ledgers, `legEstimateExact`, timing) is byte-identical to the pinned run.
+The prose fields (`findings`, `methodology`) are left as pinned; the checks do
+not compare them. Regenerating instead would have replaced the 09-11 / 09-17
+network state these checks' assertions are written against.
+
 | file | what |
 | --- | --- |
 | `scenario-base.json` | The Peachtree Multifamily request, verbatim. |
