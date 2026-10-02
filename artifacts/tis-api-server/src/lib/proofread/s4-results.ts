@@ -309,6 +309,9 @@ const LOS_PAIRS: Array<[delayKey: string, losKey: string]> = [
   ["designBuildDelaySec", "designBuildLos"],
 ];
 
+/** A usable LOS reading: one capital letter A-F. `delayToLos` never returns anything else. */
+const LOS_LETTER = /^[A-F]$/;
+
 const rowName = (r: any): string => String(r?.name ?? "(unnamed)");
 
 /** How many offenders a finding names before saying "and N more"; the count and the list use the same number. */
@@ -324,8 +327,10 @@ const CLAMP_NAMED = 3;
  * flagged only if it is wrong across the whole rounding interval, otherwise this files a DEFECT accusing the
  * engine of losing a value it never lost.
  *
- * A pair is judged only if a number sits beside a letter. One side present and the other null, a string or
- * missing is "reported but not judged" — Number(null) is 0, which maps to LOS A and would manufacture a DEFECT.
+ * A pair is judged only if a number sits beside a letter A-F. One side present and the other null, a string, missing,
+ * or (on the letter side) anything but a single capital A-F — "", "n/a", "C/D" — is "reported but not judged".
+ * Number(null) is 0, which maps to LOS A; and a blank or free-text letter is an unusable reading, not a lost value.
+ * Either would file a DEFECT accusing the engine, which routes to the code queue: the costliest finding there is.
  *
  * One finding for the whole record, not one per pair: it is one fault, and what the admin needs is its extent.
  */
@@ -352,7 +357,7 @@ export const losMatchesDelay: Clause = {
           if (delay === undefined && los === undefined) continue; // this scenario is not on the row
           rowReported++;
           reported++;
-          if (!numeric(delay) || typeof los !== "string") continue;
+          if (!numeric(delay) || typeof los !== "string" || !LOS_LETTER.test(los)) continue;
           judged++;
           const expected = delayToLos(delay);
           if (expected === los) continue;
@@ -363,12 +368,12 @@ export const losMatchesDelay: Clause = {
       });
     }
     if (judged === 0) return { status: "not-run", reason: "no row carries a numeric delay beside a LOS letter" };
-    const pairsNote = judgedNote(judged, reported, "reported delay/LOS pairs", "carried a delay that is not a number or no letter beside it");
+    const pairsNote = judgedNote(judged, reported, "reported delay/LOS pairs", "carried a delay that is not a number or no A-F letter beside it");
     const rowsNote = rowsEmpty > 0 ? `${rowsEmpty} of ${rowsTotal} rows reported no delay/LOS` : undefined;
     const note = [pairsNote, rowsNote].filter(Boolean).join("; ") || undefined;
     if (offenders.length === 0) return { status: "ran", findings: [], note };
     const notJudged =
-      (reported > judged ? ` Not judged: ${reported - judged} of ${reported} reported delay/LOS pairs with a delay that is not a number or no letter beside it.` : "") +
+      (reported > judged ? ` Not judged: ${reported - judged} of ${reported} reported delay/LOS pairs with a delay that is not a number or no A-F letter beside it.` : "") +
       (rowsEmpty > 0 ? ` Not judged: ${rowsEmpty} of ${rowsTotal} rows reported no delay/LOS.` : "");
     const listed = offenders
       .slice(0, LOS_NAMED)
@@ -424,32 +429,41 @@ export const screeningClampDisclosed: Clause = {
     const buckets = rowBuckets(rec);
     if (buckets.length === 0) return { status: "not-run", reason: "no affectedIntersections on the record" };
     const clamped: Array<{ label: string; delay: number; path: string; remark: string }> = [];
+    // Counted per FIELD, as losMatchesDelay does: a row with one numeric delay and four that are null or "n/a" was not
+    // examined for the four, and the field most likely to sit at the ceiling (futureDelaySec) may be one of them.
     let rowsTotal = 0;
-    let rowsJudged = 0;
+    let rowsEmpty = 0;
+    let fieldsReported = 0;
+    let fieldsJudged = 0;
     for (const b of buckets) {
       b.rows.forEach((r: any, i: number) => {
         rowsTotal++;
+        let rowReported = 0;
         // Mirror the engine: a numeric multiplier is clamped to 0.25-5; an absent or unusable one is 1.
         const cal = r?.calibration as { delayMultiplier?: unknown; delayMultiplierExact?: unknown } | null | undefined;
         const raw = numeric(cal?.delayMultiplierExact) ? cal?.delayMultiplierExact : cal?.delayMultiplier;
         const mul = numeric(raw) ? Math.min(5, Math.max(0.25, raw)) : 1;
         const ceiling = SCREENING_MAX_DELAY_SEC * mul;
-        let readable = false;
         for (const key of DELAY_KEYS) {
           const d = r?.[key];
+          if (d === undefined) continue; // this scenario is not on the row
+          rowReported++;
+          fieldsReported++;
           if (!numeric(d)) continue;
-          readable = true;
+          fieldsJudged++;
           // -0.05 because the payload rounds delay to 0.1 s; 1e-9 so that boundary is not at the mercy of float error.
           if (d >= ceiling - 0.05 - 1e-9) {
             const remark = mul === 1 ? "" : ` (ceiling ${Number(ceiling.toFixed(2))} s at calibration x${Number(mul.toFixed(4))})`;
             clamped.push({ label: `${rowName(r)} ${key} [${b.period}]`, delay: d, path: `${b.at}[${i}].${key}`, remark });
           }
         }
-        if (readable) rowsJudged++;
+        if (rowReported === 0) rowsEmpty++;
       });
     }
-    if (rowsJudged === 0) return { status: "not-run", reason: "no row carries a numeric delay" };
-    const note = judgedNote(rowsJudged, rowsTotal, "rows", "carried no numeric delay");
+    if (fieldsJudged === 0) return { status: "not-run", reason: "no row carries a numeric delay" };
+    const fieldsNote = judgedNote(fieldsJudged, fieldsReported, "reported delay fields", "carried a delay that is not a number");
+    const rowsNote = rowsEmpty > 0 ? `${rowsEmpty} of ${rowsTotal} rows reported no delay` : undefined;
+    const note = [fieldsNote, rowsNote].filter(Boolean).join("; ") || undefined;
     if (clamped.length === 0) return { status: "ran", findings: [], note };
     if (CLAMP_DISCLOSURE.test(authoredProse(rec))) return { status: "ran", findings: [], note };
     const listed = clamped
@@ -469,7 +483,8 @@ export const screeningClampDisclosed: Clause = {
             `${clamped.length} reported delay(s) are at or above the ${SCREENING_MAX_DELAY_SEC} s screening ceiling ` +
             `(${listed}${clamped.length > CLAMP_NAMED ? `, and ${clamped.length - CLAMP_NAMED} more` : ""}). At the ceiling the number is a cap, ` +
             `not an estimate, and the study's findings do not say which delays are capped.` +
-            (rowsTotal > rowsJudged ? ` Not judged: ${rowsTotal - rowsJudged} of ${rowsTotal} rows carried no numeric delay.` : ""),
+            (fieldsReported > fieldsJudged ? ` Not judged: ${fieldsReported - fieldsJudged} of ${fieldsReported} reported delay fields with a delay that is not a number.` : "") +
+            (rowsEmpty > 0 ? ` Not judged: ${rowsEmpty} of ${rowsTotal} rows reported no delay.` : ""),
           sourceLabel: `${ENGINE_FILE} — SCREENING_MAX_DELAY_SEC = ${SCREENING_MAX_DELAY_SEC} (times the regional calibration multiplier)`,
           readPaths: clamped.map((c) => ({ path: c.path, value: c.delay })),
           remedy: "State in the results section that delays at the ceiling are capped screening values, not estimates of actual delay.",

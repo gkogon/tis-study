@@ -36,7 +36,7 @@ export const rateReproducesTotal: Clause = {
   run(rec: StudyRecord) {
     const tg = rec.result.tripGeneration as unknown as Record<string, unknown> | undefined;
     if (!tg || typeof tg !== "object") return { status: "not-run", reason: "no tripGeneration on the record" };
-    if (!PAIRS.some(([rate]) => numeric(tg[rate]))) return { status: "not-run", reason: "payload carries no numeric rate fields (pre-2026 record)" };
+    if (!PAIRS.some(([rate]) => numeric(tg[rate]))) return { status: "not-run", reason: "payload carries no numeric rate fields" };
     const size = tg.size;
     if (!numeric(size)) return { status: "not-run", reason: "tripGeneration.size absent or not a number" };
     const findings: ProofreadFinding[] = [];

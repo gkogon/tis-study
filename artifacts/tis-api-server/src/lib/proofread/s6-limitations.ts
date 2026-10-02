@@ -19,7 +19,10 @@ import { authoredProse, clauses } from "./prose.ts";
 
 const DEFAULT_PERIODS = ["am_peak", "pm_peak", "saturday_midday", "daily"];
 
-/** How a period is written in prose. The identifier itself ("am_peak") also matches. */
+/**
+ * How a period is written in prose. The identifier itself ("am_peak") also matches. The breadth of these patterns is
+ * intentionally unpinned: no assertion distinguishes a wider label from this one, so loosening one is not caught.
+ */
 const LABEL: Record<string, RegExp> = {
   am_peak: /\bAM[\s_-]*peak\b|\bmorning peak\b/i,
   pm_peak: /\bPM[\s_-]*peak\b|\bevening peak\b/i,

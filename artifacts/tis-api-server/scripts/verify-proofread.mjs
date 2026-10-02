@@ -36,7 +36,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const { runClauses: runClausesRaw, ALL_CLAUSES, findingFingerprint, engineStamp } = await import(
+const { runClauses: runClausesRaw, ALL_CLAUSES, findingFingerprint, engineStamp, RULES_VERSION } = await import(
   path.resolve(here, "../src/lib/proofread/index.ts")
 );
 /**
@@ -530,6 +530,14 @@ const SRC_DESIGN =
   ok(findingFingerprint({ ...f, section: 5 }) !== findingFingerprint(f), "same readPaths under a different section → a different fingerprint");
 }
 
+// --- the rule set is versioned --------------------------------------------
+{
+  // Recorded on every run, so a stored finding can be told from one the current rules would produce. This is a
+  // pin on purpose: changing the clause set must also change this literal, which forces someone to decide.
+  ok(RULES_VERSION === "2", `RULES_VERSION is "2" for the twelve-clause set (got ${JSON.stringify(RULES_VERSION)}); a change to the clause set or to what a clause judges must bump it, and this pin, together`);
+  ok(ALL_CLAUSES.length === 12, `the registry holds twelve clauses (${ALL_CLAUSES.length}) — the set RULES_VERSION "2" names`);
+}
+
 // --- the engine stamp tracks the deploy ------------------------------------
 {
   const saved = { r: process.env.RAILWAY_GIT_COMMIT_SHA, g: process.env.GIT_SHA };
@@ -713,8 +721,9 @@ const S_PASSBY =
   const legacy = runClauses(fixture("legacy-minimal"));
   const lcov = cover(legacy, "rateReproducesTotal");
   ok(lcov?.status === "not-run" && /no numeric rate fields/.test(lcov.reason), "a legacy payload without rate fields is not-run, not UNVERIFIED");
+  ok(lcov?.reason === "payload carries no numeric rate fields", "…its reason states what was found, not an inference about the payload's age");
   const nulls = runClauses(t({ pmRate: null, amRate: null, dailyRate: null }));
-  ok(cover(nulls, "rateReproducesTotal")?.status === "not-run" && byClause(nulls, "rateReproducesTotal").length === 0 && /no numeric rate fields/.test(cover(nulls, "rateReproducesTotal").reason), "null rates → not-run for want of a numeric rate (Number(null) is 0, which would flag every total as 0 x size)");
+  ok(cover(nulls, "rateReproducesTotal")?.status === "not-run" && byClause(nulls, "rateReproducesTotal").length === 0 && cover(nulls, "rateReproducesTotal").reason === "payload carries no numeric rate fields", "null rates → not-run for want of a numeric rate (Number(null) is 0, which would flag every total as 0 x size)");
   const noTotals = runClauses(t({ pmPeakTrips: null, amPeakTrips: undefined, dailyTrips: "n/a" }));
   ok(cover(noTotals, "rateReproducesTotal")?.status === "not-run" && /numeric printed total/.test(cover(noTotals, "rateReproducesTotal").reason), "numeric rates but no numeric printed total anywhere → not-run, never 'ran' with nothing judged");
   const mixed = runClauses(t({ amRate: null, dailyRate: "n/a" }));
@@ -798,6 +807,15 @@ const S_PASSBY =
   // Unreadable values are skipped, and Number(null) = 0 would map "F" beside a null delay to a DEFECT.
   const nullD = los([lrow({ futureDelaySec: null, futureLos: "F" })]);
   ok(byClause(nullD, "losMatchesDelay").length === 0 && cover(nullD, "losMatchesDelay")?.status === "not-run", "delay null beside LOS F → no DEFECT, and nothing was judged → not-run");
+  // A blank or free-text letter is an unusable reading, not a value the engine lost: it must not become a DEFECT.
+  for (const badLetter of ["", "n/a", "C/D", "f", " F", "FF", null, 5]) {
+    const r = los([lrow({ futureDelaySec: 20, futureLos: badLetter })]);
+    ok(byClause(r, "losMatchesDelay").length === 0 && cover(r, "losMatchesDelay")?.status === "not-run", `delay 20 beside LOS ${JSON.stringify(badLetter)} → no DEFECT, and nothing was judged → not-run`);
+  }
+  for (const [letter, delay] of [["A", 5], ["B", 15], ["C", 30], ["D", 50], ["E", 70], ["F", 100]]) {
+    const r = los([lrow({ futureDelaySec: delay, futureLos: letter })]);
+    ok(cover(r, "losMatchesDelay")?.status === "ran" && byClause(r, "losMatchesDelay").length === 0, `LOS ${letter} beside ${delay} s is a usable, matching pair (judged, clean)`);
+  }
   const strD = los([lrow({ futureDelaySec: "300", futureLos: "A" })]);
   ok(byClause(strD, "losMatchesDelay").length === 0 && cover(strD, "losMatchesDelay")?.status === "not-run", 'delay "300" (a string) is not judged');
   const nothing = los([lrow({})]);
@@ -831,6 +849,10 @@ const S_PASSBY =
   const sc = cover(sparse, "losMatchesDelay");
   ok(sc?.status === "ran" && byClause(sparse, "losMatchesDelay").length === 0, "a record with one readable row of three runs, and is clean on what it could read");
   ok(/judged 5 of 6 reported delay\/LOS pairs/.test(sc?.note ?? "") && /1 of 3 rows reported no delay\/LOS/.test(sc?.note ?? ""), "…and the coverage note says 5 of 6 pairs and 1 of 3 rows were not judged");
+  const blankLetter = los([full, lrow({ futureDelaySec: 20, futureLos: "" })]);
+  ok(cover(blankLetter, "losMatchesDelay")?.status === "ran" && byClause(blankLetter, "losMatchesDelay").length === 0 && /judged 5 of 6 reported delay\/LOS pairs; 1 carried a delay that is not a number or no A-F letter beside it/.test(cover(blankLetter, "losMatchesDelay").note ?? ""), "a blank letter beside a numeric delay is counted not judged (5 of 6), with no DEFECT");
+  const blankHit = byClause(los([lrow({ futureDelaySec: 100, futureLos: "A" }), lrow({ futureDelaySec: 20, futureLos: "n/a" })]), "losMatchesDelay")[0];
+  ok(blankHit && /1 of 1 reported delay\/LOS pairs/.test(blankHit.detail) && /Not judged: 1 of 2 reported delay\/LOS pairs with a delay that is not a number or no A-F letter beside it/.test(blankHit.detail), "a real mismatch beside a non-letter: the non-letter is not in the 'N of M' and is reported not judged");
   const withBad = byClause(los([lrow({ futureDelaySec: 100, futureLos: "A" }), lrow({ futureDelaySec: "n/a", futureLos: "A" })]), "losMatchesDelay")[0];
   ok(withBad && /Not judged: 1 of 2 reported delay\/LOS pairs/.test(withBad.detail), "a finding on a partly judged record carries the not-judged count");
   const withEmpty = byClause(los([lrow({ futureDelaySec: 100, futureLos: "A" }), lrow({})]), "losMatchesDelay")[0];
@@ -915,9 +937,22 @@ const S_PASSBY =
 
   // Partial coverage.
   const part = runClauses(crec([crow({ futureDelaySec: 120 }), crow({}), crow({ futureDelaySec: "n/a" })]));
-  ok(cover(part, "screeningClampDisclosed")?.status === "ran" && byClause(part, "screeningClampDisclosed").length === 0 && /judged 1 of 3 rows; 2 carried no numeric delay/.test(cover(part, "screeningClampDisclosed").note ?? ""), "one readable row of three: ran clean, and the note says 1 of 3 rows judged");
+  const partNote = cover(part, "screeningClampDisclosed")?.note ?? "";
+  ok(cover(part, "screeningClampDisclosed")?.status === "ran" && byClause(part, "screeningClampDisclosed").length === 0 && /judged 1 of 2 reported delay fields; 1 carried a delay that is not a number/.test(partNote) && /1 of 3 rows reported no delay/.test(partNote), "one numeric delay among three rows: ran clean, and the note counts 1 of 2 reported fields judged and 1 of 3 rows with no delay");
   const partF = byClause(runClauses(crec([crow({ futureDelaySec: 300 }), crow({})])), "screeningClampDisclosed")[0];
-  ok(partF && /Not judged: 1 of 2 rows carried no numeric delay/.test(partF.detail), "a finding on a partly judged record carries the not-judged count");
+  ok(partF && /Not judged: 1 of 2 rows reported no delay\./.test(partF.detail), "a finding beside a row that reported no delay at all carries the not-judged count");
+
+  // A row can be partly read: one numeric delay and four that are null or text. The unread fields — futureDelaySec most
+  // of all — are what a row-granular note would hide (a row "judged" because ONE field was numeric).
+  const mixedRow = { currentDelaySec: 10, existingDelaySec: null, futureDelaySec: null, designBuildDelaySec: "n/a" };
+  const mixed = runClauses(crec([crow(mixedRow)]));
+  const mixedCov = cover(mixed, "screeningClampDisclosed");
+  ok(mixedCov?.status === "ran" && byClause(mixed, "screeningClampDisclosed").length === 0, "a row with one numeric delay and three null/text: the clause ran and found nothing in the field it read");
+  ok(/judged 1 of 4 reported delay fields; 3 carried a delay that is not a number/.test(mixedCov?.note ?? ""), "…but the coverage note says 1 of 4 reported delay fields was judged: futureDelaySec was never examined");
+  const mixedHit = byClause(runClauses(crec([crow({ ...mixedRow, designNoBuildDelaySec: 300 })])), "screeningClampDisclosed")[0];
+  ok(mixedHit && /Not judged: 3 of 5 reported delay fields with a delay that is not a number\./.test(mixedHit.detail), "a finding on a partly read row says how many of its delay fields were not judged");
+  const mixedNote2 = cover(runClauses(crec([crow({ currentDelaySec: 10, existingDelaySec: 10, futureDelaySec: 10, designNoBuildDelaySec: 10, designBuildDelaySec: 10 })])), "screeningClampDisclosed");
+  ok(mixedNote2?.status === "ran" && !("note" in mixedNote2), "a row whose five delay fields are all numeric carries no note");
   const wholeCov = cover(runClauses(crec([crow({ futureDelaySec: 120 })])), "screeningClampDisclosed");
   ok(wholeCov?.status === "ran" && !("note" in wholeCov), "a fully judged record carries no note");
 }
@@ -929,6 +964,7 @@ const S_PASSBY =
 
   const cov = cover(runClauses(fixture("legacy-minimal")), "criteriaNamed");
   ok(cov?.status === "not-run" && /agenc/i.test(cov.reason), "criteria clause is not-run when the record names no agency");
+  ok(cov?.reason === "record names no governing agency (result.jurisdiction.dotName absent)", "…and its reason names only the declared input that was absent — no repo-wide claim about stored agency documents (that fact lives in the coverage note)");
 
   const quiet = jr(["Project will generate 100 new daily vehicle trips."]);
   const hits = byClause(runClauses(quiet), "criteriaNamed");

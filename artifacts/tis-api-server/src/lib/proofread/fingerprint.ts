@@ -49,4 +49,9 @@ export function engineStamp(): string {
   return sha ? `${hex(hash32(constants))}-${sha.slice(0, 7)}` : hex(hash32(constants));
 }
 
-export const RULES_VERSION = "1";
+/**
+ * Which rule set produced a finding. Recorded on every run; bump it whenever the clause set or what a clause
+ * judges changes materially, so a stored finding can be told apart from one the current rules would produce.
+ * "2": the twelve-clause set (§1, §2, §4, §5, §6); "1" was the three v/c clauses alone.
+ */
+export const RULES_VERSION = "2";

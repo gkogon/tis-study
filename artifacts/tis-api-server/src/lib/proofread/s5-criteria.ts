@@ -37,7 +37,7 @@ export const criteriaNamed: Clause = {
     const dot = typeof j?.dotName === "string" ? j.dotName : undefined; // "" is as absent as undefined
     const office = typeof j?.planningOfficeName === "string" && j.planningOfficeName.length > 0 ? j.planningOfficeName : undefined;
     if (!dot) {
-      return { status: "not-run", reason: "record names no governing agency (result.jurisdiction.dotName absent); no agency document is stored anywhere in this system" };
+      return { status: "not-run", reason: "record names no governing agency (result.jurisdiction.dotName absent)" };
     }
     // The criteria-issuing agency is the DOT. The planning office is who the engine says to coordinate with,
     // and it prints that name only in `mitigationSummary`, never in `findings` — so requiring it here would make
