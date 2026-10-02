@@ -28,8 +28,9 @@
  * Paris and Toronto — the national block-group TAZ layer is US-only and
  * returns nothing for most of the product's 315 regions.
  *
- * Everything here is a pure function of (graph, site, radius, byDirection):
- * no I/O, no randomness, no clock. Candidates are scanned in node-index
+ * Everything here is a pure function of (graph, site, radius, byDirection,
+ * and on one-way graphs the site's directed reachability): no I/O, no
+ * randomness, no clock. Candidates are scanned in node-index
  * order and every tie-break is explicit, so two identical runs produce
  * byte-identical gateway sets — a hard requirement, since a flipped gateway
  * would swing every derived turning movement downstream.
@@ -43,15 +44,32 @@ export type CordonGateway = {
   lat: number;
   lon: number;
   octant: CardinalDir;
-  /** Fraction of total project demand leaving/entering through this node. Σ = 1. */
+  /**
+   * Fraction of total project demand leaving through this node (site →
+   * gateway). Σ = 1. Also the entering fraction unless `shareIn` is set.
+   */
   share: number;
+  /**
+   * Fraction of total project demand entering through this node (gateway →
+   * site). Σ = 1. Set only when the selection was given directed
+   * reachability (one-way-bearing graphs); a gateway only one direction can
+   * use carries 0 in the other.
+   */
+  shareIn?: number;
 };
 
 export type CordonSelection = {
   gateways: CordonGateway[];
-  /** Octants that had demand but no gateway; their share moved to neighbours. */
+  /**
+   * Octants that had demand but no gateway; their share moved to neighbours.
+   * With directed reachability: octants with no gateway in one direction or
+   * in both.
+   */
   emptyOctants: CardinalDir[];
-  /** Which class ceiling finally yielded a usable cordon (3, 4, or 99 = any). */
+  /**
+   * Which class ceiling finally yielded a usable cordon (3, 4, or 99 = any).
+   * With directed reachability: the more relaxed of the two directions'.
+   */
   classCeiling: number;
 };
 
@@ -227,21 +245,62 @@ const passes = (d: number) => (d & 1) + ((d >> 1) & 1);
  * @param radiusMi   the study radius the fetch was made for
  * @param byDirection the §6.1 directional distribution, percentages summing
  *                    to ~100 (the engine's rollup guarantees this)
- * @param routable   optional screen: a node it rejects is never a candidate.
- *                    tis.ts passes directed reachability from the site on
- *                    one-way-bearing graphs. Screening candidates, not the
- *                    finished selection, lets an octant whose best ring
- *                    crossing cannot route fall through to its next best;
- *                    dropping a selected gateway afterwards left its slot
- *                    empty and spread its share over every other octant.
- * @returns null when no usable cordon exists (caller keeps the legacy path)
+ * @param reach      directed reachability from the site (directedReachability),
+ *                    passed on one-way-bearing graphs only. The router routes
+ *                    site → gateway (outbound) and gateway → site (inbound)
+ *                    as separate passes, and a pass drops the share of any
+ *                    gateway it cannot reach, with no renormalisation. So
+ *                    with `reach` each direction is selected on its own, and
+ *                    only ring nodes that direction reaches are candidates:
+ *                    `share` is the outbound cordon, `shareIn` the inbound
+ *                    one, each Σ = 1, and each keeps the §6.1 octant totals.
+ *                    An octant whose best crossing a direction cannot use
+ *                    falls through to its next best, then to the relaxed
+ *                    class ceilings, and with none at all hands that
+ *                    direction's share to its nearest octant that has one, as
+ *                    an empty octant always has. The two carriageways of a
+ *                    divided road each serve the direction they can. Without
+ *                    `reach` the one cordon serves both directions.
+ * @returns null when no usable cordon exists (caller keeps the legacy path);
+ *          with `reach`, when either direction has none
  */
 export function selectCordonGateways(
   g: Graph,
   site: { lat: number; lon: number },
   radiusMi: number,
   byDirection: Record<CardinalDir, number>,
-  routable?: (node: number) => boolean,
+  reach?: { outbound: ArrayLike<number>; inbound: ArrayLike<number> },
+): CordonSelection | null {
+  if (!reach) return selectForPass(g, site, radiusMi, byDirection);
+  const out = selectForPass(g, site, radiusMi, byDirection, (i) => reach.outbound[i] === 1);
+  const inn = selectForPass(g, site, radiusMi, byDirection, (i) => reach.inbound[i] === 1);
+  if (!out || !inn) return null;
+  // One gateway list for the router: a node either direction selected, with
+  // 0 in the direction that did not select it.
+  const byNode = new Map<number, CordonGateway>();
+  for (const gw of out.gateways) byNode.set(gw.node, { ...gw, shareIn: 0 });
+  for (const gw of inn.gateways) {
+    const both = byNode.get(gw.node);
+    if (both) both.shareIn = gw.share;
+    else byNode.set(gw.node, { ...gw, share: 0, shareIn: gw.share });
+  }
+  return {
+    gateways: [...byNode.values()].sort((a, b) => a.node - b.node),
+    emptyOctants: CARDINALS.filter((k) => out.emptyOctants.includes(k) || inn.emptyOctants.includes(k)),
+    classCeiling: Math.max(out.classCeiling, inn.classCeiling),
+  };
+}
+
+/**
+ * One direction's cordon, over the candidates `keep` accepts, or the one
+ * cordon both directions share when `keep` is absent.
+ */
+function selectForPass(
+  g: Graph,
+  site: { lat: number; lon: number },
+  radiusMi: number,
+  byDirection: Record<CardinalDir, number>,
+  keep?: (node: number) => boolean,
 ): CordonSelection | null {
   const n = g.nodeLat.length;
   if (n === 0) return null;
@@ -283,7 +342,7 @@ export function selectCordonGateways(
     for (let i = 0; i < n; i++) {
       if (bestCls[i]! > ceiling) continue;
       if (!outside[i]) continue;
-      if (routable && !routable(i)) continue;
+      if (keep && !keep(i)) continue;
       cands.push({
         node: i,
         octant: bearingToCardinal(bearingDeg(site.lat, site.lon, g.nodeLat[i]!, g.nodeLon[i]!)),
@@ -366,12 +425,16 @@ export function selectCordonGateways(
     //
     // Direction (one-way graphs only; on an all-two-way graph every reachable
     // node serves both passes and neither rule below changes anything). The
-    // router drops a gateway's share in a pass that cannot reach it, with no
-    // renormalisation, so collapsing must not throw a direction away: the
     // representative is a node both passes can use when the crossing has one,
-    // and a nearby crossing is skipped only when the one already taken serves
-    // every pass it does. The two carriageways of a divided road therefore
-    // stay two gateways when each serves only its own direction.
+    // so the two directions' cordons share a gateway where they can; inside
+    // the ring its routes are the crossing's either way. The router drops a
+    // gateway's share in a pass that cannot reach it, with no
+    // renormalisation, so in the one cordon both directions share (no
+    // `keep`) a nearby crossing is skipped only when the one already taken
+    // serves every pass it does, and the two carriageways of a divided road
+    // stay two gateways. In one direction's own cordon every candidate serves
+    // that direction and the other direction selects separately, so
+    // proximity alone decides.
     const TOP_PER_OCTANT = 3;
     const NODE_MERGE_M = 100;
     const PORTAL_MERGE_M = 60;
@@ -380,6 +443,7 @@ export function selectCordonGateways(
     // Representative order within a crossing: more passes served, then
     // capacity desc, then node index.
     const repOrder = (a: Cand, b: Cand) => passes(b.dirs) - passes(a.dirs) || b.cap - a.cap || a.node - b.node;
+    const oneDirection = keep !== undefined;
     const gateways: CordonGateway[] = [];
     for (const [oct, share] of octShare) {
       const byPortal = new Map<number, Cand>();
@@ -393,7 +457,7 @@ export function selectCordonGateways(
       const members: Cand[] = [];
       for (const c of crossings) {
         if (members.length === TOP_PER_OCTANT) break;
-        if (members.some((m) => (m.dirs | c.dirs) === m.dirs
+        if (members.some((m) => (oneDirection || (m.dirs | c.dirs) === m.dirs)
           && (within(m.node, c.node, NODE_MERGE_M) || within(m.portal, c.portal, PORTAL_MERGE_M)))) continue;
         members.push(c);
       }

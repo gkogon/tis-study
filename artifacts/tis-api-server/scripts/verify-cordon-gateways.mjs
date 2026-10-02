@@ -146,11 +146,13 @@ const crossSegments = [
     `backfill fixture: unscreened, the 3 ENE slots all go to unreachable fragment ends (${unscreened?.gateways.map((gw) => routable(gw.node)).join(",")})`);
   ok(new Set(unscreened?.gateways.map((gw) => gw.lon.toFixed(3))).size === 3,
     `backfill fixture: one slot per fragment, not two ends of one (${unscreened?.gateways.map((gw) => gw.lon.toFixed(3)).join(",")})`);
-  const sel = selectCordonGateways(g, { lat: LAT, lon: LON }, 0.5, ene, routable);
+  const sel = selectCordonGateways(g, { lat: LAT, lon: LON }, 0.5, ene, reach);
   ok(sel !== null && sel.gateways.length === 1 && routable(sel.gateways[0].node)
-      && Math.abs(sel.gateways[0].share - 1) < 1e-9 && sel.gateways[0].lat < LAT + 0.003,
-    `backfill: screened candidates give ENE's whole share to the connected arm (${sel?.gateways.map((gw) => `${gw.lat.toFixed(4)}:${gw.share.toFixed(3)}`).join(",")})`);
-  ok(selectCordonGateways(g, { lat: LAT, lon: LON }, 0.5, ene, () => false) === null,
+      && Math.abs(sel.gateways[0].share - 1) < 1e-9 && Math.abs(sel.gateways[0].shareIn - 1) < 1e-9
+      && sel.gateways[0].lat < LAT + 0.003,
+    `backfill: screened candidates give ENE's whole share, both ways, to the connected arm (${sel?.gateways.map((gw) => `${gw.lat.toFixed(4)}:${gw.share.toFixed(3)}/${gw.shareIn?.toFixed(3)}`).join(",")})`);
+  const none = new Uint8Array(g.nodeLat.length);
+  ok(selectCordonGateways(g, { lat: LAT, lon: LON }, 0.5, ene, { outbound: none, inbound: none }) === null,
     "backfill: no routable candidate at any class ceiling → null (legacy path)");
 }
 
@@ -173,10 +175,7 @@ const S = [LAT, LON];
 const eneOnly = { NNE: 0, ENE: 100, ESE: 0, SSE: 0, SSW: 0, WSW: 0, WNW: 0, NNW: 0 };
 const near = (gw, pt) => dist(gw.lat, gw.lon, pt[0], pt[1]) < 0.001;
 const shares = (sel) => sel?.gateways.map((gw) => gw.share.toFixed(4)).join(",");
-const screenOf = (g) => {
-  const reach = directedReachability(g, g.nearestNode(LAT, LON));
-  return (node) => reach.outbound[node] === 1 || reach.inbound[node] === 1;
-};
+const reachOf = (g) => directedReachability(g, g.nearestNode(LAT, LON));
 
 // 4d. A 6-lane road A (11400 per link) with a junction J at 0.60 mi (a 2-lane
 //     side street, 3800, runs north from it) and shape points P1, P2 at 0.62
@@ -262,9 +261,11 @@ const screenOf = (g) => {
 //     away from the site, I towards it (2 lanes each: 3800 per link, 7600 per
 //     node), and a 2-lane two-way road E (7600) runs 20° away. The router
 //     drops a gateway's share in the pass that cannot reach it, so O serves
-//     only outbound trips and I only inbound ones. Merging them would throw
-//     one direction away: all three stay (1/3 each). Drawn two-way, the same
-//     pair is one crossing and E gets half.
+//     only outbound trips and I only inbound ones. Each direction selects its
+//     own cordon: outbound splits ENE between O and E, inbound between I and
+//     E, 1/2 each. (One shared cordon gave O, I and E 1/3 each in BOTH
+//     passes, so each pass dropped a third.) Drawn two-way, the pair is one
+//     crossing and E gets half.
 {
   const O2 = at(70, 0.60), I2 = at(71.8, 0.60), E2 = at(50, 0.60);
   const build = (oneWay) => buildGraph([
@@ -273,14 +274,24 @@ const screenOf = (g) => {
     ...way([S, at(50, 0.30), E2, at(50, 0.80)], 2, "Road E"),
   ]);
   const g1 = build(true);
-  const sel = selectCordonGateways(g1, { lat: LAT, lon: LON }, 0.5, eneOnly, screenOf(g1));
-  const reach = directedReachability(g1, g1.nearestNode(LAT, LON));
+  const reach = reachOf(g1);
+  const sel = selectCordonGateways(g1, { lat: LAT, lon: LON }, 0.5, eneOnly, reach);
   const o = sel?.gateways.find((gw) => near(gw, O2)), i = sel?.gateways.find((gw) => near(gw, I2));
   ok(o && i && reach.outbound[o.node] === 1 && reach.inbound[o.node] === 0
       && reach.inbound[i.node] === 1 && reach.outbound[i.node] === 0,
     `divided fixture: O is outbound-only, I inbound-only (${o ? `${reach.outbound[o.node]}${reach.inbound[o.node]}` : "-"}/${i ? `${reach.outbound[i.node]}${reach.inbound[i.node]}` : "-"})`);
-  ok(sel !== null && sel.gateways.length === 3 && sel.gateways.every((gw) => Math.abs(gw.share - 1 / 3) < 1e-9),
-    `divided one-way: each carriageway keeps a gateway for its own direction, E the third (${shares(sel)})`);
+  const e = sel?.gateways.find((gw) => near(gw, E2));
+  const splits = (gw) => `${gw?.share?.toFixed(4)}/${gw?.shareIn?.toFixed(4)}`;
+  ok(sel !== null && sel.gateways.length === 3 && o && i && e
+      && Math.abs(o.share - 0.5) < 1e-9 && o.shareIn === 0
+      && i.share === 0 && Math.abs(i.shareIn - 0.5) < 1e-9
+      && Math.abs(e.share - 0.5) < 1e-9 && Math.abs(e.shareIn - 0.5) < 1e-9,
+    `divided one-way: out/in shares O .5/0, I 0/.5, E .5/.5 (got O ${splits(o)}, I ${splits(i)}, E ${splits(e)})`);
+  // Without reach, the one shared cordon is as before: collapsing keeps
+  // both carriageways (each serves a pass the other does not), 1/3 each.
+  const shared = selectCordonGateways(g1, { lat: LAT, lon: LON }, 0.5, eneOnly);
+  ok(shared !== null && shared.gateways.length === 3 && shared.gateways.every((gw) => Math.abs(gw.share - 1 / 3) < 1e-9 && gw.shareIn === undefined),
+    `divided one-way, shared cordon: unchanged, O, I and E 1/3 each (${shares(shared)})`);
   const sel2 = selectCordonGateways(build(false), { lat: LAT, lon: LON }, 0.5, eneOnly);
   ok(sel2 !== null && sel2.gateways.length === 2 && sel2.gateways.some((gw) => near(gw, O2))
       && sel2.gateways.some((gw) => near(gw, E2)) && sel2.gateways.every((gw) => Math.abs(gw.share - 0.5) < 1e-9),
@@ -298,7 +309,7 @@ const screenOf = (g) => {
     ...way([S, at(70, 0.30), R2, at(70, 0.80)], 2, "Road R"),
     ...way([R2, X, at(64, 0.85)], 5, "Ramp", 1),
   ]);
-  const sel = selectCordonGateways(g, { lat: LAT, lon: LON }, 0.5, eneOnly, screenOf(g));
+  const sel = selectCordonGateways(g, { lat: LAT, lon: LON }, 0.5, eneOnly, reachOf(g));
   ok(sel !== null && sel.gateways.length === 1 && near(sel.gateways[0], R2),
     `representative: R2, which both passes can use, not the higher-capacity outbound-only X (${sel?.gateways.map((gw) => `${gw.lat.toFixed(5)},${gw.lon.toFixed(5)}`).join(" ")})`);
 }
@@ -351,6 +362,139 @@ const screenOf = (g) => {
   ok(gap > 80 && gap < 100 && sel !== null && sel.gateways.length === 2 && sel.gateways.some((gw) => near(gw, U3))
       && sel.gateways.some((gw) => near(gw, V3)) && sel.gateways.every((gw) => Math.abs(gw.share - 0.5) < 1e-9),
     `parallel: roads crossing the ring ${gap.toFixed(0)} m apart keep a gateway each (${shares(sel)})`);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Per-direction shares (one-way graphs). The router's outbound pass routes
+//    site → gateway, its inbound pass gateway → site, and each pass drops the
+//    share of a gateway it cannot reach: nothing renormalises. So with
+//    `reach` (directed reachability from the site) each pass gets its own
+//    cordon: an octant's outbound share goes only to gateways the outbound
+//    pass reaches (`share`), its inbound share only to gateways the inbound
+//    pass reaches (`shareIn`), each Σ = 1, and each direction keeps the §6.1
+//    octant totals. Reach is set by hand here so the answer is on paper;
+//    verify-oneway-inbound.mjs derives it from real one-way links.
+//
+//    Fork fixture: two-way arms to N (NNE), S (SSW) and W (WNW) tips, and an
+//    east arm C → M that forks to tips A (bearing ~62°) and B (~83°), both
+//    ENE, ~0.58 mi out. M is 0.29 mi out, inside the ring. Every tip has one
+//    incident link of the same class, so capacities tie and splits are even.
+// ---------------------------------------------------------------------------
+{
+  const M = [LAT, LON + 0.005], A = [LAT + 0.004, LON + 0.009], B = [LAT + 0.001, LON + 0.010];
+  const fork = [
+    seg(LAT, LON, LAT + ARM, LON), seg(LAT, LON, LAT - ARM, LON), seg(LAT, LON, LAT, LON - ARM),
+    seg(LAT, LON, M[0], M[1]), seg(M[0], M[1], A[0], A[1]), seg(M[0], M[1], B[0], B[1]),
+  ];
+  const g = buildGraph(fork);
+  const n = g.nodeLat.length;
+  const nA = g.nodeOf(A[0], A[1]), nB = g.nodeOf(B[0], B[1]);
+  const nN = g.nodeOf(LAT + ARM, LON), nS = g.nodeOf(LAT - ARM, LON), nW = g.nodeOf(LAT, LON - ARM);
+  const SITE = { lat: LAT, lon: LON };
+  const dirs = { NNE: 20, ENE: 50, ESE: 0, SSE: 0, SSW: 20, WSW: 0, WNW: 10, NNW: 0 };
+  const reachWith = (outOff, inOff) => {
+    const outbound = new Uint8Array(n).fill(1), inbound = new Uint8Array(n).fill(1);
+    for (const v of outOff) outbound[v] = 0;
+    for (const v of inOff) inbound[v] = 0;
+    return { outbound, inbound };
+  };
+  const shares = (sel, key) => Object.fromEntries(
+    sel.gateways.filter((gw) => (gw[key] ?? gw.share) > 0).map((gw) => [gw.node, Math.round((gw[key] ?? gw.share) * 1e9) / 1e9]));
+  const same = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
+
+  // 6a. A is outbound-only, B inbound-only (a divided road's two carriageways).
+  //     ENE's 50% goes wholly to A outbound and wholly to B inbound; the other
+  //     octants are untouched. Unscreened, A and B split 25/25 in BOTH passes,
+  //     and each pass would drop 25% of the demand at the router.
+  {
+    const sel = selectCordonGateways(g, SITE, 0.5, dirs, reachWith([nB], [nA]));
+    const out = shares(sel, "share"), inn = shares(sel, "shareIn");
+    ok(same(out, { [nN]: 0.2, [nA]: 0.5, [nS]: 0.2, [nW]: 0.1 }),
+      `per-direction: outbound shares N .2, A .5, S .2, W .1 and none on B (got ${JSON.stringify(out)})`);
+    ok(same(inn, { [nN]: 0.2, [nB]: 0.5, [nS]: 0.2, [nW]: 0.1 }),
+      `per-direction: inbound shares N .2, B .5, S .2, W .1 and none on A (got ${JSON.stringify(inn)})`);
+    ok(sel.gateways.length === 5 && sel.emptyOctants.length === 0,
+      `per-direction: one cordon of 5 gateways (A and B each serve one pass), no empty octant (got ${sel.gateways.length}, [${sel.emptyOctants}])`);
+  }
+
+  // 6b. A and B both outbound-only: ENE has no inbound gateway, so ENE's
+  //     inbound 50% moves to the angularly nearest octant with one, NNE (one
+  //     45° step; SSW and WNW are three), exactly as an empty octant's share
+  //     always has. Outbound is unchanged.
+  {
+    const sel = selectCordonGateways(g, SITE, 0.5, dirs, reachWith([], [nA, nB]));
+    ok(same(shares(sel, "share"), { [nN]: 0.2, [nA]: 0.25, [nB]: 0.25, [nS]: 0.2, [nW]: 0.1 }),
+      `per-direction: outbound keeps ENE split over A and B (got ${JSON.stringify(shares(sel, "share"))})`);
+    ok(same(shares(sel, "shareIn"), { [nN]: 0.7, [nS]: 0.2, [nW]: 0.1 }),
+      `per-direction: inbound ENE share moves to NNE's N tip, .2 + .5 = .7 (got ${JSON.stringify(shares(sel, "shareIn"))})`);
+    ok(JSON.stringify(sel.emptyOctants) === JSON.stringify(["ENE"]),
+      `per-direction: ENE recorded as empty (inbound) (got [${sel.emptyOctants}])`);
+  }
+
+  // 6c. Everything reachable both ways: the same cordon as no screen at all,
+  //     with shareIn === share on every gateway.
+  {
+    const plain = selectCordonGateways(g, SITE, 0.5, dirs);
+    const sel = selectCordonGateways(g, SITE, 0.5, dirs, reachWith([], []));
+    const strip = (s) => JSON.stringify({ ...s, gateways: s.gateways.map(({ shareIn, ...rest }) => rest) });
+    ok(strip(sel) === JSON.stringify(plain) && sel.gateways.every((gw) => gw.shareIn === gw.share),
+      "per-direction: fully reachable ring selects exactly the unscreened cordon, shareIn === share");
+  }
+
+  // 6d. No ring node can reach the site: no inbound cordon, so null and the
+  //     legacy path stands (as when no candidate exists at all).
+  {
+    const sel = selectCordonGateways(g, SITE, 0.5, dirs, reachWith([], [nN, nS, nW, nA, nB]));
+    ok(sel === null, "per-direction: no inbound-reachable gateway → null (legacy fallback)");
+  }
+
+  // 6e. Each direction relaxes the class ceiling on its own. Add a collector
+  //     (class 4) arm to a tip K in NNW; make every class-2 tip outbound-only.
+  //     Outbound still cordons at ceiling 3 (K is not a candidate there);
+  //     inbound finds nothing at 3, relaxes to 4, and K is its only gateway,
+  //     so every octant's inbound share lands on K (NNW). Reported ceiling is
+  //     the more relaxed one, 4; the inbound-empty octants are reported.
+  {
+    const K = [LAT + 0.009, LON - 0.004];
+    const gk = buildGraph([...fork, [4, LAT, LON, K[0], K[1], 2, 30, "X", 0]]);
+    const nk = gk.nodeLat.length, nK = gk.nodeOf(K[0], K[1]);
+    const inbound = new Uint8Array(nk).fill(1);
+    for (const p of [[LAT + ARM, LON], [LAT - ARM, LON], [LAT, LON - ARM], A, B]) inbound[gk.nodeOf(p[0], p[1])] = 0;
+    const sel = selectCordonGateways(gk, SITE, 0.5, dirs, { outbound: new Uint8Array(nk).fill(1), inbound });
+    const kGw = sel?.gateways.find((gw) => gw.node === nK);
+    ok(kGw?.share === 0 && Math.abs((kGw?.shareIn ?? 0) - 1) < 1e-9,
+      `per-direction: inbound relaxes to collectors alone, K carries all inbound and no outbound (share ${kGw?.share}, shareIn ${kGw?.shareIn})`);
+    ok(sel?.classCeiling === 4 && JSON.stringify(sel?.emptyOctants) === JSON.stringify(["NNE", "ENE", "SSW", "WNW"]),
+      `per-direction: ceiling 4 reported, inbound-empty octants NNE,ENE,SSW,WNW (got ${sel?.classCeiling}, [${sel?.emptyOctants}])`);
+  }
+}
+
+// 6f. Within one direction's cordon, proximity alone merges crossings. A
+//     5-lane one-way ramp leaves 2-lane road R inside the ring and runs
+//     beside it: its ring node X (19000) is 67 m from R's R2 (7600), each its
+//     own crossing (different ways out). A 2-lane road E (7600) runs 20°
+//     away. Outbound, X is taken and R2, 67 m away (under 100 m), is the
+//     same place: X 19000 : E 7600 = 5/7 : 2/7. Inbound, X cannot be used,
+//     so R2 and E split 1/2 each. (The shared cordon's rule would keep R2 in
+//     the outbound cordon too, because R2 also serves inbound: X 5/9, R2
+//     2/9, E 2/9.)
+{
+  const R2 = at(70, 0.60), X = at(74, 0.60), E2 = at(50, 0.60);
+  const g = buildGraph([
+    ...way([S, at(70, 0.30), R2, at(70, 0.80)], 2, "Road R"),
+    ...way([at(70, 0.30), X, at(74, 0.80)], 5, "Ramp", 1),
+    ...way([S, at(50, 0.30), E2, at(50, 0.80)], 2, "Road E"),
+  ]);
+  const gap = dist(R2[0], R2[1], X[0], X[1]) * 1609.344;
+  const sel = selectCordonGateways(g, { lat: LAT, lon: LON }, 0.5, eneOnly, reachOf(g));
+  const x = sel?.gateways.find((gw) => near(gw, X)), r = sel?.gateways.find((gw) => near(gw, R2));
+  const e = sel?.gateways.find((gw) => near(gw, E2));
+  const splits = (gw) => `${gw?.share?.toFixed(4)}/${gw?.shareIn?.toFixed(4)}`;
+  ok(gap > 60 && gap < 100 && sel !== null && sel.gateways.length === 3 && x && r && e
+      && Math.abs(x.share - 5 / 7) < 1e-9 && x.shareIn === 0
+      && r.share === 0 && Math.abs(r.shareIn - 0.5) < 1e-9
+      && Math.abs(e.share - 2 / 7) < 1e-9 && Math.abs(e.shareIn - 0.5) < 1e-9,
+    `one-direction merge: out/in X 5/7/0, R2 0/.5, E 2/7/.5 with R2 ${gap.toFixed(0)} m from X (got X ${splits(x)}, R2 ${splits(r)}, E ${splits(e)})`);
 }
 
 // ---------------------------------------------------------------------------
