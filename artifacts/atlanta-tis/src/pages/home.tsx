@@ -231,11 +231,13 @@ function FlagshipSection() {
           </h2>
           <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
             Every metro on the platform runs the same engine. Atlanta is
-            our flagship — the only metro with the full live calibration
-            stack (GDOT 511 incidents, hourly traffic-flow archives,
-            crash history, weather sensors). The widgets below are real,
-            live data from Atlanta right now — they prove the depth the
-            engine can carry where the data exists.
+            where we run the most live data: GDOT 511 incidents are archived
+            every 10 minutes, and at signals with frequent incident reports
+            the computed delay is multiplied by an incident-based factor of
+            up to 1.20 (not fitted to measured delay). The widgets below are
+            live data from Atlanta right now. Atlanta's signal volumes are
+            modeled from road class and distance from downtown; they are not
+            joined to AADT counts.
           </p>
           <p className="text-xs text-muted-foreground/80 leading-relaxed font-mono">
             The other {TOTAL_METROS - 1} metros run the same Webster/NHTS/MUTCD math against

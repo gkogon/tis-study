@@ -1057,7 +1057,7 @@ const TEXT_GRAY = "#6b7280";
 
 // ---------- Background-volume provenance ----------
 
-type SignalVolumeBasis = "aadt" | "baseline" | "tmc" | "csv" | "unitemized";
+export type SignalVolumeBasis = "aadt" | "baseline" | "tmc" | "csv" | "unitemized";
 
 /**
  * Where one study signal's background volume came from, read only from what
@@ -1068,7 +1068,7 @@ type SignalVolumeBasis = "aadt" | "baseline" | "tmc" | "csv" | "unitemized";
  * measured import replaces the estimate and carries no legVolumes. Screening-
  * mode, unresolved and legacy rows carry neither, so they are not itemized.
  */
-function signalVolumeBasis(it: any): SignalVolumeBasis {
+export function signalVolumeBasis(it: any): SignalVolumeBasis {
   if (it?.volumeSource === "utdf_tmc" || it?.volumeSource === "synchro_pdf_tmc") return "tmc";
   const legs: any[] = Array.isArray(it?.legVolumes) ? it.legVolumes : [];
   if (legs.some((l) => l?.source === "signal_aadt")) return "aadt";

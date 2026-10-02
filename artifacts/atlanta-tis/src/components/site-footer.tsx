@@ -55,7 +55,7 @@ export function SiteFooter() {
       <div className="border-t border-border/60">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
           <div>© {new Date().getFullYear()} Simple Impact Studies. Cites Webster/Akçelik (openly published), NHTS 2017 / SANDAG 2002 / NCHRP 716, MUTCD 2009/2024.</div>
-          <div>Built in Atlanta · Data: GDOT 511 NaviGAtor</div>
+          <div>Built in Atlanta · Data: OpenStreetMap, state DOT and FHWA AADT, GDOT 511 incidents (Atlanta)</div>
         </div>
       </div>
     </footer>

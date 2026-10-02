@@ -37,21 +37,29 @@ export function TisLimitations() {
           <ul className="list-disc list-inside space-y-1 ml-2">
             <li>
               Signalized intersection inventory: derived from OpenStreetMap (OSM) traffic-signal
-              nodes within the Atlanta MSA, last refreshed at the date shown on the cover page.
+              nodes within the study metro, last refreshed at the date shown on the cover page.
             </li>
             <li>
-              Existing volumes and turning-movement splits: deterministically modeled from
-              zone-level demand patterns calibrated to GDOT 511 incident-rate observations.
-              No measured tube counts, automated traffic recorder (ATR) counts, or video-derived
-              counts were used.
+              Existing volumes and turning-movement splits: estimated, not counted, unless
+              turning-movement counts were imported. In the Atlanta MSA each signal's design-hour
+              volume is modeled from road class, distance from downtown Atlanta and a fixed
+              per-signal factor, with no count joined; in other metros it is AADT × K-factor from
+              a nearby AADT count record on a compatible road where one exists, otherwise a
+              road-class baseline. No tube counts, automated traffic recorder (ATR) counts, or
+              video-derived counts were collected.
+            </li>
+            <li>
+              GDOT 511 (Atlanta MSA only): at signals with frequent GDOT 511 incident reports
+              nearby, computed control delay is multiplied by an incident-based factor of up to
+              1.20. It is not fitted to measured delay, and GDOT 511 data is not used for volumes.
             </li>
             <li>
               Trip generation: public-data average weekday rates (SANDAG 2002, corroborated by
               NHTS 2017 and NCHRP 716).
             </li>
             <li>
-              Capacity analysis: Highway Capacity Manual, 6th Edition, Chapter 19 (signalized
-              intersections).
+              Capacity analysis: Webster (1958) uniform delay with Akçelik's overflow term, graded
+              against the conventional signalized control-delay LOS bands.
             </li>
           </ul>
         </Block>
