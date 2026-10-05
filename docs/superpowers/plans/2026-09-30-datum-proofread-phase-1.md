@@ -1910,6 +1910,7 @@ git commit -m "feat(proofread): lease-based claim policy for a multi-instance de
 ### Task 6: Store + runner + the enqueue hook
 
 **Files:**
+- Modify: `artifacts/tis-api-server/src/lib/proofread/lifecycle.ts` (extract `CLAIM_PREDICATE_SQL`; see below)
 - Create: `artifacts/tis-api-server/src/lib/proofread-store.ts`
 - Create: `artifacts/tis-api-server/src/lib/proofread-run.ts`
 - Modify: `artifacts/tis-api-server/src/routes/tis.ts` (between the `if (!saved)` branch and `res.json`)
@@ -1918,7 +1919,8 @@ git commit -m "feat(proofread): lease-based claim policy for a multi-instance de
 - Modify: `artifacts/tis-api-server/package.json`
 
 **Interfaces:**
-- Consumes: `runClauses`, `ALL_CLAUSES`, `findingFingerprint`, `engineStamp`, `RULES_VERSION` (Task 2/3); `CLAIM_SQL`, `nextStatusAfterFailure` (Task 5); the three tables (Task 4).
+- Consumes: `runClauses`, `ALL_CLAUSES`, `findingFingerprint`, `engineStamp`, `RULES_VERSION` (Task 2/3); `nextStatusAfterFailure`, `MAX_ATTEMPTS` (Task 5); the three tables (Task 4).
+- Modifies in Task 5's file: extract the WHERE text of `CLAIM_SQL` into an exported `CLAIM_PREDICATE_SQL`, and compose `CLAIM_SQL` from it so both stay one string. Task 5's suite already pins that predicate against `isReclaimable` cell by cell; sharing it here means the production claim cannot drift from the pinned one. While in that file, correct the two comments that say `CLAIM_SQL` "is the code that actually runs" — it states the predicate the claim must implement, and after this task it literally supplies it.
 - Produces: `enqueueProofread(args: { projectId: string; firmId: string; userId: string }): Promise<void>`; `claimAndRunOne(): Promise<boolean>`; `insertQueuedRun(...)`; `claimOneRun(instanceId: string)`; `loadStudyForRun(run)`; `completeRun(...)`; `latestRunForProject(firmId: string, projectId: string)`; `previousRunForProject(projectId: string, beforeRevision: number)`; `carryForwardDispositions(newRunId: string, previousRunId: string, sameEngine: boolean): Promise<number>`; `insertDisposition(...)`; `findingBelongsToFirm(firmId, findingId)`; `buildInputManifest(rec: StudyRecord): Record<string, boolean>`.
 
 - [ ] **Step 1: Write the failing test**
@@ -1984,6 +1986,16 @@ ok(/res\.json\(\{\s*\.\.\.validated,\s*projectId: saved\.id\s*\}\)/.test(tis), "
 const spec = src("../../../lib/tis-api-spec/openapi.yaml");
 ok(/projectId/.test(spec), "openapi.yaml documents projectId on the generate response");
 
+// The claim's own correctness, which Task 5's suite cannot reach: it pins the
+// predicate text and isReclaimable against each other, but not what production
+// executes.
+const store = src("../src/lib/proofread-store.ts");
+ok(/sql\.raw\(CLAIM_PREDICATE_SQL\)/.test(store), "the claim uses the shared, pinned predicate rather than restating it");
+ok(!/interval\s*'|IS NOT NULL AND/.test(store), "the claim restates neither the lease literal nor the old null handling");
+ok(/claimedAt:\s*sql`now\(\)`/.test(store), "claimed_at is stamped with the database clock, not the instance's");
+ok(/\.slice\(0,\s*64\)/.test(store), "the instance id is truncated to claimed_by's VARCHAR(64)");
+ok(/attempts\s*>\s*MAX_ATTEMPTS/.test(src("../src/lib/proofread-run.ts")), "a claimed row with exhausted attempts fails without running");
+
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);
 process.exit(fails === 0 ? 0 : 1);
 ```
@@ -2020,7 +2032,7 @@ import {
   type StudyProofreadRun,
 } from "@workspace/db";
 import { logger } from "./logger";
-import { CLAIM_SQL } from "./proofread/lifecycle.ts";
+import { CLAIM_PREDICATE_SQL, MAX_ATTEMPTS } from "./proofread/lifecycle.ts";
 import type { ProofreadFinding } from "./proofread/index.ts";
 import { findingFingerprint } from "./proofread/index.ts";
 
@@ -2076,15 +2088,22 @@ export async function claimOneRun(instanceId: string): Promise<StudyProofreadRun
     .update(studyProofreadRunsTable)
     .set({
       status: "running",
-      claimedAt: new Date(),
+      // The DATABASE's clock, not this instance's. Several instances claim from
+      // one table and their clocks do not agree; a lease measured against a
+      // skewed local clock expires early on one box and late on another.
+      claimedAt: sql`now()`,
       claimedBy: instanceId,
       attempts: sql`${studyProofreadRunsTable.attempts} + 1`,
     })
     .where(
+      // The predicate is NOT restated here. `CLAIM_PREDICATE_SQL` is exported by
+      // lifecycle.ts, `CLAIM_SQL` is composed from it, and the clause suite pins
+      // it against `isReclaimable` — so using it here makes the pinned predicate
+      // and the production predicate the same text by construction. Three copies
+      // with two of them pinned is how a lease silently diverges.
       sql`${studyProofreadRunsTable.id} = (
         SELECT id FROM study_proofread_runs
-         WHERE status = 'queued'
-            OR (status = 'running' AND claimed_at IS NOT NULL AND claimed_at < now() - interval '10 minutes')
+         WHERE ${sql.raw(CLAIM_PREDICATE_SQL)}
          ORDER BY created_at
          FOR UPDATE SKIP LOCKED
          LIMIT 1
@@ -2215,6 +2234,20 @@ export async function carryForwardDispositions(newRunId: string, previousRunId: 
       .orderBy(desc(studyProofreadDispositionsTable.createdAt))
       .limit(1);
     if (!prior[0]) continue;
+    // Idempotent: a re-claimed run re-derives the same findings, and this would
+    // otherwise append the carried disposition again on every pass. An
+    // append-only log makes a duplicate permanent.
+    const [already] = await db
+      .select({ id: studyProofreadDispositionsTable.id })
+      .from(studyProofreadDispositionsTable)
+      .where(
+        and(
+          eq(studyProofreadDispositionsTable.findingId, nf.id),
+          eq(studyProofreadDispositionsTable.disposition, prior[0].disposition),
+        ),
+      )
+      .limit(1);
+    if (already) continue;
     await db.insert(studyProofreadDispositionsTable).values({
       findingId: nf.id,
       disposition: prior[0].disposition,
@@ -2292,7 +2325,10 @@ import {
   previousRunForProject,
 } from "./proofread-store";
 
-const INSTANCE_ID = `${process.env.RAILWAY_REPLICA_ID ?? process.env.HOSTNAME ?? "local"}-${process.pid}`;
+// claimed_by is VARCHAR(64). An un-truncated hostname makes every claim throw
+// 22001 "value too long", which claimAndRunOne catches and logs — so no run
+// would ever execute and nothing would say why.
+const INSTANCE_ID = `${process.env.RAILWAY_REPLICA_ID ?? process.env.HOSTNAME ?? "local"}-${process.pid}`.slice(0, 64);
 
 /** Read once at boot: the protocol version every run record must carry (§Logging). */
 const PROTOCOL_VERSION = (() => {
@@ -2346,6 +2382,20 @@ export async function claimAndRunOne(): Promise<boolean> {
     return false;
   }
   if (!run) return false;
+  // The claim incremented `attempts`. A row that has now exhausted them must be
+  // failed WITHOUT running: a clause pass that crashes the process would
+  // otherwise be re-claimed and re-crash forever, since nothing else moves the
+  // row out of the queue.
+  if (run.attempts > MAX_ATTEMPTS) {
+    await completeRun({
+      runId: run.id,
+      status: "failed",
+      findings: [],
+      error: `attempts exhausted (${run.attempts} > ${MAX_ATTEMPTS})`,
+    });
+    logger.warn({ runId: run.id, attempts: run.attempts }, "proofread.attempts_exhausted");
+    return true;
+  }
   try {
     const study = await loadStudyForRun(run);
     if (!study) {
