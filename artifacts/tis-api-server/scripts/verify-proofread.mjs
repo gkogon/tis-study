@@ -1224,6 +1224,159 @@ const S_PASSBY =
   resolves("the mutated real payload", everyClause);
 }
 
+// --- run lifecycle: the claim policy (lifecycle.ts) ---------------------------------------
+// The state space is small enough to enumerate rather than sample: status x claim time x attempts for the
+// reclaim decision, attempts alone for the retry decision. And the code that RUNS in production is Postgres
+// evaluating CLAIM_SQL's predicate (Task 6 claims through drizzle's builder, not through isReclaimable), so
+// the SQL's WHERE clause is translated to JS below and held to the same table: the pure predicate and the SQL
+// cannot drift apart while this stays green. Every boundary is tested on both sides, and the constants are
+// pinned to absolute values, not just to each other.
+{
+  const lifecyclePath = path.resolve(here, "../src/lib/proofread/lifecycle.ts");
+  // Pure means pure: @workspace/db connects whenever DATABASE_URL is set, and this module is imported by plain node.
+  const code = readFileSync(lifecyclePath, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  ok(!/^\s*import\b/m.test(code) && !/\brequire\s*\(/.test(code) && !/\bfetch\s*\(/.test(code), "lifecycle.ts imports nothing and fetches nothing — it is decision logic only; the I/O is proofread-store.ts's");
+  const { isReclaimable, nextStatusAfterFailure, LEASE_MS, MAX_ATTEMPTS, CLAIM_SQL } = await import(lifecyclePath);
+
+  ok(LEASE_MS === 600_000, "LEASE_MS is 600000 (ten minutes): a longer lease leaves a recycled container's run unrecovered; a shorter one steals live runs. Changing it is a deliberate edit here and in the SQL interval");
+  ok(MAX_ATTEMPTS === 3, "MAX_ATTEMPTS is 3: the claim counts attempts, so a row is executed at most three times");
+
+  const now = new Date("2026-09-30T12:00:00Z");
+  const ago = (ms) => new Date(now.getTime() - ms);
+  ok(ago(0).getTime() === now.getTime() && now.getTime() - ago(LEASE_MS + 1).getTime() === LEASE_MS + 1 && ago(-5_000).getTime() === now.getTime() + 5_000, "precondition: ago(ms) is exactly ms before now (a helper that ignored its argument would make every lease cell below pass or fail for the wrong reason)");
+
+  // Claim-time dimension. `null` is a running row that was never stamped; the future one is clock skew between instances.
+  const TIMES = {
+    "no claim time": null,
+    "claimed 1 ms ago": ago(1),
+    "claimed 60 s ago": ago(60_000),
+    "claimed 1 ms short of a lease ago": ago(LEASE_MS - 1),
+    "claimed exactly one lease ago": ago(LEASE_MS),
+    "claimed 1 ms past a lease ago": ago(LEASE_MS + 1),
+    "claimed a day ago": ago(86_400_000),
+    "claimed 5 s in the future (clock skew)": ago(-5_000),
+  };
+  const labels = Object.keys(TIMES);
+  ok(new Set(Object.values(TIMES).map((t) => (t === null ? "null" : t.getTime()))).size === labels.length, `precondition: the ${labels.length} claim-time cells are all distinct instants`);
+
+  // The expected answers, written out by hand — NOT computed from the implementation's formula.
+  const RUNNING = {
+    "no claim time": true,
+    "claimed 1 ms ago": false,
+    "claimed 60 s ago": false,
+    "claimed 1 ms short of a lease ago": false,
+    "claimed exactly one lease ago": false,
+    "claimed 1 ms past a lease ago": true,
+    "claimed a day ago": true,
+    "claimed 5 s in the future (clock skew)": false,
+  };
+  const WHY = {
+    "no claim time": "a running row that was never stamped has no lease holder to protect and nothing will ever stamp it, so refusing it strands it 'running' forever",
+    "claimed 1 ms short of a lease ago": "one millisecond inside the lease is still a live claim",
+    "claimed exactly one lease ago": "the boundary is strict (the SQL's `<`): a claim exactly one lease old is still held, and `>=` would steal it on its last millisecond",
+    "claimed 1 ms past a lease ago": "the first millisecond past the lease is expired; a dead run's row must be recoverable",
+    "claimed 5 s in the future (clock skew)": "a claim stamped ahead of this instance's clock is live, not expired — negative elapsed time must not wrap",
+  };
+  const expected = (status, label) => (status === "queued" ? true : status === "running" ? RUNNING[label] : false);
+  const rowOf = (status, claimedAt, attempts = 1) => ({ status, claimedAt, attempts });
+
+  // queued: claimable whatever its claim time says (a failure requeue leaves the old claimedAt in place).
+  for (const label of labels) {
+    ok(isReclaimable(rowOf("queued", TIMES[label]), now) === true, `isReclaimable(queued, ${label}) is true — a queued row is claimable whatever its old claim time says (a requeue keeps the previous claimedAt)`);
+  }
+  // running: the lease dimension, both sides of the edge.
+  for (const label of labels) {
+    const want = RUNNING[label];
+    ok(isReclaimable(rowOf("running", TIMES[label]), now) === want, `isReclaimable(running, ${label}) is ${want}${WHY[label] ? ` — ${WHY[label]}` : ""}`);
+  }
+  // every other status: never claimable, at any claim time. 'RUNNING', 'Queued', 'running ' and '' are not statuses the
+  // writers ever produce, and an unknown state is left alone rather than guessed at.
+  for (const status of ["rules_ready", "ready", "failed", "claimed", "RUNNING", "Queued", "running ", ""]) {
+    const wrong = labels.filter((l) => isReclaimable(rowOf(status, TIMES[l]), now) !== false);
+    ok(wrong.length === 0, `isReclaimable(${JSON.stringify(status)}, any claim time) is false in all ${labels.length} cells${wrong.length ? `; wrongly true for: ${wrong.join("; ")}` : ""} — a finished, failed or unknown row is never reclaimed`);
+  }
+  // attempts is not part of the reclaim question. An expired running row at the budget must still be CLAIMABLE so the
+  // runner can fail it (nextStatusAfterFailure, below); refusing it would strand a crash-looped row 'running' forever.
+  const ATTEMPTS = [0, 1, MAX_ATTEMPTS - 1, MAX_ATTEMPTS, MAX_ATTEMPTS + 1, 50];
+  ok(ATTEMPTS.every((a) => isReclaimable(rowOf("running", ago(LEASE_MS + 1), a), now) === true), `an expired running row is reclaimable at every attempts count (${ATTEMPTS.join(", ")}): a run that crashed its container on its last attempt must be claimed so it can be failed, not left 'running'`);
+  ok(ATTEMPTS.every((a) => isReclaimable(rowOf("running", ago(60_000), a), now) === false), `a live claim is not stolen at any attempts count (${ATTEMPTS.join(", ")})`);
+  ok(ATTEMPTS.every((a) => isReclaimable(rowOf("running", null, a), now) === true), `an unstamped running row is reclaimable at every attempts count (${ATTEMPTS.join(", ")})`);
+
+  // --- the retry decision: one boundary, attempts === MAX_ATTEMPTS. The row passed in is the CLAIMED row, so attempts counts
+  // this execution already: attempts 1 is the first run.
+  const next = (attempts) => nextStatusAfterFailure(rowOf("running", now, attempts));
+  ok(next(1) === "queued", "attempt 1 failing requeues (a `>= 1` compare gives up on the first failure)");
+  ok(next(MAX_ATTEMPTS - 1) === "queued", `attempt ${MAX_ATTEMPTS - 1} failing requeues — one attempt remains (a \`>= MAX_ATTEMPTS - 1\` compare gives up an attempt early)`);
+  ok(next(MAX_ATTEMPTS) === "failed", `attempt ${MAX_ATTEMPTS} failing is terminal — the budget is spent (a \`>\` compare runs a ${MAX_ATTEMPTS + 1}th time)`);
+  ok(next(MAX_ATTEMPTS + 1) === "failed", `attempt ${MAX_ATTEMPTS + 1} failing is terminal too — a lease-expired row reclaimed after ${MAX_ATTEMPTS} crashes arrives with attempts > MAX_ATTEMPTS and must fail, not requeue (an \`===\` compare retries it forever)`);
+  ok([0, 2].every((a) => next(a) === "queued") && [5, 50, 1_000].every((a) => next(a) === "failed"), "requeues at attempts 0 and 2, fails at 5, 50 and 1000: the decision is monotonic in attempts");
+  ok(["queued", "running", "failed", "rules_ready", ""].every((s) => nextStatusAfterFailure(rowOf(s, null, MAX_ATTEMPTS)) === "failed" && nextStatusAfterFailure(rowOf(s, null, 1)) === "queued"), "the retry decision depends on attempts alone, not on the row's status or claim time");
+
+  // --- CLAIM_SQL: the statement the policy is stated in, pinned clause by clause.
+  const norm = (s) => s.replace(/\s+/g, " ").trim();
+  const q = norm(CLAIM_SQL);
+  const SHAPE = /^UPDATE study_proofread_runs SET (.+?) WHERE id = \( SELECT id FROM study_proofread_runs WHERE (.+?) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1 \) RETURNING \*;?$/;
+  const shape = SHAPE.exec(q);
+  ok(shape !== null, "CLAIM_SQL has the one safe shape: UPDATE ... WHERE id = (SELECT id ... ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING * — the row lock and the LIMIT sit inside the subselect that picks the row");
+  const setList = shape?.[1] ?? "";
+  const wherePred = shape?.[2] ?? "";
+  ok(/\bFOR UPDATE SKIP LOCKED\b/.test(q), "the claim locks the row it selects and skips rows another instance holds (FOR UPDATE alone would make the second instance wait; SKIP LOCKED alone is not a lock)");
+  ok(/\bLIMIT 1\b/.test(q), "the claim takes one row per call");
+  ok(/\bRETURNING\b/.test(q), "the claim returns the row it took");
+  ok(/ORDER BY created_at FOR UPDATE/.test(q) && !/created_at DESC/.test(q), "oldest first: the claim orders by created_at ascending, so a backlog drains in request order");
+  ok(/(^|, )status = 'running'(,|$)/.test(setList), "the claim moves the row to 'running'");
+  ok(/(^|, )claimed_at = now\(\)(,|$)/.test(setList), "the claim stamps claimed_at with the database clock — the same clock the lease is compared on");
+  ok(/(^|, )claimed_by = \$1(,|$)/.test(setList) && !/\$2/.test(q), "the claim records the instance in claimed_by, from the single parameter $1");
+  ok(/(^|, )attempts = attempts \+ 1(,|$)/.test(setList), "the claim counts the attempt in the same statement, so a run that dies mid-flight still spends one");
+  ok(setList.split(",").length === 4, "the claim sets exactly four columns (status, claimed_at, claimed_by, attempts)");
+
+  // The lease in the SQL is the lease in LEASE_MS, in the right unit.
+  const UNIT_MS = { millisecond: 1, second: 1000, minute: 60_000, hour: 3_600_000 };
+  const interval = /interval '(\d+(?:\.\d+)?) (millisecond|second|minute|hour)s?'/.exec(wherePred);
+  ok(interval !== null && Number(interval[1]) * UNIT_MS[interval[2]] === LEASE_MS, `the interval in the claim predicate (${interval ? interval[0] : "none found"}) is exactly LEASE_MS (${LEASE_MS} ms) — a unit slip (ms read as seconds) or a stale literal would lease for the wrong time`);
+
+  // Translate the SQL predicate to JS so the statement that actually runs is held to the same table as isReclaimable.
+  // Only the atoms this predicate is made of are modelled; anything else leaves a residue and fails loudly.
+  const sqlPredicate = (pred) => {
+    const OPS = { "<": ">", "<=": ">=" }; // claimed_at < now() - L  <=>  elapsed > L
+    const atoms = [
+      [/status = '(\w+)'/g, (_, s) => `(r.status === ${JSON.stringify(s)})`],
+      [/claimed_at IS NOT NULL/g, () => "(r.claimedAt !== null)"],
+      [/claimed_at IS NULL/g, () => "(r.claimedAt === null)"],
+      [/claimed_at (<=|<) now\(\) - interval '(\d+(?:\.\d+)?) (millisecond|second|minute|hour)s?'/g, (_, op, n, u) => `(r.claimedAt !== null && now.getTime() - r.claimedAt.getTime() ${OPS[op]} ${Number(n) * UNIT_MS[u]})`],
+    ];
+    const text = norm(pred);
+    const residue = atoms.reduce((s, [re]) => s.replace(re, ""), text).replace(/\bAND\b|\bOR\b|[()\s]/g, "");
+    const js = atoms.reduce((s, [re, fn]) => s.replace(re, fn), text.replace(/\bAND\b/g, "&&").replace(/\bOR\b/g, "||"));
+    return { residue, fn: residue ? null : new Function("r", "now", `return ${js};`) };
+  };
+  const model = sqlPredicate(wherePred);
+  ok(shape !== null && model.residue === "", `the claim predicate is made only of atoms the guard models (status = '...', claimed_at IS [NOT] NULL, claimed_at < now() - interval '...')${model.residue ? `; unmodelled: ${model.residue}` : ""}`);
+
+  // The statuses and attempts counts to cross with the claim times: 10 x 8 x 3 cells.
+  const ALL_STATUSES = ["queued", "running", "rules_ready", "ready", "failed", "claimed", "RUNNING", "Queued", "running ", ""];
+  const cells = ALL_STATUSES.flatMap((s) => labels.flatMap((l) => [0, MAX_ATTEMPTS, MAX_ATTEMPTS + 1].map((a) => ({ s, l, a }))));
+  if (model.fn) {
+    const sqlWrong = cells.filter(({ s, l, a }) => model.fn(rowOf(s, TIMES[l], a), now) !== expected(s, l)).map(({ s, l }) => `${s}/${l}`);
+    ok(sqlWrong.length === 0, `the claim predicate in CLAIM_SQL selects exactly the cells isReclaimable's table says (${cells.length} cells)${sqlWrong.length ? `; wrong for: ${[...new Set(sqlWrong)].slice(0, 6).join("; ")}` : ""}`);
+    const drift = cells.filter(({ s, l, a }) => model.fn(rowOf(s, TIMES[l], a), now) !== isReclaimable(rowOf(s, TIMES[l], a), now)).map(({ s, l }) => `${s}/${l}`);
+    ok(drift.length === 0, `isReclaimable and the claim predicate agree on every one of the ${cells.length} cells${drift.length ? `; they differ on: ${[...new Set(drift)].slice(0, 6).join("; ")}` : ""}`);
+  } else {
+    ok(false, "the claim predicate could not be modelled, so it was not compared with isReclaimable");
+  }
+  ok(cells.length === 240, "precondition: the cross is 10 statuses x 8 claim times x 3 attempts counts = 240 cells, not an empty loop");
+
+  // The harness itself: the translation can tell the defects it exists to catch from the real predicate.
+  const verdict = (pred, status, label) => sqlPredicate(pred).fn?.(rowOf(status, TIMES[label]), now);
+  const REAL = "status = 'queued' OR (status = 'running' AND (claimed_at IS NULL OR claimed_at < now() - interval '600 seconds'))";
+  ok(verdict(REAL, "running", "claimed exactly one lease ago") === false && verdict(REAL, "running", "claimed 1 ms past a lease ago") === true && verdict(REAL, "running", "no claim time") === true, "harness: the reference predicate reads the lease edge strictly and an unstamped running row as claimable");
+  ok(verdict(REAL.replace("claimed_at < now()", "claimed_at <= now()"), "running", "claimed exactly one lease ago") === true, "harness: a non-strict `<=` in the SQL is distinguishable at the exact-lease cell");
+  const NEEDS_STAMP = REAL.replace("claimed_at IS NULL OR ", "claimed_at IS NOT NULL AND ");
+  ok(verdict(NEEDS_STAMP, "running", "no claim time") === false && verdict(NEEDS_STAMP, "running", "claimed 1 ms past a lease ago") === true && verdict(NEEDS_STAMP, "running", "claimed 60 s ago") === false, "harness: a predicate that requires a claim time (the 'leave it for the next sweep' form) strands the unstamped row, and still expires a stamped one");
+  ok(verdict(REAL.replace("600 seconds", "10 minutes"), "running", "claimed exactly one lease ago") === false && verdict(REAL.replace("600 seconds", "10 minutes"), "running", "claimed 1 ms past a lease ago") === true && verdict(REAL.replace("600 seconds", "60 seconds"), "running", "claimed 1 ms short of a lease ago") === true && verdict(REAL, "running", "claimed 1 ms short of a lease ago") === false, "harness: the interval and its unit are read (10 minutes behaves as 600 seconds; a 60-second lease expires a claim the 600-second one still holds)");
+  ok(sqlPredicate(REAL + " OR status = 'failed'").fn?.(rowOf("failed", null), now) === true && sqlPredicate("status = 'queued' OR attempts < 3").residue !== "", "harness: an extra status is evaluated, and syntax the translation does not model leaves a residue instead of passing silently");
+}
+
 ok(unverified.length === 0, `no registered clause emitted UNVERIFIED on any record in this suite (what cannot be checked rides CoverageEntry.note, not the findings list — TIS-PROOFREAD-PROTOCOL.md:65-69)${unverified.length ? `: ${[...new Set(unverified)].join(", ")}` : ""}`);
 ok(threw.length === 0, `no clause threw on any record in this suite (a throw is reported as not-run and would pass every not-run assertion)${threw.length ? `: ${[...new Set(threw)].slice(0, 5).join("; ")}` : ""}`);
 
