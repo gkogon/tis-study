@@ -65,7 +65,8 @@
     "check:whatif-limiter": "node ./scripts/verify-whatif-limiter.mjs",
     "check:proofread": "node ./scripts/verify-proofread.mjs",
     "check:proofread-protocol": "node ./scripts/verify-proofread-protocol.mjs",
-    "check:proofread-schema": "node ./scripts/verify-proofread-schema.mjs"
+    "check:proofread-schema": "node ./scripts/verify-proofread-schema.mjs",
+    "check:proofread-claim": "node ./scripts/verify-proofread-claim.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",

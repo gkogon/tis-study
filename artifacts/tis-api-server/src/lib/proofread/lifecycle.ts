@@ -23,9 +23,10 @@ export const MAX_ATTEMPTS = 3;
 export type RunRowState = { status: string; claimedAt: Date | null; attempts: number };
 
 /**
- * Is this row up for claiming? Mirrors the WHERE clause of CLAIM_SQL, which is
- * the code that actually runs; the guard translates that clause and holds it to
- * this function cell by cell.
+ * Is this row up for claiming? Mirrors the WHERE clause of CLAIM_PREDICATE_SQL
+ * below, which proofread-store.ts's claim interpolates verbatim, so the
+ * predicate this function mirrors is the one Postgres evaluates; the guard
+ * translates that predicate and holds it to this function cell by cell.
  *
  * `attempts` is deliberately not consulted. A running row whose lease expired
  * after its last permitted attempt must still be CLAIMABLE, so the runner can
@@ -59,26 +60,41 @@ export function nextStatusAfterFailure(row: RunRowState): "queued" | "failed" {
 }
 
 /**
- * Claim one row for this instance. $1 is the instance id.
+ * Which rows a claim may take: a queued row, or a running row whose lease has
+ * expired (including one that was never stamped — see isReclaimable).
  *
- * This statement states and pins the predicate; it is NOT what proofread-store.ts
- * executes. `db.execute(sql.raw(...))` hands back rows keyed by the raw Postgres
- * column names, not drizzle's camelCase, so the store restates this through the
- * query builder (`.update().set().where().returning()`) — and the guard asserts
- * the pieces that matter here: the row lock, SKIP LOCKED, one row, RETURNING,
- * the strict lease edge, and that the interval is LEASE_MS.
+ * This string states the predicate a claim must implement, and since
+ * proofread-store.ts interpolates it (`sql.raw(CLAIM_PREDICATE_SQL)`) it also
+ * literally supplies it: the predicate the guard pins against isReclaimable,
+ * cell by cell, is the predicate Postgres evaluates in production. Keeping one
+ * string is the point — a second copy is how a lease silently diverges.
  *
  * The interval is derived from LEASE_MS so the SQL and the policy cannot name
- * two different leases. claimed_at is stamped with now(), the same clock the
- * lease is compared on.
+ * two different leases, and the comparison is strict (`<`), so a claim exactly
+ * one lease old is still held.
+ */
+export const CLAIM_PREDICATE_SQL = `status = 'queued'
+       OR (status = 'running' AND (claimed_at IS NULL OR claimed_at < now() - interval '${LEASE_MS / 1000} seconds'))`;
+
+/**
+ * Claim one row for this instance. $1 is the instance id.
+ *
+ * The statement is stated here and composed from CLAIM_PREDICATE_SQL, so the
+ * whole claim can be read in one place; the UPDATE itself is still not what
+ * runs. proofread-store.ts builds it through drizzle's query builder, because
+ * `db.execute(sql.raw(...))` hands back rows keyed by the raw Postgres column
+ * names rather than drizzle's camelCase — but its predicate is this predicate,
+ * not a restatement of it. The guard asserts the pieces that matter here: the
+ * row lock, SKIP LOCKED, one row, RETURNING, the strict lease edge, and that
+ * the interval is LEASE_MS. claimed_at is stamped with now(), the same clock
+ * the lease is compared on.
  */
 export const CLAIM_SQL = `
 UPDATE study_proofread_runs
    SET status = 'running', claimed_at = now(), claimed_by = $1, attempts = attempts + 1
  WHERE id = (
    SELECT id FROM study_proofread_runs
-    WHERE status = 'queued'
-       OR (status = 'running' AND (claimed_at IS NULL OR claimed_at < now() - interval '${LEASE_MS / 1000} seconds'))
+    WHERE ${CLAIM_PREDICATE_SQL}
     ORDER BY created_at
     FOR UPDATE SKIP LOCKED
     LIMIT 1

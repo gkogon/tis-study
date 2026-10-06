@@ -1,0 +1,150 @@
+/**
+ * The proofread runner: enqueue, then claim-and-run.
+ *
+ * Fail-open throughout. A proofread that cannot run never affects the study —
+ * the same contract saveProject holds. Phase 1 ends at 'rules_ready'; the
+ * judgment pass will take it to 'ready'.
+ */
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import type { StudyProofreadRun } from "@workspace/db";
+import { logger } from "./logger";
+import { ALL_CLAUSES, engineStamp, RULES_VERSION, runClauses, type StudyRecord } from "./proofread/index.ts";
+import { MAX_ATTEMPTS, nextStatusAfterFailure } from "./proofread/lifecycle.ts";
+import {
+  carryForwardDispositions,
+  claimOneRun,
+  completeRun,
+  insertQueuedRun,
+  loadStudyForRun,
+  previousRunForProject,
+} from "./proofread-store";
+
+// claimed_by is VARCHAR(64). An un-truncated hostname makes every claim throw
+// 22001 "value too long", which claimAndRunOne catches and logs — so no run
+// would ever execute and nothing would say why.
+const INSTANCE_ID = `${process.env.RAILWAY_REPLICA_ID ?? process.env.HOSTNAME ?? "local"}-${process.pid}`.slice(0, 64);
+
+/**
+ * Read once at boot: the protocol version every run record must carry (§Logging).
+ *
+ * Searched upward from the working directory rather than taken from it alone,
+ * because the start script runs this service from its own package directory
+ * (`pnpm --filter @workspace/tis-api-server run start`) while the protocol
+ * lives at the repo root. 'unknown' is the honest answer when it is not found —
+ * a missing protocol file must not stop a study from being proofread.
+ */
+const PROTOCOL_VERSION = (() => {
+  try {
+    let dir = process.cwd();
+    for (let up = 0; up < 5; up++) {
+      const file = path.join(dir, "TIS-PROOFREAD-PROTOCOL.md");
+      if (existsSync(file)) {
+        return /^PROTOCOL_VERSION:\s*(\S+)$/m.exec(readFileSync(file, "utf8"))?.[1] ?? "unknown";
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    return "unknown";
+  } catch {
+    return "unknown";
+  }
+})();
+
+/** Which declared inputs the record actually carries, so partial coverage is a stated fact. */
+export function buildInputManifest(rec: StudyRecord): Record<string, boolean> {
+  const r = rec.result as Record<string, any>;
+  const rows: any[] = Array.isArray(r.affectedIntersections) ? r.affectedIntersections : [];
+  return {
+    currentVc: rows.some((x) => x?.currentVc !== undefined),
+    designYear: rows.some((x) => x?.designBuildVc !== undefined || x?.designNoBuildVc !== undefined),
+    approaches: rows.some((x) => Array.isArray(x?.approaches) && x.approaches.length > 0),
+    signalTiming: rows.some((x) => x?.signalTiming !== undefined),
+    tripGenRates: r.tripGeneration?.pmRate !== undefined,
+    growthMultiplier: r.growthMultiplierExact !== undefined,
+    scopeCounts: r.intersectionsInStudyArea !== undefined && r.intersectionsMergedAsDuplicates !== undefined,
+    agencies: Array.isArray(r.agencies) && r.agencies.length > 0,
+    periodReports: Array.isArray(r.periodReports) && r.periodReports.length > 0,
+  };
+}
+
+/** Queue a run, then opportunistically drain one — there is no scheduler in this service. */
+export async function enqueueProofread(args: { projectId: string; firmId: string; userId: string }): Promise<void> {
+  const run = await insertQueuedRun({
+    ...args,
+    protocolVersion: PROTOCOL_VERSION,
+    rulesVersion: RULES_VERSION,
+    engineStamp: engineStamp(),
+  });
+  if (!run) {
+    logger.warn({ projectId: args.projectId }, "proofread.enqueue_failed");
+    return;
+  }
+  await claimAndRunOne();
+}
+
+/** Claim at most one run and execute the clauses. Returns whether work was done. */
+export async function claimAndRunOne(): Promise<boolean> {
+  let run: StudyProofreadRun | null = null;
+  try {
+    run = await claimOneRun(INSTANCE_ID);
+  } catch (err) {
+    logger.error({ err }, "proofread.claim_failed");
+    return false;
+  }
+  if (!run) return false;
+  // The claim incremented `attempts`. A row that has now exhausted them must be
+  // failed WITHOUT running: a clause pass that crashes the process would
+  // otherwise be re-claimed and re-crash forever, since nothing else moves the
+  // row out of the queue.
+  if (run.attempts > MAX_ATTEMPTS) {
+    await completeRun({
+      runId: run.id,
+      status: "failed",
+      findings: [],
+      error: `attempts exhausted (${run.attempts} > ${MAX_ATTEMPTS})`,
+    });
+    logger.warn({ runId: run.id, attempts: run.attempts }, "proofread.attempts_exhausted");
+    return true;
+  }
+  try {
+    const study = await loadStudyForRun(run);
+    if (!study) {
+      await completeRun({ runId: run.id, status: "failed", coverage: [], inputManifest: {}, findings: [], error: "study row not found" });
+      return true;
+    }
+    const rec: StudyRecord = { request: (study.request ?? {}) as any, result: (study.result ?? {}) as any };
+    const { findings, coverage } = runClauses(rec, ALL_CLAUSES);
+    await completeRun({
+      runId: run.id,
+      status: "rules_ready",
+      coverage,
+      inputManifest: buildInputManifest(rec),
+      findings,
+    });
+    // A re-run must not reopen a WITHDRAWN item or lose an ACCEPTED RISK with
+    // its named person. Dispositions carry forward by fingerprint, and only
+    // when the engine that produced the study has not changed underneath them.
+    const prev = await previousRunForProject(run.projectId, run.revision);
+    if (prev) await carryForwardDispositions(run.id, prev.id, prev.engineStamp === run.engineStamp);
+    logger.info({ runId: run.id, findings: findings.length }, "proofread.rules_ready");
+    return true;
+  } catch (err) {
+    const status = nextStatusAfterFailure({ status: run.status, claimedAt: run.claimedAt, attempts: run.attempts });
+    // No coverage or inputManifest: whatever this row already holds is better
+    // than {}. The failure can arrive AFTER the clause pass was written (a
+    // throw in the findings insert, or in the carry-forward), and a requeue
+    // that replaced real coverage with an empty one would report a study as
+    // unjudged that was in fact judged. completeRun writes only the fields it
+    // is given, which is what makes that omission mean "leave it alone".
+    await completeRun({
+      runId: run.id,
+      status,
+      findings: [],
+      error: err instanceof Error ? err.message : String(err),
+    }).catch(() => undefined);
+    logger.error({ err, runId: run.id, status }, "proofread.run_failed");
+    return true;
+  }
+}
