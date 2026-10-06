@@ -266,6 +266,68 @@ export const whatIfRateLimiter = rateLimit({
   },
 });
 
+/**
+ * Proofread limiters. Deliberately NOT generateRateLimiter: that one is per-IP
+ * 10/hr and shared by seven engine routes, so a re-run would lock an engineer
+ * out of generating studies. Keyed per user like whatIfRateLimiter.
+ */
+export const proofreadRunLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  passOnStoreError: true,
+  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),
+  store: makeRateLimitStore("rl:proofread:"),
+  // Same exemption every compute limiter in this file carries, so demoing the
+  // feature does not 429 the operator.
+  skip: (req) => {
+    if (process.env.DEV_AUTH_ENABLED === "true") return true;
+    const email = req.user?.email;
+    return !!email && isAdminEmail(email);
+  },
+  message: { error: "Too many proofread runs this hour. Try again shortly." },
+});
+
+export const proofreadDispositionLimiter = rateLimit({
+  // Triage must not share the re-run budget: twelve clauses over a
+  // per-intersection payload routinely produce more findings than the run
+  // limit, and an engineer recording decisions would lock themselves out of
+  // re-running.
+  windowMs: 60 * 60 * 1000,
+  limit: 300,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  passOnStoreError: true,
+  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),
+  store: makeRateLimitStore("rl:proofread-disp:"),
+  skip: (req) => {
+    if (process.env.DEV_AUTH_ENABLED === "true") return true;
+    const email = req.user?.email;
+    return !!email && isAdminEmail(email);
+  },
+  message: { error: "Too many requests. Try again shortly." },
+});
+
+// The panel polls this on an interval, and every poll also gives the service
+// one opportunistic sweep of the run queue, so it is a compute route too and
+// carries the same operator exemption.
+export const proofreadReadLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  passOnStoreError: true,
+  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),
+  store: makeRateLimitStore("rl:proofread-read:"),
+  skip: (req) => {
+    if (process.env.DEV_AUTH_ENABLED === "true") return true;
+    const email = req.user?.email;
+    return !!email && isAdminEmail(email);
+  },
+  message: { error: "Too many requests. Try again shortly." },
+});
+
 // /demo/geocode — looser than demoRateLimiter because geocoding is the
 // helper that turns "1100 Peachtree St" into lat/lon before a study
 // runs. A cold-click visitor might type 2–3 candidate addresses before

@@ -117,6 +117,20 @@ export async function getProject(
   return row ?? null;
 }
 
+/**
+ * Whether the project exists AND is the firm's. Existence only: getProject
+ * selects the whole row, including both large jsonb study payloads, and the
+ * proofread panel polls this on an interval just to learn a yes or a no.
+ */
+export async function projectExistsForFirm(firmId: string, id: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: tisProjectsTable.id })
+    .from(tisProjectsTable)
+    .where(and(eq(tisProjectsTable.id, id), eq(tisProjectsTable.firmId, firmId)))
+    .limit(1);
+  return !!row;
+}
+
 /** Pin (or clear, with null) the report format a project renders in. False when the project is not the firm's. */
 export async function setProjectTheme(firmId: string, projectId: string, reportThemeId: string | null): Promise<boolean> {
   const rows = await db

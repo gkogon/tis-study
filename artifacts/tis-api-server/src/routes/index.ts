@@ -16,6 +16,7 @@ import billingRouter from "./billing";
 import adminRouter from "./admin";
 import demoRouter from "./demo";
 import calibrationRouter from "./calibration";
+import proofreadRouter from "./proofread";
 
 const router: IRouter = Router();
 
@@ -36,5 +37,6 @@ router.use(billingRouter);
 router.use(adminRouter);
 router.use(demoRouter);
 router.use(calibrationRouter);
+router.use(proofreadRouter);
 
 export default router;
