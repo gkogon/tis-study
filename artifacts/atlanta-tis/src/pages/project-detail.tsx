@@ -17,6 +17,7 @@ import { WarrantsReport, type WarrantsReportT } from "../components/warrants-rep
 import { SightDistanceReport, type SightDistanceReportT } from "../components/sight-distance-report";
 import { QueuingReport, type QueuingReportT } from "../components/queuing-report";
 import { RoadDietReport, type RoadDietReportT } from "../components/road-diet-report";
+import { ProofreadPanel } from "../components/proofread-panel";
 
 interface ProjectDetail {
   id: string;
@@ -215,6 +216,8 @@ export default function ProjectDetailPage() {
       </div>
 
       <ResultRenderer project={project} />
+
+      {project.studyType === "tis" && <ProofreadPanel projectId={project.id} />}
 
       <div className="text-xs text-muted-foreground">
         This is a read-only summary of the stored report. To re-print or modify

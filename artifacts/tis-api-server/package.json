@@ -68,7 +68,8 @@
     "check:proofread-schema": "node ./scripts/verify-proofread-schema.mjs",
     "check:proofread-claim": "node ./scripts/verify-proofread-claim.mjs",
     "check:proofread-hook": "node ./scripts/verify-proofread-hook.mjs",
-    "check:proofread-routes": "node ./scripts/verify-proofread-routes.mjs"
+    "check:proofread-routes": "node ./scripts/verify-proofread-routes.mjs",
+    "check:proofread-copy": "node ./scripts/verify-proofread-copy.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",

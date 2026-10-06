@@ -1,0 +1,375 @@
+/**
+ * The study's internal consistency and traceability check, on the project page.
+ *
+ * Read-only by construction: the panel renders findings, what each one read,
+ * and the source it was checked against, plus controls that RECORD a decision.
+ * It offers nothing that edits the study.
+ *
+ * Polling, not streaming: this codebase has no SSE anywhere and compression is
+ * mounted globally, so a terminal status stops a 60 s interval — the cadence
+ * atlanta-live-status.tsx uses.
+ */
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { AlertCircle, AlertTriangle, CheckCircle2, HelpCircle, Info, Loader2, RefreshCw, Scale } from "lucide-react";
+import {
+  dispositionBody,
+  fetchProofread,
+  isFinished,
+  isPending,
+  orderFindings,
+  recordDisposition,
+  requestProofread,
+  summarizeOpen,
+  type OpenSummary,
+  type ProofreadFindingT,
+  type ProofreadRun,
+} from "@/lib/proofread";
+
+// The visual language of SEVERITY_CONFIG in tis-report-bits.tsx: red is what
+// holds a study (major), amber is "say this out loud" (moderate), yellow is
+// "worth knowing" (minor). A DISCLOSE is an instruction about the deliverable,
+// not a fault, so it takes the amber of a moderate mitigation, not the red of a major one.
+const TYPE_CONFIG: Record<ProofreadFindingT["type"], { label: string; color: string; icon: typeof CheckCircle2 }> = {
+  BLOCKER: { label: "Blocker", color: "text-red-600", icon: AlertCircle },
+  DEFECT: { label: "Defect", color: "text-red-600", icon: AlertCircle },
+  DISCLOSE: { label: "Disclose", color: "text-amber-600", icon: AlertTriangle },
+  NOTE: { label: "Note", color: "text-yellow-600", icon: Info },
+  UNVERIFIED: { label: "Unverified", color: "text-slate-600", icon: HelpCircle },
+  CONTESTED: { label: "Contested", color: "text-purple-600", icon: Scale },
+};
+
+const DISPOSITIONS = [
+  { value: "FIXED", label: "Fixed" },
+  { value: "DISCLOSED", label: "Disclosed in the deliverable" },
+  { value: "WITHDRAWN", label: "Withdrawn on a source" },
+  { value: "BUG_FILED", label: "Bug filed" },
+] as const;
+
+const POLL_MS = 60_000;
+
+export function ProofreadPanel({ projectId }: { projectId: string }) {
+  const [run, setRun] = useState<ProofreadRun | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  // Bumping this re-runs the effect, which re-arms the interval. The effect
+  // clears its own timer on a terminal status, so without this a re-run would
+  // refetch exactly once and then never poll again.
+  const [nonce, setNonce] = useState(0);
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // A second press while one is in flight must not fire. `busy` disables the
+  // buttons, but only once React has re-rendered — a press that lands before
+  // that (two clicks in one task) still reaches the handler. Decisions are
+  // appended to a log that cannot be edited, so a duplicate is permanent.
+  const inFlight = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const next = await fetchProofread(projectId);
+        if (cancelled) return;
+        setRun(next);
+        setError(null);
+        if (!isPending(next.status) && timer.current) {
+          clearInterval(timer.current);
+          timer.current = null;
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    };
+    void load();
+    timer.current = setInterval(() => void load(), POLL_MS);
+    return () => {
+      cancelled = true;
+      if (timer.current) clearInterval(timer.current);
+      timer.current = null;
+    };
+  }, [projectId, nonce]);
+
+  // The request holds the connection for the length of a clause pass, so `busy`
+  // stays true — and the button disabled — for all of it.
+  const rerun = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    try {
+      await requestProofread(projectId);
+      setError(null);
+      setNonce((v) => v + 1); // re-arms the poll and refetches
+      return;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  };
+
+  const triage = async (f: ProofreadFindingT, disposition: string) => {
+    if (inFlight.current || !run?.runId) return;
+    const body = dispositionBody(disposition, () => window.prompt("Name the source this is withdrawn on:"));
+    if (!body) return; // cancelled, or no source named: nothing to record
+    inFlight.current = true;
+    setBusy(true);
+    try {
+      await recordDisposition(projectId, run.runId, f.id, body);
+      setRun(await fetchProofread(projectId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ProofreadView
+      run={run}
+      error={error}
+      busy={busy}
+      onRerun={() => void rerun()}
+      onTriage={(f, d) => void triage(f, d)}
+    />
+  );
+}
+
+/**
+ * The sentence above the findings. An ordinary study carries a DISCLOSE or a
+ * NOTE or two — a clamped delay, a merged duplicate the deliverable does not
+ * mention — and the protocol's gate turns on a blocker or a contested item
+ * alone, so a panel with only those says so plainly instead of reading as an
+ * alarm. `incomplete` keeps that sentence scoped: "no open blocker" is a claim
+ * about the clauses that ran.
+ */
+function summaryLine(s: OpenSummary, incomplete: boolean): { text: string; alarm: boolean } | null {
+  if (s.total === 0) return null;
+  if (s.open === 0) return { text: "Every item has a recorded decision.", alarm: false };
+  const rest: string[] = [];
+  if (s.disclose > 0) rest.push(`${s.disclose} to state in the deliverable`);
+  if (s.note > 0) rest.push(`${s.note} note${s.note === 1 ? "" : "s"}`);
+  if (s.unverified > 0) rest.push(`${s.unverified} that could not be verified`);
+  if (s.holds > 0) {
+    return {
+      text:
+        `${s.holds} open item${s.holds === 1 ? "" : "s"} to resolve before this study is called complete.` +
+        (rest.length ? ` Also: ${rest.join(", ")}.` : ""),
+      alarm: true,
+    };
+  }
+  return {
+    text:
+      `No open blocker or contested item${incomplete ? " in the clauses that ran" : ""}. ` +
+      `For the deliverable and the record: ${rest.join(", ")}.`,
+    alarm: false,
+  };
+}
+
+function PanelHeader({ children }: { children?: ReactNode }) {
+  return (
+    <header className="flex items-start justify-between gap-3 flex-wrap p-4 border-b">
+      <div>
+        <h2 className="text-sm font-semibold">Consistency check</h2>
+        <p className="text-xs text-muted-foreground max-w-prose">
+          An internal consistency and traceability check over this saved study: each item names the
+          values it read and the source it was checked against. It does not change the study.
+        </p>
+      </div>
+      {children}
+    </header>
+  );
+}
+
+/**
+ * Everything the panel draws, as a pure function of the run it was handed. The
+ * stateful wrapper above owns the fetching and the timers; keeping the markup
+ * here lets the copy guard render it for each status and read what it shows.
+ */
+export function ProofreadView({
+  run,
+  error,
+  busy,
+  onRerun,
+  onTriage,
+}: {
+  run: ProofreadRun | null;
+  error: string | null;
+  busy: boolean;
+  onRerun: () => void;
+  onTriage: (f: ProofreadFindingT, disposition: string) => void;
+}) {
+  if (!run) {
+    // Still loading: nothing yet. Failed to load: say so — a panel that vanishes
+    // on an error looks exactly like a study with no check.
+    if (!error) return null;
+    return (
+      <section className="border rounded-lg" data-testid="panel-proofread">
+        <PanelHeader />
+        <div className="p-4 text-xs text-red-600">Could not load the check ({error}). Trying again every minute.</div>
+      </section>
+    );
+  }
+
+  // The result — findings and what the clauses covered — is shown only for a
+  // finished run. See the note above the findings.
+  const finished = isFinished(run.status);
+  const latestFor = (id: string) => run.dispositions.find((d) => d.findingId === id);
+  const notRun = run.coverage.filter((c) => c.status === "not-run");
+  // A clause that ran but judged only part of the record says so here. Rendering
+  // it beside the findings is the difference between "nothing found" and
+  // "nothing found in the part I could read".
+  const partial = run.coverage.filter((c) => c.status === "ran" && !!c.note);
+  const incomplete = notRun.length > 0 || partial.length > 0;
+  const summary = finished ? summaryLine(summarizeOpen(run.findings, run.dispositions), incomplete) : null;
+
+  return (
+    <section className="border rounded-lg" data-testid="panel-proofread">
+      <PanelHeader>
+        <button
+          onClick={onRerun}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border hover:bg-muted disabled:opacity-50"
+          data-testid="button-proofread-rerun"
+        >
+          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}{" "}
+          {run.status === "none" ? "Run the check" : "Run again"}
+        </button>
+      </PanelHeader>
+
+      <div className="p-4 space-y-3">
+        {error && <div className="text-xs text-red-600">{error}</div>}
+
+        {isPending(run.status) && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Checking this study…
+          </div>
+        )}
+
+        {run.status === "failed" && (
+          <div className="text-xs text-amber-700">
+            The check did not finish. The study itself is unaffected — run it again when convenient.
+          </div>
+        )}
+
+        {/* A study that was never checked must not render as clean. "none" is
+            not a result; conflating it with "nothing found" is the false-coverage
+            failure the protocol forbids. */}
+        {run.status === "none" && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <HelpCircle className="w-4 h-4" />
+            This study has not been checked yet. Run the check to see what can be verified from the saved record.
+          </div>
+        )}
+
+        {/* Findings are rendered only for a finished run. Between the runner's
+            two write steps a row is `running` with findings already stored but
+            dispositions not yet carried forward — normally milliseconds, up to a
+            lease after a crash — and triaging in that window races the carry. A
+            run that FAILED after that first write is in the same state for good,
+            so "finished" is the gate, not merely "not pending". */}
+        {finished && run.findings.length === 0 && (
+          <div className="flex items-center gap-2 text-sm">
+            {incomplete ? (
+              <Info className="w-4 h-4 text-muted-foreground" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            )}
+            Nothing flagged in the clauses that could run.
+          </div>
+        )}
+
+        {summary && (
+          <p
+            className={`text-sm ${summary.alarm ? "text-red-600 font-medium" : "text-foreground"}`}
+            data-testid="proofread-summary"
+          >
+            {summary.text}
+          </p>
+        )}
+
+        {finished && orderFindings(run.findings).map((f) => {
+          const cfg = TYPE_CONFIG[f.type] ?? { label: f.type, color: "text-slate-600", icon: HelpCircle };
+          const Icon = cfg.icon;
+          const disposed = latestFor(f.id);
+          return (
+            <div key={f.id} className="border rounded-lg p-4 space-y-3" data-testid={`finding-${f.clauseId}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2">
+                  <Icon className={`w-4 h-4 mt-0.5 ${cfg.color}`} />
+                  <div>
+                    <div className="text-sm font-semibold">{f.title}</div>
+                    <div className="text-xs text-muted-foreground">§{f.section} · {f.clauseId}</div>
+                  </div>
+                </div>
+                <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
+              </div>
+
+              <p className="text-sm">{f.detail}</p>
+
+              <ul className="text-xs text-muted-foreground list-disc pl-5 space-y-0.5">
+                <li>Checked against: {f.sourceLabel}</li>
+                {f.readPaths.slice(0, 6).map((p, i) => (
+                  <li key={`${p.path}:${i}`}>
+                    {p.path} = {String(p.value)}
+                  </li>
+                ))}
+                {f.readPaths.length > 6 && <li>and {f.readPaths.length - 6} more values</li>}
+                <li>Suggested: {f.remedy}</li>
+              </ul>
+
+              {disposed ? (
+                <div className="text-xs text-muted-foreground">
+                  Recorded: <span className="font-medium">{disposed.disposition}</span>
+                  {disposed.sourceLabel ? ` — ${disposed.sourceLabel}` : ""} on{" "}
+                  {new Date(disposed.createdAt).toLocaleString()}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {DISPOSITIONS.map((d) => (
+                    <button
+                      key={d.value}
+                      onClick={() => onTriage(f, d.value)}
+                      disabled={busy}
+                      className="px-2 py-1 text-xs rounded-md border hover:bg-muted disabled:opacity-50"
+                      data-testid={`button-disposition-${d.value.toLowerCase()}`}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {finished && partial.length > 0 && (
+          <div className="text-xs text-muted-foreground">
+            <div className="font-medium">Checked in part only</div>
+            <ul className="list-disc pl-5 mt-1 space-y-0.5">
+              {partial.map((c) => (
+                <li key={c.clauseId}>
+                  §{c.section} {c.clauseId} — {c.note}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {finished && notRun.length > 0 && (
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer">
+              {notRun.length} clause{notRun.length === 1 ? "" : "s"} could not run on this study
+            </summary>
+            <ul className="list-disc pl-5 mt-2 space-y-0.5">
+              {notRun.map((c) => (
+                <li key={c.clauseId}>
+                  §{c.section} {c.clauseId} — {c.reason}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+    </section>
+  );
+}
