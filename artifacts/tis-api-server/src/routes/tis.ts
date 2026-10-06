@@ -24,6 +24,7 @@ import { saveProject } from "../lib/tis-projects";
 import { getOrCreateFirmForUser, reserveStudySlot, releaseStudySlot, firmMayRunUncharged } from "../lib/firms";
 import { isUuid, resolveProjectTheme } from "../lib/report-themes";
 import { logEvent } from "../lib/events";
+import { enqueueProofread } from "../lib/proofread-run";
 
 /**
  * The report format a generate/PDF call asked for: `?reportThemeId=<uuid>`,
@@ -466,7 +467,22 @@ router.post("/generate", generateRateLimiter, async (req, res): Promise<void> =>
       userId: user.id,
       metadata: { studyType: "tis", landUseCode: parsed.data.landUseCode },
     });
-    res.json(validated);
+    // Queue the proofread pass. Fire-and-forget, and before the response: this
+    // is the only safe window. Anything after res.json() is still inside this
+    // handler's try, so a throw there reaches the catch below, which refunds the
+    // quota slot and writes to a response that was already sent. enqueueProofread
+    // awaits the whole clause pass, so the `void` keeps that off the engineer's
+    // wait, and the .catch keeps a proofread failure from becoming a study
+    // failure (or an unhandled rejection).
+    void enqueueProofread({ projectId: saved.id, firmId: firm.id, userId: user.id }).catch((err) => {
+      req.log.error({ err, projectId: saved.id }, "proofread.enqueue_error");
+    });
+    // projectId is merged AFTER the parse and the save, not before: the id does
+    // not exist until saveProject returns, and `validated` is what saveProject
+    // stores as the result payload, which must not carry its own project's id.
+    // (GenerateTisResponse is also a strip-unknown-keys zod object, so an id
+    // attached to `report` ahead of the parse would not survive it anyway.)
+    res.json({ ...validated, projectId: saved.id });
   } catch (e) {
     await releaseStudySlot(firm, { email: user.email, source: quota.source });
     req.log.error({ err: e }, "tis-generate failed");
