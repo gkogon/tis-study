@@ -2405,9 +2405,15 @@ export async function claimAndRunOne(): Promise<boolean> {
     }
     const rec: StudyRecord = { request: (study.request ?? {}) as any, result: (study.result ?? {}) as any };
     const { findings, coverage } = runClauses(rec, ALL_CLAUSES);
+    // Two-step finish. The findings and coverage are written while the row is
+    // still claimed, THEN the carry runs, THEN a second call flips the status.
+    // Flipping first loses a disposition permanently: a second re-run claimed in
+    // that window picks this run as `previous`, finds no dispositions on it, and
+    // the earlier revision's WITHDRAWN is gone from an append-only log. It also
+    // closed a window where a row read `rules_ready` with no findings yet.
     await completeRun({
       runId: run.id,
-      status: "rules_ready",
+      status: "running",
       coverage,
       inputManifest: buildInputManifest(rec),
       findings,
@@ -2417,6 +2423,10 @@ export async function claimAndRunOne(): Promise<boolean> {
     // when the engine that produced the study has not changed underneath them.
     const prev = await previousRunForProject(run.projectId, run.revision);
     if (prev) await carryForwardDispositions(run.id, prev.id, prev.engineStamp === run.engineStamp);
+    // Only now is the run readable as finished. A crash before this leaves the
+    // row `running` with its claim intact, so the lease reclaims it and the
+    // retry is idempotent (findings onConflictDoNothing, carry guarded).
+    await completeRun({ runId: run.id, status: "rules_ready", findings: [] });
     logger.info({ runId: run.id, findings: findings.length }, "proofread.rules_ready");
     return true;
   } catch (err) {
@@ -3243,6 +3253,10 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
           </div>
         )}
 
+        {/* Findings are rendered only for a finished run. Between the runner's
+            two write steps a row is `running` with findings already stored but
+            dispositions not yet carried forward — normally milliseconds, up to a
+            lease after a crash — and triaging in that window races the carry. */}
         {run.status !== "none" && run.findings.length === 0 && !PENDING.has(run.status) && (
           <div className="flex items-center gap-2 text-sm">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -3250,7 +3264,7 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
           </div>
         )}
 
-        {run.findings.map((f) => {
+        {!PENDING.has(run.status) && run.findings.map((f) => {
           const cfg = TYPE_CONFIG[f.type];
           const Icon = cfg.icon;
           const disposed = latestFor(f.id);
