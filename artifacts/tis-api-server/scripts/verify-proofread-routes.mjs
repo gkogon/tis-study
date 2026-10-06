@@ -104,13 +104,25 @@ const sources = {
   runner: read("../src/lib/proofread-run.ts"),
   tisProjects: read("../src/lib/tis-projects.ts"),
   typesSrc: read("../src/lib/proofread/types.ts"),
+  // Every file of the pure clause directory, by name: the store and the runner
+  // import it, so a write reached THROUGH it would not appear in either file.
+  clauseDir: Object.fromEntries(
+    (() => {
+      try {
+        return readdirSync(at("../src/lib/proofread")).filter((f) => f.endsWith(".ts")).map((f) => [f, read(`../src/lib/proofread/${f}`)]);
+      } catch {
+        return [];
+      }
+    })(),
+  ),
   otherNames: [...otherExportNames()],
 };
 
 for (const [k, v] of Object.entries(sources)) {
-  if (k === "otherNames") continue;
+  if (k === "otherNames" || k === "clauseDir") continue;
   ok(v.length > 0, `precondition: the ${k} source exists and is not empty`);
 }
+ok(Object.keys(sources.clauseDir).length >= 8 && Object.values(sources.clauseDir).every((t) => t.length > 0), "precondition: the clause directory's files are all readable (src/lib/proofread/*.ts)");
 ok(sources.otherNames.length > 20, "precondition: the collision check can see the other contract modules' exports", `saw ${sources.otherNames.length}`);
 
 // ---------------------------------------------------------------------------
@@ -243,19 +255,45 @@ const getSeg = (d) => routeBy(d.routes, "get", P_RUN);
 const runSeg = (d) => routeBy(d.routes, "post", P_RUN);
 const dispSeg = (d) => routeBy(d.routes, "post", P_DISP);
 
-/** The `import ... from "mod"` statements of a file, as { module: [names...] }. */
+/**
+ * Every way a file can reach another module, as { module: [names...] }.
+ *
+ * An import whitelist is only as good as its parser, and the forms a naive one
+ * misses are exactly the ones that evade it, so the ones a named-import list
+ * cannot express are surfaced as pseudo-names that no whitelist contains:
+ *   import "x"            -> "<side-effect import>" under x
+ *   export ... from "x"   -> "<re-export>" under x
+ *   import("x")           -> "<dynamic import>" under "<dynamic import>"
+ *   require("x")          -> "<require>" under "<require>"
+ * The clause of a named import may not contain a quote or a semicolon, so one
+ * statement can never swallow the next, and the trailing semicolon is optional
+ * (ASI makes a semicolon-less import legal).
+ */
 function importsOf(src) {
   const out = {};
-  for (const m of src.matchAll(/^import\s+(type\s+)?([\s\S]*?)\s+from\s+"([^"]+)";/gm)) {
+  const add = (mod, names) => {
+    out[mod] = [...(out[mod] ?? []), ...names];
+  };
+  for (const m of src.matchAll(/^import\s+(type\s+)?([^;"']*?)\s+from\s+"([^"]+)"/gm)) {
     const names = [];
     const spec = m[2];
     const brace = /\{([^}]*)\}/.exec(spec);
     const dflt = spec.replace(/\{[^}]*\}/, "").replace(/,/g, "").trim();
     if (dflt) names.push(`${m[1] ? "type " : ""}${dflt}`);
     if (brace) for (const part of brace[1].split(",")) if (part.trim()) names.push(`${m[1] ? "type " : ""}${part.trim()}`);
-    out[m[3]] = [...(out[m[3]] ?? []), ...names];
+    add(m[3], names);
   }
+  for (const m of src.matchAll(/^import\s+"([^"]+)"/gm)) add(m[1], ["<side-effect import>"]);
+  for (const m of src.matchAll(/^export\s+(?:type\s+)?(?:\*(?:\s+as\s+\w+)?|\{[^}]*\})\s+from\s+"([^"]+)"/gm)) add(m[1], ["<re-export>"]);
+  for (const m of src.matchAll(/\bimport\s*\(/g)) add("<dynamic import>", ["<dynamic import>"]);
+  for (const m of src.matchAll(/\brequire\s*\(/g)) add("<require>", ["<require>"]);
   return out;
+}
+
+/** True when `got` (from importsOf) is exactly `want`: the same modules, and for each the same names. */
+function importsEqual(got, want) {
+  const keys = Object.keys(want);
+  return same(Object.keys(got), keys) && keys.every((k) => same(got[k], want[k]));
 }
 
 /** The expression after `const NAME =` up to its `;`, brackets and literals matched, or "". */
@@ -328,6 +366,28 @@ ok(
 const SIX_DISPOSITIONS = ["FIXED", "BUG_FILED", "DISCLOSED", "WITHDRAWN", "CONTESTED_PE", "ACCEPTED_RISK"];
 const PE_ONLY_NAMES = ["ACCEPTED_RISK", "CONTESTED_PE"];
 const PERMITTED_NAMES = SIX_DISPOSITIONS.filter((n) => !PE_ONLY_NAMES.includes(n));
+// What the store and the runner may import, by NAME. The scans of each file's
+// own text (no .update/.insert/.delete of a study table, no tisProjectsTable
+// outside the loader) cannot see a study write reached through ANOTHER module:
+// `import { setProjectTheme } from "./tis-projects"` compiles, passes every one
+// of them, and rewrites a tis_projects row. These are the only doors.
+const STORE_IMPORTS = {
+  "drizzle-orm": ["and", "desc", "eq", "inArray", "lt", "sql"],
+  "@workspace/db": ["db", "studyProofreadDispositionsTable", "studyProofreadFindingsTable", "studyProofreadRunsTable", "tisProjectsTable", "type StudyProofreadRun"],
+  "./logger": ["logger"],
+  "./proofread/lifecycle.ts": ["CLAIM_PREDICATE_SQL"],
+  "./proofread/index.ts": ["type ProofreadFinding", "findingFingerprint"],
+};
+const RUNNER_IMPORTS = {
+  "node:fs": ["existsSync", "readFileSync"],
+  "node:path": ["path"],
+  // type-only: the runner has no connection of its own
+  "@workspace/db": ["type StudyProofreadRun"],
+  "./logger": ["logger"],
+  "./proofread/index.ts": ["ALL_CLAUSES", "engineStamp", "RULES_VERSION", "runClauses", "type StudyRecord"],
+  "./proofread/lifecycle.ts": ["MAX_ATTEMPTS", "nextStatusAfterFailure"],
+  "./proofread-store": ["carryForwardDispositions", "claimOneRun", "completeRun", "insertQueuedRun", "loadStudyForRun", "previousRunForProject"],
+};
 const THREE_LIMITERS = ["proofreadRunLimiter", "proofreadDispositionLimiter", "proofreadReadLimiter"];
 
 // Banned phrases (product-visible copy). Hyphenated and capitalised variants
@@ -357,6 +417,7 @@ const derive = (s) => {
     runner: stripComments(s.runner),
     tisProjects: stripComments(s.tisProjects),
     typesSrc: stripComments(s.typesSrc),
+    clauseDir: Object.fromEntries(Object.entries(s.clauseDir).map(([k, v]) => [k, stripComments(v)])),
     otherNames: s.otherNames,
     mod: evalContract(contract),
   };
@@ -540,6 +601,13 @@ const CHECKS = [
           isConflict({ cause: { code: "23505", constraint: K } }) === true &&
           isConflict({ cause: { cause: { code: "23505", constraint: K } } }) === true &&
           isConflict({ code: "23505", constraint: "some_other_unique_key" }) === false &&
+          // The sibling unique key in the same table family, and near-misses of
+          // the real name: a prefix test such as startsWith("UQ_study_proofread")
+          // admits the findings key, and startsWith(KEY) admits KEY + "_x".
+          isConflict({ code: "23505", constraint: "UQ_study_proofread_findings_run_fp" }) === false &&
+          isConflict({ code: "23505", constraint: `${K}_x` }) === false &&
+          isConflict({ code: "23505", constraint: `x${K}` }) === false &&
+          isConflict({ code: "23505", constraint: K.slice(0, -1) }) === false &&
           isConflict({ cause: { code: "23505" } }) === false &&
           isConflict({ code: "23503", constraint: K }) === false &&
           isConflict(new Error("x")) === false &&
@@ -711,9 +779,7 @@ const CHECKS = [
         "../lib/proofread-run": ["claimAndRunOne", "enqueueProofread"],
         "../lib/proofread-store": ["findingAudienceForFirm", "findingInFirmRun", "insertDisposition", "latestRunForProject"],
       };
-      const got = importsOf(d.routes);
-      const keys = Object.keys(want);
-      return same(Object.keys(got), keys) && keys.every((k) => same(got[k], want[k]));
+      return importsEqual(importsOf(d.routes), want);
     },
   },
   {
@@ -850,9 +916,15 @@ const CHECKS = [
 
   // --- proofread-store.ts: where the writes actually live ------------------
   {
+    id: "store-import-whitelist",
+    on: "store",
+    msg: "the store imports exactly the modules AND NAMES it needs (drizzle's six helpers; db, the three proofread tables, tisProjectsTable and the StudyProofreadRun type from @workspace/db; the logger; the two pure proofread/ modules) with no re-export, side-effect import, dynamic import or require — the scans of the store's own text cannot see a study write reached through another module, and `import { setProjectTheme } from \"./tis-projects\"` left every one of them green",
+    test: (d) => d.store.length > 0 && importsEqual(importsOf(d.store), STORE_IMPORTS),
+  },
+  {
     id: "store-writes-only-proofread-tables",
     on: "store",
-    msg: "every write in the store (.update/.insert/.delete, whatever the receiver) targets one of the three proofread tables — a write to tis_projects, or to any other table, is the advisor boundary broken",
+    msg: "every write the store's OWN text makes (.update/.insert/.delete, whatever the receiver) targets one of the three proofread tables — a write to tis_projects, or to any other table, is the advisor boundary broken; a write reached through another module is the import whitelist's to catch, not this scan's",
     test: (d) => {
       const targets = [...d.store.matchAll(/\.(update|insert|delete)\(\s*(\w+)/g)].map((m) => m[2]);
       const allowed = ["studyProofreadRunsTable", "studyProofreadFindingsTable", "studyProofreadDispositionsTable"];
@@ -934,7 +1006,7 @@ const CHECKS = [
   {
     id: "runner-has-no-db-writes",
     on: "runner",
-    msg: "the runner reaches the database only through the store: its @workspace/db import is type-only, it names no study table or payload, and it has no write of its own",
+    msg: "the runner's OWN text has no database write and names no study table or payload, and its @workspace/db import is type-only; that it reaches the database only through the store is the import whitelist's claim, not this scan's",
     test: (d) => {
       const dbImports = [...d.runner.matchAll(/^import\s+(type\s+)?[^;]*?\s+from\s+"@workspace\/db";/gm)];
       return (
@@ -942,6 +1014,32 @@ const CHECKS = [
         dbImports.length > 0 &&
         dbImports.every((m) => m[1]) &&
         !/tisProjectsTable|requestPayload|resultPayload|\.update\(|\.insert\(|\.delete\(|\bdb\./.test(d.runner)
+      );
+    },
+  },
+  {
+    id: "runner-import-whitelist",
+    on: "runner",
+    msg: "the runner imports exactly the modules AND NAMES it needs (node:fs, node:path, the type-only StudyProofreadRun, the logger, the two pure proofread/ modules and the six store functions) with no re-export, side-effect import, dynamic import or require — so it reaches the database only through the store, and `import { setProjectTheme } from \"./tis-projects\"` called after the clause pass (which compiled and left every other guard green while rewriting a tis_projects row) fails here",
+    test: (d) => d.runner.length > 0 && importsEqual(importsOf(d.runner), RUNNER_IMPORTS),
+  },
+  {
+    id: "proofread-dir-imports-whitelist",
+    on: "clauseDir",
+    msg: "every file under src/lib/proofread/ — the pure directory the store and the runner import, and so a way to reach a write without it appearing in either — imports only its own siblings, the dependency-free @workspace/tis-engine-core, and types from @workspace/tis-api-zod: no database, no node module, no other lib file, no dynamic import or require",
+    test: (d) => {
+      const files = Object.keys(d.clauseDir);
+      return (
+        files.length >= 8 &&
+        files.every((f) =>
+          Object.entries(importsOf(d.clauseDir[f])).every(([mod, names]) => {
+            if (mod.startsWith("<")) return false;
+            if (/^\.\/[\w-]+\.ts$/.test(mod)) return files.includes(mod.slice(2));
+            if (mod === "@workspace/tis-engine-core") return true;
+            if (mod === "@workspace/tis-api-zod") return names.every((n) => n.startsWith("type "));
+            return false;
+          }),
+        )
       );
     },
   },
@@ -1090,6 +1188,7 @@ const editNth = (file, re, n, to) => (s) => {
   if (!h) return s;
   return { ...s, [file]: s[file].slice(0, h.index) + to + s[file].slice(h.index + h[0].length) };
 };
+const editDir = (name, from, to) => (s) => ({ ...s, clauseDir: { ...s.clauseDir, [name]: s.clauseDir[name].replace(from, to) } });
 const chain = (...fns) => (s) => fns.reduce((acc, f) => f(acc), s);
 const GUARD_RE = /    if \(!\(await projectExistsForFirm\(firm\.id, id\)\)\) \{\n      res\.status\(404\)\.json\(\{ error: "Project not found\." \}\);\n      return;\n    \}\n/g;
 const ENQUEUE_LINE = "    await enqueueProofread({ projectId: id, firmId: firm.id, userId: user.id });\n";
@@ -1332,6 +1431,30 @@ const MUTATIONS = [
     file: "routes",
     flips: ["revision-conflict-helper"],
     apply: edit("routes", 'e.code === "23505" && e.constraint === REVISION_KEY', "e.constraint === REVISION_KEY"),
+  },
+  {
+    label: "widen the conflict test to any unique key of the proofread tables (startsWith UQ_study_proofread, which admits the findings key)",
+    file: "routes",
+    flips: ["revision-conflict-helper"],
+    apply: edit("routes", "e.constraint === REVISION_KEY", 'String(e.constraint).startsWith("UQ_study_proofread")'),
+  },
+  {
+    label: "widen the conflict test to a name that merely starts with the real one",
+    file: "routes",
+    flips: ["revision-conflict-helper"],
+    apply: edit("routes", "e.constraint === REVISION_KEY", "String(e.constraint).startsWith(REVISION_KEY)"),
+  },
+  {
+    label: "widen the conflict test to a name that merely contains the real one",
+    file: "routes",
+    flips: ["revision-conflict-helper"],
+    apply: edit("routes", "e.constraint === REVISION_KEY", "String(e.constraint).includes(REVISION_KEY)"),
+  },
+  {
+    label: "accept a prefix of the real constraint name",
+    file: "routes",
+    flips: ["revision-conflict-helper"],
+    apply: edit("routes", "e.constraint === REVISION_KEY", "REVISION_KEY.startsWith(String(e.constraint))"),
   },
   {
     label: "swallow every error as a revision conflict",
@@ -1829,12 +1952,14 @@ const MUTATIONS = [
     label: "import the study table into the runner",
     file: "runner",
     flips: ["runner-has-no-db-writes"],
+    also: ["runner-import-whitelist"],
     apply: edit("runner", 'import type { StudyProofreadRun } from "@workspace/db";', 'import { tisProjectsTable } from "@workspace/db";\nimport type { StudyProofreadRun } from "@workspace/db";'),
   },
   {
     label: "make the runner's db import a value import",
     file: "runner",
     flips: ["runner-has-no-db-writes"],
+    also: ["runner-import-whitelist"],
     apply: edit("runner", 'import type { StudyProofreadRun } from "@workspace/db";', 'import { db, type StudyProofreadRun } from "@workspace/db";'),
   },
   {
@@ -1842,6 +1967,164 @@ const MUTATIONS = [
     file: "runner",
     flips: ["runner-has-no-db-writes"],
     apply: edit("runner", "    const rec: StudyRecord", "    await x.update(y);\n    const rec: StudyRecord"),
+  },
+
+  // ---- import whitelists: a study write reached THROUGH another module --------
+  {
+    label: "store imports setProjectTheme from ./tis-projects and calls it after a claim (the reviewer's attack, in the store)",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: chain(
+      edit("store", 'import { logger } from "./logger";', 'import { logger } from "./logger";\nimport { setProjectTheme } from "./tis-projects";'),
+      edit("store", "    .returning();\n  return row ?? null;\n}\n\nexport async function loadStudyForRun", "    .returning();\n  if (row) await setProjectTheme(row.firmId, row.projectId, null);\n  return row ?? null;\n}\n\nexport async function loadStudyForRun"),
+    ),
+  },
+  {
+    label: "runner imports setProjectTheme from ./tis-projects and calls it after the clause pass (the reviewer's attack, in the runner)",
+    file: "runner",
+    flips: ["runner-import-whitelist"],
+    apply: chain(
+      edit("runner", 'import { logger } from "./logger";', 'import { logger } from "./logger";\nimport { setProjectTheme } from "./tis-projects";'),
+      edit("runner", "    const { findings, coverage } = runClauses(rec, ALL_CLAUSES);", "    const { findings, coverage } = runClauses(rec, ALL_CLAUSES);\n    await setProjectTheme(run.firmId, run.projectId, null);"),
+    ),
+  },
+  {
+    label: "store adds a symbol to an allowed module's import list (drizzle's `or`)",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: edit("store", 'import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";', 'import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";'),
+  },
+  {
+    label: "store adds a symbol to the lifecycle import",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: edit("store", 'import { CLAIM_PREDICATE_SQL } from "./proofread/lifecycle.ts";', 'import { CLAIM_PREDICATE_SQL, MAX_ATTEMPTS } from "./proofread/lifecycle.ts";'),
+  },
+  {
+    label: "store imports the routes' limiters (an allowed module elsewhere is not an allowed module here)",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: edit("store", 'import { logger } from "./logger";', 'import { logger } from "./logger";\nimport { proofreadRunLimiter } from "./security";'),
+  },
+  {
+    label: "store re-exports from another module",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: edit("store", 'import { logger } from "./logger";', 'import { logger } from "./logger";\nexport { setProjectTheme } from "./tis-projects";'),
+  },
+  {
+    label: "store imports another module for its side effects",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: edit("store", 'import { logger } from "./logger";', 'import { logger } from "./logger";\nimport "./tis-projects";'),
+  },
+  {
+    label: "store imports with no trailing semicolon (a parser that insists on one never sees it)",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: edit("store", 'import { logger } from "./logger";', 'import { logger } from "./logger"\nimport { setProjectTheme } from "./tis-projects"'),
+  },
+  {
+    label: "store pulls a module in with a dynamic import",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: edit("store", "  if (args.findings.length === 0) return;", '  await (await import("./tis-projects")).setProjectTheme(args.runId, args.runId, null);\n  if (args.findings.length === 0) return;'),
+  },
+  {
+    label: "store pulls a module in with require",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: edit("store", "  if (args.findings.length === 0) return;", '  await require("./tis-projects").setProjectTheme(args.runId, args.runId, null);\n  if (args.findings.length === 0) return;'),
+  },
+  {
+    label: "store drops one of its legitimate imports (a whitelist that only checks for extras would not notice)",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: edit("store", 'import { logger } from "./logger";\n', ""),
+  },
+  {
+    label: "runner adds a symbol to the store import",
+    file: "runner",
+    flips: ["runner-import-whitelist"],
+    apply: edit("runner", "  previousRunForProject,\n} from \"./proofread-store\";", "  previousRunForProject,\n  insertDisposition,\n} from \"./proofread-store\";"),
+  },
+  {
+    label: "runner imports the whole projects module under a namespace",
+    file: "runner",
+    flips: ["runner-import-whitelist"],
+    apply: edit("runner", 'import { logger } from "./logger";', 'import { logger } from "./logger";\nimport * as projects from "./tis-projects";'),
+  },
+  {
+    label: "runner re-exports from another module",
+    file: "runner",
+    flips: ["runner-import-whitelist"],
+    apply: edit("runner", 'import { logger } from "./logger";', 'import { logger } from "./logger";\nexport * from "./tis-projects";'),
+  },
+  {
+    label: "runner imports another module for its side effects",
+    file: "runner",
+    flips: ["runner-import-whitelist"],
+    apply: edit("runner", 'import { logger } from "./logger";', 'import { logger } from "./logger";\nimport "./tis-projects";'),
+  },
+  {
+    label: "runner pulls a module in with a dynamic import",
+    file: "runner",
+    flips: ["runner-import-whitelist"],
+    apply: edit("runner", "    const rec: StudyRecord", '    await (await import("./tis-projects")).setProjectTheme(run.firmId, run.projectId, null);\n    const rec: StudyRecord'),
+  },
+  {
+    label: "runner imports a default export from another module",
+    file: "runner",
+    flips: ["runner-import-whitelist"],
+    apply: edit("runner", 'import { logger } from "./logger";', 'import { logger } from "./logger";\nimport projectsModule from "./tis-projects";'),
+  },
+  {
+    label: "a clause file imports the database",
+    file: "clauseDir",
+    flips: ["proofread-dir-imports-whitelist"],
+    apply: editDir("s1-inputs.ts", 'import { isGrowthOverride } from "@workspace/tis-engine-core";', 'import { isGrowthOverride } from "@workspace/tis-engine-core";\nimport { db } from "@workspace/db";'),
+  },
+  {
+    label: "a clause file imports setProjectTheme from the lib directory",
+    file: "clauseDir",
+    flips: ["proofread-dir-imports-whitelist"],
+    apply: editDir("prose.ts", 'import type { StudyRecord } from "./types.ts";', 'import type { StudyRecord } from "./types.ts";\nimport { setProjectTheme } from "../tis-projects";'),
+  },
+  {
+    label: "types.ts turns its tis-api-zod import into a value import",
+    file: "clauseDir",
+    flips: ["proofread-dir-imports-whitelist"],
+    apply: editDir("types.ts", 'import type { TisReport, TisRequest } from "@workspace/tis-api-zod";', 'import { TisReport, TisRequest } from "@workspace/tis-api-zod";'),
+  },
+  {
+    label: "a clause file imports a node module",
+    file: "clauseDir",
+    flips: ["proofread-dir-imports-whitelist"],
+    apply: editDir("s5-criteria.ts", 'import { authoredProse } from "./prose.ts";', 'import { authoredProse } from "./prose.ts";\nimport { readFileSync } from "node:fs";'),
+  },
+  {
+    label: "a clause file imports a sibling that does not exist",
+    file: "clauseDir",
+    flips: ["proofread-dir-imports-whitelist"],
+    apply: editDir("s6-limitations.ts", 'import { numeric } from "./types.ts";', 'import { numeric } from "./types.ts";\nimport { x } from "./writer.ts";'),
+  },
+  {
+    label: "a clause file pulls a module in with a dynamic import",
+    file: "clauseDir",
+    flips: ["proofread-dir-imports-whitelist"],
+    apply: editDir("fingerprint.ts", 'import type { ProofreadFinding } from "./types.ts";', 'import type { ProofreadFinding } from "./types.ts";\nconst late = () => import("../tis-projects");'),
+  },
+  {
+    label: "the clause index re-exports from outside the directory",
+    file: "clauseDir",
+    flips: ["proofread-dir-imports-whitelist"],
+    apply: editDir("index.ts", 'export * from "./types.ts";', 'export * from "./types.ts";\nexport { setProjectTheme } from "../tis-projects";'),
+  },
+  {
+    label: "a clause file imports another package",
+    file: "clauseDir",
+    flips: ["proofread-dir-imports-whitelist"],
+    apply: editDir("s2-trip-gen.ts", 'import { LAND_USES } from "@workspace/tis-engine-core";', 'import { LAND_USES } from "@workspace/tis-engine-core";\nimport { sql } from "drizzle-orm";'),
   },
 
   // ---- tis-projects.ts --------------------------------------------------------
@@ -1978,7 +2261,7 @@ for (const m of MUTATIONS) {
   const after = derive(mutated);
   // Compared on the comment-STRIPPED text: an edit that landed in a comment
   // changes the raw file and nothing a check can see.
-  const changed = before[m.file] !== after[m.file];
+  const changed = JSON.stringify(before[m.file]) !== JSON.stringify(after[m.file]);
   ok(changed, `teeth: "${m.label}" actually changes the code (an edit that applied to nothing, or only to a comment, would prove nothing)`);
   const now = run(mutated).filter((id) => !failing.includes(id));
   const want = [...new Set([...m.flips, ...(m.also ?? [])])].sort().join(", ");

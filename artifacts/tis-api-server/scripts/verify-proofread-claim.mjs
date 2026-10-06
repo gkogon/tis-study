@@ -488,7 +488,7 @@ const CHECKS = [
   {
     id: "finding-scope-is-one-query",
     on: "store",
-    msg: "findingInFirmRun verifies firm → project → run → finding as ONE conjunction over the joined tables — this is the only cross-tenant barrier the triage routes will have, and `and` → `or` would let any firm rule on another firm's finding",
+    msg: "findingInFirmRun verifies firm → project → run → finding as ONE conjunction over the joined tables — one of TWO firm checks on the triage write path (findingAudienceForFirm is the other, pinned by `audience-lookup-is-firm-scoped` in verify-proofread-routes.mjs), and they back each other up: dropping the firm arm from either one alone is invisible through the route, and only dropping BOTH lets a firm write onto another firm's finding. So no route-level or cluster test can ever show either one weaken, and each text pin is load-bearing permanently — do not simplify one away on the strength of a green route test; `and` → `or` here would let any firm rule on another firm's finding",
     test: (s) => {
       const b = norm(body(s.store, "findingInFirmRun"));
       return (
