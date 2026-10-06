@@ -69,7 +69,9 @@
     "check:proofread-claim": "node ./scripts/verify-proofread-claim.mjs",
     "check:proofread-hook": "node ./scripts/verify-proofread-hook.mjs",
     "check:proofread-routes": "node ./scripts/verify-proofread-routes.mjs",
-    "check:proofread-copy": "node ./scripts/verify-proofread-copy.mjs"
+    "check:proofread-copy": "node ./scripts/verify-proofread-copy.mjs",
+    "check:existing-use-credit": "node ./scripts/verify-existing-use-credit.mjs",
+    "check:intersection-delay-fields": "node ./scripts/verify-intersection-delay-fields.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",
