@@ -220,16 +220,38 @@ function initializerOf(src, name) {
   return "";
 }
 
-/** Evaluate that expression against a stub `process`. Returns null if it cannot. */
-function instanceIdFor(src, env, pid) {
+/**
+ * Evaluate that expression against a stub `process`. Returns the value AND the
+ * error, so a red caused by the expression throwing (a ReferenceError, a
+ * renamed local) is reported as that — by instance-id-initializer-evaluates —
+ * and never mistaken for the length/pid property failing.
+ */
+function instanceIdEval(src, env, pid) {
   const expr = initializerOf(src, "INSTANCE_ID");
-  if (!expr) return null;
+  if (!expr) return { value: null, error: "no `const INSTANCE_ID = ...;` initializer found" };
   try {
-    return new Function("process", `return (${expr});`)({ env, pid });
-  } catch {
-    return null;
+    return { value: new Function("process", `return (${expr});`)({ env, pid }), error: null };
+  } catch (err) {
+    return { value: null, error: `${err?.name ?? "Error"}: ${err?.message ?? err}` };
   }
 }
+
+/**
+ * The stubs. Linux pid_max reaches 4194304 (2^22), so a pid has up to 7
+ * digits in practice; 8 is covered because it is cheap. A hard-coded host
+ * slice tuned to a short pid (57 = 64 - 1 - 6) passes every stub below 7
+ * digits and is 65 characters at 7.
+ */
+const INSTANCE_ID_CASES = [
+  { label: "200-char HOSTNAME, 4-digit pid", env: { HOSTNAME: "h".repeat(200) }, pid: 4242 },
+  { label: "short HOSTNAME, 1-digit pid", env: { HOSTNAME: "box1" }, pid: 7, exactly: "box1-7" },
+  { label: "60-char HOSTNAME, 6-digit pid", env: { HOSTNAME: "e".repeat(60) }, pid: 123456 },
+  { label: "200-char HOSTNAME, 7-digit pid (pid_max - 1)", env: { HOSTNAME: "h".repeat(200) }, pid: 4194303 },
+  { label: "200-char HOSTNAME, 8-digit pid", env: { HOSTNAME: "h".repeat(200) }, pid: 99999999 },
+  { label: "80-char RAILWAY_REPLICA_ID wins over HOSTNAME", env: { RAILWAY_REPLICA_ID: "r".repeat(80), HOSTNAME: "box1" }, pid: 9, startsWith: "r" },
+  { label: "no env at all", env: {}, pid: 11, exactly: "local-11" },
+];
+const instanceIdResults = (src) => INSTANCE_ID_CASES.map((c) => ({ ...c, ...instanceIdEval(src, c.env, c.pid) }));
 
 const count = (s, needle) => s.split(needle).length - 1;
 const UNIT_MS = { millisecond: 1, second: 1000, minute: 60_000, hour: 3_600_000 };
@@ -431,6 +453,27 @@ const CHECKS = [
       ),
   },
   {
+    id: "previous-run-is-this-project",
+    on: "store",
+    msg: "previousRunForProject's conjunction is scoped to THIS project — without it the carry source is the newest rules_ready run of any firm below this revision, and that firm's dispositions (note, source, actor) are copied onto this project's findings by fingerprint",
+    test: (s) => /\.where\( and\( eq\(studyProofreadRunsTable\.projectId, projectId\), /.test(norm(body(s.store, "previousRunForProject"))),
+  },
+  {
+    id: "carry-forward-reads-old-then-new",
+    on: "store",
+    msg: "the carry reads the PREVIOUS run's findings as the source and the NEW run's as the target — swapped, every lookup lands on findings with no dispositions yet and nothing carries",
+    test: (s) =>
+      /const \[oldF, newF\] = await Promise\.all\(\[ db\.select\(\)\.from\(studyProofreadFindingsTable\)\.where\(eq\(studyProofreadFindingsTable\.runId, previousRunId\)\), db\.select\(\)\.from\(studyProofreadFindingsTable\)\.where\(eq\(studyProofreadFindingsTable\.runId, newRunId\)\), \]\);/.test(
+        norm(body(s.store, "carryForwardDispositions")),
+      ),
+  },
+  {
+    id: "carry-forward-matches-by-fingerprint",
+    on: "store",
+    msg: "a new finding inherits from the old finding with the SAME fingerprint (===) — any other comparison hands one finding's ruling to a different finding",
+    test: (s) => /const match = oldF\.find\(\(of\) => of\.fingerprint === nf\.fingerprint\);/.test(body(s.store, "carryForwardDispositions")),
+  },
+  {
     id: "previous-run-is-strictly-earlier",
     on: "store",
     msg: "previousRunForProject looks STRICTLY back (lt, not lte): `lte` returns the run itself, so nothing carries from the revision before it and a WITHDRAWN reopens",
@@ -457,29 +500,35 @@ const CHECKS = [
 
   // --- proofread-run.ts: the runner ----------------------------------------
   {
+    id: "instance-id-initializer-evaluates",
+    on: "runner",
+    msg: "precondition: INSTANCE_ID's initializer is found and evaluates without throwing for every stub — so a red on the property below means the property failed, not that the expression could not run",
+    test: (s) => instanceIdResults(s.runner).every((r) => r.error === null && typeof r.value === "string"),
+    why: (s) =>
+      instanceIdResults(s.runner)
+        .filter((r) => r.error !== null || typeof r.value !== "string")
+        .map((r) => `${r.label}: ${r.error ?? `returned ${typeof r.value}`}`)
+        .join("; "),
+  },
+  {
     id: "instance-id-fits-claimed-by",
     on: "runner",
-    msg: "the instance id built by proofread-run.ts fits claimed_by's VARCHAR(64) AND still ends with the pid, for a 200-character hostname as well as a short one — an over-long id throws 22001 on every claim, and one that drops the pid collapses every process on a long-named host to a single claimed_by",
-    test: (s) => {
-      const long = instanceIdFor(s.runner, { HOSTNAME: "h".repeat(200) }, 4242);
-      const short = instanceIdFor(s.runner, { HOSTNAME: "box1" }, 7);
-      const edge = instanceIdFor(s.runner, { HOSTNAME: "e".repeat(60) }, 123456);
-      const replica = instanceIdFor(s.runner, { RAILWAY_REPLICA_ID: "r".repeat(80), HOSTNAME: "box1" }, 9);
-      const none = instanceIdFor(s.runner, {}, 11);
-      const cases = [
-        [long, "4242"],
-        [short, "7"],
-        [edge, "123456"],
-        [replica, "9"],
-        [none, "11"],
-      ];
-      return (
-        cases.every(([v, pid]) => typeof v === "string" && v.length > 0 && v.length <= 64 && v.endsWith(`-${pid}`)) &&
-        short === "box1-7" &&
-        none === "local-11" &&
-        replica.startsWith("r")
-      );
-    },
+    msg: "the instance id built by proofread-run.ts fits claimed_by's VARCHAR(64) AND still ends with the pid, for 1- to 8-digit pids and hostnames up to 200 characters — an over-long id throws 22001 on every claim, and one that drops the pid collapses every process on a long-named host to a single claimed_by",
+    test: (s) =>
+      instanceIdResults(s.runner).every(
+        (r) =>
+          r.error === null &&
+          typeof r.value === "string" &&
+          r.value.length > 0 &&
+          r.value.length <= 64 &&
+          r.value.endsWith(`-${r.pid}`) &&
+          (r.exactly === undefined || r.value === r.exactly) &&
+          (r.startsWith === undefined || r.value.startsWith(r.startsWith)),
+      ),
+    why: (s) =>
+      instanceIdResults(s.runner)
+        .map((r) => `${r.label} → ${r.error ? `THREW ${r.error}` : `${String(r.value).length} chars, ends ${JSON.stringify(String(r.value).slice(-9))}`}`)
+        .join("; "),
   },
   {
     id: "max-attempts-from-policy",
@@ -539,6 +588,15 @@ const CHECKS = [
     },
   },
   {
+    id: "pass-writes-findings-and-coverage",
+    on: "runner",
+    msg: "the FIRST completeRun call — the only place a pass's findings are ever written, since the flip is pinned to findings: [] — carries the pass's coverage, its input manifest and its findings; without them a run reaches rules_ready having recorded nothing",
+    test: (s) =>
+      /await completeRun\(\{ runId: run\.id, status: "running", coverage, inputManifest: buildInputManifest\(rec\), findings, \}\);/.test(
+        norm(body(s.runner, "claimAndRunOne")),
+      ),
+  },
+  {
     id: "enqueue-fails-open",
     on: "runner",
     msg: "enqueueProofread fails open: a row it could not insert is logged and returned from, never thrown — a proofread that cannot run must not affect the study",
@@ -557,7 +615,10 @@ const run = (s) => {
   return CHECKS.filter((c) => !c.test(d)).map((c) => c.id);
 };
 const failing = run(sources);
-for (const c of CHECKS) ok(!failing.includes(c.id), c.msg);
+for (const c of CHECKS) {
+  const red = failing.includes(c.id);
+  ok(!red, `[${c.id}] ${c.msg}`, red && c.why ? c.why(derive(sources)) : undefined);
+}
 
 // ---------------------------------------------------------------------------
 // Teeth. Each mutation breaks one protected property in the real source text.
@@ -765,6 +826,33 @@ const MUTATIONS = [
     ),
   },
 
+  {
+    label: "drop the project scope from previousRunForProject (cross-tenant: any firm's run becomes the carry source)",
+    file: "store",
+    flips: ["previous-run-is-this-project"],
+    apply: edit(
+      "store",
+      "        eq(studyProofreadRunsTable.projectId, projectId),\n        lt(studyProofreadRunsTable.revision, beforeRevision),",
+      "        lt(studyProofreadRunsTable.revision, beforeRevision),",
+    ),
+  },
+  {
+    label: "swap previousRunId and newRunId in the carry's two finding reads",
+    file: "store",
+    flips: ["carry-forward-reads-old-then-new"],
+    apply: edit(
+      "store",
+      "where(eq(studyProofreadFindingsTable.runId, previousRunId)),\n    db.select().from(studyProofreadFindingsTable).where(eq(studyProofreadFindingsTable.runId, newRunId)),",
+      "where(eq(studyProofreadFindingsTable.runId, newRunId)),\n    db.select().from(studyProofreadFindingsTable).where(eq(studyProofreadFindingsTable.runId, previousRunId)),",
+    ),
+  },
+  {
+    label: "match old to new findings with !== instead of ===",
+    file: "store",
+    flips: ["carry-forward-matches-by-fingerprint"],
+    apply: edit("store", "of.fingerprint === nf.fingerprint", "of.fingerprint !== nf.fingerprint"),
+  },
+
   // proofread-run.ts
   {
     label: "slice the finished instance id instead of the host (M07: the pid falls off a long-named host)",
@@ -783,6 +871,37 @@ const MUTATIONS = [
     file: "runner",
     flips: ["instance-id-fits-claimed-by"],
     apply: edit("runner", "host.slice(0, 63 - pid.length)", "host"),
+  },
+  {
+    label: "hard-code the host slice for a 6-digit pid (57): 65 characters at 7 digits",
+    file: "runner",
+    flips: ["instance-id-fits-claimed-by"],
+    apply: edit("runner", "host.slice(0, 63 - pid.length)", "host.slice(0, 57)"),
+  },
+  {
+    label: "reference an undefined name in the initializer (a throw must be reported as a throw)",
+    file: "runner",
+    flips: ["instance-id-initializer-evaluates"],
+    also: ["instance-id-fits-claimed-by"],
+    apply: edit("runner", "const pid = String(process.pid);", "const pid = String(processPid);"),
+  },
+  {
+    label: "drop findings from the first completeRun call",
+    file: "runner",
+    flips: ["pass-writes-findings-and-coverage"],
+    apply: edit("runner", "      inputManifest: buildInputManifest(rec),\n      findings,\n", "      inputManifest: buildInputManifest(rec),\n"),
+  },
+  {
+    label: "write findings: [] in the first completeRun call (type-checks, writes nothing)",
+    file: "runner",
+    flips: ["pass-writes-findings-and-coverage"],
+    apply: edit("runner", "      inputManifest: buildInputManifest(rec),\n      findings,\n", "      inputManifest: buildInputManifest(rec),\n      findings: [],\n"),
+  },
+  {
+    label: "drop coverage from the first completeRun call",
+    file: "runner",
+    flips: ["pass-writes-findings-and-coverage"],
+    apply: edit("runner", '      status: "running",\n      coverage,\n', '      status: "running",\n'),
   },
   {
     label: "give the runner its own MAX_ATTEMPTS",
@@ -816,6 +935,7 @@ const MUTATIONS = [
     label: "flip the status to rules_ready before the carry (m4: the window that loses a WITHDRAWN)",
     file: "runner",
     flips: ["status-flips-after-the-carry"],
+    also: ["pass-writes-findings-and-coverage"],
     apply: (s) => ({
       ...s,
       runner: s.runner
@@ -827,6 +947,7 @@ const MUTATIONS = [
     label: "keep both calls but flip the status in the first one",
     file: "runner",
     flips: ["status-flips-after-the-carry"],
+    also: ["pass-writes-findings-and-coverage"],
     apply: edit("runner", '      status: "running",\n', '      status: "rules_ready",\n'),
   },
   {
