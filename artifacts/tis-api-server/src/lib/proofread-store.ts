@@ -308,3 +308,26 @@ export async function findingInFirmRun(
     .limit(1);
   return !!row;
 }
+
+/**
+ * The audience of a finding (engineer | pe | admin), scoped to the firm that
+ * owns its run. Null when the finding is not the firm's or does not exist.
+ *
+ * Deliberately NOT a condition inside findingInFirmRun. That function answers
+ * "does this finding belong to this firm's run of this project" — the
+ * cross-tenant barrier — and this one answers "may the caller act on it", a
+ * different question. A DEFECT is a software fault routed to the code queue;
+ * a person outside admin cannot rule on one, so the write path asks this
+ * after the chain has been verified. It returns null, never a default
+ * audience: a default of 'engineer' would let an unknown finding pass the
+ * test that exists to refuse the hidden ones.
+ */
+export async function findingAudienceForFirm(firmId: string, findingId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ audience: studyProofreadFindingsTable.audience })
+    .from(studyProofreadFindingsTable)
+    .innerJoin(studyProofreadRunsTable, eq(studyProofreadFindingsTable.runId, studyProofreadRunsTable.id))
+    .where(and(eq(studyProofreadFindingsTable.id, findingId), eq(studyProofreadRunsTable.firmId, firmId)))
+    .limit(1);
+  return row?.audience ?? null;
+}

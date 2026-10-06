@@ -12,7 +12,12 @@ import { getOrCreateFirmForUser } from "../lib/firms";
 import { projectExistsForFirm } from "../lib/tis-projects";
 import { proofreadDispositionLimiter, proofreadReadLimiter, proofreadRunLimiter } from "../lib/security";
 import { claimAndRunOne, enqueueProofread } from "../lib/proofread-run";
-import { findingInFirmRun, insertDisposition, latestRunForProject } from "../lib/proofread-store";
+import {
+  findingAudienceForFirm,
+  findingInFirmRun,
+  insertDisposition,
+  latestRunForProject,
+} from "../lib/proofread-store";
 
 const router: IRouter = Router();
 
@@ -185,6 +190,16 @@ router.post(
       // belongs to this project, the finding belongs to that run — so a
       // disposition cannot be recorded under an unrelated project or run id.
       if (!(await findingInFirmRun(firm.id, projectId, runId, findingId))) {
+        res.status(404).json({ error: "Finding not found." });
+        return;
+      }
+      // That answered whether the finding is this firm's. Whether the caller
+      // may act on it is a separate question: a DEFECT is a software fault for
+      // the code queue and a person outside admin cannot rule on one, so the
+      // write path refuses it even though the read path never shows it. 404,
+      // not 403: a 403 would confirm that the finding exists.
+      const audience = await findingAudienceForFirm(firm.id, findingId);
+      if (audience === null || audience === "admin") {
         res.status(404).json({ error: "Finding not found." });
         return;
       }

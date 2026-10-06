@@ -337,6 +337,11 @@ const BANNED_COPY = /independent[\s-]*review|second[\s-]*opinion|peer[\s-]*revie
 const GUARD_404_PROJECT = 'if (!(await projectExistsForFirm(firm.id, id))) { res.status(404).json({ error: "Project not found." }); return; }';
 const GUARD_404_FINDING =
   'if (!(await findingInFirmRun(firm.id, projectId, runId, findingId))) { res.status(404).json({ error: "Finding not found." }); return; }';
+// The write path's own refusal of what the read path never shows: after the
+// chain is verified, a finding whose audience is admin (a DEFECT) is answered
+// exactly like an unknown one.
+const AUDIENCE_GUARD =
+  'const audience = await findingAudienceForFirm(firm.id, findingId); if (audience === null || audience === "admin") { res.status(404).json({ error: "Finding not found." }); return; }';
 const FIRM_LOOKUP = "getOrCreateFirmForUser(user.id, { email: user.email, firstName: user.firstName, lastName: user.lastName })";
 
 /** What a check sees: every source comment-stripped, plus the evaluated contract. */
@@ -567,7 +572,7 @@ const CHECKS = [
   {
     id: "disposition-chain-in-order",
     on: "routes",
-    msg: "POST disposition runs in the order that matters: parse the body, refuse PE-only dispositions, gate the ids, resolve the firm, verify the finding chain, and only then insert — once",
+    msg: "POST disposition runs in the order that matters: parse the body, refuse PE-only dispositions, gate the ids, resolve the firm, verify the finding chain, check the finding's audience, and only then insert — once",
     test: (d) => {
       const p = dispSeg(d);
       return (
@@ -580,6 +585,7 @@ const CHECKS = [
           "!UUID.test(projectId)",
           "getOrCreateFirmForUser(",
           "if (!(await findingInFirmRun(",
+          "await findingAudienceForFirm(",
           "await insertDisposition(",
         ])
       );
@@ -590,6 +596,21 @@ const CHECKS = [
     on: "routes",
     msg: "the finding chain is verified as findingInFirmRun(firm.id, projectId, runId, findingId) — the arguments are all strings, so a transposition type-checks — and a miss answers the repo's 404, never 403",
     test: (d) => occ(dispSeg(d), GUARD_404_FINDING) === 1,
+  },
+  {
+    id: "disposition-refuses-admin-findings",
+    on: "routes",
+    msg: "after the chain is verified, POST disposition asks the finding's audience for the FIRM's own finding id and answers an admin-audience finding (a DEFECT: a software fault a person outside admin cannot rule on) — or one with no audience at all — with the same 404 'Finding not found.' as an unknown one, AND a return, before anything is written; a 403 would confirm the record exists",
+    test: (d) => {
+      const p = dispSeg(d);
+      return (
+        p.length > 0 &&
+        occ(p, AUDIENCE_GUARD) === 1 &&
+        occ(p, "findingAudienceForFirm(") === 1 &&
+        occ(p, "insertDisposition(") === 1 &&
+        inOrder(p, ["if (!(await findingInFirmRun(", AUDIENCE_GUARD, "await insertDisposition("])
+      );
+    },
   },
   {
     id: "disposition-params-bound",
@@ -646,8 +667,8 @@ const CHECKS = [
     test: (d) => {
       const r = sq(d.routes);
       const four = occ(d.routes, 'res.status(404).json({ error: "Project not found." })');
-      const two = occ(d.routes, 'res.status(404).json({ error: "Finding not found." })');
-      return r.length > 0 && four === 4 && two === 2 && occ(d.routes, "res.status(403)") === 1 && !/status\((?!400|401|403|404|500)\d+\)/.test(d.routes.replace(/\s+/g, ""));
+      const three = occ(d.routes, 'res.status(404).json({ error: "Finding not found." })');
+      return r.length > 0 && four === 4 && three === 3 && occ(d.routes, "res.status(403)") === 1 && !/status\((?!400|401|403|404|500)\d+\)/.test(d.routes.replace(/\s+/g, ""));
     },
   },
   {
@@ -688,7 +709,7 @@ const CHECKS = [
         "../lib/tis-projects": ["projectExistsForFirm"],
         "../lib/security": THREE_LIMITERS,
         "../lib/proofread-run": ["claimAndRunOne", "enqueueProofread"],
-        "../lib/proofread-store": ["findingInFirmRun", "insertDisposition", "latestRunForProject"],
+        "../lib/proofread-store": ["findingAudienceForFirm", "findingInFirmRun", "insertDisposition", "latestRunForProject"],
       };
       const got = importsOf(d.routes);
       const keys = Object.keys(want);
@@ -884,6 +905,29 @@ const CHECKS = [
     on: "store",
     msg: "no raw SQL in the store names tis_projects or writes (UPDATE / INSERT INTO / DELETE FROM): the builder scans above cannot see a template literal",
     test: (d) => d.store.length > 0 && !/tis_projects/.test(d.store) && !/(?<!FOR\s)\b(UPDATE|INSERT\s+INTO|DELETE\s+FROM)\b/.test(d.store),
+  },
+
+  {
+    id: "audience-lookup-is-firm-scoped",
+    on: "store",
+    msg: "findingAudienceForFirm joins the finding to its run and matches the finding id AND the owning FIRM in one conjunction — an `or`, or a missing firm arm, reads the audience of another firm's finding",
+    test: (d) =>
+      has(
+        body(d.store, "findingAudienceForFirm"),
+        ".innerJoin(studyProofreadRunsTable, eq(studyProofreadFindingsTable.runId, studyProofreadRunsTable.id)) .where(and(eq(studyProofreadFindingsTable.id, findingId), eq(studyProofreadRunsTable.firmId, firmId))) .limit(1);",
+      ),
+  },
+  {
+    id: "audience-lookup-fails-closed",
+    on: "store",
+    msg: "findingAudienceForFirm selects the audience column alone and answers null — never a default audience — for a finding that is not the firm's: a default of 'engineer' would let an unknown finding pass the very test that refuses the hidden ones",
+    test: (d) => {
+      const b = body(d.store, "findingAudienceForFirm");
+      return (
+        has(b, "export async function findingAudienceForFirm(firmId: string, findingId: string): Promise<string | null> { const [row] = await db .select({ audience: studyProofreadFindingsTable.audience }) .from(studyProofreadFindingsTable)") &&
+        has(b, "return row?.audience ?? null;")
+      );
+    },
   },
 
   // --- proofread-run.ts: the runner the routes call into -------------------
@@ -1284,6 +1328,12 @@ const MUTATIONS = [
     apply: edit("routes", ' && e.constraint === REVISION_KEY', ""),
   },
   {
+    label: "drop the SQLSTATE half of the conflict test (any error that names the constraint counts)",
+    file: "routes",
+    flips: ["revision-conflict-helper"],
+    apply: edit("routes", 'e.code === "23505" && e.constraint === REVISION_KEY', "e.constraint === REVISION_KEY"),
+  },
+  {
     label: "swallow every error as a revision conflict",
     file: "routes",
     flips: ["revision-conflict-helper"],
@@ -1355,20 +1405,21 @@ const MUTATIONS = [
     label: "drop the finding-chain check altogether",
     file: "routes",
     flips: ["disposition-scope-guard-exact", "disposition-chain-in-order"],
-    also: ["foreign-is-404-not-403"],
+    also: ["foreign-is-404-not-403", "disposition-refuses-admin-findings"],
     apply: edit("routes", /      if \(!\(await findingInFirmRun\([^\n]*\n        res\.status\(404\)\.json\(\{ error: "Finding not found\." \}\);\n        return;\n      \}\n/, ""),
   },
   {
     label: "invert the finding-chain check (drop the !)",
     file: "routes",
     flips: ["disposition-scope-guard-exact", "disposition-chain-in-order"],
+    also: ["disposition-refuses-admin-findings"],
     apply: edit("routes", "if (!(await findingInFirmRun(", "if ((await findingInFirmRun("),
   },
   {
     label: "let the finding-chain miss fall through (no return)",
     file: "routes",
     flips: ["disposition-scope-guard-exact"],
-    apply: edit("routes", 'res.status(404).json({ error: "Finding not found." });\n        return;\n      }\n      await insertDisposition', 'res.status(404).json({ error: "Finding not found." });\n      }\n      await insertDisposition'),
+    apply: editNth("routes", /(res\.status\(404\)\.json\(\{ error: "Finding not found\." \}\);)\n        return;/g, 0, 'res.status(404).json({ error: "Finding not found." });'),
   },
   {
     label: "answer a foreign finding with a 403",
@@ -1380,6 +1431,7 @@ const MUTATIONS = [
     label: "insert BEFORE the finding chain is verified",
     file: "routes",
     flips: ["disposition-chain-in-order"],
+    also: ["disposition-refuses-admin-findings"],
     apply: chain(
       edit("routes", /      await insertDisposition\(\{[\s\S]*?\n      \}\);\n/, ""),
       edit(
@@ -1387,6 +1439,59 @@ const MUTATIONS = [
         "      if (!(await findingInFirmRun(",
         "      await insertDisposition({ findingId, disposition: parsed.data.disposition, note: parsed.data.note, sourceLabel: parsed.data.sourceLabel, actorUserId: user.id });\n      if (!(await findingInFirmRun(",
       ),
+    ),
+  },
+  {
+    label: "delete the audience refusal (an engineer can rule on a DEFECT by id)",
+    file: "routes",
+    flips: ["disposition-refuses-admin-findings"],
+    also: ["disposition-chain-in-order", "foreign-is-404-not-403"],
+    apply: edit("routes", /      const audience = await findingAudienceForFirm\(firm\.id, findingId\);\n      if \(audience === null \|\| audience === "admin"\) \{\n        res\.status\(404\)\.json\(\{ error: "Finding not found\." \}\);\n        return;\n      \}\n/, ""),
+  },
+  {
+    label: "invert the audience comparison (refuse everything BUT admin)",
+    file: "routes",
+    flips: ["disposition-refuses-admin-findings"],
+    apply: edit("routes", 'audience === "admin"', 'audience !== "admin"'),
+  },
+  {
+    label: "answer an admin-audience finding with a 403 (confirms the record exists)",
+    file: "routes",
+    flips: ["disposition-refuses-admin-findings", "foreign-is-404-not-403"],
+    apply: editNth("routes", /res\.status\(404\)\.json\(\{ error: "Finding not found\." \}\)/g, 2, 'res.status(403).json({ error: "Finding not found." })'),
+  },
+  {
+    label: "refuse an admin-audience finding but fall through (no return)",
+    file: "routes",
+    flips: ["disposition-refuses-admin-findings"],
+    apply: editNth("routes", /(res\.status\(404\)\.json\(\{ error: "Finding not found\." \}\);)\n        return;/g, 1, 'res.status(404).json({ error: "Finding not found." });'),
+  },
+  {
+    label: "drop the null arm (a finding with no audience passes)",
+    file: "routes",
+    flips: ["disposition-refuses-admin-findings"],
+    apply: edit("routes", 'audience === null || audience === "admin"', 'audience === "admin"'),
+  },
+  {
+    label: "ask the audience of the run id instead of the finding",
+    file: "routes",
+    flips: ["disposition-refuses-admin-findings"],
+    apply: edit("routes", "findingAudienceForFirm(firm.id, findingId)", "findingAudienceForFirm(firm.id, runId)"),
+  },
+  {
+    label: "ask the audience under the user's id as the firm",
+    file: "routes",
+    flips: ["disposition-refuses-admin-findings"],
+    apply: edit("routes", "findingAudienceForFirm(firm.id, findingId)", "findingAudienceForFirm(user.id, findingId)"),
+  },
+  {
+    label: "check the audience AFTER the disposition is written",
+    file: "routes",
+    flips: ["disposition-refuses-admin-findings"],
+    also: ["disposition-chain-in-order"],
+    apply: chain(
+      edit("routes", /      const audience = await findingAudienceForFirm\(firm\.id, findingId\);\n      if \(audience === null \|\| audience === "admin"\) \{\n        res\.status\(404\)\.json\(\{ error: "Finding not found\." \}\);\n        return;\n      \}\n/, ""),
+      edit("routes", "      res.json({ ok: true });\n    } catch (err) {\n      req.log.error({ err }, \"proofread.disposition_failed\");", "      const audience = await findingAudienceForFirm(firm.id, findingId);\n      if (audience === null || audience === \"admin\") {\n        res.status(404).json({ error: \"Finding not found.\" });\n        return;\n      }\n      res.json({ ok: true });\n    } catch (err) {\n      req.log.error({ err }, \"proofread.disposition_failed\");"),
     ),
   },
   {
@@ -1470,7 +1575,7 @@ const MUTATIONS = [
     label: "import the store's run writers into the routes",
     file: "routes",
     flips: ["routes-import-whitelist"],
-    apply: edit("routes", "import { findingInFirmRun, insertDisposition, latestRunForProject }", "import { completeRun, findingInFirmRun, insertDisposition, latestRunForProject }"),
+    apply: edit("routes", "  latestRunForProject,\n} from \"../lib/proofread-store\";", "  latestRunForProject,\n  completeRun,\n} from \"../lib/proofread-store\";"),
   },
   {
     label: "import the database into the routes",
@@ -1686,6 +1791,37 @@ const MUTATIONS = [
     file: "store",
     flips: ["store-write-scan-sees-the-writes"],
     apply: edit("store", /\.insert\(studyProofreadDispositionsTable\)/g, ".select(studyProofreadDispositionsTable)"),
+  },
+
+  {
+    label: "drop the firm scope from findingAudienceForFirm",
+    file: "store",
+    flips: ["audience-lookup-is-firm-scoped"],
+    apply: editAfter("store", "export async function findingAudienceForFirm", ", eq(studyProofreadRunsTable.firmId, firmId)", ""),
+  },
+  {
+    label: "make findingAudienceForFirm's finding and firm conditions an `or`",
+    file: "store",
+    flips: ["audience-lookup-is-firm-scoped"],
+    apply: editAfter("store", "export async function findingAudienceForFirm", ".where(and(eq(studyProofreadFindingsTable.id, findingId)", ".where(or(eq(studyProofreadFindingsTable.id, findingId)"),
+  },
+  {
+    label: "drop the finding id from findingAudienceForFirm's WHERE (first finding of the firm)",
+    file: "store",
+    flips: ["audience-lookup-is-firm-scoped"],
+    apply: editAfter("store", "export async function findingAudienceForFirm", "eq(studyProofreadFindingsTable.id, findingId), ", ""),
+  },
+  {
+    label: "default an unknown finding's audience to 'engineer'",
+    file: "store",
+    flips: ["audience-lookup-fails-closed"],
+    apply: edit("store", "return row?.audience ?? null;", 'return row?.audience ?? "engineer";'),
+  },
+  {
+    label: "select the whole finding row for the audience",
+    file: "store",
+    flips: ["audience-lookup-fails-closed"],
+    apply: editAfter("store", "export async function findingAudienceForFirm", ".select({ audience: studyProofreadFindingsTable.audience })", ".select()"),
   },
 
   // ---- runner -----------------------------------------------------------------
