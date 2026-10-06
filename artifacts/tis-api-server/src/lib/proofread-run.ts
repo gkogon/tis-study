@@ -20,10 +20,22 @@ import {
   previousRunForProject,
 } from "./proofread-store";
 
-// claimed_by is VARCHAR(64). An un-truncated hostname makes every claim throw
-// 22001 "value too long", which claimAndRunOne catches and logs — so no run
-// would ever execute and nothing would say why.
-const INSTANCE_ID = `${process.env.RAILWAY_REPLICA_ID ?? process.env.HOSTNAME ?? "local"}-${process.pid}`.slice(0, 64);
+/**
+ * Who holds a claim. claimed_by is VARCHAR(64): an un-truncated hostname makes
+ * every claim throw 22001 "value too long", which claimAndRunOne catches and
+ * logs — so no run would ever execute and nothing would say why.
+ *
+ * The HOST is sliced, with room reserved for the pid, rather than slicing the
+ * finished string: a host name of 64 characters or more would otherwise drop
+ * the pid and collapse every process on that host to one claimed_by, which is
+ * the one thing this value exists to tell apart. Written as one self-contained
+ * expression so the guard can evaluate it against a 200-character hostname.
+ */
+const INSTANCE_ID = (() => {
+  const host = process.env.RAILWAY_REPLICA_ID ?? process.env.HOSTNAME ?? "local";
+  const pid = String(process.pid);
+  return `${host.slice(0, 63 - pid.length)}-${pid}`;
+})();
 
 /**
  * Read once at boot: the protocol version every run record must carry (§Logging).
@@ -116,9 +128,16 @@ export async function claimAndRunOne(): Promise<boolean> {
     }
     const rec: StudyRecord = { request: (study.request ?? {}) as any, result: (study.result ?? {}) as any };
     const { findings, coverage } = runClauses(rec, ALL_CLAUSES);
+    // Three steps, in this order, and the order is the point: write what the
+    // pass produced while the row is still 'running', carry the dispositions
+    // forward, and only then declare the revision done. A row that flipped to
+    // 'rules_ready' before the carry is visible to previousRunForProject, so a
+    // re-run claimed in that window would take THIS revision as its source,
+    // find no dispositions on it, and lose the previous revision's WITHDRAWN
+    // for good — an append-only log cannot be corrected.
     await completeRun({
       runId: run.id,
-      status: "rules_ready",
+      status: "running",
       coverage,
       inputManifest: buildInputManifest(rec),
       findings,
@@ -128,6 +147,7 @@ export async function claimAndRunOne(): Promise<boolean> {
     // when the engine that produced the study has not changed underneath them.
     const prev = await previousRunForProject(run.projectId, run.revision);
     if (prev) await carryForwardDispositions(run.id, prev.id, prev.engineStamp === run.engineStamp);
+    await completeRun({ runId: run.id, status: "rules_ready", findings: [] });
     logger.info({ runId: run.id, findings: findings.length }, "proofread.rules_ready");
     return true;
   } catch (err) {

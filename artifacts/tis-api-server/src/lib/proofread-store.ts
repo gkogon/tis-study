@@ -64,8 +64,8 @@ export async function insertQueuedRun(args: {
  * binding `claimedBy` as a parameter also removes the string interpolation the
  * raw form needed.
  *
- * The predicate is the one in CLAIM_SQL: a queued row, or a running row whose
- * lease has expired.
+ * The predicate is CLAIM_PREDICATE_SQL, interpolated verbatim: a queued row, or
+ * a running row whose lease has expired.
  */
 export async function claimOneRun(instanceId: string): Promise<StudyProofreadRun | null> {
   const [row] = await db
@@ -112,10 +112,19 @@ export async function loadStudyForRun(run: StudyProofreadRun) {
  * Write a run's outcome. Safe to call twice for the same run: a requeue after
  * a partial success must not duplicate findings, and must not erase the
  * coverage the successful clause pass already recorded.
+ *
+ * `status: "running"` is the first half of a two-step finish: it writes what
+ * the pass produced — coverage, manifest, findings — and LEAVES the row
+ * claimed, so the carry-forward can run before any other instance can see this
+ * revision as the newest 'rules_ready' one. Flipping the status first opens a
+ * window in which a re-run claimed inside it picks THIS revision as its
+ * `previous`, finds no dispositions on it yet, and loses the previous
+ * revision's WITHDRAWN permanently — on an append-only log there is no
+ * recovering it. The runner flips the status in a second call, after the carry.
  */
 export async function completeRun(args: {
   runId: string;
-  status: "rules_ready" | "failed" | "queued";
+  status: "running" | "rules_ready" | "failed" | "queued";
   coverage?: unknown;
   inputManifest?: unknown;
   findings: ProofreadFinding[];
@@ -129,7 +138,9 @@ export async function completeRun(args: {
       ...(args.coverage === undefined ? {} : { coverage: args.coverage as object }),
       ...(args.inputManifest === undefined ? {} : { inputManifest: args.inputManifest as object }),
       error: args.error ?? null,
-      finishedAt: args.status === "queued" ? null : new Date(),
+      // Only a terminal status finishes the row: a requeue clears it, and the
+      // first half of the two-step finish has not finished anything yet.
+      finishedAt: args.status === "rules_ready" || args.status === "failed" ? new Date() : null,
     })
     .where(eq(studyProofreadRunsTable.id, args.runId));
   if (args.findings.length === 0) return;

@@ -192,6 +192,45 @@ function catchBlock(src, needle) {
   return "";
 }
 
+/**
+ * The text of `const INSTANCE_ID = <expr>;` — the expression only, braces,
+ * parens and template literals matched, so it can be EVALUATED. Pinning the
+ * expression's text would be satisfied by several wrong expressions (a host
+ * sliced to 64 with no room for the pid is one of them); evaluating it pins
+ * the property instead.
+ */
+function initializerOf(src, name) {
+  const at = src.indexOf(`const ${name} =`);
+  if (at < 0) return "";
+  const start = src.indexOf("=", at) + 1;
+  let depth = 0;
+  let q = null;
+  for (let i = start; i < src.length; i++) {
+    const c = src[i];
+    if (q) {
+      if (c === "\\") i++;
+      else if (c === q) q = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") q = c;
+    else if (c === "(" || c === "{" || c === "[") depth++;
+    else if (c === ")" || c === "}" || c === "]") depth--;
+    else if (c === ";" && depth === 0) return src.slice(start, i).trim();
+  }
+  return "";
+}
+
+/** Evaluate that expression against a stub `process`. Returns null if it cannot. */
+function instanceIdFor(src, env, pid) {
+  const expr = initializerOf(src, "INSTANCE_ID");
+  if (!expr) return null;
+  try {
+    return new Function("process", `return (${expr});`)({ env, pid });
+  } catch {
+    return null;
+  }
+}
+
 const count = (s, needle) => s.split(needle).length - 1;
 const UNIT_MS = { millisecond: 1, second: 1000, minute: 60_000, hour: 3_600_000 };
 
@@ -349,8 +388,11 @@ const CHECKS = [
   {
     id: "panel-read-is-firm-scoped",
     on: "store",
-    msg: "latestRunForProject scopes by firm in SQL — there is no middleware that does it, and a read by project id alone would serve another firm's findings",
-    test: (s) => /eq\(studyProofreadRunsTable\.firmId, firmId\)/.test(body(s.store, "latestRunForProject")),
+    msg: "latestRunForProject scopes by firm AND project in one conjunction — an `or` here, or a missing arm, serves another firm's findings for a project id it guessed",
+    test: (s) =>
+      /\.where\(and\(eq\(studyProofreadRunsTable\.firmId, firmId\), eq\(studyProofreadRunsTable\.projectId, projectId\)\)\)/.test(
+        norm(body(s.store, "latestRunForProject")),
+      ),
   },
   {
     id: "carry-forward-requires-same-engine",
@@ -361,11 +403,38 @@ const CHECKS = [
   {
     id: "carry-forward-idempotent",
     on: "store",
-    msg: "carryForwardDispositions checks for an identical disposition on the new finding before appending — a duplicate on an append-only log is permanent",
+    msg: "the duplicate check is keyed on the NEW finding and the disposition being carried, both in one conjunction, and its result stops the insert — keyed on the old finding it never matches, and the carried row is appended again on every re-run",
     test: (s) => {
-      const b = body(s.store, "carryForwardDispositions");
-      return /eq\(studyProofreadDispositionsTable\.disposition, prior\[0\]\.disposition\)/.test(b) && /if \(already\) continue;/.test(b);
+      const b = norm(body(s.store, "carryForwardDispositions"));
+      return (
+        /\.where\( and\( eq\(studyProofreadDispositionsTable\.findingId, nf\.id\), eq\(studyProofreadDispositionsTable\.disposition, prior\[0\]\.disposition\), \), \)/.test(b) &&
+        /if \(already\) continue;/.test(b)
+      );
     },
+  },
+  {
+    id: "carry-forward-reads-the-newest",
+    on: "store",
+    msg: "the disposition carried is the LATEST on the old finding (order by created_at desc, limit 1): the oldest would carry an ACCEPTED_RISK that a later WITHDRAWN replaced",
+    test: (s) =>
+      /\.where\(eq\(studyProofreadDispositionsTable\.findingId, match\.id\)\) \.orderBy\(desc\(studyProofreadDispositionsTable\.createdAt\)\) \.limit\(1\)/.test(
+        norm(body(s.store, "carryForwardDispositions")),
+      ),
+  },
+  {
+    id: "carry-forward-writes-the-new-finding",
+    on: "store",
+    msg: "the carried row is written against the NEW finding with the disposition that was carried — written against match.id it lands on the old revision again and the new one stays open",
+    test: (s) =>
+      /\.values\(\{ findingId: nf\.id, disposition: prior\[0\]\.disposition, note: prior\[0\]\.note, sourceLabel: prior\[0\]\.sourceLabel, actorUserId: prior\[0\]\.actorUserId, \}\)/.test(
+        norm(body(s.store, "carryForwardDispositions")),
+      ),
+  },
+  {
+    id: "previous-run-is-strictly-earlier",
+    on: "store",
+    msg: "previousRunForProject looks STRICTLY back (lt, not lte): `lte` returns the run itself, so nothing carries from the revision before it and a WITHDRAWN reopens",
+    test: (s) => /lt\(studyProofreadRunsTable\.revision, beforeRevision\)/.test(body(s.store, "previousRunForProject")),
   },
   {
     id: "previous-run-is-rules-ready",
@@ -376,27 +445,40 @@ const CHECKS = [
   {
     id: "finding-scope-is-one-query",
     on: "store",
-    msg: "findingInFirmRun verifies firm → project → run → finding in one joined query, as the URL asserts it",
+    msg: "findingInFirmRun verifies firm → project → run → finding as ONE conjunction over the joined tables — this is the only cross-tenant barrier the triage routes will have, and `and` → `or` would let any firm rule on another firm's finding",
     test: (s) => {
-      const b = body(s.store, "findingInFirmRun");
+      const b = norm(body(s.store, "findingInFirmRun"));
       return (
-        /innerJoin\(studyProofreadRunsTable/.test(b) &&
-        /eq\(studyProofreadRunsTable\.firmId, firmId\)/.test(b) &&
-        /eq\(studyProofreadRunsTable\.projectId, projectId\)/.test(b) &&
-        /eq\(studyProofreadRunsTable\.id, runId\)/.test(b) &&
-        /eq\(studyProofreadFindingsTable\.id, findingId\)/.test(b)
+        /innerJoin\(studyProofreadRunsTable, eq\(studyProofreadFindingsTable\.runId, studyProofreadRunsTable\.id\)\)/.test(b) &&
+        /\.where\( and\( eq\(studyProofreadFindingsTable\.id, findingId\), eq\(studyProofreadRunsTable\.id, runId\), eq\(studyProofreadRunsTable\.projectId, projectId\), eq\(studyProofreadRunsTable\.firmId, firmId\), \), \)/.test(b)
       );
     },
   },
 
   // --- proofread-run.ts: the runner ----------------------------------------
   {
-    id: "instance-id-truncated",
+    id: "instance-id-fits-claimed-by",
     on: "runner",
-    msg: "the instance id is truncated where it is BUILT (proofread-run.ts's INSTANCE_ID) to claimed_by's VARCHAR(64): an un-truncated hostname throws 22001 on every claim and the catch logs it, so no run would ever execute",
+    msg: "the instance id built by proofread-run.ts fits claimed_by's VARCHAR(64) AND still ends with the pid, for a 200-character hostname as well as a short one — an over-long id throws 22001 on every claim, and one that drops the pid collapses every process on a long-named host to a single claimed_by",
     test: (s) => {
-      const m = /const INSTANCE_ID =[\s\S]*?;\n/.exec(s.runner);
-      return m !== null && /\.slice\(0, 64\)/.test(m[0]);
+      const long = instanceIdFor(s.runner, { HOSTNAME: "h".repeat(200) }, 4242);
+      const short = instanceIdFor(s.runner, { HOSTNAME: "box1" }, 7);
+      const edge = instanceIdFor(s.runner, { HOSTNAME: "e".repeat(60) }, 123456);
+      const replica = instanceIdFor(s.runner, { RAILWAY_REPLICA_ID: "r".repeat(80), HOSTNAME: "box1" }, 9);
+      const none = instanceIdFor(s.runner, {}, 11);
+      const cases = [
+        [long, "4242"],
+        [short, "7"],
+        [edge, "123456"],
+        [replica, "9"],
+        [none, "11"],
+      ];
+      return (
+        cases.every(([v, pid]) => typeof v === "string" && v.length > 0 && v.length <= 64 && v.endsWith(`-${pid}`)) &&
+        short === "box1-7" &&
+        none === "local-11" &&
+        replica.startsWith("r")
+      );
     },
   },
   {
@@ -435,19 +517,24 @@ const CHECKS = [
     },
   },
   {
-    id: "carry-forward-after-the-pass",
+    id: "status-flips-after-the-carry",
     on: "runner",
-    msg: "the runner carries dispositions forward from the previous revision after the pass completes, and only under an unchanged engine stamp — otherwise a WITHDRAWN item silently reopens",
+    msg: "findings are written while the row is still 'running', the dispositions are carried, and only THEN does the status flip to 'rules_ready' — a flip before the carry lets a re-run claimed in that window take this revision as its source, find no dispositions, and lose the previous revision's WITHDRAWN permanently",
     test: (s) => {
       const b = body(s.runner, "claimAndRunOne");
-      const complete = b.indexOf('status: "rules_ready"');
+      const write = b.indexOf('status: "running"');
       const prev = b.indexOf("previousRunForProject(");
       const carry = b.indexOf("carryForwardDispositions(");
+      const flip = b.indexOf('status: "rules_ready"');
       return (
-        complete > 0 &&
-        prev > complete &&
+        write > 0 &&
+        prev > write &&
         carry > prev &&
-        /prev\.engineStamp === run\.engineStamp/.test(b)
+        flip > carry &&
+        /prev\.engineStamp === run\.engineStamp/.test(b) &&
+        // the flip is its own call and writes no coverage, so it cannot undo
+        // what the first half recorded
+        /await completeRun\(\{ runId: run\.id, status: "rules_ready", findings: \[\] \}\);/.test(b)
       );
     },
   },
@@ -619,12 +706,83 @@ const MUTATIONS = [
     apply: edit("store", /\n *eq\(studyProofreadRunsTable\.firmId, firmId\),/, ""),
   },
 
+  {
+    label: "key the duplicate check on the OLD finding (it never matches, so the carried row is appended on every re-run)",
+    file: "store",
+    flips: ["carry-forward-idempotent"],
+    apply: edit("store", "eq(studyProofreadDispositionsTable.findingId, nf.id),", "eq(studyProofreadDispositionsTable.findingId, match.id),"),
+  },
+  {
+    label: "carry the OLDEST disposition instead of the newest",
+    file: "store",
+    flips: ["carry-forward-reads-the-newest"],
+    apply: edit(
+      "store",
+      ".where(eq(studyProofreadDispositionsTable.findingId, match.id))\n      .orderBy(desc(studyProofreadDispositionsTable.createdAt))",
+      ".where(eq(studyProofreadDispositionsTable.findingId, match.id))\n      .orderBy(studyProofreadDispositionsTable.createdAt)",
+    ),
+  },
+  {
+    label: "drop the limit(1) from the prior-disposition lookup",
+    file: "store",
+    flips: ["carry-forward-reads-the-newest"],
+    apply: edit(
+      "store",
+      ".orderBy(desc(studyProofreadDispositionsTable.createdAt))\n      .limit(1);\n    if (!prior[0]) continue;",
+      ".orderBy(desc(studyProofreadDispositionsTable.createdAt));\n    if (!prior[0]) continue;",
+    ),
+  },
+  {
+    label: "write the carried disposition against the OLD finding",
+    file: "store",
+    flips: ["carry-forward-writes-the-new-finding"],
+    apply: edit("store", ".values({\n      findingId: nf.id,", ".values({\n      findingId: match.id,"),
+  },
+  {
+    label: "look back with lte, which returns the run itself",
+    file: "store",
+    flips: ["previous-run-is-strictly-earlier"],
+    apply: edit("store", "lt(studyProofreadRunsTable.revision, beforeRevision)", "lte(studyProofreadRunsTable.revision, beforeRevision)"),
+  },
+  {
+    label: "make the panel read's firm and project scopes an `or`",
+    file: "store",
+    flips: ["panel-read-is-firm-scoped"],
+    apply: edit(
+      "store",
+      ".where(and(eq(studyProofreadRunsTable.firmId, firmId), eq(studyProofreadRunsTable.projectId, projectId)))",
+      ".where(or(eq(studyProofreadRunsTable.firmId, firmId), eq(studyProofreadRunsTable.projectId, projectId)))",
+    ),
+  },
+  {
+    label: "make the finding-scope check an `or` (one character; any firm could then rule on another firm's finding)",
+    file: "store",
+    flips: ["finding-scope-is-one-query"],
+    apply: edit(
+      "store",
+      "      and(\n        eq(studyProofreadFindingsTable.id, findingId),",
+      "      or(\n        eq(studyProofreadFindingsTable.id, findingId),",
+    ),
+  },
+
   // proofread-run.ts
   {
-    label: "use the hostname untruncated as the instance id",
+    label: "slice the finished instance id instead of the host (M07: the pid falls off a long-named host)",
     file: "runner",
-    flips: ["instance-id-truncated"],
-    apply: edit("runner", ".slice(0, 64)", ""),
+    flips: ["instance-id-fits-claimed-by"],
+    apply: edit("runner", "return `${host.slice(0, 63 - pid.length)}-${pid}`;", "return `${host}-${pid}`.slice(0, 64);"),
+  },
+  {
+    label: "slice the host to 64 with no room reserved for the pid",
+    file: "runner",
+    flips: ["instance-id-fits-claimed-by"],
+    apply: edit("runner", "host.slice(0, 63 - pid.length)", "host.slice(0, 64)"),
+  },
+  {
+    label: "do not truncate the host at all",
+    file: "runner",
+    flips: ["instance-id-fits-claimed-by"],
+    apply: edit("runner", "host.slice(0, 63 - pid.length)", "host"),
   },
   {
     label: "give the runner its own MAX_ATTEMPTS",
@@ -655,9 +813,26 @@ const MUTATIONS = [
     apply: edit("runner", /(await completeRun\(\{\n *runId: run\.id,\n *status,)/, "$1\n      coverage: [],\n      inputManifest: {},"),
   },
   {
+    label: "flip the status to rules_ready before the carry (m4: the window that loses a WITHDRAWN)",
+    file: "runner",
+    flips: ["status-flips-after-the-carry"],
+    apply: (s) => ({
+      ...s,
+      runner: s.runner
+        .replace('      status: "running",\n', '      status: "rules_ready",\n')
+        .replace('    await completeRun({ runId: run.id, status: "rules_ready", findings: [] });\n', ""),
+    }),
+  },
+  {
+    label: "keep both calls but flip the status in the first one",
+    file: "runner",
+    flips: ["status-flips-after-the-carry"],
+    apply: edit("runner", '      status: "running",\n', '      status: "rules_ready",\n'),
+  },
+  {
     label: "carry dispositions forward before the findings are written",
     file: "runner",
-    flips: ["carry-forward-after-the-pass"],
+    flips: ["status-flips-after-the-carry"],
     apply: (s) => {
       const b = body(s.runner, "claimAndRunOne");
       const carry = /\n *const prev = await previousRunForProject\([\s\S]*?\n *if \(prev\) await carryForwardDispositions\([^;]*;/.exec(b);

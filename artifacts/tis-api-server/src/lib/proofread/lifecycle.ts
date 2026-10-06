@@ -71,10 +71,12 @@ export function nextStatusAfterFailure(row: RunRowState): "queued" | "failed" {
  *
  * The interval is derived from LEASE_MS so the SQL and the policy cannot name
  * two different leases, and the comparison is strict (`<`), so a claim exactly
- * one lease old is still held.
+ * one lease old is still held. The whole predicate is parenthesised: it is a
+ * top-level OR, and a condition appended by a later caller (`... AND x`) would
+ * otherwise bind to the second arm alone and quietly widen the claim.
  */
-export const CLAIM_PREDICATE_SQL = `status = 'queued'
-       OR (status = 'running' AND (claimed_at IS NULL OR claimed_at < now() - interval '${LEASE_MS / 1000} seconds'))`;
+export const CLAIM_PREDICATE_SQL = `(status = 'queued'
+       OR (status = 'running' AND (claimed_at IS NULL OR claimed_at < now() - interval '${LEASE_MS / 1000} seconds')))`;
 
 /**
  * Claim one row for this instance. $1 is the instance id.
