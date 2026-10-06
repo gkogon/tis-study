@@ -28,6 +28,15 @@
  * schemas are evaluated, so the WITHDRAWN-needs-a-source rule is exercised
  * rather than grepped for.
  *
+ * The route, store and runner code is read with TypeScript's own parser, not
+ * with regexes: imports (every spelling of a way into another module) and
+ * database writes (every spelling of a write verb) are found in the AST, because
+ * two rounds of review walked real tis_projects writes past regex versions of
+ * both. It is a tripwire against reaching a write by ordinary means, not a
+ * sandbox: a specifier built at run time reads as "<dynamic import>", which no
+ * whitelist allows. What survives any spelling is a test that observes the
+ * DATABASE (a row hash before and after, on a real Postgres); this guard cannot.
+ *
  * Reads files as text and never imports the routes, the store or
  * @workspace/db, so it never opens a connection.
  *
@@ -344,6 +353,110 @@ function importsEqual(got, want) {
   return same(Object.keys(got), keys) && keys.every((k) => same(got[k], want[k]));
 }
 
+// The write verbs of drizzle's query builder, and the names that mean "a study".
+const WRITE_VERBS = new Set(["update", "insert", "delete"]);
+const STUDY_NAMES = new Set(["tisProjectsTable", "requestPayload", "resultPayload", "request_payload", "result_payload"]);
+const DB_HANDLES = new Set(["db", "tx", "trx"]);
+const PROOFREAD_TABLES = ["studyProofreadRunsTable", "studyProofreadFindingsTable", "studyProofreadDispositionsTable"];
+
+/**
+ * What a file does to the database, read from the AST.
+ *
+ *   writes  every mention of a write verb (update / insert / delete) that is a
+ *           member of something: `x.update(T)` and `x["update"](T)` are a "call"
+ *           with the table named by their one argument (parentheses, `as` and
+ *           `!` unwrapped; anything but a plain identifier is "<not a table
+ *           identifier>"); every other way of getting at a verb is a form of
+ *           its own that has no table and is never allowed: a bare reference
+ *           (`db.update.call(...)`, `db.update.bind(db)`, `const u = db.update`),
+ *           a destructured binding (`const { update } = db`, renamed, string or
+ *           computed key), an object-literal property of that name (assignment
+ *           destructuring), or a computed access on a db handle (`db[k]`).
+ *           A write is therefore either `<recv>.<verb>(<Identifier>)` or it is
+ *           visible as something else; there is no spelling of a verb that is
+ *           not one of those.
+ *   study   every occurrence of tisProjectsTable / requestPayload / resultPayload
+ *           (as an identifier or a string), with the function declaration it is
+ *           in and whether it is only an import specifier
+ *   dbIdents  every identifier called `db`
+ *   members   every property name and string-literal element-access name
+ *
+ * A regex over the text reads `db["update"](tisProjectsTable)` and
+ * `const { update } = db; update(tisProjectsTable)` as nothing at all.
+ */
+function dbScan(text) {
+  const sf = parse(text);
+  const writes = [];
+  const study = [];
+  const dbIdents = [];
+  const members = new Set();
+  const lit = (e) => (e && (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) ? e.text : null);
+  const unwrap = (e) => {
+    while (e && (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e) || ts.isTypeAssertionExpression(e) || ts.isSatisfiesExpression(e))) e = e.expression;
+    return e;
+  };
+  const fnOf = (n) => {
+    for (let p = n.parent; p; p = p.parent) if (ts.isFunctionDeclaration(p) && p.name) return p.name.text;
+    return null;
+  };
+  const inImport = (n) => {
+    for (let p = n.parent; p; p = p.parent) if (ts.isImportDeclaration(p)) return true;
+    return false;
+  };
+  const keyText = (k) => (ts.isIdentifier(k) || ts.isStringLiteral(k) || ts.isNoSubstitutionTemplateLiteral(k) ? k.text : ts.isComputedPropertyName(k) ? lit(k.expression) : null);
+  const visit = (n) => {
+    let verb = null;
+    if (ts.isPropertyAccessExpression(n)) {
+      members.add(n.name.text);
+      if (WRITE_VERBS.has(n.name.text)) verb = n.name.text;
+    } else if (ts.isElementAccessExpression(n)) {
+      const key = lit(n.argumentExpression);
+      if (key !== null) {
+        members.add(key);
+        if (WRITE_VERBS.has(key)) verb = key;
+      } else {
+        const r = unwrap(n.expression);
+        if (ts.isIdentifier(r) && DB_HANDLES.has(r.text)) writes.push({ form: "computed access on a db handle", fn: fnOf(n) });
+      }
+    }
+    if (verb !== null) {
+      const parent = n.parent;
+      if (ts.isCallExpression(parent) && parent.expression === n) {
+        const a = parent.arguments.length === 1 ? unwrap(parent.arguments[0]) : null;
+        writes.push({ verb, form: "call", table: a && ts.isIdentifier(a) ? a.text : "<not a table identifier>", fn: fnOf(n) });
+      } else writes.push({ verb, form: "reference", fn: fnOf(n) });
+    }
+    if (ts.isBindingElement(n) && ts.isObjectBindingPattern(n.parent)) {
+      const k = keyText(n.propertyName ?? n.name);
+      if (k !== null && WRITE_VERBS.has(k)) writes.push({ verb: k, form: "destructured", fn: fnOf(n) });
+    }
+    if (ts.isShorthandPropertyAssignment(n) || ts.isPropertyAssignment(n)) {
+      const k = keyText(n.name);
+      if (k !== null && WRITE_VERBS.has(k)) writes.push({ verb: k, form: "object property", fn: fnOf(n) });
+    }
+    if (ts.isIdentifier(n)) {
+      if (STUDY_NAMES.has(n.text)) study.push({ name: n.text, fn: fnOf(n), inImport: inImport(n) });
+      if (n.text === "db") dbIdents.push({ fn: fnOf(n) });
+    } else if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) {
+      if (STUDY_NAMES.has(n.text)) study.push({ name: n.text, fn: fnOf(n), inImport: false });
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return { writes, study, dbIdents, members };
+}
+
+/** The function declaration called `name`, or null. */
+function functionNamed(text, name) {
+  let found = null;
+  const visit = (n) => {
+    if (ts.isFunctionDeclaration(n) && n.name?.text === name) found = n;
+    if (!found) ts.forEachChild(n, visit);
+  };
+  visit(parse(text));
+  return found;
+}
+
 /** The expression after `const NAME =` up to its `;`, brackets and literals matched, or "". */
 function initializerOf(src, name) {
   const found = src.indexOf(`const ${name} =`);
@@ -509,6 +622,25 @@ const EVASIONS = [
   ["a multi-line import with CRLF line endings", 'import {\r\n  setProjectTheme,\r\n} from "./tis-projects";\r'],
   ["an export * from an allowed module", 'export * from "./logger";'],
   ["a forbidden name added to an allowed module's import", 'import { setProjectTheme } from "./logger";'],
+];
+
+// The ways of writing a study row that a regex over `.update(` / `.insert(` / `.delete(` cannot see.
+// [description, statement(s) to insert, true when it is still a `<recv>.<verb>(<identifier>)` call]
+const WRITE_FORMS = [
+  ["an element access with a string literal", 'await db["update"](tisProjectsTable).set({ version: 2 });', true],
+  ["an element access with a template literal", "await db[`update`](tisProjectsTable).set({ version: 2 });", true],
+  ["a destructured binding from db", "const { update } = db; await update(tisProjectsTable).set({ version: 2 });", false],
+  ["a renamed destructured binding", "const { update: u } = db; await u(tisProjectsTable).set({ version: 2 });", false],
+  ["a destructured binding with a string-literal key", 'const { "update": u } = db; await u(tisProjectsTable).set({ version: 2 });', false],
+  ["a destructured binding with a computed key", 'const { ["update"]: u } = db; await u(tisProjectsTable).set({ version: 2 });', false],
+  ["a verb taken as a bound function", "const u = db.update.bind(db); await u(tisProjectsTable).set({ version: 2 });", false],
+  ["a verb reached through .call", "await db.update.call(db, tisProjectsTable);", false],
+  ["an assignment destructuring", "let u: any; ({ update: u } = db); await u(tisProjectsTable);", false],
+  ["a computed element access on db", 'await db["upd" + "ate"](tisProjectsTable);', false],
+  ["a parenthesised, cast table argument", "await db.update((tisProjectsTable as any)).set({ version: 2 });", true],
+  ["a table chosen by a conditional", "await db.update(args.runId ? tisProjectsTable : studyProofreadRunsTable).set({});", false],
+  ["a regex literal ending in // on the same line (the old comment stripper deleted the rest of the line)", "const rx = /\\//; await db.update(tisProjectsTable).set({ version: 2 });", true],
+  ["a plain write split across lines and comments", "await db\n    /* not a write */\n    .update(tisProjectsTable)\n    .set({ version: 2 });", true],
 ];
 
 // The parser itself, against the strings it must read the same way however they
@@ -888,10 +1020,11 @@ const CHECKS = [
   {
     id: "routes-do-not-touch-study",
     on: "routes",
-    msg: "no route touches tis_projects, request_payload or result_payload, and none writes or reaches the database by itself (no .update/.insert/.delete, no db, no @workspace/db)",
-    test: (d) =>
-      d.routes.length > 0 &&
-      !/tisProjectsTable|requestPayload|resultPayload|request_payload|result_payload|\.update\(|\.insert\(|\.delete\(|\bdb\b|@workspace\/db/.test(d.routes),
+    msg: "no route touches tis_projects, request_payload or result_payload, and none writes or reaches the database by itself: read from the AST, no write verb in ANY spelling (member call, string-key element access, destructured, bound, .call, computed access), no tisProjectsTable or payload name, no `db`",
+    test: (d) => {
+      const sc = dbScan(d.src.routes);
+      return d.routes.length > 0 && sc.writes.length === 0 && sc.study.length === 0 && sc.dbIdents.length === 0 && !/@workspace\/db/.test(d.routes);
+    },
   },
   {
     id: "routes-never-echo-internals",
@@ -1027,11 +1160,10 @@ const CHECKS = [
   {
     id: "store-writes-only-proofread-tables",
     on: "store",
-    msg: "every write the store's OWN text makes (.update/.insert/.delete, whatever the receiver) targets one of the three proofread tables — a write to tis_projects, or to any other table, is the advisor boundary broken; a write reached through another module is the import whitelist's to catch, not this scan's",
+    msg: "every write the store's OWN code makes is `<recv>.<verb>(<one of the three proofread tables>)` — a write to tis_projects or any other table is the advisor boundary broken, and so is any other way of reaching a write verb (string-key element access with a non-table argument, destructured, bound, .call, computed access on db), none of which a regex sees; a write reached through another module is the import whitelist's to catch",
     test: (d) => {
-      const targets = [...d.store.matchAll(/\.(update|insert|delete)\(\s*(\w+)/g)].map((m) => m[2]);
-      const allowed = ["studyProofreadRunsTable", "studyProofreadFindingsTable", "studyProofreadDispositionsTable"];
-      return d.store.length > 0 && targets.length > 0 && targets.every((t) => allowed.includes(t));
+      const w = dbScan(d.src.store).writes;
+      return d.store.length > 0 && w.length > 0 && w.every((x) => x.form === "call" && PROOFREAD_TABLES.includes(x.table));
     },
   },
   {
@@ -1039,7 +1171,7 @@ const CHECKS = [
     on: "store",
     msg: "the scan above is not vacuous: the store really does update the run table and insert runs, findings and dispositions",
     test: (d) => {
-      const seen = new Set([...d.store.matchAll(/\.(update|insert)\(\s*(\w+)/g)].map((m) => `${m[1]}:${m[2]}`));
+      const seen = new Set(dbScan(d.src.store).writes.filter((x) => x.form === "call").map((x) => `${x.verb}:${x.table}`));
       return [
         "update:studyProofreadRunsTable",
         "insert:studyProofreadRunsTable",
@@ -1051,27 +1183,30 @@ const CHECKS = [
   {
     id: "store-dispositions-are-append-only",
     on: "store",
-    msg: "the disposition log is only ever inserted into: no update, no delete, no upsert — ACCEPTED_RISK has to record who accepted it and when",
-    test: (d) =>
-      d.store.length > 0 &&
-      !/\.(update|delete)\(\s*studyProofreadDispositionsTable/.test(d.store) &&
-      !/onConflictDoUpdate/.test(d.store),
+    msg: "the disposition log is only ever inserted into: no update or delete of it and no upsert, and no write verb reached in a form that hides its table (destructured, bound, .call, computed access, a table that is not a plain identifier) — ACCEPTED_RISK has to record who accepted it and when",
+    test: (d) => {
+      const sc = dbScan(d.src.store);
+      return (
+        d.store.length > 0 &&
+        sc.writes.every((w) => w.form === "call" && w.table !== "<not a table identifier>" && !(w.table === "studyProofreadDispositionsTable" && w.verb !== "insert")) &&
+        !sc.members.has("onConflictDoUpdate")
+      );
+    },
   },
   {
     id: "store-study-row-is-read-only",
     on: "store",
-    msg: "tis_projects and its two payload columns appear in the store only inside loadStudyForRun, and there only as a select — the clause pass reads the study, nothing writes it",
+    msg: "tis_projects and its two payload columns appear in the store only in the import and inside loadStudyForRun, and there only as a select — the clause pass reads the study, nothing writes it; no write verb of any spelling appears inside the loader",
     test: (d) => {
-      const loader = body(d.store, "loadStudyForRun");
+      const loader = functionNamed(d.src.store, "loadStudyForRun");
       if (!loader) return false;
-      const rest = d.store
-        .replace(loader, "")
-        .replace(/^import[\s\S]*?from "[^"]+";\n/gm, "");
+      const sc = dbScan(d.src.store);
+      const text = loader.getText();
       return (
-        /\.select\(/.test(loader) &&
-        /\.from\(tisProjectsTable\)/.test(loader) &&
-        !/\.(update|insert|delete)\(/.test(loader) &&
-        !/tisProjectsTable|requestPayload|resultPayload/.test(rest)
+        /\.select\(/.test(text) &&
+        /\.from\(tisProjectsTable\)/.test(text) &&
+        sc.study.every((x) => x.inImport || x.fn === "loadStudyForRun") &&
+        sc.writes.every((w) => w.fn !== "loadStudyForRun")
       );
     },
   },
@@ -1109,15 +1244,11 @@ const CHECKS = [
   {
     id: "runner-has-no-db-writes",
     on: "runner",
-    msg: "the runner's OWN text has no database write and names no study table or payload, and its @workspace/db import is type-only; that it reaches the database only through the store is the import whitelist's claim, not this scan's",
+    msg: "the runner's OWN code has no database write in any spelling, names no study table or payload, has no `db` of its own, and its @workspace/db import is type-only; that it reaches the database only through the store is the import whitelist's claim, not this scan's",
     test: (d) => {
-      const dbImports = [...d.runner.matchAll(/^import\s+(type\s+)?[^;]*?\s+from\s+"@workspace\/db";/gm)];
-      return (
-        d.runner.length > 0 &&
-        dbImports.length > 0 &&
-        dbImports.every((m) => m[1]) &&
-        !/tisProjectsTable|requestPayload|resultPayload|\.update\(|\.insert\(|\.delete\(|\bdb\./.test(d.runner)
-      );
+      const sc = dbScan(d.src.runner);
+      const dbNames = importsOf(d.src.runner)["@workspace/db"] ?? [];
+      return d.runner.length > 0 && dbNames.length > 0 && dbNames.every((n) => n.startsWith("type ")) && sc.writes.length === 0 && sc.study.length === 0 && sc.dbIdents.length === 0;
     },
   },
   {
@@ -2285,6 +2416,45 @@ const MUTATIONS = [
     flips: ["proofread-dir-imports-whitelist"],
     apply: editDir("s2-trip-gen.ts", 'import { LAND_USES } from "@workspace/tis-engine-core";', 'import { LAND_USES } from "@workspace/tis-engine-core";\nimport { sql } from "drizzle-orm";'),
   },
+
+  // ---- the write scan, one mutation per spelling of a write, on the REAL store/runner/routes ----
+  ...WRITE_FORMS.flatMap(([what, code, callForm]) => {
+    const flips = callForm ? ["store-writes-only-proofread-tables", "store-study-row-is-read-only"] : ["store-writes-only-proofread-tables", "store-study-row-is-read-only", "store-dispositions-are-append-only"];
+    return [
+      {
+        label: `store: a study write through ${what}, inside loadStudyForRun`,
+        file: "store",
+        flips,
+        apply: edit("store", "  return row ?? null;\n}\n\n/**\n * Write a run's outcome.", `  ${code}\n  return row ?? null;\n}\n\n/**\n * Write a run's outcome.`),
+      },
+      {
+        label: `store: a study write through ${what}, inside completeRun`,
+        file: "store",
+        flips,
+        apply: edit("store", "  if (args.findings.length === 0) return;", `  ${code}\n  if (args.findings.length === 0) return;`),
+      },
+    ];
+  }),
+  ...[
+    ["an element access with a string literal", 'await db["update"](tisProjectsTable);'],
+    ["a destructured binding from db", "const { update } = db; await update(tisProjectsTable);"],
+    ["a regex literal ending in // on the same line", "const rx = /\\//; await db.update(tisProjectsTable);"],
+  ].map(([what, code]) => ({
+    label: `runner: a write through ${what}`,
+    file: "runner",
+    flips: ["runner-has-no-db-writes"],
+    apply: edit("runner", "    const rec: StudyRecord", `    ${code}\n    const rec: StudyRecord`),
+  })),
+  ...[
+    ["an element access with a string literal", 'void db["update"](x);'],
+    ["a destructured binding", "const { insert } = db;"],
+    ["a regex literal ending in // on the same line", "const rx = /\\//; void db.update(x);"],
+  ].map(([what, code]) => ({
+    label: `routes: a write through ${what}`,
+    file: "routes",
+    flips: ["routes-do-not-touch-study"],
+    apply: edit("routes", "const router: IRouter = Router();", `const router: IRouter = Router();\n${code}`),
+  })),
 
   // ---- tis-projects.ts --------------------------------------------------------
   {
