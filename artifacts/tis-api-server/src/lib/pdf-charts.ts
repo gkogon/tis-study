@@ -94,7 +94,14 @@ type ChartLayout = {
   plotBottom: number;
   plotW: number;
   plotH: number;
+  /** Height of the band under the plot that holds the x category labels. */
+  xLabelH: number;
 };
+
+/** Plot width drawFrame will produce, so a chart can measure its x labels first. */
+function plotWidth(doc: PDFKit.PDFDocument, yLabel: string | undefined, legendW: number): number {
+  return doc.page.width - pageMargin() * 2 - (yLabel ? 14 : 0) - 36 - legendW;
+}
 
 /** Shared frame: caption, axes, gridlines, y/x titles. Returns the plot box. */
 function drawFrame(
@@ -107,6 +114,8 @@ function drawFrame(
     plotH: number;
     scale: Scale;
     yTickFormat: (v: number) => string;
+    /** Height of the x category labels (default one 7 pt line). */
+    xLabelH?: number;
   },
 ): ChartLayout {
   const { title, yLabel, xLabel, legendW, plotH, scale, yTickFormat } = opts;
@@ -129,8 +138,7 @@ function drawFrame(
 
   const yTitleW = yLabel ? 14 : 0;
   const yLabelsW = 36;
-  const xLabelH = 12;
-  const xTitleH = xLabel ? 14 : 0;
+  const xLabelH = opts.xLabelH ?? 12;
 
   const plotLeft = chartX0 + yTitleW + yLabelsW;
   const plotRight = chartX0 + chartW - legendW;
@@ -173,7 +181,7 @@ function drawFrame(
     });
   }
 
-  return { chartX0, chartW, plotLeft, plotRight, plotTop, plotBottom, plotW, plotH };
+  return { chartX0, chartW, plotLeft, plotRight, plotTop, plotBottom, plotW, plotH, xLabelH };
 }
 
 /** Legend swatches stacked at the top-right of the plot. */
@@ -193,7 +201,7 @@ function drawLegend(
 
 function finish(doc: PDFKit.PDFDocument, layout: ChartLayout, xLabel?: string, caption?: string, title?: string): void {
   const xTitleH = xLabel ? 14 : 0;
-  let endY = layout.plotBottom + 12 + xTitleH + 4;
+  let endY = layout.plotBottom + layout.xLabelH + xTitleH + 4;
   if (title && !isDefaultTheme() && activeTheme().figure.caption.position === "below") {
     doc.y = endY;
     themed.figureCaption(doc, title);
@@ -244,7 +252,6 @@ export function drawColumnChart(doc: PDFKit.PDFDocument, spec: ColumnChartSpec):
   const plotH = scaledHeight(doc, spec.height ?? 200);
   const yTickFormat = spec.yTickFormat ?? ((v: number) => fmtTick(v));
   const captionH = spec.title ? 16 : 0;
-  ensureSpace(doc, captionH + plotH + 30 + (spec.xLabel ? 14 : 0) + (spec.caption ? 28 : 0));
 
   const stacked = spec.stacked ?? false;
   const nCat = spec.categories.length;
@@ -254,6 +261,12 @@ export function drawColumnChart(doc: PDFKit.PDFDocument, spec: ColumnChartSpec):
     : Math.max(0, ...spec.series.flatMap((s) => s.values));
   const scale = niceScale(maxVal, 5);
   const legendW = spec.series.length > 1 ? 84 : 0;
+  // A category label wider than its group wraps; reserve every line, or the
+  // wrapped tail ("Cul…") prints over whatever follows the chart.
+  const labelW = plotWidth(doc, spec.yLabel, legendW) / Math.max(1, nCat);
+  doc.font("body").fontSize(7);
+  const xLabelH = Math.max(12, ...spec.categories.map((c) => doc.heightOfString(c, { width: labelW, align: "center" }) + 3));
+  ensureSpace(doc, captionH + plotH + 18 + xLabelH + (spec.xLabel ? 14 : 0) + (spec.caption ? 28 : 0));
 
   const layout = drawFrame(doc, {
     title: spec.title,
@@ -263,6 +276,7 @@ export function drawColumnChart(doc: PDFKit.PDFDocument, spec: ColumnChartSpec):
     plotH,
     scale,
     yTickFormat,
+    xLabelH,
   });
 
   const n = nCat;
@@ -364,16 +378,16 @@ export function drawLineChart(doc: PDFKit.PDFDocument, spec: LineChartSpec): voi
   for (let i = 0; i < n; i++) {
     if (i % step !== 0) continue;
     doc.font("body").fontSize(7).fillColor(chartColors().axis);
-    let bx = px(i) - stepX / 2, bw = stepX, align: "center" | "right" = "center";
-    // The last point sits on plotRight (= the right margin), so a label
-    // centred on it spills half its width past the margin. Under a theme
-    // pin that label flush to the plot edge instead; the box is at least as
-    // wide as the label because PDFKit character-wraps anything wider than
-    // its box. The default render keeps the legacy placement byte-for-byte.
-    if (!isDefaultTheme() && n > 1 && i === n - 1) {
+    let bx = px(i) - stepX / 2, bw = stepX, align: "center" | "left" | "right" = "center";
+    // The end points sit on the plot edges, so a label centred on one spills
+    // half its width outward: past the right margin for the last point ("23",
+    // "0.99"), and onto the y-axis "0" tick label for the first. Pin each flush
+    // to its plot edge instead; the box is at least as wide as the label
+    // because PDFKit character-wraps anything wider than its box.
+    if (n > 1 && (i === 0 || i === n - 1)) {
       bw = Math.max(stepX / 2, doc.widthOfString(spec.categories[i]) + 1);
-      bx = layout.plotRight - bw;
-      align = "right";
+      bx = i === 0 ? layout.plotLeft : layout.plotRight - bw;
+      align = i === 0 ? "left" : "right";
     }
     doc.text(spec.categories[i], bx, layout.plotBottom + 2, { width: bw, align });
   }

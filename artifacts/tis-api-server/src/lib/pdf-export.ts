@@ -10041,8 +10041,14 @@ function tableRowHeight(doc: PDFKit.PDFDocument, spec: TableSpec, cells: string[
  * could still run past the margin and strand a few lines on a page of their
  * own (the appendix worksheets did exactly that).
  */
+/** Callers hard-code widths; shrink them to the text block when they exceed it. */
+function fitTable(doc: PDFKit.PDFDocument, spec: TableSpec): TableSpec {
+  return { ...spec, widths: themed.scaleWidths(spec.widths, doc.page.width - pageMargin() * 2) };
+}
+
 function tableHeight(doc: PDFKit.PDFDocument, spec: TableSpec): number {
   if (!isDefaultTheme()) return themed.tableHeight(doc, spec);
+  spec = fitTable(doc, spec);
   return tableRowHeight(doc, spec, spec.headers, true)
     + spec.rows.reduce((s, r) => s + tableRowHeight(doc, spec, r, false), 0)
     + 4;
@@ -10054,6 +10060,7 @@ function tableHeight(doc: PDFKit.PDFDocument, spec: TableSpec): number {
  */
 function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
   if (!isDefaultTheme()) { themed.table(doc, spec); return; }
+  spec = fitTable(doc, spec);
   const { headers, widths, rows: dataRows } = spec;
   const align = spec.align ?? headers.map(() => "left" as const);
   const startX = pageMargin();

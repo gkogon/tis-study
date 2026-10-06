@@ -1230,9 +1230,7 @@ function renderTisState(
     const startX = pageMargin();
     // Columns wider than the text block ran off the page ("Q95 (f", "1,19"):
     // scale them down to fit rather than trusting every caller's arithmetic.
-    const usableW = doc.page.width - pageMargin() * 2;
-    const givenW = widths.reduce((s, w) => s + w, 0);
-    const colW = givenW > usableW ? widths.map((w) => (w * usableW) / givenW) : widths;
+    const colW = themed.scaleWidths(widths, doc.page.width - pageMargin() * 2);
     const tableW = colW.reduce((s, w) => s + w, 0);
     // Each row is as tall as its tallest cell. A fixed 16 pt row let a name
     // that wrapped to a second line print over the row below.
