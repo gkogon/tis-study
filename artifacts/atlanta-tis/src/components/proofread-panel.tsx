@@ -119,7 +119,15 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
     setBusy(true);
     try {
       await recordDisposition(projectId, run.runId, f.id, body);
-      setRun(await fetchProofread(projectId));
+      // The server has taken it. Show it at once: `busy` is released below, and until the
+      // refetch lands this card would otherwise still offer the decision just recorded, to a
+      // second press that would append a duplicate to a log that cannot be edited. The refetch
+      // replaces this with the server's own record.
+      const recorded = { findingId: f.id, disposition: body.disposition, note: null, sourceLabel: body.sourceLabel ?? null, createdAt: new Date().toISOString() };
+      setRun((prev) => (prev && prev.runId === run.runId ? { ...prev, dispositions: [recorded, ...prev.dispositions] } : prev));
+      // Refetch through the effect, as "Run again" does: it re-arms the poll, and it drops a
+      // result that arrives after the project has changed.
+      setNonce((v) => v + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -218,12 +226,16 @@ export function ProofreadView({
   // The result — findings and what the clauses covered — is shown only for a
   // finished run. See the note above the findings.
   const finished = isFinished(run.status);
+  const ran = run.coverage.filter((c) => c.status === "ran");
   const notRun = run.coverage.filter((c) => c.status === "not-run");
   // A clause that ran but judged only part of the record says so here. Rendering
   // it beside the findings is the difference between "nothing found" and
   // "nothing found in the part I could read".
   const partial = run.coverage.filter((c) => c.status === "ran" && !!c.note);
-  const incomplete = notRun.length > 0 || partial.length > 0;
+  // No clause having run is the limit of "incomplete": an empty coverage (a study whose
+  // record lacks the fields) or twelve clauses that all could not run found nothing
+  // because nothing was looked at, which is not the same as nothing being there.
+  const incomplete = ran.length === 0 || notRun.length > 0 || partial.length > 0;
   const summary = finished ? summaryLine(summarizeOpen(run.findings, run.dispositions), incomplete) : null;
 
   return (
@@ -271,7 +283,14 @@ export function ProofreadView({
             lease after a crash — and triaging in that window races the carry. A
             run that FAILED after that first write is in the same state for good,
             so "finished" is the gate, not merely "not pending". */}
-        {finished && run.findings.length === 0 && (
+        {finished && run.findings.length === 0 && ran.length === 0 && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <HelpCircle className="w-4 h-4" />
+            No clause could run on this study, so nothing was checked.
+          </div>
+        )}
+
+        {finished && run.findings.length === 0 && ran.length > 0 && (
           <div className="flex items-center gap-2 text-sm">
             {incomplete ? (
               <Info className="w-4 h-4 text-muted-foreground" />

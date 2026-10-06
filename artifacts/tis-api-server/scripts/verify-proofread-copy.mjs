@@ -15,7 +15,8 @@
  *  2. BEHAVIOUR (rendered). The panel's claims are not strings: "a study that was
  *     never checked is not clean", "findings appear only for a finished run",
  *     "a clause that judged part of the record says so", "an ordinary study is not
- *     presented as an alarm", "a disclosed blocker is still open". A scan for `status === "none"` proves the characters
+ *     presented as an alarm", "a disclosed blocker is still open",
+ *     "a study in which no clause could run says nothing was checked". A scan for `status === "none"` proves the characters
  *     exist, not that the branch runs before the empty-findings one. So the panel is
  *     bundled with the repo's own esbuild, ProofreadView is rendered with
  *     react-dom/server for each status, and the assertions read what a user would
@@ -184,7 +185,10 @@ const mk = (clauseId, type, o = {}) => ({
   fingerprint: `fp-${clauseId}`,
   ...o,
 });
-const runOf = (status, o = {}) => ({ status, runId: "run-uuid", coverage: [], findings: [], dispositions: [], ...o });
+// Coverage defaults to one clause that ran and judged all of its record. An EMPTY coverage is not the neutral choice:
+// it means no clause ran, and the panel must say nothing was checked (see "nothing was checked" below).
+const FULL_COVERAGE = [{ clauseId: "growthOverrideDisclosed", section: 1, status: "ran" }];
+const runOf = (status, o = {}) => ({ status, runId: "run-uuid", coverage: FULL_COVERAGE, findings: [], dispositions: [], ...o });
 const FINISHED = ["rules_ready", "ready"];
 const PENDING = ["queued", "running"];
 const ALL_STATUSES = ["none", "queued", "running", "rules_ready", "ready", "failed"];
@@ -244,6 +248,13 @@ await group("findings only for a finished run", () => {
     const triage = buttons(html).filter((b) => b.testid?.startsWith("button-disposition-")).length;
     // A DISCLOSE and a NOTE are each offered three decisions.
     ok(triage === (expected ? 6 : 0), `${status}: ${expected ? "offers" : "offers no"} triage controls (${triage} buttons)`);
+    // The header is the completion gate as a sentence. Over a DISCLOSE and a NOTE it reads "No open blocker or contested
+    // item", which on a run that never finished, with no card beneath it, is a false clear.
+    const header = summaryOf(html);
+    ok(
+      FINISHED.includes(status) ? header !== null : header === null,
+      `${status}: ${FINISHED.includes(status) ? "has" : "has NO"} header summary over a stored DISCLOSE + NOTE (${JSON.stringify(header)})`,
+    );
   }
   for (const status of PENDING) {
     const t = text(view(runOf(status, { findings: withFindings })));
@@ -269,6 +280,12 @@ await group("partial coverage is shown, not hidden", () => {
   ok(/1 clause could not run on this study/.test(t) && /criteriaNamed — no agencies on the record/.test(t), "a clause that could not run is listed with its reason");
   ok(/Nothing flagged in the clauses that could run/.test(t), "empty finished run: the scoped sentence, not an unqualified all-clear");
   ok(!/emerald/.test(empty), "empty run with partial coverage: no green check (a check mark claims more than was judged)");
+  // The partial-only case, isolated: one clause judged part of the record, no clause was skipped.
+  const onlyPartial = [{ clauseId: "screeningClampDisclosed", section: 4, status: "ran", note: "37 of 40 reported delay fields judged" }];
+  const po = keep(view(runOf("rules_ready", { coverage: onlyPartial })));
+  ok(!/emerald/.test(po) && /Nothing flagged in the clauses that could run/.test(text(po)), "partial coverage and no skipped clause: no green check, and the sentence stays scoped");
+  const poH = summaryOf(view(runOf("rules_ready", { coverage: onlyPartial, findings: ordinary }))) ?? "";
+  ok(/No open blocker or contested item in the clauses that ran\./.test(poH), `partial coverage and no skipped clause: the header says "in the clauses that ran" (${JSON.stringify(poH)})`);
   const full = keep(view(runOf("rules_ready", { coverage: [{ clauseId: "a", section: 1, status: "ran" }] })));
   ok(/emerald/.test(full) && /Nothing flagged/.test(text(full)), "empty run where every clause judged everything: the green check is earned");
   // With findings: the note still rides along.
@@ -279,6 +296,25 @@ await group("partial coverage is shown, not hidden", () => {
     const tt = text(view(runOf(status, { coverage })));
     ok(!/37 of 40/.test(tt) && !/could not run/.test(tt), `${status}: a coverage note from an unfinished run is not shown as a result`);
   }
+});
+
+await group("nothing was checked is not nothing found", () => {
+  const NOTHING = /No clause could run on this study, so nothing was checked\./;
+  const twelve = Array.from({ length: 12 }, (_, i) => ({ clauseId: `clause${i}`, section: 1, status: "not-run", reason: "payload predates the field" }));
+  for (const [name, coverage] of [["no coverage at all", []], ["every clause not-run (12 of 12)", twelve]]) {
+    for (const status of FINISHED) {
+      const h = keep(view(runOf(status, { coverage })));
+      const t = text(h);
+      ok(NOTHING.test(t), `${status}, ${name}: says nothing was checked`);
+      ok(!/Nothing flagged/i.test(t), `${status}, ${name}: does NOT say nothing was flagged`);
+      ok(!/emerald/.test(h), `${status}, ${name}: no green check`);
+    }
+  }
+  ok(/12 clauses could not run on this study/.test(text(view(runOf("rules_ready", { coverage: twelve })))), "12 of 12 not-run: the list of why is still there");
+  // The header, were there anything under it, is scoped too.
+  ok(/in the clauses that ran/.test(summaryOf(view(runOf("rules_ready", { coverage: [], findings: ordinary }))) ?? ""), "no coverage: a header over findings is scoped to the clauses that ran");
+  // A run in which something did run keeps the old wording.
+  ok(!NOTHING.test(text(view(runOf("rules_ready", { coverage: [...twelve, { clauseId: "x", section: 1, status: "ran" }] })))), "one clause ran: it is not 'nothing was checked'");
 });
 
 await group("order and tone: an ordinary study is not an alarm", () => {
@@ -572,6 +608,14 @@ await group("client module", async () => {
       new Response(JSON.stringify({ status: "rules_ready", runId: RUN, revision: 3, coverage: { oops: 1 }, findings: null }), { status: 200 });
     const odd = await lib.fetchProofread("proj-1");
     ok(odd.runId === RUN && Array.isArray(odd.coverage) && odd.coverage.length === 0 && odd.findings.length === 0, "fetchProofread carries the run's uuid and never hands the panel a non-array");
+    // Rendered inside a try so that a run the panel cannot read fails THIS line instead of ending the group.
+    let rendered = "(the panel threw)";
+    try {
+      rendered = text(view(odd));
+    } catch (e) {
+      rendered = `(the panel threw: ${e instanceof Error ? e.message : e})`;
+    }
+    ok(/No clause could run on this study, so nothing was checked\./.test(rendered) && !/Nothing flagged/.test(rendered), "a finished run the server sent with no usable coverage renders as nothing checked, end to end");
   } finally {
     globalThis.fetch = realFetch;
   }
@@ -583,6 +627,14 @@ await group("wiring", () => {
   ok(/await requestProofread\(projectId\);\s*setError\(null\);\s*setNonce\(/.test(panel), "WIRING: a successful re-run request bumps the nonce");
   ok(/recordDisposition\(projectId, run\.runId, f\.id, body\)/.test(panel) && !/recordDisposition\([^)]*revision/.test(panel), "WIRING: a decision is recorded against the run's uuid, not its revision");
   ok(/dispositionBody\(/.test(panel), "WIRING: the panel builds the decision body with dispositionBody");
+  ok(
+    /await recordDisposition\(projectId, run\.runId, f\.id, body\);[\s\S]*?setNonce\(/.test(panel) && !/setRun\(await fetchProofread/.test(panel),
+    "WIRING: a recorded decision refetches through the effect (setNonce), not a one-off fetch that bypasses the poll and its cancellation",
+  );
+  ok(
+    /await recordDisposition\([^;]*;[\s\S]*?setRun\(\(prev\) => \(prev && prev\.runId === run\.runId \? \{ \.\.\.prev, dispositions: \[recorded, \.\.\.prev\.dispositions\] \} : prev\)\);[\s\S]*?setNonce\(/.test(panel),
+    "WIRING: a recorded decision is shown at once, on this run only, before the refetch (two presses in the window before it landed both reached the server)",
+  );
   ok(/offeredFor\(f\.type\)/.test(panel) && /latestDisposition\(run\.dispositions, f\.id\)/.test(panel) && /closes\(f\.type,/.test(panel), "WIRING: the card reads offeredFor, latestDisposition and closes from the client module, not a table of its own");
   ok(!/BUG_FILED|Bug filed|DISPOSITIONS/.test(panel), "WIRING: the panel holds no decision table of its own and never names BUG_FILED");
   ok(
