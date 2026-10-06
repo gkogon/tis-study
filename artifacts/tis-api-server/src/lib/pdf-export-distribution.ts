@@ -253,7 +253,10 @@ function fmtNum(n: any, decimals: number = 0): string {
 // ---- table: VERBATIM from pdf-export.ts:8881 ----
 function table(doc: PDFKit.PDFDocument, spec: TableSpec) {
   if (!isDefaultTheme()) { themed.table(doc, spec); return; }
-  const { headers, widths, rows: dataRows } = spec;
+  // Callers hard-code widths; shrink them to the text block when they exceed
+  // it (the zone worksheet was 525 pt on a 512 pt block).
+  const widths = themed.scaleWidths(spec.widths, doc.page.width - pageMargin() * 2);
+  const { headers, rows: dataRows } = spec;
   const align = spec.align ?? headers.map(() => "left" as const);
   const startX = pageMargin();
   const totalW = widths.reduce((s, w) => s + w, 0);

@@ -189,6 +189,21 @@ export type NysdotRegion = {
  */
 // Exported for scripts/verify-long-island-coverage.mjs — the Queens/Nassau
 // line is asserted against the real implementation, not a copy of the rule.
+
+/**
+ * A body paragraph that moves to the next page whole instead of splitting.
+ * The §4.0 crash narrative closes the report body and Appendix A forces a
+ * new page after it, so a split stranded its last line or two alone on a
+ * page ("or SIMS. Required NYSDOT forms …"). Local per this file's
+ * no-cross-file-coupling rule.
+ */
+function wholeParagraph(doc: PDFKit.PDFDocument, text: string): void {
+  doc.font("body").fontSize(10).fillColor("black");
+  const w = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  if (doc.y + doc.heightOfString(text, { width: w, paragraphGap: 6 }) > doc.page.height - doc.page.margins.bottom) doc.addPage();
+  doc.text(text, { paragraphGap: 6 });
+}
+
 export function nysdotRegion(lat: number, lon: number, region: Region): NysdotRegion {
   const code = region.code;
   if (code === "buffalo_metro") return { num: 5, label: "Region 5 — Buffalo / Western New York", planningGroup: "GBNRTC (Greater Buffalo-Niagara Regional Transportation Council)" };
@@ -1073,14 +1088,12 @@ export function renderTisNewYork(
     });
 
     doc.moveDown(0.3);
-    doc.font("body").fontSize(10).fillColor("black").text(
+    wholeParagraph(doc,
       `Within ${crashSummary.countyName} County over the rolling 3-year window, ${fmtNum(crashSummary.totalAccidents)} crashes were reported to NY DMV (${fmtNum(crashSummary.fatalAccidents)} fatal, ${fmtNum(totalInjurious)} injury-involved, ${fmtNum(crashSummary.propertyDamageAccidents)} property damage only). The Fatal share is ${fatalPctAnnual.toFixed(3)}% of all reported crashes (annualized). For the Safety Screening per HDM Chapter 5 §5.3.4, the project-specific rate must be normalized against the controlling facility's exposure (segment AADT × segment length; intersection AADT × entry-flow) for comparison to NYSDOT Office of Modal Safety statewide averages and the 1.5× HAL trigger. County-totals above provide a county-baseline reference only — site-radius (1/4-mile typical) crash records, HAL / PIL / SDL flags, and CMF / CRF mitigation values must be obtained from the ${nyRegion.label} Regional Traffic Office via FOIL or SIMS. Required NYSDOT forms when the §4.0 section is expanded for formal submittal: TE-156a (Collision Diagram), TE-164a (Safety Benefits Evaluation), TE-204a (Accident Rate Summary), TE-213 (HAL / PIL / SDL Screening Output).`,
-      { paragraphGap: 6 },
     );
   } else {
-    doc.font("body").fontSize(10).fillColor("black").text(
+    wholeParagraph(doc,
       `A minimum three-year accident history review was performed for the period ${crashStartLabel} to ${crashEndLabel} per HDM Chapter 5 §5.3.4. Auto-ingest from the New York State Police 3-year Crash Case Information dataset (data.ny.gov / e8ky-4vqe) was attempted but did not return county-level totals — either the project site's county could not be resolved via the NYSDOT RDM FeatureServer, or the SODA endpoint is unavailable. Refer to ${nyRegion.label} Regional Traffic Office for SIMS output documentation; the Safety Screening criteria from HDM Chapter 5 §5.3.4 (overall accident rate vs. 1.5× statewide average for comparable facility; HAL / PIL / SDL pattern flags; Fatal / Injury / Fatal+Injury rates not above average; addressed PIL list status; Fixed Object, Run-Off Road, and Wet-Road PIL list status) must be applied manually for this project.`,
-      { paragraphGap: 6 },
     );
   }
 
