@@ -57,6 +57,26 @@ const ok = (cond, msg, why) => {
   }
 };
 
+// The code is read with TypeScript's own parser, not with regexes. Two rounds of
+// review showed a line-anchored regex parser can always be walked around by a
+// spelling it did not anticipate (a block comment ahead of an import, single
+// quotes, two statements on a line, an indented import, no whitespace at all,
+// an ES2022 string-literal import name, a regex literal ending in `//` that a
+// hand-rolled comment stripper takes for a comment), and TypeScript compiles
+// every one of them. `typescript` is a root devDependency, so it resolves from
+// this directory under plain node after `pnpm install`, like zod does below.
+let ts = null;
+try {
+  ts = (await import("typescript")).default;
+} catch {
+  ts = null;
+}
+ok(ts !== null && typeof ts.createSourceFile === "function", "precondition: typescript resolves from scripts/ under plain node, so imports and comments are read from the AST rather than by regex");
+if (ts === null) {
+  console.log("\n1 CHECK(S) FAILED");
+  process.exit(1);
+}
+
 const ZOD_SRC = "../../../lib/tis-api-zod/src";
 
 /** Every name exported by any other module under lib/tis-api-zod/src, for the collision check. */
@@ -134,45 +154,44 @@ ok(sources.otherNames.length > 20, "precondition: the collision check can see th
 // slice would satisfy every negative assertion in this file.
 // ---------------------------------------------------------------------------
 
-/** Drop // and block comments, leaving string and template literals intact. */
-function stripComments(src) {
-  let out = "";
-  let i = 0;
-  let q = null;
-  while (i < src.length) {
-    const c = src[i];
-    const n = src[i + 1];
-    if (q) {
-      out += c;
-      if (c === "\\") {
-        out += n ?? "";
-        i += 2;
-        continue;
-      }
-      if (c === q) q = null;
-      i++;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") {
-      q = c;
-      out += c;
-      i++;
-      continue;
-    }
-    if (c === "/" && n === "/") {
-      while (i < src.length && src[i] !== "\n") i++;
-      continue;
-    }
-    if (c === "/" && n === "*") {
-      i += 2;
-      while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++;
-      i += 2;
-      continue;
-    }
-    out += c;
-    i++;
+/** The parsed form of a source text, cached: the teeth pass parses each mutated text once, not once per check. */
+const parsedTexts = new Map();
+function parse(text) {
+  let sf = parsedTexts.get(text);
+  if (!sf) {
+    sf = ts.createSourceFile("guarded.ts", text, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
+    parsedTexts.set(text, sf);
   }
-  return out;
+  return sf;
+}
+
+/**
+ * Drop // and block comments, leaving string, template and regex literals
+ * intact. The comment ranges come from the parser, so `/\//; await import("x")`
+ * keeps its import (the hand-rolled stripper this replaces read the `//` inside
+ * the regex as the start of a comment and deleted the rest of the line). On
+ * every file this guard reads it returns exactly what that stripper did.
+ */
+function stripComments(src) {
+  const sf = parse(src);
+  const ranges = new Map();
+  const add = (rs) => {
+    for (const r of rs ?? []) ranges.set(r.pos, r.end);
+  };
+  const visit = (node) => {
+    add(ts.getLeadingCommentRanges(src, node.getFullStart()));
+    add(ts.getTrailingCommentRanges(src, node.getEnd()));
+    for (const c of node.getChildren(sf)) if (!ts.isJSDoc(c)) visit(c);
+  };
+  visit(sf);
+  let out = "";
+  let at = 0;
+  for (const [pos, end] of [...ranges].sort((a, b) => a[0] - b[0])) {
+    if (pos < at) continue;
+    out += src.slice(at, pos);
+    at = end;
+  }
+  return out + src.slice(at);
 }
 
 /**
@@ -256,37 +275,66 @@ const runSeg = (d) => routeBy(d.routes, "post", P_RUN);
 const dispSeg = (d) => routeBy(d.routes, "post", P_DISP);
 
 /**
- * Every way a file can reach another module, as { module: [names...] }.
+ * Every way a file can reach another module, as { module: [names...] }, read
+ * from the AST so no spelling (quotes, comments, spacing, one-line, indented,
+ * CRLF, attributes) changes what is seen.
  *
- * An import whitelist is only as good as its parser, and the forms a naive one
- * misses are exactly the ones that evade it, so the ones a named-import list
- * cannot express are surfaced as pseudo-names that no whitelist contains:
- *   import "x"            -> "<side-effect import>" under x
- *   export ... from "x"   -> "<re-export>" under x
- *   import("x")           -> "<dynamic import>" under "<dynamic import>"
- *   require("x")          -> "<require>" under "<require>"
- * The clause of a named import may not contain a quote or a semicolon, so one
- * statement can never swallow the next, and the trailing semicolon is optional
- * (ASI makes a semicolon-less import legal).
+ * Names are the IMPORTED names, not the local aliases, with `type ` in front of
+ * a type-only one (a statement-level `import type` or an inline `type` marker):
+ * `import { "setProjectTheme" as sp }` is `setProjectTheme`. The forms a list of
+ * names cannot express are surfaced as pseudo-names that no whitelist contains:
+ *   import "x" / import {} from "x"  -> <side-effect import> / (no names) under x
+ *   import * as ns from "x"          -> <namespace import>
+ *   export ... from "x"              -> <re-export> under x
+ *   import x = require("x")          -> <import = require> under x
+ *   import("x") / typeof import("x") -> <dynamic import> / <import type> under x
+ *   require("x") / module.require    -> <require> under x
+ *   a non-literal specifier          -> the pseudo-name itself is the module
+ *   eval / Function / require used any other way -> <eval> / <require>
+ * It is a tripwire for reaching a write through the module graph by ordinary
+ * means, not a sandbox: code that builds a specifier at run time can only be
+ * seen as "<dynamic import>", which no whitelist allows.
  */
-function importsOf(src) {
+function importsOf(text) {
+  const sf = parse(text);
   const out = {};
   const add = (mod, names) => {
     out[mod] = [...(out[mod] ?? []), ...names];
   };
-  for (const m of src.matchAll(/^import\s+(type\s+)?([^;"']*?)\s+from\s+"([^"]+)"/gm)) {
-    const names = [];
-    const spec = m[2];
-    const brace = /\{([^}]*)\}/.exec(spec);
-    const dflt = spec.replace(/\{[^}]*\}/, "").replace(/,/g, "").trim();
-    if (dflt) names.push(`${m[1] ? "type " : ""}${dflt}`);
-    if (brace) for (const part of brace[1].split(",")) if (part.trim()) names.push(`${m[1] ? "type " : ""}${part.trim()}`);
-    add(m[3], names);
-  }
-  for (const m of src.matchAll(/^import\s+"([^"]+)"/gm)) add(m[1], ["<side-effect import>"]);
-  for (const m of src.matchAll(/^export\s+(?:type\s+)?(?:\*(?:\s+as\s+\w+)?|\{[^}]*\})\s+from\s+"([^"]+)"/gm)) add(m[1], ["<re-export>"]);
-  for (const m of src.matchAll(/\bimport\s*\(/g)) add("<dynamic import>", ["<dynamic import>"]);
-  for (const m of src.matchAll(/\brequire\s*\(/g)) add("<require>", ["<require>"]);
+  const lit = (e) => (e && (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) ? e.text : null);
+  const visit = (n) => {
+    if (ts.isImportDeclaration(n)) {
+      const mod = lit(n.moduleSpecifier) ?? "<computed specifier>";
+      const c = n.importClause;
+      if (!c) add(mod, ["<side-effect import>"]);
+      else {
+        const names = [];
+        const t = c.isTypeOnly ? "type " : "";
+        if (c.name) names.push(t + c.name.text);
+        const nb = c.namedBindings;
+        if (nb && ts.isNamespaceImport(nb)) names.push("<namespace import>");
+        if (nb && ts.isNamedImports(nb)) for (const e of nb.elements) names.push((c.isTypeOnly || e.isTypeOnly ? "type " : "") + (e.propertyName ?? e.name).text);
+        add(mod, names);
+      }
+    } else if (ts.isExportDeclaration(n) && n.moduleSpecifier) {
+      add(lit(n.moduleSpecifier) ?? "<computed specifier>", ["<re-export>"]);
+    } else if (ts.isImportEqualsDeclaration(n) && ts.isExternalModuleReference(n.moduleReference)) {
+      add(lit(n.moduleReference.expression) ?? "<computed specifier>", ["<import = require>"]);
+    } else if (ts.isImportTypeNode(n)) {
+      add(ts.isLiteralTypeNode(n.argument) ? (lit(n.argument.literal) ?? "<computed specifier>") : "<computed specifier>", ["<import type>"]);
+    } else if (ts.isCallExpression(n)) {
+      const e = n.expression;
+      const via = lit(n.arguments[0]);
+      if (e.kind === ts.SyntaxKind.ImportKeyword) add(via ?? "<dynamic import>", ["<dynamic import>"]);
+      else if (ts.isPropertyAccessExpression(e) && e.name.text === "require") add(via ?? "<require>", ["<require>"]);
+    }
+    if (ts.isIdentifier(n)) {
+      if (n.text === "require") add("<require>", ["<require>"]);
+      else if (n.text === "eval" || n.text === "Function") add("<eval>", ["<eval>"]);
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
   return out;
 }
 
@@ -408,6 +456,7 @@ const FIRM_LOOKUP = "getOrCreateFirmForUser(user.id, { email: user.email, firstN
 const derive = (s) => {
   const contract = stripComments(s.contract);
   return {
+    src: s,
     routes: stripComments(s.routes),
     routesIndex: stripComments(s.routesIndex),
     security: stripComments(s.security),
@@ -436,6 +485,57 @@ const windowOf = (block) => {
 const storePrefixOf = (block) => /makeRateLimitStore\("([^"]+)"\)/.exec(block)?.[1] ?? "";
 
 const parseBody = (d, v) => d.mod.ProofreadDispositionBody.safeParse(v);
+
+// The spellings of "a way into another module" that a regex parser let through.
+// [description, source text, true when it must sit on the SAME line as the logger import]
+const EVASIONS = [
+  ["a block comment ahead of the import, on the same line", '/* import */ import { setProjectTheme } from "./tis-projects";'],
+  ["a single-quoted specifier", "import { setProjectTheme } from './tis-projects';"],
+  ["a second import on the same line as another statement", 'import { setProjectTheme } from "./tis-projects";', true],
+  ["an import indented with spaces", '    import { setProjectTheme } from "./tis-projects";'],
+  ["an import indented with a tab", '\timport { setProjectTheme } from "./tis-projects";'],
+  ["no whitespace around the braces", 'import{setProjectTheme}from"./tis-projects";'],
+  ["no space before from", 'import { setProjectTheme }from "./tis-projects";'],
+  ["a namespace import with no whitespace", 'import*as tp from "./tis-projects";'],
+  ["a single-quoted re-export", "export { setProjectTheme } from './tis-projects';"],
+  ["a single-quoted side-effect import", "import './tis-projects';"],
+  ["an ES2022 string-literal import name", 'import { "setProjectTheme" as sp } from "./tis-projects";'],
+  ["an aliased import", 'import { setProjectTheme as logger2 } from "./tis-projects";'],
+  ["a default import", 'import projectsModule from "./tis-projects";'],
+  ["a namespace import", 'import * as projects from "./tis-projects";'],
+  ["an import = require", 'import projects = require("./tis-projects");'],
+  ["import attributes", 'import { setProjectTheme } from "./tis-projects" with { type: "json" };'],
+  ["a multi-line import", 'import {\n  setProjectTheme,\n} from "./tis-projects";'],
+  ["a multi-line import with CRLF line endings", 'import {\r\n  setProjectTheme,\r\n} from "./tis-projects";\r'],
+  ["an export * from an allowed module", 'export * from "./logger";'],
+  ["a forbidden name added to an allowed module's import", 'import { setProjectTheme } from "./logger";'],
+];
+
+// The parser itself, against the strings it must read the same way however they
+// are spelled, and the ones it must ignore.
+{
+  const P = (text) => importsOf(text);
+  const eq = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
+  const target = { "./tis-projects": ["setProjectTheme"] };
+  const spelled = [
+    '/* import */ import { setProjectTheme } from "./tis-projects";',
+    "import { setProjectTheme } from './tis-projects';",
+    'import { "setProjectTheme" as sp } from "./tis-projects";',
+    'import{setProjectTheme}from"./tis-projects";',
+    '    import { setProjectTheme } from "./tis-projects";',
+    '\timport { setProjectTheme } from "./tis-projects";',
+    'import {\r\n  setProjectTheme as x,\r\n} from "./tis-projects";\r\n',
+    'import { type A } from "./a";\nconst a = 1; import { setProjectTheme } from "./tis-projects";',
+  ];
+  ok(
+    spelled.every((t) => P(t)["./tis-projects"]?.includes("setProjectTheme")),
+    "the import parser finds setProjectTheme in all of: after a block comment, single-quoted, as a string-literal name, with no whitespace, indented with spaces and with a tab, CRLF and aliased, and after another statement on the same line",
+  );
+  ok(eq(P('// import { x } from "y";\n/* import { z } from "w"; */\nconst s = "import { a } from \'b\'";'), {}), "the import parser ignores a commented-out import and the text of an import inside a string");
+  ok(P('const rx = /\\//; await import("./tis-projects");')["./tis-projects"]?.[0] === "<dynamic import>", "the import parser sees an import() that follows a regex literal ending in // on the same line (the old comment stripper deleted it)");
+  ok(eq(P('import { a } from "m";'), { m: ["a"] }) && eq(P('import type { a } from "m";'), { m: ["type a"] }) && eq(P('import { type a, b } from "m";'), { m: ["type a", "b"] }), "the import parser reads the names that were imported, with `type ` on type-only ones");
+  void target;
+}
 
 // ---------------------------------------------------------------------------
 // The checks. `on` is the file the check is ABOUT: the file whose breakage it
@@ -608,6 +708,9 @@ const CHECKS = [
           isConflict({ code: "23505", constraint: `${K}_x` }) === false &&
           isConflict({ code: "23505", constraint: `x${K}` }) === false &&
           isConflict({ code: "23505", constraint: K.slice(0, -1) }) === false &&
+          // A proper SUFFIX too (K.endsWith(String(e.constraint)) accepts it), and the empty name.
+          isConflict({ code: "23505", constraint: K.slice(1) }) === false &&
+          isConflict({ code: "23505", constraint: "" }) === false &&
           isConflict({ cause: { code: "23505" } }) === false &&
           isConflict({ code: "23503", constraint: K }) === false &&
           isConflict(new Error("x")) === false &&
@@ -779,7 +882,7 @@ const CHECKS = [
         "../lib/proofread-run": ["claimAndRunOne", "enqueueProofread"],
         "../lib/proofread-store": ["findingAudienceForFirm", "findingInFirmRun", "insertDisposition", "latestRunForProject"],
       };
-      return importsEqual(importsOf(d.routes), want);
+      return importsEqual(importsOf(d.src.routes), want);
     },
   },
   {
@@ -918,8 +1021,8 @@ const CHECKS = [
   {
     id: "store-import-whitelist",
     on: "store",
-    msg: "the store imports exactly the modules AND NAMES it needs (drizzle's six helpers; db, the three proofread tables, tisProjectsTable and the StudyProofreadRun type from @workspace/db; the logger; the two pure proofread/ modules) with no re-export, side-effect import, dynamic import or require — the scans of the store's own text cannot see a study write reached through another module, and `import { setProjectTheme } from \"./tis-projects\"` left every one of them green",
-    test: (d) => d.store.length > 0 && importsEqual(importsOf(d.store), STORE_IMPORTS),
+    msg: "the store imports exactly the modules AND NAMES it needs (drizzle's six helpers; db, the three proofread tables, tisProjectsTable and the StudyProofreadRun type from @workspace/db; the logger; the two pure proofread/ modules) in whatever spelling (read from the TypeScript AST: quotes, comments, spacing, indentation, one line or many, aliases, string-literal names), with no re-export, side-effect import, dynamic import or require — the scans of the store's own text cannot see a study write reached through another module, and `import { setProjectTheme } from \"./tis-projects\"` left every one of them green",
+    test: (d) => d.store.length > 0 && importsEqual(importsOf(d.src.store), STORE_IMPORTS),
   },
   {
     id: "store-writes-only-proofread-tables",
@@ -1020,8 +1123,8 @@ const CHECKS = [
   {
     id: "runner-import-whitelist",
     on: "runner",
-    msg: "the runner imports exactly the modules AND NAMES it needs (node:fs, node:path, the type-only StudyProofreadRun, the logger, the two pure proofread/ modules and the six store functions) with no re-export, side-effect import, dynamic import or require — so it reaches the database only through the store, and `import { setProjectTheme } from \"./tis-projects\"` called after the clause pass (which compiled and left every other guard green while rewriting a tis_projects row) fails here",
-    test: (d) => d.runner.length > 0 && importsEqual(importsOf(d.runner), RUNNER_IMPORTS),
+    msg: "the runner imports exactly the modules AND NAMES it needs (node:fs, node:path, the type-only StudyProofreadRun, the logger, the two pure proofread/ modules and the six store functions) in whatever spelling (read from the TypeScript AST), with no re-export, side-effect import, dynamic import or require — so it reaches the database only through the store, and `import { setProjectTheme } from \"./tis-projects\"` called after the clause pass (which compiled and left every other guard green while rewriting a tis_projects row) fails here",
+    test: (d) => d.runner.length > 0 && importsEqual(importsOf(d.src.runner), RUNNER_IMPORTS),
   },
   {
     id: "proofread-dir-imports-whitelist",
@@ -1032,7 +1135,7 @@ const CHECKS = [
       return (
         files.length >= 8 &&
         files.every((f) =>
-          Object.entries(importsOf(d.clauseDir[f])).every(([mod, names]) => {
+          Object.entries(importsOf(d.src.clauseDir[f])).every(([mod, names]) => {
             if (mod.startsWith("<")) return false;
             if (/^\.\/[\w-]+\.ts$/.test(mod)) return files.includes(mod.slice(2));
             if (mod === "@workspace/tis-engine-core") return true;
@@ -1449,6 +1552,12 @@ const MUTATIONS = [
     file: "routes",
     flips: ["revision-conflict-helper"],
     apply: edit("routes", "e.constraint === REVISION_KEY", "String(e.constraint).includes(REVISION_KEY)"),
+  },
+  {
+    label: "accept a suffix of the real constraint name (endsWith, which no prefix or superstring negative can see)",
+    file: "routes",
+    flips: ["revision-conflict-helper"],
+    apply: edit("routes", "e.constraint === REVISION_KEY", "REVISION_KEY.endsWith(String(e.constraint))"),
   },
   {
     label: "accept a prefix of the real constraint name",
@@ -2077,6 +2186,56 @@ const MUTATIONS = [
     file: "runner",
     flips: ["runner-import-whitelist"],
     apply: edit("runner", 'import { logger } from "./logger";', 'import { logger } from "./logger";\nimport projectsModule from "./tis-projects";'),
+  },
+  // One mutation per spelling of a way into another module, on the REAL store and the
+  // REAL runner. Every one compiles under TypeScript 5.9; a line-anchored regex parser
+  // passed each of them.
+  ...EVASIONS.flatMap(([what, text, sameLine]) =>
+    [
+      ["store", "store-import-whitelist"],
+      ["runner", "runner-import-whitelist"],
+    ].map(([file, check]) => ({
+      label: `${file} imports a forbidden module through ${what}`,
+      file,
+      flips: [check],
+      apply: edit(file, 'import { logger } from "./logger";', `import { logger } from "./logger";${sameLine ? " " : "\n"}${text}`),
+    })),
+  ),
+  {
+    label: "store: a regex literal ending in // on the same line as await import(...) (the hand-rolled comment stripper deleted the rest of that line)",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: edit("store", "  if (args.findings.length === 0) return;", '  const rx = /\\//; await import("./tis-projects");\n  if (args.findings.length === 0) return;'),
+  },
+  {
+    label: "runner: a regex literal ending in // on the same line as await import(...)",
+    file: "runner",
+    flips: ["runner-import-whitelist"],
+    apply: edit("runner", "    const rec: StudyRecord", '    const rx = /\\//; await import("./tis-projects");\n    const rec: StudyRecord'),
+  },
+  {
+    label: "store: a typeof import(...) type query naming another module",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: edit("store", 'import { logger } from "./logger";', 'import { logger } from "./logger";\ntype Projects = typeof import("./tis-projects");'),
+  },
+  {
+    label: "runner: module.require(...)",
+    file: "runner",
+    flips: ["runner-import-whitelist"],
+    apply: edit("runner", "    const rec: StudyRecord", '    module.require("./tis-projects");\n    const rec: StudyRecord'),
+  },
+  {
+    label: "runner: eval of an import",
+    file: "runner",
+    flips: ["runner-import-whitelist"],
+    apply: edit("runner", "    const rec: StudyRecord", '    await eval(\'import("./tis-projects")\');\n    const rec: StudyRecord'),
+  },
+  {
+    label: "a clause file imports the database with single quotes",
+    file: "clauseDir",
+    flips: ["proofread-dir-imports-whitelist"],
+    apply: editDir("s1-inputs.ts", 'import { isGrowthOverride } from "@workspace/tis-engine-core";', "import { isGrowthOverride } from \"@workspace/tis-engine-core\";\n/* x */ import { db } from '@workspace/db';"),
   },
   {
     label: "a clause file imports the database",
