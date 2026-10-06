@@ -1227,22 +1227,36 @@ function renderTisState(
 
   const tbl = (headers: string[], widths: number[], aligns: string[], dataRows: string[][]) => {
     if (!isDefaultTheme()) { themed.table(doc, { headers, widths, align: aligns as Array<"left" | "right" | "center">, rows: dataRows }); return; }
-    const rowH = 16, headerH = 18, startX = pageMargin();
-    const drawRow = (cells: string[], y: number, isHeader: boolean) => {
+    const startX = pageMargin();
+    // Columns wider than the text block ran off the page ("Q95 (f", "1,19"):
+    // scale them down to fit rather than trusting every caller's arithmetic.
+    const usableW = doc.page.width - pageMargin() * 2;
+    const givenW = widths.reduce((s, w) => s + w, 0);
+    const colW = givenW > usableW ? widths.map((w) => (w * usableW) / givenW) : widths;
+    const tableW = colW.reduce((s, w) => s + w, 0);
+    // Each row is as tall as its tallest cell. A fixed 16 pt row let a name
+    // that wrapped to a second line print over the row below.
+    const heightOf = (cells: string[], isHeader: boolean, pad: number, min: number) => {
+      doc.font(isHeader ? "bold" : "body").fontSize(9);
+      return Math.max(min, ...cells.map((c, i) => doc.heightOfString(c ?? "", { width: (colW[i] ?? 60) - 8 }) + pad));
+    };
+    const drawRow = (cells: string[], y: number, isHeader: boolean, h: number) => {
       let x = startX;
-      if (isHeader) doc.rect(startX, y, widths.reduce((s, w) => s + w, 0), headerH).fill("#f3f4f6");
+      if (isHeader) doc.rect(startX, y, tableW, h).fill("#f3f4f6");
       for (let i = 0; i < cells.length; i++) {
         doc.font(isHeader ? "bold" : "body").fontSize(9).fillColor("black")
-          .text(cells[i] ?? "", x + 4, y + (isHeader ? 5 : 3), { width: (widths[i] ?? 60) - 8, align: (aligns[i] as any) ?? "left", lineBreak: false, ellipsis: true });
-        x += widths[i] ?? 60;
+          .text(cells[i] ?? "", x + 4, y + (isHeader ? 5 : 3), { width: (colW[i] ?? 60) - 8, align: (aligns[i] as any) ?? "left" });
+        x += colW[i] ?? 60;
       }
     };
+    const headerH = heightOf(headers, true, 8, 18);
     let y = doc.y;
-    drawRow(headers, y, true); y += headerH;
+    drawRow(headers, y, true, headerH); y += headerH;
     for (const row of dataRows) {
-      if (y + rowH > doc.page.height - pageMargin() - 40) { doc.addPage(); y = doc.y; drawRow(headers, y, true); y += headerH; }
-      drawRow(row, y, false);
-      doc.strokeColor("#e5e7eb").lineWidth(0.5).moveTo(startX, y + rowH).lineTo(startX + widths.reduce((s, w) => s + w, 0), y + rowH).stroke();
+      const rowH = heightOf(row, false, 6, 16);
+      if (y + rowH > doc.page.height - pageMargin() - 40) { doc.addPage(); y = doc.y; drawRow(headers, y, true, headerH); y += headerH; }
+      drawRow(row, y, false, rowH);
+      doc.strokeColor("#e5e7eb").lineWidth(0.5).moveTo(startX, y + rowH).lineTo(startX + tableW, y + rowH).stroke();
       y += rowH;
     }
     doc.y = y + 4; doc.x = pageMargin();
@@ -1504,7 +1518,7 @@ function renderTisState(
     stateSub("8.1 Intersection Level of Service — Three-Scenario Summary");
     tbl(
       ["Intersection", "Ctrl", "Dist (mi)", "Trips", "Exist LOS", "No-Bld LOS", "Build LOS", "Δ delay (s)", "Q95 (ft)"],
-      [145, 45, 50, 40, 60, 60, 60, 60, 55],
+      [170, 32, 40, 38, 44, 44, 44, 50, 50],
       ["left", "left", "right", "right", "center", "center", "center", "right", "right"],
       intersections.map((it: any) => [
         it.name ?? it.signalId ?? "—",
