@@ -117,10 +117,74 @@ export function orderFindings(findings: ProofreadFindingT[]): ProofreadFindingT[
   return [...findings].sort((a, b) => rankOf(a.type) - rankOf(b.type));
 }
 
+/** What the server records. */
+export type Disposition = "FIXED" | "DISCLOSED" | "WITHDRAWN" | "BUG_FILED" | "ACCEPTED_RISK" | "CONTESTED_PE";
+
+/**
+ * What an engineer can record in phase 1. BUG_FILED is a DEFECT's decision and a
+ * DEFECT is admin-audience, filtered out before it reaches the panel; ACCEPTED_RISK
+ * and CONTESTED_PE belong to the sealing engineer, a role that does not exist yet
+ * (the server refuses both). The type keeps all three out of the table below.
+ */
+export type EngineerDisposition = Exclude<Disposition, "BUG_FILED" | "ACCEPTED_RISK" | "CONTESTED_PE">;
+
+/**
+ * The single statement of which decisions a finding may be given, and so of
+ * which decisions close it. What the card offers and what the header counts as
+ * closed are both read from here (`offeredFor`, `closes`), so they cannot drift:
+ * a decision is offered on a type if and only if it resolves that type.
+ *
+ * TIS-PROOFREAD-PROTOCOL.md, Logging: a BLOCKER is a wrong number, a wrong source
+ * or a missing input, and disclosing a wrong number does not make it right, so
+ * only FIXED (the study changed) or WITHDRAWN (on a named source) closes one.
+ * A CONTESTED item blocks completion until the sealing engineer rules, so in
+ * phase 1 nothing closes it. A DISCLOSE is closed by the language it asks for.
+ *
+ * Client-only: the route accepts any decision on any type. Nothing server-side
+ * reads dispositions to gate anything until the seal gate lands.
+ */
+export const OFFERED: Record<ProofreadFindingT["type"], EngineerDisposition[]> = {
+  BLOCKER: ["FIXED", "WITHDRAWN"],
+  DISCLOSE: ["DISCLOSED", "FIXED", "WITHDRAWN"],
+  NOTE: ["DISCLOSED", "FIXED", "WITHDRAWN"],
+  UNVERIFIED: ["DISCLOSED", "FIXED", "WITHDRAWN"],
+  CONTESTED: [],
+  DEFECT: [],
+};
+
+/**
+ * What a finding is offered. A type this client does not know gets the strictest
+ * set (a BLOCKER's): it is neither left with no way to be resolved nor offered
+ * the loose resolutions that would let it read as closed on a disclosure.
+ */
+export function offeredFor(type: string): EngineerDisposition[] {
+  return (OFFERED as Record<string, EngineerDisposition[] | undefined>)[type] ?? OFFERED.BLOCKER;
+}
+
+/** Whether recording `disposition` on a finding of this type resolves it. */
+export function closes(type: string, disposition: string | null | undefined): boolean {
+  return !!disposition && (offeredFor(type) as string[]).includes(disposition);
+}
+
+/** The newest decision recorded on a finding, by time, not by position in the list. */
+export function latestDisposition(dispositions: DispositionT[], findingId: string): DispositionT | undefined {
+  let latest: DispositionT | undefined;
+  let at = -Infinity;
+  for (const d of dispositions) {
+    if (d.findingId !== findingId) continue;
+    const t = Date.parse(d.createdAt);
+    if (latest === undefined || (Number.isFinite(t) ? t : -Infinity) > at) {
+      latest = d;
+      at = Number.isFinite(t) ? t : -Infinity;
+    }
+  }
+  return latest;
+}
+
 export type OpenSummary = {
   /** Every finding on the run. */
   total: number;
-  /** Findings with no recorded decision. */
+  /** Findings no recorded decision has resolved: none recorded, or one that does not close that type. */
   open: number;
   /** Open BLOCKER, CONTESTED and DEFECT — the ones the protocol's completion gate turns on. */
   holds: number;
@@ -129,12 +193,11 @@ export type OpenSummary = {
   unverified: number;
 };
 
-/** Counts the findings that still have no recorded decision, by how much they weigh. */
+/** Counts the findings still open, by how much they weigh. Open means the latest decision does not close that type. */
 export function summarizeOpen(findings: ProofreadFindingT[], dispositions: DispositionT[]): OpenSummary {
-  const decided = new Set(dispositions.map((d) => d.findingId));
   const s: OpenSummary = { total: findings.length, open: 0, holds: 0, disclose: 0, note: 0, unverified: 0 };
   for (const f of findings) {
-    if (decided.has(f.id)) continue;
+    if (closes(f.type, latestDisposition(dispositions, f.id)?.disposition)) continue;
     s.open++;
     if (rankOf(f.type) === 0) s.holds++;
     else if (f.type === "DISCLOSE") s.disclose++;

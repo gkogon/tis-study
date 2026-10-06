@@ -15,7 +15,7 @@
  *  2. BEHAVIOUR (rendered). The panel's claims are not strings: "a study that was
  *     never checked is not clean", "findings appear only for a finished run",
  *     "a clause that judged part of the record says so", "an ordinary study is not
- *     presented as an alarm". A scan for `status === "none"` proves the characters
+ *     presented as an alarm", "a disclosed blocker is still open". A scan for `status === "none"` proves the characters
  *     exist, not that the branch runs before the empty-findings one. So the panel is
  *     bundled with the repo's own esbuild, ProofreadView is rendered with
  *     react-dom/server for each status, and the assertions read what a user would
@@ -242,7 +242,8 @@ await group("findings only for a finished run", () => {
     const expected = FINISHED.includes(status) ? 2 : 0;
     ok(shown === expected, `${status}: renders ${expected} of 2 stored findings (rendered ${shown})`);
     const triage = buttons(html).filter((b) => b.testid?.startsWith("button-disposition-")).length;
-    ok(triage === (expected ? 8 : 0), `${status}: ${expected ? "offers" : "offers no"} triage controls (${triage} buttons)`);
+    // A DISCLOSE and a NOTE are each offered three decisions.
+    ok(triage === (expected ? 6 : 0), `${status}: ${expected ? "offers" : "offers no"} triage controls (${triage} buttons)`);
   }
   for (const status of PENDING) {
     const t = text(view(runOf(status, { findings: withFindings })));
@@ -365,8 +366,8 @@ await group("what each finding reads, and the only controls", () => {
   ok(/result\.rows\[5\]\.delay = 300/.test(t) && !/result\.rows\[6\]\.delay/.test(t) && /and 2 more values/.test(t), "a finding shows the first six values it read and counts the rest");
   const labels = buttons(html).map((b) => b.label);
   ok(
-    labels.join("|") === "Run again|Fixed|Disclosed in the deliverable|Withdrawn on a source|Bug filed",
-    `the only controls are re-run and four that record a decision (${labels.join(" | ")})`,
+    labels.join("|") === "Run again|Disclosed in the deliverable|Fixed|Withdrawn on a source",
+    `the only controls on a DISCLOSE are re-run and three that record a decision (${labels.join(" | ")})`,
   );
   ok(!/ACCEPTED_RISK|CONTESTED_PE|accepted risk|sealing/i.test(html), "the panel does not offer the two decisions only the sealing engineer may record");
   ok(!/<a\b|<form\b|<input\b|<select\b|<textarea\b/.test(html), "no link, form or field on the panel: nothing to navigate to or to edit with");
@@ -377,6 +378,103 @@ await group("a finding type this client does not know", () => {
   ok(findingOrder(html).join(",") === "z1,n1", "an unclassified finding is shown, and first — not buried and not a crash");
   ok(/SOMETHING_NEW/.test(text(html)), "an unclassified finding is labelled with its own type");
   ok(/to resolve before/.test(summaryOf(html) ?? ""), "an unclassified finding is counted with what needs a look");
+  ok(
+    buttons(card(html, "z1")).map((b) => b.label).join("|") === "Fixed|Withdrawn on a source",
+    "an unclassified finding is offered the strictest set (what a BLOCKER is offered), not none and not the loosest",
+  );
+});
+
+// ─── what is offered per type, and what closes it ───────────────────────────────────
+// Written out by hand here, deliberately NOT read from the module: this is the claim, the module is the thing under test.
+// Offered and closing are the same list today; they are two tables here so a drift in either is reported on its own.
+const DECISIONS = ["FIXED", "DISCLOSED", "WITHDRAWN", "BUG_FILED", "ACCEPTED_RISK", "CONTESTED_PE"];
+const DECISION_LABEL = { FIXED: "Fixed", DISCLOSED: "Disclosed in the deliverable", WITHDRAWN: "Withdrawn on a source" };
+const OFFERED = {
+  BLOCKER: ["FIXED", "WITHDRAWN"],
+  DISCLOSE: ["DISCLOSED", "FIXED", "WITHDRAWN"],
+  NOTE: ["DISCLOSED", "FIXED", "WITHDRAWN"],
+  UNVERIFIED: ["DISCLOSED", "FIXED", "WITHDRAWN"],
+  CONTESTED: [],
+  DEFECT: [],
+  SOMETHING_NEW: ["FIXED", "WITHDRAWN"],
+};
+const CLOSED_BY = {
+  BLOCKER: ["FIXED", "WITHDRAWN"],
+  DISCLOSE: ["DISCLOSED", "FIXED", "WITHDRAWN"],
+  NOTE: ["DISCLOSED", "FIXED", "WITHDRAWN"],
+  UNVERIFIED: ["DISCLOSED", "FIXED", "WITHDRAWN"],
+  CONTESTED: [],
+  DEFECT: [],
+  SOMETHING_NEW: ["FIXED", "WITHDRAWN"],
+};
+const HOLDING = new Set(["BLOCKER", "CONTESTED", "DEFECT", "SOMETHING_NEW"]);
+const recorded = (id, disposition, createdAt = "2026-10-06T12:00:00Z") => ({ findingId: id, disposition, note: null, sourceLabel: null, createdAt });
+
+await group("decisions offered per finding type", () => {
+  const everyLabel = [];
+  for (const type of Object.keys(OFFERED)) {
+    const html = keep(view(runOf("rules_ready", { findings: [mk("x", type)] })));
+    const labels = buttons(card(html, "x")).map((b) => b.label);
+    everyLabel.push(...labels);
+    ok(
+      labels.join("|") === OFFERED[type].map((d) => DECISION_LABEL[d]).join("|"),
+      `${type}: offered ${OFFERED[type].length ? OFFERED[type].map((d) => DECISION_LABEL[d]).join(", ") : "no decisions"} (got ${labels.join(", ") || "none"})`,
+    );
+  }
+  ok(!everyLabel.some((l) => /bug/i.test(l)), "no finding type is offered 'Bug filed': that is a DEFECT's decision and a DEFECT never reaches an engineer");
+  const all = everyHtml.join("\n");
+  ok(!/button-disposition-(bug_filed|accepted_risk|contested_pe)/.test(all), "no rendered state carries a BUG_FILED, ACCEPTED_RISK or CONTESTED_PE control");
+  const contested = text(card(view(runOf("rules_ready", { findings: [mk("x", "CONTESTED")] })), "x"));
+  ok(/Awaiting the sealing engineer's ruling/.test(contested), "a CONTESTED item says it awaits the sealing engineer's ruling, in place of buttons");
+  ok(!/Awaiting/.test(text(card(view(runOf("rules_ready", { findings: [mk("x", "BLOCKER")] })), "x"))), "only a CONTESTED item says that");
+});
+
+await group("what closes a finding, as the header and the card read it", () => {
+  const bad = [];
+  for (const type of Object.keys(CLOSED_BY)) {
+    const wrong = [];
+    for (const d of [null, ...DECISIONS]) {
+      const closed = d !== null && CLOSED_BY[type].includes(d);
+      const html = view(runOf("rules_ready", { findings: [mk("x", type)], dispositions: d ? [recorded("f-x", d)] : [] }));
+      const s = summaryOf(html) ?? "";
+      const reads = /^Every item has a recorded decision\.$/.test(s)
+        ? "closed"
+        : /^1 open item to resolve before this study is called complete\./.test(s) && summaryRed(html)
+          ? "holds"
+          : /^No open blocker or contested item/.test(s) && !summaryRed(html)
+            ? "open-quiet"
+            : `unreadable(${s})`;
+      const want = closed ? "closed" : HOLDING.has(type) ? "holds" : "open-quiet";
+      if (reads !== want) wrong.push(`${d ?? "no decision"}: header says ${reads}, should say ${want}`);
+      // The card agrees with the header: a closing decision removes the controls, a non-closing one keeps them.
+      const labels = buttons(card(html, "x")).map((b) => b.label);
+      const wantLabels = closed ? [] : OFFERED[type].map((x) => DECISION_LABEL[x]);
+      if (labels.join("|") !== wantLabels.join("|")) wrong.push(`${d ?? "no decision"}: card offers [${labels}], should offer [${wantLabels}]`);
+    }
+    ok(wrong.length === 0, `${type}: the header and the card agree on what the 7 possible records mean${wrong.length ? ` — ${wrong.join("; ")}` : ""}`);
+    if (wrong.length) bad.push(type);
+  }
+  // The case that matters, named: a disclosed wrong number is still a wrong number.
+  const disclosed = keep(view(runOf("rules_ready", { findings: [mk("x", "BLOCKER")], dispositions: [recorded("f-x", "DISCLOSED")] })));
+  const ds = summaryOf(disclosed) ?? "";
+  ok(/^1 open item to resolve before this study is called complete\./.test(ds) && !/No open blocker/.test(ds), `a BLOCKER marked Disclosed still reads as open (${JSON.stringify(ds)})`);
+  const dc = text(card(disclosed, "x"));
+  ok(/Recorded: DISCLOSED/.test(dc) && /does not close a blocker/.test(dc), "its card shows what was recorded and says that does not close a blocker");
+  ok(buttons(card(disclosed, "x")).map((b) => b.label).join("|") === "Fixed|Withdrawn on a source", "and it is still offered the two decisions that do");
+  const fixed = keep(view(runOf("rules_ready", { findings: [mk("x", "BLOCKER")], dispositions: [recorded("f-x", "FIXED")] })));
+  ok(/^Every item has a recorded decision\.$/.test(summaryOf(fixed) ?? "") && buttons(card(fixed, "x")).length === 0, "a BLOCKER marked Fixed is closed: the header says so and its controls go");
+  // The latest decision rules, wherever it sits in the list.
+  const latest = (list) => summaryOf(view(runOf("rules_ready", { findings: [mk("x", "BLOCKER")], dispositions: list }))) ?? "";
+  const FIXED_OLD = recorded("f-x", "FIXED", "2026-10-06T10:00:00Z");
+  const DISC_NEW = recorded("f-x", "DISCLOSED", "2026-10-06T11:00:00Z");
+  ok(/^1 open item to resolve/.test(latest([FIXED_OLD, DISC_NEW])) && /^1 open item to resolve/.test(latest([DISC_NEW, FIXED_OLD])), "BLOCKER fixed, then disclosed: the later decision rules, in either list order, and it is open");
+  const DISC_OLD = recorded("f-x", "DISCLOSED", "2026-10-06T10:00:00Z");
+  const FIXED_NEW = recorded("f-x", "FIXED", "2026-10-06T11:00:00Z");
+  ok(/^Every item has a recorded decision\.$/.test(latest([DISC_OLD, FIXED_NEW])) && /^Every item has a recorded decision\.$/.test(latest([FIXED_NEW, DISC_OLD])), "BLOCKER disclosed, then fixed: the later decision rules, in either list order, and it is closed");
+  // Two findings: one closed does not close the other.
+  const two = summaryOf(view(runOf("rules_ready", { findings: [mk("a", "BLOCKER"), mk("b", "BLOCKER")], dispositions: [recorded("f-a", "FIXED"), recorded("f-b", "DISCLOSED")] }))) ?? "";
+  ok(/^1 open item to resolve/.test(two), `one blocker fixed and one disclosed leaves one open (${JSON.stringify(two)})`);
+  ok(bad.length === 0, "every type reads consistently");
 });
 
 await group("busy", () => {
@@ -416,6 +514,21 @@ await group("client module", async () => {
   ok(
     typeof lib.isPending === "function" && typeof lib.isFinished === "function" && typeof lib.dispositionBody === "function",
     "lib/proofread.ts exports isPending, isFinished and dispositionBody",
+  );
+  ok(
+    typeof lib.closes === "function" && typeof lib.offeredFor === "function" && typeof lib.latestDisposition === "function",
+    "lib/proofread.ts exports offeredFor, closes and latestDisposition",
+  );
+  for (const type of Object.keys(OFFERED)) {
+    ok(JSON.stringify(lib.offeredFor(type)) === JSON.stringify(OFFERED[type]), `offeredFor(${type}) is [${OFFERED[type]}]`);
+    const closing = DECISIONS.filter((d) => lib.closes(type, d));
+    ok(JSON.stringify(closing) === JSON.stringify(DECISIONS.filter((d) => CLOSED_BY[type].includes(d))), `closes(${type}, ·) is true for exactly [${CLOSED_BY[type]}] (got [${closing}])`);
+  }
+  ok(lib.closes("BLOCKER", undefined) === false && lib.closes("NOTE", "") === false && lib.closes("NOTE", "nonsense") === false, "closes: no decision, an empty one and an unknown one close nothing");
+  ok(
+    lib.latestDisposition([recorded("a", "FIXED", "2026-10-06T10:00:00Z"), recorded("a", "DISCLOSED", "2026-10-06T11:00:00Z"), recorded("b", "WITHDRAWN")], "a")?.disposition === "DISCLOSED" &&
+      lib.latestDisposition([], "a") === undefined,
+    "latestDisposition picks the newest by time for that finding, not by position",
   );
   for (const s of ALL_STATUSES) {
     ok(lib.isPending(s) === PENDING.includes(s), `isPending(${s}) is ${PENDING.includes(s)}`);
@@ -470,6 +583,8 @@ await group("wiring", () => {
   ok(/await requestProofread\(projectId\);\s*setError\(null\);\s*setNonce\(/.test(panel), "WIRING: a successful re-run request bumps the nonce");
   ok(/recordDisposition\(projectId, run\.runId, f\.id, body\)/.test(panel) && !/recordDisposition\([^)]*revision/.test(panel), "WIRING: a decision is recorded against the run's uuid, not its revision");
   ok(/dispositionBody\(/.test(panel), "WIRING: the panel builds the decision body with dispositionBody");
+  ok(/offeredFor\(f\.type\)/.test(panel) && /latestDisposition\(run\.dispositions, f\.id\)/.test(panel) && /closes\(f\.type,/.test(panel), "WIRING: the card reads offeredFor, latestDisposition and closes from the client module, not a table of its own");
+  ok(!/BUG_FILED|Bug filed|DISPOSITIONS/.test(panel), "WIRING: the panel holds no decision table of its own and never names BUG_FILED");
   ok(
     /const rerun = async \(\) => \{\s*if \(inFlight\.current\) return;\s*inFlight\.current = true;/.test(panel) &&
       /const triage = async [^{]*\{\s*if \(inFlight\.current \|\| !run\?\.runId\) return;/.test(panel) &&

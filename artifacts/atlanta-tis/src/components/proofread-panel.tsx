@@ -12,14 +12,18 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertCircle, AlertTriangle, CheckCircle2, HelpCircle, Info, Loader2, RefreshCw, Scale } from "lucide-react";
 import {
+  closes,
   dispositionBody,
   fetchProofread,
   isFinished,
   isPending,
+  latestDisposition,
+  offeredFor,
   orderFindings,
   recordDisposition,
   requestProofread,
   summarizeOpen,
+  type EngineerDisposition,
   type OpenSummary,
   type ProofreadFindingT,
   type ProofreadRun,
@@ -38,12 +42,13 @@ const TYPE_CONFIG: Record<ProofreadFindingT["type"], { label: string; color: str
   CONTESTED: { label: "Contested", color: "text-purple-600", icon: Scale },
 };
 
-const DISPOSITIONS = [
-  { value: "FIXED", label: "Fixed" },
-  { value: "DISCLOSED", label: "Disclosed in the deliverable" },
-  { value: "WITHDRAWN", label: "Withdrawn on a source" },
-  { value: "BUG_FILED", label: "Bug filed" },
-] as const;
+// Which of these a finding is offered, and which of them close it, is decided in
+// one place: OFFERED in lib/proofread.ts. This is only how they read.
+const DECISION_LABEL: Record<EngineerDisposition, string> = {
+  FIXED: "Fixed",
+  DISCLOSED: "Disclosed in the deliverable",
+  WITHDRAWN: "Withdrawn on a source",
+};
 
 const POLL_MS = 60_000;
 
@@ -213,7 +218,6 @@ export function ProofreadView({
   // The result — findings and what the clauses covered — is shown only for a
   // finished run. See the note above the findings.
   const finished = isFinished(run.status);
-  const latestFor = (id: string) => run.dispositions.find((d) => d.findingId === id);
   const notRun = run.coverage.filter((c) => c.status === "not-run");
   // A clause that ran but judged only part of the record says so here. Rendering
   // it beside the findings is the difference between "nothing found" and
@@ -290,7 +294,10 @@ export function ProofreadView({
         {finished && orderFindings(run.findings).map((f) => {
           const cfg = TYPE_CONFIG[f.type] ?? { label: f.type, color: "text-slate-600", icon: HelpCircle };
           const Icon = cfg.icon;
-          const disposed = latestFor(f.id);
+          const disposed = latestDisposition(run.dispositions, f.id);
+          const closed = closes(f.type, disposed?.disposition);
+          const offered = offeredFor(f.type);
+          const noun = f.type === "CONTESTED" ? "contested item" : cfg.label.toLowerCase();
           return (
             <div key={f.id} className="border rounded-lg p-4 space-y-3" data-testid={`finding-${f.clauseId}`}>
               <div className="flex items-start justify-between gap-3">
@@ -317,23 +324,34 @@ export function ProofreadView({
                 <li>Suggested: {f.remedy}</li>
               </ul>
 
-              {disposed ? (
+              {disposed && (
                 <div className="text-xs text-muted-foreground">
                   Recorded: <span className="font-medium">{disposed.disposition}</span>
                   {disposed.sourceLabel ? ` — ${disposed.sourceLabel}` : ""} on{" "}
                   {new Date(disposed.createdAt).toLocaleString()}
+                  {!closed && `. That does not close a ${noun}; it stays open.`}
                 </div>
-              ) : (
+              )}
+
+              {/* A contested item is a licensed engineer's decision. That role does
+                  not exist yet, so nothing an engineer can record closes it. */}
+              {f.type === "CONTESTED" && (
+                <div className="text-xs text-muted-foreground">
+                  Awaiting the sealing engineer's ruling. A contested item stays open until the engineer rules.
+                </div>
+              )}
+
+              {!closed && offered.length > 0 && (
                 <div className="flex items-center gap-2 flex-wrap">
-                  {DISPOSITIONS.map((d) => (
+                  {offered.map((d) => (
                     <button
-                      key={d.value}
-                      onClick={() => onTriage(f, d.value)}
+                      key={d}
+                      onClick={() => onTriage(f, d)}
                       disabled={busy}
                       className="px-2 py-1 text-xs rounded-md border hover:bg-muted disabled:opacity-50"
-                      data-testid={`button-disposition-${d.value.toLowerCase()}`}
+                      data-testid={`button-disposition-${d.toLowerCase()}`}
                     >
-                      {d.label}
+                      {DECISION_LABEL[d]}
                     </button>
                   ))}
                 </div>
