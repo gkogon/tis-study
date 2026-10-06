@@ -1984,7 +1984,8 @@ ok(/engineStamp === run\.engineStamp/.test(runner), "carry-forward only applies 
 ok(/res\.json\(\{\s*\.\.\.validated,\s*projectId: saved\.id\s*\}\)/.test(tis), "the response merges projectId after the zod parse");
 
 const spec = src("../../../lib/tis-api-spec/openapi.yaml");
-ok(/projectId/.test(spec), "openapi.yaml documents projectId on the generate response");
+// No openapi assertion: documenting projectId is deferred out of phase 1 (see
+// Step 6). The runtime merge above is what phase 1 ships, and it is asserted.
 
 // The claim's own correctness, which Task 5's suite cannot reach: it pins the
 // predicate text and isReclaimable against each other, but not what production
@@ -2461,26 +2462,18 @@ Replace the `logEvent(...)` + `res.json(validated)` tail of the `/generate` hand
     res.json({ ...validated, projectId: saved.id });
 ```
 
-- [ ] **Step 6: Document `projectId` in the spec and regenerate**
+- [ ] **Step 6: Do NOT document `projectId` in the spec — deferred out of phase 1**
 
-`/generate`'s 200 is `$ref: "#/components/schemas/TisReport"`, and that same `TisReport` is also `/whatif`'s 200 and `TisProjectDetail.result` — so adding the property to `TisReport` would document a project id on an endpoint that saves nothing and on a stored result that has no such field. Add a new schema beside `TisReport` instead, and repoint only `/generate`:
+The runtime merge stays (it is free, and the field is there when a consumer arrives). The schema change does not ship in phase 1, because both available shapes cost more than the field is worth while nothing reads it:
 
-```yaml
-    TisGenerateResponse:
-      allOf:
-        - $ref: "#/components/schemas/TisReport"
-        - type: object
-          properties:
-            projectId:
-              type: string
-              format: uuid
-              description: The saved project this study was persisted as. Poll GET /projects/{id}/proofread with it.
-```
+- **`allOf` (the original plan):** orval emits the zod schema as an intersection (`.and`), which has no `.shape` or `.partial()`. Nine of the twelve existing check scripts that import `GenerateTisResponse` go from exit 0 to a `TypeError` — `check:rate-auditability`, `check:signal-timing-overrides`, `check:conserved-assignment`, `check:movement-assignment`, `check:existing-use-credit`, `check:intersection-delay-fields`, `check:driveway-routing`, `check:mitigation-scope`, `check:growth-provenance` — and the generated diff is ~3,500 lines. Fixing nine unrelated verify scripts is scope this task does not own, and the capability loss (`.shape`/`.partial()` gone for every future consumer) outlives the nine.
+- **An optional property on `TisReport`:** 25 generated lines and all twelve scripts stay green, but `TisReport` is also `/whatif`'s 200 and `TisProjectDetail.result`, so both would document a project id that is never populated there.
 
-Then change `/generate`'s 200 `$ref` to `#/components/schemas/TisGenerateResponse`, leaving `/whatif` and `TisProjectDetail.result` pointed at `TisReport`.
+**Nothing in phase 1 reads it.** The panel receives `projectId` from `project.id` on the project page, not from the generate response, so the typed client never needs the field. It becomes worth documenting when the generator page starts polling immediately after a generate — i.e. when a consumer exists — and that phase can choose the shape with its own scripts in scope.
 
-Run: `pnpm --filter @workspace/tis-api-spec run codegen`
-Note: `clean: true` wipes both generated trees, so never hand-edit anything under `generated/`.
+Both shapes are saved as apply-clean patches beside the task reports (`task-6b-option-allof-as-briefed.patch`, `task-6b-option-property-on-tisreport.patch`) so the later phase does not have to rediscover them. `projectId` must stay **optional** in either shape: the server parses this schema before an id exists.
+
+One consequence to state plainly rather than hide: the `/generate` response now carries a field the spec does not describe. That drift already exists in this repo (`GET /projects` is documented as a bare array but returns `{ items }`, and `PATCH /projects/{id}` is absent from the document entirely), so this adds a third instance rather than a new category — but it is drift, and the deferral is the reason.
 
 - [ ] **Step 7: Run the guards**
 
