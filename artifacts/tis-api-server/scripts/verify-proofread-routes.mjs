@@ -82,8 +82,12 @@ const ok = (cond, msg, why) => {
   console.log(`${cond ? "PASS" : "FAIL"}  ${msg}`);
   if (!cond) {
     fails++;
-    // One indented line per item: a check that fails names the file and line of what fired,
-    // so the person it stops can read the line rather than weaken the check.
+    // One indented line per item. The ten boundary checks (the store's import whitelist,
+    // its three write scans and its raw-SQL scan; the runner's and the routes' write scans
+    // and import whitelists; the clause directory's whitelist) name the file and line of
+    // what fired, so the person a red stops can read the line rather than weaken the
+    // check. The other checks pin one exact piece of text in one named function or block,
+    // and their message names it.
     if (why) for (const l of [why].flat().join("\n").split("\n")) console.log(`        ${l}`);
   }
 };
@@ -564,31 +568,52 @@ const DB_HANDLES = new Set(["db", "tx", "trx"]);
  * WHICH VALUES HOLD A HANDLE. Identifiers are resolved to their DECLARATION by a
  * lexical scope walk (function, block, for, catch and class scopes; parameters;
  * `var` hoisted to its function, approximately), and taint attaches to the
- * declaration, so a same-named binding in another function is another variable.
+ * declaration: a same-named binding in another function is another variable, and a
+ * name declared twice in one scope (`var h = 1; var h = db`, a `var h` over a
+ * parameter h) is one variable.
  * Seeds: the `db` import binding (renamed or not), a parameter called db, tx or trx,
- * an identifier called db, tx or trx that resolves to nothing in the file, and a
- * property named `db` of anything (`globalThis.db`, `ns.db`). Derived: aliasing,
- * property and element access, a conditional, a comma, `||` / `&&` / `??`, an
- * assignment expression, an object or array literal or spread holding one, any
- * destructuring of one, `new X(handle)`, the loop variable of a for-of over one, a
- * parameter whose default is one, a class property initialised or assigned from one
- * (read back as `this.x`), an object handed one in a property assignment, and every
+ * an identifier called db, tx or trx that resolves to nothing in the file, a
+ * property named `db` of anything (`globalThis.db`, `ns.db`, `o["db"]`), and a
+ * destructuring key `db` (`const { db: h } = o`, `({ db: h } = o)`).
+ * Derived: aliasing; property and element access; a conditional, a comma, `||` /
+ * `&&` / `??`; an assignment expression (`=`, `||=`, `&&=`, `??=`, destructuring
+ * assignment included); an object or array literal or spread holding one; any
+ * destructuring of one, and a destructuring DEFAULT that is one (`const { h = db } =
+ * {}`, `[h = db]`, `{ a: h = db }`, in a declaration, a parameter, a for-of or an
+ * assignment); `new X(handle)`; `await` of a handle (db is not a thenable, so
+ * `await db` is db); the loop variable of a for-of over one; a parameter whose
+ * default is one; an object handed one in a property assignment (`box.h = db`); a
+ * class property initialised or assigned from one, read back as `this.x`, `(this as
+ * any).x`, `this!.x`, `this["x"]`, `this.#x`, or, for a static, `C.x`; every
  * parameter of a function literal passed to a method of a handle
- * (`db.transaction(async (t) => ...)`, whatever the parameter is called). A method
- * call on a handle yields a BUILDER (`db.insert(T).values(..)`), which still carries
- * write methods such as onConflictDoUpdate, so the rules above apply to it too.
- * NOT derived: `await` (a query's RESULT is data: `rows[i]`, `{ ...row }`,
+ * (`db.transaction(async (t) => ...)`, whatever the parameter is called; `[db].map((d)
+ * => ...)`); and the result of such a call when the callback returns a handle
+ * (`await db.transaction(async (x) => x)`). A method call on a handle yields a
+ * BUILDER (`db.insert(T).values(..)`), which still carries write methods such as
+ * onConflictDoUpdate, so the rules above apply to it too.
+ * NOT derived: `await` of a builder (a query's RESULT is data: `rows[i]`, `{ ...row }`,
  * `Object.keys(row)` and `[...rows].sort()` are ordinary code), and a call whose
  * callee is not rooted at a handle (`Object.fromEntries(rows.map(..))`).
  *
  * WHAT THIS IS NOT. It is a tripwire against ordinary and adversarially spelled
  * writes, not a sandbox against runtime reflection. Known limits, deliberately not
  * chased (the type checker would be needed, or they are runtime behaviour):
- *   - a handle RETURNED from a call: an IIFE `(() => db)()`, `await
- *     Promise.resolve(db)`, a helper or a getter that returns it;
+ *   - a handle RETURNED from a call other than the callback case above: an IIFE
+ *     `(() => db)()`, `await Promise.resolve(db)`, `Promise.all([db])`, `new
+ *     Promise((r) => r(db))`, a helper, a getter, a method, a generator's yield;
  *   - a helper that RECEIVES the handle as an argument, `w(db, tisProjectsTable)`,
  *     unless its parameter is called db, tx or trx; and a callback passed to
  *     db.transaction by name rather than written in place;
+ *   - db.transaction reached through `.bind(db)` or `.apply(db, [cb])`: the bound or
+ *     applied function is a builder, so the callback's parameter is not seeded;
+ *   - a handle put into a container by a METHOD CALL and read back (`arr.push(db)`,
+ *     `arr.unshift(db)`, `map.set(k, db)`, `set.add(db)`, `weakMap.set(o, db)`,
+ *     `Array.from([db])`), or moved through `throw` and `catch`;
+ *   - `this` beyond the class spellings above: `this.x` in an object-literal method
+ *     or a function expression, `const self = this`, `const { x } = this`, an
+ *     inherited field, an instance's property read from outside (`new C().x`, or an
+ *     instance handed in as a parameter), a constructor parameter property
+ *     default `constructor(public x = db)`, a TypeScript namespace export `NS.x`;
  *   - E7: a binding that merely shares an allowed table's name (a function
  *     `f(studyProofreadRunsTable)` handed tis_projects by its caller) reads as
  *     that table, since table names are read as names;
@@ -597,7 +622,8 @@ const DB_HANDLES = new Set(["db", "tx", "trx"]);
  *     "<dynamic import>";
  *   - false positives kept on purpose: the verb scan is receiver-agnostic, so
  *     `someMap.delete(k)`, `set.delete(x)` and an object key called insert /
- *     update / delete are refused in the store, the runner and the routes.
+ *     update / delete are refused in the store, the runner and the routes; a
+ *     parameter called db, tx or trx is a handle even when it is an array.
  * The proof that survives every spelling is a test that observes the database, a
  * row hash before and after a request on a real Postgres; it is not part of this
  * guard (it needs a Postgres service in CI) and is the recommended addition once
@@ -989,10 +1015,13 @@ const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.g
  * second alone could hide a write behind a `--` inside a quoted string). The text is
  * every string literal and template (a substitution counts as a target: `update
  * ${tisProjectsTable} set`) and every `+` chain of them (`"update " + "tis_" +
- * "projects"`), both cooked and as written. Not read: SQL assembled at run time from
- * anything but literals (join, concat, String.fromCharCode, atob, a `${VERB}` const,
- * a nested sql.raw), verbs outside this list, and a DELETE whose bare alias hides
- * its clause keyword on a non-snake_case table (`delete from firms f where ..`).
+ * "projects"`), both cooked and as written; as written, a template's text includes the
+ * source of its substitutions, so `${sql.raw("update")} t set` is read. Not read: SQL
+ * assembled at run time from anything but literals written in place (join, concat,
+ * String.fromCharCode, atob, a `${VERB}` const, a substitution that splits a word
+ * even when it is a literal, `upd${"ate"}`), verbs outside this list, and a DELETE
+ * whose bare alias hides its clause keyword on a non-snake_case table (`delete from
+ * firms f where ..`).
  */
 const SQL_TABLE_LIKE = String.raw`(?:"[^"]*"|\$\{\}|[\w$]*[_.][\w$.]*)`;
 const SQL_TARGET = String.raw`(?:only\s+)?(?:"[^"]*"|\$\{\}|[^\s(;),]+)`;
@@ -1978,7 +2007,7 @@ const CHECKS = [
   {
     id: "store-dispositions-are-append-only",
     on: "store",
-    msg: "the disposition log is only ever inserted into, by the builder or by raw SQL: no update or delete of it, no delete of ANY table (runs -> findings -> dispositions cascade on delete, so deleting a run or a finding erases its dispositions), no upsert, no raw SQL write of any table in any letter case, and no write verb reached in a form that hides its table (destructured, bound, .call, computed access, a table that is not a plain identifier) — ACCEPTED_RISK has to record who accepted it and when",
+    msg: "the disposition log is only ever inserted into, and only through the query builder: no update or delete of it, no delete of ANY table (runs -> findings -> dispositions cascade on delete, so deleting a run or a finding erases its dispositions), no upsert, no raw SQL write of any table in any letter case (a raw INSERT INTO the log included), and no write verb reached in a form that hides its table (destructured, bound, .call, computed access, a table that is not a plain identifier) — ACCEPTED_RISK has to record who accepted it and when",
     test: (d) => {
       const sc = dbScan(d.src.store);
       const D = "studyProofreadDispositionsTable";
