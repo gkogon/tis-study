@@ -29,13 +29,17 @@
  * rather than grepped for.
  *
  * The route, store and runner code is read with TypeScript's own parser, not
- * with regexes: imports (every spelling of a way into another module) and
- * database writes (every spelling of a write verb) are found in the AST, because
- * two rounds of review walked real tis_projects writes past regex versions of
- * both. It is a tripwire against reaching a write by ordinary means, not a
- * sandbox: a specifier built at run time reads as "<dynamic import>", which no
- * whitelist allows. What survives any spelling is a test that observes the
- * DATABASE (a row hash before and after, on a real Postgres); this guard cannot.
+ * with regexes: imports and database writes are found in the AST, because review
+ * walked real tis_projects writes past regex versions of both. It is a tripwire
+ * against ordinary AND adversarially spelled imports and writes, not a sandbox
+ * against runtime reflection: a specifier built at run time reads as
+ * "<dynamic import>", which no whitelist allows, and reflection on a db handle
+ * (Reflect, Object.entries, computed keys, spread) is refused rather than
+ * followed. It reads local identifiers, not bindings, and does not use the type
+ * checker, so a parameter that merely shares an allowed table's name is a known
+ * limit (see dbScan). What survives every spelling is a test that observes the
+ * DATABASE (a row hash before and after, on a real Postgres); this guard cannot
+ * be one, and that test is the recommended addition once phase 1 ships.
  *
  * Reads files as text and never imports the routes, the store or
  * @workspace/db, so it never opens a connection.
@@ -80,8 +84,16 @@ try {
 } catch {
   ts = null;
 }
-ok(ts !== null && typeof ts.createSourceFile === "function", "precondition: typescript resolves from scripts/ under plain node, so imports and comments are read from the AST rather than by regex");
-if (ts === null) {
+// Usable means every part of the compiler API this guard calls is there, not only that
+// something named typescript resolved: a stub package would otherwise print the named
+// failure and then die with a TypeError a few lines later.
+const tsUsable =
+  ts !== null &&
+  ["createSourceFile", "getLeadingCommentRanges", "getTrailingCommentRanges", "forEachChild", "isImportDeclaration", "isCallExpression", "isIdentifier"].every((k) => typeof ts[k] === "function") &&
+  typeof ts.SyntaxKind === "object" &&
+  typeof ts.ScriptTarget === "object";
+ok(tsUsable, "precondition: typescript resolves from scripts/ under plain node and has the compiler API this guard uses, so imports, writes and comments are read from the AST rather than by regex");
+if (!tsUsable) {
   console.log("\n1 CHECK(S) FAILED");
   process.exit(1);
 }
@@ -386,18 +398,35 @@ const PROOFREAD_TABLES = ["studyProofreadRunsTable", "studyProofreadFindingsTabl
  *           a destructured binding (`const { update } = db`, renamed, string or
  *           computed key), an object-literal property of that name (assignment
  *           destructuring), or a computed access on a db handle (`db[k]`).
- *           A write is therefore either `<recv>.<verb>(<Identifier>)` or it is
- *           visible as something else; there is no spelling of a verb that is
- *           not one of those.
+ *           So is each of the ways of reaching a verb WITHOUT naming it, on
+ *           a value that is, or derives from, a db handle (db, tx, trx, and
+ *           any variable assigned from an expression rooted at one): a computed
+ *           property access or destructuring key that is not a literal, a spread
+ *           (`{ ...db }`), Reflect or Proxy in any use, Object.entries / values /
+ *           keys / assign / getOwnPropertyDescriptors ... on one, and for-in over one.
  *   study   every occurrence of tisProjectsTable / requestPayload / resultPayload
  *           (as an identifier or a string), with the function declaration it is
  *           in and whether it is only an import specifier
  *   dbIdents  every identifier called `db`
- *   members   every property name and string-literal element-access name
+ *   members   every property name, string-literal element-access name and
+ *           destructured key
  *
  * A regex over the text reads `db["update"](tisProjectsTable)` and
  * `const { update } = db; update(tisProjectsTable)` as nothing at all.
+ *
+ * WHAT THIS IS NOT. It is a tripwire against ordinary and adversarially
+ * spelled writes, not a sandbox against runtime reflection, and it reads local
+ * identifiers, not bindings: it takes the identifier `studyProofreadRunsTable`
+ * to be that table. Known limits, deliberately not chased with the type checker:
+ * a parameter or local that merely shares an allowed table's name (E7: a
+ * function `f(studyProofreadRunsTable)` handed tis_projects by its caller), a
+ * handle passed through a helper that returns it, and a specifier or key built
+ * from runtime data the AST cannot see. The proof that survives every spelling is
+ * a test that observes the database, a row hash before and after a request on a
+ * real Postgres; it is not part of this guard (it needs a Postgres service in CI)
+ * and is the recommended addition once phase 1 ships.
  */
+const REFLECT_FNS = new Set(["keys", "values", "entries", "assign", "fromEntries", "getOwnPropertyNames", "getOwnPropertyDescriptor", "getOwnPropertyDescriptors", "getPrototypeOf", "setPrototypeOf", "defineProperty", "defineProperties"]);
 function dbScan(text) {
   const sf = parse(text);
   const writes = [];
@@ -406,7 +435,7 @@ function dbScan(text) {
   const members = new Set();
   const lit = (e) => (e && (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) ? e.text : null);
   const unwrap = (e) => {
-    while (e && (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e) || ts.isTypeAssertionExpression(e) || ts.isSatisfiesExpression(e))) e = e.expression;
+    while (e && (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e) || ts.isTypeAssertionExpression(e) || ts.isSatisfiesExpression(e) || ts.isAwaitExpression(e))) e = e.expression;
     return e;
   };
   const fnOf = (n) => {
@@ -418,6 +447,58 @@ function dbScan(text) {
     return false;
   };
   const keyText = (k) => (ts.isIdentifier(k) || ts.isStringLiteral(k) || ts.isNoSubstitutionTemplateLiteral(k) ? k.text : ts.isComputedPropertyName(k) ? lit(k.expression) : null);
+
+  // Which local names are, or derive from, a database handle: db / tx / trx, and
+  // every variable (or destructured binding, or assignment target) initialised
+  // from an expression rooted at one, to a fixed point.
+  const tainted = new Set(DB_HANDLES);
+  const rooted = (e0) => {
+    const e = unwrap(e0);
+    if (!e) return false;
+    if (ts.isIdentifier(e)) return tainted.has(e.text);
+    if (ts.isPropertyAccessExpression(e) || ts.isElementAccessExpression(e) || ts.isCallExpression(e)) return rooted(e.expression);
+    if (ts.isNewExpression(e)) return (e.arguments ?? []).some(rooted);
+    if (ts.isConditionalExpression(e)) return rooted(e.whenTrue) || rooted(e.whenFalse);
+    if (ts.isBinaryExpression(e)) return rooted(e.left) || rooted(e.right);
+    if (ts.isArrayLiteralExpression(e)) return e.elements.some((x) => rooted(ts.isSpreadElement(x) ? x.expression : x));
+    if (ts.isObjectLiteralExpression(e)) {
+      return e.properties.some((p) => (ts.isSpreadAssignment(p) ? rooted(p.expression) : ts.isPropertyAssignment(p) ? rooted(p.initializer) : ts.isShorthandPropertyAssignment(p) ? tainted.has(p.name.text) : false));
+    }
+    return false;
+  };
+  const boundNames = (name) =>
+    ts.isIdentifier(name) ? [name.text] : ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name) ? name.elements.flatMap((el) => (ts.isOmittedExpression(el) ? [] : boundNames(el.name))) : [];
+  const identsIn = (node) => {
+    const out = [];
+    const v = (x) => {
+      if (ts.isIdentifier(x)) out.push(x.text);
+      ts.forEachChild(x, v);
+    };
+    v(node);
+    return out;
+  };
+  const bindings = [];
+  const collect = (n) => {
+    if (ts.isVariableDeclaration(n) && n.initializer) bindings.push({ names: boundNames(n.name), init: n.initializer });
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken) bindings.push({ names: identsIn(n.left), init: n.right });
+    ts.forEachChild(n, collect);
+  };
+  collect(sf);
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const b of bindings) {
+      if (!rooted(b.init)) continue;
+      for (const nm of b.names) if (!tainted.has(nm)) tainted.add(nm), (changed = true);
+    }
+  }
+  const initOfPattern = (n) => {
+    for (let p = n.parent; p; p = p.parent) {
+      if (ts.isVariableDeclaration(p)) return p.initializer;
+      if (!ts.isBindingElement(p) && !ts.isObjectBindingPattern(p) && !ts.isArrayBindingPattern(p)) return undefined;
+    }
+    return undefined;
+  };
+
   const visit = (n) => {
     let verb = null;
     if (ts.isPropertyAccessExpression(n)) {
@@ -428,9 +509,8 @@ function dbScan(text) {
       if (key !== null) {
         members.add(key);
         if (WRITE_VERBS.has(key)) verb = key;
-      } else {
-        const r = unwrap(n.expression);
-        if (ts.isIdentifier(r) && DB_HANDLES.has(r.text)) writes.push({ form: "computed access on a db handle", fn: fnOf(n) });
+      } else if (!ts.isNumericLiteral(n.argumentExpression) && rooted(n.expression)) {
+        writes.push({ form: "computed access on a db handle or a value derived from one", fn: fnOf(n) });
       }
     }
     if (verb !== null) {
@@ -442,13 +522,24 @@ function dbScan(text) {
     }
     if (ts.isBindingElement(n) && ts.isObjectBindingPattern(n.parent)) {
       const k = keyText(n.propertyName ?? n.name);
+      if (k !== null) members.add(k);
       if (k !== null && WRITE_VERBS.has(k)) writes.push({ verb: k, form: "destructured", fn: fnOf(n) });
+      if (n.propertyName && ts.isComputedPropertyName(n.propertyName) && k === null && rooted(initOfPattern(n))) writes.push({ form: "computed destructuring key on a db-derived value", fn: fnOf(n) });
     }
     if (ts.isShorthandPropertyAssignment(n) || ts.isPropertyAssignment(n)) {
       const k = keyText(n.name);
       if (k !== null && WRITE_VERBS.has(k)) writes.push({ verb: k, form: "object property", fn: fnOf(n) });
     }
+    if ((ts.isSpreadAssignment(n) || ts.isSpreadElement(n)) && rooted(n.expression)) writes.push({ form: "spread of a db-derived value", fn: fnOf(n) });
+    if (ts.isForInStatement(n) && rooted(n.expression)) writes.push({ form: "for-in over a db-derived value", fn: fnOf(n) });
+    if (ts.isCallExpression(n)) {
+      const e = n.expression;
+      if (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression) && ((e.expression.text === "Object" && REFLECT_FNS.has(e.name.text)) || e.expression.text === "Reflect") && n.arguments.some(rooted)) {
+        writes.push({ form: "reflection on a db-derived value", fn: fnOf(n) });
+      }
+    }
     if (ts.isIdentifier(n)) {
+      if (n.text === "Reflect" || n.text === "Proxy") writes.push({ form: "Reflect or Proxy", fn: fnOf(n) });
       if (STUDY_NAMES.has(n.text)) study.push({ name: n.text, fn: fnOf(n), inImport: inImport(n) });
       if (n.text === "db") dbIdents.push({ fn: fnOf(n) });
     } else if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) {
@@ -655,6 +746,22 @@ const WRITE_FORMS = [
   ["a table chosen by a conditional", "await db.update(args.runId ? tisProjectsTable : studyProofreadRunsTable).set({});", false],
   ["a regex literal ending in // on the same line (the old comment stripper deleted the rest of the line)", "const rx = /\\//; await db.update(tisProjectsTable).set({ version: 2 });", true],
   ["a plain write split across lines and comments", "await db\n    /* not a write */\n    .update(tisProjectsTable)\n    .set({ version: 2 });", true],
+];
+
+// Ways of reaching a write verb WITHOUT spelling it, on a handle derived from db.
+// [description, statements, true when it also names tisProjectsTable]
+const REFLECTION_FORMS = [
+  ["Reflect.get on db", 'await Reflect.get(db, "update")(tisProjectsTable);', true],
+  ["a computed destructuring key taken from a variable", 'const k = "update"; const { [k]: u } = db; await u(tisProjectsTable);', true],
+  ["a computed access through an alias of db", 'const d2 = db; await d2["upd" + "ate"](tisProjectsTable);', true],
+  ["a spread of db and a computed access on the copy", 'const copy = { ...db }; const k2 = "update"; await copy[k2](tisProjectsTable);', true],
+  ["an alias of an alias of db", 'const a1 = db; const a2 = a1; await a2["upd" + "ate"](tisProjectsTable);', true],
+  ["a reassigned alias and a template-literal key built at run time", 'let h: any; h = db; await h[`up${"date"}`](tisProjectsTable);', true],
+  ["Object.entries(db)", "const fns = Object.entries(db); void fns;", false],
+  ["Object.getOwnPropertyDescriptors(db)", "void Object.getOwnPropertyDescriptors(db);", false],
+  ["for-in over db", "for (const k3 in db) { void k3; }", false],
+  ["new Proxy(db, ...)", "const px = new Proxy(db, {}); void px;", false],
+  ["a query builder derived from db, with the upsert reached by a computed name", 'const q = db.insert(studyProofreadDispositionsTable).values({} as any); const kk = "onConflictDo" + "Update"; await q[kk]({});', false],
 ];
 
 // The parser itself, against the strings it must read the same way however they
@@ -1045,10 +1152,19 @@ const CHECKS = [
   {
     id: "routes-do-not-touch-study",
     on: "routes",
-    msg: "no route touches tis_projects, request_payload or result_payload, and none writes or reaches the database by itself: read from the AST, no write verb in ANY spelling (member call, string-key element access, destructured, bound, .call, computed access), no tisProjectsTable or payload name, no `db`",
+    msg: "no route touches tis_projects, request_payload or result_payload, and none writes or reaches the database by itself: read from the AST, no write verb in any spelling the AST can see (member call, string-key element access, destructured, bound, .call, computed access, reflection on a db handle), no tisProjectsTable or payload name, no `db`",
     test: (d) => {
       const sc = dbScan(d.src.routes);
-      return d.routes.length > 0 && sc.writes.length === 0 && sc.study.length === 0 && sc.dbIdents.length === 0 && !/@workspace\/db/.test(d.routes);
+      return (
+        d.routes.length > 0 &&
+        sc.writes.length === 0 &&
+        sc.study.length === 0 &&
+        sc.dbIdents.length === 0 &&
+        // The AST names whole identifiers and whole literals; these substrings stay as extra
+        // conjuncts, because "select result_payload from tis_projects" is a string no
+        // identifier match sees and the old check refused it.
+        !/tisProjectsTable|requestPayload|resultPayload|request_payload|result_payload|tis_projects|\.update\(|\.insert\(|\.delete\(|\bdb\b|@workspace\/db/.test(d.routes)
+      );
     },
   },
   {
@@ -1188,7 +1304,9 @@ const CHECKS = [
     msg: "every write the store's OWN code makes is `<recv>.<verb>(<one of the three proofread tables>)` — a write to tis_projects or any other table is the advisor boundary broken, and so is any other way of reaching a write verb (string-key element access with a non-table argument, destructured, bound, .call, computed access on db), none of which a regex sees; a write reached through another module is the import whitelist's to catch",
     test: (d) => {
       const w = dbScan(d.src.store).writes;
-      return d.store.length > 0 && w.length > 0 && w.every((x) => x.form === "call" && PROOFREAD_TABLES.includes(x.table));
+      // the old text scan, kept as an extra conjunct: every `.verb(Name` in the text names a proofread table
+      const textTargets = [...d.store.matchAll(/\.(update|insert|delete)\(\s*(\w+)/g)].map((m) => m[2]);
+      return d.store.length > 0 && w.length > 0 && w.every((x) => x.form === "call" && PROOFREAD_TABLES.includes(x.table)) && textTargets.every((t) => PROOFREAD_TABLES.includes(t));
     },
   },
   {
@@ -1214,7 +1332,11 @@ const CHECKS = [
       return (
         d.store.length > 0 &&
         sc.writes.every((w) => w.form === "call" && w.table !== "<not a table identifier>" && !(w.table === "studyProofreadDispositionsTable" && w.verb !== "insert")) &&
-        !sc.members.has("onConflictDoUpdate")
+        !sc.members.has("onConflictDoUpdate") &&
+        // extra conjuncts from the old text scan: the AST sees property names and destructured keys,
+        // not a destructure of the upsert off an insert builder written some other way
+        !/onConflictDoUpdate/.test(d.store) &&
+        !/\.(update|delete)\(\s*studyProofreadDispositionsTable/.test(d.store)
       );
     },
   },
@@ -1227,11 +1349,18 @@ const CHECKS = [
       if (!loader) return false;
       const sc = dbScan(d.src.store);
       const text = loader.getText();
+      // the old text scan, kept as an extra conjunct: outside the loader and the imports, the names
+      // appear nowhere, in an identifier, a string or a comment-free template ("see tisProjectsTable")
+      const oldLoader = body(d.store, "loadStudyForRun");
+      const rest = oldLoader ? d.store.replace(oldLoader, "").replace(/^import[\s\S]*?from "[^"]+";\n/gm, "") : null;
       return (
         /\.select\(/.test(text) &&
         /\.from\(tisProjectsTable\)/.test(text) &&
         sc.study.every((x) => x.inImport || x.fn === "loadStudyForRun") &&
-        sc.writes.every((w) => w.fn !== "loadStudyForRun")
+        sc.writes.every((w) => w.fn !== "loadStudyForRun") &&
+        rest !== null &&
+        !/tisProjectsTable|requestPayload|resultPayload/.test(rest) &&
+        !/\.(update|insert|delete)\(/.test(oldLoader)
       );
     },
   },
@@ -1273,7 +1402,17 @@ const CHECKS = [
     test: (d) => {
       const sc = dbScan(d.src.runner);
       const dbNames = importsOf(d.src.runner)["@workspace/db"] ?? [];
-      return d.runner.length > 0 && dbNames.length > 0 && dbNames.every((n) => n.startsWith("type ")) && sc.writes.length === 0 && sc.study.length === 0 && sc.dbIdents.length === 0;
+      return (
+        d.runner.length > 0 &&
+        dbNames.length > 0 &&
+        dbNames.every((n) => n.startsWith("type ")) &&
+        sc.writes.length === 0 &&
+        sc.study.length === 0 &&
+        sc.dbIdents.length === 0 &&
+        // the old substring scan, kept as an extra conjunct ("study.requestPayload.rows" and
+        // "see tisProjectsTable" are strings no identifier match sees)
+        !/tisProjectsTable|requestPayload|resultPayload|\.update\(|\.insert\(|\.delete\(|\bdb\./.test(d.runner)
+      );
     },
   },
   {
@@ -1285,7 +1424,7 @@ const CHECKS = [
   {
     id: "proofread-dir-imports-whitelist",
     on: "clauseDir",
-    msg: "every file under src/lib/proofread/ — the pure directory the store and the runner import, and so a way to reach a write without it appearing in either — imports only its own siblings, the dependency-free @workspace/tis-engine-core, and types from @workspace/tis-api-zod: no database, no node module, no other lib file, no dynamic import or require",
+    msg: "every file under src/lib/proofread/ — the pure directory the store and the runner import, and so a way to reach a write without it appearing in either — imports only its own siblings, the dependency-free @workspace/tis-engine-core, and types from @workspace/tis-api-zod: no database, no node module, no other lib file, and no dynamic import(), require or eval of ANY specifier (a literal one included)",
     test: (d) => {
       const files = Object.keys(d.clauseDir);
       return (
@@ -1293,6 +1432,9 @@ const CHECKS = [
         files.every((f) =>
           Object.entries(importsOf(d.src.clauseDir[f])).every(([mod, names]) => {
             if (mod.startsWith("<")) return false;
+            // the clause layer is pure and never loads anything at run time: a literal
+            // import("./types.ts") is as much a dynamic import as a computed one
+            if (names.some((n) => n === "<dynamic import>" || n === "<require>" || n === "<eval>" || n === "<import = require>")) return false;
             if (/^\.\/[\w-]+\.ts$/.test(mod)) return files.includes(mod.slice(2));
             if (mod === "@workspace/tis-engine-core") return true;
             if (mod === "@workspace/tis-api-zod") return names.every((n) => n.startsWith("type "));
@@ -2518,6 +2660,78 @@ const MUTATIONS = [
     flips: ["routes-do-not-touch-study"],
     apply: edit("routes", "const router: IRouter = Router();", `const router: IRouter = Router();\n${code}`),
   })),
+
+  // ---- reflection on a db-derived value, one mutation per form, in the loader and in completeRun ----
+  ...REFLECTION_FORMS.flatMap(([what, code, usesStudy]) => [
+    {
+      label: `store: ${what}, inside loadStudyForRun`,
+      file: "store",
+      flips: ["store-writes-only-proofread-tables", "store-study-row-is-read-only", "store-dispositions-are-append-only"],
+      apply: edit("store", "  return row ?? null;\n}\n\n/**\n * Write a run's outcome.", `  ${code}\n  return row ?? null;\n}\n\n/**\n * Write a run's outcome.`),
+    },
+    {
+      label: `store: ${what}, inside completeRun`,
+      file: "store",
+      flips: usesStudy ? ["store-writes-only-proofread-tables", "store-study-row-is-read-only", "store-dispositions-are-append-only"] : ["store-writes-only-proofread-tables", "store-dispositions-are-append-only"],
+      apply: edit("store", "  if (args.findings.length === 0) return;", `  ${code}\n  if (args.findings.length === 0) return;`),
+    },
+  ]),
+
+  // ---- the substring scans the exact AST matches had dropped, restored as extra conjuncts ----
+  {
+    label: "routes: a string that mentions result_payload and tis_projects (no identifier, no whole-literal match)",
+    file: "routes",
+    flips: ["routes-do-not-touch-study"],
+    apply: edit("routes", "const router: IRouter = Router();", 'const router: IRouter = Router();\nconst q1 = "select result_payload from tis_projects";'),
+  },
+  {
+    label: "routes: a template with a substitution that mentions request_payload",
+    file: "routes",
+    flips: ["routes-do-not-touch-study"],
+    apply: edit("routes", "const router: IRouter = Router();", "const router: IRouter = Router();\nconst q2 = `select ${1}, request_payload`;"),
+  },
+  {
+    label: "runner: a string that mentions requestPayload",
+    file: "runner",
+    flips: ["runner-has-no-db-writes"],
+    apply: edit("runner", "    const rec: StudyRecord", '    const s1 = "study.requestPayload.rows";\n    const rec: StudyRecord'),
+  },
+  {
+    label: "runner: a string that mentions tisProjectsTable",
+    file: "runner",
+    flips: ["runner-has-no-db-writes"],
+    apply: edit("runner", "    const rec: StudyRecord", '    const s2 = "see tisProjectsTable";\n    const rec: StudyRecord'),
+  },
+  {
+    label: "store: a string that mentions tisProjectsTable outside the loader",
+    file: "store",
+    flips: ["store-study-row-is-read-only"],
+    apply: edit("store", "  if (args.findings.length === 0) return;", '  const s3 = "see tisProjectsTable";\n  if (args.findings.length === 0) return;'),
+  },
+  {
+    label: "store: the upsert destructured off an insert builder, then called through .call",
+    file: "store",
+    flips: ["store-dispositions-are-append-only"],
+    apply: edit("store", "  if (args.findings.length === 0) return;", "  const { onConflictDoUpdate } = db.insert(studyProofreadDispositionsTable).values({} as any);\n  onConflictDoUpdate.call(null, {});\n  if (args.findings.length === 0) return;"),
+  },
+  {
+    label: "a clause file dynamically imports one of its own siblings by a literal specifier",
+    file: "clauseDir",
+    flips: ["proofread-dir-imports-whitelist"],
+    apply: editDir("fingerprint.ts", 'import type { ProofreadFinding } from "./types.ts";', 'import type { ProofreadFinding } from "./types.ts";\nvoid import("./types.ts");'),
+  },
+  {
+    label: "a clause file dynamically imports tis-engine-core by a literal specifier",
+    file: "clauseDir",
+    flips: ["proofread-dir-imports-whitelist"],
+    apply: editDir("prose.ts", 'import type { StudyRecord } from "./types.ts";', 'import type { StudyRecord } from "./types.ts";\nvoid import("@workspace/tis-engine-core");'),
+  },
+  {
+    label: "a clause file requires one of its siblings",
+    file: "clauseDir",
+    flips: ["proofread-dir-imports-whitelist"],
+    apply: editDir("s6-limitations.ts", 'import { numeric } from "./types.ts";', 'import { numeric } from "./types.ts";\nvoid require("./types.ts");'),
+  },
 
   // ---- tis-projects.ts --------------------------------------------------------
   {
