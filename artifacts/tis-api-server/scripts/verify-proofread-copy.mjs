@@ -311,6 +311,15 @@ await group("nothing was checked is not nothing found", () => {
     }
   }
   ok(/12 clauses could not run on this study/.test(text(view(runOf("rules_ready", { coverage: twelve })))), "12 of 12 not-run: the list of why is still there");
+  // Only for a finished run. runOf's default coverage is a clause that ran, so these use the empty and the all-not-run
+  // coverage explicitly: that is the coverage a never-checked, queued, running or failed row actually carries.
+  for (const status of ["none", ...PENDING, "failed"]) {
+    for (const [name, coverage] of [["no coverage", []], ["12 of 12 not-run", twelve]]) {
+      const t = text(keep(view(runOf(status, { coverage }))));
+      ok(!NOTHING.test(t), `${status}, ${name}: the nothing-checked sentence is for a finished run only (rendered: ${JSON.stringify(t.slice(t.indexOf("Run ")).slice(0, 110))})`);
+    }
+  }
+  ok(/has not been checked yet/.test(text(view(runOf("none", { coverage: [] })))), "none, no coverage: still says it has not been checked yet");
   // The header, were there anything under it, is scoped too.
   ok(/in the clauses that ran/.test(summaryOf(view(runOf("rules_ready", { coverage: [], findings: ordinary }))) ?? ""), "no coverage: a header over findings is scoped to the clauses that ran");
   // A run in which something did run keeps the old wording.
@@ -545,6 +554,44 @@ await group("rendered copy", () => {
   ok(warnings.length === 0, `rendering raised no React warnings${warnings.length ? `: ${warnings[0]}` : ""}`);
 });
 
+await group("the decision shown at once is the decision recorded", () => {
+  ok(typeof lib.withRecordedDecision === "function", "lib/proofread.ts exports withRecordedDecision");
+  const NOW = new Date("2026-10-06T15:00:00Z");
+  // x already carries an OLDER, non-closing record (a carried-forward disclosure); y is closed and must be left alone.
+  const older = recorded("f-x", "DISCLOSED", "2026-10-06T10:00:00Z");
+  const other = recorded("f-y", "FIXED", "2026-10-06T12:00:00Z");
+  const base = runOf("rules_ready", { runId: "run-A", findings: [mk("x", "BLOCKER"), mk("y", "NOTE")], dispositions: [older, other] });
+  const finding = base.findings[0];
+  ok(/^1 open item to resolve/.test(summaryOf(view(base)) ?? ""), "precondition: before the decision the blocker is open (an older Disclosed does not close it)");
+  for (const [name, body, wantSource] of [
+    ["Fixed", { disposition: "FIXED" }, null],
+    // The body the panel really builds: the prompt's answer arrives padded and leaves trimmed.
+    ["Withdrawn on a named source", lib.dispositionBody("WITHDRAWN", () => "  HCM 7th ed.  "), "HCM 7th ed."],
+  ]) {
+    const after = lib.withRecordedDecision(base, "run-A", finding, body, NOW);
+    const latest = lib.latestDisposition(after.dispositions, finding.id);
+    // Not read back through latestDisposition(finding.id): that can only ever return a record of that finding, so a record
+    // written against the wrong one would go unseen (the older record would answer instead).
+    const added = after.dispositions.filter((d) => !base.dispositions.includes(d));
+    ok(added.length === 1 && added[0].findingId === finding.id, `${name}: exactly one record was added, on the finding that was pressed (got ${added.map((d) => d.findingId).join(", ") || "none"})`);
+    ok(latest?.disposition === body.disposition, `${name}: the record is the decision that was recorded, not another (got ${latest?.disposition})`);
+    ok(latest?.sourceLabel === wantSource, `${name}: the record carries the source named, or none (got ${JSON.stringify(latest?.sourceLabel)})`);
+    ok(latest?.createdAt === NOW.toISOString(), `${name}: the record is stamped now, so it is the latest and beats the older one (got ${latest?.createdAt})`);
+    ok(latest?.note === null, `${name}: the record carries no note`);
+    ok(lib.closes(finding.type, latest?.disposition), `${name}: it closes the blocker`);
+    ok(after.dispositions.includes(older) && after.dispositions.includes(other) && after.dispositions.length === 3, `${name}: the other records are kept`);
+    ok(base.dispositions.length === 2 && after !== base, `${name}: the run it was handed is not changed`);
+    const html = keep(view(after));
+    const c = text(card(html, "x"));
+    ok(buttons(card(html, "x")).length === 0 && new RegExp(`Recorded: ${body.disposition}`).test(c), `${name}: rendered, the card shows Recorded: ${body.disposition} and no controls (${JSON.stringify(c.slice(-60))})`);
+    ok(!wantSource || c.includes(wantSource), `${name}: rendered, the card names the source`);
+    ok(/^Every item has a recorded decision\.$/.test(summaryOf(html) ?? ""), `${name}: rendered, the header has moved (${JSON.stringify(summaryOf(html))})`);
+  }
+  // A different run is not this run's business: it comes back as it was.
+  const wrong = lib.withRecordedDecision(base, "run-B", finding, { disposition: "FIXED" }, NOW);
+  ok(wrong === base, "a decision recorded on another run does not touch this one (the previous project's run, or a newer revision)");
+});
+
 // ─── 3. THE CLIENT MODULE ───────────────────────────────────────────────────────────
 await group("client module", async () => {
   ok(
@@ -625,15 +672,15 @@ await group("client module", async () => {
 await group("wiring", () => {
   ok(/\}, \[projectId, nonce\]\);/.test(panel), "WIRING: the poll effect depends on nonce, so a re-run re-arms it");
   ok(/await requestProofread\(projectId\);\s*setError\(null\);\s*setNonce\(/.test(panel), "WIRING: a successful re-run request bumps the nonce");
-  ok(/recordDisposition\(projectId, run\.runId, f\.id, body\)/.test(panel) && !/recordDisposition\([^)]*revision/.test(panel), "WIRING: a decision is recorded against the run's uuid, not its revision");
+  ok(/const runId = run\.runId;/.test(panel) && /recordDisposition\(projectId, runId, f\.id, body\)/.test(panel) && !/recordDisposition\([^)]*revision/.test(panel), "WIRING: a decision is recorded against the run's uuid, not its revision");
   ok(/dispositionBody\(/.test(panel), "WIRING: the panel builds the decision body with dispositionBody");
   ok(
-    /await recordDisposition\(projectId, run\.runId, f\.id, body\);[\s\S]*?setNonce\(/.test(panel) && !/setRun\(await fetchProofread/.test(panel),
+    /await recordDisposition\(projectId, runId, f\.id, body\);[\s\S]*?setNonce\(/.test(panel) && !/setRun\(await fetchProofread/.test(panel),
     "WIRING: a recorded decision refetches through the effect (setNonce), not a one-off fetch that bypasses the poll and its cancellation",
   );
   ok(
-    /await recordDisposition\([^;]*;[\s\S]*?setRun\(\(prev\) => \(prev && prev\.runId === run\.runId \? \{ \.\.\.prev, dispositions: \[recorded, \.\.\.prev\.dispositions\] \} : prev\)\);[\s\S]*?setNonce\(/.test(panel),
-    "WIRING: a recorded decision is shown at once, on this run only, before the refetch (two presses in the window before it landed both reached the server)",
+    /await recordDisposition\([^;]*;[\s\S]*?setRun\(\(prev\) => \(prev \? withRecordedDecision\(prev, runId, f, body, new Date\(\)\) : prev\)\);[\s\S]*?setNonce\(/.test(panel),
+    "WIRING: after the POST succeeds, a recorded decision is shown at once through withRecordedDecision, before the refetch (two presses in the window before it landed both reached the server)",
   );
   ok(/offeredFor\(f\.type\)/.test(panel) && /latestDisposition\(run\.dispositions, f\.id\)/.test(panel) && /closes\(f\.type,/.test(panel), "WIRING: the card reads offeredFor, latestDisposition and closes from the client module, not a table of its own");
   ok(!/BUG_FILED|Bug filed|DISPOSITIONS/.test(panel), "WIRING: the panel holds no decision table of its own and never names BUG_FILED");

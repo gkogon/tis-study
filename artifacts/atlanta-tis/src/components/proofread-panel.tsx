@@ -23,6 +23,7 @@ import {
   recordDisposition,
   requestProofread,
   summarizeOpen,
+  withRecordedDecision,
   type EngineerDisposition,
   type OpenSummary,
   type ProofreadFindingT,
@@ -113,18 +114,17 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
 
   const triage = async (f: ProofreadFindingT, disposition: string) => {
     if (inFlight.current || !run?.runId) return;
+    const runId = run.runId;
     const body = dispositionBody(disposition, () => window.prompt("Name the source this is withdrawn on:"));
     if (!body) return; // cancelled, or no source named: nothing to record
     inFlight.current = true;
     setBusy(true);
     try {
-      await recordDisposition(projectId, run.runId, f.id, body);
-      // The server has taken it. Show it at once: `busy` is released below, and until the
-      // refetch lands this card would otherwise still offer the decision just recorded, to a
-      // second press that would append a duplicate to a log that cannot be edited. The refetch
-      // replaces this with the server's own record.
-      const recorded = { findingId: f.id, disposition: body.disposition, note: null, sourceLabel: body.sourceLabel ?? null, createdAt: new Date().toISOString() };
-      setRun((prev) => (prev && prev.runId === run.runId ? { ...prev, dispositions: [recorded, ...prev.dispositions] } : prev));
+      await recordDisposition(projectId, runId, f.id, body);
+      // The server has taken it. Show it at once (see withRecordedDecision): `busy` is released
+      // below, and until the refetch lands this card would otherwise still offer the decision
+      // just recorded. The refetch replaces it with the server's own record.
+      setRun((prev) => (prev ? withRecordedDecision(prev, runId, f, body, new Date()) : prev));
       // Refetch through the effect, as "Run again" does: it re-arms the poll, and it drops a
       // result that arrives after the project has changed.
       setNonce((v) => v + 1);

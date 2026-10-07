@@ -181,6 +181,36 @@ export function latestDisposition(dispositions: DispositionT[], findingId: strin
   return latest;
 }
 
+/**
+ * The run as it stands once the server has accepted a decision, ahead of the
+ * refetch that will replace it with the server's own record. The panel shows
+ * this at once because `busy` is released before that refetch lands: until
+ * then the old card would still offer the decision just recorded, and a second
+ * press would append a duplicate to a log that cannot be edited.
+ *
+ * Only for `runId`: a decision recorded on another run (the project changed, or
+ * a newer revision took over mid-flight) is not this run's business, and the
+ * run comes back as it was. The record is stamped `now`, so as the newest it is
+ * the one `latestDisposition` returns.
+ */
+export function withRecordedDecision(
+  run: ProofreadRun,
+  runId: string,
+  finding: ProofreadFindingT,
+  body: { disposition: string; sourceLabel?: string },
+  now: Date,
+): ProofreadRun {
+  if (run.runId !== runId) return run;
+  const recorded: DispositionT = {
+    findingId: finding.id,
+    disposition: body.disposition,
+    note: null,
+    sourceLabel: body.sourceLabel ?? null,
+    createdAt: now.toISOString(),
+  };
+  return { ...run, dispositions: [recorded, ...run.dispositions] };
+}
+
 export type OpenSummary = {
   /** Every finding on the run. */
   total: number;
