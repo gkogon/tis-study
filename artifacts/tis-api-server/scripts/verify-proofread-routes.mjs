@@ -635,11 +635,20 @@ function dbScan(text) {
   const bindingIds = (name) =>
     ts.isIdentifier(name) ? [name] : ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name) ? name.elements.flatMap((el) => (ts.isOmittedExpression(el) ? [] : bindingIds(el.name))) : [];
   const scopes = new Map();
+  // A name declared twice in one scope (`var h = 1; var h = db`, or `var h` over a parameter h)
+  // is ONE variable: every later declaring identifier maps to the first, so a taint written
+  // through the second lands on the binding that references resolve to.
+  const canon = new Map();
   const declare = (scope, name) => {
     if (!scopes.has(scope)) scopes.set(scope, new Map());
-    for (const id of bindingIds(name)) if (!scopes.get(scope).has(id.text)) scopes.get(scope).set(id.text, id);
+    for (const id of bindingIds(name)) {
+      if (!scopes.get(scope).has(id.text)) scopes.get(scope).set(id.text, id);
+      else if (scopes.get(scope).get(id.text) !== id) canon.set(id, scopes.get(scope).get(id.text));
+    }
   };
   const seeds = [];
+  // identifiers written by an assignment destructuring that reads the key db (`({ db: h } = o)`)
+  const seedRefs = [];
   const declareAll = (n) => {
     if (ts.isVariableDeclaration(n)) {
       const list = n.parent;
@@ -659,6 +668,9 @@ function dbScan(text) {
       // the database handle itself, however it is imported or renamed
       if (n.name.text === "db" || (ts.isImportSpecifier(n) && n.propertyName && keyText(n.propertyName) === "db")) seeds.push(n.name);
     }
+    // a destructuring key called db reads a property named db, which is a seed like `x.db`:
+    // `const { db: h } = globalThis`, `const { db } = o`
+    if (ts.isBindingElement(n) && ts.isObjectBindingPattern(n.parent) && keyText(n.propertyName ?? n.name) === "db") seeds.push(...bindingIds(n.name));
     ts.forEachChild(n, declareAll);
   };
   declareAll(sf);
@@ -706,7 +718,16 @@ function dbScan(text) {
       return e.name.text === "db" ? "handle" : kindOf(e.expression);
     }
     if (ts.isElementAccessExpression(e)) return lit(e.argumentExpression) === "db" ? "handle" : kindOf(e.expression);
-    if (ts.isCallExpression(e)) return kindOf(e.expression) === "none" ? "none" : "builder";
+    // Awaiting a HANDLE yields the handle (it is not a thenable); awaiting a builder yields its rows.
+    if (ts.isAwaitExpression(e)) return kindOf(e.expression) === "handle" ? "handle" : "none";
+    if (ts.isCallExpression(e)) {
+      const callee = kindOf(e.expression);
+      if (callee === "none") return "none";
+      // A method of a handle handed a callback that RETURNS a handle resolves to that handle:
+      // `await db.transaction(async (x) => x)`.
+      if (callee === "handle" && e.arguments.some((a) => { const f = fnArg(a); return f !== null && returnsHeld(f); })) return "handle";
+      return "builder";
+    }
     if (ts.isNewExpression(e)) return (e.arguments ?? []).reduce((k, a) => max(k, kindOf(a)), "none");
     if (ts.isConditionalExpression(e)) return max(kindOf(e.whenTrue), kindOf(e.whenFalse));
     if (ts.isBinaryExpression(e)) {
@@ -744,6 +765,18 @@ function dbScan(text) {
     const u = unwrapCast(a);
     return u && (ts.isArrowFunction(u) || ts.isFunctionExpression(u)) ? u : null;
   };
+  // Does a function literal return a value that holds a handle? (its own returns, not those of nested functions)
+  const returnsHeld = (f) => {
+    if (!ts.isBlock(f.body)) return kindOf(f.body) !== "none";
+    let held = false;
+    const v = (x) => {
+      if (held || isFunctionLike(x)) return;
+      if (ts.isReturnStatement(x) && x.expression && kindOf(x.expression) !== "none") held = true;
+      ts.forEachChild(x, v);
+    };
+    ts.forEachChild(f.body, v);
+    return held;
+  };
   const collect = (n) => {
     if (ts.isVariableDeclaration(n)) {
       if (n.initializer) events.push({ ids: bindingIds(n.name), src: n.initializer });
@@ -752,6 +785,17 @@ function dbScan(text) {
     else if (ts.isPropertyDeclaration(n) && n.initializer && n.name && keyText(n.name) !== null) events.push({ cls: n.parent, name: keyText(n.name), src: n.initializer });
     else if (ts.isBinaryExpression(n) && [ts.SyntaxKind.EqualsToken, ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.AmpersandAmpersandEqualsToken, ts.SyntaxKind.QuestionQuestionEqualsToken].includes(n.operatorToken.kind)) {
       events.push({ refs: targets(n.left), src: n.right });
+      // `({ db: h } = o)` reads o.db into h, like `const { db: h } = o`
+      const dbKeys = (t0) => {
+        const t = unwrapCast(t0);
+        if (!t || !ts.isObjectLiteralExpression(t)) return;
+        for (const p of t.properties) {
+          if (ts.isPropertyAssignment(p) && keyText(p.name) === "db") seedRefs.push(...targets(p.initializer).filter((r) => r.id).map((r) => r.id));
+          else if (ts.isShorthandPropertyAssignment(p) && p.name.text === "db") seedRefs.push(p.name);
+          else if (ts.isPropertyAssignment(p)) dbKeys(p.initializer);
+        }
+      };
+      if (n.operatorToken.kind === ts.SyntaxKind.EqualsToken) dbKeys(n.left);
     } else if (ts.isForOfStatement(n) && !ts.isVariableDeclarationList(n.initializer)) events.push({ refs: targets(n.initializer), src: n.expression });
     else if (ts.isCallExpression(n)) {
       // a function literal handed to a method of a handle receives a handle: db.transaction(async (t) => ...)
@@ -764,13 +808,15 @@ function dbScan(text) {
   };
   collect(sf);
   let changed = true;
-  const taint = (id, k) => {
+  const taint = (id0, k) => {
+    const id = canon.get(id0) ?? id0;
     if (!id || k === "none") return;
     const cur = tainted.get(id) ?? "none";
     const next = max(cur, k);
     if (next !== cur) tainted.set(id, next), (changed = true);
   };
   for (const id of seeds) taint(id, "handle");
+  for (const r of seedRefs) taint(resolve(r), "handle");
   while (changed) {
     changed = false;
     for (const ev of events) {
@@ -801,7 +847,7 @@ function dbScan(text) {
       }
     }
   }
-  const heldBinding = (name) => bindingIds(name).some((id) => tainted.has(id));
+  const heldBinding = (name) => bindingIds(name).some((id) => tainted.has(canon.get(id) ?? id));
   const computedKeyIn = (pattern) => {
     let found = false;
     const v = (x) => {
@@ -1164,6 +1210,19 @@ const REFLECTION_FORMS = [
   ["a property named db of another object", 'await (globalThis as any).db["upd" + "ate"](tisProjectsTable);', true],
   ["an object handed db in a property assignment", 'const box: any = {}; box.h = db; await box.h["upd" + "ate"](tisProjectsTable);', true],
   ["an assignment destructuring with a computed key from db", 'let u2: any; const k6 = "update"; ({ [k6]: u2 } = db); await u2(tisProjectsTable);', true],
+  // awaiting the handle itself yields the handle (round 4 dropped every awaited value)
+  ["an awaited db held in a const", 'const ah = await db; await (ah as any)["upd" + "ate"](tisProjectsTable);', true],
+  ["an awaited db indexed in place", 'await ((await db) as any)["upd" + "ate"](tisProjectsTable);', true],
+  ["an awaited property of db", 'const ac = await (db as any).$client; await ac["upd" + "ate"](tisProjectsTable);', true],
+  ["an awaited db chosen by a conditional", 'const at = Date.now() > 0 ? await db : null; await (at as any)["upd" + "ate"](tisProjectsTable);', true],
+  ["an awaited db inside an object literal, destructured", 'const { ad } = { ad: await db }; await (ad as any)["upd" + "ate"](tisProjectsTable);', true],
+  // a var declared twice is one variable
+  ["a var re-declared from a number to db", 'var vr: any = 1; var vr: any = db; await vr["upd" + "ate"](tisProjectsTable);', true],
+  ["a parameter re-declared as a var holding db", 'async function f4(vp: any) { var vp: any = db; await vp["upd" + "ate"](tisProjectsTable); } await f4(1);', true],
+  // a destructuring key called db reads a property named db
+  ["a destructuring key called db", 'const { db: gd } = globalThis as any; await gd["upd" + "ate"](tisProjectsTable);', true],
+  ["an assignment destructuring with the key db", 'let ga: any; ({ db: ga } = globalThis as any); await ga["upd" + "ate"](tisProjectsTable);', true],
+  ["the handle a transaction callback returns, awaited", 'const tr = await db.transaction(async (x: any) => x); await (tr as any)["upd" + "ate"](tisProjectsTable);', true],
 ];
 
 
@@ -2154,6 +2213,7 @@ const LEGIT = [
   ["Object.fromEntries of rows.map", `const rows = ${SEL}; void Object.fromEntries(rows.map((r) => [r.id, r]));`],
   ["a sorted copy of rows", `const rows = ${SEL}; void [...rows].sort((a, b) => a.revision - b.revision);`],
   ["a column read by a computed key", `const [row] = ${SEL}; const col = args.status; void (row as any)?.[col];`],
+  ["a query built, then awaited, then indexed (awaiting a builder yields rows)", "const qb = db.select().from(studyProofreadRunsTable); const rows = await qb; const i = rows.length - 1; void rows[i];"],
   ["a transaction that inserts and updates the run table", "await db.transaction(async (tx) => { const [r] = await tx.select().from(studyProofreadRunsTable).where(eq(studyProofreadRunsTable.id, args.runId)); if (r) await tx.update(studyProofreadRunsTable).set({ attempts: r.attempts }).where(eq(studyProofreadRunsTable.id, r.id)); });"],
 ].map(([what, code]) => ({ label: `store completeRun: ${what}`, apply: edit("store", "  if (args.findings.length === 0) return;", `  { ${code} }\n  if (args.findings.length === 0) return;`) }));
 LEGIT.push(
