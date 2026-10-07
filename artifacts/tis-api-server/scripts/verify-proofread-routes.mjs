@@ -66,9 +66,27 @@ const ok = (cond, msg, why) => {
   console.log(`${cond ? "PASS" : "FAIL"}  ${msg}`);
   if (!cond) {
     fails++;
-    if (why) console.log(`        ${why}`);
+    // One indented line per item: a check that fails names the file and line of what fired,
+    // so the person it stops can read the line rather than weaken the check.
+    if (why) for (const l of [why].flat().join("\n").split("\n")) console.log(`        ${l}`);
   }
 };
+
+/** Where each guarded source lives, relative to artifacts/tis-api-server, for `file:line` in a failure. */
+const PATHS = {
+  routes: "src/routes/proofread.ts",
+  routesIndex: "src/routes/index.ts",
+  security: "src/lib/security.ts",
+  contract: "../../lib/tis-api-zod/src/proofread.ts",
+  zodIndex: "../../lib/tis-api-zod/src/index.ts",
+  store: "src/lib/proofread-store.ts",
+  runner: "src/lib/proofread-run.ts",
+  tisProjects: "src/lib/tis-projects.ts",
+  typesSrc: "src/lib/proofread/types.ts",
+};
+const pathOf = (file) => PATHS[file] ?? `src/lib/proofread/${file}`;
+/** The 1-based line of an offset into a raw (not comment-stripped) source. */
+const lineAt = (raw, off) => raw.slice(0, Math.max(0, off)).split("\n").length;
 
 // The code is read with TypeScript's own parser, not with regexes. Two rounds of
 // review showed a line-anchored regex parser can always be walked around by a
@@ -193,7 +211,10 @@ function parse(text) {
  * the regex as the start of a comment and deleted the rest of the line). On
  * every file this guard reads it returns exactly what that stripper did.
  */
-function stripComments(src) {
+const strippedTexts = new Map();
+function stripMapped(src) {
+  let done = strippedTexts.get(src);
+  if (done) return done;
   const sf = parse(src);
   const ranges = new Map();
   const add = (rs) => {
@@ -207,12 +228,36 @@ function stripComments(src) {
   visit(sf);
   let out = "";
   let at = 0;
+  // [offset in the stripped text, offset in the source] at the start of each kept stretch,
+  // so a text scan's hit can be reported at its line in the real file.
+  const segs = [];
   for (const [pos, end] of [...ranges].sort((a, b) => a[0] - b[0])) {
     if (pos < at) continue;
+    segs.push([out.length, at]);
     out += src.slice(at, pos);
     at = end;
   }
-  return out + src.slice(at);
+  segs.push([out.length, at]);
+  done = { text: out + src.slice(at), segs };
+  strippedTexts.set(src, done);
+  return done;
+}
+function stripComments(src) {
+  return stripMapped(src).text;
+}
+/** The 1-based line in `raw` of an offset into stripComments(raw). */
+function rawLine(raw, strippedOffset) {
+  let rawOff = strippedOffset;
+  for (const [s, r] of stripMapped(raw).segs) {
+    if (s > strippedOffset) break;
+    rawOff = r + (strippedOffset - s);
+  }
+  return lineAt(raw, rawOff);
+}
+/** Every hit of `re` in the comment-stripped text of `raw`, as `file:line: text (text scan)`. */
+function textHits(file, raw, re) {
+  const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);
+  return [...stripComments(raw).matchAll(g)].map((m) => `${pathOf(file)}:${rawLine(raw, m.index)}: ${JSON.stringify(m[0].slice(0, 70))} (text scan)`);
 }
 
 /**
@@ -383,7 +428,6 @@ function importsEqual(got, want) {
 const WRITE_VERBS = new Set(["update", "insert", "delete"]);
 const STUDY_NAMES = new Set(["tisProjectsTable", "requestPayload", "resultPayload", "request_payload", "result_payload"]);
 const DB_HANDLES = new Set(["db", "tx", "trx"]);
-const PROOFREAD_TABLES = ["studyProofreadRunsTable", "studyProofreadFindingsTable", "studyProofreadDispositionsTable"];
 
 /**
  * What a file does to the database, read from the AST.
@@ -427,7 +471,9 @@ const PROOFREAD_TABLES = ["studyProofreadRunsTable", "studyProofreadFindingsTabl
  * and is the recommended addition once phase 1 ships.
  */
 const REFLECT_FNS = new Set(["keys", "values", "entries", "assign", "fromEntries", "getOwnPropertyNames", "getOwnPropertyDescriptor", "getOwnPropertyDescriptors", "getPrototypeOf", "setPrototypeOf", "defineProperty", "defineProperties"]);
+const dbScanCache = new Map();
 function dbScan(text) {
+  if (dbScanCache.has(text)) return dbScanCache.get(text);
   const sf = parse(text);
   const writes = [];
   const study = [];
@@ -442,6 +488,8 @@ function dbScan(text) {
     for (let p = n.parent; p; p = p.parent) if (ts.isFunctionDeclaration(p) && p.name) return p.name.text;
     return null;
   };
+  // The function a finding is in (for the loader rule) and its line (for the failure message).
+  const loc = (n) => ({ fn: fnOf(n), line: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1 });
   const inImport = (n) => {
     for (let p = n.parent; p; p = p.parent) if (ts.isImportDeclaration(p)) return true;
     return false;
@@ -510,46 +558,120 @@ function dbScan(text) {
         members.add(key);
         if (WRITE_VERBS.has(key)) verb = key;
       } else if (!ts.isNumericLiteral(n.argumentExpression) && rooted(n.expression)) {
-        writes.push({ form: "computed access on a db handle or a value derived from one", fn: fnOf(n) });
+        writes.push({ form: "computed access on a db handle or a value derived from one", ...loc(n) });
       }
     }
     if (verb !== null) {
       const parent = n.parent;
       if (ts.isCallExpression(parent) && parent.expression === n) {
         const a = parent.arguments.length === 1 ? unwrap(parent.arguments[0]) : null;
-        writes.push({ verb, form: "call", table: a && ts.isIdentifier(a) ? a.text : "<not a table identifier>", fn: fnOf(n) });
-      } else writes.push({ verb, form: "reference", fn: fnOf(n) });
+        writes.push({ verb, form: "call", table: a && ts.isIdentifier(a) ? a.text : "<not a table identifier>", ...loc(ts.isPropertyAccessExpression(n) ? n.name : n) });
+      } else writes.push({ verb, form: "reference", ...loc(ts.isPropertyAccessExpression(n) ? n.name : n) });
     }
     if (ts.isBindingElement(n) && ts.isObjectBindingPattern(n.parent)) {
       const k = keyText(n.propertyName ?? n.name);
       if (k !== null) members.add(k);
-      if (k !== null && WRITE_VERBS.has(k)) writes.push({ verb: k, form: "destructured", fn: fnOf(n) });
-      if (n.propertyName && ts.isComputedPropertyName(n.propertyName) && k === null && rooted(initOfPattern(n))) writes.push({ form: "computed destructuring key on a db-derived value", fn: fnOf(n) });
+      if (k !== null && WRITE_VERBS.has(k)) writes.push({ verb: k, form: "destructured", ...loc(n) });
+      if (n.propertyName && ts.isComputedPropertyName(n.propertyName) && k === null && rooted(initOfPattern(n))) writes.push({ form: "computed destructuring key on a db-derived value", ...loc(n) });
     }
     if (ts.isShorthandPropertyAssignment(n) || ts.isPropertyAssignment(n)) {
       const k = keyText(n.name);
-      if (k !== null && WRITE_VERBS.has(k)) writes.push({ verb: k, form: "object property", fn: fnOf(n) });
+      if (k !== null && WRITE_VERBS.has(k)) writes.push({ verb: k, form: "object property", ...loc(n) });
     }
-    if ((ts.isSpreadAssignment(n) || ts.isSpreadElement(n)) && rooted(n.expression)) writes.push({ form: "spread of a db-derived value", fn: fnOf(n) });
-    if (ts.isForInStatement(n) && rooted(n.expression)) writes.push({ form: "for-in over a db-derived value", fn: fnOf(n) });
+    if ((ts.isSpreadAssignment(n) || ts.isSpreadElement(n)) && rooted(n.expression)) writes.push({ form: "spread of a db-derived value", ...loc(n) });
+    if (ts.isForInStatement(n) && rooted(n.expression)) writes.push({ form: "for-in over a db-derived value", ...loc(n) });
     if (ts.isCallExpression(n)) {
       const e = n.expression;
       if (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression) && ((e.expression.text === "Object" && REFLECT_FNS.has(e.name.text)) || e.expression.text === "Reflect") && n.arguments.some(rooted)) {
-        writes.push({ form: "reflection on a db-derived value", fn: fnOf(n) });
+        writes.push({ form: "reflection on a db-derived value", ...loc(n) });
       }
     }
     if (ts.isIdentifier(n)) {
-      if (n.text === "Reflect" || n.text === "Proxy") writes.push({ form: "Reflect or Proxy", fn: fnOf(n) });
-      if (STUDY_NAMES.has(n.text)) study.push({ name: n.text, fn: fnOf(n), inImport: inImport(n) });
-      if (n.text === "db") dbIdents.push({ fn: fnOf(n) });
+      if (n.text === "Reflect" || n.text === "Proxy") writes.push({ form: "Reflect or Proxy", ...loc(n) });
+      if (STUDY_NAMES.has(n.text)) study.push({ name: n.text, ...loc(n), inImport: inImport(n) });
+      if (n.text === "db") dbIdents.push({ ...loc(n) });
     } else if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) {
-      if (STUDY_NAMES.has(n.text)) study.push({ name: n.text, fn: fnOf(n), inImport: false });
+      if (STUDY_NAMES.has(n.text)) study.push({ name: n.text, ...loc(n), inImport: false });
     }
     ts.forEachChild(n, visit);
   };
   visit(sf);
-  return { writes, study, dbIdents, members };
+  const result = { writes, study, dbIdents, members };
+  dbScanCache.set(text, result);
+  return result;
 }
+
+/** A dbScan write, as `file:line: what`. */
+const fmtWrite = (file, w) => `${pathOf(file)}:${w.line}: ${w.form === "call" ? `${w.verb}(${w.table})` : `${w.verb ? `${w.verb}: ` : ""}${w.form}`}${w.fn ? ` in ${w.fn}` : ""}`;
+const fmtAt = (file, x, what) => `${pathOf(file)}:${x.line}: ${what}`;
+
+/**
+ * What the store may write, verb by table, exactly as its code does today:
+ * insertQueuedRun inserts a run, claimOneRun and completeRun update one,
+ * completeRun inserts findings, and carryForwardDispositions and
+ * insertDisposition insert dispositions. Nothing is deleted. The schema makes
+ * runs -> findings -> dispositions ON DELETE CASCADE, so deleting a run or a
+ * finding erases the disposition rows under it: a delete of ANY of the three
+ * is a delete from the append-only log by another name. A Map, so a table
+ * spelled like an Object.prototype member is just an unknown table.
+ */
+const STORE_WRITES = new Map([
+  ["studyProofreadRunsTable", ["insert", "update"]],
+  ["studyProofreadFindingsTable", ["insert"]],
+  ["studyProofreadDispositionsTable", ["insert"]],
+]);
+const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.get(table).includes(verb);
+
+/**
+ * Raw SQL that writes, in any letter case: UPDATE <target>, INSERT INTO,
+ * DELETE FROM, TRUNCATE, ON CONFLICT ... DO UPDATE, MERGE INTO, DROP / ALTER
+ * TABLE. `FOR UPDATE` (and `FOR NO KEY UPDATE`) is row locking inside a read
+ * and is exempt: the store's claim says `FOR UPDATE SKIP LOCKED`. Read over
+ * the text of every string literal and template (a substitution counts as a
+ * target: `update ${tisProjectsTable} set`) and of every `+` chain of them
+ * (`"update " + "tis_" + "projects"`), both cooked and as written. A prose
+ * string that reads like SQL ("could not update the claim") is refused too;
+ * that is the price of reading text, and the fix is to reword it.
+ */
+const RAW_SQL_WRITE =
+  /(?<!\bfor\s+(?:no\s+key\s+)?)\bupdate(?:\s+[^\s(]|\s*["`$](?=[\w{]))|\binsert\s+into\b|\bdelete\s+from\b|\btruncate\b|\bon\s+conflict\b[\s\S]*?\bdo\s+update\b|\bmerge\s+into\b|\b(?:drop|alter)\s+table\b/i;
+const rawSqlCache = new Map();
+function rawSqlWrites(text) {
+  if (rawSqlCache.has(text)) return rawSqlCache.get(text);
+  const sf = parse(text);
+  const hits = new Map();
+  const consider = (node, s) => {
+    if (typeof s === "string" && RAW_SQL_WRITE.test(s) && !hits.has(node.getStart(sf))) {
+      hits.set(node.getStart(sf), { line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1, text: s.replace(/\s+/g, " ").trim().slice(0, 80) });
+    }
+  };
+  const part = (t) => t.text ?? t.rawText ?? "";
+  const templateText = (e) => part(e.head) + e.templateSpans.map((sp) => `\${}${part(sp.literal)}`).join("");
+  const isPlus = (e) => ts.isBinaryExpression(e) && e.operatorToken.kind === ts.SyntaxKind.PlusToken;
+  const flat = (e) => {
+    while (ts.isParenthesizedExpression(e)) e = e.expression;
+    if (isPlus(e)) return flat(e.left) + flat(e.right);
+    if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) return e.text;
+    if (ts.isTemplateExpression(e)) return templateText(e);
+    return "${}";
+  };
+  const visit = (n) => {
+    // cooked, and as written between the delimiters (so an escape such as upd\u0061te cannot hide a verb either way)
+    if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) {
+      consider(n, n.text);
+      consider(n, n.getText(sf).slice(1, -1));
+    } else if (ts.isTemplateExpression(n)) {
+      consider(n, templateText(n));
+      consider(n, n.getText(sf).slice(1, -1));
+    } else if (isPlus(n) && !(n.parent && isPlus(n.parent))) consider(n, flat(n));
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  const out = [...hits.values()];
+  rawSqlCache.set(text, out);
+  return out;
+}
+const fmtRawSql = (file, h) => `${pathOf(file)}:${h.line}: raw SQL write ${JSON.stringify(h.text)}`;
 
 /** The function declaration called `name`, or null. */
 function functionNamed(text, name) {
@@ -799,6 +921,49 @@ const REFLECTION_FORMS = [
   );
   ok(eq(P('import { a } from "m";'), { m: ["a"] }) && eq(P('import type { a } from "m";'), { m: ["type a"] }) && eq(P('import { type a, b } from "m";'), { m: ["type a", "b"] }), "the import parser reads the names that were imported, with `type ` on type-only ones");
   void target;
+}
+
+// The raw-SQL scan, against what it must refuse in any letter case and spelling, and
+// the reads it must leave alone (the store's own claim says FOR UPDATE SKIP LOCKED).
+{
+  const n = (src) => rawSqlWrites(src).length;
+  const refused = [
+    'const s = "update tis_projects set x = 1";',
+    'const s = "UPDATE study_proofread_dispositions SET note = null";',
+    "const s = `Update \"tis_projects\" set x = 1`;",
+    'const s = "insert into t values (1)";',
+    'const s = "delete from study_proofread_dispositions";',
+    'const s = "truncate study_proofread_dispositions";',
+    'const s = "TRUNCATE TABLE t";',
+    "const s = \"insert into t values (1) on conflict (id) do update set x = 2\";",
+    'const s = "merge into t using s on true";',
+    'const s = "drop table t";',
+    'const s = "alter table t add column c int";',
+    "const s = sql`update ${tisProjectsTable} set version = 2`;",
+    'const s = "update " + "tis_" + "projects set version = 2";',
+    'const s = "upd\\u0061te tis_projects set v = 1";',
+  ];
+  const left = [
+    "const s = sql`SELECT id FROM study_proofread_runs WHERE x ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1`;",
+    'const s = "select 1 for no key update";',
+    "const s = sql`(SELECT coalesce(max(revision), 0) + 1 FROM study_proofread_runs WHERE project_id = ${id})`;",
+    'const s = "x.update(y)";',
+    'const s = "update";',
+    'const s = "updated";',
+    'const s = "proofread.dispositions_carried";',
+    'const o = { "update": 1, "delete": 2 };',
+  ];
+  const missed = refused.filter((t) => n(t) !== 1);
+  const flagged = left.filter((t) => n(t) !== 0);
+  ok(
+    missed.length === 0 && flagged.length === 0,
+    "the raw-SQL scan refuses UPDATE <target>, INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT DO UPDATE, MERGE INTO and DROP / ALTER TABLE in any letter case, in a string, a template with a substitution, a + chain or an escaped spelling, and leaves FOR UPDATE / FOR NO KEY UPDATE row locks, reads, and a bare word alone",
+    [...missed.map((t) => `missed: ${t}`), ...flagged.map((t) => `flagged: ${t}`)],
+  );
+  ok(
+    JSON.stringify(rawSqlWrites("const a = 1;\nconst b = 2;\nconst s = `\n  delete from t`;").map((h) => h.line)) === "[3]",
+    "the raw-SQL scan reports the line a literal starts on",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1152,19 +1317,24 @@ const CHECKS = [
   {
     id: "routes-do-not-touch-study",
     on: "routes",
-    msg: "no route touches tis_projects, request_payload or result_payload, and none writes or reaches the database by itself: read from the AST, no write verb in any spelling the AST can see (member call, string-key element access, destructured, bound, .call, computed access, reflection on a db handle), no tisProjectsTable or payload name, no `db`",
+    msg: "no route touches tis_projects, request_payload or result_payload, and none writes or reaches the database by itself: read from the AST, no write verb in any spelling the AST can see (member call, string-key element access, destructured, bound, .call, computed access, reflection on a db handle), no tisProjectsTable or payload name, no `db`, and no raw SQL write of any table in any string or template (any letter case)",
     test: (d) => {
       const sc = dbScan(d.src.routes);
-      return (
-        d.routes.length > 0 &&
-        sc.writes.length === 0 &&
-        sc.study.length === 0 &&
-        sc.dbIdents.length === 0 &&
-        // The AST names whole identifiers and whole literals; these substrings stay as extra
-        // conjuncts, because "select result_payload from tis_projects" is a string no
-        // identifier match sees and the old check refused it.
-        !/tisProjectsTable|requestPayload|resultPayload|request_payload|result_payload|tis_projects|\.update\(|\.insert\(|\.delete\(|\bdb\b|@workspace\/db/.test(d.routes)
-      );
+      const raw = rawSqlWrites(d.src.routes);
+      // The AST names whole identifiers and whole literals; these substrings stay as extra
+      // conjuncts, because "select result_payload from tis_projects" is a string no
+      // identifier match sees and the old check refused it.
+      const text = /tisProjectsTable|requestPayload|resultPayload|request_payload|result_payload|tis_projects|\.update\(|\.insert\(|\.delete\(|\bdb\b|@workspace\/db/;
+      return {
+        ok: d.routes.length > 0 && sc.writes.length === 0 && sc.study.length === 0 && sc.dbIdents.length === 0 && raw.length === 0 && !text.test(d.routes),
+        where: [
+          ...sc.writes.map((w) => fmtWrite("routes", w)),
+          ...sc.study.map((x) => fmtAt("routes", x, x.name)),
+          ...sc.dbIdents.map((x) => fmtAt("routes", x, "db")),
+          ...raw.map((h) => fmtRawSql("routes", h)),
+          ...textHits("routes", d.src.routes, text),
+        ],
+      };
     },
   },
   {
@@ -1301,12 +1471,17 @@ const CHECKS = [
   {
     id: "store-writes-only-proofread-tables",
     on: "store",
-    msg: "every write the store's OWN code makes is `<recv>.<verb>(<one of the three proofread tables>)` — a write to tis_projects or any other table is the advisor boundary broken, and so is any other way of reaching a write verb (string-key element access with a non-table argument, destructured, bound, .call, computed access on db), none of which a regex sees; a write reached through another module is the import whitelist's to catch",
+    msg: "every write the store's OWN code makes is `<recv>.<verb>(<table>)` with a verb that table allows, exactly as today: the run table insert or update, the findings table insert, the disposition log insert, and no delete of anything — a write to tis_projects or any other table is the advisor boundary broken, a delete of a run or a finding cascades into the disposition log, and any other way of reaching a write verb (string-key element access with a non-table argument, destructured, bound, .call, computed access on db) is refused; a write reached through another module is the import whitelist's to catch",
     test: (d) => {
       const w = dbScan(d.src.store).writes;
-      // the old text scan, kept as an extra conjunct: every `.verb(Name` in the text names a proofread table
-      const textTargets = [...d.store.matchAll(/\.(update|insert|delete)\(\s*(\w+)/g)].map((m) => m[2]);
-      return d.store.length > 0 && w.length > 0 && w.every((x) => x.form === "call" && PROOFREAD_TABLES.includes(x.table)) && textTargets.every((t) => PROOFREAD_TABLES.includes(t));
+      const bad = w.filter((x) => !(x.form === "call" && storeMayWrite(x.verb, x.table)));
+      // the old text scan, kept as an extra conjunct and narrowed to the same verb-by-table rule:
+      // every `.verb(Name` in the text is a write the table allows
+      const textBad = [...d.store.matchAll(/\.(update|insert|delete)\(\s*(\w+)/g)].filter((m) => !storeMayWrite(m[1], m[2]));
+      return {
+        ok: d.store.length > 0 && w.length > 0 && bad.length === 0 && textBad.length === 0,
+        where: [...bad.map((x) => fmtWrite("store", x)), ...textBad.map((m) => `${pathOf("store")}:${rawLine(d.src.store, m.index)}: ${m[0]} (text scan)`)],
+      };
     },
   },
   {
@@ -1326,18 +1501,24 @@ const CHECKS = [
   {
     id: "store-dispositions-are-append-only",
     on: "store",
-    msg: "the disposition log is only ever inserted into: no update or delete of it and no upsert, and no write verb reached in a form that hides its table (destructured, bound, .call, computed access, a table that is not a plain identifier) — ACCEPTED_RISK has to record who accepted it and when",
+    msg: "the disposition log is only ever inserted into, by the builder or by raw SQL: no update or delete of it, no delete of ANY table (runs -> findings -> dispositions cascade on delete, so deleting a run or a finding erases its dispositions), no upsert, no raw SQL write of any table in any letter case, and no write verb reached in a form that hides its table (destructured, bound, .call, computed access, a table that is not a plain identifier) — ACCEPTED_RISK has to record who accepted it and when",
     test: (d) => {
       const sc = dbScan(d.src.store);
-      return (
-        d.store.length > 0 &&
-        sc.writes.every((w) => w.form === "call" && w.table !== "<not a table identifier>" && !(w.table === "studyProofreadDispositionsTable" && w.verb !== "insert")) &&
-        !sc.members.has("onConflictDoUpdate") &&
-        // extra conjuncts from the old text scan: the AST sees property names and destructured keys,
-        // not a destructure of the upsert off an insert builder written some other way
-        !/onConflictDoUpdate/.test(d.store) &&
-        !/\.(update|delete)\(\s*studyProofreadDispositionsTable/.test(d.store)
-      );
+      const D = "studyProofreadDispositionsTable";
+      const bad = sc.writes.filter((w) => !(w.form === "call" && w.table !== "<not a table identifier>" && w.verb !== "delete" && !(w.table === D && w.verb !== "insert")));
+      const raw = rawSqlWrites(d.src.store);
+      // extra conjuncts from the old text scan: the AST sees property names and destructured keys,
+      // not a destructure of the upsert off an insert builder written some other way
+      const text = [/onConflictDoUpdate/, /\.(update|delete)\(\s*studyProofreadDispositionsTable/];
+      return {
+        ok: d.store.length > 0 && bad.length === 0 && !sc.members.has("onConflictDoUpdate") && raw.length === 0 && text.every((re) => !re.test(d.store)),
+        where: [
+          ...bad.map((w) => fmtWrite("store", w)),
+          ...raw.map((h) => fmtRawSql("store", h)),
+          ...text.flatMap((re) => textHits("store", d.src.store, re)),
+          ...(sc.members.has("onConflictDoUpdate") && !/onConflictDoUpdate/.test(d.store) ? [`${pathOf("store")}: a member named onConflictDoUpdate (spelled with an escape)`] : []),
+        ],
+      };
     },
   },
   {
@@ -1353,22 +1534,40 @@ const CHECKS = [
       // appear nowhere, in an identifier, a string or a comment-free template ("see tisProjectsTable")
       const oldLoader = body(d.store, "loadStudyForRun");
       const rest = oldLoader ? d.store.replace(oldLoader, "").replace(/^import[\s\S]*?from "[^"]+";\n/gm, "") : null;
-      return (
-        /\.select\(/.test(text) &&
-        /\.from\(tisProjectsTable\)/.test(text) &&
-        sc.study.every((x) => x.inImport || x.fn === "loadStudyForRun") &&
-        sc.writes.every((w) => w.fn !== "loadStudyForRun") &&
-        rest !== null &&
-        !/tisProjectsTable|requestPayload|resultPayload/.test(rest) &&
-        !/\.(update|insert|delete)\(/.test(oldLoader)
-      );
+      const outside = sc.study.filter((x) => !(x.inImport || x.fn === "loadStudyForRun"));
+      const inLoader = sc.writes.filter((w) => w.fn === "loadStudyForRun");
+      return {
+        ok:
+          /\.select\(/.test(text) &&
+          /\.from\(tisProjectsTable\)/.test(text) &&
+          outside.length === 0 &&
+          inLoader.length === 0 &&
+          rest !== null &&
+          !/tisProjectsTable|requestPayload|resultPayload/.test(rest) &&
+          !/\.(update|insert|delete)\(/.test(oldLoader),
+        where: [
+          ...outside.map((x) => fmtAt("store", x, `${x.name} outside loadStudyForRun${x.fn ? ` (in ${x.fn})` : ""}`)),
+          ...inLoader.map((w) => fmtWrite("store", w)),
+          ...(rest !== null && /tisProjectsTable|requestPayload|resultPayload/.test(rest) ? textHits("store", d.src.store, /tisProjectsTable|requestPayload|resultPayload/).filter((h) => !h.includes(":1")) : []),
+          ...(/\.(update|insert|delete)\(/.test(oldLoader) ? [`${pathOf("store")}: a .update( / .insert( / .delete( in the text of loadStudyForRun (text scan)`] : []),
+          ...(/\.select\(/.test(text) && /\.from\(tisProjectsTable\)/.test(text) ? [] : [`${pathOf("store")}:${lineAt(d.src.store, loader.getStart())}: loadStudyForRun no longer selects from tisProjectsTable`]),
+        ],
+      };
     },
   },
   {
     id: "store-no-raw-study-sql",
     on: "store",
-    msg: "no raw SQL in the store names tis_projects or writes (UPDATE / INSERT INTO / DELETE FROM): the builder scans above cannot see a template literal",
-    test: (d) => d.store.length > 0 && !/tis_projects/.test(d.store) && !/(?<!FOR\s)\b(UPDATE|INSERT\s+INTO|DELETE\s+FROM)\b/.test(d.store),
+    msg: "no raw SQL in the store writes ANY table, in any letter case — no UPDATE <target>, INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT ... DO UPDATE, MERGE INTO or DROP / ALTER TABLE in any string, template or `+` chain of them (FOR UPDATE row locking exempt) — and none names tis_projects: the builder scans above cannot see SQL text",
+    test: (d) => {
+      const raw = rawSqlWrites(d.src.store);
+      // the old text scans, kept as extra conjuncts (they read the code too, not only literals)
+      const text = [/tis_projects/i, /(?<!FOR\s)\b(UPDATE|INSERT\s+INTO|DELETE\s+FROM)\b/];
+      return {
+        ok: d.store.length > 0 && raw.length === 0 && text.every((re) => !re.test(d.store)),
+        where: [...raw.map((h) => fmtRawSql("store", h)), ...text.flatMap((re) => textHits("store", d.src.store, re))],
+      };
+    },
   },
 
   {
@@ -1398,21 +1597,26 @@ const CHECKS = [
   {
     id: "runner-has-no-db-writes",
     on: "runner",
-    msg: "the runner's OWN code has no database write in any spelling, names no study table or payload, has no `db` of its own, and its @workspace/db import is type-only; that it reaches the database only through the store is the import whitelist's claim, not this scan's",
+    msg: "the runner's OWN code has no database write in any spelling, names no study table or payload, has no `db` of its own, writes no raw SQL of any table in any string or template (any letter case), and its @workspace/db import is type-only; that it reaches the database only through the store is the import whitelist's claim, not this scan's",
     test: (d) => {
       const sc = dbScan(d.src.runner);
+      const raw = rawSqlWrites(d.src.runner);
       const dbNames = importsOf(d.src.runner)["@workspace/db"] ?? [];
-      return (
-        d.runner.length > 0 &&
-        dbNames.length > 0 &&
-        dbNames.every((n) => n.startsWith("type ")) &&
-        sc.writes.length === 0 &&
-        sc.study.length === 0 &&
-        sc.dbIdents.length === 0 &&
-        // the old substring scan, kept as an extra conjunct ("study.requestPayload.rows" and
-        // "see tisProjectsTable" are strings no identifier match sees)
-        !/tisProjectsTable|requestPayload|resultPayload|\.update\(|\.insert\(|\.delete\(|\bdb\./.test(d.runner)
-      );
+      // the old substring scan, kept as an extra conjunct ("study.requestPayload.rows" and
+      // "see tisProjectsTable" are strings no identifier match sees)
+      const text = /tisProjectsTable|requestPayload|resultPayload|\.update\(|\.insert\(|\.delete\(|\bdb\./;
+      const typeOnly = dbNames.length > 0 && dbNames.every((n) => n.startsWith("type "));
+      return {
+        ok: d.runner.length > 0 && typeOnly && sc.writes.length === 0 && sc.study.length === 0 && sc.dbIdents.length === 0 && raw.length === 0 && !text.test(d.runner),
+        where: [
+          ...(typeOnly ? [] : [`${pathOf("runner")}: the @workspace/db import is not type-only: ${JSON.stringify(dbNames)}`]),
+          ...sc.writes.map((w) => fmtWrite("runner", w)),
+          ...sc.study.map((x) => fmtAt("runner", x, x.name)),
+          ...sc.dbIdents.map((x) => fmtAt("runner", x, "db")),
+          ...raw.map((h) => fmtRawSql("runner", h)),
+          ...textHits("runner", d.src.runner, text),
+        ],
+      };
     },
   },
   {
@@ -1558,12 +1762,28 @@ ok(new Set(ids).size === ids.length, "precondition: every check id is unique (a 
   ok(bal(rt, "{", "}") && bal(rt, "(", ")"), "precondition: routes/proofread.ts strips cleanly (braces and parens balance)");
 }
 
+// A check's test returns a boolean, or { ok, where } where `where` lists the `file:line: what`
+// of each thing that fired. A check that throws is a failure, never a pass.
+const verdict = (c, d) => {
+  try {
+    const r = c.test(d);
+    return r !== null && typeof r === "object" ? { ok: !!r.ok, where: r.ok ? [] : (r.where ?? []) } : { ok: !!r, where: [] };
+  } catch (err) {
+    return { ok: false, where: [`the check threw: ${err?.message ?? err}`] };
+  }
+};
 const run = (s) => {
   const d = derive(s);
-  return CHECKS.filter((c) => !safe(() => c.test(d))).map((c) => c.id);
+  return CHECKS.filter((c) => !verdict(c, d).ok).map((c) => c.id);
 };
 const failing = run(sources);
-for (const c of CHECKS) ok(!failing.includes(c.id), c.msg);
+{
+  const d = derive(sources);
+  for (const c of CHECKS) {
+    const v = verdict(c, d);
+    ok(v.ok, c.msg, v.where.length ? v.where : undefined);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Teeth. Each mutation breaks one protected property in the in-memory source.
@@ -1595,6 +1815,28 @@ const GUARD_RE = /    if \(!\(await projectExistsForFirm\(firm\.id, id\)\)\) \{\
 const ENQUEUE_LINE = "    await enqueueProofread({ projectId: id, firmId: firm.id, userId: user.id });\n";
 const LIMITER_PROPS = ["limiters-pin-draft-7", "limiters-legacy-and-fail-open", "limiters-keyed-per-user", "limiters-have-own-prefixes", "limiters-exempt-dev-and-admin", "triage-limit-exceeds-run-limit", "copy-limiters"];
 const BASE_AUTH_GET = '  if (!req.isAuthenticated()) {\n    res.status(401).json({ error: "Sign in to view this check." });\n    return;\n  }\n';
+
+// A failure names the file and line of what fired. Pinned on the real sources: a write
+// placed at a known line must be reported at that line, by each kind of finding.
+{
+  const lineOfText = (raw, needle) => lineAt(raw, raw.indexOf(needle));
+  const at = (file, needle, mutate, checkId) => {
+    const mutated = mutate(sources);
+    const v = verdict(CHECKS.find((c) => c.id === checkId), derive(mutated));
+    const want = `${pathOf(file)}:${lineOfText(mutated[file], needle)}:`;
+    return { ok: !v.ok && v.where.some((w) => w.startsWith(want)), want, where: v.where };
+  };
+  const ANCHOR = "  if (args.findings.length === 0) return;";
+  const cases = [
+    at("store", "Delete From", edit("store", ANCHOR, "  await db.execute(sql`Delete From study_proofread_dispositions`);\n" + ANCHOR), "store-no-raw-study-sql"),
+    at("store", "delete(studyProofreadRunsTable)", edit("store", ANCHOR, "  await db\n    .delete(studyProofreadRunsTable);\n" + ANCHOR), "store-dispositions-are-append-only"),
+    at("store", "update(studyProofreadFindingsTable)", edit("store", ANCHOR, "  await db.update(studyProofreadFindingsTable).set({});\n" + ANCHOR), "store-writes-only-proofread-tables"),
+    at("runner", "delete from", edit("runner", "    const rec: StudyRecord", '    const q = "delete from t";\n    const rec: StudyRecord'), "runner-has-no-db-writes"),
+    at("routes", "TRUNCATE", edit("routes", "const router: IRouter = Router();", 'const router: IRouter = Router();\nconst q = "TRUNCATE t";'), "routes-do-not-touch-study"),
+  ];
+  const bad = cases.filter((c) => !c.ok);
+  ok(bad.length === 0, "a red names the file and line of what fired (raw SQL, a delete split over two lines, a verb a table does not allow, and the runner's and the routes' scans)", bad.map((c) => `wanted ${c.want} in: ${JSON.stringify(c.where)}`));
+}
 
 const MUTATIONS = [
   // ---- routes: surface ----------------------------------------------------
@@ -2271,7 +2513,7 @@ const MUTATIONS = [
   {
     label: "delete a study row from the store",
     file: "store",
-    flips: ["store-writes-only-proofread-tables", "store-study-row-is-read-only"],
+    flips: ["store-writes-only-proofread-tables", "store-study-row-is-read-only", "store-dispositions-are-append-only"],
     apply: edit("store", "  if (args.findings.length === 0) return;", "  await db.delete(tisProjectsTable).where(eq(tisProjectsTable.id, args.runId));\n  if (args.findings.length === 0) return;"),
   },
   {
@@ -2283,25 +2525,25 @@ const MUTATIONS = [
   {
     label: "write result_payload through a raw template",
     file: "store",
-    flips: ["store-no-raw-study-sql"],
+    flips: ["store-no-raw-study-sql", "store-dispositions-are-append-only"],
     apply: edit("store", "  if (args.findings.length === 0) return;", "  await db.execute(sql`UPDATE tis_projects SET result_payload = '{}'`);\n  if (args.findings.length === 0) return;"),
   },
   {
     label: "write to a study table through raw SQL that never names tis_projects (INSERT INTO)",
     file: "store",
-    flips: ["store-no-raw-study-sql"],
+    flips: ["store-no-raw-study-sql", "store-dispositions-are-append-only"],
     apply: edit("store", "  if (args.findings.length === 0) return;", "  await db.execute(sql`INSERT INTO other_table VALUES (1)`);\n  if (args.findings.length === 0) return;"),
   },
   {
     label: "update the disposition log in place",
     file: "store",
-    flips: ["store-dispositions-are-append-only"],
+    flips: ["store-dispositions-are-append-only", "store-writes-only-proofread-tables"],
     apply: edit("store", "  if (args.findings.length === 0) return;", "  await db.update(studyProofreadDispositionsTable).set({ note: null });\n  if (args.findings.length === 0) return;"),
   },
   {
     label: "delete from the disposition log",
     file: "store",
-    flips: ["store-dispositions-are-append-only"],
+    flips: ["store-dispositions-are-append-only", "store-writes-only-proofread-tables"],
     apply: edit("store", "  if (args.findings.length === 0) return;", "  await db.delete(studyProofreadDispositionsTable);\n  if (args.findings.length === 0) return;"),
   },
   {
@@ -2309,6 +2551,64 @@ const MUTATIONS = [
     file: "store",
     flips: ["store-dispositions-are-append-only"],
     apply: edit("store", "    actorUserId: args.actorUserId,\n  });\n}", "    actorUserId: args.actorUserId,\n  }).onConflictDoUpdate({ target: studyProofreadDispositionsTable.id, set: { note: null } });\n}"),
+  },
+  // ---- the verb-by-table allowlist: deletes cascade into the log, and no table gains a verb ----
+  {
+    label: "delete a run (runs -> findings -> dispositions cascade, so this erases the log under it)",
+    file: "store",
+    flips: ["store-dispositions-are-append-only", "store-writes-only-proofread-tables"],
+    apply: edit("store", "  if (args.findings.length === 0) return;", "  await db.delete(studyProofreadRunsTable).where(eq(studyProofreadRunsTable.id, args.runId));\n  if (args.findings.length === 0) return;"),
+  },
+  {
+    label: "delete a run's findings before re-inserting them (cascades into their dispositions)",
+    file: "store",
+    flips: ["store-dispositions-are-append-only", "store-writes-only-proofread-tables"],
+    apply: edit("store", "  if (args.findings.length === 0) return;", "  await db.delete(studyProofreadFindingsTable).where(eq(studyProofreadFindingsTable.runId, args.runId));\n  if (args.findings.length === 0) return;"),
+  },
+  {
+    label: "update the findings table (findings are inserted, never rewritten)",
+    file: "store",
+    flips: ["store-writes-only-proofread-tables"],
+    apply: edit("store", "  if (args.findings.length === 0) return;", '  await db.update(studyProofreadFindingsTable).set({ origin: "rule" }).where(eq(studyProofreadFindingsTable.runId, args.runId));\n  if (args.findings.length === 0) return;'),
+  },
+  {
+    label: "delete a run through a string-key element access",
+    file: "store",
+    flips: ["store-dispositions-are-append-only", "store-writes-only-proofread-tables"],
+    apply: edit("store", "  if (args.findings.length === 0) return;", '  await db["delete"](studyProofreadRunsTable);\n  if (args.findings.length === 0) return;'),
+  },
+  // ---- raw SQL writes, in any letter case, of any table ----
+  ...[
+    ["a lowercase update of tis_projects with the table interpolated, inside the loader (the one function allowed to name it)", "await db.execute(sql`update ${tisProjectsTable} set version = 2`);", "loader"],
+    ["a lowercase update of the disposition log", "await db.execute(sql`update study_proofread_dispositions set note = 'x'`);"],
+    ["a lowercase delete from the disposition log", "await db.execute(sql`delete from study_proofread_dispositions`);"],
+    ["a lowercase upsert into the disposition log", "await db.execute(sql`insert into study_proofread_dispositions (note) values ('x') on conflict (id) do update set note = 'y'`);"],
+    ["TRUNCATE of the disposition log", "await db.execute(sql`TRUNCATE study_proofread_dispositions`);"],
+    ["a lowercase truncate table", "await db.execute(sql`truncate table study_proofread_dispositions`);"],
+    ["MERGE INTO the disposition log", "await db.execute(sql`merge into study_proofread_dispositions d using (select 1) s on true when matched then delete`);"],
+    ["an update of the log with the table interpolated", "await db.execute(sql`update ${studyProofreadDispositionsTable} set note = null`);"],
+    ["an update whose SQL is built from a + chain of strings", 'await db.execute(sql.raw("update " + "study_proofread_" + "dispositions set note = null"));'],
+    ["a delete of a run in raw SQL (cascades into the log)", "await db.execute(sql`Delete From study_proofread_runs where id = ${args.runId}`);"],
+  ].map(([what, code, place]) => ({
+    label: `store: raw SQL, ${what}`,
+    file: "store",
+    flips: ["store-no-raw-study-sql", "store-dispositions-are-append-only"],
+    apply:
+      place === "loader"
+        ? edit("store", "  return row ?? null;\n}\n\n/**\n * Write a run's outcome.", `  ${code}\n  return row ?? null;\n}\n\n/**\n * Write a run's outcome.`)
+        : edit("store", "  if (args.findings.length === 0) return;", `  ${code}\n  if (args.findings.length === 0) return;`),
+  })),
+  {
+    label: "runner: a raw SQL delete in a string (lowercase)",
+    file: "runner",
+    flips: ["runner-has-no-db-writes"],
+    apply: edit("runner", "    const rec: StudyRecord", '    const q = "delete from study_proofread_dispositions where finding_id = $1";\n    const rec: StudyRecord'),
+  },
+  {
+    label: "routes: a raw SQL update in a template (lowercase, table interpolated)",
+    file: "routes",
+    flips: ["routes-do-not-touch-study"],
+    apply: edit("routes", "const router: IRouter = Router();", "const router: IRouter = Router();\nconst q3 = `update ${\"study_proofread_runs\"} set status = 'queued'`;"),
   },
   {
     label: "stop updating the run table (the write scan would then pass over nothing)",
