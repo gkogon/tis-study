@@ -411,6 +411,8 @@ const dispSeg = (d) => routeBy(d.routes, "post", P_DISP);
  *   eval / Function / require used any other way -> <eval> / <require>
  *   createRequire / getBuiltinModule, however reached -> <createRequire> / <getBuiltinModule>
  *   x.constructor(...) or new x.constructor(...) with an argument -> <constructor call>
+ *   any other read of .constructor (aliased, destructured, .call / .apply / .bind),
+ *     except x.constructor.name                     -> <constructor>
  * A member reached by a string key (module["require"]) counts as the member.
  * It is a tripwire for reaching a write through the module graph by ordinary
  * means, not a sandbox: code that builds a specifier at run time can only be
@@ -479,6 +481,14 @@ function importEntries(text) {
     // Node's own module loaders, which no import statement shows: createRequire, and
     // process.getBuiltinModule (Node 22.3+, so live under the production pin), which hands
     // back node:module and with it createRequire. A member named so with a string key counts.
+    // Any read of a function's constructor is a way to build code from a string, however it is
+    // then called (directly, aliased, .call / .apply / .bind, destructured): refused, except
+    // `x.constructor.name`, a read of the class name.
+    const ctorRead =
+      ((ts.isPropertyAccessExpression(n) || ts.isElementAccessExpression(n)) && keyOf(n) === "constructor") ||
+      (ts.isBindingElement(n) && ts.isObjectBindingPattern(n.parent) && (n.propertyName ? lit(n.propertyName) ?? (ts.isIdentifier(n.propertyName) ? n.propertyName.text : null) : ts.isIdentifier(n.name) ? n.name.text : null) === "constructor");
+    const nameRead = (x) => ts.isPropertyAccessExpression(x.parent) && x.parent.expression === x && x.parent.name.text === "name" && !(ts.isCallExpression(x.parent.parent) && x.parent.parent.expression === x.parent);
+    if (ctorRead && !nameRead(n)) add("<eval>", ["<constructor>"]);
     const named = ts.isIdentifier(n) ? n.text : ts.isElementAccessExpression(n) ? lit(n.argumentExpression) : null;
     if (named === "require") add("<require>", ["<require>"]);
     else if (named === "eval" || named === "Function") add("<eval>", ["<eval>"]);
@@ -1338,13 +1348,22 @@ const REFLECTION_FORMS = [
       'void new ((() => 0)["constructor"] as any)("return this");',
       'module["require"]("./tis-projects");',
       'globalThis["require"]("./tis-projects");',
+      // any read of a constructor, however it is then called
+      "const c = (() => 0).constructor; void c;",
+      "void ({}).constructor();",
+      'const Cq = (async () => 0).constructor; void Cq("return import(\'./tis-projects\')")();',
+      'void (() => 0).constructor.call(null, "return 1")();',
+      'void (() => 0).constructor.apply(null, ["return 1"])();',
+      'void (() => 0).constructor.bind(null)("return 1")();',
+      'const { constructor: Cd } = () => 0; void Cd("return 1")();',
+      'const { "constructor": Cs } = () => 0; void Cs;',
     ];
-    const quiet = ["const c = (() => 0).constructor; void c;", "void ({}).constructor();", "const o = { createRequireLater: 1 }; void o;"];
+    const quiet = ["const n = (() => 0).constructor.name; void n;", 'void (args as any)["constructor"].name;', "const o = { createRequireLater: 1 }; void o;"];
     const missed = loaders.filter((t) => !Object.keys(P(t)).some((m) => m.startsWith("<")));
     const flagged = quiet.filter((t) => Object.keys(P(t)).length > 0);
     ok(
       missed.length === 0 && flagged.length === 0,
-      "the import parser sees the module loaders no import statement shows: createRequire and getBuiltinModule however reached (identifier, member, string key), a function built from a string through any .constructor(...) with an argument, and require through a string key; a constructor read or called with no argument is not one",
+      "the import parser sees the module loaders no import statement shows: createRequire and getBuiltinModule however reached (identifier, member, string key), any read of .constructor (aliased, destructured, called, .call / .apply / .bind — each a way to build a function from a string), and require through a string key; a read of .constructor.name is not one",
       [...missed.map((t) => `missed: ${t}`), ...flagged.map((t) => `flagged: ${t}`)],
     );
   }
@@ -1758,7 +1777,7 @@ const CHECKS = [
   {
     id: "routes-import-whitelist",
     on: "routes",
-    msg: "the routes import exactly the modules and names the design allows, and load no module any other way (dynamic import, require, createRequire, getBuiltinModule, eval, Function, a function built from a string through .constructor(...)): nothing that writes a study (saveProject, setProjectTheme, getProject, the db, a schema table) can be called without first appearing here",
+    msg: "the routes import exactly the modules and names the design allows, and load no module any other way (dynamic import, require, createRequire, getBuiltinModule, eval, Function, a read of .constructor but .constructor.name): nothing that writes a study (saveProject, setProjectTheme, getProject, the db, a schema table) can be called without first appearing here",
     test: (d) => {
       const want = {
         express: ["Router", "type IRouter"],
@@ -1923,7 +1942,7 @@ const CHECKS = [
   {
     id: "store-import-whitelist",
     on: "store",
-    msg: "the store imports exactly the modules AND NAMES it needs (drizzle's six helpers; db, the three proofread tables, tisProjectsTable and the StudyProofreadRun type from @workspace/db; the logger; the two pure proofread/ modules) in whatever spelling (read from the TypeScript AST: quotes, comments, spacing, indentation, one line or many, aliases, string-literal names), with no re-export, side-effect import, dynamic import, require, createRequire, getBuiltinModule, eval, Function or function built from a string through .constructor(...) — the scans of the store's own text cannot see a study write reached through another module, and `import { setProjectTheme } from \"./tis-projects\"` left every one of them green",
+    msg: "the store imports exactly the modules AND NAMES it needs (drizzle's six helpers; db, the three proofread tables, tisProjectsTable and the StudyProofreadRun type from @workspace/db; the logger; the two pure proofread/ modules) in whatever spelling (read from the TypeScript AST: quotes, comments, spacing, indentation, one line or many, aliases, string-literal names), with no re-export, side-effect import, dynamic import, require, createRequire, getBuiltinModule, eval, Function or read of .constructor (but .constructor.name) — the scans of the store's own text cannot see a study write reached through another module, and `import { setProjectTheme } from \"./tis-projects\"` left every one of them green",
     test: (d) => ({ ok: d.store.length > 0 && importsEqual(importsOf(d.src.store), STORE_IMPORTS), where: importDiff("store", d.src.store, STORE_IMPORTS) }),
   },
   {
@@ -2080,13 +2099,13 @@ const CHECKS = [
   {
     id: "runner-import-whitelist",
     on: "runner",
-    msg: "the runner imports exactly the modules AND NAMES it needs (node:fs, node:path, the type-only StudyProofreadRun, the logger, the two pure proofread/ modules and the six store functions) in whatever spelling (read from the TypeScript AST), with no re-export, side-effect import, dynamic import, require, createRequire, getBuiltinModule, eval, Function or function built from a string through .constructor(...) — so it reaches the database only through the store, and `import { setProjectTheme } from \"./tis-projects\"` called after the clause pass (which compiled and left every other guard green while rewriting a tis_projects row) fails here",
+    msg: "the runner imports exactly the modules AND NAMES it needs (node:fs, node:path, the type-only StudyProofreadRun, the logger, the two pure proofread/ modules and the six store functions) in whatever spelling (read from the TypeScript AST), with no re-export, side-effect import, dynamic import, require, createRequire, getBuiltinModule, eval, Function or read of .constructor (but .constructor.name) — so it reaches the database only through the store, and `import { setProjectTheme } from \"./tis-projects\"` called after the clause pass (which compiled and left every other guard green while rewriting a tis_projects row) fails here",
     test: (d) => ({ ok: d.runner.length > 0 && importsEqual(importsOf(d.src.runner), RUNNER_IMPORTS), where: importDiff("runner", d.src.runner, RUNNER_IMPORTS) }),
   },
   {
     id: "proofread-dir-imports-whitelist",
     on: "clauseDir",
-    msg: "every file under src/lib/proofread/ — the pure directory the store and the runner import, and so a way to reach a write without it appearing in either — imports only its own siblings, the dependency-free @workspace/tis-engine-core, and types from @workspace/tis-api-zod: no database, no node module, no other lib file, and no dynamic import(), require, eval, createRequire, getBuiltinModule or function built from a string through .constructor(...) of ANY specifier (a literal one included)",
+    msg: "every file under src/lib/proofread/ — the pure directory the store and the runner import, and so a way to reach a write without it appearing in either — imports only its own siblings, the dependency-free @workspace/tis-engine-core, and types from @workspace/tis-api-zod: no database, no node module, no other lib file, and no dynamic import(), require, eval, createRequire, getBuiltinModule or read of .constructor (but .constructor.name), of ANY specifier (a literal one included)",
     test: (d) => {
       const files = Object.keys(d.clauseDir);
       const allowed = (mod, name) => {
@@ -3340,6 +3359,9 @@ const MUTATIONS = [
     ["an AsyncFunction built from a string through .constructor", "void (async () => 0).constructor(\"return import('./tis-projects')\")();"],
     ["createRequire reached through a string key", 'const cr = (globalThis as any)["createRequire"]; void cr;'],
     ["require reached through a string key", 'void (module as any)["require"]("./tis-projects");'],
+    ["an aliased .constructor", "const Ca = (async () => 0).constructor; void Ca(\"return import('./tis-projects')\")();"],
+    ["a destructured constructor", 'const { constructor: Cd } = () => 0; void Cd("return 1");'],
+    [".constructor reached through .call", 'void (() => 0).constructor.call(null, "return 1");'],
   ].flatMap(([what, code]) => [
     { label: `store: a module loaded through ${what}`, file: "store", flips: ["store-import-whitelist"], apply: edit("store", "  if (args.findings.length === 0) return;", `  ${code}\n  if (args.findings.length === 0) return;`) },
     { label: `runner: a module loaded through ${what}`, file: "runner", flips: ["runner-import-whitelist"], apply: edit("runner", "    const rec: StudyRecord", `    ${code}\n    const rec: StudyRecord`) },
