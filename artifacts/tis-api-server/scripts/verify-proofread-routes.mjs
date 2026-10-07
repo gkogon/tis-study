@@ -364,14 +364,22 @@ const dispSeg = (d) => routeBy(d.routes, "post", P_DISP);
  * means, not a sandbox: code that builds a specifier at run time can only be
  * seen as "<dynamic import>", which no whitelist allows.
  */
-function importsOf(text) {
+const importEntryCache = new Map();
+/** importsOf as a list of { mod, name, line }; a statement that imports no names is one entry with name null. */
+function importEntries(text) {
+  if (importEntryCache.has(text)) return importEntryCache.get(text);
   const sf = parse(text);
-  const out = {};
+  const entries = [];
+  let at = sf;
   const add = (mod, names) => {
-    out[mod] = [...(out[mod] ?? []), ...names];
+    const line = sf.getLineAndCharacterOfPosition(at.getStart(sf)).line + 1;
+    if (names.length === 0) entries.push({ mod, name: null, line });
+    for (const name of names) entries.push({ mod, name, line });
   };
   const lit = (e) => (e && (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) ? e.text : null);
+  const keyOf = (e) => (ts.isPropertyAccessExpression(e) ? e.name.text : ts.isElementAccessExpression(e) ? lit(e.argumentExpression) : null);
   const visit = (n) => {
+    at = n;
     if (ts.isImportDeclaration(n)) {
       const mod = lit(n.moduleSpecifier) ?? "<computed specifier>";
       const c = n.importClause;
@@ -406,16 +414,50 @@ function importsOf(text) {
       const e = n.expression;
       const via = lit(n.arguments[0]);
       if (e.kind === ts.SyntaxKind.ImportKeyword) add(via ?? "<dynamic import>", ["<dynamic import>"]);
-      else if (ts.isPropertyAccessExpression(e) && e.name.text === "require") add(via ?? "<require>", ["<require>"]);
+      else if (keyOf(e) === "require") add(via ?? "<require>", ["<require>"]);
     }
-    if (ts.isIdentifier(n)) {
-      if (n.text === "require") add("<require>", ["<require>"]);
-      else if (n.text === "eval" || n.text === "Function") add("<eval>", ["<eval>"]);
+    // A function built from a string, through any function's constructor:
+    // (async () => 0).constructor("return import('./tis-projects')")() loads a module
+    // with neither `import` nor `Function` in the code. With no argument it builds nothing.
+    if ((ts.isCallExpression(n) || ts.isNewExpression(n)) && (n.arguments?.length ?? 0) > 0) {
+      let e = n.expression;
+      while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e)) e = e.expression;
+      if (keyOf(e) === "constructor") add("<eval>", ["<constructor call>"]);
     }
+    // Node's own module loaders, which no import statement shows: createRequire, and
+    // process.getBuiltinModule (Node 22.3+, so live under the production pin), which hands
+    // back node:module and with it createRequire. A member named so with a string key counts.
+    const named = ts.isIdentifier(n) ? n.text : ts.isElementAccessExpression(n) ? lit(n.argumentExpression) : null;
+    if (named === "require") add("<require>", ["<require>"]);
+    else if (named === "eval" || named === "Function") add("<eval>", ["<eval>"]);
+    else if (named === "createRequire" || named === "getBuiltinModule") add("<module loader>", [`<${named}>`]);
     ts.forEachChild(n, visit);
   };
   visit(sf);
+  importEntryCache.set(text, entries);
+  return entries;
+}
+function importsOf(text) {
+  const out = {};
+  for (const e of importEntries(text)) out[e.mod] = [...(out[e.mod] ?? []), ...(e.name === null ? [] : [e.name])];
   return out;
+}
+/** What differs between a file's imports and its whitelist, as `file:line: what`. */
+function importDiff(file, text, want) {
+  const pool = new Map(Object.entries(want).map(([m, ns]) => [m, [...ns]]));
+  const where = [];
+  for (const e of importEntries(text)) {
+    if (e.name === null) {
+      if (!pool.has(e.mod)) where.push(`${pathOf(file)}:${e.line}: an import of ${e.mod} (not on the list)`);
+      continue;
+    }
+    const ns = pool.get(e.mod);
+    const i = ns ? ns.indexOf(e.name) : -1;
+    if (i >= 0) ns.splice(i, 1);
+    else where.push(`${pathOf(file)}:${e.line}: ${e.name} from ${e.mod} (not on the list)`);
+  }
+  for (const [m, ns] of pool) for (const n of ns) where.push(`${pathOf(file)}: ${n} from ${m} is on the list but not imported`);
+  return where;
 }
 
 /** True when `got` (from importsOf) is exactly `want`: the same modules, and for each the same names. */
@@ -919,6 +961,26 @@ const REFLECTION_FORMS = [
       eq(P('import { default as d } from "m";'), { m: ["default as d"] }),
     "the import parser keeps `imported as local` whenever an alias changes the name (so an alias swap cannot match a plain-name whitelist entry), reduces a no-op alias to the plain name, and writes a default import as `default as <local>`",
   );
+  {
+    const loaders = [
+      'process.getBuiltinModule("module").createRequire(import.meta.url)("./tis-projects");',
+      'const { createRequire: cr } = process.getBuiltinModule("module");',
+      'void (globalThis as any)["createRequire"];',
+      'void (process as any)["getBuiltinModule"]("fs");',
+      "void (async () => 0).constructor(\"return import('./tis-projects')\")();",
+      'void new ((() => 0)["constructor"] as any)("return this");',
+      'module["require"]("./tis-projects");',
+      'globalThis["require"]("./tis-projects");',
+    ];
+    const quiet = ["const c = (() => 0).constructor; void c;", "void ({}).constructor();", "const o = { createRequireLater: 1 }; void o;"];
+    const missed = loaders.filter((t) => !Object.keys(P(t)).some((m) => m.startsWith("<")));
+    const flagged = quiet.filter((t) => Object.keys(P(t)).length > 0);
+    ok(
+      missed.length === 0 && flagged.length === 0,
+      "the import parser sees the module loaders no import statement shows: createRequire and getBuiltinModule however reached (identifier, member, string key), a function built from a string through any .constructor(...) with an argument, and require through a string key; a constructor read or called with no argument is not one",
+      [...missed.map((t) => `missed: ${t}`), ...flagged.map((t) => `flagged: ${t}`)],
+    );
+  }
   ok(eq(P('import { a } from "m";'), { m: ["a"] }) && eq(P('import type { a } from "m";'), { m: ["type a"] }) && eq(P('import { type a, b } from "m";'), { m: ["type a", "b"] }), "the import parser reads the names that were imported, with `type ` on type-only ones");
   void target;
 }
@@ -1311,7 +1373,7 @@ const CHECKS = [
         "../lib/proofread-run": ["claimAndRunOne", "enqueueProofread"],
         "../lib/proofread-store": ["findingAudienceForFirm", "findingInFirmRun", "insertDisposition", "latestRunForProject"],
       };
-      return importsEqual(importsOf(d.src.routes), want);
+      return { ok: importsEqual(importsOf(d.src.routes), want), where: importDiff("routes", d.src.routes, want) };
     },
   },
   {
@@ -1466,7 +1528,7 @@ const CHECKS = [
     id: "store-import-whitelist",
     on: "store",
     msg: "the store imports exactly the modules AND NAMES it needs (drizzle's six helpers; db, the three proofread tables, tisProjectsTable and the StudyProofreadRun type from @workspace/db; the logger; the two pure proofread/ modules) in whatever spelling (read from the TypeScript AST: quotes, comments, spacing, indentation, one line or many, aliases, string-literal names), with no re-export, side-effect import, dynamic import or require — the scans of the store's own text cannot see a study write reached through another module, and `import { setProjectTheme } from \"./tis-projects\"` left every one of them green",
-    test: (d) => d.store.length > 0 && importsEqual(importsOf(d.src.store), STORE_IMPORTS),
+    test: (d) => ({ ok: d.store.length > 0 && importsEqual(importsOf(d.src.store), STORE_IMPORTS), where: importDiff("store", d.src.store, STORE_IMPORTS) }),
   },
   {
     id: "store-writes-only-proofread-tables",
@@ -1623,7 +1685,7 @@ const CHECKS = [
     id: "runner-import-whitelist",
     on: "runner",
     msg: "the runner imports exactly the modules AND NAMES it needs (node:fs, node:path, the type-only StudyProofreadRun, the logger, the two pure proofread/ modules and the six store functions) in whatever spelling (read from the TypeScript AST), with no re-export, side-effect import, dynamic import or require — so it reaches the database only through the store, and `import { setProjectTheme } from \"./tis-projects\"` called after the clause pass (which compiled and left every other guard green while rewriting a tis_projects row) fails here",
-    test: (d) => d.runner.length > 0 && importsEqual(importsOf(d.src.runner), RUNNER_IMPORTS),
+    test: (d) => ({ ok: d.runner.length > 0 && importsEqual(importsOf(d.src.runner), RUNNER_IMPORTS), where: importDiff("runner", d.src.runner, RUNNER_IMPORTS) }),
   },
   {
     id: "proofread-dir-imports-whitelist",
@@ -1631,21 +1693,18 @@ const CHECKS = [
     msg: "every file under src/lib/proofread/ — the pure directory the store and the runner import, and so a way to reach a write without it appearing in either — imports only its own siblings, the dependency-free @workspace/tis-engine-core, and types from @workspace/tis-api-zod: no database, no node module, no other lib file, and no dynamic import(), require or eval of ANY specifier (a literal one included)",
     test: (d) => {
       const files = Object.keys(d.clauseDir);
-      return (
-        files.length >= 8 &&
-        files.every((f) =>
-          Object.entries(importsOf(d.src.clauseDir[f])).every(([mod, names]) => {
-            if (mod.startsWith("<")) return false;
-            // the clause layer is pure and never loads anything at run time: a literal
-            // import("./types.ts") is as much a dynamic import as a computed one
-            if (names.some((n) => n === "<dynamic import>" || n === "<require>" || n === "<eval>" || n === "<import = require>")) return false;
-            if (/^\.\/[\w-]+\.ts$/.test(mod)) return files.includes(mod.slice(2));
-            if (mod === "@workspace/tis-engine-core") return true;
-            if (mod === "@workspace/tis-api-zod") return names.every((n) => n.startsWith("type "));
-            return false;
-          }),
-        )
-      );
+      const allowed = (mod, name) => {
+        if (mod.startsWith("<")) return false;
+        // the clause layer is pure and never loads anything at run time: a literal
+        // import("./types.ts") is as much a dynamic import as a computed one
+        if (name === "<dynamic import>" || name === "<require>" || name === "<eval>" || name === "<import = require>") return false;
+        if (/^\.\/[\w-]+\.ts$/.test(mod)) return files.includes(mod.slice(2));
+        if (mod === "@workspace/tis-engine-core") return true;
+        if (mod === "@workspace/tis-api-zod") return name === null || name.startsWith("type ");
+        return false;
+      };
+      const bad = files.flatMap((f) => importEntries(d.src.clauseDir[f]).filter((e) => !allowed(e.mod, e.name)).map((e) => `${pathOf(f)}:${e.line}: ${e.name ?? "an import"} from ${e.mod}`));
+      return { ok: files.length >= 8 && bad.length === 0, where: bad };
     },
   },
 
@@ -1817,13 +1876,15 @@ const LIMITER_PROPS = ["limiters-pin-draft-7", "limiters-legacy-and-fail-open", 
 const BASE_AUTH_GET = '  if (!req.isAuthenticated()) {\n    res.status(401).json({ error: "Sign in to view this check." });\n    return;\n  }\n';
 
 // A failure names the file and line of what fired. Pinned on the real sources: a write
-// placed at a known line must be reported at that line, by each kind of finding.
+// placed at a known line must be reported at that line, by each kind of finding. Like the
+// mutations below it edits the real files at fixed anchors, so it is a teeth line.
 {
   const lineOfText = (raw, needle) => lineAt(raw, raw.indexOf(needle));
   const at = (file, needle, mutate, checkId) => {
     const mutated = mutate(sources);
     const v = verdict(CHECKS.find((c) => c.id === checkId), derive(mutated));
-    const want = `${pathOf(file)}:${lineOfText(mutated[file], needle)}:`;
+    const text = mutated[file] ?? mutated.clauseDir[file];
+    const want = `${pathOf(file)}:${lineOfText(text, needle)}:`;
     return { ok: !v.ok && v.where.some((w) => w.startsWith(want)), want, where: v.where };
   };
   const ANCHOR = "  if (args.findings.length === 0) return;";
@@ -1833,9 +1894,13 @@ const BASE_AUTH_GET = '  if (!req.isAuthenticated()) {\n    res.status(401).json
     at("store", "update(studyProofreadFindingsTable)", edit("store", ANCHOR, "  await db.update(studyProofreadFindingsTable).set({});\n" + ANCHOR), "store-writes-only-proofread-tables"),
     at("runner", "delete from", edit("runner", "    const rec: StudyRecord", '    const q = "delete from t";\n    const rec: StudyRecord'), "runner-has-no-db-writes"),
     at("routes", "TRUNCATE", edit("routes", "const router: IRouter = Router();", 'const router: IRouter = Router();\nconst q = "TRUNCATE t";'), "routes-do-not-touch-study"),
+    at("store", "setProjectTheme", edit("store", 'import { logger } from "./logger";', 'import { logger } from "./logger";\nimport { setProjectTheme } from "./tis-projects";'), "store-import-whitelist"),
+    at("runner", "getBuiltinModule", edit("runner", "    const rec: StudyRecord", '    void process.getBuiltinModule("fs");\n    const rec: StudyRecord'), "runner-import-whitelist"),
+    at("routes", "createRequire", edit("routes", "const router: IRouter = Router();", 'const router: IRouter = Router();\nimport { createRequire } from "node:module";'), "routes-import-whitelist"),
+    at("fingerprint.ts", "constructor", (s) => ({ ...s, clauseDir: { ...s.clauseDir, "fingerprint.ts": s.clauseDir["fingerprint.ts"].replace('import type { ProofreadFinding } from "./types.ts";', 'import type { ProofreadFinding } from "./types.ts";\nvoid (() => 0).constructor("return this");') } }), "proofread-dir-imports-whitelist"),
   ];
   const bad = cases.filter((c) => !c.ok);
-  ok(bad.length === 0, "a red names the file and line of what fired (raw SQL, a delete split over two lines, a verb a table does not allow, and the runner's and the routes' scans)", bad.map((c) => `wanted ${c.want} in: ${JSON.stringify(c.where)}`));
+  ok(bad.length === 0, "teeth: a red names the file and line of what fired (raw SQL, a delete split over two lines, a verb a table does not allow, the runner's and the routes' scans, and each of the four import whitelists)", bad.map((c) => `wanted ${c.want} in: ${JSON.stringify(c.where)}`));
 }
 
 const MUTATIONS = [
@@ -2835,6 +2900,18 @@ const MUTATIONS = [
     flips: ["proofread-dir-imports-whitelist"],
     apply: editDir("s1-inputs.ts", 'import { isGrowthOverride } from "@workspace/tis-engine-core";', "import { isGrowthOverride } from \"@workspace/tis-engine-core\";\n/* x */ import { db } from '@workspace/db';"),
   },
+  // Module loaders no import statement shows, in each of the four scopes (live under Node 22.3+, the production pin).
+  ...[
+    ["process.getBuiltinModule(\"module\").createRequire", 'const rq1 = process.getBuiltinModule("module").createRequire(import.meta.url); void rq1("./tis-projects");'],
+    ["an AsyncFunction built from a string through .constructor", "void (async () => 0).constructor(\"return import('./tis-projects')\")();"],
+    ["createRequire reached through a string key", 'const cr = (globalThis as any)["createRequire"]; void cr;'],
+    ["require reached through a string key", 'void (module as any)["require"]("./tis-projects");'],
+  ].flatMap(([what, code]) => [
+    { label: `store: a module loaded through ${what}`, file: "store", flips: ["store-import-whitelist"], apply: edit("store", "  if (args.findings.length === 0) return;", `  ${code}\n  if (args.findings.length === 0) return;`) },
+    { label: `runner: a module loaded through ${what}`, file: "runner", flips: ["runner-import-whitelist"], apply: edit("runner", "    const rec: StudyRecord", `    ${code}\n    const rec: StudyRecord`) },
+    { label: `routes: a module loaded through ${what}`, file: "routes", flips: ["routes-import-whitelist"], apply: edit("routes", "const router: IRouter = Router();", `const router: IRouter = Router();\n${code}`) },
+    { label: `a clause file: a module loaded through ${what}`, file: "clauseDir", flips: ["proofread-dir-imports-whitelist"], apply: editDir("fingerprint.ts", 'import type { ProofreadFinding } from "./types.ts";', `import type { ProofreadFinding } from "./types.ts";\n${code}`) },
+  ]),
   // An alias swap at import: the code keeps saying `studyProofreadRunsTable`, and every
   // check that reads local identifiers is satisfied, while the name now means another table.
   {
