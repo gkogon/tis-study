@@ -784,6 +784,10 @@ function dbScan(text) {
       if (n.initializer) events.push({ ids: bindingIds(n.name), src: n.initializer });
       else if (ts.isVariableDeclarationList(n.parent) && ts.isForOfStatement(n.parent.parent)) events.push({ ids: bindingIds(n.name), src: n.parent.parent.expression });
     } else if (ts.isParameter(n) && n.initializer) events.push({ ids: bindingIds(n.name), src: n.initializer });
+    // a destructuring default: `const { h = db } = {}`, `[h = db]`, `{ a: h = db }`, in a
+    // declaration, a parameter or a for-of; and the assignment form `({ h = db } = {})`
+    else if (ts.isBindingElement(n) && n.initializer) events.push({ ids: bindingIds(n.name), src: n.initializer });
+    else if (ts.isShorthandPropertyAssignment(n) && n.objectAssignmentInitializer) events.push({ refs: [{ id: n.name }], src: n.objectAssignmentInitializer });
     else if (ts.isPropertyDeclaration(n) && n.initializer && n.name && keyText(n.name) !== null) events.push({ cls: n.parent, name: keyText(n.name), src: n.initializer });
     else if (ts.isBinaryExpression(n) && [ts.SyntaxKind.EqualsToken, ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.AmpersandAmpersandEqualsToken, ts.SyntaxKind.QuestionQuestionEqualsToken].includes(n.operatorToken.kind)) {
       events.push({ refs: targets(n.left), src: n.right });
@@ -1256,6 +1260,13 @@ const REFLECTION_FORMS = [
   // a destructuring key called db reads a property named db
   ["a destructuring key called db", 'const { db: gd } = globalThis as any; await gd["upd" + "ate"](tisProjectsTable);', true],
   ["an assignment destructuring with the key db", 'let ga: any; ({ db: ga } = globalThis as any); await ga["upd" + "ate"](tisProjectsTable);', true],
+  // destructuring defaults
+  ["a declaration destructuring default", 'const { dh = db }: any = {}; await (dh as any)["upd" + "ate"](tisProjectsTable);', true],
+  ["an array destructuring default", 'const [dh2 = db]: any[] = []; await (dh2 as any)["upd" + "ate"](tisProjectsTable);', true],
+  ["a renamed destructuring default", 'const { a: dh3 = db }: any = {}; await (dh3 as any)["upd" + "ate"](tisProjectsTable);', true],
+  ["a for-of destructuring default", 'for (const { dh4 = db } of [{} as any]) { await (dh4 as any)["upd" + "ate"](tisProjectsTable); }', true],
+  ["a parameter destructuring default", 'const f9 = async ({ dh5 = db }: any = {}) => { await dh5["upd" + "ate"](tisProjectsTable); }; await f9();', true],
+  ["an assignment destructuring default", 'let dh6: any; ({ dh6 = db } = {} as any); await dh6["upd" + "ate"](tisProjectsTable);', true],
   ["the handle a transaction callback returns, awaited", 'const tr = await db.transaction(async (x: any) => x); await (tr as any)["upd" + "ate"](tisProjectsTable);', true],
 ];
 
