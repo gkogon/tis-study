@@ -624,7 +624,7 @@ function dbScan(text) {
     for (let p = n.parent; p; p = p.parent) if (ts.isImportDeclaration(p)) return true;
     return false;
   };
-  const keyText = (k) => (ts.isIdentifier(k) || ts.isStringLiteral(k) || ts.isNoSubstitutionTemplateLiteral(k) ? k.text : ts.isComputedPropertyName(k) ? lit(k.expression) : null);
+  const keyText = (k) => (ts.isIdentifier(k) || ts.isPrivateIdentifier(k) || ts.isStringLiteral(k) || ts.isNoSubstitutionTemplateLiteral(k) ? k.text : ts.isComputedPropertyName(k) ? lit(k.expression) : null);
 
   // ---- Lexical scopes: every identifier resolves to the binding that declares it. ----
   const isFunctionLike = (n) =>
@@ -704,6 +704,25 @@ function dbScan(text) {
     for (let p = n.parent; p; p = p.parent) if (ts.isClassDeclaration(p) || ts.isClassExpression(p)) return p;
     return null;
   };
+  // The class whose property a member expression names: `this.x`, `(this as any).x`, `this!.x`,
+  // `this["x"]`, `this.#x` (the enclosing class), and `C.x` for an identifier that resolves to a
+  // class declaration (a static property). Null for anything else.
+  const memberClass = (m) => {
+    if (!(ts.isPropertyAccessExpression(m) || (ts.isElementAccessExpression(m) && lit(m.argumentExpression) !== null))) return null;
+    const recv = unwrapCast(m.expression);
+    if (!recv) return null;
+    if (recv.kind === ts.SyntaxKind.ThisKeyword) return classOf(m);
+    if (ts.isIdentifier(recv)) {
+      const b = resolve(recv);
+      return b && b.parent && ts.isClassDeclaration(b.parent) ? b.parent : null;
+    }
+    return null;
+  };
+  const memberName = (m) => (ts.isPropertyAccessExpression(m) ? m.name.text : lit(m.argumentExpression));
+  const classPropKind = (m) => {
+    const c = memberClass(m);
+    return c ? (classProps.get(c)?.get(memberName(m)) ?? "none") : "none";
+  };
   const kindOf = (e0) => {
     const e = unwrapCast(e0);
     if (!e) return "none";
@@ -711,15 +730,11 @@ function dbScan(text) {
       const b = resolve(e);
       return b ? (tainted.get(b) ?? "none") : DB_HANDLES.has(e.text) ? "handle" : "none";
     }
-    if (ts.isPropertyAccessExpression(e)) {
-      if (e.expression.kind === ts.SyntaxKind.ThisKeyword) {
-        const c = classOf(e);
-        const k = c ? (classProps.get(c)?.get(e.name.text) ?? "none") : "none";
-        if (k !== "none") return k;
-      }
-      return e.name.text === "db" ? "handle" : kindOf(e.expression);
+    if (ts.isPropertyAccessExpression(e) || ts.isElementAccessExpression(e)) {
+      const k = classPropKind(e);
+      if (k !== "none") return k;
+      return memberName(e) === "db" ? "handle" : kindOf(e.expression);
     }
-    if (ts.isElementAccessExpression(e)) return lit(e.argumentExpression) === "db" ? "handle" : kindOf(e.expression);
     // Awaiting a HANDLE yields the handle (it is not a thenable); awaiting a builder yields its rows.
     if (ts.isAwaitExpression(e)) return kindOf(e.expression) === "handle" ? "handle" : "none";
     if (ts.isCallExpression(e)) {
@@ -754,7 +769,7 @@ function dbScan(text) {
     const t = unwrapCast(t0);
     if (!t) return [];
     if (ts.isIdentifier(t)) return [{ id: t }];
-    if (ts.isPropertyAccessExpression(t) && t.expression.kind === ts.SyntaxKind.ThisKeyword) return [{ prop: t }];
+    if (memberClass(t)) return [{ prop: t }];
     if (ts.isPropertyAccessExpression(t) || ts.isElementAccessExpression(t)) return targets(t.expression);
     if (ts.isObjectLiteralExpression(t)) {
       return t.properties.flatMap((p) => (ts.isPropertyAssignment(p) ? targets(p.initializer) : ts.isShorthandPropertyAssignment(p) ? [{ id: p.name }] : ts.isSpreadAssignment(p) ? targets(p.expression) : []));
@@ -842,12 +857,13 @@ function dbScan(text) {
         for (const r of ev.refs) {
           if (r.id) taint(resolve(r.id), k);
           else if (r.prop) {
-            const c = classOf(r.prop);
-            if (!c) continue;
+            const c = memberClass(r.prop);
+            const name = memberName(r.prop);
+            if (!c || name === null) continue;
             if (!classProps.has(c)) classProps.set(c, new Map());
             const m = classProps.get(c);
-            const cur = m.get(r.prop.name.text) ?? "none";
-            if (max(cur, k) !== cur) m.set(r.prop.name.text, max(cur, k)), (changed = true);
+            const cur = m.get(name) ?? "none";
+            if (max(cur, k) !== cur) m.set(name, max(cur, k)), (changed = true);
           }
         }
       }
@@ -1267,6 +1283,14 @@ const REFLECTION_FORMS = [
   ["a for-of destructuring default", 'for (const { dh4 = db } of [{} as any]) { await (dh4 as any)["upd" + "ate"](tisProjectsTable); }', true],
   ["a parameter destructuring default", 'const f9 = async ({ dh5 = db }: any = {}) => { await dh5["upd" + "ate"](tisProjectsTable); }; await f9();', true],
   ["an assignment destructuring default", 'let dh6: any; ({ dh6 = db } = {} as any); await dh6["upd" + "ate"](tisProjectsTable);', true],
+  // a class property read or written through the cheap `this` spellings, a #private field, or a static
+  ["a class property read through (this as any)", 'class C13 { h1: any = db; async m() { await (this as any).h1["upd" + "ate"](tisProjectsTable); } } await new C13().m();', true],
+  ["a class property read through this!", 'class C16 { h1: any = db; async m() { await this!.h1["upd" + "ate"](tisProjectsTable); } } await new C16().m();', true],
+  ["a class property read through this[\"h\"]", 'class C11 { h1: any = db; async m() { await this["h1"]["upd" + "ate"](tisProjectsTable); } } await new C11().m();', true],
+  ["a #private class field", 'class C5 { #h1: any = db; async m() { await this.#h1["upd" + "ate"](tisProjectsTable); } } await new C5().m();', true],
+  ["a static class field read as C.h", 'class C4 { static h1: any = db; static async m() { await C4.h1["upd" + "ate"](tisProjectsTable); } } await C4.m();', true],
+  ["a class property assigned through (this as any)", 'class C17 { h1: any; constructor() { (this as any).h1 = db; } async m() { await this.h1["upd" + "ate"](tisProjectsTable); } } await new C17().m();', true],
+  ["a static field assigned in a static block", 'class C20 { static h1: any; static { C20.h1 = db; } static async m() { await C20.h1["upd" + "ate"](tisProjectsTable); } } await C20.m();', true],
   ["the handle a transaction callback returns, awaited", 'const tr = await db.transaction(async (x: any) => x); await (tr as any)["upd" + "ate"](tisProjectsTable);', true],
 ];
 
