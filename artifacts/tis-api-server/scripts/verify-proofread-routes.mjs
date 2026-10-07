@@ -28,18 +28,32 @@
  * schemas are evaluated, so the WITHDRAWN-needs-a-source rule is exercised
  * rather than grepped for.
  *
- * The route, store and runner code is read with TypeScript's own parser, not
- * with regexes: imports and database writes are found in the AST, because review
- * walked real tis_projects writes past regex versions of both. It is a tripwire
- * against ordinary AND adversarially spelled imports and writes, not a sandbox
- * against runtime reflection: a specifier built at run time reads as
- * "<dynamic import>", which no whitelist allows, and reflection on a db handle
- * (Reflect, Object.entries, computed keys, spread) is refused rather than
- * followed. It reads local identifiers, not bindings, and does not use the type
- * checker, so a parameter that merely shares an allowed table's name is a known
- * limit (see dbScan). What survives every spelling is a test that observes the
- * DATABASE (a row hash before and after, on a real Postgres); this guard cannot
- * be one, and that test is the recommended addition once phase 1 ships.
+ * The route, store and runner code is read with TypeScript's own parser (the
+ * parser only, never the type checker): imports and module loaders, database
+ * writes, the values that hold a database handle, and the SQL text in string
+ * literals are found in the AST, because review walked real tis_projects writes
+ * past regex versions of each.
+ *
+ * ADDITIVE TEXT SCANS. Beside those AST checks, several checks keep the substring
+ * scans of comment-stripped text that earlier versions of this guard used, as
+ * extra conjuncts: the routes' scan for tis_projects, tisProjectsTable, the four
+ * payload names, `db`, `.update(` / `.insert(` / `.delete(` and @workspace/db; the
+ * runner's for tisProjectsTable, the two camel-case payload names, those three
+ * verbs and `db.`; the store's `.verb(Name` targets, tisProjectsTable and the
+ * payload names outside the loader, onConflictDoUpdate, tis_projects, and
+ * uppercase UPDATE / INSERT INTO / DELETE FROM. They were kept in round 3 so
+ * that no input an earlier guard caught can pass this one, and they can only add
+ * reds: a route string that merely says "db" or "x.update(y)" is refused, which
+ * is their known cost.
+ *
+ * It is a tripwire against ordinary AND adversarially spelled imports and
+ * writes, not a sandbox against runtime reflection: a specifier built at run time
+ * reads as "<dynamic import>", which no whitelist allows, and reflection on a
+ * value that holds a db handle (Reflect, Object.entries, computed keys, spread)
+ * is refused rather than followed. Its named limits are listed at dbScan. What
+ * survives every spelling is a test that observes the DATABASE (a row hash before
+ * and after, on a real Postgres); this guard cannot be one, and that test is the
+ * recommended addition once phase 1 ships.
  *
  * Reads files as text and never imports the routes, the store or
  * @workspace/db, so it never opens a connection.
@@ -88,8 +102,8 @@ const pathOf = (file) => PATHS[file] ?? `src/lib/proofread/${file}`;
 /** The 1-based line of an offset into a raw (not comment-stripped) source. */
 const lineAt = (raw, off) => raw.slice(0, Math.max(0, off)).split("\n").length;
 
-// The code is read with TypeScript's own parser, not with regexes. Two rounds of
-// review showed a line-anchored regex parser can always be walked around by a
+// The code is read with TypeScript's own parser (the text scans kept beside it are
+// listed in the header). Two rounds of review showed a line-anchored regex parser can always be walked around by a
 // spelling it did not anticipate (a block comment ahead of an import, single
 // quotes, two statements on a line, an indented import, no whitespace at all,
 // an ES2022 string-literal import name, a regex literal ending in `//` that a
@@ -102,15 +116,48 @@ try {
 } catch {
   ts = null;
 }
-// Usable means every part of the compiler API this guard calls is there, not only that
-// something named typescript resolved: a stub package would otherwise print the named
-// failure and then die with a TypeError a few lines later.
-const tsUsable =
-  ts !== null &&
-  ["createSourceFile", "getLeadingCommentRanges", "getTrailingCommentRanges", "forEachChild", "isImportDeclaration", "isCallExpression", "isIdentifier"].every((k) => typeof ts[k] === "function") &&
-  typeof ts.SyntaxKind === "object" &&
-  typeof ts.ScriptTarget === "object";
-ok(tsUsable, "precondition: typescript resolves from scripts/ under plain node and has the compiler API this guard uses, so imports, writes and comments are read from the AST rather than by regex");
+// Usable means every member of the compiler API this file names is there, not only that
+// something named typescript resolved. The list is read from this file's own text at
+// start-up (each function, enum and enum member it reaches through the typescript
+// module), so it cannot fall behind the code: a hand-kept list caught 9 of 50 removed
+// members, and the rest died with a TypeError or, for an enum member, passed. A smoke
+// parse then exercises the node methods the guard calls (getChildren, getText,
+// getStart, getFullStart, getEnd, positions to lines, comment ranges).
+const OWN_TEXT = readFileSync(fileURLToPath(import.meta.url), "utf8");
+const TS_API = [...new Set([...OWN_TEXT.matchAll(/(?<![\w$./-])ts\.([A-Za-z_]\w*)(?:\.([A-Za-z_]\w*))?/g)].map((m) => (m[2] ? `${m[1]}.${m[2]}` : m[1])))].sort();
+const tsMissing =
+  ts === null
+    ? ["the typescript package itself"]
+    : TS_API.filter((name) => {
+        const [a, b] = name.split(".");
+        const v = ts[a];
+        if (b === undefined) return /^[a-z]/.test(a) ? typeof v !== "function" : v === null || typeof v !== "object";
+        return v === null || typeof v !== "object" || v[b] === undefined;
+      });
+let tsSmoke = false;
+if (tsMissing.length === 0) {
+  try {
+    const sf0 = ts.createSourceFile("smoke.ts", "// c\nconst a = { b: 1 };\n", ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
+    const st = sf0.statements[0];
+    tsSmoke =
+      st.parent === sf0 &&
+      st.getText(sf0) === "const a = { b: 1 };" &&
+      st.getStart(sf0) === 5 &&
+      st.getFullStart() === 0 &&
+      st.getEnd() === 24 &&
+      st.getChildren(sf0).length > 0 &&
+      sf0.getLineAndCharacterOfPosition(st.getStart(sf0)).line === 1 &&
+      (ts.getLeadingCommentRanges(sf0.text, 0) ?? []).length === 1;
+  } catch {
+    tsSmoke = false;
+  }
+}
+const tsUsable = TS_API.length > 20 && tsMissing.length === 0 && tsSmoke;
+ok(
+  tsUsable,
+  `precondition: typescript resolves from scripts/ under plain node and has every member of the compiler API this guard names (${TS_API.length}, read from the guard's own text), and a parsed node answers the methods the guard calls`,
+  tsMissing.length ? `missing: ${tsMissing.join(", ")}` : tsSmoke ? undefined : "a smoke parse did not behave like TypeScript's",
+);
 if (!tsUsable) {
   console.log("\n1 CHECK(S) FAILED");
   process.exit(1);
@@ -360,6 +407,9 @@ const dispSeg = (d) => routeBy(d.routes, "post", P_DISP);
  *   require("x") / module.require    -> <require> under x
  *   a non-literal specifier          -> the pseudo-name itself is the module
  *   eval / Function / require used any other way -> <eval> / <require>
+ *   createRequire / getBuiltinModule, however reached -> <createRequire> / <getBuiltinModule>
+ *   x.constructor(...) or new x.constructor(...) with an argument -> <constructor call>
+ * A member reached by a string key (module["require"]) counts as the member.
  * It is a tripwire for reaching a write through the module graph by ordinary
  * means, not a sandbox: code that builds a specifier at run time can only be
  * seen as "<dynamic import>", which no whitelist allows.
@@ -640,7 +690,6 @@ function dbScan(text) {
     for (let p = n.parent; p; p = p.parent) if (ts.isClassDeclaration(p) || ts.isClassExpression(p)) return p;
     return null;
   };
-  const K = ts.SyntaxKind;
   const kindOf = (e0) => {
     const e = unwrapCast(e0);
     if (!e) return "none";
@@ -649,7 +698,7 @@ function dbScan(text) {
       return b ? (tainted.get(b) ?? "none") : DB_HANDLES.has(e.text) ? "handle" : "none";
     }
     if (ts.isPropertyAccessExpression(e)) {
-      if (e.expression.kind === K.ThisKeyword) {
+      if (e.expression.kind === ts.SyntaxKind.ThisKeyword) {
         const c = classOf(e);
         const k = c ? (classProps.get(c)?.get(e.name.text) ?? "none") : "none";
         if (k !== "none") return k;
@@ -662,8 +711,8 @@ function dbScan(text) {
     if (ts.isConditionalExpression(e)) return max(kindOf(e.whenTrue), kindOf(e.whenFalse));
     if (ts.isBinaryExpression(e)) {
       const op = e.operatorToken.kind;
-      if (op === K.CommaToken || op === K.EqualsToken) return kindOf(e.right);
-      if ([K.BarBarToken, K.AmpersandAmpersandToken, K.QuestionQuestionToken, K.BarBarEqualsToken, K.AmpersandAmpersandEqualsToken, K.QuestionQuestionEqualsToken].includes(op)) return max(kindOf(e.left), kindOf(e.right));
+      if (op === ts.SyntaxKind.CommaToken || op === ts.SyntaxKind.EqualsToken) return kindOf(e.right);
+      if ([ts.SyntaxKind.BarBarToken, ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.AmpersandAmpersandEqualsToken, ts.SyntaxKind.QuestionQuestionEqualsToken].includes(op)) return max(kindOf(e.left), kindOf(e.right));
       return "none";
     }
     if (ts.isArrayLiteralExpression(e)) return e.elements.reduce((k, x) => max(k, kindOf(ts.isSpreadElement(x) ? x.expression : x)), "none");
@@ -682,13 +731,13 @@ function dbScan(text) {
     const t = unwrapCast(t0);
     if (!t) return [];
     if (ts.isIdentifier(t)) return [{ id: t }];
-    if (ts.isPropertyAccessExpression(t) && t.expression.kind === K.ThisKeyword) return [{ prop: t }];
+    if (ts.isPropertyAccessExpression(t) && t.expression.kind === ts.SyntaxKind.ThisKeyword) return [{ prop: t }];
     if (ts.isPropertyAccessExpression(t) || ts.isElementAccessExpression(t)) return targets(t.expression);
     if (ts.isObjectLiteralExpression(t)) {
       return t.properties.flatMap((p) => (ts.isPropertyAssignment(p) ? targets(p.initializer) : ts.isShorthandPropertyAssignment(p) ? [{ id: p.name }] : ts.isSpreadAssignment(p) ? targets(p.expression) : []));
     }
     if (ts.isArrayLiteralExpression(t)) return t.elements.flatMap((x) => targets(ts.isSpreadElement(x) ? x.expression : x));
-    if (ts.isBinaryExpression(t) && t.operatorToken.kind === K.EqualsToken) return targets(t.left);
+    if (ts.isBinaryExpression(t) && t.operatorToken.kind === ts.SyntaxKind.EqualsToken) return targets(t.left);
     return [];
   };
   const fnArg = (a) => {
@@ -701,7 +750,7 @@ function dbScan(text) {
       else if (ts.isVariableDeclarationList(n.parent) && ts.isForOfStatement(n.parent.parent)) events.push({ ids: bindingIds(n.name), src: n.parent.parent.expression });
     } else if (ts.isParameter(n) && n.initializer) events.push({ ids: bindingIds(n.name), src: n.initializer });
     else if (ts.isPropertyDeclaration(n) && n.initializer && n.name && keyText(n.name) !== null) events.push({ cls: n.parent, name: keyText(n.name), src: n.initializer });
-    else if (ts.isBinaryExpression(n) && [K.EqualsToken, K.BarBarEqualsToken, K.AmpersandAmpersandEqualsToken, K.QuestionQuestionEqualsToken].includes(n.operatorToken.kind)) {
+    else if (ts.isBinaryExpression(n) && [ts.SyntaxKind.EqualsToken, ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.AmpersandAmpersandEqualsToken, ts.SyntaxKind.QuestionQuestionEqualsToken].includes(n.operatorToken.kind)) {
       events.push({ refs: targets(n.left), src: n.right });
     } else if (ts.isForOfStatement(n) && !ts.isVariableDeclarationList(n.initializer)) events.push({ refs: targets(n.initializer), src: n.expression });
     else if (ts.isCallExpression(n)) {
@@ -790,7 +839,7 @@ function dbScan(text) {
       if (k !== null && WRITE_VERBS.has(k)) writes.push({ verb: k, form: "destructured", ...loc(n) });
       if (n.propertyName && ts.isComputedPropertyName(n.propertyName) && k === null && heldBinding(n.name)) writes.push({ form: "computed destructuring key on a db-derived value", ...loc(n) });
     }
-    if (ts.isBinaryExpression(n) && n.operatorToken.kind === K.EqualsToken && ts.isObjectLiteralExpression(unwrapCast(n.left)) && isHeld(n.right) && computedKeyIn(n.left)) {
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isObjectLiteralExpression(unwrapCast(n.left)) && isHeld(n.right) && computedKeyIn(n.left)) {
       writes.push({ form: "computed destructuring key on a db-derived value", ...loc(n) });
     }
     if (ts.isShorthandPropertyAssignment(n) || ts.isPropertyAssignment(n)) {
@@ -1552,7 +1601,7 @@ const CHECKS = [
   {
     id: "routes-import-whitelist",
     on: "routes",
-    msg: "the routes import exactly the modules and names the design allows: nothing that writes a study (saveProject, setProjectTheme, getProject, the db, a schema table) can be called without first appearing here",
+    msg: "the routes import exactly the modules and names the design allows, and load no module any other way (dynamic import, require, createRequire, getBuiltinModule, eval, Function, a function built from a string through .constructor(...)): nothing that writes a study (saveProject, setProjectTheme, getProject, the db, a schema table) can be called without first appearing here",
     test: (d) => {
       const want = {
         express: ["Router", "type IRouter"],
@@ -1717,7 +1766,7 @@ const CHECKS = [
   {
     id: "store-import-whitelist",
     on: "store",
-    msg: "the store imports exactly the modules AND NAMES it needs (drizzle's six helpers; db, the three proofread tables, tisProjectsTable and the StudyProofreadRun type from @workspace/db; the logger; the two pure proofread/ modules) in whatever spelling (read from the TypeScript AST: quotes, comments, spacing, indentation, one line or many, aliases, string-literal names), with no re-export, side-effect import, dynamic import or require — the scans of the store's own text cannot see a study write reached through another module, and `import { setProjectTheme } from \"./tis-projects\"` left every one of them green",
+    msg: "the store imports exactly the modules AND NAMES it needs (drizzle's six helpers; db, the three proofread tables, tisProjectsTable and the StudyProofreadRun type from @workspace/db; the logger; the two pure proofread/ modules) in whatever spelling (read from the TypeScript AST: quotes, comments, spacing, indentation, one line or many, aliases, string-literal names), with no re-export, side-effect import, dynamic import, require, createRequire, getBuiltinModule, eval, Function or function built from a string through .constructor(...) — the scans of the store's own text cannot see a study write reached through another module, and `import { setProjectTheme } from \"./tis-projects\"` left every one of them green",
     test: (d) => ({ ok: d.store.length > 0 && importsEqual(importsOf(d.src.store), STORE_IMPORTS), where: importDiff("store", d.src.store, STORE_IMPORTS) }),
   },
   {
@@ -1874,13 +1923,13 @@ const CHECKS = [
   {
     id: "runner-import-whitelist",
     on: "runner",
-    msg: "the runner imports exactly the modules AND NAMES it needs (node:fs, node:path, the type-only StudyProofreadRun, the logger, the two pure proofread/ modules and the six store functions) in whatever spelling (read from the TypeScript AST), with no re-export, side-effect import, dynamic import or require — so it reaches the database only through the store, and `import { setProjectTheme } from \"./tis-projects\"` called after the clause pass (which compiled and left every other guard green while rewriting a tis_projects row) fails here",
+    msg: "the runner imports exactly the modules AND NAMES it needs (node:fs, node:path, the type-only StudyProofreadRun, the logger, the two pure proofread/ modules and the six store functions) in whatever spelling (read from the TypeScript AST), with no re-export, side-effect import, dynamic import, require, createRequire, getBuiltinModule, eval, Function or function built from a string through .constructor(...) — so it reaches the database only through the store, and `import { setProjectTheme } from \"./tis-projects\"` called after the clause pass (which compiled and left every other guard green while rewriting a tis_projects row) fails here",
     test: (d) => ({ ok: d.runner.length > 0 && importsEqual(importsOf(d.src.runner), RUNNER_IMPORTS), where: importDiff("runner", d.src.runner, RUNNER_IMPORTS) }),
   },
   {
     id: "proofread-dir-imports-whitelist",
     on: "clauseDir",
-    msg: "every file under src/lib/proofread/ — the pure directory the store and the runner import, and so a way to reach a write without it appearing in either — imports only its own siblings, the dependency-free @workspace/tis-engine-core, and types from @workspace/tis-api-zod: no database, no node module, no other lib file, and no dynamic import(), require or eval of ANY specifier (a literal one included)",
+    msg: "every file under src/lib/proofread/ — the pure directory the store and the runner import, and so a way to reach a write without it appearing in either — imports only its own siblings, the dependency-free @workspace/tis-engine-core, and types from @workspace/tis-api-zod: no database, no node module, no other lib file, and no dynamic import(), require, eval, createRequire, getBuiltinModule or function built from a string through .constructor(...) of ANY specifier (a literal one included)",
     test: (d) => {
       const files = Object.keys(d.clauseDir);
       const allowed = (mod, name) => {
