@@ -288,9 +288,12 @@ const dispSeg = (d) => routeBy(d.routes, "post", P_DISP);
  * from the AST so no spelling (quotes, comments, spacing, one-line, indented,
  * CRLF, attributes) changes what is seen.
  *
- * Names are the IMPORTED names, not the local aliases, with `type ` in front of
- * a type-only one (a statement-level `import type` or an inline `type` marker):
- * `import { "setProjectTheme" as sp }` is `setProjectTheme`. The forms a list of
+ * Names are the IMPORTED names with `type ` in front of a type-only one (a
+ * statement-level `import type` or an inline `type` marker), and `imported as
+ * local` whenever an alias changes the name: `import { "setProjectTheme" as sp }`
+ * is `setProjectTheme as sp`, and a default import is `default as <local>`. An
+ * alias is never reduced to the imported name, because the code that follows
+ * uses the LOCAL one. The forms a list of
  * names cannot express are surfaced as pseudo-names that no whitelist contains:
  *   import "x" / import {} from "x"  -> <side-effect import> / (no names) under x
  *   import * as ns from "x"          -> <namespace import>
@@ -319,10 +322,21 @@ function importsOf(text) {
       else {
         const names = [];
         const t = c.isTypeOnly ? "type " : "";
-        if (c.name) names.push(t + c.name.text);
+        // `imported as local` whenever the two differ, so no plain-name whitelist entry can
+        // match an alias. The write scan and the whitelists read the LOCAL identifiers in the
+        // code, so an import that renames one allowed name to another (`import { a as b, b as a }`)
+        // would make every later `b(...)` a call to `a` and leave every check green. A default
+        // import is `default as <local>`.
+        if (c.name) names.push(`${t}default as ${c.name.text}`);
         const nb = c.namedBindings;
         if (nb && ts.isNamespaceImport(nb)) names.push("<namespace import>");
-        if (nb && ts.isNamedImports(nb)) for (const e of nb.elements) names.push((c.isTypeOnly || e.isTypeOnly ? "type " : "") + (e.propertyName ?? e.name).text);
+        if (nb && ts.isNamedImports(nb)) {
+          for (const e of nb.elements) {
+            const imported = (e.propertyName ?? e.name).text;
+            const local = e.name.text;
+            names.push(`${c.isTypeOnly || e.isTypeOnly ? "type " : ""}${imported === local ? imported : `${imported} as ${local}`}`);
+          }
+        }
         add(mod, names);
       }
     } else if (ts.isExportDeclaration(n) && n.moduleSpecifier) {
@@ -541,7 +555,7 @@ const STORE_IMPORTS = {
 };
 const RUNNER_IMPORTS = {
   "node:fs": ["existsSync", "readFileSync"],
-  "node:path": ["path"],
+  "node:path": ["default as path"],
   // type-only: the runner has no connection of its own
   "@workspace/db": ["type StudyProofreadRun"],
   "./logger": ["logger"],
@@ -660,11 +674,22 @@ const WRITE_FORMS = [
     'import { type A } from "./a";\nconst a = 1; import { setProjectTheme } from "./tis-projects";',
   ];
   ok(
-    spelled.every((t) => P(t)["./tis-projects"]?.includes("setProjectTheme")),
+    spelled.every((t) => P(t)["./tis-projects"]?.some((n) => n === "setProjectTheme" || n.startsWith("setProjectTheme as "))),
     "the import parser finds setProjectTheme in all of: after a block comment, single-quoted, as a string-literal name, with no whitespace, indented with spaces and with a tab, CRLF and aliased, and after another statement on the same line",
   );
   ok(eq(P('// import { x } from "y";\n/* import { z } from "w"; */\nconst s = "import { a } from \'b\'";'), {}), "the import parser ignores a commented-out import and the text of an import inside a string");
   ok(P('const rx = /\\//; await import("./tis-projects");')["./tis-projects"]?.[0] === "<dynamic import>", "the import parser sees an import() that follows a regex literal ending in // on the same line (the old comment stripper deleted it)");
+  ok(
+    eq(P('import { a as b } from "m";'), { m: ["a as b"] }) &&
+      eq(P('import { a as b, b as a } from "m";'), { m: ["a as b", "b as a"] }) &&
+      eq(P('import { "a" as b } from "m";'), { m: ["a as b"] }) &&
+      eq(P('import { a as a } from "m";'), { m: ["a"] }) &&
+      eq(P('import { type a as b } from "m";'), { m: ["type a as b"] }) &&
+      eq(P('import type { a as b } from "m";'), { m: ["type a as b"] }) &&
+      eq(P('import d from "m";'), { m: ["default as d"] }) &&
+      eq(P('import { default as d } from "m";'), { m: ["default as d"] }),
+    "the import parser keeps `imported as local` whenever an alias changes the name (so an alias swap cannot match a plain-name whitelist entry), reduces a no-op alias to the plain name, and writes a default import as `default as <local>`",
+  );
   ok(eq(P('import { a } from "m";'), { m: ["a"] }) && eq(P('import type { a } from "m";'), { m: ["type a"] }) && eq(P('import { type a, b } from "m";'), { m: ["type a", "b"] }), "the import parser reads the names that were imported, with `type ` on type-only ones");
   void target;
 }
@@ -2367,6 +2392,44 @@ const MUTATIONS = [
     file: "clauseDir",
     flips: ["proofread-dir-imports-whitelist"],
     apply: editDir("s1-inputs.ts", 'import { isGrowthOverride } from "@workspace/tis-engine-core";', "import { isGrowthOverride } from \"@workspace/tis-engine-core\";\n/* x */ import { db } from '@workspace/db';"),
+  },
+  // An alias swap at import: the code keeps saying `studyProofreadRunsTable`, and every
+  // check that reads local identifiers is satisfied, while the name now means another table.
+  {
+    label: "store swaps two allowed names by alias at the @workspace/db import (every db.update(studyProofreadRunsTable) now targets tis_projects)",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: edit("store", "  studyProofreadRunsTable,\n  tisProjectsTable,\n", "  studyProofreadRunsTable as tisProjectsTable,\n  tisProjectsTable as studyProofreadRunsTable,\n"),
+  },
+  {
+    label: "runner swaps two store functions by alias at its import (every claimOneRun(...) now calls completeRun)",
+    file: "runner",
+    flips: ["runner-import-whitelist"],
+    apply: edit("runner", "  claimOneRun,\n  completeRun,\n", "  claimOneRun as completeRun,\n  completeRun as claimOneRun,\n"),
+  },
+  {
+    label: "routes rotate the three limiters by alias (the read route is now bound to the disposition budget, and so on)",
+    file: "routes",
+    flips: ["routes-import-whitelist"],
+    apply: edit("routes", "import { proofreadDispositionLimiter, proofreadReadLimiter, proofreadRunLimiter }", "import { proofreadDispositionLimiter as proofreadReadLimiter, proofreadReadLimiter as proofreadRunLimiter, proofreadRunLimiter as proofreadDispositionLimiter }"),
+  },
+  {
+    label: "store renames one allowed name to a different one by alias (db as the logger's name)",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: edit("store", 'import { logger } from "./logger";', 'import { logger as db } from "./logger";'),
+  },
+  {
+    label: "runner renames its default import (node:path as posix)",
+    file: "runner",
+    flips: ["runner-import-whitelist"],
+    apply: edit("runner", 'import path from "node:path";', 'import posix from "node:path";'),
+  },
+  {
+    label: "store aliases a type-only import",
+    file: "store",
+    flips: ["store-import-whitelist"],
+    apply: edit("store", "  type StudyProofreadRun,\n", "  type StudyProofreadRun as Run,\n"),
   },
   {
     label: "a clause file imports the database",
