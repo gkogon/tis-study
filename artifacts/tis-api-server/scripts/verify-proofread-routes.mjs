@@ -472,45 +472,74 @@ const STUDY_NAMES = new Set(["tisProjectsTable", "requestPayload", "resultPayloa
 const DB_HANDLES = new Set(["db", "tx", "trx"]);
 
 /**
- * What a file does to the database, read from the AST.
+ * What a file does to the database, read from the AST (TypeScript's parser, not
+ * its type checker).
  *
  *   writes  every mention of a write verb (update / insert / delete) that is a
- *           member of something: `x.update(T)` and `x["update"](T)` are a "call"
- *           with the table named by their one argument (parentheses, `as` and
- *           `!` unwrapped; anything but a plain identifier is "<not a table
- *           identifier>"); every other way of getting at a verb is a form of
- *           its own that has no table and is never allowed: a bare reference
- *           (`db.update.call(...)`, `db.update.bind(db)`, `const u = db.update`),
- *           a destructured binding (`const { update } = db`, renamed, string or
- *           computed key), an object-literal property of that name (assignment
- *           destructuring), or a computed access on a db handle (`db[k]`).
- *           So is each of the ways of reaching a verb WITHOUT naming it, on
- *           a value that is, or derives from, a db handle (db, tx, trx, and
- *           any variable assigned from an expression rooted at one): a computed
- *           property access or destructuring key that is not a literal, a spread
- *           (`{ ...db }`), Reflect or Proxy in any use, Object.entries / values /
- *           keys / assign / getOwnPropertyDescriptors ... on one, and for-in over one.
+ *           member of something, whatever the receiver: `x.update(T)` and
+ *           `x["update"](T)` are a "call" with the table named by their one
+ *           argument (parentheses, `as`, `!` and `await` unwrapped; anything but a
+ *           plain identifier is "<not a table identifier>"); every other way of
+ *           getting at a verb is a form of its own that has no table and is never
+ *           allowed: a bare reference (`db.update.call(...)`, `db.update.bind(db)`,
+ *           `const u = db.update`), a destructured binding (`const { update } = db`,
+ *           renamed, string or computed key), or an object-literal property of that
+ *           name (assignment destructuring).
+ *           So is each way of reaching a verb WITHOUT naming it, on a value that
+ *           holds a database handle (below): a computed property access whose key
+ *           is not a literal (numeric keys exempt), a computed destructuring key,
+ *           a spread, for-in, Object.keys / values / entries / assign /
+ *           fromEntries / getOwnProperty* / getPrototypeOf / defineProperty* or
+ *           any Reflect.* taking one; and Reflect or Proxy in any use at all.
  *   study   every occurrence of tisProjectsTable / requestPayload / resultPayload
  *           (as an identifier or a string), with the function declaration it is
  *           in and whether it is only an import specifier
- *   dbIdents  every identifier called `db`
+ *   dbIdents  every identifier called `db`, by name
  *   members   every property name, string-literal element-access name and
  *           destructured key
+ * Each finding carries its line, so a failure can say where it fired.
  *
- * A regex over the text reads `db["update"](tisProjectsTable)` and
- * `const { update } = db; update(tisProjectsTable)` as nothing at all.
+ * WHICH VALUES HOLD A HANDLE. Identifiers are resolved to their DECLARATION by a
+ * lexical scope walk (function, block, for, catch and class scopes; parameters;
+ * `var` hoisted to its function, approximately), and taint attaches to the
+ * declaration, so a same-named binding in another function is another variable.
+ * Seeds: the `db` import binding (renamed or not), a parameter called db, tx or trx,
+ * an identifier called db, tx or trx that resolves to nothing in the file, and a
+ * property named `db` of anything (`globalThis.db`, `ns.db`). Derived: aliasing,
+ * property and element access, a conditional, a comma, `||` / `&&` / `??`, an
+ * assignment expression, an object or array literal or spread holding one, any
+ * destructuring of one, `new X(handle)`, the loop variable of a for-of over one, a
+ * parameter whose default is one, a class property initialised or assigned from one
+ * (read back as `this.x`), an object handed one in a property assignment, and every
+ * parameter of a function literal passed to a method of a handle
+ * (`db.transaction(async (t) => ...)`, whatever the parameter is called). A method
+ * call on a handle yields a BUILDER (`db.insert(T).values(..)`), which still carries
+ * write methods such as onConflictDoUpdate, so the rules above apply to it too.
+ * NOT derived: `await` (a query's RESULT is data: `rows[i]`, `{ ...row }`,
+ * `Object.keys(row)` and `[...rows].sort()` are ordinary code), and a call whose
+ * callee is not rooted at a handle (`Object.fromEntries(rows.map(..))`).
  *
- * WHAT THIS IS NOT. It is a tripwire against ordinary and adversarially
- * spelled writes, not a sandbox against runtime reflection, and it reads local
- * identifiers, not bindings: it takes the identifier `studyProofreadRunsTable`
- * to be that table. Known limits, deliberately not chased with the type checker:
- * a parameter or local that merely shares an allowed table's name (E7: a
- * function `f(studyProofreadRunsTable)` handed tis_projects by its caller), a
- * handle passed through a helper that returns it, and a specifier or key built
- * from runtime data the AST cannot see. The proof that survives every spelling is
- * a test that observes the database, a row hash before and after a request on a
- * real Postgres; it is not part of this guard (it needs a Postgres service in CI)
- * and is the recommended addition once phase 1 ships.
+ * WHAT THIS IS NOT. It is a tripwire against ordinary and adversarially spelled
+ * writes, not a sandbox against runtime reflection. Known limits, deliberately not
+ * chased (the type checker would be needed, or they are runtime behaviour):
+ *   - a handle RETURNED from a call: an IIFE `(() => db)()`, `await
+ *     Promise.resolve(db)`, a helper or a getter that returns it;
+ *   - a helper that RECEIVES the handle as an argument, `w(db, tisProjectsTable)`,
+ *     unless its parameter is called db, tx or trx; and a callback passed to
+ *     db.transaction by name rather than written in place;
+ *   - E7: a binding that merely shares an allowed table's name (a function
+ *     `f(studyProofreadRunsTable)` handed tis_projects by its caller) reads as
+ *     that table, since table names are read as names;
+ *   - a key or specifier built from runtime data: on a handle it is refused as a
+ *     computed access, anywhere else it is not followed, and a specifier reads as
+ *     "<dynamic import>";
+ *   - false positives kept on purpose: the verb scan is receiver-agnostic, so
+ *     `someMap.delete(k)`, `set.delete(x)` and an object key called insert /
+ *     update / delete are refused in the store, the runner and the routes.
+ * The proof that survives every spelling is a test that observes the database, a
+ * row hash before and after a request on a real Postgres; it is not part of this
+ * guard (it needs a Postgres service in CI) and is the recommended addition once
+ * phase 1 ships.
  */
 const REFLECT_FNS = new Set(["keys", "values", "entries", "assign", "fromEntries", "getOwnPropertyNames", "getOwnPropertyDescriptor", "getOwnPropertyDescriptors", "getPrototypeOf", "setPrototypeOf", "defineProperty", "defineProperties"]);
 const dbScanCache = new Map();
@@ -522,6 +551,13 @@ function dbScan(text) {
   const dbIdents = [];
   const members = new Set();
   const lit = (e) => (e && (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) ? e.text : null);
+  // Parentheses and type-only wrappers say nothing about the value. `await` does: it
+  // turns a query into its rows, so it is not unwrapped for the handle rules below (the
+  // table argument of a write is still read through it).
+  const unwrapCast = (e) => {
+    while (e && (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e) || ts.isTypeAssertionExpression(e) || ts.isSatisfiesExpression(e))) e = e.expression;
+    return e;
+  };
   const unwrap = (e) => {
     while (e && (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e) || ts.isTypeAssertionExpression(e) || ts.isSatisfiesExpression(e) || ts.isAwaitExpression(e))) e = e.expression;
     return e;
@@ -538,55 +574,193 @@ function dbScan(text) {
   };
   const keyText = (k) => (ts.isIdentifier(k) || ts.isStringLiteral(k) || ts.isNoSubstitutionTemplateLiteral(k) ? k.text : ts.isComputedPropertyName(k) ? lit(k.expression) : null);
 
-  // Which local names are, or derive from, a database handle: db / tx / trx, and
-  // every variable (or destructured binding, or assignment target) initialised
-  // from an expression rooted at one, to a fixed point.
-  const tainted = new Set(DB_HANDLES);
-  const rooted = (e0) => {
-    const e = unwrap(e0);
-    if (!e) return false;
-    if (ts.isIdentifier(e)) return tainted.has(e.text);
-    if (ts.isPropertyAccessExpression(e) || ts.isElementAccessExpression(e) || ts.isCallExpression(e)) return rooted(e.expression);
-    if (ts.isNewExpression(e)) return (e.arguments ?? []).some(rooted);
-    if (ts.isConditionalExpression(e)) return rooted(e.whenTrue) || rooted(e.whenFalse);
-    if (ts.isBinaryExpression(e)) return rooted(e.left) || rooted(e.right);
-    if (ts.isArrayLiteralExpression(e)) return e.elements.some((x) => rooted(ts.isSpreadElement(x) ? x.expression : x));
-    if (ts.isObjectLiteralExpression(e)) {
-      return e.properties.some((p) => (ts.isSpreadAssignment(p) ? rooted(p.expression) : ts.isPropertyAssignment(p) ? rooted(p.initializer) : ts.isShorthandPropertyAssignment(p) ? tainted.has(p.name.text) : false));
+  // ---- Lexical scopes: every identifier resolves to the binding that declares it. ----
+  const isFunctionLike = (n) =>
+    ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n) || ts.isArrowFunction(n) || ts.isMethodDeclaration(n) || ts.isConstructorDeclaration(n) || ts.isGetAccessorDeclaration(n) || ts.isSetAccessorDeclaration(n);
+  const isBlockScope = (n) => ts.isBlock(n) || ts.isSourceFile(n) || ts.isModuleBlock(n) || ts.isCaseBlock(n) || ts.isForStatement(n) || ts.isForInStatement(n) || ts.isForOfStatement(n) || isFunctionLike(n);
+  const nearest = (n, pred) => {
+    for (let p = n.parent; p; p = p.parent) if (pred(p)) return p;
+    return sf;
+  };
+  const bindingIds = (name) =>
+    ts.isIdentifier(name) ? [name] : ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name) ? name.elements.flatMap((el) => (ts.isOmittedExpression(el) ? [] : bindingIds(el.name))) : [];
+  const scopes = new Map();
+  const declare = (scope, name) => {
+    if (!scopes.has(scope)) scopes.set(scope, new Map());
+    for (const id of bindingIds(name)) if (!scopes.get(scope).has(id.text)) scopes.get(scope).set(id.text, id);
+  };
+  const seeds = [];
+  const declareAll = (n) => {
+    if (ts.isVariableDeclaration(n)) {
+      const list = n.parent;
+      if (ts.isCatchClause(list)) declare(list, n.name);
+      // let / const are block scoped; var hoists to its function (an approximation that ignores TDZ)
+      else declare(list.flags & ts.NodeFlags.BlockScoped ? nearest(n, isBlockScope) : nearest(n, (p) => isFunctionLike(p) || ts.isSourceFile(p)), n.name);
+    } else if (ts.isParameter(n)) {
+      declare(n.parent, n.name);
+      // By convention a parameter called db, tx or trx IS a handle (a helper handed the
+      // transaction): kept as a seed so the old name rule still holds for parameters.
+      for (const id of bindingIds(n.name)) if (DB_HANDLES.has(id.text)) seeds.push(id);
+    } else if ((ts.isFunctionDeclaration(n) || ts.isClassDeclaration(n)) && n.name) declare(nearest(n, isBlockScope), n.name);
+    else if ((ts.isFunctionExpression(n) || ts.isClassExpression(n)) && n.name) declare(n, n.name);
+    else if (ts.isImportClause(n) && n.name) declare(sf, n.name);
+    else if (ts.isImportSpecifier(n) || ts.isNamespaceImport(n) || ts.isImportEqualsDeclaration(n)) {
+      declare(sf, n.name);
+      // the database handle itself, however it is imported or renamed
+      if (n.name.text === "db" || (ts.isImportSpecifier(n) && n.propertyName && keyText(n.propertyName) === "db")) seeds.push(n.name);
     }
-    return false;
+    ts.forEachChild(n, declareAll);
   };
-  const boundNames = (name) =>
-    ts.isIdentifier(name) ? [name.text] : ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name) ? name.elements.flatMap((el) => (ts.isOmittedExpression(el) ? [] : boundNames(el.name))) : [];
-  const identsIn = (node) => {
-    const out = [];
-    const v = (x) => {
-      if (ts.isIdentifier(x)) out.push(x.text);
-      ts.forEachChild(x, v);
-    };
-    v(node);
-    return out;
+  declareAll(sf);
+  const resolve = (id) => {
+    for (let p = id.parent; p; p = p.parent) {
+      const m = scopes.get(p);
+      if (m && m.has(id.text)) return m.get(id.text);
+    }
+    return null;
   };
-  const bindings = [];
+
+  // ---- Which values are, or hold, a database handle. ----
+  // A HANDLE is db (as imported), an unresolved identifier called db / tx / trx, a parameter
+  // called db / tx / trx, and anything derived from a handle by aliasing, property or element
+  // access, a conditional, a comma, `||` / `&&` / `??`, an assignment expression, an object or
+  // array literal or spread holding one, destructuring, `new X(handle)`, a for-of over one, a
+  // parameter defaulting to one, a class property initialised from one (read back as this.x),
+  // and a property named db of anything. A BUILDER is what a method call on a handle or a
+  // builder returns (db.insert(T), db.insert(T).values(..)): it still carries write methods,
+  // so the reflection rules apply to it too. Neither survives `await` (a query RESULT is
+  // data: rows, a row, findings) nor a call whose callee is not rooted at a handle
+  // (Promise.resolve(db), helper(rows)). Taint attaches to the declaring binding, so a
+  // same-named binding in another function is a different variable.
+  const RANK = { none: 0, builder: 1, handle: 2 };
+  const max = (a, b) => (RANK[a] >= RANK[b] ? a : b);
+  const tainted = new Map();
+  const classProps = new Map();
+  const classOf = (n) => {
+    for (let p = n.parent; p; p = p.parent) if (ts.isClassDeclaration(p) || ts.isClassExpression(p)) return p;
+    return null;
+  };
+  const K = ts.SyntaxKind;
+  const kindOf = (e0) => {
+    const e = unwrapCast(e0);
+    if (!e) return "none";
+    if (ts.isIdentifier(e)) {
+      const b = resolve(e);
+      return b ? (tainted.get(b) ?? "none") : DB_HANDLES.has(e.text) ? "handle" : "none";
+    }
+    if (ts.isPropertyAccessExpression(e)) {
+      if (e.expression.kind === K.ThisKeyword) {
+        const c = classOf(e);
+        const k = c ? (classProps.get(c)?.get(e.name.text) ?? "none") : "none";
+        if (k !== "none") return k;
+      }
+      return e.name.text === "db" ? "handle" : kindOf(e.expression);
+    }
+    if (ts.isElementAccessExpression(e)) return lit(e.argumentExpression) === "db" ? "handle" : kindOf(e.expression);
+    if (ts.isCallExpression(e)) return kindOf(e.expression) === "none" ? "none" : "builder";
+    if (ts.isNewExpression(e)) return (e.arguments ?? []).reduce((k, a) => max(k, kindOf(a)), "none");
+    if (ts.isConditionalExpression(e)) return max(kindOf(e.whenTrue), kindOf(e.whenFalse));
+    if (ts.isBinaryExpression(e)) {
+      const op = e.operatorToken.kind;
+      if (op === K.CommaToken || op === K.EqualsToken) return kindOf(e.right);
+      if ([K.BarBarToken, K.AmpersandAmpersandToken, K.QuestionQuestionToken, K.BarBarEqualsToken, K.AmpersandAmpersandEqualsToken, K.QuestionQuestionEqualsToken].includes(op)) return max(kindOf(e.left), kindOf(e.right));
+      return "none";
+    }
+    if (ts.isArrayLiteralExpression(e)) return e.elements.reduce((k, x) => max(k, kindOf(ts.isSpreadElement(x) ? x.expression : x)), "none");
+    if (ts.isObjectLiteralExpression(e)) {
+      return e.properties.reduce((k, p) => max(k, ts.isSpreadAssignment(p) ? kindOf(p.expression) : ts.isPropertyAssignment(p) ? kindOf(p.initializer) : ts.isShorthandPropertyAssignment(p) ? kindOf(p.name) : "none"), "none");
+    }
+    return "none";
+  };
+  const isHeld = (e) => kindOf(e) !== "none";
+
+  // Every way a binding receives a value, collected once and run to a fixed point.
+  const events = [];
+  // The variables an assignment target writes: x, a destructuring pattern's names, and the
+  // base variable of obj.x / obj[k] (an object that is handed a handle holds one).
+  const targets = (t0) => {
+    const t = unwrapCast(t0);
+    if (!t) return [];
+    if (ts.isIdentifier(t)) return [{ id: t }];
+    if (ts.isPropertyAccessExpression(t) && t.expression.kind === K.ThisKeyword) return [{ prop: t }];
+    if (ts.isPropertyAccessExpression(t) || ts.isElementAccessExpression(t)) return targets(t.expression);
+    if (ts.isObjectLiteralExpression(t)) {
+      return t.properties.flatMap((p) => (ts.isPropertyAssignment(p) ? targets(p.initializer) : ts.isShorthandPropertyAssignment(p) ? [{ id: p.name }] : ts.isSpreadAssignment(p) ? targets(p.expression) : []));
+    }
+    if (ts.isArrayLiteralExpression(t)) return t.elements.flatMap((x) => targets(ts.isSpreadElement(x) ? x.expression : x));
+    if (ts.isBinaryExpression(t) && t.operatorToken.kind === K.EqualsToken) return targets(t.left);
+    return [];
+  };
+  const fnArg = (a) => {
+    const u = unwrapCast(a);
+    return u && (ts.isArrowFunction(u) || ts.isFunctionExpression(u)) ? u : null;
+  };
   const collect = (n) => {
-    if (ts.isVariableDeclaration(n) && n.initializer) bindings.push({ names: boundNames(n.name), init: n.initializer });
-    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken) bindings.push({ names: identsIn(n.left), init: n.right });
+    if (ts.isVariableDeclaration(n)) {
+      if (n.initializer) events.push({ ids: bindingIds(n.name), src: n.initializer });
+      else if (ts.isVariableDeclarationList(n.parent) && ts.isForOfStatement(n.parent.parent)) events.push({ ids: bindingIds(n.name), src: n.parent.parent.expression });
+    } else if (ts.isParameter(n) && n.initializer) events.push({ ids: bindingIds(n.name), src: n.initializer });
+    else if (ts.isPropertyDeclaration(n) && n.initializer && n.name && keyText(n.name) !== null) events.push({ cls: n.parent, name: keyText(n.name), src: n.initializer });
+    else if (ts.isBinaryExpression(n) && [K.EqualsToken, K.BarBarEqualsToken, K.AmpersandAmpersandEqualsToken, K.QuestionQuestionEqualsToken].includes(n.operatorToken.kind)) {
+      events.push({ refs: targets(n.left), src: n.right });
+    } else if (ts.isForOfStatement(n) && !ts.isVariableDeclarationList(n.initializer)) events.push({ refs: targets(n.initializer), src: n.expression });
+    else if (ts.isCallExpression(n)) {
+      // a function literal handed to a method of a handle receives a handle: db.transaction(async (t) => ...)
+      for (const a of n.arguments) {
+        const f = fnArg(a);
+        if (f) events.push({ callee: n.expression, params: f.parameters.flatMap((p) => bindingIds(p.name)) });
+      }
+    }
     ts.forEachChild(n, collect);
   };
   collect(sf);
-  for (let changed = true; changed; ) {
+  let changed = true;
+  const taint = (id, k) => {
+    if (!id || k === "none") return;
+    const cur = tainted.get(id) ?? "none";
+    const next = max(cur, k);
+    if (next !== cur) tainted.set(id, next), (changed = true);
+  };
+  for (const id of seeds) taint(id, "handle");
+  while (changed) {
     changed = false;
-    for (const b of bindings) {
-      if (!rooted(b.init)) continue;
-      for (const nm of b.names) if (!tainted.has(nm)) tainted.add(nm), (changed = true);
+    for (const ev of events) {
+      if (ev.callee) {
+        if (kindOf(ev.callee) === "handle") for (const id of ev.params) taint(id, "handle");
+        continue;
+      }
+      const k = kindOf(ev.src);
+      if (k === "none") continue;
+      if (ev.ids) for (const id of ev.ids) taint(id, k);
+      if (ev.cls) {
+        if (!classProps.has(ev.cls)) classProps.set(ev.cls, new Map());
+        const m = classProps.get(ev.cls);
+        if (max(m.get(ev.name) ?? "none", k) !== (m.get(ev.name) ?? "none")) m.set(ev.name, max(m.get(ev.name) ?? "none", k)), (changed = true);
+      }
+      if (ev.refs) {
+        for (const r of ev.refs) {
+          if (r.id) taint(resolve(r.id), k);
+          else if (r.prop) {
+            const c = classOf(r.prop);
+            if (!c) continue;
+            if (!classProps.has(c)) classProps.set(c, new Map());
+            const m = classProps.get(c);
+            const cur = m.get(r.prop.name.text) ?? "none";
+            if (max(cur, k) !== cur) m.set(r.prop.name.text, max(cur, k)), (changed = true);
+          }
+        }
+      }
     }
   }
-  const initOfPattern = (n) => {
-    for (let p = n.parent; p; p = p.parent) {
-      if (ts.isVariableDeclaration(p)) return p.initializer;
-      if (!ts.isBindingElement(p) && !ts.isObjectBindingPattern(p) && !ts.isArrayBindingPattern(p)) return undefined;
-    }
-    return undefined;
+  const heldBinding = (name) => bindingIds(name).some((id) => tainted.has(id));
+  const computedKeyIn = (pattern) => {
+    let found = false;
+    const v = (x) => {
+      if (ts.isPropertyAssignment(x) && ts.isComputedPropertyName(x.name) && lit(x.name.expression) === null) found = true;
+      ts.forEachChild(x, v);
+    };
+    v(pattern);
+    return found;
   };
 
   const visit = (n) => {
@@ -599,8 +773,8 @@ function dbScan(text) {
       if (key !== null) {
         members.add(key);
         if (WRITE_VERBS.has(key)) verb = key;
-      } else if (!ts.isNumericLiteral(n.argumentExpression) && rooted(n.expression)) {
-        writes.push({ form: "computed access on a db handle or a value derived from one", ...loc(n) });
+      } else if (!ts.isNumericLiteral(n.argumentExpression) && isHeld(n.expression)) {
+        writes.push({ form: "computed access on a db handle or a value derived from one", ...loc(n.argumentExpression) });
       }
     }
     if (verb !== null) {
@@ -614,17 +788,20 @@ function dbScan(text) {
       const k = keyText(n.propertyName ?? n.name);
       if (k !== null) members.add(k);
       if (k !== null && WRITE_VERBS.has(k)) writes.push({ verb: k, form: "destructured", ...loc(n) });
-      if (n.propertyName && ts.isComputedPropertyName(n.propertyName) && k === null && rooted(initOfPattern(n))) writes.push({ form: "computed destructuring key on a db-derived value", ...loc(n) });
+      if (n.propertyName && ts.isComputedPropertyName(n.propertyName) && k === null && heldBinding(n.name)) writes.push({ form: "computed destructuring key on a db-derived value", ...loc(n) });
+    }
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === K.EqualsToken && ts.isObjectLiteralExpression(unwrapCast(n.left)) && isHeld(n.right) && computedKeyIn(n.left)) {
+      writes.push({ form: "computed destructuring key on a db-derived value", ...loc(n) });
     }
     if (ts.isShorthandPropertyAssignment(n) || ts.isPropertyAssignment(n)) {
       const k = keyText(n.name);
       if (k !== null && WRITE_VERBS.has(k)) writes.push({ verb: k, form: "object property", ...loc(n) });
     }
-    if ((ts.isSpreadAssignment(n) || ts.isSpreadElement(n)) && rooted(n.expression)) writes.push({ form: "spread of a db-derived value", ...loc(n) });
-    if (ts.isForInStatement(n) && rooted(n.expression)) writes.push({ form: "for-in over a db-derived value", ...loc(n) });
+    if ((ts.isSpreadAssignment(n) || ts.isSpreadElement(n)) && isHeld(n.expression)) writes.push({ form: "spread of a db-derived value", ...loc(n) });
+    if (ts.isForInStatement(n) && isHeld(n.expression)) writes.push({ form: "for-in over a db-derived value", ...loc(n) });
     if (ts.isCallExpression(n)) {
       const e = n.expression;
-      if (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression) && ((e.expression.text === "Object" && REFLECT_FNS.has(e.name.text)) || e.expression.text === "Reflect") && n.arguments.some(rooted)) {
+      if (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression) && ((e.expression.text === "Object" && REFLECT_FNS.has(e.name.text)) || e.expression.text === "Reflect") && n.arguments.some(isHeld)) {
         writes.push({ form: "reflection on a db-derived value", ...loc(n) });
       }
     }
@@ -926,7 +1103,20 @@ const REFLECTION_FORMS = [
   ["for-in over db", "for (const k3 in db) { void k3; }", false],
   ["new Proxy(db, ...)", "const px = new Proxy(db, {}); void px;", false],
   ["a query builder derived from db, with the upsert reached by a computed name", 'const q = db.insert(studyProofreadDispositionsTable).values({} as any); const kk = "onConflictDo" + "Update"; await q[kk]({});', false],
+  // handles the round-3 taint did not follow
+  ["a computed access on a transaction callback's parameter, whatever it is called", 'await db.transaction(async (t) => { await (t as any)["upd" + "ate"](tisProjectsTable); });', true],
+  ["a spread of a transaction callback's parameter", "await db.transaction(async (t) => { const c = { ...t }; void c; });", false],
+  ["Object.entries of a transaction callback's parameter", "await db.transaction(async (t) => { void Object.entries(t); });", false],
+  ["for-in over a transaction callback's parameter", "await db.transaction(async (t) => { for (const k in t) void k; });", false],
+  ["the loop variable of a for-of over [db]", 'for (const h of [db]) { await (h as any)["upd" + "ate"](tisProjectsTable); }', true],
+  ["a parameter whose default is db", 'const f1 = (h: any = db) => h["upd" + "ate"](tisProjectsTable); await f1();', true],
+  ["a class property initialised from db, read back as this.h", 'class H { h: any = db; m() { return this.h["upd" + "ate"](tisProjectsTable); } } await new H().m();', true],
+  ["the parameter of a callback that .map hands an element of [db]", 'await Promise.all([db].map((d) => (d as any)["upd" + "ate"](tisProjectsTable)));', true],
+  ["a property named db of another object", 'await (globalThis as any).db["upd" + "ate"](tisProjectsTable);', true],
+  ["an object handed db in a property assignment", 'const box: any = {}; box.h = db; await box.h["upd" + "ate"](tisProjectsTable);', true],
+  ["an assignment destructuring with a computed key from db", 'let u2: any; const k6 = "update"; ({ [k6]: u2 } = db); await u2(tisProjectsTable);', true],
 ];
+
 
 // The parser itself, against the strings it must read the same way however they
 // are spelled, and the ones it must ignore.
@@ -1902,6 +2092,35 @@ const BASE_AUTH_GET = '  if (!req.isAuthenticated()) {\n    res.status(401).json
   const bad = cases.filter((c) => !c.ok);
   ok(bad.length === 0, "teeth: a red names the file and line of what fired (raw SQL, a delete split over two lines, a verb a table does not allow, the runner's and the routes' scans, and each of the four import whitelists)", bad.map((c) => `wanted ${c.want} in: ${JSON.stringify(c.where)}`));
 }
+
+// Code that must stay GREEN: query RESULTS are data, and a helper's parameter is its own
+// variable, whatever it is called. Each is applied to the real file and must leave every
+// check as it was; round 3's name-wide taint turned each of these red.
+const SEL = "await db.select().from(studyProofreadRunsTable).where(eq(studyProofreadRunsTable.id, args.runId))";
+const LEGIT = [
+  ["a row spread into an insert of the store's own run table", `const [row] = ${SEL}; await db.insert(studyProofreadRunsTable).values({ ...row, status: "queued" } as any);`],
+  ["the last row by length - 1", `const rows = ${SEL}; void rows[rows.length - 1];`],
+  ["a row indexed by a const", `const rows = ${SEL}; const idx = 2; void rows[idx];`],
+  ["Object.keys and Object.entries of a row", `const [row] = ${SEL}; void Object.keys(row ?? {}); for (const [k, v] of Object.entries(row ?? {})) void [k, v];`],
+  ["Object.fromEntries of rows.map", `const rows = ${SEL}; void Object.fromEntries(rows.map((r) => [r.id, r]));`],
+  ["a sorted copy of rows", `const rows = ${SEL}; void [...rows].sort((a, b) => a.revision - b.revision);`],
+  ["a column read by a computed key", `const [row] = ${SEL}; const col = args.status; void (row as any)?.[col];`],
+  ["a transaction that inserts and updates the run table", "await db.transaction(async (tx) => { const [r] = await tx.select().from(studyProofreadRunsTable).where(eq(studyProofreadRunsTable.id, args.runId)); if (r) await tx.update(studyProofreadRunsTable).set({ attempts: r.attempts }).where(eq(studyProofreadRunsTable.id, r.id)); });"],
+].map(([what, code]) => ({ label: `store completeRun: ${what}`, apply: edit("store", "  if (args.findings.length === 0) return;", `  { ${code} }\n  if (args.findings.length === 0) return;`) }));
+LEGIT.push(
+  { label: "carryForwardDispositions: the prior row spread into the insert", apply: edit("store", "    await db.insert(studyProofreadDispositionsTable).values({\n      findingId: nf.id,\n      disposition: prior[0].disposition,\n      note: prior[0].note,\n      sourceLabel: prior[0].sourceLabel,\n      actorUserId: prior[0].actorUserId,\n    });", "    await db.insert(studyProofreadDispositionsTable).values({ ...prior[0], findingId: nf.id } as any);") },
+  { label: "carryForwardDispositions: prior[prior.length - 1]", apply: edit("store", "    if (!prior[0]) continue;", "    if (!prior[0]) continue;\n    void prior[prior.length - 1];") },
+  { label: "latestRunForProject: [...findings].sort()", apply: edit("store", "  const dispositions = findings.length", "  const sortedF = [...findings].sort((a, b) => a.id.localeCompare(b.id)); void sortedF;\n  const dispositions = findings.length") },
+  ...[
+    "function firstN(findings: ProofreadFinding[], n: number): ProofreadFinding[] { const out: ProofreadFinding[] = []; for (let i = 0; i < n; i++) out.push(findings[i]!); return out; }",
+    "function pick(run: Record<string, unknown>, key: string): unknown { return run[key]; }",
+    "function withStatus(row: Record<string, unknown>) { return { ...row, status: 'x' }; }",
+    "function count(dispositions: Record<string, number>): number { let n = 0; for (const k in dispositions) n += dispositions[k]!; return n; }",
+    "function second(prior: number[], i: number) { return prior[i]; }",
+  ].map((fn) => ({ label: `a module-level helper whose parameter shares a name with a query result elsewhere: ${fn.slice(9, fn.indexOf("("))}`, apply: edit("store", "export async function insertQueuedRun(args: {", `${fn}\n\nexport async function insertQueuedRun(args: {`) })),
+  { label: "runner: a local array called tx, indexed", apply: edit("runner", "    const rec: StudyRecord", "    const tx = ['a']; const i = 0; void tx[i];\n    const rec: StudyRecord") },
+  { label: "routes: a local array called tx, indexed", apply: edit("routes", "const router: IRouter = Router();", "const router: IRouter = Router();\nconst tx = ['a']; const i = 0; void tx[i];") },
+);
 
 const MUTATIONS = [
   // ---- routes: surface ----------------------------------------------------
@@ -3054,6 +3273,13 @@ const MUTATIONS = [
     },
   ]),
 
+  {
+    label: "store: a module-level helper whose parameter is called tx (a transaction handle by convention), with a computed access",
+    file: "store",
+    flips: ["store-writes-only-proofread-tables", "store-dispositions-are-append-only"],
+    apply: edit("store", "export async function insertQueuedRun(args: {", 'async function bump(tx: any, k: string) { await tx[k](studyProofreadRunsTable); }\n\nexport async function insertQueuedRun(args: {'),
+  },
+
   // ---- the substring scans the exact AST matches had dropped, restored as extra conjuncts ----
   {
     label: "routes: a string that mentions result_payload and tis_projects (no identifier, no whole-literal match)",
@@ -3256,6 +3482,11 @@ for (const m of MUTATIONS) {
     `teeth: "${m.label}" (${m.file}) is caught only by checks declared about ${m.file} — an assertion pointed at the wrong file passes forever`,
     wrongFile.length ? `checks about another file went red: ${wrongFile.map((id) => `${id} (about ${teeth.get(id).on})`).join(", ")}` : undefined,
   );
+}
+
+for (const l of LEGIT) {
+  const now = run(l.apply(sources)).filter((id) => !failing.includes(id));
+  ok(now.length === 0, `stays green: "${l.label}" is ordinary code, and no check refuses it`, now.length ? `went red: ${now.join(", ")}` : undefined);
 }
 
 const covered = new Set(MUTATIONS.flatMap((m) => m.flips));
