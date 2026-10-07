@@ -44,7 +44,9 @@
  * uppercase UPDATE / INSERT INTO / DELETE FROM. They were kept in round 3 so
  * that no input an earlier guard caught can pass this one, and they can only add
  * reds: a route string that merely says "db" or "x.update(y)" is refused, which
- * is their known cost.
+ * is their known cost. The raw-SQL scan beside them reads SQL SHAPE, so prose that
+ * names a verb ("update failed", "could not insert into the queue") is not SQL;
+ * what that scan does not read is listed at rawSqlWrites.
  *
  * It is a tripwire against ordinary AND adversarially spelled imports and
  * writes, not a sandbox against runtime reflection: a specifier built at run time
@@ -937,18 +939,50 @@ const STORE_WRITES = new Map([
 const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.get(table).includes(verb);
 
 /**
- * Raw SQL that writes, in any letter case: UPDATE <target>, INSERT INTO,
- * DELETE FROM, TRUNCATE, ON CONFLICT ... DO UPDATE, MERGE INTO, DROP / ALTER
- * TABLE. `FOR UPDATE` (and `FOR NO KEY UPDATE`) is row locking inside a read
- * and is exempt: the store's claim says `FOR UPDATE SKIP LOCKED`. Read over
- * the text of every string literal and template (a substitution counts as a
- * target: `update ${tisProjectsTable} set`) and of every `+` chain of them
- * (`"update " + "tis_" + "projects"`), both cooked and as written. A prose
- * string that reads like SQL ("could not update the claim") is refused too;
- * that is the price of reading text, and the fix is to reword it.
+ * Raw SQL that writes, in any letter case, read for its SQL SHAPE so prose is not
+ * taken for SQL ("update failed", "could not insert into the queue", "refusing to
+ * delete from the log" stay legal):
+ *   UPDATE ... SET                  (no UPDATE statement lacks SET; `FOR UPDATE` and
+ *                                    `FOR NO KEY UPDATE` row locks are exempt)
+ *   INSERT INTO <t>                 then `(`, VALUES, SELECT, DEFAULT, OVERRIDING or WITH,
+ *                                    or <t> reads like a table (below)
+ *   DELETE FROM <t>                 then WHERE, USING, RETURNING, `;`, `)` or the end
+ *                                    (also after `AS alias`), or <t> reads like a table
+ *   COPY <t> FROM                   with PROGRAM / STDIN / a quoted path, or <t> reads like a table
+ *   SELECT ... INTO <t>             with <t> reading like a table or followed by FROM
+ *   TRUNCATE, MERGE INTO, ON CONFLICT ... DO UPDATE, DROP TABLE / SCHEMA / OWNED,
+ *   ALTER TABLE                     anywhere, as words
+ * A target READS LIKE A TABLE when it is quoted, interpolated (`${...}`), schema-
+ * qualified or snake_case: every table in this schema is (tis_projects,
+ * study_proofread_dispositions). Postgres reads a comment as whitespace, so each text
+ * is read twice, as written and with its block and line comments blanked (the
+ * second alone could hide a write behind a `--` inside a quoted string). The text is
+ * every string literal and template (a substitution counts as a target: `update
+ * ${tisProjectsTable} set`) and every `+` chain of them (`"update " + "tis_" +
+ * "projects"`), both cooked and as written. Not read: SQL assembled at run time from
+ * anything but literals (join, concat, String.fromCharCode, atob, a `${VERB}` const,
+ * a nested sql.raw), verbs outside this list, and a DELETE whose bare alias hides
+ * its clause keyword on a non-snake_case table (`delete from firms f where ..`).
  */
-const RAW_SQL_WRITE =
-  /(?<!\bfor\s+(?:no\s+key\s+)?)\bupdate(?:\s+[^\s(]|\s*["`$](?=[\w{]))|\binsert\s+into\b|\bdelete\s+from\b|\btruncate\b|\bon\s+conflict\b[\s\S]*?\bdo\s+update\b|\bmerge\s+into\b|\b(?:drop|alter)\s+table\b/i;
+const SQL_TABLE_LIKE = String.raw`(?:"[^"]*"|\$\{\}|[\w$]*[_.][\w$.]*)`;
+const SQL_TARGET = String.raw`(?:only\s+)?(?:"[^"]*"|\$\{\}|[^\s(;),]+)`;
+const RAW_SQL_SHAPES = [
+  String.raw`(?<!\bfor\s+(?:no\s+key\s+)?)\bupdate\b[^;]*?\bset\b`,
+  String.raw`\binsert\s+into\s+(?:${SQL_TABLE_LIKE}|${SQL_TARGET}\s*(?:\(|\b(?:values|select|default|overriding|with)\b))`,
+  String.raw`\bdelete\s+from\s+(?:only\s+)?(?:${SQL_TABLE_LIKE}|${SQL_TARGET}(?:\s+as\s+[\w$"]+)?\s*(?:$|;|\)|\b(?:where|using|returning)\b))`,
+  String.raw`\bcopy\s+(?:${SQL_TABLE_LIKE}(?:\s*\([^)]*\))?\s+from\b|${SQL_TARGET}(?:\s*\([^)]*\))?\s+from\s+(?:program\b|stdin\b|'|"|\$\{\}))`,
+  String.raw`\bselect\b[^;]*?\binto\s+(?:(?:temp|temporary|unlogged|table)\s+)*(?:${SQL_TABLE_LIKE}|${SQL_TARGET}\s+from\b)`,
+  String.raw`\btruncate\b`,
+  String.raw`\bmerge\s+into\b`,
+  String.raw`\bon\s+conflict\b[\s\S]*?\bdo\s+update\b`,
+  String.raw`\bdrop\s+(?:table|schema|owned)\b`,
+  String.raw`\balter\s+table\b`,
+].map((src) => new RegExp(src, "i"));
+/** Postgres lexes a comment as whitespace: blank them (block comments, then line comments). */
+const blankSqlComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--[^\n]*/g, " ");
+// every shape above contains one of these words; a text with none of them is not looked at further
+const RAW_SQL_WORD = /\b(?:update|insert|delete|copy|select|truncate|merge|conflict|drop|alter)\b/i;
+const RAW_SQL_WRITE = { test: (t) => RAW_SQL_WORD.test(blankSqlComments(t)) && [t, blankSqlComments(t)].some((x) => RAW_SQL_SHAPES.some((re) => re.test(x))) };
 const rawSqlCache = new Map();
 function rawSqlWrites(text) {
   if (rawSqlCache.has(text)) return rawSqlCache.get(text);
@@ -1302,6 +1336,26 @@ const REFLECTION_FORMS = [
     "const s = sql`update ${tisProjectsTable} set version = 2`;",
     'const s = "update " + "tis_" + "projects set version = 2";',
     'const s = "upd\\u0061te tis_projects set v = 1";',
+    // a comment is whitespace to Postgres
+    'const s = "update/**/study_proofread_dispositions set note = null";',
+    'const s = "update /* c */ study_proofread_dispositions set note = null";',
+    'const s = "delete /**/ from study_proofread_dispositions";',
+    'const s = "delete/**/from study_proofread_dispositions";',
+    'const s = "delete -- c\\n from study_proofread_dispositions";',
+    'const s = "insert /**/ into tis_" + "projects (id) values (1)";',
+    'const s = "update/**/tis_" + "projects set version = 1";',
+    'const s = "truncate/**/table study_proofread_dispositions";',
+    'const s = "on conflict (id) do /**/ update set note = null";',
+    // the other verbs that erase or replace the log
+    'const s = "drop schema public cascade";',
+    'const s = "drop owned by current_user";',
+    'const s = "copy study_proofread_dispositions from program \'true\'";',
+    'const s = "select * into study_proofread_dispositions_copy from study_proofread_dispositions";',
+    'const s = "delete from study_proofread_dispositions d where d.id = 1";',
+    'const s = "delete from runs as r where r.id = 1";',
+    'const s = "insert into runs values (1)";',
+    'const s = "with d as (update study_proofread_dispositions set note = null returning 1) select 1";',
+    'const s = "select 1 for update; update study_proofread_dispositions set note = null";',
   ];
   const left = [
     "const s = sql`SELECT id FROM study_proofread_runs WHERE x ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1`;",
@@ -1312,12 +1366,21 @@ const REFLECTION_FORMS = [
     'const s = "updated";',
     'const s = "proofread.dispositions_carried";',
     'const o = { "update": 1, "delete": 2 };',
+    // prose that names a verb but is not SQL
+    'const s = "update failed";',
+    "const s = `update failed for run ${id}`;",
+    'const s = "could not insert into the queue";',
+    'const s = "refusing to delete from the log";',
+    'const s = "could not update the claim";',
+    'const s = "no update available";',
+    'const s = "could not update run";',
+    'const s = "deleted 0 rows from the queue";',
   ];
   const missed = refused.filter((t) => n(t) !== 1);
   const flagged = left.filter((t) => n(t) !== 0);
   ok(
     missed.length === 0 && flagged.length === 0,
-    "the raw-SQL scan refuses UPDATE <target>, INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT DO UPDATE, MERGE INTO and DROP / ALTER TABLE in any letter case, in a string, a template with a substitution, a + chain or an escaped spelling, and leaves FOR UPDATE / FOR NO KEY UPDATE row locks, reads, and a bare word alone",
+    "the raw-SQL scan refuses UPDATE .. SET, INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT DO UPDATE, MERGE INTO, DROP TABLE / SCHEMA / OWNED, ALTER TABLE, COPY .. FROM and SELECT .. INTO in any letter case, with comments between the words, in a string, a template with a substitution, a + chain or an escaped spelling, and leaves FOR UPDATE / FOR NO KEY UPDATE row locks, reads, a bare word, and prose that names a verb (\"update failed\", \"could not insert into the queue\") alone",
     [...missed.map((t) => `missed: ${t}`), ...flagged.map((t) => `flagged: ${t}`)],
   );
   ok(
@@ -1918,7 +1981,7 @@ const CHECKS = [
   {
     id: "store-no-raw-study-sql",
     on: "store",
-    msg: "no raw SQL in the store writes ANY table, in any letter case — no UPDATE <target>, INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT ... DO UPDATE, MERGE INTO or DROP / ALTER TABLE in any string, template or `+` chain of them (FOR UPDATE row locking exempt) — and none names tis_projects: the builder scans above cannot see SQL text",
+    msg: "no raw SQL in the store writes ANY table, in any letter case and with comments between the words — no UPDATE .. SET, INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT .. DO UPDATE, MERGE INTO, DROP TABLE / SCHEMA / OWNED, ALTER TABLE, COPY .. FROM or SELECT .. INTO in any string, template or `+` chain of them, read for SQL shape (FOR UPDATE row locking exempt; prose such as \"update failed\" is not SQL) — and none names tis_projects: the builder scans above cannot see SQL text",
     test: (d) => {
       const raw = rawSqlWrites(d.src.store);
       // the old text scans, kept as extra conjuncts (they read the code too, not only literals)
@@ -2982,6 +3045,14 @@ const MUTATIONS = [
     ["an update of the log with the table interpolated", "await db.execute(sql`update ${studyProofreadDispositionsTable} set note = null`);"],
     ["an update whose SQL is built from a + chain of strings", 'await db.execute(sql.raw("update " + "study_proofread_" + "dispositions set note = null"));'],
     ["a delete of a run in raw SQL (cascades into the log)", "await db.execute(sql`Delete From study_proofread_runs where id = ${args.runId}`);"],
+    ["an update with a block comment between the words, on a split table name", 'await db.execute(sql.raw("update/**/tis_" + "projects set version = 1"));'],
+    ["a delete with a line comment between the words", 'await db.execute(sql.raw("delete -- c\\n from study_proofread_dispositions"));'],
+    ["an insert with a block comment between the words", 'await db.execute(sql.raw("insert /**/ into study_proofread_dispositions (note) values (null)"));'],
+    ["DROP SCHEMA", "await db.execute(sql`drop schema public cascade`);"],
+    ["DROP OWNED", "await db.execute(sql`drop owned by current_user`);"],
+    ["COPY .. FROM PROGRAM into the log", "await db.execute(sql`copy study_proofread_dispositions from program 'true'`);"],
+    ["SELECT .. INTO a copy of the log", "await db.execute(sql`select * into study_proofread_dispositions_copy from study_proofread_dispositions`);"],
+    ["a delete with a bare alias on the log", "await db.execute(sql`delete from study_proofread_dispositions d where d.id = ${args.runId}`);"],
   ].map(([what, code, place]) => ({
     label: `store: raw SQL, ${what}`,
     file: "store",
