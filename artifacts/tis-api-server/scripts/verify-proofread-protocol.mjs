@@ -43,6 +43,25 @@ const redline = readFileSync(path.join(repo, ".claude/agents/redline.md"), "utf8
 const flat = (s) => s.replace(/\s+/g, " ").trim();
 /** Also fold hyphens and dashes, so "peer-review" reads as "peer review". */
 const phraseForm = (s) => flat(s.replace(/[-‐-―]+/g, " ")).toLowerCase();
+/**
+ * HTML character references read as the character they render, so `&mdash;` is an em dash and
+ * `&#47;` a slash: numeric (`&#8212;`, `&#x2014;`) and the named dashes (`&mdash;`, `&ndash;`,
+ * `&minus;`, `&hyphen;`, `&dash;`). Markdown renders them, so a reader sees the dash.
+ */
+const NAMED_DASH = { mdash: "\u2014", ndash: "\u2013", minus: "\u2212", hyphen: "\u2010", dash: "\u2010" };
+const decodeRefs = (s) =>
+  s.replace(/&#(\d{1,7});|&#x([0-9a-f]{1,6});|&(mdash|ndash|minus|hyphen|dash);/gi, (m, d, h, n) => {
+    if (n) return NAMED_DASH[n.toLowerCase()];
+    const cp = d ? Number(d) : parseInt(h, 16);
+    return cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
+  });
+/**
+ * The banned customer-venue phrases, as the routes guard's BANNED_COPY spells them (any case;
+ * "QA/QC", "QA / QC", "QA-QC", "QA\QC"), read on the phrase form of the text with its character
+ * references decoded — so "peer‐review", "QA – QC" and "QA&mdash;QC" are read too.
+ */
+const BANNED_COPY = /independent[\s-]*review|second[\s-]*opinion|peer[\s-]*review|qa\s*[/\\-]?\s*qc/i;
+const hasBannedCopy = (p) => BANNED_COPY.test(phraseForm(decodeRefs(p)));
 /** Blank-line separated blocks, each flattened. */
 const paragraphs = (s) => s.split(/\n[ \t]*\n/).map(flat).filter(Boolean);
 /** The body of a `## ` section, up to the next `## ` heading or `---` rule. */
@@ -85,38 +104,21 @@ ok(/\balone sees\b[^.]*\bDEFECT\b/.test(adminBullet), "admin alone sees DEFECT")
 ok(!/DEFECT/.test(engineerBullet) && !/DEFECT/.test(peBullet),
   "DEFECT is routed to neither the engineer nor the PE");
 
-// 3. Banned customer-venue phrasing. Per paragraph, on a whitespace- and
-//    hyphen-folded form. A paragraph is exempt only if it OPENS as a
-//    statement about the ban.
-const BANNED = ["independent review", "second opinion", "peer review", "QA/QC"];
-const EXEMPT = {
-  protocol: [
-    /^\*\*Datum is a source-verification and traceability pass\./,
-    /^\*\*Label it accordingly\./,
-    /^The prohibition at §/,
-  ],
-  "datum.md": [
-    /^\*\*Redline\*\* is the other chain\./,
-    /^\*\*Know what you are\.\*\*/,
-  ],
+// 3. Banned customer-venue phrasing: section 10's [protocol-banned-copy], [agent-banned-copy] and
+//    [skill-banned-copy], per paragraph, with teeth. A paragraph is exempt only if it OPENS as a
+//    statement about the ban; each exempting paragraph must still be there, or the exemption
+//    silently widens as the prose moves.
+const BAN_EXEMPT = {
+  protocol: [/^\*\*Datum is a source-verification and traceability pass\./, /^\*\*Label it accordingly\./, /^The prohibition at §/],
+  agent: [/^\*\*Redline\*\* is the other chain\./, /^\*\*Know what you are\.\*\*/],
+  skill: [/^\*\*Do not oversell it\.\*\*/],
 };
-for (const [label, text] of [["protocol", protocol], ["datum.md", agent]]) {
-  const exempt = EXEMPT[label];
+const bannedOnlyInTheBan = (text, file) => {
   const paras = paragraphs(text);
-  // Each exempting paragraph must still exist, or the exemption list silently
-  // widens as the prose moves.
-  for (const re of exempt) {
-    ok(paras.some((p) => re.test(p)), `${label}: the ban-stating paragraph matching ${re} is still present`);
-  }
-  for (const phrase of BANNED) {
-    const offending = paras
-      .filter((p) => !exempt.some((re) => re.test(p)))
-      .filter((p) => phraseForm(p).includes(phraseForm(phrase)));
-    ok(offending.length === 0,
-      `${label}: "${phrase}" appears only in the paragraphs that state the ban (${offending.length} stray)`);
-    for (const p of offending) console.log(`        -> stray: ${p.slice(0, 140)}`);
-  }
-}
+  const exempt = BAN_EXEMPT[file];
+  return exempt.every((re) => paras.some((p) => re.test(p))) && paras.filter((p) => !exempt.some((re) => re.test(p))).every((p) => !hasBannedCopy(p));
+};
+const BANNED_MSG = "\"independent review\", \"second opinion\", \"peer review\" and \"QA/QC\" (any case; a space, hyphen, any dash or an HTML dash between the words; \"QA / QC\", \"QA-QC\")";
 // The one permitted description. Nothing asserted this before.
 ok(protocolFlat.includes("an internal consistency and traceability check"),
   "protocol states the permitted description verbatim");
@@ -196,8 +198,8 @@ ok(/not by itself an open study/i.test(flat(logging)),
 //     completion word nor a type ("a study holds only on ...") is not read.
 //
 //     `BLOCKER — unverified` is none of the six types, so it may appear in none of
-//     the three files, in any dash, case or punctuation; §5's criterion Datum cannot
-//     locate in the agency document is a `BLOCKER`, spelled as one (2026-10-08).
+//     the three files, in the spellings BLOCKER_UNVERIFIED reads; §5's criterion Datum
+//     cannot locate in the agency document is a `BLOCKER`, spelled as one (2026-10-08).
 //
 //     A `DEFECT` holds the study until the software team resolves it: a fix to a
 //     rule clears it on the next run, a fix to the engine needs the study generated
@@ -280,15 +282,21 @@ const adminBulletOf = (text) => {
   const block = section(text, "Audience").split(/\n[ \t]*\n/).find((b) => /^- /.test(b.trim())) ?? "";
   return block.split(/\n(?=- )/).map(flat).find((b) => /^- \*\*Admin\b/.test(b)) ?? "";
 };
-const SKILL_EXEMPT = /^\*\*Do not oversell it\.\*\*/;
 /**
- * `BLOCKER — unverified`, a compound that is none of the six types, in any spelling: any case,
- * backticks or emphasis around either word, and a hyphen, any Unicode dash, a minus sign, `--`,
- * a colon or an opening parenthesis between them, across a line wrap. An enumeration
- * ("`BLOCKER`, `UNVERIFIED`") is not one.
+ * `BLOCKER — unverified`, a compound that is none of the six types: any case, backticks or
+ * emphasis around either word, and between them a hyphen, any Unicode dash, a minus sign, `--`,
+ * an HTML dash (`&mdash;`, `&ndash;`, `&#8212;`, `&#x2014;` ... — decodeRefs), a colon or an
+ * opening parenthesis, across a line wrap; or a slash before a lowercase or capitalised
+ * "unverified" (`BLOCKER`/`unverified`). Not read as one: an enumeration ("`BLOCKER`,
+ * `UNVERIFIED`"), and a slash before an all-caps `UNVERIFIED` — a list of two types, as
+ * datum.md's "BLOCKER/DEFECT/..." frontmatter writes its list.
  */
-const BLOCKER_UNVERIFIED = /\bBLOCKER[`*_]*\s*(?:[-\u2010-\u2015\u2212]+|:|\()\s*[`*_]*unverified\b/i;
-const noBlockerUnverified = (text) => !BLOCKER_UNVERIFIED.test(flat(text));
+const BLOCKER_UNVERIFIED = [
+  /\bBLOCKER[`*_]*\s*(?:[-\u2010-\u2015\u2212]+|:|\()\s*[`*_]*unverified\b/i,
+  /\b(?:BLOCKER|[Bb]locker)[`*_]*\s*\/\s*[`*_]*(?:unverified|Unverified)\b/,
+];
+const noBlockerUnverified = (text) => BLOCKER_UNVERIFIED.every((re) => !re.test(flat(decodeRefs(text))));
+const COMPOUND_MSG = "in any case, with a hyphen, any dash, a minus, `--`, an HTML dash (`&mdash;`, `&ndash;`, `&#8212;`), a colon or a parenthesis between, across a wrap, or a slash before a lowercase \"unverified\" (`BLOCKER - unverified`, `BLOCKER – unverified`, `BLOCKER &mdash; unverified`, `BLOCKER: unverified`, `BLOCKER`/`unverified`)";
 /** §5's bullet on a criterion the agency document does not hold, flattened. */
 const criterionBullet = (text) => paragraphs(section(text, "5\\. Criteria")).find((p) => p.startsWith("- A criterion Datum could not locate in the agency document")) ?? "";
 /**
@@ -513,7 +521,7 @@ const CHECKS = [
   {
     id: "rule4-unverified",
     on: "protocol",
-    msg: "rule 4: a source not in front of Datum makes the finding `UNVERIFIED` — not `BLOCKER — unverified`, a type that does not exist",
+    msg: "rule 4: a source not in front of Datum makes the finding `UNVERIFIED` — not `BLOCKER — unverified` (a hyphen or an em dash between, within rule 4; every other spelling, anywhere: [protocol-no-blocker-unverified]), a type that does not exist",
     test: (t) => {
       const r = ruleOf(t.protocol, 4);
       return /the finding is `UNVERIFIED`\.$/.test(r) && !/BLOCKER\s*[—-]+\s*unverified/i.test(r);
@@ -522,7 +530,7 @@ const CHECKS = [
   {
     id: "protocol-no-blocker-unverified",
     on: "protocol",
-    msg: "the protocol spells no `BLOCKER — unverified` anywhere, in any dash, case or punctuation (`BLOCKER - unverified`, `BLOCKER – unverified`, `BLOCKER: unverified`, across a wrap): it is none of the six types",
+    msg: `the protocol spells no \`BLOCKER — unverified\` anywhere, ${COMPOUND_MSG}: it is none of the six types`,
     test: (t) => noBlockerUnverified(t.protocol),
   },
   {
@@ -557,7 +565,7 @@ const CHECKS = [
   {
     id: "agent-unverified-is-a-type",
     on: "agent",
-    msg: `datum.md: a source Datum cannot reach makes the finding \`UNVERIFIED\`; no sentence naming \`UNVERIFIED\` (uppercase) claims a hold (${HOLD_CLAIM_MSG}); nothing in the file is treated "as" or "like" a \`BLOCKER\`; and \`BLOCKER — unverified\` (a hyphen or a dash between) appears nowhere`,
+    msg: `datum.md: a source Datum cannot reach makes the finding \`UNVERIFIED\`; no sentence naming \`UNVERIFIED\` (uppercase) claims a hold (${HOLD_CLAIM_MSG}); nothing in the file is treated "as" or "like" a \`BLOCKER\`; and \`BLOCKER — unverified\` (a hyphen or an em dash between; every other spelling: [agent-no-blocker-unverified]) appears nowhere`,
     test: (t) =>
       /If you cannot reach the source, the finding is `UNVERIFIED`\./.test(flat(t.agent)) &&
       unverifiedHoldsNothing(t.agent) &&
@@ -597,7 +605,7 @@ const CHECKS = [
   {
     id: "agent-no-blocker-unverified",
     on: "agent",
-    msg: "datum.md spells no `BLOCKER — unverified` anywhere, in any dash, case or punctuation",
+    msg: `datum.md spells no \`BLOCKER — unverified\` anywhere, ${COMPOUND_MSG}`,
     test: (t) => noBlockerUnverified(t.agent),
   },
   {
@@ -619,7 +627,7 @@ const CHECKS = [
   {
     id: "skill-unverified-is-a-record",
     on: "skill",
-    msg: `SKILL.md: the UNVERIFIED bullet says "A record to carry" and "not a hold" and has no "block"; no sentence naming \`UNVERIFIED\` (uppercase) claims a hold (${HOLD_CLAIM_MSG}); nothing in the file is treated "as" or "like" a \`BLOCKER\`; no \`BLOCKER — unverified\` (a hyphen or a dash between)`,
+    msg: `SKILL.md: the UNVERIFIED bullet says "A record to carry" and "not a hold" and has no "block"; no sentence naming \`UNVERIFIED\` (uppercase) claims a hold (${HOLD_CLAIM_MSG}); nothing in the file is treated "as" or "like" a \`BLOCKER\`; no \`BLOCKER — unverified\` (a hyphen or an em dash between; every other spelling: [skill-no-blocker-unverified])`,
     test: (t) => {
       const b = bulletFor2(skillBullets(t.skill), "UNVERIFIED");
       return /\bA record to carry\b/.test(b) && /\bnot a hold\b/.test(b) && !/\bblock/i.test(b) && unverifiedHoldsNothing(t.skill) && !AS_A_BLOCKER.test(flat(t.skill)) && !/BLOCKER\s*[—-]+\s*unverified/i.test(t.skill);
@@ -643,7 +651,7 @@ const CHECKS = [
   {
     id: "skill-no-blocker-unverified",
     on: "skill",
-    msg: "SKILL.md spells no `BLOCKER — unverified` anywhere, in any dash, case or punctuation",
+    msg: `SKILL.md spells no \`BLOCKER — unverified\` anywhere, ${COMPOUND_MSG}`,
     test: (t) => noBlockerUnverified(t.skill),
   },
   {
@@ -690,16 +698,22 @@ const CHECKS = [
     },
   },
   {
+    id: "protocol-banned-copy",
+    on: "protocol",
+    msg: `the protocol: ${BANNED_MSG} appear only in the paragraphs that state the ban (opening "**Datum is a source-verification and traceability pass.", "**Label it accordingly." or "The prohibition at §"), each still there`,
+    test: (t) => bannedOnlyInTheBan(t.protocol, "protocol"),
+  },
+  {
+    id: "agent-banned-copy",
+    on: "agent",
+    msg: `datum.md: ${BANNED_MSG} appear only in the paragraphs that state the ban (opening "**Redline** is the other chain." or "**Know what you are.**"), each still there`,
+    test: (t) => bannedOnlyInTheBan(t.agent, "agent"),
+  },
+  {
     id: "skill-banned-copy",
     on: "skill",
-    msg: `SKILL.md: "independent review", "second opinion", "peer review" and "QA/QC" appear only in the paragraph that states the ban (opening "**Do not oversell it.**"), which is still there`,
-    test: (t) => {
-      const paras = paragraphs(t.skill);
-      return (
-        paras.some((p) => SKILL_EXEMPT.test(p)) &&
-        paras.filter((p) => !SKILL_EXEMPT.test(p)).every((p) => BANNED.every((b) => !phraseForm(p).includes(phraseForm(b))))
-      );
-    },
+    msg: `SKILL.md: ${BANNED_MSG} appear only in the paragraph that states the ban (opening "**Do not oversell it.**"), which is still there`,
+    test: (t) => bannedOnlyInTheBan(t.skill, "skill"),
   },
 ];
 
@@ -822,6 +836,22 @@ const MUTATIONS = [
   { label: "SKILL.md: the pass remains internal", file: "skill", flips: ["skill-audiences"], apply: edit("skill", "No finding appears in the deliverable —", "No finding appears in the deliverable, and the pass remains internal —") },
   { label: "SKILL.md: the engineer is told each DEFECT's clause, wrapped", file: "skill", flips: ["skill-audiences"], apply: edit("skill", "and the engineer is\ntold only how many their study carries.", "and the engineer is\ntold each `DEFECT`'s clause and how many their study carries.") },
   { label: "redline.md: the engineer gets each DEFECT as well", file: "redline", flips: ["redline-audiences"], apply: edit("redline", "admin alone sees `DEFECT`.", "admin alone sees `DEFECT`. The engineer gets each `DEFECT` as well.") },
+  // banned copy and the compound, in every spelling (fix wave 2: LAN-7, LAN-8, m-1)
+  { label: "protocol: QA / QC, spaced, in §3", file: "protocol", flips: ["protocol-banned-copy"], apply: edit("protocol", "- Spot-check the signal list against the basemap.", "- Spot-check the signal list against the basemap as QA / QC.") },
+  { label: "protocol: second&ndash;opinion in §4", file: "protocol", flips: ["protocol-banned-copy"], apply: edit("protocol", "letter is not defensible at that margin.", "letter is not defensible at that margin without a second&ndash;opinion.") },
+  { label: "protocol: a ban-stating paragraph's opening reworded", file: "protocol", flips: ["protocol-banned-copy"], apply: edit("protocol", "**Label it accordingly.**", "**Label it so.**") },
+  { label: "datum.md: QA-QC", file: "agent", flips: ["agent-banned-copy"], apply: edit("agent", "**You cannot edit.**", "**You cannot edit.** You are its QA-QC.") },
+  { label: "datum.md: peer review, wrapped, with a Unicode hyphen", file: "agent", flips: ["agent-banned-copy"], apply: edit("agent", "Work the six sections in order:", "Work the six sections in order, as a peer\u2010\nreview would:") },
+  { label: "datum.md: a ban-stating paragraph's opening reworded", file: "agent", flips: ["agent-banned-copy"], apply: edit("agent", "**Know what you are.**", "**Know yourself.**") },
+  { label: "SKILL.md: QA-QC (no slash)", file: "skill", flips: ["skill-banned-copy"], apply: edit("skill", "- `DISCLOSE` — add the language to the deliverable.", "- `DISCLOSE` — add the language to the deliverable as QA-QC.") },
+  { label: "SKILL.md: QA / QC, spaced", file: "skill", flips: ["skill-banned-copy"], apply: edit("skill", "Relay findings verbatim to the operator.", "Relay findings verbatim to the operator as QA / QC.") },
+  { label: "SKILL.md: QA&mdash;QC", file: "skill", flips: ["skill-banned-copy"], apply: edit("skill", "Relay findings verbatim to the operator.", "Relay findings verbatim to the operator as QA&mdash;QC.") },
+  { label: "protocol: an &mdash; compound", file: "protocol", flips: ["protocol-no-blocker-unverified"], apply: edit("protocol", "## 6. Limitations disclosure", "Never a `BLOCKER` &mdash; `unverified`.\n\n## 6. Limitations disclosure") },
+  { label: "protocol: a slash compound", file: "protocol", flips: ["protocol-no-blocker-unverified"], apply: edit("protocol", "- Spot-check the signal list against the basemap.", "- Spot-check the signal list against the basemap; a gap is `BLOCKER`/`unverified`.") },
+  { label: "datum.md: a &#8212; compound", file: "agent", flips: ["agent-no-blocker-unverified"], apply: edit("agent", "Work the six sections in order:", "A gap is BLOCKER &#8212; unverified. Work the six sections in order:") },
+  { label: "SKILL.md: a &#x2013; compound", file: "skill", flips: ["skill-no-blocker-unverified"], apply: edit("skill", "Relay findings verbatim to the operator.", "A gap is `BLOCKER` &#x2013; `unverified`. Relay findings verbatim to the operator.") },
+  { label: "SKILL.md: a two-type list `BLOCKER`/`UNVERIFIED` stays green (not the compound)", file: "skill", flips: [], apply: edit("skill", "- `NOTE` — surface to the PE.", "- `NOTE` — surface to the PE; never a `BLOCKER`/`UNVERIFIED`.") },
+  { label: "protocol: the permitted description restated stays green", file: "protocol", flips: [], apply: edit("protocol", "- Spot-check the signal list against the basemap.", "- Spot-check the signal list against the basemap: an internal consistency and traceability check.") },
   { label: "SKILL.md: banned phrase outside the ban paragraph", file: "skill", flips: ["skill-banned-copy"], apply: edit("skill", "Relay findings verbatim to the operator.", "Relay findings verbatim to the operator as a second opinion.") },
   { label: "SKILL.md: the ban paragraph removed", file: "skill", flips: ["skill-banned-copy"], apply: edit("skill", /\*\*Do not oversell it\.\*\*[\s\S]*?independent QA\.\n/, "") },
 ];
