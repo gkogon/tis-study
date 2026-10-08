@@ -186,10 +186,14 @@ ok(/not by itself an open study/i.test(flat(logging)),
 //
 //     The gate is one sentence, word for word, wherever a file states one
 //     (TIS-PROOFREAD-PROTOCOL.md, datum.md, SKILL.md): two statements of a gate
-//     are two gates, and before 2026-10-07 the three files held three. A
-//     sentence "states a gate" when it says "complete only" or "may be called
-//     complete"; each must BE the sentence below, and the old two-condition gate
-//     may appear nowhere.
+//     are two gates, and before 2026-10-07 the three files held three. Two reads:
+//     a sentence saying "complete only" or "may be called complete" must BE the
+//     sentence below ([*-gate-sentence]); and, in all four files (redline.md
+//     too), any sentence that ties a completion word (COMPLETION) to a set of
+//     types or to the findings as a whole (FINDING_SET) must be that sentence or
+//     one of the named non-gate sentences ([*-no-other-gate]) — so a reworded
+//     gate is read without its trigger phrase. A gate written with neither a
+//     completion word nor a type ("a study holds only on ...") is not read.
 //
 //     `BLOCKER — unverified` is none of the six types, so it may appear in none of
 //     the three files, in any dash, case or punctuation; §5's criterion Datum cannot
@@ -211,6 +215,52 @@ const statesTheGate = (text, times) => {
   const n = flat(text).split(GATE_SENTENCE).length - 1;
   return (times === undefined ? n >= 1 : n === times) && all.length === n && all.every((x) => x === GATE_SENTENCE) && !OLD_GATE.test(flat(text));
 };
+/**
+ * Units of prose: each blank-line paragraph, split into its list items (a line opening "- ", "* "
+ * or "n. "), each flattened and split into sentences. A bullet never runs into the next one, so a
+ * sentence about one type cannot borrow the next bullet's words.
+ */
+const unitsOf = (text) =>
+  text
+    .split(/\n[ \t]*\n/)
+    .flatMap((p) => p.split(/\n(?=[ \t]*(?:[-*]|\d+\.)[ \t])/))
+    .map(flat)
+    .filter(Boolean)
+    .flatMap((p) => p.split(/(?<=[.!?])\s+(?=[A-Z`*])/));
+/** The finding types a unit names (uppercase, with or without backticks). */
+const typesIn = (u) => [...new Set([...u.matchAll(/\b(BLOCKER|DEFECT|DISCLOSE|NOTE|UNVERIFIED|CONTESTED)\b/g)].map((m) => m[1]))];
+/**
+ * Words that name completion. A gate is a sentence that ties one of these to a condition, so a
+ * reworded gate ("done when no `BLOCKER` is open", "ships once every finding has a disposition")
+ * is read without its author using "complete only" or "may be called complete".
+ */
+const COMPLETION = /\b(?:complete|completed|completion|done|finish|finished|ship|ships|shipped|shipping|seal|seals|sealed|sealable|sign(?:s|ed)?\s+off|gate)\b/i;
+/** A condition on the findings as a whole: "any / every / all / each / no (open, undisposed ...) finding / item", or "findings ... disposed / open / resolved". */
+const FINDING_SET = /\b(?:any|every|all|each|no)\s+(?:(?:open|undisposed|unresolved|outstanding|remaining|undecided)\s+)?(?:findings?|items?)\b|\b(?:findings?|items?)\b[^.]*\b(?:dispositions?|disposed|undisposed|dispositioned|open|closed|resolved|decided)\b/i;
+/**
+ * The sentences, per file, that name completion beside a type and are NOT gates: the record-not-
+ * a-bar exemption and Disagreement 6's CONTESTED hold. Exact text; each must still be there.
+ */
+const GATE_EXEMPT = {
+  protocol: [
+    "That is the whole gate: an undisposed `NOTE`, `DISCLOSE` or `UNVERIFIED` is a record to carry, not a bar to completion.",
+    "It blocks completion the same as a `BLOCKER` until the PE rules on it.",
+  ],
+  agent: [],
+  skill: ["An undisposed `NOTE`, `DISCLOSE` or `UNVERIFIED` is a record to carry, not a bar to completion."],
+  redline: [],
+};
+/** Every sentence of `text` that states a gate other than GATE_SENTENCE (see COMPLETION / FINDING_SET). */
+const otherGates = (text, file) =>
+  unitsOf(text).filter(
+    (u) => COMPLETION.test(u) && (typesIn(u).length > 0 || FINDING_SET.test(u)) && u !== GATE_SENTENCE && !GATE_EXEMPT[file].includes(u),
+  );
+const statesNoOtherGate = (text, file) => {
+  const units = unitsOf(text);
+  return otherGates(text, file).length === 0 && GATE_EXEMPT[file].every((x) => units.includes(x));
+};
+const NO_OTHER_GATE_MSG = (who) =>
+  `${who}: no sentence but the gate sentence ties completion (complete, completion, done, finished, ship, seal, sign off, gate) to a set of finding types or to the findings as a whole (any / every / all / each / no finding or item; findings ... disposed, open or resolved) — so no "any undisposed finding" gate, no BLOCKER-only gate and no gate over another type set, in any words`;
 /** Numbered rule `n` of "Rules of the pass", flattened: from "n. " to the next rule or the next heading. */
 const ruleOf = (text, n) => flat(text.match(new RegExp(`^${n}\\. ([\\s\\S]*?)(?=^\\d+\\. |^#)`, "m"))?.[1] ?? "");
 /** The bullets of rule 2, each flattened, keyed by the type it opens with. */
@@ -278,20 +328,44 @@ const CHECKS = [
   {
     id: "protocol-gate-sentence",
     on: "protocol",
-    msg: `the protocol states the gate exactly once, as "${GATE_SENTENCE}", states no other gate, and no longer holds the two-condition "no open BLOCKER and no open CONTESTED"`,
+    msg: `the protocol states the gate sentence "${GATE_SENTENCE}" exactly once, every sentence saying "complete only" or "may be called complete" is that sentence, and the two-condition "no open BLOCKER and no open CONTESTED" appears nowhere (a gate in other words: [protocol-no-other-gate])`,
     test: (t) => statesTheGate(t.protocol, 1),
+  },
+  {
+    id: "protocol-no-other-gate",
+    on: "protocol",
+    msg: `${NO_OTHER_GATE_MSG("the protocol")}; the two non-gate sentences it names (the NOTE / DISCLOSE / UNVERIFIED record-not-a-bar sentence and Disagreement 6's CONTESTED hold) are still there word for word`,
+    test: (t) => statesNoOtherGate(t.protocol, "protocol"),
   },
   {
     id: "agent-gate-sentence",
     on: "agent",
-    msg: "datum.md states the same gate, word for word, and no other",
+    msg: "datum.md states the gate sentence word for word, every sentence saying \"complete only\" or \"may be called complete\" is that sentence, and the two-condition gate appears nowhere (a gate in other words: [agent-no-other-gate])",
     test: (t) => statesTheGate(t.agent),
+  },
+  {
+    id: "agent-no-other-gate",
+    on: "agent",
+    msg: NO_OTHER_GATE_MSG("datum.md"),
+    test: (t) => statesNoOtherGate(t.agent, "agent"),
   },
   {
     id: "skill-gate-sentence",
     on: "skill",
-    msg: "SKILL.md states the same gate, word for word, and no other",
+    msg: "SKILL.md states the gate sentence word for word, every sentence saying \"complete only\" or \"may be called complete\" is that sentence, and the two-condition gate appears nowhere (a gate in other words: [skill-no-other-gate])",
     test: (t) => statesTheGate(t.skill),
+  },
+  {
+    id: "skill-no-other-gate",
+    on: "skill",
+    msg: `${NO_OTHER_GATE_MSG("SKILL.md")}; its record-not-a-bar sentence on NOTE / DISCLOSE / UNVERIFIED is still there word for word`,
+    test: (t) => statesNoOtherGate(t.skill, "skill"),
+  },
+  {
+    id: "redline-no-other-gate",
+    on: "redline",
+    msg: `${NO_OTHER_GATE_MSG("redline.md")}; a sentence saying "complete only" or "may be called complete" there is the gate sentence, and the two-condition gate appears nowhere`,
+    test: (t) => statesNoOtherGate(t.redline, "redline") && gateSentences(t.redline).every((x) => x === GATE_SENTENCE) && !OLD_GATE.test(flat(t.redline)),
   },
   {
     id: "protocol-defect-held-until-resolved",
@@ -476,10 +550,15 @@ const edit = (file, from, to) => (t) => ({ ...t, [file]: t[file].replace(from, t
 const OLD_TWO_WAY = "A study may be called complete only with\n**no open BLOCKER and no open CONTESTED**.";
 const MUTATIONS = [
   // protocol
-  { label: "protocol: back to the two-condition gate", file: "protocol", flips: ["protocol-gate-sentence"], apply: edit("protocol", /A study may be called complete only with no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`\./, OLD_TWO_WAY) },
-  { label: "protocol: drop DEFECT from the gate", file: "protocol", flips: ["protocol-gate-sentence"], apply: edit("protocol", "no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`.", "no open `BLOCKER` and no open\n`CONTESTED`.") },
-  { label: "protocol: state the gate a second time, in other words", file: "protocol", flips: ["protocol-gate-sentence"], apply: edit("protocol", "6. A `CONTESTED` item is a licensed engineer's decision.", "6. A study is complete only with no open `BLOCKER`. A `CONTESTED` item is a licensed engineer's decision.") },
+  { label: "protocol: back to the two-condition gate", file: "protocol", flips: ["protocol-gate-sentence", "protocol-no-other-gate"], apply: edit("protocol", /A study may be called complete only with no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`\./, OLD_TWO_WAY) },
+  { label: "protocol: drop DEFECT from the gate", file: "protocol", flips: ["protocol-gate-sentence", "protocol-no-other-gate"], apply: edit("protocol", "no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`.", "no open `BLOCKER` and no open\n`CONTESTED`.") },
+  { label: "protocol: state the gate a second time, with \"complete only\"", file: "protocol", flips: ["protocol-gate-sentence", "protocol-no-other-gate"], apply: edit("protocol", "6. A `CONTESTED` item is a licensed engineer's decision.", "6. A study is complete only with no open `BLOCKER`. A `CONTESTED` item is a licensed engineer's decision.") },
   { label: "protocol: state the gate sentence twice", file: "protocol", flips: ["protocol-gate-sentence"], apply: edit("protocol", "## Audience\n", `## Audience\n\n${GATE_SENTENCE}\n`) },
+  { label: "protocol: a BLOCKER-only gate in other words (done when)", file: "protocol", flips: ["protocol-no-other-gate"], apply: edit("protocol", "not a bar to completion. A\n", "not a bar to completion. In practice a study is done when no `BLOCKER` is open. A\n") },
+  { label: "protocol: an every-finding gate in other words (ships once ... dispositioned)", file: "protocol", flips: ["protocol-no-other-gate"], apply: edit("protocol", "Neither role outranks the other.", "A study ships once each item has been dispositioned. Neither role outranks the other.") },
+  { label: "protocol: a gate over another type set (UNVERIFIED), wrapped", file: "protocol", flips: ["protocol-no-other-gate"], apply: edit("protocol", "## Logging\n\n", "## Logging\n\nThe gate also needs no open\n`UNVERIFIED`.\n\n") },
+  { label: "protocol: a seal gate on undisposed findings", file: "protocol", flips: ["protocol-no-other-gate"], apply: edit("protocol", "It cannot edit the study even if it wanted to.", "It cannot edit the study even if it wanted to. The PE seals only with no undisposed finding.") },
+  { label: "protocol: the record-not-a-bar sentence reworded", file: "protocol", flips: ["protocol-no-other-gate"], apply: edit("protocol", "is a record to carry, not a bar to completion. A\n", "is a record to carry until completion. A\n") },
   { label: "protocol: let the engineer dispose of a DEFECT", file: "protocol", flips: ["protocol-defect-held-until-resolved"], apply: edit("protocol", "A\n`DEFECT` is not disposed of by the engineer or the PE. It holds", "A\n`DEFECT` is closed when the engineer records it. It holds") },
   { label: "gate paragraph: back to \"clears only when a re-run no longer raises it\"", file: "protocol", flips: ["protocol-defect-held-until-resolved", "protocol-old-defect-rule-gone"], apply: edit("protocol", /It holds the study until\nthe software team resolves it: [\s\S]*?saved study\.\n/, "It clears only when a\nre-run no longer raises it.\n") },
   { label: "gate paragraph: drop that an engine fix needs the study generated again", file: "protocol", flips: ["protocol-defect-held-until-resolved"], apply: edit("protocol", "a fix\nto the engine needs the study generated again, because a re-run judges the same\nsaved study.", "a fix\nto the engine clears it the same way.") },
@@ -506,16 +585,21 @@ const MUTATIONS = [
   { label: "§Logging: BUG FILED clears the hold", file: "protocol", flips: ["logging-bug-filed-does-not-clear"], apply: edit("protocol", /It does not clear the\n  hold\. A `DEFECT` holds the study [\s\S]*?generated again\./, "It clears the hold.") },
   { label: "§Logging: back to \"clears only when a re-run no longer raises it\"", file: "protocol", flips: ["logging-bug-filed-does-not-clear", "protocol-old-defect-rule-gone"], apply: edit("protocol", /It does not clear the\n  hold\. A `DEFECT` holds the study [\s\S]*?generated again\./, "It does not clear the\n  hold: a `DEFECT` clears only when a re-run no longer raises it.") },
   // datum.md
-  { label: "datum.md: back to the two-condition gate", file: "agent", flips: ["agent-gate-sentence"], apply: edit("agent", "A study may be called complete only with no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`.", "A study is complete only with no open `BLOCKER` and no open `CONTESTED`.") },
-  { label: "datum.md: a second, BLOCKER-only gate", file: "agent", flips: ["agent-gate-sentence"], apply: edit("agent", "## Output\n", "## Output\n\nA study is complete only with no open `BLOCKER`.\n") },
+  { label: "datum.md: back to the two-condition gate", file: "agent", flips: ["agent-gate-sentence", "agent-no-other-gate"], apply: edit("agent", "A study may be called complete only with no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`.", "A study is complete only with no open `BLOCKER` and no open `CONTESTED`.") },
+  { label: "datum.md: a second, BLOCKER-only gate", file: "agent", flips: ["agent-gate-sentence", "agent-no-other-gate"], apply: edit("agent", "## Output\n", "## Output\n\nA study is complete only with no open `BLOCKER`.\n") },
   { label: "datum.md: the gate sentence removed", file: "agent", flips: ["agent-gate-sentence"], apply: edit("agent", "A study may be called complete only with no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`.", "") },
+  { label: "datum.md: a BLOCKER-only gate in other words (finished when)", file: "agent", flips: ["agent-no-other-gate"], apply: edit("agent", "## Output\n", "## Output\n\nCall a study finished when no `BLOCKER` is open.\n") },
+  { label: "datum.md: a no-open-finding seal gate, wrapped", file: "agent", flips: ["agent-no-other-gate"], apply: edit("agent", "Name the `file:line`.", "Name the `file:line`. A study is sealed once no\nfinding is open.") },
   { label: "datum.md: back to BLOCKER — unverified", file: "agent", flips: ["agent-unverified-is-a-type", "agent-no-blocker-unverified"], apply: edit("agent", "the finding is `UNVERIFIED`.", "the finding is `BLOCKER — unverified`.") },
   { label: "datum.md: an en-dash compound in backticks", file: "agent", flips: ["agent-no-blocker-unverified"], apply: edit("agent", "**You cannot edit.**", "**You cannot edit.** A gap is `BLOCKER` – `unverified`.") },
   { label: "datum.md: the old DEFECT clearing rule, wrapped", file: "agent", flips: ["agent-old-defect-rule-gone"], apply: edit("agent", "Name the `file:line`.", "Name the `file:line`. It holds the study until a\nre-run no longer raises it.") },
   // SKILL.md
   { label: "SKILL.md: a compound in parentheses", file: "skill", flips: ["skill-no-blocker-unverified"], apply: edit("skill", "- `NOTE` — surface to the PE.", "- `NOTE` — surface to the PE; a missing source is blocker (unverified).") },
   { label: "SKILL.md: the gate sentence removed", file: "skill", flips: ["skill-gate-sentence"], apply: edit("skill", "A study may be called complete only with no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`. ", "") },
-  { label: "SKILL.md: the gate without DEFECT", file: "skill", flips: ["skill-gate-sentence"], apply: edit("skill", "no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`. An undisposed", "no open `BLOCKER` and no open\n`CONTESTED`. An undisposed") },
+  { label: "SKILL.md: the gate without DEFECT", file: "skill", flips: ["skill-gate-sentence", "skill-no-other-gate"], apply: edit("skill", "no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`. An undisposed", "no open `BLOCKER` and no open\n`CONTESTED`. An undisposed") },
+  { label: "SKILL.md: a BLOCKER-only gate in other words (can be called complete once)", file: "skill", flips: ["skill-no-other-gate"], apply: edit("skill", "Relay findings verbatim to the operator.", "A study can be called complete once no `BLOCKER` is open. Relay findings verbatim to the operator.") },
+  { label: "SKILL.md: an any-finding gate in other words", file: "skill", flips: ["skill-no-other-gate"], apply: edit("skill", "Relay findings verbatim to the operator.", "Do not call a study complete while any finding is open. Relay findings verbatim to the operator.") },
+  { label: "SKILL.md: the record-not-a-bar sentence dropped", file: "skill", flips: ["skill-no-other-gate"], apply: edit("skill", " An undisposed `NOTE`, `DISCLOSE` or `UNVERIFIED` is a\nrecord to carry, not a bar to completion.", "") },
   { label: "SKILL.md: UNVERIFIED treated as a blocker again", file: "skill", flips: ["skill-unverified-is-a-record"], apply: edit("skill", /- `UNVERIFIED` — [\s\S]*?run Datum again\.\n/, "- `UNVERIFIED` — treat as a blocker until the source is reached.\n") },
   { label: "SKILL.md: UNVERIFIED a hold, in the bullet's own words", file: "skill", flips: ["skill-unverified-is-a-record"], apply: edit("skill", "A record to carry, in the\n  log and in the deliverable where it belongs — not a hold.", "It blocks the study until\n  the source is reached.") },
   { label: "SKILL.md: drop the CONTESTED bullet", file: "skill", flips: ["skill-six-types"], apply: edit("skill", /- `CONTESTED` — [\s\S]*?until the PE rules\.\n/, "") },
@@ -527,6 +611,9 @@ const MUTATIONS = [
   { label: "SKILL.md: Datum is admin-side again", file: "skill", flips: ["skill-audiences"], apply: edit("skill", "**Who sees a finding** is set by the protocol's §Audience.", "**Datum is admin-side.** Findings never go to the customer. **Who sees a finding** is set by the protocol's §Audience.") },
   { label: "SKILL.md: drop the sealing PE", file: "skill", flips: ["skill-audiences"], apply: edit("skill", " The sealing PE also sees every `CONTESTED` item, with both\npositions and both sources, and is the only one who may rule on it.", "") },
   // redline.md
+  { label: "redline.md: a BLOCKER-only gate (ships once)", file: "redline", flips: ["redline-no-other-gate"], apply: edit("redline", "When you hand work to Datum:", "A study ships once no `BLOCKER` is open.\n\nWhen you hand work to Datum:") },
+  { label: "redline.md: an every-finding seal gate", file: "redline", flips: ["redline-no-other-gate"], apply: edit("redline", "When you hand work to Datum:", "The PE may seal once every finding is disposed of.\n\nWhen you hand work to Datum:") },
+  { label: "redline.md: a \"complete only\" sentence that is not the gate", file: "redline", flips: ["redline-no-other-gate"], apply: edit("redline", "When you hand work to Datum:", "A study is complete only once Datum signs.\n\nWhen you hand work to Datum:") },
   { label: "redline.md: back to admin-only, not user-facing", file: "redline", flips: ["redline-audiences"], apply: edit("redline", /\*\*Datum\*\* is the proofreader\.[\s\S]*?alone sees `DEFECT`\./, "**Datum** is the proofreader — admin-only, not user-facing. `TIS-PROOFREAD-\nPROTOCOL.md` at the repo root is the protocol; read it before handing work over.") },
   { label: "redline.md: findings stay internal", file: "redline", flips: ["redline-audiences"], apply: edit("redline", "When you hand work to Datum:", "Datum's findings stay internal.\n\nWhen you hand work to Datum:") },
   { label: "redline.md: findings never shown to the engineer, wrapped", file: "redline", flips: ["redline-audiences"], apply: edit("redline", "When you hand work to Datum:", "Its findings are never\nshown to the engineer.\n\nWhen you hand work to Datum:") },
