@@ -582,11 +582,16 @@ async function suite(src) {
     // ─── a finding the server withheld ────────────────────────────────────────────────
     // GET never sends a finding whose audience is admin (a DEFECT: a software fault, routed to
     // the software team) and says only how many there are (`withheld`). A DEFECT holds the study
-    // until a re-run no longer raises it, so a run carrying one is never read as clear: before this,
-    // a run whose only finding was a DEFECT rendered "Nothing flagged" under a green check.
+    // until the software team resolves it, so a run carrying one is never read as clear: before
+    // this, a run whose only finding was a DEFECT rendered "Nothing flagged" under a green check.
+    // The line says what clears it. A re-run judges the same saved study and raises the same
+    // DEFECT, so "until a re-run no longer raises it" could never be met for a fault in the
+    // engine: that fix reaches a study only when the study is generated again.
     await group("a finding routed to the software team is never a clear", async () => {
-      const ROUTED_1 = "1 item on this study was routed to the software team. Hold the study until a re-run no longer raises it.";
-      const ROUTED_2 = "2 items on this study were routed to the software team. Hold the study until a re-run no longer raises them.";
+      const ROUTED_1 =
+        "1 item on this study was routed to the software team. Hold the study until they resolve it. If the fix is to the engine, generate the study again once it ships.";
+      const ROUTED_2 =
+        "2 items on this study were routed to the software team. Hold the study until they resolve them. If the fix is to the engine, generate the study again once it ships.";
       const routedOf = (html) => /<p\b[^>]*data-testid="proofread-withheld"[^>]*>([^<]*)<\/p>/.exec(html)?.[1] ?? null;
       for (const status of FINISHED) {
         // The case that was a false clear: nothing visible, full coverage, one withheld.
@@ -674,6 +679,23 @@ async function suite(src) {
       ok("summarize-without-count-unchanged", s0.total === 1 && s0.open === 1 && s0.holds === 0 && s0.withheld === 0 && s0.note === 1, `summarizeOpen without a count is unchanged (got ${JSON.stringify(s0)})`);
       ok("summarize-ignores-bad-count", [-1, 1.5, NaN, undefined].every((w) => lib.summarizeOpen([], [], w).holds === 0), "summarizeOpen ignores a count that is not a whole number above 0");
       ok("withheld-line-pluralised", typeof lib.withheldLine === "function" && lib.withheldLine(1) === ROUTED_1 && lib.withheldLine(2) === ROUTED_2, "withheldLine says it once, pluralised");
+      {
+        // The panel, the client module (its comments included, read with each line break, and the `*` or `//` that
+        // opens the next comment line, folded into one space, so a wrapped sentence is still one sentence) and every
+        // routed line drawn above.
+        const OLD_RULE = /re-?run no longer raises/i;
+        const flatText = (t) => t.replace(/\s*\n\s*(?:\*(?!\/)|\/\/)?/g, " ").replace(/\s+/g, " ");
+        const stillSaid = [
+          ...["panel", "lib"].filter((f) => OLD_RULE.test(flatText(src[f]))).map((f) => FILES[f]),
+          ...[1, 2, 3].filter((n) => OLD_RULE.test(lib.withheldLine(n))).map((n) => `withheldLine(${n})`),
+          ...(everyHtml.some((h) => OLD_RULE.test(text(h))) ? ["a rendered state"] : []),
+        ];
+        ok(
+          "withheld-old-clearing-rule-gone",
+          stillSaid.length === 0,
+          `no one is told to hold the study "until a re-run no longer raises it" — a re-run judges the same saved study and raises the same DEFECT${stillSaid.length ? ` (still said in: ${stillSaid.join(", ")})` : ""}`,
+        );
+      }
       try {
         const got = [];
         for (const w of [3, 0, undefined, "1", -2, 1.5, null]) {
@@ -1484,6 +1506,31 @@ const MUTATIONS = [
     flips: ["fetch-carries-withheld"],
     apply: edit("lib", 'withheld: typeof data.withheld === "number" && Number.isInteger(data.withheld) && data.withheld > 0 ? data.withheld : 0,', "withheld: Number(data.withheld) || 0,"),
   },
+
+  // ---- what clears a withheld finding (I-A) ------------------------------------------
+  {
+    label: "the singular line goes back to the old clearing rule",
+    file: "lib",
+    flips: ["withheld-old-clearing-rule-gone", "withheld-routed-line-red", "withheld-line-pluralised"],
+    also: ["withheld-decided-finding-and-line", "withheld-scoped-coverage-not-clear"],
+    apply: edit("lib", "Hold the study until they resolve it. ${ships}`", "Hold the study until a re-run no longer raises it.`"),
+  },
+  {
+    label: "the plural line goes back to the old clearing rule",
+    file: "lib",
+    flips: ["withheld-old-clearing-rule-gone", "withheld-two-line-plural", "withheld-line-pluralised"],
+    apply: edit("lib", "Hold the study until they resolve them. ${ships}`", "Hold the study until a re-run no longer raises them.`"),
+  },
+  {
+    label: "the line no longer says to generate the study again after an engine fix",
+    file: "lib",
+    flips: ["withheld-routed-line-red", "withheld-two-line-plural", "withheld-line-pluralised"],
+    also: ["withheld-decided-finding-and-line", "withheld-scoped-coverage-not-clear"],
+    apply: edit("lib", 'const ships = "If the fix is to the engine, generate the study again once it ships.";', 'const ships = "Run the check again once it ships.";'),
+  },
+  { label: "the module keeps the old clearing rule in a string it never shows", file: "lib", flips: ["withheld-old-clearing-rule-gone"], apply: edit("lib", "export const RULES_CHANGED_LINE =", 'export const CLEARS_WHEN = "a re-run no longer raises it";\n\nexport const RULES_CHANGED_LINE =') },
+  { label: "the module keeps the old rule in a template wrapped across lines", file: "lib", flips: ["withheld-old-clearing-rule-gone"], apply: edit("lib", "export const RULES_CHANGED_LINE =", 'export const CLEARS_WHEN = `until a re-run no\n  // longer raises it`;\n\nexport const RULES_CHANGED_LINE =') },
+  { label: "the panel keeps the old clearing rule in a string it never shows", file: "panel", flips: ["withheld-old-clearing-rule-gone"], apply: edit("panel", "const POLL_MS = 60_000;", 'const POLL_MS = 60_000;\nexport const CLEARS_WHEN = "until a rerun no longer raises it";') },
 
   // ---- a rules change (G1 m-6) ----------------------------------------------------
   { label: "RULES_CHANGED_LINE is reworded", file: "lib", flips: ["rules-changed-line-is-the-sentence", "rules-changed-says-once", "rules-changed-empty-run-says-it"], apply: edit("lib", "so earlier decisions were not carried over.", "so earlier decisions were reset.") },

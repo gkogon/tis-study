@@ -46,8 +46,8 @@ export type ProofreadRun = {
   /**
    * How many findings on this run the server did not send because their audience
    * is admin — a DEFECT, a software fault routed to the software team. Never
-   * shown and never decided here, and each one holds the study until a re-run no
-   * longer raises it, so a run with any is never read as clear. A count only:
+   * shown and never decided here, and each one holds the study until the software
+   * team resolves it, so a run with any is never read as clear. A count only:
    * nothing else about a withheld finding reaches the client.
    */
   withheld: number;
@@ -270,7 +270,7 @@ export type OpenSummary = {
   /**
    * Open BLOCKER, DEFECT and CONTESTED — the three the protocol's completion gate
    * turns on — including every withheld finding: a DEFECT is never shown to the
-   * engineer and never decided by one, and holds until a re-run no longer raises it.
+   * engineer and never decided by one, and holds until the software team resolves it.
    */
   holds: number;
   /** Of `holds`, how many the server withheld (routed to the software team). */
@@ -301,14 +301,18 @@ export function summarizeOpen(findings: ProofreadFindingT[], dispositions: Dispo
 
 /**
  * The line for findings the server withheld: a DEFECT is routed to the software
- * team, the engineer cannot rule on it, and it holds the study until a re-run no
- * longer raises it. The count and that instruction are all there is to say —
- * nothing else about a withheld finding reaches the client.
+ * team, the engineer cannot rule on it, and it holds the study until that team
+ * resolves it. A fix to a rule clears it on the next run. A fix to the engine
+ * does not reach this study: a run judges the saved study, which never changes,
+ * and raises the same DEFECT every time, so the line says to generate the study
+ * again once that fix ships. The count and that instruction are all there is to
+ * say — nothing else about a withheld finding reaches the client.
  */
 export function withheldLine(n: number): string {
+  const ships = "If the fix is to the engine, generate the study again once it ships.";
   return n === 1
-    ? "1 item on this study was routed to the software team. Hold the study until a re-run no longer raises it."
-    : `${n} items on this study were routed to the software team. Hold the study until a re-run no longer raises them.`;
+    ? `1 item on this study was routed to the software team. Hold the study until they resolve it. ${ships}`
+    : `${n} items on this study were routed to the software team. Hold the study until they resolve them. ${ships}`;
 }
 
 /**
