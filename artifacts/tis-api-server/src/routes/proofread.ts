@@ -88,8 +88,10 @@ router.get("/projects/:id/proofread", proofreadReadLimiter, async (req, res): Pr
       return;
     }
     const { run, findings, dispositions, previous } = latest;
-    // Hidden, but never silent: a DEFECT holds the study until a re-run no
-    // longer raises it, so the panel must not read a run that carries one as
+    // Hidden, but never silent: a DEFECT holds the study until the software
+    // team resolves it (a fix to a rule clears it on the next run; a fix to
+    // the engine needs the study generated again, since a re-run judges the
+    // same saved study), so the panel must not read a run that carries one as
     // clear. The count is all that leaves the server — no type, clause, path
     // or message of a withheld finding. Counted first, from every finding the
     // store read for the run, before anything is filtered out of the list.

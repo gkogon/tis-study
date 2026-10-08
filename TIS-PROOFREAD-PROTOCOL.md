@@ -49,9 +49,11 @@ Redline.
    `NOTE` / `UNVERIFIED` / `CONTESTED`.
    - `BLOCKER` — wrong number, wrong source, or a missing input. Nothing ships.
    - `DEFECT` — the **engine** is wrong, not this study. A mislabeled field, a
-     value the payload cannot source, a check the code never runs. It holds
-     this study until a re-run no longer raises it, and it opens a bug. Route
-     it to the code queue, not to the PE — a PE cannot rule on a software
+     value the payload cannot source, a check the code never runs. It opens a
+     bug and holds this study until the software team resolves it: a fix to a
+     rule clears it on the next run; a fix to the engine needs the study
+     generated again, because a re-run judges the same saved study. Route it
+     to the code queue, not to the PE — a PE cannot rule on a software
      defect, and every study the engine has ever produced carries it. Neither
      the engineer nor the PE disposes of it.
    - `DISCLOSE` — the analysis is fine but the deliverable must say so out loud.
@@ -85,8 +87,9 @@ A Datum pass has three audiences, and a finding carries exactly one.
 - **Admin (Simple Impact Studies)** alone sees `DEFECT`. A defect is a software
   fault: route it to the code queue, never to the PE, and fan it out to a
   study-population query, because every study that engine produced carries it.
-  The engineer is told only how many their study carries, and that each holds
-  the study until a re-run no longer raises it — nothing else about one.
+  The engineer is told only how many their study carries, that each holds the
+  study until the software team resolves it, and that a fix to the engine
+  needs the study generated again — nothing else about one.
 
 The prohibition at §"What Datum is, and is not" on the phrases "independent
 review", "second opinion", "peer review" and "QA/QC by a separate reviewer"
@@ -333,7 +336,9 @@ finding with its type **and its disposition** —
 
 - `FIXED` — the study changed.
 - `BUG FILED` — a `DEFECT`; record the issue or PR. It does not clear the
-  hold: a `DEFECT` clears only when a re-run no longer raises it.
+  hold. A `DEFECT` holds the study until the software team resolves it: a fix
+  to a rule clears it on the next run; a fix to the engine needs the study
+  generated again.
 - `DISCLOSED` — language added to the deliverable, quote it.
 - `WITHDRAWN` — Datum withdrew on a source Redline produced; name the source.
 - `CONTESTED → PE` — escalated; record the ruling when it comes.
@@ -381,5 +386,7 @@ RESOLVED
 A study may be called complete only with no open `BLOCKER`, no open `DEFECT`
 and no open `CONTESTED`. That is the whole gate: an undisposed `NOTE`,
 `DISCLOSE` or `UNVERIFIED` is a record to carry, not a bar to completion. A
-`DEFECT` is not disposed of by the engineer or the PE: it clears only when a
-re-run no longer raises it.
+`DEFECT` is not disposed of by the engineer or the PE. It holds the study until
+the software team resolves it: a fix to a rule clears it on the next run; a fix
+to the engine needs the study generated again, because a re-run judges the same
+saved study.

@@ -191,6 +191,12 @@ ok(/not by itself an open study/i.test(flat(logging)),
 //     `BLOCKER — unverified` is none of the six types, so it may appear in none of
 //     the three files, in any dash, case or punctuation; §5's criterion Datum cannot
 //     locate in the agency document is a `BLOCKER`, spelled as one (2026-10-08).
+//
+//     A `DEFECT` holds the study until the software team resolves it: a fix to a
+//     rule clears it on the next run, a fix to the engine needs the study generated
+//     again (2026-10-08, fix wave 2, I-A). The old "until a re-run no longer raises
+//     it" could never be met for a fault in the engine — a re-run judges the same
+//     saved study — so it may appear in none of the files.
 const GATE_SENTENCE = "A study may be called complete only with no open `BLOCKER`, no open `DEFECT` and no open `CONTESTED`.";
 const SIX = ["BLOCKER", "DEFECT", "DISCLOSE", "NOTE", "UNVERIFIED", "CONTESTED"];
 const OLD_GATE = /no\s+open\s+\**`?BLOCKER`?\**\s+and\s+no\s+open\s+\**`?CONTESTED`?/i;
@@ -230,6 +236,18 @@ const BLOCKER_UNVERIFIED = /\bBLOCKER[`*_]*\s*(?:[-\u2010-\u2015\u2212]+|:|\()\s
 const noBlockerUnverified = (text) => !BLOCKER_UNVERIFIED.test(flat(text));
 /** §5's bullet on a criterion the agency document does not hold, flattened. */
 const criterionBullet = (text) => paragraphs(section(text, "5\\. Criteria")).find((p) => p.startsWith("- A criterion Datum could not locate in the agency document")) ?? "";
+/**
+ * What clears a DEFECT (2026-10-08, fix wave 2, I-A). A re-run judges the same saved study row,
+ * so it raises the same DEFECT every time unless the rule changed: the old "clears only when a
+ * re-run no longer raises it" could never be met for a fault in the engine.
+ */
+const DEFECT_CLEARING = "until the software team resolves it: a fix to a rule clears it on the next run; a fix to the engine needs the study generated again";
+/**
+ * The replaced rule, in its spellings: a re-run that "no longer" raises / reports it, "until a
+ * re-run", "clears only when / once a re-run". Read on the flattened text, so a wrap cannot hide it.
+ */
+const OLD_DEFECT_RULE = /\bre-?runs?\b[^.;:]*\bno longer\b|\buntil\s+(?:a|the|another|its)\s+(?:next\s+)?re-?run\b|\bclears?\s+(?:only\s+)?(?:when|once|after|on)\s+(?:a|the|another)\s+re-?run\b/i;
+const noOldDefectRule = (text) => !OLD_DEFECT_RULE.test(flat(text));
 
 const CHECKS = [
   {
@@ -251,10 +269,16 @@ const CHECKS = [
     test: (t) => statesTheGate(t.skill),
   },
   {
-    id: "protocol-defect-clears-on-rerun",
+    id: "protocol-defect-held-until-resolved",
     on: "protocol",
-    msg: "beside the gate, the protocol says a DEFECT is not disposed of by the engineer or the PE and clears only when a re-run no longer raises it",
-    test: (t) => flat(t.protocol).includes("A `DEFECT` is not disposed of by the engineer or the PE: it clears only when a re-run no longer raises it."),
+    msg: `beside the gate, the protocol says a DEFECT is not disposed of by the engineer or the PE and holds the study "${DEFECT_CLEARING}", because a re-run judges the same saved study`,
+    test: (t) => flat(t.protocol).includes(`A \`DEFECT\` is not disposed of by the engineer or the PE. It holds the study ${DEFECT_CLEARING}, because a re-run judges the same saved study.`),
+  },
+  {
+    id: "protocol-old-defect-rule-gone",
+    on: "protocol",
+    msg: "the protocol nowhere says a DEFECT clears when a re-run no longer raises it (\"re-run ... no longer\", \"until a re-run\", \"clears only when a re-run\"): a re-run judges the same saved study",
+    test: (t) => noOldDefectRule(t.protocol),
   },
   {
     id: "rule2-six-types",
@@ -265,12 +289,12 @@ const CHECKS = [
       rule2Bullets(t.protocol).map((b) => /^- `(\w+)` —/.exec(b)?.[1] ?? "?").join(",") === SIX.join(","),
   },
   {
-    id: "rule2-defect-holds-until-rerun",
+    id: "rule2-defect-held-until-resolved",
     on: "protocol",
-    msg: "rule 2's DEFECT holds this study until a re-run no longer raises it, and neither the engineer nor the PE disposes of it (not \"it blocks this study\", which read as a hold someone could clear)",
+    msg: `rule 2's DEFECT bullet: it opens a bug and holds this study "${DEFECT_CLEARING}", and neither the engineer nor the PE disposes of it (not "it blocks this study", which read as a hold someone could clear)`,
     test: (t) => {
       const b = bulletFor2(rule2Bullets(t.protocol), "DEFECT");
-      return /\bholds this study until a re-run no longer raises it\b/.test(b) && /\bNeither the engineer nor the PE disposes of it\./.test(b) && !/\bblocks this study\b/.test(b);
+      return b.includes(`It opens a bug and holds this study ${DEFECT_CLEARING}, because a re-run judges the same saved study.`) && /\bNeither the engineer nor the PE disposes of it\./.test(b) && !/\bblocks this study\b/.test(b);
     },
   },
   {
@@ -304,16 +328,16 @@ const CHECKS = [
   {
     id: "audience-engineer-told-only-the-count",
     on: "protocol",
-    msg: "§Audience: admin alone sees DEFECT, and the engineer is told only how many their study carries and that each holds it until a re-run no longer raises it",
+    msg: "§Audience's admin bullet: admin alone sees DEFECT, and the engineer is told only how many their study carries, that each holds the study until the software team resolves it, and that a fix to the engine needs the study generated again",
     test: (t) =>
       /\balone sees\b[^.]*\bDEFECT\b/.test(adminBulletOf(t.protocol)) &&
-      adminBulletOf(t.protocol).includes("The engineer is told only how many their study carries, and that each holds the study until a re-run no longer raises it"),
+      adminBulletOf(t.protocol).includes("The engineer is told only how many their study carries, that each holds the study until the software team resolves it, and that a fix to the engine needs the study generated again — nothing else about one."),
   },
   {
     id: "logging-bug-filed-does-not-clear",
     on: "protocol",
-    msg: "§Logging: BUG FILED records the issue and does not clear the hold — a DEFECT clears only when a re-run no longer raises it",
-    test: (t) => /`BUG FILED` — a `DEFECT`; record the issue or PR\. It does not clear the hold: a `DEFECT` clears only when a re-run no longer raises it\./.test(flat(section(t.protocol, "Logging"))),
+    msg: `§Logging: BUG FILED records the issue and does not clear the hold — a DEFECT holds the study "${DEFECT_CLEARING}"`,
+    test: (t) => flat(section(t.protocol, "Logging")).includes(`\`BUG FILED\` — a \`DEFECT\`; record the issue or PR. It does not clear the hold. A \`DEFECT\` holds the study ${DEFECT_CLEARING}.`),
   },
   {
     id: "agent-unverified-is-a-type",
@@ -326,6 +350,12 @@ const CHECKS = [
     on: "agent",
     msg: "datum.md spells no `BLOCKER — unverified` anywhere, in any dash, case or punctuation",
     test: (t) => noBlockerUnverified(t.agent),
+  },
+  {
+    id: "agent-old-defect-rule-gone",
+    on: "agent",
+    msg: "datum.md nowhere says a DEFECT clears when a re-run no longer raises it (\"re-run ... no longer\", \"until a re-run\", \"clears only when a re-run\")",
+    test: (t) => noOldDefectRule(t.agent),
   },
   {
     id: "skill-six-types",
@@ -364,6 +394,21 @@ const CHECKS = [
     test: (t) => noBlockerUnverified(t.skill),
   },
   {
+    id: "skill-defect-held-until-resolved",
+    on: "skill",
+    msg: `SKILL.md's DEFECT bullet: it holds the study "${DEFECT_CLEARING}", and neither you nor the PE can dispose of it`,
+    test: (t) => {
+      const b = bulletFor2(skillBullets(t.skill), "DEFECT");
+      return b.includes(`It holds the study ${DEFECT_CLEARING}.`) && /\bNeither you nor the PE can dispose of it\./.test(b);
+    },
+  },
+  {
+    id: "skill-old-defect-rule-gone",
+    on: "skill",
+    msg: "SKILL.md nowhere says a DEFECT clears when a re-run no longer raises it (\"re-run ... no longer\", \"until a re-run\", \"clears only when a re-run\")",
+    test: (t) => noOldDefectRule(t.skill),
+  },
+  {
     id: "skill-banned-copy",
     on: "skill",
     msg: `SKILL.md: "independent review", "second opinion", "peer review" and "QA/QC" appear only in the paragraph that states the ban (opening "**Do not oversell it.**"), which is still there`,
@@ -395,12 +440,18 @@ const MUTATIONS = [
   { label: "protocol: drop DEFECT from the gate", file: "protocol", flips: ["protocol-gate-sentence"], apply: edit("protocol", "no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`.", "no open `BLOCKER` and no open\n`CONTESTED`.") },
   { label: "protocol: state the gate a second time, in other words", file: "protocol", flips: ["protocol-gate-sentence"], apply: edit("protocol", "6. A `CONTESTED` item is a licensed engineer's decision.", "6. A study is complete only with no open `BLOCKER`. A `CONTESTED` item is a licensed engineer's decision.") },
   { label: "protocol: state the gate sentence twice", file: "protocol", flips: ["protocol-gate-sentence"], apply: edit("protocol", "## Audience\n", `## Audience\n\n${GATE_SENTENCE}\n`) },
-  { label: "protocol: let the engineer dispose of a DEFECT", file: "protocol", flips: ["protocol-defect-clears-on-rerun"], apply: edit("protocol", "A\n`DEFECT` is not disposed of by the engineer or the PE: it clears only when a\nre-run no longer raises it.", "A\n`DEFECT` is closed when the engineer records it.") },
+  { label: "protocol: let the engineer dispose of a DEFECT", file: "protocol", flips: ["protocol-defect-held-until-resolved"], apply: edit("protocol", "A\n`DEFECT` is not disposed of by the engineer or the PE. It holds", "A\n`DEFECT` is closed when the engineer records it. It holds") },
+  { label: "gate paragraph: back to \"clears only when a re-run no longer raises it\"", file: "protocol", flips: ["protocol-defect-held-until-resolved", "protocol-old-defect-rule-gone"], apply: edit("protocol", /It holds the study until\nthe software team resolves it: [\s\S]*?saved study\.\n/, "It clears only when a\nre-run no longer raises it.\n") },
+  { label: "gate paragraph: drop that an engine fix needs the study generated again", file: "protocol", flips: ["protocol-defect-held-until-resolved"], apply: edit("protocol", "a fix\nto the engine needs the study generated again, because a re-run judges the same\nsaved study.", "a fix\nto the engine clears it the same way.") },
+  { label: "protocol: the old rule restated in §6, wrapped", file: "protocol", flips: ["protocol-old-defect-rule-gone"], apply: edit("protocol", "- **Reported delay is capped at 300 s.**", "- **Reported delay is capped at 300 s.** A `DEFECT` clears once a\n  re-run no longer reports it.") },
+  { label: "protocol: \"until the next re-run\" in the Audience preamble", file: "protocol", flips: ["protocol-old-defect-rule-gone"], apply: edit("protocol", "A Datum pass has three audiences, and a finding carries exactly one.", "A Datum pass has three audiences, and a finding carries exactly one. A `DEFECT` waits until the next re-run.") },
   { label: "rule 2: back to four types", file: "protocol", flips: ["rule2-six-types"], apply: edit("protocol", "2. Every finding is one of six types: `BLOCKER` / `DEFECT` / `DISCLOSE` /\n   `NOTE` / `UNVERIFIED` / `CONTESTED`.", "2. Every finding is `BLOCKER` / `DEFECT` / `DISCLOSE` / `NOTE`.") },
   { label: "rule 2: drop the CONTESTED bullet", file: "protocol", flips: ["rule2-six-types"], apply: edit("protocol", /\n   - `CONTESTED` — [\s\S]*?rules\.\n/, "\n") },
   { label: "rule 2: drop the UNVERIFIED bullet", file: "protocol", flips: ["rule2-six-types"], apply: edit("protocol", /\n   - `UNVERIFIED` — [\s\S]*?not a hold\.\n/, "\n") },
-  { label: "rule 2: a DEFECT blocks this study (the old text)", file: "protocol", flips: ["rule2-defect-holds-until-rerun"], apply: edit("protocol", "It holds\n     this study until a re-run no longer raises it, and it opens a bug.", "It blocks\n     this study and it opens a bug.") },
-  { label: "rule 2: drop who may not dispose of a DEFECT", file: "protocol", flips: ["rule2-defect-holds-until-rerun"], apply: edit("protocol", " Neither\n     the engineer nor the PE disposes of it.", "") },
+  { label: "rule 2: a DEFECT blocks this study (the old text)", file: "protocol", flips: ["rule2-defect-held-until-resolved"], apply: edit("protocol", /It opens a\n     bug and holds this study [\s\S]*?saved study\./, "It blocks\n     this study and it opens a bug.") },
+  { label: "rule 2: back to \"until a re-run no longer raises it\"", file: "protocol", flips: ["rule2-defect-held-until-resolved", "protocol-old-defect-rule-gone"], apply: edit("protocol", /It opens a\n     bug and holds this study [\s\S]*?saved study\./, "It holds\n     this study until a re-run no longer raises it, and it opens a bug.") },
+  { label: "rule 2: a fix to the engine clears it on the next run too", file: "protocol", flips: ["rule2-defect-held-until-resolved"], apply: edit("protocol", "a fix to the engine needs the study\n     generated again, because", "a fix to the engine clears it the\n     same way, because") },
+  { label: "rule 2: drop who may not dispose of a DEFECT", file: "protocol", flips: ["rule2-defect-held-until-resolved"], apply: edit("protocol", " Neither\n     the engineer nor the PE disposes of it.", "") },
   { label: "rule 4: back to BLOCKER — unverified", file: "protocol", flips: ["rule4-unverified", "protocol-no-blocker-unverified"], apply: edit("protocol", "the finding is `UNVERIFIED`.\n5.", "the finding is `BLOCKER — unverified`.\n5.") },
   { label: "§5: the unlocated criterion back to `BLOCKER — unverified`", file: "protocol", flips: ["protocol-no-blocker-unverified", "criteria-unlocated-is-a-blocker"], apply: edit("protocol", "is a\n  `BLOCKER`: the criterion is unverified, not an assumed absence.", "is\n  `BLOCKER — unverified`, not an assumed absence.") },
   { label: "§5: the unlocated criterion becomes UNVERIFIED (it would stop holding the study)", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", "is a\n  `BLOCKER`: the criterion is unverified", "is\n  `UNVERIFIED`: the criterion is unverified") },
@@ -410,14 +461,17 @@ const MUTATIONS = [
   { label: "protocol: a hyphenated compound in rule 3", file: "protocol", flips: ["protocol-no-blocker-unverified"], apply: edit("protocol", "Silence is never a pass.", "Silence is never a pass; it is blocker-unverified.") },
   { label: "protocol: an en-dash compound in backticks, wrapped", file: "protocol", flips: ["protocol-no-blocker-unverified"], apply: edit("protocol", "Silence is never a pass.", "Silence is never a pass; it is `BLOCKER` –\n`unverified`.") },
   { label: "protocol: a colon compound", file: "protocol", flips: ["protocol-no-blocker-unverified"], apply: edit("protocol", "Silence is never a pass.", "Silence is never a pass; it is BLOCKER: unverified.") },
-  { label: "§Audience: drop what the engineer is told", file: "protocol", flips: ["audience-engineer-told-only-the-count"], apply: edit("protocol", "\n  The engineer is told only how many their study carries, and that each holds\n  the study until a re-run no longer raises it — nothing else about one.", "") },
-  { label: "§Logging: BUG FILED clears the hold", file: "protocol", flips: ["logging-bug-filed-does-not-clear"], apply: edit("protocol", "It does not clear the\n  hold: a `DEFECT` clears only when a re-run no longer raises it.", "It clears the hold.") },
+  { label: "§Audience: drop what the engineer is told", file: "protocol", flips: ["audience-engineer-told-only-the-count"], apply: edit("protocol", /\n  The engineer is told only how many their study carries, [\s\S]*?nothing else about one\./, "") },
+  { label: "§Audience: the engineer is not told an engine fix needs the study generated again", file: "protocol", flips: ["audience-engineer-told-only-the-count"], apply: edit("protocol", "until the software team resolves it, and that a fix to the engine\n  needs the study generated again — nothing", "until the software team resolves it — nothing") },
+  { label: "§Logging: BUG FILED clears the hold", file: "protocol", flips: ["logging-bug-filed-does-not-clear"], apply: edit("protocol", /It does not clear the\n  hold\. A `DEFECT` holds the study [\s\S]*?generated again\./, "It clears the hold.") },
+  { label: "§Logging: back to \"clears only when a re-run no longer raises it\"", file: "protocol", flips: ["logging-bug-filed-does-not-clear", "protocol-old-defect-rule-gone"], apply: edit("protocol", /It does not clear the\n  hold\. A `DEFECT` holds the study [\s\S]*?generated again\./, "It does not clear the\n  hold: a `DEFECT` clears only when a re-run no longer raises it.") },
   // datum.md
   { label: "datum.md: back to the two-condition gate", file: "agent", flips: ["agent-gate-sentence"], apply: edit("agent", "A study may be called complete only with no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`.", "A study is complete only with no open `BLOCKER` and no open `CONTESTED`.") },
   { label: "datum.md: a second, BLOCKER-only gate", file: "agent", flips: ["agent-gate-sentence"], apply: edit("agent", "## Output\n", "## Output\n\nA study is complete only with no open `BLOCKER`.\n") },
   { label: "datum.md: the gate sentence removed", file: "agent", flips: ["agent-gate-sentence"], apply: edit("agent", "A study may be called complete only with no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`.", "") },
   { label: "datum.md: back to BLOCKER — unverified", file: "agent", flips: ["agent-unverified-is-a-type", "agent-no-blocker-unverified"], apply: edit("agent", "the finding is `UNVERIFIED`.", "the finding is `BLOCKER — unverified`.") },
   { label: "datum.md: an en-dash compound in backticks", file: "agent", flips: ["agent-no-blocker-unverified"], apply: edit("agent", "**You cannot edit.**", "**You cannot edit.** A gap is `BLOCKER` – `unverified`.") },
+  { label: "datum.md: the old DEFECT clearing rule, wrapped", file: "agent", flips: ["agent-old-defect-rule-gone"], apply: edit("agent", "Name the `file:line`.", "Name the `file:line`. It holds the study until a\nre-run no longer raises it.") },
   // SKILL.md
   { label: "SKILL.md: a compound in parentheses", file: "skill", flips: ["skill-no-blocker-unverified"], apply: edit("skill", "- `NOTE` — surface to the PE.", "- `NOTE` — surface to the PE; a missing source is blocker (unverified).") },
   { label: "SKILL.md: the gate sentence removed", file: "skill", flips: ["skill-gate-sentence"], apply: edit("skill", "A study may be called complete only with no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`. ", "") },
@@ -425,7 +479,11 @@ const MUTATIONS = [
   { label: "SKILL.md: UNVERIFIED treated as a blocker again", file: "skill", flips: ["skill-unverified-is-a-record"], apply: edit("skill", /- `UNVERIFIED` — [\s\S]*?run Datum again\.\n/, "- `UNVERIFIED` — treat as a blocker until the source is reached.\n") },
   { label: "SKILL.md: UNVERIFIED a hold, in the bullet's own words", file: "skill", flips: ["skill-unverified-is-a-record"], apply: edit("skill", "A record to carry, in the\n  log and in the deliverable where it belongs — not a hold.", "It blocks the study until\n  the source is reached.") },
   { label: "SKILL.md: drop the CONTESTED bullet", file: "skill", flips: ["skill-six-types"], apply: edit("skill", /- `CONTESTED` — [\s\S]*?until the PE rules\.\n/, "") },
-  { label: "SKILL.md: drop the DEFECT bullet", file: "skill", flips: ["skill-six-types"], apply: edit("skill", /- `DEFECT` — [\s\S]*?can dispose of it\.\n/, "") },
+  { label: "SKILL.md: drop the DEFECT bullet", file: "skill", flips: ["skill-six-types", "skill-defect-held-until-resolved"], apply: edit("skill", /- `DEFECT` — [\s\S]*?can dispose of it\.\n/, "") },
+  { label: "SKILL.md: the DEFECT bullet back to the old rule", file: "skill", flips: ["skill-defect-held-until-resolved", "skill-old-defect-rule-gone"], apply: edit("skill", /It holds the study\n  until the software team resolves it: [\s\S]*?generated again\./, "It holds the study\n  until a re-run no longer raises it.") },
+  { label: "SKILL.md: drop that an engine fix needs the study generated again", file: "skill", flips: ["skill-defect-held-until-resolved"], apply: edit("skill", "a fix to the engine needs the study generated again.", "a fix to the engine clears it too.") },
+  { label: "SKILL.md: you may dispose of a DEFECT", file: "skill", flips: ["skill-defect-held-until-resolved"], apply: edit("skill", "Neither you nor the\n  PE can dispose of it.", "You may dispose of it\n  once the fix ships.") },
+  { label: "SKILL.md: the old rule restated beside the relay line", file: "skill", flips: ["skill-old-defect-rule-gone"], apply: edit("skill", "Relay findings verbatim to the operator.", "A `DEFECT` clears when a re-run stops raising it, and not until a re-run.\nRelay findings verbatim to the operator.") },
   { label: "SKILL.md: Datum is admin-side again", file: "skill", flips: ["skill-audiences"], apply: edit("skill", "**Who sees a finding** is set by the protocol's §Audience.", "**Datum is admin-side.** Findings never go to the customer. **Who sees a finding** is set by the protocol's §Audience.") },
   { label: "SKILL.md: drop the sealing PE", file: "skill", flips: ["skill-audiences"], apply: edit("skill", " The sealing PE also sees every `CONTESTED` item, with both\npositions and both sources, and is the only one who may rule on it.", "") },
   { label: "SKILL.md: banned phrase outside the ban paragraph", file: "skill", flips: ["skill-banned-copy"], apply: edit("skill", "Relay findings verbatim to the operator.", "Relay findings verbatim to the operator as a second opinion.") },

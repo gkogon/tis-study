@@ -28,7 +28,9 @@ When findings come back:
 - `BLOCKER` — fix it. Nothing ships.
 - `DEFECT` — an engine bug, not a study error. Open an issue; it affects every
   study the engine has produced. Do not send it to the PE. It holds the study
-  until a re-run no longer raises it; neither you nor the PE can dispose of it.
+  until the software team resolves it: a fix to a rule clears it on the next
+  run; a fix to the engine needs the study generated again. Neither you nor the
+  PE can dispose of it.
 - `DISCLOSE` — add the language to the deliverable.
 - `NOTE` — surface to the PE.
 - `UNVERIFIED` — the source could not be reached. A record to carry, in the

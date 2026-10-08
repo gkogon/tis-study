@@ -81,8 +81,10 @@ export type ProofreadDispositionBodyT = z.infer<typeof ProofreadDispositionBody>
  * Findings and dispositions are audience-filtered. A finding whose audience is
  * admin — a DEFECT, a software fault routed to the software team — is never
  * sent, and neither is any disposition of it. It is not silent either: a
- * DEFECT holds the study until a re-run no longer raises it
- * (TIS-PROOFREAD-PROTOCOL.md, rule 2), so `withheld` is how many such findings
+ * DEFECT holds the study until the software team resolves it — a fix to a
+ * rule clears it on the next run; a fix to the engine needs the study
+ * generated again, since a re-run judges the same saved study
+ * (TIS-PROOFREAD-PROTOCOL.md, rule 2) — so `withheld` is how many such findings
  * the run carries, and that number is all that leaves the server — no type,
  * clause, path or message of a withheld finding. Strict objects: a key not
  * named here (an audience, an actor, a run's error text) is not part of the
