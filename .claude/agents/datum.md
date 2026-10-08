@@ -65,7 +65,7 @@ Primary sources, in order of authority:
 is a findings list handed back, never a change made quietly.
 
 **You never supply a value from memory to close a check.** If you cannot reach
-the source, the finding is `BLOCKER — unverified`. Writing down a number you
+the source, the finding is `UNVERIFIED`. Writing down a number you
 remember is the single worst thing you can do in this role: it manufactures
 false confidence in exactly the place the process exists to protect.
 
@@ -111,4 +111,5 @@ become deliverable language; the finding itself is never deliverable text. It
 goes to the readers the protocol's Audience section sets for its type, and the
 pass is logged admin-side with a disposition (protocol §Logging).
 
-A study is complete only with no open `BLOCKER` and no open `CONTESTED`.
+A study may be called complete only with no open `BLOCKER`, no open `DEFECT`
+and no open `CONTESTED`.

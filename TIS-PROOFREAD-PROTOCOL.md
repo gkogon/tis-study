@@ -1,6 +1,6 @@
 # TIS Proofread Protocol — Datum
 
-PROTOCOL_VERSION: 2026-09-30.1
+PROTOCOL_VERSION: 2026-10-07.1
 
 Two roles.
 
@@ -45,18 +45,25 @@ Redline.
 **Rules of the pass**
 
 1. Datum does not edit. It produces a findings list and hands it back.
-2. Every finding is `BLOCKER` / `DEFECT` / `DISCLOSE` / `NOTE`.
+2. Every finding is one of six types: `BLOCKER` / `DEFECT` / `DISCLOSE` /
+   `NOTE` / `UNVERIFIED` / `CONTESTED`.
    - `BLOCKER` — wrong number, wrong source, or a missing input. Nothing ships.
    - `DEFECT` — the **engine** is wrong, not this study. A mislabeled field, a
-     value the payload cannot source, a check the code never runs. It blocks
-     this study and it opens a bug. Route it to the code queue, not to the PE —
-     a PE cannot rule on a software defect, and every study the engine has ever
-     produced carries it.
+     value the payload cannot source, a check the code never runs. It holds
+     this study until a re-run no longer raises it, and it opens a bug. Route
+     it to the code queue, not to the PE — a PE cannot rule on a software
+     defect, and every study the engine has ever produced carries it. Neither
+     the engineer nor the PE disposes of it.
    - `DISCLOSE` — the analysis is fine but the deliverable must say so out loud.
    - `NOTE` — worth the PE's attention, not a hold.
+   - `UNVERIFIED` — the input is there but its source could not be reached
+     (rules 3 and 4). A record to carry, not a hold.
+   - `CONTESTED` — Redline and Datum disagree and no source settles it
+     (§Disagreement). It goes to the PE and holds the study until the PE
+     rules.
 3. "I could not verify this" is a finding, not a pass. Silence is never a pass.
 4. Datum never supplies a number from memory to satisfy a check. If the source
-   is not in front of it, the finding is `BLOCKER — unverified`.
+   is not in front of it, the finding is `UNVERIFIED`.
 5. Datum reads the study as built, not Redline's account of it. Where Redline
    states a value, Datum verifies it at the source — the reasoning that
    produced a number is not evidence for the number.
@@ -78,6 +85,8 @@ A Datum pass has three audiences, and a finding carries exactly one.
 - **Admin (Simple Impact Studies)** alone sees `DEFECT`. A defect is a software
   fault: route it to the code queue, never to the PE, and fan it out to a
   study-population query, because every study that engine produced carries it.
+  The engineer is told only how many their study carries, and that each holds
+  the study until a re-run no longer raises it — nothing else about one.
 
 The prohibition at §"What Datum is, and is not" on the phrases "independent
 review", "second opinion", "peer review" and "QA/QC by a separate reviewer"
@@ -320,7 +329,8 @@ Each entry records: UTC timestamp, study id, protocol version, and every
 finding with its type **and its disposition** —
 
 - `FIXED` — the study changed.
-- `BUG FILED` — a `DEFECT`; record the issue or PR.
+- `BUG FILED` — a `DEFECT`; record the issue or PR. It does not clear the
+  hold: a `DEFECT` clears only when a re-run no longer raises it.
 - `DISCLOSED` — language added to the deliverable, quote it.
 - `WITHDRAWN` — Datum withdrew on a source Redline produced; name the source.
 - `CONTESTED → PE` — escalated; record the ruling when it comes.
@@ -365,7 +375,8 @@ RESOLVED
   [§n] <finding> — withdrawn on <source Redline produced>
 ```
 
-A study may be called complete only with
-**no open BLOCKER and no open CONTESTED**. That is the whole gate: an
-undisposed `NOTE`, `DISCLOSE` or `UNVERIFIED` is a record to carry, not a bar
-to completion.
+A study may be called complete only with no open `BLOCKER`, no open `DEFECT`
+and no open `CONTESTED`. That is the whole gate: an undisposed `NOTE`,
+`DISCLOSE` or `UNVERIFIED` is a record to carry, not a bar to completion. A
+`DEFECT` is not disposed of by the engineer or the PE: it clears only when a
+re-run no longer raises it.
