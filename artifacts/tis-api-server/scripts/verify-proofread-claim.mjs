@@ -313,7 +313,7 @@ function callsOf(src, name) {
 const SAME_RULES = new Set(["prev.rulesVersion === run.rulesVersion", "run.rulesVersion === prev.rulesVersion"]);
 
 const count = (s, needle) => s.split(needle).length - 1;
-const UNIT_MS ={ millisecond: 1, second: 1000, minute: 60_000, hour: 3_600_000 };
+const UNIT_MS = { millisecond: 1, second: 1000, minute: 60_000, hour: 3_600_000 };
 
 // ---------------------------------------------------------------------------
 // The checks. `on` is the file the check is ABOUT: the file whose breakage it
@@ -1295,8 +1295,9 @@ for (const g of STAYS_GREEN) {
 // ./proofread/index.ts (no clauses, a fixed RULES_VERSION and engineStamp, so
 // the scenario controls everything the runner sees). ./proofread/lifecycle.ts
 // is the real one. Nothing reaches @workspace/db: the runner's only import of
-// it is `import type`, which esbuild drops, and the bundle's own input list is
-// asserted to hold no store, no db and no logger before anything runs.
+// it is `import type`, which esbuild drops, and a bundle whose input list holds
+// anything but the runner, the stubs and lifecycle.ts is refused before it is
+// imported, so no scenario can ever run against a real store.
 //
 // What this proves is what the RUNNER does with what the store hands it: which
 // ids the carry is given, what gates it, what is caught and what propagates.
@@ -1331,7 +1332,9 @@ export const runClauses = (...args) => st().call("runClauses", args) ?? { findin
 
 async function bundleRunner(text) {
   const out = await build({
-    stdin: { contents: text, resolveDir: runnerDir, sourcefile: "proofread-run.ts", loader: "ts" },
+    // A name no real file in src/lib has, so the input list can tell the
+    // runner under test from anything it pulls in.
+    stdin: { contents: text, resolveDir: runnerDir, sourcefile: "runner-under-test.ts", loader: "ts" },
     absWorkingDir: runnerDir,
     bundle: true,
     write: false,
@@ -1345,13 +1348,25 @@ async function bundleRunner(text) {
       {
         name: "proofread-runner-stubs",
         setup(b) {
-          b.onResolve({ filter: /^\.\/(proofread-store|logger|proofread\/index\.ts)$/ }, (a) => ({ path: a.path, namespace: "runner-stub" }));
+          // Only the runner's OWN imports are stubbed: a real module pulled in
+          // some other way keeps its real imports, and is then refused below.
+          b.onResolve({ filter: /^\.\/(proofread-store|logger|proofread\/index\.ts)$/ }, (a) =>
+            a.importer === path.join(runnerDir, "runner-under-test.ts") ? { path: a.path, namespace: "runner-stub" } : undefined,
+          );
           b.onLoad({ filter: /.*/, namespace: "runner-stub" }, (a) => ({ contents: STUB_SOURCES[a.path], loader: "js" }));
         },
       },
     ],
   });
   const inputs = Object.keys(out.metafile.inputs);
+  // Checked BEFORE the bundle is imported, not after: a runner whose store
+  // import escaped the stubs (a new spelling, say "./proofread-store.ts")
+  // would bundle the real store and @workspace/db, and running its scenarios
+  // would issue real claims and writes against whatever DATABASE_URL names.
+  // Anything but the runner itself, the stubs and lifecycle.ts is refused
+  // unloaded (node: builtins are external and never listed here).
+  const foreign = inputs.filter((p) => p !== "runner-under-test.ts" && !p.startsWith("runner-stub:") && !/(^|\/)proofread\/lifecycle\.ts$/.test(p));
+  if (foreign.length > 0) throw new Error(`refused to load a runner bundle that pulls in ${foreign.join(", ")}`);
   const mod = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
   return { mod, inputs };
 }
@@ -1583,6 +1598,18 @@ if (!realObs.error) {
     leaked.length === 0 && real.some((p) => p.endsWith("proofread/lifecycle.ts")),
     "the bundle holds the runner and the real lifecycle.ts, and no store, db, logger or clause module — so nothing it runs can open a connection",
     leaked.length ? `in the bundle: ${leaked.join(", ")}` : `inputs: ${realObs.inputs.join(", ")}`,
+  );
+}
+{
+  // The refusal is what stands between a scenario and a real database, so it
+  // is tested: the same runner with its store import spelled so it escapes the
+  // stubs must come back refused, unloaded — never run.
+  const escaped = sources.runner.replace('} from "./proofread-store";', '} from "./proofread-store.ts";');
+  const o = escaped === sources.runner ? { error: "the store import was not found to respell" } : await observe(escaped);
+  ok(
+    typeof o.error === "string" && /refused to load a runner bundle that pulls in .*proofread-store\.ts/.test(o.error),
+    "a runner whose store import escapes the stubs (\"./proofread-store.ts\") is refused before it is imported, so no scenario can reach a real store",
+    o.error ?? "it was loaded and run",
   );
 }
 const bfailing = brun(realObs);
