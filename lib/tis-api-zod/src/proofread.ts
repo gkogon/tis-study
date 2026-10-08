@@ -26,11 +26,12 @@ const DECISION = ProofreadDisposition.enum;
  * verify-proofread-copy.mjs pins equal to this map). The log is append-only, so a
  * decision that does not fit its finding, once written, would stay written.
  *
- * TIS-PROOFREAD-PROTOCOL.md, Logging: a BLOCKER is a wrong number, a wrong
+ * TIS-PROOFREAD-PROTOCOL.md, rule 2: a BLOCKER is a wrong number, a wrong
  * source or a missing input, and disclosing a wrong number does not make it
- * right, so only FIXED or WITHDRAWN (on a named source) fits one. A CONTESTED
- * item waits for the sealing engineer's ruling, and a DEFECT is a software
- * fault routed to the software team, so neither takes a firm member's decision.
+ * right, so only FIXED or WITHDRAWN (on a named source) fits one; §Logging
+ * says what each decision records. A CONTESTED item waits for the sealing
+ * engineer's ruling, and a DEFECT is a software fault routed to the software
+ * team, so neither takes a firm member's decision.
  * BUG_FILED is the software team's; ACCEPTED_RISK and CONTESTED_PE are the
  * sealing engineer's, a role phase 1 does not have.
  *

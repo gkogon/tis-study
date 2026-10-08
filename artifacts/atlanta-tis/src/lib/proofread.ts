@@ -181,7 +181,7 @@ export type EngineerDisposition = Exclude<Disposition, "BUG_FILED" | "ACCEPTED_R
  * closed are both read from here (`offeredFor`, `closes`), so they cannot drift:
  * a decision is offered on a type if and only if it resolves that type.
  *
- * TIS-PROOFREAD-PROTOCOL.md, Logging: a BLOCKER is a wrong number, a wrong source
+ * TIS-PROOFREAD-PROTOCOL.md, rule 2: a BLOCKER is a wrong number, a wrong source
  * or a missing input, and disclosing a wrong number does not make it right, so
  * only FIXED (the study changed) or WITHDRAWN (on a named source) closes one.
  * A CONTESTED item blocks completion until the sealing engineer rules, so in
