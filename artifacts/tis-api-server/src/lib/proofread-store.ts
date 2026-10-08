@@ -276,8 +276,11 @@ export async function previousRunForProject(
         // Only a run that finished its clause pass holds dispositions worth
         // carrying. A failed or still-queued revision would carry nothing and,
         // because this looks exactly one revision back, would strand the
-        // dispositions recorded on the revision before it.
-        eq(studyProofreadRunsTable.status, "rules_ready"),
+        // dispositions recorded on the revision before it. Finished is either
+        // status: 'rules_ready' (phase 1's end) or 'ready' (a later phase's),
+        // the same pair the disposition route accepts a decision on — a
+        // 'ready' revision left out here would strand every decision on it.
+        inArray(studyProofreadRunsTable.status, ["rules_ready", "ready"]),
       ),
     )
     .orderBy(desc(studyProofreadRunsTable.revision))

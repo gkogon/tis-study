@@ -1326,10 +1326,11 @@ const AUDIENCE_GUARD =
 const TYPE_GUARD =
   'if (!decisionApplies(finding.type, parsed.data.disposition)) { res.status(422).json({ error: "This decision does not apply to this finding." }); return; }';
 // A decision is taken only on the run the panel shows: the project's newest run for this firm,
-// and only once it has finished (rules_ready). Anything else is a 409 the panel answers by
+// and only once it has finished (rules_ready, or ready once a later phase writes it: the panel shows
+// findings and offers decisions on both, and the carry reads its source from both). Anything else is a 409 the panel answers by
 // refetching — after the 422 and before the write.
-const STALE_GUARD =
-  'const newest = await latestRunStatusForProject(firm.id, projectId); if (newest === null || newest.id !== runId || newest.status !== "rules_ready") { res.status(409).json({ error: "This check has been run again. Refresh to see the latest." }); return; }';
+const STALE_FINISHED = '(newest.status !== "rules_ready" && newest.status !== "ready")';
+const STALE_GUARD = `const newest = await latestRunStatusForProject(firm.id, projectId); if (newest === null || newest.id !== runId || ${STALE_FINISHED}) { res.status(409).json({ error: "This check has been run again. Refresh to see the latest." }); return; }`;
 // POST disposition's three URL ids and the route parameter each is read from. Each is read raw as url<Name>,
 // gated, and then lowercased ONCE into <name>: the only spelling used after the gate.
 const DISP_IDS = [
@@ -2259,7 +2260,7 @@ const CHECKS = [
   {
     id: "disposition-refuses-superseded-run",
     on: "routes",
-    msg: "after the 422 and before anything is written, POST disposition looks up the project's newest run for the FIRM (latestRunStatusForProject(firm.id, projectId)) and answers 409 'This check has been run again. Refresh to see the latest.' AND returns unless that run IS the run in the URL and has finished (rules_ready) — a decision on an older revision is stranded once the newer one has carried, and one on an unfinished run races the carry",
+    msg: "after the 422 and before anything is written, POST disposition looks up the project's newest run for the FIRM (latestRunStatusForProject(firm.id, projectId)) and answers 409 'This check has been run again. Refresh to see the latest.' AND returns unless that run IS the run in the URL and has finished — rules_ready or ready, the pair the panel shows findings and offers decisions on (a 'ready' run refused here would answer every press with \"run again\" and record nothing) — a decision on an older revision is stranded once the newer one has carried, and one on an unfinished run races the carry",
     test: (d) => {
       const p = dispSeg(d);
       return (
@@ -3752,31 +3753,43 @@ const MUTATIONS = [
     label: "delete the superseded-run refusal (a decision lands on an older revision)",
     file: "routes",
     flips: ["disposition-refuses-superseded-run", "disposition-chain-in-order"],
-    apply: edit("routes", /      const newest = await latestRunStatusForProject\(firm\.id, projectId\);\n      if \(newest === null \|\| newest\.id !== runId \|\| newest\.status !== "rules_ready"\) \{\n        res\.status\(409\)[^\n]*\n        return;\n      \}\n/, ""),
+    apply: edit("routes", /      const newest = await latestRunStatusForProject\(firm\.id, projectId\);\n      if \(newest === null \|\| newest\.id !== runId \|\| \(newest\.status !== "rules_ready" && newest\.status !== "ready"\)\) \{\n        res\.status\(409\)[^\n]*\n        return;\n      \}\n/, ""),
   },
   {
     label: "accept a decision on an older revision (drop the run-id comparison)",
     file: "routes",
     flips: ["disposition-refuses-superseded-run"],
-    apply: edit("routes", "newest === null || newest.id !== runId || newest.status", "newest === null || newest.status"),
+    apply: edit("routes", "newest === null || newest.id !== runId || (newest.status", "newest === null || (newest.status"),
   },
   {
     label: "accept a decision on an unfinished run (drop the status comparison)",
     file: "routes",
     flips: ["disposition-refuses-superseded-run"],
-    apply: edit("routes", ' || newest.status !== "rules_ready"', ""),
+    apply: edit("routes", ' || (newest.status !== "rules_ready" && newest.status !== "ready")', ""),
   },
   {
     label: "accept a decision on a run that has not finished its carry (\"running\" taken for finished)",
     file: "routes",
     flips: ["disposition-refuses-superseded-run"],
-    apply: edit("routes", 'newest.status !== "rules_ready"', 'newest.status === "failed"'),
+    apply: edit("routes", '(newest.status !== "rules_ready" && newest.status !== "ready")', 'newest.status === "failed"'),
+  },
+  {
+    label: "refuse a decision on a 'ready' run (rules_ready alone counts as finished)",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run"],
+    apply: edit("routes", '(newest.status !== "rules_ready" && newest.status !== "ready")', 'newest.status !== "rules_ready"'),
+  },
+  {
+    label: "test the two finished statuses with || (every decision refused)",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run"],
+    apply: edit("routes", '(newest.status !== "rules_ready" && newest.status !== "ready")', '(newest.status !== "rules_ready" || newest.status !== "ready")'),
   },
   {
     label: "refuse only when BOTH the run differs and it is unfinished (&& for ||)",
     file: "routes",
     flips: ["disposition-refuses-superseded-run"],
-    apply: edit("routes", 'newest.id !== runId || newest.status !== "rules_ready"', 'newest.id !== runId && newest.status !== "rules_ready"'),
+    apply: edit("routes", 'newest.id !== runId || (newest.status', 'newest.id !== runId && (newest.status'),
   },
   {
     label: "drop the null arm of the superseded-run refusal (no run at all passes)",
@@ -3825,8 +3838,8 @@ const MUTATIONS = [
     file: "routes",
     flips: ["disposition-refuses-superseded-run", "disposition-chain-in-order"],
     apply: chain(
-      edit("routes", /      const newest = await latestRunStatusForProject\(firm\.id, projectId\);\n      if \(newest === null \|\| newest\.id !== runId \|\| newest\.status !== "rules_ready"\) \{\n        res\.status\(409\)[^\n]*\n        return;\n      \}\n/, ""),
-      edit("routes", "      res.json({ ok: true });\n    } catch (err) {\n      req.log.error({ err }, \"proofread.disposition_failed\");", "      const newest = await latestRunStatusForProject(firm.id, projectId);\n      if (newest === null || newest.id !== runId || newest.status !== \"rules_ready\") {\n        res.status(409).json({ error: \"This check has been run again. Refresh to see the latest.\" });\n        return;\n      }\n      res.json({ ok: true });\n    } catch (err) {\n      req.log.error({ err }, \"proofread.disposition_failed\");"),
+      edit("routes", /      const newest = await latestRunStatusForProject\(firm\.id, projectId\);\n      if \(newest === null \|\| newest\.id !== runId \|\| \(newest\.status !== "rules_ready" && newest\.status !== "ready"\)\) \{\n        res\.status\(409\)[^\n]*\n        return;\n      \}\n/, ""),
+      edit("routes", "      res.json({ ok: true });\n    } catch (err) {\n      req.log.error({ err }, \"proofread.disposition_failed\");", "      const newest = await latestRunStatusForProject(firm.id, projectId);\n      if (newest === null || newest.id !== runId || (newest.status !== \"rules_ready\" && newest.status !== \"ready\")) {\n        res.status(409).json({ error: \"This check has been run again. Refresh to see the latest.\" });\n        return;\n      }\n      res.json({ ok: true });\n    } catch (err) {\n      req.log.error({ err }, \"proofread.disposition_failed\");"),
     ),
   },
   {
@@ -3834,8 +3847,8 @@ const MUTATIONS = [
     file: "routes",
     flips: ["disposition-chain-in-order"],
     apply: chain(
-      edit("routes", /      const newest = await latestRunStatusForProject\(firm\.id, projectId\);\n      if \(newest === null \|\| newest\.id !== runId \|\| newest\.status !== "rules_ready"\) \{\n        res\.status\(409\)[^\n]*\n        return;\n      \}\n/, ""),
-      edit("routes", "      if (!(await findingInFirmRun(", "      const newest = await latestRunStatusForProject(firm.id, projectId);\n      if (newest === null || newest.id !== runId || newest.status !== \"rules_ready\") {\n        res.status(409).json({ error: \"This check has been run again. Refresh to see the latest.\" });\n        return;\n      }\n      if (!(await findingInFirmRun("),
+      edit("routes", /      const newest = await latestRunStatusForProject\(firm\.id, projectId\);\n      if \(newest === null \|\| newest\.id !== runId \|\| \(newest\.status !== "rules_ready" && newest\.status !== "ready"\)\) \{\n        res\.status\(409\)[^\n]*\n        return;\n      \}\n/, ""),
+      edit("routes", "      if (!(await findingInFirmRun(", "      const newest = await latestRunStatusForProject(firm.id, projectId);\n      if (newest === null || newest.id !== runId || (newest.status !== \"rules_ready\" && newest.status !== \"ready\")) {\n        res.status(409).json({ error: \"This check has been run again. Refresh to see the latest.\" });\n        return;\n      }\n      if (!(await findingInFirmRun("),
     ),
   },
   {

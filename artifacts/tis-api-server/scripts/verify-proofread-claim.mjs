@@ -680,10 +680,13 @@ const CHECKS = [
     test: (s) => /lt\(studyProofreadRunsTable\.revision, beforeRevision\)/.test(body(s.store, "previousRunForProject")),
   },
   {
-    id: "previous-run-is-rules-ready",
+    id: "previous-run-is-finished",
     on: "store",
-    msg: "previousRunForProject looks one revision back among runs that finished their clause pass — a failed revision would carry nothing and strand the one before it",
-    test: (s) => /eq\(studyProofreadRunsTable\.status, "rules_ready"\)/.test(body(s.store, "previousRunForProject")),
+    msg: "previousRunForProject looks one revision back among FINISHED runs, exactly the two finished statuses (`inArray(studyProofreadRunsTable.status, [\"rules_ready\", \"ready\"])`, the pair the disposition route's 409 accepts and the panel's isFinished shows): a failed or unfinished revision would carry nothing and strand the one before it, and a 'ready' revision left out would strand every decision the route accepted on it",
+    test: (s) => {
+      const b = norm(body(s.store, "previousRunForProject"));
+      return count(b, "studyProofreadRunsTable.status") === 1 && b.includes('inArray(studyProofreadRunsTable.status, ["rules_ready", "ready"])');
+    },
   },
   {
     id: "finding-scope-is-one-query",
@@ -1186,8 +1189,20 @@ const MUTATIONS = [
   {
     label: "carry forward from the previous revision whatever its status",
     file: "store",
-    flips: ["previous-run-is-rules-ready"],
-    apply: edit("store", /\n *eq\(studyProofreadRunsTable\.status, "rules_ready"\),/, ""),
+    flips: ["previous-run-is-finished"],
+    apply: edit("store", /\n *inArray\(studyProofreadRunsTable\.status, \["rules_ready", "ready"\]\),/, ""),
+  },
+  {
+    label: "carry only from a rules_ready revision (every decision accepted on a 'ready' run is stranded)",
+    file: "store",
+    flips: ["previous-run-is-finished"],
+    apply: edit("store", 'inArray(studyProofreadRunsTable.status, ["rules_ready", "ready"])', 'eq(studyProofreadRunsTable.status, "rules_ready")'),
+  },
+  {
+    label: "carry from a revision in any status but failed",
+    file: "store",
+    flips: ["previous-run-is-finished"],
+    apply: edit("store", 'inArray(studyProofreadRunsTable.status, ["rules_ready", "ready"])', 'sql`${studyProofreadRunsTable.status} <> \'failed\'`'),
   },
   {
     label: "check the finding's run but not its firm",

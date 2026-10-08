@@ -245,9 +245,11 @@ router.post(
       // back — and on an unfinished run it races that carry. 409, so the panel
       // refetches. Not atomic with the insert below: a re-run claimed and
       // carried in the moment between this read and that write still strands
-      // the decision.
+      // the decision. Finished is 'rules_ready' (phase 1's end) or 'ready' (a
+      // later phase's): the panel shows findings and offers decisions on both,
+      // and previousRunForProject carries from both.
       const newest = await latestRunStatusForProject(firm.id, projectId);
-      if (newest === null || newest.id !== runId || newest.status !== "rules_ready") {
+      if (newest === null || newest.id !== runId || (newest.status !== "rules_ready" && newest.status !== "ready")) {
         res.status(409).json({ error: "This check has been run again. Refresh to see the latest." });
         return;
       }
