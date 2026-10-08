@@ -1088,12 +1088,14 @@ const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.g
  * nothing at all: Postgres reads `delete from"firms"` as `delete from "firms"`, and drizzle renders
  * a table substitution as a quoted name, so sql`delete from${t}` and sql`update${t} ${set}` reach
  * it as `delete from"t"` and `update"t" ..` and are read as writes.
- * A target READS LIKE A TABLE when it is quoted, interpolated (`${...}`), schema-qualified,
- * snake_case, or the name of a table this schema declares. The last is read from the schema
- * itself (SCHEMA_TABLES, every `pgTable("name"` in lib/db/src/schema/*.ts), because not every
- * table is snake_case: crashes, events, firms, sessions and users have neither an underscore
- * nor a dot, so by spelling alone `delete from firms f where ..` reads like prose. A table
- * added to the schema later is read the same way without an edit here.
+ * A target READS LIKE A TABLE when it is quoted (`"t"`, or Unicode-escaped, `U&"t"`), interpolated
+ * (`${...}`), schema-qualified (a dot with a name right after it or whitespace before it:
+ * `public.t`, `public .t`, `public . t`), snake_case, or, after any qualifier, the name of a table
+ * this schema declares. The last is read from the schema itself (SCHEMA_TABLES, every
+ * `pgTable("name"` in lib/db/src/schema/*.ts), because not every table is snake_case: crashes,
+ * events, firms, sessions and users have neither an underscore nor a dot, so by spelling alone
+ * `delete from firms f where ..` reads like prose. A table added to the schema later is read the
+ * same way without an edit here.
  * Postgres reads a comment as whitespace, so each text is read twice, as written and with its
  * block and line comments blanked (the second alone could hide a write behind a `--` inside a
  * quoted string). The text is every string literal and template (a substitution counts as a
@@ -1102,21 +1104,25 @@ const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.g
  * written; as written, a template's text includes the source of its substitutions, so
  * `${sql.raw("update")} t set` is read.
  * PROSE THAT READS LIKE SQL IS REFUSED; REWORD IT. "update failed", `update failed for run
- * ${id}`, "could not insert into the queue", "refusing to delete from the log" and "could not
- * update the claim" pass, but prose in one of the shapes above is refused with its file and
- * line: `update .. set` with no `;` between ("could not update run: status was not set"),
- * `insert into <word> (` ("failed to insert into findings (run 5)"), `delete from <word>` at
- * the end ("refusing to delete from queue"), `update ${..}` (`could not update ${kind}`, and a
- * plural glued to the verb, `${n} update${n === 1 ? "" : "s"} applied`), a schema table after
- * a verb ("could not update users"), the bare words truncate / merge into, and a SQL comment
- * inside a raw-SQL template that says one of these ("-- update the claim, then set attempts":
- * the as-written read keeps comments).
+ * ${id}`, "could not insert into the queue", "refusing to delete from the log", "could not
+ * update the claim" and "Failed to update project." (the house-style 500: a dot that ends a
+ * sentence has no name after it) pass, but prose in one of the shapes above is refused with its
+ * file and line: `update .. set` with no `;` between ("could not update run: status was not
+ * set"), `insert into <word> (` ("failed to insert into findings (run 5)"), `delete from <word>`
+ * at the end ("refusing to delete from queue"), `update ${..}` (`could not update ${kind}`, and a
+ * plural glued to the verb, `${n} update${n === 1 ? "" : "s"} applied`), a schema table after a
+ * verb ("could not update users"), a dotted word after a verb ("failed to update run.status",
+ * "please update node.js", "update v1.2 is available"), a quoted word ('could not update
+ * "status" on the run'), a snake_case word ("cannot update run_id 5"), the bare words truncate /
+ * merge into, and a SQL comment inside a raw-SQL template that says one of these ("-- update the
+ * claim, then set attempts": the as-written read keeps comments).
  * NOT READ: SQL assembled at run time from anything but literals written in place (join,
  * concat, String.fromCharCode, atob, a `${VERB}` const, a substitution that splits a word even
  * when it is a literal, `upd${"ate"}`); a target that reads like no table (unquoted,
  * unqualified, no underscore, not declared in this schema, so not a table this database has
  * unless one is created outside the schema files) when what follows it is a bare alias
- * (`delete from t f where ..`), `*`, an INSERT's `AS alias` or `TABLE x`, or a substitution,
+ * (`delete from t f where ..`), `*`, an INSERT's `AS alias` or `TABLE x`, or a substitution
+ * (and so `public. t f`, whose dot has whitespace after it only, as a sentence's does),
  * and `COPY <it> FROM E'..'` / `FROM $$..$$` and `SELECT .. INTO <it>` with no FROM; and verbs
  * outside this list (CREATE TABLE .. AS, GRANT / REVOKE, CREATE TRIGGER / RULE, LOCK,
  * VACUUM FULL, REFRESH MATERIALIZED VIEW).
@@ -1146,12 +1152,18 @@ ok(
   "precondition: the raw-SQL scan reads this schema's table names from lib/db/src/schema (pgTable(\"name\")), and the ones with neither an underscore nor a dot include firms and users",
   `read ${SCHEMA_TABLES.length} table name(s); with no underscore: ${JSON.stringify(PROSE_LIKE_TABLES)}`,
 );
-const SQL_TABLE_LIKE = String.raw`(?:"[^"]*"|\$\{\}|[\w$]*[_.][\w$.]*${PROSE_LIKE_TABLES.length ? `|(?:${PROSE_LIKE_TABLES.join("|")})\\b` : ""})`;
+// A quoted name, plain or Unicode-escaped (U&"\0066irms" is firms), and one part of a qualified name.
+const SQL_QUOTED = String.raw`(?:u&)?"[^"]*"`;
+const SQL_NAME = String.raw`(?:${SQL_QUOTED}|[\w$]+)`;
+// Table-like: [a qualifier, with or without whitespace around its dot] then a quoted name, a substitution, a
+// snake_case word or a schema table; or a qualified name whose dot has whitespace before it or a name right after
+// it (`public.x`, `public .x`, `public . x`). A dot with neither, `project.` at the end of a sentence, is prose.
+const SQL_TABLE_LIKE = String.raw`(?:(?:${SQL_NAME}\s*\.\s*)?(?:${SQL_QUOTED}|\$\{\}|[\w$]*_[\w$]*${PROSE_LIKE_TABLES.length ? `|(?:${PROSE_LIKE_TABLES.join("|")})\\b` : ""})|[\w$]+(?:(?:\s+\.\s*|\.)${SQL_NAME})+)`;
 // What separates a verb (or ONLY) from its target: whitespace, or nothing at all before a quoted name or a
 // substitution. Postgres reads `delete from"firms"` as `delete from "firms"`, and drizzle renders a table
 // substitution as a quoted name, so sql`delete from${t}` and sql`update${t} ${set}` reach it as `from"t"`, `update"t"`.
 const SQL_SEP = String.raw`(?:\s+|(?="|\$\{))`;
-const SQL_TARGET = String.raw`(?:only${SQL_SEP})?(?:"[^"]*"|\$\{\}|[^\s(;),]+)`;
+const SQL_TARGET = String.raw`(?:only${SQL_SEP})?(?:${SQL_QUOTED}|\$\{\}|[^\s(;),]+)`;
 const RAW_SQL_SHAPES = [
   String.raw`(?<!\bfor\s+(?:no\s+key\s+)?)\bupdate\b[^;]*?\bset\b`,
   String.raw`(?<!\bfor\s+(?:no\s+key\s+)?)\bupdate${SQL_SEP}(?:only${SQL_SEP})?${SQL_TABLE_LIKE}`,
@@ -1855,6 +1867,20 @@ const REFLECTION_FORMS = [
     "const s = 'delete from only\"users\" f where true';",
     "const s = 'copy\"firms\" from stdin';",
     "const s = 'select 1 as id into\"users\"';",
+    // a Unicode-escaped quoted name (U&"..") and a schema qualifier with whitespace around its dot are names too
+    "const s = 'delete from U&\"study_proofread_dispositions\" d where true';",
+    "const s = 'delete from U&\"\\\\0066irms\" f where true';",
+    "const s = 'insert into U&\"firms\" table x';",
+    "const s = 'insert into u&\"users\" as u (id) values (1)';",
+    "const s = sql`update U&\"firms\" ${patch}`;",
+    "const s = 'copy U&\"firms\" from stdin';",
+    "const s = 'select 1 as id into U&\"users\"';",
+    "const s = 'delete from public . firms f where true';",
+    "const s = 'delete from public .users u where true';",
+    "const s = 'delete from public. users u where true';",
+    "const s = 'delete from public . \"study_proofread_dispositions\" f where true';",
+    "const s = 'insert into public . study_proofread_dispositions as d (id) values (1)';",
+    "const s = sql`delete from public . ${tbl} where true`;",
   ];
   const left = [
     "const s = sql`SELECT id FROM study_proofread_runs WHERE x ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1`;",
@@ -1874,6 +1900,12 @@ const REFLECTION_FORMS = [
     'const s = "no update available";',
     'const s = "could not update run";',
     'const s = "deleted 0 rows from the queue";',
+    // a sentence that ends after the verb's object is not a schema-qualified name: a dot needs a name after it
+    'const s = "Failed to update project.";',
+    'const s = "Failed to update run.";',
+    'const s = "Could not update disposition.";',
+    'const s = "Failed to update project. Please retry.";',
+    'const s = "Could not insert into queue.";',
     "const s = sql`select id from study_proofread_runs where id = ${id} for update ${skip}`;",
   ];
   // prose in a SQL shape is refused, and the comment at rawSqlWrites says to reword it
@@ -1883,6 +1915,10 @@ const REFLECTION_FORMS = [
     'const s = "refusing to delete from queue";',
     "const s = `could not update ${kind}`;",
     'const s = `${n} update${n === 1 ? "" : "s"} applied`;',
+    'const s = "failed to update run.status";',
+    'const s = "please update node.js";',
+    "const s = 'could not update \"status\" on the run';",
+    'const s = "cannot update run_id 5";',
     'const s = "could not update users";',
     "const s = sql`select 1 -- update the claim, then set attempts\n`;",
   ];
@@ -1890,7 +1926,7 @@ const REFLECTION_FORMS = [
   const flagged = left.filter((t) => n(t) !== 0);
   ok(
     missed.length === 0 && flagged.length === 0,
-    "the raw-SQL scan refuses UPDATE .. SET, UPDATE of a table-like target (a SET in a substitution included), INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT DO UPDATE, MERGE INTO, DROP TABLE / SCHEMA / OWNED, ALTER TABLE, COPY .. FROM and SELECT .. INTO in any letter case, with comments between the words, with no whitespace between a verb and a quoted or substituted target (`delete from${t}`, `insert into\"t\"(`), in a string, a template with a substitution, a + chain or an escaped spelling, on a snake_case table and on a schema table with no underscore (firms, users), and the prose its comment says to reword; and leaves FOR UPDATE / FOR NO KEY UPDATE row locks, reads, a bare word, and prose that names a verb outside those shapes (\"update failed\", \"could not insert into the queue\") alone",
+    "the raw-SQL scan refuses UPDATE .. SET, UPDATE of a table-like target (a SET in a substitution included), INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT DO UPDATE, MERGE INTO, DROP TABLE / SCHEMA / OWNED, ALTER TABLE, COPY .. FROM and SELECT .. INTO in any letter case, with comments between the words, with no whitespace between a verb and a quoted or substituted target (`delete from${t}`, `insert into\"t\"(`), in a string, a template with a substitution, a + chain or an escaped spelling, on a snake_case table, on a schema table with no underscore (firms, users), on a Unicode-escaped quoted name (U&\"t\") and behind a qualifier with whitespace around its dot (`public . firms`), and the prose its comment says to reword; and leaves FOR UPDATE / FOR NO KEY UPDATE row locks, reads, a bare word, prose that names a verb outside those shapes (\"update failed\", \"could not insert into the queue\") and a sentence that ends after the verb's object (\"Failed to update project.\") alone",
     [...missed.map((t) => `missed: ${t}`), ...flagged.map((t) => `flagged: ${t}`)],
   );
   // The schema precondition has teeth: the reader goes empty on a directory that is not there,
@@ -3125,6 +3161,11 @@ LEGIT.push(
     "function count(dispositions: Record<string, number>): number { let n = 0; for (const k in dispositions) n += dispositions[k]!; return n; }",
     "function second(prior: number[], i: number) { return prior[i]; }",
   ].map((fn) => ({ label: `a module-level helper whose parameter shares a name with a query result elsewhere: ${fn.slice(9, fn.indexOf("("))}`, file: "store", apply: edit("store", "export async function insertQueuedRun(args: {", `${fn}\n\nexport async function insertQueuedRun(args: {`) })),
+  // a sentence that ends after the verb's object is not a schema-qualified name ("Failed to update project." is
+  // the house-style 500, routes/projects.ts)
+  { label: "routes: the house-style 500 message, \"Failed to update project.\"", file: "routes", apply: edit("routes", "const router: IRouter = Router();", 'const router: IRouter = Router();\nconst e500 = { error: "Failed to update project." }; void e500;') },
+  { label: "store: a warning that says \"Failed to update run.\"", file: "store", apply: edit("store", "  if (args.findings.length === 0) return;", '  logger.warn("Failed to update run.");\n  if (args.findings.length === 0) return;') },
+  { label: "runner: a message that says \"Could not update disposition.\"", file: "runner", apply: edit("runner", "    const rec: StudyRecord", '    const m5 = "Could not update disposition."; void m5;\n    const rec: StudyRecord') },
   { label: "runner: a local array called tx, indexed", file: "runner", apply: edit("runner", "    const rec: StudyRecord", "    const tx = ['a']; const i = 0; void tx[i];\n    const rec: StudyRecord") },
   { label: "routes: a local array called tx, indexed", file: "routes", apply: edit("routes", "const router: IRouter = Router();", "const router: IRouter = Router();\nconst tx = ['a']; const i = 0; void tx[i];") },
 );
@@ -4452,6 +4493,12 @@ const MUTATIONS = [
     ["a delete from a quoted firms with no space after FROM, inside the loader", "await db.execute(sql.raw('delete from\"firms\" where true'));", "loader"],
     ["a delete from ONLY a quoted users with no space after ONLY", "await db.execute(sql.raw('delete from only\"users\" f where true'));"],
     ["an insert into a quoted firms with no space either side", "await db.execute(sql.raw('insert into\"firms\"(id) values (1)'));"],
+    // a Unicode-escaped quoted name, and a schema qualifier with whitespace around its dot
+    ["a delete from the log by its Unicode-escaped quoted name", "await db.execute(sql.raw('delete from U&\"study_proofread_dispositions\" d where true'));"],
+    ["a delete from firms spelled with Unicode escapes, inside the loader", "await db.execute(sql.raw('delete from U&\"\\\\0066irms\" f where true'));", "loader"],
+    ["an insert into a Unicode-escaped firms from a table", "await db.execute(sql.raw('insert into U&\"firms\" table x'));"],
+    ["a delete from firms qualified with spaces around the dot", "await db.execute(sql.raw(\"delete from public . firms f where true\"));"],
+    ["an insert into users qualified with a space before the dot, with an alias", "await db.execute(sql.raw(\"insert into public .users as u (id) values (1)\"));"],
   ].map(([what, code, place]) => ({
     label: `store: raw SQL, ${what}`,
     file: "store",
@@ -4478,6 +4525,18 @@ const MUTATIONS = [
     file: "runner",
     flips: ["runner-has-no-db-writes"],
     apply: edit("runner", "    const rec: StudyRecord", "    const q = 'delete from\"users\" where true';\n    const rec: StudyRecord"),
+  },
+  {
+    label: "runner: a raw SQL delete from users qualified with spaces around the dot",
+    file: "runner",
+    flips: ["runner-has-no-db-writes"],
+    apply: edit("runner", "    const rec: StudyRecord", '    const q = "delete from public . users u where true";\n    const rec: StudyRecord'),
+  },
+  {
+    label: "routes: a raw SQL delete from a Unicode-escaped quoted firms",
+    file: "routes",
+    flips: ["routes-do-not-touch-study"],
+    apply: edit("routes", "const router: IRouter = Router();", "const router: IRouter = Router();\nconst q9 = 'delete from U&\"firms\" f where true';"),
   },
   {
     label: "routes: a raw SQL update whose substituted table follows UPDATE with no space",
