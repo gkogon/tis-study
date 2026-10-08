@@ -7,7 +7,9 @@
  * source refs that moved into lib/tis-engine-core, and the signal-timing
  * disclosure — in the protocol, in .claude/agents/datum.md and in
  * .claude/skills/datum/SKILL.md, which the dev agent and the skill that
- * dispatches it each restate. Standalone node script (no test runner).
+ * dispatches it each restate, and in .claude/agents/redline.md, which tells
+ * the building agent who Datum's findings reach. Standalone node script (no
+ * test runner).
  *
  * Section 10 holds its checks in a table with ids and carries its own teeth:
  * each mutation edits one file's text in memory and must turn exactly the
@@ -35,6 +37,7 @@ const repo = path.resolve(here, "../../..");
 const protocol = readFileSync(path.join(repo, "TIS-PROOFREAD-PROTOCOL.md"), "utf8");
 const agent = readFileSync(path.join(repo, ".claude/agents/datum.md"), "utf8");
 const skill = readFileSync(path.join(repo, ".claude/skills/datum/SKILL.md"), "utf8");
+const redline = readFileSync(path.join(repo, ".claude/agents/redline.md"), "utf8");
 
 /** Collapse whitespace, so an 80-column wrap cannot hide a phrase. */
 const flat = (s) => s.replace(/\s+/g, " ").trim();
@@ -248,6 +251,28 @@ const DEFECT_CLEARING = "until the software team resolves it: a fix to a rule cl
  */
 const OLD_DEFECT_RULE = /\bre-?runs?\b[^.;:]*\bno longer\b|\buntil\s+(?:a|the|another|its)\s+(?:next\s+)?re-?run\b|\bclears?\s+(?:only\s+)?(?:when|once|after|on)\s+(?:a|the|another)\s+re-?run\b/i;
 const noOldDefectRule = (text) => !OLD_DEFECT_RULE.test(flat(text));
+/**
+ * A claim that findings stay with admin or never reach the engineer or the customer — the rule
+ * amendment 1 replaced. Its spellings: "admin-only", "not user-facing" (or customer- / engineer- /
+ * client-facing), "stays / remains / is internal", "admin-side", "never shown / sent / seen /
+ * visible / reach / go / leave ... engineer(s) / customer(s) / user(s) / client(s)" within one
+ * sentence, and "not shown / sent / visible / given to the engineer / customer". Read on the
+ * flattened text. `allowed` names exact phrases a file may keep (where the log lives, the
+ * protocol naming the rule it replaced); each is cut out before the test.
+ */
+const INTERNAL_ONLY = [
+  /\badmin[\s-]*only\b/i,
+  /\bnot\s+(?:user|customer|engineer|client)[\s-]*facing\b/i,
+  /\b(?:stays?|remains?|kept|keeps?|is|are)\s+internal\b/i,
+  /\badmin[\s-]*side\b/i,
+  /\bnever\b[^.]*\b(?:shown|show|sent|seen|visible|reach|reaches|go|goes|leaves?)\b[^.]*\b(?:engineers?|customers?|users?|clients?)\b/i,
+  /\bnot\s+(?:be\s+)?(?:shown|sent|visible|given)\s+to\s+(?:the\s+)?(?:engineers?|customers?|users?|clients?)\b/i,
+];
+const noInternalOnlyClaim = (text, allowed = []) => {
+  let f = flat(text);
+  for (const a of allowed) f = f.split(a).join(" ");
+  return INTERNAL_ONLY.every((re) => !re.test(f));
+};
 
 const CHECKS = [
   {
@@ -409,6 +434,21 @@ const CHECKS = [
     test: (t) => noOldDefectRule(t.skill),
   },
   {
+    id: "redline-audiences",
+    on: "redline",
+    msg: "redline.md: Datum's findings are set by the protocol's §Audience — the engineer who ran the study sees every BLOCKER, DISCLOSE, NOTE and UNVERIFIED, the sealing PE also every CONTESTED, admin alone DEFECT — and it says nowhere that Datum is admin-only, not user-facing, internal or admin-side, or that findings never reach (are never shown to) the engineer or customer",
+    test: (t) => {
+      const f = flat(t.redline);
+      return (
+        /\bWho reads its findings is set by the protocol's §Audience\b/.test(f) &&
+        /\bthe engineer who ran the study sees every `BLOCKER`, `DISCLOSE`, `NOTE` and `UNVERIFIED`/.test(f) &&
+        /\bthe sealing PE also sees every `CONTESTED` item\b/.test(f) &&
+        /\badmin alone sees `DEFECT`/.test(f) &&
+        noInternalOnlyClaim(t.redline)
+      );
+    },
+  },
+  {
     id: "skill-banned-copy",
     on: "skill",
     msg: `SKILL.md: "independent review", "second opinion", "peer review" and "QA/QC" appear only in the paragraph that states the ban (opening "**Do not oversell it.**"), which is still there`,
@@ -422,7 +462,7 @@ const CHECKS = [
   },
 ];
 
-const TEXTS = { protocol, agent, skill };
+const TEXTS = { protocol, agent, skill, redline };
 const ids = CHECKS.map((c) => c.id);
 ok(new Set(ids).size === ids.length, "precondition: every section-10 check id is unique");
 ok(/`DEFECT`/.test(GATE_SENTENCE) && /`BLOCKER`/.test(GATE_SENTENCE) && /`CONTESTED`/.test(GATE_SENTENCE), "precondition: the gate sentence names BLOCKER, DEFECT and CONTESTED");
@@ -486,6 +526,13 @@ const MUTATIONS = [
   { label: "SKILL.md: the old rule restated beside the relay line", file: "skill", flips: ["skill-old-defect-rule-gone"], apply: edit("skill", "Relay findings verbatim to the operator.", "A `DEFECT` clears when a re-run stops raising it, and not until a re-run.\nRelay findings verbatim to the operator.") },
   { label: "SKILL.md: Datum is admin-side again", file: "skill", flips: ["skill-audiences"], apply: edit("skill", "**Who sees a finding** is set by the protocol's §Audience.", "**Datum is admin-side.** Findings never go to the customer. **Who sees a finding** is set by the protocol's §Audience.") },
   { label: "SKILL.md: drop the sealing PE", file: "skill", flips: ["skill-audiences"], apply: edit("skill", " The sealing PE also sees every `CONTESTED` item, with both\npositions and both sources, and is the only one who may rule on it.", "") },
+  // redline.md
+  { label: "redline.md: back to admin-only, not user-facing", file: "redline", flips: ["redline-audiences"], apply: edit("redline", /\*\*Datum\*\* is the proofreader\.[\s\S]*?alone sees `DEFECT`\./, "**Datum** is the proofreader — admin-only, not user-facing. `TIS-PROOFREAD-\nPROTOCOL.md` at the repo root is the protocol; read it before handing work over.") },
+  { label: "redline.md: findings stay internal", file: "redline", flips: ["redline-audiences"], apply: edit("redline", "When you hand work to Datum:", "Datum's findings stay internal.\n\nWhen you hand work to Datum:") },
+  { label: "redline.md: findings never shown to the engineer, wrapped", file: "redline", flips: ["redline-audiences"], apply: edit("redline", "When you hand work to Datum:", "Its findings are never\nshown to the engineer.\n\nWhen you hand work to Datum:") },
+  { label: "redline.md: Datum is admin-side", file: "redline", flips: ["redline-audiences"], apply: edit("redline", "When you hand work to Datum:", "Datum is an admin side pass.\n\nWhen you hand work to Datum:") },
+  { label: "redline.md: the engineer no longer named", file: "redline", flips: ["redline-audiences"], apply: edit("redline", "the engineer who ran the study sees every", "the firm sees every") },
+  { label: "redline.md: no pointer to §Audience", file: "redline", flips: ["redline-audiences"], apply: edit("redline", "Who reads its findings is set by\nthe protocol's §Audience:", "Its findings go to") },
   { label: "SKILL.md: banned phrase outside the ban paragraph", file: "skill", flips: ["skill-banned-copy"], apply: edit("skill", "Relay findings verbatim to the operator.", "Relay findings verbatim to the operator as a second opinion.") },
   { label: "SKILL.md: the ban paragraph removed", file: "skill", flips: ["skill-banned-copy"], apply: edit("skill", /\*\*Do not oversell it\.\*\*[\s\S]*?independent QA\.\n/, "") },
 ];
