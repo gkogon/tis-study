@@ -470,8 +470,14 @@ const disagreement6 = (text) => disagreementItem(text, 6);
 const RESOLVED_NAME = /\bRESOLVED\b/;
 /** The protocol's Output format block: the first fenced text after "## Output format" (the last section, so section() cannot slice it). */
 const outputBlock = (text) => (text.split(/^## Output format$/m)[1] ?? "").match(/```\n([\s\S]*?)\n```/)?.[1] ?? "";
-/** Its headings: a line that is one or more uppercase words and nothing else, at the left margin. */
-const outputHeadings = (block) => block.split("\n").filter((l) => /^[A-Z][A-Z ]*[A-Z]$/.test(l));
+/**
+ * Its headings: every non-blank line at the left margin after the block's title line ("DATUM
+ * FINDINGS — ..."), except the one dispositions line. Read by position, not by shape, so a
+ * "RESOLVED:" or "WITHDRAWN —" heading is a heading too.
+ */
+const DISPOSITIONS_LINE = /^Dispositions recorded this pass\b.*:$/;
+const outputMargin = (block) => block.split("\n").filter((l) => l.trim() !== "" && !/^\s/.test(l));
+const outputHeadings = (block) => outputMargin(block).slice(1).filter((l) => !DISPOSITIONS_LINE.test(l));
 
 const CHECKS = [
   {
@@ -584,13 +590,18 @@ const CHECKS = [
   {
     id: "output-format-six-headings",
     on: "protocol",
-    msg: `§Output format's block has exactly six headings, the six types in the protocol's order (${SIX.join(", ")}) — no seventh, no disposition as a heading — and lists \`WITHDRAWN\` only as an indented disposition line under "Dispositions recorded this pass"`,
+    msg: `§Output format's block: after its "DATUM FINDINGS — " title, the lines at the left margin are exactly the six types in the protocol's order (${SIX.join(", ")}) and one last line "Dispositions recorded this pass ...:" — no seventh heading in any punctuation, no disposition as a heading — and \`WITHDRAWN\` appears only indented, under that line`,
     test: (t) => {
       const block = outputBlock(t.protocol);
+      const margin = outputMargin(block);
+      const [before, after = ""] = block.split(/^Dispositions recorded this pass\b.*:$/m);
       return (
+        (margin[0] ?? "").startsWith("DATUM FINDINGS — ") &&
         outputHeadings(block).join(",") === SIX.join(",") &&
-        /^Dispositions recorded this pass\b.*:$/m.test(block) &&
-        /^ +WITHDRAWN\b/m.test(block.split(/^Dispositions recorded this pass\b.*:$/m)[1] ?? "")
+        margin.filter((l) => DISPOSITIONS_LINE.test(l)).length === 1 &&
+        DISPOSITIONS_LINE.test(margin.at(-1) ?? "") &&
+        !/\bWITHDRAWN\b/.test(before) &&
+        /^ +WITHDRAWN\b/m.test(after)
       );
     },
   },
@@ -934,6 +945,8 @@ const MUTATIONS = [
   { label: "§Logging: RESOLVED named as a second name for WITHDRAWN", file: "protocol", flips: ["protocol-withdrawn-is-the-one-name"], apply: edit("protocol", "- `WITHDRAWN` — Datum withdrew on a source Redline produced;", "- `WITHDRAWN` (or `RESOLVED`) — Datum withdrew on a source Redline produced;") },
   { label: "Output format: back to a RESOLVED heading", file: "protocol", flips: ["output-format-six-headings", "protocol-withdrawn-is-the-one-name"], apply: edit("protocol", /Dispositions recorded this pass [^\n]*:\n  WITHDRAWN  /, "RESOLVED\n  ") },
   { label: "Output format: WITHDRAWN as a seventh heading", file: "protocol", flips: ["output-format-six-headings"], apply: edit("protocol", /Dispositions recorded this pass [^\n]*:\n  WITHDRAWN  /, "WITHDRAWN\n  ") },
+  { label: "Output format: a WITHDRAWN: heading with a colon", file: "protocol", flips: ["output-format-six-headings"], apply: edit("protocol", "CONTESTED\n  [§n] <finding>\n", "WITHDRAWN:\n  [§n] <finding> — on <source>\n\nCONTESTED\n  [§n] <finding>\n") },
+  { label: "Output format: WITHDRAWN listed under CONTESTED", file: "protocol", flips: ["output-format-six-headings"], apply: edit("protocol", "      → PE ruling required.\n", "      → PE ruling required.\n  WITHDRAWN  [§n] <finding>\n") },
   { label: "Output format: NOTE and DISCLOSE headings swapped", file: "protocol", flips: ["output-format-six-headings"], apply: edit("protocol", "DISCLOSE\n  [§n] <finding> — <exact language to add>\n\nNOTE\n  [§n] <finding>\n", "NOTE\n  [§n] <finding>\n\nDISCLOSE\n  [§n] <finding> — <exact language to add>\n") },
   { label: "datum.md: back to logging it RESOLVED", file: "agent", flips: ["agent-withdrawn-is-the-one-name"], apply: edit("agent", "log it `WITHDRAWN`.", "log it `RESOLVED`.") },
   { label: "datum.md: RESOLVED in the Output section", file: "agent", flips: ["agent-withdrawn-is-the-one-name"], apply: edit("agent", "If a section produced nothing, say so in one line.", "If a section produced nothing, say so in one line. List withdrawn items under RESOLVED.") },
