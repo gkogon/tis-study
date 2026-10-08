@@ -57,6 +57,7 @@ Redline.
      defect, and every study the engine has ever produced carries it. Neither
      the engineer nor the PE disposes of it.
    - `DISCLOSE` — the analysis is fine but the deliverable must say so out loud.
+     A record to carry, not a hold.
    - `NOTE` — worth the PE's attention, not a hold.
    - `UNVERIFIED` — the input is there but its source could not be reached
      (rules 3 and 4). A record to carry, not a hold.
