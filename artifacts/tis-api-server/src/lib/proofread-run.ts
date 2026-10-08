@@ -23,6 +23,7 @@ import {
   insertQueuedRun,
   loadStudyForRun,
   previousRunForProject,
+  runHoldsFindings,
 } from "./proofread-store";
 
 /**
@@ -89,6 +90,7 @@ export function buildInputManifest(rec: StudyRecord): Record<string, boolean> {
 /**
  * Queue a run, then opportunistically drain one — there is no scheduler in this service. An insert error
  * propagates (see the header); once the run is queued, nothing the store throws during the drain makes this reject.
+ * The versions recorded here are this deploy's; the run is stamped again by whichever deploy runs its clauses.
  */
 export async function enqueueProofread(args: { projectId: string; firmId: string; userId: string }): Promise<void> {
   const run = await insertQueuedRun({
@@ -139,6 +141,17 @@ export async function claimAndRunOne(): Promise<boolean> {
     return true;
   }
   try {
+    // A re-claimed run whose earlier attempt wrote its findings under OTHER
+    // rules (it failed after its clause pass, and the deploy that claimed it
+    // again changed RULES_VERSION) cannot be finished here: this pass would
+    // add new-rule findings beside the old ones in one run, and the store never
+    // deletes. The run fails, saying why, and the next "Run again" starts a
+    // clean revision. Its rules_version is the one its first pass stamped.
+    if (run.rulesVersion !== RULES_VERSION && (await runHoldsFindings(run.id))) {
+      await completeRun({ runId: run.id, status: "failed", findings: [], error: "rules_changed_mid_run" });
+      logger.warn({ runId: run.id, rulesVersion: run.rulesVersion, now: RULES_VERSION }, "proofread.rules_changed_mid_run");
+      return true;
+    }
     const study = await loadStudyForRun(run);
     if (!study) {
       await completeRun({ runId: run.id, status: "failed", coverage: [], inputManifest: {}, findings: [], error: "study row not found" });
@@ -153,24 +166,32 @@ export async function claimAndRunOne(): Promise<boolean> {
     // re-run claimed in that window would take THIS revision as its source,
     // find no dispositions on it, and lose the previous revision's WITHDRAWN
     // for good — an append-only log cannot be corrected.
+    //
+    // The same write stamps the run with the code that ran the clauses: this
+    // RULES_VERSION, this deploy's engine stamp, this protocol version. The
+    // values recorded at queue time name the deploy that queued the run, which
+    // is not always the one that claims it.
     await completeRun({
       runId: run.id,
       status: "running",
       coverage,
       inputManifest: buildInputManifest(rec),
       findings,
+      stamp: { rulesVersion: RULES_VERSION, engineStamp: engineStamp(), protocolVersion: PROTOCOL_VERSION },
     });
     // A re-run must not reopen a WITHDRAWN item or lose an ACCEPTED RISK with
     // its named person. Dispositions carry forward by fingerprint, and only
-    // when both runs ran under the same RULES_VERSION. Not the engine stamp:
-    // it ends in the deploy's commit, and a study row never changes, so
-    // gating on it reopened every decision on the first "Run again" after any
-    // deploy. The fingerprint already holds the exact values a finding read,
-    // so an unchanged finding over an unchanged study is the same finding;
-    // a RULES_VERSION bump means what a clause judges changed, and reopens
-    // every decision on purpose.
+    // when the previous run's clauses ran under the RULES_VERSION this pass ran
+    // under — its rules_version as stamped when it ran, compared with this
+    // process's constant, not the row's queue-time value. Not the engine
+    // stamp: it ends in the deploy's commit, and a study row never changes,
+    // so gating on it reopened every decision on the first "Run again" after
+    // any deploy. The fingerprint already holds the exact values a finding
+    // read, so an unchanged finding over an unchanged study is the same
+    // finding; a RULES_VERSION bump means what a clause judges changed, and
+    // reopens every decision on purpose.
     const prev = await previousRunForProject(run.projectId, run.revision);
-    if (prev) await carryForwardDispositions(run.id, prev.id, prev.rulesVersion === run.rulesVersion);
+    if (prev) await carryForwardDispositions(run.id, prev.id, prev.rulesVersion === RULES_VERSION);
     await completeRun({ runId: run.id, status: "rules_ready", findings: [] });
     // A DEFECT is a software fault: the engineer never sees one (GET counts it
     // as withheld) and nobody in the app can rule on it, so this line is how

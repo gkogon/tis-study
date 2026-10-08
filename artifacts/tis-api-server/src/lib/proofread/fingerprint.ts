@@ -9,7 +9,9 @@
  *
  * The engine stamp is attribution: it records which deploy RAN the check — the
  * rule-relevant engine constants, plus the deploy's commit when the platform
- * provides one — computed when the run is queued. It does not say which engine
+ * provides one — stamped on the run, with RULES_VERSION and the protocol
+ * version, when its clauses run (not when it is queued: the deploy that queues
+ * a run is not always the one that runs it). It does not say which engine
  * produced the study: a re-run of an old study is stamped with today's deploy.
  * Nothing in the payload records the producing engine (the only version-ish
  * field is generatedAt), which is why the same Wake request produced v/c
@@ -60,8 +62,9 @@ export function engineStamp(): string {
 }
 
 /**
- * Which rule set produced a finding. Recorded on every run; bump it whenever the clause set or what a clause
- * judges changes materially, so a stored finding can be told apart from one the current rules would produce.
+ * Which rule set produced a finding. Stamped on every run when its clauses run; bump it whenever the clause set or
+ * what a clause judges changes materially, so a stored finding can be told apart from one the current rules would
+ * produce.
  * "2": the twelve-clause set (§1, §2, §4, §5, §6); "1" was the three v/c clauses alone.
  */
 export const RULES_VERSION = "2";

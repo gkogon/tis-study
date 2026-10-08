@@ -20,6 +20,12 @@ import { CLAIM_PREDICATE_SQL } from "./proofread/lifecycle.ts";
 import type { ProofreadFinding } from "./proofread/index.ts";
 import { findingFingerprint } from "./proofread/index.ts";
 
+/**
+ * Queue a run. The protocol version, rules version and engine stamp written
+ * here are what the queuing deploy knew; completeRun overwrites all three when
+ * the run's clauses run (its `stamp`), because the deploy that queued a run is
+ * not always the one that runs it.
+ */
 export async function insertQueuedRun(args: {
   projectId: string;
   firmId: string;
@@ -121,6 +127,13 @@ export async function loadStudyForRun(run: StudyProofreadRun) {
  * `previous`, finds no dispositions on it yet, and loses the previous
  * revision's WITHDRAWN permanently — on an append-only log there is no
  * recovering it. The runner flips the status in a second call, after the carry.
+ *
+ * `stamp` is the rules version, engine stamp and protocol version of the code
+ * that RAN the clause pass, written by that same first call. A run is queued by
+ * one deploy and may be claimed by another — a re-run queued just before a
+ * deploy, or a lease-expired row re-claimed after one — and the values recorded
+ * at queue time would then name rules that never judged it. The carry gate reads
+ * this rules_version, so it must be the one the findings were produced under.
  */
 export async function completeRun(args: {
   runId: string;
@@ -129,11 +142,20 @@ export async function completeRun(args: {
   inputManifest?: unknown;
   findings: ProofreadFinding[];
   error?: string;
+  stamp?: { rulesVersion: string; engineStamp: string; protocolVersion: string };
 }): Promise<void> {
   await db
     .update(studyProofreadRunsTable)
     .set({
       status: args.status,
+      // Only the clause pass's write carries a stamp; every other write leaves it as it is.
+      ...(args.stamp === undefined
+        ? {}
+        : {
+            rulesVersion: args.stamp.rulesVersion,
+            engineStamp: args.stamp.engineStamp,
+            protocolVersion: args.stamp.protocolVersion,
+          }),
       // Omitted on a requeue: the previous attempt's coverage is better than {}.
       ...(args.coverage === undefined ? {} : { coverage: args.coverage as object }),
       ...(args.inputManifest === undefined ? {} : { inputManifest: args.inputManifest as object }),
@@ -165,6 +187,21 @@ export async function completeRun(args: {
     .onConflictDoNothing({
       target: [studyProofreadFindingsTable.runId, studyProofreadFindingsTable.fingerprint],
     });
+}
+
+/**
+ * Whether a run already holds findings: an earlier attempt at it wrote its
+ * clause pass, then failed before it finished. The runner asks before it runs
+ * the clauses again, because findings are never deleted, and a pass under other
+ * rules would sit beside them in one run.
+ */
+export async function runHoldsFindings(runId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: studyProofreadFindingsTable.id })
+    .from(studyProofreadFindingsTable)
+    .where(eq(studyProofreadFindingsTable.runId, runId))
+    .limit(1);
+  return row !== undefined;
 }
 
 export async function latestRunForProject(firmId: string, projectId: string) {
@@ -220,7 +257,11 @@ export async function latestRunStatusForProject(
   return row ?? null;
 }
 
-/** The run before `revision` on this project, with the rules version it ran under — the source of a carry-forward. */
+/**
+ * The run before `revision` on this project, with the rules version it ran
+ * under (stamped when its clauses ran — see completeRun) — the source of a
+ * carry-forward.
+ */
 export async function previousRunForProject(
   projectId: string,
   beforeRevision: number,
@@ -244,7 +285,7 @@ export async function previousRunForProject(
   return row ?? null;
 }
 
-/** Carry dispositions forward to a new run by fingerprint, when both runs ran under the same rules version. */
+/** Carry dispositions forward to a new run by fingerprint, when the previous run ran under the rules this one runs under. */
 export async function carryForwardDispositions(
   newRunId: string,
   previousRunId: string,

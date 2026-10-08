@@ -178,6 +178,24 @@ function setBlock(src) {
   return "";
 }
 
+/** The text of the first `.values({ ... })` object literal in `src`, braces matched. */
+function valuesBlock(src) {
+  const at = src.indexOf(".values({");
+  if (at < 0) return "";
+  let depth = 0;
+  for (let i = at + 8; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}") {
+      depth--;
+      if (depth === 0) return src.slice(at + 8, i + 1);
+    }
+  }
+  return "";
+}
+
+/** The three version columns a run row records: by the queuing deploy, then again by the deploy that runs it. */
+const VERSION_COLS = ["protocolVersion", "rulesVersion", "engineStamp"];
+
 /**
  * The `catch (...) { ... }` block of `src` that contains `needle`, braces
  * matched. claimAndRunOne has two catches — the claim's and the pass's — and a
@@ -310,8 +328,12 @@ function callsOf(src, name) {
   return out;
 }
 
-/** The carry gate, in either operand order: equal rules versions, nothing else. */
-const SAME_RULES = new Set(["prev.rulesVersion === run.rulesVersion", "run.rulesVersion === prev.rulesVersion"]);
+/**
+ * The carry gate, in either operand order: the previous run's rules version (stamped when ITS clauses
+ * ran) equals the RULES_VERSION of the code running this pass — not the claimed row's rules_version,
+ * which holds the queuing deploy's value until this pass stamps it.
+ */
+const SAME_RULES = new Set(["prev.rulesVersion === RULES_VERSION", "RULES_VERSION === prev.rulesVersion"]);
 
 const count = (s, needle) => s.split(needle).length - 1;
 const UNIT_MS = { millisecond: 1, second: 1000, minute: 60_000, hour: 3_600_000 };
@@ -448,6 +470,34 @@ const CHECKS = [
     on: "store",
     msg: "the revision is derived inside the INSERT, so two quick re-runs cannot both read the same max and both write revision N",
     test: (s) => /revision: sql`\(SELECT coalesce\(max\(revision\), 0\) \+ 1 FROM study_proofread_runs WHERE project_id = \$\{/.test(body(s.store, "insertQueuedRun")),
+  },
+  {
+    id: "queued-run-records-what-it-was-given",
+    on: "store",
+    msg: "insertQueuedRun writes each version column from its OWN argument, once (`protocolVersion: args.protocolVersion`, `rulesVersion: args.rulesVersion`, `engineStamp: args.engineStamp`): all three are varchar, so `rulesVersion: args.engineStamp` type-checks and records every run's deploy-suffixed stamp as its rules version. These are the queuing deploy's values, and completeRun's stamp replaces them when the clauses run",
+    test: (s) => {
+      const v = norm(valuesBlock(body(s.store, "insertQueuedRun")));
+      return v.length > 0 && VERSION_COLS.every((c) => count(v, `${c}:`) === 1 && v.includes(`${c}: args.${c},`));
+    },
+  },
+  {
+    id: "run-stamp-written-as-given",
+    on: "store",
+    msg: "completeRun writes the run-time stamp it is handed, each column from its own field, and only when one is handed (`...(args.stamp === undefined ? {} : { rulesVersion: args.stamp.rulesVersion, engineStamp: args.stamp.engineStamp, protocolVersion: args.stamp.protocolVersion })`): that rules_version is the one the next run's carry gate compares, so `rulesVersion: args.stamp.engineStamp` (varchar either way; tsc is silent) would reopen every decision after every deploy",
+    test: (s) => {
+      const set = norm(setBlock(body(s.store, "completeRun")));
+      return (
+        /\.\.\.\(args\.stamp === undefined \? \{\} : \{ rulesVersion: args\.stamp\.rulesVersion, engineStamp: args\.stamp\.engineStamp, protocolVersion: args\.stamp\.protocolVersion,? \}\),/.test(set) &&
+        VERSION_COLS.every((c) => count(set, `${c}:`) === 1)
+      );
+    },
+  },
+  {
+    id: "run-holds-findings-reads-this-run",
+    on: "store",
+    msg: "runHoldsFindings answers whether THIS run holds a finding (findings.run_id = runId, one row is enough), true exactly when a row came back — keyed on another column it answers about another run, and the runner then fails a run that holds nothing, or runs new rules over a run that holds old-rule findings",
+    test: (s) =>
+      /\.from\(studyProofreadFindingsTable\) \.where\(eq\(studyProofreadFindingsTable\.runId, runId\)\) \.limit\(1\); return row !== undefined; \}$/.test(norm(body(s.store, "runHoldsFindings"))),
   },
   {
     id: "complete-keeps-prior-coverage",
@@ -718,7 +768,7 @@ const CHECKS = [
   {
     id: "carry-gate-is-the-rules-version",
     on: "runner",
-    msg: "the carry's third argument is `prev.rulesVersion === run.rulesVersion` (either operand order): decisions carry across a deploy and stop at a RULES_VERSION bump. Gated on engineStamp, which ends in the deploy's commit, every \"Run again\" after any deploy reopened every WITHDRAWN, DISCLOSED and FIXED — the study row never changes, so nothing else could have moved",
+    msg: "the carry's third argument is `prev.rulesVersion === RULES_VERSION` (either operand order): the rules the previous run's clauses ran under against the rules this pass runs under, so decisions carry across a deploy and stop at a RULES_VERSION bump. Not `run.rulesVersion`: the claimed row holds the QUEUING deploy's value, and a run queued before a bump and claimed after it carried every decision across the bump. Not engineStamp, which ends in the deploy's commit: every \"Run again\" after any deploy reopened every WITHDRAWN, DISCLOSED and FIXED — the study row never changes, so nothing else could have moved",
     test: (s) => {
       const calls = callsOf(body(s.runner, "claimAndRunOne"), "carryForwardDispositions");
       return calls.length === 1 && calls[0].args.length === 3 && SAME_RULES.has(calls[0].args[2]);
@@ -729,9 +779,23 @@ const CHECKS = [
     on: "runner",
     msg: "the FIRST completeRun call — the only place a pass's findings are ever written, since the flip is pinned to findings: [] — carries the pass's coverage, its input manifest and its findings; without them a run reaches rules_ready having recorded nothing",
     test: (s) =>
-      /await completeRun\(\{ runId: run\.id, status: "running", coverage, inputManifest: buildInputManifest\(rec\), findings, \}\);/.test(
+      /await completeRun\(\{ runId: run\.id, status: "running", coverage, inputManifest: buildInputManifest\(rec\), findings, (?:stamp: \{[^}]*\}, )?\}\);/.test(
         norm(body(s.runner, "claimAndRunOne")),
       ),
+  },
+  {
+    id: "pass-stamps-the-code-that-ran-it",
+    on: "runner",
+    msg: "the clause pass's write (the one completeRun with status \"running\") stamps the run with the code that RAN it — `stamp: { rulesVersion: RULES_VERSION, engineStamp: engineStamp(), protocolVersion: PROTOCOL_VERSION }` — and no other write in claimAndRunOne carries a stamp: a run queued before a deploy that bumps RULES_VERSION and claimed after it otherwise records the old rules beside new-rule findings, and the next run's carry gate reads that value",
+    test: (s) => {
+      const b = norm(body(s.runner, "claimAndRunOne"));
+      const pass = callsOf(b, "completeRun").filter((c) => (c.args[0] ?? "").includes('status: "running"'));
+      return (
+        pass.length === 1 &&
+        /stamp: \{ rulesVersion: RULES_VERSION, engineStamp: engineStamp\(\), protocolVersion: PROTOCOL_VERSION,? \}, \}$/.test(pass[0].args[0]) &&
+        count(b, "stamp:") === 1
+      );
+    },
   },
   {
     id: "enqueue-no-row-returns-without-draining",
@@ -881,6 +945,66 @@ const MUTATIONS = [
     file: "store",
     flips: ["revision-derived-in-sql"],
     apply: edit("store", /revision: sql`\(SELECT coalesce\(max\(revision\), 0\) \+ 1 FROM study_proofread_runs WHERE project_id = \$\{args\.projectId\}\)`/, "revision: nextRevision"),
+  },
+  {
+    label: "record the queuing deploy's engine stamp as the run's rules version (RR-2: varchar either way, tsc is silent)",
+    file: "store",
+    flips: ["queued-run-records-what-it-was-given"],
+    apply: edit("store", "      rulesVersion: args.rulesVersion,", "      rulesVersion: args.engineStamp,"),
+  },
+  {
+    label: "record a literal rules version at queue time",
+    file: "store",
+    flips: ["queued-run-records-what-it-was-given"],
+    apply: edit("store", "      rulesVersion: args.rulesVersion,", '      rulesVersion: "2",'),
+  },
+  {
+    label: "record the rules version as the engine stamp at queue time",
+    file: "store",
+    flips: ["queued-run-records-what-it-was-given"],
+    apply: edit("store", "      engineStamp: args.engineStamp,\n      inputManifest: {},", "      engineStamp: args.rulesVersion,\n      inputManifest: {},"),
+  },
+  {
+    label: "a second rulesVersion key after the first in the queued row (the later key wins)",
+    file: "store",
+    flips: ["queued-run-records-what-it-was-given"],
+    apply: edit("store", "      requestedByUserId: args.userId,", "      requestedByUserId: args.userId,\n      rulesVersion: args.engineStamp,"),
+  },
+  {
+    label: "write the run-time engine stamp into rules_version (RR-2)",
+    file: "store",
+    flips: ["run-stamp-written-as-given"],
+    apply: edit("store", "rulesVersion: args.stamp.rulesVersion,", "rulesVersion: args.stamp.engineStamp,"),
+  },
+  {
+    label: "drop the run-time protocol version from the stamp",
+    file: "store",
+    flips: ["run-stamp-written-as-given"],
+    apply: edit("store", /\n *protocolVersion: args\.stamp\.protocolVersion,/, ""),
+  },
+  {
+    label: "never write the run-time stamp (the stamp spread removed)",
+    file: "store",
+    flips: ["run-stamp-written-as-given"],
+    apply: edit("store", /\n *\.\.\.\(args\.stamp === undefined\n[\s\S]*?\}\),/, ""),
+  },
+  {
+    label: "write the stamp only when none was handed (the condition inverted)",
+    file: "store",
+    flips: ["run-stamp-written-as-given"],
+    apply: edit("store", "args.stamp === undefined", "args.stamp !== undefined"),
+  },
+  {
+    label: "ask about the finding's own id instead of its run (another run's answer)",
+    file: "store",
+    flips: ["run-holds-findings-reads-this-run"],
+    apply: edit("store", "    .where(eq(studyProofreadFindingsTable.runId, runId))\n    .limit(1);\n  return row !== undefined;", "    .where(eq(studyProofreadFindingsTable.id, runId))\n    .limit(1);\n  return row !== undefined;"),
+  },
+  {
+    label: "answer that a run holds findings when none came back",
+    file: "store",
+    flips: ["run-holds-findings-reads-this-run"],
+    apply: edit("store", "  return row !== undefined;", "  return row === undefined;"),
   },
   {
     label: "always write coverage in completeRun, even on a requeue",
@@ -1147,7 +1271,8 @@ const MUTATIONS = [
     label: "flip the status to rules_ready before the carry (m4: the window that loses a WITHDRAWN)",
     file: "runner",
     flips: ["status-flips-after-the-carry"],
-    also: ["pass-writes-findings-and-coverage"],
+    // the stamp check finds the clause pass's write by its status "running", and there is none
+    also: ["pass-writes-findings-and-coverage", "pass-stamps-the-code-that-ran-it"],
     apply: (s) => ({
       ...s,
       runner: s.runner
@@ -1159,7 +1284,7 @@ const MUTATIONS = [
     label: "keep both calls but flip the status in the first one",
     file: "runner",
     flips: ["status-flips-after-the-carry"],
-    also: ["pass-writes-findings-and-coverage"],
+    also: ["pass-writes-findings-and-coverage", "pass-stamps-the-code-that-ran-it"],
     apply: edit("runner", '      status: "running",\n', '      status: "rules_ready",\n'),
   },
   {
@@ -1202,25 +1327,55 @@ const MUTATIONS = [
     label: "gate the carry on the engine stamp, which ends in the deploy's commit (final review I-1)",
     file: "runner",
     flips: ["carry-gate-is-the-rules-version"],
-    apply: edit("runner", "prev.rulesVersion === run.rulesVersion", "prev.engineStamp === run.engineStamp"),
+    apply: edit("runner", "prev.rulesVersion === RULES_VERSION", "(prev as any).engineStamp === engineStamp()"),
   },
   {
     label: "carry whatever the rules version (the gate replaced with true)",
     file: "runner",
     flips: ["carry-gate-is-the-rules-version"],
-    apply: edit("runner", "prev.rulesVersion === run.rulesVersion", "true"),
+    apply: edit("runner", "prev.rulesVersion === RULES_VERSION", "true"),
   },
   {
     label: "invert the gate (carry only across a rules bump)",
     file: "runner",
     flips: ["carry-gate-is-the-rules-version"],
-    apply: edit("runner", "prev.rulesVersion === run.rulesVersion", "prev.rulesVersion !== run.rulesVersion"),
+    apply: edit("runner", "prev.rulesVersion === RULES_VERSION", "prev.rulesVersion !== RULES_VERSION"),
   },
   {
     label: "compare the previous run's rules version with itself (always true)",
     file: "runner",
     flips: ["carry-gate-is-the-rules-version"],
-    apply: edit("runner", "prev.rulesVersion === run.rulesVersion", "prev.rulesVersion === prev.rulesVersion"),
+    apply: edit("runner", "prev.rulesVersion === RULES_VERSION", "prev.rulesVersion === prev.rulesVersion"),
+  },
+  {
+    label: "gate the carry on the claimed row's rules version, written when it was QUEUED (RR-1: a run queued before a bump carried across it)",
+    file: "runner",
+    flips: ["carry-gate-is-the-rules-version"],
+    apply: edit("runner", "prev.rulesVersion === RULES_VERSION", "prev.rulesVersion === run.rulesVersion"),
+  },
+  {
+    label: "drop the stamp from the clause pass's write (the row keeps the queuing deploy's versions)",
+    file: "runner",
+    flips: ["pass-stamps-the-code-that-ran-it"],
+    apply: edit("runner", "      stamp: { rulesVersion: RULES_VERSION, engineStamp: engineStamp(), protocolVersion: PROTOCOL_VERSION },\n", ""),
+  },
+  {
+    label: "stamp the engine stamp as the run's rules version",
+    file: "runner",
+    flips: ["pass-stamps-the-code-that-ran-it"],
+    apply: edit("runner", "stamp: { rulesVersion: RULES_VERSION,", "stamp: { rulesVersion: engineStamp(),"),
+  },
+  {
+    label: "stamp the run with the claimed row's own (queue-time) values",
+    file: "runner",
+    flips: ["pass-stamps-the-code-that-ran-it"],
+    apply: edit("runner", "stamp: { rulesVersion: RULES_VERSION, engineStamp: engineStamp(), protocolVersion: PROTOCOL_VERSION }", "stamp: { rulesVersion: run.rulesVersion, engineStamp: run.engineStamp, protocolVersion: run.protocolVersion }"),
+  },
+  {
+    label: "also stamp the run when it fails because its rules changed mid-run",
+    file: "runner",
+    flips: ["pass-stamps-the-code-that-ran-it"],
+    apply: edit("runner", 'error: "rules_changed_mid_run" });', 'error: "rules_changed_mid_run", stamp: { rulesVersion: RULES_VERSION, engineStamp: engineStamp(), protocolVersion: PROTOCOL_VERSION } });'),
   },
   {
     label: "never make the carry call (`if (false && prev)`)",
@@ -1274,9 +1429,9 @@ ok(toothless.length === 0, `every check has a mutation proving it has teeth`, to
 // nothing red — a pin that refused them would be pinning spelling, not meaning.
 const STAYS_GREEN = [
   {
-    label: "the carry gate with its operands swapped (run.rulesVersion === prev.rulesVersion) — the same comparison",
+    label: "the carry gate with its operands swapped (RULES_VERSION === prev.rulesVersion) — the same comparison",
     file: "runner",
-    apply: edit("runner", "prev.rulesVersion === run.rulesVersion", "run.rulesVersion === prev.rulesVersion"),
+    apply: edit("runner", "prev.rulesVersion === RULES_VERSION", "RULES_VERSION === prev.rulesVersion"),
   },
 ];
 for (const g of STAYS_GREEN) {
@@ -1316,6 +1471,7 @@ export const completeRun = call("completeRun");
 export const loadStudyForRun = call("loadStudyForRun");
 export const previousRunForProject = call("previousRunForProject");
 export const carryForwardDispositions = call("carryForwardDispositions");
+export const runHoldsFindings = call("runHoldsFindings");
 `,
   "./logger": `
 const st = () => globalThis.__proofreadRunnerStub;
@@ -1429,6 +1585,39 @@ async function observe(text) {
     previousRunForProject: () => ({ id: "run-2", rulesVersion: "rules-older" }),
     carryForwardDispositions: () => 0,
   });
+  // RR-1: the claimed row was QUEUED by the previous deploy, so it still records that deploy's
+  // rules version and stamp; this bundle's RULES_VERSION ("rules-current") is the code that runs it.
+  const queuedBeforeBump = await drive(mod, "claimAndRunOne", [], {
+    claimOneRun: () => claimed({ rulesVersion: "rules-older", engineStamp: "stamp-previous-deploy", protocolVersion: "protocol-previous" }),
+    runHoldsFindings: () => false,
+    loadStudyForRun: () => STUDY,
+    previousRunForProject: () => ({ id: "run-2", rulesVersion: "rules-older" }),
+    carryForwardDispositions: () => 1,
+  });
+  // The same queue-time row, whose predecessor ran under the rules this code runs.
+  const queuedBeforeBumpPrevCurrent = await drive(mod, "claimAndRunOne", [], {
+    claimOneRun: () => claimed({ rulesVersion: "rules-older", engineStamp: "stamp-previous-deploy" }),
+    runHoldsFindings: () => false,
+    loadStudyForRun: () => STUDY,
+    previousRunForProject: () => ({ id: "run-2", rulesVersion: "rules-current" }),
+    carryForwardDispositions: () => 1,
+  });
+  // A re-claimed run (attempt 2) whose first attempt wrote its findings under other rules.
+  const midRunRulesChange = await drive(mod, "claimAndRunOne", [], {
+    claimOneRun: () => claimed({ rulesVersion: "rules-older", attempts: 2 }),
+    runHoldsFindings: () => true,
+    loadStudyForRun: () => STUDY,
+    previousRunForProject: () => ({ id: "run-2", rulesVersion: "rules-current" }),
+    carryForwardDispositions: () => 1,
+  });
+  // The same re-claim under the SAME rules: the pass simply runs again (its findings insert is idempotent).
+  const reclaimSameRules = await drive(mod, "claimAndRunOne", [], {
+    claimOneRun: () => claimed({ attempts: 2 }),
+    runHoldsFindings: () => true,
+    loadStudyForRun: () => STUDY,
+    previousRunForProject: () => ({ id: "run-2", rulesVersion: "rules-current" }),
+    carryForwardDispositions: () => 1,
+  });
   const enqueued = await drive(mod, "enqueueProofread", [ENQUEUE_ARGS], {
     insertQueuedRun: () => ({ id: "run-q" }),
     claimOneRun: () => null,
@@ -1467,6 +1656,7 @@ async function observe(text) {
     ["the carry-source lookup", { ...normal, previousRunForProject: thrower("previous") }],
     ["the carry", { ...normal, carryForwardDispositions: thrower("carry") }],
     ["the exhausted branch's completeRun", { claimOneRun: () => claimed({ id: "run-stale", attempts: lifecycleMod.MAX_ATTEMPTS + 1 }), completeRun: thrower("complete") }],
+    ["the held-findings lookup", { ...normal, claimOneRun: () => claimed({ rulesVersion: "rules-older", attempts: 2 }), runHoldsFindings: thrower("held") }],
   ];
   const throwMatrix = [];
   for (const [label, impl] of THROW_POINTS) throwMatrix.push({ label, r: await drive(mod, "claimAndRunOne", [], impl) });
@@ -1493,7 +1683,7 @@ async function observe(text) {
       if (a?.status === "rules_ready") throw new Error("flip");
     },
   });
-  return { inputs, acrossDeploy, rulesBumped, enqueued, writeFails, exhaustedWriteFails, postRun, throwMatrix, conflict, insertFails, noRow, defects, defectsUnfinished };
+  return { inputs, acrossDeploy, rulesBumped, queuedBeforeBump, queuedBeforeBumpPrevCurrent, midRunRulesChange, reclaimSameRules, enqueued, writeFails, exhaustedWriteFails, postRun, throwMatrix, conflict, insertFails, noRow, defects, defectsUnfinished };
 }
 
 const marked = (clauseId, type) => ({
@@ -1550,8 +1740,78 @@ const BCHECKS = [
     why: (o) => describe(o.rulesBumped),
   },
   {
+    id: "runs-carry-gate-is-this-codes-rules-version",
+    msg: "RUN (RR-1): a row QUEUED by the previous deploy (it records rules-older) and claimed by this code (RULES_VERSION rules-current), whose predecessor ran under rules-older, reaches rules_ready and carries nothing (no carry call, or one gated false): the clauses that produced its findings ran under the new rules, so decisions recorded under the old ones reopen",
+    test: (o) => {
+      const r = o.queuedBeforeBump;
+      const c = r.st.to("carryForwardDispositions");
+      return !r.threw && reachedRulesReady(r) && (c.length === 0 || (c.length === 1 && c[0].args[2] === false));
+    },
+    why: (o) => describe(o.queuedBeforeBump),
+  },
+  {
+    id: "runs-carry-crosses-a-queue-time-bump",
+    msg: "RUN (RR-1): the same queue-time row, whose predecessor ran under rules-current — the rules this code runs — carries (one call, gated true): the gate compares the predecessor with the rules that run THIS pass, not with what the row recorded when it was queued",
+    test: (o) => {
+      const c = o.queuedBeforeBumpPrevCurrent.st.to("carryForwardDispositions");
+      return reachedRulesReady(o.queuedBeforeBumpPrevCurrent) && c.length === 1 && c[0].args[2] === true;
+    },
+    why: (o) => describe(o.queuedBeforeBumpPrevCurrent),
+  },
+  {
+    id: "runs-stamped-by-the-code-that-ran-it",
+    msg: "RUN (RR-1, RR-2): that row's clause-pass write (completeRun, status running, the call that carries the findings) stamps it with this code's RULES_VERSION (rules-current), engineStamp() (stamp-this-deploy) and the PROTOCOL_VERSION the runner read (the value it also hands insertQueuedRun) — not rules-older, stamp-previous-deploy, protocol-previous, which the row held from its queuing deploy",
+    test: (o) => {
+      const pass = o.queuedBeforeBump.st.to("completeRun").filter((c) => c.args[0]?.status === "running");
+      const queuedWith = o.enqueued.st.to("insertQueuedRun")[0]?.args[0]?.protocolVersion;
+      const st = pass[0]?.args[0]?.stamp;
+      return (
+        pass.length === 1 &&
+        Array.isArray(pass[0].args[0].findings) &&
+        st !== undefined &&
+        Object.keys(st).sort().join(",") === "engineStamp,protocolVersion,rulesVersion" &&
+        st.rulesVersion === "rules-current" &&
+        st.engineStamp === "stamp-this-deploy" &&
+        typeof queuedWith === "string" &&
+        queuedWith.length > 0 &&
+        st.protocolVersion === queuedWith
+      );
+    },
+    why: (o) => `${describe(o.queuedBeforeBump)}; insertQueuedRun got protocolVersion ${JSON.stringify(o.enqueued.st.to("insertQueuedRun")[0]?.args[0]?.protocolVersion)}`,
+  },
+  {
+    id: "runs-rules-changed-mid-run-fails-the-run",
+    msg: "RUN (RR-1): a re-claimed run whose earlier attempt wrote findings under other rules (runHoldsFindings(\"run-3\") is true, the row says rules-older) is failed with error \"rules_changed_mid_run\" in ONE completeRun (status failed, no findings, no coverage, manifest or stamp), with a warn naming the run, and nothing else is done: no study load, no clause pass, no carry lookup, no carry — new-rule findings would otherwise sit beside the old ones in one run, and the store never deletes",
+    test: (o) => {
+      const r = o.midRunRulesChange;
+      const done = r.st.to("completeRun");
+      const a = done[0]?.args[0] ?? {};
+      return (
+        !r.threw &&
+        r.value === true &&
+        JSON.stringify(r.st.to("runHoldsFindings").map((c) => c.args)) === JSON.stringify([["run-3"]]) &&
+        done.length === 1 &&
+        Object.keys(a).sort().join(",") === "error,findings,runId,status" &&
+        a.runId === "run-3" &&
+        a.status === "failed" &&
+        a.error === "rules_changed_mid_run" &&
+        Array.isArray(a.findings) &&
+        a.findings.length === 0 &&
+        ["loadStudyForRun", "runClauses", "previousRunForProject", "carryForwardDispositions"].every((n) => r.st.to(n).length === 0) &&
+        r.st.logs.some((l) => l.level === "warn" && l.obj?.runId === "run-3")
+      );
+    },
+    why: (o) => `${describe(o.midRunRulesChange)}; logs: ${JSON.stringify(o.midRunRulesChange.st.logs.map((l) => [l.level, l.msg, l.obj]))}`,
+  },
+  {
+    id: "runs-same-rules-reclaim-runs-again",
+    msg: "RUN: a re-claimed run that holds findings written under the rules this code runs is NOT failed: its pass runs again (the findings insert is idempotent) and it reaches rules_ready — only a change of rules in between makes a run unfinishable",
+    test: (o) => !o.reclaimSameRules.threw && reachedRulesReady(o.reclaimSameRules) && o.reclaimSameRules.st.to("runClauses").length === 1,
+    why: (o) => describe(o.reclaimSameRules),
+  },
+  {
     id: "runs-enqueue-records-the-current-rules-version",
-    msg: "RUN: enqueueProofread queues the run with the caller's project, firm and user, the current RULES_VERSION and engineStamp() — the rules version recorded here is the one the carry gate later compares",
+    msg: "RUN: enqueueProofread queues the run with the caller's project, firm and user, the current RULES_VERSION and engineStamp() — the queuing deploy's values, which the run's clause pass replaces with its own (runs-stamped-by-the-code-that-ran-it)",
     test: (o) => {
       const c = o.enqueued.st.to("insertQueuedRun");
       const a = c[0]?.args[0] ?? {};
@@ -1568,8 +1828,8 @@ const BCHECKS = [
   },
   {
     id: "runs-claim-and-run-never-rejects",
-    msg: "RUN: claimAndRunOne resolves whatever the store throws — at the claim, the study load, the clause pass, any completeRun, the carry lookup, the carry, and the exhausted branch's write. It runs after a run has been queued, so nothing it does may surface to the caller as a failure to queue",
-    test: (o) => o.throwMatrix.length === 7 && o.throwMatrix.every((t) => !t.r.threw),
+    msg: "RUN: claimAndRunOne resolves whatever the store throws — at the claim, the study load, the clause pass, any completeRun, the carry lookup, the carry, the exhausted branch's write, and the held-findings lookup. It runs after a run has been queued, so nothing it does may surface to the caller as a failure to queue",
+    test: (o) => o.throwMatrix.length === 8 && o.throwMatrix.every((t) => !t.r.threw),
     why: (o) => o.throwMatrix.filter((t) => t.r.threw).map((t) => `${t.label}: rejected with "${t.r.error?.message ?? t.r.error}"`).join("; "),
   },
   {
@@ -1693,28 +1953,83 @@ const BMUTATIONS = [
   },
   {
     label: "gate the carry on the engine stamp",
-    flips: ["runs-carry-crosses-a-deploy-under-the-same-rules"],
-    apply: (t) => t.replace("prev.rulesVersion === run.rulesVersion", "(prev as any).engineStamp === run.engineStamp"),
+    flips: ["runs-carry-crosses-a-deploy-under-the-same-rules", "runs-carry-crosses-a-queue-time-bump"],
+    apply: (t) => t.replace("prev.rulesVersion === RULES_VERSION", "(prev as any).engineStamp === engineStamp()"),
   },
   {
     label: "carry whatever the rules version (true)",
-    flips: ["runs-carry-stops-at-a-rules-bump"],
-    apply: (t) => t.replace("prev.rulesVersion === run.rulesVersion", "true"),
+    flips: ["runs-carry-stops-at-a-rules-bump", "runs-carry-gate-is-this-codes-rules-version"],
+    apply: (t) => t.replace("prev.rulesVersion === RULES_VERSION", "true"),
   },
   {
     label: "invert the gate",
-    flips: ["runs-carry-crosses-a-deploy-under-the-same-rules", "runs-carry-stops-at-a-rules-bump"],
-    apply: (t) => t.replace("prev.rulesVersion === run.rulesVersion", "prev.rulesVersion !== run.rulesVersion"),
+    flips: ["runs-carry-crosses-a-deploy-under-the-same-rules", "runs-carry-stops-at-a-rules-bump", "runs-carry-gate-is-this-codes-rules-version", "runs-carry-crosses-a-queue-time-bump"],
+    apply: (t) => t.replace("prev.rulesVersion === RULES_VERSION", "prev.rulesVersion !== RULES_VERSION"),
   },
   {
     label: "compare the previous run's rules version with itself",
-    flips: ["runs-carry-stops-at-a-rules-bump"],
-    apply: (t) => t.replace("prev.rulesVersion === run.rulesVersion", "prev.rulesVersion === prev.rulesVersion"),
+    flips: ["runs-carry-stops-at-a-rules-bump", "runs-carry-gate-is-this-codes-rules-version"],
+    apply: (t) => t.replace("prev.rulesVersion === RULES_VERSION", "prev.rulesVersion === prev.rulesVersion"),
   },
   {
     label: "never make the carry call",
-    flips: ["runs-carry-writes-this-run-from-the-previous-one", "runs-carry-crosses-a-deploy-under-the-same-rules"],
+    flips: ["runs-carry-writes-this-run-from-the-previous-one", "runs-carry-crosses-a-deploy-under-the-same-rules", "runs-carry-crosses-a-queue-time-bump"],
     apply: (t) => t.replace("if (prev) await carryForwardDispositions(", "if (false && prev) await carryForwardDispositions("),
+  },
+  {
+    label: "gate the carry on the claimed row's queue-time rules version (RR-1)",
+    flips: ["runs-carry-gate-is-this-codes-rules-version", "runs-carry-crosses-a-queue-time-bump"],
+    apply: (t) => t.replace("prev.rulesVersion === RULES_VERSION", "prev.rulesVersion === run.rulesVersion"),
+  },
+  {
+    label: "drop the stamp from the clause pass's write",
+    flips: ["runs-stamped-by-the-code-that-ran-it"],
+    apply: (t) => t.replace("      stamp: { rulesVersion: RULES_VERSION, engineStamp: engineStamp(), protocolVersion: PROTOCOL_VERSION },\n", ""),
+  },
+  {
+    label: "stamp the run with the claimed row's own (queue-time) values",
+    flips: ["runs-stamped-by-the-code-that-ran-it"],
+    apply: (t) => t.replace("stamp: { rulesVersion: RULES_VERSION, engineStamp: engineStamp(), protocolVersion: PROTOCOL_VERSION }", "stamp: { rulesVersion: run.rulesVersion, engineStamp: run.engineStamp, protocolVersion: run.protocolVersion }"),
+  },
+  {
+    label: "stamp the engine stamp as the run's rules version",
+    flips: ["runs-stamped-by-the-code-that-ran-it"],
+    apply: (t) => t.replace("stamp: { rulesVersion: RULES_VERSION,", "stamp: { rulesVersion: engineStamp(),"),
+  },
+  {
+    label: "never fail a run whose findings were written under other rules",
+    flips: ["runs-rules-changed-mid-run-fails-the-run"],
+    apply: (t) => t.replace("if (run.rulesVersion !== RULES_VERSION && (await runHoldsFindings(run.id)))", "if (false && run.rulesVersion !== RULES_VERSION && (await runHoldsFindings(run.id)))"),
+  },
+  {
+    label: "fail every re-claimed run that holds findings, whatever its rules",
+    flips: ["runs-same-rules-reclaim-runs-again"],
+    apply: (t) => t.replace("if (run.rulesVersion !== RULES_VERSION && (await runHoldsFindings(run.id)))", "if (await runHoldsFindings(run.id))"),
+  },
+  {
+    label: "ask whether ANOTHER run holds findings (the project's id)",
+    flips: ["runs-rules-changed-mid-run-fails-the-run"],
+    apply: (t) => t.replace("await runHoldsFindings(run.id)", "await runHoldsFindings(run.projectId)"),
+  },
+  {
+    label: "requeue the run instead of failing it (it is re-claimed and refused forever)",
+    flips: ["runs-rules-changed-mid-run-fails-the-run"],
+    apply: (t) => t.replace('status: "failed", findings: [], error: "rules_changed_mid_run"', 'status: "queued", findings: [], error: "rules_changed_mid_run"'),
+  },
+  {
+    label: "fail it without saying why",
+    flips: ["runs-rules-changed-mid-run-fails-the-run"],
+    apply: (t) => t.replace('error: "rules_changed_mid_run"', 'error: "failed"'),
+  },
+  {
+    label: "fail it, then run the pass anyway (no return)",
+    flips: ["runs-rules-changed-mid-run-fails-the-run"],
+    apply: (t) => t.replace('"proofread.rules_changed_mid_run");\n      return true;\n', '"proofread.rules_changed_mid_run");\n'),
+  },
+  {
+    label: "fail it silently (no warn)",
+    flips: ["runs-rules-changed-mid-run-fails-the-run"],
+    apply: (t) => t.replace(/\n *logger\.warn\(\{ runId: run\.id, rulesVersion: run\.rulesVersion, now: RULES_VERSION \}, "proofread\.rules_changed_mid_run"\);/, ""),
   },
   {
     label: "record the engine stamp as the run's rules version",
@@ -1810,7 +2125,7 @@ const BMUTATIONS = [
   },
 ];
 const BSTAYS_GREEN = [
-  { label: "the carry gate with its operands swapped", apply: (t) => t.replace("prev.rulesVersion === run.rulesVersion", "run.rulesVersion === prev.rulesVersion") },
+  { label: "the carry gate with its operands swapped", apply: (t) => t.replace("prev.rulesVersion === RULES_VERSION", "RULES_VERSION === prev.rulesVersion") },
   {
     label: "an insert error rethrown with the original as its cause (isRevisionConflict walks .cause)",
     apply: (t) => t.replace("    engineStamp: engineStamp(),\n  });\n", '    engineStamp: engineStamp(),\n  }).catch((cause) => {\n    throw new Error("enqueue failed", { cause });\n  });\n'),

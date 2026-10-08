@@ -1267,7 +1267,7 @@ const RUNNER_IMPORTS = {
   "./logger": ["logger"],
   "./proofread/index.ts": ["ALL_CLAUSES", "engineStamp", "RULES_VERSION", "runClauses", "type StudyRecord"],
   "./proofread/lifecycle.ts": ["MAX_ATTEMPTS", "nextStatusAfterFailure"],
-  "./proofread-store": ["carryForwardDispositions", "claimOneRun", "completeRun", "insertQueuedRun", "loadStudyForRun", "previousRunForProject"],
+  "./proofread-store": ["carryForwardDispositions", "claimOneRun", "completeRun", "insertQueuedRun", "loadStudyForRun", "previousRunForProject", "runHoldsFindings"],
 };
 const THREE_LIMITERS = ["proofreadRunLimiter", "proofreadDispositionLimiter", "proofreadReadLimiter"];
 
@@ -4197,7 +4197,7 @@ const MUTATIONS = [
     label: "runner adds a symbol to the store import",
     file: "runner",
     flips: ["runner-import-whitelist"],
-    apply: edit("runner", "  previousRunForProject,\n} from \"./proofread-store\";", "  previousRunForProject,\n  insertDisposition,\n} from \"./proofread-store\";"),
+    apply: edit("runner", "  runHoldsFindings,\n} from \"./proofread-store\";", "  runHoldsFindings,\n  insertDisposition,\n} from \"./proofread-store\";"),
   },
   {
     label: "runner imports the whole projects module under a namespace",
