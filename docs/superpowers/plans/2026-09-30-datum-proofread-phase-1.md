@@ -12,6 +12,16 @@
 
 **Out of scope (later plans):** the judgment model call (phase 2), the questions channel (phase 3), the PE role and seal gate (phase 4).
 
+## Superseded by the fix waves
+
+This plan is the record phase 1 was built from. The fix waves of 2026-10-07/08 changed behaviour it prescribes; where they disagree, the code, the spec and `TIS-PROOFREAD-PROTOCOL.md` govern, and each overtaken passage below carries a *Superseded (...)* marker.
+
+- **FW-1** (final review I-1) — the carry-forward gates on `rules_version`, not the engine stamp (store parameter `sameRules`). The engine stamp records which deploy ran the check, not which engine produced the study.
+- **FW-3** (final review I-2) — one gate, word for word in the protocol, `datum.md` and the skill: no open `BLOCKER`, no open `DEFECT` and no open `CONTESTED`. GET answers `withheld`, and the panel never reads a run with a withheld `DEFECT` as clear; a `DEFECT` holds the study until the software team resolves it (fix wave 2, I-A).
+- **FW-6** — a disposition is refused 409 unless its run is the project's newest run and finished; the `runId` path segment is checked, not informational.
+- **Fix wave 2, RR-1** — `rules_version`, `engine_stamp` and `protocol_version` are stamped when a run's clauses run, not when it is queued; the carry compares the previous run's run-time `rules_version` with the running code's `RULES_VERSION`, and a re-claimed run that holds findings under another rules version fails `rules_changed_mid_run`.
+- **Fix wave 2, m-6** — GET answers `rulesChanged`, and the panel says when a rules change kept earlier decisions from carrying over.
+
 ## Global Constraints
 
 - **Advisor boundary.** No code in this plan writes `tis_projects.request_payload` or `result_payload`, and no column is added to `tis_projects`. Clause functions return records only — no patch, no replacement value. The only writes are to the three new `study_proofread_*` tables.
@@ -191,6 +201,8 @@ CONTESTED**. That is the whole gate: an undisposed `NOTE`, `DISCLOSE` or
 `UNVERIFIED` is a record to carry, not a bar to completion.
 ```
 
+> *Superseded (FW-3, final review I-2): the gate is one sentence in the protocol, `datum.md` and the skill — "A study may be called complete only with no open `BLOCKER`, no open `DEFECT` and no open `CONTESTED`." See "Superseded by the fix waves" at the top.*
+
 In §1 and §4, retarget the constant refs from `artifacts/tis-api-server/src/lib/...` to `lib/tis-engine-core/src/land-uses.ts`, `lib/tis-engine-core/src/signal-delay.ts` and `lib/tis-engine-core/src/regional-growth-rates.ts`; change `queue95Ft` to the payload field `queue95thFt`; drop the `LOS_THRESHOLDS` reference in favour of the exported `delayToLos`.
 
 Replace the standing note on the flat g/C with:
@@ -211,7 +223,7 @@ contradict any claim that no left-turn phasing is modeled.
 
 - Frontmatter `description`: add `DEFECT` to the finding list so a dispatcher matches on it.
 - Line 13: replace "the independent pass that stands between Redline's output and a sealed document" with "the traceability pass that stands between Redline's output and a sealed document" — the original is itself prohibited copy.
-- The BLOCKER-only completion sentence: replace with "no open `BLOCKER` and no open `CONTESTED`".
+- The BLOCKER-only completion sentence: replace with "no open `BLOCKER` and no open `CONTESTED`". *Superseded (FW-3): the three-type gate sentence, word for word as in the protocol.*
 - Source-file list: retarget to `lib/tis-engine-core/src/`.
 
 - [ ] **Step 5: Run the guard to verify it passes**
@@ -576,6 +588,8 @@ export function engineStamp(): string {
 
 export const RULES_VERSION = "2"; // "1" was the three v/c clauses; twelve as of Task 3
 ```
+
+> *Superseded (FW-1; fix wave 2 RR-1): the engine stamp says which deploy RAN the check, stamped when the run's clauses run; it does not say which engine produced the study, and it is not a carry gate (`RULES_VERSION` is). See `artifacts/tis-api-server/src/lib/proofread/fingerprint.ts`.*
 
 - [ ] **Step 6: Write `s4-results.ts` (the three v/c clauses) and `index.ts`**
 
@@ -1921,7 +1935,7 @@ git commit -m "feat(proofread): lease-based claim policy for a multi-instance de
 **Interfaces:**
 - Consumes: `runClauses`, `ALL_CLAUSES`, `findingFingerprint`, `engineStamp`, `RULES_VERSION` (Task 2/3); `nextStatusAfterFailure`, `MAX_ATTEMPTS` (Task 5); the three tables (Task 4).
 - Modifies in Task 5's file: extract the WHERE text of `CLAIM_SQL` into an exported `CLAIM_PREDICATE_SQL`, and compose `CLAIM_SQL` from it so both stay one string. Task 5's suite already pins that predicate against `isReclaimable` cell by cell; sharing it here means the production claim cannot drift from the pinned one. While in that file, correct the two comments that say `CLAIM_SQL` "is the code that actually runs" — it states the predicate the claim must implement, and after this task it literally supplies it.
-- Produces: `enqueueProofread(args: { projectId: string; firmId: string; userId: string }): Promise<void>`; `claimAndRunOne(): Promise<boolean>`; `insertQueuedRun(...)`; `claimOneRun(instanceId: string)`; `loadStudyForRun(run)`; `completeRun(...)`; `latestRunForProject(firmId: string, projectId: string)`; `previousRunForProject(projectId: string, beforeRevision: number)`; `carryForwardDispositions(newRunId: string, previousRunId: string, sameEngine: boolean): Promise<number>`; `insertDisposition(...)`; `findingBelongsToFirm(firmId, findingId)`; `buildInputManifest(rec: StudyRecord): Record<string, boolean>`.
+- Produces: `enqueueProofread(args: { projectId: string; firmId: string; userId: string }): Promise<void>`; `claimAndRunOne(): Promise<boolean>`; `insertQueuedRun(...)`; `claimOneRun(instanceId: string)`; `loadStudyForRun(run)`; `completeRun(...)`; `latestRunForProject(firmId: string, projectId: string)`; `previousRunForProject(projectId: string, beforeRevision: number)`; `carryForwardDispositions(newRunId: string, previousRunId: string, sameEngine: boolean): Promise<number>`; `insertDisposition(...)`; `findingBelongsToFirm(firmId, findingId)`; `buildInputManifest(rec: StudyRecord): Record<string, boolean>`. *Superseded (FW-1): the third parameter is `sameRules`.*
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2000,6 +2014,8 @@ ok(/attempts\s*>\s*MAX_ATTEMPTS/.test(src("../src/lib/proofread-run.ts")), "a cl
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);
 process.exit(fails === 0 ? 0 : 1);
 ```
+
+> *Superseded (FW-1; fix wave 2 RR-1): the carry gates on the rules version, not the engine stamp — the claim guard pins `prev.rulesVersion === RULES_VERSION` and the stamp written at run time.*
 
 Register:
 
@@ -2302,6 +2318,8 @@ export async function findingInFirmRun(
 }
 ```
 
+> *Superseded (FW-1): `carryForwardDispositions(newRunId, previousRunId, sameRules)` — the carry is gated on the same `rules_version`, not the same engine stamp, and a carried decision keeps its original date (FW-2).*
+
 - [ ] **Step 4: Write `proofread-run.ts`**
 
 ```ts
@@ -2444,6 +2462,8 @@ export async function claimAndRunOne(): Promise<boolean> {
   }
 }
 ```
+
+> *Superseded (FW-1; fix wave 2 RR-1, M2): the runner stamps `rules_version`, `engine_stamp` and `protocol_version` when the clauses run, carries only when `prev.rulesVersion === RULES_VERSION`, takes the previous `rules_ready` or `ready` revision, and fails a re-claimed run holding findings under other rules with `rules_changed_mid_run`.*
 
 - [ ] **Step 5: Add the hook and the response id in `routes/tis.ts`**
 
@@ -3433,7 +3453,7 @@ git commit -m "chore(checks): register the two verify scripts that were never wi
 
 - **CI does not typecheck.** `.github/workflows/checks.yml` runs only `check:*` keys, and Netlify runs `vite build`. This plan's tasks each run `pnpm run typecheck` by hand. Adding `"check:typecheck": "tsc -p tsconfig.json --noEmit"` would close it permanently; deliberately left out of scope, flagged here.
 - **`claimOneRun` interpolates the instance id** into `CLAIM_SQL` because `sql.raw` takes no parameters. The id comes from `RAILWAY_REPLICA_ID`/`HOSTNAME`/`process.pid`, never from a request, and the quote-strip keeps it inert. An implementer who prefers drizzle's `sql` template with a bound parameter should use it and keep `CLAIM_SQL` as the single source of the predicate.
-- **`runId` in the disposition path** is carried as the run's `revision` by the panel; the server authorizes on the finding id and the firm, so the segment is informational. If a later phase needs the run's uuid client-side, add it to the `GET` response rather than inferring it.
+- **`runId` in the disposition path** is carried as the run's `revision` by the panel; the server authorizes on the finding id and the firm, so the segment is informational. If a later phase needs the run's uuid client-side, add it to the `GET` response rather than inferring it. *Superseded (FW-6; fix wave 2 M1, M2): the segment is checked — a decision whose run is not the project's newest run, or not finished (`rules_ready` or `ready`), is refused 409, and GET answers `runId`.*
 - **No backfill.** Studies saved before this ships have no run until someone presses "Run again", and then the input manifest and per-clause coverage state exactly what could not be checked.
 - **One clause is renamed from the spec.** The spec's `passByExplicitVsOmitted` ships as `passByBasisNamed`, because what is observable from a saved record is whether the applied pass-by is *stated in the deliverable*, not whether a zero was explicit or omitted. Same section, same intent, narrower claim. Update the spec's clause table when this lands.
 - **Protocol amendment 8 (defining the PE) is deliberately not in Task 1.** It is the one amendment with no phase-1 consumer: nothing in this plan needs to know who the PE is, and inventing a licensure concept before phase 4 needs it would be guesswork. Task 7 therefore refuses `ACCEPTED_RISK` and `CONTESTED_PE` with an explicit message rather than letting any firm member record them. Amendments 1-7 are all in Task 1 and are guarded by `check:proofread-protocol`.
