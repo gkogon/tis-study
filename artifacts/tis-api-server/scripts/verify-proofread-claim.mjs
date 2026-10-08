@@ -336,7 +336,62 @@ function callsOf(src, name) {
 const SAME_RULES = new Set(["prev.rulesVersion === RULES_VERSION", "RULES_VERSION === prev.rulesVersion"]);
 
 const count = (s, needle) => s.split(needle).length - 1;
-const UNIT_MS = { millisecond: 1, second: 1000, minute: 60_000, hour: 3_600_000 };
+
+/** Index of the bracket that closes the one at `open` in `s`, skipping string and template literals; -1 when unbalanced. */
+function closeOf(s, open) {
+  let depth = 0;
+  let q = null;
+  for (let i = open; i < s.length; i++) {
+    const c = s[i];
+    if (q) {
+      if (c === "\\") i++;
+      else if (c === q) q = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") q = c;
+    else if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * A store read written as exactly two statements after the signature `sig` (the text after
+ * `function `, whitespace-folded): `const [row] = await db.<link>(…).<link>(…)…;` and then
+ * `return row ?? null;`, the function's last statement. Answers the chain's links as
+ * { name, args } — every link a call, in order — or null when the body is anything else: a
+ * statement before the read or between it and the return, a return that rebuilds or replaces
+ * the row, a link that is not a call. A remapping link (`.then`, `.map`) is a call, so it comes
+ * back by name and the caller refuses it. Reads the comment-stripped, whitespace-folded body.
+ */
+function rowRead(fnText, sig) {
+  const s = norm(fnText);
+  // body() starts one character into `export`: accept the text with or without its first letter.
+  const head = `xport async function ${norm(sig)} { const [row] = await db`;
+  const at = s.startsWith(head) ? head.length : s.startsWith(`e${head}`) ? head.length + 1 : -1;
+  if (at < 0) return null;
+  const links = [];
+  let i = at;
+  for (;;) {
+    while (s[i] === " ") i++;
+    if (s[i] === ";") break;
+    const m = /^\.([A-Za-z_$][\w$]*)\(/.exec(s.slice(i));
+    if (!m) return null;
+    const open = i + m[0].length - 1;
+    const close = closeOf(s, open);
+    if (close < 0) return null;
+    links.push({ name: m[1], args: s.slice(open + 1, close).trim() });
+    i = close + 1;
+  }
+  return s.slice(i) === "; return row ?? null; }" ? links : null;
+}
+/** The signature previousRunForProject is read under (rowRead). */
+const PREVIOUS_RUN_SIG = "previousRunForProject( projectId: string, beforeRevision: number, ): Promise<{ id: string; rulesVersion: string } | null>";
+
+const UNIT_MS ={ millisecond: 1, second: 1000, minute: 60_000, hour: 3_600_000 };
 
 // ---------------------------------------------------------------------------
 // The checks. `on` is the file the check is ABOUT: the file whose breakage it
@@ -529,15 +584,34 @@ const CHECKS = [
   {
     id: "carry-forward-requires-same-rules",
     on: "store",
-    msg: "carryForwardDispositions carries nothing when the RULES version changed (`if (!sameRules) return 0;`): a RULES_VERSION bump is by definition a material change to what a clause judges, so it reopens every decision on purpose. A deploy alone is not such a change — the engine stamp is attribution, and the fingerprint already holds the exact values a finding read",
-    test: (s) => /sameRules: boolean,?\s*\)/.test(body(s.store, "carryForwardDispositions")) && /if \(!sameRules\) return 0;/.test(body(s.store, "carryForwardDispositions")),
+    msg: "carryForwardDispositions carries nothing when the RULES version changed: `if (!sameRules) return 0;` is the FIRST statement of its body, before any read or write — moved below the carry loop it returns 0 after every decision has already been appended. A RULES_VERSION bump is by definition a material change to what a clause judges, so it reopens every decision on purpose. A deploy alone is not such a change — the engine stamp is attribution, and the fingerprint already holds the exact values a finding read",
+    test: (s) => /sameRules: boolean,? \): Promise<number> \{ if \(!sameRules\) return 0; /.test(norm(body(s.store, "carryForwardDispositions"))),
   },
   {
     id: "previous-run-reports-its-rules-version",
     on: "store",
-    msg: "previousRunForProject returns the previous run's id and the rules version read from ITS rules_version column — the carry gate compares that value with the claimed run's; read from engine_stamp (the same varchar type, so tsc is silent) the gate would reopen every decision after every deploy",
-    test: (s) =>
-      /\.select\(\{ id: studyProofreadRunsTable\.id, rulesVersion: studyProofreadRunsTable\.rulesVersion \}\)/.test(norm(body(s.store, "previousRunForProject"))),
+    msg: "previousRunForProject is one read and the row it read: `const [row] = await db.select({ id: studyProofreadRunsTable.id, rulesVersion: studyProofreadRunsTable.rulesVersion }).from(studyProofreadRunsTable)` with no link but where / orderBy / limit, then `return row ?? null;` — no statement between them and no remap, so the rules version the carry gate compares is the one read from ITS rules_version column. Read from engine_stamp (the same varchar type, so tsc is silent), rewritten after the read, or rebuilt in the return, the gate would reopen every decision after every deploy, or carry every decision across a rules bump",
+    test: (s) => {
+      const links = rowRead(body(s.store, "previousRunForProject"), PREVIOUS_RUN_SIG);
+      return (
+        links !== null &&
+        links.length >= 2 &&
+        links[0].name === "select" &&
+        links[0].args === "{ id: studyProofreadRunsTable.id, rulesVersion: studyProofreadRunsTable.rulesVersion }" &&
+        links[1].name === "from" &&
+        links[1].args === "studyProofreadRunsTable" &&
+        links.slice(2).every((l) => ["where", "orderBy", "limit"].includes(l.name))
+      );
+    },
+  },
+  {
+    id: "previous-run-is-the-newest-before",
+    on: "store",
+    msg: "previousRunForProject takes the NEWEST qualifying revision: its read is ordered `.orderBy(desc(studyProofreadRunsTable.revision)) .limit(1)`, with no other orderBy — ascending, or by created_at, or unordered, the carry source is the oldest (or any) finished revision, so a decision first recorded on a later revision reopens and a superseded older one is reinstated",
+    test: (s) => {
+      const b = norm(body(s.store, "previousRunForProject"));
+      return count(b, ".orderBy(") === 1 && b.includes(".orderBy(desc(studyProofreadRunsTable.revision)) .limit(1)");
+    },
   },
   {
     id: "carry-forward-idempotent",
@@ -832,6 +906,9 @@ for (const c of CHECKS) {
 // reading the wrong file.
 // ---------------------------------------------------------------------------
 const edit = (file, from, to) => (s) => ({ ...s, [file]: s[file].replace(from, to) });
+// previousRunForProject's last line and the doc comment after it: the anchor that tells its
+// `return row ?? null;` from the same line in the store's other one-row reads.
+const PREVIOUS_RUN_END = "  return row ?? null;\n}\n\n/** Carry dispositions forward";
 
 // The exhausted branch's write as the runner holds it, and as it was before it
 // was caught (proofread-run.ts at 922ba4e) — the edit both teeth tables use.
@@ -1035,6 +1112,70 @@ const MUTATIONS = [
     file: "store",
     flips: ["previous-run-reports-its-rules-version"],
     apply: edit("store", "rulesVersion: studyProofreadRunsTable.rulesVersion }", "rulesVersion: studyProofreadRunsTable.engineStamp }"),
+  },
+  {
+    label: "move the rules-version return below the carry loop (every decision is appended, then 0 is returned)",
+    file: "store",
+    flips: ["carry-forward-requires-same-rules"],
+    apply: (s) => ({ ...s, store: s.store.replace("  if (!sameRules) return 0;\n", "").replace("  if (carried) logger.info(", "  if (!sameRules) return 0;\n  if (carried) logger.info(") }),
+  },
+  {
+    label: "read the previous run's findings before the rules-version return",
+    file: "store",
+    flips: ["carry-forward-requires-same-rules"],
+    apply: edit("store", "  if (!sameRules) return 0;\n", "  const early = await db.select().from(studyProofreadFindingsTable).where(eq(studyProofreadFindingsTable.runId, previousRunId));\n  void early;\n  if (!sameRules) return 0;\n"),
+  },
+  {
+    label: "invert the rules-version return (carry only across a bump)",
+    file: "store",
+    flips: ["carry-forward-requires-same-rules"],
+    apply: edit("store", "  if (!sameRules) return 0;\n", "  if (sameRules) return 0;\n"),
+  },
+  {
+    label: "rewrite the previous run's rules version after the read",
+    file: "store",
+    flips: ["previous-run-reports-its-rules-version"],
+    apply: edit("store", PREVIOUS_RUN_END, `  if (row) row.rulesVersion = "2";\n${PREVIOUS_RUN_END}`),
+  },
+  {
+    label: "rebuild the previous run in the return with a fixed rules version",
+    file: "store",
+    flips: ["previous-run-reports-its-rules-version"],
+    apply: edit("store", PREVIOUS_RUN_END, PREVIOUS_RUN_END.replace("return row ?? null;", 'return row ? { id: row.id, rulesVersion: "2" } : null;')),
+  },
+  {
+    label: "report the engine stamp, read by a second select, as the previous run's rules version",
+    file: "store",
+    flips: ["previous-run-reports-its-rules-version"],
+    apply: edit(
+      "store",
+      PREVIOUS_RUN_END,
+      `  const [s2] = await db.select({ e: studyProofreadRunsTable.engineStamp }).from(studyProofreadRunsTable).where(eq(studyProofreadRunsTable.id, row?.id ?? "")).limit(1);\n  if (row && s2) row.rulesVersion = s2.e;\n${PREVIOUS_RUN_END}`,
+    ),
+  },
+  {
+    label: "remap the previous run's rows inside the read's chain (.then)",
+    file: "store",
+    flips: ["previous-run-reports-its-rules-version"],
+    apply: edit("store", `    .limit(1);\n${PREVIOUS_RUN_END}`, `    .limit(1)\n    .then((rs) => rs.map((r) => ({ ...r, rulesVersion: "2" })));\n${PREVIOUS_RUN_END}`),
+  },
+  {
+    label: "take the OLDEST finished revision as the carry source (ascending order)",
+    file: "store",
+    flips: ["previous-run-is-the-newest-before"],
+    apply: edit("store", `    .orderBy(desc(studyProofreadRunsTable.revision))\n    .limit(1);\n${PREVIOUS_RUN_END}`, `    .orderBy(studyProofreadRunsTable.revision)\n    .limit(1);\n${PREVIOUS_RUN_END}`),
+  },
+  {
+    label: "order the carry source by creation time instead of revision",
+    file: "store",
+    flips: ["previous-run-is-the-newest-before"],
+    apply: edit("store", `    .orderBy(desc(studyProofreadRunsTable.revision))\n    .limit(1);\n${PREVIOUS_RUN_END}`, `    .orderBy(desc(studyProofreadRunsTable.createdAt))\n    .limit(1);\n${PREVIOUS_RUN_END}`),
+  },
+  {
+    label: "leave the carry source unordered (any finished revision)",
+    file: "store",
+    flips: ["previous-run-is-the-newest-before"],
+    apply: edit("store", `    .orderBy(desc(studyProofreadRunsTable.revision))\n    .limit(1);\n${PREVIOUS_RUN_END}`, `    .limit(1);\n${PREVIOUS_RUN_END}`),
   },
   {
     label: "append the carried disposition without checking for one",

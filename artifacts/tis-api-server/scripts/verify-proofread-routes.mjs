@@ -378,6 +378,44 @@ function body(src, name) {
   return end < 0 ? src.slice(start) : src.slice(start, start + 1 + end);
 }
 
+/**
+ * A store read written as exactly two statements after the signature `sig` (the text after
+ * `function `): `const [row] = await db.<link>(…).<link>(…)…;` and then `return row ?? null;`, the
+ * function's last statement. Answers the chain's links as { name, args } (args whitespace-free),
+ * every link a call, in order — or null when the body is anything else: a statement before the
+ * read or between it and the return, a return that rebuilds or replaces the row, a link that is
+ * not a call. A remapping link (`.then`, `.map`) is a call, so it comes back by name and the
+ * caller refuses it. Reads the comment-stripped text with all whitespace removed (sq).
+ */
+function rowRead(fnText, sig) {
+  const s = sq(fnText);
+  const head = sq(`export async function ${sig} { const [row] = await db`);
+  if (!s.startsWith(head)) return null;
+  const links = [];
+  let i = head.length;
+  for (;;) {
+    if (s[i] === ";") break;
+    const m = /^\.([A-Za-z_$][\w$]*)\(/.exec(s.slice(i));
+    if (!m) return null;
+    const open = i + m[0].length - 1;
+    const close = matchClose(s, open);
+    if (close < 0) return null;
+    links.push({ name: m[1], args: s.slice(open + 1, close) });
+    i = close + 1;
+  }
+  return s.slice(i) === ";returnrow??null;}" ? links : null;
+}
+/** A one-row read whose links are exactly `names`, the first one `.select(<select>)` and the second `.from(<from>)`. */
+const rowReadIs = (fnText, sig, names, select, from) => {
+  const links = rowRead(fnText, sig);
+  return (
+    links !== null &&
+    links.map((l) => l.name).join() === names.join() &&
+    links[0].args === sq(select) &&
+    links[1].args === sq(from)
+  );
+};
+
 /** Every `router.<verb>(` registration in a route file, with the text up to the next one. */
 function routeCalls(src) {
   const hits = [...src.matchAll(/\brouter\.(\w+)\(\s*(?:"([^"]*)")?/g)];
@@ -2496,18 +2534,15 @@ const CHECKS = [
   {
     id: "audience-lookup-fails-closed",
     on: "store",
-    msg: "findingAudienceForFirm selects the audience and type columns alone and answers null — never a default audience or type — for a finding that is not the firm's: a default of 'engineer' would let an unknown finding pass the very test that refuses the hidden ones, and a default type would pick which decisions it is offered",
-    test: (d) => {
-      const b = body(d.store, "findingAudienceForFirm");
-      return (
-        has(
-          b,
-          "export async function findingAudienceForFirm( firmId: string, findingId: string, ): Promise<{ audience: string; type: string } | null> { const [row] = await db .select({ audience: studyProofreadFindingsTable.audience, type: studyProofreadFindingsTable.type }) .from(studyProofreadFindingsTable)",
-        ) &&
-        has(b, "return row ?? null;") &&
-        occ(b, "return ") === 1
-      );
-    },
+    msg: "findingAudienceForFirm is one read and the row it read: `const [row] = await db.select({ audience: studyProofreadFindingsTable.audience, type: studyProofreadFindingsTable.type }).from(studyProofreadFindingsTable).innerJoin(…).where(…).limit(…);` then `return row ?? null;` — no statement between them, no other link, no remap — so it answers the audience and type columns as stored, and null, never a default audience or type, for a finding that is not the firm's: a default of 'engineer' would let an unknown finding pass the very test that refuses the hidden ones, and a default or rewritten type would pick which decisions it is offered (a BLOCKER rewritten to NOTE is offered DISCLOSED)",
+    test: (d) =>
+      rowReadIs(
+        body(d.store, "findingAudienceForFirm"),
+        "findingAudienceForFirm( firmId: string, findingId: string, ): Promise<{ audience: string; type: string } | null>",
+        ["select", "from", "innerJoin", "where", "limit"],
+        "{ audience: studyProofreadFindingsTable.audience, type: studyProofreadFindingsTable.type }",
+        "studyProofreadFindingsTable",
+      ),
   },
 
   {
@@ -2523,18 +2558,15 @@ const CHECKS = [
   {
     id: "latest-run-status-fails-closed",
     on: "store",
-    msg: "latestRunStatusForProject selects the run's id and status alone and answers null — never a default run or status — when the firm has no run of that project (the route then refuses with 409)",
-    test: (d) => {
-      const b = body(d.store, "latestRunStatusForProject");
-      return (
-        has(
-          b,
-          "export async function latestRunStatusForProject( firmId: string, projectId: string, ): Promise<{ id: string; status: string } | null> { const [row] = await db .select({ id: studyProofreadRunsTable.id, status: studyProofreadRunsTable.status })",
-        ) &&
-        has(b, "return row ?? null;") &&
-        occ(b, "return ") === 1
-      );
-    },
+    msg: "latestRunStatusForProject is one read and the row it read: `const [row] = await db.select({ id: studyProofreadRunsTable.id, status: studyProofreadRunsTable.status }).from(studyProofreadRunsTable).where(…).orderBy(…).limit(…);` then `return row ?? null;` — no statement between them, no other link, no remap — so it answers the run's id and status as stored, and null, never a default run or status, when the firm has no run of that project (the route then refuses with 409); a status rewritten after the read (to rules_ready, say) lets a decision through the 409 onto an unfinished run",
+    test: (d) =>
+      rowReadIs(
+        body(d.store, "latestRunStatusForProject"),
+        "latestRunStatusForProject( firmId: string, projectId: string, ): Promise<{ id: string; status: string } | null>",
+        ["select", "from", "where", "orderBy", "limit"],
+        "{ id: studyProofreadRunsTable.id, status: studyProofreadRunsTable.status }",
+        "studyProofreadRunsTable",
+      ),
   },
 
   // --- proofread-run.ts: the runner the routes call into -------------------
@@ -4096,6 +4128,46 @@ const MUTATIONS = [
     file: "store",
     flips: ["latest-run-status-fails-closed"],
     apply: editAfter("store", "export async function latestRunStatusForProject", ".select({ id: studyProofreadRunsTable.id, status: studyProofreadRunsTable.status })", ".select()"),
+  },
+  {
+    label: "latestRunStatusForProject rewrites a found run's status to rules_ready after the read (every newest run passes the 409)",
+    file: "store",
+    flips: ["latest-run-status-fails-closed"],
+    apply: editAfter("store", "export async function latestRunStatusForProject", "  return row ?? null;", '  if (row) row.status = "rules_ready";\n  return row ?? null;'),
+  },
+  {
+    label: "latestRunStatusForProject rebuilds the row in its return",
+    file: "store",
+    flips: ["latest-run-status-fails-closed"],
+    apply: editAfter("store", "export async function latestRunStatusForProject", "return row ?? null;", 'return row ? { id: row.id, status: "rules_ready" } : null;'),
+  },
+  {
+    label: "latestRunStatusForProject remaps its rows inside the chain (.then)",
+    file: "store",
+    flips: ["latest-run-status-fails-closed"],
+    // the read's text pin ends in `.limit(1);`, so a link after it moves that pin too
+    also: ["latest-run-status-is-the-firms-newest"],
+    apply: editAfter("store", "export async function latestRunStatusForProject", "    .limit(1);\n  return row ?? null;", '    .limit(1)\n    .then((rs) => rs.map((r) => ({ ...r, status: "rules_ready" })));\n  return row ?? null;'),
+  },
+  {
+    label: "findingAudienceForFirm rewrites a BLOCKER's type to NOTE after the read (offered DISCLOSED)",
+    file: "store",
+    flips: ["audience-lookup-fails-closed"],
+    apply: editAfter("store", "export async function findingAudienceForFirm", "  return row ?? null;", '  if (row && row.type === "BLOCKER") row.type = "NOTE";\n  return row ?? null;'),
+  },
+  {
+    label: "findingAudienceForFirm rebuilds the row in its return with the engineer's audience",
+    file: "store",
+    flips: ["audience-lookup-fails-closed"],
+    apply: editAfter("store", "export async function findingAudienceForFirm", "return row ?? null;", 'return row ? { audience: "engineer", type: row.type } : null;'),
+  },
+  {
+    label: "findingAudienceForFirm remaps its rows inside the chain (.then)",
+    file: "store",
+    flips: ["audience-lookup-fails-closed"],
+    // the read's text pin ends in `.limit(1);`, so a link after it moves that pin too
+    also: ["audience-lookup-is-firm-scoped"],
+    apply: editAfter("store", "export async function findingAudienceForFirm", "    .limit(1);\n  return row ?? null;", '    .limit(1)\n    .then((rs) => rs.map((r) => ({ ...r, audience: "engineer" })));\n  return row ?? null;'),
   },
 
   // ---- runner -----------------------------------------------------------------
