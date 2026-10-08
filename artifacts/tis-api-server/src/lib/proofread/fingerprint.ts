@@ -4,10 +4,16 @@
  * A fingerprint is the key a triage disposition carries forward across a
  * re-run: same clause, same section, same values read → same finding, so a
  * WITHDRAWN item never silently reopens and an ACCEPTED RISK keeps its named
- * person. An engine stamp says which engine produced the study the finding is
- * about — nothing in the payload records that (the only version-ish field is
- * generatedAt), which is why the same Wake request produced v/c 2.61-3.93
- * before #227 and 0.71-1.87 after.
+ * person. Whether a carry happens at all is gated on RULES_VERSION (below),
+ * never on the engine stamp.
+ *
+ * The engine stamp is attribution: it records which deploy RAN the check — the
+ * rule-relevant engine constants, plus the deploy's commit when the platform
+ * provides one — computed when the run is queued. It does not say which engine
+ * produced the study: a re-run of an old study is stamped with today's deploy.
+ * Nothing in the payload records the producing engine (the only version-ish
+ * field is generatedAt), which is why the same Wake request produced v/c
+ * 2.61-3.93 before #227 and 0.71-1.87 after with nothing naming either engine.
  */
 import {
   hash32,
@@ -33,7 +39,11 @@ export function findingFingerprint(f: ProofreadFinding): string {
   return hex(hash32(canon));
 }
 
-/** Rule-relevant engine constants, plus the deploy's commit when the platform provides one. */
+/**
+ * Rule-relevant engine constants, plus the deploy's commit when the platform provides one: which deploy ran the
+ * check, recorded on the run as attribution. Not a carry gate — it changes on every deploy, while the study row it
+ * judges never changes.
+ */
 export function engineStamp(): string {
   const constants = JSON.stringify({
     PLAUSIBLE_MAX_INTERSECTION_VC,

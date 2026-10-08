@@ -197,13 +197,13 @@ export async function latestRunForProject(firmId: string, projectId: string) {
   return { run, findings, dispositions };
 }
 
-/** The run before `revision` on this project, with the engine it judged — the source of a carry-forward. */
+/** The run before `revision` on this project, with the rules version it ran under — the source of a carry-forward. */
 export async function previousRunForProject(
   projectId: string,
   beforeRevision: number,
-): Promise<{ id: string; engineStamp: string } | null> {
+): Promise<{ id: string; rulesVersion: string } | null> {
   const [row] = await db
-    .select({ id: studyProofreadRunsTable.id, engineStamp: studyProofreadRunsTable.engineStamp })
+    .select({ id: studyProofreadRunsTable.id, rulesVersion: studyProofreadRunsTable.rulesVersion })
     .from(studyProofreadRunsTable)
     .where(
       and(
@@ -221,13 +221,13 @@ export async function previousRunForProject(
   return row ?? null;
 }
 
-/** Carry dispositions forward to a new run by fingerprint, under the same engine stamp. */
+/** Carry dispositions forward to a new run by fingerprint, when both runs ran under the same rules version. */
 export async function carryForwardDispositions(
   newRunId: string,
   previousRunId: string,
-  sameEngine: boolean,
+  sameRules: boolean,
 ): Promise<number> {
-  if (!sameEngine) return 0;
+  if (!sameRules) return 0;
   const [oldF, newF] = await Promise.all([
     db.select().from(studyProofreadFindingsTable).where(eq(studyProofreadFindingsTable.runId, previousRunId)),
     db.select().from(studyProofreadFindingsTable).where(eq(studyProofreadFindingsTable.runId, newRunId)),

@@ -144,9 +144,15 @@ export async function claimAndRunOne(): Promise<boolean> {
     });
     // A re-run must not reopen a WITHDRAWN item or lose an ACCEPTED RISK with
     // its named person. Dispositions carry forward by fingerprint, and only
-    // when the engine that produced the study has not changed underneath them.
+    // when both runs ran under the same RULES_VERSION. Not the engine stamp:
+    // it ends in the deploy's commit, and a study row never changes, so
+    // gating on it reopened every decision on the first "Run again" after any
+    // deploy. The fingerprint already holds the exact values a finding read,
+    // so an unchanged finding over an unchanged study is the same finding;
+    // a RULES_VERSION bump means what a clause judges changed, and reopens
+    // every decision on purpose.
     const prev = await previousRunForProject(run.projectId, run.revision);
-    if (prev) await carryForwardDispositions(run.id, prev.id, prev.engineStamp === run.engineStamp);
+    if (prev) await carryForwardDispositions(run.id, prev.id, prev.rulesVersion === run.rulesVersion);
     await completeRun({ runId: run.id, status: "rules_ready", findings: [] });
     logger.info({ runId: run.id, findings: findings.length }, "proofread.rules_ready");
     return true;

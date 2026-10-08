@@ -538,7 +538,10 @@ const SRC_DESIGN =
   ok(ALL_CLAUSES.length === 12, `the registry holds twelve clauses (${ALL_CLAUSES.length}) — the set RULES_VERSION "2" names`);
 }
 
-// --- the engine stamp tracks the deploy ------------------------------------
+// --- the engine stamp names the deploy that ran the check -----------------
+// Attribution only: the carry-forward gates on RULES_VERSION, not on this (pinned in verify-proofread-claim.mjs,
+// [carry-gate-is-the-rules-version] and its behaviour checks), because the commit suffix changes on every deploy
+// while the study row a run judges never changes.
 {
   const saved = { r: process.env.RAILWAY_GIT_COMMIT_SHA, g: process.env.GIT_SHA };
   delete process.env.RAILWAY_GIT_COMMIT_SHA;

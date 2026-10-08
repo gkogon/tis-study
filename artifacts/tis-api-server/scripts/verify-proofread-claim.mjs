@@ -29,13 +29,23 @@
  * the store, where it does not live) fails loudly instead of passing forever.
  *
  * Reads as text and imports only lifecycle.ts, which is pure; it never imports
- * the store, the runner or @workspace/db, and so never opens a connection.
+ * the store or @workspace/db, and so never opens a connection.
+ *
+ * The last part, BEHAVIOUR, runs the runner itself: proofread-run.ts is bundled
+ * with esbuild against an in-memory store, logger and clause registry, and its
+ * two exported functions are driven through scenarios — which ids the
+ * carry-forward is handed and what gates it. It has its own teeth: each edit
+ * to the runner's text is bundled and RUN, and must turn exactly the behaviour
+ * checks that claim to protect it red. What the store then does with those
+ * arguments is SQL, which only a database can execute; that is out of reach
+ * here.
  *
  * Run: `pnpm run check:proofread-claim`
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { build } from "esbuild";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (p) => {
@@ -253,8 +263,55 @@ const INSTANCE_ID_CASES = [
 ];
 const instanceIdResults = (src) => INSTANCE_ID_CASES.map((c) => ({ ...c, ...instanceIdEval(src, c.env, c.pid) }));
 
+/**
+ * Every call to `name(` in `src`, with its arguments split on their top-level
+ * commas (parens, brackets, braces and string literals matched) and
+ * whitespace-normalised, a trailing comma dropped. A text pin on the whole call
+ * would also refuse a harmless reformat; this pins each argument by position,
+ * which is what a swapped pair of ids gets wrong.
+ */
+function callsOf(src, name) {
+  const out = [];
+  const re = new RegExp(`(?<![\\w.])${name}\\(`, "g");
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    const open = m.index + m[0].length - 1;
+    const args = [];
+    let depth = 0;
+    let q = null;
+    let start = open + 1;
+    for (let i = open; i < src.length; i++) {
+      const c = src[i];
+      if (q) {
+        if (c === "\\") i++;
+        else if (c === q) q = null;
+        continue;
+      }
+      if (c === '"' || c === "'" || c === "`") q = c;
+      else if (c === "(" || c === "[" || c === "{") depth++;
+      else if (c === ")" || c === "]" || c === "}") {
+        depth--;
+        if (depth === 0) {
+          args.push(src.slice(start, i));
+          break;
+        }
+      } else if (c === "," && depth === 1) {
+        args.push(src.slice(start, i));
+        start = i + 1;
+      }
+    }
+    const a = args.map(norm);
+    if (a.length > 0 && a[a.length - 1] === "") a.pop();
+    out.push({ at: m.index, args: a });
+  }
+  return out;
+}
+
+/** The carry gate, in either operand order: equal rules versions, nothing else. */
+const SAME_RULES = new Set(["prev.rulesVersion === run.rulesVersion", "run.rulesVersion === prev.rulesVersion"]);
+
 const count = (s, needle) => s.split(needle).length - 1;
-const UNIT_MS = { millisecond: 1, second: 1000, minute: 60_000, hour: 3_600_000 };
+const UNIT_MS ={ millisecond: 1, second: 1000, minute: 60_000, hour: 3_600_000 };
 
 // ---------------------------------------------------------------------------
 // The checks. `on` is the file the check is ABOUT: the file whose breakage it
@@ -417,10 +474,17 @@ const CHECKS = [
       ),
   },
   {
-    id: "carry-forward-requires-same-engine",
+    id: "carry-forward-requires-same-rules",
     on: "store",
-    msg: "carryForwardDispositions carries nothing when the engine stamp changed: a disposition was made against one engine's numbers",
-    test: (s) => /if \(!sameEngine\) return 0;/.test(body(s.store, "carryForwardDispositions")),
+    msg: "carryForwardDispositions carries nothing when the RULES version changed (`if (!sameRules) return 0;`): a RULES_VERSION bump is by definition a material change to what a clause judges, so it reopens every decision on purpose. A deploy alone is not such a change — the engine stamp is attribution, and the fingerprint already holds the exact values a finding read",
+    test: (s) => /sameRules: boolean,?\s*\)/.test(body(s.store, "carryForwardDispositions")) && /if \(!sameRules\) return 0;/.test(body(s.store, "carryForwardDispositions")),
+  },
+  {
+    id: "previous-run-reports-its-rules-version",
+    on: "store",
+    msg: "previousRunForProject returns the previous run's id and the rules version read from ITS rules_version column — the carry gate compares that value with the claimed run's; read from engine_stamp (the same varchar type, so tsc is silent) the gate would reopen every decision after every deploy",
+    test: (s) =>
+      /\.select\(\{ id: studyProofreadRunsTable\.id, rulesVersion: studyProofreadRunsTable\.rulesVersion \}\)/.test(norm(body(s.store, "previousRunForProject"))),
   },
   {
     id: "carry-forward-idempotent",
@@ -580,11 +644,39 @@ const CHECKS = [
         prev > write &&
         carry > prev &&
         flip > carry &&
-        /prev\.engineStamp === run\.engineStamp/.test(b) &&
         // the flip is its own call and writes no coverage, so it cannot undo
         // what the first half recorded
         /await completeRun\(\{ runId: run\.id, status: "rules_ready", findings: \[\] \}\);/.test(b)
       );
+    },
+  },
+  {
+    id: "carry-looks-back-from-this-run",
+    on: "runner",
+    msg: "the carry source is `const prev = await previousRunForProject(run.projectId, run.revision)`: the CLAIMED run's project and revision, called once — run.id in the project slot matches no project and nothing ever carries; any other revision makes the run its own source or skips the one before it",
+    test: (s) => {
+      const b = norm(body(s.runner, "claimAndRunOne"));
+      const calls = callsOf(b, "previousRunForProject");
+      return calls.length === 1 && calls[0].args.join(", ") === "run.projectId, run.revision" && /const prev = await previousRunForProject\(/.test(b);
+    },
+  },
+  {
+    id: "carry-writes-this-run-from-prev",
+    on: "runner",
+    msg: "the carry is `if (prev) await carryForwardDispositions(run.id, prev.id, …)`: the NEW run first, the previous one second, made whenever a previous run exists — swapped, it reads this run's (still empty) decisions as the source and every recorded decision reopens; skipped or put behind any other condition, nothing carries",
+    test: (s) => {
+      const b = norm(body(s.runner, "claimAndRunOne"));
+      const calls = callsOf(b, "carryForwardDispositions");
+      return calls.length === 1 && calls[0].args[0] === "run.id" && calls[0].args[1] === "prev.id" && /if \(prev\) await carryForwardDispositions\(/.test(b);
+    },
+  },
+  {
+    id: "carry-gate-is-the-rules-version",
+    on: "runner",
+    msg: "the carry's third argument is `prev.rulesVersion === run.rulesVersion` (either operand order): decisions carry across a deploy and stop at a RULES_VERSION bump. Gated on engineStamp, which ends in the deploy's commit, every \"Run again\" after any deploy reopened every WITHDRAWN, DISCLOSED and FIXED — the study row never changes, so nothing else could have moved",
+    test: (s) => {
+      const calls = callsOf(body(s.runner, "claimAndRunOne"), "carryForwardDispositions");
+      return calls.length === 1 && calls[0].args.length === 3 && SAME_RULES.has(calls[0].args[2]);
     },
   },
   {
@@ -743,10 +835,16 @@ const MUTATIONS = [
     apply: edit("store", /and\(eq\(studyProofreadRunsTable\.firmId, firmId\), /, "and("),
   },
   {
-    label: "carry dispositions forward across an engine change",
+    label: "carry dispositions forward across a rules-version change",
     file: "store",
-    flips: ["carry-forward-requires-same-engine"],
-    apply: edit("store", "if (!sameEngine) return 0;", ""),
+    flips: ["carry-forward-requires-same-rules"],
+    apply: edit("store", "if (!sameRules) return 0;", ""),
+  },
+  {
+    label: "report the previous run's engine stamp as its rules version (same type; tsc is silent)",
+    file: "store",
+    flips: ["previous-run-reports-its-rules-version"],
+    apply: edit("store", "rulesVersion: studyProofreadRunsTable.rulesVersion }", "rulesVersion: studyProofreadRunsTable.engineStamp }"),
   },
   {
     label: "append the carried disposition without checking for one",
@@ -958,9 +1056,63 @@ const MUTATIONS = [
       const b = body(s.runner, "claimAndRunOne");
       const carry = /\n *const prev = await previousRunForProject\([\s\S]*?\n *if \(prev\) await carryForwardDispositions\([^;]*;/.exec(b);
       if (!carry) return s;
-      const moved = b.replace(carry[0], "").replace("    try {", `    try {${carry[0]}`);
+      // Moved to just before the FIRST completeRun of the pass — the one that
+      // writes the findings. (It used to be re-inserted after a 4-space
+      // `    try {`, which this body does not contain, so the edit deleted the
+      // carry instead of moving it; the carry's own call-site checks exposed it.)
+      const first = '\n    await completeRun({\n      runId: run.id,\n      status: "running",';
+      if (!b.includes(first)) return s;
+      const moved = b.replace(carry[0], "").replace(first, `${carry[0]}${first}`);
       return { ...s, runner: s.runner.replace(b, moved) };
     },
+  },
+  {
+    label: "swap the carry's two run ids (deferred item 0: every guard stayed green)",
+    file: "runner",
+    flips: ["carry-writes-this-run-from-prev"],
+    apply: edit("runner", "carryForwardDispositions(run.id, prev.id,", "carryForwardDispositions(prev.id, run.id,"),
+  },
+  {
+    label: "look the carry source up by run.id instead of run.projectId (deferred item 0)",
+    file: "runner",
+    flips: ["carry-looks-back-from-this-run"],
+    apply: edit("runner", "previousRunForProject(run.projectId, run.revision)", "previousRunForProject(run.id, run.revision)"),
+  },
+  {
+    label: "look back from the revision after this one (the run becomes its own carry source)",
+    file: "runner",
+    flips: ["carry-looks-back-from-this-run"],
+    apply: edit("runner", "previousRunForProject(run.projectId, run.revision)", "previousRunForProject(run.projectId, run.revision + 1)"),
+  },
+  {
+    label: "gate the carry on the engine stamp, which ends in the deploy's commit (final review I-1)",
+    file: "runner",
+    flips: ["carry-gate-is-the-rules-version"],
+    apply: edit("runner", "prev.rulesVersion === run.rulesVersion", "prev.engineStamp === run.engineStamp"),
+  },
+  {
+    label: "carry whatever the rules version (the gate replaced with true)",
+    file: "runner",
+    flips: ["carry-gate-is-the-rules-version"],
+    apply: edit("runner", "prev.rulesVersion === run.rulesVersion", "true"),
+  },
+  {
+    label: "invert the gate (carry only across a rules bump)",
+    file: "runner",
+    flips: ["carry-gate-is-the-rules-version"],
+    apply: edit("runner", "prev.rulesVersion === run.rulesVersion", "prev.rulesVersion !== run.rulesVersion"),
+  },
+  {
+    label: "compare the previous run's rules version with itself (always true)",
+    file: "runner",
+    flips: ["carry-gate-is-the-rules-version"],
+    apply: edit("runner", "prev.rulesVersion === run.rulesVersion", "prev.rulesVersion === prev.rulesVersion"),
+  },
+  {
+    label: "never make the carry call (`if (false && prev)`)",
+    file: "runner",
+    flips: ["carry-writes-this-run-from-prev"],
+    apply: edit("runner", "if (prev) await carryForwardDispositions(", "if (false && prev) await carryForwardDispositions("),
   },
   {
     label: "throw out of enqueueProofread when the row could not be inserted",
@@ -996,6 +1148,313 @@ for (const m of MUTATIONS) {
 const covered = new Set(MUTATIONS.flatMap((m) => m.flips));
 const toothless = ids.filter((id) => !covered.has(id));
 ok(toothless.length === 0, `every check has a mutation proving it has teeth`, toothless.length ? `no mutation breaks: ${toothless.join(", ")}` : undefined);
+
+// Edits that must leave every check GREEN: the same code, written another way.
+// Each must apply (an edit that matched nothing proves nothing) and turn
+// nothing red — a pin that refused them would be pinning spelling, not meaning.
+const STAYS_GREEN = [
+  {
+    label: "the carry gate with its operands swapped (run.rulesVersion === prev.rulesVersion) — the same comparison",
+    file: "runner",
+    apply: edit("runner", "prev.rulesVersion === run.rulesVersion", "run.rulesVersion === prev.rulesVersion"),
+  },
+];
+for (const g of STAYS_GREEN) {
+  const mutated = g.apply(sources);
+  ok(mutated[g.file] !== sources[g.file], `stays green: "${g.label}" applies to the source`);
+  const now = run(mutated).filter((id) => !failing.includes(id));
+  ok(now.length === 0, `stays green: "${g.label}" — no check refuses it`, now.length ? `went red: ${now.join(", ")}` : undefined);
+}
+
+// ===========================================================================
+// BEHAVIOUR. Everything above reads text; this part RUNS the runner.
+//
+// proofread-run.ts — the real file, or a mutated copy of its text — is bundled
+// with esbuild, with three of its imports replaced by in-memory stubs:
+// ./proofread-store (each function records its arguments and does what the
+// scenario says, throwing included), ./logger (records every line) and
+// ./proofread/index.ts (no clauses, a fixed RULES_VERSION and engineStamp, so
+// the scenario controls everything the runner sees). ./proofread/lifecycle.ts
+// is the real one. Nothing reaches @workspace/db: the runner's only import of
+// it is `import type`, which esbuild drops, and the bundle's own input list is
+// asserted to hold no store, no db and no logger before anything runs.
+//
+// What this proves is what the RUNNER does with what the store hands it: which
+// ids the carry is given, what gates it, what is caught and what propagates.
+// It cannot prove what the store does with them — that is SQL, which only a
+// database executes.
+// ===========================================================================
+const runnerDir = path.resolve(here, "../src/lib");
+const STUB_SOURCES = {
+  "./proofread-store": `
+const st = () => globalThis.__proofreadRunnerStub;
+const call = (name) => async (...args) => st().call(name, args);
+export const insertQueuedRun = call("insertQueuedRun");
+export const claimOneRun = call("claimOneRun");
+export const completeRun = call("completeRun");
+export const loadStudyForRun = call("loadStudyForRun");
+export const previousRunForProject = call("previousRunForProject");
+export const carryForwardDispositions = call("carryForwardDispositions");
+`,
+  "./logger": `
+const st = () => globalThis.__proofreadRunnerStub;
+const line = (level) => (obj, msg) => st().log(level, obj, msg);
+export const logger = { trace: line("trace"), debug: line("debug"), info: line("info"), warn: line("warn"), error: line("error"), fatal: line("fatal") };
+`,
+  "./proofread/index.ts": `
+const st = () => globalThis.__proofreadRunnerStub;
+export const ALL_CLAUSES = [];
+export const RULES_VERSION = "rules-current";
+export const engineStamp = () => "stamp-this-deploy";
+export const runClauses = (...args) => st().call("runClauses", args) ?? { findings: [], coverage: [] };
+`,
+};
+
+async function bundleRunner(text) {
+  const out = await build({
+    stdin: { contents: text, resolveDir: runnerDir, sourcefile: "proofread-run.ts", loader: "ts" },
+    absWorkingDir: runnerDir,
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+    tsconfigRaw: "{}",
+    metafile: true,
+    logLevel: "silent",
+    plugins: [
+      {
+        name: "proofread-runner-stubs",
+        setup(b) {
+          b.onResolve({ filter: /^\.\/(proofread-store|logger|proofread\/index\.ts)$/ }, (a) => ({ path: a.path, namespace: "runner-stub" }));
+          b.onLoad({ filter: /.*/, namespace: "runner-stub" }, (a) => ({ contents: STUB_SOURCES[a.path], loader: "js" }));
+        },
+      },
+    ],
+  });
+  const inputs = Object.keys(out.metafile.inputs);
+  const mod = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
+  return { mod, inputs };
+}
+
+/** One scenario: install a fresh stub, call `fn(...args)` on the bundled runner, record what happened. */
+async function drive(mod, fn, args, impl) {
+  const st = { calls: [], logs: [] };
+  st.call = (name, a) => {
+    st.calls.push({ name, args: a });
+    const f = impl[name];
+    return f ? f(...a) : undefined;
+  };
+  st.log = (level, obj, msg) => st.logs.push({ level, obj, msg });
+  st.to = (name) => st.calls.filter((c) => c.name === name);
+  globalThis.__proofreadRunnerStub = st;
+  try {
+    return { st, value: await mod[fn](...args), threw: false, error: null };
+  } catch (error) {
+    return { st, value: undefined, threw: true, error };
+  }
+}
+
+const claimed = (o = {}) => ({
+  id: "run-3",
+  projectId: "project-A",
+  firmId: "firm-A",
+  revision: 3,
+  status: "running",
+  attempts: 1,
+  claimedAt: new Date(),
+  rulesVersion: "rules-current",
+  engineStamp: "stamp-this-deploy",
+  ...o,
+});
+const STUDY = { request: {}, result: {} };
+const ENQUEUE_ARGS = { projectId: "project-A", firmId: "firm-A", userId: "user-1" };
+const reachedRulesReady = (r) => r.st.to("completeRun").some((c) => c.args[0]?.runId === "run-3" && c.args[0]?.status === "rules_ready");
+
+/** Bundle `text` and run every scenario once; the behaviour checks read the result. */
+async function observe(text) {
+  let bundled;
+  try {
+    bundled = await bundleRunner(text);
+  } catch (e) {
+    return { error: `the runner did not bundle: ${(e.errors ?? []).map((x) => x.text).join("; ") || e.message}` };
+  }
+  const { mod, inputs } = bundled;
+  // The previous run of the SAME rules recorded by an OLDER deploy: the store
+  // returns what previousRunForProject selects — the id and the rules version.
+  const acrossDeploy = await drive(mod, "claimAndRunOne", [], {
+    claimOneRun: () => claimed({ engineStamp: "stamp-this-deploy" }),
+    loadStudyForRun: () => STUDY,
+    previousRunForProject: () => ({ id: "run-2", rulesVersion: "rules-current" }),
+    carryForwardDispositions: () => 1,
+  });
+  const rulesBumped = await drive(mod, "claimAndRunOne", [], {
+    claimOneRun: () => claimed(),
+    loadStudyForRun: () => STUDY,
+    previousRunForProject: () => ({ id: "run-2", rulesVersion: "rules-older" }),
+    carryForwardDispositions: () => 0,
+  });
+  const enqueued = await drive(mod, "enqueueProofread", [ENQUEUE_ARGS], {
+    insertQueuedRun: () => ({ id: "run-q" }),
+    claimOneRun: () => null,
+  });
+  return { inputs, acrossDeploy, rulesBumped, enqueued };
+}
+
+const describe = (r) => (r ? `${r.threw ? `threw ${r.error?.message ?? r.error}` : `returned ${JSON.stringify(r.value)}`}; calls: ${r.st.calls.map((c) => `${c.name}(${JSON.stringify(c.args).slice(1, -1)})`).join(", ") || "none"}` : "not run");
+
+const BCHECKS = [
+  {
+    id: "runs-carry-source-is-this-project-before-this-revision",
+    msg: "RUN: a claimed run (project-A, revision 3) asks previousRunForProject for exactly (\"project-A\", 3) — its own project, strictly before its own revision",
+    test: (o) => JSON.stringify(o.acrossDeploy.st.to("previousRunForProject").map((c) => c.args)) === JSON.stringify([["project-A", 3]]),
+    why: (o) => describe(o.acrossDeploy),
+  },
+  {
+    id: "runs-carry-writes-this-run-from-the-previous-one",
+    msg: "RUN: the carry is called once, as carryForwardDispositions(\"run-3\", \"run-2\", …) — the claimed run as the target and the previous run the store returned as the source",
+    test: (o) => {
+      const c = o.acrossDeploy.st.to("carryForwardDispositions");
+      return c.length === 1 && c[0].args[0] === "run-3" && c[0].args[1] === "run-2";
+    },
+    why: (o) => describe(o.acrossDeploy),
+  },
+  {
+    id: "runs-carry-crosses-a-deploy-under-the-same-rules",
+    msg: "RUN: the previous run has the same rules version and was recorded by an older deploy — decisions carry (the gate is true). A new deploy is not a reason to reopen a WITHDRAWN",
+    test: (o) => {
+      const c = o.acrossDeploy.st.to("carryForwardDispositions");
+      return c.length === 1 && c[0].args[2] === true;
+    },
+    why: (o) => describe(o.acrossDeploy),
+  },
+  {
+    id: "runs-carry-stops-at-a-rules-bump",
+    msg: "RUN: the previous run has an older rules version — the run still reaches rules_ready, and nothing carries (no carry call, or one gated false): a RULES_VERSION bump reopens every decision on purpose",
+    test: (o) => {
+      const c = o.rulesBumped.st.to("carryForwardDispositions");
+      return !o.rulesBumped.threw && reachedRulesReady(o.rulesBumped) && (c.length === 0 || (c.length === 1 && c[0].args[2] === false));
+    },
+    why: (o) => describe(o.rulesBumped),
+  },
+  {
+    id: "runs-enqueue-records-the-current-rules-version",
+    msg: "RUN: enqueueProofread queues the run with the caller's project, firm and user, the current RULES_VERSION and engineStamp() — the rules version recorded here is the one the carry gate later compares",
+    test: (o) => {
+      const c = o.enqueued.st.to("insertQueuedRun");
+      const a = c[0]?.args[0] ?? {};
+      return (
+        c.length === 1 &&
+        a.projectId === "project-A" &&
+        a.firmId === "firm-A" &&
+        a.userId === "user-1" &&
+        a.rulesVersion === "rules-current" &&
+        a.engineStamp === "stamp-this-deploy"
+      );
+    },
+    why: (o) => describe(o.enqueued),
+  },
+];
+
+const BIDS = BCHECKS.map((c) => c.id);
+ok(new Set([...BIDS, ...ids]).size === BIDS.length + ids.length, "precondition: every behaviour check id is unique, and none repeats a text check's id");
+
+const brun = (o) => (o.error ? [...BIDS] : BCHECKS.filter((c) => !c.test(o)).map((c) => c.id));
+const realObs = await observe(sources.runner);
+ok(!realObs.error, "the real runner bundles with its store, logger and clause registry stubbed", realObs.error);
+if (!realObs.error) {
+  const real = realObs.inputs.filter((p) => !p.startsWith("runner-stub:"));
+  const leaked = real.filter((p) => /proofread-store\.ts|logger\.ts|lib\/db\/|@workspace\/db|proofread\/index\.ts|drizzle|pino/.test(p));
+  ok(
+    leaked.length === 0 && real.some((p) => p.endsWith("proofread/lifecycle.ts")),
+    "the bundle holds the runner and the real lifecycle.ts, and no store, db, logger or clause module — so nothing it runs can open a connection",
+    leaked.length ? `in the bundle: ${leaked.join(", ")}` : `inputs: ${realObs.inputs.join(", ")}`,
+  );
+}
+const bfailing = brun(realObs);
+for (const c of BCHECKS) {
+  const red = bfailing.includes(c.id);
+  ok(!red, `[${c.id}] ${c.msg}`, red ? (realObs.error ?? c.why(realObs)) : undefined);
+}
+
+// Behaviour teeth: each edit to the runner's text must turn exactly these
+// behaviour checks red when the edited runner is bundled and RUN.
+const BMUTATIONS = [
+  {
+    label: "swap the carry's two run ids",
+    flips: ["runs-carry-writes-this-run-from-the-previous-one"],
+    apply: (t) => t.replace("carryForwardDispositions(run.id, prev.id,", "carryForwardDispositions(prev.id, run.id,"),
+  },
+  {
+    label: "look the carry source up by run.id instead of run.projectId",
+    flips: ["runs-carry-source-is-this-project-before-this-revision"],
+    apply: (t) => t.replace("previousRunForProject(run.projectId, run.revision)", "previousRunForProject(run.id, run.revision)"),
+  },
+  {
+    label: "look back from the revision after this one",
+    flips: ["runs-carry-source-is-this-project-before-this-revision"],
+    apply: (t) => t.replace("previousRunForProject(run.projectId, run.revision)", "previousRunForProject(run.projectId, run.revision + 1)"),
+  },
+  {
+    label: "gate the carry on the engine stamp",
+    flips: ["runs-carry-crosses-a-deploy-under-the-same-rules"],
+    apply: (t) => t.replace("prev.rulesVersion === run.rulesVersion", "(prev as any).engineStamp === run.engineStamp"),
+  },
+  {
+    label: "carry whatever the rules version (true)",
+    flips: ["runs-carry-stops-at-a-rules-bump"],
+    apply: (t) => t.replace("prev.rulesVersion === run.rulesVersion", "true"),
+  },
+  {
+    label: "invert the gate",
+    flips: ["runs-carry-crosses-a-deploy-under-the-same-rules", "runs-carry-stops-at-a-rules-bump"],
+    apply: (t) => t.replace("prev.rulesVersion === run.rulesVersion", "prev.rulesVersion !== run.rulesVersion"),
+  },
+  {
+    label: "compare the previous run's rules version with itself",
+    flips: ["runs-carry-stops-at-a-rules-bump"],
+    apply: (t) => t.replace("prev.rulesVersion === run.rulesVersion", "prev.rulesVersion === prev.rulesVersion"),
+  },
+  {
+    label: "never make the carry call",
+    flips: ["runs-carry-writes-this-run-from-the-previous-one", "runs-carry-crosses-a-deploy-under-the-same-rules"],
+    apply: (t) => t.replace("if (prev) await carryForwardDispositions(", "if (false && prev) await carryForwardDispositions("),
+  },
+  {
+    label: "record the engine stamp as the run's rules version",
+    flips: ["runs-enqueue-records-the-current-rules-version"],
+    apply: (t) => t.replace("rulesVersion: RULES_VERSION,", "rulesVersion: engineStamp(),"),
+  },
+];
+const BSTAYS_GREEN = [
+  { label: "the carry gate with its operands swapped", apply: (t) => t.replace("prev.rulesVersion === run.rulesVersion", "run.rulesVersion === prev.rulesVersion") },
+];
+
+const bteeth = new Set(BIDS);
+for (const m of BMUTATIONS) {
+  const unknown = m.flips.filter((id) => !bteeth.has(id));
+  ok(unknown.length === 0, `behaviour teeth: "${m.label}" names only real behaviour checks`, unknown.length ? `unknown: ${unknown.join(", ")}` : undefined);
+  const text = m.apply(sources.runner);
+  ok(text !== sources.runner, `behaviour teeth: "${m.label}" actually changes the runner`);
+  const o = await observe(text);
+  const got = brun(o).filter((id) => !bfailing.includes(id)).sort().join(", ");
+  const want = [...new Set(m.flips)].sort().join(", ");
+  ok(
+    !o.error && want === got,
+    `behaviour teeth: "${m.label}" — the edited runner, RUN, is caught by exactly the behaviour checks that claim to protect it`,
+    o.error ?? (want === got ? undefined : `expected red: ${want || "(none)"}; actually red: ${got || "(none)"}`),
+  );
+}
+for (const g of BSTAYS_GREEN) {
+  const text = g.apply(sources.runner);
+  ok(text !== sources.runner, `behaviour stays green: "${g.label}" applies to the runner`);
+  const o = await observe(text);
+  const now = brun(o).filter((id) => !bfailing.includes(id));
+  ok(!o.error && now.length === 0, `behaviour stays green: "${g.label}" — no behaviour check refuses it`, o.error ?? (now.length ? `went red: ${now.join(", ")}` : undefined));
+}
+const bcovered = new Set(BMUTATIONS.flatMap((m) => m.flips));
+const btoothless = BIDS.filter((id) => !bcovered.has(id));
+ok(btoothless.length === 0, "every behaviour check has a mutation proving it has teeth", btoothless.length ? `no mutation breaks: ${btoothless.join(", ")}` : undefined);
 
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);
 process.exit(fails === 0 ? 0 : 1);
