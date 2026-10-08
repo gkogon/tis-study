@@ -17,6 +17,7 @@ import {
   findingInFirmRun,
   insertDisposition,
   latestRunForProject,
+  latestRunStatusForProject,
 } from "../lib/proofread-store";
 
 const router: IRouter = Router();
@@ -222,6 +223,18 @@ router.post(
       // would otherwise stay written for good.
       if (!decisionApplies(finding.type, parsed.data.disposition)) {
         res.status(422).json({ error: "This decision does not apply to this finding." });
+        return;
+      }
+      // A decision belongs on the run the panel shows: the project's newest
+      // run, finished. On an older revision it would be stranded — the newer
+      // run carries forward what this one held when it ran and never looks
+      // back — and on an unfinished run it races that carry. 409, so the panel
+      // refetches. Not atomic with the insert below: a re-run claimed and
+      // carried in the moment between this read and that write still strands
+      // the decision.
+      const newest = await latestRunStatusForProject(firm.id, projectId);
+      if (newest === null || newest.id !== runId || newest.status !== "rules_ready") {
+        res.status(409).json({ error: "This check has been run again. Refresh to see the latest." });
         return;
       }
       await insertDisposition({

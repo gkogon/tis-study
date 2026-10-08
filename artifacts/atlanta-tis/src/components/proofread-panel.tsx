@@ -17,12 +17,14 @@ import {
   fetchProofread,
   isFinished,
   isPending,
+  isSuperseded,
   latestDisposition,
   offeredFor,
   orderFindings,
   recordDisposition,
   requestProofread,
   summarizeOpen,
+  SUPERSEDED_NOTICE,
   withRecordedDecision,
   type EngineerDisposition,
   type OpenSummary,
@@ -56,6 +58,9 @@ const POLL_MS = 60_000;
 export function ProofreadPanel({ projectId }: { projectId: string }) {
   const [run, setRun] = useState<ProofreadRun | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Why a decision did not stick (the check was run again). Its own state, not
+  // `error`: the refetch it triggers clears `error` the moment it lands.
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Bumping this re-runs the effect, which re-arms the interval. The effect
   // clears its own timer on a terminal status, so without this a re-run would
@@ -99,6 +104,7 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
+    setNotice(null);
     try {
       await requestProofread(projectId);
       setError(null);
@@ -119,6 +125,7 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
     if (!body) return; // cancelled, or no source named: nothing to record
     inFlight.current = true;
     setBusy(true);
+    setNotice(null);
     try {
       await recordDisposition(projectId, runId, f.id, body);
       // The server has taken it. Show it at once (see withRecordedDecision): `busy` is released
@@ -129,7 +136,15 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
       // result that arrives after the project has changed.
       setNonce((v) => v + 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      // A 409: the run on screen is no longer the project's newest finished
+      // run, and nothing was recorded. Refetch through the effect, which shows
+      // the newest run and re-arms the poll if it is still being checked.
+      if (isSuperseded(e)) {
+        setNotice(SUPERSEDED_NOTICE);
+        setNonce((v) => v + 1);
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -139,7 +154,7 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
   return (
     <ProofreadView
       run={run}
-      error={error}
+      error={error ?? notice}
       busy={busy}
       onRerun={() => void rerun()}
       onTriage={(f, d) => void triage(f, d)}

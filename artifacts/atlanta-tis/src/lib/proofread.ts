@@ -74,6 +74,16 @@ export async function requestProofread(projectId: string): Promise<void> {
   if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? `HTTP ${r.status}`);
 }
 
+/** A request the server refused, with its HTTP status: the panel answers a 409 differently from any other refusal. */
+export class ProofreadRequestError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ProofreadRequestError";
+    this.status = status;
+  }
+}
+
 export async function recordDisposition(
   projectId: string,
   runId: string,
@@ -84,8 +94,25 @@ export async function recordDisposition(
     `/tis-api/projects/${encodeURIComponent(projectId)}/proofread/${encodeURIComponent(runId)}/findings/${encodeURIComponent(findingId)}/dispositions`,
     { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
   );
-  if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? `HTTP ${r.status}`);
+  if (!r.ok) {
+    const message = ((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? `HTTP ${r.status}`;
+    throw new ProofreadRequestError(message, r.status);
+  }
 }
+
+/**
+ * Whether a refused decision was refused because the run it was made on is no
+ * longer the project's newest finished run — the check was run again after the
+ * page loaded. The route answers that with a 409 and records nothing; the panel
+ * then shows the newest run and says why (SUPERSEDED_NOTICE).
+ */
+export function isSuperseded(e: unknown): boolean {
+  return e instanceof ProofreadRequestError && e.status === 409;
+}
+
+/** What the panel says after a 409, above the newest run it has fetched in its place. */
+export const SUPERSEDED_NOTICE =
+  "This check was run again after this page loaded, so that decision was not recorded. The latest run is shown.";
 
 /** A run the runner has not finished writing: findings may already be stored, but dispositions have not been carried forward. */
 export function isPending(status: string): boolean {

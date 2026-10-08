@@ -1206,6 +1206,11 @@ const AUDIENCE_GUARD =
 // refuses any other pair with a 422, after the tenant checks and the 404s and before the write.
 const TYPE_GUARD =
   'if (!decisionApplies(finding.type, parsed.data.disposition)) { res.status(422).json({ error: "This decision does not apply to this finding." }); return; }';
+// A decision is taken only on the run the panel shows: the project's newest run for this firm,
+// and only once it has finished (rules_ready). Anything else is a 409 the panel answers by
+// refetching — after the 422 and before the write.
+const STALE_GUARD =
+  'const newest = await latestRunStatusForProject(firm.id, projectId); if (newest === null || newest.id !== runId || newest.status !== "rules_ready") { res.status(409).json({ error: "This check has been run again. Refresh to see the latest." }); return; }';
 // The protocol's mapping, written out by hand: this is the claim, the contract's
 // OFFERED_DISPOSITIONS is the thing under test (verify-proofread-copy.mjs pins the panel's
 // OFFERED equal to the contract's). A BLOCKER is a wrong number, so disclosing it does not
@@ -1711,7 +1716,7 @@ const CHECKS = [
   {
     id: "disposition-chain-in-order",
     on: "routes",
-    msg: "POST disposition runs in the order that matters: parse the body, refuse PE-only dispositions, gate the ids, resolve the firm, verify the finding chain, check the finding's audience, check the decision fits the finding's type, and only then insert — once",
+    msg: "POST disposition runs in the order that matters: parse the body, refuse PE-only dispositions, gate the ids, resolve the firm, verify the finding chain, check the finding's audience, check the decision fits the finding's type, check the run is the project's newest finished one, and only then insert — once",
     test: (d) => {
       const p = dispSeg(d);
       return (
@@ -1726,6 +1731,7 @@ const CHECKS = [
           "if (!(await findingInFirmRun(",
           "await findingAudienceForFirm(",
           "if (!decisionApplies(",
+          "await latestRunStatusForProject(",
           "await insertDisposition(",
         ])
       );
@@ -1803,6 +1809,21 @@ const CHECKS = [
     },
   },
   {
+    id: "disposition-refuses-superseded-run",
+    on: "routes",
+    msg: "after the 422 and before anything is written, POST disposition looks up the project's newest run for the FIRM (latestRunStatusForProject(firm.id, projectId)) and answers 409 'This check has been run again. Refresh to see the latest.' AND returns unless that run IS the run in the URL and has finished (rules_ready) — a decision on an older revision is stranded once the newer one has carried, and one on an unfinished run races the carry",
+    test: (d) => {
+      const p = dispSeg(d);
+      return (
+        p.length > 0 &&
+        occ(p, STALE_GUARD) === 1 &&
+        occ(d.routes, "latestRunStatusForProject(") === 1 &&
+        occ(p, "insertDisposition(") === 1 &&
+        inOrder(p, [STALE_GUARD, "await insertDisposition("])
+      );
+    },
+  },
+  {
     id: "disposition-params-bound",
     on: "routes",
     msg: "projectId, runId and findingId are each read from their own route parameter",
@@ -1853,7 +1874,7 @@ const CHECKS = [
   {
     id: "foreign-is-404-not-403",
     on: "routes",
-    msg: "a foreign or unknown id is a 404 everywhere (403 would confirm someone else's project exists): the only 403 in the file is the PE-only refusal, the only 422 the decision-type refusal, no other status is answered but 400, 401 and 500, and the 404s are all present",
+    msg: "a foreign or unknown id is a 404 everywhere (403 would confirm someone else's project exists): the only 403 in the file is the PE-only refusal, the only 422 the decision-type refusal, the only 409 the superseded-run refusal, no other status is answered but 400, 401 and 500, and the 404s are all present",
     test: (d) => {
       const r = sq(d.routes);
       const four = occ(d.routes, 'res.status(404).json({ error: "Project not found." })');
@@ -1864,7 +1885,8 @@ const CHECKS = [
         three === 3 &&
         occ(d.routes, "res.status(403)") === 1 &&
         occ(d.routes, "res.status(422)") <= 1 &&
-        !/status\((?!400|401|403|404|422|500)\d+\)/.test(d.routes.replace(/\s+/g, ""))
+        occ(d.routes, "res.status(409)") <= 1 &&
+        !/status\((?!400|401|403|404|409|422|500)\d+\)/.test(d.routes.replace(/\s+/g, ""))
       );
     },
   },
@@ -1906,7 +1928,7 @@ const CHECKS = [
         "../lib/tis-projects": ["projectExistsForFirm"],
         "../lib/security": THREE_LIMITERS,
         "../lib/proofread-run": ["claimAndRunOne", "enqueueProofread"],
-        "../lib/proofread-store": ["findingAudienceForFirm", "findingInFirmRun", "insertDisposition", "latestRunForProject"],
+        "../lib/proofread-store": ["findingAudienceForFirm", "findingInFirmRun", "insertDisposition", "latestRunForProject", "latestRunStatusForProject"],
       };
       return { ok: importsEqual(importsOf(d.src.routes), want), where: importDiff("routes", d.src.routes, want) };
     },
@@ -2202,6 +2224,33 @@ const CHECKS = [
         has(
           b,
           "export async function findingAudienceForFirm( firmId: string, findingId: string, ): Promise<{ audience: string; type: string } | null> { const [row] = await db .select({ audience: studyProofreadFindingsTable.audience, type: studyProofreadFindingsTable.type }) .from(studyProofreadFindingsTable)",
+        ) &&
+        has(b, "return row ?? null;") &&
+        occ(b, "return ") === 1
+      );
+    },
+  },
+
+  {
+    id: "latest-run-status-is-the-firms-newest",
+    on: "store",
+    msg: "latestRunStatusForProject reads the run table where the FIRM and the project match in one conjunction, newest revision first, one row — an `or` or a missing firm arm answers with another firm's run, and any other order calls an older run the newest, so the 409 would let a decision land on a superseded run",
+    test: (d) =>
+      has(
+        body(d.store, "latestRunStatusForProject"),
+        ".from(studyProofreadRunsTable) .where(and(eq(studyProofreadRunsTable.firmId, firmId), eq(studyProofreadRunsTable.projectId, projectId))) .orderBy(desc(studyProofreadRunsTable.revision)) .limit(1);",
+      ),
+  },
+  {
+    id: "latest-run-status-fails-closed",
+    on: "store",
+    msg: "latestRunStatusForProject selects the run's id and status alone and answers null — never a default run or status — when the firm has no run of that project (the route then refuses with 409)",
+    test: (d) => {
+      const b = body(d.store, "latestRunStatusForProject");
+      return (
+        has(
+          b,
+          "export async function latestRunStatusForProject( firmId: string, projectId: string, ): Promise<{ id: string; status: string } | null> { const [row] = await db .select({ id: studyProofreadRunsTable.id, status: studyProofreadRunsTable.status })",
         ) &&
         has(b, "return row ?? null;") &&
         occ(b, "return ") === 1
@@ -2852,7 +2901,7 @@ const MUTATIONS = [
     label: "insert BEFORE the finding chain is verified",
     file: "routes",
     flips: ["disposition-chain-in-order"],
-    also: ["disposition-refuses-admin-findings", "disposition-fits-the-finding-type"],
+    also: ["disposition-refuses-admin-findings", "disposition-fits-the-finding-type", "disposition-refuses-superseded-run"],
     apply: chain(
       edit("routes", /      await insertDisposition\(\{[\s\S]*?\n      \}\);\n/, ""),
       edit(
@@ -3025,6 +3074,98 @@ const MUTATIONS = [
     flips: ["decision-applies-follows-the-contract"],
     apply: edit("routes", "const router: IRouter = Router();", "const router: IRouter = Router();\nconst OFFERED_DISPOSITIONS = { BLOCKER: [\"FIXED\", \"WITHDRAWN\"] };\nvoid OFFERED_DISPOSITIONS;"),
   },
+
+  // ---- routes: a decision only on the project's newest finished run (409) -------
+  {
+    label: "delete the superseded-run refusal (a decision lands on an older revision)",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run", "disposition-chain-in-order"],
+    apply: edit("routes", /      const newest = await latestRunStatusForProject\(firm\.id, projectId\);\n      if \(newest === null \|\| newest\.id !== runId \|\| newest\.status !== "rules_ready"\) \{\n        res\.status\(409\)[^\n]*\n        return;\n      \}\n/, ""),
+  },
+  {
+    label: "accept a decision on an older revision (drop the run-id comparison)",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run"],
+    apply: edit("routes", "newest === null || newest.id !== runId || newest.status", "newest === null || newest.status"),
+  },
+  {
+    label: "accept a decision on an unfinished run (drop the status comparison)",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run"],
+    apply: edit("routes", ' || newest.status !== "rules_ready"', ""),
+  },
+  {
+    label: "accept a decision on a run that has not finished its carry (\"running\" taken for finished)",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run"],
+    apply: edit("routes", 'newest.status !== "rules_ready"', 'newest.status === "failed"'),
+  },
+  {
+    label: "refuse only when BOTH the run differs and it is unfinished (&& for ||)",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run"],
+    apply: edit("routes", 'newest.id !== runId || newest.status !== "rules_ready"', 'newest.id !== runId && newest.status !== "rules_ready"'),
+  },
+  {
+    label: "drop the null arm of the superseded-run refusal (no run at all passes)",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run"],
+    apply: edit("routes", "if (newest === null || newest.id !== runId", "if (newest?.id !== runId"),
+  },
+  {
+    label: "look up the newest run under the user's id as the firm",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run"],
+    apply: edit("routes", "latestRunStatusForProject(firm.id, projectId)", "latestRunStatusForProject(user.id, projectId)"),
+  },
+  {
+    label: "look up the newest run of the run id instead of the project",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run"],
+    apply: edit("routes", "latestRunStatusForProject(firm.id, projectId)", "latestRunStatusForProject(firm.id, runId)"),
+  },
+  {
+    label: "transpose the newest-run lookup's arguments",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run"],
+    apply: edit("routes", "latestRunStatusForProject(firm.id, projectId)", "latestRunStatusForProject(projectId, firm.id)"),
+  },
+  {
+    label: "refuse a superseded run but fall through (409 without a return, then insert)",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run"],
+    apply: edit("routes", /(res\.status\(409\)\.json\(\{ error: "This check has been run again\. Refresh to see the latest\." \}\);)\n        return;/, "$1"),
+  },
+  {
+    label: "answer a superseded run with a 404",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run"],
+    apply: edit("routes", 'res.status(409).json({ error: "This check has been run again. Refresh to see the latest." })', 'res.status(404).json({ error: "This check has been run again. Refresh to see the latest." })'),
+  },
+  {
+    label: "answer a superseded run with a 418",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run", "foreign-is-404-not-403"],
+    apply: edit("routes", 'res.status(409).json({ error: "This check has been run again. Refresh to see the latest." })', 'res.status(418).json({ error: "This check has been run again. Refresh to see the latest." })'),
+  },
+  {
+    label: "check the run AFTER the disposition is written",
+    file: "routes",
+    flips: ["disposition-refuses-superseded-run", "disposition-chain-in-order"],
+    apply: chain(
+      edit("routes", /      const newest = await latestRunStatusForProject\(firm\.id, projectId\);\n      if \(newest === null \|\| newest\.id !== runId \|\| newest\.status !== "rules_ready"\) \{\n        res\.status\(409\)[^\n]*\n        return;\n      \}\n/, ""),
+      edit("routes", "      res.json({ ok: true });\n    } catch (err) {\n      req.log.error({ err }, \"proofread.disposition_failed\");", "      const newest = await latestRunStatusForProject(firm.id, projectId);\n      if (newest === null || newest.id !== runId || newest.status !== \"rules_ready\") {\n        res.status(409).json({ error: \"This check has been run again. Refresh to see the latest.\" });\n        return;\n      }\n      res.json({ ok: true });\n    } catch (err) {\n      req.log.error({ err }, \"proofread.disposition_failed\");"),
+    ),
+  },
+  {
+    label: "check the run BEFORE the finding chain (a foreign project's run state is read before the tenant check)",
+    file: "routes",
+    flips: ["disposition-chain-in-order"],
+    apply: chain(
+      edit("routes", /      const newest = await latestRunStatusForProject\(firm\.id, projectId\);\n      if \(newest === null \|\| newest\.id !== runId \|\| newest\.status !== "rules_ready"\) \{\n        res\.status\(409\)[^\n]*\n        return;\n      \}\n/, ""),
+      edit("routes", "      if (!(await findingInFirmRun(", "      const newest = await latestRunStatusForProject(firm.id, projectId);\n      if (newest === null || newest.id !== runId || newest.status !== \"rules_ready\") {\n        res.status(409).json({ error: \"This check has been run again. Refresh to see the latest.\" });\n        return;\n      }\n      if (!(await findingInFirmRun("),
+    ),
+  },
   {
     label: "read runId from the project-id parameter",
     file: "routes",
@@ -3106,7 +3247,7 @@ const MUTATIONS = [
     label: "import the store's run writers into the routes",
     file: "routes",
     flips: ["routes-import-whitelist"],
-    apply: edit("routes", "  latestRunForProject,\n} from \"../lib/proofread-store\";", "  latestRunForProject,\n  completeRun,\n} from \"../lib/proofread-store\";"),
+    apply: edit("routes", "  latestRunStatusForProject,\n} from \"../lib/proofread-store\";", "  latestRunStatusForProject,\n  completeRun,\n} from \"../lib/proofread-store\";"),
   },
   {
     label: "import the database into the routes",
@@ -3485,6 +3626,54 @@ const MUTATIONS = [
     file: "store",
     flips: ["audience-lookup-fails-closed"],
     apply: editAfter("store", "export async function findingAudienceForFirm", "type: studyProofreadFindingsTable.type", "type: studyProofreadFindingsTable.origin"),
+  },
+  {
+    label: "drop the firm scope from latestRunStatusForProject",
+    file: "store",
+    flips: ["latest-run-status-is-the-firms-newest"],
+    apply: editAfter("store", "export async function latestRunStatusForProject", "eq(studyProofreadRunsTable.firmId, firmId), ", ""),
+  },
+  {
+    label: "make latestRunStatusForProject's firm and project conditions an `or`",
+    file: "store",
+    flips: ["latest-run-status-is-the-firms-newest"],
+    apply: editAfter("store", "export async function latestRunStatusForProject", ".where(and(eq(studyProofreadRunsTable.firmId, firmId)", ".where(or(eq(studyProofreadRunsTable.firmId, firmId)"),
+  },
+  {
+    label: "drop the project from latestRunStatusForProject's WHERE (the firm's newest run of any project)",
+    file: "store",
+    flips: ["latest-run-status-is-the-firms-newest"],
+    apply: editAfter("store", "export async function latestRunStatusForProject", ", eq(studyProofreadRunsTable.projectId, projectId)", ""),
+  },
+  {
+    label: "order latestRunStatusForProject oldest first",
+    file: "store",
+    flips: ["latest-run-status-is-the-firms-newest"],
+    apply: editAfter("store", "export async function latestRunStatusForProject", ".orderBy(desc(studyProofreadRunsTable.revision))", ".orderBy(studyProofreadRunsTable.revision)"),
+  },
+  {
+    label: "order latestRunStatusForProject by creation time instead of revision",
+    file: "store",
+    flips: ["latest-run-status-is-the-firms-newest"],
+    apply: editAfter("store", "export async function latestRunStatusForProject", ".orderBy(desc(studyProofreadRunsTable.revision))", ".orderBy(desc(studyProofreadRunsTable.createdAt))"),
+  },
+  {
+    label: "latestRunStatusForProject defaults a missing run to a finished one",
+    file: "store",
+    flips: ["latest-run-status-fails-closed"],
+    apply: editAfter("store", "export async function latestRunStatusForProject", "return row ?? null;", 'return row ?? { id: projectId, status: "rules_ready" };'),
+  },
+  {
+    label: "latestRunStatusForProject reads the status from another column",
+    file: "store",
+    flips: ["latest-run-status-fails-closed"],
+    apply: editAfter("store", "export async function latestRunStatusForProject", "status: studyProofreadRunsTable.status", "status: studyProofreadRunsTable.error"),
+  },
+  {
+    label: "latestRunStatusForProject selects the whole run row",
+    file: "store",
+    flips: ["latest-run-status-fails-closed"],
+    apply: editAfter("store", "export async function latestRunStatusForProject", ".select({ id: studyProofreadRunsTable.id, status: studyProofreadRunsTable.status })", ".select()"),
   },
 
   // ---- runner -----------------------------------------------------------------

@@ -197,6 +197,29 @@ export async function latestRunForProject(firmId: string, projectId: string) {
   return { run, findings, dispositions };
 }
 
+/**
+ * The id and status of the project's newest run, firm-scoped like every read
+ * here — the same row latestRunForProject serves the panel, without the
+ * findings and the log. Null when the firm has no run of the project.
+ *
+ * The disposition route records a decision only on this run, and only once it
+ * has finished: on an older revision a decision is stranded, because the newer
+ * run carries forward what its predecessor held when it ran and never looks
+ * back, and on an unfinished run it races that carry.
+ */
+export async function latestRunStatusForProject(
+  firmId: string,
+  projectId: string,
+): Promise<{ id: string; status: string } | null> {
+  const [row] = await db
+    .select({ id: studyProofreadRunsTable.id, status: studyProofreadRunsTable.status })
+    .from(studyProofreadRunsTable)
+    .where(and(eq(studyProofreadRunsTable.firmId, firmId), eq(studyProofreadRunsTable.projectId, projectId)))
+    .orderBy(desc(studyProofreadRunsTable.revision))
+    .limit(1);
+  return row ?? null;
+}
+
 /** The run before `revision` on this project, with the rules version it ran under — the source of a carry-forward. */
 export async function previousRunForProject(
   projectId: string,

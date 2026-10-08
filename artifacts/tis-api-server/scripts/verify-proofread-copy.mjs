@@ -668,6 +668,54 @@ await group("client module", async () => {
   }
 });
 
+// ─── a decision on a run that has been superseded ───────────────────────────────────
+// The route answers 409 when the run on screen is no longer the project's newest finished run
+// (the check was run again). Nothing was recorded, so the panel must not keep showing the old
+// run as if it were current: it refetches and says why the decision did not stick. The refetch
+// is the stateful wrapper's (pinned under WIRING); what a 409 IS, and what the panel then says,
+// is decided here, in the client module, and tested by behaviour.
+await group("a decision refused because the check was run again", async () => {
+  ok(
+    typeof lib.isSuperseded === "function" && typeof lib.ProofreadRequestError === "function" && typeof lib.SUPERSEDED_NOTICE === "string",
+    "lib/proofread.ts exports isSuperseded, ProofreadRequestError and SUPERSEDED_NOTICE",
+  );
+  if (typeof lib.isSuperseded !== "function") return; // the line above is the red; the rest would only add a TypeError
+  const realFetch = globalThis.fetch;
+  const refusal = async (status, body) => {
+    globalThis.fetch = async () => new Response(body === undefined ? "not json" : JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+    try {
+      await lib.recordDisposition("proj-1", "run-1", "f-1", { disposition: "FIXED" });
+      return null;
+    } catch (e) {
+      return e;
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  };
+  const SERVER_409 = "This check has been run again. Refresh to see the latest.";
+  const e409 = await refusal(409, { error: SERVER_409 });
+  ok(e409 !== null && lib.isSuperseded(e409) === true, "a 409 from the disposition route is recognised as a superseded run");
+  ok(e409?.status === 409 && e409?.message === SERVER_409, `the refusal carries its status and the server's sentence (got ${e409?.status}, ${JSON.stringify(e409?.message)})`);
+  for (const [status, body, want] of [
+    [422, { error: "This decision does not apply to this finding." }, "This decision does not apply to this finding."],
+    [404, { error: "Finding not found." }, "Finding not found."],
+    [500, undefined, "HTTP 500"],
+    [429, { error: "Too many decisions recorded." }, "Too many decisions recorded."],
+  ]) {
+    const e = await refusal(status, body);
+    ok(e !== null && lib.isSuperseded(e) === false && e.status === status && e.message === want, `a ${status} is a refusal, NOT a superseded run, and keeps its message (got ${e?.status}, ${JSON.stringify(e?.message)})`);
+  }
+  ok((await refusal(200, { ok: true })) === null, "a 200 is not a refusal");
+  ok(
+    [new Error("HTTP 409"), { status: 409 }, null, undefined, "409", 409].every((x) => lib.isSuperseded(x) === false),
+    "only a refusal the client itself built from a 409 counts: an Error whose text says 409, a bare { status: 409 }, a string or a number do not",
+  );
+  const html = keep(view(runOf("rules_ready", { findings: [mk("a", "NOTE")] }), { error: lib.SUPERSEDED_NOTICE }));
+  const t = text(html);
+  ok(t.includes(lib.SUPERSEDED_NOTICE) && /not recorded/.test(lib.SUPERSEDED_NOTICE), `rendered, the panel says the decision was not recorded and why (${JSON.stringify(lib.SUPERSEDED_NOTICE)})`);
+  ok(BANNED.every((p) => !t.toLowerCase().includes(p.toLowerCase())), "that state's rendered copy avoids the banned phrases");
+});
+
 // ─── the panel offers exactly what the server accepts ───────────────────────────────
 // The disposition route refuses, with a 422, a decision the finding's type is not offered in
 // the contract's OFFERED_DISPOSITIONS (lib/tis-api-zod/src/proofread.ts). The panel does not
@@ -703,6 +751,24 @@ await group("wiring", () => {
     "WIRING: after the POST succeeds, a recorded decision is shown at once through withRecordedDecision, before the refetch (two presses in the window before it landed both reached the server)",
   );
   ok(/offeredFor\(f\.type\)/.test(panel) && /latestDisposition\(run\.dispositions, f\.id\)/.test(panel) && /closes\(f\.type,/.test(panel), "WIRING: the card reads offeredFor, latestDisposition and closes from the client module, not a table of its own");
+  {
+    const from = panel.indexOf("const triage = async");
+    const triageText = from < 0 ? "" : panel.slice(from, panel.indexOf("\n  };\n", from));
+    ok(
+      /\} catch \(e\) \{[^}]*?if \(isSuperseded\(e\)\) \{\s*setNotice\(SUPERSEDED_NOTICE\);\s*setNonce\(\(v\) => v \+ 1\);\s*\} else \{\s*setError\(e instanceof Error \? e\.message : String\(e\)\);\s*\}\s*\} finally \{/.test(triageText),
+      "WIRING: a decision refused because the check was run again (isSuperseded: a 409) refetches through the effect (setNonce, which re-arms the poll) and shows SUPERSEDED_NOTICE; any other refusal shows its own message",
+    );
+    ok(
+      /const \[notice, setNotice\] = useState<string \| null>\(null\);/.test(panel) && /error=\{error \?\? notice\}/.test(panel),
+      "WIRING: the notice is its own state, drawn where an error is — the refetch it triggers clears `error` the moment it lands, and would wipe the explanation with it",
+    );
+    ok(
+      (panel.match(/setNotice\(null\);/g) ?? []).length === 2 &&
+        /const rerun = async \(\) => \{\s*if \(inFlight\.current\) return;\s*inFlight\.current = true;\s*setBusy\(true\);\s*setNotice\(null\);/.test(panel) &&
+        /if \(!body\) return;[^\n]*\n\s*inFlight\.current = true;\s*setBusy\(true\);\s*setNotice\(null\);/.test(triageText),
+      "WIRING: the notice is cleared when the next re-run or decision starts, and nowhere else",
+    );
+  }
   ok(!/BUG_FILED|Bug filed|DISPOSITIONS/.test(panel), "WIRING: the panel holds no decision table of its own and never names BUG_FILED");
   ok(
     /const rerun = async \(\) => \{\s*if \(inFlight\.current\) return;\s*inFlight\.current = true;/.test(panel) &&
