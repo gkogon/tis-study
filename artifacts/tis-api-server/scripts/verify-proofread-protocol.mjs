@@ -10,8 +10,9 @@
  * dispatches it each restate, and in .claude/agents/redline.md, which tells
  * the building agent who Datum's findings reach; and the design spec's GET
  * row, which must name the keys of the read contract
- * (lib/tis-api-zod/src/proofread.ts, ProofreadReadResponse). Standalone node
- * script (no test runner).
+ * (lib/tis-api-zod/src/proofread.ts, ProofreadReadResponse); and the runner's
+ * PROTOCOL_VERSION reader (src/lib/proofread-run.ts), which must read the
+ * protocol's one version line. Standalone node script (no test runner).
  *
  * Section 10 holds its checks in a table with ids and carries its own teeth:
  * each mutation edits one file's text in memory and must turn exactly the
@@ -43,6 +44,7 @@ const skill = readFileSync(path.join(repo, ".claude/skills/datum/SKILL.md"), "ut
 const redline = readFileSync(path.join(repo, ".claude/agents/redline.md"), "utf8");
 const spec = readFileSync(path.join(repo, "docs/superpowers/specs/2026-09-29-datum-in-product-design.md"), "utf8");
 const contract = readFileSync(path.join(repo, "lib/tis-api-zod/src/proofread.ts"), "utf8");
+const runner = readFileSync(path.join(repo, "artifacts/tis-api-server/src/lib/proofread-run.ts"), "utf8");
 
 /** Collapse whitespace, so an 80-column wrap cannot hide a phrase. */
 const flat = (s) => s.replace(/\s+/g, " ").trim();
@@ -82,8 +84,8 @@ const ok = (cond, msg) => {
   if (!cond) fails++;
 };
 
-// 1. A version string exists, because §Logging requires one in every entry.
-ok(/^PROTOCOL_VERSION:\s*\d{4}-\d{2}-\d{2}\.\d+$/m.test(protocol), "protocol declares a PROTOCOL_VERSION line");
+// 1. A version string exists, because §Logging requires one in every entry: section 10's
+//    [protocol-version-is-the-runners] — exactly one line, well formed, and the one the runner reads.
 
 // 2. The Audience section exists, is scoped to its own heading, names all
 //    three audiences, and routes each finding type to exactly one of them.
@@ -415,6 +417,30 @@ const holdsPerType = (list, holds, recordsSay) =>
     if (holds[type]) return holds[type].test(b) && !deniesTheHold(b);
     return (recordsSay === undefined || recordsSay.test(b)) && !claimsAHold(b);
   });
+/**
+ * The protocol's version lines: every line that opens, after whitespace or markup, with
+ * PROTOCOL_VERSION in any case — the runner reads the first `^PROTOCOL_VERSION:` line, so a stray
+ * line above the real one, malformed or not, is what every run would record.
+ */
+const versionLines = (text) => text.split("\n").filter((l) => /^[\s>*_`#-]*PROTOCOL_VERSION\b/i.test(l));
+const VERSION_LINE = /^PROTOCOL_VERSION: (\d{4}-\d{2}-\d{2}\.\d+)$/;
+/**
+ * The regex the runner's PROTOCOL_VERSION reader runs over the protocol (proofread-run.ts, read
+ * once at boot: `return /.../m.exec(readFileSync(file, "utf8"))?.[1] ?? "unknown";`), taken from its
+ * source and built with the same flags. null when the reader is not in that shape — the check then
+ * fails by name rather than vouching for a reader it did not read.
+ */
+const runnerVersionRegex = (src) => {
+  const body = src.match(/const PROTOCOL_VERSION = \(\(\) => \{([\s\S]*?)\n\}\)\(\);/)?.[1] ?? "";
+  const lit = body.match(/return (\/(?:\\.|[^/\n\\])+\/[a-z]*)\.exec\(readFileSync\(file, "utf8"\)\)\?\.\[1\] \?\? "unknown";/)?.[1];
+  if (!lit) return null;
+  const end = lit.lastIndexOf("/");
+  try {
+    return new RegExp(lit.slice(1, end), lit.slice(end + 1));
+  } catch {
+    return null;
+  }
+};
 /** The spec's API table row for GET /projects/:id/proofread. */
 const specGetRow = (text) => text.split("\n").find((l) => l.startsWith("| `GET /projects/:id/proofread` |")) ?? "";
 /** The keys a backticked `{ a, b[], c: x }` list names, `[]` and values dropped. */
@@ -448,6 +474,18 @@ const outputBlock = (text) => (text.split(/^## Output format$/m)[1] ?? "").match
 const outputHeadings = (block) => block.split("\n").filter((l) => /^[A-Z][A-Z ]*[A-Z]$/.test(l));
 
 const CHECKS = [
+  {
+    id: "protocol-version-is-the-runners",
+    on: "protocol",
+    reads: ["runner"],
+    msg: "the protocol has exactly one PROTOCOL_VERSION line (a line opening with it, after any whitespace or markup, in any case), it reads `PROTOCOL_VERSION: YYYY-MM-DD.n`, and the runner's own reader (the regex in proofread-run.ts's PROTOCOL_VERSION, taken from its source) returns that version from the protocol — so every run records the version the protocol states",
+    test: (t) => {
+      const lines = versionLines(t.protocol);
+      const v = lines.length === 1 ? VERSION_LINE.exec(lines[0])?.[1] : undefined;
+      const re = runnerVersionRegex(t.runner);
+      return v !== undefined && re !== null && re.exec(t.protocol)?.[1] === v;
+    },
+  },
   {
     id: "protocol-gate-sentence",
     on: "protocol",
@@ -816,7 +854,7 @@ const CHECKS = [
   },
 ];
 
-const TEXTS = { protocol, agent, skill, redline, spec, contract };
+const TEXTS = { protocol, agent, skill, redline, spec, contract, runner };
 const ids = CHECKS.map((c) => c.id);
 ok(new Set(ids).size === ids.length, "precondition: every section-10 check id is unique");
 ok(/`DEFECT`/.test(GATE_SENTENCE) && /`BLOCKER`/.test(GATE_SENTENCE) && /`CONTESTED`/.test(GATE_SENTENCE), "precondition: the gate sentence names BLOCKER, DEFECT and CONTESTED");
@@ -899,6 +937,16 @@ const MUTATIONS = [
   { label: "Output format: NOTE and DISCLOSE headings swapped", file: "protocol", flips: ["output-format-six-headings"], apply: edit("protocol", "DISCLOSE\n  [§n] <finding> — <exact language to add>\n\nNOTE\n  [§n] <finding>\n", "NOTE\n  [§n] <finding>\n\nDISCLOSE\n  [§n] <finding> — <exact language to add>\n") },
   { label: "datum.md: back to logging it RESOLVED", file: "agent", flips: ["agent-withdrawn-is-the-one-name"], apply: edit("agent", "log it `WITHDRAWN`.", "log it `RESOLVED`.") },
   { label: "datum.md: RESOLVED in the Output section", file: "agent", flips: ["agent-withdrawn-is-the-one-name"], apply: edit("agent", "If a section produced nothing, say so in one line.", "If a section produced nothing, say so in one line. List withdrawn items under RESOLVED.") },
+  // one PROTOCOL_VERSION line, the one the runner reads (fix wave 2: m-10)
+  { label: "protocol: a malformed version line above the real one", file: "protocol", flips: ["protocol-version-is-the-runners"], apply: edit("protocol", /^PROTOCOL_VERSION: /m, "PROTOCOL_VERSION: draft\nPROTOCOL_VERSION: ") },
+  { label: "protocol: a second well-formed version line, further down", file: "protocol", flips: ["protocol-version-is-the-runners"], apply: edit("protocol", "## Audience\n", "## Audience\n\nPROTOCOL_VERSION: 2026-01-01.1\n") },
+  { label: "protocol: the version without its suffix", file: "protocol", flips: ["protocol-version-is-the-runners"], apply: edit("protocol", /^(PROTOCOL_VERSION: \d{4}-\d{2}-\d{2})\.\d+$/m, "$1") },
+  { label: "protocol: a bulleted lowercase version line above (the runner would skip it)", file: "protocol", flips: ["protocol-version-is-the-runners"], apply: edit("protocol", /^PROTOCOL_VERSION: /m, "- protocol_version: old\n\nPROTOCOL_VERSION: ") },
+  { label: "protocol: the version line removed", file: "protocol", flips: ["protocol-version-is-the-runners"], apply: edit("protocol", /^PROTOCOL_VERSION: .*\n/m, "") },
+  { label: "runner: the reader keeps only the date", file: "runner", flips: ["protocol-version-is-the-runners"], apply: edit("runner", "/^PROTOCOL_VERSION:\\s*(\\S+)$/m.exec(", "/^PROTOCOL_VERSION:\\s*(\\d{4}-\\d{2}-\\d{2})/m.exec(") },
+  { label: "runner: the reader reads another key", file: "runner", flips: ["protocol-version-is-the-runners"], apply: edit("runner", "/^PROTOCOL_VERSION:\\s*(\\S+)$/m.exec(", "/^VERSION:\\s*(\\S+)$/m.exec(") },
+  { label: "runner: the reader no longer returns from the regex", file: "runner", flips: ["protocol-version-is-the-runners"], apply: edit("runner", "?.[1] ?? \"unknown\";", "?.[0] ?? \"unknown\";") },
+  { label: "protocol: PROTOCOL_VERSION named mid-sentence in prose stays green", file: "protocol", flips: [], apply: edit("protocol", "Two roles.\n", "Two roles. Every log entry carries the PROTOCOL_VERSION above.\n") },
   // the spec's GET row names the read contract's keys (fix wave 2: m-7)
   { label: "spec: questions[] back in the GET row", file: "spec", flips: ["spec-get-row-is-the-contract"], apply: edit("spec", "findings[], dispositions[] }`, audience-filtered", "findings[], dispositions[], questions[] }`, audience-filtered") },
   { label: "spec: runId dropped from the GET row", file: "spec", flips: ["spec-get-row-is-the-contract"], apply: edit("spec", "latest run: `{ status, runId, revision,", "latest run: `{ status, revision,") },

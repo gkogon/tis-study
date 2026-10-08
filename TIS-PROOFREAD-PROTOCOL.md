@@ -1,6 +1,6 @@
 # TIS Proofread Protocol — Datum
 
-PROTOCOL_VERSION: 2026-10-08.1
+PROTOCOL_VERSION: 2026-10-08.2
 
 Two roles.
 
