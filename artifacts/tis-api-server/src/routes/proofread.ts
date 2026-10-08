@@ -88,16 +88,17 @@ router.get("/projects/:id/proofread", proofreadReadLimiter, async (req, res): Pr
       return;
     }
     const { run, findings, dispositions } = latest;
+    // Hidden, but never silent: a DEFECT holds the study until a re-run no
+    // longer raises it, so the panel must not read a run that carries one as
+    // clear. The count is all that leaves the server — no type, clause, path
+    // or message of a withheld finding. Counted first, from every finding the
+    // store read for the run, before anything is filtered out of the list.
+    const withheld = findings.filter((f) => f.audience === "admin").length;
     // DEFECT is admin-side: a software fault is not the engineer's to rule on.
     // The dispositions are narrowed to the same findings, so a row about a
     // hidden finding does not leak its id.
     const visible = findings.filter((f) => f.audience !== "admin");
     const visibleIds = new Set(visible.map((f) => f.id));
-    // Hidden, but never silent: a DEFECT holds the study until a re-run no
-    // longer raises it, so the panel must not read a run that carries one as
-    // clear. The count is all that leaves the server — no type, clause, path
-    // or message of a withheld finding.
-    const withheld = findings.filter((f) => f.audience === "admin").length;
     res.json({
       status: run.status,
       runId: run.id,

@@ -1436,6 +1436,109 @@ const answersOf = (d) => readAnswers(getSeg(d));
 const noneAnswers = (d) => answersOf(d).filter((a) => a.props.status === '"none"');
 const runAnswers = (d) => answersOf(d).filter((a) => a.props.status !== '"none"');
 const entriesSorted = (o) => JSON.stringify(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
+
+// The read path, value by value. GET answers the run row it read and the findings it read,
+// unchanged: these name what it reads them through.
+/** The run answer's values that come from the run row, each as its source text reads: the column itself, nothing derived from a finding. */
+const RUN_ANSWER = {
+  status: "run.status",
+  runId: "run.id",
+  revision: "run.revision",
+  protocolVersion: "run.protocolVersion",
+  rulesVersion: "run.rulesVersion",
+  engineStamp: "run.engineStamp",
+  inputManifest: "run.inputManifest",
+  coverage: "run.coverage",
+  createdAt: "run.createdAt.toISOString()",
+  finishedAt: "run.finishedAt?.toISOString() ?? null",
+};
+/** The run row's columns the read path answers with: `run` is read through these and nothing else. */
+const RUN_COLUMNS = new Set(["status", "id", "revision", "protocolVersion", "rulesVersion", "engineStamp", "inputManifest", "coverage", "createdAt", "finishedAt"]);
+/** Member reads of a list that never change it. `forEach` is not one: its only use is a side effect. */
+const LIST_READS = new Set(["length", "map", "filter", "some", "every", "find", "slice", "includes", "indexOf", "flatMap", "reduce", "at", "join", "concat"]);
+/** latestRunForProject's read of the run's findings: every finding of the run, nothing else in the WHERE. */
+const FINDINGS_READ = "const findings = await db.select().from(studyProofreadFindingsTable).where(eq(studyProofreadFindingsTable.runId, run.id));";
+const LATEST_RETURN = "return { run, findings, dispositions };";
+
+/**
+ * How code under `root` uses the binding `name`: `decls` are the identifiers that declare it (a
+ * `const`, a destructured element or a parameter of that name anywhere inside — an inner one
+ * shadows it); `other` is every use that is NOT a read through one of `members` (`name.member`,
+ * the call of that member included), a copy (`[...name]`), the list a `for … of` walks, or the
+ * binding handed back whole as a shorthand in a `return { … }`. A call that receives the binding, an element access, a
+ * mutating method (`splice`, `push`, `sort`), a re-binding: each lands in `other`. Writes THROUGH
+ * a member read (`name.length = 0`) are propertyWrites' to see.
+ */
+function bindingUses(root, name, members) {
+  const sf = root.getSourceFile();
+  const decls = [];
+  const other = [];
+  const visit = (n) => {
+    if (ts.isIdentifier(n) && n.text === name) {
+      const p = n.parent;
+      const isDecl = (ts.isVariableDeclaration(p) || ts.isParameter(p) || ts.isBindingElement(p)) && p.name === n;
+      const isKey = (ts.isPropertyAccessExpression(p) && p.name === n) || (ts.isPropertyAssignment(p) && p.name === n) || (ts.isBindingElement(p) && p.propertyName === n);
+      const isMemberRead = ts.isPropertyAccessExpression(p) && p.expression === n && members.has(p.name.text);
+      const isCopy = (ts.isSpreadElement(p) && ts.isArrayLiteralExpression(p.parent)) || (ts.isForOfStatement(p) && p.expression === n);
+      const isHandedBack = ts.isShorthandPropertyAssignment(p) && ts.isObjectLiteralExpression(p.parent) && ts.isReturnStatement(p.parent.parent);
+      if (isDecl) decls.push(n);
+      else if (!(isKey || isMemberRead || isCopy || isHandedBack)) other.push(n);
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(root);
+  return { decls, other: other.map((n) => n.parent.getText(sf).replace(/\s+/g, " ").slice(0, 90)) };
+}
+/** Whether a declaring identifier is a plain element of `const { … } = <source>;` (no rest element, no alias). */
+const destructuredFrom = (decl, source) => {
+  const el = decl?.parent;
+  const pattern = el?.parent;
+  const vd = pattern?.parent;
+  return (
+    !!el &&
+    ts.isBindingElement(el) &&
+    !el.dotDotDotToken &&
+    !el.propertyName &&
+    ts.isObjectBindingPattern(pattern) &&
+    ts.isVariableDeclaration(vd) &&
+    vd.initializer !== undefined &&
+    ts.isIdentifier(vd.initializer) &&
+    vd.initializer.text === source
+  );
+};
+/**
+ * Every write code under `root` makes through a property or an element: an assignment to one
+ * (destructuring targets included), a `delete`, a ++/-- of one, and a call of Object.assign,
+ * Object.defineProperty / defineProperties / setPrototypeOf or any Reflect.* — as text. A write
+ * reached through a function that receives the value (`relabel(findings)`) is not followed here;
+ * bindingUses refuses handing the binding to a call at all.
+ */
+function propertyWrites(root) {
+  const sf = root.getSourceFile();
+  const out = [];
+  const isAccess = (e) => ts.isPropertyAccessExpression(e) || ts.isElementAccessExpression(e);
+  const holdsAccess = (e) => {
+    let found = false;
+    const v = (n) => {
+      if (isAccess(n)) found = true;
+      else ts.forEachChild(n, v);
+    };
+    v(e);
+    return found;
+  };
+  const visit = (n) => {
+    const assigns = ts.isBinaryExpression(n) && n.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && n.operatorToken.kind <= ts.SyntaxKind.LastAssignment;
+    if (assigns && (isAccess(n.left) || ((ts.isObjectLiteralExpression(n.left) || ts.isArrayLiteralExpression(n.left)) && holdsAccess(n.left)))) out.push(n);
+    else if (ts.isDeleteExpression(n)) out.push(n);
+    else if ((ts.isPrefixUnaryExpression(n) || ts.isPostfixUnaryExpression(n)) && (n.operator === ts.SyntaxKind.PlusPlusToken || n.operator === ts.SyntaxKind.MinusMinusToken) && isAccess(n.operand)) out.push(n);
+    else if (ts.isCallExpression(n) && /^(?:Object\.(?:assign|defineProperty|defineProperties|setPrototypeOf)|Reflect\.\w+)$/.test(n.expression.getText(sf).replace(/\s+/g, ""))) out.push(n);
+    ts.forEachChild(n, visit);
+  };
+  visit(root);
+  return out.map((n) => n.getText(sf).replace(/\s+/g, " ").slice(0, 90));
+}
+/** GET's handler as parsed text (the segment from `router.get(` to the next registration). */
+const getTree = (d) => (getSeg(d) ? parse(getSeg(d)) : null);
 const FIRM_LOOKUP = "getOrCreateFirmForUser(user.id, { email: user.email, firstName: user.firstName, lastName: user.lastName })";
 
 /** What a check sees: every source comment-stripped, plus the evaluated contract. */
@@ -1892,10 +1995,25 @@ const CHECKS = [
   {
     id: "get-withheld-is-a-count",
     on: "routes",
-    msg: `GET counts the run's admin-audience findings, once (${WITHHELD_COUNT}), and its run answer carries that number as \`withheld\` — a DEFECT is hidden from the engineer, never silent: the count is all that leaves, never the findings, their clauses, types, paths or messages`,
+    msg: `GET counts the run's admin-audience findings once (${WITHHELD_COUNT}), BEFORE the visible list is filtered, from \`findings\` exactly as latestRunForProject returned it — the one binding of that name, a plain element of \`const { … } = latest;\` (\`latest\` used nowhere else but its own declaration and \`if (!latest)\`), read only through list reads that change nothing (not re-bound, spliced, sorted or handed to a call) — and its run answer carries that number as \`withheld\`. Dropped from the list first, the count is always 0 and a run carrying a DEFECT reads as clear. (That the count is all that leaves: the answer's keys are get-answers-are-the-read-shape's, its run values get-run-answer-is-the-run-row's, its two lists get-hides-admin-findings'.)`,
     test: (d) => {
+      const g = getSeg(d);
+      const tree = getTree(d);
+      if (!tree) return false;
+      const u = bindingUses(tree, "findings", LIST_READS);
       const runs = runAnswers(d);
-      return occ(getSeg(d), WITHHELD_COUNT) === 1 && runs.length === 1 && runs[0].props.withheld === "withheld";
+      return {
+        ok:
+          occ(g, WITHHELD_COUNT) === 1 &&
+          inOrder(g, [WITHHELD_COUNT, "const visible ="]) &&
+          u.decls.length === 1 &&
+          destructuredFrom(u.decls[0], "latest") &&
+          u.other.length === 0 &&
+          (g.match(/\blatest\b/g) ?? []).length === 3 &&
+          runs.length === 1 &&
+          runs[0].props.withheld === "withheld",
+        where: u.other.map((t) => `${pathOf("routes")}: findings used as: ${t}`),
+      };
     },
   },
   {
@@ -1923,6 +2041,34 @@ const CHECKS = [
         same(Object.keys(r[0].props), READ_KEYS) &&
         same(Object.keys(n[0].props), Object.keys(NONE_ANSWER))
       );
+    },
+  },
+
+  {
+    id: "get-run-answer-is-the-run-row",
+    on: "routes",
+    msg: `GET's run answer gives each run value as the run row holds it — ${Object.entries(RUN_ANSWER).map(([k, v]) => `${k}: ${v}`).join(", ")} — and \`run\` is the row latestRunForProject returned: a plain element of \`const { … } = latest;\`, the one binding of that name, read only through those columns. Coverage marked with a withheld finding's clause, a manifest that says a DEFECT was found, a status not the run's: each tells the engineer something the count must not`,
+    test: (d) => {
+      const tree = getTree(d);
+      if (!tree) return false;
+      const r = runAnswers(d);
+      const u = bindingUses(tree, "run", RUN_COLUMNS);
+      const wrong = r.length === 1 ? Object.entries(RUN_ANSWER).filter(([k, v]) => r[0].props[k] !== sq(v)) : [];
+      return {
+        ok: r.length === 1 && wrong.length === 0 && u.decls.length === 1 && destructuredFrom(u.decls[0], "latest") && u.other.length === 0,
+        where: [...wrong.map(([k, v]) => `${pathOf("routes")}: ${k} is ${JSON.stringify(r[0].props[k])}, want ${JSON.stringify(sq(v))}`), ...u.other.map((t) => `${pathOf("routes")}: run used as: ${t}`)],
+      };
+    },
+  },
+  {
+    id: "get-writes-nothing-it-read",
+    on: "routes",
+    msg: "GET writes through no property or element of anything — no assignment to one, no delete, no ++/--, no Object.assign / defineProperty / Reflect call — so what latestRunForProject read is answered as it was read: a finding relabelled to the engineer's audience before the count is counted 0 and then served with its full text",
+    test: (d) => {
+      const tree = getTree(d);
+      if (!tree) return false;
+      const w = propertyWrites(tree);
+      return { ok: w.length === 0, where: w.map((t) => `${pathOf("routes")}: GET writes: ${t}`) };
     },
   },
 
@@ -2522,6 +2668,39 @@ const CHECKS = [
   },
 
   {
+    id: "panel-read-serves-every-finding",
+    on: "store",
+    msg: `latestRunForProject serves every finding of the run, whatever its audience: its findings read is exactly \`${FINDINGS_READ}\` (once), it never names \`audience\`, \`findings\` is its one binding of that name and is read only through list reads that change nothing, it writes through no property or element, and it returns \`${LATEST_RETURN}\` or null — an audience filter here (in the WHERE, in JS, or by relabelling) makes GET's withheld 0 and the panel show a false clear`,
+    test: (d) => {
+      const fn = functionNamed(d.src.store, "latestRunForProject");
+      const b = body(d.store, "latestRunForProject");
+      if (!fn || !b) return false;
+      const u = bindingUses(fn, "findings", LIST_READS);
+      const w = propertyWrites(fn);
+      return {
+        ok:
+          occ(b, FINDINGS_READ) === 1 &&
+          !/\baudience\b/.test(b) &&
+          u.decls.length === 1 &&
+          u.other.length === 0 &&
+          w.length === 0 &&
+          occ(b, "return ") === 2 &&
+          has(b, "if (!run) return null;") &&
+          has(b, LATEST_RETURN),
+        where: [...u.other.map((t) => `${pathOf("store")}: findings used as: ${t}`), ...w.map((t) => `${pathOf("store")}: writes: ${t}`)],
+      };
+    },
+  },
+  {
+    id: "findings-written-with-their-audience",
+    on: "store",
+    msg: "completeRun writes each finding with its own audience: `audience: f.audience` inside `.values(args.findings.map((f) => ({ … })))`, the only audience it names — the column defaults to 'engineer' (so tsc is silent without it), and then every DEFECT is served to the engineer with its full text and withheld counts 0",
+    test: (d) => {
+      const b = sq(body(d.store, "completeRun"));
+      return b.includes(sq(".values( args.findings.map((f) => ({")) && b.split("audience:").length - 1 === 1 && /audience:f\.audience[,}]/.test(b);
+    },
+  },
+  {
     id: "audience-lookup-is-firm-scoped",
     on: "store",
     msg: "findingAudienceForFirm joins the finding to its run and matches the finding id AND the owning FIRM in one conjunction — an `or`, or a missing firm arm, reads the audience of another firm's finding",
@@ -3019,6 +3198,8 @@ const MUTATIONS = [
     label: "serve admin-audience findings",
     file: "routes",
     flips: ["get-hides-admin-findings"],
+    // `const visible = findings` hands the whole list on: that is a use get-withheld-is-a-count refuses too
+    also: ["get-withheld-is-a-count"],
     apply: edit("routes", 'const visible = findings.filter((f) => f.audience !== "admin");', "const visible = findings;"),
   },
   {
@@ -3085,7 +3266,97 @@ const MUTATIONS = [
     label: "spread the run row into the answer",
     file: "routes",
     flips: ["get-answers-are-the-read-shape"],
+    also: ["get-run-answer-is-the-run-row"],
     apply: edit("routes", "res.json({\n      status: run.status,", "res.json({\n      ...run,\n      status: run.status,"),
+  },
+  {
+    label: "count the findings after dropping the admin ones from the list (re-bound from latest.findings)",
+    file: "routes",
+    flips: ["get-withheld-is-a-count"],
+    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", '    const { run, dispositions } = latest;\n    const findings = latest.findings.filter(({ audience }) => audience !== "admin");\n'),
+  },
+  {
+    label: "count the withheld findings after the visible list is filtered",
+    file: "routes",
+    flips: ["get-withheld-is-a-count"],
+    apply: (s) => {
+      const line = '    const withheld = findings.filter((f) => f.audience === "admin").length;\n';
+      const after = "    const visibleIds = new Set(visible.map((f) => f.id));\n";
+      return { ...s, routes: s.routes.replace(line, "").replace(after, after + line) };
+    },
+  },
+  {
+    label: "splice the admin findings out of the list before counting",
+    file: "routes",
+    flips: ["get-withheld-is-a-count"],
+    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", '    const { run, findings, dispositions } = latest;\n    findings.splice(0, findings.length, ...findings.filter((f) => f.audience !== "admin"));\n'),
+  },
+  {
+    label: "hand the findings list to a helper before counting",
+    file: "routes",
+    flips: ["get-withheld-is-a-count"],
+    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", "    const { run, findings, dispositions } = latest;\n    void [findings].flat();\n"),
+  },
+  {
+    label: "read the findings off `latest` a second time",
+    file: "routes",
+    flips: ["get-withheld-is-a-count"],
+    apply: edit("routes", "    const visibleIds = new Set(", "    void latest.findings.length;\n    const visibleIds = new Set("),
+  },
+  {
+    label: "relabel every DEFECT as the engineer's before counting",
+    file: "routes",
+    flips: ["get-writes-nothing-it-read"],
+    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", '    const { run, findings, dispositions } = latest;\n    for (const f of findings) if (f.type === "DEFECT") f.audience = "engineer";\n'),
+  },
+  {
+    label: "delete each finding's audience before counting",
+    file: "routes",
+    flips: ["get-writes-nothing-it-read"],
+    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", "    const { run, findings, dispositions } = latest;\n    for (const f of findings) delete (f as { audience?: string }).audience;\n"),
+  },
+  {
+    label: "Object.assign the engineer's audience onto each finding",
+    file: "routes",
+    flips: ["get-writes-nothing-it-read"],
+    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", '    const { run, findings, dispositions } = latest;\n    for (const f of findings) Object.assign(f, { ["audience"]: "engineer" });\n'),
+  },
+  {
+    label: "add a coverage entry for each withheld finding's clause",
+    file: "routes",
+    flips: ["get-run-answer-is-the-run-row"],
+    apply: edit("routes", "      coverage: run.coverage,\n", '      coverage: [...(run.coverage as any[]), ...findings.filter((f) => f.audience === "admin").map((f) => ({ clauseId: f.clauseId, section: f.section, status: "ran" }))],\n'),
+  },
+  {
+    label: "note in coverage which clause raised a withheld finding",
+    file: "routes",
+    flips: ["get-run-answer-is-the-run-row"],
+    apply: edit("routes", "      coverage: run.coverage,\n", '      coverage: (run.coverage as any[]).map((c) => ({ ...c, ...(findings.some((f) => f.audience === "admin" && f.clauseId === c.clauseId) ? { note: "routed to the software team" } : {}) })),\n'),
+  },
+  {
+    label: "say in the input manifest that a DEFECT was found",
+    file: "routes",
+    flips: ["get-run-answer-is-the-run-row"],
+    apply: edit("routes", "      inputManifest: run.inputManifest,\n", '      inputManifest: { ...(run.inputManifest as object), defect: findings.some((f) => f.audience === "admin") },\n'),
+  },
+  {
+    label: "answer a run carrying a withheld finding as still running",
+    file: "routes",
+    flips: ["get-run-answer-is-the-run-row"],
+    apply: edit("routes", "      status: run.status,\n", '      status: withheld > 0 ? "running" : run.status,\n'),
+  },
+  {
+    label: "answer from a copy of the run row with its coverage replaced",
+    file: "routes",
+    flips: ["get-run-answer-is-the-run-row"],
+    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", "    const { run: row, findings, dispositions } = latest;\n    const run = { ...row, coverage: [] };\n"),
+  },
+  {
+    label: "Object.assign an empty coverage onto the run row",
+    file: "routes",
+    flips: ["get-writes-nothing-it-read"],
+    also: ["get-run-answer-is-the-run-row"],
+    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", "    const { run, findings, dispositions } = latest;\n    Object.assign(run, { coverage: [] });\n"),
   },
   {
     label: "answer a project with no run without `withheld`",
@@ -3103,7 +3374,7 @@ const MUTATIONS = [
     label: "echo run.error in the read response",
     file: "routes",
     flips: ["routes-never-echo-internals"],
-    also: ["get-answers-are-the-read-shape"],
+    also: ["get-answers-are-the-read-shape", "get-run-answer-is-the-run-row"],
     apply: edit("routes", "finishedAt: run.finishedAt?.toISOString() ?? null,", "finishedAt: run.finishedAt?.toISOString() ?? null,\n      error: run.error,"),
   },
   {
@@ -4128,6 +4399,64 @@ const MUTATIONS = [
     file: "store",
     flips: ["latest-run-status-fails-closed"],
     apply: editAfter("store", "export async function latestRunStatusForProject", ".select({ id: studyProofreadRunsTable.id, status: studyProofreadRunsTable.status })", ".select()"),
+  },
+  {
+    label: "latestRunForProject drops the admin findings in JS (.filter on the read)",
+    file: "store",
+    flips: ["panel-read-serves-every-finding"],
+    apply: edit("store", "    .where(eq(studyProofreadFindingsTable.runId, run.id));\n  // Scoped in SQL", '    .where(eq(studyProofreadFindingsTable.runId, run.id))\n    .then((rows) => rows.filter((f) => f.audience !== "admin"));\n  // Scoped in SQL'),
+  },
+  {
+    label: "latestRunForProject drops the admin findings in the WHERE (sql)",
+    file: "store",
+    flips: ["panel-read-serves-every-finding"],
+    apply: edit("store", "    .where(eq(studyProofreadFindingsTable.runId, run.id));\n  // Scoped in SQL", "    .where(and(eq(studyProofreadFindingsTable.runId, run.id), sql`${studyProofreadFindingsTable.audience} <> 'admin'`));\n  // Scoped in SQL"),
+  },
+  {
+    label: "latestRunForProject reads every finding, then serves a filtered copy",
+    file: "store",
+    flips: ["panel-read-serves-every-finding"],
+    apply: (s) => ({
+      ...s,
+      store: s.store
+        .replace("  const findings = await db\n    .select()\n    .from(studyProofreadFindingsTable)\n    .where(eq(studyProofreadFindingsTable.runId, run.id));\n", '  const rows = await db\n    .select()\n    .from(studyProofreadFindingsTable)\n    .where(eq(studyProofreadFindingsTable.runId, run.id));\n  const findings = rows.filter((f) => f.audience !== "admin");\n'),
+    }),
+  },
+  {
+    label: "latestRunForProject splices the admin findings out of the list",
+    file: "store",
+    flips: ["panel-read-serves-every-finding"],
+    apply: edit("store", "  const dispositions = findings.length", '  findings.splice(0, findings.length, ...findings.filter((f) => f.audience !== "admin"));\n  const dispositions = findings.length'),
+  },
+  {
+    label: "latestRunForProject relabels every DEFECT as the engineer's",
+    file: "store",
+    flips: ["panel-read-serves-every-finding"],
+    apply: edit("store", "  const dispositions = findings.length", '  for (const f of findings) if (f.type === "DEFECT") f.audience = "engineer";\n  const dispositions = findings.length'),
+  },
+  {
+    label: "latestRunForProject returns a filtered list in place of the one it read",
+    file: "store",
+    flips: ["panel-read-serves-every-finding"],
+    apply: edit("store", "  return { run, findings, dispositions };", '  return { run, findings: findings.filter((f) => f.type !== "DEFECT"), dispositions };'),
+  },
+  {
+    label: "completeRun writes findings without their audience (the column defaults to engineer)",
+    file: "store",
+    flips: ["findings-written-with-their-audience"],
+    apply: edit("store", "        audience: f.audience,\n", ""),
+  },
+  {
+    label: "completeRun writes every finding with the engineer's audience",
+    file: "store",
+    flips: ["findings-written-with-their-audience"],
+    apply: edit("store", "        audience: f.audience,\n", '        audience: "engineer" as const,\n'),
+  },
+  {
+    label: "completeRun names an audience twice (the later key wins)",
+    file: "store",
+    flips: ["findings-written-with-their-audience"],
+    apply: edit("store", "        fingerprint: findingFingerprint(f),\n", '        fingerprint: findingFingerprint(f),\n        ...{ audience: "engineer" },\n'),
   },
   {
     label: "latestRunStatusForProject rewrites a found run's status to rules_ready after the read (every newest run passes the 409)",
