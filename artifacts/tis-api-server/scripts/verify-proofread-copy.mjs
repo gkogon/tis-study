@@ -25,12 +25,17 @@
  *     see. The pass that feeds the "ordinary study" and ordering cases is the REAL
  *     clause pass over a real engine payload, not hand-typed findings.
  *
- * What this cannot see is anything that needs an effect to run — the poll and its
- * re-arm after "Run again", the busy window across the POST, window.prompt. Those
- * live in ProofreadPanel, not ProofreadView. The decision logic they use
- * (dispositionBody, isPending, isFinished) is pulled into lib/proofread.ts and tested
- * here; the wiring itself is pinned by the few source-text assertions marked WIRING,
- * which are the weak kind and were checked in a real browser instead of trusted.
+ * What this cannot see is anything that needs an effect to run more than once, or a
+ * person — the poll and its re-arm after "Run again", the busy window across the POST,
+ * window.prompt. Those live in ProofreadPanel, not ProofreadView. The decision logic
+ * they use (dispositionBody, isPending, isFinished) is pulled into lib/proofread.ts and
+ * tested here; that wiring is pinned by the source-text assertions marked WIRING, which
+ * are the weak kind and were checked in a real browser instead of trusted. One hand-off
+ * is run rather than read: ProofreadPanel is called as a plain function under a minimal
+ * hooks runtime (mountPanel: useState, useRef, useEffect — enough for its first load and
+ * nothing more), its effect fetches a stubbed GET answer the contract accepts, and the
+ * element it then returns must be ProofreadView holding exactly the run fetchProofread
+ * made of that answer — the withheld count and the rules-changed flag included.
  *
  * TEETH. Every assertion has an id, printed on its line. MUTATIONS, at the end, edits
  * the panel, the client module, the route file or the project page IN MEMORY. For each
@@ -125,10 +130,22 @@ const sharedModule = (spec) => {
   return [`const m = globalThis.${SHARED_KEY}.${name};`, "export default m.default ?? m;", ...keys.map((k) => `export const ${k} = m.${k};`)].join("\n");
 };
 
+// ProofreadPanel's own `react` import goes to a module that forwards the three hooks it
+// uses to the runtime mountPanel installs, and to React when none is installed.
+const HOOKS_KEY = "__proofreadCopyGuardHooks";
+const HOOKS_SHIM = `
+import * as React from "react";
+export * from "react";
+const own = () => globalThis.${HOOKS_KEY};
+export const useState = (...a) => (own() ?? React).useState(...a);
+export const useRef = (...a) => (own() ?? React).useRef(...a);
+export const useEffect = (...a) => (own() ?? React).useEffect(...a);
+`;
+
 // The panel and the client module are loaded from the text handed in, never from disk,
 // so a mutation reaches the bundle; `bundles` fails if either was not.
 const ENTRY = `
-export { ProofreadView } from "@/components/proofread-panel";
+export { ProofreadView, ProofreadPanel } from "@/components/proofread-panel";
 export * as lib from "@/lib/proofread";
 export { createElement } from "react";
 export { renderToStaticMarkup } from "react-dom/server";
@@ -144,6 +161,8 @@ async function bundle(src) {
         setup(b) {
           b.onLoad({ filter: /proofread-panel\.tsx$/ }, (a) => (a.path === PANEL_ABS ? (loaded.panel++, { contents: src.panel, loader: "tsx" }) : undefined));
           b.onLoad({ filter: /proofread\.ts$/ }, (a) => (a.path === LIB_ABS ? (loaded.lib++, { contents: src.lib, loader: "ts" }) : undefined));
+          b.onResolve({ filter: /^react$/ }, (a) => (a.importer === PANEL_ABS ? { path: "react", namespace: "panel-hooks" } : undefined));
+          b.onLoad({ filter: /.*/, namespace: "panel-hooks" }, () => ({ contents: HOOKS_SHIM, loader: "js", resolveDir: atlanta }));
           b.onResolve({ filter: /^(react|react\/jsx-runtime|react-dom\/server|lucide-react)$/ }, (a) => ({ path: a.path, namespace: "shared-react" }));
           b.onLoad({ filter: /.*/, namespace: "shared-react" }, (a) => ({ contents: sharedModule(a.path), loader: "js" }));
         },
@@ -301,6 +320,116 @@ const deepFreeze = (o) => {
 };
 
 /**
+ * Just enough of React's hooks to call ProofreadPanel as a plain function and read the element it returns:
+ * useState (a value or an updater), useRef, and useEffect, which runs when `commit` is called after the render that
+ * scheduled it (again only when its deps change) and whose cleanup runs on `unmount`. Setting state does not render;
+ * the caller renders again to read it. Nothing else of React is imitated, and nothing here is asserted about React.
+ */
+const mountPanel = (Panel, props) => {
+  const slots = [];
+  let queued = [];
+  let at = 0;
+  const hooks = {
+    useState(init) {
+      const i = at++;
+      if (!(i in slots)) slots[i] = { value: typeof init === "function" ? init() : init };
+      const slot = slots[i];
+      return [slot.value, (next) => (slot.value = typeof next === "function" ? next(slot.value) : next)];
+    },
+    useRef(init) {
+      const i = at++;
+      if (!(i in slots)) slots[i] = { current: init };
+      return slots[i];
+    },
+    useEffect(effect, deps) {
+      const i = at++;
+      const prev = slots[i];
+      if (prev && deps && prev.deps && deps.length === prev.deps.length && deps.every((d, j) => Object.is(d, prev.deps[j]))) return;
+      queued.push(() => {
+        if (typeof prev?.cleanup === "function") prev.cleanup();
+        slots[i] = { deps, cleanup: effect() };
+      });
+    },
+  };
+  return {
+    render() {
+      at = 0;
+      globalThis[HOOKS_KEY] = hooks;
+      try {
+        return Panel(props);
+      } finally {
+        delete globalThis[HOOKS_KEY];
+      }
+    },
+    commit() {
+      const run = queued;
+      queued = [];
+      for (const f of run) f();
+    },
+    unmount() {
+      for (const slot of slots) if (typeof slot?.cleanup === "function") slot.cleanup();
+    },
+  };
+};
+
+// Two GET answers as the route sends them for a finished run that carries visible findings, a withheld one and the
+// rules-changed flag — the case the fetch tests above (empty findings) never reach. Each is checked against the
+// contract's own ProofreadReadResponse first, so the stub is a real answer and not a convenient one.
+const READ_FINDING = (id, clauseId, type) => ({
+  id,
+  clauseId,
+  section: 4,
+  type,
+  title: `${clauseId} title`,
+  detail: `${clauseId} detail`,
+  sourceLabel: `${clauseId} source`,
+  readPaths: [{ path: "result.x", value: 1 }],
+  remedy: `${clauseId} remedy`,
+  fingerprint: `fp-${clauseId}`,
+});
+const READ_ANSWERS = [
+  {
+    status: "rules_ready",
+    runId: "7c2d4a1e-3b5f-4e8a-9c1d-2f6b8a0e4d31",
+    revision: 2,
+    protocolVersion: "2026-10-07.1",
+    rulesVersion: "rules-2",
+    engineStamp: "stamp-2",
+    inputManifest: { "result.affectedIntersections": true },
+    coverage: [{ clauseId: "screeningClampDisclosed", section: 4, status: "ran" }],
+    findings: [READ_FINDING("2a9f3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "screeningClampDisclosed", "DISCLOSE")],
+    dispositions: [{ findingId: "2a9f3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", disposition: "DISCLOSED", note: null, sourceLabel: null, createdAt: "2026-10-07T09:00:00.000Z" }],
+    withheld: 1,
+    rulesChanged: true,
+    createdAt: "2026-10-07T08:59:00.000Z",
+    finishedAt: "2026-10-07T08:59:02.000Z",
+  },
+  {
+    status: "ready",
+    runId: "0e4b6c8d-1f2a-4b3c-8d5e-6f7a8b9c0d1e",
+    revision: 5,
+    protocolVersion: "2026-10-07.1",
+    rulesVersion: "rules-2",
+    engineStamp: "stamp-5",
+    inputManifest: {},
+    coverage: [
+      { clauseId: "screeningClampDisclosed", section: 4, status: "ran", note: "3 of 4 judged" },
+      { clauseId: "criteriaNamed", section: 3, status: "not-run", reason: "no agencies on the record" },
+    ],
+    findings: [READ_FINDING("3b0a4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e", "scopeNoteConsistent", "NOTE"), READ_FINDING("4c1b5e6f-7a8b-4c9d-8e1f-2a3b4c5d6e7f", "screeningClampDisclosed", "DISCLOSE")],
+    dispositions: [],
+    withheld: 2,
+    rulesChanged: false,
+    createdAt: "2026-10-07T10:00:00.000Z",
+    finishedAt: null,
+  },
+];
+for (const [i, answer] of READ_ANSWERS.entries()) {
+  const parsed = contract.ProofreadReadResponse?.safeParse?.(answer);
+  report(`pre-read-answer-is-a-contract-answer`, parsed?.success === true, `precondition: stubbed GET answer ${i + 1} is one the contract's ProofreadReadResponse accepts${parsed?.success ? "" : ` (${JSON.stringify(parsed?.error?.issues?.[0] ?? "no schema")})`}`);
+}
+
+/**
  * Every check, run against one set of source texts. Returns [{ id, pass, msg }] in order; prints nothing. The real
  * files are one call; each mutation is another.
  */
@@ -335,7 +464,7 @@ async function suite(src) {
     return results;
   }
   ok("bundles", true, "the panel and the client module bundle with esbuild, each read from the text under test");
-  const { ProofreadView, createElement, renderToStaticMarkup, lib } = mod;
+  const { ProofreadView, ProofreadPanel, createElement, renderToStaticMarkup, lib } = mod;
 
   const warnings = [];
   const realError = console.error;
@@ -591,6 +720,40 @@ async function suite(src) {
           got.push((await lib.fetchProofread("proj-1")).rulesChanged);
         }
         ok("fetch-carries-rules-changed", JSON.stringify(got) === "[true,false,false,false,false,false]", `fetchProofread carries rulesChanged: true only for the boolean true, false for anything else (got ${JSON.stringify(got)})`);
+      } finally {
+        globalThis.fetch = realFetch;
+      }
+    });
+
+    // ─── a whole answer, findings and all ──────────────────────────────────────────────
+    // The fetch tests above send `findings: []`. A fetchProofread that read the count only when nothing was visible,
+    // or dropped the flag when something was, passed all of them: here the answer carries visible findings too, and
+    // what fetchProofread hands the panel is compared with the run written out by hand, field by field.
+    await group("fetchProofread carries a whole answer", async () => {
+      const wantOf = (a) => ({
+        status: a.status,
+        runId: a.runId,
+        revision: a.revision,
+        protocolVersion: a.protocolVersion,
+        engineStamp: a.engineStamp,
+        coverage: a.coverage,
+        findings: a.findings,
+        dispositions: a.dispositions,
+        withheld: a.withheld,
+        rulesChanged: a.rulesChanged,
+        createdAt: a.createdAt,
+        finishedAt: a.finishedAt,
+      });
+      try {
+        for (const [i, answer] of READ_ANSWERS.entries()) {
+          globalThis.fetch = async () => new Response(JSON.stringify(answer), { status: 200, headers: { "Content-Type": "application/json" } });
+          const got = await lib.fetchProofread("proj-1");
+          ok(
+            "fetch-carries-a-full-answer",
+            isDeepStrictEqual(got, wantOf(answer)),
+            `answer ${i + 1} (${answer.findings.length} visible, withheld ${answer.withheld}, rulesChanged ${answer.rulesChanged}): fetchProofread hands the panel every field it reads, as sent (got withheld ${got?.withheld}, rulesChanged ${got?.rulesChanged}, ${got?.findings?.length} findings)`,
+          );
+        }
       } finally {
         globalThis.fetch = realFetch;
       }
@@ -1114,6 +1277,53 @@ async function suite(src) {
       );
       ok("wiring-page-mounts-for-tis", /studyType === "tis" && <ProofreadPanel projectId=\{project\.id\} \/>/.test(src.page), "WIRING: the project page mounts the panel for TIS studies only");
     });
+
+    // ─── WIRING, run: the panel hands the view the run it fetched ──────────────────────
+    // The one hand-off the rendered groups cannot see: everything above renders ProofreadView with a run written by
+    // hand, so `run={run && { ...run, withheld: 0 }}` in the wrapper, or a setRun that rewrote what it fetched, brought
+    // back "Nothing flagged" over a DEFECT with every line green. Here the wrapper itself runs (see mountPanel).
+    await group("the panel hands the view the run it fetched", async () => {
+      const routedOf = (html) => /<p\b[^>]*data-testid="proofread-withheld"[^>]*>([^<]*)<\/p>/.exec(html)?.[1] ?? null;
+      const rulesLineOf = (html) => /<p\b[^>]*data-testid="proofread-rules-changed"[^>]*>([^<]*)<\/p>/.exec(html)?.[1] ?? null;
+      for (const [i, answer] of READ_ANSWERS.entries()) {
+        const asked = [];
+        globalThis.fetch = async (url) => (asked.push(String(url)), new Response(JSON.stringify(answer), { status: 200, headers: { "Content-Type": "application/json" } }));
+        const fetched = await lib.fetchProofread("proj-1");
+        asked.length = 0;
+        const panelRun = mountPanel(ProofreadPanel, { projectId: "proj-1" });
+        try {
+          const first = panelRun.render();
+          panelRun.commit();
+          let el = first;
+          for (let tick = 0; tick < 50 && !el?.props?.run; tick++) {
+            await new Promise((r) => setImmediate(r));
+            el = panelRun.render();
+          }
+          ok(
+            "wiring-panel-hands-view-the-fetched-run",
+            first?.type === ProofreadView &&
+              first.props.run === null &&
+              el?.type === ProofreadView &&
+              asked.length === 1 &&
+              asked[0] === "/tis-api/projects/proj-1/proofread" &&
+              isDeepStrictEqual(el.props.run, fetched) &&
+              el.props.run.withheld === answer.withheld &&
+              el.props.run.rulesChanged === answer.rulesChanged,
+            `WIRING (run): answer ${i + 1} — ProofreadPanel fetches its project once and hands ProofreadView exactly the run fetchProofread made of it (view got withheld ${el?.props?.run?.withheld}, rulesChanged ${el?.props?.run?.rulesChanged}; fetched ${asked.length}x)`,
+          );
+          const html = el?.type === ProofreadView ? renderToStaticMarkup(el) : "";
+          const routed = routedOf(html);
+          ok(
+            "wiring-panel-shows-the-fetched-hold",
+            routed !== null && routed === lib.withheldLine(answer.withheld) && (rulesLineOf(html) !== null) === answer.rulesChanged && !/Nothing flagged|Every item has a recorded decision|No open blocker/.test(text(html)),
+            `WIRING (run): answer ${i + 1} — the panel as mounted shows the routed line for ${answer.withheld} withheld, ${answer.rulesChanged ? "and" : "and no"} rules-changed line, and no clear (${JSON.stringify(summaryOf(html))})`,
+          );
+        } finally {
+          panelRun.unmount();
+          globalThis.fetch = realFetch;
+        }
+      }
+    });
   } finally {
     console.error = realError;
     globalThis.fetch = realFetch;
@@ -1254,15 +1464,15 @@ const MUTATIONS = [
     label: "the header is counted without the withheld findings",
     file: "panel",
     flips: ["withheld-header-holds", "withheld-two-header-counts", "withheld-decided-header-holds", "withheld-ordinary-header-holds"],
-    apply: edit("panel", "summarizeOpen(run.findings, run.dispositions, withheld)", "summarizeOpen(run.findings, run.dispositions)"),
+    also: ["wiring-panel-shows-the-fetched-hold"], apply: edit("panel", "summarizeOpen(run.findings, run.dispositions, withheld)", "summarizeOpen(run.findings, run.dispositions)"),
   },
   { label: "a run that carries no count is read as one withheld", file: "panel", flips: ["withheld-zero-unchanged"], apply: edit("panel", "const withheld = run.withheld > 0 ? run.withheld : 0;", "const withheld = run.withheld === undefined ? 1 : run.withheld > 0 ? run.withheld : 0;") },
   { label: "'Nothing flagged' is never drawn", file: "panel", flips: ["withheld-zero-green-earned", "full-empty-green-earned"], also: ["empty-run-sentence-scoped", "partial-only-no-green-scoped"], apply: edit("panel", "{finished && run.findings.length === 0 && withheld === 0 && ran.length > 0 && (", "{finished && run.findings.length === 0 && withheld < 0 && ran.length > 0 && (") },
   { label: "withheldLine says one item whatever the count", file: "lib", flips: ["withheld-two-line-plural", "withheld-line-pluralised"], apply: edit("lib", "return n === 1\n", "return n >= 1\n") },
   { label: "summarizeOpen counts at most one withheld finding as a hold", file: "lib", flips: ["withheld-two-header-counts"], apply: edit("lib", "open: w, holds: w,", "open: w, holds: Math.min(w, 1),") },
-  { label: "the header says every item is decided once the visible ones are", file: "panel", flips: ["withheld-decided-header-holds", "withheld-header-holds", "withheld-two-header-counts"], apply: edit("panel", "if (s.open === 0) return", "if (s.open - s.withheld === 0) return") },
-  { label: "the routed line is dropped when a finding is visible", file: "panel", flips: ["withheld-decided-finding-and-line"], apply: edit("panel", "{finished && withheld > 0 && (", "{finished && withheld > 0 && run.findings.length === 0 && (") },
-  { label: "the quiet sentence wins over a withheld hold when there is something to state", file: "panel", flips: ["withheld-ordinary-header-holds"], apply: edit("panel", "if (s.holds > 0) {", "if (s.holds > s.withheld || (s.holds > 0 && rest.length === 0)) {") },
+  { label: "the header says every item is decided once the visible ones are", file: "panel", flips: ["withheld-decided-header-holds", "withheld-header-holds", "withheld-two-header-counts"], also: ["wiring-panel-shows-the-fetched-hold"], apply: edit("panel", "if (s.open === 0) return", "if (s.open - s.withheld === 0) return") },
+  { label: "the routed line is dropped when a finding is visible", file: "panel", flips: ["withheld-decided-finding-and-line"], also: ["wiring-panel-shows-the-fetched-hold"], apply: edit("panel", "{finished && withheld > 0 && (", "{finished && withheld > 0 && run.findings.length === 0 && (") },
+  { label: "the quiet sentence wins over a withheld hold when there is something to state", file: "panel", flips: ["withheld-ordinary-header-holds"], also: ["wiring-panel-shows-the-fetched-hold"], apply: edit("panel", "if (s.holds > 0) {", "if (s.holds > s.withheld || (s.holds > 0 && rest.length === 0)) {") },
   { label: "nothing-checked is drawn over a withheld finding", file: "panel", flips: ["withheld-scoped-coverage-not-clear"], apply: edit("panel", "{finished && run.findings.length === 0 && withheld === 0 && ran.length === 0 && (", "{finished && run.findings.length === 0 && ran.length === 0 && (") },
   { label: "the routed line is drawn for a run that did not finish", file: "panel", flips: ["withheld-unfinished-shows-nothing"], apply: edit("panel", "{finished && withheld > 0 && (", "{withheld > 0 && (") },
   { label: "summarizeOpen leaves withheld findings out of the total", file: "lib", flips: ["summarize-counts-withheld"], also: ["withheld-header-holds", "withheld-two-header-counts"], apply: edit("lib", "total: findings.length + w,", "total: findings.length,") },
@@ -1280,7 +1490,7 @@ const MUTATIONS = [
   { label: "the rules-changed line is drawn a second time under the findings", file: "panel", flips: ["rules-changed-says-once"], apply: edit("panel", "{finished && partial.length > 0 && (", '{finished && run.rulesChanged === true && run.findings.length > 0 && <p className="text-xs">{RULES_CHANGED_LINE}</p>}\n\n        {finished && partial.length > 0 && (') },
   { label: "the rules-changed line is dropped when nothing was found", file: "panel", flips: ["rules-changed-empty-run-says-it"], apply: edit("panel", "{finished && run.rulesChanged === true && (", "{finished && run.rulesChanged === true && run.findings.length > 0 && (") },
   { label: "the rules-changed line is drawn for a run that did not finish", file: "panel", flips: ["rules-changed-unfinished-no-line"], apply: edit("panel", "{finished && run.rulesChanged === true && (", "{run.rulesChanged === true && (") },
-  { label: "the rules-changed line is drawn whenever the flag is present", file: "panel", flips: ["rules-unchanged-no-line"], apply: edit("panel", "{finished && run.rulesChanged === true && (", "{finished && run.rulesChanged !== undefined && (") },
+  { label: "the rules-changed line is drawn whenever the flag is present", file: "panel", flips: ["rules-unchanged-no-line"], also: ["wiring-panel-shows-the-fetched-hold"], apply: edit("panel", "{finished && run.rulesChanged === true && (", "{finished && run.rulesChanged !== undefined && (") },
   { label: "fetchProofread reads rulesChanged with Boolean()", file: "lib", flips: ["fetch-carries-rules-changed"], apply: edit("lib", "rulesChanged: data.rulesChanged === true,", "rulesChanged: Boolean(data.rulesChanged),") },
 
   // ---- order and tone ------------------------------------------------------------
@@ -1405,7 +1615,7 @@ const MUTATIONS = [
   },
   { label: "a NOTE is offered its decisions in another order", file: "lib", flips: ["offered-for-per-type", "offered-per-type"], also: ["closes-header-card-agree", "every-type-consistent"], apply: edit("lib", '  NOTE: ["DISCLOSED", "FIXED", "WITHDRAWN"],', '  NOTE: ["FIXED", "DISCLOSED", "WITHDRAWN"],') },
   { label: "a decision that is not an upper-case name closes", file: "lib", flips: ["closes-nothing-on-empty"], apply: edit("lib", "(offeredFor(type) as string[]).includes(disposition);", "((offeredFor(type) as string[]).includes(disposition) || !/^[A-Z_]+$/.test(disposition));") },
-  { label: "isFinished drops 'ready'", file: "lib", flips: ["is-finished-per-status"], also: ["findings-only-when-finished", "header-only-when-finished", "nothing-checked-says-so", "rules-changed-empty-run-says-it", "rules-changed-says-once", "triage-only-when-finished", "withheld-header-holds", "withheld-routed-line-red"], apply: edit("lib", 'return status === "rules_ready" || status === "ready";', 'return status === "rules_ready";') },
+  { label: "isFinished drops 'ready'", file: "lib", flips: ["is-finished-per-status"], also: ["wiring-panel-shows-the-fetched-hold", "findings-only-when-finished", "header-only-when-finished", "nothing-checked-says-so", "rules-changed-empty-run-says-it", "rules-changed-says-once", "triage-only-when-finished", "withheld-header-holds", "withheld-routed-line-red"], apply: edit("lib", 'return status === "rules_ready" || status === "ready";', 'return status === "rules_ready";') },
   { label: "dispositionBody sends a sourceLabel key on FIXED", file: "lib", flips: ["body-no-source-no-prompt"], apply: edit("lib", 'if (disposition !== "WITHDRAWN") return { disposition };', 'if (disposition !== "WITHDRAWN") return { disposition, sourceLabel: undefined };') },
   { label: "dispositionBody adds a note", file: "lib", flips: ["body-json-is-disposition", "disposition-body-no-source-key"], apply: edit("lib", 'if (disposition !== "WITHDRAWN") return { disposition };', 'if (disposition !== "WITHDRAWN") return { disposition, note: null };') },
   { label: "a cancelled prompt is read as the text 'null'", file: "lib", flips: ["withdrawn-cancelled-records-nothing", "withdrawn-no-answer-records-nothing"], apply: edit("lib", '(askSource() ?? "").trim()', "String(askSource()).trim()") },
@@ -1417,7 +1627,7 @@ const MUTATIONS = [
   { label: "the decision body gains an empty sourceLabel", file: "lib", flips: ["disposition-body-no-source-key"], apply: edit("lib", "body: JSON.stringify(body) },", 'body: JSON.stringify({ sourceLabel: "", ...body }) },') },
   { label: "fetchProofread passes a missing findings list through", file: "lib", flips: ["fetch-defaults-lists", "fetch-keeps-run-id-and-arrays", "odd-run-renders-nothing-checked"], apply: edit("lib", "findings: Array.isArray(data.findings) ? data.findings : [],", "findings: data.findings as ProofreadFindingT[],") },
   { label: "a response with no status reads as finished", file: "lib", flips: ["fetch-no-status-is-none"], apply: edit("lib", 'status: data.status ?? "none",', 'status: data.status ?? "rules_ready",') },
-  { label: "the revision is sent as the run id", file: "lib", flips: ["fetch-keeps-run-id-and-arrays"], apply: edit("lib", "    runId: data.runId,\n", "    runId: data.revision !== undefined ? String(data.revision) : data.runId,\n") },
+  { label: "the revision is sent as the run id", file: "lib", flips: ["fetch-keeps-run-id-and-arrays"], also: ["fetch-carries-a-full-answer"], apply: edit("lib", "    runId: data.runId,\n", "    runId: data.revision !== undefined ? String(data.revision) : data.runId,\n") },
 
   // ---- a decision on a superseded run (FW-6) -------------------------------------
   {
@@ -1443,6 +1653,36 @@ const MUTATIONS = [
     flips: ["offered-equals-accepted", "offered-per-type", "offered-for-per-type", "closes-per-type", "closes-header-card-agree", "every-type-consistent"],
     also: ["triage-only-when-finished"], apply: edit("lib", '  NOTE: ["DISCLOSED", "FIXED", "WITHDRAWN"],', '  NOTE: ["DISCLOSED", "FIXED"],'),
   },
+
+  // ---- a whole answer, and the panel's hand-off of it (LAN-4) ---------------------
+  {
+    label: "fetchProofread reads the count only when nothing is visible",
+    file: "lib",
+    flips: ["fetch-carries-a-full-answer"],
+    also: ["wiring-panel-hands-view-the-fetched-run", "wiring-panel-shows-the-fetched-hold"],
+    apply: edit("lib", "    withheld: typeof data.withheld", "    withheld: Array.isArray(data.findings) && data.findings.length > 0 ? 0 : typeof data.withheld"),
+  },
+  {
+    label: "fetchProofread drops the rules-changed flag when something is visible",
+    file: "lib",
+    flips: ["fetch-carries-a-full-answer"],
+    also: ["wiring-panel-hands-view-the-fetched-run", "wiring-panel-shows-the-fetched-hold"],
+    apply: edit("lib", "rulesChanged: data.rulesChanged === true,", "rulesChanged: data.rulesChanged === true && !(Array.isArray(data.findings) && data.findings.length > 0),"),
+  },
+  { label: "fetchProofread drops the run's createdAt", file: "lib", flips: ["fetch-carries-a-full-answer"], apply: edit("lib", "    createdAt: data.createdAt,\n", "    createdAt: undefined,\n") },
+  {
+    label: "the wrapper hands the view the run with its count zeroed",
+    file: "panel",
+    flips: ["wiring-panel-hands-view-the-fetched-run", "wiring-panel-shows-the-fetched-hold"],
+    apply: edit("panel", "      run={run}\n", "      run={run && { ...run, withheld: 0 }}\n"),
+  },
+  {
+    label: "the wrapper stores the fetched run with its flag cleared",
+    file: "panel",
+    flips: ["wiring-panel-hands-view-the-fetched-run", "wiring-panel-shows-the-fetched-hold"],
+    apply: edit("panel", "        setRun(next);\n", "        setRun({ ...next, rulesChanged: false });\n"),
+  },
+  { label: "the wrapper fetches twice when it mounts", file: "panel", flips: ["wiring-panel-hands-view-the-fetched-run"], apply: edit("panel", "    void load();\n", "    void load();\n    void load();\n") },
 
   // ---- WIRING (text) -----------------------------------------------------------
   { label: "the poll effect no longer depends on nonce", file: "panel", flips: ["wiring-poll-depends-on-nonce"], apply: edit("panel", "}, [projectId, nonce]);", "}, [projectId]);") },
