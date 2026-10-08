@@ -624,6 +624,39 @@ const CHECKS = [
     },
   },
   {
+    id: "exhausted-write-is-caught",
+    on: "runner",
+    msg: "the exhausted branch's one completeRun is the first statement of a `try`, whose catch logs at warn with `runId: run.id` and does not rethrow: the row claimed there is the oldest claimable one, not necessarily the run the caller just queued, so a throw out of it made POST run answer 500 \"Failed to start the check\" for a check that WAS queued. Nothing is lost by catching it — the row stays 'running', its lease expires, and the next claim lands here again",
+    test: (s) => {
+      // The branch is the if-block itself, braces matched: the slice up to
+      // runClauses( would also take in the "study row not found" write.
+      const at = s.runner.search(/run\.attempts > MAX_ATTEMPTS\) \{/);
+      if (at < 0) return false;
+      const open = s.runner.indexOf("{", at);
+      let depth = 0;
+      let close = -1;
+      for (let i = open; i < s.runner.length; i++) {
+        if (s.runner[i] === "{") depth++;
+        else if (s.runner[i] === "}" && --depth === 0) {
+          close = i;
+          break;
+        }
+      }
+      if (close < 0) return false;
+      const branch = norm(s.runner.slice(open, close + 1));
+      const tryAt = branch.indexOf("try { await completeRun({");
+      const c = catchBlock(branch, "runId: run.id");
+      return (
+        tryAt >= 0 &&
+        count(branch, "completeRun(") === 1 &&
+        c.length > 0 &&
+        branch.indexOf(c) > tryAt &&
+        /logger\.warn\(\{[^}]*\brunId: run\.id\b[^}]*\}/.test(c) &&
+        !/\bthrow\b/.test(c)
+      );
+    },
+  },
+  {
     id: "failure-status-from-policy",
     on: "runner",
     msg: "a failed pass takes its next status from nextStatusAfterFailure, not from a literal: requeue while attempts remain, fail when they do not",
@@ -732,6 +765,27 @@ for (const c of CHECKS) {
 // reading the wrong file.
 // ---------------------------------------------------------------------------
 const edit = (file, from, to) => (s) => ({ ...s, [file]: s[file].replace(from, to) });
+
+// The exhausted branch's write as the runner holds it, and as it was before it
+// was caught (proofread-run.ts at 922ba4e) — the edit both teeth tables use.
+const EXHAUSTED_TRY = `    try {
+      await completeRun({
+        runId: run.id,
+        status: "failed",
+        findings: [],
+        error: \`attempts exhausted (\${run.attempts} > \${MAX_ATTEMPTS})\`,
+      });
+    } catch (err) {
+      logger.warn({ err, runId: run.id }, "proofread.exhausted_write_failed");
+    }
+`;
+const EXHAUSTED_BARE = `    await completeRun({
+      runId: run.id,
+      status: "failed",
+      findings: [],
+      error: \`attempts exhausted (\${run.attempts} > \${MAX_ATTEMPTS})\`,
+    });
+`;
 
 const MUTATIONS = [
   // lifecycle.ts
@@ -1051,6 +1105,30 @@ const MUTATIONS = [
     apply: edit("runner", "if (run.attempts > MAX_ATTEMPTS)", "if (false && run.attempts > MAX_ATTEMPTS)"),
   },
   {
+    label: "unwrap the exhausted branch's completeRun (final review: POST run answered 500 after queuing)",
+    file: "runner",
+    flips: ["exhausted-write-is-caught"],
+    apply: (s) => ({ ...s, runner: s.runner.replace(EXHAUSTED_TRY, EXHAUSTED_BARE) }),
+  },
+  {
+    label: "rethrow from the exhausted branch's catch",
+    file: "runner",
+    flips: ["exhausted-write-is-caught"],
+    apply: edit("runner", '"proofread.exhausted_write_failed");\n', '"proofread.exhausted_write_failed");\n      throw err;\n'),
+  },
+  {
+    label: "log the exhausted write's failure without the run id",
+    file: "runner",
+    flips: ["exhausted-write-is-caught"],
+    apply: edit("runner", "logger.warn({ err, runId: run.id }, \"proofread.exhausted_write_failed\")", "logger.warn({ err }, \"proofread.exhausted_write_failed\")"),
+  },
+  {
+    label: "keep the try, but write the failure a second time outside it",
+    file: "runner",
+    flips: ["exhausted-write-is-caught"],
+    apply: edit("runner", '    logger.warn({ runId: run.id, attempts: run.attempts }, "proofread.attempts_exhausted");', '    await completeRun({ runId: run.id, status: "failed", findings: [] });\n    logger.warn({ runId: run.id, attempts: run.attempts }, "proofread.attempts_exhausted");'),
+  },
+  {
     label: "fail every failed pass terminally instead of asking the policy",
     file: "runner",
     flips: ["failure-status-from-policy"],
@@ -1331,7 +1409,44 @@ async function observe(text) {
     insertQueuedRun: () => ({ id: "run-q" }),
     claimOneRun: () => null,
   });
-  return { inputs, acrossDeploy, rulesBumped, enqueued };
+  // A row past its attempts budget whose failing write throws.
+  const writeFails = new Error("connection reset");
+  const exhaustedWriteFails = await drive(mod, "claimAndRunOne", [], {
+    claimOneRun: () => claimed({ id: "run-stale", attempts: lifecycleMod.MAX_ATTEMPTS + 1 }),
+    completeRun: () => {
+      throw writeFails;
+    },
+  });
+  // POST run's path: queue run-q, then the drain claims an OLDER exhausted row.
+  const postRun = await drive(mod, "enqueueProofread", [ENQUEUE_ARGS], {
+    insertQueuedRun: () => ({ id: "run-q" }),
+    claimOneRun: () => claimed({ id: "run-stale", attempts: lifecycleMod.MAX_ATTEMPTS + 1 }),
+    completeRun: () => {
+      throw new Error("connection reset");
+    },
+  });
+  // Every point inside claimAndRunOne where the store (or the pass) can throw, one at a time.
+  const thrower = (msg) => () => {
+    throw new Error(msg);
+  };
+  const normal = {
+    claimOneRun: () => claimed(),
+    loadStudyForRun: () => STUDY,
+    previousRunForProject: () => ({ id: "run-2", rulesVersion: "rules-current" }),
+    carryForwardDispositions: () => 1,
+  };
+  const THROW_POINTS = [
+    ["the claim", { claimOneRun: thrower("claim") }],
+    ["loading the study", { ...normal, loadStudyForRun: thrower("load") }],
+    ["the clause pass", { ...normal, runClauses: thrower("clauses") }],
+    ["every completeRun", { ...normal, completeRun: thrower("complete") }],
+    ["the carry-source lookup", { ...normal, previousRunForProject: thrower("previous") }],
+    ["the carry", { ...normal, carryForwardDispositions: thrower("carry") }],
+    ["the exhausted branch's completeRun", { claimOneRun: () => claimed({ id: "run-stale", attempts: lifecycleMod.MAX_ATTEMPTS + 1 }), completeRun: thrower("complete") }],
+  ];
+  const throwMatrix = [];
+  for (const [label, impl] of THROW_POINTS) throwMatrix.push({ label, r: await drive(mod, "claimAndRunOne", [], impl) });
+  return { inputs, acrossDeploy, rulesBumped, enqueued, writeFails, exhaustedWriteFails, postRun, throwMatrix };
 }
 
 const describe = (r) => (r ? `${r.threw ? `threw ${r.error?.message ?? r.error}` : `returned ${JSON.stringify(r.value)}`}; calls: ${r.st.calls.map((c) => `${c.name}(${JSON.stringify(c.args).slice(1, -1)})`).join(", ") || "none"}` : "not run");
@@ -1386,6 +1501,33 @@ const BCHECKS = [
       );
     },
     why: (o) => describe(o.enqueued),
+  },
+  {
+    id: "runs-claim-and-run-never-rejects",
+    msg: "RUN: claimAndRunOne resolves whatever the store throws — at the claim, the study load, the clause pass, any completeRun, the carry lookup, the carry, and the exhausted branch's write. It runs after a run has been queued, so nothing it does may surface to the caller as a failure to queue",
+    test: (o) => o.throwMatrix.length === 7 && o.throwMatrix.every((t) => !t.r.threw),
+    why: (o) => o.throwMatrix.filter((t) => t.r.threw).map((t) => `${t.label}: rejected with "${t.r.error?.message ?? t.r.error}"`).join("; "),
+  },
+  {
+    id: "runs-exhausted-write-failure-is-logged-with-the-run",
+    msg: "RUN: when the exhausted branch's write throws, a warn line carries that run's id and the error itself — caught is not the same as silent",
+    test: (o) => o.exhaustedWriteFails.st.logs.some((l) => l.level === "warn" && l.obj?.runId === "run-stale" && l.obj?.err === o.writeFails),
+    why: (o) => `logs: ${JSON.stringify(o.exhaustedWriteFails.st.logs.map((l) => [l.level, l.msg, Object.keys(l.obj ?? {})]))}; ${describe(o.exhaustedWriteFails)}`,
+  },
+  {
+    id: "runs-enqueue-resolves-once-the-run-is-queued",
+    msg: "RUN: POST run's path — enqueueProofread inserts its run, then the drain claims an OLDER exhausted row whose write throws, and enqueueProofread still resolves: the run it was asked to queue IS queued, so the route answers { ok: true }, not 500 \"Failed to start the check\"",
+    test: (o) => !o.postRun.threw && o.postRun.st.to("insertQueuedRun").length === 1 && o.postRun.st.to("claimOneRun").length === 1,
+    why: (o) => describe(o.postRun),
+  },
+  {
+    id: "runs-exhausted-row-never-runs-clauses",
+    msg: "RUN: a row past its attempts budget is written 'failed' without loading the study or running a clause — a pass that crashes the process would otherwise be re-claimed and re-crash forever",
+    test: (o) => {
+      const r = o.exhaustedWriteFails;
+      return r.st.to("runClauses").length === 0 && r.st.to("loadStudyForRun").length === 0 && r.st.to("completeRun").some((c) => c.args[0]?.runId === "run-stale" && c.args[0]?.status === "failed");
+    },
+    why: (o) => describe(o.exhaustedWriteFails),
   },
 ];
 
@@ -1457,6 +1599,31 @@ const BMUTATIONS = [
     label: "record the engine stamp as the run's rules version",
     flips: ["runs-enqueue-records-the-current-rules-version"],
     apply: (t) => t.replace("rulesVersion: RULES_VERSION,", "rulesVersion: engineStamp(),"),
+  },
+  {
+    label: "unwrap the exhausted branch's completeRun",
+    flips: ["runs-claim-and-run-never-rejects", "runs-exhausted-write-failure-is-logged-with-the-run", "runs-enqueue-resolves-once-the-run-is-queued"],
+    apply: (t) => t.replace(EXHAUSTED_TRY, EXHAUSTED_BARE),
+  },
+  {
+    label: "log, then rethrow, from the exhausted branch's catch",
+    flips: ["runs-claim-and-run-never-rejects", "runs-enqueue-resolves-once-the-run-is-queued"],
+    apply: (t) => t.replace('"proofread.exhausted_write_failed");\n', '"proofread.exhausted_write_failed");\n      throw err;\n'),
+  },
+  {
+    label: "swallow the exhausted write's failure without a word",
+    flips: ["runs-exhausted-write-failure-is-logged-with-the-run"],
+    apply: (t) => t.replace('      logger.warn({ err, runId: run.id }, "proofread.exhausted_write_failed");\n', ""),
+  },
+  {
+    label: "log the exhausted write's failure without the run id",
+    flips: ["runs-exhausted-write-failure-is-logged-with-the-run"],
+    apply: (t) => t.replace("logger.warn({ err, runId: run.id }, \"proofread.exhausted_write_failed\")", "logger.warn({ err }, \"proofread.exhausted_write_failed\")"),
+  },
+  {
+    label: "let an exhausted row run the pass",
+    flips: ["runs-exhausted-row-never-runs-clauses", "runs-exhausted-write-failure-is-logged-with-the-run"],
+    apply: (t) => t.replace("if (run.attempts > MAX_ATTEMPTS)", "if (false && run.attempts > MAX_ATTEMPTS)"),
   },
 ];
 const BSTAYS_GREEN = [

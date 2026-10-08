@@ -111,12 +111,22 @@ export async function claimAndRunOne(): Promise<boolean> {
   // otherwise be re-claimed and re-crash forever, since nothing else moves the
   // row out of the queue.
   if (run.attempts > MAX_ATTEMPTS) {
-    await completeRun({
-      runId: run.id,
-      status: "failed",
-      findings: [],
-      error: `attempts exhausted (${run.attempts} > ${MAX_ATTEMPTS})`,
-    });
+    // Caught and logged here, never thrown. The row claimed here is the oldest
+    // claimable one, not necessarily the run the caller just queued: POST run
+    // reaches this through enqueueProofread AFTER its own insert succeeded, and
+    // a throw from this write made it answer 500 "Failed to start the check"
+    // for a check that was queued. Nothing is lost by catching it: the row
+    // stays 'running', its lease expires, and the next claim lands here again.
+    try {
+      await completeRun({
+        runId: run.id,
+        status: "failed",
+        findings: [],
+        error: `attempts exhausted (${run.attempts} > ${MAX_ATTEMPTS})`,
+      });
+    } catch (err) {
+      logger.warn({ err, runId: run.id }, "proofread.exhausted_write_failed");
+    }
     logger.warn({ runId: run.id, attempts: run.attempts }, "proofread.attempts_exhausted");
     return true;
   }
