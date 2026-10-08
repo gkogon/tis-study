@@ -38,6 +38,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { build } from "esbuild";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -454,6 +455,14 @@ const CLOSED_BY = {
 };
 const HOLDING = new Set(["BLOCKER", "CONTESTED", "DEFECT", "SOMETHING_NEW"]);
 const recorded = (id, disposition, createdAt = "2026-10-06T12:00:00Z") => ({ findingId: id, disposition, note: null, sourceLabel: null, createdAt });
+/** Freeze a fixture all the way down, so code that writes into what it was handed throws instead of hiding the change. */
+const deepFreeze = (o) => {
+  if (o && typeof o === "object" && !Object.isFrozen(o)) {
+    Object.freeze(o);
+    for (const v of Object.values(o)) deepFreeze(v);
+  }
+  return o;
+};
 
 await group("decisions offered per finding type", () => {
   const everyLabel = [];
@@ -557,18 +566,38 @@ await group("rendered copy", () => {
 await group("the decision shown at once is the decision recorded", () => {
   ok(typeof lib.withRecordedDecision === "function", "lib/proofread.ts exports withRecordedDecision");
   const NOW = new Date("2026-10-06T15:00:00Z");
-  // x already carries an OLDER, non-closing record (a carried-forward disclosure); y is closed and must be left alone.
+  // x already carries an OLDER, non-closing record (a carried-forward disclosure). y is a second BLOCKER, OPEN — its
+  // own record is a disclosure, which does not close a blocker — and must be left exactly as it was. It is open on
+  // purpose: a closed finding dropped from the run is invisible in the header, an open blocker dropped from it turns
+  // "1 open item" into "Every item has a recorded decision" over a blocker nobody decided.
   const older = recorded("f-x", "DISCLOSED", "2026-10-06T10:00:00Z");
-  const other = recorded("f-y", "FIXED", "2026-10-06T12:00:00Z");
-  const base = runOf("rules_ready", { runId: "run-A", findings: [mk("x", "BLOCKER"), mk("y", "NOTE")], dispositions: [older, other] });
+  const other = recorded("f-y", "DISCLOSED", "2026-10-06T12:00:00Z");
+  // Frozen all the way down: a withRecordedDecision that wrote into the run it was handed (pushed onto its list,
+  // re-stamped a record, re-sorted the findings) throws here instead of passing with the change hidden in `base`.
+  const base = deepFreeze(runOf("rules_ready", { runId: "run-A", findings: [mk("x", "BLOCKER"), mk("y", "BLOCKER")], dispositions: [older, other] }));
   const finding = base.findings[0];
-  ok(/^1 open item to resolve/.test(summaryOf(view(base)) ?? ""), "precondition: before the decision the blocker is open (an older Disclosed does not close it)");
+  /** The run with its dispositions taken out: everything withRecordedDecision must hand back untouched. */
+  const rest = (run) => ({ ...run, dispositions: "(compared on their own)" });
+  ok(
+    /^2 open items to resolve before this study is called complete\./.test(summaryOf(view(base)) ?? ""),
+    `precondition: before the decision both blockers are open — an older Disclosed closes neither (${JSON.stringify(summaryOf(view(base)))})`,
+  );
   for (const [name, body, wantSource] of [
     ["Fixed", { disposition: "FIXED" }, null],
     // The body the panel really builds: the prompt's answer arrives padded and leaves trimmed.
     ["Withdrawn on a named source", lib.dispositionBody("WITHDRAWN", () => "  HCM 7th ed.  "), "HCM 7th ed."],
   ]) {
-    const after = lib.withRecordedDecision(base, "run-A", finding, body, NOW);
+    let after;
+    try {
+      after = lib.withRecordedDecision(base, "run-A", finding, body, NOW);
+    } catch (e) {
+      ok(false, `${name}: withRecordedDecision leaves the run it was handed alone (it threw on the frozen run: ${e instanceof Error ? e.message : e})`);
+      continue;
+    }
+    ok(
+      isDeepStrictEqual(rest(after), rest(base)),
+      `${name}: apart from its dispositions, the run handed back IS the run handed in — every finding (the other open blocker included), its status, its id, its coverage`,
+    );
     const latest = lib.latestDisposition(after.dispositions, finding.id);
     // Not read back through latestDisposition(finding.id): that can only ever return a record of that finding, so a record
     // written against the wrong one would go unseen (the older record would answer instead).
@@ -585,11 +614,34 @@ await group("the decision shown at once is the decision recorded", () => {
     const c = text(card(html, "x"));
     ok(buttons(card(html, "x")).length === 0 && new RegExp(`Recorded: ${body.disposition}`).test(c), `${name}: rendered, the card shows Recorded: ${body.disposition} and no controls (${JSON.stringify(c.slice(-60))})`);
     ok(!wantSource || c.includes(wantSource), `${name}: rendered, the card names the source`);
-    ok(/^Every item has a recorded decision\.$/.test(summaryOf(html) ?? ""), `${name}: rendered, the header has moved (${JSON.stringify(summaryOf(html))})`);
+    ok(
+      /^1 open item to resolve before this study is called complete\./.test(summaryOf(html) ?? "") && summaryRed(html),
+      `${name}: rendered, the header has moved from two open blockers to one, in red — never "Every item has a recorded decision" while the other blocker is open (${JSON.stringify(summaryOf(html))})`,
+    );
+    ok(
+      buttons(card(html, "y")).map((b) => b.label).join("|") === "Fixed|Withdrawn on a source" && /Recorded: DISCLOSED/.test(text(card(html, "y"))),
+      `${name}: rendered, the other blocker keeps its record and both its controls`,
+    );
   }
-  // A different run is not this run's business: it comes back as it was.
-  const wrong = lib.withRecordedDecision(base, "run-B", finding, { disposition: "FIXED" }, NOW);
-  ok(wrong === base, "a decision recorded on another run does not touch this one (the previous project's run, or a newer revision)");
+  // Not this run's business: the run comes back as the same object, unchanged. A different run (the previous
+  // project's, or a newer revision that took over mid-flight); a run with no id (a project never checked); and a
+  // decision with no run id, which no run can be the run of — even one that has no id either.
+  const untouched = (run, runId) => {
+    try {
+      return lib.withRecordedDecision(run, runId, finding, { disposition: "FIXED" }, NOW) === run;
+    } catch {
+      return false;
+    }
+  };
+  ok(untouched(base, "run-B"), "a decision recorded on another run does not touch this one (the previous project's run, or a newer revision)");
+  const neverChecked = deepFreeze(runOf("none", { runId: undefined, coverage: [] }));
+  ok(untouched(neverChecked, "run-A"), "a decision recorded on run-A does not touch a run with no id (the next project, never checked)");
+  for (const noId of [undefined, null, ""]) {
+    ok(
+      untouched(base, noId) && untouched(neverChecked, noId),
+      `a decision with no run id (${JSON.stringify(noId)}) touches no run — not run-A, and not a run that has no id either`,
+    );
+  }
 });
 
 // ─── 3. THE CLIENT MODULE ───────────────────────────────────────────────────────────

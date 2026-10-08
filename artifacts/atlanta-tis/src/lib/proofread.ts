@@ -219,7 +219,9 @@ export function latestDisposition(dispositions: DispositionT[], findingId: strin
  *
  * Only for `runId`: a decision recorded on another run (the project changed, or
  * a newer revision took over mid-flight) is not this run's business, and the
- * run comes back as it was. The record is stamped `now`, so as the newest it is
+ * run comes back as it was. So does every run when `runId` is empty: a decision
+ * with no run is no run's, not even that of a run that has no id either (a
+ * project never checked). The record is stamped `now`, so as the newest it is
  * the one `latestDisposition` returns.
  */
 export function withRecordedDecision(
@@ -229,7 +231,7 @@ export function withRecordedDecision(
   body: { disposition: string; sourceLabel?: string },
   now: Date,
 ): ProofreadRun {
-  if (run.runId !== runId) return run;
+  if (!runId || run.runId !== runId) return run;
   const recorded: DispositionT = {
     findingId: finding.id,
     disposition: body.disposition,
