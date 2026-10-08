@@ -668,6 +668,26 @@ await group("client module", async () => {
   }
 });
 
+// ─── the panel offers exactly what the server accepts ───────────────────────────────
+// The disposition route refuses, with a 422, a decision the finding's type is not offered in
+// the contract's OFFERED_DISPOSITIONS (lib/tis-api-zod/src/proofread.ts). The panel does not
+// import that module — atlanta-tis does not depend on @workspace/tis-api-zod, and the panel
+// bundle stays free of zod — so it keeps its own OFFERED, and this pins the two equal: a button
+// the server would refuse, or a decision the server takes that no button offers, is a drift.
+await group("the panel offers exactly what the server accepts", async () => {
+  const contract = await import(pathToFileURL(path.join(repo, "lib/tis-api-zod/src/proofread.ts")).href);
+  const server = contract.OFFERED_DISPOSITIONS;
+  const mine = lib.OFFERED;
+  ok(!!server && typeof server === "object" && !!mine && typeof mine === "object", "the contract exports OFFERED_DISPOSITIONS and lib/proofread.ts exports OFFERED");
+  const keys = (m) => Object.keys(m ?? {}).sort().join(",");
+  ok(keys(server) === keys(mine) && Object.keys(server ?? {}).length === 6, `the panel and the server name the same six finding types (panel: ${keys(mine)}; server: ${keys(server)})`);
+  for (const t of new Set([...Object.keys(server ?? {}), ...Object.keys(mine ?? {})])) {
+    const a = [...(mine?.[t] ?? [])].sort().join(",");
+    const b = [...(server?.[t] ?? [])].sort().join(",");
+    ok(a === b && (mine?.[t] ?? []).length === (server?.[t] ?? []).length, `${t}: the panel offers [${a}] and the server accepts [${b}]`);
+  }
+});
+
 // ─── 4. WIRING (source text — the weak kind; see the header) ─────────────────────────
 await group("wiring", () => {
   ok(/\}, \[projectId, nonce\]\);/.test(panel), "WIRING: the poll effect depends on nonce, so a re-run re-arms it");

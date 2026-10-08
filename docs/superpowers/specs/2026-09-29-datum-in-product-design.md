@@ -156,7 +156,7 @@ Absolute paths in `routes/proofread.ts`. Every handler copies the `projects.ts` 
 |---|---|
 | `GET /projects/:id/proofread` | latest run: `{ status, revision, protocolVersion, engineStamp, coverage, findings[], dispositions[], questions[] }`, audience-filtered. Opportunistic sweep. |
 | `POST /projects/:id/proofread` | request a run (new revision). Own limiter. |
-| `POST /projects/:id/proofread/:runId/findings/:findingId/dispositions` | record a disposition. `WITHDRAWN` requires `sourceLabel`; `ACCEPTED_RISK` and `CONTESTED_PE` ruling are PE-gated (phase four). |
+| `POST /projects/:id/proofread/:runId/findings/:findingId/dispositions` | record a disposition. `WITHDRAWN` requires `sourceLabel`; `ACCEPTED_RISK` and `CONTESTED_PE` ruling are PE-gated (phase four). A decision the finding's type is not offered is refused with 422 — the map is `OFFERED_DISPOSITIONS` in the contract (BLOCKER: FIXED, WITHDRAWN; DISCLOSE, NOTE, UNVERIFIED: DISCLOSED, FIXED, WITHDRAWN; CONTESTED and DEFECT: none), the same table the panel offers from, enforced server-side because the log is append-only. |
 | `POST /projects/:id/proofread/:runId/questions` | EXPLAIN / CONTEST (phase three). |
 
 **Generate response change.** No generate route returns the project id: `tis.ts:469` responds `res.json(validated)` and `GenerateTisResponse` is a strip-unknown-keys `zod.object` (`lib/tis-api-zod/src/generated/api.ts:897`), so an id attached before the parse is dropped. Merge `projectId` **after** the parse, and add it to `lib/tis-api-spec/openapi.yaml` + re-run codegen (`clean: true` wipes both generated trees, so nothing under `generated/` may be hand-edited). Until then the client can only re-list `/projects`.

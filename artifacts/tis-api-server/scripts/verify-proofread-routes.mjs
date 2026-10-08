@@ -1143,7 +1143,12 @@ function evalContract(code) {
       .replace(/^import .*$/gm, "")
       .replace(/^export type .*$/gm, "")
       .replace(/^export const /gm, "const ");
-    return new Function("z", `${js}\nreturn { ProofreadType, ProofreadDisposition, ProofreadDispositionBody };`)(z);
+    // OFFERED_DISPOSITIONS is read through typeof, so a contract without it evaluates (its own
+    // check then goes red by name) instead of every contract check going red on a ReferenceError.
+    return new Function(
+      "z",
+      `${js}\nreturn { ProofreadType, ProofreadDisposition, ProofreadDispositionBody, OFFERED_DISPOSITIONS: typeof OFFERED_DISPOSITIONS === "undefined" ? undefined : OFFERED_DISPOSITIONS };`,
+    )(z);
   } catch {
     return null;
   }
@@ -1196,7 +1201,35 @@ const GUARD_404_FINDING =
 // chain is verified, a finding whose audience is admin (a DEFECT) is answered
 // exactly like an unknown one.
 const AUDIENCE_GUARD =
-  'const audience = await findingAudienceForFirm(firm.id, findingId); if (audience === null || audience === "admin") { res.status(404).json({ error: "Finding not found." }); return; }';
+  'const finding = await findingAudienceForFirm(firm.id, findingId); if (finding === null || finding.audience === "admin") { res.status(404).json({ error: "Finding not found." }); return; }';
+// Which decision fits which finding type is the contract's (OFFERED_DISPOSITIONS); the route
+// refuses any other pair with a 422, after the tenant checks and the 404s and before the write.
+const TYPE_GUARD =
+  'if (!decisionApplies(finding.type, parsed.data.disposition)) { res.status(422).json({ error: "This decision does not apply to this finding." }); return; }';
+// The protocol's mapping, written out by hand: this is the claim, the contract's
+// OFFERED_DISPOSITIONS is the thing under test (verify-proofread-copy.mjs pins the panel's
+// OFFERED equal to the contract's). A BLOCKER is a wrong number, so disclosing it does not
+// close it; CONTESTED waits for the sealing engineer and DEFECT is the software team's, so
+// neither takes a firm member's decision; BUG_FILED, ACCEPTED_RISK and CONTESTED_PE are
+// never offered to a firm member.
+const OFFERED_BY_TYPE = {
+  BLOCKER: ["FIXED", "WITHDRAWN"],
+  DISCLOSE: ["DISCLOSED", "FIXED", "WITHDRAWN"],
+  NOTE: ["DISCLOSED", "FIXED", "WITHDRAWN"],
+  UNVERIFIED: ["DISCLOSED", "FIXED", "WITHDRAWN"],
+  CONTESTED: [],
+  DEFECT: [],
+};
+/**
+ * The route's own decisionApplies, transpiled by TypeScript and evaluated with `map` standing in
+ * for the OFFERED_DISPOSITIONS it imports — or null when the routes have no such function.
+ */
+function routeDecisionApplies(routesSrc, map) {
+  const fn = functionNamed(routesSrc, "decisionApplies");
+  if (!fn) return null;
+  const js = ts.transpileModule(fn.getText(), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+  return new Function("OFFERED_DISPOSITIONS", `${js}\nreturn decisionApplies;`)(map);
+}
 const FIRM_LOOKUP = "getOrCreateFirmForUser(user.id, { email: user.email, firstName: user.firstName, lastName: user.lastName })";
 
 /** What a check sees: every source comment-stripped, plus the evaluated contract. */
@@ -1678,7 +1711,7 @@ const CHECKS = [
   {
     id: "disposition-chain-in-order",
     on: "routes",
-    msg: "POST disposition runs in the order that matters: parse the body, refuse PE-only dispositions, gate the ids, resolve the firm, verify the finding chain, check the finding's audience, and only then insert — once",
+    msg: "POST disposition runs in the order that matters: parse the body, refuse PE-only dispositions, gate the ids, resolve the firm, verify the finding chain, check the finding's audience, check the decision fits the finding's type, and only then insert — once",
     test: (d) => {
       const p = dispSeg(d);
       return (
@@ -1692,6 +1725,7 @@ const CHECKS = [
           "getOrCreateFirmForUser(",
           "if (!(await findingInFirmRun(",
           "await findingAudienceForFirm(",
+          "if (!decisionApplies(",
           "await insertDisposition(",
         ])
       );
@@ -1716,6 +1750,56 @@ const CHECKS = [
         occ(p, "insertDisposition(") === 1 &&
         inOrder(p, ["if (!(await findingInFirmRun(", AUDIENCE_GUARD, "await insertDisposition("])
       );
+    },
+  },
+  {
+    id: "disposition-fits-the-finding-type",
+    on: "routes",
+    msg: "after the audience 404 and before anything is written, POST disposition refuses a decision the finding's TYPE is not offered (decisionApplies(finding.type, parsed.data.disposition), the type read in the same firm-scoped lookup as the audience) with 422 'This decision does not apply to this finding.' AND a return — the log is append-only, so a BLOCKER marked Disclosed or any decision on a CONTESTED item, once written, stays written",
+    test: (d) => {
+      const p = dispSeg(d);
+      return (
+        p.length > 0 &&
+        occ(p, TYPE_GUARD) === 1 &&
+        occ(d.routes, "decisionApplies(") === 2 &&
+        occ(p, "insertDisposition(") === 1 &&
+        inOrder(p, ["await findingAudienceForFirm(", TYPE_GUARD, "await insertDisposition("])
+      );
+    },
+  },
+  {
+    id: "decision-applies-follows-the-contract",
+    on: "routes",
+    msg: "the routes' decisionApplies, run (transpiled by TypeScript), answers from the OFFERED_DISPOSITIONS it imports and from nothing else: true exactly for the decisions listed under the finding's type, false for every other pair, and false for a type the map does not name — including keys every object inherits (constructor, __proto__, toString), which must not read Object.prototype — and it follows a DIFFERENT map handed in its place, so it holds no table of its own; the routes declare no OFFERED_DISPOSITIONS of their own",
+    test: (d) => {
+      if (/\b(?:const|let|var|function|class)\s+OFFERED_DISPOSITIONS\b/.test(d.routes)) return { ok: false, where: [`${pathOf("routes")}: declares its own OFFERED_DISPOSITIONS`] };
+      const TYPES = [...Object.keys(OFFERED_BY_TYPE), "SOMETHING_NEW", "", "constructor", "__proto__", "toString", "hasOwnProperty", "valueOf", "blocker"];
+      const DECS = [...SIX_DISPOSITIONS, "", "nonsense", "length", "constructor", "fixed"];
+      // A second map, unlike the real one in every type that has decisions: a function that
+      // ignores the map it is handed (a table of its own, a hard-coded answer) fails one of the two.
+      const OTHER = { BLOCKER: ["DISCLOSED"], DISCLOSE: ["FIXED"], NOTE: [], UNVERIFIED: ["WITHDRAWN"], CONTESTED: ["FIXED"], DEFECT: ["BUG_FILED"] };
+      const wrong = [];
+      for (const map of [OFFERED_BY_TYPE, OTHER]) {
+        let fits;
+        try {
+          fits = routeDecisionApplies(d.src.routes, map);
+        } catch (e) {
+          return { ok: false, where: [`${pathOf("routes")}: decisionApplies does not evaluate: ${e?.message ?? e}`] };
+        }
+        if (typeof fits !== "function") return { ok: false, where: [`${pathOf("routes")}: no function decisionApplies`] };
+        for (const t of TYPES)
+          for (const x of DECS) {
+            const want = Object.hasOwn(map, t) && map[t].includes(x);
+            let got;
+            try {
+              got = fits(t, x);
+            } catch (e) {
+              got = `threw ${e?.message ?? e}`;
+            }
+            if (got !== want) wrong.push(`${map === OTHER ? "other map, " : ""}decisionApplies(${JSON.stringify(t)}, ${JSON.stringify(x)}) is ${JSON.stringify(got)}, want ${want}`);
+          }
+      }
+      return { ok: wrong.length === 0, where: wrong.slice(0, 6) };
     },
   },
   {
@@ -1769,12 +1853,19 @@ const CHECKS = [
   {
     id: "foreign-is-404-not-403",
     on: "routes",
-    msg: "a foreign or unknown id is a 404 everywhere (403 would confirm someone else's project exists): the only 403 in the file is the PE-only refusal, and the 404s are all present",
+    msg: "a foreign or unknown id is a 404 everywhere (403 would confirm someone else's project exists): the only 403 in the file is the PE-only refusal, the only 422 the decision-type refusal, no other status is answered but 400, 401 and 500, and the 404s are all present",
     test: (d) => {
       const r = sq(d.routes);
       const four = occ(d.routes, 'res.status(404).json({ error: "Project not found." })');
       const three = occ(d.routes, 'res.status(404).json({ error: "Finding not found." })');
-      return r.length > 0 && four === 4 && three === 3 && occ(d.routes, "res.status(403)") === 1 && !/status\((?!400|401|403|404|500)\d+\)/.test(d.routes.replace(/\s+/g, ""));
+      return (
+        r.length > 0 &&
+        four === 4 &&
+        three === 3 &&
+        occ(d.routes, "res.status(403)") === 1 &&
+        occ(d.routes, "res.status(422)") <= 1 &&
+        !/status\((?!400|401|403|404|422|500)\d+\)/.test(d.routes.replace(/\s+/g, ""))
+      );
     },
   },
   {
@@ -1810,7 +1901,7 @@ const CHECKS = [
     test: (d) => {
       const want = {
         express: ["Router", "type IRouter"],
-        "@workspace/tis-api-zod": ["ProofreadDispositionBody"],
+        "@workspace/tis-api-zod": ["OFFERED_DISPOSITIONS", "ProofreadDispositionBody"],
         "../lib/firms": ["getOrCreateFirmForUser"],
         "../lib/tis-projects": ["projectExistsForFirm"],
         "../lib/security": THREE_LIMITERS,
@@ -1943,6 +2034,21 @@ const CHECKS = [
     on: "contract",
     msg: "an unknown, lower-case or missing disposition is rejected — the PE-only refusal compares against parsed.data, so what the contract lets through is what the route must name",
     test: (d) => safe(() => ["fixed", "NOPE", "", undefined, 3].every((x) => !parseBody(d, { disposition: x }).success) && !parseBody(d, {}).success && !parseBody(d, null).success),
+  },
+  {
+    id: "contract-offered-decisions",
+    on: "contract",
+    msg: "the contract's OFFERED_DISPOSITIONS, evaluated, names exactly the six finding types and offers each exactly the protocol's decisions: BLOCKER {FIXED, WITHDRAWN}; DISCLOSE, NOTE and UNVERIFIED {DISCLOSED, FIXED, WITHDRAWN}; CONTESTED and DEFECT nothing — so BUG_FILED, ACCEPTED_RISK and CONTESTED_PE fit no finding a firm member can rule on, and a disclosed BLOCKER cannot be written",
+    test: (d) =>
+      safe(() => {
+        const m = d.mod.OFFERED_DISPOSITIONS;
+        return (
+          m !== null &&
+          typeof m === "object" &&
+          same(Object.keys(m), Object.keys(OFFERED_BY_TYPE)) &&
+          Object.entries(OFFERED_BY_TYPE).every(([t, want]) => Array.isArray(m[t]) && m[t].length === want.length && same(m[t], want))
+        );
+      }),
   },
   {
     id: "contract-no-collision",
@@ -2089,12 +2195,16 @@ const CHECKS = [
   {
     id: "audience-lookup-fails-closed",
     on: "store",
-    msg: "findingAudienceForFirm selects the audience column alone and answers null — never a default audience — for a finding that is not the firm's: a default of 'engineer' would let an unknown finding pass the very test that refuses the hidden ones",
+    msg: "findingAudienceForFirm selects the audience and type columns alone and answers null — never a default audience or type — for a finding that is not the firm's: a default of 'engineer' would let an unknown finding pass the very test that refuses the hidden ones, and a default type would pick which decisions it is offered",
     test: (d) => {
       const b = body(d.store, "findingAudienceForFirm");
       return (
-        has(b, "export async function findingAudienceForFirm(firmId: string, findingId: string): Promise<string | null> { const [row] = await db .select({ audience: studyProofreadFindingsTable.audience }) .from(studyProofreadFindingsTable)") &&
-        has(b, "return row?.audience ?? null;")
+        has(
+          b,
+          "export async function findingAudienceForFirm( firmId: string, findingId: string, ): Promise<{ audience: string; type: string } | null> { const [row] = await db .select({ audience: studyProofreadFindingsTable.audience, type: studyProofreadFindingsTable.type }) .from(studyProofreadFindingsTable)",
+        ) &&
+        has(b, "return row ?? null;") &&
+        occ(b, "return ") === 1
       );
     },
   },
@@ -2742,7 +2852,7 @@ const MUTATIONS = [
     label: "insert BEFORE the finding chain is verified",
     file: "routes",
     flips: ["disposition-chain-in-order"],
-    also: ["disposition-refuses-admin-findings"],
+    also: ["disposition-refuses-admin-findings", "disposition-fits-the-finding-type"],
     apply: chain(
       edit("routes", /      await insertDisposition\(\{[\s\S]*?\n      \}\);\n/, ""),
       edit(
@@ -2756,14 +2866,14 @@ const MUTATIONS = [
     label: "delete the audience refusal (an engineer can rule on a DEFECT by id)",
     file: "routes",
     flips: ["disposition-refuses-admin-findings"],
-    also: ["disposition-chain-in-order", "foreign-is-404-not-403"],
-    apply: edit("routes", /      const audience = await findingAudienceForFirm\(firm\.id, findingId\);\n      if \(audience === null \|\| audience === "admin"\) \{\n        res\.status\(404\)\.json\(\{ error: "Finding not found\." \}\);\n        return;\n      \}\n/, ""),
+    also: ["foreign-is-404-not-403"],
+    apply: edit("routes", /      if \(finding === null \|\| finding\.audience === "admin"\) \{\n        res\.status\(404\)\.json\(\{ error: "Finding not found\." \}\);\n        return;\n      \}\n/, ""),
   },
   {
     label: "invert the audience comparison (refuse everything BUT admin)",
     file: "routes",
     flips: ["disposition-refuses-admin-findings"],
-    apply: edit("routes", 'audience === "admin"', 'audience !== "admin"'),
+    apply: edit("routes", 'finding.audience === "admin"', 'finding.audience !== "admin"'),
   },
   {
     label: "answer an admin-audience finding with a 403 (confirms the record exists)",
@@ -2781,7 +2891,7 @@ const MUTATIONS = [
     label: "drop the null arm (a finding with no audience passes)",
     file: "routes",
     flips: ["disposition-refuses-admin-findings"],
-    apply: edit("routes", 'audience === null || audience === "admin"', 'audience === "admin"'),
+    apply: edit("routes", 'finding === null || finding.audience === "admin"', 'finding.audience === "admin"'),
   },
   {
     label: "ask the audience of the run id instead of the finding",
@@ -2799,11 +2909,121 @@ const MUTATIONS = [
     label: "check the audience AFTER the disposition is written",
     file: "routes",
     flips: ["disposition-refuses-admin-findings"],
-    also: ["disposition-chain-in-order"],
+    also: ["disposition-chain-in-order", "disposition-fits-the-finding-type"],
     apply: chain(
-      edit("routes", /      const audience = await findingAudienceForFirm\(firm\.id, findingId\);\n      if \(audience === null \|\| audience === "admin"\) \{\n        res\.status\(404\)\.json\(\{ error: "Finding not found\." \}\);\n        return;\n      \}\n/, ""),
-      edit("routes", "      res.json({ ok: true });\n    } catch (err) {\n      req.log.error({ err }, \"proofread.disposition_failed\");", "      const audience = await findingAudienceForFirm(firm.id, findingId);\n      if (audience === null || audience === \"admin\") {\n        res.status(404).json({ error: \"Finding not found.\" });\n        return;\n      }\n      res.json({ ok: true });\n    } catch (err) {\n      req.log.error({ err }, \"proofread.disposition_failed\");"),
+      edit("routes", /      const finding = await findingAudienceForFirm\(firm\.id, findingId\);\n      if \(finding === null \|\| finding\.audience === "admin"\) \{\n        res\.status\(404\)\.json\(\{ error: "Finding not found\." \}\);\n        return;\n      \}\n/, ""),
+      edit("routes", "      res.json({ ok: true });\n    } catch (err) {\n      req.log.error({ err }, \"proofread.disposition_failed\");", "      const finding = await findingAudienceForFirm(firm.id, findingId);\n      if (finding === null || finding.audience === \"admin\") {\n        res.status(404).json({ error: \"Finding not found.\" });\n        return;\n      }\n      res.json({ ok: true });\n    } catch (err) {\n      req.log.error({ err }, \"proofread.disposition_failed\");"),
     ),
+  },
+
+  // ---- routes: the decision must fit the finding's type (422) -----------------
+  {
+    label: "delete the type refusal (a BLOCKER can be marked Disclosed)",
+    file: "routes",
+    flips: ["disposition-fits-the-finding-type", "disposition-chain-in-order"],
+    apply: edit("routes", /      if \(!decisionApplies\(finding\.type, parsed\.data\.disposition\)\) \{\n        res\.status\(422\)[^\n]*\n        return;\n      \}\n/, ""),
+  },
+  {
+    label: "refuse an unfitting decision but fall through (422 without a return, then insert)",
+    file: "routes",
+    flips: ["disposition-fits-the-finding-type"],
+    apply: edit("routes", /(res\.status\(422\)\.json\(\{ error: "This decision does not apply to this finding\." \}\);)\n        return;/, "$1"),
+  },
+  {
+    label: "check the decision against the finding's audience instead of its type",
+    file: "routes",
+    flips: ["disposition-fits-the-finding-type"],
+    apply: edit("routes", "decisionApplies(finding.type, parsed.data.disposition)", "decisionApplies(finding.audience, parsed.data.disposition)"),
+  },
+  {
+    label: "check the type against the raw body instead of the parsed disposition",
+    file: "routes",
+    flips: ["disposition-fits-the-finding-type"],
+    also: ["body-only-through-contract"],
+    apply: edit("routes", "decisionApplies(finding.type, parsed.data.disposition)", "decisionApplies(finding.type, String(req.body?.disposition))"),
+  },
+  {
+    label: "negate the type check (refuse only the decisions that fit)",
+    file: "routes",
+    flips: ["disposition-fits-the-finding-type", "disposition-chain-in-order"],
+    apply: edit("routes", "if (!decisionApplies(", "if (decisionApplies("),
+  },
+  {
+    label: "answer an unfitting decision with a 400",
+    file: "routes",
+    flips: ["disposition-fits-the-finding-type"],
+    apply: edit("routes", 'res.status(422).json({ error: "This decision does not apply to this finding." })', 'res.status(400).json({ error: "This decision does not apply to this finding." })'),
+  },
+  {
+    label: "answer an unfitting decision with a 418",
+    file: "routes",
+    flips: ["disposition-fits-the-finding-type", "foreign-is-404-not-403"],
+    apply: edit("routes", 'res.status(422).json({ error: "This decision does not apply to this finding." })', 'res.status(418).json({ error: "This decision does not apply to this finding." })'),
+  },
+  {
+    label: "check the type BEFORE the audience 404 (a DEFECT is offered nothing, so a 422 would confirm a hidden finding exists)",
+    file: "routes",
+    flips: ["disposition-fits-the-finding-type", "disposition-chain-in-order"],
+    also: ["disposition-refuses-admin-findings"],
+    apply: chain(
+      edit("routes", /      if \(!decisionApplies\(finding\.type, parsed\.data\.disposition\)\) \{\n        res\.status\(422\)[^\n]*\n        return;\n      \}\n/, ""),
+      edit("routes", "      const finding = await findingAudienceForFirm(firm.id, findingId);\n", '      const finding = await findingAudienceForFirm(firm.id, findingId);\n      if (finding !== null && !decisionApplies(finding.type, parsed.data.disposition)) {\n        res.status(422).json({ error: "This decision does not apply to this finding." });\n        return;\n      }\n'),
+    ),
+  },
+  {
+    label: "check the type AFTER the disposition is written",
+    file: "routes",
+    flips: ["disposition-fits-the-finding-type", "disposition-chain-in-order"],
+    apply: chain(
+      edit("routes", /      if \(!decisionApplies\(finding\.type, parsed\.data\.disposition\)\) \{\n        res\.status\(422\)[^\n]*\n        return;\n      \}\n/, ""),
+      edit("routes", "      res.json({ ok: true });\n    } catch (err) {\n      req.log.error({ err }, \"proofread.disposition_failed\");", "      if (!decisionApplies(finding.type, parsed.data.disposition)) {\n        res.status(422).json({ error: \"This decision does not apply to this finding.\" });\n        return;\n      }\n      res.json({ ok: true });\n    } catch (err) {\n      req.log.error({ err }, \"proofread.disposition_failed\");"),
+    ),
+  },
+  {
+    label: "decisionApplies answers yes to every decision on a known type",
+    file: "routes",
+    flips: ["decision-applies-follows-the-contract"],
+    apply: edit("routes", "  return offered.includes(disposition);", "  return offered !== undefined || disposition.length > 0;"),
+  },
+  {
+    label: "decisionApplies drops the own-property test (a type the map does not name reads undefined, \"constructor\" reads Object)",
+    file: "routes",
+    flips: ["decision-applies-follows-the-contract"],
+    apply: edit("routes", "  if (!Object.hasOwn(OFFERED_DISPOSITIONS, type)) return false;\n", ""),
+  },
+  {
+    label: "decisionApplies tests the type with `in` (inherited keys such as constructor pass)",
+    file: "routes",
+    flips: ["decision-applies-follows-the-contract"],
+    apply: edit("routes", "if (!Object.hasOwn(OFFERED_DISPOSITIONS, type)) return false;", "if (!(type in OFFERED_DISPOSITIONS)) return false;"),
+  },
+  {
+    label: "decisionApplies offers an unknown type a BLOCKER's set (the panel's fallback) instead of nothing",
+    file: "routes",
+    flips: ["decision-applies-follows-the-contract"],
+    apply: edit("routes", "if (!Object.hasOwn(OFFERED_DISPOSITIONS, type)) return false;", 'if (!Object.hasOwn(OFFERED_DISPOSITIONS, type)) return disposition === "FIXED" || disposition === "WITHDRAWN";'),
+  },
+  {
+    label: "decisionApplies matches decisions without regard to case",
+    file: "routes",
+    flips: ["decision-applies-follows-the-contract"],
+    apply: edit("routes", "  return offered.includes(disposition);", "  return offered.some((x) => x.toLowerCase() === disposition.toLowerCase());"),
+  },
+  {
+    label: "decisionApplies reads a table of its own, identical to the contract's today",
+    file: "routes",
+    flips: ["decision-applies-follows-the-contract"],
+    apply: edit(
+      "routes",
+      "  const offered: readonly string[] = OFFERED_DISPOSITIONS[type as keyof typeof OFFERED_DISPOSITIONS];",
+      '  const own: Record<string, string[]> = { BLOCKER: ["FIXED", "WITHDRAWN"], DISCLOSE: ["DISCLOSED", "FIXED", "WITHDRAWN"], NOTE: ["DISCLOSED", "FIXED", "WITHDRAWN"], UNVERIFIED: ["DISCLOSED", "FIXED", "WITHDRAWN"], CONTESTED: [], DEFECT: [] };\n  const offered: readonly string[] = own[type] ?? [];',
+    ),
+  },
+  {
+    label: "the routes declare an OFFERED_DISPOSITIONS of their own",
+    file: "routes",
+    flips: ["decision-applies-follows-the-contract"],
+    apply: edit("routes", "const router: IRouter = Router();", "const router: IRouter = Router();\nconst OFFERED_DISPOSITIONS = { BLOCKER: [\"FIXED\", \"WITHDRAWN\"] };\nvoid OFFERED_DISPOSITIONS;"),
   },
   {
     label: "read runId from the project-id parameter",
@@ -3018,6 +3238,60 @@ const MUTATIONS = [
     apply: edit("contract", "export type ProofreadDispositionBodyT", "export type ProofreadDispositionBodyT = string;\nexport type ProofreadDispositionBodyT"),
   },
   {
+    label: "offer DISCLOSED on a BLOCKER (a disclosed wrong number would be written as resolved)",
+    file: "contract",
+    flips: ["contract-offered-decisions"],
+    apply: edit("contract", "BLOCKER: [DECISION.FIXED, DECISION.WITHDRAWN],", "BLOCKER: [DECISION.DISCLOSED, DECISION.FIXED, DECISION.WITHDRAWN],"),
+  },
+  {
+    label: "offer FIXED on a CONTESTED item",
+    file: "contract",
+    flips: ["contract-offered-decisions"],
+    apply: edit("contract", "CONTESTED: [],", "CONTESTED: [DECISION.FIXED],"),
+  },
+  {
+    label: "offer BUG_FILED on a DEFECT",
+    file: "contract",
+    flips: ["contract-offered-decisions"],
+    apply: edit("contract", "DEFECT: [],", "DEFECT: [DECISION.BUG_FILED],"),
+  },
+  {
+    label: "offer the sealing engineer's ACCEPTED_RISK on a NOTE",
+    file: "contract",
+    flips: ["contract-offered-decisions"],
+    apply: edit("contract", "NOTE: [DECISION.DISCLOSED, DECISION.FIXED, DECISION.WITHDRAWN],", "NOTE: [DECISION.DISCLOSED, DECISION.FIXED, DECISION.WITHDRAWN, DECISION.ACCEPTED_RISK],"),
+  },
+  {
+    label: "drop WITHDRAWN from UNVERIFIED",
+    file: "contract",
+    flips: ["contract-offered-decisions"],
+    apply: edit("contract", "UNVERIFIED: [DECISION.DISCLOSED, DECISION.FIXED, DECISION.WITHDRAWN],", "UNVERIFIED: [DECISION.DISCLOSED, DECISION.FIXED],"),
+  },
+  {
+    label: "list a decision twice on a DISCLOSE",
+    file: "contract",
+    flips: ["contract-offered-decisions"],
+    apply: edit("contract", "DISCLOSE: [DECISION.DISCLOSED, DECISION.FIXED, DECISION.WITHDRAWN],", "DISCLOSE: [DECISION.DISCLOSED, DECISION.FIXED, DECISION.WITHDRAWN, DECISION.FIXED],"),
+  },
+  {
+    label: "drop the DEFECT key from the map",
+    file: "contract",
+    flips: ["contract-offered-decisions"],
+    apply: edit("contract", "  DEFECT: [],\n", ""),
+  },
+  {
+    label: "add a type the protocol does not have to the map",
+    file: "contract",
+    flips: ["contract-offered-decisions"],
+    apply: edit("contract", "  DEFECT: [],\n", "  DEFECT: [],\n  BUG: [DECISION.FIXED],\n"),
+  },
+  {
+    label: "rename the map's export",
+    file: "contract",
+    flips: ["contract-offered-decisions"],
+    apply: edit("contract", "export const OFFERED_DISPOSITIONS = {", "export const OFFERED = {"),
+  },
+  {
     label: "banned copy in the contract's message",
     file: "contract",
     flips: ["copy-contract"],
@@ -3189,16 +3463,28 @@ const MUTATIONS = [
     apply: editAfter("store", "export async function findingAudienceForFirm", "eq(studyProofreadFindingsTable.id, findingId), ", ""),
   },
   {
-    label: "default an unknown finding's audience to 'engineer'",
+    label: "default an unknown finding's audience to 'engineer' (and its type to NOTE)",
     file: "store",
     flips: ["audience-lookup-fails-closed"],
-    apply: edit("store", "return row?.audience ?? null;", 'return row?.audience ?? "engineer";'),
+    apply: editAfter("store", "export async function findingAudienceForFirm", "return row ?? null;", 'return row ?? { audience: "engineer", type: "NOTE" };'),
+  },
+  {
+    label: "default a missing type to NOTE (the loosest set of decisions)",
+    file: "store",
+    flips: ["audience-lookup-fails-closed"],
+    apply: editAfter("store", "export async function findingAudienceForFirm", "return row ?? null;", 'return row ? { ...row, type: row.type || "NOTE" } : null;'),
   },
   {
     label: "select the whole finding row for the audience",
     file: "store",
     flips: ["audience-lookup-fails-closed"],
-    apply: editAfter("store", "export async function findingAudienceForFirm", ".select({ audience: studyProofreadFindingsTable.audience })", ".select()"),
+    apply: editAfter("store", "export async function findingAudienceForFirm", ".select({ audience: studyProofreadFindingsTable.audience, type: studyProofreadFindingsTable.type })", ".select()"),
+  },
+  {
+    label: "read the finding's type from another column (origin)",
+    file: "store",
+    flips: ["audience-lookup-fails-closed"],
+    apply: editAfter("store", "export async function findingAudienceForFirm", "type: studyProofreadFindingsTable.type", "type: studyProofreadFindingsTable.origin"),
   },
 
   // ---- runner -----------------------------------------------------------------

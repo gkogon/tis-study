@@ -7,7 +7,7 @@
  * middleware that does it.
  */
 import { Router, type IRouter } from "express";
-import { ProofreadDispositionBody } from "@workspace/tis-api-zod";
+import { OFFERED_DISPOSITIONS, ProofreadDispositionBody } from "@workspace/tis-api-zod";
 import { getOrCreateFirmForUser } from "../lib/firms";
 import { projectExistsForFirm } from "../lib/tis-projects";
 import { proofreadDispositionLimiter, proofreadReadLimiter, proofreadRunLimiter } from "../lib/security";
@@ -27,6 +27,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Dispositions only the sealing PE may record. Phase 4 adds the `pe` role and gates these; until then they are refused. */
 const PE_ONLY = new Set(["ACCEPTED_RISK", "CONTESTED_PE"]);
+
+/**
+ * Whether the contract offers this decision on a finding of this type
+ * (OFFERED_DISPOSITIONS, the table the panel offers from too). A type the
+ * contract does not name is offered nothing: refuse, never guess. The
+ * own-property test keeps a type such as "constructor" from reading
+ * Object.prototype.
+ */
+function decisionApplies(type: string, disposition: string): boolean {
+  if (!Object.hasOwn(OFFERED_DISPOSITIONS, type)) return false;
+  const offered: readonly string[] = OFFERED_DISPOSITIONS[type as keyof typeof OFFERED_DISPOSITIONS];
+  return offered.includes(disposition);
+}
 
 /**
  * Two quick presses of "Run again" both derive the same next revision, and the
@@ -198,9 +211,17 @@ router.post(
       // the code queue and a person outside admin cannot rule on one, so the
       // write path refuses it even though the read path never shows it. 404,
       // not 403: a 403 would confirm that the finding exists.
-      const audience = await findingAudienceForFirm(firm.id, findingId);
-      if (audience === null || audience === "admin") {
+      const finding = await findingAudienceForFirm(firm.id, findingId);
+      if (finding === null || finding.audience === "admin") {
         res.status(404).json({ error: "Finding not found." });
+        return;
+      }
+      // Which decision fits which finding is the contract's, and the panel
+      // offers from the same table. The log is append-only, so a decision that
+      // does not fit — a BLOCKER marked Disclosed, anything on a CONTESTED item —
+      // would otherwise stay written for good.
+      if (!decisionApplies(finding.type, parsed.data.disposition)) {
+        res.status(422).json({ error: "This decision does not apply to this finding." });
         return;
       }
       await insertDisposition({

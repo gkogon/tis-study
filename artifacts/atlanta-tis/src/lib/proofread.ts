@@ -140,8 +140,10 @@ export type EngineerDisposition = Exclude<Disposition, "BUG_FILED" | "ACCEPTED_R
  * A CONTESTED item blocks completion until the sealing engineer rules, so in
  * phase 1 nothing closes it. A DISCLOSE is closed by the language it asks for.
  *
- * Client-only: the route accepts any decision on any type. Nothing server-side
- * reads dispositions to gate anything until the seal gate lands.
+ * The server holds the same table (OFFERED_DISPOSITIONS in
+ * lib/tis-api-zod/src/proofread.ts) and refuses any other pair with a 422; this
+ * copy exists because the panel does not depend on that package, and
+ * verify-proofread-copy.mjs pins the two equal.
  */
 export const OFFERED: Record<ProofreadFindingT["type"], EngineerDisposition[]> = {
   BLOCKER: ["FIXED", "WITHDRAWN"],
