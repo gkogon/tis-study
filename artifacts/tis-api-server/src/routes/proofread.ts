@@ -193,13 +193,20 @@ router.post(
       });
       return;
     }
-    const projectId = String(req.params.id);
-    const runId = String(req.params.runId);
-    const findingId = String(req.params.findingId);
-    if (!UUID.test(projectId) || !UUID.test(runId) || !UUID.test(findingId)) {
+    const urlProjectId = String(req.params.id);
+    const urlRunId = String(req.params.runId);
+    const urlFindingId = String(req.params.findingId);
+    if (!UUID.test(urlProjectId) || !UUID.test(urlRunId) || !UUID.test(urlFindingId)) {
       res.status(404).json({ error: "Finding not found." });
       return;
     }
+    // One spelling from here on: lowercase, as Postgres renders a uuid. The
+    // gate accepts either case and every query compares uuid columns without
+    // regard to it, but the 409 below compares the newest run's id with this
+    // one as text, and refused an uppercase id of the newest run as "run again".
+    const projectId = urlProjectId.toLowerCase();
+    const runId = urlRunId.toLowerCase();
+    const findingId = urlFindingId.toLowerCase();
     try {
       const user = req.user!;
       const { firm } = await getOrCreateFirmForUser(user.id, {

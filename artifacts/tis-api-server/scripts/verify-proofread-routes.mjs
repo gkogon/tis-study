@@ -1330,6 +1330,16 @@ const TYPE_GUARD =
 // refetching — after the 422 and before the write.
 const STALE_GUARD =
   'const newest = await latestRunStatusForProject(firm.id, projectId); if (newest === null || newest.id !== runId || newest.status !== "rules_ready") { res.status(409).json({ error: "This check has been run again. Refresh to see the latest." }); return; }';
+// POST disposition's three URL ids and the route parameter each is read from. Each is read raw as url<Name>,
+// gated, and then lowercased ONCE into <name>: the only spelling used after the gate.
+const DISP_IDS = [
+  ["projectId", "id"],
+  ["runId", "runId"],
+  ["findingId", "findingId"],
+];
+const urlName = (n) => `url${n[0].toUpperCase()}${n.slice(1)}`;
+const DISP_GATE = 'if (!UUID.test(urlProjectId) || !UUID.test(urlRunId) || !UUID.test(urlFindingId)) { res.status(404).json({ error: "Finding not found." }); return; }';
+const DISP_LOWER = DISP_IDS.map(([n]) => `const ${n} = ${urlName(n)}.toLowerCase();`);
 // The protocol's mapping, written out by hand: this is the claim, the contract's
 // OFFERED_DISPOSITIONS is the thing under test (verify-proofread-copy.mjs pins the panel's
 // OFFERED equal to the contract's). A BLOCKER is a wrong number, so disclosing it does not
@@ -2163,7 +2173,8 @@ const CHECKS = [
         inOrder(p, [
           "ProofreadDispositionBody.safeParse(req.body ?? {})",
           "if (PE_ONLY.has(parsed.data.disposition))",
-          "!UUID.test(projectId)",
+          "!UUID.test(urlProjectId)",
+          DISP_LOWER[0],
           "getOrCreateFirmForUser(",
           "if (!(await findingInFirmRun(",
           "await findingAudienceForFirm(",
@@ -2267,9 +2278,22 @@ const CHECKS = [
     test: (d) => {
       const p = dispSeg(d);
       return (
-        has(p, "const projectId = String(req.params.id);") &&
-        has(p, "const runId = String(req.params.runId);") &&
-        has(p, "const findingId = String(req.params.findingId);")
+        DISP_IDS.every(([n, param]) => has(p, `const ${urlName(n)} = String(req.params.${param});`))
+      );
+    },
+  },
+  {
+    id: "disposition-ids-are-lowercased-once",
+    on: "routes",
+    msg: "right after the UUID gate, before anything reads them, POST disposition lowercases each URL id once (`const projectId = urlProjectId.toLowerCase();`, and the same for runId and findingId), and from then on uses only those: each url<Name> appears exactly three times (read, gated, lowercased) and each id is declared once. The gate accepts either case and Postgres compares uuid columns without regard to it, but the 409 compares the newest run's id, which Postgres renders in lowercase, with the URL's as text — an uppercase id of the newest run was refused as \"run again\" and nothing was recorded",
+    test: (d) => {
+      const p = dispSeg(d);
+      const words = (re) => (p.match(re) ?? []).length;
+      return (
+        p.length > 0 &&
+        DISP_LOWER.every((l) => occ(p, l) === 1) &&
+        DISP_IDS.every(([n]) => words(new RegExp(`\\b${urlName(n)}\\b`, "g")) === 3 && words(new RegExp(`\\b(?:const|let|var)\\s+${n}\\b`, "g")) === 1) &&
+        inOrder(p, [DISP_GATE, ...DISP_LOWER, "getOrCreateFirmForUser("])
       );
     },
   },
@@ -2305,7 +2329,7 @@ const CHECKS = [
       has(runSeg(d), 'if (!UUID.test(id)) { res.status(404).json({ error: "Project not found." }); return; }') &&
       has(
         dispSeg(d),
-        'if (!UUID.test(projectId) || !UUID.test(runId) || !UUID.test(findingId)) { res.status(404).json({ error: "Finding not found." }); return; }',
+        DISP_GATE,
       ),
   },
   {
@@ -3818,13 +3842,45 @@ const MUTATIONS = [
     label: "read runId from the project-id parameter",
     file: "routes",
     flips: ["disposition-params-bound"],
-    apply: edit("routes", "const runId = String(req.params.runId);", "const runId = String(req.params.id);"),
+    apply: edit("routes", "const urlRunId = String(req.params.runId);", "const urlRunId = String(req.params.id);"),
   },
   {
     label: "read findingId from the run-id parameter",
     file: "routes",
     flips: ["disposition-params-bound"],
-    apply: edit("routes", "const findingId = String(req.params.findingId);", "const findingId = String(req.params.runId);"),
+    apply: edit("routes", "const urlFindingId = String(req.params.findingId);", "const urlFindingId = String(req.params.runId);"),
+  },
+  {
+    label: "compare the URL's run id as given (no lowercasing)",
+    file: "routes",
+    flips: ["disposition-ids-are-lowercased-once"],
+    apply: edit("routes", "const runId = urlRunId.toLowerCase();", "const runId = urlRunId;"),
+  },
+  {
+    label: "uppercase the finding id instead of lowercasing it",
+    file: "routes",
+    flips: ["disposition-ids-are-lowercased-once"],
+    apply: edit("routes", "const findingId = urlFindingId.toLowerCase();", "const findingId = urlFindingId.toUpperCase();"),
+  },
+  {
+    label: "compare the raw URL run id in the 409",
+    file: "routes",
+    flips: ["disposition-ids-are-lowercased-once", "disposition-refuses-superseded-run"],
+    apply: edit("routes", "newest.id !== runId", "newest.id !== urlRunId"),
+  },
+  {
+    label: "lowercase the ids only after the firm is resolved",
+    file: "routes",
+    flips: ["disposition-ids-are-lowercased-once"],
+    also: ["disposition-chain-in-order"],
+    apply: (s) => {
+      const block = "    const projectId = urlProjectId.toLowerCase();\n    const runId = urlRunId.toLowerCase();\n    const findingId = urlFindingId.toLowerCase();\n";
+      const firm = "      const { firm } = await getOrCreateFirmForUser(user.id, {\n        email: user.email,\n        firstName: user.firstName,\n        lastName: user.lastName,\n      });\n";
+      const at = s.routes.lastIndexOf(firm);
+      if (!s.routes.includes(block) || at < 0) return s;
+      const moved = s.routes.slice(0, at + firm.length) + block + s.routes.slice(at + firm.length);
+      return { ...s, routes: moved.replace(block, "") };
+    },
   },
   {
     label: "loosen the UUID gate back to [0-9a-f-]{36}",
@@ -3836,7 +3892,9 @@ const MUTATIONS = [
     label: "stop gating runId",
     file: "routes",
     flips: ["every-id-is-uuid-gated"],
-    apply: edit("routes", " || !UUID.test(runId)", ""),
+    // the raw run id is then read twice, not three times
+    also: ["disposition-ids-are-lowercased-once"],
+    apply: edit("routes", " || !UUID.test(urlRunId)", ""),
   },
   {
     label: "stop gating the id in the read handler",
