@@ -29,7 +29,12 @@
  * the store, where it does not live) fails loudly instead of passing forever.
  *
  * Reads the sources as text, and imports only lifecycle.ts (pure) and esbuild;
- * it never imports the store or @workspace/db, and so never opens a connection.
+ * it never imports the store or @workspace/db itself. The runner bundles that
+ * BEHAVIOUR imports and runs are refused when esbuild resolves anything into
+ * them but the runner, its stubs and lifecycle.ts — what esbuild cannot
+ * resolve at bundle time (an import whose specifier is computed at run time)
+ * is the named limit, set out at BEHAVIOUR. DATABASE_URL is deleted from this
+ * process's environment before any bundle is imported.
  *
  * The last part, BEHAVIOUR, runs the runner itself: proofread-run.ts is bundled
  * with esbuild against an in-memory store, logger and clause registry, and its
@@ -49,6 +54,11 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { build } from "esbuild";
+
+// Nothing in this guard needs a database, and a bundle that reached @workspace/db by a
+// route the refusal below cannot see (an import computed at run time) must not find one:
+// without the variable, lib/db/src/index.ts throws at evaluation instead of making a pool.
+delete process.env.DATABASE_URL;
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (p) => {
@@ -756,7 +766,7 @@ const CHECKS = [
   {
     id: "exhausted-write-is-caught",
     on: "runner",
-    msg: "the exhausted branch's one completeRun is the first statement of a `try`, whose catch logs at warn with `runId: run.id` and does not rethrow: the row claimed there is the oldest claimable one, not necessarily the run the caller just queued, so a throw out of it made POST run answer 500 \"Failed to start the check\" for a check that WAS queued. Nothing is lost by catching it — the row stays 'running', its lease expires, and the next claim lands here again",
+    msg: "the exhausted branch's one completeRun is the first statement of a `try`, whose catch logs at warn with `runId: run.id` and holds no `throw`, no `return` and no `Promise.reject` — the text; that claimAndRunOne then resolves rather than rejects is [runs-claim-and-run-never-rejects]'s, which runs it: the row claimed there is the oldest claimable one, not necessarily the run the caller just queued, so a throw out of it made POST run answer 500 \"Failed to start the check\" for a check that WAS queued. Nothing is lost by catching it — the row stays 'running', its lease expires, and the next claim lands here again",
     test: (s) => {
       // The branch is the if-block itself, braces matched: the slice up to
       // runClauses( would also take in the "study row not found" write.
@@ -782,7 +792,9 @@ const CHECKS = [
         c.length > 0 &&
         branch.indexOf(c) > tryAt &&
         /logger\.warn\(\{[^}]*\brunId: run\.id\b[^}]*\}/.test(c) &&
-        !/\bthrow\b/.test(c)
+        !/\bthrow\b/.test(c) &&
+        !/\breturn\b/.test(c) &&
+        !/Promise\.reject/.test(c)
       );
     },
   },
@@ -825,11 +837,19 @@ const CHECKS = [
   {
     id: "carry-looks-back-from-this-run",
     on: "runner",
-    msg: "the carry source is `const prev = await previousRunForProject(run.projectId, run.revision)`: the CLAIMED run's project and revision, called once — run.id in the project slot matches no project and nothing ever carries; any other revision makes the run its own source or skips the one before it",
+    msg: "the carry source is written `const prev = await previousRunForProject(run.projectId, run.revision)`, called once, where `run` is assigned once (`run = await claimOneRun(INSTANCE_ID);`) and neither run.projectId nor run.revision is assigned — the text of the call; that it reads the CLAIMED row's project and revision is [runs-carry-source-is-this-project-before-this-revision]'s, which runs it. run.id in the project slot matches no project and nothing ever carries; any other revision makes the run its own source or skips the one before it",
     test: (s) => {
       const b = norm(body(s.runner, "claimAndRunOne"));
       const calls = callsOf(b, "previousRunForProject");
-      return calls.length === 1 && calls[0].args.join(", ") === "run.projectId, run.revision" && /const prev = await previousRunForProject\(/.test(b);
+      const runAssigned = b.match(/(?<![\w.$])run\s*=(?!=)/g) ?? [];
+      return (
+        calls.length === 1 &&
+        calls[0].args.join(", ") === "run.projectId, run.revision" &&
+        /const prev = await previousRunForProject\(/.test(b) &&
+        runAssigned.length === 1 &&
+        b.includes("run = await claimOneRun(INSTANCE_ID);") &&
+        !/(?<![\w.$])run\.(?:projectId|revision)\s*=(?!=)/.test(b)
+      );
     },
   },
   {
@@ -877,10 +897,11 @@ const CHECKS = [
   {
     id: "enqueue-no-row-returns-without-draining",
     on: "runner",
-    msg: "enqueueProofread, when the insert yields NO row, logs at warn and returns without draining, and holds no `throw` of its own. That branch is defensive — .returning() on an insert that succeeded always yields its row — and it is NOT a fail-open: an insert ERROR propagates out of enqueueProofread, and must, because POST run (routes/proofread.ts) reads 23505 from it to answer a double-press with ok (pinned below by [runs-enqueue-insert-error-reaches-the-caller]). The fail-open that keeps a proofread from affecting a study is the hook's own .catch on `void enqueueProofread(...)` in routes/tis.ts, pinned by [enqueue-has-own-catch] in verify-proofread-hook.mjs (which prints it as \"the fire-and-forget call carries its OWN .catch …\")",
+    msg: "enqueueProofread, when the insert yields NO row, logs at warn and returns without draining — its `if (!run) { … logger.warn(…) … return; }` comes before its one `await claimAndRunOne();` (the text; that nothing is claimed then is [runs-enqueue-without-a-row-claims-nothing]'s, which runs it) — and holds no `throw` of its own. That branch is defensive — .returning() on an insert that succeeded always yields its row — and it is NOT a fail-open: an insert ERROR propagates out of enqueueProofread, and must, because POST run (routes/proofread.ts) reads 23505 from it to answer a double-press with ok (pinned below by [runs-enqueue-insert-error-reaches-the-caller]). The fail-open that keeps a proofread from affecting a study is the hook's own .catch on `void enqueueProofread(...)` in routes/tis.ts, pinned by [enqueue-has-own-catch] in verify-proofread-hook.mjs (which prints it as \"the fire-and-forget call carries its OWN .catch …\")",
     test: (s) => {
       const b = body(s.runner, "enqueueProofread");
-      return b.length > 0 && /if \(!run\) \{[\s\S]*?logger\.warn\([\s\S]*?return;[\s\S]*?\}/.test(b) && !/throw /.test(b);
+      const branch = b.search(/if \(!run\) \{[\s\S]*?logger\.warn\([\s\S]*?return;[\s\S]*?\}/);
+      return b.length > 0 && branch >= 0 && count(b, "claimAndRunOne(") === 1 && b.indexOf("await claimAndRunOne();") > branch && !/throw /.test(b);
     },
   },
 ];
@@ -1400,6 +1421,18 @@ const MUTATIONS = [
     apply: edit("runner", '"proofread.exhausted_write_failed");\n', '"proofread.exhausted_write_failed");\n      throw err;\n'),
   },
   {
+    label: "reject from the exhausted branch's catch without a throw (return Promise.reject)",
+    file: "runner",
+    flips: ["exhausted-write-is-caught"],
+    apply: edit("runner", '"proofread.exhausted_write_failed");\n', '"proofread.exhausted_write_failed");\n      return Promise.reject(err);\n'),
+  },
+  {
+    label: "return from the exhausted branch's catch (the run is never reported as worked)",
+    file: "runner",
+    flips: ["exhausted-write-is-caught"],
+    apply: edit("runner", '"proofread.exhausted_write_failed");\n', '"proofread.exhausted_write_failed");\n      return false;\n'),
+  },
+  {
     label: "log the exhausted write's failure without the run id",
     file: "runner",
     flips: ["exhausted-write-is-caught"],
@@ -1474,6 +1507,18 @@ const MUTATIONS = [
     apply: edit("runner", "previousRunForProject(run.projectId, run.revision)", "previousRunForProject(run.id, run.revision)"),
   },
   {
+    label: "re-bind run with the run id as its project before the carry source is read",
+    file: "runner",
+    flips: ["carry-looks-back-from-this-run"],
+    apply: edit("runner", "    const prev = await previousRunForProject(", "    run = { ...run, projectId: run.id };\n    const prev = await previousRunForProject("),
+  },
+  {
+    label: "move the claimed run's revision on before the carry source is read",
+    file: "runner",
+    flips: ["carry-looks-back-from-this-run"],
+    apply: edit("runner", "    const prev = await previousRunForProject(", "    run.revision = run.revision + 1;\n    const prev = await previousRunForProject("),
+  },
+  {
     label: "look back from the revision after this one (the run becomes its own carry source)",
     file: "runner",
     flips: ["carry-looks-back-from-this-run"],
@@ -1546,6 +1591,12 @@ const MUTATIONS = [
     apply: edit("runner", /if \(!run\) \{[\s\S]*?\n  \}/, 'if (!run) throw new Error("enqueue failed");'),
   },
   {
+    label: "drain before the no-row branch is reached",
+    file: "runner",
+    flips: ["enqueue-no-row-returns-without-draining"],
+    apply: (s) => ({ ...s, runner: s.runner.replace("  await claimAndRunOne();\n}", "}").replace("  if (!run) {\n    logger.warn({ projectId: args.projectId }", "  await claimAndRunOne();\n  if (!run) {\n    logger.warn({ projectId: args.projectId }") }),
+  },
+  {
     label: "drain even when the insert yielded no row",
     file: "runner",
     flips: ["enqueue-no-row-returns-without-draining"],
@@ -1606,10 +1657,20 @@ for (const g of STAYS_GREEN) {
 // scenario says, throwing included), ./logger (records every line) and
 // ./proofread/index.ts (no clauses, a fixed RULES_VERSION and engineStamp, so
 // the scenario controls everything the runner sees). ./proofread/lifecycle.ts
-// is the real one. Nothing reaches @workspace/db: the runner's only import of
-// it is `import type`, which esbuild drops, and a bundle whose input list holds
-// anything but the runner, the stubs and lifecycle.ts is refused before it is
-// imported, so no scenario can ever run against a real store.
+// is the real one. The runner's only import of @workspace/db is `import type`,
+// which esbuild drops, and a bundle whose input list holds anything but the
+// runner, the stubs and lifecycle.ts is refused before it is imported.
+//
+// That refusal sees what esbuild RESOLVES at bundle time: every static
+// spelling of a store or db import, and an import() whose specifier is a
+// literal. It does not see an import whose specifier is computed at run time
+// (`import(someString)`): esbuild leaves it out of the input list, the bundle
+// is accepted and run, and Node links whatever the string names. In this tree
+// such an import of the real store stops at lib/db's directory import of
+// ./schema, which Node's ESM loader refuses — an incidental barrier, not this
+// guard's. And DATABASE_URL is deleted from this process's environment at the
+// top of this file, so lib/db/src/index.ts, if it were ever linked that way,
+// throws "DATABASE_URL must be set" at evaluation instead of making a pool.
 //
 // What this proves is what the RUNNER does with what the store hands it: which
 // ids the carry is given, what gates it, what is caught and what propagates.
@@ -1675,9 +1736,10 @@ async function bundleRunner(text) {
   // Checked BEFORE the bundle is imported, not after: a runner whose store
   // import escaped the stubs (a new spelling, say "./proofread-store.ts")
   // would bundle the real store and @workspace/db, and running its scenarios
-  // would issue real claims and writes against whatever DATABASE_URL names.
-  // Anything but the runner itself, the stubs and lifecycle.ts is refused
-  // unloaded (node: builtins are external and never listed here).
+  // would reach for a real database. Anything but the runner itself, the
+  // stubs and lifecycle.ts is refused unloaded (node: builtins are external
+  // and never listed here). Only what esbuild resolved is listed: a specifier
+  // computed at run time is not (see the BEHAVIOUR header).
   const foreign = inputs.filter((p) => p !== "runner-under-test.ts" && !p.startsWith("runner-stub:") && !/(^|\/)proofread\/lifecycle\.ts$/.test(p));
   if (foreign.length > 0) throw new Error(`refused to load a runner bundle that pulls in ${foreign.join(", ")}`);
   const mod = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
@@ -2079,7 +2141,7 @@ if (!realObs.error) {
   const o = escaped === sources.runner ? { error: "the store import was not found to respell" } : await observe(escaped);
   ok(
     typeof o.error === "string" && /refused to load a runner bundle that pulls in .*proofread-store\.ts/.test(o.error),
-    "a runner whose store import escapes the stubs (\"./proofread-store.ts\") is refused before it is imported, so no scenario can reach a real store",
+    "a runner whose store import escapes the stubs in a spelling esbuild resolves (\"./proofread-store.ts\") is refused before it is imported, never run (an import whose specifier is computed at run time is not seen: the limit named at BEHAVIOUR)",
     o.error ?? "it was loaded and run",
   );
 }
