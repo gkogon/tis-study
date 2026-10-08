@@ -342,7 +342,9 @@ finding with its type **and its disposition** —
   generated again.
 - `DISCLOSED` — language added to the deliverable, quote it.
 - `WITHDRAWN` — Datum withdrew on a source Redline produced; name the source.
-- `CONTESTED → PE` — escalated; record the ruling when it comes.
+- `CONTESTED → PE` — the sealing PE's ruling on a `CONTESTED` item
+  (`CONTESTED_PE` in the product). Only the sealing PE records it, with the
+  ruling; until then the item is an open `CONTESTED`.
 - `ACCEPTED RISK` — someone decided to ship anyway. Record **who** and **when**.
 
 A finding with no disposition is an open **finding** — a record that must be

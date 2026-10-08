@@ -132,7 +132,7 @@ Coverage is recorded **per clause, never per section**, and no section header is
 
 One `claude-opus-5` call (adaptive thinking, `output_config: {effort: "high"}`, structured outputs, streamed via `.finalMessage()`), **no tools**, after the rules persist.
 
-- **It may emit only `DISCLOSE`, `NOTE`, `UNVERIFIED`, `CONTESTED`.** `BLOCKER` and `DEFECT` come from rules only. A BLOCKER stops a study, and stopping power that can hallucinate is worse than none; a model finding that believes it is a blocker is emitted as `CONTESTED → PE`, which blocks completion identically under `:270-271` but routes to a human instead of asserting a fact.
+- **It may emit only `DISCLOSE`, `NOTE`, `UNVERIFIED`, `CONTESTED`.** `BLOCKER` and `DEFECT` come from rules only. A BLOCKER stops a study, and stopping power that can hallucinate is worse than none; a model finding that believes it is a blocker is emitted as `CONTESTED`, which goes to the PE and blocks completion identically under `:270-271` but routes to a human instead of asserting a fact.
 - **The output schema has no numeric field for a traffic quantity and no mutation verb.** The model references values by their path in the pack. "Never supply a value from memory" becomes something the schema cannot represent.
 - Every model finding carries `read_paths`; one that does not resolve against the pack is dropped before persisting, and the drop is logged and counted.
 - **Evidence pack, capped.** `resultPayload` runs 126 KB (Palm Beach) to 900 KB (Allegheny) uncompressed, so the whole record is never sent. The pack is a declared field subset — exactly what the clauses read, plus the rule findings, plus the constants cited — capped (60 KB target) with the truncation rule declared in the manifest: per-row detail is kept for rows a finding references and summarized otherwise.
@@ -144,7 +144,7 @@ One `claude-opus-5` call (adaptive thinking, `output_config: {effort: "high"}`, 
 `POST /projects/:id/proofread/:runId/questions` stores a question and its answer; the panel polls. Two kinds, matching `:253-270`:
 
 - **EXPLAIN** — "why is this a finding?" Answered from the pack and the finding's `read_paths`.
-- **CONTEST** — must name a source; a contest with no `source_label` is rejected at the API boundary, because only a source moves a finding (`:256-258`). A valid contest does not close anything: it produces either a `WITHDRAWN` disposition (Datum withdraws on the named source) or a `CONTESTED_PE` escalation. Free prose is answered but can never close a finding.
+- **CONTEST** — must name a source; a contest with no `source_label` is rejected at the API boundary, because only a source moves a finding (`:256-258`). A valid contest does not close anything: it produces either a `WITHDRAWN` disposition (Datum withdraws on the named source) or leaves the item `CONTESTED` for the sealing PE, whose ruling is the `CONTESTED_PE` disposition — recorded by the PE alone (protocol §Logging; `PE_ONLY` in the route). *(Amended 2026-10-08, fix wave 2, m-3: it read "a `CONTESTED_PE` escalation", while the contract and the route make `CONTESTED_PE` the sealing PE's.)* Free prose is answered but can never close a finding.
 
 That asymmetry is also what protects `:86-87` (a pass that receives Redline's reasoning is grading itself): questions are scoped to one finding and the pack, and no amount of prose changes a verdict.
 

@@ -596,6 +596,19 @@ const CHECKS = [
     test: (t) => flat(section(t.protocol, "Logging")).includes(`\`BUG FILED\` — a \`DEFECT\`; record the issue or PR. It does not clear the hold. A \`DEFECT\` holds the study ${DEFECT_CLEARING}.`),
   },
   {
+    id: "logging-contested-pe-is-the-pes-ruling",
+    on: "protocol",
+    msg: "§Logging: `CONTESTED → PE` is the sealing PE's ruling on a `CONTESTED` item, `CONTESTED_PE` in the product, and only the sealing PE records it (as the contract's OFFERED_DISPOSITIONS comment and the route's PE_ONLY say) — not an escalation logged when the item is contested",
+    test: (t) => {
+      const b = itemsOf(section(t.protocol, "Logging")).find((x) => x.startsWith("- `CONTESTED → PE` —")) ?? "";
+      return (
+        b.startsWith("- `CONTESTED → PE` — the sealing PE's ruling on a `CONTESTED` item (`CONTESTED_PE` in the product).") &&
+        /\bOnly the sealing PE records it\b/.test(b) &&
+        !/\bescalat/i.test(b)
+      );
+    },
+  },
+  {
     id: "agent-unverified-is-a-type",
     on: "agent",
     msg: `datum.md: a source Datum cannot reach makes the finding \`UNVERIFIED\`; no sentence naming \`UNVERIFIED\` (uppercase) claims a hold (${HOLD_CLAIM_MSG}); nothing in the file is treated "as" or "like" a \`BLOCKER\`; and \`BLOCKER — unverified\` (a hyphen or an em dash between; every other spelling: [agent-no-blocker-unverified]) appears nowhere`,
@@ -821,6 +834,11 @@ const MUTATIONS = [
   { label: "rule 2's DEFECT item: merging the fix clears it (no 'defect' in the sentence)", file: "protocol", flips: ["protocol-nothing-else-clears-a-defect"], apply: edit("protocol", "the engineer nor the PE disposes of it.", "the engineer nor the PE disposes of it. Merging the fix clears it.") },
   { label: "§5: the unlocated criterion is called a record to carry", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", "reach at all is rule 4's `UNVERIFIED`.", "reach at all is rule 4's `UNVERIFIED`. It is a record to carry.") },
   { label: "rule 6: the engineer is shown every DEFECT, wrapped", file: "protocol", flips: ["audience-engineer-told-only-the-count"], apply: edit("protocol", "the finding itself does not.", "the finding itself does not. The engineer is\n   shown every `DEFECT` in the app.") },
+  // who records CONTESTED → PE (fix wave 2: m-3)
+  { label: "§Logging: CONTESTED → PE back to an escalation", file: "protocol", flips: ["logging-contested-pe-is-the-pes-ruling"], apply: edit("protocol", /- `CONTESTED → PE` — [\s\S]*?an open `CONTESTED`\./, "- `CONTESTED → PE` — escalated; record the ruling when it comes.") },
+  { label: "§Logging: the engineer records CONTESTED → PE", file: "protocol", flips: ["logging-contested-pe-is-the-pes-ruling"], apply: edit("protocol", "Only the sealing PE records it, with the\n  ruling;", "The engineer records it when the PE\n  rules;") },
+  { label: "§Logging: CONTESTED → PE no longer named as the product's CONTESTED_PE", file: "protocol", flips: ["logging-contested-pe-is-the-pes-ruling"], apply: edit("protocol", "item\n  (`CONTESTED_PE` in the product).", "item.") },
+  { label: "§Logging: CONTESTED → PE also logged when escalated", file: "protocol", flips: ["logging-contested-pe-is-the-pes-ruling"], apply: edit("protocol", "until then the item is an open `CONTESTED`.", "it is also logged when the item is escalated.") },
   // one name for the withdrawn disposition (fix wave 2: m-2)
   { label: "Disagreement 3: back to logging the item RESOLVED", file: "protocol", flips: ["protocol-withdrawn-is-the-one-name"], apply: edit("protocol", "logs the item\n   `WITHDRAWN`.", "logs the item\n   `RESOLVED`.") },
   { label: "Disagreement 3: Datum withdraws but logs nothing", file: "protocol", flips: ["protocol-withdrawn-is-the-one-name"], apply: edit("protocol", "and logs the item\n   `WITHDRAWN`.", "and moves on.") },
