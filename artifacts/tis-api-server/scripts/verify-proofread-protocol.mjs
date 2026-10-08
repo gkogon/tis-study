@@ -8,12 +8,15 @@
  * disclosure — in the protocol, in .claude/agents/datum.md and in
  * .claude/skills/datum/SKILL.md, which the dev agent and the skill that
  * dispatches it each restate, and in .claude/agents/redline.md, which tells
- * the building agent who Datum's findings reach. Standalone node script (no
- * test runner).
+ * the building agent who Datum's findings reach; and the design spec's GET
+ * row, which must name the keys of the read contract
+ * (lib/tis-api-zod/src/proofread.ts, ProofreadReadResponse). Standalone node
+ * script (no test runner).
  *
  * Section 10 holds its checks in a table with ids and carries its own teeth:
  * each mutation edits one file's text in memory and must turn exactly the
- * checks that claim to protect it red, and only checks about that file.
+ * checks that claim to protect it red, and only checks about that file or
+ * checks that name it in `reads` (a check about one file read against another).
  * Run: `pnpm run check:proofread-protocol`
  *
  * Matching rules, because both files are hard-wrapped at 80 columns:
@@ -38,6 +41,8 @@ const protocol = readFileSync(path.join(repo, "TIS-PROOFREAD-PROTOCOL.md"), "utf
 const agent = readFileSync(path.join(repo, ".claude/agents/datum.md"), "utf8");
 const skill = readFileSync(path.join(repo, ".claude/skills/datum/SKILL.md"), "utf8");
 const redline = readFileSync(path.join(repo, ".claude/agents/redline.md"), "utf8");
+const spec = readFileSync(path.join(repo, "docs/superpowers/specs/2026-09-29-datum-in-product-design.md"), "utf8");
+const contract = readFileSync(path.join(repo, "lib/tis-api-zod/src/proofread.ts"), "utf8");
 
 /** Collapse whitespace, so an 80-column wrap cannot hide a phrase. */
 const flat = (s) => s.replace(/\s+/g, " ").trim();
@@ -410,6 +415,24 @@ const holdsPerType = (list, holds, recordsSay) =>
     if (holds[type]) return holds[type].test(b) && !deniesTheHold(b);
     return (recordsSay === undefined || recordsSay.test(b)) && !claimsAHold(b);
   });
+/** The spec's API table row for GET /projects/:id/proofread. */
+const specGetRow = (text) => text.split("\n").find((l) => l.startsWith("| `GET /projects/:id/proofread` |")) ?? "";
+/** The keys a backticked `{ a, b[], c: x }` list names, `[]` and values dropped. */
+const keysOf = (list) => list.split(",").map((k) => k.trim().replace(/\[\]$/, "").replace(/:.*$/, "")).filter(Boolean);
+/**
+ * The top-level keys of the contract's ProofreadReadResponse, read from its source: each line at
+ * exactly four spaces' indent opening `key: z` between `export const ProofreadReadResponse = z`
+ * and its type export; a key is optional when its definition, up to the next such line, ends in
+ * `.optional(),`. A reformatted contract reads as no keys, and the check fails by name.
+ */
+const contractReadKeys = (text) => {
+  const body = text.split("export const ProofreadReadResponse = z")[1]?.split("export type ProofreadReadResponseT")[0] ?? "";
+  const starts = [...body.matchAll(/^ {4}(\w+): z\b/gm)];
+  const all = starts.map((m) => m[1]);
+  const optional = starts.filter((m, i) => /\.optional\(\),\s*$/.test(body.slice(m.index, starts[i + 1]?.index ?? body.lastIndexOf(".strict()")))).map((m) => m[1]);
+  return { all, required: all.filter((k) => !optional.includes(k)) };
+};
+const sameSet = (a, b) => a.length === new Set(a).size && [...a].sort().join(",") === [...b].sort().join(",");
 /** Disagreement item `n`, flattened. */
 const disagreementItem = (text, n) => flat(section(text, "Disagreement").match(new RegExp(`(?:^|\\n)${n}\\. ([\\s\\S]*?)(?=\\n[ \\t]*\\n|\\n\\d+\\. |$)`))?.[1] ?? "");
 const disagreement6 = (text) => disagreementItem(text, 6);
@@ -754,6 +777,26 @@ const CHECKS = [
     },
   },
   {
+    id: "spec-get-row-is-the-contract",
+    on: "spec",
+    reads: ["contract"],
+    msg: "the spec's GET /projects/:id/proofread row lists, in its `latest run: { ... }`, exactly the top-level keys of the contract's ProofreadReadResponse (a strict object, so a key it does not name — `questions[]` before phase three — is refused), and its no-run answer `{ status: \"none\", ... }` names exactly the keys the contract requires, with status \"none\", withheld 0 and rulesChanged false",
+    test: (t) => {
+      const row = specGetRow(t.spec);
+      const { all, required } = contractReadKeys(t.contract);
+      const listed = keysOf(row.match(/latest run: `\{ ([^}`]*) \}`/)?.[1] ?? "");
+      const none = row.match(/A project with no run answers `\{ ([^}`]*) \}`/)?.[1] ?? "";
+      return (
+        all.length > 0 &&
+        sameSet(listed, all) &&
+        sameSet(keysOf(none), required) &&
+        /\bstatus: "none"/.test(none) &&
+        /\bwithheld: 0\b/.test(none) &&
+        /\brulesChanged: false\b/.test(none)
+      );
+    },
+  },
+  {
     id: "protocol-banned-copy",
     on: "protocol",
     msg: `the protocol: ${BANNED_MSG} appear only in the paragraphs that state the ban (opening "**Datum is a source-verification and traceability pass.", "**Label it accordingly." or "The prohibition at §"), each still there`,
@@ -773,7 +816,7 @@ const CHECKS = [
   },
 ];
 
-const TEXTS = { protocol, agent, skill, redline };
+const TEXTS = { protocol, agent, skill, redline, spec, contract };
 const ids = CHECKS.map((c) => c.id);
 ok(new Set(ids).size === ids.length, "precondition: every section-10 check id is unique");
 ok(/`DEFECT`/.test(GATE_SENTENCE) && /`BLOCKER`/.test(GATE_SENTENCE) && /`CONTESTED`/.test(GATE_SENTENCE), "precondition: the gate sentence names BLOCKER, DEFECT and CONTESTED");
@@ -856,6 +899,14 @@ const MUTATIONS = [
   { label: "Output format: NOTE and DISCLOSE headings swapped", file: "protocol", flips: ["output-format-six-headings"], apply: edit("protocol", "DISCLOSE\n  [§n] <finding> — <exact language to add>\n\nNOTE\n  [§n] <finding>\n", "NOTE\n  [§n] <finding>\n\nDISCLOSE\n  [§n] <finding> — <exact language to add>\n") },
   { label: "datum.md: back to logging it RESOLVED", file: "agent", flips: ["agent-withdrawn-is-the-one-name"], apply: edit("agent", "log it `WITHDRAWN`.", "log it `RESOLVED`.") },
   { label: "datum.md: RESOLVED in the Output section", file: "agent", flips: ["agent-withdrawn-is-the-one-name"], apply: edit("agent", "If a section produced nothing, say so in one line.", "If a section produced nothing, say so in one line. List withdrawn items under RESOLVED.") },
+  // the spec's GET row names the read contract's keys (fix wave 2: m-7)
+  { label: "spec: questions[] back in the GET row", file: "spec", flips: ["spec-get-row-is-the-contract"], apply: edit("spec", "findings[], dispositions[] }`, audience-filtered", "findings[], dispositions[], questions[] }`, audience-filtered") },
+  { label: "spec: runId dropped from the GET row", file: "spec", flips: ["spec-get-row-is-the-contract"], apply: edit("spec", "latest run: `{ status, runId, revision,", "latest run: `{ status, revision,") },
+  { label: "spec: the no-run answer drops rulesChanged", file: "spec", flips: ["spec-get-row-is-the-contract"], apply: edit("spec", "withheld: 0, rulesChanged: false, findings: []", "withheld: 0, findings: []") },
+  { label: "spec: the no-run answer back to \"...\"", file: "spec", flips: ["spec-get-row-is-the-contract"], apply: edit("spec", "`{ status: \"none\", withheld: 0, rulesChanged: false, findings: [], coverage: [], dispositions: [] }`", "`{ status: \"none\", withheld: 0, ... }`") },
+  { label: "contract: a questions key added to the read response", file: "contract", flips: ["spec-get-row-is-the-contract"], apply: edit("contract", "    rulesChanged: z.boolean(),\n", "    rulesChanged: z.boolean(),\n    questions: z.array(z.string()),\n") },
+  { label: "contract: finishedAt made required", file: "contract", flips: ["spec-get-row-is-the-contract"], apply: edit("contract", "    finishedAt: z.string().nullable().optional(),", "    finishedAt: z.string().nullable(),") },
+  { label: "contract: a key's definition wrapped across lines stays green", file: "contract", flips: [], apply: edit("contract", "    runId: z.string().uuid().optional(),", "    runId: z\n      .string()\n      .uuid()\n      .optional(),") },
   // datum.md
   { label: "datum.md: back to the two-condition gate", file: "agent", flips: ["agent-gate-sentence", "agent-no-other-gate"], apply: edit("agent", "A study may be called complete only with no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`.", "A study is complete only with no open `BLOCKER` and no open `CONTESTED`.") },
   { label: "datum.md: a second, BLOCKER-only gate", file: "agent", flips: ["agent-gate-sentence", "agent-no-other-gate"], apply: edit("agent", "## Output\n", "## Output\n\nA study is complete only with no open `BLOCKER`.\n") },
@@ -939,8 +990,8 @@ for (const m of MUTATIONS) {
   const want = [...new Set(m.flips)].sort().join(", ");
   const got = now.sort().join(", ");
   ok(want === got, `teeth: "${m.label}" is caught by exactly the checks that claim to protect it${want === got ? "" : ` (expected red: ${want || "(none)"}; actually red: ${got || "(none)"})`}`);
-  const wrong = now.filter((id) => teeth.get(id).on !== m.file);
-  ok(wrong.length === 0, `teeth: "${m.label}" is caught only by checks about ${m.file}${wrong.length ? ` (also: ${wrong.join(", ")})` : ""}`);
+  const wrong = now.filter((id) => teeth.get(id).on !== m.file && !(teeth.get(id).reads ?? []).includes(m.file));
+  ok(wrong.length === 0, `teeth: "${m.label}" is caught only by checks about ${m.file} or reading it${wrong.length ? ` (also: ${wrong.join(", ")})` : ""}`);
 }
 const covered = new Set(MUTATIONS.flatMap((m) => m.flips));
 const toothless = ids.filter((id) => !covered.has(id));
