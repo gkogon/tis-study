@@ -257,12 +257,16 @@ export async function carryForwardDispositions(
       )
       .limit(1);
     if (already) continue;
+    // The decision keeps the date it was MADE. Left to the column default, a
+    // carried row is dated by the re-run, and the panel reports a decision on
+    // a day nobody made it — permanently, on an append-only log.
     await db.insert(studyProofreadDispositionsTable).values({
       findingId: nf.id,
       disposition: prior[0].disposition,
       note: prior[0].note,
       sourceLabel: prior[0].sourceLabel,
       actorUserId: prior[0].actorUserId,
+      createdAt: prior[0].createdAt,
     });
     carried++;
   }

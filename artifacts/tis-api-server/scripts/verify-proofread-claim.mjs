@@ -512,9 +512,18 @@ const CHECKS = [
     on: "store",
     msg: "the carried row is written against the NEW finding with the disposition that was carried — written against match.id it lands on the old revision again and the new one stays open",
     test: (s) =>
-      /\.values\(\{ findingId: nf\.id, disposition: prior\[0\]\.disposition, note: prior\[0\]\.note, sourceLabel: prior\[0\]\.sourceLabel, actorUserId: prior\[0\]\.actorUserId, \}\)/.test(
+      // createdAt is the one field allowed after actorUserId, and its VALUE is
+      // carry-forward-keeps-the-decision-date's to pin, not this check's.
+      /\.values\(\{ findingId: nf\.id, disposition: prior\[0\]\.disposition, note: prior\[0\]\.note, sourceLabel: prior\[0\]\.sourceLabel, actorUserId: prior\[0\]\.actorUserId, (?:createdAt: [^,}]+, )?\}\)/.test(
         norm(body(s.store, "carryForwardDispositions")),
       ),
+  },
+  {
+    id: "carry-forward-keeps-the-decision-date",
+    on: "store",
+    msg: "the carried row keeps the date the decision was MADE (`createdAt: prior[0].createdAt`): left to the column default it is stamped with the re-run, and the panel says \"Recorded: WITHDRAWN on <the day someone pressed Run again>\" about a decision nobody made that day — on an append-only log, permanently",
+    test: (s) =>
+      /\.insert\(studyProofreadDispositionsTable\)\.values\(\{[^}]*\bcreatedAt: prior\[0\]\.createdAt, [^}]*\}\)/.test(norm(body(s.store, "carryForwardDispositions"))),
   },
   {
     id: "previous-run-is-this-project",
@@ -890,6 +899,30 @@ const MUTATIONS = [
       ".orderBy(desc(studyProofreadDispositionsTable.createdAt))\n      .limit(1);\n    if (!prior[0]) continue;",
       ".orderBy(desc(studyProofreadDispositionsTable.createdAt));\n    if (!prior[0]) continue;",
     ),
+  },
+  {
+    label: "let the carried row take the column default (now(): the re-run's date)",
+    file: "store",
+    flips: ["carry-forward-keeps-the-decision-date"],
+    apply: edit("store", /\n *createdAt: prior\[0\]\.createdAt,/, ""),
+  },
+  {
+    label: "stamp the carried row with this instance's clock",
+    file: "store",
+    flips: ["carry-forward-keeps-the-decision-date"],
+    apply: edit("store", "createdAt: prior[0].createdAt,", "createdAt: new Date(),"),
+  },
+  {
+    label: "date the carried row by the NEW finding (when the re-run wrote it)",
+    file: "store",
+    flips: ["carry-forward-keeps-the-decision-date"],
+    apply: edit("store", "createdAt: prior[0].createdAt,", "createdAt: nf.createdAt,"),
+  },
+  {
+    label: "date the carried row by the OLD finding (when the first run wrote it, not when it was decided)",
+    file: "store",
+    flips: ["carry-forward-keeps-the-decision-date"],
+    apply: edit("store", "createdAt: prior[0].createdAt,", "createdAt: match.createdAt,"),
   },
   {
     label: "write the carried disposition against the OLD finding",
