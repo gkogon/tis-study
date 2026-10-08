@@ -569,13 +569,17 @@ const CHECKS = [
   {
     id: "criteria-unlocated-is-a-blocker",
     on: "protocol",
-    msg: `§5: a criterion Datum could not locate in the agency document is a \`BLOCKER\` — the criterion is unverified, not an assumed absence — because the document is in front of Datum and the source the study cites is wrong or missing (rule 2); a document Datum could not reach is rule 4's \`UNVERIFIED\`; and the bullet nowhere denies the hold (${DENIES_MSG})`,
+    msg: `§5: a criterion Datum could not locate in the agency document is a \`BLOCKER\` — the criterion is unverified, not an assumed absence — because the document is in front of Datum and the source the study cites is wrong or missing (rule 2); a document Datum could not reach is rule 4's \`UNVERIFIED\` — Datum, the agent, unable to reach a document the study cites; a document never supplied to the pass is neither: in the product, where no agency document is on file, the check is not run and the §5 clause reports that as coverage (\`not-run\` or a coverage note), never as a finding (spec: Non-goals; s5-criteria.ts CRITERIA_VALUES_NOTE); and the bullet nowhere denies the hold (${DENIES_MSG})`,
     test: (t) => {
       const b = criterionBullet(t.protocol);
       return (
         b.startsWith("- A criterion Datum could not locate in the agency document is a `BLOCKER`: the criterion is unverified, not an assumed absence.") &&
         /\bwrong or missing \(rule 2\)/.test(b) &&
         /\brule 4's `UNVERIFIED`/.test(b) &&
+        b.includes("That is Datum, the agent, unable to reach a document the study cites.") &&
+        b.includes(
+          "A document never supplied to the pass is neither: in the product, where no agency document is on file, the check against it is not run, and the §5 clause reports that as coverage (`not-run`, or a coverage note that the criteria values were not checked), never as a finding (see What a Datum pass requires).",
+        ) &&
         !deniesTheHold(b)
       );
     },
@@ -832,6 +836,10 @@ const MUTATIONS = [
   { label: "§Audience: the engineer can dismiss a DEFECT once it is filed", file: "protocol", flips: ["protocol-nothing-else-clears-a-defect"], apply: edit("protocol", "— nothing else about one.", "— nothing else about one. The engineer can dismiss a\n  `DEFECT` once it is filed.") },
   { label: "§Logging: recording FIXED on a DEFECT lifts the hold", file: "protocol", flips: ["protocol-nothing-else-clears-a-defect"], apply: edit("protocol", "- `FIXED` — the study changed.", "- `FIXED` — the study changed, and recording it on a `DEFECT` lifts the hold.") },
   { label: "rule 2's DEFECT item: merging the fix clears it (no 'defect' in the sentence)", file: "protocol", flips: ["protocol-nothing-else-clears-a-defect"], apply: edit("protocol", "the engineer nor the PE disposes of it.", "the engineer nor the PE disposes of it. Merging the fix clears it.") },
+  { label: "§5: drop what the product records with no agency document on file", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", / A document never supplied to the pass is\n  neither:[\s\S]*?What a Datum pass requires\)\./, "") },
+  { label: "§5: the product's missing document called UNVERIFIED", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", "(`not-run`, or a coverage note that the criteria values were not checked),\n  never as a finding", "(`UNVERIFIED`, or a coverage note that the criteria values were not checked),\n  never as a finding") },
+  { label: "§5: the product's missing document reported as a finding", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", "never as a finding (see What a Datum pass requires).", "as a finding (see What a Datum pass requires).") },
+  { label: "§5: drop whose UNVERIFIED rule 4's is", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", " That is Datum, the agent, unable to\n  reach a document the study cites.", "") },
   { label: "§5: the unlocated criterion is called a record to carry", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", "reach at all is rule 4's `UNVERIFIED`.", "reach at all is rule 4's `UNVERIFIED`. It is a record to carry.") },
   { label: "rule 6: the engineer is shown every DEFECT, wrapped", file: "protocol", flips: ["audience-engineer-told-only-the-count"], apply: edit("protocol", "the finding itself does not.", "the finding itself does not. The engineer is\n   shown every `DEFECT` in the app.") },
   // who records CONTESTED → PE (fix wave 2: m-3)

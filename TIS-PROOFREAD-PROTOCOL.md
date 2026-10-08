@@ -261,7 +261,12 @@ as a curve selection.
   `BLOCKER`: the criterion is unverified, not an assumed absence. The
   document was in front of Datum and does not hold it, so the source the
   study cites for it is wrong or missing (rule 2); a document Datum could not
-  reach at all is rule 4's `UNVERIFIED`.
+  reach at all is rule 4's `UNVERIFIED`. That is Datum, the agent, unable to
+  reach a document the study cites. A document never supplied to the pass is
+  neither: in the product, where no agency document is on file, the check
+  against it is not run, and the §5 clause reports that as coverage
+  (`not-run`, or a coverage note that the criteria values were not checked),
+  never as a finding (see What a Datum pass requires).
 
 ## 6. Limitations disclosure
 
