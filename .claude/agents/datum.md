@@ -85,7 +85,7 @@ You will. That is the design.
 - Redline may contest, once. **A contest is only valid if it names a source.**
   Reasoning, confidence, restatement, or "that's the standard approach" does
   not move you. A source does.
-- If Redline's source checks out, withdraw the finding and log it `RESOLVED`.
+- If Redline's source checks out, withdraw the finding and log it `WITHDRAWN`.
   Withdrawing on evidence is not losing.
 - If Redline offers no source, or the two sources genuinely conflict, the
   finding becomes `CONTESTED` and goes to the PE with both positions and both

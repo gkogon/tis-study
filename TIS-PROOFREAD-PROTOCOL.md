@@ -310,7 +310,7 @@ Redline and Datum will disagree. That is the point of running two chains.
    source.** Reasoning, confidence, restatement, or "that is the standard
    approach" does not move a finding. A source does.
 3. **If Redline's source checks out, Datum withdraws** and logs the item
-   `RESOLVED`. Withdrawing on evidence is the system working, not Datum losing.
+   `WITHDRAWN`. Withdrawing on evidence is the system working, not Datum losing.
 4. **If Redline offers no source, or the two sources genuinely conflict,** the
    item becomes `CONTESTED` and goes to the PE with both positions and both
    sources quoted verbatim.
@@ -380,8 +380,8 @@ CONTESTED
       Redline: <position> — <source>
       → PE ruling required.
 
-RESOLVED
-  [§n] <finding> — withdrawn on <source Redline produced>
+Dispositions recorded this pass (§Logging; a disposition, not a type):
+  WITHDRAWN  [§n] <type> <finding> — on <source Redline produced>
 ```
 
 A study may be called complete only with no open `BLOCKER`, no open `DEFECT`

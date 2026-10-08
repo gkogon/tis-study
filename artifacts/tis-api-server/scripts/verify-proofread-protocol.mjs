@@ -410,8 +410,19 @@ const holdsPerType = (list, holds, recordsSay) =>
     if (holds[type]) return holds[type].test(b) && !deniesTheHold(b);
     return (recordsSay === undefined || recordsSay.test(b)) && !claimsAHold(b);
   });
-/** Disagreement item 6, flattened. */
-const disagreement6 = (text) => flat(section(text, "Disagreement").match(/(?:^|\n)6\. ([\s\S]*?)(?=\n[ \t]*\n|\n\d+\. |$)/)?.[1] ?? "");
+/** Disagreement item `n`, flattened. */
+const disagreementItem = (text, n) => flat(section(text, "Disagreement").match(new RegExp(`(?:^|\\n)${n}\\. ([\\s\\S]*?)(?=\\n[ \\t]*\\n|\\n\\d+\\. |$)`))?.[1] ?? "");
+const disagreement6 = (text) => disagreementItem(text, 6);
+/**
+ * The withdrawn disposition has one name, `WITHDRAWN` (§Logging, the product's
+ * ProofreadDisposition); `RESOLVED` was its second name (fix wave 2, m-2). Uppercase only:
+ * "resolves" / "resolved" in prose are words, not the disposition.
+ */
+const RESOLVED_NAME = /\bRESOLVED\b/;
+/** The protocol's Output format block: the first fenced text after "## Output format" (the last section, so section() cannot slice it). */
+const outputBlock = (text) => (text.split(/^## Output format$/m)[1] ?? "").match(/```\n([\s\S]*?)\n```/)?.[1] ?? "";
+/** Its headings: a line that is one or more uppercase words and nothing else, at the left margin. */
+const outputHeadings = (block) => block.split("\n").filter((l) => /^[A-Z][A-Z ]*[A-Z]$/.test(l));
 
 const CHECKS = [
   {
@@ -498,6 +509,28 @@ const CHECKS = [
     test: (t) => {
       const d = disagreement6(t.protocol);
       return d.includes("It blocks completion the same as a `BLOCKER` until the PE rules on it.") && !deniesTheHold(d) && !/\b(?:does not|doesn't|never)\s+block\b/i.test(d);
+    },
+  },
+  {
+    id: "protocol-withdrawn-is-the-one-name",
+    on: "protocol",
+    msg: "the protocol names the withdrawn disposition one way, `WITHDRAWN`: §Disagreement item 3 says Datum withdraws and \"logs the item `WITHDRAWN`\", §Logging lists `WITHDRAWN`, and `RESOLVED` (uppercase) appears nowhere",
+    test: (t) =>
+      /\bDatum withdraws\*\* and logs the item `WITHDRAWN`\./.test(disagreementItem(t.protocol, 3)) &&
+      /^- `WITHDRAWN` — /m.test(section(t.protocol, "Logging")) &&
+      !RESOLVED_NAME.test(t.protocol),
+  },
+  {
+    id: "output-format-six-headings",
+    on: "protocol",
+    msg: `§Output format's block has exactly six headings, the six types in the protocol's order (${SIX.join(", ")}) — no seventh, no disposition as a heading — and lists \`WITHDRAWN\` only as an indented disposition line under "Dispositions recorded this pass"`,
+    test: (t) => {
+      const block = outputBlock(t.protocol);
+      return (
+        outputHeadings(block).join(",") === SIX.join(",") &&
+        /^Dispositions recorded this pass\b.*:$/m.test(block) &&
+        /^ +WITHDRAWN\b/m.test(block.split(/^Dispositions recorded this pass\b.*:$/m)[1] ?? "")
+      );
     },
   },
   {
@@ -601,6 +634,12 @@ const CHECKS = [
       const output = t.agent.split(/^## Output$/m)[1] ?? "";
       return flat(fm).includes(`${SIX.join("/")} findings list`) && flat(output).includes(`${SIX.map((x) => `\`${x}\``).join(", ")}, each tagged`);
     },
+  },
+  {
+    id: "agent-withdrawn-is-the-one-name",
+    on: "agent",
+    msg: "datum.md names the withdrawn disposition as the protocol does: \"withdraw the finding and log it `WITHDRAWN`\", and `RESOLVED` (uppercase) appears nowhere",
+    test: (t) => /\bwithdraw the finding and log it `WITHDRAWN`\./.test(flat(t.agent)) && !RESOLVED_NAME.test(t.agent),
   },
   {
     id: "agent-no-blocker-unverified",
@@ -782,6 +821,15 @@ const MUTATIONS = [
   { label: "rule 2's DEFECT item: merging the fix clears it (no 'defect' in the sentence)", file: "protocol", flips: ["protocol-nothing-else-clears-a-defect"], apply: edit("protocol", "the engineer nor the PE disposes of it.", "the engineer nor the PE disposes of it. Merging the fix clears it.") },
   { label: "§5: the unlocated criterion is called a record to carry", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", "reach at all is rule 4's `UNVERIFIED`.", "reach at all is rule 4's `UNVERIFIED`. It is a record to carry.") },
   { label: "rule 6: the engineer is shown every DEFECT, wrapped", file: "protocol", flips: ["audience-engineer-told-only-the-count"], apply: edit("protocol", "the finding itself does not.", "the finding itself does not. The engineer is\n   shown every `DEFECT` in the app.") },
+  // one name for the withdrawn disposition (fix wave 2: m-2)
+  { label: "Disagreement 3: back to logging the item RESOLVED", file: "protocol", flips: ["protocol-withdrawn-is-the-one-name"], apply: edit("protocol", "logs the item\n   `WITHDRAWN`.", "logs the item\n   `RESOLVED`.") },
+  { label: "Disagreement 3: Datum withdraws but logs nothing", file: "protocol", flips: ["protocol-withdrawn-is-the-one-name"], apply: edit("protocol", "and logs the item\n   `WITHDRAWN`.", "and moves on.") },
+  { label: "§Logging: RESOLVED named as a second name for WITHDRAWN", file: "protocol", flips: ["protocol-withdrawn-is-the-one-name"], apply: edit("protocol", "- `WITHDRAWN` — Datum withdrew on a source Redline produced;", "- `WITHDRAWN` (or `RESOLVED`) — Datum withdrew on a source Redline produced;") },
+  { label: "Output format: back to a RESOLVED heading", file: "protocol", flips: ["output-format-six-headings", "protocol-withdrawn-is-the-one-name"], apply: edit("protocol", /Dispositions recorded this pass [^\n]*:\n  WITHDRAWN  /, "RESOLVED\n  ") },
+  { label: "Output format: WITHDRAWN as a seventh heading", file: "protocol", flips: ["output-format-six-headings"], apply: edit("protocol", /Dispositions recorded this pass [^\n]*:\n  WITHDRAWN  /, "WITHDRAWN\n  ") },
+  { label: "Output format: NOTE and DISCLOSE headings swapped", file: "protocol", flips: ["output-format-six-headings"], apply: edit("protocol", "DISCLOSE\n  [§n] <finding> — <exact language to add>\n\nNOTE\n  [§n] <finding>\n", "NOTE\n  [§n] <finding>\n\nDISCLOSE\n  [§n] <finding> — <exact language to add>\n") },
+  { label: "datum.md: back to logging it RESOLVED", file: "agent", flips: ["agent-withdrawn-is-the-one-name"], apply: edit("agent", "log it `WITHDRAWN`.", "log it `RESOLVED`.") },
+  { label: "datum.md: RESOLVED in the Output section", file: "agent", flips: ["agent-withdrawn-is-the-one-name"], apply: edit("agent", "If a section produced nothing, say so in one line.", "If a section produced nothing, say so in one line. List withdrawn items under RESOLVED.") },
   // datum.md
   { label: "datum.md: back to the two-condition gate", file: "agent", flips: ["agent-gate-sentence", "agent-no-other-gate"], apply: edit("agent", "A study may be called complete only with no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`.", "A study is complete only with no open `BLOCKER` and no open `CONTESTED`.") },
   { label: "datum.md: a second, BLOCKER-only gate", file: "agent", flips: ["agent-gate-sentence", "agent-no-other-gate"], apply: edit("agent", "## Output\n", "## Output\n\nA study is complete only with no open `BLOCKER`.\n") },
