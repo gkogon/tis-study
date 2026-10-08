@@ -42,11 +42,13 @@
  * verbs and `db.`; the store's `.verb(Name` targets, tisProjectsTable and the
  * payload names outside the loader, onConflictDoUpdate, tis_projects, and
  * uppercase UPDATE / INSERT INTO / DELETE FROM. They were kept in round 3 so
- * that no input an earlier guard caught can pass this one, and they can only add
+ * that no input THOSE SCANS caught can pass this one, and they can only add
  * reds: a route string that merely says "db" or "x.update(y)" is refused, which
- * is their known cost. The raw-SQL scan beside them reads SQL SHAPE, so prose that
- * names a verb ("update failed", "could not insert into the queue") is not SQL;
- * what that scan does not read is listed at rawSqlWrites.
+ * is their known cost. The raw-SQL scan beside them is not one of them and is not
+ * additive: it reads SQL SHAPE, so prose that names a verb outside a SQL shape
+ * ("update failed", "could not insert into the queue") passes where the word scan
+ * it replaced refused it, prose in a SQL shape is refused (reword it), and what the
+ * scan does not read is listed at rawSqlWrites.
  *
  * It is a tripwire against ordinary AND adversarially spelled imports and
  * writes, not a sandbox against runtime reflection: a specifier built at run time
@@ -416,7 +418,9 @@ const dispSeg = (d) => routeBy(d.routes, "post", P_DISP);
  *   createRequire / getBuiltinModule, however reached -> <createRequire> / <getBuiltinModule>
  *   x.constructor(...) or new x.constructor(...) with an argument -> <constructor call>
  *   any other read of .constructor (aliased, destructured, .call / .apply / .bind),
- *     except x.constructor.name                     -> <constructor>
+ *     except a read of its name: x.constructor.name, x.constructor["name"], and the
+ *     same through parentheses or a cast, `(x.constructor as any).name` (calling
+ *     that name, `x.constructor.name(..)`, is refused) -> <constructor>
  * A member reached by a string key (module["require"]) counts as the member.
  * It is a tripwire for reaching a write through the module graph by ordinary
  * means, not a sandbox: code that builds a specifier at run time can only be
@@ -486,12 +490,20 @@ function importEntries(text) {
     // process.getBuiltinModule (Node 22.3+, so live under the production pin), which hands
     // back node:module and with it createRequire. A member named so with a string key counts.
     // Any read of a function's constructor is a way to build code from a string, however it is
-    // then called (directly, aliased, .call / .apply / .bind, destructured): refused, except
-    // `x.constructor.name`, a read of the class name.
+    // then called (directly, aliased, .call / .apply / .bind, destructured): refused, except a
+    // read of its `.name`, the class name — `x.constructor.name`, `x.constructor["name"]`, and
+    // either through parentheses or a cast (`(x.constructor as any).name`). Calling that `.name`
+    // is not a read of it and stays refused (an object's `constructor` may be anything).
     const ctorRead =
       ((ts.isPropertyAccessExpression(n) || ts.isElementAccessExpression(n)) && keyOf(n) === "constructor") ||
       (ts.isBindingElement(n) && ts.isObjectBindingPattern(n.parent) && (n.propertyName ? lit(n.propertyName) ?? (ts.isIdentifier(n.propertyName) ? n.propertyName.text : null) : ts.isIdentifier(n.name) ? n.name.text : null) === "constructor");
-    const nameRead = (x) => ts.isPropertyAccessExpression(x.parent) && x.parent.expression === x && x.parent.name.text === "name" && !(ts.isCallExpression(x.parent.parent) && x.parent.parent.expression === x.parent);
+    const nameRead = (x) => {
+      let p = x;
+      while (p.parent && (ts.isParenthesizedExpression(p.parent) || ts.isAsExpression(p.parent) || ts.isNonNullExpression(p.parent) || ts.isTypeAssertionExpression(p.parent) || ts.isSatisfiesExpression(p.parent))) p = p.parent;
+      const m = p.parent;
+      const readsName = !!m && (ts.isPropertyAccessExpression(m) || ts.isElementAccessExpression(m)) && m.expression === p && keyOf(m) === "name";
+      return readsName && !(ts.isCallExpression(m.parent) && m.parent.expression === m);
+    };
     if (ctorRead && !nameRead(n)) add("<eval>", ["<constructor>"]);
     const named = ts.isIdentifier(n) ? n.text : ts.isElementAccessExpression(n) ? lit(n.argumentExpression) : null;
     if (named === "require") add("<require>", ["<require>"]);
@@ -569,8 +581,9 @@ const DB_HANDLES = new Set(["db", "tx", "trx"]);
  * lexical scope walk (function, block, for, catch and class scopes; parameters;
  * `var` hoisted to its function, approximately), and taint attaches to the
  * declaration: a same-named binding in another function is another variable, and a
- * name declared twice in one scope (`var h = 1; var h = db`, a `var h` over a
- * parameter h) is one variable.
+ * `var` declared twice in one scope (`var h = 1; var h = db`), or a `var h` over a
+ * parameter h, is one variable (a function declaration and a catch parameter are not
+ * joined this way: see the limits below).
  * Seeds: the `db` import binding (renamed or not), a parameter called db, tx or trx,
  * an identifier called db, tx or trx that resolves to nothing in the file, a
  * property named `db` of anything (`globalThis.db`, `ns.db`, `o["db"]`), and a
@@ -584,16 +597,20 @@ const DB_HANDLES = new Set(["db", "tx", "trx"]);
  * `await db` is db); the loop variable of a for-of over one; a parameter whose
  * default is one; an object handed one in a property assignment (`box.h = db`); a
  * class property initialised or assigned from one, read back as `this.x`, `(this as
- * any).x`, `this!.x`, `this["x"]`, `this.#x`, or, for a static, `C.x`; every
+ * any).x`, `this!.x`, `this["x"]` (a literal key), `this.#x`, or, for a static, `C.x`
+ * where C names a class DECLARATION; every
  * parameter of a function literal passed to a method of a handle
  * (`db.transaction(async (t) => ...)`, whatever the parameter is called; `[db].map((d)
  * => ...)`); and the result of such a call when the callback returns a handle
- * (`await db.transaction(async (x) => x)`). A method call on a handle yields a
- * BUILDER (`db.insert(T).values(..)`), which still carries write methods such as
- * onConflictDoUpdate, so the rules above apply to it too.
+ * (`await db.transaction(async (x) => x)`, `x ? x : null`, `({ x })`) or a builder
+ * inside an object or array literal (`({ q: x.insert(T) })`, `[x.insert(T)]`). A method
+ * call on a handle yields a BUILDER (`db.insert(T).values(..)`), which still carries
+ * write methods such as onConflictDoUpdate, so the rules above apply to it too.
  * NOT derived: `await` of a builder (a query's RESULT is data: `rows[i]`, `{ ...row }`,
- * `Object.keys(row)` and `[...rows].sort()` are ordinary code), and a call whose
- * callee is not rooted at a handle (`Object.fromEntries(rows.map(..))`).
+ * `Object.keys(row)` and `[...rows].sort()` are ordinary code), including a builder a
+ * transaction callback returns bare (`await db.transaction(async (tx) =>
+ * tx.select().from(t))` hands back rows), and a call whose callee is not rooted at a
+ * handle (`Object.fromEntries(rows.map(..))`).
  *
  * WHAT THIS IS NOT. It is a tripwire against ordinary and adversarially spelled
  * writes, not a sandbox against runtime reflection. Known limits, deliberately not
@@ -609,11 +626,20 @@ const DB_HANDLES = new Set(["db", "tx", "trx"]);
  *   - a handle put into a container by a METHOD CALL and read back (`arr.push(db)`,
  *     `arr.unshift(db)`, `map.set(k, db)`, `set.add(db)`, `weakMap.set(o, db)`,
  *     `Array.from([db])`), or moved through `throw` and `catch`;
- *   - `this` beyond the class spellings above: `this.x` in an object-literal method
- *     or a function expression, `const self = this`, `const { x } = this`, an
- *     inherited field, an instance's property read from outside (`new C().x`, or an
- *     instance handed in as a parameter), a constructor parameter property
+ *   - `this` beyond the class spellings above: `this.x` in an object-literal method,
+ *     `const self = this`, `const { x } = this`, `this[k]` with a variable key (a
+ *     computed access is refused on a value known to hold a handle, and `this` is not
+ *     one), an inherited field, an instance's property read from outside (`new C().x`,
+ *     or an instance handed in as a parameter), a constructor parameter property
  *     default `constructor(public x = db)`, a TypeScript namespace export `NS.x`;
+ *   - a static read through anything but the class declaration's own name: a class
+ *     EXPRESSION (`const K = class { static h = db }; K.h`) or an alias of a class
+ *     (`const B = A; B.h`);
+ *   - a name declared twice in one scope by two different kinds of declaration: inside
+ *     a function body, a function declaration and then `var h = db` (`function h() {}
+ *     var h = db; h[k]`), and a catch parameter written through a `var` of the same name
+ *     inside the catch (`catch (h) { var h = db; h[k] }`): the two are kept as two
+ *     variables, and the reads resolve to the one the handle was not written to;
  *   - E7: a binding that merely shares an allowed table's name (a function
  *     `f(studyProofreadRunsTable)` handed tis_projects by its caller) reads as
  *     that table, since table names are read as names;
@@ -673,9 +699,12 @@ function dbScan(text) {
   const bindingIds = (name) =>
     ts.isIdentifier(name) ? [name] : ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name) ? name.elements.flatMap((el) => (ts.isOmittedExpression(el) ? [] : bindingIds(el.name))) : [];
   const scopes = new Map();
-  // A name declared twice in one scope (`var h = 1; var h = db`, or `var h` over a parameter h)
+  // A name declared twice in one scope map (`var h = 1; var h = db`, or `var h` over a parameter h)
   // is ONE variable: every later declaring identifier maps to the first, so a taint written
-  // through the second lands on the binding that references resolve to.
+  // through the second lands on the binding that references resolve to. Inside a function body, a
+  // function declaration and a `var` of its name, or a catch parameter and a `var` inside the
+  // catch, land in different scope maps here and are not joined (a named limit, in the comment
+  // above dbScan).
   const canon = new Map();
   const declare = (scope, name) => {
     if (!scopes.has(scope)) scopes.set(scope, new Map());
@@ -818,13 +847,22 @@ function dbScan(text) {
     const u = unwrapCast(a);
     return u && (ts.isArrowFunction(u) || ts.isFunctionExpression(u)) ? u : null;
   };
-  // Does a function literal return a value that holds a handle? (its own returns, not those of nested functions)
+  // Does a function literal hand a handle back to its caller? (its own returns, not those of nested
+  // functions.) A returned HANDLE does; so does a BUILDER inside an object or array literal
+  // (`({ q: x.insert(T) })`, `[x.insert(T)]`), which the caller can still call. A bare builder
+  // does not: the transaction awaits it, and what comes back is its rows, which are data
+  // (`await db.transaction(async (tx) => tx.select().from(t))`).
+  const holds = (e) => {
+    const k = kindOf(e);
+    const u = unwrapCast(e);
+    return k === "handle" || (k === "builder" && !!u && (ts.isObjectLiteralExpression(u) || ts.isArrayLiteralExpression(u)));
+  };
   const returnsHeld = (f) => {
-    if (!ts.isBlock(f.body)) return kindOf(f.body) !== "none";
+    if (!ts.isBlock(f.body)) return holds(f.body);
     let held = false;
     const v = (x) => {
       if (held || isFunctionLike(x)) return;
-      if (ts.isReturnStatement(x) && x.expression && kindOf(x.expression) !== "none") held = true;
+      if (ts.isReturnStatement(x) && x.expression && holds(x.expression)) held = true;
       ts.forEachChild(x, v);
     };
     ts.forEachChild(f.body, v);
@@ -995,38 +1033,81 @@ const STORE_WRITES = new Map([
 const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.get(table).includes(verb);
 
 /**
- * Raw SQL that writes, in any letter case, read for its SQL SHAPE so prose is not
- * taken for SQL ("update failed", "could not insert into the queue", "refusing to
- * delete from the log" stay legal):
- *   UPDATE ... SET                  (no UPDATE statement lacks SET; `FOR UPDATE` and
- *                                    `FOR NO KEY UPDATE` row locks are exempt)
+ * Raw SQL that writes, in any letter case, read for its SQL SHAPE:
+ *   UPDATE ... SET                  (`FOR UPDATE` and `FOR NO KEY UPDATE` row locks are exempt)
+ *   UPDATE [ONLY] <t>               with <t> reading like a table (below), so a SET that sits in
+ *                                    a substitution or another literal is still read
+ *                                    (`update ${tbl} ${set}`, `update firms ${set}`)
  *   INSERT INTO <t>                 then `(`, VALUES, SELECT, DEFAULT, OVERRIDING or WITH,
- *                                    or <t> reads like a table (below)
+ *                                    or <t> reads like a table
  *   DELETE FROM <t>                 then WHERE, USING, RETURNING, `;`, `)` or the end
  *                                    (also after `AS alias`), or <t> reads like a table
  *   COPY <t> FROM                   with PROGRAM / STDIN / a quoted path, or <t> reads like a table
  *   SELECT ... INTO <t>             with <t> reading like a table or followed by FROM
  *   TRUNCATE, MERGE INTO, ON CONFLICT ... DO UPDATE, DROP TABLE / SCHEMA / OWNED,
  *   ALTER TABLE                     anywhere, as words
- * A target READS LIKE A TABLE when it is quoted, interpolated (`${...}`), schema-
- * qualified or snake_case: every table in this schema is (tis_projects,
- * study_proofread_dispositions). Postgres reads a comment as whitespace, so each text
- * is read twice, as written and with its block and line comments blanked (the
- * second alone could hide a write behind a `--` inside a quoted string). The text is
- * every string literal and template (a substitution counts as a target: `update
- * ${tisProjectsTable} set`) and every `+` chain of them (`"update " + "tis_" +
- * "projects"`), both cooked and as written; as written, a template's text includes the
- * source of its substitutions, so `${sql.raw("update")} t set` is read. Not read: SQL
- * assembled at run time from anything but literals written in place (join, concat,
- * String.fromCharCode, atob, a `${VERB}` const, a substitution that splits a word
- * even when it is a literal, `upd${"ate"}`), verbs outside this list, and a DELETE
- * whose bare alias hides its clause keyword on a non-snake_case table (`delete from
- * firms f where ..`).
+ * A target READS LIKE A TABLE when it is quoted, interpolated (`${...}`), schema-qualified,
+ * snake_case, or the name of a table this schema declares. The last is read from the schema
+ * itself (SCHEMA_TABLES, every `pgTable("name"` in lib/db/src/schema/*.ts), because not every
+ * table is snake_case: crashes, events, firms, sessions and users have neither an underscore
+ * nor a dot, so by spelling alone `delete from firms f where ..` reads like prose. A table
+ * added to the schema later is read the same way without an edit here.
+ * Postgres reads a comment as whitespace, so each text is read twice, as written and with its
+ * block and line comments blanked (the second alone could hide a write behind a `--` inside a
+ * quoted string). The text is every string literal and template (a substitution counts as a
+ * target: `update ${tisProjectsTable} set`) and every `+` chain of them (`"update " + "tis_" +
+ * "projects"`; an operand that is not a literal reads as a substitution), both cooked and as
+ * written; as written, a template's text includes the source of its substitutions, so
+ * `${sql.raw("update")} t set` is read.
+ * PROSE THAT READS LIKE SQL IS REFUSED; REWORD IT. "update failed", `update failed for run
+ * ${id}`, "could not insert into the queue", "refusing to delete from the log" and "could not
+ * update the claim" pass, but prose in one of the shapes above is refused with its file and
+ * line: `update .. set` with no `;` between ("could not update run: status was not set"),
+ * `insert into <word> (` ("failed to insert into findings (run 5)"), `delete from <word>` at
+ * the end ("refusing to delete from queue"), `update ${..}` (`could not update ${kind}`), a
+ * schema table after a verb ("could not update users"), the bare words truncate / merge into,
+ * and a SQL comment inside a raw-SQL template that says one of these ("-- update the claim,
+ * then set attempts": the as-written read keeps comments).
+ * NOT READ: SQL assembled at run time from anything but literals written in place (join,
+ * concat, String.fromCharCode, atob, a `${VERB}` const, a substitution that splits a word even
+ * when it is a literal, `upd${"ate"}`); a target that reads like no table (unquoted,
+ * unqualified, no underscore, not declared in this schema, so not a table this database has
+ * unless one is created outside the schema files) when what follows it is a bare alias
+ * (`delete from t f where ..`), `*`, an INSERT's `AS alias` or `TABLE x`, or a substitution,
+ * and `COPY <it> FROM E'..'` / `FROM $$..$$` and `SELECT .. INTO <it>` with no FROM; and verbs
+ * outside this list (CREATE TABLE .. AS, GRANT / REVOKE, CREATE TRIGGER / RULE, LOCK,
+ * VACUUM FULL, REFRESH MATERIALIZED VIEW).
+ * Unlike the substring scans the header names, this scan is NOT additive: the scan it
+ * replaced (5de94c0) refused the verbs as words, so prose that one refused now passes, and the
+ * inputs this one does not read are the ones listed above.
  */
-const SQL_TABLE_LIKE = String.raw`(?:"[^"]*"|\$\{\}|[\w$]*[_.][\w$.]*)`;
+const SCHEMA_DIR = "../../../lib/db/src/schema";
+/** The table names a schema directory declares (`pgTable("name"`), or [] when it cannot be read. */
+function schemaTableNames(dir) {
+  let files;
+  try {
+    files = readdirSync(at(dir)).filter((f) => f.endsWith(".ts"));
+  } catch {
+    return [];
+  }
+  return files.flatMap((f) => [...read(`${dir}/${f}`).matchAll(/\bpgTable\(\s*["'`]([A-Za-z0-9_]+)["'`]/g)].map((m) => m[1]));
+}
+// Usable means the names it must have are there: a schema directory that moved, or a reader
+// that stopped matching, would otherwise drop the names silently and let `delete from firms f` by.
+const schemaNamesUsable = (names) => ["firms", "users"].every((n) => names.includes(n));
+const SCHEMA_TABLES = [...new Set(schemaTableNames(SCHEMA_DIR))].sort();
+/** The schema's tables whose name has neither an underscore nor a dot: by spelling they read like prose. */
+const PROSE_LIKE_TABLES = SCHEMA_TABLES.filter((n) => !/[_.]/.test(n));
+ok(
+  schemaNamesUsable(PROSE_LIKE_TABLES),
+  "precondition: the raw-SQL scan reads this schema's table names from lib/db/src/schema (pgTable(\"name\")), and the ones with neither an underscore nor a dot include firms and users",
+  `read ${SCHEMA_TABLES.length} table name(s); with no underscore: ${JSON.stringify(PROSE_LIKE_TABLES)}`,
+);
+const SQL_TABLE_LIKE = String.raw`(?:"[^"]*"|\$\{\}|[\w$]*[_.][\w$.]*${PROSE_LIKE_TABLES.length ? `|(?:${PROSE_LIKE_TABLES.join("|")})\\b` : ""})`;
 const SQL_TARGET = String.raw`(?:only\s+)?(?:"[^"]*"|\$\{\}|[^\s(;),]+)`;
 const RAW_SQL_SHAPES = [
   String.raw`(?<!\bfor\s+(?:no\s+key\s+)?)\bupdate\b[^;]*?\bset\b`,
+  String.raw`(?<!\bfor\s+(?:no\s+key\s+)?)\bupdate\s+(?:only\s+)?${SQL_TABLE_LIKE}`,
   String.raw`\binsert\s+into\s+(?:${SQL_TABLE_LIKE}|${SQL_TARGET}\s*(?:\(|\b(?:values|select|default|overriding|with)\b))`,
   String.raw`\bdelete\s+from\s+(?:only\s+)?(?:${SQL_TABLE_LIKE}|${SQL_TARGET}(?:\s+as\s+[\w$"]+)?\s*(?:$|;|\)|\b(?:where|using|returning)\b))`,
   String.raw`\bcopy\s+(?:${SQL_TABLE_LIKE}(?:\s*\([^)]*\))?\s+from\b|${SQL_TARGET}(?:\s*\([^)]*\))?\s+from\s+(?:program\b|stdin\b|'|"|\$\{\}))`,
@@ -1451,6 +1532,10 @@ const REFLECTION_FORMS = [
   ["a class property assigned through (this as any)", 'class C17 { h1: any; constructor() { (this as any).h1 = db; } async m() { await this.h1["upd" + "ate"](tisProjectsTable); } } await new C17().m();', true],
   ["a static field assigned in a static block", 'class C20 { static h1: any; static { C20.h1 = db; } static async m() { await C20.h1["upd" + "ate"](tisProjectsTable); } } await C20.m();', true],
   ["the handle a transaction callback returns, awaited", 'const tr = await db.transaction(async (x: any) => x); await (tr as any)["upd" + "ate"](tisProjectsTable);', true],
+  // a builder handed back inside a container is still a builder the caller can call
+  ["a builder a transaction callback hands back inside an object literal", 'const tq = await db.transaction(async (x: any) => ({ q: x.select() })); await (tq as any).q["upd" + "ate"](tisProjectsTable);', true],
+  ["a builder a transaction callback hands back inside an array literal", 'const [tb] = await db.transaction(async (x: any) => [x.select()]); await (tb as any)["upd" + "ate"](tisProjectsTable);', true],
+  ["the handle a transaction callback's block returns through a conditional", 'const tc = await db.transaction(async (x: any) => { return Date.now() > 0 ? x : null; }); await (tc as any)["upd" + "ate"](tisProjectsTable);', true],
 ];
 
 
@@ -1506,13 +1591,27 @@ const REFLECTION_FORMS = [
       'void (() => 0).constructor.bind(null)("return 1")();',
       'const { constructor: Cd } = () => 0; void Cd("return 1")();',
       'const { "constructor": Cs } = () => 0; void Cs;',
+      // a cast or a string key on the way to .name does not make a call of it a read
+      'void ((() => 0).constructor as any)("return 1")();',
+      'void ((() => 0).constructor as any).name("return 1");',
+      'void (() => 0).constructor["name"]("return 1");',
+      "const c2 = ((() => 0).constructor as any); void c2;",
     ];
-    const quiet = ["const n = (() => 0).constructor.name; void n;", 'void (args as any)["constructor"].name;', "const o = { createRequireLater: 1 }; void o;"];
+    const quiet = [
+      "const n = (() => 0).constructor.name; void n;",
+      'void (args as any)["constructor"].name;',
+      "const o = { createRequireLater: 1 }; void o;",
+      // a read of the class name through a cast or a string key is still only a read of the name
+      "void ((args as any).constructor as any).name;",
+      'void (args as any).constructor["name"];',
+      "void (args as any)?.constructor?.name;",
+      "void (((args as any).constructor)!).name;",
+    ];
     const missed = loaders.filter((t) => !Object.keys(P(t)).some((m) => m.startsWith("<")));
     const flagged = quiet.filter((t) => Object.keys(P(t)).length > 0);
     ok(
       missed.length === 0 && flagged.length === 0,
-      "the import parser sees the module loaders no import statement shows: createRequire and getBuiltinModule however reached (identifier, member, string key), any read of .constructor (aliased, destructured, called, .call / .apply / .bind — each a way to build a function from a string), and require through a string key; a read of .constructor.name is not one",
+      "the import parser sees the module loaders no import statement shows: createRequire and getBuiltinModule however reached (identifier, member, string key), any read of .constructor (aliased, destructured, called, .call / .apply / .bind — each a way to build a function from a string), and require through a string key; a read of .constructor.name (also spelled [\"name\"], through parentheses or a cast) is not one, and a call of that name is",
       [...missed.map((t) => `missed: ${t}`), ...flagged.map((t) => `flagged: ${t}`)],
     );
   }
@@ -1559,6 +1658,22 @@ const REFLECTION_FORMS = [
     'const s = "insert into runs values (1)";',
     'const s = "with d as (update study_proofread_dispositions set note = null returning 1) select 1";',
     'const s = "select 1 for update; update study_proofread_dispositions set note = null";',
+    // a table the schema declares with no underscore reads like a table (firms, users, ...)
+    'const s = "delete from firms f where f.id = 1";',
+    'const s = "DELETE FROM Users U";',
+    'const s = "delete from firms * where id = 1";',
+    'const s = "insert into firms as f (id) values (1)";',
+    'const s = "insert into users table x";',
+    "const s = sql`delete from firms ${cond}`;",
+    'const s = "copy firms from E\'/x\'";',
+    'const s = "select 1 as id into users";',
+    // an UPDATE whose SET is not in the same literal: a table-like target is enough
+    "const s = sql`update firms ${set}`;",
+    "const s = sql`update study_proofread_dispositions ${set} where id = ${id}`;",
+    "const s = sql`update ${tbl} ${set}`;",
+    "const s = sql`update only ${tbl} ${set}`;",
+    'const s = "update " + "firms" + " " + w;',
+    'const s = "update " + tbl + " " + w;',
   ];
   const left = [
     "const s = sql`SELECT id FROM study_proofread_runs WHERE x ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1`;",
@@ -1578,13 +1693,33 @@ const REFLECTION_FORMS = [
     'const s = "no update available";',
     'const s = "could not update run";',
     'const s = "deleted 0 rows from the queue";',
+    "const s = sql`select id from study_proofread_runs where id = ${id} for update ${skip}`;",
   ];
-  const missed = refused.filter((t) => n(t) !== 1);
+  // prose in a SQL shape is refused, and the comment at rawSqlWrites says to reword it
+  const reword = [
+    'const s = "could not update run: status was not set";',
+    'const s = "failed to insert into findings (run 5)";',
+    'const s = "refusing to delete from queue";',
+    "const s = `could not update ${kind}`;",
+    'const s = "could not update users";',
+    "const s = sql`select 1 -- update the claim, then set attempts\n`;",
+  ];
+  const missed = [...refused, ...reword].filter((t) => n(t) !== 1);
   const flagged = left.filter((t) => n(t) !== 0);
   ok(
     missed.length === 0 && flagged.length === 0,
-    "the raw-SQL scan refuses UPDATE .. SET, INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT DO UPDATE, MERGE INTO, DROP TABLE / SCHEMA / OWNED, ALTER TABLE, COPY .. FROM and SELECT .. INTO in any letter case, with comments between the words, in a string, a template with a substitution, a + chain or an escaped spelling, and leaves FOR UPDATE / FOR NO KEY UPDATE row locks, reads, a bare word, and prose that names a verb (\"update failed\", \"could not insert into the queue\") alone",
+    "the raw-SQL scan refuses UPDATE .. SET, UPDATE of a table-like target (a SET in a substitution included), INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT DO UPDATE, MERGE INTO, DROP TABLE / SCHEMA / OWNED, ALTER TABLE, COPY .. FROM and SELECT .. INTO in any letter case, with comments between the words, in a string, a template with a substitution, a + chain or an escaped spelling, on a snake_case table and on a schema table with no underscore (firms, users), and the prose its comment says to reword; and leaves FOR UPDATE / FOR NO KEY UPDATE row locks, reads, a bare word, and prose that names a verb outside those shapes (\"update failed\", \"could not insert into the queue\") alone",
     [...missed.map((t) => `missed: ${t}`), ...flagged.map((t) => `flagged: ${t}`)],
+  );
+  // The schema precondition has teeth: the reader goes empty on a directory that is not there,
+  // and the precondition refuses a list without firms or users.
+  ok(
+    schemaTableNames("../no-such-schema-dir").length === 0 &&
+      !schemaNamesUsable(schemaTableNames("../no-such-schema-dir")) &&
+      !schemaNamesUsable(PROSE_LIKE_TABLES.filter((t) => t !== "firms")) &&
+      !schemaNamesUsable(PROSE_LIKE_TABLES.filter((t) => t !== "users")) &&
+      schemaNamesUsable(PROSE_LIKE_TABLES),
+    "the schema precondition would be red for a schema directory that is not there, and for a table list without firms or without users",
   );
   ok(
     JSON.stringify(rawSqlWrites("const a = 1;\nconst b = 2;\nconst s = `\n  delete from t`;").map((h) => h.line)) === "[3]",
@@ -2054,7 +2189,7 @@ const CHECKS = [
   {
     id: "routes-do-not-touch-study",
     on: "routes",
-    msg: "no route touches tis_projects, request_payload or result_payload, and none writes or reaches the database by itself: read from the AST, no write verb in any spelling the AST can see (member call, string-key element access, destructured, bound, .call, computed access, reflection on a db handle), no tisProjectsTable or payload name, no `db`, and no raw SQL write of any table in any string or template (any letter case)",
+    msg: "no route touches tis_projects, request_payload or result_payload, and none writes or reaches the database by itself: read from the AST, no write verb in any spelling the AST can see (member call, string-key element access, destructured, bound, .call, computed access, reflection on a db handle), no tisProjectsTable or payload name, no `db`, and no raw SQL in a write's shape in any string or template (any letter case; the shapes are listed at rawSqlWrites)",
     test: (d) => {
       const sc = dbScan(d.src.routes);
       const raw = rawSqlWrites(d.src.routes);
@@ -2279,7 +2414,7 @@ const CHECKS = [
   {
     id: "store-dispositions-are-append-only",
     on: "store",
-    msg: "the disposition log is only ever inserted into, and only through the query builder: no update or delete of it, no delete of ANY table (runs -> findings -> dispositions cascade on delete, so deleting a run or a finding erases its dispositions), no upsert, no raw SQL write of any table in any letter case (a raw INSERT INTO the log included), and no write verb reached in a form that hides its table (destructured, bound, .call, computed access, a table that is not a plain identifier) — ACCEPTED_RISK has to record who accepted it and when",
+    msg: "the disposition log is only ever inserted into, and only through the query builder: no update or delete of it, no delete of ANY table (runs -> findings -> dispositions cascade on delete, so deleting a run or a finding erases its dispositions), no upsert, no raw SQL in a write's shape in any letter case (a raw INSERT INTO the log included; the shapes, and what they do not read, are listed at rawSqlWrites), and no write verb reached in a form that hides its table (destructured, bound, .call, computed access, a table that is not a plain identifier) — ACCEPTED_RISK has to record who accepted it and when",
     test: (d) => {
       const sc = dbScan(d.src.store);
       const D = "studyProofreadDispositionsTable";
@@ -2336,7 +2471,7 @@ const CHECKS = [
   {
     id: "store-no-raw-study-sql",
     on: "store",
-    msg: "no raw SQL in the store writes ANY table, in any letter case and with comments between the words — no UPDATE .. SET, INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT .. DO UPDATE, MERGE INTO, DROP TABLE / SCHEMA / OWNED, ALTER TABLE, COPY .. FROM or SELECT .. INTO in any string, template or `+` chain of them, read for SQL shape (FOR UPDATE row locking exempt; prose such as \"update failed\" is not SQL) — and none names tis_projects: the builder scans above cannot see SQL text",
+    msg: "no raw SQL in the store has a write's shape, in any letter case and with comments between the words — no UPDATE .. SET or UPDATE of a table-like target, INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT .. DO UPDATE, MERGE INTO, DROP TABLE / SCHEMA / OWNED, ALTER TABLE, COPY .. FROM or SELECT .. INTO in any string, template or `+` chain of them, read for SQL shape with this schema's table names (FOR UPDATE row locking exempt; prose such as \"update failed\" is not SQL, prose in a SQL shape is refused; what is not read is listed at rawSqlWrites) — and none names tis_projects: the builder scans above cannot see SQL text",
     test: (d) => {
       const raw = rawSqlWrites(d.src.store);
       // the old text scans, kept as extra conjuncts (they read the code too, not only literals)
@@ -2406,7 +2541,7 @@ const CHECKS = [
   {
     id: "runner-has-no-db-writes",
     on: "runner",
-    msg: "the runner's OWN code has no database write in any spelling, names no study table or payload, has no `db` of its own, writes no raw SQL of any table in any string or template (any letter case), and its @workspace/db import is type-only; that it reaches the database only through the store is the import whitelist's claim, not this scan's",
+    msg: "the runner's OWN code has no database write in any spelling, names no study table or payload, has no `db` of its own, has no raw SQL in a write's shape in any string or template (any letter case; the shapes are listed at rawSqlWrites), and its @workspace/db import is type-only; that it reaches the database only through the store is the import whitelist's claim, not this scan's",
     test: (d) => {
       const sc = dbScan(d.src.runner);
       const raw = rawSqlWrites(d.src.runner);
@@ -2664,20 +2799,25 @@ const LEGIT = [
   ["a column read by a computed key", `const [row] = ${SEL}; const col = args.status; void (row as any)?.[col];`],
   ["a query built, then awaited, then indexed (awaiting a builder yields rows)", "const qb = db.select().from(studyProofreadRunsTable); const rows = await qb; const i = rows.length - 1; void rows[i];"],
   ["a transaction that inserts and updates the run table", "await db.transaction(async (tx) => { const [r] = await tx.select().from(studyProofreadRunsTable).where(eq(studyProofreadRunsTable.id, args.runId)); if (r) await tx.update(studyProofreadRunsTable).set({ attempts: r.attempts }).where(eq(studyProofreadRunsTable.id, r.id)); });"],
-].map(([what, code]) => ({ label: `store completeRun: ${what}`, apply: edit("store", "  if (args.findings.length === 0) return;", `  { ${code} }\n  if (args.findings.length === 0) return;`) }));
+  // a transaction whose callback hands back a bare builder: the transaction awaits it, so what
+  // comes back is rows (round 5 found these refused)
+  ["a concise transaction that returns a select builder, its rows indexed, spread and keyed", "const rows = await db.transaction(async (tx) => tx.select().from(studyProofreadRunsTable).where(eq(studyProofreadRunsTable.id, args.runId))); const i = rows.length - 1; void rows[i]; void { ...rows[0] }; void Object.keys(rows[0] ?? {}); const out: Record<string, unknown> = {}; for (const r of rows) out[r.id] = { ...r };"],
+  ["a concise transaction that returns an update's returning(), the row spread", "const [r2] = await db.transaction(async (tx) => tx.update(studyProofreadRunsTable).set({ attempts: 1 }).where(eq(studyProofreadRunsTable.id, args.runId)).returning()); void { ...r2 };"],
+  ["a transaction whose block returns a select builder, its rows indexed", "const rows = await db.transaction(async (tx) => { return tx.select().from(studyProofreadRunsTable).where(eq(studyProofreadRunsTable.id, args.runId)); }); void rows[rows.length - 1];"],
+].map(([what, code]) => ({ label: `store completeRun: ${what}`, file: "store", apply: edit("store", "  if (args.findings.length === 0) return;", `  { ${code} }\n  if (args.findings.length === 0) return;`) }));
 LEGIT.push(
-  { label: "carryForwardDispositions: the prior row spread into the insert", apply: edit("store", "    await db.insert(studyProofreadDispositionsTable).values({\n      findingId: nf.id,\n      disposition: prior[0].disposition,\n      note: prior[0].note,\n      sourceLabel: prior[0].sourceLabel,\n      actorUserId: prior[0].actorUserId,\n      createdAt: prior[0].createdAt,\n    });", "    await db.insert(studyProofreadDispositionsTable).values({ ...prior[0], findingId: nf.id } as any);") },
-  { label: "carryForwardDispositions: prior[prior.length - 1]", apply: edit("store", "    if (!prior[0]) continue;", "    if (!prior[0]) continue;\n    void prior[prior.length - 1];") },
-  { label: "latestRunForProject: [...findings].sort()", apply: edit("store", "  const dispositions = findings.length", "  const sortedF = [...findings].sort((a, b) => a.id.localeCompare(b.id)); void sortedF;\n  const dispositions = findings.length") },
+  { label: "carryForwardDispositions: the prior row spread into the insert", file: "store", apply: edit("store", "    await db.insert(studyProofreadDispositionsTable).values({\n      findingId: nf.id,\n      disposition: prior[0].disposition,\n      note: prior[0].note,\n      sourceLabel: prior[0].sourceLabel,\n      actorUserId: prior[0].actorUserId,\n      createdAt: prior[0].createdAt,\n    });", "    await db.insert(studyProofreadDispositionsTable).values({ ...prior[0], findingId: nf.id } as any);") },
+  { label: "carryForwardDispositions: prior[prior.length - 1]", file: "store", apply: edit("store", "    if (!prior[0]) continue;", "    if (!prior[0]) continue;\n    void prior[prior.length - 1];") },
+  { label: "latestRunForProject: [...findings].sort()", file: "store", apply: edit("store", "  const dispositions = findings.length", "  const sortedF = [...findings].sort((a, b) => a.id.localeCompare(b.id)); void sortedF;\n  const dispositions = findings.length") },
   ...[
     "function firstN(findings: ProofreadFinding[], n: number): ProofreadFinding[] { const out: ProofreadFinding[] = []; for (let i = 0; i < n; i++) out.push(findings[i]!); return out; }",
     "function pick(run: Record<string, unknown>, key: string): unknown { return run[key]; }",
     "function withStatus(row: Record<string, unknown>) { return { ...row, status: 'x' }; }",
     "function count(dispositions: Record<string, number>): number { let n = 0; for (const k in dispositions) n += dispositions[k]!; return n; }",
     "function second(prior: number[], i: number) { return prior[i]; }",
-  ].map((fn) => ({ label: `a module-level helper whose parameter shares a name with a query result elsewhere: ${fn.slice(9, fn.indexOf("("))}`, apply: edit("store", "export async function insertQueuedRun(args: {", `${fn}\n\nexport async function insertQueuedRun(args: {`) })),
-  { label: "runner: a local array called tx, indexed", apply: edit("runner", "    const rec: StudyRecord", "    const tx = ['a']; const i = 0; void tx[i];\n    const rec: StudyRecord") },
-  { label: "routes: a local array called tx, indexed", apply: edit("routes", "const router: IRouter = Router();", "const router: IRouter = Router();\nconst tx = ['a']; const i = 0; void tx[i];") },
+  ].map((fn) => ({ label: `a module-level helper whose parameter shares a name with a query result elsewhere: ${fn.slice(9, fn.indexOf("("))}`, file: "store", apply: edit("store", "export async function insertQueuedRun(args: {", `${fn}\n\nexport async function insertQueuedRun(args: {`) })),
+  { label: "runner: a local array called tx, indexed", file: "runner", apply: edit("runner", "    const rec: StudyRecord", "    const tx = ['a']; const i = 0; void tx[i];\n    const rec: StudyRecord") },
+  { label: "routes: a local array called tx, indexed", file: "routes", apply: edit("routes", "const router: IRouter = Router();", "const router: IRouter = Router();\nconst tx = ['a']; const i = 0; void tx[i];") },
 );
 
 const MUTATIONS = [
@@ -3798,6 +3938,17 @@ const MUTATIONS = [
     ["COPY .. FROM PROGRAM into the log", "await db.execute(sql`copy study_proofread_dispositions from program 'true'`);"],
     ["SELECT .. INTO a copy of the log", "await db.execute(sql`select * into study_proofread_dispositions_copy from study_proofread_dispositions`);"],
     ["a delete with a bare alias on the log", "await db.execute(sql`delete from study_proofread_dispositions d where d.id = ${args.runId}`);"],
+    // tables with no underscore, named from the schema (firms cascades to studies, runs and the log)
+    ["a delete with a bare alias on firms, inside the loader", "await db.execute(sql`delete from firms f where f.id = ${args.runId}`);", "loader"],
+    ["a delete with a bare alias on firms", "await db.execute(sql`delete from firms f where f.id = ${args.runId}`);"],
+    ["a delete from users with a substituted condition", "{ const cond = sql.raw(\"where true\"); await db.execute(sql`delete from users ${cond}`); }"],
+    ["an insert into users with an alias", "await db.execute(sql`insert into users as u (id) values (${args.runId})`);"],
+    ["an insert into firms from a table", "await db.execute(sql.raw(\"insert into firms table firms_copy\"));"],
+    // an UPDATE whose SET is not in the same literal
+    ["an update of firms whose SET is a substitution", "{ const setF = sql.raw(\"set name = null\"); await db.execute(sql`update firms ${setF} where id = ${args.runId}`); }"],
+    ["an update of the log by its table object, with the SET a substitution", "{ const setF = sql.raw(\"set note = null\"); await db.execute(sql`update ${studyProofreadDispositionsTable} ${setF}`); }"],
+    ["an update whose table and SET are both substitutions", "{ const tbl = sql.raw(\"study_proofread_dispositions\"); const setF = sql.raw(\"set note = null\"); await db.execute(sql`update ${tbl} ${setF}`); }"],
+    ["an update + chain whose SET is not a literal", "await db.execute(sql.raw(\"update \" + \"tis_\" + \"projects \" + (process.env.W ?? \"\")));"],
   ].map(([what, code, place]) => ({
     label: `store: raw SQL, ${what}`,
     file: "store",
@@ -3807,6 +3958,30 @@ const MUTATIONS = [
         ? edit("store", "  return row ?? null;\n}\n\n/**\n * Write a run's outcome.", `  ${code}\n  return row ?? null;\n}\n\n/**\n * Write a run's outcome.`)
         : edit("store", "  if (args.findings.length === 0) return;", `  ${code}\n  if (args.findings.length === 0) return;`),
   })),
+  {
+    label: "runner: a raw SQL delete with a bare alias on users (a schema table with no underscore)",
+    file: "runner",
+    flips: ["runner-has-no-db-writes"],
+    apply: edit("runner", "    const rec: StudyRecord", '    const q = "delete from users u where u.id = $1";\n    const rec: StudyRecord'),
+  },
+  {
+    label: "runner: a raw SQL update whose table and SET are substitutions",
+    file: "runner",
+    flips: ["runner-has-no-db-writes"],
+    apply: edit("runner", "    const rec: StudyRecord", "    const tq = \"t\"; const sq = \"\"; const q = `update ${tq} ${sq}`;\n    const rec: StudyRecord"),
+  },
+  {
+    label: "routes: a raw SQL delete with a bare alias on firms",
+    file: "routes",
+    flips: ["routes-do-not-touch-study"],
+    apply: edit("routes", "const router: IRouter = Router();", 'const router: IRouter = Router();\nconst q6 = "delete from firms f where f.id = $1";'),
+  },
+  {
+    label: "routes: a raw SQL update of users whose SET is a substitution",
+    file: "routes",
+    flips: ["routes-do-not-touch-study"],
+    apply: edit("routes", "const router: IRouter = Router();", "const router: IRouter = Router();\nconst s7 = \"\"; const q7 = `update users ${s7}`;"),
+  },
   {
     label: "runner: a raw SQL delete in a string (lowercase)",
     file: "runner",
@@ -4450,6 +4625,10 @@ const MUTATIONS = [
 ];
 
 const teeth = new Map(CHECKS.map((c) => [c.id, c]));
+// A file's code as the checks see it, for "did this edit change anything": comment-stripped, with
+// runs of whitespace collapsed, so an edit that lands in a comment, or only adds a blank line where
+// a comment was, counts as no change.
+const codeOf = (d, file) => JSON.stringify(d[file], (_k, v) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim() : v));
 for (const m of MUTATIONS) {
   const unknown = [...m.flips, ...(m.also ?? [])].filter((id) => !teeth.has(id));
   ok(unknown.length === 0, `teeth: "${m.label}" names only real checks`, unknown.length ? `unknown check id(s): ${unknown.join(", ")}` : undefined);
@@ -4458,7 +4637,7 @@ for (const m of MUTATIONS) {
   const after = derive(mutated);
   // Compared on the comment-STRIPPED text: an edit that landed in a comment
   // changes the raw file and nothing a check can see.
-  const changed = JSON.stringify(before[m.file]) !== JSON.stringify(after[m.file]);
+  const changed = codeOf(before, m.file) !== codeOf(after, m.file);
   ok(changed, `teeth: "${m.label}" actually changes the code (an edit that applied to nothing, or only to a comment, would prove nothing)`);
   const now = run(mutated).filter((id) => !failing.includes(id));
   const want = [...new Set([...m.flips, ...(m.also ?? [])])].sort().join(", ");
@@ -4473,7 +4652,13 @@ for (const m of MUTATIONS) {
 }
 
 for (const l of LEGIT) {
-  const now = run(l.apply(sources)).filter((id) => !failing.includes(id));
+  const mutated = l.apply(sources);
+  // The rule the mutations obey, for the same reason: an edit whose anchor is gone (the production
+  // line was reworded), or that lands only in a comment, leaves the code as it was, and a case that
+  // tests nothing stays green forever. Compared on the comment-stripped text of the case's file.
+  const changed = typeof l.file === "string" && l.file in sources && codeOf(derive(sources), l.file) !== codeOf(derive(mutated), l.file);
+  ok(changed, `stays green: "${l.label}" actually changes the code of ${l.file} (an edit that applied to nothing, or only to a comment, would prove nothing)`);
+  const now = run(mutated).filter((id) => !failing.includes(id));
   ok(now.length === 0, `stays green: "${l.label}" is ordinary code, and no check refuses it`, now.length ? `went red: ${now.join(", ")}` : undefined);
 }
 
