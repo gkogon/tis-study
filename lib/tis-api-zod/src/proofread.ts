@@ -72,3 +72,77 @@ export const ProofreadDispositionBody = z
   });
 
 export type ProofreadDispositionBodyT = z.infer<typeof ProofreadDispositionBody>;
+
+/**
+ * What GET /projects/:id/proofread answers: the project's newest run, or
+ * `status: "none"` (with `withheld: 0` and empty lists) when it has none.
+ *
+ * Findings and dispositions are audience-filtered. A finding whose audience is
+ * admin — a DEFECT, a software fault routed to the software team — is never
+ * sent, and neither is any disposition of it. It is not silent either: a
+ * DEFECT holds the study until a re-run no longer raises it
+ * (TIS-PROOFREAD-PROTOCOL.md, rule 2), so `withheld` is how many such findings
+ * the run carries, and that number is all that leaves the server — no type,
+ * clause, path or message of a withheld finding. Strict objects: a key not
+ * named here (an audience, an actor, a run's error text) is not part of the
+ * answer.
+ *
+ * The route does not parse its own answer with this; verify-proofread-routes.mjs
+ * pins the route's two answers to these keys and evaluates this schema.
+ */
+export const ProofreadReadResponse = z
+  .object({
+    status: z.enum(["none", "queued", "running", "rules_ready", "ready", "failed"]),
+    runId: z.string().uuid().optional(),
+    revision: z.number().int().positive().optional(),
+    protocolVersion: z.string().optional(),
+    rulesVersion: z.string().optional(),
+    engineStamp: z.string().optional(),
+    inputManifest: z.record(z.string(), z.boolean()).optional(),
+    coverage: z.array(
+      z
+        .object({
+          clauseId: z.string(),
+          section: z.number().int(),
+          status: z.enum(["ran", "not-run"]),
+          reason: z.string().optional(),
+          note: z.string().optional(),
+        })
+        .strict(),
+    ),
+    createdAt: z.string().optional(),
+    finishedAt: z.string().nullable().optional(),
+    withheld: z.number().int().nonnegative(),
+    findings: z.array(
+      z
+        .object({
+          id: z.string().uuid(),
+          clauseId: z.string(),
+          section: z.number().int(),
+          type: ProofreadType,
+          title: z.string(),
+          detail: z.string(),
+          sourceLabel: z.string(),
+          readPaths: z.array(
+            z.object({ path: z.string(), value: z.union([z.string(), z.number(), z.boolean(), z.null()]) }).strict(),
+          ),
+          remedy: z.string(),
+          fingerprint: z.string(),
+        })
+        .strict(),
+    ),
+    dispositions: z.array(
+      z
+        .object({
+          findingId: z.string().uuid(),
+          disposition: ProofreadDisposition,
+          note: z.string().nullable(),
+          sourceLabel: z.string().nullable(),
+          createdAt: z.string(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+export type ProofreadReadResponseT = z.infer<typeof ProofreadReadResponse>;

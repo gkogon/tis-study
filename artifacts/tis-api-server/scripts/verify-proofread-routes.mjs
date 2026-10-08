@@ -1147,7 +1147,7 @@ function evalContract(code) {
     // check then goes red by name) instead of every contract check going red on a ReferenceError.
     return new Function(
       "z",
-      `${js}\nreturn { ProofreadType, ProofreadDisposition, ProofreadDispositionBody, OFFERED_DISPOSITIONS: typeof OFFERED_DISPOSITIONS === "undefined" ? undefined : OFFERED_DISPOSITIONS };`,
+      `${js}\nreturn { ProofreadType, ProofreadDisposition, ProofreadDispositionBody, OFFERED_DISPOSITIONS: typeof OFFERED_DISPOSITIONS === "undefined" ? undefined : OFFERED_DISPOSITIONS, ProofreadReadResponse: typeof ProofreadReadResponse === "undefined" ? undefined : ProofreadReadResponse };`,
     )(z);
   } catch {
     return null;
@@ -1235,6 +1235,88 @@ function routeDecisionApplies(routesSrc, map) {
   const js = ts.transpileModule(fn.getText(), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
   return new Function("OFFERED_DISPOSITIONS", `${js}\nreturn decisionApplies;`)(map);
 }
+// What GET answers, written out by hand: this is the claim, and both the route's two answers
+// and the contract's ProofreadReadResponse are held to it. A finding whose audience is admin (a
+// DEFECT) is never sent; `withheld` is how many there are, and that count is all that leaves.
+const READ_KEYS = [
+  "status",
+  "runId",
+  "revision",
+  "protocolVersion",
+  "rulesVersion",
+  "engineStamp",
+  "inputManifest",
+  "coverage",
+  "createdAt",
+  "finishedAt",
+  "withheld",
+  "findings",
+  "dispositions",
+];
+/** The no-run answer, key by key, each value as its source text reads (whitespace-folded). */
+const NONE_ANSWER = { status: '"none"', withheld: "0", findings: "[]", coverage: "[]", dispositions: "[]" };
+const WITHHELD_COUNT = 'const withheld = findings.filter((f) => f.audience === "admin").length;';
+/** A run's answer as the contract must accept it: a finished run with one visible finding and two withheld. */
+const READ_SAMPLE = {
+  status: "rules_ready",
+  runId: "0b1f6c2e-8f4d-4c1e-9a55-6f1d2f9a7c10",
+  revision: 2,
+  protocolVersion: "2026-10-07.1",
+  rulesVersion: "rules-1",
+  engineStamp: "stamp-1",
+  inputManifest: { currentVc: true, agencies: false },
+  coverage: [
+    { clauseId: "screeningClampDisclosed", section: 4, status: "ran", note: "37 of 40 reported delay fields judged" },
+    { clauseId: "criteriaNamed", section: 5, status: "not-run", reason: "no agencies on the record" },
+  ],
+  createdAt: "2026-10-07T12:00:00.000Z",
+  finishedAt: null,
+  withheld: 2,
+  findings: [
+    {
+      id: "5d1c3f5e-0a52-4a6a-8d0c-3b7e2b0e9f11",
+      clauseId: "screeningClampDisclosed",
+      section: 4,
+      type: "DISCLOSE",
+      title: "t",
+      detail: "d",
+      sourceLabel: "s",
+      readPaths: [{ path: "result.affectedIntersections[0].delay", value: 300 }],
+      remedy: "r",
+      fingerprint: "fp",
+    },
+  ],
+  dispositions: [{ findingId: "5d1c3f5e-0a52-4a6a-8d0c-3b7e2b0e9f11", disposition: "DISCLOSED", note: null, sourceLabel: null, createdAt: "2026-10-07T12:05:00.000Z" }],
+};
+/**
+ * The object literals GET hands to `res.json(...)`, read with the parser: each answer's keys, with
+ * its value's source text (whitespace-folded), and how many members are not a plain `key: value`
+ * or shorthand (a spread, a method, a computed key) — those carry keys no text names.
+ */
+function readAnswers(getText) {
+  if (!getText) return [];
+  const sf = parse(getText);
+  const out = [];
+  const visit = (n) => {
+    if (ts.isCallExpression(n) && n.expression.getText(sf) === "res.json" && n.arguments.length === 1 && ts.isObjectLiteralExpression(n.arguments[0])) {
+      const props = {};
+      let other = 0;
+      for (const p of n.arguments[0].properties) {
+        if (ts.isPropertyAssignment(p) && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))) props[p.name.text] = sq(p.initializer.getText(sf));
+        else if (ts.isShorthandPropertyAssignment(p)) props[p.name.text] = p.name.text;
+        else other++;
+      }
+      out.push({ props, other });
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+}
+const answersOf = (d) => readAnswers(getSeg(d));
+const noneAnswers = (d) => answersOf(d).filter((a) => a.props.status === '"none"');
+const runAnswers = (d) => answersOf(d).filter((a) => a.props.status !== '"none"');
+const entriesSorted = (o) => JSON.stringify(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
 const FIRM_LOOKUP = "getOrCreateFirmForUser(user.id, { email: user.email, firstName: user.firstName, lastName: user.lastName })";
 
 /** What a check sees: every source comment-stripped, plus the evaluated contract. */
@@ -1631,6 +1713,42 @@ const CHECKS = [
         has(g, "const visibleIds = new Set(visible.map((f) => f.id));") &&
         has(g, "findings: visible.map((f) => ({") &&
         has(g, "dispositions: dispositions .filter((d) => visibleIds.has(d.findingId)) .map((d) => ({")
+      );
+    },
+  },
+  {
+    id: "get-withheld-is-a-count",
+    on: "routes",
+    msg: `GET counts the run's admin-audience findings, once (${WITHHELD_COUNT}), and its run answer carries that number as \`withheld\` — a DEFECT is hidden from the engineer, never silent: the count is all that leaves, never the findings, their clauses, types, paths or messages`,
+    test: (d) => {
+      const runs = runAnswers(d);
+      return occ(getSeg(d), WITHHELD_COUNT) === 1 && runs.length === 1 && runs[0].props.withheld === "withheld";
+    },
+  },
+  {
+    id: "get-none-withholds-nothing",
+    on: "routes",
+    msg: 'a project with no run is answered exactly { status: "none", withheld: 0, findings: [], coverage: [], dispositions: [] }',
+    test: (d) => {
+      const n = noneAnswers(d);
+      return n.length === 1 && n[0].other === 0 && entriesSorted(n[0].props) === entriesSorted(NONE_ANSWER);
+    },
+  },
+  {
+    id: "get-answers-are-the-read-shape",
+    on: "routes",
+    msg: `GET answers twice and each answer carries exactly the read shape's keys, no spread: the run's ${READ_KEYS.join(", ")}; the no-run answer ${Object.keys(NONE_ANSWER).join(", ")} — so nothing about a withheld finding can ride out under a new key`,
+    test: (d) => {
+      const n = noneAnswers(d);
+      const r = runAnswers(d);
+      return (
+        answersOf(d).length === 2 &&
+        n.length === 1 &&
+        r.length === 1 &&
+        n[0].other === 0 &&
+        r[0].other === 0 &&
+        same(Object.keys(r[0].props), READ_KEYS) &&
+        same(Object.keys(n[0].props), Object.keys(NONE_ANSWER))
       );
     },
   },
@@ -2069,6 +2187,32 @@ const CHECKS = [
           typeof m === "object" &&
           same(Object.keys(m), Object.keys(OFFERED_BY_TYPE)) &&
           Object.entries(OFFERED_BY_TYPE).every(([t, want]) => Array.isArray(m[t]) && m[t].length === want.length && same(m[t], want))
+        );
+      }),
+  },
+  {
+    id: "contract-read-response",
+    on: "contract",
+    msg: `the contract's ProofreadReadResponse, evaluated, is GET's answer: exactly the read keys, required just ${Object.keys(NONE_ANSWER).join(", ")}; \`withheld\` a whole number of 0 or more and nothing else (not missing, negative, fractional, a string, null, or a list or object of findings); strict, so an extra key, or a finding that carries its audience, is refused; and it accepts the no-run answer and a finished run's answer`,
+    test: (d) =>
+      safe(() => {
+        const S = d.mod.ProofreadReadResponse;
+        if (!S || typeof S.safeParse !== "function" || !S.shape) return false;
+        const accepts = (v) => S.safeParse(v).success;
+        const none = { status: "none", withheld: 0, findings: [], coverage: [], dispositions: [] };
+        const keys = Object.keys(S.shape);
+        const required = keys.filter((k) => !S.shape[k].isOptional());
+        const { withheld: _w, ...noCount } = none;
+        return (
+          same(keys, READ_KEYS) &&
+          same(required, Object.keys(NONE_ANSWER)) &&
+          accepts(none) &&
+          accepts(READ_SAMPLE) &&
+          accepts({ ...READ_SAMPLE, withheld: 0 }) &&
+          !accepts(noCount) &&
+          [undefined, -1, 1.5, "1", null, [], [{ clauseId: "losMatchesDelay" }], { losMatchesDelay: 1 }].every((w) => !accepts({ ...none, withheld: w })) &&
+          !accepts({ ...none, defects: [] }) &&
+          !accepts({ ...READ_SAMPLE, findings: [{ ...READ_SAMPLE.findings[0], audience: "admin" }] })
         );
       }),
   },
@@ -2724,9 +2868,70 @@ const MUTATIONS = [
     apply: edit("routes", "findings: visible.map(", "findings: findings.map("),
   },
   {
+    label: "count the visible findings as withheld",
+    file: "routes",
+    flips: ["get-withheld-is-a-count"],
+    apply: edit("routes", 'const withheld = findings.filter((f) => f.audience === "admin").length;', 'const withheld = findings.filter((f) => f.audience !== "admin").length;'),
+  },
+  {
+    label: "count every finding as withheld",
+    file: "routes",
+    flips: ["get-withheld-is-a-count"],
+    apply: edit("routes", 'const withheld = findings.filter((f) => f.audience === "admin").length;', "const withheld = findings.length;"),
+  },
+  {
+    label: "send the withheld findings themselves under `withheld`",
+    file: "routes",
+    flips: ["get-withheld-is-a-count"],
+    apply: edit("routes", 'const withheld = findings.filter((f) => f.audience === "admin").length;', 'const withheld = findings.filter((f) => f.audience === "admin");'),
+  },
+  {
+    label: "send the withheld findings' clauses under `withheld`",
+    file: "routes",
+    flips: ["get-withheld-is-a-count"],
+    apply: edit("routes", 'const withheld = findings.filter((f) => f.audience === "admin").length;', 'const withheld = findings.filter((f) => f.audience === "admin").map((f) => f.clauseId);'),
+  },
+  {
+    label: "put something other than the count in the answer's `withheld`",
+    file: "routes",
+    flips: ["get-withheld-is-a-count"],
+    apply: edit("routes", "      withheld,\n", '      withheld: findings.filter((f) => f.audience === "admin").map((f) => f.type),\n'),
+  },
+  {
+    label: "drop `withheld` from the run's answer",
+    file: "routes",
+    flips: ["get-withheld-is-a-count", "get-answers-are-the-read-shape"],
+    apply: edit("routes", "      withheld,\n", ""),
+  },
+  {
+    label: "send each withheld finding's type beside the count",
+    file: "routes",
+    flips: ["get-answers-are-the-read-shape"],
+    apply: edit("routes", "      withheld,\n", '      withheld,\n      withheldTypes: findings.filter((f) => f.audience === "admin").map((f) => f.type),\n'),
+  },
+  {
+    label: "spread the run row into the answer",
+    file: "routes",
+    flips: ["get-answers-are-the-read-shape"],
+    apply: edit("routes", "res.json({\n      status: run.status,", "res.json({\n      ...run,\n      status: run.status,"),
+  },
+  {
+    label: "answer a project with no run without `withheld`",
+    file: "routes",
+    flips: ["get-none-withholds-nothing", "get-answers-are-the-read-shape"],
+    apply: edit("routes", 'res.json({ status: "none", withheld: 0, findings: [], coverage: [], dispositions: [] });', 'res.json({ status: "none", findings: [], coverage: [], dispositions: [] });'),
+  },
+  {
+    label: "tell a project with no run that one item is withheld",
+    file: "routes",
+    flips: ["get-none-withholds-nothing"],
+    apply: edit("routes", 'res.json({ status: "none", withheld: 0,', 'res.json({ status: "none", withheld: 1,'),
+  },
+  {
     label: "echo run.error in the read response",
     file: "routes",
     flips: ["routes-never-echo-internals"],
+    also: ["get-answers-are-the-read-shape"],
     apply: edit("routes", "finishedAt: run.finishedAt?.toISOString() ?? null,", "finishedAt: run.finishedAt?.toISOString() ?? null,\n      error: run.error,"),
   },
   {
@@ -3431,6 +3636,48 @@ const MUTATIONS = [
     file: "contract",
     flips: ["contract-offered-decisions"],
     apply: edit("contract", "export const OFFERED_DISPOSITIONS = {", "export const OFFERED = {"),
+  },
+  {
+    label: "make the read answer's `withheld` optional",
+    file: "contract",
+    flips: ["contract-read-response"],
+    apply: edit("contract", "withheld: z.number().int().nonnegative(),", "withheld: z.number().int().nonnegative().optional(),"),
+  },
+  {
+    label: "let `withheld` be any number (negative, fractional)",
+    file: "contract",
+    flips: ["contract-read-response"],
+    apply: edit("contract", "withheld: z.number().int().nonnegative(),", "withheld: z.number(),"),
+  },
+  {
+    label: "let `withheld` carry the withheld findings",
+    file: "contract",
+    flips: ["contract-read-response"],
+    apply: edit("contract", "withheld: z.number().int().nonnegative(),", "withheld: z.union([z.number().int().nonnegative(), z.array(z.unknown())]),"),
+  },
+  {
+    label: "drop `withheld` from the read answer",
+    file: "contract",
+    flips: ["contract-read-response"],
+    apply: edit("contract", "    withheld: z.number().int().nonnegative(),\n", ""),
+  },
+  {
+    label: "let a finding in the read answer carry its audience",
+    file: "contract",
+    flips: ["contract-read-response"],
+    apply: edit("contract", "          fingerprint: z.string(),\n", "          fingerprint: z.string(),\n          audience: z.string().optional(),\n"),
+  },
+  {
+    label: "make the read answer non-strict (an extra key passes)",
+    file: "contract",
+    flips: ["contract-read-response"],
+    apply: edit("contract", "  })\n  .strict();\n\nexport type ProofreadReadResponseT", "  });\n\nexport type ProofreadReadResponseT"),
+  },
+  {
+    label: "rename the read answer's export",
+    file: "contract",
+    flips: ["contract-read-response"],
+    apply: edit("contract", "export const ProofreadReadResponse = z", "export const ProofreadRead = z"),
   },
   {
     label: "banned copy in the contract's message",

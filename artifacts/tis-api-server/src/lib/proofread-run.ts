@@ -172,6 +172,16 @@ export async function claimAndRunOne(): Promise<boolean> {
     const prev = await previousRunForProject(run.projectId, run.revision);
     if (prev) await carryForwardDispositions(run.id, prev.id, prev.rulesVersion === run.rulesVersion);
     await completeRun({ runId: run.id, status: "rules_ready", findings: [] });
+    // A DEFECT is a software fault: the engineer never sees one (GET counts it
+    // as withheld) and nobody in the app can rule on it, so this line is how
+    // the software team hears of it — once per finished run. The run, the
+    // project and the clause, and nothing else from the finding: its text and
+    // the values it read quote the study.
+    for (const f of findings) {
+      if (f.type === "DEFECT") {
+        logger.warn({ runId: run.id, projectId: run.projectId, clause: f.clauseId }, "proofread.defect_raised");
+      }
+    }
     logger.info({ runId: run.id, findings: findings.length }, "proofread.rules_ready");
     return true;
   } catch (err) {

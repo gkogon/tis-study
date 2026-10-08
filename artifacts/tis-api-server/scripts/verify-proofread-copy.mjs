@@ -16,7 +16,8 @@
  *     never checked is not clean", "findings appear only for a finished run",
  *     "a clause that judged part of the record says so", "an ordinary study is not
  *     presented as an alarm", "a disclosed blocker is still open",
- *     "a study in which no clause could run says nothing was checked". A scan for `status === "none"` proves the characters
+ *     "a study in which no clause could run says nothing was checked", "a run carrying a finding the server withheld
+ *     (a DEFECT) is never a clear". A scan for `status === "none"` proves the characters
  *     exist, not that the branch runs before the empty-findings one. So the panel is
  *     bundled with the repo's own esbuild, ProofreadView is rendered with
  *     react-dom/server for each status, and the assertions read what a user would
@@ -189,7 +190,8 @@ const mk = (clauseId, type, o = {}) => ({
 // Coverage defaults to one clause that ran and judged all of its record. An EMPTY coverage is not the neutral choice:
 // it means no clause ran, and the panel must say nothing was checked (see "nothing was checked" below).
 const FULL_COVERAGE = [{ clauseId: "growthOverrideDisclosed", section: 1, status: "ran" }];
-const runOf = (status, o = {}) => ({ status, runId: "run-uuid", coverage: FULL_COVERAGE, findings: [], dispositions: [], ...o });
+// `withheld: 0` as the route sends it: the count of findings it did not send (a DEFECT, audience admin).
+const runOf = (status, o = {}) => ({ status, runId: "run-uuid", coverage: FULL_COVERAGE, findings: [], dispositions: [], withheld: 0, ...o });
 const FINISHED = ["rules_ready", "ready"];
 const PENDING = ["queued", "running"];
 const ALL_STATUSES = ["none", "queued", "running", "rules_ready", "ready", "failed"];
@@ -325,6 +327,93 @@ await group("nothing was checked is not nothing found", () => {
   ok(/in the clauses that ran/.test(summaryOf(view(runOf("rules_ready", { coverage: [], findings: ordinary }))) ?? ""), "no coverage: a header over findings is scoped to the clauses that ran");
   // A run in which something did run keeps the old wording.
   ok(!NOTHING.test(text(view(runOf("rules_ready", { coverage: [...twelve, { clauseId: "x", section: 1, status: "ran" }] })))), "one clause ran: it is not 'nothing was checked'");
+});
+
+// ─── a finding the server withheld ──────────────────────────────────────────────────
+// GET never sends a finding whose audience is admin (a DEFECT: a software fault, routed to
+// the software team) and says only how many there are (`withheld`). A DEFECT holds the study
+// until a re-run no longer raises it, so a run carrying one is never read as clear: before this,
+// a run whose only finding was a DEFECT rendered "Nothing flagged" under a green check.
+await group("a finding routed to the software team is never a clear", async () => {
+  const ROUTED_1 = "1 item on this study was routed to the software team. Hold the study until a re-run no longer raises it.";
+  const ROUTED_2 = "2 items on this study were routed to the software team. Hold the study until a re-run no longer raises them.";
+  const routedOf = (html) => /<p\b[^>]*data-testid="proofread-withheld"[^>]*>([^<]*)<\/p>/.exec(html)?.[1] ?? null;
+  for (const status of FINISHED) {
+    // The case that was a false clear: nothing visible, full coverage, one withheld.
+    const h = keep(view(runOf(status, { withheld: 1 })));
+    const t = text(h);
+    ok(!/Nothing flagged/i.test(t), `${status}, 1 withheld and nothing visible: does NOT say nothing was flagged`);
+    ok(!/emerald/.test(h), `${status}, 1 withheld and nothing visible: no green check`);
+    ok(!/nothing was checked/.test(t), `${status}, 1 withheld and nothing visible: does not say nothing was checked either (a clause ran, and raised it)`);
+    ok(routedOf(h) === ROUTED_1 && RED.test(/<p\b[^>]*data-testid="proofread-withheld"[^>]*>/.exec(h)?.[0] ?? ""), `${status}, 1 withheld: says, in red, that it was routed to the software team and holds the study (${JSON.stringify(routedOf(h))})`);
+    const s1 = summaryOf(h) ?? "";
+    ok(
+      /^1 open item to resolve before this study is called complete\.$/.test(s1) && summaryRed(h),
+      `${status}, 1 withheld and nothing visible: the header counts it as an open hold, in red (${JSON.stringify(s1)})`,
+    );
+  }
+  // Nothing withheld: exactly the panel a run without the field draws.
+  for (const [name, o] of [
+    ["full coverage", {}],
+    ["partial coverage", { coverage: [{ clauseId: "a", section: 4, status: "ran", note: "3 of 4 judged" }] }],
+    ["no clause ran", { coverage: [] }],
+    ["an ordinary DISCLOSE + NOTE", { findings: ordinary }],
+  ]) {
+    const zero = keep(view(runOf("rules_ready", { ...o, withheld: 0 })));
+    const absent = view({ ...runOf("rules_ready", o), withheld: undefined });
+    ok(zero === absent && routedOf(zero) === null && !/software team/.test(text(zero)), `withheld 0, ${name}: the panel is unchanged — the same markup as a run that carries no count, and no routed line`);
+  }
+  ok(/emerald/.test(view(runOf("rules_ready", { withheld: 0 }))) && /Nothing flagged/.test(text(view(runOf("rules_ready", { withheld: 0 })))), "withheld 0, full coverage, nothing found: the green check is still earned");
+
+  const two = keep(view(runOf("rules_ready", { withheld: 2 })));
+  ok(routedOf(two) === ROUTED_2, `2 withheld: the line is plural (${JSON.stringify(routedOf(two))})`);
+  ok(/^2 open items to resolve before this study is called complete\.$/.test(summaryOf(two) ?? ""), `2 withheld: the header counts both (${JSON.stringify(summaryOf(two))})`);
+
+  // Every visible item decided: never "Every item has a recorded decision" over a withheld one.
+  const decided = keep(view(runOf("rules_ready", { withheld: 1, findings: [mk("d1", "DISCLOSE")], dispositions: [{ findingId: "f-d1", disposition: "DISCLOSED", note: null, sourceLabel: null, createdAt: "2026-10-06T12:00:00Z" }] })));
+  const ds = summaryOf(decided) ?? "";
+  ok(!/Every item has a recorded decision/.test(ds) && /^1 open item to resolve before this study is called complete\.$/.test(ds) && summaryRed(decided), `every visible item decided, 1 withheld: the header does not say every item has a recorded decision (${JSON.stringify(ds)})`);
+  ok(routedOf(decided) === ROUTED_1 && findingOrder(decided).join(",") === "d1", "every visible item decided, 1 withheld: the visible finding is still shown, and the routed line beside it");
+
+  // An ordinary study with a withheld item is not "No open blocker or contested item".
+  const ord = keep(view(runOf("rules_ready", { withheld: 1, findings: ordinary })));
+  const os = summaryOf(ord) ?? "";
+  ok(!/No open blocker/.test(os) && /^1 open item to resolve before this study is called complete\. Also: 1 to state in the deliverable, 1 note\.$/.test(os), `an ordinary DISCLOSE + NOTE and 1 withheld: the header is the hold, not the quiet sentence (${JSON.stringify(os)})`);
+
+  // Scoped coverage does not turn a withheld item back into a clear or into "nothing checked".
+  for (const [name, coverage] of [
+    ["partial coverage", [{ clauseId: "a", section: 4, status: "ran", note: "3 of 4 judged" }]],
+    ["a clause that could not run", [...FULL_COVERAGE, { clauseId: "b", section: 5, status: "not-run", reason: "r" }]],
+    ["no coverage recorded", []],
+  ]) {
+    const h = keep(view(runOf("rules_ready", { withheld: 1, coverage })));
+    const t = text(h);
+    ok(!/Nothing flagged|nothing was checked/.test(t) && !/emerald/.test(h) && routedOf(h) === ROUTED_1, `1 withheld, ${name}: neither "nothing flagged" nor "nothing was checked", no green check, and the routed line`);
+  }
+  // Only a finished run's result is shown.
+  for (const status of ["none", ...PENDING, "failed"]) {
+    const h = keep(view(runOf(status, { withheld: 1 })));
+    ok(routedOf(h) === null && summaryOf(h) === null, `${status}, 1 withheld: no routed line and no header (an unfinished run shows no result)`);
+  }
+
+  // The client module: summarizeOpen counts withheld as holds; fetchProofread carries the count.
+  const sw = lib.summarizeOpen([], [], 1);
+  ok(sw.total === 1 && sw.open === 1 && sw.holds === 1 && sw.withheld === 1, `summarizeOpen([], [], 1) counts the withheld finding as an open hold (got ${JSON.stringify(sw)})`);
+  const s0 = lib.summarizeOpen([mk("a", "NOTE")], []);
+  ok(s0.total === 1 && s0.open === 1 && s0.holds === 0 && s0.withheld === 0 && s0.note === 1, `summarizeOpen without a count is unchanged (got ${JSON.stringify(s0)})`);
+  ok([-1, 1.5, NaN, undefined].every((w) => lib.summarizeOpen([], [], w).holds === 0), "summarizeOpen ignores a count that is not a whole number above 0");
+  ok(typeof lib.withheldLine === "function" && lib.withheldLine(1) === ROUTED_1 && lib.withheldLine(2) === ROUTED_2, "withheldLine says it once, pluralised");
+  const realFetch = globalThis.fetch;
+  try {
+    const got = [];
+    for (const w of [3, 0, undefined, "1", -2, 1.5, null]) {
+      globalThis.fetch = async () => new Response(JSON.stringify({ status: "rules_ready", runId: "r", coverage: [], findings: [], dispositions: [], ...(w === undefined ? {} : { withheld: w }) }), { status: 200 });
+      got.push((await lib.fetchProofread("proj-1")).withheld);
+    }
+    ok(JSON.stringify(got) === "[3,0,0,0,0,0,0]", `fetchProofread carries the server's count, and anything that is not a whole number above 0 is 0 (got ${JSON.stringify(got)})`);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 await group("order and tone: an ordinary study is not an alarm", () => {

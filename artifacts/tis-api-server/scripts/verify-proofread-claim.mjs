@@ -36,7 +36,8 @@
  * two exported functions are driven through scenarios — which ids the
  * carry-forward is handed and what gates it, which store failures are caught
  * (every one after the run is queued) and which propagates (the insert's,
- * which POST run depends on). It has its own teeth: each edit
+ * which POST run depends on), and what a finished run logs about a DEFECT
+ * (run, project and clause, nothing from the finding). It has its own teeth: each edit
  * to the runner's text is bundled and RUN, and must turn exactly the behaviour
  * checks that claim to protect it red. What the store then does with those
  * arguments is SQL, which only a database can execute; that is out of reach
@@ -1481,9 +1482,37 @@ async function observe(text) {
     },
   });
   const noRow = await drive(mod, "enqueueProofread", [ENQUEUE_ARGS], { insertQueuedRun: () => null });
-  return { inputs, acrossDeploy, rulesBumped, enqueued, writeFails, exhaustedWriteFails, postRun, throwMatrix, conflict, insertFails, noRow };
+  // A pass that raised two DEFECTs and a BLOCKER, every text field of each marked, so a
+  // log line that carries any of it is visible. Once on a run that finishes, once on a
+  // run whose flip to rules_ready throws (it never finishes, and is requeued).
+  const defects = await drive(mod, "claimAndRunOne", [], { ...normal, runClauses: () => DEFECT_PASS });
+  const defectsUnfinished = await drive(mod, "claimAndRunOne", [], {
+    ...normal,
+    runClauses: () => DEFECT_PASS,
+    completeRun: (a) => {
+      if (a?.status === "rules_ready") throw new Error("flip");
+    },
+  });
+  return { inputs, acrossDeploy, rulesBumped, enqueued, writeFails, exhaustedWriteFails, postRun, throwMatrix, conflict, insertFails, noRow, defects, defectsUnfinished };
 }
 
+const marked = (clauseId, type) => ({
+  clauseId,
+  section: 4,
+  type,
+  title: `LEAK-title-${clauseId}`,
+  detail: `LEAK-detail-${clauseId}`,
+  sourceLabel: `LEAK-source-${clauseId}`,
+  readPaths: [{ path: `LEAK-path-${clauseId}`, value: `LEAK-value-${clauseId}` }],
+  remedy: `LEAK-remedy-${clauseId}`,
+  audience: type === "DEFECT" ? "admin" : "engineer",
+});
+const DEFECT_PASS = {
+  findings: [marked("losMatchesDelay", "DEFECT"), marked("growthOverrideDisclosed", "BLOCKER"), marked("anotherDefect", "DEFECT")],
+  coverage: [],
+};
+/** The warn lines a run logged about a DEFECT: the ones that name a clause. */
+const defectLines = (r) => r.st.logs.filter((l) => l.level === "warn" && l.obj && Object.hasOwn(l.obj, "clause"));
 const describe = (r) => (r ? `${r.threw ? `threw ${r.error?.message ?? r.error}` : `returned ${JSON.stringify(r.value)}`}; calls: ${r.st.calls.map((c) => `${c.name}(${JSON.stringify(c.args).slice(1, -1)})`).join(", ") || "none"}` : "not run");
 
 const BCHECKS = [
@@ -1573,6 +1602,32 @@ const BCHECKS = [
       return false;
     },
     why: (o) => describe(o.insertFails),
+  },
+  {
+    id: "runs-defect-is-logged-with-run-project-and-clause",
+    msg: "RUN: a pass that raised two DEFECTs and a BLOCKER, on a run that finishes, logs one warn per DEFECT, in the pass's order, each carrying exactly { runId, projectId, clause } (run-3, project-A, the clause id), and none for the BLOCKER — the engineer never sees a DEFECT, so this line is how the software team hears of one",
+    test: (o) => {
+      const lines = defectLines(o.defects);
+      return (
+        reachedRulesReady(o.defects) &&
+        lines.length === 2 &&
+        lines.every((l) => Object.keys(l.obj).sort().join(",") === "clause,projectId,runId" && l.obj.runId === "run-3" && l.obj.projectId === "project-A") &&
+        lines.map((l) => l.obj.clause).join(",") === "losMatchesDelay,anotherDefect"
+      );
+    },
+    why: (o) => `warn lines naming a clause: ${JSON.stringify(defectLines(o.defects).map((l) => l.obj))}; ${describe(o.defects)}`,
+  },
+  {
+    id: "runs-defect-log-carries-nothing-from-the-finding",
+    msg: "RUN: no line that run logs, at any level, carries a finding's title, detail, source, read paths or remedy — they quote the study, and the log is not where a study's values go",
+    test: (o) => !/LEAK-/.test(JSON.stringify(o.defects.st.logs.map((l) => [l.obj, l.msg]))),
+    why: (o) => `logged: ${JSON.stringify(o.defects.st.logs.filter((l) => /LEAK-/.test(JSON.stringify([l.obj, l.msg]))).map((l) => [l.level, l.msg, l.obj]))}`,
+  },
+  {
+    id: "runs-defect-is-logged-once-the-run-is-finished",
+    msg: "RUN: the same pass on a run whose flip to rules_ready throws (it never finishes, and is requeued) logs no DEFECT line — once per finished run, not once per attempt",
+    test: (o) => o.defectsUnfinished.st.to("completeRun").some((c) => c.args[0]?.status === "rules_ready") && defectLines(o.defectsUnfinished).length === 0,
+    why: (o) => `warn lines naming a clause: ${JSON.stringify(defectLines(o.defectsUnfinished).map((l) => l.obj))}; ${describe(o.defectsUnfinished)}`,
   },
   {
     id: "runs-enqueue-without-a-row-claims-nothing",
@@ -1700,6 +1755,53 @@ const BMUTATIONS = [
     label: "rethrow an insert error as a new error that drops it (the 23505 never reaches the route)",
     flips: ["runs-enqueue-insert-error-reaches-the-caller"],
     apply: (t) => t.replace("    engineStamp: engineStamp(),\n  });\n", '    engineStamp: engineStamp(),\n  }).catch(() => {\n    throw new Error("enqueue failed");\n  });\n'),
+  },
+  {
+    label: "log no DEFECT at all",
+    flips: ["runs-defect-is-logged-with-run-project-and-clause"],
+    apply: (t) => t.replace('if (f.type === "DEFECT") {', 'if (false && f.type === "DEFECT") {'),
+  },
+  {
+    label: "log each DEFECT at info, not warn",
+    flips: ["runs-defect-is-logged-with-run-project-and-clause"],
+    apply: (t) => t.replace('logger.warn({ runId: run.id, projectId: run.projectId, clause: f.clauseId }, "proofread.defect_raised");', 'logger.info({ runId: run.id, projectId: run.projectId, clause: f.clauseId }, "proofread.defect_raised");'),
+  },
+  {
+    label: "log every finding as a DEFECT",
+    flips: ["runs-defect-is-logged-with-run-project-and-clause"],
+    apply: (t) => t.replace('if (f.type === "DEFECT") {', "if (f) {"),
+  },
+  {
+    label: "log a DEFECT without its project",
+    flips: ["runs-defect-is-logged-with-run-project-and-clause"],
+    apply: (t) => t.replace("{ runId: run.id, projectId: run.projectId, clause: f.clauseId }", "{ runId: run.id, clause: f.clauseId }"),
+  },
+  {
+    label: "log a DEFECT with its detail",
+    flips: ["runs-defect-is-logged-with-run-project-and-clause", "runs-defect-log-carries-nothing-from-the-finding"],
+    apply: (t) => t.replace("{ runId: run.id, projectId: run.projectId, clause: f.clauseId }", "{ runId: run.id, projectId: run.projectId, clause: f.clauseId, detail: f.detail }"),
+  },
+  {
+    label: "log the whole DEFECT finding in place of its clause",
+    flips: ["runs-defect-is-logged-with-run-project-and-clause", "runs-defect-log-carries-nothing-from-the-finding"],
+    apply: (t) => t.replace("{ runId: run.id, projectId: run.projectId, clause: f.clauseId }", "{ runId: run.id, projectId: run.projectId, finding: f }"),
+  },
+  {
+    label: "put the findings' titles on the rules_ready line",
+    flips: ["runs-defect-log-carries-nothing-from-the-finding"],
+    apply: (t) => t.replace("logger.info({ runId: run.id, findings: findings.length }", "logger.info({ runId: run.id, findings: findings.length, titles: findings.map((x) => x.title) }"),
+  },
+  {
+    label: "log the DEFECTs before the run is finished (once per attempt)",
+    flips: ["runs-defect-is-logged-once-the-run-is-finished"],
+    apply: (t) => {
+      const from = t.indexOf("    for (const f of findings) {");
+      const to = t.indexOf("    logger.info({ runId: run.id, findings: findings.length }");
+      const anchor = '    await completeRun({\n      runId: run.id,\n      status: "running",';
+      if (from < 0 || to < from || !t.includes(anchor)) return t;
+      const loop = t.slice(from, to);
+      return t.replace(loop, "").replace(anchor, `${loop}${anchor}`);
+    },
   },
   {
     label: "drain even when the insert yielded no row",

@@ -25,6 +25,7 @@ import {
   requestProofread,
   summarizeOpen,
   SUPERSEDED_NOTICE,
+  withheldLine,
   withRecordedDecision,
   type EngineerDisposition,
   type OpenSummary,
@@ -165,10 +166,13 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
 /**
  * The sentence above the findings. An ordinary study carries a DISCLOSE or a
  * NOTE or two — a clamped delay, a merged duplicate the deliverable does not
- * mention — and the protocol's gate turns on a blocker or a contested item
- * alone, so a panel with only those says so plainly instead of reading as an
- * alarm. `incomplete` keeps that sentence scoped: "no open blocker" is a claim
- * about the clauses that ran.
+ * mention — and the protocol's gate turns on an open blocker, defect or
+ * contested item alone, so a panel with only those says so plainly instead of
+ * reading as an alarm. A defect is never shown here, only counted (`withheld`),
+ * and summarizeOpen counts it as a hold, so a run carrying one never reaches
+ * the quiet sentence or "Every item has a recorded decision". `incomplete`
+ * keeps that sentence scoped: "no open blocker" is a claim about the clauses
+ * that ran.
  */
 function summaryLine(s: OpenSummary, incomplete: boolean): { text: string; alarm: boolean } | null {
   if (s.total === 0) return null;
@@ -251,7 +255,10 @@ export function ProofreadView({
   // record lacks the fields) or twelve clauses that all could not run found nothing
   // because nothing was looked at, which is not the same as nothing being there.
   const incomplete = ran.length === 0 || notRun.length > 0 || partial.length > 0;
-  const summary = finished ? summaryLine(summarizeOpen(run.findings, run.dispositions), incomplete) : null;
+  // Findings the server did not send (a DEFECT, routed to the software team).
+  // Any at all, and the run is not clear: no "nothing flagged", no green check.
+  const withheld = run.withheld > 0 ? run.withheld : 0;
+  const summary = finished ? summaryLine(summarizeOpen(run.findings, run.dispositions, withheld), incomplete) : null;
 
   return (
     <section className="border rounded-lg" data-testid="panel-proofread">
@@ -298,14 +305,14 @@ export function ProofreadView({
             lease after a crash — and triaging in that window races the carry. A
             run that FAILED after that first write is in the same state for good,
             so "finished" is the gate, not merely "not pending". */}
-        {finished && run.findings.length === 0 && ran.length === 0 && (
+        {finished && run.findings.length === 0 && withheld === 0 && ran.length === 0 && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <HelpCircle className="w-4 h-4" />
             No clause could run on this study, so nothing was checked.
           </div>
         )}
 
-        {finished && run.findings.length === 0 && ran.length > 0 && (
+        {finished && run.findings.length === 0 && withheld === 0 && ran.length > 0 && (
           <div className="flex items-center gap-2 text-sm">
             {incomplete ? (
               <Info className="w-4 h-4 text-muted-foreground" />
@@ -322,6 +329,12 @@ export function ProofreadView({
             data-testid="proofread-summary"
           >
             {summary.text}
+          </p>
+        )}
+
+        {finished && withheld > 0 && (
+          <p className="text-sm text-red-600" data-testid="proofread-withheld">
+            {withheldLine(withheld)}
           </p>
         )}
 

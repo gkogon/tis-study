@@ -43,6 +43,14 @@ export type ProofreadRun = {
   coverage: CoverageEntryT[];
   findings: ProofreadFindingT[];
   dispositions: DispositionT[];
+  /**
+   * How many findings on this run the server did not send because their audience
+   * is admin — a DEFECT, a software fault routed to the software team. Never
+   * shown and never decided here, and each one holds the study until a re-run no
+   * longer raises it, so a run with any is never read as clear. A count only:
+   * nothing else about a withheld finding reaches the client.
+   */
+  withheld: number;
   createdAt?: string;
   finishedAt?: string | null;
 };
@@ -61,6 +69,7 @@ export async function fetchProofread(projectId: string): Promise<ProofreadRun> {
     coverage: Array.isArray(data.coverage) ? data.coverage : [],
     findings: Array.isArray(data.findings) ? data.findings : [],
     dispositions: Array.isArray(data.dispositions) ? data.dispositions : [],
+    withheld: typeof data.withheld === "number" && Number.isInteger(data.withheld) && data.withheld > 0 ? data.withheld : 0,
     createdAt: data.createdAt,
     finishedAt: data.finishedAt ?? null,
   };
@@ -243,20 +252,31 @@ export function withRecordedDecision(
 }
 
 export type OpenSummary = {
-  /** Every finding on the run. */
+  /** Every finding on the run, the withheld ones included. */
   total: number;
   /** Findings no recorded decision has resolved: none recorded, or one that does not close that type. */
   open: number;
-  /** Open BLOCKER, CONTESTED and DEFECT — the ones the protocol's completion gate turns on. */
+  /**
+   * Open BLOCKER, DEFECT and CONTESTED — the three the protocol's completion gate
+   * turns on — including every withheld finding: a DEFECT is never shown to the
+   * engineer and never decided by one, and holds until a re-run no longer raises it.
+   */
   holds: number;
+  /** Of `holds`, how many the server withheld (routed to the software team). */
+  withheld: number;
   disclose: number;
   note: number;
   unverified: number;
 };
 
-/** Counts the findings still open, by how much they weigh. Open means the latest decision does not close that type. */
-export function summarizeOpen(findings: ProofreadFindingT[], dispositions: DispositionT[]): OpenSummary {
-  const s: OpenSummary = { total: findings.length, open: 0, holds: 0, disclose: 0, note: 0, unverified: 0 };
+/**
+ * Counts the findings still open, by how much they weigh. Open means the latest
+ * decision does not close that type. `withheld` findings (see ProofreadRun) are
+ * open holds: nothing an engineer records reaches them.
+ */
+export function summarizeOpen(findings: ProofreadFindingT[], dispositions: DispositionT[], withheld = 0): OpenSummary {
+  const w = Number.isInteger(withheld) && withheld > 0 ? withheld : 0;
+  const s: OpenSummary = { total: findings.length + w, open: w, holds: w, withheld: w, disclose: 0, note: 0, unverified: 0 };
   for (const f of findings) {
     if (closes(f.type, latestDisposition(dispositions, f.id)?.disposition)) continue;
     s.open++;
@@ -266,6 +286,18 @@ export function summarizeOpen(findings: ProofreadFindingT[], dispositions: Dispo
     else s.unverified++;
   }
   return s;
+}
+
+/**
+ * The line for findings the server withheld: a DEFECT is routed to the software
+ * team, the engineer cannot rule on it, and it holds the study until a re-run no
+ * longer raises it. The count and that instruction are all there is to say —
+ * nothing else about a withheld finding reaches the client.
+ */
+export function withheldLine(n: number): string {
+  return n === 1
+    ? "1 item on this study was routed to the software team. Hold the study until a re-run no longer raises it."
+    : `${n} items on this study were routed to the software team. Hold the study until a re-run no longer raises them.`;
 }
 
 /**

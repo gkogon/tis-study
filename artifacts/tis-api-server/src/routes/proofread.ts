@@ -84,7 +84,7 @@ router.get("/projects/:id/proofread", proofreadReadLimiter, async (req, res): Pr
     void claimAndRunOne().catch(() => undefined);
     const latest = await latestRunForProject(firm.id, id);
     if (!latest) {
-      res.json({ status: "none", findings: [], coverage: [], dispositions: [] });
+      res.json({ status: "none", withheld: 0, findings: [], coverage: [], dispositions: [] });
       return;
     }
     const { run, findings, dispositions } = latest;
@@ -93,6 +93,11 @@ router.get("/projects/:id/proofread", proofreadReadLimiter, async (req, res): Pr
     // hidden finding does not leak its id.
     const visible = findings.filter((f) => f.audience !== "admin");
     const visibleIds = new Set(visible.map((f) => f.id));
+    // Hidden, but never silent: a DEFECT holds the study until a re-run no
+    // longer raises it, so the panel must not read a run that carries one as
+    // clear. The count is all that leaves the server — no type, clause, path
+    // or message of a withheld finding.
+    const withheld = findings.filter((f) => f.audience === "admin").length;
     res.json({
       status: run.status,
       runId: run.id,
@@ -104,6 +109,7 @@ router.get("/projects/:id/proofread", proofreadReadLimiter, async (req, res): Pr
       coverage: run.coverage,
       createdAt: run.createdAt.toISOString(),
       finishedAt: run.finishedAt?.toISOString() ?? null,
+      withheld,
       findings: visible.map((f) => ({
         id: f.id,
         clauseId: f.clauseId,
