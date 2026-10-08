@@ -28,13 +28,15 @@
  * assertion pointed at the wrong file (asserting the instance-id truncation on
  * the store, where it does not live) fails loudly instead of passing forever.
  *
- * Reads as text and imports only lifecycle.ts, which is pure; it never imports
- * the store or @workspace/db, and so never opens a connection.
+ * Reads the sources as text, and imports only lifecycle.ts (pure) and esbuild;
+ * it never imports the store or @workspace/db, and so never opens a connection.
  *
  * The last part, BEHAVIOUR, runs the runner itself: proofread-run.ts is bundled
  * with esbuild against an in-memory store, logger and clause registry, and its
  * two exported functions are driven through scenarios — which ids the
- * carry-forward is handed and what gates it. It has its own teeth: each edit
+ * carry-forward is handed and what gates it, which store failures are caught
+ * (every one after the run is queued) and which propagates (the insert's,
+ * which POST run depends on). It has its own teeth: each edit
  * to the runner's text is bundled and RUN, and must turn exactly the behaviour
  * checks that claim to protect it red. What the store then does with those
  * arguments is SQL, which only a database can execute; that is out of reach
@@ -731,9 +733,9 @@ const CHECKS = [
       ),
   },
   {
-    id: "enqueue-fails-open",
+    id: "enqueue-no-row-returns-without-draining",
     on: "runner",
-    msg: "enqueueProofread fails open: a row it could not insert is logged and returned from, never thrown — a proofread that cannot run must not affect the study",
+    msg: "enqueueProofread, when the insert yields NO row, logs at warn and returns without draining, and holds no `throw` of its own. That branch is defensive — .returning() on an insert that succeeded always yields its row — and it is NOT a fail-open: an insert ERROR propagates out of enqueueProofread, and must, because POST run (routes/proofread.ts) reads 23505 from it to answer a double-press with ok (pinned below by [runs-enqueue-insert-error-reaches-the-caller]). The fail-open that keeps a proofread from affecting a study is the hook's own .catch on `void enqueueProofread(...)` in routes/tis.ts, pinned by [enqueue-has-own-catch] in verify-proofread-hook.mjs (which prints it as \"the fire-and-forget call carries its OWN .catch …\")",
     test: (s) => {
       const b = body(s.runner, "enqueueProofread");
       return b.length > 0 && /if \(!run\) \{[\s\S]*?logger\.warn\([\s\S]*?return;[\s\S]*?\}/.test(b) && !/throw /.test(b);
@@ -1226,10 +1228,16 @@ const MUTATIONS = [
     apply: edit("runner", "if (prev) await carryForwardDispositions(", "if (false && prev) await carryForwardDispositions("),
   },
   {
-    label: "throw out of enqueueProofread when the row could not be inserted",
+    label: "throw out of enqueueProofread when the insert yields no row",
     file: "runner",
-    flips: ["enqueue-fails-open"],
+    flips: ["enqueue-no-row-returns-without-draining"],
     apply: edit("runner", /if \(!run\) \{[\s\S]*?\n  \}/, 'if (!run) throw new Error("enqueue failed");'),
+  },
+  {
+    label: "drain even when the insert yielded no row",
+    file: "runner",
+    flips: ["enqueue-no-row-returns-without-draining"],
+    apply: edit("runner", /\n  if \(!run\) \{[\s\S]*?\n  \}/, ""),
   },
 ];
 
@@ -1446,7 +1454,19 @@ async function observe(text) {
   ];
   const throwMatrix = [];
   for (const [label, impl] of THROW_POINTS) throwMatrix.push({ label, r: await drive(mod, "claimAndRunOne", [], impl) });
-  return { inputs, acrossDeploy, rulesBumped, enqueued, writeFails, exhaustedWriteFails, postRun, throwMatrix };
+  // The insert itself fails: the error POST run must be able to read (a
+  // unique violation on the revision key, as two quick presses produce).
+  const conflict = Object.assign(new Error("duplicate key value violates unique constraint"), {
+    code: "23505",
+    constraint: "UQ_study_proofread_runs_project_revision",
+  });
+  const insertFails = await drive(mod, "enqueueProofread", [ENQUEUE_ARGS], {
+    insertQueuedRun: () => {
+      throw conflict;
+    },
+  });
+  const noRow = await drive(mod, "enqueueProofread", [ENQUEUE_ARGS], { insertQueuedRun: () => null });
+  return { inputs, acrossDeploy, rulesBumped, enqueued, writeFails, exhaustedWriteFails, postRun, throwMatrix, conflict, insertFails, noRow };
 }
 
 const describe = (r) => (r ? `${r.threw ? `threw ${r.error?.message ?? r.error}` : `returned ${JSON.stringify(r.value)}`}; calls: ${r.st.calls.map((c) => `${c.name}(${JSON.stringify(c.args).slice(1, -1)})`).join(", ") || "none"}` : "not run");
@@ -1528,6 +1548,25 @@ const BCHECKS = [
       return r.st.to("runClauses").length === 0 && r.st.to("loadStudyForRun").length === 0 && r.st.to("completeRun").some((c) => c.args[0]?.runId === "run-stale" && c.args[0]?.status === "failed");
     },
     why: (o) => describe(o.exhaustedWriteFails),
+  },
+  {
+    id: "runs-enqueue-insert-error-reaches-the-caller",
+    msg: "RUN: when the insert throws, enqueueProofread rejects and the insert's own error reaches the caller (itself, or on its .cause chain, which is how routes/proofread.ts's isRevisionConflict reads it), and nothing is drained — so enqueueProofread does NOT fail open, by design: POST run turns a 23505 on the revision key into { ok: true }, and the /generate hook's own .catch is what keeps a failure away from the study",
+    test: (o) => {
+      if (!o.insertFails.threw || o.insertFails.st.to("claimOneRun").length !== 0) return false;
+      for (let e = o.insertFails.error, d = 0; e && d < 5; e = e.cause, d++) if (e === o.conflict) return true;
+      return false;
+    },
+    why: (o) => describe(o.insertFails),
+  },
+  {
+    id: "runs-enqueue-without-a-row-claims-nothing",
+    msg: "RUN: when the insert returns no row, enqueueProofread resolves, logs a warn naming the project, and drains nothing",
+    test: (o) =>
+      !o.noRow.threw &&
+      o.noRow.st.to("claimOneRun").length === 0 &&
+      o.noRow.st.logs.some((l) => l.level === "warn" && l.obj?.projectId === "project-A"),
+    why: (o) => `logs: ${JSON.stringify(o.noRow.st.logs.map((l) => [l.level, l.msg]))}; ${describe(o.noRow)}`,
   },
 ];
 
@@ -1625,9 +1664,28 @@ const BMUTATIONS = [
     flips: ["runs-exhausted-row-never-runs-clauses", "runs-exhausted-write-failure-is-logged-with-the-run"],
     apply: (t) => t.replace("if (run.attempts > MAX_ATTEMPTS)", "if (false && run.attempts > MAX_ATTEMPTS)"),
   },
+  {
+    label: "turn an insert error into \"no row\" (enqueue swallows it)",
+    flips: ["runs-enqueue-insert-error-reaches-the-caller"],
+    apply: (t) => t.replace("    engineStamp: engineStamp(),\n  });\n", "    engineStamp: engineStamp(),\n  }).catch(() => null);\n"),
+  },
+  {
+    label: "rethrow an insert error as a new error that drops it (the 23505 never reaches the route)",
+    flips: ["runs-enqueue-insert-error-reaches-the-caller"],
+    apply: (t) => t.replace("    engineStamp: engineStamp(),\n  });\n", '    engineStamp: engineStamp(),\n  }).catch(() => {\n    throw new Error("enqueue failed");\n  });\n'),
+  },
+  {
+    label: "drain even when the insert yielded no row",
+    flips: ["runs-enqueue-without-a-row-claims-nothing"],
+    apply: (t) => t.replace(/\n  if \(!run\) \{[\s\S]*?\n  \}/, ""),
+  },
 ];
 const BSTAYS_GREEN = [
   { label: "the carry gate with its operands swapped", apply: (t) => t.replace("prev.rulesVersion === run.rulesVersion", "run.rulesVersion === prev.rulesVersion") },
+  {
+    label: "an insert error rethrown with the original as its cause (isRevisionConflict walks .cause)",
+    apply: (t) => t.replace("    engineStamp: engineStamp(),\n  });\n", '    engineStamp: engineStamp(),\n  }).catch((cause) => {\n    throw new Error("enqueue failed", { cause });\n  });\n'),
+  },
 ];
 
 const bteeth = new Set(BIDS);

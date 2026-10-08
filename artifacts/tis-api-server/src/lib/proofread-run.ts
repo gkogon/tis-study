@@ -1,9 +1,14 @@
 /**
  * The proofread runner: enqueue, then claim-and-run.
  *
- * Fail-open throughout. A proofread that cannot run never affects the study —
- * the same contract saveProject holds. Phase 1 ends at 'rules_ready'; the
- * judgment pass will take it to 'ready'.
+ * A proofread that cannot run never affects the study — the same contract
+ * saveProject holds. Everything after a run is queued (the claim, the clause
+ * pass, every write, the carry-forward) is caught and logged inside
+ * claimAndRunOne, which does not reject whatever the store throws. The one
+ * error that does propagate is the insert's: enqueueProofread lets it reach
+ * its caller on purpose, because POST run reads a 23505 on the revision key
+ * from it, and the /generate hook in routes/tis.ts holds its own .catch.
+ * Phase 1 ends at 'rules_ready'; the judgment pass will take it to 'ready'.
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -81,7 +86,10 @@ export function buildInputManifest(rec: StudyRecord): Record<string, boolean> {
   };
 }
 
-/** Queue a run, then opportunistically drain one — there is no scheduler in this service. */
+/**
+ * Queue a run, then opportunistically drain one — there is no scheduler in this service. An insert error
+ * propagates (see the header); once the run is queued, nothing the store throws during the drain makes this reject.
+ */
 export async function enqueueProofread(args: { projectId: string; firmId: string; userId: string }): Promise<void> {
   const run = await insertQueuedRun({
     ...args,
