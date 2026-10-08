@@ -23,6 +23,7 @@ import {
   orderFindings,
   recordDisposition,
   requestProofread,
+  RULES_CHANGED_LINE,
   summarizeOpen,
   SUPERSEDED_NOTICE,
   withheldLine,
@@ -335,6 +336,14 @@ export function ProofreadView({
         {finished && withheld > 0 && (
           <p className="text-sm text-red-600" data-testid="proofread-withheld">
             {withheldLine(withheld)}
+          </p>
+        )}
+
+        {/* A RULES_VERSION change stops the carry-forward on purpose, so every
+            earlier decision is open again: say why, once, on a finished run. */}
+        {finished && run.rulesChanged === true && (
+          <p className="text-xs text-muted-foreground" data-testid="proofread-rules-changed">
+            {RULES_CHANGED_LINE}
           </p>
         )}
 

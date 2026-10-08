@@ -75,7 +75,8 @@ export type ProofreadDispositionBodyT = z.infer<typeof ProofreadDispositionBody>
 
 /**
  * What GET /projects/:id/proofread answers: the project's newest run, or
- * `status: "none"` (with `withheld: 0` and empty lists) when it has none.
+ * `status: "none"` (with `withheld: 0`, `rulesChanged: false` and empty lists)
+ * when it has none.
  *
  * Findings and dispositions are audience-filtered. A finding whose audience is
  * admin — a DEFECT, a software fault routed to the software team — is never
@@ -113,6 +114,13 @@ export const ProofreadReadResponse = z
     createdAt: z.string().optional(),
     finishedAt: z.string().nullable().optional(),
     withheld: z.number().int().nonnegative(),
+    /**
+     * Whether the revision this run carried its decisions from (the project's
+     * previous finished run) ran under a different RULES_VERSION. Then nothing
+     * was carried and every earlier decision is open again, on purpose; the
+     * panel says why. False when there is no such revision, and on "none".
+     */
+    rulesChanged: z.boolean(),
     findings: z.array(
       z
         .object({

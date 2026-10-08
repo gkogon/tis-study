@@ -17,7 +17,7 @@
  *     "a clause that judged part of the record says so", "an ordinary study is not
  *     presented as an alarm", "a disclosed blocker is still open",
  *     "a study in which no clause could run says nothing was checked", "a run carrying a finding the server withheld
- *     (a DEFECT) is never a clear". A scan for `status === "none"` proves the characters
+ *     (a DEFECT) is never a clear", "decisions a rules change reopened say why". A scan for `status === "none"` proves the characters
  *     exist, not that the branch runs before the empty-findings one. So the panel is
  *     bundled with the repo's own esbuild, ProofreadView is rendered with
  *     react-dom/server for each status, and the assertions read what a user would
@@ -411,6 +411,46 @@ await group("a finding routed to the software team is never a clear", async () =
       got.push((await lib.fetchProofread("proj-1")).withheld);
     }
     ok(JSON.stringify(got) === "[3,0,0,0,0,0,0]", `fetchProofread carries the server's count, and anything that is not a whole number above 0 is 0 (got ${JSON.stringify(got)})`);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+// ─── decisions reopened by a rules change ──────────────────────────────────────────────
+// A RULES_VERSION change reopens every recorded decision on purpose: the carry-forward stops at it.
+// GET says when the revision this run carried from ran under other rules (`rulesChanged`), and the
+// panel gives that reason in one line on a finished run, so the reopened items are not a mystery.
+const RULES_CHANGED = "The check's rules changed since the last run, so earlier decisions were not carried over.";
+await group("a rules change says why the earlier decisions reopened", async () => {
+  const lineOf = (html) => {
+    const m = /<p\b[^>]*data-testid="proofread-rules-changed"[^>]*>([^<]*)<\/p>/.exec(html);
+    return m ? text(m[1]) : null;
+  };
+  const times = (html) => text(html).split(RULES_CHANGED).length - 1;
+  ok(lib.RULES_CHANGED_LINE === RULES_CHANGED, `the client module's RULES_CHANGED_LINE is the sentence (${JSON.stringify(lib.RULES_CHANGED_LINE)})`);
+  for (const status of FINISHED) {
+    const h = keep(view(runOf(status, { rulesChanged: true, findings: ordinary })));
+    ok(lineOf(h) === RULES_CHANGED && times(h) === 1, `${status}, rulesChanged: says once that the rules changed and earlier decisions were not carried over (${JSON.stringify(lineOf(h))})`);
+    const empty = keep(view(runOf(status, { rulesChanged: true })));
+    ok(lineOf(empty) === RULES_CHANGED, `${status}, rulesChanged and nothing found: the line is still there`);
+  }
+  for (const status of ALL_STATUSES.filter((st) => !FINISHED.includes(st))) {
+    const h = keep(view(runOf(status, { rulesChanged: true })));
+    ok(lineOf(h) === null && times(h) === 0, `${status}, rulesChanged: no line (an unfinished run shows no result)`);
+  }
+  for (const status of FINISHED) {
+    const no = keep(view(runOf(status, { rulesChanged: false, findings: ordinary })));
+    ok(no === view(runOf(status, { findings: ordinary })) && lineOf(no) === null && times(no) === 0, `${status}, rulesChanged false: no line, and the same markup as a run that carries no flag`);
+  }
+  const realFetch = globalThis.fetch;
+  try {
+    const got = [];
+    for (const v of [true, false, undefined, "true", 1, null]) {
+      globalThis.fetch = async () =>
+        new Response(JSON.stringify({ status: "rules_ready", runId: "r", coverage: [], findings: [], dispositions: [], withheld: 0, ...(v === undefined ? {} : { rulesChanged: v }) }), { status: 200 });
+      got.push((await lib.fetchProofread("proj-1")).rulesChanged);
+    }
+    ok(JSON.stringify(got) === "[true,false,false,false,false,false]", `fetchProofread carries rulesChanged: true only for the boolean true, false for anything else (got ${JSON.stringify(got)})`);
   } finally {
     globalThis.fetch = realFetch;
   }

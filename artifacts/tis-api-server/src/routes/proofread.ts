@@ -84,10 +84,10 @@ router.get("/projects/:id/proofread", proofreadReadLimiter, async (req, res): Pr
     void claimAndRunOne().catch(() => undefined);
     const latest = await latestRunForProject(firm.id, id);
     if (!latest) {
-      res.json({ status: "none", withheld: 0, findings: [], coverage: [], dispositions: [] });
+      res.json({ status: "none", withheld: 0, rulesChanged: false, findings: [], coverage: [], dispositions: [] });
       return;
     }
-    const { run, findings, dispositions } = latest;
+    const { run, findings, dispositions, previous } = latest;
     // Hidden, but never silent: a DEFECT holds the study until a re-run no
     // longer raises it, so the panel must not read a run that carries one as
     // clear. The count is all that leaves the server — no type, clause, path
@@ -99,6 +99,13 @@ router.get("/projects/:id/proofread", proofreadReadLimiter, async (req, res): Pr
     // hidden finding does not leak its id.
     const visible = findings.filter((f) => f.audience !== "admin");
     const visibleIds = new Set(visible.map((f) => f.id));
+    // Whether the revision this run carried its decisions from ran under other
+    // rules — the carry gate's own comparison. Then nothing carried: a
+    // RULES_VERSION change reopens every decision on purpose, and the panel
+    // says so rather than showing them open with no reason. run.rulesVersion
+    // is stamped when the run's clauses run, so on a finished run it is the
+    // rules the carry compared with.
+    const rulesChanged = previous !== null && previous.rulesVersion !== run.rulesVersion;
     res.json({
       status: run.status,
       runId: run.id,
@@ -111,6 +118,7 @@ router.get("/projects/:id/proofread", proofreadReadLimiter, async (req, res): Pr
       createdAt: run.createdAt.toISOString(),
       finishedAt: run.finishedAt?.toISOString() ?? null,
       withheld,
+      rulesChanged,
       findings: visible.map((f) => ({
         id: f.id,
         clauseId: f.clauseId,

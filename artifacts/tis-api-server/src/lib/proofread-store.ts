@@ -231,7 +231,12 @@ export async function latestRunForProject(firmId: string, projectId: string) {
         )
         .orderBy(desc(studyProofreadDispositionsTable.createdAt))
     : [];
-  return { run, findings, dispositions };
+  // The revision this run's carry read its decisions from: the runner's own
+  // call with the runner's arguments, for a run this firm's read just found,
+  // so GET can say when that revision ran under other rules and nothing
+  // carried — about the same revision the carry compared, never a lookalike.
+  const previous = await previousRunForProject(run.projectId, run.revision);
+  return { run, findings, dispositions, previous };
 }
 
 /**

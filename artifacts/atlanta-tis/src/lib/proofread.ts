@@ -51,6 +51,12 @@ export type ProofreadRun = {
    * nothing else about a withheld finding reaches the client.
    */
   withheld: number;
+  /**
+   * Whether the revision this run carried its decisions from ran under other
+   * rules (a RULES_VERSION change). Then nothing was carried and every earlier
+   * decision is open again, on purpose; the panel says why (RULES_CHANGED_LINE).
+   */
+  rulesChanged: boolean;
   createdAt?: string;
   finishedAt?: string | null;
 };
@@ -70,6 +76,8 @@ export async function fetchProofread(projectId: string): Promise<ProofreadRun> {
     findings: Array.isArray(data.findings) ? data.findings : [],
     dispositions: Array.isArray(data.dispositions) ? data.dispositions : [],
     withheld: typeof data.withheld === "number" && Number.isInteger(data.withheld) && data.withheld > 0 ? data.withheld : 0,
+    // Only the boolean true says the rules changed; anything else is "no".
+    rulesChanged: data.rulesChanged === true,
     createdAt: data.createdAt,
     finishedAt: data.finishedAt ?? null,
   };
@@ -118,6 +126,9 @@ export async function recordDisposition(
 export function isSuperseded(e: unknown): boolean {
   return e instanceof ProofreadRequestError && e.status === 409;
 }
+
+/** What a finished run says when the revision it carried from ran under other rules, so its reopened decisions are not a mystery. */
+export const RULES_CHANGED_LINE = "The check's rules changed since the last run, so earlier decisions were not carried over.";
 
 /** What the panel says after a 409, above the newest run it has fetched in its place. */
 export const SUPERSEDED_NOTICE =

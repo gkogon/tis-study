@@ -1380,11 +1380,12 @@ const READ_KEYS = [
   "createdAt",
   "finishedAt",
   "withheld",
+  "rulesChanged",
   "findings",
   "dispositions",
 ];
 /** The no-run answer, key by key, each value as its source text reads (whitespace-folded). */
-const NONE_ANSWER = { status: '"none"', withheld: "0", findings: "[]", coverage: "[]", dispositions: "[]" };
+const NONE_ANSWER = { status: '"none"', withheld: "0", rulesChanged: "false", findings: "[]", coverage: "[]", dispositions: "[]" };
 const WITHHELD_COUNT = 'const withheld = findings.filter((f) => f.audience === "admin").length;';
 /** A run's answer as the contract must accept it: a finished run with one visible finding and two withheld. */
 const READ_SAMPLE = {
@@ -1402,6 +1403,7 @@ const READ_SAMPLE = {
   createdAt: "2026-10-07T12:00:00.000Z",
   finishedAt: null,
   withheld: 2,
+  rulesChanged: true,
   findings: [
     {
       id: "5d1c3f5e-0a52-4a6a-8d0c-3b7e2b0e9f11",
@@ -1469,7 +1471,11 @@ const RUN_COLUMNS = new Set(["status", "id", "revision", "protocolVersion", "rul
 const LIST_READS = new Set(["length", "map", "filter", "some", "every", "find", "slice", "includes", "indexOf", "flatMap", "reduce", "at", "join", "concat"]);
 /** latestRunForProject's read of the run's findings: every finding of the run, nothing else in the WHERE. */
 const FINDINGS_READ = "const findings = await db.select().from(studyProofreadFindingsTable).where(eq(studyProofreadFindingsTable.runId, run.id));";
-const LATEST_RETURN = "return { run, findings, dispositions };";
+const LATEST_RETURN = "return { run, findings, dispositions, previous };";
+/** latestRunForProject's read of the revision this run's carry read from: the runner's own call, with the runner's arguments. */
+const PREVIOUS_READ = "const previous = await previousRunForProject(run.projectId, run.revision);";
+/** GET's answer to "did the rules change since the revision the decisions would have carried from". */
+const RULES_CHANGED = "const rulesChanged = previous !== null && previous.rulesVersion !== run.rulesVersion;";
 
 /**
  * How code under `root` uses the binding `name`: `decls` are the identifiers that declare it (a
@@ -2030,7 +2036,7 @@ const CHECKS = [
   {
     id: "get-none-withholds-nothing",
     on: "routes",
-    msg: 'a project with no run is answered exactly { status: "none", withheld: 0, findings: [], coverage: [], dispositions: [] }',
+    msg: 'a project with no run is answered exactly { status: "none", withheld: 0, rulesChanged: false, findings: [], coverage: [], dispositions: [] }',
     test: (d) => {
       const n = noneAnswers(d);
       return n.length === 1 && n[0].other === 0 && entriesSorted(n[0].props) === entriesSorted(NONE_ANSWER);
@@ -2080,6 +2086,28 @@ const CHECKS = [
       if (!tree) return false;
       const w = propertyWrites(tree);
       return { ok: w.length === 0, where: w.map((t) => `${pathOf("routes")}: GET writes: ${t}`) };
+    },
+  },
+
+  {
+    id: "get-rules-changed-is-the-carry-gate",
+    on: "routes",
+    msg: `GET says whether the rules changed since the revision this run's carry read from, as the carry gate decided it: \`${RULES_CHANGED}\` — \`previous\` a plain element of \`const { … } = latest;\` used nowhere else, \`run.rulesVersion\` the run's own (stamped when its clauses ran) — and the run answer carries it as \`rulesChanged\`. True means nothing carried and every earlier decision is open again on purpose; a hard-coded value, another column or the comparison inverted tells the engineer the opposite`,
+    test: (d) => {
+      const g = getSeg(d);
+      const tree = getTree(d);
+      if (!tree) return false;
+      const u = bindingUses(tree, "previous", new Set(["rulesVersion"]));
+      const r = runAnswers(d);
+      return (
+        occ(g, RULES_CHANGED) === 1 &&
+        u.decls.length === 1 &&
+        destructuredFrom(u.decls[0], "latest") &&
+        (g.match(/\bprevious\b/g) ?? []).length === 3 &&
+        (g.match(/\brulesChanged\b/g) ?? []).length === 3 &&
+        r.length === 1 &&
+        r[0].props.rulesChanged === "rulesChanged"
+      );
     },
   },
 
@@ -2537,13 +2565,13 @@ const CHECKS = [
   {
     id: "contract-read-response",
     on: "contract",
-    msg: `the contract's ProofreadReadResponse, evaluated, is GET's answer: exactly the read keys, required just ${Object.keys(NONE_ANSWER).join(", ")}; \`withheld\` a whole number of 0 or more and nothing else (not missing, negative, fractional, a string, null, or a list or object of findings); strict, so an extra key, or a finding that carries its audience, is refused; and it accepts the no-run answer and a finished run's answer`,
+    msg: `the contract's ProofreadReadResponse, evaluated, is GET's answer: exactly the read keys, required just ${Object.keys(NONE_ANSWER).join(", ")}; \`withheld\` a whole number of 0 or more and nothing else (not missing, negative, fractional, a string, null, or a list or object of findings); \`rulesChanged\` a boolean and nothing else (not missing, a string, a number or null); strict, so an extra key, or a finding that carries its audience, is refused; and it accepts the no-run answer and a finished run's answer`,
     test: (d) =>
       safe(() => {
         const S = d.mod.ProofreadReadResponse;
         if (!S || typeof S.safeParse !== "function" || !S.shape) return false;
         const accepts = (v) => S.safeParse(v).success;
-        const none = { status: "none", withheld: 0, findings: [], coverage: [], dispositions: [] };
+        const none = { status: "none", withheld: 0, rulesChanged: false, findings: [], coverage: [], dispositions: [] };
         const keys = Object.keys(S.shape);
         const required = keys.filter((k) => !S.shape[k].isOptional());
         const { withheld: _w, ...noCount } = none;
@@ -2555,6 +2583,8 @@ const CHECKS = [
           accepts({ ...READ_SAMPLE, withheld: 0 }) &&
           !accepts(noCount) &&
           [undefined, -1, 1.5, "1", null, [], [{ clauseId: "losMatchesDelay" }], { losMatchesDelay: 1 }].every((w) => !accepts({ ...none, withheld: w })) &&
+          accepts({ ...READ_SAMPLE, rulesChanged: false }) &&
+          [undefined, "true", "false", 1, 0, null, {}].every((v) => !accepts({ ...none, rulesChanged: v })) &&
           !accepts({ ...none, defects: [] }) &&
           !accepts({ ...READ_SAMPLE, findings: [{ ...READ_SAMPLE.findings[0], audience: "admin" }] })
         );
@@ -2714,6 +2744,25 @@ const CHECKS = [
           has(b, LATEST_RETURN),
         where: [...u.other.map((t) => `${pathOf("store")}: findings used as: ${t}`), ...w.map((t) => `${pathOf("store")}: writes: ${t}`)],
       };
+    },
+  },
+  {
+    id: "panel-read-names-the-carry-source",
+    on: "store",
+    msg: `latestRunForProject reads the revision this run's carry read its decisions from with the runner's own call — \`${PREVIOUS_READ}\`, once, after its firm-scoped run read — and hands it back unchanged as \`previous\` in its return, so GET's rulesChanged answers about the same revision the carry compared: another function, other arguments, or a second copy of the query would let the panel's explanation and the carry disagree`,
+    test: (d) => {
+      const fn = functionNamed(d.src.store, "latestRunForProject");
+      const b = body(d.store, "latestRunForProject");
+      if (!fn || !b) return false;
+      const u = bindingUses(fn, "previous", new Set());
+      return (
+        occ(b, PREVIOUS_READ) === 1 &&
+        occ(b, "previousRunForProject(") === 1 &&
+        inOrder(b, ["if (!run) return null;", PREVIOUS_READ, "return {"]) &&
+        /return\{(?:[^{}]*,)?previous(?:,[^{}]*)?\};/.test(sq(b)) &&
+        u.decls.length === 1 &&
+        u.other.length === 0
+      );
     },
   },
   {
@@ -3298,7 +3347,7 @@ const MUTATIONS = [
     label: "count the findings after dropping the admin ones from the list (re-bound from latest.findings)",
     file: "routes",
     flips: ["get-withheld-is-a-count"],
-    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", '    const { run, dispositions } = latest;\n    const findings = latest.findings.filter(({ audience }) => audience !== "admin");\n'),
+    apply: edit("routes", "    const { run, findings, dispositions, previous } = latest;\n", '    const { run, dispositions, previous } = latest;\n    const findings = latest.findings.filter(({ audience }) => audience !== "admin");\n'),
   },
   {
     label: "count the withheld findings after the visible list is filtered",
@@ -3314,13 +3363,13 @@ const MUTATIONS = [
     label: "splice the admin findings out of the list before counting",
     file: "routes",
     flips: ["get-withheld-is-a-count"],
-    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", '    const { run, findings, dispositions } = latest;\n    findings.splice(0, findings.length, ...findings.filter((f) => f.audience !== "admin"));\n'),
+    apply: edit("routes", "    const { run, findings, dispositions, previous } = latest;\n", '    const { run, findings, dispositions, previous } = latest;\n    findings.splice(0, findings.length, ...findings.filter((f) => f.audience !== "admin"));\n'),
   },
   {
     label: "hand the findings list to a helper before counting",
     file: "routes",
     flips: ["get-withheld-is-a-count"],
-    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", "    const { run, findings, dispositions } = latest;\n    void [findings].flat();\n"),
+    apply: edit("routes", "    const { run, findings, dispositions, previous } = latest;\n", "    const { run, findings, dispositions, previous } = latest;\n    void [findings].flat();\n"),
   },
   {
     label: "read the findings off `latest` a second time",
@@ -3332,19 +3381,19 @@ const MUTATIONS = [
     label: "relabel every DEFECT as the engineer's before counting",
     file: "routes",
     flips: ["get-writes-nothing-it-read"],
-    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", '    const { run, findings, dispositions } = latest;\n    for (const f of findings) if (f.type === "DEFECT") f.audience = "engineer";\n'),
+    apply: edit("routes", "    const { run, findings, dispositions, previous } = latest;\n", '    const { run, findings, dispositions, previous } = latest;\n    for (const f of findings) if (f.type === "DEFECT") f.audience = "engineer";\n'),
   },
   {
     label: "delete each finding's audience before counting",
     file: "routes",
     flips: ["get-writes-nothing-it-read"],
-    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", "    const { run, findings, dispositions } = latest;\n    for (const f of findings) delete (f as { audience?: string }).audience;\n"),
+    apply: edit("routes", "    const { run, findings, dispositions, previous } = latest;\n", "    const { run, findings, dispositions, previous } = latest;\n    for (const f of findings) delete (f as { audience?: string }).audience;\n"),
   },
   {
     label: "Object.assign the engineer's audience onto each finding",
     file: "routes",
     flips: ["get-writes-nothing-it-read"],
-    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", '    const { run, findings, dispositions } = latest;\n    for (const f of findings) Object.assign(f, { ["audience"]: "engineer" });\n'),
+    apply: edit("routes", "    const { run, findings, dispositions, previous } = latest;\n", '    const { run, findings, dispositions, previous } = latest;\n    for (const f of findings) Object.assign(f, { ["audience"]: "engineer" });\n'),
   },
   {
     label: "add a coverage entry for each withheld finding's clause",
@@ -3374,20 +3423,56 @@ const MUTATIONS = [
     label: "answer from a copy of the run row with its coverage replaced",
     file: "routes",
     flips: ["get-run-answer-is-the-run-row"],
-    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", "    const { run: row, findings, dispositions } = latest;\n    const run = { ...row, coverage: [] };\n"),
+    apply: edit("routes", "    const { run, findings, dispositions, previous } = latest;\n", "    const { run: row, findings, dispositions, previous } = latest;\n    const run = { ...row, coverage: [] };\n"),
   },
   {
     label: "Object.assign an empty coverage onto the run row",
     file: "routes",
     flips: ["get-writes-nothing-it-read"],
     also: ["get-run-answer-is-the-run-row"],
-    apply: edit("routes", "    const { run, findings, dispositions } = latest;\n", "    const { run, findings, dispositions } = latest;\n    Object.assign(run, { coverage: [] });\n"),
+    apply: edit("routes", "    const { run, findings, dispositions, previous } = latest;\n", "    const { run, findings, dispositions, previous } = latest;\n    Object.assign(run, { coverage: [] });\n"),
+  },
+  {
+    label: "answer rulesChanged: false whatever the rules were",
+    file: "routes",
+    flips: ["get-rules-changed-is-the-carry-gate"],
+    apply: edit("routes", "const rulesChanged = previous !== null && previous.rulesVersion !== run.rulesVersion;", "const rulesChanged = false && previous !== null;"),
+  },
+  {
+    label: "compare the previous run's rules version with this run's engine stamp",
+    file: "routes",
+    flips: ["get-rules-changed-is-the-carry-gate"],
+    apply: edit("routes", "previous.rulesVersion !== run.rulesVersion", "previous.rulesVersion !== run.engineStamp"),
+  },
+  {
+    label: "invert the rules comparison (rulesChanged when they are the same)",
+    file: "routes",
+    flips: ["get-rules-changed-is-the-carry-gate"],
+    apply: edit("routes", "previous.rulesVersion !== run.rulesVersion", "previous.rulesVersion === run.rulesVersion"),
+  },
+  {
+    label: "say the rules changed on a first run (no previous revision)",
+    file: "routes",
+    flips: ["get-rules-changed-is-the-carry-gate"],
+    apply: edit("routes", "const rulesChanged = previous !== null && previous", "const rulesChanged = previous === null || previous"),
+  },
+  {
+    label: "drop rulesChanged from the run's answer",
+    file: "routes",
+    flips: ["get-rules-changed-is-the-carry-gate", "get-answers-are-the-read-shape"],
+    apply: edit("routes", "      rulesChanged,\n", ""),
+  },
+  {
+    label: "tell a project with no run that the rules changed",
+    file: "routes",
+    flips: ["get-none-withholds-nothing"],
+    apply: edit("routes", 'res.json({ status: "none", withheld: 0, rulesChanged: false,', 'res.json({ status: "none", withheld: 0, rulesChanged: true,'),
   },
   {
     label: "answer a project with no run without `withheld`",
     file: "routes",
     flips: ["get-none-withholds-nothing", "get-answers-are-the-read-shape"],
-    apply: edit("routes", 'res.json({ status: "none", withheld: 0, findings: [], coverage: [], dispositions: [] });', 'res.json({ status: "none", findings: [], coverage: [], dispositions: [] });'),
+    apply: edit("routes", 'res.json({ status: "none", withheld: 0, rulesChanged: false, findings: [], coverage: [], dispositions: [] });', 'res.json({ status: "none", rulesChanged: false, findings: [], coverage: [], dispositions: [] });'),
   },
   {
     label: "tell a project with no run that one item is withheld",
@@ -4158,6 +4243,18 @@ const MUTATIONS = [
     apply: edit("contract", "withheld: z.number().int().nonnegative(),", "withheld: z.number().int().nonnegative().optional(),"),
   },
   {
+    label: "make rulesChanged optional in the read contract",
+    file: "contract",
+    flips: ["contract-read-response"],
+    apply: edit("contract", "rulesChanged: z.boolean(),", "rulesChanged: z.boolean().optional(),"),
+  },
+  {
+    label: "let rulesChanged be a string in the read contract",
+    file: "contract",
+    flips: ["contract-read-response"],
+    apply: edit("contract", "rulesChanged: z.boolean(),", "rulesChanged: z.union([z.boolean(), z.string()]),"),
+  },
+  {
     label: "let `withheld` be any number (negative, fractional)",
     file: "contract",
     flips: ["contract-read-response"],
@@ -4509,7 +4606,30 @@ const MUTATIONS = [
     label: "latestRunForProject returns a filtered list in place of the one it read",
     file: "store",
     flips: ["panel-read-serves-every-finding"],
-    apply: edit("store", "  return { run, findings, dispositions };", '  return { run, findings: findings.filter((f) => f.type !== "DEFECT"), dispositions };'),
+    apply: edit("store", "  return { run, findings, dispositions, previous };", '  return { run, findings: findings.filter((f) => f.type !== "DEFECT"), dispositions, previous };'),
+  },
+  {
+    label: "latestRunForProject reads the previous revision from one revision too far",
+    file: "store",
+    flips: ["panel-read-names-the-carry-source"],
+    apply: edit("store", "previousRunForProject(run.projectId, run.revision);", "previousRunForProject(run.projectId, run.revision + 1);"),
+  },
+  {
+    label: "latestRunForProject hands back no previous revision",
+    file: "store",
+    flips: ["panel-read-names-the-carry-source"],
+    also: ["panel-read-serves-every-finding"],
+    apply: edit("store", "  return { run, findings, dispositions, previous };", "  void previous;\n  return { run, findings, dispositions, previous: null };"),
+  },
+  {
+    label: "latestRunForProject reads the previous revision with a query of its own (any status)",
+    file: "store",
+    flips: ["panel-read-names-the-carry-source"],
+    apply: edit(
+      "store",
+      "  const previous = await previousRunForProject(run.projectId, run.revision);",
+      "  const [previous = null] = await db\n    .select({ id: studyProofreadRunsTable.id, rulesVersion: studyProofreadRunsTable.rulesVersion })\n    .from(studyProofreadRunsTable)\n    .where(and(eq(studyProofreadRunsTable.projectId, run.projectId), lt(studyProofreadRunsTable.revision, run.revision)))\n    .orderBy(desc(studyProofreadRunsTable.revision))\n    .limit(1);",
+    ),
   },
   {
     label: "completeRun writes findings without their audience (the column defaults to engineer)",
