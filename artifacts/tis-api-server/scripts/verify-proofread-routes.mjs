@@ -1105,7 +1105,10 @@ const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.g
  * target: `update ${tisProjectsTable} set`) and every `+` chain of them (`"update " + "tis_" +
  * "projects"`; an operand that is not a literal reads as a substitution), both cooked and as
  * written; as written, a template's text includes the source of its substitutions, so
- * `${sql.raw("update")} t set` is read.
+ * `${sql.raw("update")} t set` is read; and once more with each substitution that is literal
+ * text written in place inlined as that text (a string literal, a template, sql`..`, a `+` of
+ * them, or a call of one such argument: sql.raw("delete from"), sql.identifier("t")), so
+ * sql`${sql.raw('delete from')} firms f where ..` and sql`upd${"ate"} t ${set}` are read.
  * PROSE THAT READS LIKE SQL IS REFUSED; REWORD IT. "update failed", `update failed for run
  * ${id}`, "could not insert into the queue", "refusing to delete from the log", "could not
  * update the claim" and "Failed to update project." (the house-style 500: a dot that ends a
@@ -1120,8 +1123,8 @@ const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.g
  * merge into, and a SQL comment inside a raw-SQL template that says one of these ("-- update the
  * claim, then set attempts": the as-written read keeps comments).
  * NOT READ: SQL assembled at run time from anything but literals written in place (join,
- * concat, String.fromCharCode, atob, a `${VERB}` const, a substitution that splits a word even
- * when it is a literal, `upd${"ate"}`); a target that reads like no table (unquoted,
+ * concat, sql.append, String.fromCharCode, atob, a `${VERB}` const or any substitution that is
+ * not literal text, `upd${a}`; and by the database itself, EXECUTE in a DO block); a target that reads like no table (unquoted,
  * unqualified, no underscore, not declared in this schema, so not a table this database has
  * unless one is created outside the schema files) when what follows it is a bare alias
  * (`delete from t f where ..`), `*`, an INSERT's `AS alias` or `TABLE x`, or a substitution
@@ -1273,6 +1276,22 @@ function rawSqlWrites(text) {
     if (ts.isTemplateExpression(e)) return templateText(e);
     return "${}";
   };
+  // A template with each substitution that is literal text written in place inlined as that text: a string
+  // literal, a template (its own substitutions inlined the same way), a tagged template (sql`delete from`), a `+`
+  // of them, or a call of one such argument (sql.raw("delete from"), sql.identifier("firms")). Any other
+  // substitution reads as `${}`. So sql`${sql.raw('delete from')} firms f where true` reads as the write it renders.
+  const inlined = (e) => {
+    while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e) || ts.isTypeAssertionExpression(e) || ts.isSatisfiesExpression(e)) e = e.expression;
+    if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) return e.text;
+    if (ts.isTemplateExpression(e)) return part(e.head) + e.templateSpans.map((sp) => (inlined(sp.expression) ?? "${}") + part(sp.literal)).join("");
+    if (ts.isTaggedTemplateExpression(e)) return inlined(e.template);
+    if (ts.isCallExpression(e) && e.arguments.length === 1) return inlined(e.arguments[0]);
+    if (isPlus(e)) {
+      const [l, r] = [inlined(e.left), inlined(e.right)];
+      return l === null && r === null ? null : (l ?? "${}") + (r ?? "${}");
+    }
+    return null;
+  };
   const visit = (n) => {
     // cooked, and as written between the delimiters (so an escape such as upd\u0061te cannot hide a verb either way)
     if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) {
@@ -1281,6 +1300,7 @@ function rawSqlWrites(text) {
     } else if (ts.isTemplateExpression(n)) {
       consider(n, templateText(n));
       consider(n, n.getText(sf).slice(1, -1));
+      consider(n, inlined(n));
     } else if (isPlus(n) && !(n.parent && isPlus(n.parent))) consider(n, flat(n));
     ts.forEachChild(n, visit);
   };
@@ -1966,6 +1986,17 @@ const REFLECTION_FORMS = [
     "const s = 'select \"--\"; delete /**/ from firms f where true';",
     "const s = 'select $q$ -- $q$; delete /**/ from firms f where true';",
     "const s = \"select E'\\\\' --'; delete /**/ from firms f where true\";",
+    // a verb (or a word of it) in its own literal inside a substitution: the substitution is inlined as its text
+    "const s = sql`${sql.raw('delete from')} study_proofread_dispositions d where true`;",
+    "const s = sql`${sql.raw(\"delete from\")} firms f where true`;",
+    "const s = sql`${sql`delete from`} firms f where true`;",
+    "const s = sql`${sql.raw('insert into')} firms as f values (1)`;",
+    "const s = sql`${sql.raw('delete from')} ${tbl} where true`;",
+    "const s = sql`${sql.raw('update')} ${tbl} ${patch}`;",
+    "const s = sql`delete ${sql.raw('from')} firms f where true`;",
+    "const s = `${\"delete from\"} users u where true`;",
+    "const s = sql`${sql`${sql.raw('delete')} from`} firms f where true`;",
+    "const s = sql`upd${\"ate\"} firms ${patch}`;",
   ];
   const left = [
     "const s = sql`SELECT id FROM study_proofread_runs WHERE x ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1`;",
@@ -1991,6 +2022,8 @@ const REFLECTION_FORMS = [
     'const s = "Could not update disposition.";',
     'const s = "Failed to update project. Please retry.";',
     'const s = "Could not insert into queue.";',
+    // an inlined substitution that makes a read is still a read
+    "const s = sql`select ${sql.raw('id')} from firms where id = ${id}`;",
     "const s = sql`select id from study_proofread_runs where id = ${id} for update ${skip}`;",
   ];
   // prose in a SQL shape is refused, and the comment at rawSqlWrites says to reword it
@@ -2011,7 +2044,7 @@ const REFLECTION_FORMS = [
   const flagged = left.filter((t) => n(t) !== 0);
   ok(
     missed.length === 0 && flagged.length === 0,
-    "the raw-SQL scan refuses UPDATE .. SET, UPDATE of a table-like target (a SET in a substitution included), INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT DO UPDATE, MERGE INTO, DROP TABLE / SCHEMA / OWNED, ALTER TABLE, COPY .. FROM and SELECT .. INTO in any letter case, with comments between the words (a nested block comment, a line comment ended by CR, a comment after a quoted string that holds a comment opener), with no whitespace between a verb and a quoted or substituted target (`delete from${t}`, `insert into\"t\"(`), in a string, a template with a substitution, a + chain or an escaped spelling, on a snake_case table, on a schema table with no underscore (firms, users), on a Unicode-escaped quoted name (U&\"t\") and behind a qualifier with whitespace around its dot (`public . firms`), and the prose its comment says to reword; and leaves FOR UPDATE / FOR NO KEY UPDATE row locks, reads, a bare word, prose that names a verb outside those shapes (\"update failed\", \"could not insert into the queue\") and a sentence that ends after the verb's object (\"Failed to update project.\") alone",
+    "the raw-SQL scan refuses UPDATE .. SET, UPDATE of a table-like target (a SET in a substitution included), INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT DO UPDATE, MERGE INTO, DROP TABLE / SCHEMA / OWNED, ALTER TABLE, COPY .. FROM and SELECT .. INTO in any letter case, with comments between the words (a nested block comment, a line comment ended by CR, a comment after a quoted string that holds a comment opener), with no whitespace between a verb and a quoted or substituted target (`delete from${t}`, `insert into\"t\"(`), in a string, a template with a substitution, a + chain, an escaped spelling or a substitution that is literal text (`${sql.raw('delete from')} firms`), on a snake_case table, on a schema table with no underscore (firms, users), on a Unicode-escaped quoted name (U&\"t\") and behind a qualifier with whitespace around its dot (`public . firms`), and the prose its comment says to reword; and leaves FOR UPDATE / FOR NO KEY UPDATE row locks, reads, a bare word, prose that names a verb outside those shapes (\"update failed\", \"could not insert into the queue\") and a sentence that ends after the verb's object (\"Failed to update project.\") alone",
     [...missed.map((t) => `missed: ${t}`), ...flagged.map((t) => `flagged: ${t}`)],
   );
   // The schema precondition has teeth: the reader goes empty on a directory that is not there,
@@ -4590,6 +4623,12 @@ const MUTATIONS = [
     ["an insert into firms with a nested block comment between INSERT and INTO, inside the loader", "await db.execute(sql`insert /* /* */ */ into firms values (100)`);", "loader"],
     ["an update of the log's table object behind a nested comment, the SET a substitution", "{ const patch = sql.raw(process.env.P ?? \"\"); await db.execute(sql`update /* /* */ */ ${studyProofreadDispositionsTable} ${patch}`); }"],
     ["a delete of firms after a statement whose string holds a comment opener", "await db.execute(sql.raw(\"select '--'; delete /**/ from firms f where true\"));"],
+    // the verb in its own literal inside a substitution
+    ["a delete of the log whose verb is its own sql.raw literal", "await db.execute(sql`${sql.raw('delete from')} study_proofread_dispositions d where true`);"],
+    ["a delete of firms whose verb is a nested sql template, inside the loader", "await db.execute(sql`${sql`delete from`} firms f where true`);", "loader"],
+    ["an insert into firms with an alias whose verb is its own sql.raw literal", "await db.execute(sql`${sql.raw(\"insert into\")} firms as f values (default)`);"],
+    ["a delete of the log's table object whose verb is its own sql.raw literal", "await db.execute(sql`${sql.raw('delete from')} ${studyProofreadDispositionsTable} where true`);"],
+    ["an update whose verb is its own sql.raw literal, the table object and the SET substitutions", "{ const patch = sql.raw(process.env.P ?? \"\"); await db.execute(sql`${sql.raw('update')} ${studyProofreadDispositionsTable} ${patch}`); }"],
   ].map(([what, code, place]) => ({
     label: `store: raw SQL, ${what}`,
     file: "store",
@@ -4634,6 +4673,18 @@ const MUTATIONS = [
     file: "routes",
     flips: ["routes-do-not-touch-study"],
     apply: edit("routes", "const router: IRouter = Router();", 'const router: IRouter = Router();\nconst q10 = "insert --x\\rinto firms values (1)";'),
+  },
+  {
+    label: "runner: a raw SQL delete whose verb is a string literal substituted into a template",
+    file: "runner",
+    flips: ["runner-has-no-db-writes"],
+    apply: edit("runner", "    const rec: StudyRecord", '    const q = `${"delete from"} users u where true`;\n    const rec: StudyRecord'),
+  },
+  {
+    label: "routes: a raw SQL insert whose verb is a call of one string literal, substituted into a template",
+    file: "routes",
+    flips: ["routes-do-not-touch-study"],
+    apply: edit("routes", "const router: IRouter = Router();", 'const router: IRouter = Router();\nconst raw11 = (x: string) => x; const q11 = `${raw11("insert into")} firms as f values (1)`;'),
   },
   {
     label: "routes: a raw SQL delete from a Unicode-escaped quoted firms",
