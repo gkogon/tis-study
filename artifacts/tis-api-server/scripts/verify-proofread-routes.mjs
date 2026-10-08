@@ -1096,9 +1096,12 @@ const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.g
  * events, firms, sessions and users have neither an underscore nor a dot, so by spelling alone
  * `delete from firms f where ..` reads like prose. A table added to the schema later is read the
  * same way without an edit here.
- * Postgres reads a comment as whitespace, so each text is read twice, as written and with its
- * block and line comments blanked (the second alone could hide a write behind a `--` inside a
- * quoted string). The text is every string literal and template (a substitution counts as a
+ * Postgres reads a comment as whitespace, so each text is read as written, with its comments
+ * blanked the way Postgres lexes them (a block comment nests; a line comment ends at CR or LF),
+ * and with only the comments outside quoted strings blanked: a `--` inside a quoted string would
+ * hide a write from the second read alone, which the first keeps, and a quoted `'--'` ahead of a
+ * write whose words a comment splits would hide it from both, which the third reads (see
+ * blankSqlComments). The text is every string literal and template (a substitution counts as a
  * target: `update ${tisProjectsTable} set`) and every `+` chain of them (`"update " + "tis_" +
  * "projects"`; an operand that is not a literal reads as a substitution), both cooked and as
  * written; as written, a template's text includes the source of its substitutions, so
@@ -1177,11 +1180,79 @@ const RAW_SQL_SHAPES = [
   String.raw`\bdrop\s+(?:table|schema|owned)\b`,
   String.raw`\balter\s+table\b`,
 ].map((src) => new RegExp(src, "i"));
-/** Postgres lexes a comment as whitespace: blank them (block comments, then line comments). */
-const blankSqlComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--[^\n]*/g, " ");
+/**
+ * Postgres lexes a comment as whitespace: blank each one the way its lexer reads it, left to right. A block
+ * comment NESTS (`/* /* *\/ *\/` is one comment, and the text after the first `*\/` is still inside it), and a
+ * line comment ends at a line feed OR a carriage return. With `quotes`, a comment opener inside a quoted
+ * string ('..', E'..' with backslash escapes, "..", $tag$..$tag$) is text, as it is to Postgres; without, every
+ * opener counts. The scan reads both, because a text here is not always one whole statement (a substitution
+ * or a `+` operand reads as `${}`), so neither read alone is always the one Postgres makes.
+ */
+// a dollar-quote delimiter: $$ or $tag$ (a tag starts like an identifier)
+const DOLLAR_TAG = /^\$(?:[A-Za-z_\P{ASCII}][\w\P{ASCII}]*)?\$/u;
+const blankSqlComments = (t, quotes = false) => {
+  if (!t.includes("--") && !t.includes("/*")) return t;
+  const identChar = (c) => c !== undefined && /[\w$\P{ASCII}]/u.test(c);
+  let out = "";
+  let i = 0;
+  while (i < t.length) {
+    const c = t[i];
+    if (c === "-" && t[i + 1] === "-") {
+      let j = i + 2;
+      while (j < t.length && t[j] !== "\n" && t[j] !== "\r") j++;
+      out += " ";
+      i = j;
+    } else if (c === "/" && t[i + 1] === "*") {
+      let depth = 1;
+      let j = i + 2;
+      while (j < t.length && depth > 0) {
+        if (t[j] === "/" && t[j + 1] === "*") {
+          depth++;
+          j += 2;
+        } else if (t[j] === "*" && t[j + 1] === "/") {
+          depth--;
+          j += 2;
+        } else j++;
+      }
+      out += " ";
+      i = j;
+    } else if (quotes && (c === "'" || c === '"')) {
+      const backslash = c === "'" && /[eE]/.test(t[i - 1] ?? "") && !identChar(t[i - 2]);
+      let j = i + 1;
+      while (j < t.length) {
+        if (backslash && t[j] === "\\") j += 2;
+        else if (t[j] === c && t[j + 1] === c) j += 2;
+        else if (t[j] === c) break;
+        else j++;
+      }
+      out += t.slice(i, j + 1);
+      i = j + 1;
+    } else if (quotes && c === "$" && !identChar(t[i - 1]) && DOLLAR_TAG.test(t.slice(i))) {
+      const tag = DOLLAR_TAG.exec(t.slice(i))[0];
+      const close = t.indexOf(tag, i + tag.length);
+      const j = close < 0 ? t.length : close + tag.length;
+      out += t.slice(i, j);
+      i = j;
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+};
 // every shape above contains one of these words; a text with none of them is not looked at further
 const RAW_SQL_WORD = /\b(?:update|insert|delete|copy|select|truncate|merge|conflict|drop|alter)\b/i;
-const RAW_SQL_WRITE = { test: (t) => RAW_SQL_WORD.test(blankSqlComments(t)) && [t, blankSqlComments(t)].some((x) => RAW_SQL_SHAPES.some((re) => re.test(x))) };
+const anyShape = (x) => RAW_SQL_SHAPES.some((re) => re.test(x));
+// as written and with every comment opener blanked (the reads earlier versions made), or with the comments
+// outside quotes blanked
+const RAW_SQL_WRITE = {
+  test: (t) => {
+    const all = blankSqlComments(t);
+    if (RAW_SQL_WORD.test(all) && (anyShape(t) || anyShape(all))) return true;
+    const outsideQuotes = blankSqlComments(t, true);
+    return outsideQuotes !== t && outsideQuotes !== all && RAW_SQL_WORD.test(outsideQuotes) && anyShape(outsideQuotes);
+  },
+};
 const rawSqlCache = new Map();
 function rawSqlWrites(text) {
   if (rawSqlCache.has(text)) return rawSqlCache.get(text);
@@ -1881,6 +1952,20 @@ const REFLECTION_FORMS = [
     "const s = 'delete from public . \"study_proofread_dispositions\" f where true';",
     "const s = 'insert into public . study_proofread_dispositions as d (id) values (1)';",
     "const s = sql`delete from public . ${tbl} where true`;",
+    // comments lexed as Postgres lexes them: a block comment nests, and a line comment ends at CR as well as LF
+    'const s = "delete from /* /* */ */ study_proofread_dispositions d where true";',
+    'const s = "delete /* /* */ */ from firms f where true";',
+    'const s = "insert /* /* */ */ into firms values (100)";',
+    'const s = "delete from --x\\rstudy_proofread_dispositions d where true";',
+    'const s = "delete --x\\rfrom firms f where true";',
+    "const s = sql`update /* /* */ */ ${tbl} ${patch}`;",
+    "const s = sql`merge /* /* */ */ into ${tbl} t using x on true when matched then delete`;",
+    // and a comment opener inside a quoted string or identifier is not a comment
+    "const s = \"select '--'; delete /**/ from firms f where true\";",
+    "const s = \"select '/*'; delete /**/ from firms f where true\";",
+    "const s = 'select \"--\"; delete /**/ from firms f where true';",
+    "const s = 'select $q$ -- $q$; delete /**/ from firms f where true';",
+    "const s = \"select E'\\\\' --'; delete /**/ from firms f where true\";",
   ];
   const left = [
     "const s = sql`SELECT id FROM study_proofread_runs WHERE x ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1`;",
@@ -1926,7 +2011,7 @@ const REFLECTION_FORMS = [
   const flagged = left.filter((t) => n(t) !== 0);
   ok(
     missed.length === 0 && flagged.length === 0,
-    "the raw-SQL scan refuses UPDATE .. SET, UPDATE of a table-like target (a SET in a substitution included), INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT DO UPDATE, MERGE INTO, DROP TABLE / SCHEMA / OWNED, ALTER TABLE, COPY .. FROM and SELECT .. INTO in any letter case, with comments between the words, with no whitespace between a verb and a quoted or substituted target (`delete from${t}`, `insert into\"t\"(`), in a string, a template with a substitution, a + chain or an escaped spelling, on a snake_case table, on a schema table with no underscore (firms, users), on a Unicode-escaped quoted name (U&\"t\") and behind a qualifier with whitespace around its dot (`public . firms`), and the prose its comment says to reword; and leaves FOR UPDATE / FOR NO KEY UPDATE row locks, reads, a bare word, prose that names a verb outside those shapes (\"update failed\", \"could not insert into the queue\") and a sentence that ends after the verb's object (\"Failed to update project.\") alone",
+    "the raw-SQL scan refuses UPDATE .. SET, UPDATE of a table-like target (a SET in a substitution included), INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT DO UPDATE, MERGE INTO, DROP TABLE / SCHEMA / OWNED, ALTER TABLE, COPY .. FROM and SELECT .. INTO in any letter case, with comments between the words (a nested block comment, a line comment ended by CR, a comment after a quoted string that holds a comment opener), with no whitespace between a verb and a quoted or substituted target (`delete from${t}`, `insert into\"t\"(`), in a string, a template with a substitution, a + chain or an escaped spelling, on a snake_case table, on a schema table with no underscore (firms, users), on a Unicode-escaped quoted name (U&\"t\") and behind a qualifier with whitespace around its dot (`public . firms`), and the prose its comment says to reword; and leaves FOR UPDATE / FOR NO KEY UPDATE row locks, reads, a bare word, prose that names a verb outside those shapes (\"update failed\", \"could not insert into the queue\") and a sentence that ends after the verb's object (\"Failed to update project.\") alone",
     [...missed.map((t) => `missed: ${t}`), ...flagged.map((t) => `flagged: ${t}`)],
   );
   // The schema precondition has teeth: the reader goes empty on a directory that is not there,
@@ -4499,6 +4584,12 @@ const MUTATIONS = [
     ["an insert into a Unicode-escaped firms from a table", "await db.execute(sql.raw('insert into U&\"firms\" table x'));"],
     ["a delete from firms qualified with spaces around the dot", "await db.execute(sql.raw(\"delete from public . firms f where true\"));"],
     ["an insert into users qualified with a space before the dot, with an alias", "await db.execute(sql.raw(\"insert into public .users as u (id) values (1)\"));"],
+    // comments as Postgres lexes them: nested block comments, a line comment ended by CR, a comment opener in a string
+    ["a delete from the log with a nested block comment before the table", "await db.execute(sql`delete from /* /* */ */ study_proofread_dispositions d where true`);"],
+    ["a delete from the log with a line comment ended by a carriage return", "await db.execute(sql.raw(\"delete from --x\\rstudy_proofread_dispositions d where true\"));"],
+    ["an insert into firms with a nested block comment between INSERT and INTO, inside the loader", "await db.execute(sql`insert /* /* */ */ into firms values (100)`);", "loader"],
+    ["an update of the log's table object behind a nested comment, the SET a substitution", "{ const patch = sql.raw(process.env.P ?? \"\"); await db.execute(sql`update /* /* */ */ ${studyProofreadDispositionsTable} ${patch}`); }"],
+    ["a delete of firms after a statement whose string holds a comment opener", "await db.execute(sql.raw(\"select '--'; delete /**/ from firms f where true\"));"],
   ].map(([what, code, place]) => ({
     label: `store: raw SQL, ${what}`,
     file: "store",
@@ -4531,6 +4622,18 @@ const MUTATIONS = [
     file: "runner",
     flips: ["runner-has-no-db-writes"],
     apply: edit("runner", "    const rec: StudyRecord", '    const q = "delete from public . users u where true";\n    const rec: StudyRecord'),
+  },
+  {
+    label: "runner: a raw SQL delete with a nested block comment between DELETE and FROM",
+    file: "runner",
+    flips: ["runner-has-no-db-writes"],
+    apply: edit("runner", "    const rec: StudyRecord", '    const q = "delete /* /* */ */ from firms f where true";\n    const rec: StudyRecord'),
+  },
+  {
+    label: "routes: a raw SQL insert with a line comment ended by a carriage return between INSERT and INTO",
+    file: "routes",
+    flips: ["routes-do-not-touch-study"],
+    apply: edit("routes", "const router: IRouter = Router();", 'const router: IRouter = Router();\nconst q10 = "insert --x\\rinto firms values (1)";'),
   },
   {
     label: "routes: a raw SQL delete from a Unicode-escaped quoted firms",
