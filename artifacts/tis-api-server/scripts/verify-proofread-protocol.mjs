@@ -187,6 +187,10 @@ ok(/not by itself an open study/i.test(flat(logging)),
 //     sentence "states a gate" when it says "complete only" or "may be called
 //     complete"; each must BE the sentence below, and the old two-condition gate
 //     may appear nowhere.
+//
+//     `BLOCKER — unverified` is none of the six types, so it may appear in none of
+//     the three files, in any dash, case or punctuation; §5's criterion Datum cannot
+//     locate in the agency document is a `BLOCKER`, spelled as one (2026-10-08).
 const GATE_SENTENCE = "A study may be called complete only with no open `BLOCKER`, no open `DEFECT` and no open `CONTESTED`.";
 const SIX = ["BLOCKER", "DEFECT", "DISCLOSE", "NOTE", "UNVERIFIED", "CONTESTED"];
 const OLD_GATE = /no\s+open\s+\**`?BLOCKER`?\**\s+and\s+no\s+open\s+\**`?CONTESTED`?/i;
@@ -216,6 +220,16 @@ const adminBulletOf = (text) => {
   return block.split(/\n(?=- )/).map(flat).find((b) => /^- \*\*Admin\b/.test(b)) ?? "";
 };
 const SKILL_EXEMPT = /^\*\*Do not oversell it\.\*\*/;
+/**
+ * `BLOCKER — unverified`, a compound that is none of the six types, in any spelling: any case,
+ * backticks or emphasis around either word, and a hyphen, any Unicode dash, a minus sign, `--`,
+ * a colon or an opening parenthesis between them, across a line wrap. An enumeration
+ * ("`BLOCKER`, `UNVERIFIED`") is not one.
+ */
+const BLOCKER_UNVERIFIED = /\bBLOCKER[`*_]*\s*(?:[-\u2010-\u2015\u2212]+|:|\()\s*[`*_]*unverified\b/i;
+const noBlockerUnverified = (text) => !BLOCKER_UNVERIFIED.test(flat(text));
+/** §5's bullet on a criterion the agency document does not hold, flattened. */
+const criterionBullet = (text) => paragraphs(section(text, "5\\. Criteria")).find((p) => p.startsWith("- A criterion Datum could not locate in the agency document")) ?? "";
 
 const CHECKS = [
   {
@@ -269,6 +283,25 @@ const CHECKS = [
     },
   },
   {
+    id: "protocol-no-blocker-unverified",
+    on: "protocol",
+    msg: "the protocol spells no `BLOCKER — unverified` anywhere, in any dash, case or punctuation (`BLOCKER - unverified`, `BLOCKER – unverified`, `BLOCKER: unverified`, across a wrap): it is none of the six types",
+    test: (t) => noBlockerUnverified(t.protocol),
+  },
+  {
+    id: "criteria-unlocated-is-a-blocker",
+    on: "protocol",
+    msg: "§5: a criterion Datum could not locate in the agency document is a `BLOCKER` — the criterion is unverified, not an assumed absence — because the document is in front of Datum and the source the study cites is wrong or missing (rule 2); a document Datum could not reach is rule 4's `UNVERIFIED`",
+    test: (t) => {
+      const b = criterionBullet(t.protocol);
+      return (
+        b.startsWith("- A criterion Datum could not locate in the agency document is a `BLOCKER`: the criterion is unverified, not an assumed absence.") &&
+        /\bwrong or missing \(rule 2\)/.test(b) &&
+        /\brule 4's `UNVERIFIED`/.test(b)
+      );
+    },
+  },
+  {
     id: "audience-engineer-told-only-the-count",
     on: "protocol",
     msg: "§Audience: admin alone sees DEFECT, and the engineer is told only how many their study carries and that each holds it until a re-run no longer raises it",
@@ -287,6 +320,12 @@ const CHECKS = [
     on: "agent",
     msg: "datum.md: a source Datum cannot reach makes the finding `UNVERIFIED`, and `BLOCKER — unverified` appears nowhere",
     test: (t) => /If you cannot reach the source, the finding is `UNVERIFIED`\./.test(flat(t.agent)) && !/BLOCKER\s*[—-]+\s*unverified/i.test(t.agent),
+  },
+  {
+    id: "agent-no-blocker-unverified",
+    on: "agent",
+    msg: "datum.md spells no `BLOCKER — unverified` anywhere, in any dash, case or punctuation",
+    test: (t) => noBlockerUnverified(t.agent),
   },
   {
     id: "skill-six-types",
@@ -317,6 +356,12 @@ const CHECKS = [
         !/never (go|goes|reach|reaches) (to )?the customer|not shown to the customer/i.test(f)
       );
     },
+  },
+  {
+    id: "skill-no-blocker-unverified",
+    on: "skill",
+    msg: "SKILL.md spells no `BLOCKER — unverified` anywhere, in any dash, case or punctuation",
+    test: (t) => noBlockerUnverified(t.skill),
   },
   {
     id: "skill-banned-copy",
@@ -356,15 +401,25 @@ const MUTATIONS = [
   { label: "rule 2: drop the UNVERIFIED bullet", file: "protocol", flips: ["rule2-six-types"], apply: edit("protocol", /\n   - `UNVERIFIED` — [\s\S]*?not a hold\.\n/, "\n") },
   { label: "rule 2: a DEFECT blocks this study (the old text)", file: "protocol", flips: ["rule2-defect-holds-until-rerun"], apply: edit("protocol", "It holds\n     this study until a re-run no longer raises it, and it opens a bug.", "It blocks\n     this study and it opens a bug.") },
   { label: "rule 2: drop who may not dispose of a DEFECT", file: "protocol", flips: ["rule2-defect-holds-until-rerun"], apply: edit("protocol", " Neither\n     the engineer nor the PE disposes of it.", "") },
-  { label: "rule 4: back to BLOCKER — unverified", file: "protocol", flips: ["rule4-unverified"], apply: edit("protocol", "the finding is `UNVERIFIED`.\n5.", "the finding is `BLOCKER — unverified`.\n5.") },
+  { label: "rule 4: back to BLOCKER — unverified", file: "protocol", flips: ["rule4-unverified", "protocol-no-blocker-unverified"], apply: edit("protocol", "the finding is `UNVERIFIED`.\n5.", "the finding is `BLOCKER — unverified`.\n5.") },
+  { label: "§5: the unlocated criterion back to `BLOCKER — unverified`", file: "protocol", flips: ["protocol-no-blocker-unverified", "criteria-unlocated-is-a-blocker"], apply: edit("protocol", "is a\n  `BLOCKER`: the criterion is unverified, not an assumed absence.", "is\n  `BLOCKER — unverified`, not an assumed absence.") },
+  { label: "§5: the unlocated criterion becomes UNVERIFIED (it would stop holding the study)", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", "is a\n  `BLOCKER`: the criterion is unverified", "is\n  `UNVERIFIED`: the criterion is unverified") },
+  { label: "§5: drop why it is a BLOCKER and not rule 4's UNVERIFIED", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", / The\n  document was in front of Datum[\s\S]*?rule 4's `UNVERIFIED`\./, "") },
+  { label: "§5: the reason no longer says the cited source is wrong or missing", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", "is wrong or missing (rule 2);", "is doubtful;") },
+  { label: "§5: an unreachable document is no longer sent to rule 4", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", "reach at all is rule 4's `UNVERIFIED`.", "reach at all is the same.") },
+  { label: "protocol: a hyphenated compound in rule 3", file: "protocol", flips: ["protocol-no-blocker-unverified"], apply: edit("protocol", "Silence is never a pass.", "Silence is never a pass; it is blocker-unverified.") },
+  { label: "protocol: an en-dash compound in backticks, wrapped", file: "protocol", flips: ["protocol-no-blocker-unverified"], apply: edit("protocol", "Silence is never a pass.", "Silence is never a pass; it is `BLOCKER` –\n`unverified`.") },
+  { label: "protocol: a colon compound", file: "protocol", flips: ["protocol-no-blocker-unverified"], apply: edit("protocol", "Silence is never a pass.", "Silence is never a pass; it is BLOCKER: unverified.") },
   { label: "§Audience: drop what the engineer is told", file: "protocol", flips: ["audience-engineer-told-only-the-count"], apply: edit("protocol", "\n  The engineer is told only how many their study carries, and that each holds\n  the study until a re-run no longer raises it — nothing else about one.", "") },
   { label: "§Logging: BUG FILED clears the hold", file: "protocol", flips: ["logging-bug-filed-does-not-clear"], apply: edit("protocol", "It does not clear the\n  hold: a `DEFECT` clears only when a re-run no longer raises it.", "It clears the hold.") },
   // datum.md
   { label: "datum.md: back to the two-condition gate", file: "agent", flips: ["agent-gate-sentence"], apply: edit("agent", "A study may be called complete only with no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`.", "A study is complete only with no open `BLOCKER` and no open `CONTESTED`.") },
   { label: "datum.md: a second, BLOCKER-only gate", file: "agent", flips: ["agent-gate-sentence"], apply: edit("agent", "## Output\n", "## Output\n\nA study is complete only with no open `BLOCKER`.\n") },
   { label: "datum.md: the gate sentence removed", file: "agent", flips: ["agent-gate-sentence"], apply: edit("agent", "A study may be called complete only with no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`.", "") },
-  { label: "datum.md: back to BLOCKER — unverified", file: "agent", flips: ["agent-unverified-is-a-type"], apply: edit("agent", "the finding is `UNVERIFIED`.", "the finding is `BLOCKER — unverified`.") },
+  { label: "datum.md: back to BLOCKER — unverified", file: "agent", flips: ["agent-unverified-is-a-type", "agent-no-blocker-unverified"], apply: edit("agent", "the finding is `UNVERIFIED`.", "the finding is `BLOCKER — unverified`.") },
+  { label: "datum.md: an en-dash compound in backticks", file: "agent", flips: ["agent-no-blocker-unverified"], apply: edit("agent", "**You cannot edit.**", "**You cannot edit.** A gap is `BLOCKER` – `unverified`.") },
   // SKILL.md
+  { label: "SKILL.md: a compound in parentheses", file: "skill", flips: ["skill-no-blocker-unverified"], apply: edit("skill", "- `NOTE` — surface to the PE.", "- `NOTE` — surface to the PE; a missing source is blocker (unverified).") },
   { label: "SKILL.md: the gate sentence removed", file: "skill", flips: ["skill-gate-sentence"], apply: edit("skill", "A study may be called complete only with no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`. ", "") },
   { label: "SKILL.md: the gate without DEFECT", file: "skill", flips: ["skill-gate-sentence"], apply: edit("skill", "no open `BLOCKER`, no open `DEFECT`\nand no open `CONTESTED`. An undisposed", "no open `BLOCKER` and no open\n`CONTESTED`. An undisposed") },
   { label: "SKILL.md: UNVERIFIED treated as a blocker again", file: "skill", flips: ["skill-unverified-is-a-record"], apply: edit("skill", /- `UNVERIFIED` — [\s\S]*?run Datum again\.\n/, "- `UNVERIFIED` — treat as a blocker until the source is reached.\n") },

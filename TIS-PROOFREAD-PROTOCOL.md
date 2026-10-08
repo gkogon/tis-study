@@ -1,6 +1,6 @@
 # TIS Proofread Protocol — Datum
 
-PROTOCOL_VERSION: 2026-10-07.1
+PROTOCOL_VERSION: 2026-10-08.1
 
 Two roles.
 
@@ -253,8 +253,11 @@ as a curve selection.
   the deliverable's own words — "no mitigation required in 2027" is a different
   claim from "no mitigation required."
 
-- A criterion Datum could not locate in the agency document is
-  `BLOCKER — unverified`, not an assumed absence.
+- A criterion Datum could not locate in the agency document is a
+  `BLOCKER`: the criterion is unverified, not an assumed absence. The
+  document was in front of Datum and does not hold it, so the source the
+  study cites for it is wrong or missing (rule 2); a document Datum could not
+  reach at all is rule 4's `UNVERIFIED`.
 
 ## 6. Limitations disclosure
 
