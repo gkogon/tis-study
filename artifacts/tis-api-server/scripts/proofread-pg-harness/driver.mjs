@@ -7,7 +7,9 @@
  * deploy; [FW-2 date] a carried decision keeps its date; [FW-3 withheld] admin-audience findings are counted,
  * never shown; [FW-5 422] the server refuses a decision the finding's type is not offered; [FW-6 409] a decision
  * on a run that is not the project's newest finished run is refused; [claim] claimAndRunOne leaves the study rows
- * alone. Untagged assertions are the original tenancy, rules and limiter suite.
+ * alone; [append-only] no disposition row, once written, is rewritten (even to identical values) or deleted;
+ * [limiter] each limiter's own budget, per-user key and draft-7 headers. Untagged assertions are the original
+ * tenancy and rules suite.
  *
  * The database is written directly in a few places, each named where it happens: users and projects (the app has
  * no route the harness can use for them), a finding of a type or audience the clause pass does not produce, a
@@ -20,12 +22,39 @@ const DOES_NOT_APPLY = "This decision does not apply to this finding.";
 const RUN_AGAIN = "This check has been run again. Refresh to see the latest.";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function drive({ call, q, claimOne, restart, contract, fixture, serverLines, SHA_A, SHA_B }) {
+export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, contract, fixture, serverLines, SHA_A, SHA_B }) {
   const results = [];
   const t = (name, cond, detail) => {
     results.push({ name, ok: !!cond });
     console.log(`${cond ? "PASS" : "FAIL"}  ${name}${cond || detail === undefined ? "" : `\n        ${typeof detail === "string" ? detail : JSON.stringify(detail)}`.slice(0, 1200)}`);
   };
+  // [append-only] Every disposition row, by id, hashed with its text AND its xmin: an UPDATE that writes identical
+  // values still gets a new xmin. Read before and after every POST and every claim (each may write the log, and a
+  // GET's background sweep may too, between them); a row once seen must hash the same at every later read.
+  const logSeen = new Map();
+  const logChanges = [];
+  let logReads = 0;
+  const readLog = async (label) => {
+    const now = new Map((await q("select d.id, md5(d::text || ':' || d.xmin::text) h from study_proofread_dispositions d")).map((r) => [r.id, r.h]));
+    logReads++;
+    for (const [id, h] of logSeen) {
+      if (now.get(id) !== h) {
+        logChanges.push(`${label}: ${now.has(id) ? "rewrote" : "deleted"} ${id}`);
+        logSeen.set(id, now.get(id));
+      }
+    }
+    for (const [id, h] of now) if (!logSeen.has(id)) logSeen.set(id, h);
+  };
+  const watched = async (label, act) => {
+    await readLog(`before ${label}`);
+    try {
+      return await act();
+    } finally {
+      await readLog(`after ${label}`);
+    }
+  };
+  const call = (method, p, opts) => (method === "GET" ? rawCall(method, p, opts) : watched(`${method} ${p}`, () => rawCall(method, p, opts)));
+  const claimOne = () => watched("claim", rawClaimOne);
   const U = (n) => `user-${n}|${n}@example.test`;
   const count = async (sql, p = []) => Number((await q(sql, p))[0].c);
   const dispCount = () => count("select count(*) c from study_proofread_dispositions");
@@ -45,7 +74,7 @@ export async function drive({ call, q, claimOne, restart, contract, fixture, ser
 
   try {
     // ---- setup ------------------------------------------------------------------------------------------
-    for (const n of ["a", "b", "c", "lim", "lim2"]) await q("insert into users (id, email) values ($1, $2)", [`user-${n}`, `${n}@example.test`]);
+    for (const n of ["a", "b", "c", "lim", "lim2", "lim3"]) await q("insert into users (id, email) values ($1, $2)", [`user-${n}`, `${n}@example.test`]);
     // A firm is created the repo's way: on a user's first authenticated request.
     for (const n of ["a", "b", "lim", "lim2"]) await call("GET", `/projects/${UNKNOWN}/proofread`, { user: U(n) });
     const firmOf = async (n) => (await q("select firm_id from firm_members where user_id = $1", [`user-${n}`]))[0]?.firm_id;
@@ -229,7 +258,12 @@ export async function drive({ call, q, claimOne, restart, contract, fixture, ser
     const view2 = await get(PA, "a");
     const mine = view2.body.dispositions.filter((d) => d.findingId === target.id);
     t("GET serves the log newest-first and without the actor id", mine.length >= 3 && mine[0].disposition === "DISCLOSED" && mine.every((d) => !("actorUserId" in d)), mine);
-    t("the log is append-only: every accepted decision is its own row (3 so far)", (await count("select count(*) c from study_proofread_dispositions where finding_id = $1", [target.id])) === 3);
+    t("every accepted decision is its own row (3 so far on this finding)", (await count("select count(*) c from study_proofread_dispositions where finding_id = $1", [target.id])) === 3);
+    t(
+      `[append-only] so far (${logReads} reads of the log around every POST and claim): no disposition row, once written, was rewritten or deleted (row text and xmin)`,
+      logReads > 0 && logSeen.size > 0 && logChanges.length === 0,
+      logChanges.slice(0, 10),
+    );
     const decisionAsServed = mine[0];
 
     // ---- [FW-5 422] which decision fits which finding ---------------------------------------------------------
@@ -429,33 +463,89 @@ export async function drive({ call, q, claimOne, restart, contract, fixture, ser
     for (const r of burst) tally[r.status] = (tally[r.status] ?? 0) + 1;
     console.log(`INFO  burst of 12 simultaneous "Run again" presses: statuses ${JSON.stringify(tally)}, revisions written ${JSON.stringify(burstRevs)}`);
 
-    // ---- limiters: separate budgets, draft-7 headers (this server process started at the restart above) -----------------
+    // ---- [limiter] each limiter: its own budget, keyed per user, draft-7 headers naming its own limit ----------------
+    // The limiters keep their counts in this server process (no REDIS_URL), which started at the restart above.
+    const draft7 = (r, limit, windowSec) =>
+      r.headers.get("ratelimit-policy") === `${limit};w=${windowSec}` &&
+      new RegExp(`^limit=${limit}, remaining=0, reset=\\d+$`).test(r.headers.get("ratelimit") ?? "") &&
+      !r.headers.get("ratelimit-limit") &&
+      !r.headers.get("x-ratelimit-limit");
+    const headersOf = (r) =>
+      `RateLimit-Policy: ${r.headers.get("ratelimit-policy")} | RateLimit: ${r.headers.get("ratelimit")} | RateLimit-Limit: ${r.headers.get("ratelimit-limit")} | X-RateLimit-Limit: ${r.headers.get("x-ratelimit-limit")} | ${JSON.stringify(r.body)}`;
     const runStatuses = [];
     let lastRun;
     for (let i = 0; i < 31; i++) {
       lastRun = await call("POST", `/projects/${PL}/proofread`, { user: U("lim") });
       runStatuses.push(lastRun.status);
     }
-    t("run limiter: 30 runs in the hour are served, the 31st is 429", runStatuses.slice(0, 30).every((s) => s === 200) && runStatuses[30] === 429, runStatuses);
+    t("[limiter] run limiter: 30 runs in the hour are served, the 31st is 429", runStatuses.slice(0, 30).every((s) => s === 200) && runStatuses[30] === 429, runStatuses);
     t(
-      "the 429 uses draft-7 headers (RateLimit + RateLimit-Policy, no X-RateLimit-*)",
-      lastRun.headers.get("ratelimit-policy") && lastRun.headers.get("ratelimit") && !lastRun.headers.get("x-ratelimit-limit") && /Too many proofread runs/.test(lastRun.body?.error ?? ""),
-      `${lastRun.headers.get("ratelimit-policy")} | ${lastRun.headers.get("ratelimit")} | ${JSON.stringify(lastRun.body)}`,
+      "[limiter] the run limiter's 429 uses draft-7 headers naming its own limit (RateLimit-Policy 30;w=3600, RateLimit limit=30, remaining=0; no RateLimit-Limit or X-RateLimit-*)",
+      draft7(lastRun, 30, 3600) && /Too many proofread runs/.test(lastRun.body?.error ?? ""),
+      headersOf(lastRun),
     );
     const limView = await get(PL, "lim");
     const limTarget = limView.body?.findings?.find((f) => f.type !== "CONTESTED");
     const dispStatuses = [];
     for (let i = 0; i < 5; i++) dispStatuses.push((await call("POST", dispUrl(PL, limView.body?.runId, limTarget?.id), { user: U("lim"), body: { disposition: "FIXED" } })).status);
-    t("with the run budget spent, the SAME user can still read and record decisions (separate budgets)", limView.status === 200 && dispStatuses.every((s) => s === 200), [limView.status, dispStatuses]);
+    t("[limiter] with the run budget spent, the SAME user can still read and record decisions (separate budgets)", limView.status === 200 && dispStatuses.every((s) => s === 200), [limView.status, dispStatuses]);
     const readStatuses = [];
-    for (let i = 0; i < 125; i++) readStatuses.push((await call("GET", `/projects/${PL2}/proofread`, { user: U("lim2") })).status);
+    let lastRead;
+    for (let i = 0; i < 125; i++) {
+      lastRead = await call("GET", `/projects/${PL2}/proofread`, { user: U("lim2") });
+      readStatuses.push(lastRead.status);
+    }
     t(
-      "read limiter: 120/min then 429",
+      "[limiter] read limiter: 120/min then 429",
       readStatuses.slice(0, 120).every((s) => s === 200) && readStatuses.slice(120).every((s) => s === 429),
       `200s=${readStatuses.filter((s) => s === 200).length} 429s=${readStatuses.filter((s) => s === 429).length}`,
     );
+    t("[limiter] the read limiter's 429 uses draft-7 headers naming its own limit (RateLimit-Policy 120;w=60, RateLimit limit=120, remaining=0)", draft7(lastRead, 120, 60), headersOf(lastRead));
     const otherUser = await call("GET", `/projects/${PA}/proofread`, { user: U("a") });
-    t("limits are per user: another user is unaffected by the spent budgets", otherUser.status === 200, otherUser.status);
+    t("[limiter] the read limiter is keyed per user: another user is unaffected by the spent read budget", otherUser.status === 200, otherUser.status);
+    const lim2Run = await call("POST", `/projects/${PL2}/proofread`, { user: U("lim2") });
+    t(
+      "[limiter] the run limiter is keyed per user and shares no budget with the read limiter: with lim's runs and lim2's reads spent, lim2's run is served",
+      lim2Run.status === 200,
+      lim2Run.status,
+    );
+    // The decision limiter, spent by one user with requests that write nothing (a body that is not a decision is a
+    // 400, answered after the limiter has counted it).
+    const decStatuses = [];
+    let lastDec;
+    for (let i = 0; i < 301; i++) {
+      lastDec = await call("POST", dispUrl(UNKNOWN, UNKNOWN, UNKNOWN), { user: U("lim3"), body: { disposition: "not-a-decision" } });
+      decStatuses.push(lastDec.status);
+    }
+    const decTally = {};
+    for (const st of decStatuses) decTally[st] = (decTally[st] ?? 0) + 1;
+    t(
+      "[limiter] decision limiter: 300 decision requests in the hour are served (each a 400 for its body here), the 301st is 429",
+      decStatuses.slice(0, 300).every((st) => st === 400) && decStatuses[300] === 429,
+      { tally: decTally, firstLimited: decStatuses.indexOf(429) },
+    );
+    t(
+      "[limiter] the decision limiter's 429 uses draft-7 headers naming its own limit (RateLimit-Policy 300;w=3600, RateLimit limit=300, remaining=0; no RateLimit-Limit or X-RateLimit-*)",
+      draft7(lastDec, 300, 3600),
+      headersOf(lastDec),
+    );
+    const limDecision = await call("POST", dispUrl(PL, limView.body?.runId, limTarget?.id), { user: U("lim"), body: { disposition: "FIXED" } });
+    t("[limiter] the decision limiter is keyed per user: another user at the same address still records a decision (200)", limDecision.status === 200, [limDecision.status, limDecision.body]);
+    const lim3Read = await call("GET", `/projects/${UNKNOWN}/proofread`, { user: U("lim3") });
+    const lim3Run = await call("POST", `/projects/${UNKNOWN}/proofread`, { user: U("lim3") });
+    t(
+      "[limiter] with its decision budget spent, the same user still reaches the read and run routes (404 for an unknown project, not 429)",
+      lim3Read.status === 404 && lim3Run.status === 404,
+      [lim3Read.status, lim3Run.status],
+    );
+
+    // ---- [append-only], for everything above ---------------------------------------------------------------------------
+    await readLog("at the end");
+    t(
+      `[append-only] across every POST and claim the driver made (${logReads} reads of the log, ${logSeen.size} rows): no disposition row, once written, was rewritten or deleted (row text and xmin)`,
+      logReads > 0 && logChanges.length === 0,
+      logChanges.slice(0, 10),
+    );
 
     // ---- the advisor boundary, for everything above ------------------------------------------------------------------
     const hEnd = await studyHash();

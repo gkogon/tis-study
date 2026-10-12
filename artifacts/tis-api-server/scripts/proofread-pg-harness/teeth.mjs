@@ -43,6 +43,7 @@ const SRC = "artifacts/tis-api-server/src";
 const ROUTES = `${SRC}/routes/proofread.ts`;
 const STORE = `${SRC}/lib/proofread-store.ts`;
 const RUNNER = `${SRC}/lib/proofread-run.ts`;
+const SECURITY = `${SRC}/lib/security.ts`;
 
 /** name -> { edit: [file, exact text, replacement], red: assertion-name prefixes that must FAIL } or { refused }. */
 const BREAKS = {
@@ -85,6 +86,41 @@ const BREAKS = {
       "export async function loadStudyForRun(run: StudyProofreadRun) {\n  await db.update(tisProjectsTable).set({ projectName: sql`${tisProjectsTable.projectName}` }).where(eq(tisProjectsTable.id, run.projectId));\n",
     ],
     red: ["[claim] across that claimAndRunOne", "after every request above, tis_projects is byte-identical"],
+  },
+  // [append-only] an earlier decision rewritten before the new one is appended: once with other values (it names
+  // another actor), once with the values it already had (only xmin changes).
+  "log-rewrites-earlier-rows": {
+    edit: [
+      STORE,
+      `  await db.insert(studyProofreadDispositionsTable).values({\n    findingId: args.findingId,\n`,
+      "  await db.update(studyProofreadDispositionsTable).set({ actorUserId: args.actorUserId, note: sql`'(superseded) ' || coalesce(${studyProofreadDispositionsTable.note}, '')` }).where(eq(studyProofreadDispositionsTable.findingId, args.findingId));\n  await db.insert(studyProofreadDispositionsTable).values({\n    findingId: args.findingId,\n",
+    ],
+    red: ["[append-only] so far", "[append-only] across every POST and claim"],
+  },
+  "log-touches-earlier-rows": {
+    edit: [
+      STORE,
+      `  await db.insert(studyProofreadDispositionsTable).values({\n    findingId: args.findingId,\n`,
+      "  await db.update(studyProofreadDispositionsTable).set({ note: sql`${studyProofreadDispositionsTable.note}` }).where(eq(studyProofreadDispositionsTable.findingId, args.findingId));\n  await db.insert(studyProofreadDispositionsTable).values({\n    findingId: args.findingId,\n",
+    ],
+    red: ["[append-only] so far", "[append-only] across every POST and claim"],
+  },
+  // [limiter] the decision limiter's per-user key and its draft-7 headers.
+  "decision-limiter-keyed-by-address": {
+    edit: [
+      SECURITY,
+      `  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),\n  store: makeRateLimitStore("rl:proofread-disp:"),`,
+      `  keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),\n  store: makeRateLimitStore("rl:proofread-disp:"),`,
+    ],
+    red: ["[limiter] the decision limiter is keyed per user"],
+  },
+  "decision-limiter-draft-6-headers": {
+    edit: [
+      SECURITY,
+      `  standardHeaders: "draft-7",\n  legacyHeaders: false,\n  passOnStoreError: true,\n  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),\n  store: makeRateLimitStore("rl:proofread-disp:"),`,
+      `  standardHeaders: "draft-6",\n  legacyHeaders: false,\n  passOnStoreError: true,\n  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),\n  store: makeRateLimitStore("rl:proofread-disp:"),`,
+    ],
+    red: ["[limiter] the decision limiter's 429 uses draft-7 headers"],
   },
   // Teardown: the second server never boots (the restart is "a deploy of b2..."), so the driver stops part-way.
   // The run must still stop its server and its cluster and remove its directories (the per-run check below).

@@ -50,13 +50,17 @@
  * the same 404, nothing is enqueued or written under another firm); the disposition chain in order (401, 400,
  * PE-only 403, 404 for a malformed id, a foreign or unknown project/run/finding and an admin-audience finding,
  * 422 for a decision the finding's type is not offered, 409 for a decision on a run that is not the project's
- * newest finished one); the actor is the session user; the log is append-only; GET withholds admin-audience
- * findings and answers only how many (`withheld`), and a real DEFECT raised by the clause pass is logged by the
- * runner with the run, project and clause alone; a re-run under a different deploy (engine stamp) and the same
- * rules version carries the latest decision forward with the date it was made, and a different rules version
- * carries nothing; claimAndRunOne, and every request the driver makes, leaves every tis_projects row's text and
- * xmin unchanged (the hash is shown to change on a value-identical UPDATE); the run, decision and read limiters
- * have separate per-user budgets and draft-7 headers; every GET answer parses under the read contract.
+ * newest finished one); the actor is the session user; the log is append-only (before and after every POST and
+ * claim the driver makes, every disposition row already seen hashes the same, row text and xmin, so a rewrite of
+ * an earlier decision, even to identical values, or a delete is seen); GET withholds admin-audience findings and
+ * answers only how many (`withheld`), and a real DEFECT raised by the clause pass is logged by the runner with
+ * the run, project and clause alone; a re-run under a different deploy (engine stamp) and the same rules version
+ * carries the latest decision forward with the date it was made, and a different rules version carries nothing;
+ * claimAndRunOne, and every request the driver makes, leaves every tis_projects row's text and xmin unchanged
+ * (the hash is shown to change on a value-identical UPDATE); the run, decision and read limiters each answer 429
+ * past their own limit with draft-7 headers naming it (RateLimit-Policy and RateLimit, no X-RateLimit-*), are
+ * keyed per user (another user at the same address is still served) and do not share a budget; every GET answer
+ * parses under the read contract.
  *
  * That a green run means something is shown by teeth.mjs beside this file: it breaks one production line per
  * family in a copy of HEAD (never in this checkout) and requires the named assertions to go red, a bundle that
