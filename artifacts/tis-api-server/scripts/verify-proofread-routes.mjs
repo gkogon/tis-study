@@ -32,7 +32,8 @@
  * parser only, never the type checker): imports and module loaders, database
  * writes, the values that hold a database handle, and the SQL text in string
  * literals are found in the AST, because review walked real tis_projects writes
- * past regex versions of each.
+ * past regex versions of each. The schema files under lib/db/src/schema are
+ * parsed the same way, for the table names the raw-SQL scan reads (schemaTablesIn).
  *
  * ADDITIVE TEXT SCANS. Beside those AST checks, several checks keep the substring
  * scans of comment-stripped text that earlier versions of this guard used, as
@@ -65,7 +66,7 @@
  * Run: `pnpm run check:proofread-routes`
  */
 import { createRequire } from "node:module";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -208,6 +209,8 @@ function exportNames(src) {
   return out;
 }
 
+/** The drizzle schema, whose table names the raw-SQL scan reads (see schemaTablesIn). */
+const SCHEMA_DIR = "../../../lib/db/src/schema";
 const sources = {
   routes: read("../src/routes/proofread.ts"),
   routesIndex: read("../src/routes/index.ts"),
@@ -229,11 +232,14 @@ const sources = {
       }
     })(),
   ),
+  // Every .ts file under lib/db/src/schema at any depth, by path: the raw-SQL scan reads its table names from
+  // these (schemaTablesIn), and the teeth below edit them in memory as they edit the other sources.
+  schema: Object.fromEntries(schemaFiles(SCHEMA_DIR)),
   otherNames: [...otherExportNames()],
 };
 
 for (const [k, v] of Object.entries(sources)) {
-  if (k === "otherNames" || k === "clauseDir") continue;
+  if (k === "otherNames" || k === "clauseDir" || k === "schema") continue;
   ok(v.length > 0, `precondition: the ${k} source exists and is not empty`);
 }
 ok(Object.keys(sources.clauseDir).length >= 8 && Object.values(sources.clauseDir).every((t) => t.length > 0), "precondition: the clause directory's files are all readable (src/lib/proofread/*.ts)");
@@ -1091,11 +1097,14 @@ const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.g
  * A target READS LIKE A TABLE when it is quoted (`"t"`, or Unicode-escaped, `U&"t"`), interpolated
  * (`${...}`), schema-qualified (a dot with a name right after it or whitespace before it:
  * `public.t`, `public .t`, `public . t`), snake_case, or, after any qualifier, the name of a table
- * this schema declares. The last is read from the schema itself (SCHEMA_TABLES, every
- * `pgTable("name"` in lib/db/src/schema/*.ts), because not every table is snake_case: crashes,
- * events, firms, sessions and users have neither an underscore nor a dot, so by spelling alone
- * `delete from firms f where ..` reads like prose. A table added to the schema later is read the
- * same way without an edit here.
+ * this schema declares. The last is read from the schema itself (SCHEMA_TABLES: the first argument
+ * of every pgTable call in every .ts file under lib/db/src/schema at any depth, read with TypeScript's
+ * parser, see schemaTablesIn), because not every table is snake_case: crashes, events, firms, sessions
+ * and users have neither an underscore nor a dot, so by spelling alone `delete from firms f where ..`
+ * reads like prose. A table added to the schema later is read the same way without an edit here,
+ * however its pgTable call is spelled; one declared in a way the reader cannot name (a name that is not
+ * a string literal, pgTable used other than by a direct call, pgSchema, pgTableCreator) fails
+ * schema-tables-are-read. What the reader neither reads nor refuses is listed at schemaTablesIn.
  * Postgres reads a comment as whitespace, so each text is read as written, with its comments
  * blanked the way Postgres lexes them (a block comment nests; a line comment ends at CR or LF),
  * and with only the comments outside quoted strings blanked: a `--` inside a quoted string would
@@ -1124,9 +1133,10 @@ const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.g
  * claim, then set attempts": the as-written read keeps comments).
  * NOT READ: SQL assembled at run time from anything but literals written in place (join,
  * concat, sql.append, String.fromCharCode, atob, a `${VERB}` const or any substitution that is
- * not literal text, `upd${a}`; and by the database itself, EXECUTE in a DO block); a target that reads like no table (unquoted,
- * unqualified, no underscore, not declared in this schema, so not a table this database has
- * unless one is created outside the schema files) when what follows it is a bare alias
+ * not literal text, `upd${a}`; and by the database itself, EXECUTE in a DO block); a target
+ * that reads like no table (unquoted, unqualified, no underscore, not declared in this schema,
+ * so not a table this database has unless code outside lib/db/src/schema declares one or one is
+ * created outside the schema files) when what follows it is a bare alias
  * (`delete from t f where ..`), `*`, an INSERT's `AS alias` or `TABLE x`, or a substitution
  * (and so `public. t f`, whose dot has whitespace after it only, as a sentence's does),
  * and `COPY <it> FROM E'..'` / `FROM $$..$$` and `SELECT .. INTO <it>` with no FROM; and verbs
@@ -1136,26 +1146,118 @@ const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.g
  * replaced (5de94c0) refused the verbs as words, so prose that one refused now passes, and the
  * inputs this one does not read are the ones listed above.
  */
-const SCHEMA_DIR = "../../../lib/db/src/schema";
-/** The table names a schema directory declares (`pgTable("name"`), or [] when it cannot be read. */
-function schemaTableNames(dir) {
-  let files;
+/** The path, relative to a directory, of every .ts file under it at any depth (symbolic links followed once), sorted; null when it cannot be read. */
+function tsFilesUnder(dir) {
+  const out = [];
+  const seen = new Set();
+  const walk = (rel) => {
+    const abs = at(rel ? `${dir}/${rel}` : dir);
+    const real = realpathSync(abs);
+    if (seen.has(real)) return;
+    seen.add(real);
+    for (const e of readdirSync(abs, { withFileTypes: true })) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      const st = e.isSymbolicLink() ? statSync(at(`${dir}/${r}`)) : e;
+      if (st.isDirectory()) walk(r);
+      else if (st.isFile() && /\.[cm]?ts$/.test(e.name)) out.push(r);
+    }
+  };
   try {
-    files = readdirSync(at(dir)).filter((f) => f.endsWith(".ts"));
+    walk("");
   } catch {
-    return [];
+    return null;
   }
-  return files.flatMap((f) => [...read(`${dir}/${f}`).matchAll(/\bpgTable\(\s*["'`]([A-Za-z0-9_]+)["'`]/g)].map((m) => m[1]));
+  return out.sort();
 }
+/** [path, text] of every .ts file under a schema directory, or [] when it cannot be read. */
+function schemaFiles(dir) {
+  return (tsFilesUnder(dir) ?? []).map((f) => [f, read(`${dir}/${f}`)]);
+}
+/** drizzle's table makers: pgTable's first argument is the table's name; the other two build or qualify it. */
+const TABLE_MAKERS = ["pgTable", "pgTableCreator", "pgSchema"];
+/**
+ * The table names a set of schema files declares, read with TypeScript's parser: the first argument of every
+ * call of drizzle's pgTable, whatever sits between the callee, the `(` and the argument (a comment, whitespace, a
+ * line break), whether pgTable is called by its own name, by the name an import gives it (`import { pgTable as
+ * table } from "drizzle-orm/pg-core"`, or from a schema module that re-exports it), or as a property (`pg.pgTable(..)`
+ * or `pg["pgTable"](..)` after `import * as pg`). `unread` names, by file and line, everything that declares a table
+ * this reader cannot name: a pgTable call whose first argument is not a string literal; a use of pgTable other than a
+ * direct call (`const t = pgTable`, `pgTable.withRLS(..)`, `(pgTable)(..)`, a re-export); and any use of
+ * pgTableCreator or pgSchema (the names they make are built or qualified when the module runs).
+ * schema-tables-are-read fails on any of them. Not read: pgTable reached through a computed key that is not a
+ * literal (`pg[k](..)`); a table declared by code outside lib/db/src/schema (a helper elsewhere that calls pgTable
+ * for the schema); and a table created outside the schema files altogether.
+ */
+function schemaTablesIn(files) {
+  const names = [];
+  const unread = [];
+  for (const [file, text] of files) {
+    const sf = parse(text);
+    // local name -> the maker it is bound to: each maker under its own name, and under any name an import gives it
+    const maker = new Map(TABLE_MAKERS.map((m) => [m, m]));
+    for (const st of sf.statements) {
+      const b = ts.isImportDeclaration(st) ? st.importClause?.namedBindings : undefined;
+      if (b && ts.isNamedImports(b)) {
+        for (const el of b.elements) if (TABLE_MAKERS.includes((el.propertyName ?? el.name).text)) maker.set(el.name.text, (el.propertyName ?? el.name).text);
+      }
+    }
+    const where = (n) => `${file}:${sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1}`;
+    const snippet = (n) => n.getText(sf).replace(/\s+/g, " ").slice(0, 60);
+    const makerOf = (e) => {
+      if (ts.isIdentifier(e)) return maker.get(e.text) ?? null;
+      if (ts.isPropertyAccessExpression(e) && TABLE_MAKERS.includes(e.name.text)) return e.name.text;
+      if (ts.isElementAccessExpression(e) && ts.isStringLiteralLike(e.argumentExpression) && TABLE_MAKERS.includes(e.argumentExpression.text)) return e.argumentExpression.text;
+      return null;
+    };
+    // a property's own name (the `pgTable` of x.pgTable, of { pgTable: 1 }, of a method or a field) is not a use of a binding
+    const isOwnName = (n) => {
+      const p = n.parent;
+      return !!p && p.name === n && (ts.isPropertyAccessExpression(p) || ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p) || ts.isPropertyDeclaration(p) || ts.isPropertySignature(p));
+    };
+    const visit = (n) => {
+      if (ts.isImportDeclaration(n)) return;
+      if (ts.isCallExpression(n) && makerOf(n.expression) === "pgTable") {
+        const a = n.arguments[0];
+        if (a && (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a))) names.push(a.text);
+        else unread.push(`${where(n)}: a pgTable call whose table name is not a string literal: ${snippet(n)}`);
+        n.arguments.forEach(visit);
+        return;
+      }
+      const m = ts.isPropertyAccessExpression(n) || ts.isElementAccessExpression(n) || (ts.isIdentifier(n) && !isOwnName(n)) ? makerOf(n) : null;
+      if (m) {
+        const use = n.parent && !ts.isSourceFile(n.parent) ? n.parent : n;
+        unread.push(m === "pgTable" ? `${where(n)}: pgTable used other than by a direct call: ${snippet(use)}` : `${where(n)}: a table made by ${m}, whose name this reader does not read: ${snippet(use)}`);
+        return;
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+  }
+  return { names, unread };
+}
+const schemaTableNames = (dir) => schemaTablesIn(schemaFiles(dir)).names;
 // Usable means the names it must have are there: a schema directory that moved, or a reader
 // that stopped matching, would otherwise drop the names silently and let `delete from firms f` by.
 const schemaNamesUsable = (names) => ["firms", "users"].every((n) => names.includes(n));
-const SCHEMA_TABLES = [...new Set(schemaTableNames(SCHEMA_DIR))].sort();
 /** The schema's tables whose name has neither an underscore nor a dot: by spelling they read like prose. */
-const PROSE_LIKE_TABLES = SCHEMA_TABLES.filter((n) => !/[_.]/.test(n));
+const proseLike = (names) => [...new Set(names)].filter((n) => !/[_.]/.test(n)).sort();
+/** What a schema (path -> text) declares, as the raw-SQL scan uses it; cached per schema object, which a teeth edit replaces. */
+const schemaReads = new WeakMap();
+function schemaReadOf(schema) {
+  let r = schemaReads.get(schema);
+  if (!r) {
+    const { names, unread } = schemaTablesIn(Object.entries(schema));
+    r = { tables: [...new Set(names)].sort(), unread, prose: proseLike(names) };
+    schemaReads.set(schema, r);
+  }
+  return r;
+}
+const SCHEMA_READ = schemaReadOf(sources.schema);
+const SCHEMA_TABLES = SCHEMA_READ.tables;
+const PROSE_LIKE_TABLES = SCHEMA_READ.prose;
 ok(
   schemaNamesUsable(PROSE_LIKE_TABLES),
-  "precondition: the raw-SQL scan reads this schema's table names from lib/db/src/schema (pgTable(\"name\")), and the ones with neither an underscore nor a dot include firms and users",
+  "precondition: the raw-SQL scan reads this schema's table names from lib/db/src/schema (the first argument of every pgTable call, read with TypeScript's parser, in every .ts file at any depth), and the ones with neither an underscore nor a dot include firms and users",
   `read ${SCHEMA_TABLES.length} table name(s); with no underscore: ${JSON.stringify(PROSE_LIKE_TABLES)}`,
 );
 // A quoted name, plain or Unicode-escaped (U&"\0066irms" is firms), and one part of a qualified name.
@@ -1164,25 +1266,38 @@ const SQL_NAME = String.raw`(?:${SQL_QUOTED}|[\w$]+)`;
 // Table-like: [a qualifier, with or without whitespace around its dot] then a quoted name, a substitution, a
 // snake_case word or a schema table; or a qualified name whose dot has whitespace before it or a name right after
 // it (`public.x`, `public .x`, `public . x`). A dot with neither, `project.` at the end of a sentence, is prose.
-const SQL_TABLE_LIKE = String.raw`(?:(?:${SQL_NAME}\s*\.\s*)?(?:${SQL_QUOTED}|\$\{\}|[\w$]*_[\w$]*${PROSE_LIKE_TABLES.length ? `|(?:${PROSE_LIKE_TABLES.join("|")})\\b` : ""})|[\w$]+(?:(?:\s+\.\s*|\.)${SQL_NAME})+)`;
+// The schema tables are the ones a schema read declares with neither an underscore nor a dot (each name taken
+// literally, whatever characters it holds).
+const reLiteral = (x) => x.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+const sqlTableLike = (prose) =>
+  String.raw`(?:(?:${SQL_NAME}\s*\.\s*)?(?:${SQL_QUOTED}|\$\{\}|[\w$]*_[\w$]*${prose.length ? `|(?:${prose.map(reLiteral).join("|")})\\b` : ""})|[\w$]+(?:(?:\s+\.\s*|\.)${SQL_NAME})+)`;
 // What separates a verb (or ONLY) from its target: whitespace, or nothing at all before a quoted name or a
 // substitution. Postgres reads `delete from"firms"` as `delete from "firms"`, and drizzle renders a table
 // substitution as a quoted name, so sql`delete from${t}` and sql`update${t} ${set}` reach it as `from"t"`, `update"t"`.
 const SQL_SEP = String.raw`(?:\s+|(?="|\$\{))`;
 const SQL_TARGET = String.raw`(?:only${SQL_SEP})?(?:${SQL_QUOTED}|\$\{\}|[^\s(;),]+)`;
-const RAW_SQL_SHAPES = [
-  String.raw`(?<!\bfor\s+(?:no\s+key\s+)?)\bupdate\b[^;]*?\bset\b`,
-  String.raw`(?<!\bfor\s+(?:no\s+key\s+)?)\bupdate${SQL_SEP}(?:only${SQL_SEP})?${SQL_TABLE_LIKE}`,
-  String.raw`\binsert\s+into${SQL_SEP}(?:${SQL_TABLE_LIKE}|${SQL_TARGET}\s*(?:\(|\b(?:values|select|default|overriding|with)\b))`,
-  String.raw`\bdelete\s+from${SQL_SEP}(?:only${SQL_SEP})?(?:${SQL_TABLE_LIKE}|${SQL_TARGET}(?:\s+as\s+[\w$"]+)?\s*(?:$|;|\)|\b(?:where|using|returning)\b))`,
-  String.raw`\bcopy${SQL_SEP}(?:${SQL_TABLE_LIKE}(?:\s*\([^)]*\))?\s+from\b|${SQL_TARGET}(?:\s*\([^)]*\))?\s+from\s+(?:program\b|stdin\b|'|"|\$\{\}))`,
-  String.raw`\bselect\b[^;]*?\binto${SQL_SEP}(?:(?:temp|temporary|unlogged|table)\s+)*(?:${SQL_TABLE_LIKE}|${SQL_TARGET}\s+from\b)`,
-  String.raw`\btruncate\b`,
-  String.raw`\bmerge\s+into\b`,
-  String.raw`\bon\s+conflict\b[\s\S]*?\bdo\s+update\b`,
-  String.raw`\bdrop\s+(?:table|schema|owned)\b`,
-  String.raw`\balter\s+table\b`,
-].map((src) => new RegExp(src, "i"));
+/** The write shapes, for a schema whose prose-like table names are `prose`; built once per list. */
+const rawSqlShapesCache = new Map();
+function rawSqlShapes(prose) {
+  const key = prose.join("\n");
+  if (rawSqlShapesCache.has(key)) return rawSqlShapesCache.get(key);
+  const SQL_TABLE_LIKE = sqlTableLike(prose);
+  const shapes = [
+    String.raw`(?<!\bfor\s+(?:no\s+key\s+)?)\bupdate\b[^;]*?\bset\b`,
+    String.raw`(?<!\bfor\s+(?:no\s+key\s+)?)\bupdate${SQL_SEP}(?:only${SQL_SEP})?${SQL_TABLE_LIKE}`,
+    String.raw`\binsert\s+into${SQL_SEP}(?:${SQL_TABLE_LIKE}|${SQL_TARGET}\s*(?:\(|\b(?:values|select|default|overriding|with)\b))`,
+    String.raw`\bdelete\s+from${SQL_SEP}(?:only${SQL_SEP})?(?:${SQL_TABLE_LIKE}|${SQL_TARGET}(?:\s+as\s+[\w$"]+)?\s*(?:$|;|\)|\b(?:where|using|returning)\b))`,
+    String.raw`\bcopy${SQL_SEP}(?:${SQL_TABLE_LIKE}(?:\s*\([^)]*\))?\s+from\b|${SQL_TARGET}(?:\s*\([^)]*\))?\s+from\s+(?:program\b|stdin\b|'|"|\$\{\}))`,
+    String.raw`\bselect\b[^;]*?\binto${SQL_SEP}(?:(?:temp|temporary|unlogged|table)\s+)*(?:${SQL_TABLE_LIKE}|${SQL_TARGET}\s+from\b)`,
+    String.raw`\btruncate\b`,
+    String.raw`\bmerge\s+into\b`,
+    String.raw`\bon\s+conflict\b[\s\S]*?\bdo\s+update\b`,
+    String.raw`\bdrop\s+(?:table|schema|owned)\b`,
+    String.raw`\balter\s+table\b`,
+  ].map((src) => new RegExp(src, "i"));
+  rawSqlShapesCache.set(key, shapes);
+  return shapes;
+}
 /**
  * Postgres lexes a comment as whitespace: blank each one the way its lexer reads it, left to right. A block
  * comment NESTS (`/* /* *\/ *\/` is one comment, and the text after the first `*\/` is still inside it), and a
@@ -1245,24 +1360,25 @@ const blankSqlComments = (t, quotes = false) => {
 };
 // every shape above contains one of these words; a text with none of them is not looked at further
 const RAW_SQL_WORD = /\b(?:update|insert|delete|copy|select|truncate|merge|conflict|drop|alter)\b/i;
-const anyShape = (x) => RAW_SQL_SHAPES.some((re) => re.test(x));
 // as written and with every comment opener blanked (the reads earlier versions made), or with the comments
 // outside quotes blanked
-const RAW_SQL_WRITE = {
-  test: (t) => {
-    const all = blankSqlComments(t);
-    if (RAW_SQL_WORD.test(all) && (anyShape(t) || anyShape(all))) return true;
-    const outsideQuotes = blankSqlComments(t, true);
-    return outsideQuotes !== t && outsideQuotes !== all && RAW_SQL_WORD.test(outsideQuotes) && anyShape(outsideQuotes);
-  },
+const isRawSqlWrite = (t, shapes) => {
+  const anyShape = (x) => shapes.some((re) => re.test(x));
+  const all = blankSqlComments(t);
+  if (RAW_SQL_WORD.test(all) && (anyShape(t) || anyShape(all))) return true;
+  const outsideQuotes = blankSqlComments(t, true);
+  return outsideQuotes !== t && outsideQuotes !== all && RAW_SQL_WORD.test(outsideQuotes) && anyShape(outsideQuotes);
 };
 const rawSqlCache = new Map();
-function rawSqlWrites(text) {
-  if (rawSqlCache.has(text)) return rawSqlCache.get(text);
+/** The raw SQL writes in a source text, read with a schema's prose-like table names (this schema's by default). */
+function rawSqlWrites(text, prose = PROSE_LIKE_TABLES) {
+  const cacheKey = `${prose.join("\n")}\0${text}`;
+  if (rawSqlCache.has(cacheKey)) return rawSqlCache.get(cacheKey);
+  const shapes = rawSqlShapes(prose);
   const sf = parse(text);
   const hits = new Map();
   const consider = (node, s) => {
-    if (typeof s === "string" && RAW_SQL_WRITE.test(s) && !hits.has(node.getStart(sf))) {
+    if (typeof s === "string" && isRawSqlWrite(s, shapes) && !hits.has(node.getStart(sf))) {
       hits.set(node.getStart(sf), { line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1, text: s.replace(/\s+/g, " ").trim().slice(0, 80) });
     }
   };
@@ -1306,7 +1422,7 @@ function rawSqlWrites(text) {
   };
   visit(sf);
   const out = [...hits.values()];
-  rawSqlCache.set(text, out);
+  rawSqlCache.set(cacheKey, out);
   return out;
 }
 const fmtRawSql = (file, h) => `${pathOf(file)}:${h.line}: raw SQL write ${JSON.stringify(h.text)}`;
@@ -1685,6 +1801,9 @@ const derive = (s) => {
     tisProjects: stripComments(s.tisProjects),
     typesSrc: stripComments(s.typesSrc),
     clauseDir: Object.fromEntries(Object.entries(s.clauseDir).map(([k, v]) => [k, stripComments(v)])),
+    schema: Object.fromEntries(Object.entries(s.schema).map(([k, v]) => [k, stripComments(v)])),
+    // the schema's table names, read from the raw text (its comments are the parser's to skip)
+    schemaRead: schemaReadOf(s.schema),
     otherNames: s.otherNames,
     mod: evalContract(contract),
   };
@@ -2057,6 +2176,49 @@ const REFLECTION_FORMS = [
       schemaNamesUsable(PROSE_LIKE_TABLES),
     "the schema precondition would be red for a schema directory that is not there, and for a table list without firms or without users",
   );
+  // The schema reader reads a table however its pgTable call is spelled, and names what it cannot read.
+  {
+    const imp = 'import { integer, pgTable } from "drizzle-orm/pg-core";\n';
+    const cases = [
+      [imp + 'export const t = pgTable(/* the log */ "audits", { id: integer("id") });', ["audits"], 0],
+      [imp + 'export const t = pgTable ("audits", {});', ["audits"], 0],
+      [imp + 'export const t = pgTable /* c */ (\n  // the log\n  "audits",\n  {},\n);', ["audits"], 0],
+      [imp + "export const t = pgTable(`audits`, {});", ["audits"], 0],
+      ['import { pgTable as table } from "drizzle-orm/pg-core";\nexport const t = table("audits", {});', ["audits"], 0],
+      ['import { pgTable as t } from "./tables";\nexport const a = t("audits", {});', ["audits"], 0],
+      ['import * as pg from "drizzle-orm/pg-core";\nexport const t = pg.pgTable("audits", { id: pg.integer("id") });', ["audits"], 0],
+      ['import * as pg from "drizzle-orm/pg-core";\nexport const t = pg["pgTable"]("audits", {});', ["audits"], 0],
+      [imp + 'export const t = pgTable("audits", { id: integer("id") }, (t) => [{ pgTable: t.id }]);', ["audits"], 0],
+      [imp + 'const NAME = "audits";\nexport const t = pgTable(NAME, {});', [], 1],
+      [imp + "export const t = pgTable(`aud${'its'}`, {});", [], 1],
+      [imp + 'const make = pgTable;\nexport const t = make("audits", {});', [], 1],
+      ['import * as pg from "drizzle-orm/pg-core";\nconst make = pg.pgTable;\nexport const t = make("audits", {});', [], 1],
+      ['import * as pg from "drizzle-orm/pg-core";\nconst make = pg["pgTable"];\nexport const t = make("audits", {});', [], 1],
+      [imp + "export { pgTable };", [], 1],
+      [imp + 'export const t = pgTable.withRLS("audits", {});', [], 1],
+      [imp + 'export const t = (pgTable)("audits", {});', [], 1],
+      ['import { pgSchema } from "drizzle-orm/pg-core";\nexport const t = pgSchema("app").table("audits", {});', [], 1],
+      ['import { pgTableCreator as mk } from "drizzle-orm/pg-core";\nconst table = mk((n) => `app${n}`);\nexport const t = table("audits", {});', [], 1],
+    ];
+    const wrong = cases.filter(([text, names, unread]) => {
+      const r = schemaTablesIn([["a.ts", text]]);
+      return JSON.stringify(r.names) !== JSON.stringify(names) || r.unread.length !== unread;
+    });
+    // the walk goes into subdirectories: it finds the clause files under src/lib/proofread from src/lib
+    const deep = (tsFilesUnder("../src/lib") ?? []).includes("proofread/types.ts");
+    // a table name is taken literally in the scan, whatever characters it holds
+    let literal = false;
+    try {
+      literal = rawSqlWrites('const s = "delete from a+b x where true";', ["a+b"]).length === 1 && rawSqlWrites('const s = "delete from aab x where true";', ["a+b"]).length === 0;
+    } catch {
+      literal = false;
+    }
+    ok(
+      wrong.length === 0 && deep && tsFilesUnder("../no-such-schema-dir") === null && literal,
+      "the schema reader reads a pgTable call with a comment or whitespace before its name or its `(`, across line breaks, with a template-literal name, under any name an import gives it (from drizzle-orm/pg-core or a module that re-exports it) and as a namespace's property (pg.pgTable, pg[\"pgTable\"]), and in subdirectories; it names, as unread, a call whose table name is not a string literal, a use of pgTable that is not a direct call (an alias, withRLS, a parenthesised callee, a re-export) and any use of pgSchema or pgTableCreator; and the scan takes each name it reads literally",
+      [...wrong.map(([t]) => `read wrongly: ${JSON.stringify(t)}`), ...(deep ? [] : ["the walk did not find src/lib/proofread/types.ts from src/lib"]), ...(literal ? [] : ["a table name with a regex character is not read literally"])],
+    );
+  }
   ok(
     JSON.stringify(rawSqlWrites("const a = 1;\nconst b = 2;\nconst s = `\n  delete from t`;").map((h) => h.line)) === "[3]",
     "the raw-SQL scan reports the line a literal starts on",
@@ -2607,7 +2769,7 @@ const CHECKS = [
     msg: "no route touches tis_projects, request_payload or result_payload, and none writes or reaches the database by itself: read from the AST, no write verb in any spelling the AST can see (member call, string-key element access, destructured, bound, .call, computed access, reflection on a db handle), no tisProjectsTable or payload name, no `db`, and no raw SQL in a write's shape in any string or template (any letter case; the shapes are listed at rawSqlWrites)",
     test: (d) => {
       const sc = dbScan(d.src.routes);
-      const raw = rawSqlWrites(d.src.routes);
+      const raw = rawSqlWrites(d.src.routes, d.schemaRead.prose);
       // The AST names whole identifiers and whole literals; these substrings stay as extra
       // conjuncts, because "select result_payload from tis_projects" is a string no
       // identifier match sees and the old check refused it.
@@ -2836,7 +2998,7 @@ const CHECKS = [
       const sc = dbScan(d.src.store);
       const D = "studyProofreadDispositionsTable";
       const bad = sc.writes.filter((w) => !(w.form === "call" && w.table !== "<not a table identifier>" && w.verb !== "delete" && !(w.table === D && w.verb !== "insert")));
-      const raw = rawSqlWrites(d.src.store);
+      const raw = rawSqlWrites(d.src.store, d.schemaRead.prose);
       // extra conjuncts from the old text scan: the AST sees property names and destructured keys,
       // not a destructure of the upsert off an insert builder written some other way
       const text = [/onConflictDoUpdate/, /\.(update|delete)\(\s*studyProofreadDispositionsTable/];
@@ -2890,12 +3052,30 @@ const CHECKS = [
     on: "store",
     msg: "no raw SQL in the store has a write's shape, in any letter case and with comments between the words — no UPDATE .. SET or UPDATE of a table-like target, INSERT INTO, DELETE FROM, TRUNCATE, ON CONFLICT .. DO UPDATE, MERGE INTO, DROP TABLE / SCHEMA / OWNED, ALTER TABLE, COPY .. FROM or SELECT .. INTO in any string, template or `+` chain of them, read for SQL shape with this schema's table names (FOR UPDATE row locking exempt; prose such as \"update failed\" is not SQL, prose in a SQL shape is refused; what is not read is listed at rawSqlWrites) — and none names tis_projects: the builder scans above cannot see SQL text",
     test: (d) => {
-      const raw = rawSqlWrites(d.src.store);
+      const raw = rawSqlWrites(d.src.store, d.schemaRead.prose);
       // the old text scans, kept as extra conjuncts (they read the code too, not only literals)
       const text = [/tis_projects/i, /(?<!FOR\s)\b(UPDATE|INSERT\s+INTO|DELETE\s+FROM)\b/];
       return {
         ok: d.store.length > 0 && raw.length === 0 && text.every((re) => !re.test(d.store)),
         where: [...raw.map((h) => fmtRawSql("store", h)), ...text.flatMap((re) => textHits("store", d.src.store, re))],
+      };
+    },
+  },
+  // The raw-SQL scans of the store, the runner and the routes read a table with no underscore and no dot as a
+  // table only when the schema declares it, so a table the reader cannot name is one a bare-alias write passes on.
+  {
+    id: "schema-tables-are-read",
+    on: "schema",
+    msg: "the raw-SQL scans know every table lib/db/src/schema declares: in every .ts file under it at any depth, every pgTable call (by its own name, by any name an import gives it, or as a property such as pg.pgTable or pg[\"pgTable\"]) names its table with a string literal, pgTable is used only by direct calls, pgTableCreator and pgSchema are not used, and the names with neither an underscore nor a dot include firms and users",
+    test: (d) => {
+      const r = d.schemaRead;
+      const usable = schemaNamesUsable(r.prose);
+      return {
+        ok: Object.keys(d.schema).length > 0 && r.unread.length === 0 && usable,
+        where: [
+          ...r.unread.map((u) => `lib/db/src/schema/${u}`),
+          ...(usable ? [] : [`lib/db/src/schema: read ${r.tables.length} table name(s) from ${Object.keys(d.schema).length} file(s); with no underscore: ${JSON.stringify(r.prose)} (firms and users must be among them)`]),
+        ],
       };
     },
   },
@@ -3007,7 +3187,7 @@ const CHECKS = [
     msg: "the runner's OWN code has no database write in any spelling, names no study table or payload, has no `db` of its own, has no raw SQL in a write's shape in any string or template (any letter case; the shapes are listed at rawSqlWrites), and its @workspace/db import is type-only; that it reaches the database only through the store is the import whitelist's claim, not this scan's",
     test: (d) => {
       const sc = dbScan(d.src.runner);
-      const raw = rawSqlWrites(d.src.runner);
+      const raw = rawSqlWrites(d.src.runner, d.schemaRead.prose);
       const dbNames = importsOf(d.src.runner)["@workspace/db"] ?? [];
       // the old substring scan, kept as an extra conjunct ("study.requestPayload.rows" and
       // "see tisProjectsTable" are strings no identifier match sees)
@@ -3215,6 +3395,9 @@ const editNth = (file, re, n, to) => (s) => {
 };
 const editDir = (name, from, to) => (s) => ({ ...s, clauseDir: { ...s.clauseDir, [name]: s.clauseDir[name].replace(from, to) } });
 const chain = (...fns) => (s) => fns.reduce((acc, f) => f(acc), s);
+/** Edit one schema file (a path under lib/db/src/schema), or add one. An edit of a file that is not there changes nothing. */
+const editSchema = (name, from, to) => (s) => (name in s.schema ? { ...s, schema: { ...s.schema, [name]: s.schema[name].replace(from, to) } } : s);
+const addSchema = (name, text) => (s) => ({ ...s, schema: { ...s.schema, [name]: text } });
 const GUARD_RE = /    if \(!\(await projectExistsForFirm\(firm\.id, id\)\)\) \{\n      res\.status\(404\)\.json\(\{ error: "Project not found\." \}\);\n      return;\n    \}\n/g;
 const ENQUEUE_LINE = "    await enqueueProofread({ projectId: id, firmId: firm.id, userId: user.id });\n";
 const LIMITER_PROPS = ["limiters-pin-draft-7", "limiters-legacy-and-fail-open", "limiters-keyed-per-user", "limiters-have-own-prefixes", "limiters-exempt-dev-and-admin", "triage-limit-exceeds-run-limit", "copy-limiters"];
@@ -3286,6 +3469,8 @@ LEGIT.push(
   { label: "runner: a message that says \"Could not update disposition.\"", file: "runner", apply: edit("runner", "    const rec: StudyRecord", '    const m5 = "Could not update disposition."; void m5;\n    const rec: StudyRecord') },
   { label: "runner: a local array called tx, indexed", file: "runner", apply: edit("runner", "    const rec: StudyRecord", "    const tx = ['a']; const i = 0; void tx[i];\n    const rec: StudyRecord") },
   { label: "routes: a local array called tx, indexed", file: "routes", apply: edit("routes", "const router: IRouter = Router();", "const router: IRouter = Router();\nconst tx = ['a']; const i = 0; void tx[i];") },
+  // a table the reader can name, however its pgTable call is spelled, is not refused as unread
+  { label: "schema: a table added in a subdirectory through `pgTable as table`, a comment before its name", file: "schema", apply: addSchema("audit/audits.ts", 'import { integer, pgTable as table } from "drizzle-orm/pg-core";\nexport const auditsTable = table(/* the log */ "audits", { id: integer("id") });\n') },
 );
 
 const MUTATIONS = [
@@ -5470,6 +5655,61 @@ const MUTATIONS = [
     file: "security",
     flips: ["copy-limiters"],
     apply: edit("security", "Too many proofread runs this hour.", "Too many independent review runs this hour."),
+  },
+
+  // ---- schema: the table names the raw-SQL scans read ---------------------
+  {
+    label: "schema: a table whose name is a const, not a string literal (sessions)",
+    file: "schema",
+    flips: ["schema-tables-are-read"],
+    apply: editSchema("auth.ts", 'export const sessionsTable = pgTable(\n  "sessions",', 'const SESSIONS = "sessions";\nexport const sessionsTable = pgTable(\n  SESSIONS,'),
+  },
+  {
+    label: "schema: a table made through a local alias of pgTable (events)",
+    file: "schema",
+    flips: ["schema-tables-are-read"],
+    apply: editSchema("events.ts", 'export const eventsTable = pgTable(\n  "events",', 'const make = pgTable;\nexport const eventsTable = make(\n  "events",'),
+  },
+  {
+    label: "schema: a table added through pgSchema(..).table, in a subdirectory",
+    file: "schema",
+    flips: ["schema-tables-are-read"],
+    apply: addSchema("app/audits.ts", 'import { integer, pgSchema } from "drizzle-orm/pg-core";\nexport const auditsTable = pgSchema("app").table("audits", { id: integer("id") });\n'),
+  },
+  {
+    label: "schema: the firms table renamed, so the scans no longer know firms",
+    file: "schema",
+    flips: ["schema-tables-are-read"],
+    apply: editSchema("firms.ts", 'export const firmsTable = pgTable("firms", {', 'export const firmsTable = pgTable("firm", {'),
+  },
+  // a table the schema declares in a spelling the old `pgTable("name"` regex did not read, in a file it did not
+  // open, and a bare-alias raw delete of it: by spelling alone `delete from audits a where true` reads like prose
+  {
+    label: "store: a raw delete with a bare alias on a table declared in a schema subdirectory through `pgTable as table`, a comment before its name",
+    file: "store",
+    flips: ["store-no-raw-study-sql", "store-dispositions-are-append-only"],
+    apply: chain(
+      addSchema("audit/audits.ts", 'import { integer, pgTable as table } from "drizzle-orm/pg-core";\nexport const auditsTable = table(/* the log */ "audits", { id: integer("id") });\n'),
+      edit("store", "  if (args.findings.length === 0) return;", '  await db.execute(sql.raw("delete from audits a where true"));\n  if (args.findings.length === 0) return;'),
+    ),
+  },
+  {
+    label: "runner: a raw delete with a bare alias on a table declared as pg.pgTable (\"audits\"), a space before its `(`",
+    file: "runner",
+    flips: ["runner-has-no-db-writes"],
+    apply: chain(
+      addSchema("audits.ts", 'import * as pg from "drizzle-orm/pg-core";\nexport const auditsTable = pg.pgTable ("audits", { id: pg.integer("id") });\n'),
+      edit("runner", "    const rec: StudyRecord", '    const q = "delete from audits a where true";\n    const rec: StudyRecord'),
+    ),
+  },
+  {
+    label: "routes: a raw delete with a bare alias on a table declared two directories down, a line comment before its name",
+    file: "routes",
+    flips: ["routes-do-not-touch-study"],
+    apply: chain(
+      addSchema("log/2026/audits.ts", 'import { integer, pgTable } from "drizzle-orm/pg-core";\nexport const auditsTable = pgTable(\n  // kept for the log\n  "audits",\n  { id: integer("id") },\n);\n'),
+      edit("routes", "const router: IRouter = Router();", 'const router: IRouter = Router();\nconst q7 = "delete from audits a where true";'),
+    ),
   },
 ];
 
