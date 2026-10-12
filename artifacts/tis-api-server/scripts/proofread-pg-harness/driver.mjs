@@ -8,12 +8,17 @@
  * never shown; [FW-5 422] the server refuses a decision the finding's type is not offered; [FW-6 409] a decision
  * on a run that is not the project's newest finished run is refused; [claim] claimAndRunOne leaves the study rows
  * alone; [append-only] no disposition row, once written, is rewritten (even to identical values) or deleted;
- * [limiter] each limiter's own budget, per-user key and draft-7 headers. Untagged assertions are the original
- * tenancy and rules suite.
+ * [RR-1] a run is stamped with the rules it ran under, the carry compares those, and a run re-claimed across a
+ * rules change fails rather than mixing two rule sets; [m-6] GET says when the previous revision ran under other
+ * rules (`rulesChanged`); [M1] an uppercase run id is the same run; [M2] a 'ready' run is finished: it takes
+ * decisions and the next revision carries them; [limiter] each limiter's own budget, per-user key and draft-7
+ * headers. Untagged assertions are the original tenancy and rules suite.
  *
  * The database is written directly in a few places, each named where it happens: users and projects (the app has
  * no route the harness can use for them), a finding of a type or audience the clause pass does not produce, a
- * run that is still running, a run recorded under another rules version, and one queued run for the claim.
+ * run that is still running, a run recorded under another rules version, queued runs for the claim and for a run
+ * queued by another deploy, a run left 'running' by a crashed attempt with a finding already written, and a run
+ * moved to 'ready' (phase 1 never writes it).
  */
 
 const UNKNOWN = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
@@ -112,6 +117,8 @@ export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, 
     const PB = await mkProject("b", fb, "B-study", small("B-study"));
     const PL = await mkProject("lim", flim, "L-study", small("L-study"));
     const PL2 = await mkProject("lim2", flim2, "L2-study", small("L2-study"));
+    const PR = await mkProject("a", fa, "A-rules-study", [fixture.request ?? {}, fixture]);
+    const PM = await mkProject("a", fa, "A-ready-study", [fixture.request ?? {}, fixture]);
     // Every study row's text AND its xmin: an UPDATE that writes identical values still gets a new xmin.
     const studyHash = async () => (await q("select md5(string_agg(t::text || ':' || t.xmin::text, '|' order by id)) h from tis_projects t"))[0].h;
     const h0 = await studyHash();
@@ -128,6 +135,7 @@ export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, 
     const none = await get(PA, "a");
     t("GET own project with no run: 200 status none, empty lists", none.status === 200 && none.body.status === "none" && none.body.findings.length === 0 && none.body.dispositions.length === 0, none);
     t("[FW-3 withheld] status none answers withheld: 0", none.body?.withheld === 0, none.body);
+    t("[m-6] status none answers rulesChanged: false", none.body?.rulesChanged === false, none.body);
     const foreign = await call("GET", `/projects/${PB}/proofread`, { user: U("a") });
     const unknown = await call("GET", `/projects/${UNKNOWN}/proofread`, { user: U("a") });
     const malformed = [await call("GET", `/projects/not-a-uuid/proofread`, { user: U("a") }), await call("GET", `/projects/${"-".repeat(36)}/proofread`, { user: U("a") })];
@@ -169,6 +177,7 @@ export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, 
       Object.keys(view1.body),
     );
     t("[FW-3 withheld] a run whose findings are all for the engineer answers withheld: 0", view1.body.withheld === 0, view1.body.withheld);
+    t("[m-6] a first revision (no previous one) answers rulesChanged: false", view1.body.rulesChanged === false, view1.body.rulesChanged);
 
     // ---- admin-audience findings are hidden, and so are their dispositions -----------------------------------
     // Written directly: a finding with marker text in every field, so a leak of any one of them is visible.
@@ -353,7 +362,7 @@ export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, 
     await restart(SHA_B);
     const run2 = await call("POST", `/projects/${PA}/proofread`, { user: U("a") });
     const view3 = await get(PA, "a");
-    const revs = await q("select id, revision, status, rules_version, engine_stamp, created_at from study_proofread_runs where project_id = $1 order by revision", [PA]);
+    const revs = await q("select id, revision, status, rules_version, engine_stamp, protocol_version, created_at from study_proofread_runs where project_id = $1 order by revision", [PA]);
     const [rev1, rev2] = revs;
     t("a re-run is revision 2 under the same project", run2.status === 200 && view3.body.revision === 2 && view3.body.runId !== runRow.id && rev2?.status === "rules_ready", [run2.status, view3.body.revision]);
     t(
@@ -385,6 +394,7 @@ export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, 
       { carried: carried[0]?.createdAt, original: decisionAsServed.createdAt, rev2: rev2?.created_at },
     );
     t("[FW-3 withheld] revision 2 does not raise the withheld item again, and answers withheld: 0", view3.body.withheld === 0, view3.body.withheld);
+    t("[m-6] revision 2 ran under another deploy and the same rules: rulesChanged is false", view3.body.rulesChanged === false, view3.body.rulesChanged);
 
     // ---- [FW-6 409] a decision on a run that is not the project's newest finished run ----------------------------------
     const before409 = await dispCount();
@@ -433,6 +443,7 @@ export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, 
       run4.status === 200 && view4.body.revision === 4 && view4.body.findings.some((f) => f.fingerprint === target.fingerprint) && view4.body.dispositions.length === 0 && carried4 === 0,
       { status: run4.status, revision: view4.body.revision, dispositions: view4.body.dispositions, carried4 },
     );
+    t("[m-6] that revision answers rulesChanged: true (its predecessor ran under another rules version)", view4.body.rulesChanged === true, view4.body.rulesChanged);
 
     // ---- [claim] claimAndRunOne against the study rows ---------------------------------------------------------------
     for (let i = 0; i < 50; i++) if (!(await claimOne()).worked) break; // nothing else queued: the claim below takes OUR row
@@ -455,6 +466,158 @@ export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, 
       { queuedBefore, claimed, status: phAfter.status, phFindings },
     );
     t("[claim] across that claimAndRunOne, every tis_projects row hashes the same, xmin included", hBeforeClaim === hAfterClaim, `${hBeforeClaim} -> ${hAfterClaim}`);
+
+    // ---- [RR-1] a run is stamped with the rules it RAN under, and the carry compares those --------------------------
+    // This server is the SHA_B deploy: revision 2 of A-study shows what a run stamped here carries.
+    const RULES = rev2.rules_version;
+    const settled = async (runId) => {
+      let row;
+      for (let i = 0; i < 50; i++) {
+        row = (await q("select * from study_proofread_runs where id = $1", [runId]))[0];
+        if (row && row.status !== "queued" && row.status !== "running") return row;
+        await sleep(100);
+      }
+      return row;
+    };
+    const decisionsOnRun = (runId) =>
+      q("select d.disposition, f.fingerprint from study_proofread_dispositions d join study_proofread_findings f on f.id = d.finding_id where f.run_id = $1", [runId]);
+    const runR1 = await call("POST", `/projects/${PR}/proofread`, { user: U("a") });
+    const vR1 = await get(PR, "a");
+    const tR = (vR1.body?.findings ?? []).find((f) => ["DISCLOSE", "NOTE", "UNVERIFIED"].includes(f.type));
+    const decR1 = await call("POST", dispUrl(PR, vR1.body?.runId, tR?.id ?? UNKNOWN), { user: U("a"), body: { disposition: "DISCLOSED", note: "rr-1 decision on revision 1" } });
+    t(
+      "[RR-1] precondition: revision 1 of the rules study ran on this deploy and holds one decision",
+      runR1.status === 200 && vR1.body?.status === "rules_ready" && tR && decR1.status === 200,
+      [runR1.status, vR1.body?.status, decR1.status],
+    );
+    // Written directly: revision 1 recorded as having run under an older rule set, and the next revision queued by a
+    // deploy that still had that rule set (its queue-time values), then claimed by this one.
+    await q("update study_proofread_runs set rules_version = 'harness-older' where id = $1", [vR1.body?.runId ?? UNKNOWN]);
+    const queueUnderOlderRules = async (revision) => {
+      for (let i = 0; i < 50; i++) if (!(await claimOne()).worked) break; // nothing else queued: the claim takes OUR row
+      const id = (
+        await q(
+          "insert into study_proofread_runs (project_id, firm_id, revision, status, protocol_version, rules_version, engine_stamp, input_manifest, coverage, requested_by_user_id) values ($1,$2,$3,'queued','harness-older-protocol','harness-older','harness-older-stamp','{}','[]','user-a') returning id",
+          [PR, fa, revision],
+        )
+      )[0].id;
+      await claimOne();
+      return settled(id);
+    };
+    const r2 = await queueUnderOlderRules(2);
+    t(
+      "[RR-1] a run queued under older rules and claimed by this deploy is stamped with what ran it: this deploy's rules version, engine stamp and protocol version, not the queue-time values",
+      r2?.status === "rules_ready" && r2.rules_version === RULES && r2.engine_stamp === rev2.engine_stamp && r2.protocol_version === rev2.protocol_version,
+      r2 && { status: r2.status, stamped: [r2.rules_version, r2.engine_stamp, r2.protocol_version], want: [RULES, rev2.engine_stamp, rev2.protocol_version] },
+    );
+    const r2Fingerprints = (await q("select fingerprint from study_proofread_findings where run_id = $1", [r2?.id ?? UNKNOWN])).map((f) => f.fingerprint);
+    const r2Carried = await decisionsOnRun(r2?.id ?? UNKNOWN);
+    t(
+      "[RR-1] its predecessor ran under the older rules its queue-time value also names, and nothing carried across the change: the same finding is open again",
+      tR && r2Fingerprints.includes(tR.fingerprint) && r2Carried.length === 0,
+      { sameFinding: r2Fingerprints.includes(tR?.fingerprint), carried: r2Carried.map((d) => d.disposition) },
+    );
+    const vR2 = await get(PR, "a");
+    t("[m-6] GET on that revision answers rulesChanged: true", vR2.body?.revision === 2 && vR2.body?.rulesChanged === true, [vR2.body?.revision, vR2.body?.rulesChanged]);
+    // The other direction: revision 2 ran here; revision 3 is queued under the older rules and claimed here too.
+    const tR2 = (vR2.body?.findings ?? []).find((f) => f.fingerprint === tR?.fingerprint);
+    const decR2 = await call("POST", dispUrl(PR, vR2.body?.runId, tR2?.id ?? UNKNOWN), { user: U("a"), body: { disposition: "FIXED", note: "rr-1 decision on revision 2" } });
+    const r3 = await queueUnderOlderRules(3);
+    const r3Carried = await decisionsOnRun(r3?.id ?? UNKNOWN);
+    t(
+      "[RR-1] a run queued under older rules after a revision that ran under this deploy's rules carries that revision's decision: the carry compares run-time rules, not queue-time",
+      decR2.status === 200 && r3?.status === "rules_ready" && r3.rules_version === RULES && r3Carried.length === 1 && r3Carried[0].disposition === "FIXED" && r3Carried[0].fingerprint === tR?.fingerprint,
+      { decision: decR2.status, status: r3?.status, rules: r3?.rules_version, carried: r3Carried.map((d) => `${d.disposition}:${d.fingerprint}`) },
+    );
+    const vR3 = await get(PR, "a");
+    t("[m-6] GET on that revision answers rulesChanged: false", vR3.body?.revision === 3 && vR3.body?.rulesChanged === false, [vR3.body?.revision, vR3.body?.rulesChanged]);
+    // Written directly: revision 4, left 'running' by an attempt that crashed after writing its clause pass under the
+    // older rules (a finding is already there). Its lease has expired, so the next claim takes it again: this deploy's.
+    for (let i = 0; i < 50; i++) if (!(await claimOne()).worked) break;
+    const r4 = (
+      await q(
+        "insert into study_proofread_runs (project_id, firm_id, revision, status, protocol_version, rules_version, engine_stamp, input_manifest, coverage, attempts, claimed_at, claimed_by, requested_by_user_id) values ($1,$2,4,'running','harness-older-protocol','harness-older','harness-older-stamp','{}','[]',1,now() - interval '1 hour','harness-crashed','user-a') returning id",
+        [PR, fa],
+      )
+    )[0].id;
+    await q(
+      "insert into study_proofread_findings (run_id, clause_id, section, type, title, detail, source_label, read_paths, remedy, audience, fingerprint) values ($1,'x-older-rules',6,'DISCLOSE','t','d','s','[]','r','engineer','olderrulesfp')",
+      [r4],
+    );
+    await claimOne();
+    const r4Row = await settled(r4);
+    const r4Fingerprints = (await q("select fingerprint from study_proofread_findings where run_id = $1", [r4])).map((f) => f.fingerprint);
+    t(
+      "[RR-1] a re-claimed run that already holds findings written under other rules fails 'rules_changed_mid_run': no finding added beside them, none deleted, its rules version left as it was",
+      r4Row?.status === "failed" &&
+        r4Row.error === "rules_changed_mid_run" &&
+        r4Row.finished_at !== null &&
+        r4Row.rules_version === "harness-older" &&
+        JSON.stringify(r4Fingerprints) === JSON.stringify(["olderrulesfp"]),
+      r4Row && { status: r4Row.status, error: r4Row.error, rules: r4Row.rules_version, findings: r4Fingerprints.length },
+    );
+    const runR5 = await call("POST", `/projects/${PR}/proofread`, { user: U("a") });
+    const vR5 = await get(PR, "a");
+    t(
+      "[RR-1] the next 'Run again' starts a clean revision 5 that finishes and carries from revision 3, the last finished one",
+      runR5.status === 200 &&
+        vR5.body?.revision === 5 &&
+        vR5.body?.status === "rules_ready" &&
+        (vR5.body?.findings ?? []).every((f) => f.fingerprint !== "olderrulesfp") &&
+        (vR5.body?.dispositions ?? []).some((d) => d.disposition === "FIXED") &&
+        vR5.body?.rulesChanged === false,
+      { status: runR5.status, revision: vR5.body?.revision, runStatus: vR5.body?.status, dispositions: vR5.body?.dispositions?.map((d) => d.disposition), rulesChanged: vR5.body?.rulesChanged },
+    );
+
+    // ---- [M1] [M2] the run a decision is recorded on ------------------------------------------------------------------
+    const runM1 = await call("POST", `/projects/${PM}/proofread`, { user: U("a") });
+    const vM1 = await get(PM, "a");
+    const fitsM = (vM1.body?.findings ?? []).filter((f) => ["DISCLOSE", "NOTE", "UNVERIFIED"].includes(f.type));
+    t(
+      "[M1] precondition: revision 1 of the ready study finished with two findings that take DISCLOSED and FIXED",
+      runM1.status === 200 && vM1.body?.status === "rules_ready" && fitsM.length >= 2,
+      (vM1.body?.findings ?? []).map((f) => f.type),
+    );
+    const [m0, m1] = fitsM;
+    const runM1Id = String(vM1.body?.runId);
+    const lastOn = async (findingId) => (await q("select * from study_proofread_dispositions where finding_id = $1 order by created_at desc limit 1", [findingId]))[0];
+    const beforeM = await dispCount();
+    const upRun = await call("POST", dispUrl(PM, runM1Id.toUpperCase(), m0?.id), { user: U("a"), body: { disposition: "DISCLOSED", note: "m1 uppercase run id" } });
+    const upRunRow = await lastOn(m0?.id ?? UNKNOWN);
+    t(
+      "[M1] the newest finished run's id in uppercase is that run: 200, one row, on the finding",
+      upRun.status === 200 && (await dispCount()) === beforeM + 1 && upRunRow?.note === "m1 uppercase run id",
+      [upRun.status, upRun.body, upRunRow?.note],
+    );
+    const upAll = await call("POST", dispUrl(PM.toUpperCase(), runM1Id.toUpperCase(), String(m0?.id).toUpperCase()), { user: U("a"), body: { disposition: "FIXED", note: "m1 uppercase ids" } });
+    const upAllRow = await lastOn(m0?.id ?? UNKNOWN);
+    t(
+      "[M1] project, run and finding ids all in uppercase: 200, the row is on the finding's own (lowercase) id, by the session user",
+      upAll.status === 200 && (await dispCount()) === beforeM + 2 && upAllRow?.note === "m1 uppercase ids" && upAllRow.finding_id === m0?.id && upAllRow.actor_user_id === "user-a",
+      [upAll.status, upAll.body, upAllRow],
+    );
+    // Written directly: phase 1 never writes 'ready'; a later phase's finished run is 'ready'.
+    await q("update study_proofread_runs set status = 'ready' where id = $1", [runM1Id]);
+    const vMr = await get(PM, "a");
+    const onReady = await call("POST", dispUrl(PM, runM1Id, m1?.id), { user: U("a"), body: { disposition: "DISCLOSED", note: "m2 on a ready run" } });
+    t(
+      "[M2] a decision on the project's newest run in 'ready' is accepted: 200, one row",
+      vMr.body?.status === "ready" && onReady.status === 200 && (await dispCount()) === beforeM + 3,
+      [vMr.body?.status, onReady.status, onReady.body],
+    );
+    const runM2 = await call("POST", `/projects/${PM}/proofread`, { user: U("a") });
+    const vM2 = await get(PM, "a");
+    const servedM2 = (vM2.body?.dispositions ?? []).map((d) => `${d.disposition}:${(vM2.body?.findings ?? []).find((f) => f.id === d.findingId)?.fingerprint}`).sort();
+    const wantM2 = [`DISCLOSED:${m1?.fingerprint}`, `FIXED:${m0?.fingerprint}`].sort();
+    t(
+      "[M2] the next revision carries the latest decision on each finding from the 'ready' run (FIXED and DISCLOSED), and nothing else",
+      runM2.status === 200 && vM2.body?.revision === 2 && JSON.stringify(servedM2) === JSON.stringify(wantM2),
+      { revision: vM2.body?.revision, servedM2, wantM2 },
+    );
+    t("[m-6] a revision carried from a 'ready' run under the same rules answers rulesChanged: false", vM2.body?.rulesChanged === false, vM2.body?.rulesChanged);
+    const beforeOld = await dispCount();
+    const upOld = await call("POST", dispUrl(PM, runM1Id.toUpperCase(), m0?.id), { user: U("a"), body: { disposition: "FIXED" } });
+    t(`[M1] an uppercase id of a superseded revision is still 409 '${RUN_AGAIN}', nothing written`, upOld.status === 409 && upOld.body?.error === RUN_AGAIN && (await dispCount()) === beforeOld, [upOld.status, upOld.body]);
 
     // ---- concurrency: quick presses of "Run again" -------------------------------------------------------------------
     const burst = await Promise.all(Array.from({ length: 12 }, () => call("POST", `/projects/${PA2}/proofread`, { user: U("a") })));

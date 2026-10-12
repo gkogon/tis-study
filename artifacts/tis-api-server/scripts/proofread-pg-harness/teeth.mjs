@@ -61,7 +61,7 @@ const BREAKS = {
   },
   "latest-run-check-off": {
     edit: [ROUTES, `if (newest === null || newest.id !== runId || (newest.status !== "rules_ready" && newest.status !== "ready")) {`, `if (newest === null) {`],
-    red: ["[FW-6 409] a fitting decision on a superseded revision", "[FW-6 409] while a newer revision is still running"],
+    red: ["[FW-6 409] a fitting decision on a superseded revision", "[FW-6 409] while a newer revision is still running", "[M1] an uppercase id of a superseded revision is still 409"],
   },
   "carry-gate-reads-the-engine-stamp": {
     edit: [
@@ -73,7 +73,7 @@ const BREAKS = {
   },
   "carry-gate-always-true": {
     edit: [RUNNER, `prev.rulesVersion === RULES_VERSION`, `true`],
-    red: ["[FW-1 carry] a revision whose predecessor ran under another rules version"],
+    red: ["[FW-1 carry] a revision whose predecessor ran under another rules version", "[RR-1] its predecessor ran under the older rules"],
   },
   "carried-date-dropped": {
     edit: [STORE, `      createdAt: prior[0].createdAt,\n`, ``],
@@ -86,6 +86,41 @@ const BREAKS = {
       "export async function loadStudyForRun(run: StudyProofreadRun) {\n  await db.update(tisProjectsTable).set({ projectName: sql`${tisProjectsTable.projectName}` }).where(eq(tisProjectsTable.id, run.projectId));\n",
     ],
     red: ["[claim] across that claimAndRunOne", "after every request above, tis_projects is byte-identical"],
+  },
+  // [RR-1] the run-time stamp, the carry's comparison of run-time values, and the mid-run rules check.
+  "run-stamp-dropped": {
+    edit: [RUNNER, `      stamp: { rulesVersion: RULES_VERSION, engineStamp: engineStamp(), protocolVersion: PROTOCOL_VERSION },\n`, ``],
+    red: ["[RR-1] a run queued under older rules and claimed by this deploy is stamped", "[RR-1] a run queued under older rules after a revision"],
+  },
+  "carry-gate-compares-queue-time-rules": {
+    edit: [RUNNER, `prev.rulesVersion === RULES_VERSION`, `prev.rulesVersion === run.rulesVersion`],
+    red: ["[RR-1] its predecessor ran under the older rules", "[RR-1] a run queued under older rules after a revision"],
+  },
+  "mid-run-rules-check-off": {
+    edit: [RUNNER, `if (run.rulesVersion !== RULES_VERSION && (await runHoldsFindings(run.id))) {`, `if (false) {`],
+    red: ["[RR-1] a re-claimed run that already holds findings written under other rules"],
+  },
+  // [m-6] GET's rulesChanged, both ways.
+  "rules-changed-always-false": {
+    edit: [ROUTES, `const rulesChanged = previous !== null && previous.rulesVersion !== run.rulesVersion;`, `const rulesChanged = false;`],
+    red: ["[m-6] that revision answers rulesChanged: true", "[m-6] GET on that revision answers rulesChanged: true"],
+  },
+  "rules-changed-ignores-the-rules": {
+    edit: [ROUTES, `const rulesChanged = previous !== null && previous.rulesVersion !== run.rulesVersion;`, `const rulesChanged = previous !== null;`],
+    red: ["[m-6] revision 2 ran under another deploy and the same rules", "[m-6] GET on that revision answers rulesChanged: false"],
+  },
+  // [M1] the uuid params in one spelling; [M2] 'ready' is finished, for the 409 and for the carry.
+  "run-id-not-lowercased": {
+    edit: [ROUTES, `const runId = urlRunId.toLowerCase();`, `const runId = urlRunId;`],
+    red: ["[M1] the newest finished run's id in uppercase is that run", "[M1] project, run and finding ids all in uppercase"],
+  },
+  "ready-run-refused": {
+    edit: [ROUTES, `(newest.status !== "rules_ready" && newest.status !== "ready")`, `newest.status !== "rules_ready"`],
+    red: ["[M2] a decision on the project's newest run in 'ready' is accepted"],
+  },
+  "ready-run-not-a-carry-source": {
+    edit: [STORE, `inArray(studyProofreadRunsTable.status, ["rules_ready", "ready"]),`, `inArray(studyProofreadRunsTable.status, ["rules_ready"]),`],
+    red: ["[M2] the next revision carries the latest decision on each finding from the 'ready' run"],
   },
   // [append-only] an earlier decision rewritten before the new one is appended: once with other values (it names
   // another actor), once with the values it already had (only xmin changes).
