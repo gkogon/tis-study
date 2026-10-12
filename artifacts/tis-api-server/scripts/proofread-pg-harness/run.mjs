@@ -13,24 +13,38 @@
  *     [--pg-bin <dir>]  where initdb and pg_ctl are (default: PATH, then the usual Homebrew/Postgres.app places)
  *     [--keep]          leave the run directory (the cluster is still stopped)
  *
- * Exit 0: every assertion passed. 1: an assertion failed. 2: refused or could not set up (nothing was asserted).
+ * Exit 0: every assertion passed. 1: an assertion failed. 2: refused, could not set up (nothing was asserted), or
+ * could not confirm the cluster stopped. 130: stopped by SIGINT or SIGTERM (after tearing down).
  *
  * What it does, in order:
- *   1. picks a free port and a SHORT socket directory (macOS caps a unix socket path at 103 bytes); the cluster
- *      listens on that socket only, never on TCP;
+ *   1. creates the run directory under --root, and only then picks a free port and a SHORT socket directory (macOS
+ *      caps a unix socket path at 103 bytes); the cluster listens on that socket only, never on TCP. Everything from
+ *      here on is inside the teardown's scope: a setup step that fails (a bad --root, no free port, no short enough
+ *      temp directory) exits 2 and leaves nothing behind;
  *   2. bundles, with esbuild, the server (server-entry.mjs: the real router behind a stub session), the schema
  *      (lib/db/src/schema) and the read contract (lib/tis-api-zod/src/proofread.ts) from the tree under test.
  *      `@workspace/db` is replaced by db-shim.mjs, which holds the throwaway cluster's address, written in at
- *      build time. The run is REFUSED, before any cluster exists, if a bundle contains lib/db/src/index.ts or
- *      the text DATABASE_URL anywhere — that is, if any code path in it could reach for the environment's
- *      database. This script never reads that variable, and every child process gets an environment built
- *      from a short allow-list, never a copy of this one;
+ *      build time. The run is REFUSED, before any cluster exists, if a bundle contains the module
+ *      lib/db/src/index.ts (it builds its pool from DATABASE_URL) or the text DATABASE_URL anywhere. That is a match
+ *      on what was bundled, not a proof that no code path can open a connection of its own: a `new pg.Client()` or
+ *      `new pg.Pool()` with no address is not refused. Such a default client takes its address from libpq's
+ *      variables, so the server's environment pins PGHOST (this run's socket directory), PGPORT, PGUSER and
+ *      PGDATABASE to the throwaway cluster and carries no other PG* variable (no PGSERVICE, PGSERVICEFILE,
+ *      PGPASSFILE, PGHOSTADDR or PGOPTIONS): a default client reaches this run's cluster, never localhost:5432. The
+ *      server reports what a default client there would dial before it listens, and the run is REFUSED if that is
+ *      not this run's socket, port, user and database. This script never reads DATABASE_URL, and every child
+ *      process gets an environment built from a short allow-list, never a copy of this one;
  *   3. initdb into the run directory, pg_ctl start, create the database, and confirm that the server it is
  *      talking to reports the run directory as its data_directory before it writes anything;
  *   4. applies the schema as drizzle-kit would push it (drizzle-kit/api, generated from the same schema files);
  *   5. starts the server and runs driver.mjs: two firms, a second member of one, users for the rate limits,
  *      firms created by first requests the repo's way, assertions over HTTP and SQL;
- *   6. stops the server and the cluster and deletes the run directory and the socket directory, whatever happened.
+ *   6. tears down, after a pass, a failed assertion, an error, a refusal, or SIGINT/SIGTERM: stops every server
+ *      process it started (one stopped by a signal counts as stopped; each wait is bounded), ends its connections,
+ *      stops the cluster and confirms with `ps` that its postmaster is gone (postmaster.mjs), and only then deletes
+ *      the run directory and the socket directory. A cluster that cannot be confirmed stopped keeps its data
+ *      directory, so `pg_ctl -D` can still stop it, and the run exits 2. Teardown runs once, whichever path
+ *      reaches it first.
  *
  * What it proves (driver.mjs names each assertion): firm scoping of every route (foreign and unknown ids answer
  * the same 404, nothing is enqueued or written under another firm); the disposition chain in order (401, 400,
@@ -45,11 +59,11 @@
  * have separate per-user budgets and draft-7 headers; every GET answer parses under the read contract.
  *
  * That a green run means something is shown by teeth.mjs beside this file: it breaks one production line per
- * family in a copy of HEAD (never in this checkout) and requires the named assertions to go red, and a bundle
- * that could read the environment's database to be refused.
+ * family in a copy of HEAD (never in this checkout) and requires the named assertions to go red, a bundle that
+ * could read the environment's database to be refused, and every run to have torn down.
  *
- * If the harness is killed before its cleanup runs, the cluster keeps running: the run directory is printed at
- * the start, and `pg_ctl -D <run dir>/data stop` stops it.
+ * Only SIGKILL skips the teardown. The cluster then keeps running: the run directory is printed at the start, and
+ * `pg_ctl -D <run dir>/data stop` stops it.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
@@ -59,6 +73,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { drive } from "./driver.mjs";
+import { postmasterPidOf, postmastersUnder, stopCluster } from "./postmaster.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 /** The checkout this script lives in. Third-party packages always resolve from here; source comes from --tree. */
@@ -102,6 +117,19 @@ function findPgBin() {
 
 /** The only environment a child process gets: enough to find binaries and agree on a locale and a clock. */
 const childEnv = (extra = {}) => ({ PATH: process.env.PATH ?? "/usr/bin:/bin", LC_ALL: "C", LANG: "C", TZ: "UTC", ...extra });
+
+/**
+ * The server's environment: the allow-list, plus libpq's address variables pinned to this run's cluster, so a pg
+ * client built with no address (`new pg.Client()`) reaches the throwaway cluster and nothing else — never the
+ * default localhost:5432. Every other PG* variable is removed (PGSERVICE, PGSERVICEFILE, PGPASSFILE, PGHOSTADDR,
+ * PGOPTIONS and the rest): the allow-list carries none today, and this keeps it so if the list ever grows.
+ */
+const SERVER_PG_ENV = ["PGHOST", "PGPORT", "PGUSER", "PGDATABASE"];
+const serverEnv = (connection, extra) => {
+  const env = childEnv({ ...extra, PGHOST: connection.host, PGPORT: String(connection.port), PGUSER: connection.user, PGDATABASE: connection.database });
+  for (const k of Object.keys(env)) if (k.startsWith("PG") && !SERVER_PG_ENV.includes(k)) delete env[k];
+  return env;
+};
 
 const portIsFree = (port) =>
   new Promise((resolve) => {
@@ -195,6 +223,9 @@ const run = (cmd, args, log) => {
 };
 
 // ---- main ------------------------------------------------------------------------------------------------
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const bounded = (promise, ms) => Promise.race([promise, sleep(ms)]);
+
 async function main() {
   const pgBin = findPgBin();
   if (!pgBin) {
@@ -205,55 +236,112 @@ async function main() {
     if (!existsSync(path.join(TREE, rel))) return refuse(`--tree ${TREE} has no ${rel}`);
   }
 
-  const port = await pickPort();
-  const socketDir = makeSocketDir(port);
-  const rootDir = mkdtempSync(path.join(ROOT_BASE, "proofread-pg-harness-"));
+  // The run directory first: if it cannot be made, nothing else has been.
+  let rootDir;
+  try {
+    rootDir = mkdtempSync(path.join(ROOT_BASE, "proofread-pg-harness-"));
+  } catch (err) {
+    return refuse(`could not create the run directory under ${ROOT_BASE}: ${err instanceof Error ? err.message : String(err)}. Nothing was started.`);
+  }
   const dataDir = path.join(rootDir, "data");
   const log = path.join(rootDir, "harness.log");
   const USER = "proofread_harness";
   const DATABASE = "proofread_harness";
-  // Every connection, the server's and this script's, is this object and nothing else.
-  const connection = { host: socketDir, port, user: USER, database: DATABASE, ssl: false, max: 10 };
   console.log(`run directory ${rootDir}`);
-  console.log(`cluster: port ${port}, unix socket only, in ${socketDir}; tree under test ${TREE}`);
 
   const pg = createRequire(path.join(REPO, "lib/db/package.json"))("pg");
+  let port = null;
+  let socketDir = null;
+  /** Every server process this run started and that has not exited yet (an 'exit' listener added at spawn removes it). */
+  const children = new Set();
   let server = null;
   let clusterStarted = false;
   let clusterEverStarted = false;
   const pools = [];
   let exitCode = 2;
-  const teardown = async () => {
-    if (server) await server.stop();
-    for (const p of pools) await p.end().catch(() => undefined);
-    // Also when pg_ctl start failed part-way: a postmaster.pid means something may be running on this data dir.
-    if (clusterStarted || existsSync(path.join(dataDir, "postmaster.pid"))) {
-      const stop = spawnSync(path.join(pgBin, "pg_ctl"), ["-D", dataDir, "-m", "fast", "-w", "-t", "60", "stop"], { env: childEnv(), encoding: "utf8" });
-      if (stop.status !== 0) spawnSync(path.join(pgBin, "pg_ctl"), ["-D", dataDir, "-m", "immediate", "-w", "stop"], { env: childEnv() });
-      clusterEverStarted = true;
-      clusterStarted = existsSync(path.join(dataDir, "postmaster.pid"));
-    }
-    // A cluster that would not stop keeps its data directory, so `pg_ctl -D` can still stop it.
-    if (clusterStarted) {
-      console.error(`the cluster did not stop: pg_ctl -D ${dataDir} stop -m immediate, then delete ${rootDir} and ${socketDir}`);
-    } else {
-      rmSync(socketDir, { recursive: true, force: true });
-      if (!KEEP) rmSync(rootDir, { recursive: true, force: true });
-    }
-    console.log(
-      `teardown: cluster on port ${port} ${clusterStarted ? "STILL RUNNING" : clusterEverStarted ? "stopped" : "never started"}; socket dir ${existsSync(socketDir) ? "STILL PRESENT" : "removed"}; ` +
-        `run directory ${KEEP ? `kept at ${rootDir}` : existsSync(rootDir) ? "STILL PRESENT" : "removed"}`,
-    );
-  };
-  const onSignal = async (sig) => {
-    console.error(`${sig}: tearing down`);
-    await teardown();
-    process.exit(130);
-  };
-  process.once("SIGINT", onSignal);
-  process.once("SIGTERM", onSignal);
 
+  /** Resolves once `child` has exited: at once if it already has (an exit code OR a signal), else SIGTERM, then SIGKILL. */
+  const stopChild = (child) =>
+    new Promise((done) => {
+      if (!children.has(child) || child.exitCode !== null || child.signalCode !== null) return done();
+      const kill = setTimeout(() => child.kill("SIGKILL"), 5000);
+      // Bounded whatever happens: a promise nothing settles would let the event loop drain mid-teardown.
+      const giveUp = setTimeout(finish, 10_000);
+      function finish() {
+        clearTimeout(kill);
+        clearTimeout(giveUp);
+        done();
+      }
+      child.once("exit", finish);
+      child.kill("SIGTERM");
+    });
+
+  let tearing = null;
+  /** Set when the teardown starts: from then on no server is started, so the set of children it stops is all of them. */
+  let closing = false;
+  /** Runs once; every caller (the finally below, a signal) waits on the same teardown. */
+  const teardown = () =>
+    (tearing ??= (async () => {
+      closing = true;
+      server = null;
+      await Promise.all([...children].map(stopChild));
+      for (const p of pools) await bounded(p.end().catch(() => undefined), 5000);
+      // Also when pg_ctl start failed part-way: a postmaster.pid, or a postgres on this data dir, means something may
+      // be running on it. The data directory is removed only once ps shows no postmaster on it.
+      let clusterLeft = [];
+      try {
+        if (clusterStarted || existsSync(path.join(dataDir, "postmaster.pid")) || postmastersUnder(dataDir).length > 0) {
+          const stop = stopCluster({ pgBin, dataDir, env: childEnv() });
+          clusterEverStarted = true;
+          clusterLeft = stop.left;
+          clusterStarted = !stop.stopped;
+        }
+      } catch (err) {
+        // Not confirmed stopped is treated as running: the data directory stays.
+        console.error(`could not confirm the cluster stopped: ${err instanceof Error ? err.message : String(err)}`);
+        clusterEverStarted = true;
+        clusterStarted = true;
+      }
+      if (clusterStarted) {
+        console.error(
+          `the cluster did not stop (still running: ${clusterLeft.map((p) => p.pid).join(", ")}): pg_ctl -D ${dataDir} stop -m immediate, then delete ${rootDir}${socketDir ? ` and ${socketDir}` : ""}`,
+        );
+      } else {
+        if (socketDir) rmSync(socketDir, { recursive: true, force: true });
+        if (!KEEP) rmSync(rootDir, { recursive: true, force: true });
+      }
+      console.log(
+        `teardown: cluster on port ${port ?? "(none picked)"} ${clusterStarted ? "STILL RUNNING" : clusterEverStarted ? "stopped" : "never started"}; ` +
+          `socket dir ${socketDir === null ? "never made" : existsSync(socketDir) ? "STILL PRESENT" : "removed"}; ` +
+          `run directory ${KEEP && existsSync(rootDir) ? `kept at ${rootDir}` : existsSync(rootDir) ? "STILL PRESENT" : "removed"}`,
+      );
+      return !clusterStarted;
+    })());
+  let signalled = null;
+  const onSignal = (sig) => {
+    if (signalled) {
+      console.error(`${sig}: already tearing down`);
+      return;
+    }
+    signalled = sig;
+    console.error(`${sig}: tearing down`);
+    teardown().finally(() => process.exit(130));
+  };
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+
+  // Once the teardown has started, setup makes nothing more: what it has not seen, it cannot remove or stop.
+  const notClosing = () => {
+    if (closing) throw new Error("tearing down: setup stops here");
+  };
   try {
+    port = await pickPort();
+    notClosing();
+    socketDir = makeSocketDir(port);
+    // Every connection, the server's and this script's, is this object and nothing else.
+    const connection = { host: socketDir, port, user: USER, database: DATABASE, ssl: false, max: 10 };
+    console.log(`cluster: port ${port}, unix socket only, in ${socketDir}; tree under test ${TREE}`);
+
     // ---- bundles first: a refusal leaves no cluster behind --------------------------------------------
     const esbuild = createRequire(path.join(SERVER_PKG, "package.json"))("esbuild");
     const serverOut = path.join(rootDir, "server.mjs");
@@ -265,15 +353,16 @@ async function main() {
     let serverInputs = [];
     for (const [label, entry, out] of builds) {
       const b = await bundle(esbuild, label, entry, out, connection);
-      if (b.refused) return refuse(b.refused);
+      if (b.refused) return (exitCode = refuse(b.refused));
       if (label === "server") serverInputs = b.inputs;
     }
     const mustBundle = ["routes/proofread.ts", "lib/proofread-store.ts", "lib/proofread-run.ts", "lib/tis-projects.ts", "lib/firms.ts", "lib/security.ts"];
     const missing = mustBundle.filter((rel) => !serverInputs.includes(path.join(TREE, "artifacts/tis-api-server/src", rel)));
-    if (missing.length) return refuse(`the server bundle does not hold the tree's ${missing.join(", ")}`);
+    if (missing.length) return (exitCode = refuse(`the server bundle does not hold the tree's ${missing.join(", ")}`));
     console.log(`bundled ${serverInputs.filter((f) => !f.includes("node_modules")).length} source files from the tree`);
 
     // ---- the throwaway cluster ------------------------------------------------------------------------
+    notClosing();
     run(path.join(pgBin, "initdb"), ["-D", dataDir, "-U", USER, "--auth=trust", "--no-locale", "-E", "UTF8"], log);
     appendFileSync(
       path.join(dataDir, "postgresql.conf"),
@@ -290,15 +379,18 @@ async function main() {
         "",
       ].join("\n"),
     );
+    notClosing();
+    clusterStarted = true; // set before the start: a start that fails part-way may still leave a postmaster
     run(path.join(pgBin, "pg_ctl"), ["-D", dataDir, "-l", path.join(rootDir, "postgres.log"), "-w", "-t", "60", "start"], log);
-    clusterStarted = true;
     clusterEverStarted = true;
+    console.log(`cluster started: postmaster pid ${postmasterPidOf(dataDir)}`);
     const admin = new pg.Pool({ ...connection, database: "postgres", max: 1 });
     pools.push(admin);
     // Before anything is written: the server on the other end of this socket is the one this run created.
     const [{ data_directory: served }] = (await admin.query("select current_setting('data_directory') as data_directory")).rows;
-    if (realpathSync(served) !== realpathSync(dataDir)) return refuse(`the server on ${socketDir} serves ${served}, not this run's ${dataDir}`);
+    if (realpathSync(served) !== realpathSync(dataDir)) return (exitCode = refuse(`the server on ${socketDir} serves ${served}, not this run's ${dataDir}`));
     await admin.query(`create database ${DATABASE}`);
+    notClosing();
     const db = new pg.Pool(connection);
     pools.push(db);
     const q = async (sql, params = []) => (await db.query(sql, params)).rows;
@@ -319,15 +411,32 @@ async function main() {
 
     // ---- the server, restartable under another deploy's commit ----------------------------------------
     const allLines = [];
+    const expectDefault = { host: socketDir, port, user: USER, database: DATABASE };
     const startServer = (sha) =>
       new Promise((resolve, reject) => {
+        // A restart that was waiting on the old server when a signal started the teardown must not leave a new one
+        // behind it.
+        if (closing) return reject(new Error("tearing down: no server is started"));
         const child = spawn(process.execPath, [serverOut], {
           cwd: TREE,
-          env: childEnv({ NODE_ENV: "production", LOG_LEVEL: "warn", GIT_SHA: sha }),
+          env: serverEnv(connection, { NODE_ENV: "production", LOG_LEVEL: "warn", GIT_SHA: sha }),
           stdio: ["ignore", "pipe", "pipe"],
         });
+        children.add(child);
         let buf = "";
         let ready = false;
+        let defaultClient = null;
+        const timer = setTimeout(() => {
+          child.kill("SIGKILL");
+          reject(new Error("server did not listen within 30 s"));
+        }, 30_000);
+        // First, so the set is right before any other listener runs: a child that has exited (by code or by signal) is
+        // never waited on again.
+        child.once("exit", (code, signal) => {
+          children.delete(child);
+          clearTimeout(timer);
+          if (!ready) reject(new Error(`server exited ${code ?? signal} before listening:\n${allLines.slice(-20).join("\n")}`));
+        });
         const onData = (d) => {
           buf += d;
           let nl;
@@ -335,35 +444,29 @@ async function main() {
             const line = buf.slice(0, nl);
             buf = buf.slice(nl + 1);
             allLines.push(line);
+            const dc = /^DEFAULT_PG_CLIENT (.*)$/.exec(line);
+            if (dc) defaultClient = JSON.parse(dc[1]);
             const m = /^LISTENING (\d+)$/.exec(line);
             if (m && !ready) {
               ready = true;
               clearTimeout(timer);
-              resolve({
-                port: Number(m[1]),
-                stop: () =>
-                  new Promise((done) => {
-                    if (child.exitCode !== null) return done();
-                    const kill = setTimeout(() => child.kill("SIGKILL"), 5000);
-                    child.once("exit", () => {
-                      clearTimeout(kill);
-                      done();
-                    });
-                    child.kill("SIGTERM");
-                  }),
-              });
+              const stop = () => stopChild(child);
+              // What a pg client built with no address would dial inside this server: this run's cluster, or no run.
+              const wrong = Object.keys(expectDefault).filter((k) => String(defaultClient?.[k]) !== String(expectDefault[k]));
+              if (wrong.length) {
+                const err = new Error(
+                  `a default-config pg client in the server would dial ${JSON.stringify(defaultClient)}, not this run's cluster ${JSON.stringify(expectDefault)}`,
+                );
+                err.refused = true;
+                reject(err);
+                return;
+              }
+              resolve({ port: Number(m[1]), stop });
             }
           }
         };
         child.stdout.on("data", onData);
         child.stderr.on("data", onData);
-        child.once("exit", (code) => {
-          if (!ready) reject(new Error(`server exited ${code} before listening:\n${allLines.slice(-20).join("\n")}`));
-        });
-        const timer = setTimeout(() => {
-          child.kill("SIGKILL");
-          reject(new Error("server did not listen within 30 s"));
-        }, 30_000);
       });
 
     server = await startServer(SHA_A);
@@ -380,8 +483,11 @@ async function main() {
       return { status: res.status, body: json, headers: res.headers };
     };
     const claimOne = async () => (await fetch(`http://127.0.0.1:${server.port}/__harness/claim-one`, { method: "POST" })).json();
+    // No handle to the old server survives: if the new one never listens, `server` is null and the old child is gone.
     const restart = async (sha) => {
-      await server.stop();
+      const old = server;
+      server = null;
+      await old.stop();
       server = await startServer(sha);
     };
     const contract = await import(pathToFileURL(path.join(rootDir, "contract.mjs")).href);
@@ -396,12 +502,17 @@ async function main() {
     );
     exitCode = failed.length ? 1 : 0;
   } catch (err) {
-    console.error("HARNESS ERROR", err);
-    exitCode = 2;
+    if (err?.refused) {
+      exitCode = refuse(err.message);
+    } else {
+      console.error("HARNESS ERROR", err);
+      exitCode = 2;
+    }
   } finally {
-    await teardown();
+    // A cluster that could not be confirmed stopped is a run that did not clean up: never 0 or 1.
+    if (!(await teardown())) exitCode = 2;
   }
-  return exitCode;
+  return signalled ? 130 : exitCode;
 }
 
 /** Two deploys: the engine stamp ends in the commit, so a restart under SHA_B is "Run again after a deploy". */

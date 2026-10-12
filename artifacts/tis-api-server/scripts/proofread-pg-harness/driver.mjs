@@ -466,7 +466,7 @@ export async function drive({ call, q, claimOne, restart, contract, fixture, ser
     t(`every GET answer (${contractChecked}) parses under the read contract (ProofreadReadResponse)`, contractChecked > 0 && contractFailures.length === 0, contractFailures);
   } catch (err) {
     console.log("DRIVER ERROR", err);
-    results.push({ name: "driver completed", ok: false });
+    t("driver completed", false, err instanceof Error ? err.message : String(err));
   }
   return results;
 }
