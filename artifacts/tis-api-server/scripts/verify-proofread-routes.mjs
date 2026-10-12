@@ -57,8 +57,9 @@
  * value that holds a db handle (Reflect, Object.entries, computed keys, spread)
  * is refused rather than followed. Its named limits are listed at dbScan. What
  * survives every spelling is a test that observes the DATABASE (a row hash before
- * and after, on a real Postgres); this guard cannot be one, and that test is the
- * recommended addition once phase 1 ships.
+ * and after, on a real Postgres); this guard cannot be one. That test is the
+ * opt-in harness scripts/proofread-pg-harness/ (run.mjs; its header says what it
+ * asserts): not a `check:*` script, and not run in CI until CI has Postgres.
  *
  * Reads files as text and never imports the routes, the store or
  * @workspace/db, so it never opens a connection.
@@ -695,9 +696,9 @@ const DB_HANDLES = new Set(["db", "tx", "trx"]);
  *     update / delete are refused in the store, the runner and the routes; a
  *     parameter called db, tx or trx is a handle even when it is an array.
  * The proof that survives every spelling is a test that observes the database, a
- * row hash before and after a request on a real Postgres; it is not part of this
- * guard (it needs a Postgres service in CI) and is the recommended addition once
- * phase 1 ships.
+ * row hash before and after a request on a real Postgres. It is not part of this
+ * guard: it is the opt-in harness scripts/proofread-pg-harness/ (run.mjs), which is
+ * not a `check:*` script and is not run in CI until CI has Postgres.
  */
 const REFLECT_FNS = new Set(["keys", "values", "entries", "assign", "fromEntries", "getOwnPropertyNames", "getOwnPropertyDescriptor", "getOwnPropertyDescriptors", "getPrototypeOf", "setPrototypeOf", "defineProperty", "defineProperties"]);
 const dbScanCache = new Map();
