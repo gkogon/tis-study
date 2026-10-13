@@ -1108,10 +1108,11 @@ const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.g
  * schema-tables-are-read. What the reader neither reads nor refuses is listed at schemaTablesIn.
  * Postgres reads a comment as whitespace, so each text is read as written, with its comments
  * blanked the way Postgres lexes them (a block comment nests; a line comment ends at CR or LF),
- * and with only the comments outside quoted strings blanked: a `--` inside a quoted string would
- * hide a write from the second read alone, which the first keeps, and a quoted `'--'` ahead of a
- * write whose words a comment splits would hide it from both, which the third reads (see
- * blankSqlComments). The text is every string literal and template (a substitution counts as a
+ * and with only the comments outside quoted strings blanked, each read tested on its own: a `--`
+ * or `/*` inside a quoted string would hide a write from the second read alone (blanked from the
+ * opener on, it can keep no SQL word at all: `with x(a) as (values ('/*'))\ndelete from firms ..`),
+ * which the first keeps, and a quoted `'--'` ahead of a write whose words a comment splits would
+ * hide it from both, which the third reads (see blankSqlComments). The text is every string literal and template (a substitution counts as a
  * target: `update ${tisProjectsTable} set`) and every `+` chain of them (`"update " + "tis_" +
  * "projects"`; an operand that is not a literal reads as a substitution), both cooked and as
  * written; as written, a template's text includes the source of its substitutions, so
@@ -1362,11 +1363,13 @@ const blankSqlComments = (t, quotes = false) => {
 // every shape above contains one of these words; a text with none of them is not looked at further
 const RAW_SQL_WORD = /\b(?:update|insert|delete|copy|select|truncate|merge|conflict|drop|alter)\b/i;
 // as written and with every comment opener blanked (the reads earlier versions made), or with the comments
-// outside quotes blanked
+// outside quotes blanked. Each read is gated on its OWN text holding a SQL word: blanking every opener can leave
+// no SQL word at all (`with x(a) as (values ('/*'))\ndelete from firms ..` blanks to `with x(a) as (values ('`),
+// and that must not keep the as-written read, which holds the delete, from being looked at.
 const isRawSqlWrite = (t, shapes) => {
   const anyShape = (x) => shapes.some((re) => re.test(x));
   const all = blankSqlComments(t);
-  if (RAW_SQL_WORD.test(all) && (anyShape(t) || anyShape(all))) return true;
+  if ((RAW_SQL_WORD.test(t) && anyShape(t)) || (RAW_SQL_WORD.test(all) && anyShape(all))) return true;
   const outsideQuotes = blankSqlComments(t, true);
   return outsideQuotes !== t && outsideQuotes !== all && RAW_SQL_WORD.test(outsideQuotes) && anyShape(outsideQuotes);
 };
@@ -2106,6 +2109,14 @@ const REFLECTION_FORMS = [
     "const s = 'select \"--\"; delete /**/ from firms f where true';",
     "const s = 'select $q$ -- $q$; delete /**/ from firms f where true';",
     "const s = \"select E'\\\\' --'; delete /**/ from firms f where true\";",
+    // and a quoted comment opener ahead of a write whose words no comment splits, with no SQL word before it:
+    // blanking every opener leaves no SQL word at all, so each read is tested on its own
+    "const s = \"with x(a) as (values ('/*'))\\ndelete from firms f where true\";",
+    "const s = 'with \"/*\" as (values (1))\\ndelete from study_proofread_dispositions f where true';",
+    "const s = \"with x(a) as (values ('--')) delete from study_proofread_dispositions d where true\";",
+    "const s = \"with x(a) as (values (e'\\\\' --')) delete from firms f where true\";",
+    "const s = 'with x(a) as (values ($q$ -- $q$)) delete from firms f where true';",
+    "const s = \"set local application_name = '--'; delete from firms f where true\";",
     // a verb (or a word of it) in its own literal inside a substitution: the substitution is inlined as its text
     "const s = sql`${sql.raw('delete from')} study_proofread_dispositions d where true`;",
     "const s = sql`${sql.raw(\"delete from\")} firms f where true`;",
@@ -4809,6 +4820,11 @@ const MUTATIONS = [
     ["an insert into firms with a nested block comment between INSERT and INTO, inside the loader", "await db.execute(sql`insert /* /* */ */ into firms values (100)`);", "loader"],
     ["an update of the log's table object behind a nested comment, the SET a substitution", "{ const patch = sql.raw(process.env.P ?? \"\"); await db.execute(sql`update /* /* */ */ ${studyProofreadDispositionsTable} ${patch}`); }"],
     ["a delete of firms after a statement whose string holds a comment opener", "await db.execute(sql.raw(\"select '--'; delete /**/ from firms f where true\"));"],
+    // a quoted comment opener ahead of the write, and no SQL word before it
+    ["a delete of firms on the line after a CTE whose string holds a block-comment opener", "await db.execute(sql.raw(\"with x(a) as (values ('/*'))\\ndelete from firms f where true\"));"],
+    ["a delete of the log on the line after a CTE named by a quoted block-comment opener", "await db.execute(sql.raw('with \"/*\" as (values (1))\\ndelete from study_proofread_dispositions f where true'));"],
+    ["a delete of the log after a CTE whose string holds a line-comment opener, inside the loader", "await db.execute(sql.raw(\"with x(a) as (values ('--')) delete from study_proofread_dispositions d where true\"));", "loader"],
+    ["a delete of firms after a CTE whose dollar-quoted string holds a line-comment opener", "await db.execute(sql.raw('with x(a) as (values ($q$ -- $q$)) delete from firms f where true'));"],
     // the verb in its own literal inside a substitution
     ["a delete of the log whose verb is its own sql.raw literal", "await db.execute(sql`${sql.raw('delete from')} study_proofread_dispositions d where true`);"],
     ["a delete of firms whose verb is a nested sql template, inside the loader", "await db.execute(sql`${sql`delete from`} firms f where true`);", "loader"],
@@ -4853,6 +4869,18 @@ const MUTATIONS = [
     file: "runner",
     flips: ["runner-has-no-db-writes"],
     apply: edit("runner", "    const rec: StudyRecord", '    const q = "delete /* /* */ */ from firms f where true";\n    const rec: StudyRecord'),
+  },
+  {
+    label: "runner: a raw SQL delete from users after a SET whose string holds a line-comment opener",
+    file: "runner",
+    flips: ["runner-has-no-db-writes"],
+    apply: edit("runner", "    const rec: StudyRecord", "    const q = \"set local application_name = '--'; delete from users u where true\";\n    const rec: StudyRecord"),
+  },
+  {
+    label: "routes: a raw SQL delete from firms after a CTE whose E'..' string holds an escaped quote and a line-comment opener",
+    file: "routes",
+    flips: ["routes-do-not-touch-study"],
+    apply: edit("routes", "const router: IRouter = Router();", "const router: IRouter = Router();\nconst q12 = \"with x(a) as (values (e'\\\\' --')) delete from firms f where true\";"),
   },
   {
     label: "routes: a raw SQL insert with a line comment ended by a carriage return between INSERT and INTO",
