@@ -101,12 +101,15 @@ router.get("/projects/:id/proofread", proofreadReadLimiter, async (req, res): Pr
     // hidden finding does not leak its id.
     const visible = findings.filter((f) => f.audience !== "admin");
     const visibleIds = new Set(visible.map((f) => f.id));
-    // Whether the revision this run carried its decisions from ran under other
-    // rules — the carry gate's own comparison. Then nothing carried: a
-    // RULES_VERSION change reopens every decision on purpose, and the panel
-    // says so rather than showing them open with no reason. run.rulesVersion
-    // is stamped when the run's clauses run, so on a finished run it is the
-    // rules the carry compared with.
+    // Whether the revision GET reads now as this run's carry source ran under
+    // other rules — the carry gate's comparison, made again at read time. Then
+    // nothing carried: a RULES_VERSION change reopens every decision on
+    // purpose, and the panel says so rather than showing them open with no
+    // reason. run.rulesVersion is stamped when the run's clauses run, so on a
+    // finished run it is the rules the carry compared with. `previous` is the
+    // revision the carry compared only while no older revision finishes after
+    // that carry; in a rolling-deploy overlap one can, and then this can say
+    // decisions were not carried when they were (see latestRunForProject).
     const rulesChanged = previous !== null && previous.rulesVersion !== run.rulesVersion;
     res.json({
       status: run.status,

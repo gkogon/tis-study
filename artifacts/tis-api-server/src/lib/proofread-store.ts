@@ -231,10 +231,16 @@ export async function latestRunForProject(firmId: string, projectId: string) {
         )
         .orderBy(desc(studyProofreadDispositionsTable.createdAt))
     : [];
-  // The revision this run's carry read its decisions from: the runner's own
+  // The revision GET reads now as this run's carry source: the runner's own
   // call with the runner's arguments, for a run this firm's read just found,
   // so GET can say when that revision ran under other rules and nothing
-  // carried — about the same revision the carry compared, never a lookalike.
+  // carried. It is read again here, not recorded when the carry ran, so it is
+  // the revision the carry compared only while no older revision finishes
+  // after that carry. In a rolling-deploy overlap one can (an older revision
+  // still running under the old deploy when this one ran): GET then names it,
+  // and rulesChanged can say decisions were not carried when they were, or
+  // say nothing of a reopening — a wrong explanation, never a false clear.
+  // Recording the carry source on the run is a schema change, not phase 1's.
   const previous = await previousRunForProject(run.projectId, run.revision);
   return { run, findings, dispositions, previous };
 }

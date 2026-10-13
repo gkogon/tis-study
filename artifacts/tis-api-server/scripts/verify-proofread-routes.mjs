@@ -2499,7 +2499,7 @@ const CHECKS = [
   {
     id: "get-rules-changed-is-the-carry-gate",
     on: "routes",
-    msg: `GET says whether the rules changed since the revision this run's carry read from, as the carry gate decided it: \`${RULES_CHANGED}\` — \`previous\` a plain element of \`const { … } = latest;\` used nowhere else, \`run.rulesVersion\` the run's own (stamped when its clauses ran) — and the run answer carries it as \`rulesChanged\`. True means nothing carried and every earlier decision is open again on purpose; a hard-coded value, another column or the comparison inverted tells the engineer the opposite`,
+    msg: `GET says whether the rules changed since the revision it reads now as this run's carry source (the one the carry read unless an older revision finished after the carry: the limit named at [panel-read-names-the-carry-source]), compared as the carry gate compares: \`${RULES_CHANGED}\` — \`previous\` a plain element of \`const { … } = latest;\` used nowhere else, \`run.rulesVersion\` the run's own (stamped when its clauses ran) — and the run answer carries it as \`rulesChanged\`. True means nothing carried and every earlier decision is open again on purpose; a hard-coded value, another column or the comparison inverted tells the engineer the opposite`,
     test: (d) => {
       const g = getSeg(d);
       const tree = getTree(d);
@@ -3174,7 +3174,7 @@ const CHECKS = [
   {
     id: "panel-read-names-the-carry-source",
     on: "store",
-    msg: `latestRunForProject reads the revision this run's carry read its decisions from with the runner's own call — \`${PREVIOUS_READ}\`, once, after its firm-scoped run read — and hands it back unchanged as \`previous\` in its return, so GET's rulesChanged answers about the same revision the carry compared: another function, other arguments, or a second copy of the query would let the panel's explanation and the carry disagree`,
+    msg: `latestRunForProject reads this run's carry source as the runner reads it, with the runner's own call — \`${PREVIOUS_READ}\`, once, after its firm-scoped run read — and hands it back unchanged as \`previous\` in its return, so GET's rulesChanged answers about the revision GET reads now with the carry's own query: another function, other arguments, or a second copy of the query would let the panel's explanation and the carry disagree always. Named limit: the source is read again at GET, not recorded when the carry ran, so in a rolling-deploy overlap (an older revision that finishes after this run's carry) GET reads that revision and rulesChanged can say decisions were not carried when they were — a wrong explanation, never a false clear; recording it is a schema change, not phase 1's`,
     test: (d) => {
       const fn = functionNamed(d.src.store, "latestRunForProject");
       const b = body(d.store, "latestRunForProject");
@@ -3276,7 +3276,10 @@ const CHECKS = [
   {
     id: "runner-import-whitelist",
     on: "runner",
-    msg: "the runner imports exactly the modules AND NAMES it needs (node:fs, node:path, the type-only StudyProofreadRun, the logger, the two pure proofread/ modules and the six store functions) in whatever spelling (read from the TypeScript AST), with no re-export, side-effect import, dynamic import, require, createRequire, getBuiltinModule, eval, Function or read of .constructor (but .constructor.name) — so it reaches the database only through the store, and `import { setProjectTheme } from \"./tis-projects\"` called after the clause pass (which compiled and left every other guard green while rewriting a tis_projects row) fails here",
+    msg:
+      "the runner imports exactly the modules AND NAMES it needs (node:fs, node:path, the type-only StudyProofreadRun, the logger, the two pure proofread/ modules and the " +
+      `${RUNNER_IMPORTS["./proofread-store"].length} store functions, ${RUNNER_IMPORTS["./proofread-store"].join(", ")}` +
+      ") in whatever spelling (read from the TypeScript AST), with no re-export, side-effect import, dynamic import, require, createRequire, getBuiltinModule, eval, Function or read of .constructor (but .constructor.name) — so it reaches the database only through the store, and `import { setProjectTheme } from \"./tis-projects\"` called after the clause pass (which compiled and left every other guard green while rewriting a tis_projects row) fails here",
     test: (d) => ({ ok: d.runner.length > 0 && importsEqual(importsOf(d.src.runner), RUNNER_IMPORTS), where: importDiff("runner", d.src.runner, RUNNER_IMPORTS) }),
   },
   {
