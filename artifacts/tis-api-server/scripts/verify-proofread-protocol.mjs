@@ -662,7 +662,7 @@ const CHECKS = [
   {
     id: "criteria-unlocated-is-a-blocker",
     on: "protocol",
-    msg: `§5: a criterion Datum could not locate in the agency document is a \`BLOCKER\` — the criterion is unverified, not an assumed absence — because the document is in front of Datum and the source the study cites is wrong or missing (rule 2); a document Datum could not reach is rule 4's \`UNVERIFIED\` — Datum, the agent, unable to reach a document the study cites; a document never supplied to the pass is neither: in the product, where no agency document is on file, the check is not run and the §5 clause reports that as coverage (\`not-run\` or a coverage note), never as a finding (spec: Non-goals; s5-criteria.ts CRITERIA_VALUES_NOTE); and the bullet nowhere denies the hold (${DENIES_MSG})`,
+    msg: `§5: a criterion Datum could not locate in the agency document is a \`BLOCKER\` — the criterion is unverified, not an assumed absence — because the document is in front of Datum and the source the study cites is wrong or missing (rule 2); a document Datum could not reach is rule 4's \`UNVERIFIED\` — Datum, the agent, unable to reach a document the study cites; in the product (and only there: for the agent, rule 4 holds), a document never supplied to the pass is neither: where no agency document is on file, the check is not run and the §5 clause reports that as coverage (\`not-run\` or a coverage note), never as a finding (spec: Non-goals; s5-criteria.ts CRITERIA_VALUES_NOTE); and the bullet nowhere denies the hold (${DENIES_MSG})`,
     test: (t) => {
       const b = criterionBullet(t.protocol);
       return (
@@ -670,9 +670,12 @@ const CHECKS = [
         /\bwrong or missing \(rule 2\)/.test(b) &&
         /\brule 4's `UNVERIFIED`/.test(b) &&
         b.includes("That is Datum, the agent, unable to reach a document the study cites.") &&
+        // Scoped to the product (fix wave 3, G3-5): for Datum, the agent, a document not in front of it is rule 4's
+        // UNVERIFIED, so an unscoped "a document never supplied to the pass is neither" contradicts rule 4.
         b.includes(
-          "A document never supplied to the pass is neither: in the product, where no agency document is on file, the check against it is not run, and the §5 clause reports that as coverage (`not-run`, or a coverage note that the criteria values were not checked), never as a finding (see What a Datum pass requires).",
+          "In the product, a document never supplied to the pass is neither: where no agency document is on file, the check against it is not run, and the §5 clause reports that as coverage (`not-run`, or a coverage note that the criteria values were not checked), never as a finding (see What a Datum pass requires).",
         ) &&
+        !/(?:^|[.:;]\s)A document never supplied to the pass\b/.test(b) &&
         !deniesTheHold(b)
       );
     },
@@ -967,7 +970,10 @@ const MUTATIONS = [
   { label: "§Audience: the engineer can dismiss a DEFECT once it is filed", file: "protocol", flips: ["protocol-nothing-else-clears-a-defect"], apply: edit("protocol", "— nothing else about one.", "— nothing else about one. The engineer can dismiss a\n  `DEFECT` once it is filed.") },
   { label: "§Logging: recording FIXED on a DEFECT lifts the hold", file: "protocol", flips: ["protocol-nothing-else-clears-a-defect"], apply: edit("protocol", "- `FIXED` — the study changed.", "- `FIXED` — the study changed, and recording it on a `DEFECT` lifts the hold.") },
   { label: "rule 2's DEFECT item: merging the fix clears it (no 'defect' in the sentence)", file: "protocol", flips: ["protocol-nothing-else-clears-a-defect"], apply: edit("protocol", "the engineer nor the PE disposes of it.", "the engineer nor the PE disposes of it. Merging the fix clears it.") },
-  { label: "§5: drop what the product records with no agency document on file", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", / A document never supplied to the pass is\n  neither:[\s\S]*?What a Datum pass requires\)\./, "") },
+  { label: "§5: drop what the product records with no agency document on file", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", / In the product, a document never supplied\n  to the pass is neither:[\s\S]*?What a Datum pass requires\)\./, "") },
+  // G3-5: the never-supplied sentence is the product's; unscoped, it denies the agent rule 4's UNVERIFIED.
+  { label: "§5: the never-supplied sentence no longer scoped to the product", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", "In the product, a document never supplied\n  to the pass is neither: where", "A document never supplied\n  to the pass is neither: in the product, where") },
+  { label: "§5: the never-supplied sentence stated for the agent too", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", "never as a finding (see What a Datum pass requires).", "never as a finding (see What a Datum pass requires). A document never supplied to the pass is not `UNVERIFIED` for the agent either.") },
   { label: "§5: the product's missing document called UNVERIFIED", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", "(`not-run`, or a coverage note that the criteria values were not checked),\n  never as a finding", "(`UNVERIFIED`, or a coverage note that the criteria values were not checked),\n  never as a finding") },
   { label: "§5: the product's missing document reported as a finding", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", "never as a finding (see What a Datum pass requires).", "as a finding (see What a Datum pass requires).") },
   { label: "§5: drop whose UNVERIFIED rule 4's is", file: "protocol", flips: ["criteria-unlocated-is-a-blocker"], apply: edit("protocol", " That is Datum, the agent, unable to\n  reach a document the study cites.", "") },
