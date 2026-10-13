@@ -53,10 +53,12 @@ finding because you disagree with it — contest it on the record instead.
 the study sees every `BLOCKER`, `DISCLOSE`, `NOTE` and `UNVERIFIED` on their own
 study, in the app. The sealing PE also sees every `CONTESTED` item, with both
 positions and both sources, and is the only one who may rule on it. Admin alone
-sees `DEFECT`: it goes to the code queue, never to the PE, and the engineer is
-told only how many their study carries. No finding appears in the deliverable —
-a `DISCLOSE` becomes deliverable language; the finding itself does not. Log
-every pass with a timestamp and a disposition per finding (protocol §Logging).
+sees `DEFECT`: it goes to the code queue, never to the PE. The engineer is told
+only how many their study carries, that each holds the study until the software
+team resolves it, and that a fix to the engine needs the study generated again —
+nothing else about one. No finding appears in the deliverable — a `DISCLOSE`
+becomes deliverable language; the finding itself does not. Log every pass with
+a timestamp and a disposition per finding (protocol §Logging).
 
 **Do not oversell it.** A Datum pass is a source-verification and traceability
 check, not independent review — same model family, shared blind spots. Never

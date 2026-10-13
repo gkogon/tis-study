@@ -327,6 +327,13 @@ const criterionBullet = (text) => paragraphs(section(text, "5\\. Criteria")).fin
  */
 const DEFECT_CLEARING = "until the software team resolves it: a fix to a rule clears it on the next run; a fix to the engine needs the study generated again";
 /**
+ * What the engineer is told of a `DEFECT`, word for word as §Audience's admin bullet says it: the count, the hold,
+ * and that an engine fix needs the study generated again. SKILL.md states the same sentence (fix wave 3, G3-2): a
+ * skill that says "told only how many" leaves out the hold and the regeneration the panel and the spec state.
+ */
+const ENGINEER_TOLD_OF_DEFECT =
+  "The engineer is told only how many their study carries, that each holds the study until the software team resolves it, and that a fix to the engine needs the study generated again — nothing else about one.";
+/**
  * The replaced rule, in its spellings: a re-run that "no longer" raises / reports it, "until a
  * re-run", "clears only when / once a re-run". Read on the flattened text, so a wrap cannot hide it.
  */
@@ -676,7 +683,7 @@ const CHECKS = [
     msg: `§Audience's admin bullet: admin alone sees DEFECT, and the engineer is told only how many their study carries, that each holds the study until the software team resolves it, and that a fix to the engine needs the study generated again; and, protocol-wide, ${ENGINEER_SEES_DEFECT_MSG}`,
     test: (t) =>
       /\balone sees\b[^.]*\bDEFECT\b/.test(adminBulletOf(t.protocol)) &&
-      adminBulletOf(t.protocol).includes("The engineer is told only how many their study carries, that each holds the study until the software team resolves it, and that a fix to the engine needs the study generated again — nothing else about one.") &&
+      adminBulletOf(t.protocol).includes(ENGINEER_TOLD_OF_DEFECT) &&
       engineerSeesNoDefect(t.protocol),
   },
   {
@@ -778,13 +785,14 @@ const CHECKS = [
   {
     id: "skill-audiences",
     on: "skill",
-    msg: `SKILL.md names the protocol's three audiences — the engineer who ran the study, the sealing PE, admin alone for DEFECT; says nowhere ${INTERNAL_ONLY_MSG}; and ${ENGINEER_SEES_DEFECT_MSG}`,
+    msg: `SKILL.md names the protocol's three audiences — the engineer who ran the study, the sealing PE, admin alone for DEFECT; states §Audience's sentence on what the engineer is told of a DEFECT word for word ("${ENGINEER_TOLD_OF_DEFECT}"); says nowhere ${INTERNAL_ONLY_MSG}; and ${ENGINEER_SEES_DEFECT_MSG}`,
     test: (t) => {
       const f = flat(t.skill);
       return (
         /\bThe engineer who ran the study sees every `BLOCKER`, `DISCLOSE`, `NOTE` and `UNVERIFIED`/.test(f) &&
         /\bThe sealing PE also sees every `CONTESTED` item\b/.test(f) &&
         /\bAdmin alone sees `DEFECT`/.test(f) &&
+        unitsOf(t.skill).includes(ENGINEER_TOLD_OF_DEFECT) &&
         noInternalOnlyClaim(t.skill) &&
         engineerSeesNoDefect(t.skill)
       );
@@ -1061,7 +1069,11 @@ const MUTATIONS = [
   { label: "SKILL.md: an UNVERIFIED remains a BLOCKER (outside its bullet)", file: "skill", flips: ["skill-unverified-is-a-record"], apply: edit("skill", "Relay findings verbatim to the operator.", "An `UNVERIFIED` remains a `BLOCKER` for the operator. Relay findings verbatim to the operator.") },
   { label: "SKILL.md: what was not supplied is reported as a BLOCKER", file: "skill", flips: ["skill-unverified-is-a-record"], apply: edit("skill", "so absence is reportable.", "so absence is reportable, as a `BLOCKER`.") },
   { label: "SKILL.md: the pass remains internal", file: "skill", flips: ["skill-audiences"], apply: edit("skill", "No finding appears in the deliverable —", "No finding appears in the deliverable, and the pass remains internal —") },
-  { label: "SKILL.md: the engineer is told each DEFECT's clause, wrapped", file: "skill", flips: ["skill-audiences"], apply: edit("skill", "and the engineer is\ntold only how many their study carries.", "and the engineer is\ntold each `DEFECT`'s clause and how many their study carries.") },
+  { label: "SKILL.md: the engineer is told each DEFECT's clause, wrapped", file: "skill", flips: ["skill-audiences"], apply: edit("skill", "The engineer is told\nonly how many their study carries,", "The engineer is told\neach `DEFECT`'s clause and how many their study carries,") },
+  // G3-2: SKILL.md states §Audience's sentence on what the engineer is told of a DEFECT, word for word.
+  { label: "SKILL.md: the engineer is told only the count again", file: "skill", flips: ["skill-audiences"], apply: edit("skill", /never to the PE\. The engineer is told\n[\s\S]*?nothing else about one\./, "never to the PE, and the engineer is\ntold only how many their study carries.") },
+  { label: "SKILL.md: what the engineer is told drops the hold", file: "skill", flips: ["skill-audiences"], apply: edit("skill", " that each holds the study until the software\nteam resolves it, and", "") },
+  { label: "SKILL.md: what the engineer is told drops the regeneration", file: "skill", flips: ["skill-audiences"], apply: edit("skill", ", and that a fix to the engine needs the study generated again —\nnothing else about one.", " — nothing else\nabout one.") },
   { label: "redline.md: the engineer gets each DEFECT as well", file: "redline", flips: ["redline-audiences"], apply: edit("redline", "admin alone sees `DEFECT`.", "admin alone sees `DEFECT`. The engineer gets each `DEFECT` as well.") },
   // banned copy and the compound, in every spelling (fix wave 2: LAN-7, LAN-8, m-1)
   { label: "protocol: QA / QC, spaced, in §3", file: "protocol", flips: ["protocol-banned-copy"], apply: edit("protocol", "- Spot-check the signal list against the basemap.", "- Spot-check the signal list against the basemap as QA / QC.") },
