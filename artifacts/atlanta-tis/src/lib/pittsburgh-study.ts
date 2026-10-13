@@ -349,6 +349,198 @@ export function splitMitigation(text: string): { verdict: string; horizon: strin
 }
 
 // ---------------------------------------------------------------------------
+// the scroll-driven opener — its featured signal and every number it narrates
+// ---------------------------------------------------------------------------
+
+/** The signal the opener's second act and the "Watch it live" section
+ *  feature: McKnight Road & McKnight Circle — on McKnight Road, Webster
+ *  timing computed from its own volumes, two loaded approaches, a clean
+ *  C → C → C with the project's trips visibly arriving on one of them. */
+export const FEATURED_SIGNAL_ID = "pittsburgh-2402";
+
+/** Rows the page never features (presenting them invites the wrong
+ *  conversation): Perrysville Avenue / West View Avenue junctions, and rows
+ *  whose name is only "Near …" (no cross street on record). */
+const NOT_FEATURED = /perrysville|west view|^\s*near\b/i;
+
+/** A row the opener may feature: on McKnight Road, a named cross street,
+ *  not a Perrysville / West View junction, timing computed (not the flat
+ *  screening default), and at least one loaded approach. */
+export function isPresentableSignal(row: TisAffectedIntersection): boolean {
+  return /\bMcKnight Road\b/.test(row.name)
+    && /&/.test(row.name)
+    && !NOT_FEATURED.test(row.name)
+    && row.signalTiming?.basis === "webster"
+    && (row.approaches ?? []).some((a) => a.existingVolumeVph > 0);
+}
+
+/** The featured row: FEATURED_SIGNAL_ID when it is presentable, else the
+ *  presentable McKnight Road row carrying the most project trips. */
+export function featuredSignal(report: TisReport): TisAffectedIntersection | null {
+  const rows = report.affectedIntersections;
+  const pinned = rows.find((r) => r.signalId === FEATURED_SIGNAL_ID);
+  if (pinned && isPresentableSignal(pinned)) return pinned;
+  return [...rows].filter(isPresentableSignal).sort((a, b) => b.addedTripsPmPeak - a.addedTripsPmPeak || a.name.localeCompare(b.name))[0] ?? null;
+}
+
+/** "200,000 sq ft GLA" for a ksf land use, else "<size> <unit>". */
+export function siteSizeLabel(report: TisReport): string {
+  const tg = report.tripGeneration;
+  if (tg.unitShort === "ksf") return `${fmtInt(tg.size * 1000)} sq ft${/GLA/.test(tg.unit) ? " GLA" : ""}`;
+  return `${fmtInt(tg.size)} ${tg.unit}`;
+}
+
+const COMPASS = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"] as const;
+/** Eight-wind compass word for the bearing from a to b. */
+export function compassFrom(aLat: number, aLon: number, bLat: number, bLon: number): (typeof COMPASS)[number] {
+  const φ1 = (aLat * Math.PI) / 180, φ2 = (bLat * Math.PI) / 180, dλ = ((bLon - aLon) * Math.PI) / 180;
+  const y = Math.sin(dλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dλ);
+  const deg = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+  return COMPASS[Math.round(deg / 45) % 8]!;
+}
+
+const LEG_SOURCE_SHORT: Record<string, string> = {
+  csv: "link count",
+  signal_aadt: "AADT design hour",
+  signal_baseline: "baseline volume",
+  class_default: "road-class default",
+};
+
+export type OpenerApproach = {
+  dir: string;
+  /** Existing (current year), No-Build (opening year) and Build volumes, vph. */
+  existing: number;
+  noBuild: number;
+  build: number;
+  /** Project trips added on this approach, PM peak. */
+  added: number;
+  /** Where the leg's background volume came from (the row's legVolumes). */
+  source: string | null;
+};
+
+export type OpenerStory = {
+  site: {
+    projectName: string;
+    sizeLabel: string;
+    landUseCode: string;
+    landUseName: string;
+    dailyTrips: number;
+    pmGross: number;
+    pmPassBy: number;
+    passByPct: number;
+    pmInternal: number;
+    pmNonAuto: number;
+    autoSharePct: number;
+    pmNet: number;
+    pmIn: number;
+    pmOut: number;
+    pmRate: number;
+    rateUnit: string;
+  };
+  signal: {
+    id: string;
+    name: string;
+    distanceMi: number;
+    compass: string;
+    latitude: number;
+    longitude: number;
+    /** Loaded approaches only (an approach with no volume in any scenario is a one-way exit leg). */
+    approaches: OpenerApproach[];
+    cycleSec: number;
+    gNs: number;
+    gEw: number;
+    delay: Record<LosScenario, number>;
+    los: Record<LosScenario, string>;
+    addedTrips: number;
+  } | null;
+  area: {
+    radiusMi: number;
+    signals: number;
+    losDrops: number;
+    ef: Record<LosScenario, number>;
+    existingYear: number;
+    openingYear: number;
+    netPmTrips: number;
+  };
+};
+
+/** Every number the opener narrates, read from the saved report — nothing
+ *  typed. The opener formats these and nothing else. */
+export function openerStory(p: PittsburghSamplePayload): OpenerStory {
+  const r = p.report;
+  const h = headlineStats(p);
+  const pmPeriod = r.periodReports.find((x) => x.period === "pm_peak");
+  const w = pmPeriod ? periodWaterfall(pmPeriod) : null;
+  const tg = r.tripGeneration;
+  const row = featuredSignal(r);
+  let signal: OpenerStory["signal"] = null;
+  if (row && row.signalTiming) {
+    const legs = row.legVolumes ?? [];
+    const approaches: OpenerApproach[] = (row.approaches ?? [])
+      .filter((a) => (a.currentVolumeVph ?? 0) > 0 || a.existingVolumeVph > 0 || a.futureVolumeVph > 0)
+      .map((a) => {
+        const leg = legs.find((l) => l.direction === a.direction);
+        return {
+          dir: a.direction,
+          existing: a.currentVolumeVph ?? a.existingVolumeVph,
+          noBuild: a.existingVolumeVph,
+          build: a.futureVolumeVph,
+          added: a.addedTripsPeak,
+          source: leg ? (LEG_SOURCE_SHORT[leg.source] ?? leg.source) : null,
+        };
+      });
+    const t = row.signalTiming;
+    signal = {
+      id: row.signalId,
+      name: row.name,
+      distanceMi: row.distanceMi,
+      compass: compassFrom(r.request.latitude, r.request.longitude, row.latitude, row.longitude),
+      latitude: row.latitude,
+      longitude: row.longitude,
+      approaches,
+      cycleSec: t.cycleLenSec,
+      gNs: t.gOverCns,
+      gEw: t.gOverCew,
+      delay: { existing: rowDelay(row, "existing"), noBuild: rowDelay(row, "noBuild"), build: rowDelay(row, "build") },
+      los: { existing: rowLos(row, "existing"), noBuild: rowLos(row, "noBuild"), build: rowLos(row, "build") },
+      addedTrips: row.addedTripsPmPeak,
+    };
+  }
+  const rows = r.affectedIntersections;
+  return {
+    site: {
+      projectName: p.projectName,
+      sizeLabel: siteSizeLabel(r),
+      landUseCode: tg.landUseCode,
+      landUseName: tg.landUseName,
+      dailyTrips: h.dailyTrips,
+      pmGross: h.pmGross,
+      pmPassBy: w ? w.passBy : 0,
+      passByPct: w ? w.passByPct : 0,
+      pmInternal: w ? w.internalCapture : 0,
+      pmNonAuto: w ? w.nonAuto : 0,
+      autoSharePct: Math.round((r.autoModeShareApplied ?? 1) * 1000) / 10,
+      pmNet: h.pmNetExternal,
+      pmIn: h.pmIn,
+      pmOut: h.pmOut,
+      pmRate: tg.pmRate ?? 0,
+      rateUnit: tg.unit,
+    },
+    signal,
+    area: {
+      radiusMi: r.studyRadiusMi,
+      signals: r.intersectionsStudied,
+      losDrops: r.intersectionsWithLosDrop,
+      ef: { existing: countAtLosEf(rows, "existing"), noBuild: countAtLosEf(rows, "noBuild"), build: countAtLosEf(rows, "build") },
+      existingYear: existingYear(r),
+      openingYear: r.request.openingYear,
+      netPmTrips: h.pmNetExternal,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // formatting
 // ---------------------------------------------------------------------------
 
