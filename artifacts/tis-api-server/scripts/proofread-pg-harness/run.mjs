@@ -33,8 +33,11 @@
  *      PGDATABASE to the throwaway cluster and carries no other PG* variable (no PGSERVICE, PGSERVICEFILE,
  *      PGPASSFILE, PGHOSTADDR or PGOPTIONS): a default client reaches this run's cluster, never localhost:5432. The
  *      server reports what a default client there would dial before it listens, and the run is REFUSED if that is
- *      not this run's socket, port, user and database. This script never reads DATABASE_URL, and every child
- *      process gets an environment built from a short allow-list, never a copy of this one;
+ *      not this run's socket, port, user and database. That pin covers default-config clients ONLY: a bundled
+ *      client built with an EXPLICIT address — `new pg.Client({ host, port })`, a connection string written in the
+ *      code — is neither refused nor redirected, and dials exactly what it names (localhost:5432 included). This
+ *      script never reads DATABASE_URL, and every child process gets an environment built from a short allow-list,
+ *      never a copy of this one;
  *   3. initdb into the run directory, pg_ctl start, create the database, and confirm that the server it is
  *      talking to reports the run directory as its data_directory before it writes anything;
  *   4. applies the schema as drizzle-kit would push it (drizzle-kit/api, generated from the same schema files);
