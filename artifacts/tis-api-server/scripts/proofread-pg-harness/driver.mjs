@@ -26,6 +26,17 @@ const NOT_FOUND = "Finding not found.";
 const DOES_NOT_APPLY = "This decision does not apply to this finding.";
 const RUN_AGAIN = "This check has been run again. Refresh to see the latest.";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/**
+ * An error's message with its cause chain, so the one line that summarises a failure keeps why: undici's "fetch
+ * failed" says nothing until its cause ("ECONNREFUSED: connect ECONNREFUSED 127.0.0.1:54321") is read.
+ */
+const withCauses = (err) => {
+  const parts = [];
+  for (let e = err, depth = 0; e != null && depth < 5; e = typeof e === "object" ? e.cause : undefined, depth++) {
+    parts.push(e instanceof Error || (typeof e === "object" && "message" in e) ? `${e.code ? `${e.code}: ` : ""}${e.message}` : String(e));
+  }
+  return parts.join(" <- caused by ");
+};
 
 export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, contract, fixture, serverLines, SHA_A, SHA_B }) {
   const results = [];
@@ -718,8 +729,9 @@ export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, 
     t("[claim] the hash sees xmin: a value-identical UPDATE of one tis_projects row changes it", (await studyHash()) !== hEnd);
     t(`every GET answer (${contractChecked}) parses under the read contract (ProofreadReadResponse)`, contractChecked > 0 && contractFailures.length === 0, contractFailures);
   } catch (err) {
-    console.log("DRIVER ERROR", err);
-    t("driver completed", false, err instanceof Error ? err.message : String(err));
+    console.log(`DRIVER ERROR ${withCauses(err)}`);
+    console.log(err);
+    t("driver completed", false, withCauses(err));
   }
   return results;
 }

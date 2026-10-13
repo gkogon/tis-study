@@ -26,7 +26,8 @@
  * process that is not a postgres on that directory is never handed to pg_ctl and is "not confirmed stopped"; a live
  * cluster whose data directory has a space is stopped and confirmed gone; run.mjs refuses (exit 2, nothing made) a
  * --root or a TMPDIR with whitespace in it; a SIGINT that stops a setup step (sent to the run's process group while
- * an initdb that traps it runs, or to the initdb alone) exits 130 after tearing down. The cluster SAFETY starts is this script's own (unix socket only, a port
+ * an initdb that traps it runs, or to the initdb alone) exits 130 after tearing down; and the driver's one summary
+ * line for an error keeps the error's cause (a failed fetch says what refused it). The cluster SAFETY starts is this script's own (unix socket only, a port
  * in 54400-54999), and a pid file naming another process is pointed at that cluster's postmaster or at a `sleep`
  * this script started, with a pg_ctl that only logs — never at a process this script did not start.
  *
@@ -39,7 +40,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { commandOf, findPgBin, isPostmasterOn, postmasterPidOf, postmastersIn, postmastersUnder, stopCluster } from "./postmaster.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -459,6 +460,28 @@ const SAFETY = {
   "safety-a-setup-step-killed-by-sigint-exits-130": {
     what: "a setup step (initdb) stopped by SIGINT sent to it alone: exit 130, torn down",
     check: (base) => runSignalled(base, "exec", "initdb"),
+  },
+  "safety-driver-error-line-keeps-the-cause": {
+    what: "a driver that stops on a failed fetch says why in its one summary line (the error's cause chain, not just \"fetch failed\")",
+    check: async () => {
+      const { drive } = await import(pathToFileURL(path.join(HERE, "driver.mjs")).href);
+      const cause = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:54321"), { code: "ECONNREFUSED" });
+      const fail = async () => {
+        throw new TypeError("fetch failed", { cause });
+      };
+      const lines = [];
+      const log = console.log;
+      console.log = (...a) => lines.push(a.map(String).join(" "));
+      let results = [];
+      try {
+        results = await drive({ call: fail, q: async () => [], claimOne: fail, restart: async () => {}, contract: {}, fixture: {}, serverLines: () => [], SHA_A: "a", SHA_B: "b" });
+      } finally {
+        console.log = log;
+      }
+      const summary = lines.find((l) => l.startsWith("FAIL  driver completed")) ?? "";
+      const ok = results.some((r) => r.name === "driver completed" && !r.ok) && /fetch failed/.test(summary) && /ECONNREFUSED 127\.0\.0\.1:54321/.test(summary);
+      return { ok, detail: `summary line: ${JSON.stringify(summary.replace(/\n\s*/g, " | "))}` };
+    },
   },
   "safety-run-refuses-a-root-with-whitespace": {
     what: "run.mjs refuses a --root with whitespace in it (exit 2, nothing made)",
