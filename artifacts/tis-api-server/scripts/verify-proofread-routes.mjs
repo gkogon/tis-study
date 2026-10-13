@@ -1119,7 +1119,10 @@ const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.g
  * `${sql.raw("update")} t set` is read; and once more with each substitution that is literal
  * text written in place inlined as that text (a string literal, a template, sql`..`, a `+` of
  * them, or a call of one such argument: sql.raw("delete from"), sql.identifier("t")), so
- * sql`${sql.raw('delete from')} firms f where ..` and sql`upd${"ate"} t ${set}` are read.
+ * sql`${sql.raw('delete from')} firms f where ..` and sql`upd${"ate"} t ${set}` are read; a `+`
+ * chain is read that way too, each operand through a cast (`as`, `satisfies`, `!`, `<T>`) or a
+ * call of one such argument, so `("delete from " as string) + "firms f where .."` and
+ * `String("delete from ") + ..` are read.
  * PROSE THAT READS LIKE SQL IS REFUSED; REWORD IT. "update failed", `update failed for run
  * ${id}`, "could not insert into the queue", "refusing to delete from the log", "could not
  * update the claim" and "Failed to update project." (the house-style 500: a dot that ends a
@@ -1421,7 +1424,12 @@ function rawSqlWrites(text, prose = PROSE_LIKE_TABLES) {
       consider(n, templateText(n));
       consider(n, n.getText(sf).slice(1, -1));
       consider(n, inlined(n));
-    } else if (isPlus(n) && !(n.parent && isPlus(n.parent))) consider(n, flat(n));
+    } else if (isPlus(n) && !(n.parent && isPlus(n.parent))) {
+      // flat() unwraps only parentheses; inlined() also reads through a cast, a non-null assertion and a call of
+      // one argument, so `("delete from " as string) + "firms f where true"` and `String("delete from ") + ..` are read
+      consider(n, flat(n));
+      consider(n, inlined(n));
+    }
     ts.forEachChild(n, visit);
   };
   visit(sf);
@@ -2128,6 +2136,14 @@ const REFLECTION_FORMS = [
     "const s = `${\"delete from\"} users u where true`;",
     "const s = sql`${sql`${sql.raw('delete')} from`} firms f where true`;",
     "const s = sql`upd${\"ate\"} firms ${patch}`;",
+    // a + chain whose verb literal is wrapped in a cast, a non-null assertion or a call of one argument
+    'const s = ("delete from " as string) + "firms f where true";',
+    'const s = String("delete from ") + "firms f where true";',
+    'const s = ("delete from " satisfies string) + "study_proofread_dispositions d where true";',
+    'const s = ("update " as string) + "study_proofread_dispositions set note = null";',
+    'const s = ("insert into " as string) + "study_proofread_dispositions (id) values (1)";',
+    'const s = <string>"delete from " + "users u where true";',
+    'const s = ("delete from "!) + "firms f where true";',
   ];
   const left = [
     "const s = sql`SELECT id FROM study_proofread_runs WHERE x ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1`;",
@@ -4831,6 +4847,10 @@ const MUTATIONS = [
     ["an insert into firms with an alias whose verb is its own sql.raw literal", "await db.execute(sql`${sql.raw(\"insert into\")} firms as f values (default)`);"],
     ["a delete of the log's table object whose verb is its own sql.raw literal", "await db.execute(sql`${sql.raw('delete from')} ${studyProofreadDispositionsTable} where true`);"],
     ["an update whose verb is its own sql.raw literal, the table object and the SET substitutions", "{ const patch = sql.raw(process.env.P ?? \"\"); await db.execute(sql`${sql.raw('update')} ${studyProofreadDispositionsTable} ${patch}`); }"],
+    // a + chain whose verb literal is wrapped in a cast or a call of one argument
+    ["a delete of firms from a + chain whose verb literal is cast `as string`", 'await db.execute(sql.raw(("delete from " as string) + "firms f where true"));'],
+    ["a delete of the log from a + chain whose verb literal is wrapped in String(..), inside the loader", 'await db.execute(sql.raw(String("delete from ") + "study_proofread_dispositions d where true"));', "loader"],
+    ["an update of the log from a + chain whose verb literal is cast with satisfies", 'await db.execute(sql.raw(("update " satisfies string) + "study_proofread_dispositions set note = null"));'],
   ].map(([what, code, place]) => ({
     label: `store: raw SQL, ${what}`,
     file: "store",
@@ -4881,6 +4901,18 @@ const MUTATIONS = [
     file: "routes",
     flips: ["routes-do-not-touch-study"],
     apply: edit("routes", "const router: IRouter = Router();", "const router: IRouter = Router();\nconst q12 = \"with x(a) as (values (e'\\\\' --')) delete from firms f where true\";"),
+  },
+  {
+    label: "runner: a raw SQL delete from users in a + chain whose verb literal is cast `as string`",
+    file: "runner",
+    flips: ["runner-has-no-db-writes"],
+    apply: edit("runner", "    const rec: StudyRecord", '    const q = ("delete from " as string) + "users u where true";\n    const rec: StudyRecord'),
+  },
+  {
+    label: "routes: a raw SQL insert into firms in a + chain whose verb literal is wrapped in String(..)",
+    file: "routes",
+    flips: ["routes-do-not-touch-study"],
+    apply: edit("routes", "const router: IRouter = Router();", 'const router: IRouter = Router();\nconst q14 = String("insert into ") + "firms (id) values (1)";'),
   },
   {
     label: "routes: a raw SQL insert with a line comment ended by a carriage return between INSERT and INTO",
