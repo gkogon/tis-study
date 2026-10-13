@@ -1094,7 +1094,9 @@ const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.g
  * A verb, and ONLY, is followed by whitespace or, before a quoted name or a substitution, by
  * nothing at all: Postgres reads `delete from"firms"` as `delete from "firms"`, and drizzle renders
  * a table substitution as a quoted name, so sql`delete from${t}` and sql`update${t} ${set}` reach
- * it as `delete from"t"` and `update"t" ..` and are read as writes.
+ * it as `delete from"t"` and `update"t" ..` and are read as writes. COPY's FROM may likewise follow
+ * its target or column list, and a quoted path may follow FROM, with nothing between
+ * (`copy"t"from stdin`, `copy t(id)from stdin`, sql`copy${t}from stdin`).
  * A target READS LIKE A TABLE when it is quoted (`"t"`, or Unicode-escaped, `U&"t"`), interpolated
  * (`${...}`), schema-qualified (a dot with a name right after it or whitespace before it:
  * `public.t`, `public .t`, `public . t`), snake_case, or, after any qualifier, the name of a table
@@ -1292,7 +1294,8 @@ function rawSqlShapes(prose) {
     String.raw`(?<!\bfor\s+(?:no\s+key\s+)?)\bupdate${SQL_SEP}(?:only${SQL_SEP})?${SQL_TABLE_LIKE}`,
     String.raw`\binsert\s+into${SQL_SEP}(?:${SQL_TABLE_LIKE}|${SQL_TARGET}\s*(?:\(|\b(?:values|select|default|overriding|with)\b))`,
     String.raw`\bdelete\s+from${SQL_SEP}(?:only${SQL_SEP})?(?:${SQL_TABLE_LIKE}|${SQL_TARGET}(?:\s+as\s+[\w$"]+)?\s*(?:$|;|\)|\b(?:where|using|returning)\b))`,
-    String.raw`\bcopy${SQL_SEP}(?:${SQL_TABLE_LIKE}(?:\s*\([^)]*\))?\s+from\b|${SQL_TARGET}(?:\s*\([^)]*\))?\s+from\s+(?:program\b|stdin\b|'|"|\$\{\}))`,
+    // FROM may follow the target or its column list with nothing between, and a quoted path may follow FROM so
+    String.raw`\bcopy${SQL_SEP}(?:${SQL_TABLE_LIKE}(?:\s*\([^)]*\))?\s*from\b|${SQL_TARGET}(?:\s*\([^)]*\))?\s*from\s*(?:program\b|stdin\b|'|"|\$\{\}))`,
     String.raw`\bselect\b[^;]*?\binto${SQL_SEP}(?:(?:temp|temporary|unlogged|table)\s+)*(?:${SQL_TABLE_LIKE}|${SQL_TARGET}\s+from\b)`,
     String.raw`\btruncate\b`,
     String.raw`\bmerge\s+into\b`,
@@ -2144,6 +2147,13 @@ const REFLECTION_FORMS = [
     'const s = ("insert into " as string) + "study_proofread_dispositions (id) values (1)";',
     'const s = <string>"delete from " + "users u where true";',
     'const s = ("delete from "!) + "firms f where true";',
+    // COPY with no whitespace before FROM: Postgres reads `copy"t"from stdin` as `copy "t" from stdin`, and
+    // drizzle renders a table substitution as a quoted name, so sql`copy${t}from stdin` reaches it that way
+    "const s = 'copy\"study_proofread_dispositions\"from stdin';",
+    'const s = "copy firms(id)from stdin";',
+    "const s = sql`copy${tbl}from stdin`;",
+    "const s = sql`copy ${tbl}(id)from stdin`;",
+    "const s = 'copy\"firms\"from\\'/tmp/x.csv\\'';",
   ];
   const left = [
     "const s = sql`SELECT id FROM study_proofread_runs WHERE x ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1`;",
@@ -4851,6 +4861,9 @@ const MUTATIONS = [
     ["a delete of firms from a + chain whose verb literal is cast `as string`", 'await db.execute(sql.raw(("delete from " as string) + "firms f where true"));'],
     ["a delete of the log from a + chain whose verb literal is wrapped in String(..), inside the loader", 'await db.execute(sql.raw(String("delete from ") + "study_proofread_dispositions d where true"));', "loader"],
     ["an update of the log from a + chain whose verb literal is cast with satisfies", 'await db.execute(sql.raw(("update " satisfies string) + "study_proofread_dispositions set note = null"));'],
+    // COPY with no whitespace before FROM (drizzle renders the table object as a quoted name)
+    ["a COPY into the log's table object with no space before FROM", "await db.execute(sql`copy${studyProofreadDispositionsTable}from stdin`);"],
+    ["a COPY into a quoted firms with no space either side of the name, inside the loader", "await db.execute(sql.raw('copy\"firms\"from stdin'));", "loader"],
   ].map(([what, code, place]) => ({
     label: `store: raw SQL, ${what}`,
     file: "store",
@@ -4913,6 +4926,18 @@ const MUTATIONS = [
     file: "routes",
     flips: ["routes-do-not-touch-study"],
     apply: edit("routes", "const router: IRouter = Router();", 'const router: IRouter = Router();\nconst q14 = String("insert into ") + "firms (id) values (1)";'),
+  },
+  {
+    label: "runner: a raw SQL COPY into users with a column list and no space before FROM",
+    file: "runner",
+    flips: ["runner-has-no-db-writes"],
+    apply: edit("runner", "    const rec: StudyRecord", '    const q = "copy users(id)from stdin";\n    const rec: StudyRecord'),
+  },
+  {
+    label: "routes: a raw SQL COPY into a quoted firms from a quoted path, with no space around FROM",
+    file: "routes",
+    flips: ["routes-do-not-touch-study"],
+    apply: edit("routes", "const router: IRouter = Router();", "const router: IRouter = Router();\nconst q15 = 'copy\"firms\"from\\'/tmp/x.csv\\'';"),
   },
   {
     label: "routes: a raw SQL insert with a line comment ended by a carriage return between INSERT and INTO",
