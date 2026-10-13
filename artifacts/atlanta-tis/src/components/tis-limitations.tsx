@@ -23,9 +23,10 @@ export function TisLimitations({ report }: { report: TisReport }) {
   const credits = creditsDisclosure(tripCredits(report));
   const counts = suppliedCounts(report);
   const supplied = counts.tmc + counts.linkCounts;
+  const atSignals = (n: number) => `${n} signal${n === 1 ? "" : "s"}`;
   const suppliedKinds =
     counts.tmc > 0 && counts.linkCounts > 0
-      ? `imported turning-movement counts at ${counts.tmc}, client link counts at ${counts.linkCounts}`
+      ? `imported turning-movement counts at ${atSignals(counts.tmc)}, client link counts at ${atSignals(counts.linkCounts)}`
       : counts.tmc > 0
         ? "imported turning-movement counts"
         : "client link counts";
@@ -67,10 +68,12 @@ export function TisLimitations({ report }: { report: TisReport }) {
                 </>
               ) : (
                 <>
-                  estimated, not counted. Each study signal's design-hour volume is AADT × K-factor
-                  from an AADT count record joined to the signal where a compatible record exists,
-                  otherwise a baseline volume estimated from road class, and its turning-movement
-                  splits are modeled.
+                  {supplied > 0
+                    ? `estimated, not counted, except at the ${supplied} study signal${supplied === 1 ? "" : "s"} with counts supplied with this study. At the others, each`
+                    : "estimated, not counted. Each"}{" "}
+                  study signal's design-hour volume is AADT × K-factor from an AADT count record
+                  joined to the signal where a compatible record exists, otherwise a baseline volume
+                  estimated from road class, and its turning-movement splits are modeled.
                 </>
               )}{" "}
               {supplied > 0 ? (
