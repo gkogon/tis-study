@@ -9,7 +9,8 @@
  *   node artifacts/tis-api-server/scripts/proofread-pg-harness/run.mjs
  *     [--tree <dir>]    the source tree to bundle (default: this checkout). A copy with a deliberate break
  *                       in it is how the harness is shown to see a failure.
- *     [--root <dir>]    where the run directory (cluster data, logs, bundles) is created (default: os.tmpdir())
+ *     [--root <dir>]    where the run directory (cluster data, logs, bundles) is created (default: os.tmpdir()).
+ *                       A --root, or a temp directory (TMPDIR), with whitespace in it is refused (exit 2)
  *     [--pg-bin <dir>]  where initdb and pg_ctl are (default: PATH, then the usual Homebrew/Postgres.app places)
  *     [--keep]          leave the run directory (the cluster is still stopped)
  *
@@ -43,8 +44,10 @@
  *      process it started (one stopped by a signal counts as stopped; each wait is bounded), ends its connections,
  *      stops the cluster and confirms with `ps` that its postmaster is gone (postmaster.mjs), and only then deletes
  *      the run directory and the socket directory. A cluster that cannot be confirmed stopped keeps its data
- *      directory, so `pg_ctl -D` can still stop it, and the run exits 2. Teardown runs once, whichever path
- *      reaches it first.
+ *      directory, so `pg_ctl -D` can still stop it, and the run exits 2. A postmaster.pid that names a live process
+ *      ps does not show as a postgres on this run's data directory is never signalled (pg_ctl is not run on it) and
+ *      is not confirmed stopped: exit 2, the data directory kept, and the message says not to run pg_ctl -D on it.
+ *      Teardown runs once, whichever path reaches it first.
  *
  * What it proves (driver.mjs names each assertion): firm scoping of every route (foreign and unknown ids answer
  * the same 404, nothing is enqueued or written under another firm); the disposition chain in order (401, 400,
@@ -81,7 +84,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { drive } from "./driver.mjs";
-import { postmasterPidOf, postmastersUnder, stopCluster } from "./postmaster.mjs";
+import { findPgBin, postmasterPidOf, postmastersUnder, stopCluster } from "./postmaster.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 /** The checkout this script lives in. Third-party packages always resolve from here; source comes from --tree. */
@@ -108,19 +111,25 @@ const refuse = (why) => {
 };
 
 // ---- the pieces a run needs ------------------------------------------------------------------------------
-function findPgBin() {
-  const given = opt("--pg-bin");
-  const candidates = given
-    ? [given]
-    : [
-        ...(process.env.PATH ?? "").split(path.delimiter),
-        "/opt/homebrew/opt/postgresql@16/bin",
-        "/opt/homebrew/opt/postgresql@17/bin",
-        "/usr/local/opt/postgresql@16/bin",
-        "/Applications/Postgres.app/Contents/Versions/latest/bin",
-        "/usr/lib/postgresql/16/bin",
-      ];
-  return candidates.find((d) => d && existsSync(path.join(d, "initdb")) && existsSync(path.join(d, "pg_ctl"))) ?? null;
+/**
+ * The directories a run's paths are made under — --root (the data directory's parent) and the temp directory (the
+ * socket directory's, and the default root) — as given and as their real paths, each with whitespace in it. A run
+ * there is refused: postmaster.mjs matches a postmaster by the end of its `ps` command line and can read a space,
+ * but nothing that names this run's directories in a log, a hint or postgresql.conf is held to that.
+ */
+function whitespaceIn() {
+  const bad = [];
+  for (const [label, dir] of [
+    ["--root", ROOT_BASE],
+    ["the temp directory (TMPDIR)", path.resolve(os.tmpdir())],
+  ]) {
+    let real = null;
+    try {
+      real = realpathSync(dir);
+    } catch {}
+    for (const p of new Set([dir, real].filter(Boolean))) if (/\s/.test(p)) bad.push(`${label} ${JSON.stringify(p)}`);
+  }
+  return bad;
 }
 
 /** The only environment a child process gets: enough to find binaries and agree on a locale and a clock. */
@@ -235,7 +244,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const bounded = (promise, ms) => Promise.race([promise, sleep(ms)]);
 
 async function main() {
-  const pgBin = findPgBin();
+  const spaced = whitespaceIn();
+  if (spaced.length) return refuse(`${spaced.join(" and ")} contains whitespace; pass a --root (and a TMPDIR) without any. Nothing was started.`);
+  const pgBin = findPgBin(opt("--pg-bin"));
   if (!pgBin) {
     const where = opt("--pg-bin") ? `in ${opt("--pg-bin")}` : "on PATH or in the usual places";
     return refuse(`PostgreSQL server binaries (initdb, pg_ctl) were not found ${where}; install PostgreSQL 13+ or pass --pg-bin <dir>. Nothing was started.`);
@@ -295,13 +306,17 @@ async function main() {
       await Promise.all([...children].map(stopChild));
       for (const p of pools) await bounded(p.end().catch(() => undefined), 5000);
       // Also when pg_ctl start failed part-way: a postmaster.pid, or a postgres on this data dir, means something may
-      // be running on it. The data directory is removed only once ps shows no postmaster on it.
+      // be running on it. The data directory is removed only once stopCluster confirms no postmaster on it — and a
+      // postmaster.pid naming a live process that is not a postgres on it is never confirmed (postmaster.mjs).
       let clusterLeft = [];
+      let unmatched = null;
+      let unconfirmed = false;
       try {
         if (clusterStarted || existsSync(path.join(dataDir, "postmaster.pid")) || postmastersUnder(dataDir).length > 0) {
           const stop = stopCluster({ pgBin, dataDir, env: childEnv() });
           clusterEverStarted = true;
           clusterLeft = stop.left;
+          unmatched = stop.unmatched ?? null;
           clusterStarted = !stop.stopped;
         }
       } catch (err) {
@@ -309,17 +324,26 @@ async function main() {
         console.error(`could not confirm the cluster stopped: ${err instanceof Error ? err.message : String(err)}`);
         clusterEverStarted = true;
         clusterStarted = true;
+        unconfirmed = true;
       }
-      if (clusterStarted) {
+      const toDelete = `${rootDir}${socketDir ? ` and ${socketDir}` : ""}`;
+      if (unmatched) {
+        // pg_ctl signals the pid postmaster.pid names, and that pid is not this run's postmaster: never advise it.
         console.error(
-          `the cluster did not stop (still running: ${clusterLeft.map((p) => p.pid).join(", ")}): pg_ctl -D ${dataDir} stop -m immediate, then delete ${rootDir}${socketDir ? ` and ${socketDir}` : ""}`,
+          `the cluster is NOT confirmed stopped: ${path.join(dataDir, "postmaster.pid")} names pid ${unmatched.pid}, which ps shows running ${JSON.stringify(unmatched.command)} — not a postgres on this data directory, so nothing was signalled. Do not run pg_ctl -D on it (pg_ctl would signal pid ${unmatched.pid}). Look in ps for a postgres -D ${dataDir}; once none runs, delete ${toDelete}`,
         );
+      } else if (unconfirmed) {
+        console.error(
+          `the cluster is NOT confirmed stopped. Before any pg_ctl -D ${dataDir} stop -m immediate, check with ps that the pid in its postmaster.pid is a postgres -D ${dataDir} (pg_ctl signals that pid); once none runs, delete ${toDelete}`,
+        );
+      } else if (clusterStarted) {
+        console.error(`the cluster did not stop (still running: ${clusterLeft.map((p) => p.pid).join(", ")}): pg_ctl -D ${dataDir} stop -m immediate, then delete ${toDelete}`);
       } else {
         if (socketDir) rmSync(socketDir, { recursive: true, force: true });
         if (!KEEP) rmSync(rootDir, { recursive: true, force: true });
       }
       console.log(
-        `teardown: cluster on port ${port ?? "(none picked)"} ${clusterStarted ? "STILL RUNNING" : clusterEverStarted ? "stopped" : "never started"}; ` +
+        `teardown: cluster on port ${port ?? "(none picked)"} ${clusterStarted ? (unmatched || unconfirmed ? "NOT CONFIRMED STOPPED" : "STILL RUNNING") : clusterEverStarted ? "stopped" : "never started"}; ` +
           `socket dir ${socketDir === null ? "never made" : existsSync(socketDir) ? "STILL PRESENT" : "removed"}; ` +
           `run directory ${KEEP && existsSync(rootDir) ? `kept at ${rootDir}` : existsSync(rootDir) ? "STILL PRESENT" : "removed"}`,
       );

@@ -18,16 +18,28 @@
  * directory. A cluster a run left behind is stopped here, and that break FAILS. Nothing here removes a data
  * directory under a live postmaster: a cluster is stopped with pg_ctl, `ps` must then show its postmaster gone
  * (postmaster.mjs), and only then is the directory removed; if one cannot be confirmed gone, the work directory
- * is kept and its path printed.
+ * is kept and its path printed. A data directory whose postmaster.pid names a live process — any process, once
+ * every postmaster ps lists there is stopped — is not removed either: that is run.mjs's own rule (postmaster.mjs).
  *
- * Exit 0: every break went red as expected, every run tore down, and the unbroken export passed. 1: otherwise.
+ * Before the breaks, SAFETY holds the teardown's own rules, each by name: a postmaster is the process whose command
+ * ENDS in ` -D <its data directory>` (a directory with a space in it included); a postmaster.pid naming a live
+ * process that is not a postgres on that directory is never handed to pg_ctl and is "not confirmed stopped"; a live
+ * cluster whose data directory has a space is stopped and confirmed gone; run.mjs refuses (exit 2, nothing made) a
+ * --root or a TMPDIR with whitespace in it. The cluster SAFETY starts is this script's own (unix socket only, a port
+ * in 54400-54999), and a pid file naming another process is pointed at that cluster's postmaster or at a `sleep`
+ * this script started, with a pg_ctl that only logs — never at a process this script did not start.
+ *
+ * A --root or a TMPDIR with whitespace in it is refused here too (exit 2), before anything is made.
+ *
+ * Exit 0: every safety check held, every break went red as expected, every run tore down, and the unbroken export
+ * passed. 1: otherwise. 2: refused.
  */
-import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { postmastersUnder, stopCluster } from "./postmaster.mjs";
+import { commandOf, findPgBin, isPostmasterOn, postmasterPidOf, postmastersIn, postmastersUnder, stopCluster } from "./postmaster.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "../../../..");
@@ -174,27 +186,66 @@ const BREAKS = {
   },
 };
 
-const work = mkdtempSync(path.join(path.resolve(opt("--root") ?? os.tmpdir()), "proofread-pg-teeth-"));
+// The same refusal as run.mjs's, for the same reason, before anything is made: every run's --root is under this one.
+const ROOT_BASE = path.resolve(opt("--root") ?? os.tmpdir());
+for (const dir of [ROOT_BASE, path.resolve(os.tmpdir())]) {
+  let real = null;
+  try {
+    real = realpathSync(dir);
+  } catch {}
+  const spaced = [dir, real].filter((p) => p && /\s/.test(p));
+  if (spaced.length) {
+    console.error(`REFUSED: ${JSON.stringify(spaced[0])} (--root or TMPDIR) contains whitespace; pass a --root (and a TMPDIR) without any. Nothing was made.`);
+    process.exit(2);
+  }
+}
+const work = mkdtempSync(path.join(ROOT_BASE, "proofread-pg-teeth-"));
 const runs = path.join(work, "runs");
 mkdirSync(runs);
 const pgBin = opt("--pg-bin") ?? null;
 /** Socket directories the runs named, so one a run left behind can be removed once its cluster is gone. */
 const socketDirs = new Set();
 const env = { PATH: process.env.PATH ?? "/usr/bin:/bin", LC_ALL: "C", LANG: "C", TZ: "UTC" };
-/** pg_ctl's directory: --pg-bin, else the one `ps` shows the postmaster was started from. */
-const pgBinFor = (command) => pgBin ?? path.dirname(command.split(/\s+-D\s+/)[0]);
 /**
  * Stop every postmaster on a data directory under `dir`, and confirm each is gone. Returns those that are not.
+ * pg_ctl's directory is --pg-bin, else the one `ps` shows the postmaster was started from (postmaster.mjs reads the
+ * program and the data directory from the end of the command line, so a space in either is read whole).
  * A data directory is never removed here; the caller removes only what is confirmed stopped.
  */
 function stopClustersUnder(dir) {
   const left = [];
   for (const p of postmastersUnder(dir)) {
-    const dataDir = p.command.split(/\s+-D\s+/)[1].split(/\s+/)[0];
-    const r = stopCluster({ pgBin: pgBinFor(p.command), dataDir, env });
+    const r = stopCluster({ pgBin: pgBin ?? path.dirname(p.program), dataDir: p.dataDir, env });
     if (!r.stopped) left.push(...r.left);
   }
   return left;
+}
+/**
+ * Every postmaster.pid at most `depth` directories below `dir` that names a live process (any process). Called once
+ * the postmasters ps lists are stopped, so each one found holds its directory: it is never removed.
+ */
+function livePidFilesUnder(dir, depth = 3) {
+  const found = [];
+  const walk = (d, n) => {
+    if (existsSync(path.join(d, "postmaster.pid"))) {
+      const pid = postmasterPidOf(d);
+      let command = null;
+      try {
+        command = pid === null ? null : commandOf(pid);
+      } catch (err) {
+        command = `(ps could not say: ${err instanceof Error ? err.message : String(err)})`;
+      }
+      if (command !== null) found.push({ pid, command, dataDir: d });
+    }
+    if (n === 0) return;
+    let entries = [];
+    try {
+      entries = readdirSync(d, { withFileTypes: true });
+    } catch {}
+    for (const e of entries) if (e.isDirectory() && e.name !== "node_modules") walk(path.join(d, e.name), n - 1);
+  };
+  walk(dir, depth);
+  return found;
 }
 const verdicts = [];
 const note = (name, ok, detail) => {
@@ -207,21 +258,179 @@ const harness = (tree) => {
   // SIGTERM on a timeout: run.mjs tears down on it.
   const r = spawnSync(process.execPath, args, { encoding: "utf8", timeout: 300_000, killSignal: "SIGTERM" });
   const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
-  const socketDir = /unix socket only, in (\S+);/.exec(out)?.[1];
+  const socketDir = /unix socket only, in (.+?); tree under test /.exec(out)?.[1];
   if (socketDir) socketDirs.add(socketDir);
   // Did this run clean up after itself? Its teardown line, and no postmaster left on anything under runs/.
   const teardownLine = out.split("\n").find((l) => l.startsWith("teardown: ")) ?? "(no teardown line)";
   const cleanLine = /^teardown: cluster on port \S+ (stopped|never started); socket dir (removed|never made); run directory removed$/.test(teardownLine);
   const leftRunning = postmastersUnder(runs);
-  const notStopped = leftRunning.length ? stopClustersUnder(runs) : [];
+  const notStopped = [...(leftRunning.length ? stopClustersUnder(runs) : []), ...livePidFilesUnder(runs)];
   const leftDirs = readdirSync(runs);
   if (notStopped.length === 0) for (const d of leftDirs) rmSync(path.join(runs, d), { recursive: true, force: true });
   if (socketDir && existsSync(socketDir) && notStopped.length === 0) rmSync(socketDir, { recursive: true, force: true });
-  const clean = cleanLine && leftRunning.length === 0 && leftDirs.length === 0;
+  const clean = cleanLine && leftRunning.length === 0 && notStopped.length === 0 && leftDirs.length === 0;
   const cleanDetail = clean
     ? ""
-    : `; DID NOT TEAR DOWN: ${teardownLine}${leftRunning.length ? `; left running: ${leftRunning.map((p) => p.pid).join(", ")}${notStopped.length ? " (could not be stopped)" : " (stopped here)"}` : ""}${leftDirs.length ? `; left in runs/: ${leftDirs.join(", ")}` : ""}`;
+    : `; DID NOT TEAR DOWN: ${teardownLine}${leftRunning.length ? `; left running: ${leftRunning.map((p) => p.pid).join(", ")}${notStopped.length ? " (could not be stopped)" : " (stopped here)"}` : ""}${notStopped.length ? `; held (kept): ${notStopped.map((p) => `${p.pid} ${p.command}`).join("; ")}` : ""}${leftDirs.length ? `; left in runs/: ${leftDirs.join(", ")}` : ""}`;
   return { status: r.status, out, clean, cleanDetail, reds: out.split("\n").filter((l) => l.startsWith("FAIL  ")).map((l) => l.slice(6)) };
+};
+
+// ---- SAFETY: the teardown's own rules (postmaster.mjs, and run.mjs's refusal), each a verdict by name -----------
+const safetyDir = path.join(work, "safety");
+/** A pg_ctl and an initdb that only log their arguments: the checks that must never reach a real one get these. */
+const fakeBin = path.join(safetyDir, "fakebin");
+const fakeCalls = path.join(fakeBin, "calls.log");
+const freshFakeBin = () => {
+  mkdirSync(fakeBin, { recursive: true });
+  for (const tool of ["pg_ctl", "initdb"]) {
+    writeFileSync(path.join(fakeBin, tool), `#!/bin/sh\necho "${tool} $*" >> '${fakeCalls}'\nexit 0\n`);
+    chmodSync(path.join(fakeBin, tool), 0o755);
+  }
+  rmSync(fakeCalls, { force: true });
+};
+const fakeCallsSoFar = () => (existsSync(fakeCalls) ? readFileSync(fakeCalls, "utf8").trim() : "");
+/** run.mjs on the unbroken export with these arguments and TMPDIR; it must refuse before it makes anything. */
+const runRefusal = (base, root, tmpdir) => {
+  const args = [path.join(HERE, "run.mjs"), "--tree", base, "--root", root];
+  if (pgBin) args.push("--pg-bin", pgBin);
+  const r = spawnSync(process.execPath, args, { encoding: "utf8", timeout: 120_000, killSignal: "SIGTERM", env: { ...process.env, TMPDIR: tmpdir } });
+  const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
+  return { status: r.status, out, refusal: out.split("\n").find((l) => l.startsWith("REFUSED")) ?? "" };
+};
+/**
+ * This script's own throwaway cluster, in a data directory with a space in its path: unix socket only (no TCP), a
+ * port in 54400-54999 naming the socket, the socket in a short directory of its own. Started once, by whichever
+ * check needs it first; stopped by the last one, or by the final cleanup.
+ */
+let cluster = null;
+function spacedCluster() {
+  if (cluster) return cluster;
+  const bin = pgBin ?? findPgBin();
+  if (!bin) throw new Error("PostgreSQL server binaries (initdb, pg_ctl) were not found; pass --pg-bin <dir>");
+  const dataDir = path.join(safetyDir, "sp ace", "data");
+  mkdirSync(path.dirname(dataDir), { recursive: true });
+  const port = 54400 + Math.floor(Math.random() * 600);
+  const sockBase = [os.tmpdir(), "/tmp"].find((b) => existsSync(b) && Buffer.byteLength(path.join(b, "pgh-XXXXXX", `.s.PGSQL.${port}`)) <= 100);
+  if (!sockBase) throw new Error("no temp directory short enough for a unix socket path");
+  const sock = mkdtempSync(path.join(sockBase, "pgh-"));
+  socketDirs.add(sock);
+  const init = spawnSync(path.join(bin, "initdb"), ["-D", dataDir, "-U", "proofread_teeth", "--auth=trust", "--no-locale", "-E", "UTF8"], { env, encoding: "utf8", timeout: 120_000 });
+  if (init.status !== 0) throw new Error(`initdb exited ${init.status ?? init.signal}: ${(init.stderr ?? "").slice(-300)}`);
+  appendFileSync(path.join(dataDir, "postgresql.conf"), `\nlisten_addresses = ''\nport = ${port}\nunix_socket_directories = '${sock}'\nfsync = off\n`);
+  const start = spawnSync(path.join(bin, "pg_ctl"), ["-D", dataDir, "-l", path.join(path.dirname(dataDir), "postgres.log"), "-w", "-t", "60", "start"], { env, encoding: "utf8", timeout: 120_000 });
+  cluster = { bin, dataDir, sock, pid: postmasterPidOf(dataDir) };
+  if (start.status !== 0) throw new Error(`pg_ctl start exited ${start.status ?? start.signal}: ${(start.stderr ?? "").slice(-300)}`);
+  return cluster;
+}
+const SAFETY = {
+  "safety-postmaster-matched-by-the-end-of-its-command": {
+    what: "a postmaster is the process whose command ENDS in -D <its data directory>, a space in it included",
+    check: () => {
+      const dir = "/w/sp ace/run-1/data";
+      const ps = [
+        `  101 /opt/pg/bin/postgres -D ${dir}`,
+        `  102 /opt/pg/bin/postgres -D /w/sp ace/run-1/data-other`,
+        `  103 /opt/pg/bin/pg_ctl -D ${dir} -m fast -w stop`,
+        `  104 /opt/pg/bin/postgres -D /w/sp`,
+        `  105 /Applications/Postgres App/bin/postgres -D /w/sp ace/run-2/data`,
+        `  106 postgres: proofread_harness proofread_harness [local] idle`,
+      ].join("\n");
+      const read = (roots) => postmastersIn(ps, roots).map((p) => `${p.pid} ${p.dataDir}`);
+      const wantUnder = [`101 ${dir}`, "102 /w/sp ace/run-1/data-other", "105 /w/sp ace/run-2/data"];
+      const wantOn = [`101 ${dir}`];
+      const cases = [
+        [`/opt/pg/bin/postgres -D ${dir}`, true],
+        [`/Applications/Postgres App/bin/postgres -D ${dir}`, true],
+        [`/opt/pg/bin/postgres -D /w/sp`, false],
+        [`/opt/pg/bin/postgres -D ${dir}-other`, false],
+        [`/opt/pg/bin/postgres -D ${dir} -c port=1`, false],
+        [`/opt/pg/bin/pg_ctl -D ${dir}`, false],
+        ["/opt/homebrew/opt/postgresql@16/bin/postgres -D /opt/homebrew/var/postgresql@16", false],
+      ];
+      const wrong = cases.filter(([c, want]) => isPostmasterOn(c, dir) !== want).map(([c, want]) => `isPostmasterOn ${want ? "missed" : "took"} ${JSON.stringify(c)}`);
+      const under = read(["/w/sp ace"]);
+      const on = read([dir]);
+      const ok = JSON.stringify(under) === JSON.stringify(wantUnder) && JSON.stringify(on) === JSON.stringify(wantOn) && wrong.length === 0;
+      return { ok, detail: `under "/w/sp ace": ${JSON.stringify(under)}, want ${JSON.stringify(wantUnder)}; on ${dir}: ${JSON.stringify(on)}, want ${JSON.stringify(wantOn)}; ${wrong.join("; ") || "isPostmasterOn right"}` };
+    },
+  },
+  "safety-pid-file-naming-a-sleep": {
+    what: "a postmaster.pid naming a live process that is not a postgres (a sleep) is not confirmed stopped and never reaches pg_ctl",
+    check: () => {
+      freshFakeBin();
+      const dataDir = path.join(safetyDir, "names-a-sleep", "data");
+      mkdirSync(dataDir, { recursive: true });
+      const sleeper = spawn("/bin/sleep", ["120"], { stdio: "ignore" });
+      try {
+        writeFileSync(path.join(dataDir, "postmaster.pid"), `${sleeper.pid}\n${dataDir}\n`);
+        const r = stopCluster({ pgBin: fakeBin, dataDir, env, waitMs: 1000 });
+        const calls = fakeCallsSoFar();
+        const ok = r.stopped === false && r.unmatched?.pid === sleeper.pid && calls === "";
+        return { ok, detail: `stopCluster -> stopped ${r.stopped}, unmatched ${JSON.stringify(r.unmatched ?? null)}; pg_ctl calls: ${calls || "none"}` };
+      } finally {
+        sleeper.kill();
+        rmSync(path.dirname(dataDir), { recursive: true, force: true });
+      }
+    },
+  },
+  "safety-pid-file-naming-a-postgres-elsewhere": {
+    what: "a postmaster.pid naming a live postgres on ANOTHER data directory is not confirmed stopped and never reaches pg_ctl",
+    check: () => {
+      const c = spacedCluster();
+      freshFakeBin();
+      const dataDir = path.join(safetyDir, "names-a-postgres-elsewhere", "data");
+      mkdirSync(dataDir, { recursive: true });
+      try {
+        writeFileSync(path.join(dataDir, "postmaster.pid"), `${c.pid}\n${dataDir}\n`);
+        const r = stopCluster({ pgBin: fakeBin, dataDir, env, waitMs: 1000 });
+        const calls = fakeCallsSoFar();
+        const still = commandOf(c.pid);
+        const ok = r.stopped === false && r.unmatched?.pid === c.pid && calls === "" && still !== null && isPostmasterOn(still, c.dataDir);
+        return { ok, detail: `stopCluster -> stopped ${r.stopped}, unmatched ${JSON.stringify(r.unmatched ?? null)}; pg_ctl calls: ${calls || "none"}; the other postgres ${still === null ? "IS GONE" : "still runs"}` };
+      } finally {
+        rmSync(path.dirname(dataDir), { recursive: true, force: true });
+      }
+    },
+  },
+  "safety-live-cluster-with-a-space-is-stopped": {
+    what: "a live cluster whose data directory has a space is stopped, and ps confirms its postmaster gone",
+    check: () => {
+      const c = spacedCluster();
+      const before = commandOf(c.pid);
+      const r = stopCluster({ pgBin: c.bin, dataDir: c.dataDir, env });
+      const after = commandOf(c.pid);
+      const ok = before !== null && r.stopped === true && r.pids.includes(c.pid) && after === null && existsSync(path.join(c.dataDir, "PG_VERSION"));
+      if (r.stopped && after === null) {
+        rmSync(path.dirname(c.dataDir), { recursive: true, force: true });
+        rmSync(c.sock, { recursive: true, force: true });
+      }
+      return { ok, detail: `postmaster ${c.pid} on ${JSON.stringify(c.dataDir)} ${before === null ? "was not running" : "was running"}; stopCluster -> stopped ${r.stopped}, pids ${JSON.stringify(r.pids)}; afterwards ${after === null ? "gone" : `STILL RUNNING: ${after}`}` };
+    },
+  },
+  "safety-run-refuses-a-root-with-whitespace": {
+    what: "run.mjs refuses a --root with whitespace in it (exit 2, nothing made)",
+    check: (base) => {
+      const root = path.join(safetyDir, "sp ace root");
+      mkdirSync(root, { recursive: true });
+      const r = runRefusal(base, root, os.tmpdir());
+      const made = readdirSync(root);
+      const ok = r.status === 2 && /whitespace/.test(r.refusal) && r.refusal.includes(root) && made.length === 0 && !/^cluster: /m.test(r.out);
+      return { ok, detail: `exit ${r.status}; ${r.refusal || r.out.split("\n").filter((l) => /^\d+\/\d+ passed|^teardown: |^HARNESS ERROR/.test(l)).join(" / ") || r.out.slice(-300)}; made under it: ${made.join(", ") || "nothing"}` };
+    },
+  },
+  "safety-run-refuses-a-tmpdir-with-whitespace": {
+    what: "run.mjs refuses a TMPDIR with whitespace in it (exit 2, nothing made)",
+    check: (base) => {
+      const root = path.join(safetyDir, "plain-root");
+      const tmp = path.join(safetyDir, "t mp");
+      mkdirSync(root, { recursive: true });
+      mkdirSync(tmp, { recursive: true });
+      const r = runRefusal(base, root, tmp);
+      const made = [...readdirSync(root), ...readdirSync(tmp)];
+      const ok = r.status === 2 && /TMPDIR/.test(r.refusal) && /whitespace/.test(r.refusal) && made.length === 0 && !/^cluster: /m.test(r.out);
+      return { ok, detail: `exit ${r.status}; ${r.refusal || r.out.split("\n").filter((l) => /^\d+\/\d+ passed|^teardown: |^HARNESS ERROR/.test(l)).join(" / ") || r.out.slice(-300)}; made: ${made.join(", ") || "nothing"}` };
+    },
+  },
 };
 
 try {
@@ -233,6 +442,17 @@ try {
   const untar = spawnSync("tar", ["-x", "-C", base], { input: archive.stdout });
   if (untar.status !== 0) throw new Error(`tar failed: ${untar.stderr}`);
   console.log(`HEAD exported to ${base}`);
+
+  for (const [name, { what, check }] of Object.entries(SAFETY)) {
+    if (only.length && !only.includes(name)) continue;
+    let verdict;
+    try {
+      verdict = await check(base);
+    } catch (err) {
+      verdict = { ok: false, detail: `threw: ${err instanceof Error ? err.message : String(err)}` };
+    }
+    note(`${name}: ${what}`, verdict.ok, verdict.ok ? "" : verdict.detail);
+  }
 
   if (only.length === 0) {
     const r = harness(base);
@@ -271,7 +491,7 @@ try {
   // Stop, confirm gone, then remove: never a data directory under a live postmaster.
   let left = [];
   try {
-    left = stopClustersUnder(work);
+    left = [...stopClustersUnder(work), ...livePidFilesUnder(work)];
   } catch (err) {
     left = [{ pid: "unknown", command: `could not confirm: ${err instanceof Error ? err.message : String(err)}` }];
   }
