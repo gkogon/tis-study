@@ -233,8 +233,9 @@ const sources = {
       }
     })(),
   ),
-  // Every .ts file under lib/db/src/schema at any depth, by path: the raw-SQL scan reads its table names from
-  // these (schemaTablesIn), and the teeth below edit them in memory as they edit the other sources.
+  // Every .ts, .mts and .cts file under lib/db/src/schema at any depth, by path, and any other JavaScript or
+  // TypeScript file there (named as unread): the raw-SQL scan reads its table names from these (schemaTablesIn),
+  // and the teeth below edit them in memory as they edit the other sources.
   schema: Object.fromEntries(schemaFiles(SCHEMA_DIR)),
   otherNames: [...otherExportNames()],
 };
@@ -1101,12 +1102,13 @@ const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.g
  * (`${...}`), schema-qualified (a dot with a name right after it or whitespace before it:
  * `public.t`, `public .t`, `public . t`), snake_case, or, after any qualifier, the name of a table
  * this schema declares. The last is read from the schema itself (SCHEMA_TABLES: the first argument
- * of every pgTable call in every .ts file under lib/db/src/schema at any depth, read with TypeScript's
+ * of every pgTable call in every .ts, .mts and .cts file under lib/db/src/schema at any depth, read with TypeScript's
  * parser, see schemaTablesIn), because not every table is snake_case: crashes, events, firms, sessions
  * and users have neither an underscore nor a dot, so by spelling alone `delete from firms f where ..`
  * reads like prose. A table added to the schema later is read the same way without an edit here,
  * however its pgTable call is spelled; one declared in a way the reader cannot name (a name that is not
- * a string literal, pgTable used other than by a direct call, pgSchema, pgTableCreator) fails
+ * a string literal, pgTable used other than by a direct call, pgSchema, pgTableCreator, a file there
+ * with another JavaScript or TypeScript extension: .js, .mjs, .cjs, .jsx, .tsx) fails
  * schema-tables-are-read. What the reader neither reads nor refuses is listed at schemaTablesIn.
  * Postgres reads a comment as whitespace, so each text is read as written, with its comments
  * blanked the way Postgres lexes them (a block comment nests; a line comment ends at CR or LF),
@@ -1153,8 +1155,8 @@ const storeMayWrite = (verb, table) => STORE_WRITES.has(table) && STORE_WRITES.g
  * replaced (5de94c0) refused the verbs as words, so prose that one refused now passes, and the
  * inputs this one does not read are the ones listed above.
  */
-/** The path, relative to a directory, of every .ts file under it at any depth (symbolic links followed once), sorted; null when it cannot be read. */
-function tsFilesUnder(dir) {
+/** The path, relative to a directory, of every file under it at any depth (symbolic links followed once), sorted; null when it cannot be read. */
+function filesUnder(dir) {
   const out = [];
   const seen = new Set();
   const walk = (rel) => {
@@ -1166,7 +1168,7 @@ function tsFilesUnder(dir) {
       const r = rel ? `${rel}/${e.name}` : e.name;
       const st = e.isSymbolicLink() ? statSync(at(`${dir}/${r}`)) : e;
       if (st.isDirectory()) walk(r);
-      else if (st.isFile() && /\.[cm]?ts$/.test(e.name)) out.push(r);
+      else if (st.isFile()) out.push(r);
     }
   };
   try {
@@ -1176,9 +1178,27 @@ function tsFilesUnder(dir) {
   }
   return out.sort();
 }
-/** [path, text] of every .ts file under a schema directory, or [] when it cannot be read. */
+// Function declarations, not consts: `sources` (above) reads the schema before a const here would be initialised.
+/** A file the schema reader parses: .ts, .mts or .cts. */
+function isSchemaReadFile(f) {
+  return /\.[cm]?ts$/.test(f);
+}
+/** A file a JavaScript or TypeScript loader may run as code, in any letter case: one the reader does not parse is named. */
+function isSchemaCodeFile(f) {
+  return /\.[cm]?[jt]sx?$/i.test(f);
+}
+/** The path, relative to a directory, of every .ts, .mts and .cts file under it at any depth, sorted; null when it cannot be read. */
+function tsFilesUnder(dir) {
+  return filesUnder(dir)?.filter(isSchemaReadFile) ?? null;
+}
+/**
+ * [path, text] of every file under a schema directory that a loader may run as code — the .ts, .mts and .cts
+ * files the reader parses, and any other JavaScript or TypeScript file (.js, .mjs, .cjs, .jsx, .tsx, or such an
+ * extension in another letter case), which schemaTablesIn names as unread — or [] when it cannot be read. A file
+ * with no such extension (data such as .json or .db, which no loader runs as code) is not read.
+ */
 function schemaFiles(dir) {
-  return (tsFilesUnder(dir) ?? []).map((f) => [f, read(`${dir}/${f}`)]);
+  return (filesUnder(dir) ?? []).filter(isSchemaCodeFile).map((f) => [f, read(`${dir}/${f}`)]);
 }
 /** drizzle's table makers: pgTable's first argument is the table's name; the other two build or qualify it. */
 const TABLE_MAKERS = ["pgTable", "pgTableCreator", "pgSchema"];
@@ -1191,14 +1211,21 @@ const TABLE_MAKERS = ["pgTable", "pgTableCreator", "pgSchema"];
  * this reader cannot name: a pgTable call whose first argument is not a string literal; a use of pgTable other than a
  * direct call (`const t = pgTable`, `pgTable.withRLS(..)`, `(pgTable)(..)`, a re-export); and any use of
  * pgTableCreator or pgSchema (the names they make are built or qualified when the module runs).
+ * A file that is not .ts, .mts or .cts but has a JavaScript or TypeScript extension (.js, .mjs, .cjs, .jsx, .tsx,
+ * or an extension in another letter case) is named as unread, whatever it holds, and its pgTable calls are read
+ * as well as TypeScript's parser reads that file as TypeScript.
  * schema-tables-are-read fails on any of them. Not read: pgTable reached through a computed key that is not a
- * literal (`pg[k](..)`); a table declared by code outside lib/db/src/schema (a helper elsewhere that calls pgTable
- * for the schema); and a table created outside the schema files altogether.
+ * literal (`pg[k](..)`); a file under lib/db/src/schema with no JavaScript or TypeScript extension (data such as
+ * .json or .db, which no loader runs as code); a table declared by code outside lib/db/src/schema (a helper
+ * elsewhere that calls pgTable for the schema); and a table created outside the schema files altogether.
  */
 function schemaTablesIn(files) {
   const names = [];
   const unread = [];
   for (const [file, text] of files) {
+    // refused by name, and still read as far as TypeScript's parser reads it, so a write to a table it declares
+    // is refused by the scans too
+    if (!isSchemaReadFile(file)) unread.push(`${file}: a file with a JavaScript or TypeScript extension other than .ts, .mts or .cts, which the schema may load and this reader does not take as a schema file`);
     const sf = parse(text);
     // local name -> the maker it is bound to: each maker under its own name, and under any name an import gives it
     const maker = new Map(TABLE_MAKERS.map((m) => [m, m]));
@@ -1264,7 +1291,7 @@ const SCHEMA_TABLES = SCHEMA_READ.tables;
 const PROSE_LIKE_TABLES = SCHEMA_READ.prose;
 ok(
   schemaNamesUsable(PROSE_LIKE_TABLES),
-  "precondition: the raw-SQL scan reads this schema's table names from lib/db/src/schema (the first argument of every pgTable call, read with TypeScript's parser, in every .ts file at any depth), and the ones with neither an underscore nor a dot include firms and users",
+  "precondition: the raw-SQL scan reads this schema's table names from lib/db/src/schema (the first argument of every pgTable call, read with TypeScript's parser, in every .ts, .mts and .cts file at any depth), and the ones with neither an underscore nor a dot include firms and users",
   `read ${SCHEMA_TABLES.length} table name(s); with no underscore: ${JSON.stringify(PROSE_LIKE_TABLES)}`,
 );
 // A quoted name, plain or Unicode-escaped (U&"\0066irms" is firms), and one part of a qualified name.
@@ -2238,9 +2265,11 @@ const REFLECTION_FORMS = [
       ['import { pgSchema } from "drizzle-orm/pg-core";\nexport const t = pgSchema("app").table("audits", {});', [], 1],
       ['import { pgTableCreator as mk } from "drizzle-orm/pg-core";\nconst table = mk((n) => `app${n}`);\nexport const t = table("audits", {});', [], 1],
     ];
-    const wrong = cases.filter(([text, names, unread]) => {
-      const r = schemaTablesIn([["a.ts", text]]);
-      return JSON.stringify(r.names) !== JSON.stringify(names) || r.unread.length !== unread;
+    // a file with a JavaScript or other TypeScript extension is not parsed: it is named, whatever it holds
+    for (const ext of ["js", "mjs", "cjs", "jsx", "tsx", "JS", "TS"]) cases.push([imp + 'export const t = pgTable("audits", {});', ["audits"], 1, `sub/a.${ext}`]);
+    const wrong = cases.filter(([text, names, unread, file = "a.ts"]) => {
+      const r = schemaTablesIn([[file, text]]);
+      return JSON.stringify(r.names) !== JSON.stringify(names) || r.unread.length !== unread || (file !== "a.ts" && !r.unread.every((u) => u.startsWith(`${file}:`)));
     });
     // the walk goes into subdirectories: it finds the clause files under src/lib/proofread from src/lib
     const deep = (tsFilesUnder("../src/lib") ?? []).includes("proofread/types.ts");
@@ -2253,8 +2282,8 @@ const REFLECTION_FORMS = [
     }
     ok(
       wrong.length === 0 && deep && tsFilesUnder("../no-such-schema-dir") === null && literal,
-      "the schema reader reads a pgTable call with a comment or whitespace before its name or its `(`, across line breaks, with a template-literal name, under any name an import gives it (from drizzle-orm/pg-core or a module that re-exports it) and as a namespace's property (pg.pgTable, pg[\"pgTable\"]), and in subdirectories; it names, as unread, a call whose table name is not a string literal, a use of pgTable that is not a direct call (an alias, withRLS, a parenthesised callee, a re-export) and any use of pgSchema or pgTableCreator; and the scan takes each name it reads literally",
-      [...wrong.map(([t]) => `read wrongly: ${JSON.stringify(t)}`), ...(deep ? [] : ["the walk did not find src/lib/proofread/types.ts from src/lib"]), ...(literal ? [] : ["a table name with a regex character is not read literally"])],
+      "the schema reader reads a pgTable call with a comment or whitespace before its name or its `(`, across line breaks, with a template-literal name, under any name an import gives it (from drizzle-orm/pg-core or a module that re-exports it) and as a namespace's property (pg.pgTable, pg[\"pgTable\"]), and in subdirectories; it names, as unread, a file with a JavaScript or TypeScript extension other than .ts, .mts or .cts (its tables still read), a call whose table name is not a string literal, a use of pgTable that is not a direct call (an alias, withRLS, a parenthesised callee, a re-export) and any use of pgSchema or pgTableCreator; and the scan takes each name it reads literally",
+      [...wrong.map(([t, , , file = "a.ts"]) => `read wrongly: ${file}: ${JSON.stringify(t)}`), ...(deep ? [] : ["the walk did not find src/lib/proofread/types.ts from src/lib"]), ...(literal ? [] : ["a table name with a regex character is not read literally"])],
     );
   }
   ok(
@@ -3104,7 +3133,7 @@ const CHECKS = [
   {
     id: "schema-tables-are-read",
     on: "schema",
-    msg: "the raw-SQL scans know every table lib/db/src/schema declares: in every .ts file under it at any depth, every pgTable call (by its own name, by any name an import gives it, or as a property such as pg.pgTable or pg[\"pgTable\"]) names its table with a string literal, pgTable is used only by direct calls, pgTableCreator and pgSchema are not used, and the names with neither an underscore nor a dot include firms and users",
+    msg: "the raw-SQL scans know every table lib/db/src/schema declares: no file under it at any depth has a JavaScript or TypeScript extension the reader does not parse (.js, .mjs, .cjs, .jsx, .tsx, or one in another letter case; a data file such as .json or .db is not read), and in every .ts, .mts and .cts file there, every pgTable call (by its own name, by any name an import gives it, or as a property such as pg.pgTable or pg[\"pgTable\"]) names its table with a string literal, pgTable is used only by direct calls, pgTableCreator and pgSchema are not used, and the names with neither an underscore nor a dot include firms and users",
     test: (d) => {
       const r = d.schemaRead;
       const usable = schemaNamesUsable(r.prose);
@@ -5761,6 +5790,18 @@ const MUTATIONS = [
     file: "schema",
     flips: ["schema-tables-are-read"],
     apply: addSchema("app/audits.ts", 'import { integer, pgSchema } from "drizzle-orm/pg-core";\nexport const auditsTable = pgSchema("app").table("audits", { id: integer("id") });\n'),
+  },
+  {
+    label: "schema: a table declared in a .js file under the schema directory (a file the reader does not parse)",
+    file: "schema",
+    flips: ["schema-tables-are-read"],
+    apply: addSchema("zz-audits.js", 'import { integer, pgTable } from "drizzle-orm/pg-core";\nexport const auditsTable = pgTable("audits", { id: integer("id") });\n'),
+  },
+  {
+    label: "schema: a table declared in a .tsx file in a subdirectory",
+    file: "schema",
+    flips: ["schema-tables-are-read"],
+    apply: addSchema("audit/audits.tsx", 'import { integer, pgTable } from "drizzle-orm/pg-core";\nexport const auditsTable = pgTable("audits", { id: integer("id") });\n'),
   },
   {
     label: "schema: the firms table renamed, so the scans no longer know firms",
