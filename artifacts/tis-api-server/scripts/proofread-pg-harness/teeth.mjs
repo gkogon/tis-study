@@ -25,7 +25,8 @@
  * ENDS in ` -D <its data directory>` (a directory with a space in it included); a postmaster.pid naming a live
  * process that is not a postgres on that directory is never handed to pg_ctl and is "not confirmed stopped"; a live
  * cluster whose data directory has a space is stopped and confirmed gone; run.mjs refuses (exit 2, nothing made) a
- * --root or a TMPDIR with whitespace in it. The cluster SAFETY starts is this script's own (unix socket only, a port
+ * --root or a TMPDIR with whitespace in it; a SIGINT that stops a setup step (sent to the run's process group while
+ * an initdb that traps it runs, or to the initdb alone) exits 130 after tearing down. The cluster SAFETY starts is this script's own (unix socket only, a port
  * in 54400-54999), and a pid file naming another process is pointed at that cluster's postmaster or at a `sleep`
  * this script started, with a pg_ctl that only logs — never at a process this script did not start.
  *
@@ -322,6 +323,50 @@ function spacedCluster() {
   if (start.status !== 0) throw new Error(`pg_ctl start exited ${start.status ?? start.signal}: ${(start.stderr ?? "").slice(-300)}`);
   return cluster;
 }
+/**
+ * run.mjs on the unbroken export with an initdb that writes its pid and sleeps (`trap`: it traps SIGINT and exits 1,
+ * as the real initdb does; `exec`: SIGINT kills it), stopped with SIGINT sent to run.mjs's process group or to that
+ * initdb alone. run.mjs is spawned in a process group of its own, so the signal reaches nothing of this script.
+ */
+const sigBin = path.join(safetyDir, "sigbin");
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+async function runSignalled(base, mode, target) {
+  mkdirSync(sigBin, { recursive: true });
+  const pidFile = path.join(sigBin, "initdb.pid");
+  rmSync(pidFile, { force: true });
+  const initdb =
+    mode === "trap"
+      ? `#!/bin/sh\necho $$ > '${pidFile}'\ntrap 'exit 1' INT\n/bin/sleep 3 &\nwait $!\nexit 0\n`
+      : `#!/bin/sh\necho $$ > '${pidFile}'\nexec /bin/sleep 5\n`;
+  writeFileSync(path.join(sigBin, "initdb"), initdb);
+  writeFileSync(path.join(sigBin, "pg_ctl"), `#!/bin/sh\necho "pg_ctl $*" >> '${path.join(sigBin, "calls.log")}'\nexit 0\n`);
+  for (const tool of ["initdb", "pg_ctl"]) chmodSync(path.join(sigBin, tool), 0o755);
+  const root = path.join(safetyDir, `sig-${mode}-${target}`);
+  mkdirSync(root, { recursive: true });
+  const child = spawn(process.execPath, [path.join(HERE, "run.mjs"), "--tree", base, "--root", root, "--pg-bin", sigBin], { detached: true, stdio: ["ignore", "pipe", "pipe"] });
+  let out = "";
+  child.stdout.on("data", (d) => (out += d));
+  child.stderr.on("data", (d) => (out += d));
+  const exited = new Promise((done) => child.on("exit", (code, signal) => done(code ?? signal)));
+  const deadline = Date.now() + 60_000;
+  while (!existsSync(pidFile) && child.exitCode === null && Date.now() < deadline) await pause(20);
+  let sent = "nothing (initdb never started)";
+  if (existsSync(pidFile)) {
+    const pid = Number(readFileSync(pidFile, "utf8").trim());
+    process.kill(target === "group" ? -child.pid : pid, "SIGINT");
+    sent = target === "group" ? `SIGINT to run.mjs's process group` : `SIGINT to initdb (pid ${pid}) alone`;
+  }
+  const code = await Promise.race([exited, pause(60_000).then(() => "timeout")]);
+  if (code === "timeout") {
+    try {
+      process.kill(-child.pid, "SIGKILL");
+    } catch {}
+  }
+  const teardownLine = out.split("\n").find((l) => l.startsWith("teardown: ")) ?? "(no teardown line)";
+  const made = readdirSync(root);
+  const ok = code === 130 && /^teardown: cluster on port \S+ never started; socket dir (removed|never made); run directory removed$/.test(teardownLine) && made.length === 0;
+  return { ok, detail: `${sent}: exit ${code}; ${out.split("\n").filter((l) => /^(SIG|HARNESS ERROR|REFUSED)/.test(l)).join(" / ") || "(no signal or error line)"}; ${teardownLine}; left under its root: ${made.join(", ") || "nothing"}` };
+}
 const SAFETY = {
   "safety-postmaster-matched-by-the-end-of-its-command": {
     what: "a postmaster is the process whose command ENDS in -D <its data directory>, a space in it included",
@@ -406,6 +451,14 @@ const SAFETY = {
       }
       return { ok, detail: `postmaster ${c.pid} on ${JSON.stringify(c.dataDir)} ${before === null ? "was not running" : "was running"}; stopCluster -> stopped ${r.stopped}, pids ${JSON.stringify(r.pids)}; afterwards ${after === null ? "gone" : `STILL RUNNING: ${after}`}` };
     },
+  },
+  "safety-sigint-to-the-run-while-initdb-traps-it-exits-130": {
+    what: "SIGINT to run.mjs's process group while a setup step (an initdb that traps it and exits 1) runs: exit 130, torn down",
+    check: (base) => runSignalled(base, "trap", "group"),
+  },
+  "safety-a-setup-step-killed-by-sigint-exits-130": {
+    what: "a setup step (initdb) stopped by SIGINT sent to it alone: exit 130, torn down",
+    check: (base) => runSignalled(base, "exec", "initdb"),
   },
   "safety-run-refuses-a-root-with-whitespace": {
     what: "run.mjs refuses a --root with whitespace in it (exit 2, nothing made)",

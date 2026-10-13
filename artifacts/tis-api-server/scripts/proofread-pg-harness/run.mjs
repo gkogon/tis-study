@@ -233,10 +233,19 @@ async function bundle(esbuild, label, entry, outfile, connection) {
   return { inputs };
 }
 
+/**
+ * Run a setup step to completion. A step stopped by SIGINT or SIGTERM was stopped by a signal sent to this run's
+ * process group (Ctrl-C reaches initdb and this script alike): the error carries that signal, and main treats the run
+ * as signalled (exit 130), not as a setup failure.
+ */
 const run = (cmd, args, log) => {
   const r = spawnSync(cmd, args, { env: childEnv(), encoding: "utf8", timeout: 120_000 });
   appendFileSync(log, `$ ${path.basename(cmd)} ${args.join(" ")}\n${r.stdout ?? ""}${r.stderr ?? ""}\n`);
-  if (r.status !== 0) throw new Error(`${path.basename(cmd)} exited ${r.status ?? r.signal}; see ${log}`);
+  if (r.status !== 0) {
+    const err = new Error(`${path.basename(cmd)} exited ${r.status ?? r.signal}; see ${log}`);
+    if (r.signal === "SIGINT" || r.signal === "SIGTERM") err.signal = r.signal;
+    throw err;
+  }
 };
 
 // ---- main ------------------------------------------------------------------------------------------------
@@ -534,7 +543,15 @@ async function main() {
     );
     exitCode = failed.length ? 1 : 0;
   } catch (err) {
-    if (err?.refused) {
+    // spawnSync blocks the event loop, so a signal that reached this process while a setup step ran has not been
+    // handed to onSignal yet (a step that traps it — initdb does — exits 1, not by the signal). Two turns of the loop
+    // deliver it before the error is read as a failure: this code may be running inside the poll phase, after this
+    // turn's poll has already looked at the signal pipe, so the first setImmediate can fire before it is read.
+    for (let turn = 0; turn < 2; turn++) await new Promise((r) => setImmediate(r));
+    if (signalled || err?.signal) {
+      signalled ??= err.signal;
+      console.error(`${signalled}: setup stopped (${err instanceof Error ? err.message : String(err)}); tearing down`);
+    } else if (err?.refused) {
       exitCode = refuse(err.message);
     } else {
       console.error("HARNESS ERROR", err);
