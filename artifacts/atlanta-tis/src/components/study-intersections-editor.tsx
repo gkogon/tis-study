@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { MapContainer, TileLayer, Marker, Circle, Tooltip as LeafletTooltip, useMapEvents } from "react-leaflet";
-import { LIGHT_TILES, LIGHT_TILES_ATTRIBUTION, LIGHT_TILES_SUBDOMAINS } from "./metro-map";
+import { MapContainer, Marker, Circle, Tooltip as LeafletTooltip, useMapEvents } from "react-leaflet";
+import { BasemapLayers } from "./basemap-layers";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { ChevronDown, ChevronRight, Crosshair } from "lucide-react";
@@ -280,24 +280,7 @@ export function StudyIntersectionsEditor({
               maxZoom={20}
               style={{ height: "100%", width: "100%" }}
             >
-              {basemap === "satellite" ? (
-                <>
-                  <TileLayer
-                    attribution="Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics"
-                    url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                    maxNativeZoom={19}
-                    maxZoom={20}
-                  />
-                  <TileLayer
-                    attribution=""
-                    url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
-                    maxNativeZoom={19}
-                    maxZoom={20}
-                  />
-                </>
-              ) : (
-                <TileLayer attribution={LIGHT_TILES_ATTRIBUTION} url={LIGHT_TILES} subdomains={LIGHT_TILES_SUBDOMAINS} maxZoom={20} />
-              )}
+              <BasemapLayers kind={basemap === "satellite" ? "satellite" : "light"} />
               <Circle
                 center={center}
                 radius={radiusMeters}

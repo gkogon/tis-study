@@ -18,7 +18,8 @@
     "check:intersection-study": "node scripts/check-intersection-study.mjs",
     "check:intersection-distribution": "node scripts/check-intersection-distribution.mjs",
     "check:region-limitations": "node scripts/check-region-limitations.mjs",
-    "check:pittsburgh-study-private": "node scripts/check-pittsburgh-study-private.mjs"
+    "check:pittsburgh-study-private": "node scripts/check-pittsburgh-study-private.mjs",
+    "check:basemap-tiles": "node scripts/check-basemap-tiles.mjs"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
