@@ -25,8 +25,13 @@
 //                          it a slow page keeps that level, and the transparent labels
 //                          layer shows the old labels, scaled up, behind the new ones
 //   every-map-has-basemap  every <MapContainer> under src/ renders <BasemapLayers> with
-//                          a kind that BASEMAPS defines
-//   esri-zyx               every URL is an https://server.arcgisonline.com MapServer
+//                          a kind that BASEMAPS defines, except in a file on the
+//                          TILE_FREE_MAPS allowlist below
+//   tile-free-maps         every allowlisted file exists and has a <MapContainer>, and
+//                          renders no TileLayer and no BasemapLayers, calls no
+//                          L.tileLayer and holds no tile URL or tile host string: a map
+//                          that draws its own ground cannot quietly bring tiles back
+//   esri-zyx              every URL is an https://server.arcgisonline.com MapServer
 //                          tile URL ending /tile/{z}/{y}/{x}: Esri's order is row
 //                          ({y}) before column ({x}), unlike CARTO's and OSM's
 //   attribution            every basemap's base layer credits Esri; the Canvas layers
@@ -62,6 +67,14 @@ const LIVE = process.argv.includes("--live");
 const MODULE = "src/lib/basemap.ts";
 const COMPONENT = "src/components/basemap-layers.tsx";
 const CODE_EXT = /\.(?:[cm]?[jt]sx?)$/;
+
+// Maps that draw their own ground instead of a tile basemap, by design: the
+// file, and why. tile-free-maps holds every map in such a file to no tiles at
+// all, so an entry here can never become a way back to CARTO.
+const TILE_FREE_MAPS = {
+  "src/pages/pittsburgh-study-private.tsx": "the LOS map's ground is the study's own road network from /api/roads, drawn on a Leaflet canvas (RoadNetworkLayer)",
+};
+const TILE_HOST = /cartocdn|tile\.openstreetmap|arcgisonline|basemaps\.|mapbox|stadiamaps|maptiler|thunderforest|\/tile\//i;
 
 function listFiles(dir) {
   const out = [];
@@ -231,6 +244,7 @@ async function suite(sources) {
     let maps = 0;
     const kinds = B ? Object.keys(B) : [];
     for (const f of code) {
+      if (Object.hasOwn(TILE_FREE_MAPS, f)) continue; // held to no tiles at all by tile-free-maps
       walk(asts[f], (n) => {
         if (!ts.isJsxElement(n) || n.openingElement.tagName.getText() !== "MapContainer") return;
         maps++;
@@ -249,7 +263,31 @@ async function suite(sources) {
       });
     }
     if (maps === 0) problems.push("no <MapContainer> found under src/ (the check would pass vacuously)");
-    check("every-map-has-basemap", problems.length === 0, `each of the ${maps} <MapContainer> under src/ renders <BasemapLayers> with a kind BASEMAPS defines${problems.length ? ` (${problems.join("; ")})` : ""}`);
+    check("every-map-has-basemap", problems.length === 0, `each of the ${maps} <MapContainer> under src/ outside the tile-free allowlist renders <BasemapLayers> with a kind BASEMAPS defines${problems.length ? ` (${problems.join("; ")})` : ""}`);
+  }
+
+  // tile-free-maps
+  {
+    const problems = [];
+    let maps = 0;
+    for (const [f, reason] of Object.entries(TILE_FREE_MAPS)) {
+      if (typeof reason !== "string" || reason.trim().length < 20) problems.push(`${f} has no reason on the allowlist`);
+      const ast = asts[f];
+      if (!ast) { problems.push(`${f} is on the allowlist but does not exist`); continue; }
+      let here = 0;
+      walk(ast, (n) => {
+        const where = () => `${f}:${ast.getLineAndCharacterOfPosition(n.getStart()).line + 1}`;
+        if (ts.isJsxElement(n) && n.openingElement.tagName.getText() === "MapContainer") here++;
+        const tag = jsxTag(n);
+        if (tag === "TileLayer" || tag === "BasemapLayers") problems.push(`<${tag}> at ${where()}`);
+        if (ts.isImportSpecifier(n) && /^(?:TileLayer|BasemapLayers)$/.test((n.propertyName ?? n.name).getText())) problems.push(`${(n.propertyName ?? n.name).getText()} imported at ${where()}`);
+        if (ts.isPropertyAccessExpression(n) && /^(?:tileLayer|TileLayer)$/.test(n.name.getText())) problems.push(`${n.getText()} at ${where()}`);
+        if (stringish(n) && (TILE_TEMPLATE.test(n.text) || TILE_HOST.test(n.text))) problems.push(`tile URL or host ${JSON.stringify(n.text)} at ${where()}`);
+      });
+      if (here === 0) problems.push(`${f} is on the allowlist but renders no <MapContainer> (stale entry)`);
+      maps += here;
+    }
+    check("tile-free-maps", problems.length === 0, `the ${maps} allowlisted <MapContainer> that draw their own ground load no tiles at all${problems.length ? ` (${problems.join("; ")})` : ""}`);
   }
 
   // The rest read the evaluated BASEMAPS.
@@ -369,6 +407,9 @@ function edit(file, from, to) {
 const MUTATIONS = [
   { label: "the /cities map goes back to CARTO dark_all", flips: ["no-carto-osm", "tile-layers-shared", "every-map-has-basemap"], apply: edit("src/components/metro-map.tsx", '<BasemapLayers kind="dark" />', '<TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" subdomains="abcd" />') },
   { label: "the study map inlines its own Esri TileLayer", flips: ["tile-layers-shared", "every-map-has-basemap"], apply: edit("src/pages/tis.tsx", '<BasemapLayers kind="light" />', '<TileLayer url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}" />') },
+  { label: "the study map card (not on the tile-free allowlist) renders no basemap", flips: ["every-map-has-basemap"], apply: edit("src/pages/tis.tsx", '<BasemapLayers kind="light" />', "") },
+  { label: "the allowlisted Pittsburgh LOS map gains a raw CARTO TileLayer", flips: ["no-carto-osm", "tile-layers-shared", "tile-free-maps"], apply: edit("src/pages/pittsburgh-study-private.tsx", "<FitStudyArea bounds={bounds} />", '<FitStudyArea bounds={bounds} />\n        <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />') },
+  { label: "the allowlisted Pittsburgh LOS map gains a BasemapLayers (its allowlist entry would be stale)", flips: ["tile-free-maps"], apply: edit("src/pages/pittsburgh-study-private.tsx", "<FitStudyArea bounds={bounds} />", '<FitStudyArea bounds={bounds} />\n        <BasemapLayers kind="light" />') },
   { label: "the metro signal map renders no basemap", flips: ["every-map-has-basemap"], apply: edit("src/components/metro-signal-map.tsx", '<BasemapLayers kind="dark" />', "") },
   { label: "the driveway editor's street view asks for a basemap BASEMAPS does not define", flips: ["every-map-has-basemap"], apply: edit("src/components/driveway-editor.tsx", '<BasemapLayers kind={basemap === "satellite" ? "satellite" : "light"} />', '<BasemapLayers kind={basemap === "satellite" ? "satellite" : "voyager"} />') },
   { label: "the light base layer is asked for in CARTO's {z}/{x}/{y} order", flips: ["esri-zyx"], apply: edit(MODULE, "World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", "World_Light_Gray_Base/MapServer/tile/{z}/{x}/{y}") },
