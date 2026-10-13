@@ -3,14 +3,22 @@
  * TIS report. This is what makes the deliverable PE-stampable: every figure
  * in the body of the report is traceable to a numbered section here, and
  * every section here cites a published authority (Webster/Akçelik / NHTS / SANDAG /
- * NCHRP / MUTCD / AASHTO / GDOT).
+ * NCHRP / MUTCD / AASHTO, and GDOT for Georgia studies).
  */
 import type { TisReport } from "@workspace/tis-api-client-react";
 import { CITATIONS } from "../lib/tis-citations";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BookOpen } from "lucide-react";
+import { creditsDisclosure, studyRegion, tripCredits } from "../lib/study-disclosures";
 
 export function TisMethodologyAppendix({ report }: { report: TisReport }) {
+  // GDOT's driveway regulations bind only Georgia state routes; elsewhere the
+  // appendix names the road owner's permitting requirements instead.
+  const region = studyRegion(report.regionCode);
+  const credits = creditsDisclosure(tripCredits(report));
+  const references = Object.entries(CITATIONS)
+    .filter(([key]) => key !== "GDOT_RPM" || region.isGeorgia)
+    .map(([, c]) => c);
   return (
     <Card className="break-inside-avoid print:break-before-page">
       <CardHeader>
@@ -42,10 +50,21 @@ export function TisMethodologyAppendix({ report }: { report: TisReport }) {
             T<sub>PM</sub> = R<sub>PM</sub> × Size, split by published in/out percentages
           </Formula>
           <p className="text-xs text-muted-foreground">
-            Trip-generation rates assume a stand-alone, single-use site without internal capture
-            credit, pass-by reductions, or transit / pedestrian mode shifts. A formal TIS should
-            confirm rates against the jurisdiction-approved trip-generation source and apply
-            internal-capture and pass-by credits per the controlling agency's methodology.
+            {credits.allZero ? (
+              <>
+                Trip-generation rates assume a stand-alone, single-use site without internal capture
+                credit, pass-by reductions, or transit / pedestrian mode shifts. A formal TIS should
+                confirm rates against the jurisdiction-approved trip-generation source and apply
+                internal-capture and pass-by credits per the controlling agency's methodology.
+              </>
+            ) : (
+              <>
+                Trip-generation rates are those of a stand-alone, single-use site. {credits.summary}{" "}
+                A formal TIS should confirm rates against the jurisdiction-approved trip-generation
+                source and confirm the internal-capture, pass-by and mode-share adjustments per the
+                controlling agency's methodology.
+              </>
+            )}
           </p>
         </Section>
 
@@ -118,10 +137,21 @@ export function TisMethodologyAppendix({ report }: { report: TisReport }) {
             analysis per <Cite t="MUTCD_4C" />.
           </p>
           <p className="text-xs text-muted-foreground">
-            All geometric mitigations are subject to right-of-way verification and approval by
-            the road owner per <Cite t="GDOT_RPM" /> for state routes or local jurisdiction
-            standards otherwise. Geometric design follows <Cite t="AASHTO_GREEN" />. Signal
-            additions require a full warrants analysis per <Cite t="MUTCD_4C" />.
+            {region.isGeorgia ? (
+              <>
+                All geometric mitigations are subject to right-of-way verification and approval by
+                the road owner per <Cite t="GDOT_RPM" /> for state routes or local jurisdiction
+                standards otherwise.
+              </>
+            ) : (
+              <>
+                All geometric mitigations are subject to right-of-way verification and approval by
+                the road owner under its permitting requirements: the state highway agency's for
+                state routes, local jurisdiction standards otherwise.
+              </>
+            )}{" "}
+            Geometric design follows <Cite t="AASHTO_GREEN" />. Signal additions require a full
+            warrants analysis per <Cite t="MUTCD_4C" />.
           </p>
         </Section>
 
@@ -138,7 +168,7 @@ export function TisMethodologyAppendix({ report }: { report: TisReport }) {
 
         <Section number="A.6" title="References">
           <ol className="list-decimal list-inside space-y-2 text-xs">
-            {Object.values(CITATIONS).map((c) => (
+            {references.map((c) => (
               <li key={c.tag} className="pl-1">
                 <span className="font-mono text-blue-700">[{c.tag}]</span> {c.fullCitation}
               </li>
