@@ -76,13 +76,19 @@ export function tripCredits(report: TisReport): TripCredits {
   };
 }
 
-const orList = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} or ${xs[xs.length - 1]}`);
+const joinList = (xs: string[], word: "and" | "or") =>
+  xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} ${word} ${xs[xs.length - 1]}`;
+const orList = (xs: string[]) => joinList(xs, "or");
+/** "pass-by", "pass-by and internal-capture", "pass-by, internal-capture and mode-share". */
+export const andList = (xs: string[]) => joinList(xs, "and");
 
 export type CreditsDisclosure = {
   /** Every credit is recorded and zero: the "no credits" wording is true. */
   allZero: boolean;
   /** At least one credit was applied. */
   anyApplied: boolean;
+  /** The adjustments applied, in print order: "pass-by", "internal-capture", "mode-share". */
+  appliedKinds: string[];
   /** What was applied, what was not, and what the payload does not record. Empty when allZero. */
   summary: string;
 };
@@ -109,7 +115,12 @@ export function creditsDisclosure(c: TripCredits): CreditsDisclosure {
   if (applied.length) parts.push(`Credits applied to project trips: ${applied.join(", and ")}.`);
   if (none.length) parts.push(`No ${orList(none)} credit has been applied.`);
   if (unrecorded.length) parts.push(`This study's output does not record the ${orList(unrecorded)} applied.`);
-  return { allZero, anyApplied: applied.length > 0, summary: allZero ? "" : parts.join(" ") };
+  const appliedKinds = [
+    pb != null && pb > 0 ? "pass-by" : null,
+    ic != null && ic > 0 ? "internal-capture" : null,
+    na != null && na > 0 ? "mode-share" : null,
+  ].filter((x): x is string => x != null);
+  return { allZero, anyApplied: applied.length > 0, appliedKinds, summary: allZero ? "" : parts.join(" ") };
 }
 
 export type GrowthDisclosure = {

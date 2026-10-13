@@ -9,7 +9,7 @@ import type { TisReport } from "@workspace/tis-api-client-react";
 import { CITATIONS } from "../lib/tis-citations";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BookOpen } from "lucide-react";
-import { creditsDisclosure, studyRegion, tripCredits } from "../lib/study-disclosures";
+import { andList, creditsDisclosure, studyRegion, tripCredits } from "../lib/study-disclosures";
 
 export function TisMethodologyAppendix({ report }: { report: TisReport }) {
   // GDOT's driveway regulations bind only Georgia state routes; elsewhere the
@@ -61,8 +61,11 @@ export function TisMethodologyAppendix({ report }: { report: TisReport }) {
               <>
                 Trip-generation rates are those of a stand-alone, single-use site. {credits.summary}{" "}
                 A formal TIS should confirm rates against the jurisdiction-approved trip-generation
-                source and confirm the internal-capture, pass-by and mode-share adjustments per the
-                controlling agency's methodology.
+                source and{" "}
+                {credits.anyApplied
+                  ? `confirm the ${andList(credits.appliedKinds)} adjustment${credits.appliedKinds.length === 1 ? "" : "s"}`
+                  : "apply internal-capture and pass-by credits"}{" "}
+                per the controlling agency's methodology.
               </>
             )}
           </p>
