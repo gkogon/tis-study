@@ -1157,7 +1157,7 @@ function WatchLiveSection({ report, onOpen }: { report: TisReport; onOpen: (id: 
               cells wrap and the grid column shrink on narrow ones, so nothing
               is clipped and the page never scrolls sideways (the shared
               component is left as it is). */}
-          <div className="min-w-0 lg:[&_[data-testid=intersection-sim-view]>.grid]:grid-cols-[minmax(0,1fr)_390px] max-lg:[&_[data-testid=intersection-sim-view]>.grid]:grid-cols-1 max-sm:[&_[data-testid=sim-readout]_.whitespace-nowrap]:whitespace-normal">
+          <div className="min-w-0 lg:[&_[data-testid=intersection-sim-view]>.grid]:grid-cols-[minmax(0,1fr)_390px] max-lg:[&_[data-testid=intersection-sim-view]>.grid]:grid-cols-1 [&_[data-testid=sim-readout]_.whitespace-nowrap]:whitespace-normal">
             {near
               ? <IntersectionSimView sim={model.sim} />
               : <div className="aspect-[4/3] max-h-[560px] rounded-md bg-[#0B1220]" aria-hidden />}
