@@ -746,6 +746,15 @@ const CHECKS = [
     },
   },
   {
+    id: "agent-output-names-the-dispositions-line",
+    on: "agent",
+    msg: 'datum.md\'s §Output names, beside the six types, the block\'s last line "Dispositions recorded this pass", under which a finding withdrawn this pass is listed as `WITHDRAWN` (a disposition, not a type) — as the protocol\'s Output format block ends',
+    test: (t) => {
+      const output = flat(t.agent.split(/^## Output$/m)[1] ?? "");
+      return output.includes('its last line, "Dispositions recorded this pass",') && output.includes("`WITHDRAWN` (a disposition, not a type)");
+    },
+  },
+  {
     id: "agent-withdrawn-is-the-one-name",
     on: "agent",
     msg: "datum.md names the withdrawn disposition as the protocol does: \"withdraw the finding and log it `WITHDRAWN`\", and `RESOLVED` (uppercase) appears nowhere",
@@ -979,6 +988,9 @@ const MUTATIONS = [
   { label: "Output format: WITHDRAWN listed under CONTESTED", file: "protocol", flips: ["output-format-six-headings"], apply: edit("protocol", "      → PE ruling required.\n", "      → PE ruling required.\n  WITHDRAWN  [§n] <finding>\n") },
   { label: "Output format: NOTE and DISCLOSE headings swapped", file: "protocol", flips: ["output-format-six-headings"], apply: edit("protocol", "DISCLOSE\n  [§n] <finding> — <exact language to add>\n\nNOTE\n  [§n] <finding>\n", "NOTE\n  [§n] <finding>\n\nDISCLOSE\n  [§n] <finding> — <exact language to add>\n") },
   { label: "datum.md: back to logging it RESOLVED", file: "agent", flips: ["agent-withdrawn-is-the-one-name"], apply: edit("agent", "log it `WITHDRAWN`.", "log it `RESOLVED`.") },
+  // G3-4: §Output names the block's dispositions line beside the six types.
+  { label: "datum.md: the Output instruction drops the dispositions line", file: "agent", flips: ["agent-output-names-the-dispositions-line"], apply: edit("agent", " — and its last line, \"Dispositions recorded\nthis pass\", under which each finding withdrawn this pass is listed as\n`WITHDRAWN` (a disposition, not a type).", ".") },
+  { label: "datum.md: the Output instruction calls WITHDRAWN a type", file: "agent", flips: ["agent-output-names-the-dispositions-line"], apply: edit("agent", "`WITHDRAWN` (a disposition, not a type).", "`WITHDRAWN` (a seventh type).") },
   { label: "datum.md: RESOLVED in the Output section", file: "agent", flips: ["agent-withdrawn-is-the-one-name"], apply: edit("agent", "If a section produced nothing, say so in one line.", "If a section produced nothing, say so in one line. List withdrawn items under RESOLVED.") },
   // one PROTOCOL_VERSION line, the one the runner reads (fix wave 2: m-10)
   { label: "protocol: a malformed version line above the real one", file: "protocol", flips: ["protocol-version-is-the-runners"], apply: edit("protocol", /^PROTOCOL_VERSION: /m, "PROTOCOL_VERSION: draft\nPROTOCOL_VERSION: ") },

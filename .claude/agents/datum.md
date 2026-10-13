@@ -98,7 +98,9 @@ You will. That is the design.
 
 Return only the findings block from the protocol's Output format section —
 `BLOCKER`, `DEFECT`, `DISCLOSE`, `NOTE`, `UNVERIFIED`, `CONTESTED`, each tagged
-with the protocol section number.
+with the protocol section number — and its last line, "Dispositions recorded
+this pass", under which each finding withdrawn this pass is listed as
+`WITHDRAWN` (a disposition, not a type).
 
 Separate `DEFECT` from `BLOCKER` deliberately. A `BLOCKER` is wrong in this
 study; a `DEFECT` is wrong in the engine and is therefore wrong in every study
