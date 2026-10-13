@@ -191,7 +191,8 @@ function OpenerScroll({ payload, story, loadRoads }: { payload: PittsburghSample
     };
     let vw = 0, vh = 0, dpr = 1, cams = framings(sim, 1, 1);
     function resize() {
-      dpr = Math.min(2, window.devicePixelRatio || 1);
+      // 1.5× is sharp on a retina screen and a screen share, at ~half the fill of 2×
+      dpr = Math.min(1.5, window.devicePixelRatio || 1);
       vw = canvas!.clientWidth; vh = canvas!.clientHeight;
       canvas!.width = Math.round(vw * dpr); canvas!.height = Math.round(vh * dpr);
       cams = framings(sim, vw, vh);
@@ -269,6 +270,7 @@ function OpenerScroll({ payload, story, loadRoads }: { payload: PittsburghSample
       const dtReal = Math.min(0.05, (now - last) / 1000);
       last = now;
       const r = scene!.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > window.innerHeight) return; // off screen (belt and braces under the observer)
       const total = scene!.offsetHeight - window.innerHeight;
       P = Math.min(1, Math.max(0, -r.top / Math.max(1, total)));
       hud();
@@ -277,14 +279,16 @@ function OpenerScroll({ payload, story, loadRoads }: { payload: PittsburghSample
       if (roadsAt !== null) sim.step(dtReal * speed);
       sim.draw(ctx!, vw, vh, dpr, cameraFor(P, cams, vw, vh), st);
     }
-    // Only run while the scene is on screen.
+    // Only run while the scene is on screen: it starts at once (the opener
+    // is the top of the page) and the observer stops and restarts it.
     let running = false;
     const start = () => { if (running) return; running = true; last = performance.now(); raf = requestAnimationFrame(frame); };
     const stop = () => { running = false; cancelAnimationFrame(raf); };
     const io = typeof IntersectionObserver !== "undefined"
       ? new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) start(); else stop(); })
       : null;
-    if (io) io.observe(scene); else start();
+    io?.observe(scene);
+    start();
     return () => { dead = true; stop(); io?.disconnect(); window.removeEventListener("resize", resize); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload]);

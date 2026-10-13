@@ -382,6 +382,7 @@ export class PghAliveSim {
   private seed = 23;
   private readonly input: SceneInput;
   private roadCache: { canvas: unknown; key: string } | null = null;
+  private lastCamKey = "";
 
   constructor(input: SceneInput) {
     this.input = input;
@@ -649,21 +650,26 @@ export class PghAliveSim {
     ctx.fillStyle = "#0B1220";
     ctx.fillRect(0, 0, vw, vh);
 
-    // roads (cached while the camera is still)
+    // roads: drawn straight onto the frame while the camera moves; once it
+    // has held still for a frame, painted once into an offscreen layer and
+    // blitted from then on, so a resting act costs the cars and signals only
     if (this.roads && st.roads > 0) {
       const key = `${vw}x${vh}@${dpr}:${cam.x.toFixed(1)},${cam.y.toFixed(1)},${S.toFixed(5)}`;
-      if (st.roads >= 1 && typeof document !== "undefined") {
-        let cache = this.roadCache;
-        if (!cache || cache.key !== key) {
-          const off = (cache?.canvas as HTMLCanvasElement | undefined) ?? document.createElement("canvas");
-          off.width = Math.round(vw * dpr); off.height = Math.round(vh * dpr);
-          const c2 = off.getContext("2d");
-          if (c2) { c2.clearRect(0, 0, off.width, off.height); this.drawRoads(c2, dpr, S, ox, oy, 1); }
-          cache = { canvas: off, key };
-          this.roadCache = cache;
-        }
+      const still = key === this.lastCamKey;
+      this.lastCamKey = key;
+      const cache = this.roadCache;
+      if (st.roads >= 1 && cache && cache.key === key) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.drawImage(cache.canvas as HTMLCanvasElement, 0, 0);
+      } else if (st.roads >= 1 && still && typeof document !== "undefined") {
+        const off = (cache?.canvas as HTMLCanvasElement | undefined) ?? document.createElement("canvas");
+        const w = Math.round(vw * dpr), h = Math.round(vh * dpr);
+        if (off.width !== w || off.height !== h) { off.width = w; off.height = h; }
+        const c2 = off.getContext("2d");
+        if (c2) { c2.setTransform(1, 0, 0, 1, 0, 0); c2.clearRect(0, 0, w, h); this.drawRoads(c2, dpr, S, ox, oy, 1); }
+        this.roadCache = { canvas: off, key };
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(off, 0, 0);
       } else {
         this.drawRoads(ctx, dpr, S, ox, oy, st.roads);
       }
