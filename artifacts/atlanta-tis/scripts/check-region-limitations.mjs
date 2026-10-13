@@ -26,6 +26,17 @@
 //   SAV     GA re-keyed to savannah_metro (Georgia, not Atlanta), with the
 //           measured rate and growthSource built from tis-engine-core the way
 //           tis.ts builds them.
+//   MIXED   PA with counts supplied at three signals: two imported
+//           turning-movement counts (UTDF, Synchro PDF) and one client link
+//           count.
+//
+// The Atlanta volume sentence ("calibrated to GDOT 511 incident-rate
+// observations") is deliberately NOT asserted: Atlanta volumes come from road
+// class x distance from downtown x a fixed per-signal factor
+// (api-server/src/lib/atlanta-analysis.ts), and GDOT 511 feeds only a delay
+// multiplier. Its wording belongs to PR #246 (claude/georgia-source-truth).
+// What is asserted for Georgia is true and region-specific: the GDOT AADT
+// series for growth and [GDOT-RPM] in A.4 / A.6.
 //
 // The one place "GDOT" is allowed in a non-Georgia study is the LOS-bands
 // bibliography entry, which lists GDOT among example state manuals that
@@ -118,7 +129,12 @@ const SAV = {
   growthAppliedPct: SAV_RATE.growthPct,
   growthSource: `${getMeasuredGrowthSource("savannah_metro")} — median per-segment CAGR across ${SAV_RATE.stations} matched count stations within the Savannah MSA bounding box (${SAV_RATE.yearFrom} → ${SAV_RATE.yearTo})`,
 };
-const FIXTURES = { GA, "GA-0": GA0, UTDF, PA, "PA-?": PA_OLD, SAV };
+const MIXED = (() => {
+  const r = structuredClone(PA);
+  ["utdf_tmc", "synchro_pdf_tmc", "link_csv"].forEach((v, i) => (r.affectedIntersections[i].volumeSource = v));
+  return r;
+})();
+const FIXTURES = { GA, "GA-0": GA0, UTDF, PA, "PA-?": PA_OLD, SAV, MIXED };
 const nonAutoPct = (r) => (Number.isFinite(r.autoModeShareApplied) ? Math.round((1 - r.autoModeShareApplied) * 100) : null);
 
 // ─── the bundle, from the text under test ────────────────────────────────────
@@ -288,11 +304,12 @@ async function suite(src) {
     `GA with zero credits: both appendices still say no credits were applied ${why(L["GA-0"], A["GA-0"])}`,
   );
   {
-    const need = ["traffic-signal nodes within the Atlanta MSA,", "GDOT 511", "GDOT Annual Average Daily Traffic series"].filter((s) => !has(lt("GA"), s));
+    // Not "GDOT 511": see the header. The Atlanta volume sentence is not pinned here.
+    const need = ["traffic-signal nodes within the Atlanta MSA,", "GDOT Annual Average Daily Traffic series"].filter((s) => !has(lt("GA"), s));
     const a4 = slice(at("GA"), "A.4", "A.5");
     const refs = slice(at("GA"), "A.6");
     const ok = need.length === 0 && /per \[GDOT-RPM\] for state routes/.test(a4) && /\[GDOT-RPM\] Georgia Department of Transportation/.test(refs);
-    check("ga-gdot-kept", ok, `GA (Atlanta): Appendix B keeps the Atlanta MSA and its GDOT text, and §A.4 / §A.6 keep [GDOT-RPM]${need.length ? ` — missing: ${need.join(", ")}` : ""} ${why(L.GA, A.GA)}`);
+    check("ga-gdot-kept", ok, `GA (Atlanta): Appendix B keeps the Atlanta MSA and the GDOT AADT growth series, and §A.4 / §A.6 keep [GDOT-RPM]${need.length ? ` — missing: ${need.join(", ")}` : ""} ${why(L.GA, A.GA)}`);
   }
   {
     const miss = ["1.50% per year", GA.growthSource.replace(/\.$/, ""), "22% non-auto", "No pass-by or internal-capture credit"].filter((s) => !has(lt("GA"), s));
@@ -301,7 +318,7 @@ async function suite(src) {
   {
     const t = lt("SAV");
     const ok = has(t, "traffic-signal nodes within the Savannah MSA,") && !has(t, "Atlanta MSA,") && !has(t, "GDOT 511") && has(t, "GDOT Annual Average Daily Traffic series") && /per \[GDOT-RPM\]/.test(at("SAV"));
-    check("ga-other-metro", ok, `GA outside Atlanta (Savannah): its own region, not the Atlanta MSA or GDOT 511, and keeps the GDOT AADT and [GDOT-RPM] text (its growth source names the Atlanta Regional Commission, which hosts the GDOT counts) ${why(L.SAV, A.SAV)}`);
+    check("ga-other-metro", ok, `GA outside Atlanta (Savannah): its own region, not the Atlanta MSA or the Atlanta-only GDOT 511 volume sentence, and keeps the GDOT AADT and [GDOT-RPM] text (its growth source names the Atlanta Regional Commission, which hosts the GDOT counts) ${why(L.SAV, A.SAV)}`);
   }
 
   // ---- an older payload: neutral, not guessed ------------------------------------
@@ -329,6 +346,30 @@ async function suite(src) {
       !has(u, "No measured tube counts") &&
       has(lt("GA"), "No measured tube counts, automated traffic recorder (ATR) counts, or video-derived counts were used.");
     check("supplied-counts", ok, `an imported turning-movement count is disclosed (1 of the 40 study signals) instead of "no measured counts were used"; a study without one keeps that sentence ${why(L.UTDF, L.GA)}`);
+  }
+  {
+    const m = lt("MIXED");
+    const ok =
+      has(m, "Existing volumes and turning-movement splits: estimated, not counted, except at the 3 study signals with counts supplied with this study.") &&
+      has(m, "Counts supplied with this study (imported turning-movement counts at 2 signals, client link counts at 1 signal) are used at 3 of the 40 study signals.") &&
+      !has(m, "estimated, not counted. ") &&
+      has(lt("PA"), "Existing volumes and turning-movement splits: estimated, not counted. Each study signal's design-hour volume");
+    check("supplied-counts-mixed", ok, `counts supplied at 3 signals (2 imported TMC, 1 client link count): the volume sentence excepts those signals rather than saying "not counted", and each count clause names its signals; a study without counts still reads "estimated, not counted" ${why(L.MIXED, L.PA)}`);
+  }
+
+  // ---- §A.1 asks to confirm only the adjustments the study applied -------------------
+  {
+    const closing = (k) => sentences(slice(at(k), "Trip-generation rates", "A.2")).find((x) => x.startsWith("A formal TIS should confirm rates")) ?? "";
+    const want = {
+      PA: ["pass-by", "internal-capture", "mode-share"],
+      GA: ["mode-share"],
+      "PA-?": ["pass-by", "internal-capture"],
+    };
+    const bad = Object.entries(want).filter(([k, kinds]) => {
+      const c = closing(k);
+      return !c || ["pass-by", "internal-capture", "mode-share"].some((x) => c.includes(x) !== kinds.includes(x));
+    });
+    check("a1-adjustments-applied", bad.length === 0, `§A.1's closing names only the adjustments each study applied (PA: all three; GA: mode share only; PA-?: pass-by and internal capture)${bad.length ? ` — wrong in: ${bad.map(([k]) => `${k} "${closing(k)}"`).join(" | ")}` : ""}`);
   }
 
   // ---- the footer ---------------------------------------------------------------------
@@ -405,19 +446,21 @@ const MUTATIONS = [
   { label: "the growth source is not printed", flips: ["pa-growth", "ga-applied-values"], apply: edit("limitations", "<>Source: {growth.source}.</>", "<>Source: the engine.</>") },
   { label: "the GDOT AADT pointer prints for every study", flips: ["pa-no-georgia", "unknown-neutral"], apply: edit("limitations", "{region.isGeorgia\n", "{true\n") },
   { label: "the Atlanta GDOT 511 volume sentence prints for all of Georgia", flips: ["ga-other-metro"], apply: edit("limitations", "{region.isAtlanta ? (", "{region.isGeorgia ? (") },
-  { label: "Atlanta loses its GDOT 511 volume sentence", flips: ["ga-gdot-kept"], apply: edit("limitations", "{region.isAtlanta ? (", "{false ? (") },
   { label: "Appendix B always says no credits were applied", flips: ["pa-credits-limitations", "no-false-no-credits", "ga-applied-values", "unknown-neutral"], apply: edit("limitations", "{credits.allZero ? (", "{true ? (") },
   { label: "the capacity sentence drops 'superseded by HCS and/or Synchro'", flips: ["model-sentence"], apply: edit("limitations", "screening model is superseded by those tools at submittal.", "screening model is used at submittal.") },
-  { label: "counts supplied with the study are not disclosed", flips: ["supplied-counts"], apply: edit("limitations", "{supplied > 0 ? (", "{false ? (") },
+  { label: "counts supplied with the study are not disclosed", flips: ["supplied-counts", "supplied-counts-mixed"], apply: edit("limitations", "{supplied > 0 ? (", "{false ? (") },
+  { label: "the volume sentence says 'not counted' even where counts were supplied", flips: ["supplied-counts-mixed"], apply: edit("limitations", "`estimated, not counted, except at the ${supplied} study signal${supplied === 1 ? \"\" : \"s\"} with counts supplied with this study. At the others, each`", '"estimated, not counted. Each"') },
+  { label: "the mixed count clauses drop their signals", flips: ["supplied-counts-mixed"], apply: edit("limitations", "`imported turning-movement counts at ${atSignals(counts.tmc)}, client link counts at ${atSignals(counts.linkCounts)}`", "`imported turning-movement counts at ${counts.tmc}, client link counts at ${counts.linkCounts}`") },
   { label: "Appendix B says audit", flips: ["banned-copy"], apply: edit("limitations", "acting on any recommendation.", "acting on any recommendation or audit.") },
   // ---- the shared disclosures (study-disclosures.ts) ---------------------------------
-  { label: "the non-auto share is always read as zero", flips: ["pa-credits-limitations", "pa-credits-appendix", "no-false-no-credits", "ga-applied-values"], apply: edit("disclosures", "nonAutoPct: share == null ? null : Math.max(0, Math.round((1 - share) * 100)),", "nonAutoPct: share == null ? null : 0,") },
+  { label: "the non-auto share is always read as zero", flips: ["pa-credits-limitations", "pa-credits-appendix", "no-false-no-credits", "ga-applied-values", "a1-adjustments-applied"], apply: edit("disclosures", "nonAutoPct: share == null ? null : Math.max(0, Math.round((1 - share) * 100)),", "nonAutoPct: share == null ? null : 0,") },
   { label: "an absent autoModeShareApplied is guessed as 100% auto", flips: ["unknown-neutral"], apply: edit("disclosures", "const share = finite(report.autoModeShareApplied);", "const share = finite(report.autoModeShareApplied) ?? 1;") },
   { label: "no region is read as Georgia", flips: ["ga-gdot-kept", "ga-other-metro"], apply: edit("disclosures", 'isGeorgia: metro.state === "GA",', "isGeorgia: false,") },
   { label: "the region phrase loses its article", flips: ["pa-region", "ga-gdot-kept", "ga-other-metro"], apply: edit("disclosures", "return /\\b(MSA|CSA|CMA|CMM|ZM)$/.test(name) ? `the ${name}` : name;", "return name;") },
   { label: "all-zero credits are never recognised", flips: ["ga-zero-none"], apply: edit("disclosures", "const allZero = pb === 0 && ic === 0 && na === 0;", "const allZero = false;") },
   // ---- Appendix A (tis-methodology-appendix.tsx) -------------------------------------
-  { label: "§A.1 always says the rates carry no credits", flips: ["pa-credits-appendix", "no-false-no-credits"], apply: edit("appendix", "{credits.allZero ? (", "{true ? (") },
+  { label: "§A.1 always says the rates carry no credits", flips: ["pa-credits-appendix", "no-false-no-credits", "a1-adjustments-applied"], apply: edit("appendix", "{credits.allZero ? (", "{true ? (") },
+  { label: "§A.1 asks to confirm every adjustment, applied or not", flips: ["a1-adjustments-applied"], apply: edit("appendix", '`confirm the ${andList(credits.appliedKinds)} adjustment${credits.appliedKinds.length === 1 ? "" : "s"}`', '"confirm the internal-capture, pass-by and mode-share adjustments"') },
   { label: "§A.4 cites GDOT-RPM for every study", flips: ["pa-no-georgia", "unknown-neutral", "pa-road-owner"], apply: edit("appendix", "{region.isGeorgia ? (", "{true ? (") },
   { label: "§A.6 lists GDOT-RPM for every study", flips: ["pa-no-georgia", "unknown-neutral"], apply: edit("appendix", '.filter(([key]) => key !== "GDOT_RPM" || region.isGeorgia)', ".filter(() => true)") },
   { label: "§A.4 drops the road owner's permitting requirements", flips: ["pa-road-owner"], apply: edit("appendix", "the road owner under its permitting requirements: the state highway agency's for", "the road owner: the state highway agency for") },
