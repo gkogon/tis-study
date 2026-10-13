@@ -909,14 +909,18 @@ function loadRoads(report: TisReport): Promise<RoadSegment[]> {
 const ROAD_STYLE_DARK = [{ w: 3.4, c: "#3A4A66" }, { w: 2.8, c: "#33425C" }, { w: 2.2, c: "#2D3B54" }, { w: 1.5, c: "#27344B" }, { w: 0.9, c: "#212D42" }];
 const ROAD_STYLE_LIGHT = [{ w: 3.4, c: "#94a3b8" }, { w: 2.8, c: "#a5b1c2" }, { w: 2.2, c: "#b8c2d0" }, { w: 1.5, c: "#cbd3de" }, { w: 0.9, c: "#dbe1e9" }];
 
-function RoadNetworkLayer({ report, dark }: { report: TisReport; dark: boolean }) {
+/** `active` defers the request until the map scrolls into view, so the live
+ *  study map's identical request higher up has landed in the HTTP cache
+ *  (public, max-age=3600) and this one is served from it. */
+function RoadNetworkLayer({ report, dark, active }: { report: TisReport; dark: boolean; active: boolean }) {
   const map = useMap();
   const [segs, setSegs] = useState<RoadSegment[] | null>(null);
   useEffect(() => {
+    if (!active) return;
     let live = true;
     loadRoads(report).then((x) => { if (live) setSegs(x); });
     return () => { live = false; };
-  }, [report]);
+  }, [report, active]);
   useEffect(() => {
     if (!segs || segs.length === 0) return;
     const renderer = L.canvas({ padding: 0.4 });
@@ -977,7 +981,7 @@ function LosMap({ report, sc, selectedId, onOpen }: { report: TisReport; sc: Los
     <div ref={ref} className="relative isolate h-[340px] sm:h-[480px] rounded-lg overflow-hidden border border-border" data-testid="los-map">
       <MapContainer bounds={bounds} zoomSnap={0.25} zoomDelta={0.5} scrollWheelZoom={false} attributionControl={false} style={{ height: "100%", width: "100%" }}>
         <FitStudyArea bounds={bounds} />
-        <RoadNetworkLayer report={report} dark={dark} />
+        <RoadNetworkLayer report={report} dark={dark} active={inView} />
         <Circle center={center} radius={radiusM} pathOptions={{ color: "#3b82f6", weight: 1.2, dashArray: "5 7", fillColor: "#3b82f6", fillOpacity: 0.04 }} interactive={false} />
         <Marker position={center} icon={icon}>
           <LeafletTooltip direction="top" offset={[0, -30]}>
@@ -993,8 +997,10 @@ function LosMap({ report, sc, selectedId, onOpen }: { report: TisReport; sc: Los
               key={r.signalId}
               center={[r.latitude, r.longitude]}
               radius={hot ? 10 : 7}
+              // Construction-time option: react-leaflet applies pathOptions
+              // through setStyle, which never adds a class.
+              className="pgh-los-dot"
               pathOptions={{
-                className: "pgh-los-dot",
                 fillColor: LOS_COLORS[los]?.map ?? "#94a3b8",
                 fillOpacity: 0.95,
                 color: sel ? "#60a5fa" : hot ? (dark ? "#f8fafc" : "#0f172a") : dark ? "#0B1220" : "#ffffff",
