@@ -257,6 +257,7 @@ if (lib && payload && storyApi) {
   ok(story.site.pmIn === want.in && story.site.pmOut === want.out && want.in + want.out === want.net, `act 1 in / out = ${want.in} / ${want.out} (${story.site.pmIn} / ${story.site.pmOut})`);
   ok(near(story.site.autoSharePct, Math.round(r.autoModeShareApplied * 1000) / 10) && near(100 - story.site.autoSharePct, 23.2, 1e-9), `act 1 mode-share credit = 100 − auto share (${(100 - story.site.autoSharePct).toFixed(1)}%)`);
   ok(story.site.sizeLabel === "200,000 sq ft GLA" && story.site.landUseCode === tg.landUseCode && story.site.pmRate === tg.pmRate, `act 1 size / land use / rate from tripGeneration (${story.site.sizeLabel}, LU ${story.site.landUseCode}, ${story.site.pmRate}/ksf)`);
+  ok(story.site.rateSource === "SANDAG 2002" && tg.variableSource.startsWith(story.site.rateSource), `act 1 names the rate source from tripGeneration.variableSource (${story.site.rateSource})`);
 
   const sg = story.signal;
   ok(!!sg && sg.id === feat?.signalId, "act 2 narrates the featured row");

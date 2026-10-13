@@ -13,11 +13,19 @@
  * look-ups (/tis-api/region-for, /api/roads, /api/intersections) and the base
  * map's tiles.
  *
+ * Opens with PittsburghAliveOpener — the home page's scroll-driven opener
+ * told with this report (the site, one McKnight Road signal, the study area
+ * at the PM peak), narrated only from `openerStory(payload)` — and lands on
+ * the header's metric strip.
+ *
  * Reused live components, fed the saved report read-only: StudyMapAlive (the
  * network with animated trip flows), TripDistributionCard (the distribution
- * rose), IntersectionTable (the capacity table with expandable approaches)
- * and IntersectionStudy (one signal opened as its own study, `?signal=` URL
- * state; its §05 what-if re-solves in the browser only, as on /demo).
+ * rose), IntersectionTable (the capacity table with expandable approaches),
+ * IntersectionSimView (§04a "Watch it live": the featured signal's
+ * micro-simulation, auto-playing while on screen) and IntersectionStudy (one
+ * signal opened as its own study, `?signal=` URL state; its §05 what-if
+ * re-solves in the browser only, as on /demo). The LOS map plays Existing →
+ * No-Build → Build once when it first scrolls into view.
  *
  * Every number printed here is the report's own field, or a count / sort /
  * format of its rows (lib/pittsburgh-study.ts, pinned by
@@ -37,17 +45,21 @@ import { StudyMapAlive } from "@/components/study-map-alive";
 import { TripDistributionCard } from "@/components/trip-distribution-card";
 import { IntersectionTable, LosBadge, LOS_COLORS, SEVERITY_CONFIG } from "@/components/tis-report-bits";
 import { IntersectionStudy } from "@/components/intersection-study";
+import { IntersectionSimView, SIM_SPEED as MICRO_SIM_SPEED } from "@/components/intersection-sim-view";
+import { PittsburghAliveOpener } from "@/components/pittsburgh-alive-opener";
+import { studyModelFromRow } from "@/lib/intersection-study-model";
 import { Marker as SectionMarker, LosScaleStrip } from "@/components/section-marker";
 import { usePageMeta } from "@/hooks/use-page-meta";
 import { useSignalStudyUrl } from "@/hooks/use-signal-study-url";
 import { bearingDeg, bearingToOctant, type Octant } from "@/lib/distribution-rose";
 import type { Route, RoadSegment } from "@/lib/study-map-sim";
-import { solveScenarioDetailed, isClientScenarioDirty, EMPTY_SCENARIO, type ScenarioState } from "@/lib/scenario-solve";
+import { solveScenarioDetailed, isClientScenarioDirty, scenarioWeatherFactor, EMPTY_SCENARIO, type ScenarioState } from "@/lib/scenario-solve";
 import {
   SAMPLE_JSON_PATH, SCREENING_NOTE, STATE_NAME, LOS_GRADES, LOS_SCENARIOS, PERIOD_LABEL, PERIOD_TAB,
   installRobotsNoIndex, payloadProblems, headlineStats, losDistribution, countAtLosEf, rowLos, rowDelay, losRank,
   delayDelta, existingYear, topByDelayDelta, topByQueue, criticalApproach, queueVehicles, periodWaterfall,
   isGradedPeriod, severityCounts, splitMitigation, methodFacts, fmtInt, fmtSignedSec, fmtPct, QUEUE_FT_PER_VEHICLE,
+  featuredSignal, siteSizeLabel,
   type PittsburghSamplePayload, type LosScenario, type Severity,
 } from "@/lib/pittsburgh-study";
 
@@ -214,13 +226,14 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 }
 
 const SECTIONS = [
-  { id: "summary", label: "Summary" },
-  { id: "trips", label: "Trip generation" },
-  { id: "distribution", label: "Distribution" },
-  { id: "los", label: "Level of service" },
-  { id: "queues", label: "Queues" },
-  { id: "mitigation", label: "Mitigation" },
-  { id: "method", label: "Method and limits" },
+  { id: "summary", n: "01", label: "Summary" },
+  { id: "trips", n: "02", label: "Trip generation" },
+  { id: "distribution", n: "03", label: "Distribution" },
+  { id: "los", n: "04", label: "Level of service" },
+  { id: "live", n: "04a", label: "Watch it live" },
+  { id: "queues", n: "05", label: "Queues" },
+  { id: "mitigation", n: "06", label: "Mitigation" },
+  { id: "method", n: "07", label: "Method and limits" },
 ] as const;
 
 function StudyView({ payload }: { payload: PittsburghSamplePayload }) {
@@ -268,6 +281,7 @@ function StudyView({ payload }: { payload: PittsburghSamplePayload }) {
 
   return (
     <>
+      <PittsburghAliveOpener payload={payload} loadRoads={() => loadRoads(r)} />
       <Hero payload={payload} />
       <SectionNav />
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-24 space-y-20">
@@ -303,6 +317,7 @@ function StudyView({ payload }: { payload: PittsburghSamplePayload }) {
           </Reveal>
         </section>
         <LosSection report={r} selectedId={selectedId} onOpen={openStudy} />
+        <WatchLiveSection report={r} onOpen={openStudy} />
         <QueueSection report={r} onOpen={openStudy} />
         <MitigationSection report={r} onOpen={openStudy} />
         <MethodSection payload={payload} />
@@ -344,9 +359,7 @@ function assignmentNote(r: TisReport): string {
 // ---------------------------------------------------------------------------
 
 function sizeLabel(p: PittsburghSamplePayload): string {
-  const tg = p.report.tripGeneration;
-  if (tg.unitShort === "ksf") return `${fmtInt(tg.size * 1000)} sq ft${/GLA/.test(tg.unit) ? " GLA" : ""}`;
-  return `${fmtInt(tg.size)} ${tg.unit}`;
+  return siteSizeLabel(p.report);
 }
 
 function runDate(iso: string): string {
@@ -375,18 +388,19 @@ function Hero({ payload }: { payload: PittsburghSamplePayload }) {
     { value: h.worstDelta, decimals: 1, prefix: "+", suffix: " s", label: "Worst delay change", sub: h.worstRow ? h.worstRow.name : "—", tone: h.worstDelta >= 15 ? "warn" : undefined },
   ];
   return (
-    <header className="relative overflow-hidden border-b border-border">
+    <header id="study-glance" className="relative overflow-hidden border-b border-border scroll-mt-16" data-testid="pgh-study-glance">
       <div aria-hidden className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_top_right,rgba(37,99,235,0.14),transparent_60%)]" />
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-10">
         <Reveal>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-            <span className="text-blue-600 dark:text-blue-400 font-semibold">Traffic impact study</span>
+            <span className="text-blue-600 dark:text-blue-400 font-semibold">The study at a glance</span>
             <span aria-hidden>·</span>
             <span>Sample study</span>
             <span aria-hidden>·</span>
             <span>{payload.regionName}, {STATE_NAME}</span>
           </div>
-          <h1 className="mt-3 text-3xl sm:text-5xl font-bold tracking-tight text-foreground">{payload.projectName}</h1>
+          {/* The page's h1 is the opener's; this is the report header the opener lands on. */}
+          <h2 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-foreground">{payload.projectName}</h2>
           <p className="mt-3 text-base sm:text-lg text-muted-foreground max-w-3xl leading-relaxed">
             A {sizeLabel(payload)} shopping center on the McKnight Road corridor, opening in {r.request.openingYear}, screened against
             every signalized intersection within {r.studyRadiusMi} miles — trip generation, distribution, assignment and
@@ -446,7 +460,7 @@ function SectionNav() {
   return (
     <nav aria-label="Report sections" className="sticky top-16 z-30 border-b border-border bg-background/85 backdrop-blur-md">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 flex gap-1 overflow-x-auto py-2 text-sm [scrollbar-width:none]">
-        {SECTIONS.map((s, i) => (
+        {SECTIONS.map((s) => (
           <button
             key={s.id}
             type="button"
@@ -454,7 +468,7 @@ function SectionNav() {
             className={`shrink-0 rounded-md px-2.5 py-1 transition-colors ${active === s.id ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
             aria-current={active === s.id ? "true" : undefined}
           >
-            <span className="font-mono text-[10px] mr-1.5 opacity-70">§{String(i + 1).padStart(2, "0")}</span>{s.label}
+            <span className="font-mono text-[10px] mr-1.5 opacity-70">§{s.n}</span>{s.label}
           </button>
         ))}
       </div>
@@ -464,10 +478,10 @@ function SectionNav() {
 
 function SectionTitle({ id, title, note }: { id: string; title: string; note?: string }) {
   return (
-    <div className="space-y-2 -mt-3">
+    <Reveal className="space-y-2 -mt-3">
       <h2 id={id} className="text-2xl sm:text-3xl font-bold tracking-tight">{title}</h2>
       {note && <p className="text-sm text-muted-foreground max-w-4xl leading-relaxed">{note}</p>}
-    </div>
+    </Reveal>
   );
 }
 
@@ -798,6 +812,23 @@ function LosSection({ report, selectedId, onOpen }: { report: TisReport; selecte
   const rows = report.affectedIntersections;
   const [sc, setSc] = useState<LosScenario>("build");
   const [playing, setPlaying] = useState(false);
+  // Play Existing → No-Build → Build once, the first time the map scrolls
+  // into view (after its signals have popped in) — unless the reader has
+  // already picked a scenario, or prefers reduced motion (Build stays).
+  const playRef = useRef<HTMLDivElement>(null);
+  const mapInView = useInView(playRef, { once: true, margin: "0px 0px -30% 0px" });
+  const reduced = useReducedMotion();
+  const touched = useRef(false);
+  const autoPlayed = useRef(false);
+  useEffect(() => {
+    if (!mapInView || reduced || autoPlayed.current || touched.current) return;
+    const t = setTimeout(() => {
+      if (touched.current) return;
+      autoPlayed.current = true;
+      setPlaying(true);
+    }, 1100);
+    return () => clearTimeout(t);
+  }, [mapInView, reduced]);
   useEffect(() => {
     if (!playing) return;
     const order: LosScenario[] = ["existing", "noBuild", "build"];
@@ -818,10 +849,10 @@ function LosSection({ report, selectedId, onOpen }: { report: TisReport; selecte
       <SectionTitle
         id="los-title"
         title="Existing, No-Build and Build"
-        note={`Every signalized intersection in the study area, graded on control delay. Existing is ${existingYear(report)}; No-Build grows existing volumes to ${report.request.openingYear}; Build adds the project's trips. Play the three scenarios to watch the network change.`}
+        note={`Every signalized intersection in the study area, graded on control delay. Existing is ${existingYear(report)}; No-Build grows existing volumes to ${report.request.openingYear}; Build adds the project's trips. The map plays the three scenarios once as it comes into view; play them again, or pick one.`}
       />
       <Reveal>
-        <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]">
+        <div ref={playRef} className="rounded-2xl border border-border bg-card p-4 sm:p-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]" data-testid="los-map-panel">
           <LosMap report={report} sc={sc} selectedId={selectedId} onOpen={onOpen} />
           <div className="space-y-4 min-w-0">
             <div>
@@ -833,7 +864,7 @@ function LosSection({ report, selectedId, onOpen }: { report: TisReport; selecte
                     type="button"
                     role="radio"
                     aria-checked={sc === s}
-                    onClick={() => { setPlaying(false); setSc(s); }}
+                    onClick={() => { touched.current = true; setPlaying(false); setSc(s); }}
                     className={`rounded-md px-1 py-1.5 text-xs font-medium transition-colors ${sc === s ? "bg-blue-600 text-white shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-background/60"}`}
                     data-testid={`button-los-scenario-${s}`}
                   >
@@ -843,7 +874,7 @@ function LosSection({ report, selectedId, onOpen }: { report: TisReport; selecte
               </div>
               <button
                 type="button"
-                onClick={() => setPlaying((p) => !p)}
+                onClick={() => { touched.current = true; setPlaying((p) => !p); }}
                 className="mt-2 w-full inline-flex items-center justify-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
                 data-testid="button-los-play"
               >
@@ -1091,6 +1122,62 @@ function DelayChangeBars({ report, onOpen }: { report: TisReport; onOpen: (id: s
         })}
       </ol>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// §04a watch it live — the featured signal's micro-simulation
+// ---------------------------------------------------------------------------
+
+/** The featured McKnight Road signal (lib/pittsburgh-study.ts
+ *  featuredSignal: never a Perrysville / West View or "Near …" row) as the
+ *  intersection study's §04 micro-simulation, inline. It mounts as the
+ *  section nears the viewport and its own loop runs only while the canvas is
+ *  on screen — so it starts as you scroll to it and pauses when you leave. */
+function WatchLiveSection({ report, onOpen }: { report: TisReport; onOpen: (id: string) => void }) {
+  const row = useMemo(() => featuredSignal(report), [report]);
+  const weatherFactor = scenarioWeatherFactor(report, EMPTY_SCENARIO);
+  const model = useMemo(() => (row ? studyModelFromRow(row, null, { weatherFactor }) : null), [row, weatherFactor]);
+  const ref = useRef<HTMLDivElement>(null);
+  const near = useInView(ref, { once: true, margin: "300px 0px 300px 0px" });
+  if (!row || !model) return null;
+  const cycle = row.signalTiming?.cycleLenSec;
+  return (
+    <section id="live" className="scroll-mt-32 space-y-6" aria-labelledby="live-title">
+      <SectionMarker n="04a" label="Watch it live · micro-simulation" />
+      <SectionTitle
+        id="live-title"
+        title={`${row.name}, simulated`}
+        note={`The report's own inputs for this McKnight Road signal — its approach volumes, lanes${cycle ? ` and the computed ${cycle}-second cycle` : " and timing"} — driven as a single-junction micro-simulation, a ${MICRO_SIM_SPEED}× time-lapse that runs while it is on screen. Switch No-build and Build to watch the project's ${fmtInt(row.addedTripsPmPeak)} PM-peak trips arrive. The simulated readout is a stochastic measurement shown beside the engine's figures; the report's numbers are the engine's.`}
+      />
+      <Reveal>
+        <div ref={ref} className="rounded-2xl border border-border bg-card p-4 sm:p-5 space-y-4" data-testid="pgh-watch-live" data-signal-id={row.signalId}>
+          {/* The sim view's readout table is wider than its 300 px column:
+              give it more room beside the canvas on wide screens, and let its
+              cells wrap and the grid column shrink on narrow ones, so nothing
+              is clipped and the page never scrolls sideways (the shared
+              component is left as it is). */}
+          <div className="min-w-0 lg:[&_[data-testid=intersection-sim-view]>.grid]:grid-cols-[minmax(0,1fr)_390px] max-lg:[&_[data-testid=intersection-sim-view]>.grid]:grid-cols-1 max-sm:[&_[data-testid=sim-readout]_.whitespace-nowrap]:whitespace-normal">
+            {near
+              ? <IntersectionSimView sim={model.sim} />
+              : <div className="aspect-[4/3] max-h-[560px] rounded-md bg-[#0B1220]" aria-hidden />}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+            <div className="text-xs text-muted-foreground">
+              {row.distanceMi.toFixed(2)} mi from the site · PM peak: LOS {rowLos(row, "noBuild")} → {rowLos(row, "build")}, {rowDelay(row, "noBuild").toFixed(1)} → {rowDelay(row, "build").toFixed(1)} s/veh (No-Build → Build)
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpen(row.signalId)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+              data-testid="button-live-open-study"
+            >
+              Open this signal's full study <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </Reveal>
+    </section>
   );
 }
 

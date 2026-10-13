@@ -437,6 +437,8 @@ export type OpenerStory = {
     pmOut: number;
     pmRate: number;
     rateUnit: string;
+    /** The rate source's short name ("SANDAG 2002"), the variableSource up to its title. */
+    rateSource: string | null;
   };
   signal: {
     id: string;
@@ -526,6 +528,7 @@ export function openerStory(p: PittsburghSamplePayload): OpenerStory {
       pmOut: h.pmOut,
       pmRate: tg.pmRate ?? 0,
       rateUnit: tg.unit,
+      rateSource: tg.variableSource ? (tg.variableSource.split(/\s+[“"(]/)[0] ?? "").trim() || null : null,
     },
     signal,
     area: {
