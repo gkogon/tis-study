@@ -17,7 +17,18 @@
 //   5. no Atlanta / GDOT wording and none of the banned review phrases in
 //      the page, its helpers, or the report text it renders;
 //   6. when a production build is present (dist/public), the page's code is
-//      in a separate chunk, not the entry bundle.
+//      in a separate chunk, not the entry bundle — and so is the opener;
+//   7. the scroll-driven opener (components/pittsburgh-alive-opener.tsx):
+//      every number it narrates is a field of openerStory(payload), derived
+//      here independently from the payload and compared; none of those
+//      numbers is typed into the opener's (or its sim's) source; the featured
+//      signal is McKnight Road & McKnight Circle and never a Perrysville /
+//      West View / "Near …" row; a reduced-motion path exists; the opener and
+//      its sim are imported by the page only (so they stay in its lazy
+//      chunk); and the sim, run headless on the real rows, puts every signal
+//      where its coordinates say and runs each on its own cycle;
+//   8. the page wires the opener, the "Watch it live" section (the featured
+//      signal's micro-simulation) and the LOS map's one-time auto-play.
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join, relative } from "node:path";
@@ -34,6 +45,8 @@ const ROUTE = "/pittsburgh-study-private";
 const PAGE_FILE = join(src, "pages", "pittsburgh-study-private.tsx");
 const LIB_FILE = join(src, "lib", "pittsburgh-study.ts");
 const JSON_FILE = join(root, "public", "samples", "pittsburgh-mcknight-2026-10-05.json");
+const OPENER_FILE = join(src, "components", "pittsburgh-alive-opener.tsx");
+const SIM_FILE = join(src, "lib", "pittsburgh-alive-sim.ts");
 
 // ---- 1. route: registered, lazy, unlinked ----
 console.log("route");
@@ -204,12 +217,154 @@ if (lib && payload) {
   ok(lib.SCREENING_NOTE === "Screening estimate — not for design submittal without verification by a licensed PE.", "the screening note is the agreed sentence");
 }
 
+// ---- 7. the opener: narrated numbers, featured signal, reduced motion, lazy ----
+console.log("opener");
+const openerSrc = read(OPENER_FILE);
+const simSrc = read(SIM_FILE);
+ok(openerSrc !== null, "components/pittsburgh-alive-opener.tsx exists");
+ok(simSrc !== null, "lib/pittsburgh-alive-sim.ts exists");
+const storyApi = !!lib && ["openerStory", "featuredSignal", "isPresentableSignal"].every((k) => typeof lib[k] === "function");
+ok(storyApi, "lib/pittsburgh-study.ts exports openerStory, featuredSignal and isPresentableSignal");
+if (lib && payload && storyApi) {
+  const r = payload.report;
+  const rows = r.affectedIntersections;
+  const BAD = /perrysville|west view|^\s*near\b/i;
+  ok(lib.FEATURED_SIGNAL_ID === "pittsburgh-2402", `the featured signal id is pittsburgh-2402 (${lib.FEATURED_SIGNAL_ID})`);
+  const feat = lib.featuredSignal(r);
+  ok(feat?.name === "McKnight Road & McKnight Circle", `featuredSignal() is McKnight Road & McKnight Circle (${feat?.name})`);
+  ok(!!feat && !BAD.test(feat.name) && /McKnight Road/.test(feat.name), "the featured signal is on McKnight Road and not a Perrysville / West View / \"Near …\" row");
+  const badRows = rows.filter((x) => BAD.test(x.name));
+  ok(badRows.length >= 5 && badRows.every((x) => !lib.isPresentableSignal(x)), `isPresentableSignal rejects every Perrysville / West View / "Near …" row (${badRows.length} rows)`);
+  // even if the pinned id vanished, the fallback never lands on one of them
+  const noPin = { ...r, affectedIntersections: rows.filter((x) => x.signalId !== lib.FEATURED_SIGNAL_ID) };
+  const fb = lib.featuredSignal(noPin);
+  ok(!!fb && !BAD.test(fb.name) && /McKnight Road/.test(fb.name), `without the pinned row the fallback is still a clean McKnight Road signal (${fb?.name})`);
+
+  const story = lib.openerStory(payload);
+  // derive every narrated number independently from the payload
+  const pm = r.periodReports.find((p) => p.period === "pm_peak").tripGeneration;
+  const tg = r.tripGeneration;
+  const want = {
+    daily: tg.dailyTrips, gross: tg.pmPeakTrips, passBy: Math.round(pm.passByCredit), net: Math.round(pm.externalTrips),
+    nonAuto: Math.round(pm.rawTrips) - Math.round(pm.passByCredit) - Math.round(pm.internalCaptureCredit) - Math.round(pm.externalTrips),
+    in: Math.round(pm.inTrips), out: Math.round(pm.outTrips),
+  };
+  ok(story.site.dailyTrips === want.daily && want.daily === 16000, `act 1 daily trips = tripGeneration.dailyTrips (${story.site.dailyTrips})`);
+  ok(story.site.pmGross === want.gross && want.gross === 1600, `act 1 PM gross = tripGeneration.pmPeakTrips (${story.site.pmGross})`);
+  ok(story.site.pmPassBy === want.passBy && want.passBy === 480 && story.site.passByPct === 30, `act 1 pass-by = the PM period's passByCredit, 30% (${story.site.pmPassBy}, ${story.site.passByPct}%)`);
+  ok(story.site.pmNonAuto === want.nonAuto && want.nonAuto === 260, `act 1 transit/walk/bike = gross − credits − external (${story.site.pmNonAuto})`);
+  ok(story.site.pmNet === want.net && want.net === 860, `act 1 net new = the PM period's externalTrips (${story.site.pmNet})`);
+  ok(story.site.pmIn === want.in && story.site.pmOut === want.out && want.in + want.out === want.net, `act 1 in / out = ${want.in} / ${want.out} (${story.site.pmIn} / ${story.site.pmOut})`);
+  ok(near(story.site.autoSharePct, Math.round(r.autoModeShareApplied * 1000) / 10) && near(100 - story.site.autoSharePct, 23.2, 1e-9), `act 1 mode-share credit = 100 − auto share (${(100 - story.site.autoSharePct).toFixed(1)}%)`);
+  ok(story.site.sizeLabel === "200,000 sq ft GLA" && story.site.landUseCode === tg.landUseCode && story.site.pmRate === tg.pmRate, `act 1 size / land use / rate from tripGeneration (${story.site.sizeLabel}, LU ${story.site.landUseCode}, ${story.site.pmRate}/ksf)`);
+
+  const sg = story.signal;
+  ok(!!sg && sg.id === feat?.signalId, "act 2 narrates the featured row");
+  if (sg && feat) {
+    const loaded = feat.approaches.filter((a) => (a.currentVolumeVph ?? 0) > 0 || a.existingVolumeVph > 0 || a.futureVolumeVph > 0);
+    ok(JSON.stringify(sg.approaches.map((a) => a.dir)) === JSON.stringify(loaded.map((a) => a.direction)) && sg.approaches.length === 2, `act 2 lists the row's loaded approaches only (${sg.approaches.map((a) => a.dir).join(", ")})`);
+    for (const a of sg.approaches) {
+      const src = feat.approaches.find((x) => x.direction === a.dir);
+      ok(near(a.existing, src.currentVolumeVph) && near(a.noBuild, src.existingVolumeVph) && near(a.build, src.futureVolumeVph) && a.added === src.addedTripsPeak,
+        `act 2 ${a.dir}: Existing / No-Build / Build = current / existing / futureVolumeVph, +${a.added} = addedTripsPeak (${a.existing} / ${a.noBuild} / ${a.build})`);
+    }
+    const sb = sg.approaches.find((a) => a.dir === "SB");
+    ok(sb && sb.existing === 809 && sb.noBuild === 833.5 && near(sb.build, 947.9) && sb.added === 114, "act 2 SB reads 809 → 833.5 → 947.9 vph, +114 project");
+    ok(sg.approaches.find((a) => a.dir === "WB")?.source === "road-class default" && sb?.source === "AADT design hour", "act 2 tags each approach's volume source from legVolumes (SB AADT design hour, WB road-class default)");
+    ok(sg.cycleSec === feat.signalTiming.cycleLenSec && sg.cycleSec === 60 && sg.gNs === feat.signalTiming.gOverCns && sg.gEw === feat.signalTiming.gOverCew && feat.signalTiming.basis === "webster", `act 2 timing = signalTiming (Webster, ${sg.cycleSec} s, g/C ${sg.gNs} / ${sg.gEw})`);
+    ok(sg.delay.existing === feat.currentDelaySec && sg.delay.noBuild === feat.existingDelaySec && sg.delay.build === feat.futureDelaySec, `act 2 delay = current / existing / futureDelaySec (${sg.delay.existing} / ${sg.delay.noBuild} / ${sg.delay.build})`);
+    ok(sg.los.existing === feat.currentLos && sg.los.noBuild === feat.existingLos && sg.los.build === feat.futureLos && [sg.los.existing, sg.los.noBuild, sg.los.build].join("") === "CCC", "act 2 LOS = current / existing / futureLos (C, C, C)");
+    ok(near(sg.distanceMi, feat.distanceMi) && sg.compass === "north" && sg.addedTrips === feat.addedTripsPmPeak, `act 2 says ${sg.distanceMi} mi ${sg.compass} of the site, +${sg.addedTrips} project trips`);
+  }
+  const efCount = (field) => rows.filter((x) => x[field] === "E" || x[field] === "F").length;
+  const drops = rows.filter((x) => "ABCDEF".indexOf(x.futureLos) > "ABCDEF".indexOf(x.existingLos)).length;
+  ok(story.area.signals === r.intersectionsStudied && story.area.signals === 36, `act 3 signals = intersectionsStudied (${story.area.signals})`);
+  ok(story.area.losDrops === r.intersectionsWithLosDrop && story.area.losDrops === drops && drops === 8, `act 3 grade drops = intersectionsWithLosDrop = counted rows (${story.area.losDrops})`);
+  ok(story.area.ef.noBuild === efCount("existingLos") && story.area.ef.build === efCount("futureLos") && story.area.ef.build === r.intersectionsAtLosEf && story.area.ef.noBuild === 3 && story.area.ef.build === 8, `act 3 E/F No-Build → Build = counted rows (${story.area.ef.noBuild} → ${story.area.ef.build})`);
+  ok(story.area.radiusMi === r.studyRadiusMi && story.area.openingYear === r.request.openingYear && story.area.existingYear === r.request.openingYear - r.growthYears && story.area.netPmTrips === want.net, "act 3 radius / years / net trips from the report");
+
+  // none of the narrated numbers is typed into the opener or its sim
+  if (openerSrc && simSrc) {
+    const nums = new Set();
+    const add = (n) => { if (typeof n !== "number" || !Number.isFinite(n)) return; for (const v of [String(n), n.toFixed(1), n.toFixed(2), Math.round(n).toLocaleString("en-US"), String(Math.round(n))]) nums.add(v); };
+    for (const v of Object.values(story.site)) add(v);
+    if (sg) { for (const a of sg.approaches) { add(a.existing); add(a.noBuild); add(a.build); add(a.added); } add(sg.cycleSec); add(sg.gNs); add(sg.gEw); add(sg.distanceMi); add(sg.addedTrips); for (const v of Object.values(sg.delay)) add(v); }
+    add(story.area.signals); add(story.area.openingYear); add(story.area.existingYear); add(story.area.netPmTrips);
+    // only distinctive values: three or more significant characters, not a bare small integer
+    const distinctive = [...nums].filter((v) => v.replace(/[^0-9]/g, "").length >= 3 && !/^(100|1000)$/.test(v));
+    const esc = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const hits = [];
+    for (const v of distinctive) if (new RegExp(`(?<![0-9.,])${esc(v)}(?![0-9])`).test(strip(openerSrc))) hits.push(v);
+    ok(distinctive.length >= 20 && hits.length === 0, `no narrated number is typed into the opener (${distinctive.length} values checked${hits.length ? `; typed: ${hits.join(", ")}` : ""})`);
+    // the sim only draws; the words it paints come from the opener (SceneState labels)
+    const simText = strip(simSrc).match(/fillText\(\s*["'`][^"'`]*/g) ?? [];
+    ok(simText.length === 0 && /fillText\(st\.siteLabel/.test(simSrc) && /fillText\(st\.featuredLabel/.test(simSrc), `the sim paints no text of its own — only the labels the opener hands it${simText.length ? ` (found ${simText.join(" | ")})` : ""}`);
+    ok(/openerStory\(payload\)/.test(openerSrc), "the opener narrates from openerStory(payload)");
+    ok(!/Perrysville|West View/i.test(openerSrc + simSrc), "the opener and its sim never name a Perrysville / West View signal");
+  }
+}
+if (openerSrc) {
+  ok(/matchMedia\(\s*["']\(prefers-reduced-motion: reduce\)["']\s*\)/.test(openerSrc) && /data-testid="pgh-opener-static"/.test(openerSrc) && /reduced\s*\?\s*<OpenerStatic/.test(openerSrc), "the opener has a reduced-motion path: no pinned scroll, one still frame and the final values (pgh-opener-static)");
+  ok(/IntersectionObserver/.test(openerSrc) && /cancelAnimationFrame/.test(openerSrc), "the opener's loop stops while the scene is off screen");
+  ok(/aria-hidden/.test(openerSrc) && /data-testid="pgh-opener-illustrative"/.test(openerSrc) && /Illustrative scene; numbers from the study/.test(openerSrc), "the canvas is aria-hidden and the HUD says the scene is illustrative and the numbers the study's");
+}
+{
+  const importers = srcFiles.filter((f) => /from\s+["'][^"']*(components\/pittsburgh-alive-opener|lib\/pittsburgh-alive-sim)["']/.test(readFileSync(f, "utf8")));
+  const rel = importers.map((f) => relative(src, f)).sort();
+  ok(JSON.stringify(rel) === JSON.stringify(["components/pittsburgh-alive-opener.tsx", "pages/pittsburgh-study-private.tsx"]), `only the page (and the opener, for its sim) import the opener and its sim — they ride the page's lazy chunk (${rel.join(", ")})`);
+}
+
+// the sim, headless on the real rows
+let sim = null;
+try { sim = await import(pathToFileURL(SIM_FILE).href); } catch (e) { console.log(`  (sim import failed: ${e?.message ?? e})`); }
+ok(sim !== null, "lib/pittsburgh-alive-sim.ts loads under node");
+if (sim && payload && lib && storyApi) {
+  const r = payload.report;
+  const world = new sim.PghAliveSim({ site: { lat: r.request.latitude, lon: r.request.longitude }, radiusMi: r.studyRadiusMi, rows: r.affectedIntersections, featuredId: lib.FEATURED_SIGNAL_ID, footprintFt: Math.sqrt(r.tripGeneration.size * 1000), pmIn: 413, pmOut: 447 });
+  ok(world.sigs.length === r.affectedIntersections.length, `every studied row is a signal in the scene (${world.sigs.length})`);
+  const worst = Math.max(...world.sigs.map((s) => Math.abs(Math.hypot(s.x, s.y) / 5280 - r.affectedIntersections.find((x) => x.signalId === s.id).distanceMi)));
+  ok(worst < 0.01, `each signal sits at its row's distance from the site, to 0.01 mi (worst ${worst.toFixed(4)} mi)`);
+  const f = world.featured;
+  ok(f && f.id === lib.FEATURED_SIGNAL_ID && f.y < 0 && Math.abs(f.x) < 200, "the featured signal is drawn north of the site, where its coordinates put it");
+  ok(world.sigs.every((s) => { const row = r.affectedIntersections.find((x) => x.signalId === s.id); return s.C === (row.signalTiming?.cycleLenSec ?? 90) && s.losNoBuild === row.existingLos && s.losBuild === row.futureLos; }), "each signal runs its row's own cycle and carries its row's No-Build / Build LOS");
+  ok(world.sigs.filter((s) => s.drop).length === r.intersectionsWithLosDrop, `the rings drawn as grade drops are the report's ${r.intersectionsWithLosDrop}`);
+  // the featured signal's lights follow its g/C: NS green for gNs × C of every cycle
+  let green = 0; const N = 600;
+  for (let i = 0; i < N; i++) if (world.light(f, 0, (i / N) * f.C) === "G") green++;
+  ok(Math.abs(green / N - f.gNs) < 0.01, `the featured signal's NS green share is its g/C (${(green / N).toFixed(3)} vs ${f.gNs})`);
+  // a tiny synthetic network: a north–south road through the featured signal with the site to the south
+  const k = 1 / 364000, kl = 1 / (364000 * Math.cos((r.request.latitude * Math.PI) / 180));
+  const segs = [];
+  const lonF = r.request.longitude + f.x * kl;
+  for (let i = -8; i < 30; i++) {
+    const a = r.request.latitude - (i * 300) * k, b = r.request.latitude - ((i + 1) * 300) * k;
+    segs.push([1, Math.max(a, b), lonF, Math.min(a, b), lonF, 2, 64, "Test Road", 0]);
+  }
+  segs.push([4, r.request.latitude, r.request.longitude, r.request.latitude, lonF, 1, null, "Site Drive", 0]);
+  world.setRoads(segs);
+  world.demand = 1; world.projMul = 1;
+  let stoppedAtRed = 0, nan = false;
+  for (let i = 0; i < 2400; i++) {
+    world.step(0.25);
+    for (const fl of world.flows) for (const c of fl.cars) { if (!Number.isFinite(c.s) || !Number.isFinite(c.v)) nan = true; }
+    if (world.light(f, 0) === "R") stoppedAtRed = Math.max(stoppedAtRed, world.carCount().stopped);
+  }
+  const cc = world.carCount();
+  ok(world.flows.length > 0 && cc.total > 0 && !nan, `the sim runs on a network without NaN (${world.flows.length} flows, ${cc.total} cars)`);
+  ok(stoppedAtRed > 0, `cars queue at the featured signal on its red (${stoppedAtRed} stopped)`);
+}
+
 // ---- 5. wording ----
 console.log("wording");
 const BANNED = /independent review|second opinion|peer review|qa\/qc|\baudit|atlanta|gdot/i;
 const pageSrc = page ?? "";
 const libSrc = read(LIB_FILE) ?? "";
 const m1 = pageSrc.match(BANNED), m2 = libSrc.match(BANNED);
+for (const [label, text] of [["opener", openerSrc ?? ""], ["opener sim", simSrc ?? ""]]) {
+  const m = text.match(BANNED);
+  ok(text.length > 0 && !m, `${label} source has no banned / Atlanta wording${m ? ` ("${m[0]}")` : ""}`);
+}
 ok(pageSrc.length > 0 && !m1, `page source has no banned / Atlanta wording${m1 ? ` ("${m1[0]}")` : ""}`);
 ok(libSrc.length > 0 && !m2, `helper source has no banned / Atlanta wording${m2 ? ` ("${m2[0]}")` : ""}`);
 if (payload) {
@@ -220,6 +375,15 @@ if (lib && payload) {
   const m4 = lib.methodFacts(payload).map((f) => f.label + " " + f.text).join(" ").match(BANNED);
   ok(!m4, "the generated method copy has no banned wording");
 }
+
+// ---- 8. page wiring: opener, watch it live, LOS auto-play ----
+console.log("page wiring");
+ok(page !== null && /<PittsburghAliveOpener\b[^>]*payload=\{payload\}/.test(page), "the page renders the opener first, fed the payload");
+ok(page !== null && /id="study-glance"/.test(page) && /<Hero\b/.test(page), "the opener lands on the header's metric strip (#study-glance)");
+ok(page !== null && /function WatchLiveSection/.test(page) && /featuredSignal\(report\)/.test(page) && /<IntersectionSimView\s+sim=\{model\.sim\}/.test(page) && /data-testid="pgh-watch-live"/.test(page), "Watch it live embeds the featured signal's micro-simulation (No-build / Build toggle is the sim view's own)");
+ok(page !== null && /id="live"/.test(page) && /\{ id: "live", n: "04a"/.test(page), "Watch it live is §04a in the section nav");
+ok(page !== null && /mapInView/.test(page) && /setPlaying\(true\)/.test(page) && /touched\.current/.test(page) && /data-testid="button-los-play"/.test(page), "the LOS map auto-plays once on first view, and its Play button stays");
+ok(page !== null && /if \(!mapInView \|\| reduced/.test(page), "the LOS auto-play is skipped under reduced motion");
 
 // ---- 6. code-split (only when a build is present) ----
 console.log("bundle");
@@ -237,6 +401,12 @@ if (!indexHtml) {
   ok(holders.length === 1 && `assets/${holders[0]}` !== entry, `the page lives in its own chunk (${holders.join(", ") || "none"})`);
   ok(existsSync(join(dist, "samples", "pittsburgh-mcknight-2026-10-05.json")), "the payload ships as a static file in the build");
   ok(!entrySrc.includes("McKnight Road Retail Development"), "the payload is not inlined into the entry bundle");
+  const OPENER_MARK = "pgh-opener-illustrative";
+  const openerHolders = assets.filter((f) => readFileSync(join(dist, "assets", f), "utf8").includes(OPENER_MARK));
+  ok(openerHolders.length === 1 && openerHolders[0] === holders[0], `the opener ships in the page's lazy chunk only (${openerHolders.join(", ") || "none"})`);
+  const SIM_MARK = "Road drawing bins";
+  ok(!entrySrc.includes("pgh-opener") && !entrySrc.includes("pgh-watch-live"), "the entry bundle carries neither the opener nor the Watch it live section");
+  void SIM_MARK;
 }
 
 if (failed) { console.log(`\ncheck:pittsburgh-study-private FAILED (${failed})`); process.exit(1); }
