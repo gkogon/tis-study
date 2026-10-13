@@ -6,10 +6,29 @@
  * states what data sources were used, what was assumed, what is NOT covered,
  * and the conditions under which the report is no longer valid.
  */
+import type { TisReport } from "@workspace/tis-api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ShieldAlert } from "lucide-react";
+import { creditsDisclosure, growthDisclosure, studyRegion, suppliedCounts, tripCredits } from "../lib/study-disclosures";
 
-export function TisLimitations() {
+/**
+ * Every region-, growth- and credit-specific sentence is read from the report:
+ * the Atlanta and GDOT wording prints only for a study the engine placed in
+ * the Atlanta MSA (or, for the GDOT AADT series, in Georgia), and the growth
+ * rate and credits are the ones the engine applied (see lib/study-disclosures).
+ */
+export function TisLimitations({ report }: { report: TisReport }) {
+  const region = studyRegion(report.regionCode);
+  const growth = growthDisclosure(report);
+  const credits = creditsDisclosure(tripCredits(report));
+  const counts = suppliedCounts(report);
+  const supplied = counts.tmc + counts.linkCounts;
+  const suppliedKinds =
+    counts.tmc > 0 && counts.linkCounts > 0
+      ? `imported turning-movement counts at ${counts.tmc}, client link counts at ${counts.linkCounts}`
+      : counts.tmc > 0
+        ? "imported turning-movement counts"
+        : "client link counts";
   return (
     <Card className="break-inside-avoid print:break-before-page border-l-4 border-l-amber-500">
       <CardHeader>
@@ -37,21 +56,47 @@ export function TisLimitations() {
           <ul className="list-disc list-inside space-y-1 ml-2">
             <li>
               Signalized intersection inventory: derived from OpenStreetMap (OSM) traffic-signal
-              nodes within the Atlanta MSA, last refreshed at the date shown on the cover page.
+              nodes within {region.phrase}, last refreshed at the date shown on the cover page.
             </li>
             <li>
-              Existing volumes and turning-movement splits: deterministically modeled from
-              zone-level demand patterns calibrated to GDOT 511 incident-rate observations.
-              No measured tube counts, automated traffic recorder (ATR) counts, or video-derived
-              counts were used.
+              Existing volumes and turning-movement splits:{" "}
+              {region.isAtlanta ? (
+                <>
+                  deterministically modeled from zone-level demand patterns calibrated to GDOT 511
+                  incident-rate observations.
+                </>
+              ) : (
+                <>
+                  estimated, not counted. Each study signal's design-hour volume is AADT × K-factor
+                  from an AADT count record joined to the signal where a compatible record exists,
+                  otherwise a baseline volume estimated from road class, and its turning-movement
+                  splits are modeled.
+                </>
+              )}{" "}
+              {supplied > 0 ? (
+                <>
+                  Counts supplied with this study ({suppliedKinds}) are used at {supplied} of the{" "}
+                  {counts.signals} study signal{counts.signals === 1 ? "" : "s"}. No tube counts,
+                  automated traffic recorder (ATR) counts, or video-derived counts were collected for
+                  this study.
+                </>
+              ) : (
+                <>
+                  No measured tube counts, automated traffic recorder (ATR) counts, or video-derived
+                  counts were used.
+                </>
+              )}
             </li>
             <li>
               Trip generation: public-data average weekday rates (SANDAG 2002, corroborated by
               NHTS 2017 and NCHRP 716).
             </li>
             <li>
-              Capacity analysis: Highway Capacity Manual, 6th Edition, Chapter 19 (signalized
-              intersections).
+              Capacity analysis: the openly-published Webster/Akçelik signalized-intersection delay
+              model (Webster uniform delay plus the Akçelik time-dependent incremental term), graded
+              against the conventional US control-delay LOS bands. The controlling standard evaluates
+              LOS per the Highway Capacity Manual (current edition) via HCS and/or Synchro; this
+              screening model is superseded by those tools at submittal.
             </li>
           </ul>
         </Block>
@@ -63,14 +108,47 @@ export function TisLimitations() {
               Phased build-out is not modeled.
             </li>
             <li>
-              Background growth in non-project traffic is assumed at <strong>1.0% per year</strong>{" "}
-              compounded between the analysis date and the opening year. Adjust for local
-              corridor-specific growth observed in the GDOT Annual Average Daily Traffic series.
+              {growth.ratePct != null ? (
+                <>
+                  Background growth in non-project traffic is applied at{" "}
+                  <strong>{growth.ratePct}% per year</strong>
+                  {growth.years == null
+                    ? " compounded between the analysis date and the opening year."
+                    : growth.years > 0
+                      ? ` compounded over ${growth.years} year${growth.years === 1 ? "" : "s"} between the analysis date and the opening year.`
+                      : "; the opening year is not later than the analysis year, so no growth is compounded to it."}
+                </>
+              ) : (
+                <>The background growth rate applied to non-project traffic is not recorded in this study's output.</>
+              )}{" "}
+              {growth.source ? (
+                <>Source: {growth.source}.</>
+              ) : (
+                <>
+                  The basis of the rate is not recorded in this study's output (no measured growth rate
+                  accompanies it); state its basis before submittal.
+                </>
+              )}{" "}
+              Adjust for local corridor-specific growth observed in{" "}
+              {region.isGeorgia
+                ? "the GDOT Annual Average Daily Traffic series."
+                : "the controlling agency's Annual Average Daily Traffic (AADT) counts."}
             </li>
             <li>
-              No internal capture, pass-by, or mode-shift credits have been applied to project
-              trips. A formal TIS should apply the controlling agency's recommended credits where
-              land-use mix and proximity to transit support them.
+              {credits.allZero ? (
+                <>
+                  No internal capture, pass-by, or mode-shift credits have been applied to project
+                  trips. A formal TIS should apply the controlling agency's recommended credits where
+                  land-use mix and proximity to transit support them.
+                </>
+              ) : (
+                <>
+                  {credits.summary}{" "}
+                  {credits.anyApplied
+                    ? "A formal TIS should confirm each against the controlling agency's recommended credits for the land-use mix and proximity to transit."
+                    : "A formal TIS should apply the controlling agency's recommended credits where land-use mix and proximity to transit support them."}
+                </>
+              )}
             </li>
             <li>
               All affected intersections are assumed to operate under their existing signal

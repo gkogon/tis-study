@@ -2166,7 +2166,7 @@ export default function TisPage() {
           <MitigationsCard report={shown ?? report} />
           <MethodologyCard report={report} />
           <TisMethodologyAppendix report={report} />
-          <TisLimitations />
+          <TisLimitations report={report} />
           <footer className="text-xs text-muted-foreground text-center pt-4 border-t">
             {isFirmConfigured(firm) ? (
               <>
