@@ -64,10 +64,10 @@ const decodeRefs = (s) =>
   });
 /**
  * The banned customer-venue phrases, as the routes guard's BANNED_COPY spells them (any case;
- * "QA/QC", "QA / QC", "QA-QC", "QA\QC"), read on the phrase form of the text with its character
- * references decoded — so "peer‐review", "QA – QC" and "QA&mdash;QC" are read too.
+ * "QA/QC", "QA / QC", "QA-QC", "QA\QC"; "audit" in any form), read on the phrase form of the text
+ * with its character references decoded — so "peer‐review", "QA – QC" and "QA&mdash;QC" are read too.
  */
-const BANNED_COPY = /independent[\s-]*review|second[\s-]*opinion|peer[\s-]*review|qa\s*[/\\-]?\s*qc/i;
+const BANNED_COPY = /independent[\s-]*review|second[\s-]*opinion|peer[\s-]*review|qa\s*[/\\-]?\s*qc|\baudit/i;
 const hasBannedCopy = (p) => BANNED_COPY.test(phraseForm(decodeRefs(p)));
 /** Blank-line separated blocks, each flattened. */
 const paragraphs = (s) => s.split(/\n[ \t]*\n/).map(flat).filter(Boolean);
@@ -125,7 +125,7 @@ const bannedOnlyInTheBan = (text, file) => {
   const exempt = BAN_EXEMPT[file];
   return exempt.every((re) => paras.some((p) => re.test(p))) && paras.filter((p) => !exempt.some((re) => re.test(p))).every((p) => !hasBannedCopy(p));
 };
-const BANNED_MSG = "\"independent review\", \"second opinion\", \"peer review\" and \"QA/QC\" (any case; a space, hyphen, any dash or an HTML dash between the words; \"QA / QC\", \"QA-QC\")";
+const BANNED_MSG = "\"independent review\", \"second opinion\", \"peer review\", \"QA/QC\" and \"audit\" (any case; a space, hyphen, any dash or an HTML dash between the words; \"QA / QC\", \"QA-QC\"; \"audits\", \"auditor\")";
 // The one permitted description. Nothing asserted this before.
 ok(protocolFlat.includes("an internal consistency and traceability check"),
   "protocol states the permitted description verbatim");
@@ -1032,6 +1032,9 @@ const MUTATIONS = [
   { label: "SKILL.md: QA-QC (no slash)", file: "skill", flips: ["skill-banned-copy"], apply: edit("skill", "- `DISCLOSE` — add the language to the deliverable.", "- `DISCLOSE` — add the language to the deliverable as QA-QC.") },
   { label: "SKILL.md: QA / QC, spaced", file: "skill", flips: ["skill-banned-copy"], apply: edit("skill", "Relay findings verbatim to the operator.", "Relay findings verbatim to the operator as QA / QC.") },
   { label: "SKILL.md: QA&mdash;QC", file: "skill", flips: ["skill-banned-copy"], apply: edit("skill", "Relay findings verbatim to the operator.", "Relay findings verbatim to the operator as QA&mdash;QC.") },
+  { label: "protocol: audit in §3", file: "protocol", flips: ["protocol-banned-copy"], apply: edit("protocol", "- Spot-check the signal list against the basemap.", "- Spot-check the signal list against the basemap, as an audit would.") },
+  { label: "datum.md: Auditor", file: "agent", flips: ["agent-banned-copy"], apply: edit("agent", "**You cannot edit.**", "**You cannot edit.** You are its Auditor.") },
+  { label: "SKILL.md: audits", file: "skill", flips: ["skill-banned-copy"], apply: edit("skill", "Relay findings verbatim to the operator.", "Relay findings verbatim to the operator, as audits are.") },
   { label: "protocol: an &mdash; compound", file: "protocol", flips: ["protocol-no-blocker-unverified"], apply: edit("protocol", "## 6. Limitations disclosure", "Never a `BLOCKER` &mdash; `unverified`.\n\n## 6. Limitations disclosure") },
   { label: "protocol: a slash compound", file: "protocol", flips: ["protocol-no-blocker-unverified"], apply: edit("protocol", "- Spot-check the signal list against the basemap.", "- Spot-check the signal list against the basemap; a gap is `BLOCKER`/`unverified`.") },
   { label: "datum.md: a &#8212; compound", file: "agent", flips: ["agent-no-blocker-unverified"], apply: edit("agent", "Work the six sections in order:", "A gap is BLOCKER &#8212; unverified. Work the six sections in order:") },

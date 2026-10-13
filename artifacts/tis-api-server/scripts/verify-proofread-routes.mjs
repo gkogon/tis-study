@@ -1580,8 +1580,9 @@ const RUNNER_IMPORTS = {
 const THREE_LIMITERS = ["proofreadRunLimiter", "proofreadDispositionLimiter", "proofreadReadLimiter"];
 
 // Banned phrases (product-visible copy). Hyphenated and capitalised variants
-// count: a literal-substring check passes on "Second-Opinion".
-const BANNED_COPY = /independent[\s-]*review|second[\s-]*opinion|peer[\s-]*review|qa\s*[/\\-]?\s*qc/i;
+// count: a literal-substring check passes on "Second-Opinion". "audit" is banned
+// in any form ("audits", "Auditor"), as the copy and protocol guards ban it.
+const BANNED_COPY = /independent[\s-]*review|second[\s-]*opinion|peer[\s-]*review|qa\s*[/\\-]?\s*qc|\baudit/i;
 
 const GUARD_404_PROJECT = 'if (!(await projectExistsForFirm(firm.id, id))) { res.status(404).json({ error: "Project not found." }); return; }';
 const GUARD_404_FINDING =
@@ -2875,7 +2876,7 @@ const CHECKS = [
   {
     id: "copy-routes",
     on: "routes",
-    msg: 'route copy avoids "independent review", "second opinion", "peer review" and "QA/QC" (permitted: an internal consistency and traceability check)',
+    msg: 'route copy avoids "independent review", "second opinion", "peer review", "QA/QC" and "audit" (permitted: an internal consistency and traceability check)',
     test: (d) => d.routes.length > 0 && !BANNED_COPY.test(d.routes),
   },
 
@@ -4539,6 +4540,12 @@ const MUTATIONS = [
     flips: ["copy-routes"],
     apply: edit("routes", "Failed to record the decision.", "Failed to record the QA/QC decision."),
   },
+  {
+    label: "banned copy in a route message (audit)",
+    file: "routes",
+    flips: ["copy-routes"],
+    apply: edit("routes", "Failed to load the check.", "Failed to load the audit."),
+  },
 
   // ---- contract ------------------------------------------------------------
   {
@@ -4733,6 +4740,12 @@ const MUTATIONS = [
     file: "contract",
     flips: ["copy-contract"],
     apply: edit("contract", "WITHDRAWN requires the source", "WITHDRAWN is a peer review that requires the source"),
+  },
+  {
+    label: "banned copy in the contract's message (Auditor)",
+    file: "contract",
+    flips: ["copy-contract"],
+    apply: edit("contract", "WITHDRAWN requires the source", "WITHDRAWN requires the Auditor's source"),
   },
   {
     label: "stop re-exporting the contract from the package index",
@@ -5774,6 +5787,12 @@ const MUTATIONS = [
     flips: ["copy-limiters"],
     apply: edit("security", "Too many proofread runs this hour.", "Too many independent review runs this hour."),
   },
+  {
+    label: "banned copy in a limiter's 429 message (audits)",
+    file: "security",
+    flips: ["copy-limiters"],
+    apply: edit("security", "Too many proofread runs this hour.", "Too many audits this hour."),
+  },
 
   // ---- schema: the table names the raw-SQL scans read ---------------------
   {
@@ -5836,6 +5855,8 @@ const MUTATIONS = [
     label: "routes: a raw delete with a bare alias on a table declared two directories down, a line comment before its name",
     file: "routes",
     flips: ["routes-do-not-touch-study"],
+    // The word "audits" is now in the route file's text, and copy-routes bans "audit" in any form.
+    also: ["copy-routes"],
     apply: chain(
       addSchema("log/2026/audits.ts", 'import { integer, pgTable } from "drizzle-orm/pg-core";\nexport const auditsTable = pgTable(\n  // kept for the log\n  "audits",\n  { id: integer("id") },\n);\n'),
       edit("routes", "const router: IRouter = Router();", 'const router: IRouter = Router();\nconst q7 = "delete from audits a where true";'),

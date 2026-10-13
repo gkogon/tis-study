@@ -7,11 +7,16 @@
  *
  *  1. COPY (source text). The product surface is a customer venue, so
  *     TIS-PROOFREAD-PROTOCOL.md's ban on "independent review", "second opinion",
- *     "peer review" and "QA/QC" applies to it. The permitted description is
- *     "an internal consistency and traceability check". A banned phrase is a
- *     property of the text, so a text scan is the right tool for it — and it is
- *     repeated over the RENDERED output of every status, because copy built at
- *     runtime never appears in the source.
+ *     "peer review" and "QA/QC" applies to it, and so does "audit". The permitted
+ *     description is "an internal consistency and traceability check". A banned
+ *     phrase is a property of the text, so a text scan is the right tool for it —
+ *     the routes and protocol guards' BANNED_COPY over the text's phrase form
+ *     (character references decoded, any run of hyphens, dashes and whitespace
+ *     read as one space), so "peer-review", "QA / QC", "second–opinion" and
+ *     "independent  review" are read — over the panel, the client module, the
+ *     route file and the project page that mounts the panel, and repeated over the
+ *     RENDERED output of every status, because copy built at runtime never
+ *     appears in the source.
  *
  *  2. BEHAVIOUR (rendered). The panel's claims are not strings: "a study that was
  *     never checked is not clean", "findings appear only for a finished run",
@@ -250,7 +255,28 @@ const runOf = (status, o = {}) => ({ status, runId: "run-uuid", coverage: FULL_C
 const FINISHED = ["rules_ready", "ready"];
 const PENDING = ["queued", "running"];
 const ALL_STATUSES = ["none", "queued", "running", "rules_ready", "ready", "failed"];
-const BANNED = ["independent review", "second opinion", "peer review", "QA/QC", "audit"];
+/** Collapse whitespace, and fold every run of hyphens and dashes into it, so "peer-review" reads as "peer review". */
+const phraseForm = (s) => s.replace(/[-\u2010-\u2015]+/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+/**
+ * HTML character references read as the character they render: numeric (`&#8212;`, `&#x2014;`) and the named dashes
+ * (`&mdash;`, `&ndash;`, `&minus;`, `&hyphen;`, `&dash;`), as the protocol guard reads them.
+ */
+const NAMED_DASH = { mdash: "\u2014", ndash: "\u2013", minus: "\u2212", hyphen: "\u2010", dash: "\u2010" };
+const decodeRefs = (s) =>
+  s.replace(/&#(\d{1,7});|&#x([0-9a-f]{1,6});|&(mdash|ndash|minus|hyphen|dash);/gi, (m, d, h, n) => {
+    if (n) return NAMED_DASH[n.toLowerCase()];
+    const cp = d ? Number(d) : parseInt(h, 16);
+    return cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
+  });
+/**
+ * The banned customer-venue phrases, spelled as the routes and protocol guards' BANNED_COPY spells them (any case;
+ * "QA/QC", "QA / QC", "QA-QC", "QA\QC"), with "audit" in any form ("audits", "auditor", "Audit log"). Read on the
+ * phrase form of the text with its character references decoded, never as a substring of the raw text.
+ */
+const BANNED_COPY = /independent[\s-]*review|second[\s-]*opinion|peer[\s-]*review|qa\s*[/\\-]?\s*qc|\baudit/i;
+const BANNED_MSG = '"independent review", "second opinion", "peer review", "QA/QC" and "audit" (any case; spaced, hyphenated, dashed or run together)';
+/** The banned phrase `text` holds, as found in its phrase form, or null. */
+const bannedIn = (text) => BANNED_COPY.exec(phraseForm(decodeRefs(text)))?.[0] ?? null;
 
 // ─── fixtures read once: the real pass, and the server's contract ───────────────────
 const { runClauses, ALL_CLAUSES, findingFingerprint } = await import(
@@ -447,9 +473,9 @@ async function suite(src) {
   const panel = src.panel;
 
   // ─── 1. COPY ──────────────────────────────────────────────────────────────────────
-  for (const file of ["panel", "lib", "route"]) {
-    const txt = src[file].toLowerCase();
-    for (const phrase of BANNED) ok(`${file}-avoids-banned-copy`, !txt.includes(phrase.toLowerCase()), `${FILES[file]}: avoids "${phrase}"`);
+  for (const file of ["panel", "lib", "route", "page"]) {
+    const hit = bannedIn(src[file]);
+    ok(`${file}-avoids-banned-copy`, src[file].length > 0 && hit === null, `${FILES[file]}: avoids ${BANNED_MSG}${hit === null ? "" : ` — found ${JSON.stringify(hit)}`}`);
   }
   ok("source-permitted-description", /internal consistency and traceability check/i.test(panel), "the panel uses the permitted description verbatim");
   ok("source-names-never-checked", /status === "none"/.test(panel), "the panel names the never-checked status (the BRANCH is asserted below, by rendering)");
@@ -1207,7 +1233,8 @@ async function suite(src) {
       const html = keep(view(runOf("rules_ready", { findings: [mk("a", "NOTE")] }), { error: lib.SUPERSEDED_NOTICE }));
       const t = text(html);
       ok("superseded-notice-rendered", t.includes(lib.SUPERSEDED_NOTICE) && /not recorded/.test(lib.SUPERSEDED_NOTICE), `rendered, the panel says the decision was not recorded and why (${JSON.stringify(lib.SUPERSEDED_NOTICE)})`);
-      ok("superseded-notice-copy-clean", BANNED.every((p) => !t.toLowerCase().includes(p.toLowerCase())), "that state's rendered copy avoids the banned phrases");
+      const hit = bannedIn(t) ?? bannedIn(html);
+      ok("superseded-notice-copy-clean", hit === null, `that state's rendered copy avoids ${BANNED_MSG}${hit === null ? "" : ` — found ${JSON.stringify(hit)}`}`);
     });
 
     // ─── the panel offers exactly what the server accepts ─────────────────────────────
@@ -1231,14 +1258,16 @@ async function suite(src) {
 
     // Last of the rendered groups, so "every state" is every state this guard drew.
     await group("rendered copy", () => {
-      const all = everyHtml.join("\n").toLowerCase();
       ok("pre-rendered-states", everyHtml.length >= 15, `rendered ${everyHtml.length} states (a guard that rendered nothing proves nothing)`);
       ok(
         "rendered-permitted-description",
         everyHtml.every((h) => /internal consistency and traceability check/.test(text(h))),
         "every rendered state describes the check as 'an internal consistency and traceability check' (the source line above can be satisfied by a comment)",
       );
-      for (const phrase of BANNED) ok("rendered-avoids-banned-copy", !all.includes(phrase.toLowerCase()), `rendered output of every state avoids "${phrase}"`);
+      // Each state read twice: as the words a user sees (tags dropped) and as markup (attributes such as a title or an
+      // aria-label are copy too).
+      const hits = everyHtml.map((h) => bannedIn(text(h)) ?? bannedIn(h)).filter((h) => h !== null);
+      ok("rendered-avoids-banned-copy", hits.length === 0, `rendered output of every state avoids ${BANNED_MSG}${hits.length ? ` — found ${JSON.stringify(hits[0])} in ${hits.length} state(s)` : ""}`);
       ok("rendered-no-study-changing-control", !/\bapply\b|\bfix it\b|\bauto-?fix\b/i.test(text(everyHtml.join("\n"))), "rendered output offers no apply / fix-it / auto-fix control");
       ok("no-react-warnings", warnings.length === 0, `rendering raised no React warnings${warnings.length ? `: ${warnings[0]}` : ""}`);
     });
@@ -1416,6 +1445,16 @@ const MUTATIONS = [
   { label: "the panel source names an apply action it never renders", file: "panel", flips: ["source-no-study-changing-control"], apply: edit("panel", "const POLL_MS = 60_000;", 'const POLL_MS = 60_000;\nexport const NEXT_STEP = "apply";') },
   { label: "a finding's remedy is labelled as something to apply", file: "panel", flips: ["source-no-study-changing-control", "rendered-no-study-changing-control"], apply: edit("panel", "<li>Suggested: {f.remedy}</li>", "<li>Apply: {f.remedy}</li>") },
   { label: "a finding's remedy line says peer review", file: "panel", flips: ["panel-avoids-banned-copy", "rendered-avoids-banned-copy"], also: ["superseded-notice-copy-clean"], apply: edit("panel", "<li>Suggested: {f.remedy}</li>", "<li>Suggested for peer review: {f.remedy}</li>") },
+  // The banned phrase in the spellings a substring match missed (fix wave 3, G2-1): hyphenated, spaced around the
+  // slash, joined by an en dash, run with two spaces, and on the project page, which mounts the panel.
+  { label: "banned copy, hyphenated, in a string the panel never renders", file: "panel", flips: ["panel-avoids-banned-copy"], apply: edit("panel", "const POLL_MS = 60_000;", 'const POLL_MS = 60_000;\nexport const PANEL_KIND = "peer-review";') },
+  { label: "banned copy, spaced around the slash, in a string the client module exports", file: "lib", flips: ["lib-avoids-banned-copy"], apply: edit("lib", "export const RULES_CHANGED_LINE =", 'export const CHECK_KIND = "QA / QC";\n\nexport const RULES_CHANGED_LINE =') },
+  { label: "banned copy with two spaces in the route file", file: "route", flips: ["route-avoids-banned-copy"], apply: edit("route", "const router: IRouter = Router();", 'const router: IRouter = Router();\nconst CHECK_KIND = "independent  review";\nvoid CHECK_KIND;') },
+  { label: "the notice says second\u2013opinion (an en dash)", file: "lib", flips: ["superseded-notice-copy-clean", "lib-avoids-banned-copy", "rendered-avoids-banned-copy"], apply: edit("lib", "The latest run is shown.", "The latest second\u2013opinion run is shown.") },
+  { label: "a finding's remedy line says peer-review", file: "panel", flips: ["panel-avoids-banned-copy", "rendered-avoids-banned-copy"], also: ["superseded-notice-copy-clean"], apply: edit("panel", "<li>Suggested: {f.remedy}</li>", "<li>Suggested for peer-review: {f.remedy}</li>") },
+  { label: "a finding's remedy line says independent  review (two spaces)", file: "panel", flips: ["panel-avoids-banned-copy", "rendered-avoids-banned-copy"], also: ["superseded-notice-copy-clean"], apply: edit("panel", "<li>Suggested: {f.remedy}</li>", "<li>Suggested for independent  review: {f.remedy}</li>") },
+  { label: "the panel names an Audit log it never renders", file: "panel", flips: ["panel-avoids-banned-copy"], apply: edit("panel", "const POLL_MS = 60_000;", 'const POLL_MS = 60_000;\nexport const LOG_KIND = "Audit log";') },
+  { label: "the project page's UTDF tooltip says QA / QC", file: "page", flips: ["page-avoids-banned-copy"], apply: edit("page", 'title="Synchro-importable CSV scaffold (Build scenario).', 'title="Synchro-importable CSV scaffold for QA / QC (Build scenario).') },
 
   // ---- never checked ---------------------------------------------------------------
   {
