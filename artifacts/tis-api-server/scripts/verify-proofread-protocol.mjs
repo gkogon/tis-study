@@ -201,8 +201,12 @@ ok(/not by itself an open study/i.test(flat(logging)),
 //     too), any sentence that ties a completion word (COMPLETION) to a set of
 //     types or to the findings as a whole (FINDING_SET) must be that sentence or
 //     one of the named non-gate sentences ([*-no-other-gate]) — so a reworded
-//     gate is read without its trigger phrase. A gate written with neither a
-//     completion word nor a type ("a study holds only on ...") is not read.
+//     gate is read without its trigger phrase. Not read: a gate whose verb is not
+//     in COMPLETION ("hand over", "file with the agency", "send", "approve"); one
+//     whose condition names no type and no finding set FINDING_SET reads ("while
+//     anything flagged is open", "until they are all decided" — a pronoun);
+//     "issue", "release" or "stamp" after an article, a possessive, "engine" or
+//     "rules" (read as the noun); and a gate split across two sentences.
 //
 //     `BLOCKER — unverified` is none of the six types, so it may appear in none of
 //     the three files, in the spellings BLOCKER_UNVERIFIED reads; §5's criterion Datum
@@ -242,12 +246,22 @@ const itemsOpening = (text, type) => itemsOf(text).filter((b) => b.startsWith(`-
 const typesIn = (u) => [...new Set([...u.matchAll(/\b(BLOCKER|DEFECT|DISCLOSE|NOTE|UNVERIFIED|CONTESTED)\b/g)].map((m) => m[1]))];
 /**
  * Words that name completion. A gate is a sentence that ties one of these to a condition, so a
- * reworded gate ("done when no `BLOCKER` is open", "ships once every finding has a disposition")
- * is read without its author using "complete only" or "may be called complete".
+ * reworded gate ("done when no `BLOCKER` is open", "ships once every finding has a disposition",
+ * "may be submitted only when ...", "do not deliver while ...") is read without its author using
+ * "complete only" or "may be called complete". The verbs a study leaves by: complete, finish, ship,
+ * seal, sign off (or sign-off), submit, deliver, finalize/finalise, release, issue, stamp, go out.
+ * "issue", "release" and "stamp" are nouns too ("record the issue or PR", "the engine stamp"): after
+ * an article, a possessive or "engine"/"rules", they are read as the noun, not as completion.
  */
-const COMPLETION = /\b(?:complete|completed|completion|done|finish|finished|ship|ships|shipped|shipping|seal|seals|sealed|sealable|sign(?:s|ed)?\s+off|gate)\b/i;
-/** A condition on the findings as a whole: "any / every / all / each / no (open, undisposed ...) finding / item", or "findings ... disposed / open / resolved". */
-const FINDING_SET = /\b(?:any|every|all|each|no)\s+(?:(?:open|undisposed|unresolved|outstanding|remaining|undecided)\s+)?(?:findings?|items?)\b|\b(?:findings?|items?)\b[^.]*\b(?:dispositions?|disposed|undisposed|dispositioned|open|closed|resolved|decided)\b/i;
+const COMPLETION =
+  /\b(?:complete|completed|completion|done|finish|finished|ship|ships|shipped|shipping|seal|seals|sealed|sealable|sign(?:s|ed)?[\s-]*off|gate|submit|submits|submitted|submitting|submission|deliver|delivers|delivered|delivering|finali[sz](?:e|es|ed|ing)|released|releasing|issued|issuing|stamped|stamping|(?:go|goes|went|gone|going)\s+out)\b|(?<!\b(?:a|an|the|this|that|its|their|engine|rules)\s+)\b(?:release|releases|issue|issues|stamp|stamps)\b/i;
+/**
+ * A condition on the findings as a whole: "any / every / all / each / no (open, undisposed ...) finding / item";
+ * a finding set led by its adjective ("undisposed findings", "Open items", "an outstanding item"); or "findings ...
+ * disposed / open / resolved".
+ */
+const FINDING_SET =
+  /\b(?:any|every|all|each|no)\s+(?:(?:open|undisposed|unresolved|outstanding|remaining|undecided)\s+)?(?:findings?|items?)\b|\b(?:open|undisposed|unresolved|outstanding|undecided)\s+(?:findings?|items?)\b|\b(?:findings?|items?)\b[^.]*\b(?:dispositions?|disposed|undisposed|dispositioned|open|closed|resolved|decided)\b/i;
 /**
  * The sentences, per file, that name completion beside a type and are NOT gates: the record-not-
  * a-bar exemption and Disagreement 6's CONTESTED hold. Exact text; each must still be there.
@@ -271,7 +285,7 @@ const statesNoOtherGate = (text, file) => {
   return otherGates(text, file).length === 0 && GATE_EXEMPT[file].every((x) => units.includes(x));
 };
 const NO_OTHER_GATE_MSG = (who) =>
-  `${who}: no sentence but the gate sentence ties completion (complete, completion, done, finished, ship, seal, sign off, gate) to a set of finding types or to the findings as a whole (any / every / all / each / no finding or item; findings ... disposed, open or resolved) — so no "any undisposed finding" gate, no BLOCKER-only gate and no gate over another type set, in any words`;
+  `${who}: no sentence but the gate sentence ties completion (complete, completion, done, finished, ship, seal, sign off or sign-off, gate, submit, deliver, finalize/finalise, release, issue, stamp, go out) to a set of finding types or to the findings as a whole (any / every / all / each / no finding or item; undisposed, open, unresolved, outstanding or undecided findings or items; findings ... disposed, open or resolved) — so no "any undisposed finding" gate, no BLOCKER-only gate and no gate over another type set, in any words`;
 /** Numbered rule `n` of "Rules of the pass", flattened: from "n. " to the next rule or the next heading. */
 const ruleOf = (text, n) => flat(text.match(new RegExp(`^${n}\\. ([\\s\\S]*?)(?=^\\d+\\. |^#)`, "m"))?.[1] ?? "");
 /** The bullets of rule 2, each flattened, keyed by the type it opens with. */
@@ -876,6 +890,14 @@ for (const c of CHECKS) ok(!failing.includes(c.id), `[${c.id}] ${c.msg}`);
 // Teeth. Each edit breaks one protected property in one file's text and must
 // turn exactly the listed checks red, all of them about that file.
 const edit = (file, from, to) => (t) => ({ ...t, [file]: t[file].replace(from, to) });
+/** Fix wave 3, G3-1: gates the first reading of [*-no-other-gate] did not see. Each must go red in all four files. */
+const G3_1_GATES = [
+  "A study with undisposed findings is not complete.",
+  "Undisposed findings bar completion.",
+  "The study may be submitted to the agency only when no `BLOCKER` is open.",
+  "Do not deliver a study while any finding is undisposed.",
+  "Open items keep the study from completion.",
+];
 const OLD_TWO_WAY = "A study may be called complete only with\n**no open BLOCKER and no open CONTESTED**.";
 const MUTATIONS = [
   // protocol
@@ -1006,6 +1028,25 @@ const MUTATIONS = [
   { label: "redline.md: a BLOCKER-only gate (ships once)", file: "redline", flips: ["redline-no-other-gate"], apply: edit("redline", "When you hand work to Datum:", "A study ships once no `BLOCKER` is open.\n\nWhen you hand work to Datum:") },
   { label: "redline.md: an every-finding seal gate", file: "redline", flips: ["redline-no-other-gate"], apply: edit("redline", "When you hand work to Datum:", "The PE may seal once every finding is disposed of.\n\nWhen you hand work to Datum:") },
   { label: "redline.md: a \"complete only\" sentence that is not the gate", file: "redline", flips: ["redline-no-other-gate"], apply: edit("redline", "When you hand work to Datum:", "A study is complete only once Datum signs.\n\nWhen you hand work to Datum:") },
+  // Gates in words the first reading missed (fix wave 3, G3-1, G3-3): a finding set led by its adjective ("undisposed
+  // findings", "Open items"), and completion said as submit, deliver, finalize/finalise, release, issue, sign-off,
+  // stamp or "goes out". The five sentences in every file; each further word once.
+  ...G3_1_GATES.flatMap((g) => [
+    { label: `protocol: ${g}`, file: "protocol", flips: ["protocol-no-other-gate"], apply: edit("protocol", "## Logging\n\n", `## Logging\n\n${g}\n\n`) },
+    { label: `datum.md: ${g}`, file: "agent", flips: ["agent-no-other-gate"], apply: edit("agent", "## Output\n", `## Output\n\n${g}\n`) },
+    { label: `SKILL.md: ${g}`, file: "skill", flips: ["skill-no-other-gate"], apply: edit("skill", "Relay findings verbatim to the operator.", `${g} Relay findings verbatim to the operator.`) },
+    { label: `redline.md: ${g}`, file: "redline", flips: ["redline-no-other-gate"], apply: edit("redline", "When you hand work to Datum:", `${g}\n\nWhen you hand work to Datum:`) },
+  ]),
+  { label: "protocol: finalize", file: "protocol", flips: ["protocol-no-other-gate"], apply: edit("protocol", "## Logging\n\n", "## Logging\n\nFinalize the study once every finding is disposed.\n\n") },
+  { label: "datum.md: finalise, wrapped", file: "agent", flips: ["agent-no-other-gate"], apply: edit("agent", "## Output\n", "## Output\n\nThe engineer may finalise the study\nwhen no `CONTESTED` item is open.\n") },
+  { label: "SKILL.md: released", file: "skill", flips: ["skill-no-other-gate"], apply: edit("skill", "Relay findings verbatim to the operator.", "A study is released with no outstanding findings. Relay findings verbatim to the operator.") },
+  { label: "redline.md: issued", file: "redline", flips: ["redline-no-other-gate"], apply: edit("redline", "When you hand work to Datum:", "The letter is issued only when no `BLOCKER` is open.\n\nWhen you hand work to Datum:") },
+  { label: "protocol: sign-off, hyphenated", file: "protocol", flips: ["protocol-no-other-gate"], apply: edit("protocol", "## Logging\n\n", "## Logging\n\nThe PE's sign-off waits until no `BLOCKER` is open.\n\n") },
+  { label: "datum.md: stamped", file: "agent", flips: ["agent-no-other-gate"], apply: edit("agent", "## Output\n", "## Output\n\nA study is stamped once all findings are resolved.\n") },
+  { label: "SKILL.md: goes out", file: "skill", flips: ["skill-no-other-gate"], apply: edit("skill", "Relay findings verbatim to the operator.", "The study goes out when no `DEFECT` is open. Relay findings verbatim to the operator.") },
+  { label: "protocol: issue, the verb", file: "protocol", flips: ["protocol-no-other-gate"], apply: edit("protocol", "## Logging\n\n", "## Logging\n\nDo not issue the study while a `BLOCKER` is open.\n\n") },
+  { label: "datum.md: release, the verb", file: "agent", flips: ["agent-no-other-gate"], apply: edit("agent", "## Output\n", "## Output\n\nRelease the study once no undecided items remain.\n") },
+  { label: "redline.md: stamp, the verb", file: "redline", flips: ["redline-no-other-gate"], apply: edit("redline", "When you hand work to Datum:", "The PE may stamp the study when every finding is decided.\n\nWhen you hand work to Datum:") },
   { label: "redline.md: back to admin-only, not user-facing", file: "redline", flips: ["redline-audiences"], apply: edit("redline", /\*\*Datum\*\* is the proofreader\.[\s\S]*?alone sees `DEFECT`\./, "**Datum** is the proofreader — admin-only, not user-facing. `TIS-PROOFREAD-\nPROTOCOL.md` at the repo root is the protocol; read it before handing work over.") },
   { label: "redline.md: findings stay internal", file: "redline", flips: ["redline-audiences"], apply: edit("redline", "When you hand work to Datum:", "Datum's findings stay internal.\n\nWhen you hand work to Datum:") },
   { label: "redline.md: findings never shown to the engineer, wrapped", file: "redline", flips: ["redline-audiences"], apply: edit("redline", "When you hand work to Datum:", "Its findings are never\nshown to the engineer.\n\nWhen you hand work to Datum:") },
