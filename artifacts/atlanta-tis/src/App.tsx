@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Switch, Route, Redirect, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -45,6 +46,11 @@ import AboutPage from "@/pages/about";
 import CitiesPage from "@/pages/cities";
 import CityDetailPage from "@/pages/city-detail";
 
+// Private, unlisted sample-study page: code-split so it adds nothing to the
+// bundle every other page loads, and linked from nowhere (robots.txt
+// disallows it; the page sets noindex while mounted).
+const PittsburghStudyPrivatePage = lazy(() => import("@/pages/pittsburgh-study-private"));
+
 const queryClient = new QueryClient();
 
 function Router() {
@@ -86,6 +92,11 @@ function Router() {
       <Route path="/help" component={HelpPage} />
       <Route path="/demo" component={DemoPage} />
       <Route path="/trcs-demo" component={TrcsDemoPage} />
+      <Route path="/pittsburgh-study-private">
+        <Suspense fallback={<div className="min-h-screen" />}>
+          <PittsburghStudyPrivatePage />
+        </Suspense>
+      </Route>
       <Route path="/london-ta" component={TricsPage} />
       {/* Legacy alias — outbound cold-email links point at /trics. Keep it
           working forever, but land visitors on the canonical /london-ta.

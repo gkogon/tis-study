@@ -17,7 +17,8 @@
     "check:intersection-sim": "node scripts/check-intersection-sim.mjs",
     "check:intersection-study": "node scripts/check-intersection-study.mjs",
     "check:intersection-distribution": "node scripts/check-intersection-distribution.mjs",
-    "check:region-limitations": "node scripts/check-region-limitations.mjs"
+    "check:region-limitations": "node scripts/check-region-limitations.mjs",
+    "check:pittsburgh-study-private": "node scripts/check-pittsburgh-study-private.mjs"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
