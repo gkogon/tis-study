@@ -398,8 +398,9 @@ const mountPanel = (Panel, props) => {
   };
 };
 
-// Two GET answers as the route sends them for a finished run that carries visible findings, a withheld one and the
-// rules-changed flag — the case the fetch tests above (empty findings) never reach. Each is checked against the
+// GET answers as the route sends them for a finished run: visible findings beside withheld ones and the rules-changed
+// flag — the case the fetch tests above (empty findings) never reach — and nothing visible beside a withheld one, and
+// a 'ready' run whose rules changed. Each is checked against the
 // contract's own ProofreadReadResponse first, so the stub is a real answer and not a convenient one.
 const READ_FINDING = (id, clauseId, type) => ({
   id,
@@ -448,6 +449,41 @@ const READ_ANSWERS = [
     rulesChanged: false,
     createdAt: "2026-10-07T10:00:00.000Z",
     finishedAt: null,
+  },
+  // Fix wave 3, G2-2: the halves the two above leave open. Nothing visible and one withheld — a count zeroed when
+  // nothing is visible would show "Nothing flagged" over a DEFECT; and a 'ready' run whose rules changed — a flag
+  // dropped for 'ready' would hide why decisions were reopened.
+  {
+    status: "rules_ready",
+    runId: "5d2c6f7a-8b9c-4d0e-9f1a-3b4c5d6e7f80",
+    revision: 3,
+    protocolVersion: "2026-10-07.1",
+    rulesVersion: "rules-2",
+    engineStamp: "stamp-3",
+    inputManifest: {},
+    coverage: [{ clauseId: "screeningClampDisclosed", section: 4, status: "ran" }],
+    findings: [],
+    dispositions: [],
+    withheld: 1,
+    rulesChanged: false,
+    createdAt: "2026-10-07T11:00:00.000Z",
+    finishedAt: "2026-10-07T11:00:02.000Z",
+  },
+  {
+    status: "ready",
+    runId: "6e3d7a8b-9c0d-4e1f-8a2b-4c5d6e7f8091",
+    revision: 4,
+    protocolVersion: "2026-10-07.1",
+    rulesVersion: "rules-3",
+    engineStamp: "stamp-4",
+    inputManifest: {},
+    coverage: [{ clauseId: "scopeNoteConsistent", section: 4, status: "ran" }],
+    findings: [READ_FINDING("5d2c6f7a-0e1f-4a2b-9c3d-4e5f6a7b8c9d", "scopeNoteConsistent", "NOTE")],
+    dispositions: [],
+    withheld: 1,
+    rulesChanged: true,
+    createdAt: "2026-10-07T12:00:00.000Z",
+    finishedAt: "2026-10-07T12:00:02.000Z",
   },
 ];
 for (const [i, answer] of READ_ANSWERS.entries()) {
@@ -1512,7 +1548,7 @@ const MUTATIONS = [
   { label: "twelve clauses that could not run read as nothing checked though one ran", file: "panel", flips: ["one-ran-is-not-nothing-checked"], apply: edit("panel", "withheld === 0 && ran.length === 0 && (", "withheld === 0 && (ran.length === 0 || notRun.length >= 12) && (") },
 
   // ---- a finding the server withheld (FW-3) -----------------------------------------
-  { label: "'Nothing flagged' is not held back by a withheld finding", file: "panel", flips: ["withheld-not-nothing-flagged", "withheld-no-green-check"], also: ["withheld-scoped-coverage-not-clear"], apply: edit("panel", "{finished && run.findings.length === 0 && withheld === 0 && ran.length > 0 && (", "{finished && run.findings.length === 0 && ran.length > 0 && (") },
+  { label: "'Nothing flagged' is not held back by a withheld finding", file: "panel", flips: ["withheld-not-nothing-flagged", "withheld-no-green-check"], also: ["withheld-scoped-coverage-not-clear", "wiring-panel-shows-the-fetched-hold"], apply: edit("panel", "{finished && run.findings.length === 0 && withheld === 0 && ran.length > 0 && (", "{finished && run.findings.length === 0 && ran.length > 0 && (") },
   {
     label: "a green check is drawn beside a withheld finding",
     file: "panel",
@@ -1756,6 +1792,21 @@ const MUTATIONS = [
     apply: edit("lib", "rulesChanged: data.rulesChanged === true,", "rulesChanged: data.rulesChanged === true && !(Array.isArray(data.findings) && data.findings.length > 0),"),
   },
   { label: "fetchProofread drops the run's createdAt", file: "lib", flips: ["fetch-carries-a-full-answer"], apply: edit("lib", "    createdAt: data.createdAt,\n", "    createdAt: undefined,\n") },
+  // The other two halves (fix wave 3, G2-2): a count zeroed when nothing is visible, a flag dropped for a 'ready' run.
+  {
+    label: "fetchProofread zeroes the count when nothing is visible",
+    file: "lib",
+    flips: ["fetch-carries-a-full-answer"],
+    also: ["fetch-carries-withheld", "wiring-panel-hands-view-the-fetched-run", "wiring-panel-shows-the-fetched-hold"],
+    apply: edit("lib", "    withheld: typeof data.withheld", "    withheld: Array.isArray(data.findings) && data.findings.length === 0 ? 0 : typeof data.withheld"),
+  },
+  {
+    label: "fetchProofread drops the rules-changed flag for a 'ready' run",
+    file: "lib",
+    flips: ["fetch-carries-a-full-answer"],
+    also: ["wiring-panel-hands-view-the-fetched-run", "wiring-panel-shows-the-fetched-hold"],
+    apply: edit("lib", "rulesChanged: data.rulesChanged === true,", 'rulesChanged: data.rulesChanged === true && data.status !== "ready",'),
+  },
   {
     label: "the wrapper hands the view the run with its count zeroed",
     file: "panel",
@@ -1767,6 +1818,18 @@ const MUTATIONS = [
     file: "panel",
     flips: ["wiring-panel-hands-view-the-fetched-run", "wiring-panel-shows-the-fetched-hold"],
     apply: edit("panel", "        setRun(next);\n", "        setRun({ ...next, rulesChanged: false });\n"),
+  },
+  {
+    label: "the wrapper zeroes the count when nothing is visible",
+    file: "panel",
+    flips: ["wiring-panel-hands-view-the-fetched-run", "wiring-panel-shows-the-fetched-hold"],
+    apply: edit("panel", "      run={run}\n", "      run={run && (run.findings.length > 0 ? run : { ...run, withheld: 0 })}\n"),
+  },
+  {
+    label: "the wrapper stores a 'ready' run with its flag cleared",
+    file: "panel",
+    flips: ["wiring-panel-hands-view-the-fetched-run", "wiring-panel-shows-the-fetched-hold"],
+    apply: edit("panel", "        setRun(next);\n", '        setRun(next.status === "ready" ? { ...next, rulesChanged: false } : next);\n'),
   },
   { label: "the wrapper fetches twice when it mounts", file: "panel", flips: ["wiring-panel-hands-view-the-fetched-run"], apply: edit("panel", "    void load();\n", "    void load();\n    void load();\n") },
 
