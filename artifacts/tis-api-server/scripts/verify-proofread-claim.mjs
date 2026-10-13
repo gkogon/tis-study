@@ -29,14 +29,16 @@
  * the store, where it does not live) fails loudly instead of passing forever.
  *
  * Reads the sources as text, and imports only lifecycle.ts (pure) and esbuild;
- * it never imports the store or @workspace/db itself. The runner bundles that
- * BEHAVIOUR imports and runs are refused when esbuild resolves anything into
- * them but the runner, its stubs and lifecycle.ts — what esbuild cannot
- * resolve at bundle time (an import whose specifier is computed at run time)
- * is the named limit, set out at BEHAVIOUR. DATABASE_URL is deleted from this
- * process's environment before any bundle is imported.
+ * it never imports the real store or @workspace/db itself. The runner bundles
+ * that BEHAVIOUR imports and runs are refused when esbuild resolves anything
+ * into them but the runner, its stubs and lifecycle.ts, and the store bundles
+ * that STORE BEHAVIOUR runs when they hold anything but the store, its stubs
+ * and lifecycle.ts — what esbuild cannot resolve at bundle time (an import
+ * whose specifier is computed at run time) is the named limit, set out at
+ * BEHAVIOUR. DATABASE_URL is deleted from this process's environment before
+ * any bundle is imported.
  *
- * The last part, BEHAVIOUR, runs the runner itself: proofread-run.ts is bundled
+ * BEHAVIOUR runs the runner itself: proofread-run.ts is bundled
  * with esbuild against an in-memory store, logger and clause registry, and its
  * two exported functions are driven through scenarios — which ids the
  * carry-forward is handed and what gates it, which store failures are caught
@@ -44,9 +46,15 @@
  * which POST run depends on), and what a finished run logs about a DEFECT
  * (run, project and clause, nothing from the finding). It has its own teeth: each edit
  * to the runner's text is bundled and RUN, and must turn exactly the behaviour
- * checks that claim to protect it red. What the store then does with those
- * arguments is SQL, which only a database can execute; that is out of reach
- * here.
+ * checks that claim to protect it red.
+ *
+ * The last part, STORE BEHAVIOUR, runs completeRun and insertQueuedRun against
+ * a recording db and checks what they hand the query builder: one update of
+ * the runs table whose .set() writes exactly the stamp handed in (or no
+ * version column without one), and one insert whose .values() writes the
+ * queued versions as given. What the database then does with that is SQL,
+ * which only a database can execute; that is out of reach here (the opt-in
+ * scripts/proofread-pg-harness/ runs it).
  *
  * Run: `pnpm run check:proofread-claim`
  */
@@ -201,6 +209,27 @@ function valuesBlock(src) {
     }
   }
   return "";
+}
+
+/**
+ * Every write to the binding `name`, or through it, in the comment-stripped, whitespace-folded text `src`: an
+ * assignment, compound or not, to it or to a property or element of it (`args = `, `args.x = `, `args["x"] ??= `),
+ * an increment or decrement of one, `delete` of one, and a call that writes through it as its first argument
+ * (Object.assign / defineProperty / defineProperties / setPrototypeOf, Reflect.set / defineProperty /
+ * deleteProperty / setPrototypeOf). Answered as the matched texts, in order. It reads the TEXT: a write through
+ * another binding that holds the same object (`const a = args; a.x = ..`), a destructuring assignment, or a
+ * helper handed the object is not one of these — what the code then hands the database is the store
+ * behaviour checks' (STORE BEHAVIOUR, below), which run it.
+ */
+function writesTo(src, name) {
+  const target = String.raw`(?<![\w$.])${name}(?:\s*\.\s*[\w$]+|\s*\[[^\]]*\])*`;
+  const res = [
+    new RegExp(String.raw`${target}\s*(?:\*\*|<<|>>>?|\?\?|&&|\|\||[-+*/%&|^])?=(?![=>])`, "g"),
+    new RegExp(String.raw`(?:\+\+|--)\s*${target}|${target}\s*(?:\+\+|--)`, "g"),
+    new RegExp(String.raw`\bdelete\s+${target}`, "g"),
+    new RegExp(String.raw`\b(?:Object\s*\.\s*(?:assign|defineProperty|defineProperties|setPrototypeOf)|Reflect\s*\.\s*(?:set|defineProperty|deleteProperty|setPrototypeOf))\s*\(\s*${name}(?![\w$])`, "g"),
+  ];
+  return res.flatMap((re) => [...src.matchAll(re)].map((m) => ({ at: m.index, text: m[0].trim() }))).sort((a, b) => a.at - b.at).map((m) => m.text);
 }
 
 /** The three version columns a run row records: by the queuing deploy, then again by the deploy that runs it. */
@@ -539,16 +568,17 @@ const CHECKS = [
   {
     id: "queued-run-records-what-it-was-given",
     on: "store",
-    msg: "insertQueuedRun writes each version column from its OWN argument, once (`protocolVersion: args.protocolVersion`, `rulesVersion: args.rulesVersion`, `engineStamp: args.engineStamp`): all three are varchar, so `rulesVersion: args.engineStamp` type-checks and records every run's deploy-suffixed stamp as its rules version. These are the queuing deploy's values, and completeRun's stamp replaces them when the clauses run",
+    msg: "insertQueuedRun writes each version column from its OWN argument, once (`protocolVersion: args.protocolVersion`, `rulesVersion: args.rulesVersion`, `engineStamp: args.engineStamp`), and nothing in its text writes to or through `args` (no assignment to it or to a property or element of it, no delete, ++ or --, no Object.assign / defineProperty / defineProperties / setPrototypeOf or Reflect.set / defineProperty / deleteProperty / setPrototypeOf on it, no `arguments`): all three are varchar, so `rulesVersion: args.engineStamp` — or `args = { ...args, rulesVersion: args.engineStamp }` ahead of the insert — type-checks and records every run's deploy-suffixed stamp as its rules version. These are the queuing deploy's values, and completeRun's stamp replaces them when the clauses run. The text; a write through another binding is not read here, and what the insert is handed for given arguments, however reached, is [runs-queued-run-records-what-it-was-given]'s, which runs it",
     test: (s) => {
-      const v = norm(valuesBlock(body(s.store, "insertQueuedRun")));
-      return v.length > 0 && VERSION_COLS.every((c) => count(v, `${c}:`) === 1 && v.includes(`${c}: args.${c},`));
+      const b = norm(body(s.store, "insertQueuedRun"));
+      const v = norm(valuesBlock(b));
+      return v.length > 0 && VERSION_COLS.every((c) => count(v, `${c}:`) === 1 && v.includes(`${c}: args.${c},`)) && writesTo(b, "args").length === 0 && !/(?<![\w$.])arguments\b/.test(b);
     },
   },
   {
     id: "run-stamp-written-as-given",
     on: "store",
-    msg: "completeRun writes the run-time stamp it is handed, each column from its own field, and only when one is handed (`...(args.stamp === undefined ? {} : { rulesVersion: args.stamp.rulesVersion, engineStamp: args.stamp.engineStamp, protocolVersion: args.stamp.protocolVersion })`): that rules_version is the one the next run's carry gate compares, so `rulesVersion: args.stamp.engineStamp` (varchar either way; tsc is silent) would reopen every decision after every deploy",
+    msg: "completeRun's first .set({...}) writes the run-time stamp it is handed, each column from its own field, and only when one is handed (`...(args.stamp === undefined ? {} : { rulesVersion: args.stamp.rulesVersion, engineStamp: args.stamp.engineStamp, protocolVersion: args.stamp.protocolVersion })`), naming each column once: that rules_version is the one the next run's carry gate compares, so `rulesVersion: args.stamp.engineStamp` (varchar either way; tsc is silent) would reopen every decision after every deploy. The text of that object; that the one update of the runs table writes exactly the stamp handed in, whatever else completeRun does (a second update, a rebinding of args, an alias), is [runs-complete-run-writes-the-stamp-it-is-handed]'s, which runs it",
     test: (s) => {
       const set = norm(setBlock(body(s.store, "completeRun")));
       return (
@@ -837,7 +867,7 @@ const CHECKS = [
   {
     id: "carry-looks-back-from-this-run",
     on: "runner",
-    msg: "the carry source is written `const prev = await previousRunForProject(run.projectId, run.revision)`, called once, where `run` is assigned once (`run = await claimOneRun(INSTANCE_ID);`) and neither run.projectId nor run.revision is assigned — the text of the call; that it reads the CLAIMED row's project and revision is [runs-carry-source-is-this-project-before-this-revision]'s, which runs it. run.id in the project slot matches no project and nothing ever carries; any other revision makes the run its own source or skips the one before it",
+    msg: "the carry source is written `const prev = await previousRunForProject(run.projectId, run.revision)`, called once, where `run` is assigned once (`run = await claimOneRun(INSTANCE_ID);`) and nothing else in claimAndRunOne's text writes to or through `run` (no other assignment to it or to a property or element of it — run.projectId, run[\"revision\"] —, no delete, ++ or --, no Object.assign / defineProperty / defineProperties / setPrototypeOf or Reflect.set / defineProperty / deleteProperty / setPrototypeOf on it) — the text of the call; a write through another binding is not read here, and that the call reads the CLAIMED row's project and revision is [runs-carry-source-is-this-project-before-this-revision]'s, which runs it. run.id in the project slot matches no project and nothing ever carries; any other revision makes the run its own source or skips the one before it",
     test: (s) => {
       const b = norm(body(s.runner, "claimAndRunOne"));
       const calls = callsOf(b, "previousRunForProject");
@@ -848,7 +878,8 @@ const CHECKS = [
         /const prev = await previousRunForProject\(/.test(b) &&
         runAssigned.length === 1 &&
         b.includes("run = await claimOneRun(INSTANCE_ID);") &&
-        !/(?<![\w.$])run\.(?:projectId|revision)\s*=(?!=)/.test(b)
+        writesTo(b, "run").every((w) => w.replace(/\s+/g, "") === "run=") &&
+        writesTo(b, "run").length === 1
       );
     },
   },
@@ -1070,6 +1101,24 @@ const MUTATIONS = [
     file: "store",
     flips: ["queued-run-records-what-it-was-given"],
     apply: edit("store", "      requestedByUserId: args.userId,", "      requestedByUserId: args.userId,\n      rulesVersion: args.engineStamp,"),
+  },
+  {
+    label: "rebind args with the engine stamp as the rules version at the top of insertQueuedRun (W2-G1-2, C1e)",
+    file: "store",
+    flips: ["queued-run-records-what-it-was-given"],
+    apply: edit("store", "}): Promise<StudyProofreadRun | null> {\n", "}): Promise<StudyProofreadRun | null> {\n  args = { ...args, rulesVersion: args.engineStamp };\n"),
+  },
+  {
+    label: "write the engine stamp over args.rulesVersion through Object.assign before the insert",
+    file: "store",
+    flips: ["queued-run-records-what-it-was-given"],
+    apply: edit("store", "}): Promise<StudyProofreadRun | null> {\n", "}): Promise<StudyProofreadRun | null> {\n  Object.assign(args, { rulesVersion: args.engineStamp });\n"),
+  },
+  {
+    label: "write the engine stamp over args[\"rulesVersion\"] by element access before the insert",
+    file: "store",
+    flips: ["queued-run-records-what-it-was-given"],
+    apply: edit("store", "}): Promise<StudyProofreadRun | null> {\n", "}): Promise<StudyProofreadRun | null> {\n  args[\"rulesVersion\"] = args.engineStamp;\n"),
   },
   {
     label: "write the run-time engine stamp into rules_version (RR-2)",
@@ -1511,6 +1560,24 @@ const MUTATIONS = [
     file: "runner",
     flips: ["carry-looks-back-from-this-run"],
     apply: edit("runner", "    const prev = await previousRunForProject(", "    run = { ...run, projectId: run.id };\n    const prev = await previousRunForProject("),
+  },
+  {
+    label: "move the claimed run's project to its id through Object.assign before the carry source is read (W2-G1-2, C9e)",
+    file: "runner",
+    flips: ["carry-looks-back-from-this-run"],
+    apply: edit("runner", "    const prev = await previousRunForProject(", "    Object.assign(run, { projectId: run.id });\n    const prev = await previousRunForProject("),
+  },
+  {
+    label: "move the claimed run's revision on through Reflect.set before the carry source is read",
+    file: "runner",
+    flips: ["carry-looks-back-from-this-run"],
+    apply: edit("runner", "    const prev = await previousRunForProject(", "    Reflect.set(run, \"revision\", run.revision + 1);\n    const prev = await previousRunForProject("),
+  },
+  {
+    label: "move the claimed run's project to its id by element access before the carry source is read",
+    file: "runner",
+    flips: ["carry-looks-back-from-this-run"],
+    apply: edit("runner", "    const prev = await previousRunForProject(", "    run[\"projectId\"] = run.id;\n    const prev = await previousRunForProject("),
   },
   {
     label: "move the claimed run's revision on before the carry source is read",
@@ -2375,6 +2442,303 @@ for (const g of BSTAYS_GREEN) {
 const bcovered = new Set(BMUTATIONS.flatMap((m) => m.flips));
 const btoothless = BIDS.filter((id) => !bcovered.has(id));
 ok(btoothless.length === 0, "every behaviour check has a mutation proving it has teeth", btoothless.length ? `no mutation breaks: ${btoothless.join(", ")}` : undefined);
+
+// ===========================================================================
+// STORE BEHAVIOUR. The text checks above read completeRun's first .set({...}) and insertQueuedRun's
+// .values({...}); this part RUNS both and records what reaches the query builder.
+//
+// proofread-store.ts — the real file, or a mutated copy of its text — is bundled with esbuild, with four of its
+// imports replaced by in-memory stubs: @workspace/db (a `db` that records every call made on it — the method,
+// the table it names, each chained call and its arguments — and answers [] when awaited, and the four tables as
+// named objects), drizzle-orm (operators and sql that return inert tokens), ./logger and ./proofread/index.ts
+// (findingFingerprint). ./proofread/lifecycle.ts is the real one. As with the runner, a bundle whose input list
+// holds anything else is refused before it is imported, and DATABASE_URL is deleted at the top of this file.
+//
+// What this proves is what completeRun and insertQueuedRun hand the query builder for given arguments — every
+// call they make on db, and the values of each .set() and .values() — however the code reaches them: a second
+// update, a rebinding or mutation of args, an alias, a helper. It cannot prove the SQL drizzle renders from those
+// calls or what Postgres does with it; scripts/proofread-pg-harness/ runs that against a throwaway database.
+// ===========================================================================
+const STORE_STUB_SOURCES = {
+  "@workspace/db": `
+const st = () => globalThis.__proofreadStoreStub;
+const table = (name) => new Proxy({ __table: name }, { get: (t, k) => (k in t ? t[k] : { __column: name + "." + String(k) }) });
+export const studyProofreadRunsTable = table("study_proofread_runs");
+export const studyProofreadFindingsTable = table("study_proofread_findings");
+export const studyProofreadDispositionsTable = table("study_proofread_dispositions");
+export const tisProjectsTable = table("tis_projects");
+const query = (method, args) => {
+  const rec = { method, table: args[0]?.__table ?? null, args, links: [] };
+  st().calls.push(rec);
+  const chain = new Proxy({}, {
+    get(_, k) {
+      if (k === "then") return (ok, fail) => Promise.resolve([]).then(ok, fail);
+      return (...a) => {
+        rec.links.push({ name: String(k), args: a });
+        return chain;
+      };
+    },
+  });
+  return chain;
+};
+export const db = new Proxy({}, { get: (_, k) => (...a) => query(String(k), a) });
+`,
+  "drizzle-orm": `
+const tok = (op) => (...a) => ({ __op: op, a });
+export const and = tok("and"), or = tok("or"), not = tok("not"), desc = tok("desc"), asc = tok("asc"), eq = tok("eq"), ne = tok("ne"), inArray = tok("inArray"), lt = tok("lt"), lte = tok("lte"), gt = tok("gt"), gte = tok("gte"), isNull = tok("isNull");
+export const sql = Object.assign((strings, ...values) => ({ __op: "sql", strings: [...strings], values }), { raw: (s) => ({ __op: "sql.raw", s }), identifier: (s) => ({ __op: "sql.identifier", s }) });
+`,
+  "./logger": `
+const no = () => undefined;
+export const logger = { trace: no, debug: no, info: no, warn: no, error: no, fatal: no };
+`,
+  "./proofread/index.ts": `
+export const findingFingerprint = (f) => "fp:" + f.clauseId;
+`,
+};
+
+async function bundleStore(text) {
+  const out = await build({
+    stdin: { contents: text, resolveDir: runnerDir, sourcefile: "store-under-test.ts", loader: "ts" },
+    absWorkingDir: runnerDir,
+    bundle: true,
+    write: false,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+    tsconfigRaw: "{}",
+    metafile: true,
+    logLevel: "silent",
+    plugins: [
+      {
+        name: "proofread-store-stubs",
+        setup(b) {
+          // Only the store's OWN imports are stubbed; anything else it pulls in is refused below.
+          b.onResolve({ filter: /^(?:@workspace\/db|drizzle-orm|\.\/logger|\.\/proofread\/index\.ts)$/ }, (a) =>
+            a.importer === path.join(runnerDir, "store-under-test.ts") ? { path: a.path, namespace: "store-stub" } : undefined,
+          );
+          b.onLoad({ filter: /.*/, namespace: "store-stub" }, (a) => ({ contents: STORE_STUB_SOURCES[a.path], loader: "js" }));
+        },
+      },
+    ],
+  });
+  const inputs = Object.keys(out.metafile.inputs);
+  // Checked BEFORE the bundle is imported: a store that reached the real db or drizzle in a spelling the stubs
+  // miss is refused unloaded (a specifier computed at run time is not listed: the limit named at BEHAVIOUR).
+  const foreign = inputs.filter((p) => p !== "store-under-test.ts" && !p.startsWith("store-stub:") && !/(^|\/)proofread\/lifecycle\.ts$/.test(p));
+  if (foreign.length > 0) throw new Error(`refused to load a store bundle that pulls in ${foreign.join(", ")}`);
+  const mod = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
+  return { mod, inputs };
+}
+
+/** One call of a store function against a fresh recording db. */
+async function driveStore(mod, fn, args) {
+  const st = { calls: [] };
+  globalThis.__proofreadStoreStub = st;
+  try {
+    return { st, value: await mod[fn](...args), threw: false, error: null };
+  } catch (error) {
+    return { st, value: undefined, threw: true, error };
+  }
+}
+
+const STAMP_HANDED = { rulesVersion: "rules-handed", engineStamp: "stamp-handed", protocolVersion: "protocol-handed" };
+const QUEUE_HANDED = { projectId: "project-A", firmId: "firm-A", userId: "user-1", protocolVersion: "protocol-queued", rulesVersion: "rules-queued", engineStamp: "stamp-queued" };
+const A_FINDING = { clauseId: "growthOverrideDisclosed", section: 4, type: "BLOCKER", title: "t", detail: "d", sourceLabel: "s", readPaths: [], remedy: "r", audience: "engineer" };
+
+/** Bundle the store's text and make each call once, with fresh argument objects; the store behaviour checks read the result. */
+async function observeStore(text) {
+  let bundled;
+  try {
+    bundled = await bundleStore(text);
+  } catch (e) {
+    return { error: `the store did not bundle: ${(e.errors ?? []).map((x) => x.text).join("; ") || e.message}` };
+  }
+  const { mod, inputs } = bundled;
+  // the clause pass's write, with a finding (so the whole body runs) and without one (the early return)
+  const stamped = await driveStore(mod, "completeRun", [{ runId: "run-9", status: "running", coverage: [], inputManifest: {}, findings: [{ ...A_FINDING }], stamp: { ...STAMP_HANDED } }]);
+  const stampedNoFindings = await driveStore(mod, "completeRun", [{ runId: "run-9", status: "running", coverage: [], inputManifest: {}, findings: [], stamp: { ...STAMP_HANDED } }]);
+  // the flip, and a failure: no stamp
+  const unstamped = await driveStore(mod, "completeRun", [{ runId: "run-9", status: "rules_ready", findings: [] }]);
+  const unstampedFailed = await driveStore(mod, "completeRun", [{ runId: "run-9", status: "failed", findings: [], error: "x" }]);
+  const queued = await driveStore(mod, "insertQueuedRun", [{ ...QUEUE_HANDED }]);
+  return { inputs, stamped, stampedNoFindings, unstamped, unstampedFailed, queued };
+}
+
+/** The version columns an object written to the database names, with their values. */
+const versionsIn = (o) => (o && typeof o === "object" ? Object.fromEntries(VERSION_COLS.filter((c) => Object.hasOwn(o, c)).map((c) => [c, o[c]])) : {});
+/** Each call on db as `method:table` (table "-" when it names none), in order. */
+const callShape = (r) => r.st.calls.map((c) => `${c.method}:${c.table ?? "-"}`);
+/** The objects handed to one call's chained `name` links (`set`, `values`). */
+const linkArgs = (c, name) => c.links.filter((l) => l.name === name).map((l) => l.args[0]);
+const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const describeStore = (r) => (r ? `${r.threw ? `threw ${r.error?.message ?? r.error}` : "returned"}; calls: ${r.st.calls.map((c) => `${c.method}(${c.table ?? ""})${c.links.map((l) => `.${l.name}(${JSON.stringify(l.args[0] ?? null)?.slice(0, 160)})`).join("")}`).join(" ; ") || "none"}` : "not run");
+/** One update of the runs table and nothing else but `rest`, its one .set() naming exactly `versions`. */
+const oneRunsUpdate = (r, versions, rest) => {
+  if (!r || r.threw || !sameJson(callShape(r), ["update:study_proofread_runs", ...rest])) return false;
+  const sets = linkArgs(r.st.calls[0], "set");
+  // both sides read through versionsIn, so key order never matters
+  return sets.length === 1 && sameJson(versionsIn(sets[0]), versionsIn(versions)) && r.st.calls[0].links.some((l) => l.name === "where");
+};
+
+const SCHECKS = [
+  {
+    id: "runs-complete-run-writes-the-stamp-it-is-handed",
+    msg: "RUN: completeRun, handed a stamp, makes exactly one update of study_proofread_runs — whose one .set() writes rulesVersion, engineStamp and protocolVersion as the stamp's own fields — and no other call on db but the findings insert when it was handed findings (whose rows name no version column): a second update, a rebinding or mutation of args, an alias or a raw execute that writes rules_version from the engine stamp would reopen every decision after every deploy (I-1), and the text check reads only the first .set()",
+    test: (o) =>
+      oneRunsUpdate(o.stamped, STAMP_HANDED, ["insert:study_proofread_findings"]) &&
+      linkArgs(o.stamped.st.calls[1], "values").every((rows) => Array.isArray(rows) && rows.length === 1 && rows.every((row) => sameJson(versionsIn(row), {}))) &&
+      oneRunsUpdate(o.stampedNoFindings, STAMP_HANDED, []),
+    why: (o) => `with a finding: ${describeStore(o.stamped)} || without: ${describeStore(o.stampedNoFindings)}`,
+  },
+  {
+    id: "runs-complete-run-without-a-stamp-writes-no-version",
+    msg: "RUN: completeRun handed no stamp (the flip to rules_ready, a failure) makes exactly one update of study_proofread_runs whose one .set() names no version column, and no other call on db: only the clause pass's write stamps a run, and any other write that names rules_version replaces the rules the findings were judged under",
+    test: (o) => oneRunsUpdate(o.unstamped, {}, []) && oneRunsUpdate(o.unstampedFailed, {}, []),
+    why: (o) => `flip: ${describeStore(o.unstamped)} || failed: ${describeStore(o.unstampedFailed)}`,
+  },
+  {
+    id: "runs-queued-run-records-what-it-was-given",
+    msg: "RUN: insertQueuedRun makes exactly one call on db, an insert into study_proofread_runs whose one .values() writes protocolVersion, rulesVersion and engineStamp as its own arguments of those names — however its text reaches them (a rebinding of args, an alias, a helper)",
+    test: (o) => {
+      const r = o.queued;
+      if (!r || r.threw || !sameJson(callShape(r), ["insert:study_proofread_runs"])) return false;
+      const values = linkArgs(r.st.calls[0], "values");
+      return values.length === 1 && sameJson(versionsIn(values[0]), versionsIn(QUEUE_HANDED));
+    },
+    why: (o) => describeStore(o.queued),
+  },
+];
+const SIDS = SCHECKS.map((c) => c.id);
+ok(new Set([...SIDS, ...BIDS, ...ids]).size === SIDS.length + BIDS.length + ids.length, "precondition: every store behaviour check id is unique, and none repeats a text or runner behaviour check's id");
+
+const srun = (o) => (o.error ? [...SIDS] : SCHECKS.filter((c) => !c.test(o)).map((c) => c.id));
+const realStoreObs = await observeStore(sources.store);
+ok(!realStoreObs.error, "the real store bundles with its db, drizzle, logger and clause imports stubbed", realStoreObs.error);
+if (!realStoreObs.error) {
+  const real = realStoreObs.inputs.filter((p) => !p.startsWith("store-stub:"));
+  const leaked = real.filter((p) => /lib\/db\/|@workspace\/db|drizzle|logger\.ts|proofread\/index\.ts|pino|node_modules/.test(p));
+  ok(
+    leaked.length === 0 && real.some((p) => p.endsWith("proofread/lifecycle.ts")),
+    "the store bundle holds the store and the real lifecycle.ts, and no db, drizzle, logger or clause module — so nothing it runs can open a connection",
+    leaked.length ? `in the bundle: ${leaked.join(", ")}` : `inputs: ${realStoreObs.inputs.join(", ")}`,
+  );
+}
+{
+  // The refusal stands between a store call and a real database, so it is tested: the store with its db import
+  // spelled so it escapes the stubs must come back refused, unloaded — never run.
+  const escaped = sources.store.replace(/\} from "@workspace\/db";/, '} from "../../../../lib/db/src/index.ts";');
+  const o = escaped === sources.store ? { error: "the db import was not found to respell" } : await observeStore(escaped);
+  ok(
+    typeof o.error === "string" && /refused to load a store bundle that pulls in .*lib\/db\/src\/index\.ts/.test(o.error),
+    "a store whose db import escapes the stubs in a spelling esbuild resolves (a relative path to lib/db/src/index.ts) is refused before it is imported, never run",
+    o.error ?? "it was loaded and run",
+  );
+}
+const sfailing = srun(realStoreObs);
+for (const c of SCHECKS) {
+  const red = sfailing.includes(c.id);
+  ok(!red, `[${c.id}] ${c.msg}`, red ? (realStoreObs.error ?? c.why(realStoreObs)) : undefined);
+}
+
+// Store behaviour teeth: each edit to the store's text must turn exactly these store behaviour checks red when
+// the edited store is bundled and RUN.
+const COMPLETE_ANCHOR = "  if (args.findings.length === 0) return;\n";
+const COMPLETE_TOP = "  stamp?: { rulesVersion: string; engineStamp: string; protocolVersion: string };\n}): Promise<void> {\n";
+const QUEUE_TOP = "}): Promise<StudyProofreadRun | null> {\n";
+const SMUTATIONS = [
+  {
+    label: "write the run-time engine stamp into rules_version (RR-2)",
+    flips: ["runs-complete-run-writes-the-stamp-it-is-handed"],
+    apply: (t) => t.replace("rulesVersion: args.stamp.rulesVersion,", "rulesVersion: args.stamp.engineStamp,"),
+  },
+  {
+    label: "a second update of the run that writes rules_version from the engine stamp (W2-G1-1, C2e)",
+    flips: ["runs-complete-run-writes-the-stamp-it-is-handed"],
+    apply: (t) => t.replace(COMPLETE_ANCHOR, `  if (args.stamp) await db.update(studyProofreadRunsTable).set({ rulesVersion: args.stamp.engineStamp }).where(eq(studyProofreadRunsTable.id, args.runId));\n${COMPLETE_ANCHOR}`),
+  },
+  {
+    label: "rebind args with the engine stamp as the rules version before the update (W2-G1-1, C2f)",
+    flips: ["runs-complete-run-writes-the-stamp-it-is-handed"],
+    apply: (t) => t.replace(COMPLETE_TOP, `${COMPLETE_TOP}  if (args.stamp) args = { ...args, stamp: { ...args.stamp, rulesVersion: args.stamp.engineStamp } };\n`),
+  },
+  {
+    label: "rewrite the handed stamp through an alias before the update",
+    flips: ["runs-complete-run-writes-the-stamp-it-is-handed"],
+    apply: (t) => t.replace(COMPLETE_TOP, `${COMPLETE_TOP}  const s = args.stamp;\n  if (s) s.rulesVersion = s.engineStamp;\n`),
+  },
+  {
+    label: "a second update of the run after the early return, through a string-key element access",
+    flips: ["runs-complete-run-writes-the-stamp-it-is-handed"],
+    apply: (t) => t.replace(COMPLETE_ANCHOR, `${COMPLETE_ANCHOR}  if (args.stamp) await db["update"](studyProofreadRunsTable).set({ rulesVersion: args.stamp.engineStamp }).where(eq(studyProofreadRunsTable.id, args.runId));\n`),
+  },
+  {
+    label: "rewrite rules_version in raw SQL after the update",
+    flips: ["runs-complete-run-writes-the-stamp-it-is-handed"],
+    apply: (t) => t.replace(COMPLETE_ANCHOR, `  if (args.stamp) await db.execute(sql\`update study_proofread_runs set rules_version = \${args.stamp.engineStamp} where id = \${args.runId}\`);\n${COMPLETE_ANCHOR}`),
+  },
+  {
+    label: "write the stamp only when none was handed (the condition inverted)",
+    flips: ["runs-complete-run-writes-the-stamp-it-is-handed", "runs-complete-run-without-a-stamp-writes-no-version"],
+    apply: (t) => t.replace("args.stamp === undefined", "args.stamp !== undefined"),
+  },
+  {
+    label: "write a rules version on every write, stamped or not",
+    flips: ["runs-complete-run-without-a-stamp-writes-no-version"],
+    apply: (t) => t.replace("      status: args.status,\n", '      status: args.status,\n      rulesVersion: args.stamp?.rulesVersion ?? "rules-unknown",\n'),
+  },
+  {
+    label: "record the queuing deploy's engine stamp as the run's rules version (RR-2)",
+    flips: ["runs-queued-run-records-what-it-was-given"],
+    apply: (t) => t.replace("      rulesVersion: args.rulesVersion,", "      rulesVersion: args.engineStamp,"),
+  },
+  {
+    label: "rebind args with the engine stamp as the rules version at the top of insertQueuedRun (W2-G1-2, C1e)",
+    flips: ["runs-queued-run-records-what-it-was-given"],
+    apply: (t) => t.replace(QUEUE_TOP, `${QUEUE_TOP}  args = { ...args, rulesVersion: args.engineStamp };\n`),
+  },
+  {
+    label: "rewrite the queued rules version through an alias before the insert",
+    flips: ["runs-queued-run-records-what-it-was-given"],
+    apply: (t) => t.replace(QUEUE_TOP, `${QUEUE_TOP}  const a = args;\n  a.rulesVersion = a.engineStamp;\n`),
+  },
+];
+const SSTAYS_GREEN = [
+  {
+    label: "the stamp's three fields written in another order",
+    apply: (t) =>
+      t.replace(
+        "            rulesVersion: args.stamp.rulesVersion,\n            engineStamp: args.stamp.engineStamp,\n            protocolVersion: args.stamp.protocolVersion,\n",
+        "            protocolVersion: args.stamp.protocolVersion,\n            engineStamp: args.stamp.engineStamp,\n            rulesVersion: args.stamp.rulesVersion,\n",
+      ),
+  },
+];
+
+const steeth = new Set(SIDS);
+for (const m of SMUTATIONS) {
+  const unknown = m.flips.filter((id) => !steeth.has(id));
+  ok(unknown.length === 0, `store behaviour teeth: "${m.label}" names only real store behaviour checks`, unknown.length ? `unknown: ${unknown.join(", ")}` : undefined);
+  const text = m.apply(sources.store);
+  ok(text !== sources.store, `store behaviour teeth: "${m.label}" actually changes the store`);
+  const o = await observeStore(text);
+  const got = srun(o).filter((id) => !sfailing.includes(id)).sort().join(", ");
+  const want = [...new Set(m.flips)].sort().join(", ");
+  ok(
+    !o.error && want === got,
+    `store behaviour teeth: "${m.label}" — the edited store, RUN, is caught by exactly the store behaviour checks that claim to protect it`,
+    o.error ?? (want === got ? undefined : `expected red: ${want || "(none)"}; actually red: ${got || "(none)"}`),
+  );
+}
+for (const g of SSTAYS_GREEN) {
+  const text = g.apply(sources.store);
+  ok(text !== sources.store, `store behaviour stays green: "${g.label}" applies to the store`);
+  const o = await observeStore(text);
+  const now = srun(o).filter((id) => !sfailing.includes(id));
+  ok(!o.error && now.length === 0, `store behaviour stays green: "${g.label}" — no store behaviour check refuses it`, o.error ?? (now.length ? `went red: ${now.join(", ")}` : undefined));
+}
+const scovered = new Set(SMUTATIONS.flatMap((m) => m.flips));
+const stoothless = SIDS.filter((id) => !scovered.has(id));
+ok(stoothless.length === 0, "every store behaviour check has a mutation proving it has teeth", stoothless.length ? `no mutation breaks: ${stoothless.join(", ")}` : undefined);
 
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);
 process.exit(fails === 0 ? 0 : 1);
