@@ -61,6 +61,11 @@ type MetaLike = {
 /** Put `<meta name="robots" content="noindex, nofollow">` in the head and
  *  return the cleanup. An existing robots meta is overridden in place and
  *  restored on cleanup; one this call added is removed. */
+/** The engine's growth-source note in plain words for a client page: "wired" is engine jargon for "on file". */
+export function plainGrowthSource(src: string | null | undefined): string {
+  return (src ?? "").replace(/\bis wired for this region\b/g, "is on file for this region");
+}
+
 export function installRobotsNoIndex(doc: HeadDoc): () => void {
   const existing = doc.head.querySelector('meta[name="robots"]') as MetaLike | null;
   if (existing) {
@@ -596,7 +601,7 @@ export function methodFacts(p: PittsburghSamplePayload): MethodFact[] {
     },
     {
       label: "Background growth",
-      text: `${r.growthAppliedPct.toFixed(2)}%/yr compounded over ${r.growthYears} years (×${growthMultiplier(r).toFixed(3)}), ${existingYear(r)} to ${r.request.openingYear}. ${r.growthSource ?? ""}`.trim(),
+      text: `${r.growthAppliedPct.toFixed(2)}%/yr compounded over ${r.growthYears} years (×${growthMultiplier(r).toFixed(3)}), ${existingYear(r)} to ${r.request.openingYear}. ${plainGrowthSource(r.growthSource)}`.trim(),
     },
     {
       label: "Trip credits",

@@ -196,13 +196,14 @@ if (lib && payload) {
   console.log("method and limits");
   const facts = lib.methodFacts(payload);
   const text = facts.map((f) => `${f.label}: ${f.text}`).join("\n");
+  ok(!/is wired for this region/.test(text), "method copy does not say \"wired\" (engine jargon) to a client");
   for (const needle of [
     "Pittsburgh MSA, Pennsylvania",
     "1.50%/yr",
     "over 2 years",
     "×1.030",
     "2026 to 2028",
-    r.growthSource,
+    r.growthSource.replace(/\bis wired for this region\b/g, "is on file for this region"),
     "30% at the PM peak",
     "7.5% at the AM peak",
     "Internal capture 0%",
