@@ -62,7 +62,7 @@ import { writeFile, readFile, rm } from "node:fs/promises";
 const here = path.dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(path.resolve(here, "ts-loader.mjs")).href, import.meta.url);
 
-process.env.DATABASE_URL ??= "postgres://localhost/tis_e2e_stub_db";
+process.env.DATABASE_URL ??= "postgres://unused:unused@127.0.0.1:1/unused";
 
 const { buildGraph } = await import(path.resolve(here, "../src/lib/network-assignment.ts"));
 const { snapSignalsToJunctions } = await import(path.resolve(here, "../src/lib/cordon-gateways.ts"));
