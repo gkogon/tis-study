@@ -70,7 +70,8 @@
     "check:inventory-revalidation": "node ./scripts/verify-inventory-revalidation.mjs",
     "check:lookup-caches": "node ./scripts/verify-lookup-caches.mjs",
     "check:streetview-geolocate-caches": "node ./scripts/verify-streetview-geolocate-caches.mjs",
-    "check:nyc-transit-disclosure": "node ./scripts/verify-nyc-transit-disclosure.mjs"
+    "check:nyc-transit-disclosure": "node ./scripts/verify-nyc-transit-disclosure.mjs",
+    "check:no-localhost-db-stubs": "node ./scripts/verify-no-localhost-db-stubs.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",
