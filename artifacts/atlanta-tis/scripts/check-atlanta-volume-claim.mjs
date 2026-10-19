@@ -180,7 +180,11 @@ async function suite(src) {
   const bodyClaims = [...claimIn(body), ...(/Measured AADT/.test(body) ? ["Measured AADT stat"] : []), ...(/Tier-A coverage/.test(body) ? ["Tier-A coverage label"] : [])];
   check("page", bodyClaims.length === 0 && /Modeled, not counted\./.test(body) && /No signal in Atlanta MSA is joined to an AADT count/.test(body),
     `the /cities/atlanta page says "Modeled, not counted." with no signal joined to a count, and shows no count claim${bodyClaims.length ? ` (found ${bodyClaims.join(", ")})` : ""}`);
-  const g511 = sentences(`${body} ${desc}`).filter((s) => /GDOT 511/.test(s) && /count|AADT|calibrat/i.test(s));
+  // The site footer's data-source list ("Data: OpenStreetMap, state DOT and FHWA AADT, GDOT 511 incidents
+  // (Atlanta)", reworded by #246) names GDOT 511 as an incident source, not a volume source; cut it before
+  // reading, so "AADT" earlier in that list is not read as a claim about GDOT 511.
+  const bodyNoFooter = body.replace(/Data: [^.]*?GDOT 511 incidents \(Atlanta\)/g, " ");
+  const g511 = sentences(`${bodyNoFooter} ${desc}`).filter((s) => /GDOT 511/.test(s) && /count|AADT|calibrat/i.test(s));
   const g511Delay = /GDOT 511 incident reports are used only as a delay factor/.test(body);
   check("gdot-511-delay-only", g511.length === 0 && g511Delay,
     `GDOT 511 is described on /cities/atlanta only as a delay factor${g511.length ? ` — ${g511.map((s) => `"${s}"`).join("; ")}` : g511Delay ? "" : " (the delay-factor sentence is missing)"}`);
