@@ -80,8 +80,13 @@ export type MetroCoverage = {
    *  with all pre-Tier-10 entries that came from real DOT count integrations.
    *  "synthetic" = HCM road-class baseline keyed off OSM nearest-segment, used
    *  for Tier-10 global metros where no measured AADT layer is wired.
+   *  "modeled" = no AADT snap at all: every signal's design-hour volume is
+   *  modeled from road class x distance from downtown x a fixed per-signal
+   *  factor (Atlanta; api-server/src/lib/atlanta-analysis.ts). aadtPct is 0
+   *  for these — no signal is joined to a count. A live feed listed in
+   *  `liveSource` does not supply volumes.
    *  Tier-A featured-coverage badge requires aadtQuality === "measured". */
-  aadtQuality?: "measured" | "synthetic" | "none";
+  aadtQuality?: "measured" | "synthetic" | "modeled" | "none";
   /** Local DOT / engineering body responsible for traffic-impact review. */
   dotName: string;
   /** Planning office that issues development orders. */
@@ -101,7 +106,7 @@ export type MetroCoverage = {
  *  ships. */
 export const METROS: MetroCoverage[] = [
   // GA
-  { code: "atlanta_metro", slug: "atlanta", shortName: "Atlanta", longName: "Atlanta MSA", state: "GA", signals: 7958, namedPct: 99.8, aadtPct: 100, liveSource: "GDOT 511", aadtSource: "GDOT calibrated counts",
+  { code: "atlanta_metro", slug: "atlanta", shortName: "Atlanta", longName: "Atlanta MSA", state: "GA", signals: 7958, namedPct: 99.8, aadtPct: 0, liveSource: "GDOT 511", aadtSource: "Modeled from road class and distance from downtown (no counts)", aadtQuality: "modeled",
     dotName: "City of Atlanta DOT", planningOfficeName: "City of Atlanta Office of Mobility Planning",
     parkingCodeCitation: "City of Atlanta Zoning Ordinance, Article 10 — Off-Street Parking and Loading." },
   { code: "augusta_metro", slug: "augusta", shortName: "Augusta", longName: "Augusta MSA", state: "GA", signals: 519, namedPct: 99.4, aadtPct: 75.1, liveSource: null, aadtSource: "GDOT AADT (DeKalbGIS ingest)",
@@ -757,13 +762,17 @@ export const TIER_A_AADT_CUTOFF = 75;
 const isMeasuredAadt = (m: MetroCoverage): boolean =>
   (m.aadtQuality ?? "measured") === "measured";
 
+/** Tier-A = measured AADT at or above the cutoff. No exception for the
+ *  flagship: Atlanta's volumes are modeled, not counted, so it is not Tier-A
+ *  AADT. Its flagship placement (listed first, "Flagship" label) rests on
+ *  the live GDOT 511 incident feed and stays — see `isFlagshipMetro`. */
+export const isTierAMetro = (m: MetroCoverage): boolean =>
+  m.aadtPct >= TIER_A_AADT_CUTOFF && isMeasuredAadt(m);
+export const isFlagshipMetro = (m: MetroCoverage): boolean => m.code === "atlanta_metro";
+
 /** Helpers. */
-export const TIER_A_METROS = METROS.filter(
-  (m) => (m.aadtPct >= TIER_A_AADT_CUTOFF && isMeasuredAadt(m)) || m.code === "atlanta_metro",
-);
-export const TIER_B_METROS = METROS.filter(
-  (m) => !((m.aadtPct >= TIER_A_AADT_CUTOFF && isMeasuredAadt(m)) || m.code === "atlanta_metro"),
-);
+export const TIER_A_METROS = METROS.filter(isTierAMetro);
+export const TIER_B_METROS = METROS.filter((m) => !isTierAMetro(m));
 export const TOTAL_SIGNALS = METROS.reduce((sum, m) => sum + m.signals, 0);
 export const TOTAL_METROS = METROS.length;
 

@@ -8,14 +8,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { MapContainer, CircleMarker, Tooltip as LeafletTooltip } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import { METROS, TIER_A_AADT_CUTOFF, type MetroCoverage } from "../data/metro-coverage";
+import { METROS, TIER_A_AADT_CUTOFF, isFlagshipMetro, type MetroCoverage } from "../data/metro-coverage";
 import { BasemapLayers } from "./basemap-layers";
 
 type Pt = { m: MetroCoverage; lat: number; lon: number };
 
 export function metroTone(m: MetroCoverage): { color: string; label: string } {
   const quality = m.aadtQuality ?? "measured";
-  if (m.code === "atlanta_metro") return { color: "#FBBF24", label: "Flagship — full live calibration" };
+  if (isFlagshipMetro(m)) return { color: "#FBBF24", label: "Flagship — live GDOT 511 incidents; volumes modeled, not counted" };
   if (quality === "measured" && m.aadtPct >= TIER_A_AADT_CUTOFF) return { color: "#22C55E", label: "Measured state-DOT AADT (Tier-A)" };
   if (quality === "measured" && m.aadtPct > 0) return { color: "#14B8A6", label: "Measured AADT, partial" };
   if (quality === "synthetic" && m.aadtPct > 0) return { color: "#F59E0B", label: "Synthesized from OSM road class" };
@@ -94,7 +94,7 @@ export function MetroMap() {
                     <div className="text-xs">
                       <div className="font-semibold">{p.m.shortName}, {p.m.state}</div>
                       <div className="font-mono text-[11px]">
-                        {p.m.signals.toLocaleString()} signals · {p.m.aadtPct > 0 ? `${p.m.aadtPct.toFixed(0)}% AADT` : "no AADT layer"}{p.m.liveSource ? ` · live: ${p.m.liveSource}` : ""}
+                        {p.m.signals.toLocaleString()} signals · {p.m.aadtQuality === "modeled" ? "volumes modeled" : p.m.aadtPct > 0 ? `${p.m.aadtPct.toFixed(0)}% AADT` : "no AADT layer"}{p.m.liveSource ? ` · live: ${p.m.liveSource}` : ""}
                       </div>
                       <div className="text-[10px] text-muted-foreground">{tone.label} · click to open</div>
                     </div>
