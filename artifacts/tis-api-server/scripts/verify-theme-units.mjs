@@ -8,7 +8,7 @@ import path from "node:path";
 // this check never calls) and lib/db's index throws at module evaluation
 // without DATABASE_URL — same stub scripts/lib/bundle-renderer.mjs uses.
 if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = "postgres://localhost/tis_check_stub_db";
+  process.env.DATABASE_URL = "postgres://unused:unused@127.0.0.1:1/unused";
 }
 
 const here = path.dirname(fileURLToPath(import.meta.url));

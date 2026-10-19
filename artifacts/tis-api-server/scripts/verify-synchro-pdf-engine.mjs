@@ -48,7 +48,7 @@ import os from "node:os";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(path.resolve(here, "ts-loader.mjs")).href, import.meta.url);
-process.env.DATABASE_URL ??= "postgres://localhost/tis_e2e_stub_db";
+process.env.DATABASE_URL ??= "postgres://unused:unused@127.0.0.1:1/unused";
 const execFileAsync = promisify(execFile);
 
 let fails = 0;
