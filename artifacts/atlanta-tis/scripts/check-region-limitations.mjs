@@ -30,13 +30,18 @@
 //           turning-movement counts (UTDF, Synchro PDF) and one client link
 //           count.
 //
-// The Atlanta volume sentence ("calibrated to GDOT 511 incident-rate
-// observations") is deliberately NOT asserted: Atlanta volumes come from road
-// class x distance from downtown x a fixed per-signal factor
-// (api-server/src/lib/atlanta-analysis.ts), and GDOT 511 feeds only a delay
-// multiplier. Its wording belongs to PR #246 (claude/georgia-source-truth).
-// What is asserted for Georgia is true and region-specific: the GDOT AADT
-// series for growth and [GDOT-RPM] in A.4 / A.6.
+//   GA-511  GA with the per-signal delay factor on 3 of its 40 rows
+//           (calibration.delayMultiplier 1.04, 1.20, 1.11), as the engine
+//           stamps it on Atlanta signals the GDOT 511 archive covers.
+//   SAV-511 SAV with the same factors: the GDOT 511 wording stays Atlanta-only.
+//
+// The Atlanta volume sentence says what the engine does (#246): volumes are
+// modeled from road class x distance from downtown x a fixed per-signal factor
+// (api-server/src/lib/atlanta-analysis.ts), with no count joined, and GDOT 511
+// feeds only a per-signal delay multiplier (api-server calibration-worker.ts),
+// named only where the rows carry one. "calibrated to GDOT 511" must not appear
+// in any fixture's text. Also asserted for Georgia: the GDOT AADT series for
+// growth and [GDOT-RPM] in A.4 / A.6.
 //
 // The one place "GDOT" is allowed in a non-Georgia study is the LOS-bands
 // bibliography entry, which lists GDOT among example state manuals that
@@ -134,7 +139,17 @@ const MIXED = (() => {
   ["utdf_tmc", "synchro_pdf_tmc", "link_csv"].forEach((v, i) => (r.affectedIntersections[i].volumeSource = v));
   return r;
 })();
-const FIXTURES = { GA, "GA-0": GA0, UTDF, PA, "PA-?": PA_OLD, SAV, MIXED };
+// The delay factor the engine stamps on a row (row-math.ts), on 3 of the 40 rows.
+const withDelayFactors = (base) => {
+  const r = structuredClone(base);
+  [1.04, 1.2, 1.11].forEach((m, i) => {
+    r.affectedIntersections[i].calibration = { delayMultiplier: m, delayMultiplierExact: m, observationCount: 12, lastUpdated: "2026-10-01T00:00:00Z" };
+  });
+  return r;
+};
+const GA511 = withDelayFactors(GA);
+const SAV511 = withDelayFactors(SAV);
+const FIXTURES = { GA, "GA-0": GA0, "GA-511": GA511, UTDF, PA, "PA-?": PA_OLD, SAV, "SAV-511": SAV511, MIXED };
 const nonAutoPct = (r) => (Number.isFinite(r.autoModeShareApplied) ? Math.round((1 - r.autoModeShareApplied) * 100) : null);
 
 // ─── the bundle, from the text under test ────────────────────────────────────
@@ -317,8 +332,29 @@ async function suite(src) {
   }
   {
     const t = lt("SAV");
-    const ok = has(t, "traffic-signal nodes within the Savannah MSA,") && !has(t, "Atlanta MSA,") && !has(t, "GDOT 511") && has(t, "GDOT Annual Average Daily Traffic series") && /per \[GDOT-RPM\]/.test(at("SAV"));
-    check("ga-other-metro", ok, `GA outside Atlanta (Savannah): its own region, not the Atlanta MSA or the Atlanta-only GDOT 511 volume sentence, and keeps the GDOT AADT and [GDOT-RPM] text (its growth source names the Atlanta Regional Commission, which hosts the GDOT counts) ${why(L.SAV, A.SAV)}`);
+    const ok =
+      has(t, "traffic-signal nodes within the Savannah MSA,") &&
+      !has(t, "Atlanta MSA,") &&
+      ["SAV", "SAV-511"].every((k) => !has(lt(k), "GDOT 511") && !has(lt(k), "downtown Atlanta")) &&
+      has(t, "GDOT Annual Average Daily Traffic series") &&
+      /per \[GDOT-RPM\]/.test(at("SAV"));
+    check("ga-other-metro", ok, `GA outside Atlanta (Savannah, with and without delay factors on its rows): its own region, not the Atlanta MSA, the Atlanta volume model or the Atlanta-only GDOT 511 delay factor, and keeps the GDOT AADT and [GDOT-RPM] text (its growth source names the Atlanta Regional Commission, which hosts the GDOT counts) ${why(L.SAV, L["SAV-511"], A.SAV)}`);
+  }
+  {
+    // #246: Atlanta volumes are modeled, not counted, and GDOT 511 is not their source.
+    const MODEL = "Each study signal's design-hour volume is modeled from road class, distance from downtown Atlanta and a fixed per-signal factor, with no count joined, and its turning-movement splits are modeled. GDOT 511 data is not used for volumes.";
+    const UTDF_LEAD = "estimated, not counted, except at the 1 study signal with counts supplied with this study. At the others, each study signal's design-hour volume is modeled from road class, distance from downtown Atlanta and a fixed per-signal factor";
+    const anyCalibrated = Object.keys(FIXTURES).filter((k) => /calibrated to GDOT 511/.test(lt(k)) || /calibrated to GDOT 511/.test(at(k)));
+    const ok =
+      has(lt("GA"), `Existing volumes and turning-movement splits: estimated, not counted. ${MODEL}`) &&
+      has(lt("UTDF"), UTDF_LEAD) &&
+      anyCalibrated.length === 0 &&
+      !has(lt("GA"), "GDOT 511 delay factor");
+    check("ga-atlanta-volumes", ok, `GA (Atlanta): Appendix B says volumes are modeled from road class, distance from downtown Atlanta and a fixed per-signal factor with no count joined, not from GDOT 511; no fixture says "calibrated to GDOT 511"; no delay factor is named when no row carries one${anyCalibrated.length ? ` — "calibrated to GDOT 511" in: ${anyCalibrated.join(", ")}` : ""} ${why(L.GA, L.UTDF)}`);
+  }
+  {
+    const want = "GDOT 511 delay factor: at 3 of the 40 study signals the computed control delay is multiplied by a factor of 1.04–1.20, derived from GDOT 511 incident reports snapped to the signal over a rolling 7-day window. It is not fitted to measured delay; no GDOT 511 camera or signal data is used, and GDOT 511 data is not used for volumes or turning movements.";
+    check("ga-511-factor", has(lt("GA-511"), want), `GA (Atlanta) with delay factors on 3 rows: Appendix B names the GDOT 511 incident factor as a delay multiplier only, with its signal count and range ${why(L["GA-511"])}`);
   }
 
   // ---- an older payload: neutral, not guessed ------------------------------------
@@ -445,11 +481,13 @@ const MUTATIONS = [
   { label: "the growth rate reverts to a fixed 1.0% per year", flips: ["pa-no-georgia", "pa-growth", "ga-applied-values", "unknown-neutral"], apply: edit("limitations", "<strong>{growth.ratePct}% per year</strong>", "<strong>1.0% per year</strong>") },
   { label: "the growth source is not printed", flips: ["pa-growth", "ga-applied-values"], apply: edit("limitations", "<>Source: {growth.source}.</>", "<>Source: the engine.</>") },
   { label: "the GDOT AADT pointer prints for every study", flips: ["pa-no-georgia", "unknown-neutral"], apply: edit("limitations", "{region.isGeorgia\n", "{true\n") },
-  { label: "the Atlanta GDOT 511 volume sentence prints for all of Georgia", flips: ["ga-other-metro"], apply: edit("limitations", "{region.isAtlanta ? (", "{region.isGeorgia ? (") },
+  { label: "the Atlanta volume model prints for all of Georgia", flips: ["ga-other-metro"], apply: edit("limitations", "{region.isAtlanta ? (", "{region.isGeorgia ? (") },
+  { label: "the pre-#246 Atlanta sentence: volumes 'calibrated to GDOT 511 incident-rate observations'", flips: ["ga-atlanta-volumes"], apply: edit("limitations", "study signal's design-hour volume is modeled from road class, distance from\n                  downtown Atlanta and a fixed per-signal factor, with no count joined, and its\n                  turning-movement splits are modeled. GDOT 511 data is not used for volumes.", "volume is deterministically modeled from zone-level demand patterns calibrated to GDOT 511\n                  incident-rate observations.") },
+  { label: "the GDOT 511 delay factor prints for every region whose rows carry one", flips: ["ga-other-metro"], apply: edit("limitations", "{region.isAtlanta && delay511 ? (", "{delay511 ? (") },
   { label: "Appendix B always says no credits were applied", flips: ["pa-credits-limitations", "no-false-no-credits", "ga-applied-values", "unknown-neutral"], apply: edit("limitations", "{credits.allZero ? (", "{true ? (") },
   { label: "the capacity sentence drops 'superseded by HCS and/or Synchro'", flips: ["model-sentence"], apply: edit("limitations", "screening model is superseded by those tools at submittal.", "screening model is used at submittal.") },
   { label: "counts supplied with the study are not disclosed", flips: ["supplied-counts", "supplied-counts-mixed"], apply: edit("limitations", "{supplied > 0 ? (", "{false ? (") },
-  { label: "the volume sentence says 'not counted' even where counts were supplied", flips: ["supplied-counts-mixed"], apply: edit("limitations", "`estimated, not counted, except at the ${supplied} study signal${supplied === 1 ? \"\" : \"s\"} with counts supplied with this study. At the others, each`", '"estimated, not counted. Each"') },
+  { label: "the volume sentence says 'not counted' even where counts were supplied", flips: ["ga-atlanta-volumes", "supplied-counts-mixed"], apply: edit("limitations", "`estimated, not counted, except at the ${supplied} study signal${supplied === 1 ? \"\" : \"s\"} with counts supplied with this study. At the others, each`", '"estimated, not counted. Each"') },
   { label: "the mixed count clauses drop their signals", flips: ["supplied-counts-mixed"], apply: edit("limitations", "`imported turning-movement counts at ${atSignals(counts.tmc)}, client link counts at ${atSignals(counts.linkCounts)}`", "`imported turning-movement counts at ${counts.tmc}, client link counts at ${counts.linkCounts}`") },
   { label: "Appendix B says audit", flips: ["banned-copy"], apply: edit("limitations", "acting on any recommendation.", "acting on any recommendation or audit.") },
   // ---- the shared disclosures (study-disclosures.ts) ---------------------------------
@@ -457,6 +495,8 @@ const MUTATIONS = [
   { label: "an absent autoModeShareApplied is guessed as 100% auto", flips: ["unknown-neutral"], apply: edit("disclosures", "const share = finite(report.autoModeShareApplied);", "const share = finite(report.autoModeShareApplied) ?? 1;") },
   { label: "no region is read as Georgia", flips: ["ga-gdot-kept", "ga-other-metro"], apply: edit("disclosures", 'isGeorgia: metro.state === "GA",', "isGeorgia: false,") },
   { label: "the region phrase loses its article", flips: ["pa-region", "ga-gdot-kept", "ga-other-metro"], apply: edit("disclosures", "return /\\b(MSA|CSA|CMA|CMM|ZM)$/.test(name) ? `the ${name}` : name;", "return name;") },
+  { label: "the delay factor is never read from the rows", flips: ["ga-511-factor"], apply: edit("disclosures", "const m = rows.map((r) => finite(r.calibration?.delayMultiplier)).filter((x): x is number => x != null);", "const m: number[] = [];") },
+  { label: "the delay-factor range prints only its maximum", flips: ["ga-511-factor"], apply: edit("disclosures", "range: lo === hi ? lo : `a factor of ${lo}–${hi}`", "range: hi") },
   { label: "all-zero credits are never recognised", flips: ["ga-zero-none"], apply: edit("disclosures", "const allZero = pb === 0 && ic === 0 && na === 0;", "const allZero = false;") },
   // ---- Appendix A (tis-methodology-appendix.tsx) -------------------------------------
   { label: "§A.1 always says the rates carry no credits", flips: ["pa-credits-appendix", "no-false-no-credits", "a1-adjustments-applied"], apply: edit("appendix", "{credits.allZero ? (", "{true ? (") },

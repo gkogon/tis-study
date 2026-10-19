@@ -152,3 +152,31 @@ export function suppliedCounts(report: TisReport): { signals: number; tmc: numbe
   }
   return { signals: rows.length, tmc, linkCounts };
 }
+
+export type IncidentDelayFactor = {
+  /** "all 40 study signals", "3 of the 40 study signals", "the one study signal". */
+  where: string;
+  /** "1.12", or "a factor of 1.02–1.20". */
+  range: string;
+};
+
+/**
+ * The per-signal delay multiplier the engine applied, read from the rows that
+ * carry one (`calibration.delayMultiplier`); null when none does. Its only
+ * source is the analyzer's GDOT 511 incident archive (api-server
+ * calibration-worker.ts: 1.00–1.20 per Atlanta signal), the only GDOT 511
+ * input the engine reads, so a study whose rows carry no factor names no
+ * GDOT 511 input at all. Mirrors the Georgia PDF's §2.2 (pdf-export.ts
+ * gaDelayFactorSentence).
+ */
+export function incidentDelayFactor(report: TisReport): IncidentDelayFactor | null {
+  const rows = Array.isArray(report.affectedIntersections) ? report.affectedIntersections : [];
+  const m = rows.map((r) => finite(r.calibration?.delayMultiplier)).filter((x): x is number => x != null);
+  if (m.length === 0) return null;
+  const lo = Math.min(...m).toFixed(2);
+  const hi = Math.max(...m).toFixed(2);
+  const n = rows.length;
+  const where =
+    m.length === n ? (n === 1 ? "the one study signal" : `all ${n} study signals`) : `${m.length} of the ${n} study signals`;
+  return { where, range: lo === hi ? lo : `a factor of ${lo}–${hi}` };
+}
