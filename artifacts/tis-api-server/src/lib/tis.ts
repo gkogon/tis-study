@@ -1279,7 +1279,7 @@ const TIS_METHODOLOGY = [
   "After assignment, all signalized intersections within the study radius are reported in the affected-intersections table. Project-added trips, v/c ratio change, control delay change, LOS change, and 95th-percentile queue are reported for each intersection so the reviewer can assess relative impact. Intersections beyond the study radius are excluded from analysis.",
   "Auto-mode share is applied per metro before assignment. Suburban-US metros default to 90% auto (ACS 5-Year B08301 median); transit-heavy metros use measured auto-mode share (e.g., NYC 32%, Tokyo 30%, London 38%, San Francisco 47%). Non-auto trips (transit, walking, cycling) do not load the off-site roadway. This is a screening-level adjustment; a real TIS submittal in a transit-heavy market should refine with project-specific TAZ data.",
   "Candidate signals are de-duplicated within a 45m clustering threshold to prevent OSM divided-arterial splits and way-record artifacts from double-counting a single physical intersection.",
-  "Intersection-level control delay uses the standard signalized-intersection model d = d1 + d2 (Webster uniform delay + Akçelik time-dependent incremental-delay term, both openly published) with a 90s cycle, g/C = 0.45, 1,800 vphpl saturation flow (× weather factor), 15-minute peak analysis period (T = 0.25 hr) and pretimed-signal incremental-delay factor k = 0.5. Reported control delay is capped at 300 s (LOS F) for screening reliability — the incremental-delay term is not calibrated far above capacity, so oversaturated approaches are reported as LOS F rather than an implausible delay figure; a calibrated design-level analysis (HCS / Synchro) supersedes this screen.",
+  "Intersection-level control delay is the volume-weighted average of the approach control delays, and intersection v/c is the green-weighted v/c of each phase's heaviest approach; each approach delay uses the standard signalized-intersection model d = d1 + d2 (Webster uniform delay + Akçelik time-dependent incremental-delay term, both openly published) with a 90s cycle, g/C = 0.45, 1,800 vphpl saturation flow (× weather factor), 15-minute peak analysis period (T = 0.25 hr) and pretimed-signal incremental-delay factor k = 0.5. Reported control delay is capped at 300 s (LOS F) for screening reliability — the incremental-delay term is not calibrated far above capacity, so oversaturated approaches are reported as LOS F rather than an implausible delay figure; a calibrated design-level analysis (HCS / Synchro) supersedes this screen.",
   "Approach-level analysis splits each signal's inflow across NB/SB/EB/WB approaches (deterministic per-signal allocation perturbed ±15% from a 30/25/25/20 base) and assigns added trips to each approach by cosine-similarity to the bearing of the project relative to the signal. Per-approach v/c, control delay, LOS, and 95th-percentile back-of-queue length (standard cyclic-queue relation with Poisson percentile factor: Q95 ≈ Q1 × 1.65 × 25 ft/veh) are reported.",
   "Level of Service is assigned from the conventional US signalized control-delay bands republished in state DOT traffic-engineering manuals: A ≤10s, B ≤20s, C ≤35s, D ≤55s, E ≤80s, F >80s.",
   "Sensitivity is reported in narrative form per standard TIA practice: trip-generation method (rate vs. fitted-curve equation), discrete internal capture and pass-by credit variants, and a ±0.5%/yr growth-rate band around the applied value. The engine retains an internal stochastic-sensitivity routine (Box-Muller-perturbed trip rate and existing volume) for demo-mode diagnostics; it is not surfaced in the deliverable because TIA sensitivity is conducted through discrete scoping-agreed scenario variants, not statistical perturbation of unmeasured distributions.",
@@ -1855,37 +1855,38 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
   if (req.conservedAssignment !== false && segsForConserved && segsForConserved.length > 0) {
     try {
       const cg = buildGraph(segsForConserved, conservedVolumeRefs);
-      let cordon = selectCordonGateways(
+      // Directed reachability — one-way-bearing graphs ONLY. The router's
+      // outbound (site → gateway) and inbound (gateway → site) passes each
+      // drop the share of a gateway they cannot reach (the pred=-1 skip),
+      // with no renormalisation, deflating every resolved weight with no
+      // diagnostic. On a one-way graph a ring node is often reachable one way
+      // only (a divided road's carriageway, a ramp), so each direction's
+      // cordon is selected from the nodes that direction reaches: an octant's
+      // outbound share goes only to outbound-reachable gateways, its inbound
+      // share only to inbound-reachable ones, each direction keeps the §6.1
+      // octant totals, and a node neither direction reaches is never a
+      // candidate. If either direction has no routable cordon the selection
+      // is null and the legacy path stands. On all-two-way graphs no
+      // reachability is passed and the selection is byte-identical.
+      const reach = cg.links.some((lk) => lk.dir !== 0)
+        ? directedReachability(cg, cg.nearestNode(req.latitude, req.longitude))
+        : undefined;
+      const cordon = selectCordonGateways(
         cg,
         { lat: req.latitude, lon: req.longitude },
         radiusMi,
         dist.byDirection,
+        reach,
       );
-      // Directed-reachability screen — one-way-bearing graphs ONLY. The ring/
-      // octant/capacity selection is purely geometric: on a heavily one-way
-      // grid it can pick a gateway no legal path serves in EITHER direction,
-      // whose demand share then silently evaporates at routing time (the
-      // pred=-1 skip), deflating routed/onNetworkPct and every resolved
-      // weight with no diagnostic. Drop such gateways and renormalize so the
-      // cordon's Σshare stays 1 over gateways that can actually route. On
-      // all-two-way graphs (every shipped region today) the gate keeps this
-      // block inert and the selection byte-identical.
-      if (cordon && cg.links.some((lk) => lk.dir !== 0)) {
-        const reach = directedReachability(cg, cg.nearestNode(req.latitude, req.longitude));
-        const kept = cordon.gateways.filter(
-          (gw) => reach.outbound[gw.node] === 1 || reach.inbound[gw.node] === 1,
-        );
-        if (kept.length === 0) {
-          cordon = null; // no routable cordon — the legacy path stands
-        } else if (kept.length < cordon.gateways.length) {
-          const sum = kept.reduce((s, gw) => s + gw.share, 0);
-          cordon = { ...cordon, gateways: kept.map((gw) => ({ ...gw, share: gw.share / sum })) };
-        }
-      }
       if (cordon) {
         const net = assignRoutesWithTurns(
           { lat: req.latitude, lon: req.longitude },
-          cordon.gateways.map((gw) => ({ lat: gw.lat, lon: gw.lon, trips: gw.share })),
+          cordon.gateways.map((gw) => ({
+            lat: gw.lat,
+            lon: gw.lon,
+            trips: gw.share,
+            ...(gw.shareIn !== undefined ? { tripsIn: gw.shareIn } : {}),
+          })),
           segsForConserved,
           { volumeRefs: conservedVolumeRefs },
         );

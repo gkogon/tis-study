@@ -10,10 +10,10 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
-import { MapContainer, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import type { MetroCoverage } from "../data/metro-coverage";
-import { DARK_TILES, DARK_TILES_ATTRIBUTION } from "./metro-map";
+import { BasemapLayers } from "./basemap-layers";
 
 export type Sig = { id: string; name: string; latitude: number; longitude: number; totalVolume: number; volumeSource?: string; volumeYear?: number };
 type Incident = { id: string | number; road: string; condition: string; latitude: number; longitude: number; severity?: number };
@@ -182,7 +182,7 @@ export function MetroSignalMap({ metro }: { metro: MetroCoverage }) {
       <div className="relative h-[460px] rounded-lg overflow-hidden border bg-[#0B1220]">
         {sigs && bounds && (
           <MapContainer bounds={bounds} boundsOptions={{ padding: [24, 24] }} minZoom={7} maxZoom={17} scrollWheelZoom={false} style={{ height: "100%", width: "100%", background: "#0B1220" }}>
-            <TileLayer url={DARK_TILES} attribution={DARK_TILES_ATTRIBUTION} subdomains="abcd" />
+            <BasemapLayers kind="dark" />
             <SignalsLayer sigs={sigs} incidents={incidents} shownRef={shownRef} revealing={revealing} onHover={setHover} />
           </MapContainer>
         )}

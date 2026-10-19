@@ -49,7 +49,7 @@ const EXPECTED = [
   "WEATHER_FACTOR", "PERIOD_VOLUME_FACTOR", "DIRECTIONS", "APPROACH_ORIGIN_BEARING",
   "bearingDeg", "hash32", "mulberry32", "approachVolumeShares", "approachAddedTripShares",
   "utdfApproachTotals", "utdfMeasuredTotals", "utdfGoverningStorage", "laneGroupsForApproach",
-  "throughLanesByApproach", "resolveTimingForRow", "buildAffectedRow", "oppositeDir",
+  "throughLanesByApproach", "resolveTimingForRow", "intersectionFromApproaches", "buildAffectedRow", "oppositeDir",
   "clamp", "round1", "round2", "round3",
   // mitigation
   "SCREENING_DELAY_DELTA_MINOR_SEC", "SCREENING_DELAY_DELTA_MODERATE_SEC",

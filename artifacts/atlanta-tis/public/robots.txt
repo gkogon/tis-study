@@ -12,6 +12,9 @@ Disallow: /auth/
 # indexing leaks the link pattern and serves no SEO value.
 Disallow: /unsubscribe
 
+# Private, unlisted sample-study page shared directly with prospects.
+Disallow: /pittsburgh-study-private
+
 # Backend API surfaces — never useful to crawl.
 Disallow: /api/
 Disallow: /tis-api/

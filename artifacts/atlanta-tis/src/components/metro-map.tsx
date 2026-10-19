@@ -6,21 +6,12 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { MapContainer, TileLayer, CircleMarker, Tooltip as LeafletTooltip } from "react-leaflet";
+import { MapContainer, CircleMarker, Tooltip as LeafletTooltip } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { METROS, TIER_A_AADT_CUTOFF, type MetroCoverage } from "../data/metro-coverage";
+import { BasemapLayers } from "./basemap-layers";
 
 type Pt = { m: MetroCoverage; lat: number; lon: number };
-
-export const DARK_TILES = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-export const DARK_TILES_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
-// The light basemap for the study maps. CARTO, like the dark map above —
-// not tile.openstreetmap.org, whose usage policy excludes production apps
-// and whose abuse filter 403s every tile once it decides an app is one.
-export const LIGHT_TILES = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
-export const LIGHT_TILES_ATTRIBUTION = DARK_TILES_ATTRIBUTION;
-export const LIGHT_TILES_SUBDOMAINS = "abcd";
 
 export function metroTone(m: MetroCoverage): { color: string; label: string } {
   const quality = m.aadtQuality ?? "measured";
@@ -87,7 +78,7 @@ export function MetroMap() {
       <div className="h-[420px] rounded-lg overflow-hidden border bg-[#0B1220]">
         {pts && (
           <MapContainer center={[24, 8]} zoom={2} minZoom={2} maxZoom={12} scrollWheelZoom={false} worldCopyJump preferCanvas style={{ height: "100%", width: "100%", background: "#0B1220" }}>
-            <TileLayer url={DARK_TILES} attribution={DARK_TILES_ATTRIBUTION} subdomains="abcd" />
+            <BasemapLayers kind="dark" />
             {pts.slice(0, shown).map((p) => {
               const tone = metroTone(p.m);
               const r = Math.min(16, 3 + 2.2 * Math.sqrt(p.m.signals / 1000));
