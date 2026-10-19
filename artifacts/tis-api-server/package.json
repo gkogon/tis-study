@@ -56,6 +56,7 @@
     "check:leg-volumes-render": "node ./scripts/verify-leg-volumes-render.mjs",
     "check:states-roadway-sources": "node ./scripts/verify-states-roadway-sources.mjs",
     "check:states-report-claims": "node ./scripts/verify-states-report-claims.mjs",
+    "check:ga-report-sources": "node ./scripts/verify-ga-report-sources.mjs",
     "check:theme-units": "node ./scripts/verify-theme-units.mjs",
     "check:theme-default-identity": "node ./scripts/verify-theme-default-identity.mjs",
     "check:theme-render": "node ./scripts/verify-theme-render.mjs",
@@ -70,7 +71,8 @@
     "check:inventory-revalidation": "node ./scripts/verify-inventory-revalidation.mjs",
     "check:lookup-caches": "node ./scripts/verify-lookup-caches.mjs",
     "check:streetview-geolocate-caches": "node ./scripts/verify-streetview-geolocate-caches.mjs",
-    "check:nyc-transit-disclosure": "node ./scripts/verify-nyc-transit-disclosure.mjs"
+    "check:nyc-transit-disclosure": "node ./scripts/verify-nyc-transit-disclosure.mjs",
+    "check:no-localhost-db-stubs": "node ./scripts/verify-no-localhost-db-stubs.mjs"
   },
   "dependencies": {
     "@swc/helpers": "^0.5.13",

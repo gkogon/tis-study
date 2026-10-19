@@ -179,7 +179,7 @@ const execFileAsync = promisify(execFile);
 // (the pool is created at module level but queries only run on function call);
 // generateTisReport falls back to an empty calibration map when the DB is down.
 if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = "postgres://localhost/tis_e2e_stub_db";
+  process.env.DATABASE_URL = "postgres://unused:unused@127.0.0.1:1/unused";
 }
 
 // Bundle tis.ts (+ its dependency tree) into a temp file at src/lib/ so that

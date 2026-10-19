@@ -13,7 +13,7 @@ const lib = path.resolve(here, "../../src/lib");
  * `export { foo } from "./report-theme/foo";`.
  */
 export async function loadRendererBundle(extraExports = "") {
-  if (!process.env.DATABASE_URL) process.env.DATABASE_URL = "postgres://localhost/tis_check_stub_db";
+  if (!process.env.DATABASE_URL) process.env.DATABASE_URL = "postgres://unused:unused@127.0.0.1:1/unused";
   const entry = path.join(lib, `.theme-bundle-entry-${process.pid}.ts`);
   const out = path.join(lib, `.theme-bundle-${process.pid}.mjs`);
   await writeFile(entry, `export { renderStudyPdf } from "./pdf-export";\n${extraExports}\n`, "utf8");

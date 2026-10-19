@@ -25,12 +25,12 @@ import {
 } from "@workspace/api-client-react";
 import {
   MapContainer,
-  TileLayer,
   Polyline,
   Tooltip as LeafletTooltip,
   CircleMarker,
   useMap,
 } from "react-leaflet";
+import { BasemapLayers } from "@/components/basemap-layers";
 import "leaflet/dist/leaflet.css";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -446,10 +446,7 @@ function TrafficMap({
       style={{ height: "100%", width: "100%" }}
       scrollWheelZoom
     >
-      <TileLayer
-        attribution='&copy; OpenStreetMap, &copy; CARTO'
-        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-      />
+      <BasemapLayers kind="light" />
       <PolylineLayer grouped={grouped} />
       <IncidentLayer incidents={incidents} />
       <HotspotLayer hotspots={hotspots} />

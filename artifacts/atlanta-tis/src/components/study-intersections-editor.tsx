@@ -280,7 +280,7 @@ export function StudyIntersectionsEditor({
               maxZoom={20}
               style={{ height: "100%", width: "100%" }}
             >
-              <BasemapLayers kind={basemap === "satellite" ? "satellite" : "light"} />
+              <BasemapLayers kind={basemap === "satellite" ? "satellite" : "street"} />
               <Circle
                 center={center}
                 radius={radiusMeters}

@@ -45,9 +45,18 @@
 //                          must upscale z16) and maxZoom 20
 //   satellite-unchanged    satellite is still World_Imagery under World_Boundaries_and_Places
 //                          at maxNativeZoom 19, with the imagery credit it always had
+//   street-layer           street is Esri World_Street_Map alone, maxNativeZoom 19 (its real
+//                          tiles end at z19 over Atlanta; z20 is "Map data not yet
+//                          available") and maxZoom 20, credited "Powered by Esri" plus every
+//                          source in the service's copyrightText, OpenStreetMap linked
+//   street-in-editors      the driveway and study-intersection editors open at z18, so their
+//                          Street toggle is kind "street" (Canvas there would be z16 upscaled
+//                          4x); every other map keeps light or dark, and asks for no street
 //
 // --live also fetches a z10 tile over Atlanta from every layer, with the
-// production referer, and requires 200 image/* (not run in CI: no network).
+// production referer, and requires 200 image/*; then fetches every layer at
+// its maxNativeZoom over Atlanta and requires a real tile, not Esri's "Map
+// data not yet available" placeholder (not run in CI: no network).
 //
 // TEETH: MUTATIONS edit the sources IN MEMORY, the suite runs again on the
 // edited text, and each mutation must turn red exactly the checks it names.
@@ -124,6 +133,12 @@ const CANVAS = {
   light: { base: "/Canvas/World_Light_Gray_Base/MapServer/", labels: "/Canvas/World_Light_Gray_Reference/MapServer/" },
   dark: { base: "/Canvas/World_Dark_Gray_Base/MapServer/", labels: "/Canvas/World_Dark_Gray_Reference/MapServer/" },
 };
+const STREET = {
+  url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+  // World_Street_Map's copyrightText (?f=json), 2026-10-19.
+  sources: ["Esri", "HERE", "Garmin", "USGS", "Intermap", "INCREMENT P", "NRCan", "Esri Japan", "METI", "Esri China (Hong Kong)", "Esri Korea", "Esri (Thailand)", "NGCC", "the GIS User Community"],
+};
+const EDITORS = ["src/components/driveway-editor.tsx", "src/components/study-intersections-editor.tsx"];
 const SATELLITE = {
   imagery: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
   labels: "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
@@ -139,6 +154,7 @@ async function suite(sources) {
   const asts = Object.fromEntries(code.map((f) => [f, parse(f, sources[f])]));
   const loaded = await loadBasemaps(sources);
   const B = loaded.basemaps;
+  const kindsByFile = new Map(); // file -> every kind its <BasemapLayers> asks for (filled by every-map-has-basemap)
 
   // no-carto-osm: the raw text, comments included.
   {
@@ -243,6 +259,7 @@ async function suite(sources) {
     const problems = [];
     let maps = 0;
     const kinds = B ? Object.keys(B) : [];
+    kindsByFile.clear();
     for (const f of code) {
       if (Object.hasOwn(TILE_FREE_MAPS, f)) continue; // held to no tiles at all by tile-free-maps
       walk(asts[f], (n) => {
@@ -260,6 +277,7 @@ async function suite(sources) {
         const choices = ts.isConditionalExpression(expr) ? [expr.whenTrue, expr.whenFalse] : [expr];
         if (!choices.every(ts.isStringLiteral)) { problems.push(`the map at ${where} gives BasemapLayers a kind that is not a string literal or a choice between two`); return; }
         for (const k of choices.map((s) => s.text)) if (!kinds.includes(k)) problems.push(`the map at ${where} asks for kind "${k}", which BASEMAPS does not define`);
+        kindsByFile.set(f, [...(kindsByFile.get(f) ?? []), ...choices.map((s) => s.text)]);
       });
     }
     if (maps === 0) problems.push("no <MapContainer> found under src/ (the check would pass vacuously)");
@@ -292,7 +310,7 @@ async function suite(sources) {
 
   // The rest read the evaluated BASEMAPS.
   const all = B ? Object.entries(B).flatMap(([kind, layers]) => (Array.isArray(layers) ? layers.map((l, i) => ({ kind, i, ...l })) : [])) : [];
-  const shape = !B ? loaded.error : ["light", "dark", "satellite"].filter((k) => !Array.isArray(B[k]) || B[k].length === 0).map((k) => `BASEMAPS.${k} is not a non-empty array`).join("; ");
+  const shape = !B ? loaded.error : ["light", "dark", "satellite", "street"].filter((k) => !Array.isArray(B[k]) || B[k].length === 0).map((k) => `BASEMAPS.${k} is not a non-empty array`).join("; ");
 
   {
     const bad = all.filter((l) => typeof l.url !== "string" || !ESRI_TILE_URL.test(l.url)).map((l) => `${l.kind}[${l.i}] ${l.url}`);
@@ -352,6 +370,30 @@ async function suite(sources) {
     }
     check("satellite-unchanged", problems.length === 0, `satellite is still World_Imagery under World_Boundaries_and_Places, native to z19${problems.length ? ` (${problems.join("; ")})` : ""}`);
   }
+  {
+    const problems = [];
+    if (shape) problems.push(shape);
+    else {
+      const [st, ...extra] = B.street;
+      if (st?.url !== STREET.url) problems.push(`street[0] is ${st?.url}`);
+      if (extra.length) problems.push(`${extra.length} extra layer(s) (World_Street_Map carries its own labels)`);
+      if (st && (st.maxNativeZoom !== 19 || st.maxZoom !== 20)) problems.push(`street zooms ${st.maxNativeZoom}/${st.maxZoom}, not 19/20`);
+      const a = st?.attribution ?? "";
+      if (!/Powered by <a href="https:\/\/www\.esri\.com\/?"[^>]*>Esri<\/a>/.test(a)) problems.push('its credit lacks "Powered by Esri" with Esri linked to esri.com');
+      for (const src of STREET.sources) if (!a.includes(src)) problems.push(`its credit lacks ${src}`);
+      if (!/(?:&copy;|©|\(c\))\s*<a href="https:\/\/www\.openstreetmap\.org\/copyright"[^>]*>OpenStreetMap<\/a> contributors/.test(a)) problems.push("its credit lacks © OpenStreetMap contributors linked to openstreetmap.org/copyright");
+    }
+    check("street-layer", problems.length === 0, `street is Esri World_Street_Map alone, real tiles to z19, upscaled to z20, with the service's full credit${problems.length ? ` (${problems.join("; ")})` : ""}`);
+  }
+  {
+    const problems = [];
+    for (const f of EDITORS) {
+      const got = [...(kindsByFile.get(f) ?? [])].sort().join(", ");
+      if (got !== "satellite, street") problems.push(`${f} toggles between ${got || "(no basemap)"}, not satellite and street`);
+    }
+    for (const [f, ks] of kindsByFile) if (!EDITORS.includes(f) && ks.includes("street")) problems.push(`${f} asks for street (only the z18 editors do)`);
+    check("street-in-editors", problems.length === 0, `the two z18 editors toggle satellite / street, and every other map keeps the Canvas basemaps${problems.length ? ` (${problems.join("; ")})` : ""}`);
+  }
   return results;
 }
 
@@ -386,6 +428,43 @@ if (LIVE && baseFails === 0) {
       console.log(`${ok ? "PASS" : "FAIL"}  [live] ${kind}[${i}] ${url} -> ${status} ${type}`);
     }
   }
+  // Each layer at its maxNativeZoom over (33.75, -84.39) must be a real tile.
+  // The placeholder is what Canvas answers at z20 there.
+  const tileAt = (z) => {
+    const n = 2 ** z;
+    const x = Math.floor(((-84.39 + 180) / 360) * n);
+    const y = Math.floor(((1 - Math.asinh(Math.tan((33.75 * Math.PI) / 180)) / Math.PI) / 2) * n);
+    return (u) => u.replace("{z}", z).replace("{x}", x).replace("{y}", y);
+  };
+  const bytes = async (url) => {
+    const res = await fetch(url, { headers: { Referer: "https://simpleimpactstudies.com/" }, signal: AbortSignal.timeout(20000) });
+    return { status: res.status, buf: Buffer.from(await res.arrayBuffer()) };
+  };
+  let placeholder = null;
+  try {
+    placeholder = (await bytes(tileAt(20)(basemaps.light[0].url))).buf;
+  } catch (e) {
+    liveFails++;
+    console.log(`FAIL  [live] could not fetch the "Map data not yet available" placeholder (${e instanceof Error ? e.message : e})`);
+  }
+  if (placeholder) {
+    for (const [kind, layers] of Object.entries(basemaps)) {
+      for (const [i, l] of layers.entries()) {
+        const url = tileAt(l.maxNativeZoom)(l.url);
+        let ok = false;
+        let why = "";
+        try {
+          const { status, buf } = await bytes(url);
+          ok = status === 200 && !buf.equals(placeholder);
+          why = status !== 200 ? `${status}` : ok ? `${buf.length} bytes` : "the placeholder tile";
+        } catch (e) {
+          why = e instanceof Error ? e.message : String(e);
+        }
+        if (!ok) liveFails++;
+        console.log(`${ok ? "PASS" : "FAIL"}  [live] ${kind}[${i}] at its maxNativeZoom ${l.maxNativeZoom}: ${url} -> ${why}`);
+      }
+    }
+  }
 }
 
 if (baseFails > 0) {
@@ -411,13 +490,19 @@ const MUTATIONS = [
   { label: "the allowlisted Pittsburgh LOS map gains a raw CARTO TileLayer", flips: ["no-carto-osm", "tile-layers-shared", "tile-free-maps"], apply: edit("src/pages/pittsburgh-study-private.tsx", "<FitStudyArea bounds={bounds} />", '<FitStudyArea bounds={bounds} />\n        <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />') },
   { label: "the allowlisted Pittsburgh LOS map gains a BasemapLayers (its allowlist entry would be stale)", flips: ["tile-free-maps"], apply: edit("src/pages/pittsburgh-study-private.tsx", "<FitStudyArea bounds={bounds} />", '<FitStudyArea bounds={bounds} />\n        <BasemapLayers kind="light" />') },
   { label: "the metro signal map renders no basemap", flips: ["every-map-has-basemap"], apply: edit("src/components/metro-signal-map.tsx", '<BasemapLayers kind="dark" />', "") },
-  { label: "the driveway editor's street view asks for a basemap BASEMAPS does not define", flips: ["every-map-has-basemap"], apply: edit("src/components/driveway-editor.tsx", '<BasemapLayers kind={basemap === "satellite" ? "satellite" : "light"} />', '<BasemapLayers kind={basemap === "satellite" ? "satellite" : "voyager"} />') },
+  { label: "the driveway editor's street view asks for a basemap BASEMAPS does not define", flips: ["every-map-has-basemap", "street-in-editors"], apply: edit("src/components/driveway-editor.tsx", '<BasemapLayers kind={basemap === "satellite" ? "satellite" : "street"} />', '<BasemapLayers kind={basemap === "satellite" ? "satellite" : "voyager"} />') },
   { label: "the light base layer is asked for in CARTO's {z}/{x}/{y} order", flips: ["esri-zyx"], apply: edit(MODULE, "World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", "World_Light_Gray_Base/MapServer/tile/{z}/{x}/{y}") },
-  { label: "the Canvas credit drops OpenStreetMap", flips: ["attribution"], apply: edit(MODULE, ' &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors,', "") },
-  { label: "the Canvas credit drops 'Powered by Esri'", flips: ["attribution"], apply: edit(MODULE, 'Powered by <a href="https://www.esri.com/">Esri</a>', "Tiles &copy; Esri") },
+  { label: "the Canvas credit drops OpenStreetMap", flips: ["attribution"], apply: edit(MODULE, 'Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors,', "Garmin,") },
+  { label: "the Canvas credit drops 'Powered by Esri'", flips: ["attribution"], apply: edit(MODULE, 'Powered by <a href="https://www.esri.com/">Esri</a> | Esri, HERE', "Tiles &copy; Esri | Esri, HERE") },
   { label: "the dark basemap loses its labels layer", flips: ["canvas-layers"], apply: edit(MODULE, '    canvas("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"),\n', "") },
   { label: "the Canvas layers ask Esri for z17+ (its 'Map data not yet available' tile)", flips: ["canvas-layers"], apply: edit(MODULE, "const CANVAS_NATIVE_MAX_ZOOM = 16;", "const CANVAS_NATIVE_MAX_ZOOM = 19;") },
   { label: "the satellite imagery is swapped for Esri's street map", flips: ["satellite-unchanged"], apply: edit(MODULE, "services/World_Imagery/MapServer", "services/World_Street_Map/MapServer") },
+  { label: "street is asked for past World_Street_Map's z19 (its placeholder at z20)", flips: ["street-layer"], apply: edit(MODULE, "const STREET_NATIVE_MAX_ZOOM = 19;", "const STREET_NATIVE_MAX_ZOOM = 20;") },
+  { label: "the street credit drops USGS", flips: ["street-layer"], apply: edit(MODULE, " USGS,", "") },
+  { label: "street is the Canvas light gray base", flips: ["street-layer"], apply: edit(MODULE, "services/World_Street_Map/MapServer", "services/Canvas/World_Light_Gray_Base/MapServer") },
+  { label: "the driveway editor's Street toggle goes back to Canvas light", flips: ["street-in-editors"], apply: edit("src/components/driveway-editor.tsx", '<BasemapLayers kind={basemap === "satellite" ? "satellite" : "street"} />', '<BasemapLayers kind={basemap === "satellite" ? "satellite" : "light"} />') },
+  { label: "the study-intersections editor's Street toggle goes back to Canvas light", flips: ["street-in-editors"], apply: edit("src/components/study-intersections-editor.tsx", '<BasemapLayers kind={basemap === "satellite" ? "satellite" : "street"} />', '<BasemapLayers kind={basemap === "satellite" ? "satellite" : "light"} />') },
+  { label: "the study map swaps Canvas light for street", flips: ["street-in-editors"], apply: edit("src/pages/tis.tsx", '<BasemapLayers kind="light" />', '<BasemapLayers kind="street" />') },
   { label: "BasemapLayers stops passing maxNativeZoom", flips: ["layer-props-wired"], apply: edit(COMPONENT, " maxNativeZoom={layer.maxNativeZoom}", "") },
   { label: "BasemapLayers hard-codes an empty attribution", flips: ["layer-props-wired"], apply: edit(COMPONENT, "attribution={layer.attribution}", 'attribution=""') },
   { label: "BasemapLayers stops dropping stale zoom levels", flips: ["stale-levels-dropped"], apply: edit(COMPONENT, " eventHandlers={TILE_EVENTS}", "") },

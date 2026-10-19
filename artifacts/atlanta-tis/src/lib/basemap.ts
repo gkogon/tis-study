@@ -22,9 +22,15 @@
  * satellite is Esri World Imagery under the World Boundaries and Places
  * labels, exactly as the driveway and study-intersection editors drew it
  * before this module existed.
+ *
+ * street is Esri World Street Map, for those two editors' Street toggle
+ * only. They open at zoom 18, where Canvas would be its z16 tiles upscaled
+ * 4x; World Street Map has real tiles over Atlanta to z19 (building
+ * footprints, house numbers) and answers z20 with the same "Map data not
+ * yet available" tile. It carries its own labels, so it is one layer.
  */
 
-export type BasemapKind = "light" | "dark" | "satellite";
+export type BasemapKind = "light" | "dark" | "satellite" | "street";
 
 export type BasemapLayer = {
   /** Leaflet URL template. Esri's order is {z}/{y}/{x}. */
@@ -44,7 +50,14 @@ export type BasemapLayer = {
 export const ESRI_CANVAS_ATTRIBUTION =
   'Powered by <a href="https://www.esri.com/">Esri</a> | Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, and the GIS user community';
 
+/**
+ * "Powered by Esri", then World_Street_Map's own copyrightText.
+ */
+export const ESRI_STREET_ATTRIBUTION =
+  'Powered by <a href="https://www.esri.com/">Esri</a> | Sources: Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), Esri Korea, Esri (Thailand), NGCC, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, and the GIS User Community';
+
 const CANVAS_NATIVE_MAX_ZOOM = 16;
+const STREET_NATIVE_MAX_ZOOM = 19;
 const MAX_ZOOM = 20;
 
 const canvas = (url: string): BasemapLayer => ({
@@ -75,6 +88,14 @@ export const BASEMAPS: Record<BasemapKind, readonly BasemapLayer[]> = {
       url: "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
       attribution: "",
       maxNativeZoom: 19,
+      maxZoom: MAX_ZOOM,
+    },
+  ],
+  street: [
+    {
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+      attribution: ESRI_STREET_ATTRIBUTION,
+      maxNativeZoom: STREET_NATIVE_MAX_ZOOM,
       maxZoom: MAX_ZOOM,
     },
   ],

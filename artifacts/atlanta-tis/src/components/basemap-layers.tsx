@@ -1,6 +1,6 @@
 /**
  * The one place the site renders a Leaflet TileLayer. Every map puts
- * <BasemapLayers kind="light" | "dark" | "satellite" /> inside its
+ * <BasemapLayers kind="light" | "dark" | "satellite" | "street" /> inside its
  * MapContainer, and this draws that basemap's layers from src/lib/basemap.ts,
  * base first and labels on top. `pnpm run check:basemap-tiles` holds every
  * map under src/ to it.

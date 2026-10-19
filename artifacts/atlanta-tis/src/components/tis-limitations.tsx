@@ -9,19 +9,24 @@
 import type { TisReport } from "@workspace/tis-api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ShieldAlert } from "lucide-react";
-import { creditsDisclosure, growthDisclosure, studyRegion, suppliedCounts, tripCredits } from "../lib/study-disclosures";
+import { creditsDisclosure, growthDisclosure, incidentDelayFactor, studyRegion, suppliedCounts, tripCredits } from "../lib/study-disclosures";
 
 /**
  * Every region-, growth- and credit-specific sentence is read from the report:
  * the Atlanta and GDOT wording prints only for a study the engine placed in
  * the Atlanta MSA (or, for the GDOT AADT series, in Georgia), and the growth
  * rate and credits are the ones the engine applied (see lib/study-disclosures).
+ * Atlanta volumes are modeled from road class, distance from downtown and a
+ * fixed per-signal factor (api-server atlanta-analysis.ts); GDOT 511 feeds
+ * only a per-signal delay multiplier (calibration-worker.ts), stated only
+ * where the study's rows carry one.
  */
 export function TisLimitations({ report }: { report: TisReport }) {
   const region = studyRegion(report.regionCode);
   const growth = growthDisclosure(report);
   const credits = creditsDisclosure(tripCredits(report));
   const counts = suppliedCounts(report);
+  const delay511 = incidentDelayFactor(report);
   const supplied = counts.tmc + counts.linkCounts;
   const atSignals = (n: number) => `${n} signal${n === 1 ? "" : "s"}`;
   const suppliedKinds =
@@ -61,16 +66,17 @@ export function TisLimitations({ report }: { report: TisReport }) {
             </li>
             <li>
               Existing volumes and turning-movement splits:{" "}
+              {supplied > 0
+                ? `estimated, not counted, except at the ${supplied} study signal${supplied === 1 ? "" : "s"} with counts supplied with this study. At the others, each`
+                : "estimated, not counted. Each"}{" "}
               {region.isAtlanta ? (
                 <>
-                  deterministically modeled from zone-level demand patterns calibrated to GDOT 511
-                  incident-rate observations.
+                  study signal's design-hour volume is modeled from road class, distance from
+                  downtown Atlanta and a fixed per-signal factor, with no count joined, and its
+                  turning-movement splits are modeled. GDOT 511 data is not used for volumes.
                 </>
               ) : (
                 <>
-                  {supplied > 0
-                    ? `estimated, not counted, except at the ${supplied} study signal${supplied === 1 ? "" : "s"} with counts supplied with this study. At the others, each`
-                    : "estimated, not counted. Each"}{" "}
                   study signal's design-hour volume is AADT × K-factor from an AADT count record
                   joined to the signal where a compatible record exists, otherwise a baseline volume
                   estimated from road class, and its turning-movement splits are modeled.
@@ -90,6 +96,14 @@ export function TisLimitations({ report }: { report: TisReport }) {
                 </>
               )}
             </li>
+            {region.isAtlanta && delay511 ? (
+              <li>
+                GDOT 511 delay factor: at {delay511.where} the computed control delay is multiplied
+                by {delay511.range}, derived from GDOT 511 incident reports snapped to the signal over
+                a rolling 7-day window. It is not fitted to measured delay; no GDOT 511 camera or
+                signal data is used, and GDOT 511 data is not used for volumes or turning movements.
+              </li>
+            ) : null}
             <li>
               Trip generation: public-data average weekday rates (SANDAG 2002, corroborated by
               NHTS 2017 and NCHRP 716).

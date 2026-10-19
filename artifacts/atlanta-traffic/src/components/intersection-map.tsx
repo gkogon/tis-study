@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { MapContainer, TileLayer, CircleMarker, Polyline, Popup, useMap, LayersControl, LayerGroup } from "react-leaflet";
+import { MapContainer, CircleMarker, Polyline, Popup, useMap, LayersControl, LayerGroup } from "react-leaflet";
+import { BasemapLayers } from "@/components/basemap-layers";
 import "leaflet/dist/leaflet.css";
 import {
   IntersectionSummary,
@@ -76,14 +77,6 @@ function RoadLayer({
 }
 
 export function IntersectionMap({ intersections, onSelect, isDark }: IntersectionMapProps) {
-  const tileUrl = isDark
-    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-    : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-
-  const attribution = isDark
-    ? '&copy; <a href="https://carto.com/attributions">CARTO</a> &copy; OpenStreetMap'
-    : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-
   // Lazy fetch the 2.6MB road network — gzipped ~640KB on the wire, cached forever.
   const { data: roadNetwork } = useGetRoadNetwork({
     query: {
@@ -119,7 +112,7 @@ export function IntersectionMap({ intersections, onSelect, isDark }: Intersectio
         zoomControl={false}
         preferCanvas={true}
       >
-        <TileLayer attribution={attribution} url={tileUrl} />
+        <BasemapLayers kind={isDark ? "dark" : "light"} />
         <MapBounds intersections={intersections} />
 
         <LayersControl position="topright" collapsed={false}>
