@@ -4,7 +4,8 @@ import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MapContainer, TileLayer, CircleMarker } from "react-leaflet";
+import { MapContainer, CircleMarker } from "react-leaflet";
+import { BasemapLayers } from "@/components/basemap-layers";
 import "leaflet/dist/leaflet.css";
 import { PieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { ArrowRight, Activity, Clock, Car, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
@@ -104,10 +105,6 @@ export function IntersectionDrawer({ intersectionId, onClose, onNavigate, siblin
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [isOpen, hasNav, prevId, nextId, onNavigate]);
-
-  const tileUrl = isDark 
-    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-    : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 
   const gridColor = isDark ? "rgba(255,255,255,0.08)" : "#e5e5e5";
   const tickColor = isDark ? "#98999C" : "#71717a";
@@ -209,7 +206,7 @@ export function IntersectionDrawer({ intersectionId, onClose, onNavigate, siblin
                     dragging={false}
                     scrollWheelZoom={false}
                   >
-                    <TileLayer url={tileUrl} />
+                    <BasemapLayers kind={isDark ? "dark" : "light"} />
                     <CircleMarker
                       center={[data.intersection.latitude, data.intersection.longitude]}
                       radius={8}
