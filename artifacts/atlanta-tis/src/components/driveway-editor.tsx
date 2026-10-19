@@ -169,7 +169,7 @@ export function DrivewayEditor({ site, driveways, onChange }: DrivewayEditorProp
 
       <div style={{ height: 340, width: "100%" }} className="rounded overflow-hidden border">
         <MapContainer key={`${site.latitude},${site.longitude}`} center={center} zoom={18} maxZoom={20} style={{ height: "100%", width: "100%" }}>
-          <BasemapLayers kind={basemap === "satellite" ? "satellite" : "light"} />
+          <BasemapLayers kind={basemap === "satellite" ? "satellite" : "street"} />
           <MapClickHandler onAdd={addAt} />
           <Marker position={center} icon={siteIcon()}>
             <LeafletTooltip direction="top" offset={[0, -26]}>Site</LeafletTooltip>
