@@ -26,12 +26,12 @@ import {
 } from "@workspace/api-client-react";
 import {
   MapContainer,
-  TileLayer,
   Marker,
   Polyline,
   CircleMarker,
   Tooltip as LeafletTooltip,
 } from "react-leaflet";
+import { BasemapLayers } from "@/components/basemap-layers";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -223,10 +223,7 @@ const PredictedFlowMap = memo(function PredictedFlowMap({
       preferCanvas
       style={{ height: "560px", width: "100%", borderRadius: "8px" }}
     >
-      <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-        attribution='&copy; OpenStreetMap, &copy; CARTO'
-      />
+      <BasemapLayers kind="light" />
       {grouped && FLOW_RENDER_ORDER.map((level) =>
         (grouped[level] ?? []).map((seg, i) => (
           <Polyline
