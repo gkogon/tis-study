@@ -22,6 +22,9 @@ import {
   US_STATES_COVERED,
   COUNTRIES_COVERED,
   CONTINENTS_COVERED,
+  TIER_A_METROS,
+  isFlagshipMetro,
+  isTierAMetro,
   type MetroCoverage,
 } from "../data/metro-coverage";
 
@@ -30,7 +33,7 @@ const STATE_ORDER: MetroCoverage["state"][] = (Object.keys(STATE_NAMES) as Metro
   .sort((a, b) => STATE_NAMES[a].localeCompare(STATE_NAMES[b]));
 
 export default function CitiesPage() {
-  const tierACount = METROS.filter((m) => (m.aadtPct >= TIER_A_AADT_CUTOFF && (m.aadtQuality ?? "measured") === "measured") || m.code === "atlanta_metro").length;
+  const tierACount = TIER_A_METROS.length;
 
   usePageMeta({
     title: `Cities we cover — ${TOTAL_METROS} metros, ${TOTAL_SIGNALS.toLocaleString()} signals indexed`,
@@ -154,9 +157,9 @@ export default function CitiesPage() {
 }
 
 function CityRow({ m }: { m: MetroCoverage }) {
-  const isFlagship = m.code === "atlanta_metro";
-  const isMeasuredAadt = (m.aadtQuality ?? "measured") === "measured";
-  const isTierA = (m.aadtPct >= TIER_A_AADT_CUTOFF && isMeasuredAadt) || isFlagship;
+  const isFlagship = isFlagshipMetro(m);
+  const isTierA = isTierAMetro(m);
+  const isModeledVolumes = m.aadtQuality === "modeled";
   const isSyntheticAadt = m.aadtQuality === "synthetic" && m.aadtPct > 0;
   return (
     <Link
@@ -192,7 +195,11 @@ function CityRow({ m }: { m: MetroCoverage }) {
         {m.namedPct.toFixed(1)}%
       </div>
       <div className="col-span-2 text-right font-mono text-sm tabular-nums">
-        {m.aadtPct > 0 ? (
+        {isModeledVolumes ? (
+          <span className="text-muted-foreground/70 italic" title="Volumes modeled from road class and distance from downtown — no signal is joined to a count">
+            modeled
+          </span>
+        ) : m.aadtPct > 0 ? (
           <span
             className={
               isTierA
