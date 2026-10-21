@@ -22,8 +22,9 @@
  *      caps a unix socket path at 103 bytes); the cluster listens on that socket only, never on TCP. Everything from
  *      here on is inside the teardown's scope: a setup step that fails (a bad --root, no free port, no short enough
  *      temp directory) exits 2 and leaves nothing behind;
- *   2. bundles, with esbuild, the server (server-entry.mjs: the real router behind a stub session), the schema
- *      (lib/db/src/schema) and the read contract (lib/tis-api-zod/src/proofread.ts) from the tree under test.
+ *   2. bundles, with esbuild, the server (server-entry.mjs: the real router behind a stub session, plus the Datum
+ *      chat's real DB functions behind a harness-only route), the schema (lib/db/src/schema) and the two read
+ *      contracts (lib/tis-api-zod/src/proofread.ts and datum-chat.ts) from the tree under test.
  *      `@workspace/db` is replaced by db-shim.mjs, which holds the throwaway cluster's address, written in at
  *      build time. The run is REFUSED, before any cluster exists, if a bundle contains the module
  *      lib/db/src/index.ts (it builds its pool from DATABASE_URL) or the text DATABASE_URL anywhere. That is a match
@@ -40,7 +41,11 @@
  *      never a copy of this one;
  *   3. initdb into the run directory, pg_ctl start, create the database, and confirm that the server it is
  *      talking to reports the run directory as its data_directory before it writes anything;
- *   4. applies the schema as drizzle-kit would push it (drizzle-kit/api, generated from the same schema files);
+ *   4. applies the schema as drizzle-kit would push it (drizzle-kit/api, generated from the same schema files); then
+ *      makes a second database in the same cluster, pushes the same schema there, and hands it to the driver with the
+ *      Datum chat's statements read out of the tree's lib/db/migrate.mjs (the array literal only, evaluated as data:
+ *      migrate.mjs itself is never run, and nothing reads its connection setting), so the driver can run those
+ *      statements on a real Postgres and compare what they build with what drizzle built;
  *   5. starts the server and runs driver.mjs: two firms, a second member of one, users for the rate limits,
  *      firms created by first requests the repo's way, assertions over HTTP and SQL;
  *   6. tears down, after a pass, a failed assertion, an error, a refusal, or SIGINT/SIGTERM: stops every server
@@ -70,7 +75,15 @@
  * leaves every tis_projects row's text and xmin unchanged (the hash is shown to change on a value-identical
  * UPDATE); the run, decision and read limiters each answer 429 past their own limit with draft-7 headers naming
  * it (RateLimit-Policy and RateLimit, no X-RateLimit-*), are keyed per user (another user at the same address is
- * still served) and do not share a budget; every GET answer parses under the read contract.
+ * still served) and do not share a budget; every GET answer parses under the read contract. The Datum chat ([datum]):
+ * migrate.mjs's statements for it run on Postgres, are a no-op on a pushed schema and on a second run, and build the
+ * same columns, foreign keys and indexes drizzle does; a re-run is saved as a new version, insert-only, with unique
+ * max+1 version numbers under concurrent saves (v3 revised from v1 after v2 exists) and the original row
+ * byte-identical (xmin included); the 25-version cap counted under the lineage lock (two saves racing for the 25th:
+ * one wins, one is LineageCapReached); change cards in version order; another firm's id is NotFound and writes
+ * nothing; the firm's 24-hour reply count;
+ * the thread, revisions and lineage reads parse under the chat contract; the chat's findings are exactly what GET
+ * serves; and the delete rules (a deleted parent leaves the later version, unlinked; messages go with their study).
  *
  * That a green run means something is shown by teeth.mjs beside this file: it breaks one production line per
  * family in a copy of HEAD (never in this checkout) and requires the named assertions to go red, a bundle that
@@ -263,7 +276,7 @@ async function main() {
     const where = opt("--pg-bin") ? `in ${opt("--pg-bin")}` : "on PATH or in the usual places";
     return refuse(`PostgreSQL server binaries (initdb, pg_ctl) were not found ${where}; install PostgreSQL 13+ or pass --pg-bin <dir>. Nothing was started.`);
   }
-  for (const rel of ["artifacts/tis-api-server/src/routes/proofread.ts", "lib/db/src/schema/index.ts", "lib/tis-api-zod/src/proofread.ts"]) {
+  for (const rel of ["artifacts/tis-api-server/src/routes/proofread.ts", "lib/db/src/schema/index.ts", "lib/tis-api-zod/src/proofread.ts", "lib/tis-api-zod/src/datum-chat.ts", "lib/db/migrate.mjs"]) {
     if (!existsSync(path.join(TREE, rel))) return refuse(`--tree ${TREE} has no ${rel}`);
   }
 
@@ -393,6 +406,7 @@ async function main() {
       ["server", path.join(HERE, "server-entry.mjs"), serverOut],
       ["schema", path.join(TREE, "lib/db/src/schema/index.ts"), path.join(rootDir, "schema.mjs")],
       ["contract", path.join(TREE, "lib/tis-api-zod/src/proofread.ts"), path.join(rootDir, "contract.mjs")],
+      ["datum contract", path.join(TREE, "lib/tis-api-zod/src/datum-chat.ts"), path.join(rootDir, "datum-contract.mjs")],
     ];
     let serverInputs = [];
     for (const [label, entry, out] of builds) {
@@ -400,7 +414,16 @@ async function main() {
       if (b.refused) return (exitCode = refuse(b.refused));
       if (label === "server") serverInputs = b.inputs;
     }
-    const mustBundle = ["routes/proofread.ts", "lib/proofread-store.ts", "lib/proofread-run.ts", "lib/tis-projects.ts", "lib/firms.ts", "lib/security.ts"];
+    const mustBundle = [
+      "routes/proofread.ts",
+      "lib/proofread-store.ts",
+      "lib/proofread-run.ts",
+      "lib/tis-projects.ts",
+      "lib/firms.ts",
+      "lib/security.ts",
+      "lib/study-revisions.ts",
+      "lib/datum-chat/store.ts",
+    ];
     const missing = mustBundle.filter((rel) => !serverInputs.includes(path.join(TREE, "artifacts/tis-api-server/src", rel)));
     if (missing.length) return (exitCode = refuse(`the server bundle does not hold the tree's ${missing.join(", ")}`));
     console.log(`bundled ${serverInputs.filter((f) => !f.includes("node_modules")).length} source files from the tree`);
@@ -452,6 +475,43 @@ async function main() {
       client.release();
     }
     console.log(`schema applied: ${ddl.length} statements`);
+
+    // ---- a second database in this cluster, for migrate.mjs's Datum chat statements ---------------------------
+    // The same pushed schema; the driver drops the chat's objects there and builds them again from migrate.mjs's own
+    // SQL. Only the SQL_STATEMENTS array literal is read out of the file and evaluated, as data: the module (its
+    // pool, its main()) is never loaded, so nothing of it chooses a connection. Every statement runs on this pool.
+    const MIGRATE_DATABASE = `${DATABASE}_migrate`;
+    await admin.query(`create database ${MIGRATE_DATABASE}`);
+    notClosing();
+    const mdb = new pg.Pool({ ...connection, database: MIGRATE_DATABASE, max: 2 });
+    pools.push(mdb);
+    const [{ data_directory: servedM }] = (await mdb.query("select current_setting('data_directory') as data_directory")).rows;
+    if (realpathSync(servedM) !== realpathSync(dataDir)) return (exitCode = refuse(`the second database is served from ${servedM}, not this run's ${dataDir}`));
+    const qm = async (sql, params = []) => (await mdb.query(sql, params)).rows;
+    {
+      const mc = await mdb.connect();
+      try {
+        await mc.query("begin");
+        for (const stmt of ddl) await mc.query(stmt);
+        await mc.query("commit");
+      } finally {
+        mc.release();
+      }
+    }
+    const migrateSrc = readFileSync(path.join(TREE, "lib/db/migrate.mjs"), "utf8");
+    const arrayStart = migrateSrc.indexOf("const SQL_STATEMENTS = [");
+    const arrayEnd = arrayStart < 0 ? -1 : migrateSrc.indexOf("\n];", arrayStart);
+    if (arrayStart < 0 || arrayEnd < 0) return (exitCode = refuse("could not find the SQL_STATEMENTS array in the tree's lib/db/migrate.mjs"));
+    const statementsText = migrateSrc.slice(arrayStart + "const SQL_STATEMENTS = ".length, arrayEnd + 2);
+    // Evaluated in this process, which has the full environment: held to the bundles' rule, and to plain data.
+    if (/DATABASE_URL|\bprocess\b|\brequire\s*\(|\bimport\s*\(|\bglobalThis\b/.test(statementsText)) {
+      return (exitCode = refuse("the SQL_STATEMENTS array in the tree's lib/db/migrate.mjs names DATABASE_URL, process, require, import or globalThis; it is evaluated as data only"));
+    }
+    const migrateStatements = new Function(`return ${statementsText}`)();
+    if (!Array.isArray(migrateStatements) || !migrateStatements.every((st) => typeof st?.id === "string" && typeof st?.sql === "string")) {
+      return (exitCode = refuse("lib/db/migrate.mjs's SQL_STATEMENTS is not an array of { id, sql }"));
+    }
+    console.log(`second database ${MIGRATE_DATABASE}: schema applied; ${migrateStatements.length} migrate.mjs statements read`);
 
     // ---- the server, restartable under another deploy's commit ----------------------------------------
     const allLines = [];
@@ -535,9 +595,19 @@ async function main() {
       server = await startServer(sha);
     };
     const contract = await import(pathToFileURL(path.join(rootDir, "contract.mjs")).href);
+    const datumContract = await import(pathToFileURL(path.join(rootDir, "datum-contract.mjs")).href);
+    /** One of the Datum chat's real DB functions, called inside the server (server-entry.mjs), on this run's cluster. */
+    const datum = async (name, ...args) =>
+      (
+        await fetch(`http://127.0.0.1:${server.port}/__harness/datum/${name}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ args }),
+        })
+      ).json();
     const fixture = JSON.parse(readFileSync(path.join(TREE, "artifacts/atlanta-tis/scripts/fixtures/scenario-base.json"), "utf8"));
 
-    const results = await drive({ call, q, claimOne, restart, contract, fixture, serverLines: () => allLines, SHA_A, SHA_B });
+    const results = await drive({ call, q, claimOne, restart, contract, fixture, serverLines: () => allLines, SHA_A, SHA_B, datum, datumContract, qm, migrateStatements });
     const failed = results.filter((r) => !r.ok);
     const routeErrors = allLines.filter((l) => l.includes("harnessRouteError"));
     if (routeErrors.length) console.log(`server route errors (${routeErrors.length}):\n${routeErrors.slice(0, 5).join("\n")}`);

@@ -1,5 +1,6 @@
 import type { CorsOptions } from "cors";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import { DATUM_LIMITS } from "@workspace/tis-api-zod";
 import { isAdminEmail } from "./auth";
 import { makeRateLimitStore } from "./redis";
 
@@ -326,6 +327,31 @@ export const proofreadReadLimiter = rateLimit({
     return !!email && isAdminEmail(email);
   },
   message: { error: "Too many requests. Try again shortly." },
+});
+
+/**
+ * The Datum chat: one engineer message a request, and each one can mean up to
+ * four model calls and one re-run of the engine, so it is a compute route
+ * keyed per user like the proofread limiters, with the same operator
+ * exemption and the same fail-open. Its own prefix, so chatting never spends
+ * the proofread budget. The number is the contract's (DATUM_LIMITS), so no
+ * route or panel carries a copy of it. The firm's 24-hour reply cap is
+ * separate, counted from the thread in the route.
+ */
+export const datumChatLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: DATUM_LIMITS.userMessagesPerHour,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  passOnStoreError: true,
+  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),
+  store: makeRateLimitStore("rl:datum-chat:"),
+  skip: (req) => {
+    if (process.env.DEV_AUTH_ENABLED === "true") return true;
+    const email = req.user?.email;
+    return !!email && isAdminEmail(email);
+  },
+  message: { error: "Too many Datum messages this hour. Try again shortly." },
 });
 
 // /demo/geocode — looser than demoRateLimiter because geocoding is the

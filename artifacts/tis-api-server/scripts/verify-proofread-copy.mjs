@@ -14,7 +14,9 @@
  *     (character references decoded, any run of hyphens, dashes and whitespace
  *     read as one space), so "peer-review", "QA / QC", "second–opinion" and
  *     "independent  review" are read — over the panel, the client module, the
- *     route file and the project page that mounts the panel, and repeated over the
+ *     route file and the project page that mounts the panel, the Datum chat's
+ *     drawer (datum-chat.tsx) and what Datum is told (lib/datum-chat/prompt.ts,
+ *     less its one NEVER_USE_SENTENCE, taken out by exact match), and repeated over the
  *     RENDERED output of every status, because copy built at runtime never
  *     appears in the source.
  *
@@ -74,6 +76,10 @@ const FILES = {
   lib: "artifacts/atlanta-tis/src/lib/proofread.ts",
   route: "artifacts/tis-api-server/src/routes/proofread.ts",
   page: "artifacts/atlanta-tis/src/pages/project-detail.tsx",
+  // The Datum chat's drawer, which opens from the panel, and what Datum is told. Read for banned copy only: the
+  // chat's own behaviour is check:datum-chat's (atlanta-tis) and the prompt's is check:datum-chat's (this package).
+  chat: "artifacts/atlanta-tis/src/components/datum-chat.tsx",
+  prompt: "artifacts/tis-api-server/src/lib/datum-chat/prompt.ts",
 };
 const SOURCES = Object.freeze(Object.fromEntries(Object.entries(FILES).map(([k, rel]) => [k, readFileSync(path.join(repo, rel), "utf8")])));
 const PANEL_ABS = path.join(repo, FILES.panel);
@@ -320,6 +326,17 @@ report(
 );
 const orderingFindings = [...realFindings, ...utdfFindings];
 const contract = await import(pathToFileURL(path.join(repo, "lib/tis-api-zod/src/proofread.ts")).href);
+// The one sentence in prompt.ts allowed to name the banned phrases: it tells Datum never to write them. Taken from
+// the module itself, so the scan removes exactly that sentence, by exact match, and nothing else: a reworded or
+// stretched copy of it in the text under test is no longer the sentence, and is scanned like any other text.
+const { NEVER_USE_SENTENCE } = await import(pathToFileURL(path.join(repo, FILES.prompt)).href);
+report(
+  "pre-never-use-sentence-found",
+  typeof NEVER_USE_SENTENCE === "string" && NEVER_USE_SENTENCE.length > 20 && bannedIn(NEVER_USE_SENTENCE) !== null && SOURCES.prompt.split(NEVER_USE_SENTENCE).length === 2,
+  "precondition: prompt.ts exports NEVER_USE_SENTENCE, it names banned phrases, and it is written out once in the file, so the exclusion below takes out something real",
+);
+/** A file's text as the copy scan reads it: prompt.ts without its never-use sentence, every other file whole. */
+const scannedText = (file, s) => (file === "prompt" && typeof NEVER_USE_SENTENCE === "string" && NEVER_USE_SENTENCE.length > 0 ? s.split(NEVER_USE_SENTENCE).join(" ") : s);
 
 // What is offered per type, and what closes it.
 // Written out by hand here, deliberately NOT read from the module: this is the claim, the module is the thing under test.
@@ -519,8 +536,8 @@ async function suite(src) {
   const panel = src.panel;
 
   // ─── 1. COPY ──────────────────────────────────────────────────────────────────────
-  for (const file of ["panel", "lib", "route", "page"]) {
-    const hit = bannedIn(src[file]);
+  for (const file of ["panel", "lib", "route", "page", "chat", "prompt"]) {
+    const hit = bannedIn(scannedText(file, src[file]));
     ok(`${file}-avoids-banned-copy`, src[file].length > 0 && hit === null, `${FILES[file]}: avoids ${BANNED_MSG}${hit === null ? "" : ` — found ${JSON.stringify(hit)}`}`);
   }
   ok("source-permitted-description", /internal consistency and traceability check/i.test(panel), "the panel uses the permitted description verbatim");
@@ -1372,7 +1389,8 @@ async function suite(src) {
           (panel.match(/inFlight\.current = false;/g) ?? []).length === 2,
         "WIRING: a re-run and a decision each refuse a second press while one is in flight, and release on both outcomes",
       );
-      ok("wiring-page-mounts-for-tis", /studyType === "tis" && <ProofreadPanel projectId=\{project\.id\} \/>/.test(src.page), "WIRING: the project page mounts the panel for TIS studies only");
+      // The mount carries the Datum chat's hand-off (`chat`, undefined while the chat is off), pinned as written.
+      ok("wiring-page-mounts-for-tis", /studyType === "tis" && <ProofreadPanel projectId=\{project\.id\} chat=\{chat\} \/>/.test(src.page), "WIRING: the project page mounts the panel for TIS studies only");
     });
 
     // ─── WIRING, run: the panel hands the view the run it fetched ──────────────────────
@@ -1501,6 +1519,13 @@ const MUTATIONS = [
   { label: "a finding's remedy line says independent  review (two spaces)", file: "panel", flips: ["panel-avoids-banned-copy", "rendered-avoids-banned-copy"], also: ["superseded-notice-copy-clean"], apply: edit("panel", "<li>Suggested: {f.remedy}</li>", "<li>Suggested for independent  review: {f.remedy}</li>") },
   { label: "the panel names an Audit log it never renders", file: "panel", flips: ["panel-avoids-banned-copy"], apply: edit("panel", "const POLL_MS = 60_000;", 'const POLL_MS = 60_000;\nexport const LOG_KIND = "Audit log";') },
   { label: "the project page's UTDF tooltip says QA / QC", file: "page", flips: ["page-avoids-banned-copy"], apply: edit("page", 'title="Synchro-importable CSV scaffold (Build scenario).', 'title="Synchro-importable CSV scaffold for QA / QC (Build scenario).') },
+  // The Datum chat's drawer and its prompt. The prompt's one never-use sentence is excluded by exact match, so a
+  // banned phrase anywhere else in prompt.ts is read, and so is the sentence once it is reworded or carries more.
+  { label: "banned copy in a string the chat drawer never renders", file: "chat", flips: ["chat-avoids-banned-copy"], apply: edit("chat", 'export const DEFAULT_QUESTION = "Why was this flagged, and how do I fix it?";', 'export const DEFAULT_QUESTION = "Why was this flagged, and how do I fix it?";\nexport const CHAT_KIND = "second opinion";') },
+  { label: "the chat drawer's note says second-opinion", file: "chat", flips: ["chat-avoids-banned-copy"], apply: edit("chat", "Ask why something was flagged and how to fix it.", "Ask for a second-opinion on why something was flagged.") },
+  { label: "banned copy in prompt.ts outside the never-use sentence", file: "prompt", flips: ["prompt-avoids-banned-copy"], apply: edit("prompt", "const joinAnd = ", 'const CHECK_KIND = "audit";\nvoid CHECK_KIND;\nconst joinAnd = ') },
+  { label: "the never-use sentence reworded, so the exact match no longer takes it out", file: "prompt", flips: ["prompt-avoids-banned-copy"], apply: edit("prompt", '"second opinion", "peer review"', '"second opinion" or "peer review"') },
+  { label: "the never-use sentence carries one more sentence", file: "prompt", flips: ["prompt-avoids-banned-copy"], apply: edit("prompt", "even if the engineer uses one of those words.", "even if the engineer uses one of those words. Call the check an audit.") },
 
   // ---- never checked ---------------------------------------------------------------
   {
@@ -1856,7 +1881,7 @@ const MUTATIONS = [
   { label: "a re-run does not clear the notice", file: "panel", flips: ["wiring-notice-cleared-on-next-action"], apply: edit("panel", "    setBusy(true);\n    setNotice(null);\n    try {\n      await requestProofread", "    setBusy(true);\n    try {\n      await requestProofread") },
   { label: "the panel keeps a decision list of its own", file: "panel", flips: ["wiring-no-decision-table"], apply: edit("panel", "const POLL_MS = 60_000;", 'const POLL_MS = 60_000;\nexport const DISPOSITIONS = ["FIXED"] as const;') },
   { label: "a re-run does not refuse a second press", file: "panel", flips: ["wiring-single-flight", "wiring-notice-cleared-on-next-action"], apply: edit("panel", "  const rerun = async () => {\n    if (inFlight.current) return;\n", "  const rerun = async () => {\n") },
-  { label: "the project page mounts the panel for every study", file: "page", flips: ["wiring-page-mounts-for-tis"], apply: edit("page", '{project.studyType === "tis" && <ProofreadPanel projectId={project.id} />}', "{<ProofreadPanel projectId={project.id} />}") },
+  { label: "the project page mounts the panel for every study", file: "page", flips: ["wiring-page-mounts-for-tis"], apply: edit("page", '{project.studyType === "tis" && <ProofreadPanel projectId={project.id} chat={chat} />}', "{<ProofreadPanel projectId={project.id} chat={chat} />}") },
 ];
 
 const teeth = new Set(ids);

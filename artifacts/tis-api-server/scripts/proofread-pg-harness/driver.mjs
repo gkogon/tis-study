@@ -12,14 +12,23 @@
  * rules change fails rather than mixing two rule sets; [m-6] GET says when the previous revision ran under other
  * rules (`rulesChanged`); [M1] an uppercase run id is the same run; [M2] a 'ready' run is finished: it takes
  * decisions and the next revision carries them; [limiter] each limiter's own budget, per-user key and draft-7
- * headers. Untagged assertions are the original tenancy and rules suite.
+ * headers; [datum migrations] migrate.mjs's statements for the Datum chat, run on a second database in the same
+ * cluster, build what drizzle builds and re-run as a no-op; [datum RF3] a re-run is saved as a new version, insert-only,
+ * numbered max+1 within its lineage under concurrent saves, the original byte-identical; [datum R16] the 25-version cap
+ * holds under the lineage lock when two saves race for the last version; [datum order] change cards are listed by
+ * version, not by the log row's date; [datum] the chat's other DB
+ * functions (firm scoping, the 24-hour reply count, the thread, the lineage, the visible findings, the delete rules).
+ * Untagged assertions are the original tenancy and rules suite.
  *
  * The database is written directly in a few places, each named where it happens: users and projects (the app has
  * no route the harness can use for them), a finding of a type or audience the clause pass does not produce, a
  * run that is still running, a run recorded under another rules version, queued runs for the claim and for a run
  * queued by another deploy, a run left 'running' by a crashed attempt with a finding already written, and a run
- * moved to 'ready' (phase 1 never writes it).
+ * moved to 'ready' (phase 1 never writes it). The [datum] block writes its own studies, backdates messages, names a
+ * user, adds findings to a run, deletes a finding and two studies, and drops the chat's objects in the second database
+ * only, each where it happens.
  */
+import { isDeepStrictEqual } from "node:util";
 
 const UNKNOWN = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
 const NOT_FOUND = "Finding not found.";
@@ -38,7 +47,7 @@ const withCauses = (err) => {
   return parts.join(" <- caused by ");
 };
 
-export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, contract, fixture, serverLines, SHA_A, SHA_B }) {
+export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, contract, fixture, serverLines, SHA_A, SHA_B, datum, datumContract, qm, migrateStatements }) {
   const results = [];
   const t = (name, cond, detail) => {
     results.push({ name, ok: !!cond });
@@ -735,6 +744,471 @@ export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, 
     await q("update tis_projects set project_name = project_name where id = $1", [PA2]);
     t("[claim] the hash sees xmin: a value-identical UPDATE of one tis_projects row changes it", (await studyHash()) !== hEnd);
     t(`every GET answer (${contractChecked}) parses under the read contract (ProofreadReadResponse)`, contractChecked > 0 && contractFailures.length === 0, contractFailures);
+
+    // ---- [datum] the Datum chat: its migrations, its versions, its thread ---------------------------------------------
+    // Last, because it adds study rows (new versions) and deletes three: every hash above has been read already.
+    // Its own lineages, made directly (the app has no route the harness can use for a study), in firm A; firm B is the
+    // other firm. Each DB function is the real one, called inside the server (server-entry.mjs).
+    const json = (v) => JSON.stringify(v);
+    const val = async (name, ...args) => {
+      const r = await datum(name, ...args);
+      if (!r?.ok) throw new Error(`${name} failed: ${json(r?.error ?? r)}`);
+      return r.value;
+    };
+    const datumContractFailures = [];
+    let datumContractChecked = 0;
+    const holds = (label, schema, v) => {
+      datumContractChecked++;
+      const parsed = schema.safeParse(v);
+      if (!parsed.success) datumContractFailures.push({ label, issues: parsed.error.issues.slice(0, 3) });
+      return parsed.success;
+    };
+
+    // -- [datum migrations] on the harness's own push --
+    const chatTables = (await q("select table_name from information_schema.tables where table_schema = 'public' and table_name in ('study_revisions', 'study_datum_messages') order by 1")).map((r) => r.table_name);
+    const lineageCols = await q(
+      "select column_name, data_type, is_nullable from information_schema.columns where table_schema = 'public' and table_name = 'tis_projects' and column_name in ('revised_from_project_id', 'root_project_id') order by 1",
+    );
+    t("[datum migrations] after the harness's schema push, study_revisions and study_datum_messages exist", json(chatTables) === json(["study_datum_messages", "study_revisions"]), chatTables);
+    t(
+      "[datum migrations] after the harness's schema push, tis_projects has both lineage columns, as nullable uuids",
+      lineageCols.length === 2 && lineageCols.every((c) => c.data_type === "uuid" && c.is_nullable === "YES"),
+      lineageCols,
+    );
+
+    // -- [datum migrations] migrate.mjs's own statements for the chat, run on Postgres (the second database) --
+    // What the chat's statements build, read from the catalog: the two tables' columns and the two lineage columns,
+    // every foreign key on them (column, target and delete rule), and every index on them.
+    const catalog = async (qx) => ({
+      columns: await qx(
+        `select table_name, column_name, data_type, character_maximum_length, is_nullable, column_default from information_schema.columns
+         where table_schema = 'public' and (table_name in ('study_revisions', 'study_datum_messages') or (table_name = 'tis_projects' and column_name in ('revised_from_project_id', 'root_project_id')))
+         order by 1, 2`,
+      ),
+      fks: await qx(
+        `select c.conrelid::regclass::text as tbl, a.attname as col, c.confrelid::regclass::text as ref, af.attname as ref_col, c.confdeltype as on_delete
+         from pg_constraint c
+         join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+         join pg_attribute af on af.attrelid = c.confrelid and af.attnum = c.confkey[1]
+         where c.contype = 'f' and (c.conrelid::regclass::text in ('study_revisions', 'study_datum_messages') or (c.conrelid::regclass::text = 'tis_projects' and a.attname in ('revised_from_project_id', 'root_project_id')))
+         order by 1, 2`,
+      ),
+      indexes: await qx(
+        "select tablename, indexname, indexdef from pg_indexes where schemaname = 'public' and (tablename in ('study_revisions', 'study_datum_messages') or indexname = 'IDX_tis_projects_root') order by 1, 2",
+      ),
+    });
+    const CHAT_MIGRATE_IDS = [
+      "tis_projects.revised_from_project_id",
+      "tis_projects.root_project_id",
+      "tis_projects.idx_root",
+      "study_revisions.create",
+      "study_revisions.uq_project",
+      "study_datum_messages.create",
+      "study_datum_messages.idx_project",
+      "study_datum_messages.idx_firm_created",
+    ];
+    const chatStatements = migrateStatements.filter((s) => CHAT_MIGRATE_IDS.includes(s.id));
+    const applyChat = async () => {
+      const errors = [];
+      for (const s of chatStatements) {
+        try {
+          await qm(s.sql);
+        } catch (err) {
+          errors.push(`${s.id}: ${err.message}`);
+        }
+      }
+      return errors;
+    };
+    const pushed = await catalog(q);
+    t(
+      "[datum migrations] precondition: migrate.mjs holds every chat statement, once, and the pushed schema has the chat's columns, foreign keys and indexes",
+      chatStatements.length === CHAT_MIGRATE_IDS.length && new Set(chatStatements.map((s) => s.id)).size === CHAT_MIGRATE_IDS.length && pushed.columns.length === 28 && pushed.fks.length === 10 && pushed.indexes.length === 6,
+      { statements: chatStatements.map((s) => s.id), columns: pushed.columns.length, fks: pushed.fks.length, indexes: pushed.indexes.map((i) => i.indexname) },
+    );
+    t("[datum migrations] precondition: the second database starts as the same push", json(await catalog(qm)) === json(pushed));
+    const onPushed = await applyChat();
+    t(
+      "[datum migrations] migrate.mjs's chat statements run without error on a schema drizzle already pushed, and change nothing there",
+      onPushed.length === 0 && json(await catalog(qm)) === json(pushed),
+      onPushed,
+    );
+    // Written directly, in the second database only: the chat's objects removed, as on a database from before the chat.
+    await qm("drop table study_datum_messages");
+    await qm("drop table study_revisions");
+    await qm("alter table tis_projects drop column revised_from_project_id, drop column root_project_id");
+    const removed = await catalog(qm);
+    const built = await applyChat();
+    const afterBuild = await catalog(qm);
+    const again = await applyChat();
+    const afterAgain = await catalog(qm);
+    t("[datum migrations] precondition: with the chat's objects removed, none of them is left", removed.columns.length === 0 && removed.fks.length === 0 && removed.indexes.length === 0, removed);
+    t("[datum migrations] on a database without them, migrate.mjs's chat statements all run, in file order, without error", built.length === 0, built);
+    t(
+      "[datum migrations] what migrate.mjs builds is what drizzle builds: the same columns (type, length, nullability, default), foreign keys (target, delete rule) and indexes",
+      json(afterBuild) === json(pushed),
+      { columns: afterBuild.columns.filter((c) => !pushed.columns.some((p) => json(p) === json(c))), fks: afterBuild.fks, indexes: afterBuild.indexes.map((i) => i.indexdef) },
+    );
+    t("[datum migrations] a second run of the same statements (the next deploy's boot) is a no-op", again.length === 0 && json(afterAgain) === json(pushed), again);
+
+    // -- [datum RF3] the versions: insert-only, max+1 within the lineage, concurrent saves never share a number --
+    const THEME = "5b0c2d1e-3f4a-4b5c-8d6e-7f8091a2b3c4";
+    const mkStudy = async (name) =>
+      (
+        await q(
+          "insert into tis_projects (user_id, firm_id, study_type, project_name, land_use_code, land_use_size, site_lat, site_lon, region_code, report_theme_id, request_payload, result_payload) values ('user-a', $1, 'tis', $2, '820', '125000', '33.7490', '-84.3880', 'atlanta_metro', $3, $4, $5) returning id",
+          [fa, name, THEME, json({ projectName: name, growthRatePct: 2.1, marker: `${name} request 4b7e` }), json({ marker: `${name} result 9a1c`, big: "x".repeat(3000) })],
+        )
+      )[0].id;
+    const V1 = await mkStudy("D-study");
+    const rowOf = async (id) =>
+      (await q("select md5(t::text || ':' || t.xmin::text) h, request_payload::text rq, result_payload::text rs from tis_projects t where id = $1", [id]))[0];
+    const allRows = async () => new Map((await q("select id, md5(t::text || ':' || t.xmin::text) h from tis_projects t")).map((r) => [r.id, r.h]));
+    const v1Before = await rowOf(V1);
+    const rowsBefore = await allRows();
+    const revisionsBefore = await count("select count(*) c from study_revisions");
+    const revArgs = (parentId, { firmId = fa, userId = "user-a", label = "x", sourceLabel = null, messageId = null, findingId = null, clauseId = null } = {}) => ({
+      parentId,
+      firmId,
+      userId,
+      request: { projectName: "D-study", growthRatePct: 1, marker: `request ${label}` },
+      result: { marker: `result ${label}` },
+      changes: [{ field: "growthRatePct", from: 2.1, to: 1 }],
+      reason: `reason ${label}`,
+      sourceLabel,
+      messageId,
+      findingId,
+      clauseId,
+    });
+    const [c1, c2] = await Promise.all([val("createRevision", revArgs(V1, { label: "c1" })), val("createRevision", revArgs(V1, { userId: "user-c", label: "c2" }))]);
+    t("[datum RF3] two concurrent createRevision calls from v1 give versions {2,3}, no duplicate", json([c1.version, c2.version].sort()) === json([2, 3]), [c1, c2]);
+    const studyRow = async (id) => (await q("select * from tis_projects where id = $1", [id]))[0];
+    const V1ROW = await studyRow(V1);
+    const COPIED = ["firm_id", "study_type", "project_name", "land_use_code", "land_use_size", "site_lat", "site_lon", "region_code", "report_theme_id"];
+    const made = await Promise.all([c1, c2].map((c) => studyRow(c.projectId)));
+    t(
+      "[datum RF3] each is revised from v1, with v1 as its root, the parent's name, study type, land use, size, site, region and report format, the asking user, and the request and result it was given",
+      made.every((r, i) => r && r.revised_from_project_id === V1 && r.root_project_id === V1 && COPIED.every((k) => r[k] === V1ROW[k]) && r.report_theme_id === THEME && r.user_id === (i === 0 ? "user-a" : "user-c") && r.request_payload.marker === `request c${i + 1}` && r.result_payload.marker === `result c${i + 1}`),
+      made.map((r) => r && { revised: r.revised_from_project_id, root: r.root_project_id, user: r.user_id, version: r.version }),
+    );
+    const FINDING = (await q("select id, clause_id from study_proofread_findings order by created_at limit 1"))[0];
+    const MESSAGE = "8c7d6e5f-4a3b-4c2d-9e1f-0a1b2c3d4e5f";
+    const c3 = await val("createRevision", revArgs(V1, { label: "c3", sourceLabel: "County letter, 2026-09-14", messageId: MESSAGE, findingId: FINDING.id, clauseId: FINDING.clause_id }));
+    const c3row = await studyRow(c3.projectId);
+    t("[datum RF3] a third createRevision from v1, after v2 and v3 exist, gives 4, revised from v1", c3.version === 4 && c3row?.version === 4 && c3row.revised_from_project_id === V1 && c3row.root_project_id === V1, { c3, revised: c3row?.revised_from_project_id });
+    const fromV2 = await val("createRevision", revArgs(c1.projectId, { label: "from-v2" }));
+    const fromV2row = await studyRow(fromV2.projectId);
+    t(
+      "[datum RF3] a fix asked on a later version numbers within the same lineage: from v2 gives 5, revised from v2, its root still v1",
+      fromV2.version === 5 && fromV2row?.revised_from_project_id === c1.projectId && fromV2row.root_project_id === V1,
+      { fromV2, revised: fromV2row?.revised_from_project_id, root: fromV2row?.root_project_id },
+    );
+    // A burst under contention, from three parents of the one lineage at once.
+    const burstParents = [V1, c1.projectId, c3.projectId, fromV2.projectId, V1, c2.projectId, V1, c1.projectId, V1, c3.projectId];
+    const burstMade = await Promise.all(burstParents.map((p, i) => datum("createRevision", revArgs(p, { userId: i % 2 ? "user-c" : "user-a", label: `burst-${i}` }))));
+    const lineageVersions = (await q("select version from tis_projects where id = $1 or root_project_id = $1 order by version", [V1])).map((r) => r.version);
+    t(
+      "[datum RF3] a burst of 10 concurrent createRevision calls on one lineage: every one is saved, and the lineage's versions are exactly 1..15, none shared",
+      burstMade.every((r) => r.ok === true) && json(lineageVersions) === json(Array.from({ length: 15 }, (_, i) => i + 1)),
+      { failed: burstMade.filter((r) => !r.ok).map((r) => r.error), lineageVersions },
+    );
+    const v1After = await rowOf(V1);
+    t(
+      "[datum RF3] the v1 row's request_payload and result_payload are byte-equal to before, and the whole row is identical, xmin included: the lock on it wrote nothing",
+      v1After.rq === v1Before.rq && v1After.rs === v1Before.rs && v1After.h === v1Before.h,
+      { before: v1Before.h, after: v1After.h },
+    );
+    const rowsAfter = await allRows();
+    const touched = [...rowsBefore].filter(([id, h]) => rowsAfter.get(id) !== h).map(([id]) => id);
+    t(
+      "[datum RF3] insert-only: no tis_projects row that existed before the saves was changed or deleted (row text and xmin), and exactly 14 were added",
+      touched.length === 0 && rowsAfter.size === rowsBefore.size + 14,
+      { touched, added: rowsAfter.size - rowsBefore.size },
+    );
+    const revRows = await q("select r.*, p.version from study_revisions r join tis_projects p on p.id = r.project_id where r.root_project_id = $1 order by p.version", [V1]);
+    t(
+      "[datum RF3] one study_revisions row per new version (14), each naming the version it was made from, the lineage's root, firm A and the user who asked",
+      revRows.length === 14 && revisionsBefore + 14 === (await count("select count(*) c from study_revisions")) && revRows.every((r) => r.firm_id === fa && r.from_project_id && r.root_project_id === V1 && ["user-a", "user-c"].includes(r.requested_by_user_id)),
+      revRows.map((r) => [r.version, r.from_project_id === V1, r.requested_by_user_id]),
+    );
+    const revV4 = revRows.find((r) => r.project_id === c3.projectId);
+    const revV2 = revRows.find((r) => r.project_id === c1.projectId);
+    t(
+      "[datum RF3] the log row keeps the changes, the reason, the source, the message, the finding and the clause it was given",
+      revV4 && isDeepStrictEqual(revV4.changes, [{ field: "growthRatePct", from: 2.1, to: 1 }]) && revV4.reason === "reason c3" && revV4.source_label === "County letter, 2026-09-14" && revV4.message_id === MESSAGE && revV4.finding_id === FINDING.id && revV4.clause_id === FINDING.clause_id,
+      revV4,
+    );
+    t("[datum RF3] with no source given, source_label is NULL: the words 'no source given' are the change card's, never stored", revV2 && revV2.source_label === null && (await count("select count(*) c from study_revisions where source_label ilike '%no source%'")) === 0, revV2?.source_label);
+
+    // -- [datum] another firm --
+    const projectsNow = await count("select count(*) c from tis_projects");
+    const revisionsNow = await count("select count(*) c from study_revisions");
+    const crossFirm = await datum("createRevision", revArgs(V1, { firmId: fb, userId: "user-b", label: "cross" }));
+    const unknownParent = await datum("createRevision", revArgs(UNKNOWN, { label: "unknown" }));
+    const malformedParent = await datum("createRevision", revArgs("-".repeat(36), { label: "malformed" }));
+    t("[datum] createRevision with another firm's id throws NotFound", crossFirm.ok === false && crossFirm.error?.name === "NotFound" && crossFirm.error?.notFound === true, crossFirm);
+    t(
+      "[datum] an unknown parent and a malformed id throw the same NotFound (not a Postgres error)",
+      [unknownParent, malformedParent].every((r) => r.ok === false && r.error?.notFound === true && r.error.message === crossFirm.error?.message),
+      [unknownParent, malformedParent],
+    );
+    t(
+      "[datum] none of those wrote anything: no study row, no revision row",
+      (await count("select count(*) c from tis_projects")) === projectsNow && (await count("select count(*) c from study_revisions")) === revisionsNow,
+    );
+
+    // -- [datum] the lineage, the revisions, the count --
+    const lastId = (await q("select id from tis_projects where root_project_id = $1 and version = 15", [V1]))[0]?.id;
+    const lin1 = await val("lineageFor", fa, V1);
+    const lin5 = await val("lineageFor", fa, fromV2.projectId);
+    t(
+      "[datum] lineageFor v1: version 1, revised from nothing, the latest version 15 and its id",
+      json(lin1) === json({ version: 1, revisedFromProjectId: null, revisedFromVersion: null, latestVersionId: lastId, latestVersion: 15 }) && holds("lineage v1", datumContract.DatumChatReadResponse.shape.lineage, lin1),
+      lin1,
+    );
+    t(
+      "[datum] lineageFor v5: version 5, revised from v2 (version 2), the same latest version",
+      json(lin5) === json({ version: 5, revisedFromProjectId: c1.projectId, revisedFromVersion: 2, latestVersionId: lastId, latestVersion: 15 }) && holds("lineage v5", datumContract.DatumChatReadResponse.shape.lineage, lin5),
+      lin5,
+    );
+    t("[datum] countLineage counts every version of the lineage, the original included (15)", (await val("countLineage", fa, V1)) === 15);
+    // [datum order] RF3's concurrent pair. created_at is the saving transaction's start, so the save that waited on the
+    // lineage lock has the higher version and can have the EARLIER created_at. Whether this run's race came out that
+    // way is reported; then the pair's log rows are dated that way directly, so the order is held to it every run.
+    const pair = await q(
+      "select r.id, r.created_at, p.version from study_revisions r join tis_projects p on p.id = r.project_id where r.project_id = any($1::uuid[]) order by p.version",
+      [[c1.projectId, c2.projectId]],
+    );
+    console.log(`INFO  RF3's concurrent pair: in this run version ${pair[1]?.version}'s log row was dated ${pair[1]?.created_at < pair[0]?.created_at ? "EARLIER" : "later"} than version ${pair[0]?.version}'s`);
+    // Written directly: the higher version's log row dated a second before the lower one's, as a save that waited is.
+    await q("update study_revisions set created_at = (select created_at from study_revisions where id = $2) - interval '1 second' where id = $1", [pair[1].id, pair[0].id]);
+    const fromV1 = await val("listRevisions", fa, V1);
+    const atV2 = await val("listRevisions", fa, c1.projectId);
+    const pairHigh = fromV1.findIndex((r) => r.projectId === (pair[1].version === c1.version ? c1 : c2).projectId);
+    const pairLow = fromV1.findIndex((r) => r.projectId === (pair[0].version === c1.version ? c1 : c2).projectId);
+    t(
+      "[datum order] precondition: RF3's concurrent pair is versions 2 and 3, and version 3's log row is now dated before version 2's",
+      json(pair.map((r) => r.version)) === json([2, 3]) && pairHigh >= 0 && pairLow >= 0 && fromV1[pairHigh].createdAt < fromV1[pairLow].createdAt,
+      { pair: pair.map((r) => r.version), high: fromV1[pairHigh]?.createdAt, low: fromV1[pairLow]?.createdAt },
+    );
+    t(
+      "[datum order] the change cards list the pair by version, version 3 before version 2, whatever their log rows' dates",
+      pairHigh >= 0 && pairLow >= 0 && pairHigh < pairLow && fromV1[pairHigh].version === 3 && fromV1[pairLow].version === 2,
+      fromV1.map((r) => [r.version, r.createdAt]),
+    );
+    t(
+      "[datum order] listRevisions answers newest version first: strictly descending version numbers, for v1 and for v2",
+      fromV1.length > 1 && atV2.length > 1 && [fromV1, atV2].every((list) => list.every((r, i) => i === 0 || r.version < list[i - 1].version)),
+      { v1: fromV1.map((r) => r.version), v2: atV2.map((r) => r.version) },
+    );
+    const madeFromV1 = revRows.filter((r) => r.from_project_id === V1).map((r) => r.project_id).sort();
+    const madeFromV2 = revRows.filter((r) => r.from_project_id === c1.projectId).map((r) => r.project_id);
+    t(
+      "[datum] listRevisions(v1) is exactly the revisions made from v1 (v1 itself was made by none), newest version first",
+      json(fromV1.map((r) => r.projectId).sort()) === json(madeFromV1) && fromV1.every((r, i) => i === 0 || r.version < fromV1[i - 1].version) && fromV1.every((r) => r.fromProjectId === V1),
+      fromV1.map((r) => [r.version, r.createdAt]),
+    );
+    t(
+      "[datum] listRevisions(v2) holds the revision made into v2 and every one made from it",
+      json(atV2.map((r) => r.projectId).sort()) === json([c1.projectId, ...madeFromV2].sort()) && atV2.some((r) => r.projectId === c1.projectId && r.version === 2),
+      atV2.map((r) => [r.version, r.fromProjectId === c1.projectId]),
+    );
+    t(
+      "[datum] each revision answers who asked by name (the email when the user has none), and its version",
+      fromV1.every((r) => ["a@example.test", "c@example.test"].includes(r.requestedBy)) && fromV1.find((r) => r.projectId === c3.projectId)?.version === 4,
+      fromV1.map((r) => r.requestedBy),
+    );
+    t("[datum] every revision read parses under DatumRevision", [...fromV1, ...atV2].every((r, i) => holds(`revision ${i}`, datumContract.DatumRevision, r)));
+    t(
+      "[datum] a revision's changes are served as { field, from, to }, in that order, whatever order jsonb keeps them in",
+      fromV1.every((r) => r.changes.length === 1 && json(r.changes[0]) === json({ field: "growthRatePct", from: 2.1, to: 1 })),
+      fromV1.map((r) => r.changes),
+    );
+    const crossReads = {
+      lineage: await datum("lineageFor", fb, V1),
+      revisions: await val("listRevisions", fb, V1),
+      count: await val("countLineage", fb, V1),
+      messages: await val("listMessages", fb, V1),
+    };
+    t(
+      "[datum] another firm reads nothing of the lineage: lineageFor NotFound, no revisions, a count of 0, no messages",
+      crossReads.lineage.ok === false && crossReads.lineage.error?.notFound === true && crossReads.revisions.length === 0 && crossReads.count === 0 && crossReads.messages.length === 0,
+      crossReads,
+    );
+
+    // -- [datum] the thread and the firm's 24-hour reply count --
+    const msg = (projectId, firmId, role, content, extra = {}) => val("insertMessage", { projectId, firmId, userId: role === "datum" ? null : "user-a", role, content, ...extra });
+    const backdate = (id, hours) => q(`update study_datum_messages set created_at = now() - interval '${Number(hours)} hours' where id = $1`, [id]);
+    const repliesA0 = await val("firmRepliesLast24h", fa);
+    const repliesB0 = await val("firmRepliesLast24h", fb);
+    const old25 = await msg(V1, fa, "datum", "a reply from yesterday");
+    await backdate(old25.id, 25);
+    const old23 = await msg(V1, fa, "datum", "a reply from this morning");
+    await backdate(old23.id, 23);
+    const eng = await msg(V1, fa, "engineer", "why was growth flagged?", { findingId: FINDING.id });
+    const rep = await msg(V1, fa, "datum", "Because the override has no source.", { revisionId: revV2.id, model: "claude-opus-5-5", inputTokens: 1200, outputTokens: 80, stopReason: "end_turn" });
+    await msg(c1.projectId, fa, "datum", "a reply on v2");
+    await msg(PB, fb, "datum", "a reply to firm B");
+    const engOld = await msg(V1, fa, "engineer", "an older question");
+    await backdate(engOld.id, 2);
+    t(
+      "[datum] firmRepliesLast24h counts only role='datum' rows of that firm within 24 h (3 new for A: not the engineer's, not the one 25 h old, not firm B's)",
+      (await val("firmRepliesLast24h", fa)) === repliesA0 + 3 && (await val("firmRepliesLast24h", fb)) === repliesB0 + 1,
+      { a: [repliesA0, await val("firmRepliesLast24h", fa)], b: [repliesB0, await val("firmRepliesLast24h", fb)] },
+    );
+    const repRow = (await q("select * from study_datum_messages where id = $1", [rep.id]))[0];
+    t(
+      "[datum] insertMessage stores the reply's revision, model, token counts and stop reason, with no user",
+      repRow && repRow.user_id === null && repRow.role === "datum" && repRow.revision_id === revV2.id && repRow.model === "claude-opus-5-5" && repRow.input_tokens === 1200 && repRow.output_tokens === 80 && repRow.stop_reason === "end_turn",
+      repRow,
+    );
+    await q("update users set first_name = 'Cee', last_name = 'Member' where id = 'user-c'");
+    await val("insertMessage", { projectId: V1, firmId: fa, userId: "user-c", role: "engineer", content: "a question from C" });
+    const thread = await val("listMessages", fa, V1);
+    t(
+      "[datum] listMessages is the study's thread, oldest first, and only this study's",
+      thread.length === 6 && thread.every((m, i) => i === 0 || m.createdAt >= thread[i - 1].createdAt) && thread[0].id === old25.id && thread[1].id === old23.id && thread[2].id === engOld.id,
+      thread.map((m) => [m.role, m.content, m.createdAt]),
+    );
+    const byId = new Map(thread.map((m) => [m.id, m]));
+    t(
+      "[datum] each engineer message carries its author's name, joined at read time (the email when there is none); Datum's carry none",
+      byId.get(eng.id)?.authorName === "a@example.test" && thread.find((m) => m.content === "a question from C")?.authorName === "Cee Member" && thread.filter((m) => m.role === "datum").every((m) => m.authorName === null),
+      thread.map((m) => [m.role, m.authorName]),
+    );
+    t("[datum] the thread keeps the finding an engineer asked about and the revision a reply reports", byId.get(eng.id)?.findingId === FINDING.id && byId.get(rep.id)?.revisionId === revV2.id);
+    t("[datum] every message read parses under DatumMessage", thread.every((m, i) => holds(`message ${i}`, datumContract.DatumMessage, m)));
+    const foreignThread = await val("listMessages", fb, V1);
+    t("[datum] another firm reads none of that thread (listMessages with firm B's id, on a study whose thread now has 6 messages)", Array.isArray(foreignThread) && foreignThread.length === 0 && thread.length === 6, foreignThread);
+    const afterNames = await val("listRevisions", fa, V1);
+    t("[datum] a revision's requestedBy is read at read time too: C's now answer 'Cee Member'", afterNames.some((r) => r.requestedBy === "Cee Member") && !afterNames.some((r) => r.requestedBy === "c@example.test"), afterNames.map((r) => r.requestedBy));
+
+    // -- [datum] the findings the chat may talk about are what the panel shows --
+    const pmRun = (await q("select id, revision from study_proofread_runs where project_id = $1 order by revision desc limit 1", [PM]))[0];
+    // Written directly: an admin-audience finding on the study's newest run, and a decision on it.
+    const hiddenF = (
+      await q(
+        "insert into study_proofread_findings (run_id, clause_id, section, type, title, detail, source_label, read_paths, remedy, audience, fingerprint) values ($1,'x-datum-admin',4,'DEFECT','datum hidden 31f0','d','s','[]','r','admin','datumadminfp') returning id",
+        [pmRun.id],
+      )
+    )[0].id;
+    await q("insert into study_proofread_dispositions (finding_id, disposition, note, actor_user_id) values ($1,'BUG_FILED','datum hidden note 7a2e','user-admin')", [hiddenF]);
+    const panel = await call("GET", `/projects/${PM}/proofread`, { user: U("a") });
+    const chat = await val("loadVisible", fa, PM);
+    const byFid = (xs) => [...xs].sort((x, y) => (x.id < y.id ? -1 : 1));
+    const panelFindings = byFid((panel.body?.findings ?? []).map(({ section, fingerprint, ...rest }) => rest));
+    const byDecision = (xs) => [...xs].sort((x, y) => (x.findingId + x.createdAt + x.disposition < y.findingId + y.createdAt + y.disposition ? -1 : 1));
+    t(
+      "[datum] precondition: the panel's read of that study has findings, decisions on them, and withholds the admin finding",
+      panel.status === 200 && panelFindings.length > 0 && (panel.body?.dispositions ?? []).length > 0 && panel.body?.withheld >= 1,
+      { status: panel.status, findings: panelFindings.length, dispositions: panel.body?.dispositions?.length, withheld: panel.body?.withheld },
+    );
+    t(
+      "[datum] loadVisible's findings are exactly the panel's (id, clause, type, title, detail, source, read paths, remedy)",
+      json(byFid(chat.findings)) === json(panelFindings) && chat.findings.every((f) => Object.keys(f).sort().join() === "clauseId,detail,id,readPaths,remedy,sourceLabel,title,type"),
+      { chat: chat.findings.map((f) => f.id), panel: panelFindings.map((f) => f.id) },
+    );
+    t(
+      "[datum] loadVisible's decisions are exactly the panel's, under the names the grounding pack reads (findingId, disposition, note, sourceLabel, createdAt)",
+      json(byDecision(chat.dispositions)) === json(byDecision(panel.body?.dispositions ?? [])) && chat.dispositions.every((d) => Object.keys(d).sort().join() === "createdAt,disposition,findingId,note,sourceLabel"),
+      { chat: chat.dispositions, panel: panel.body?.dispositions },
+    );
+    t(
+      "[datum] the admin-audience finding and the decision on it reach the chat in no form",
+      !json(chat).includes(hiddenF) && !json(chat).includes("datum hidden") && !json(chat).includes("BUG_FILED") && !json(chat).includes("DEFECT"),
+      chat,
+    );
+    const noRun = await val("loadVisible", fa, V1);
+    const foreignVisible = await val("loadVisible", fb, PM);
+    t("[datum] loadVisible on a study with no run, and on another firm's study, is empty", json(noRun) === json({ findings: [], dispositions: [] }) && json(foreignVisible) === json({ findings: [], dispositions: [] }), [noRun, foreignVisible]);
+
+    // -- [datum] the delete rules --
+    // A finding that goes leaves the log and the thread, unlinked.
+    const goneF = (
+      await q(
+        "insert into study_proofread_findings (run_id, clause_id, section, type, title, detail, source_label, read_paths, remedy, audience, fingerprint) values ($1,'x-datum-gone',6,'NOTE','t','d','s','[]','r','engineer','datumgonefp') returning id",
+        [pmRun.id],
+      )
+    )[0].id;
+    const withF = await val("createRevision", revArgs(V1, { label: "with-finding", findingId: goneF, clauseId: "x-datum-gone" }));
+    const msgF = await msg(V1, fa, "engineer", "about the finding that goes", { findingId: goneF });
+    await q("delete from study_proofread_findings where id = $1", [goneF]);
+    const revF = (await q("select finding_id, clause_id from study_revisions where project_id = $1", [withF.projectId]))[0];
+    const msgFRow = (await q("select finding_id from study_datum_messages where id = $1", [msgF.id]))[0];
+    t(
+      "[datum] deleting a finding sets finding_id NULL on the revision and the message that named it, and both stay",
+      revF && revF.finding_id === null && revF.clause_id === "x-datum-gone" && msgFRow && msgFRow.finding_id === null,
+      { revF, msgFRow },
+    );
+    // Written directly: a lineage of its own, whose first version is then deleted.
+    const P1 = await mkStudy("D-cascade-study");
+    const P2 = await val("createRevision", revArgs(P1, { label: "cascade" }));
+    const pm1 = await msg(P1, fa, "engineer", "on the parent");
+    const pm2 = await msg(P2.projectId, fa, "engineer", "on v2");
+    const pm2b = await msg(P2.projectId, fa, "datum", "a reply on v2");
+    const v1Messages = await count("select count(*) c from study_datum_messages where project_id = $1", [V1]);
+    await q("delete from tis_projects where id = $1", [P1]);
+    const p2Row = await studyRow(P2.projectId);
+    const p2Rev = (await q("select * from study_revisions where project_id = $1", [P2.projectId]))[0];
+    const present = async (ids) => (await q("select id from study_datum_messages where id = any($1::uuid[])", [ids])).map((r) => r.id).sort();
+    t(
+      "[datum] deleting the parent project leaves v2, with revised_from_project_id (and root_project_id) NULL",
+      p2Row && p2Row.revised_from_project_id === null && p2Row.root_project_id === null && p2Row.version === 2,
+      p2Row && { revised: p2Row.revised_from_project_id, root: p2Row.root_project_id, version: p2Row.version },
+    );
+    t("[datum] the log row of v2 stays, still naming the deleted parent: it is history", p2Rev && p2Rev.from_project_id === P1 && p2Rev.root_project_id === P1, p2Rev);
+    t(
+      "[datum] the parent's messages went with it; v2's stayed, and so did every other study's",
+      json(await present([pm1.id, pm2.id, pm2b.id])) === json([pm2.id, pm2b.id].sort()) && (await count("select count(*) c from study_datum_messages where project_id = $1", [V1])) === v1Messages,
+    );
+    const linOrphan = await val("lineageFor", fa, P2.projectId);
+    t(
+      "[datum] lineageFor a version whose parent and root are gone: revised from nothing, and the latest of what is left is itself",
+      json(linOrphan) === json({ version: 2, revisedFromProjectId: null, revisedFromVersion: null, latestVersionId: P2.projectId, latestVersion: 2 }),
+      linOrphan,
+    );
+    await q("delete from tis_projects where id = $1", [P2.projectId]);
+    t(
+      "[datum] deleting v2 takes its messages and its log row with it (cascade), and nothing else",
+      (await present([pm2.id, pm2b.id])).length === 0 &&
+        (await count("select count(*) c from study_revisions where project_id = $1", [P2.projectId])) === 0 &&
+        (await count("select count(*) c from study_datum_messages where project_id = $1", [V1])) === v1Messages,
+    );
+
+    // -- [datum R16] the version cap, counted under the lineage lock --
+    // A lineage of its own, brought to 24 versions; then two saves race for the 25th.
+    const VC = await mkStudy("D-cap-study");
+    for (let i = 0; i < 23; i++) await val("createRevision", revArgs(VC, { label: `cap-${i}` }));
+    const capState = async () => ({
+      versions: (await q("select version from tis_projects where id = $1 or root_project_id = $1 order by version", [VC])).map((r) => r.version),
+      revisions: await count("select count(*) c from study_revisions where root_project_id = $1", [VC]),
+    });
+    const capBefore = await capState();
+    t(
+      "[datum R16] precondition: a lineage at 24 versions (the original and 23 saves), one short of the cap",
+      json(capBefore.versions) === json(Array.from({ length: 24 }, (_, i) => i + 1)) && capBefore.revisions === 23 && (await val("countLineage", fa, VC)) === 24,
+      capBefore,
+    );
+    const racing = await Promise.all([datum("createRevision", revArgs(VC, { label: "cap-a" })), datum("createRevision", revArgs(VC, { userId: "user-c", label: "cap-b" }))]);
+    const won = racing.filter((r) => r.ok === true);
+    const lost = racing.filter((r) => r.ok !== true);
+    t(
+      "[datum R16] two concurrent createRevision calls on a lineage at 24: exactly one succeeds, as version 25, and the other throws LineageCapReached",
+      won.length === 1 && won[0].value?.version === 25 && lost.length === 1 && lost[0].error?.name === "LineageCapReached",
+      racing,
+    );
+    const capAfter = await capState();
+    t(
+      "[datum R16] afterwards the lineage holds exactly 25 versions (1..25) and 24 log rows: the refused save inserted nothing",
+      json(capAfter.versions) === json(Array.from({ length: 25 }, (_, i) => i + 1)) && capAfter.revisions === 24,
+      capAfter,
+    );
+    const pastCap = [await datum("createRevision", revArgs(VC, { label: "cap-c" })), await datum("createRevision", revArgs(won[0]?.value?.projectId ?? VC, { label: "cap-d" }))];
+    t(
+      "[datum R16] at 25, a save from the original or from the newest version throws LineageCapReached, and still nothing is inserted",
+      pastCap.every((r) => r.ok === false && r.error?.name === "LineageCapReached") && json((await capState()).versions) === json(capAfter.versions),
+      pastCap,
+    );
+    t(`[datum] every chat read (${datumContractChecked}) parses under the chat contract`, datumContractChecked > 0 && datumContractFailures.length === 0, datumContractFailures);
   } catch (err) {
     console.log(`DRIVER ERROR ${withCauses(err)}`);
     console.log(err);
