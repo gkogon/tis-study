@@ -100,8 +100,10 @@ function parseOneway(raw: string | undefined): number {
   return 0;
 }
 
-/** OSM `lanes` is total both-directions; values like "2", "3", "2;3" occur.
- *  Take the max of any ;-separated list. Returns null when untagged/unparseable. */
+/** OSM `lanes` counts both directions on a two-way way and only the direction
+ *  of travel on a oneway way. Stored as tagged, so a per-direction count
+ *  halves two-way ways only. Values like "2", "3", "2;3" occur. Take the max of
+ *  any ;-separated list. Returns null when untagged/unparseable. */
 function parseLanes(raw: string | undefined): number | null {
   if (!raw) return null;
   let best: number | null = null;

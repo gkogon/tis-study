@@ -162,6 +162,9 @@ const everyClause = realRec("scenario-base");
     rows[1].approaches[0].existingVc = 3.3;
     rows[2].designBuildVc = 2.9;
     rows[2].designNoBuildVc = 1.0;
+    // An intersection no-project v/c above the 2.5 ceiling. The payload carried one of its own until #250 built the
+    // intersection row from its approaches (the 2026-10-02 re-pin); it is a deliberate break now, like the others.
+    rows[3].existingVc = 2.7;
   });
 }
 
@@ -593,6 +596,10 @@ const S_PASSBY =
 
 // --- real engine output: what a correct study carries is not flagged -----------
 {
+  // The delay fields screeningClampDisclosed reads (s4-results.ts DELAY_KEYS), and which real payload has one at the ceiling.
+  const CLAMP_DELAY_KEYS = ["currentDelaySec", "existingDelaySec", "futureDelaySec", "designNoBuildDelaySec", "designBuildDelaySec"];
+  const AT_CEILING = { "scenario-base": true, "scenario-overrides": true, "scenario-network-utdf": false };
+  ok(REAL.every((n) => typeof AT_CEILING[n] === "boolean") && REAL.some((n) => AT_CEILING[n]), "AT_CEILING pins every real payload, and at least one holds a delay at the ceiling");
   for (const name of REAL) {
     const r = realRec(name);
     const res = runClauses(r);
@@ -610,10 +617,20 @@ const S_PASSBY =
     ok(quiet("criteriaNamed"), `${name}: the findings name the governing DOT, so criteriaNamed is quiet`);
     ok(/criteria values/.test(cover(res, "criteriaNamed")?.note ?? "") && /published document/.test(cover(res, "criteriaNamed")?.note ?? ""), `${name}: …and it still says, in the coverage note, that the criteria values were not checked against a published document`);
     ok(complete("periodScopeDisclosed"), `${name}: every requested period is reported`);
-    const clampRows = r.result.periodReports.flatMap((p) => p.affectedIntersections).filter((x) => x.futureDelaySec >= 299.95);
+    // Counted over every delay field the clause reads, not futureDelaySec alone. Which payloads hold a delay at the
+    // ceiling is pinned in AT_CEILING, not inferred: since #250 built the intersection row from its approaches (the
+    // 2026-10-02 re-pin), base and overrides keep only design-year delays at 300 s and network-utdf has none.
+    const clampFields = r.result.periodReports
+      .flatMap((p) => p.affectedIntersections)
+      .flatMap((x) => CLAMP_DELAY_KEYS.filter((k) => typeof x[k] === "number" && x[k] >= 299.95));
     const clamp = byClause(res, "screeningClampDisclosed");
-    pre(name, clampRows.length > 0 && !r.result.findings.some((f) => /clamp|ceiling|capped/i.test(f)), "some row's futureDelaySec sits at the 300 s ceiling and no finding mentions a clamp");
-    ok(clamp.length === 1 && clamp[0].type === "DISCLOSE", `${name}: delays at the 300 s ceiling (${clampRows.length} rows) with no finding saying so → one DISCLOSE`);
+    if (AT_CEILING[name] === true) {
+      pre(name, clampFields.length > 0 && !r.result.findings.some((f) => /clamp|ceiling|capped/i.test(f)), "some row's delay sits at the 300 s ceiling and no finding mentions a clamp");
+      ok(clamp.length === 1 && clamp[0].type === "DISCLOSE", `${name}: delays at the 300 s ceiling (${clampFields.length} fields) with no finding saying so → one DISCLOSE`);
+    } else {
+      pre(name, AT_CEILING[name] === false && clampFields.length === 0, "no delay field sits at the 300 s ceiling (AT_CEILING pins this fixture as having none)");
+      ok(complete("screeningClampDisclosed"), `${name}: no delay at the 300 s ceiling → the clamp clause ran and is quiet, none left unjudged`);
+    }
     const scope = byClause(res, "scopeNoteConsistent");
     pre(name, r.result.intersectionsMergedAsDuplicates > 0 && r.result.findings.some((f) => /study area/.test(f)), "records were merged as duplicates and a finding says \"study area\"");
     ok(scope.length === 1 && scope[0].type === "NOTE", `${name}: merged records fire the scope NOTE even though a real finding says "study area"`);
@@ -630,7 +647,9 @@ const S_PASSBY =
           if (typeof x[d] === "number" && delayToLos(x[d]) !== x[l]) n++;
     return n;
   };
-  for (const name of ["scenario-overrides", "scenario-network-utdf"]) {
+  // scenario-overrides held one such row until the #250 re-pin moved its intersection delays (2026-10-02); network-utdf
+  // still holds two, and every real payload above must still be complete on losMatchesDelay.
+  for (const name of ["scenario-network-utdf"]) {
     pre(name, strict(name) >= 1, "a row's letter differs from delayToLos(printed delay) — the 0.1 s rounding case the LOS clause must tolerate");
   }
 }

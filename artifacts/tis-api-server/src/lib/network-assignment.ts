@@ -18,20 +18,33 @@
 import { bprTime } from "./four-step-model.ts";
 import { classifyMovement, sideOfStreet, resolveMovements, maskOneWayMovements, type Driveway } from "./driveways.ts";
 import { logger } from "./logger.ts";
+import { KMH_PER_MPH } from "@workspace/tis-engine-core";
 
 const ANALYZER_BASE_URL = process.env["ANALYZER_API_URL"] ?? "http://localhost:8080";
 
 export type RoadSegment = [
-  number, number, number, number, number,
-  number | null, number | null,
+  cls: number, aLat: number, aLon: number, bLat: number, bLon: number,
+  /** OSM `lanes` as tagged: both directions on a two-way way, the one
+   *  direction of travel on a one-way way. */
+  lanes: number | null,
+  /** OSM maxspeed in km/h, as every road file stores it (the analyzer serves
+   *  it unconverted). buildGraph converts to mph. */
+  maxspeedKmh: number | null,
   /** Street name; null on unnamed ways, absent on old payloads. Carried for
    *  consumers/diagnostics — buildGraph does not read it. */
-  (string | null)?,
+  name?: string | null,
   /** 1 = a->b only, -1 = b->a only, 0/absent = two-way. */
-  (number | null)?,
+  oneway?: number | null,
 ];
 
-export type RouteDestination = { lat: number; lon: number; trips: number };
+export type RouteDestination = {
+  lat: number; lon: number;
+  /** Trips routed site → destination (the outbound pass). */
+  trips: number;
+  /** Trips routed destination → site by the inbound pass, which runs on
+   *  one-way-bearing graphs only; defaults to `trips`. */
+  tripsIn?: number;
+};
 
 /** Measured existing-volume reference point (a counted signal/segment). */
 export type VolumeRef = { lat: number; lon: number; aadt: number };
@@ -261,16 +274,26 @@ export function buildGraph(segments: RoadSegment[], volumeRefs: VolumeRef[] = []
     if (a === b) continue;
     const lenMi = distMi(s[1], s[2], s[3], s[4]);
     if (lenMi <= 0) continue;
-    const mph = (typeof s[6] === "number" && s[6]! > 0) ? s[6]! : CLASS_FREE_MPH[cls]!;
-    const lanesPerDir = (typeof s[5] === "number" && s[5]! > 0) ? Math.max(1, Math.round(s[5]! / 2)) : CLASS_LANES_PER_DIR[cls]!;
-    const li = links.length;
-    const capVph = lanesPerDir * PER_LANE_CAP_VPH;
-    const baseVc = seedBaseVc((s[1] + s[3]) / 2, (s[2] + s[4]) / 2, cls, capVph);
+    // The road file stores maxspeed in km/h; free-flow time and the class
+    // defaults are mph. Unconverted, a 35 mph street routed at 56 mph.
+    const maxspeedKmh = s[6];
+    const mph = (typeof maxspeedKmh === "number" && maxspeedKmh > 0) ? maxspeedKmh / KMH_PER_MPH : CLASS_FREE_MPH[cls]!;
     // One-way capture (RoadSegment[8], present on post-2026-08 road files).
     // Absent or 0 = two-way, which is exactly the old behaviour — so every
     // pre-rollout region routes byte-identically.
     const rawDir: unknown = s[8];
     const dir: 0 | 1 | -1 = rawDir === 1 ? 1 : rawDir === -1 ? -1 : 0;
+    // capVph is per direction. OSM `lanes` counts both directions on a two-way
+    // way but only the direction of travel on a one-way way, so only two-way
+    // ways are halved (as regional-signal-naming.ts does). Halving every way
+    // left a 3-lane one-way carriageway with 2.
+    const lanes = s[5];
+    const lanesPerDir = (typeof lanes === "number" && lanes > 0)
+      ? (dir !== 0 ? lanes : Math.max(1, Math.round(lanes / 2)))
+      : CLASS_LANES_PER_DIR[cls]!;
+    const li = links.length;
+    const capVph = lanesPerDir * PER_LANE_CAP_VPH;
+    const baseVc = seedBaseVc((s[1] + s[3]) / 2, (s[2] + s[4]) / 2, cls, capVph);
     links.push({ a, b, lenMi, freeMin: (lenMi / mph) * 60, capVph, cls, baseVc, vol: 0, dir });
     // Travelling a→b is legal unless the way is b→a-only, and vice versa. A
     // one-way link appears in ONE node's adjacency, so the router cannot even
@@ -297,13 +320,15 @@ export function buildGraph(segments: RoadSegment[], volumeRefs: VolumeRef[] = []
  * the same transposition the inbound routing pass uses). Plain BFS: this is a
  * connectivity screen, costs don't matter.
  *
- * Exists for cordon-gateway screening on one-way-bearing graphs: a gateway
- * with no legal path in EITHER direction never routes — its demand share
- * silently evaporates at the pred=-1 skip, deflating routed/onNetworkPct and
- * every resolved intersection's weight with no diagnostic. Callers drop such
- * gateways and renormalize BEFORE routing. On all-two-way graphs outbound and
+ * Exists for cordon-gateway selection on one-way-bearing graphs: each routing
+ * pass drops the share of a gateway it cannot reach (the pred=-1 skip), so
+ * selectCordonGateways picks the outbound pass's gateways from `outbound`
+ * nodes and the inbound pass's from `inbound` nodes, BEFORE routing. On
+ * all-two-way graphs outbound and
  * inbound are identical (undirected connectivity), and callers must not
- * change behaviour there — today's shipped regions carry no one-way links.
+ * change behaviour there — the regions whose road files predate oneway
+ * capture still route all-two-way; every other shipped region carries
+ * one-way links.
  */
 export function directedReachability(g: Graph, rootNode: number): { outbound: Uint8Array; inbound: Uint8Array } {
   const n = g.nodeLat.length;
@@ -461,7 +486,9 @@ export function assignRoutesWithTurns(
 
   // Snap site + destinations to nearest node (scan — graph is bounded).
   const siteNode = g.nearestNode(site.lat, site.lon);
-  const destNodes = destinations.map((d) => ({ node: g.nearestNode(d.lat, d.lon), trips: d.trips }));
+  const destNodes = destinations.map((d) => ({
+    node: g.nearestNode(d.lat, d.lon), trips: d.trips, tripsIn: d.tripsIn ?? d.trips,
+  }));
 
   // Dijkstra from the site over current congested link times → shortest-
   // path tree (predecessor link per node). Returns dist[] + predLink[].
@@ -589,6 +616,9 @@ export function assignRoutesWithTurns(
       const aux = new Array<number>(links.length).fill(0);
       auxTurnIn.clear();
       for (const d of destNodes) {
+        // A destination this pass cannot reach is skipped and its share is
+        // not re-spread: callers give each pass only destinations it reaches
+        // (selectCordonGateways with directed reachability sets tripsIn).
         if (d.node < 0 || pred[d.node] === -1 && d.node !== siteNode) continue;
         // pred[] is the site-rooted tree on the transposed graph, so walking
         // it from the gateway follows the REAL inbound path in forward travel
@@ -600,10 +630,10 @@ export function assignRoutesWithTurns(
         while (cur !== siteNode && guard++ < 5000) {
           const li = pred[cur];
           if (li === undefined || li === -1) break;
-          aux[li]! += d.trips;
+          aux[li]! += d.tripsIn;
           if (inLi !== -1) {
             const k = turnKey(cur, inLi, li);
-            auxTurnIn.set(k, (auxTurnIn.get(k) ?? 0) + d.trips);
+            auxTurnIn.set(k, (auxTurnIn.get(k) ?? 0) + d.tripsIn);
           }
           inLi = li;
           const lk = links[li]!;

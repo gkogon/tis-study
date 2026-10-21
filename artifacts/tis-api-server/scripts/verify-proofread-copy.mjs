@@ -310,11 +310,21 @@ report(
   ordinary.length === 2 && ordinary[0].type === "DISCLOSE" && ordinary[1].type === "NOTE",
   "precondition: the real pass over scenario-base yields the ordinary pair (one DISCLOSE, one NOTE) — fixture or clause changed if red",
 );
+// Since #250 built the intersection row from its approaches (the 2026-10-02 re-pin, artifacts/atlanta-tis/scripts/
+// fixtures/README.md), scenario-base no longer carries an implausible no-project v/c, so its pass has no BLOCKER of its
+// own. scenario-network-utdf still does (an approach above the 2.5 ceiling), so the ordering case below is handed both
+// real passes, each finding with an id of its own.
+const utdfPayload = JSON.parse(readFileSync(path.join(atlanta, "scripts/fixtures/scenario-network-utdf.json"), "utf8"));
+const utdfFindings = runClauses({ request: utdfPayload.request, result: utdfPayload }, ALL_CLAUSES).findings.map((f, i) => ({
+  ...asRoute(f, i),
+  id: `real-utdf-${i}`,
+}));
 report(
   "pre-real-pass-blocker",
-  realFindings.some((f) => f.type === "BLOCKER"),
-  "precondition: the real pass over scenario-base also yields a BLOCKER, so the ordering case below has one to put first",
+  utdfFindings.some((f) => f.type === "BLOCKER"),
+  "precondition: the real pass over scenario-network-utdf yields a BLOCKER, so the ordering case below has one to put first",
 );
+const orderingFindings = [...realFindings, ...utdfFindings];
 const contract = await import(pathToFileURL(path.join(repo, "lib/tis-api-zod/src/proofread.ts")).href);
 // The one sentence in prompt.ts allowed to name the banned phrases: it tells Datum never to write them. Taken from
 // the module itself, so the scan removes exactly that sentence, by exact match, and nothing else: a reworded or
@@ -869,10 +879,10 @@ async function suite(src) {
         order.join(",") === "c1,b1,d1,d2,n1,n2,u1",
         `BLOCKER and CONTESTED first (one tier, server order kept: c1 was sent before b1), then DISCLOSE, then NOTE, UNVERIFIED last (got ${order.join(",")})`,
       );
-      // The real pass happens to arrive in severity order already, so hand it over reversed.
-      const real = findingOrder(keep(view(runOf("rules_ready", { findings: [...realFindings].reverse() }))));
-      const types = real.map((id) => realFindings.find((f) => f.clauseId === id).type);
-      ok("order-real-pass-by-severity", types.join(" > ") === "BLOCKER > BLOCKER > DISCLOSE > NOTE", `the real pass, handed over reversed, renders in severity order (${types.join(" > ")})`);
+      // Each real pass arrives in clause order (base: DISCLOSE, NOTE; network-utdf: BLOCKER, NOTE), so hand both over reversed.
+      const real = findingOrder(keep(view(runOf("rules_ready", { findings: [...orderingFindings].reverse() }))));
+      const types = real.map((id) => orderingFindings.find((f) => f.clauseId === id).type);
+      ok("order-real-pass-by-severity", types.join(" > ") === "BLOCKER > DISCLOSE > NOTE > NOTE", `the real passes over scenario-base and scenario-network-utdf, handed over reversed, render in severity order (${types.join(" > ")})`);
 
       const html = keep(view(runOf("rules_ready", { findings: ordinary })));
       const t = text(html);

@@ -14,6 +14,7 @@ import { Link } from "wouter";
 import { ArrowRight, Check, X, Minus } from "lucide-react";
 import { SiteFooter } from "../components/site-footer";
 import { Marker } from "../components/section-marker";
+import { TOTAL_METROS, COUNTRIES_COVERED, TOTAL_SIGNALS } from "../data/metro-coverage";
 
 type Verdict = "yes" | "no" | "partial";
 
@@ -35,7 +36,7 @@ const ROWS: CompareRow[] = [
   },
   {
     feature: "Metro-specific measured data baked in",
-    us: { v: "yes", note: "316 metros in 73 countries, 920,187 signals indexed, state-DOT AADT" },
+    us: { v: "yes", note: `${TOTAL_METROS} metros in ${COUNTRIES_COVERED} countries, ${TOTAL_SIGNALS.toLocaleString("en-US")} signals indexed, state-DOT AADT` },
     synchro: { v: "no", note: "you supply counts" },
     vistro: { v: "no", note: "you supply counts" },
     outsourced: { v: "partial", note: "depends on the sub" },

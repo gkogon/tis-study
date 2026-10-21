@@ -18,16 +18,19 @@ import { lruSet } from "./bounded-cache";
 import { findDataFile, readJsonMaybeGz } from "./data-files";
 
 /**
- * A way tuple as it actually appears in the shipped `<slug>-roads.json` files.
- * Two shapes are in circulation and BOTH must be handled:
+ * A way tuple in a `<slug>-roads.json` file. Two shapes have existed:
  *
- *   legacy   [classCode, polyline, lanes?, maxspeed?]
- *   current  [classCode, name, polyline, lanes?, maxspeed?]
+ *   legacy   [classCode, polyline, lanes?, maxspeedKmh?]
+ *   current  [classCode, name, polyline, lanes?, maxspeedKmh?, oneway?]
  *
  * The type used to declare only the legacy shape, which is why the parser was
- * written to read `way[1]` as the polyline. 315 of the 316 shipped files are
- * current-format, so that read silently discarded nearly every road in the
- * product. Keeping both arms in the type is what stops that regressing.
+ * written to read `way[1]` as the polyline — and silently discarded nearly
+ * every road in the product. Every shipped file is now current-format (no
+ * legacy way remains, Atlanta included); the legacy arm stays so a stale
+ * file degrades to working roads rather than to none.
+ *
+ * maxspeed is km/h in every file: the extractors convert "N mph" tags on
+ * write. It is served unconverted; consumers convert to mph.
  */
 type RoadWayLegacy = [number, Array<[number, number]>, (number | null)?, (number | null)?];
 type RoadWayNamed = [
@@ -65,7 +68,7 @@ function loadRoadFile(slug: string): RoadFile | null {
 
 /**
  * Compact directionless segment:
- * [classCode, aLat, aLon, bLat, bLon, lanes, maxspeed, name?]
+ * [classCode, aLat, aLon, bLat, bLon, lanes, maxspeedKmh, name?, oneway?]
  *
  * `name` is appended, not inserted, so every existing consumer indexing 0-6 is
  * unaffected. It exists so the router can give a continuity credit to staying
@@ -74,13 +77,16 @@ function loadRoadFile(slug: string): RoadFile | null {
  * intersections that no engineer would recognise.
  */
 export type RoadSegment = [
-  number, number, number, number, number,
-  number | null, number | null,
-  (string | null)?,
+  cls: number, aLat: number, aLon: number, bLat: number, bLon: number,
+  lanes: number | null,
+  // km/h, straight from the road file — the consumers (network-assignment.ts,
+  // atlanta-tis study-map-sim.ts) convert to mph.
+  maxspeedKmh: number | null,
+  name?: string | null,
   // oneway: 1 = a->b only, -1 = b->a only, 0 = two-way. Absent on segments from
   // road files fetched before oneway capture; absent reads as two-way, which is
   // the behaviour every consumer already assumed.
-  (number | null)?,
+  oneway?: number | null,
 ];
 
 function distMi(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -117,16 +123,16 @@ export function roadSegmentsNear(
   const out: Array<{ seg: RoadSegment; d: number }> = [];
   for (const way of road.ways) {
     const cls = typeof way[0] === "number" ? way[0] : 99;
-    // Way tuples ship in TWO shapes and this loop only ever understood one:
-    //   legacy  [classCode, polyline, lanes?, maxspeed?]
-    //   current [classCode, name, polyline, lanes?, maxspeed?]
+    // Way tuples have come in TWO shapes and this loop once understood only one:
+    //   legacy  [classCode, polyline, lanes?, maxspeedKmh?]
+    //   current [classCode, name, polyline, lanes?, maxspeedKmh?, oneway?]
     // Reading way[1] unconditionally meant every current-format way hit a
     // string, failed the Array.isArray guard, and was skipped — so
     // roadSegmentsNear returned [], /api/roads reported no segments,
     // fetchLocalRoads returned null, and tis.ts silently skipped route
-    // assignment as "region has no road network". 315 of 316 shipped road
-    // files are current-format (Miami-Dade: 0 of 31,592 ways parsed); Atlanta
-    // is the lone mixed file and only 31% of its ways got through.
+    // assignment as "region has no road network" (Miami-Dade: 0 of 31,592
+    // ways parsed). Every shipped file is current-format today; the legacy
+    // arm is kept for a stale file.
     //
     // Locate the polyline by shape rather than by index, and read lanes /
     // maxspeed from the two slots AFTER it so both shapes keep their metadata
@@ -139,7 +145,7 @@ export function roadSegmentsNear(
     const lanesRaw: unknown = named ? way[3] : way[2];
     const maxspeedRaw: unknown = named ? way[4] : way[3];
     const lanes = typeof lanesRaw === "number" ? lanesRaw : null;
-    const maxspeed = typeof maxspeedRaw === "number" ? maxspeedRaw : null;
+    const maxspeedKmh = typeof maxspeedRaw === "number" ? maxspeedRaw : null;
     const name = named && typeof way[1] === "string" ? way[1] : null;
     // Only the named (current) shape can carry oneway; legacy files predate it.
     const onewayRaw: unknown = named ? way[5] : undefined;
@@ -151,7 +157,7 @@ export function roadSegmentsNear(
       const dA = distMi(lat, lon, a[0], a[1]);
       const dB = distMi(lat, lon, b[0], b[1]);
       const d = Math.min(dA, dB);
-      if (d <= r) out.push({ seg: [cls, a[0], a[1], b[0], b[1], lanes, maxspeed, name, oneway], d });
+      if (d <= r) out.push({ seg: [cls, a[0], a[1], b[0], b[1], lanes, maxspeedKmh, name, oneway], d });
     }
   }
 

@@ -489,15 +489,25 @@ export function renderTisNewYork(
   // NYC transit + active-mode context — surfaced when inside the five
   // boroughs. Stations within 0.5 mi establish the site's transit
   // accessibility (the CEQR Ch 16 walk-shed) and the nearest bike
-  // counter anchors any subsequent active-mode analysis.
+  // counter anchors any subsequent active-mode analysis. A lookup that
+  // failed at render time (lookupFailed) is disclosed as such: its empty
+  // list is not a finding of "no station" / "no counter".
   const transit: NycTransitContext | null =
     inNyc && r && typeof r === "object" && r.nyTransitContext
       ? (r.nyTransitContext as NycTransitContext)
       : null;
-  if (transit && (transit.subway.stations.length > 0 || transit.bike.nearest)) {
+  const subwayFailed = transit?.subway.lookupFailed === true;
+  const bikeFailed = transit?.bike.lookupFailed === true;
+  if (transit && (transit.subway.stations.length > 0 || transit.bike.nearest || subwayFailed || bikeFailed)) {
     doc.font("bold").fontSize(11).fillColor("black").text("Transit and active-mode context:");
     doc.moveDown(0.1);
-    if (transit.subway.stations.length > 0) {
+    if (subwayFailed) {
+      doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+        `MTA subway access could not be retrieved when this report was rendered (the MTA Subway Stations lookup, data.ny.gov, failed), so stations within ${transit.subway.radiusMi.toFixed(2)} mi of the site were not identified — verify subway access at scoping.`,
+        { paragraphGap: 4 },
+      );
+      doc.fillColor("black");
+    } else if (transit.subway.stations.length > 0) {
       const nStations = transit.subway.stations.length;
       const nRoutes = transit.subway.routesAvailable.length;
       const closest = transit.subway.stations[0];
@@ -513,7 +523,13 @@ export function renderTisNewYork(
       );
       doc.fillColor("black");
     }
-    if (transit.bike.nearest) {
+    if (bikeFailed) {
+      doc.font("body").fontSize(10).fillColor(TEXT_GRAY).text(
+        `NYC DOT bicycle counter data could not be retrieved when this report was rendered (the NYC OpenData Bicycle Counters lookup failed), so the nearest counter within ${transit.bike.radiusMi.toFixed(2)} mi was not identified — verify at scoping.`,
+        { paragraphGap: 6 },
+      );
+      doc.fillColor("black");
+    } else if (transit.bike.nearest) {
       doc.font("body").fontSize(10).fillColor("black").text(
         `Nearest NYC DOT bicycle counter: ${transit.bike.nearest.name} (${transit.bike.nearest.distanceMi.toFixed(2)} mi). ${transit.bike.countWithin} counter${transit.bike.countWithin === 1 ? "" : "s"} within ${transit.bike.radiusMi.toFixed(2)} mi total. Source: NYC OpenData Bicycle Counters (smn3-rzf9). The counter provides a reference cyclist-volume baseline for the §C.3 pedestrian/bicycle analysis under CEQR Ch 16.`,
         { paragraphGap: 6 },
@@ -1247,6 +1263,32 @@ const CEQR_TRANSIT_THRESHOLD = 200; // peak-hour transit riders
 const CEQR_PED_THRESHOLD = 200; // peak-hour pedestrian trips
 
 /**
+ * Modal split inferred from the transit context — CEQR Ch 16 zone bands
+ * are driven by transit accessibility, and the number of subway routes
+ * within the walk-shed is the cleanest available proxy:
+ *   - 5+ routes (Manhattan CBD-typical) → 25/65/10 vehicle/transit/ped
+ *   - 3-4 routes (Manhattan non-CBD)    → 30/60/10
+ *   - 1-2 routes (Outer Borough TOD)    → 40/45/15
+ *   - 0 routes  (Outer Borough non-TOD) → 55/30/15
+ * A submittable CEQR analysis must replace the inferred split with the
+ * actual CEQR Ch 16 Appendix C zone-specific value. `routesAvailable`
+ * must come from a subway lookup that answered: 0 from a failed one is
+ * "unknown", not "no subway".
+ */
+function ceqrModalSplit(routesAvailable: number): { veh: number; transit: number; ped: number; basis: string } {
+  if (routesAvailable >= 5) {
+    return { veh: 0.25, transit: 0.65, ped: 0.10, basis: "Manhattan-CBD-typical (≥5 subway routes accessible within the 0.5-mi walk-shed)" };
+  }
+  if (routesAvailable >= 3) {
+    return { veh: 0.30, transit: 0.60, ped: 0.10, basis: `Manhattan-non-CBD-typical (${routesAvailable} subway routes accessible within the walk-shed)` };
+  }
+  if (routesAvailable >= 1) {
+    return { veh: 0.40, transit: 0.45, ped: 0.15, basis: `Outer-Borough TOD (${routesAvailable} subway route${routesAvailable === 1 ? "" : "s"} accessible within the walk-shed)` };
+  }
+  return { veh: 0.55, transit: 0.30, ped: 0.15, basis: "Outer-Borough non-TOD (no subway station within 0.5 mi; transit served by NYCT bus only)" };
+}
+
+/**
  * Render the CEQR Chapter 16 overlay for NYC sites. Called from
  * renderStudyPdf AFTER renderTisNewYork when the site sits inside the
  * five boroughs (NYSDOT Region 11).
@@ -1267,41 +1309,28 @@ export function renderCeqrNyc(
   const pmIn = Number(tg.pmIn ?? 0);
   const pmOut = Number(tg.pmOut ?? 0);
   const peakHourVeh = Math.max(amPeak, pmIn + pmOut);
-  // Modal split inferred from the transit-context — CEQR Ch 16 zone
-  // bands are driven by transit accessibility, and the number of
-  // subway routes within walk-shed is the cleanest available proxy:
-  //   - 5+ routes (Manhattan CBD-typical) → 25/65/10 vehicle/transit/ped
-  //   - 3-4 routes (Manhattan non-CBD)    → 30/60/10
-  //   - 1-2 routes (Outer Borough TOD)    → 40/45/15
-  //   - 0 routes  (Outer Borough non-TOD) → 55/30/15
-  // A submittable CEQR analysis must replace the inferred split with
-  // the actual CEQR Ch 16 Appendix C zone-specific value.
+  // Modal split (ceqrModalSplit) — only from a subway lookup that
+  // ANSWERED. A failed lookup (lookupFailed), or no transit context at
+  // all, is not "0 routes": read that way it put Manhattan sites on the
+  // 55% vehicle non-TOD split with nothing in the report saying why. No
+  // split is inferred then, and the transit and pedestrian screens (which
+  // need one) are reported as not evaluated; the vehicle screen does not.
   const transitCtxCeqr = (r as any)?.nyTransitContext as NycTransitContext | undefined;
-  const routesAvailable = transitCtxCeqr?.subway.routesAvailable.length ?? 0;
-  let vehShare: number;
-  let transitShare: number;
-  let pedShare: number;
-  let modalSplitBasis: string;
-  if (routesAvailable >= 5) {
-    vehShare = 0.25; transitShare = 0.65; pedShare = 0.10;
-    modalSplitBasis = "Manhattan-CBD-typical (≥5 subway routes accessible within the 0.5-mi walk-shed)";
-  } else if (routesAvailable >= 3) {
-    vehShare = 0.30; transitShare = 0.60; pedShare = 0.10;
-    modalSplitBasis = `Manhattan-non-CBD-typical (${routesAvailable} subway routes accessible within the walk-shed)`;
-  } else if (routesAvailable >= 1) {
-    vehShare = 0.40; transitShare = 0.45; pedShare = 0.15;
-    modalSplitBasis = `Outer-Borough TOD (${routesAvailable} subway route${routesAvailable === 1 ? "" : "s"} accessible within the walk-shed)`;
-  } else {
-    vehShare = 0.55; transitShare = 0.30; pedShare = 0.15;
-    modalSplitBasis = "Outer-Borough non-TOD (no subway station within 0.5 mi; transit served by NYCT bus only)";
+  const split = transitCtxCeqr && !transitCtxCeqr.subway.lookupFailed
+    ? ceqrModalSplit(transitCtxCeqr.subway.routesAvailable.length)
+    : null;
+  // null = not screened (no split).
+  let peakHourTransit: number | null = null;
+  let peakHourPed: number | null = null;
+  if (split) {
+    const peakHourPerson = peakHourVeh / split.veh;
+    peakHourTransit = Math.round(peakHourPerson * split.transit);
+    peakHourPed = Math.round(peakHourPerson * split.ped);
   }
-  const peakHourPerson = peakHourVeh / vehShare;
-  const peakHourTransit = Math.round(peakHourPerson * transitShare);
-  const peakHourPed = Math.round(peakHourPerson * pedShare);
 
   const vehAbove = peakHourVeh > CEQR_VEH_THRESHOLD;
-  const transitAbove = peakHourTransit > CEQR_TRANSIT_THRESHOLD;
-  const pedAbove = peakHourPed > CEQR_PED_THRESHOLD;
+  const transitAbove = peakHourTransit !== null && peakHourTransit > CEQR_TRANSIT_THRESHOLD;
+  const pedAbove = peakHourPed !== null && peakHourPed > CEQR_PED_THRESHOLD;
   const anyAbove = vehAbove || transitAbove || pedAbove;
 
   sectionBreak(doc);
@@ -1315,7 +1344,10 @@ export function renderCeqrNyc(
   // §A — Preliminary Screening
   nySubsection(doc, "A.1 Project Description and Screening Assumptions");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Project ${project.projectName || "(unnamed)"} — land-use code ${project.landUseCode || "—"}. Peak-hour vehicle trip-end estimate from the engine (max of AM and PM peaks): ${peakHourVeh} vehicle trips. The §A.2 screening converts the vehicle-trip figure to person-trips and modal totals using a ${(vehShare * 100).toFixed(0)}/${(transitShare * 100).toFixed(0)}/${(pedShare * 100).toFixed(0)} (vehicle / transit / pedestrian) mode split. Basis: ${modalSplitBasis}. A submittable CEQR analysis must replace this transit-context-inferred split with the zone-specific share drawn from CEQR Tech Manual Ch 16 Appendix C for the actual sub-borough zone of the site.`,
+    `Project ${project.projectName || "(unnamed)"} — land-use code ${project.landUseCode || "—"}. Peak-hour vehicle trip-end estimate from the engine (max of AM and PM peaks): ${peakHourVeh} vehicle trips. ` +
+      (split
+        ? `The §A.2 screening converts the vehicle-trip figure to person-trips and modal totals using a ${(split.veh * 100).toFixed(0)}/${(split.transit * 100).toFixed(0)}/${(split.ped * 100).toFixed(0)} (vehicle / transit / pedestrian) mode split. Basis: ${split.basis}. A submittable CEQR analysis must replace this transit-context-inferred split with the zone-specific share drawn from CEQR Tech Manual Ch 16 Appendix C for the actual sub-borough zone of the site.`
+        : "Subway access could not be retrieved from MTA Subway Stations (data.ny.gov) when this report was rendered, so the modal split is not inferred and the §A.2 transit and pedestrian screens are not evaluated. Verify subway access at scoping and screen both modes with the zone-specific share from CEQR Tech Manual Ch 16 Appendix C."),
     { paragraphGap: 6 },
   );
 
@@ -1333,15 +1365,15 @@ export function renderCeqrNyc(
       ],
       [
         "Transit riders (subway + bus)",
-        String(peakHourTransit),
+        peakHourTransit === null ? "Not inferred" : String(peakHourTransit),
         `${CEQR_TRANSIT_THRESHOLD}`,
-        transitAbove ? "Above" : "Below",
+        peakHourTransit === null ? "Not screened" : transitAbove ? "Above" : "Below",
       ],
       [
         "Pedestrians",
-        String(peakHourPed),
+        peakHourPed === null ? "Not inferred" : String(peakHourPed),
         `${CEQR_PED_THRESHOLD}`,
-        pedAbove ? "Above" : "Below",
+        peakHourPed === null ? "Not screened" : pedAbove ? "Above" : "Below",
       ],
     ],
   });
@@ -1353,9 +1385,16 @@ export function renderCeqrNyc(
   doc.fillColor("black");
 
   nySubsection(doc, "A.3 Preliminary Screening Conclusion");
+  // With no split the transit and pedestrian screens are open: say so,
+  // rather than conclude on the vehicle screen alone.
+  const openScreens = split
+    ? ""
+    : " The transit and pedestrian screens were not evaluated (subway access could not be retrieved, so the modal split is not inferred); no CEQR transportation conclusion is drawn for those modes until they are screened at scoping.";
   if (!anyAbove) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      "All three peak-hour trip-end estimates fall below the CEQR Ch 16 screening thresholds. Per the Tech Manual, no detailed transportation analysis is required (except in unusual circumstances). The CEQR transportation conclusion is no significant adverse impact. Sections B-E below are not triggered.",
+      split
+        ? "All three peak-hour trip-end estimates fall below the CEQR Ch 16 screening thresholds. Per the Tech Manual, no detailed transportation analysis is required (except in unusual circumstances). The CEQR transportation conclusion is no significant adverse impact. Sections B-E below are not triggered."
+        : `The peak-hour vehicle trip-end estimate falls below the CEQR Ch 16 screening threshold.${openScreens}`,
       { paragraphGap: 6 },
     );
     return;
@@ -1365,7 +1404,7 @@ export function renderCeqrNyc(
       vehAbove ? "vehicle" : null,
       transitAbove ? "transit" : null,
       pedAbove ? "pedestrian" : null,
-    ].filter(Boolean).join(" / ")} threshold(s) crossed — detailed analysis required for each crossed mode per CEQR Tech Manual Ch 16. The detailed analyses scaffolded below should be expanded by the engineering team for the formal CEQR submittal.`,
+    ].filter(Boolean).join(" / ")} threshold(s) crossed — detailed analysis required for each crossed mode per CEQR Tech Manual Ch 16. The detailed analyses scaffolded below should be expanded by the engineering team for the formal CEQR submittal.${openScreens}`,
     { paragraphGap: 6 },
   );
 

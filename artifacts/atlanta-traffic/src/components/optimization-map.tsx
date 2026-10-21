@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { MapContainer, TileLayer, CircleMarker, Polyline, Popup, useMap, LayersControl, LayerGroup } from "react-leaflet";
+import { MapContainer, CircleMarker, Polyline, Popup, useMap, LayersControl, LayerGroup } from "react-leaflet";
+import { BasemapLayers } from "@/components/basemap-layers";
 import "leaflet/dist/leaflet.css";
 import {
   IntersectionChange,
@@ -90,14 +91,6 @@ function diffBadge(before: number, after: number, suffix = "s") {
 }
 
 export function OptimizationMap({ changes, isDark }: OptimizationMapProps) {
-  const tileUrl = isDark
-    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-    : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-
-  const attribution = isDark
-    ? '&copy; <a href="https://carto.com/attributions">CARTO</a> &copy; OpenStreetMap'
-    : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-
   const { data: roadNetwork } = useGetRoadNetwork({
     query: {
       queryKey: getGetRoadNetworkQueryKey(),
@@ -154,7 +147,7 @@ export function OptimizationMap({ changes, isDark }: OptimizationMapProps) {
         zoomControl={false}
         preferCanvas={true}
       >
-        <TileLayer attribution={attribution} url={tileUrl} />
+        <BasemapLayers kind={isDark ? "dark" : "light"} />
         <MapBounds count={filtered.length} />
 
         <LayersControl position="topright" collapsed={false}>

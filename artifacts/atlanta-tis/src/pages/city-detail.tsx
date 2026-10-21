@@ -18,8 +18,9 @@ import {
   metroBySlug,
   siblingMetros,
   STATE_NAMES,
-  TIER_A_AADT_CUTOFF,
   TOTAL_METROS,
+  isFlagshipMetro,
+  isTierAMetro,
   type MetroCoverage,
 } from "../data/metro-coverage";
 import NotFound from "./not-found";
@@ -36,7 +37,9 @@ export default function CityDetailPage() {
   // React's rules-of-hooks and throw "Rendered fewer hooks than expected."
   const aadtIsMeasured = m ? (m.aadtQuality ?? "measured") === "measured" : false;
   const aadtPhrase = m
-    ? aadtIsMeasured && m.aadtPct >= TIER_A_AADT_CUTOFF
+    ? m.aadtQuality === "modeled"
+      ? ` Volumes are modeled from road class and distance from downtown, not counted${m.liveSource ? `; ${m.liveSource} incident reports adjust delay only` : ""}.`
+      : aadtIsMeasured && isTierAMetro(m)
       ? ` ${m.aadtPct.toFixed(0)}% of intersections calibrated to measured ${m.aadtSource ?? "state-DOT"} traffic counts.`
       : aadtIsMeasured && m.aadtPct > 0
         ? ` ${m.aadtPct.toFixed(0)}% calibrated to state-DOT counts.`
@@ -54,10 +57,10 @@ export default function CityDetailPage() {
 
   if (!match || !params || !m) return <NotFound />;
 
-  const isFlagship = m.code === "atlanta_metro";
-  const isMeasuredAadt = (m.aadtQuality ?? "measured") === "measured";
-  const isTierA = (m.aadtPct >= TIER_A_AADT_CUTOFF && isMeasuredAadt) || isFlagship;
+  const isFlagship = isFlagshipMetro(m);
+  const isTierA = isTierAMetro(m);
   const isSyntheticAadt = m.aadtQuality === "synthetic" && m.aadtPct > 0;
+  const isModeledVolumes = m.aadtQuality === "modeled";
   const siblings = siblingMetros(m);
 
   return (
@@ -111,10 +114,11 @@ export default function CityDetailPage() {
             <BigStat label="Signals indexed" value={m.signals.toLocaleString()} />
             <BigStat label="Named cross-streets" value={`${m.namedPct.toFixed(1)}%`} />
             <BigStat
-              label={isSyntheticAadt ? "AADT (synthetic)" : "Measured AADT"}
-              value={m.aadtPct > 0 ? `${m.aadtPct.toFixed(1)}%` : "—"}
+              label={isModeledVolumes ? "Volumes" : isSyntheticAadt ? "AADT (synthetic)" : "Measured AADT"}
+              value={isModeledVolumes ? "Modeled" : m.aadtPct > 0 ? `${m.aadtPct.toFixed(1)}%` : "—"}
+              small={isModeledVolumes}
               tone={
-                isSyntheticAadt
+                isModeledVolumes || isSyntheticAadt
                   ? "weak"
                   : m.aadtPct >= 95
                     ? "good"
@@ -156,7 +160,22 @@ export default function CityDetailPage() {
               a real "Street A & Street B" label.
             </Row>
             <Row label="AADT (vehicle volumes)">
-              {isSyntheticAadt ? (
+              {isModeledVolumes ? (
+                <>
+                  <span className="text-foreground">Modeled, not counted.</span>
+                  {" "}No signal in {m.longName} is joined to an AADT count. Each
+                  signal's design-hour volume is modeled from its road class and its
+                  distance from downtown, with a fixed per-signal factor; turning
+                  movements are modeled too.
+                  {m.liveSource && (
+                    <>
+                      {" "}{m.liveSource} incident reports are used only as a delay
+                      factor, at signals with frequent incidents nearby; they do not
+                      supply volumes.
+                    </>
+                  )}
+                </>
+              ) : isSyntheticAadt ? (
                 <>
                   <span className="text-foreground">{m.aadtSource}</span>
                   {" — "}{m.aadtPct.toFixed(1)}% of signals carry a synthesized vph
@@ -242,7 +261,7 @@ export default function CityDetailPage() {
                     {s.shortName}
                   </span>
                   <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                    {s.signals.toLocaleString()} signals · {s.aadtPct > 0 ? `${s.aadtPct.toFixed(0)}%` : "synth"}
+                    {s.signals.toLocaleString()} signals · {s.aadtQuality === "modeled" ? "modeled" : s.aadtPct > 0 ? `${s.aadtPct.toFixed(0)}%` : "synth"}
                   </span>
                 </Link>
               ))}

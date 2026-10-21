@@ -9,11 +9,11 @@ import {
 } from "@workspace/api-client-react";
 import {
   MapContainer,
-  TileLayer,
   CircleMarker,
   Tooltip as LeafletTooltip,
   Marker,
 } from "react-leaflet";
+import { BasemapLayers } from "@/components/basemap-layers";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -456,10 +456,7 @@ export default function ParkingPage() {
             preferCanvas={true}
             scrollWheelZoom
           >
-            <TileLayer
-              url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-              attribution='&copy; OpenStreetMap, &copy; CARTO'
-            />
+            <BasemapLayers kind="light" />
             {visibleLots.map((l: ParkingLot) => (
               <CircleMarker
                 key={l.id}

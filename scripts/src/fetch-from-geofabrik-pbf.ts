@@ -91,7 +91,7 @@ export const STATES: Record<string, RegionCode[]> = {
   // ── Tier-4 ──
   "district-of-columbia": ["washington_dc_metro"],
   maryland: ["baltimore_metro", "washington_dc_metro"],
-  pennsylvania: ["philadelphia_metro", "pittsburgh_metro", "allentown_metro", "harrisburg_metro", "scranton_metro", "erie_metro"],
+  pennsylvania: ["philadelphia_metro", "pittsburgh_metro", "allentown_metro", "harrisburg_metro", "scranton_metro", "erie_metro", "state_college_metro"],
   "new-york": ["new_york_metro", "rochester_ny_metro", "buffalo_metro", "syracuse_metro", "albany_metro"],
   massachusetts: ["boston_metro", "worcester_metro", "springfield_ma_metro"],
   illinois: ["chicago_metro", "springfield_il_metro", "rockford_metro", "peoria_metro", "champaign_metro"],
@@ -118,7 +118,7 @@ export const STATES: Record<string, RegionCode[]> = {
   vermont: ["burlington_vt_metro"],
   maine: ["portland_me_metro"],
   "new-jersey": ["trenton_metro"],
-  "west-virginia": ["charleston_wv_metro"],
+  "west-virginia": ["charleston_wv_metro", "morgantown_metro"],
   mississippi: ["jackson_ms_metro"],
   arkansas: ["little_rock_metro"],
   oklahoma: ["oklahoma_city_metro", "tulsa_metro"],
@@ -326,8 +326,10 @@ function parseOneway(raw: string | undefined): number {
   return 0;
 }
 
-/** OSM `lanes` is total both-directions; values like "2", "3", "2;3" occur.
- *  Take the max of any ;-separated list. Returns null when untagged/unparseable.
+/** OSM `lanes` counts both directions on a two-way way and only the direction
+ *  of travel on a oneway way. Stored as tagged, so a per-direction count
+ *  halves two-way ways only. Values like "2", "3", "2;3" occur. Take the max of
+ *  any ;-separated list. Returns null when untagged/unparseable.
  *  (Same semantics as fetch-osm-roads.ts.) */
 function parseLanes(raw: string | undefined): number | null {
   if (!raw) return null;

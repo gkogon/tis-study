@@ -27,7 +27,9 @@ import {
   COUNTRIES_COVERED,
   CONTINENTS_COVERED,
   STATE_NAMES,
-  TIER_A_AADT_CUTOFF,
+  TIER_A_METROS,
+  isFlagshipMetro,
+  isTierAMetro,
   type MetroCoverage,
 } from "../data/metro-coverage";
 
@@ -49,12 +51,14 @@ function buildGroups(): StateGroup[] {
   }
   const groups: StateGroup[] = [];
   for (const [code, metros] of byState.entries()) {
-    // Within-state order: Tier-A first (AADT desc), then Tier-B alphabetical
+    // Within-state order: the flagship first, then Tier-A (AADT desc), then
+    // Tier-B alphabetical
     metros.sort((a, b) => {
-      const aMeas = (a.aadtQuality ?? "measured") === "measured";
-      const bMeas = (b.aadtQuality ?? "measured") === "measured";
-      const aTierA = (a.aadtPct >= TIER_A_AADT_CUTOFF && aMeas) || a.code === "atlanta_metro";
-      const bTierA = (b.aadtPct >= TIER_A_AADT_CUTOFF && bMeas) || b.code === "atlanta_metro";
+      const aFlag = isFlagshipMetro(a);
+      const bFlag = isFlagshipMetro(b);
+      if (aFlag !== bFlag) return aFlag ? -1 : 1;
+      const aTierA = isTierAMetro(a);
+      const bTierA = isTierAMetro(b);
       if (aTierA !== bTierA) return aTierA ? -1 : 1;
       if (aTierA) return b.aadtPct - a.aadtPct;
       return a.shortName.localeCompare(b.shortName);
@@ -64,7 +68,7 @@ function buildGroups(): StateGroup[] {
       name: STATE_NAMES[code],
       metros,
       signalsTotal: metros.reduce((s, m) => s + m.signals, 0),
-      tierACount: metros.filter((m) => (m.aadtPct >= TIER_A_AADT_CUTOFF && (m.aadtQuality ?? "measured") === "measured") || m.code === "atlanta_metro").length,
+      tierACount: metros.filter(isTierAMetro).length,
       liveCount: metros.filter((m) => m.liveSource != null).length,
     });
   }
@@ -117,7 +121,7 @@ export function CoverageGrid({ accent = "blue" }: { accent?: MarkerAccent } = {}
             <Stat label="Metros" value={String(TOTAL_METROS)} sub={`${TOTAL_SIGNALS.toLocaleString()} signals indexed`} />
             <Stat label="Countries" value={String(COUNTRIES_COVERED)} sub={`Across ${CONTINENTS_COVERED} continents`} />
             <Stat label="US states + DC" value={String(US_STATES_COVERED)} sub="50 states + Washington DC" />
-            <Stat label="Tier-A AADT" value={String(METROS.filter((m) => (m.aadtPct >= TIER_A_AADT_CUTOFF && (m.aadtQuality ?? "measured") === "measured") || m.code === "atlanta_metro").length)} sub="Measured state-DOT counts" />
+            <Stat label="Tier-A AADT" value={String(TIER_A_METROS.length)} sub="Measured state-DOT counts" />
           </div>
         </div>
       </header>
@@ -157,8 +161,10 @@ export function CoverageGrid({ accent = "blue" }: { accent?: MarkerAccent } = {}
         <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
           AADT match = share of indexed signals snapped to a measured state-DOT
           traffic count within 100–1000 m. The remainder runs on a calibrated
-          road-class baseline. Full methodology and data provenance per metro
-          on the cities page.
+          road-class baseline. "modeled" = no signal is joined to a count: in
+          Atlanta, volumes are modeled from road class and distance from
+          downtown. Full methodology and data provenance per metro on the
+          cities page.
         </p>
         <Link
           href="/cities"
@@ -249,9 +255,8 @@ function StateRow({
   );
 }
 
-function MetroRow({ m }: { m: MetroCoverage }) {
-  const isMeasuredAadt = (m.aadtQuality ?? "measured") === "measured";
-  const tierA = (m.aadtPct >= TIER_A_AADT_CUTOFF && isMeasuredAadt) || m.code === "atlanta_metro";
+export function MetroRow({ m }: { m: MetroCoverage }) {
+  const tierA = isTierAMetro(m);
   const isSynthetic = m.aadtQuality === "synthetic" && m.aadtPct > 0;
   return (
     <Link
@@ -261,7 +266,7 @@ function MetroRow({ m }: { m: MetroCoverage }) {
     >
       <div className="col-span-5">
         <span className="text-sm text-foreground">{m.shortName}</span>
-        {m.code === "atlanta_metro" && (
+        {isFlagshipMetro(m) && (
           <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.15em] text-emerald-700 dark:text-emerald-400">
             Flagship
           </span>
@@ -271,7 +276,7 @@ function MetroRow({ m }: { m: MetroCoverage }) {
         {m.signals.toLocaleString()}
       </div>
       <div className="col-span-2 text-right font-mono text-sm tabular-nums">
-        <AadtPct pct={m.aadtPct} tierA={tierA} synthetic={isSynthetic} />
+        <AadtPct pct={m.aadtPct} tierA={tierA} synthetic={isSynthetic} modeled={m.aadtQuality === "modeled"} />
       </div>
       <div className="col-span-3 text-right font-mono text-[11px] sm:text-xs text-muted-foreground self-center">
         {m.liveSource ? (
@@ -287,7 +292,17 @@ function MetroRow({ m }: { m: MetroCoverage }) {
   );
 }
 
-function AadtPct({ pct, tierA, synthetic }: { pct: number; tierA: boolean; synthetic?: boolean }) {
+function AadtPct({ pct, tierA, synthetic, modeled }: { pct: number; tierA: boolean; synthetic?: boolean; modeled?: boolean }) {
+  if (modeled) {
+    return (
+      <span
+        className="text-muted-foreground/70 italic"
+        title="Volumes modeled from road class and distance from downtown — no signal is joined to a count"
+      >
+        modeled
+      </span>
+    );
+  }
   if (synthetic) {
     return (
       <span

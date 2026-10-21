@@ -107,10 +107,17 @@ export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, 
     t("setup: four distinct firms were created by first requests", new Set([fa, fb, flim, flim2]).size === 4 && [fa, fb, flim, flim2].every(Boolean));
     await q("insert into firm_members (firm_id, user_id, role) values ($1, 'user-c', 'member')", [fa]); // C is a second member of A's firm
 
-    // A real generateTisReport payload (artifacts/atlanta-tis/scripts/fixtures/scenario-base.json): its clause pass
-    // raises BLOCKERs, a DISCLOSE and a NOTE. The DEFECT study is the same payload with one LOS letter that its own
-    // delay does not map to, which is what losMatchesDelay exists to catch.
-    const defectStudy = structuredClone(fixture);
+    // A real generateTisReport payload (artifacts/atlanta-tis/scripts/fixtures/scenario-base.json) with one deliberate
+    // break: since #250 built the intersection row from its approaches (the 2026-10-02 re-pin) the payload carries no
+    // implausible v/c of its own, so one row's no-project v/c is raised above the 2.5 ceiling (2.7; a study saved
+    // before #250 printed 2.68 on this network). Its clause pass then raises a BLOCKER (vcPlausibilityIntersection), a
+    // DISCLOSE (screeningClampDisclosed) and a NOTE (scopeNoteConsistent). The DEFECT study is the same study with one
+    // LOS letter that its own delay does not map to, which is what losMatchesDelay exists to catch.
+    const study = structuredClone(fixture);
+    for (const rows of [study.affectedIntersections, ...(study.periodReports ?? []).map((p) => p?.affectedIntersections)]) {
+      if (Array.isArray(rows) && rows[3]) rows[3].existingVc = 2.7;
+    }
+    const defectStudy = structuredClone(study);
     const flipLos = (rows) => {
       for (const r of Array.isArray(rows) ? rows : []) {
         if (typeof r?.currentDelaySec === "number" && /^[A-F]$/.test(r?.currentLos ?? "")) {
@@ -130,15 +137,15 @@ export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, 
           [`user-${userN}`, firm, name, JSON.stringify(request), JSON.stringify(result)],
         )
       )[0].id;
-    const PA = await mkProject("a", fa, "A-study", [fixture.request ?? {}, fixture]);
+    const PA = await mkProject("a", fa, "A-study", [study.request ?? {}, study]);
     const PA2 = await mkProject("a", fa, "A-study-2", small("A-study-2"));
     const PD = await mkProject("a", fa, "A-defect-study", [defectStudy.request ?? {}, defectStudy]);
-    const PH = await mkProject("a", fa, "A-claim-study", [fixture.request ?? {}, fixture]);
+    const PH = await mkProject("a", fa, "A-claim-study", [study.request ?? {}, study]);
     const PB = await mkProject("b", fb, "B-study", small("B-study"));
     const PL = await mkProject("lim", flim, "L-study", small("L-study"));
     const PL2 = await mkProject("lim2", flim2, "L2-study", small("L2-study"));
-    const PR = await mkProject("a", fa, "A-rules-study", [fixture.request ?? {}, fixture]);
-    const PM = await mkProject("a", fa, "A-ready-study", [fixture.request ?? {}, fixture]);
+    const PR = await mkProject("a", fa, "A-rules-study", [study.request ?? {}, study]);
+    const PM = await mkProject("a", fa, "A-ready-study", [study.request ?? {}, study]);
     // Every study row's text AND its xmin: an UPDATE that writes identical values still gets a new xmin.
     const studyHash = async () => (await q("select md5(string_agg(t::text || ':' || t.xmin::text, '|' order by id)) h from tis_projects t"))[0].h;
     const h0 = await studyHash();
