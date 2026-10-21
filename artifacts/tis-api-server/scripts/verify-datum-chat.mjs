@@ -16,6 +16,8 @@
  *               pack, and the read-only path reader.
  *   prompt      lib/datum-chat/prompt.ts: the system prompt, the two cached system blocks (prompt with the
  *               full clause guide, then the pack), and the history builder.
+ *   run         lib/datum-chat/run.ts: the model tool loop, driven by a fake client (no network, no SDK): one
+ *               streamed reply, at most one re-run, four model calls at most, and a client that disconnects.
  *
  * The contract is imported by file URL with no loader: Node strips the types.
  * That works only while datum-chat.ts reaches GenerateTisBody through an explicit
@@ -1862,6 +1864,526 @@ t("the engineer's words and the model's earlier replies reach the history as the
   const d = turn(1, "datum", { content: "Re-ran with growth 1.0% (was 2.1%). Open Version 2 to see its findings." });
   return same(hist([e, d], { content: "thanks" }), [{ role: "user", content: e.content }, { role: "assistant", content: d.content }, { role: "user", content: "thanks" }]);
 });
+
+// ===========================================================================
+// run
+// ===========================================================================
+section("run");
+
+const RUN_REL = "artifacts/tis-api-server/src/lib/datum-chat/run.ts";
+const { mod: RUN, error: runError } = await importByUrl(RUN_REL);
+ok("the run module loads under plain node (no loader)", runError === null, runError ?? undefined);
+const runSrc = read(RUN_REL);
+pinPure("run.ts", runSrc);
+const runCode = stripComments(runSrc);
+
+// --- The fake model --------------------------------------------------------------------------------------
+// Replays scripted turns. Each turn delivers its text deltas a setImmediate apart (so an abort can land between
+// them), then resolves finalMessage() with the scripted message, or rejects with `reject`. It records every `params`
+// by reference and how many times abort() was called on each stream. Honouring abort is the default; a fake that
+// ignores it and resolves anyway checks that the loop does not trust the stream to stop.
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+const MODEL = "claude-opus-5-5";
+const LINE = "Datum couldn't answer that just now.";
+const block = {
+  text: (text) => ({ type: "text", text }),
+  thinking: () => ({ type: "thinking", thinking: "", signature: "opaque-signature-1" }),
+  use: (id, name, input) => ({ type: "tool_use", id, name, input }),
+};
+const modelMsg = (content, stop = "end_turn", usage = { input_tokens: 100, output_tokens: 20 }) => ({ content, stop_reason: stop, model: MODEL, usage });
+/** One scripted turn: the deltas the stream delivers, then the message finalMessage() resolves with. */
+const turnOf = (deltas, message, extra = {}) => ({ deltas, message, ...extra });
+
+function fakeModel(turns, { ignoreAbort = false } = {}) {
+  const calls = [];
+  const streams = [];
+  const client = {
+    messages: {
+      stream(params) {
+        calls.push(params);
+        const turn = turns[streams.length];
+        const rec = { aborts: 0 };
+        streams.push(rec);
+        if (turn === undefined) throw new Error(`fake model: no scripted turn ${streams.length}`);
+        if (turn.throwOnCreate) throw turn.throwOnCreate;
+        const listeners = [];
+        const stopped = () => rec.aborts > 0 && !ignoreAbort;
+        const gone = () => Object.assign(new Error("Request was aborted."), { name: "APIUserAbortError" });
+        const done = (async () => {
+          await tick();
+          for (const d of turn.deltas ?? []) {
+            if (stopped()) throw gone();
+            for (const cb of listeners) cb(d);
+            await tick();
+          }
+          if (stopped()) throw gone();
+          if (turn.reject) throw turn.reject;
+          return turn.message;
+        })();
+        done.catch(() => {});
+        const handle = {
+          on(ev, cb) {
+            if (ev === "text") listeners.push(cb);
+            return handle;
+          },
+          abort() {
+            rec.aborts += 1;
+          },
+          finalMessage: () => done,
+        };
+        return handle;
+      },
+    },
+  };
+  return { client, calls, streams };
+}
+
+const REVISION_ID = randomUUID();
+/** What the route's revise gives back for a re-run that worked: version 2, with the growth change spelled out. */
+const okRevision = (input) => ({
+  ok: true,
+  projectId: REVISION_ID,
+  version: 2,
+  changes: Object.entries(input.changes).map(([field, to]) => ({ field, from: field === "growthRatePct" ? 2.1 : null, to })),
+});
+const HISTORY = [{ role: "user", content: "why was this flagged?" }];
+const SYSTEM = PR.buildSystem?.("PACK") ?? [];
+
+/**
+ * Runs one turn against a fake model. `emit` is the test's hook, called after the event is recorded with the event and
+ * its 1-based count (it may throw, like a closed socket). `revise` and `readPath` are recorded and may be replaced.
+ */
+async function drive(turns, over = {}) {
+  const fm = fakeModel(turns, over.model);
+  const events = [];
+  const rev = [];
+  const reads = [];
+  const controller = over.controller ?? new AbortController();
+  const deps = {
+    client: fm.client,
+    revise: async (input) => {
+      rev.push(input);
+      return over.revise ? over.revise(input, controller) : okRevision(input);
+    },
+    readPath: (p) => {
+      reads.push(p);
+      if (over.readPath) return over.readPath(p);
+      return "2.1";
+    },
+    emit: (e) => {
+      events.push(e);
+      if (over.emit) over.emit(e, events.length, controller);
+    },
+    signal: controller.signal,
+  };
+  let res = null;
+  let threw = null;
+  try {
+    res = await RUN.runDatumTurn(deps, { system: SYSTEM, messages: over.messages ?? HISTORY });
+  } catch (e) {
+    threw = e instanceof Error ? e.message : String(e);
+  }
+  return { res, threw, events, calls: fm.calls, streams: fm.streams, rev, reads, controller };
+}
+
+const GROW = { changes: { growthRatePct: 1 }, reason: "county adopted 1.0%" };
+const RERUN_NAME = "rerun_study_with_changes";
+const READ_NAME = "read_study_path";
+const rerunUse = (id, input = GROW) => block.use(id, RERUN_NAME, input);
+const readUse = (id, path = "request.growthRatePct") => block.use(id, READ_NAME, { path });
+/** The tool_result blocks the model was given on the last user message of a call. */
+const resultsOf = (call) => (Array.isArray(call?.messages?.at(-1)?.content) ? call.messages.at(-1).content : []);
+const resultFor = (call, id) => resultsOf(call).find((b) => b.tool_use_id === id);
+const eventTypes = (events) => events.map((e) => e.type);
+const joinedDeltas = (events) => events.filter((e) => e.type === "text").map((e) => e.delta).join("");
+
+t("precondition: the harness runs the real prompt builder, and the re-run limit the line speaks of is one", () =>
+  SYSTEM.length === 2 && SYSTEM[1].text === "PACK" && C.DATUM_LIMITS.rerunsPerMessage === 1 && C.DATUM_LIMITS.modelTurnsPerMessage === 4);
+t("run.ts exports runDatumTurn and the one line it uses when it cannot answer", () => typeof RUN.runDatumTurn === "function" && RUN.DATUM_COULDNT_ANSWER === LINE);
+
+// --- Explain only ---------------------------------------------------------------------------------------
+{
+  const r = await drive([turnOf(["Because ", "the growth rate ", "was 2.1%."], modelMsg([block.thinking(), block.text("Because the growth rate was 2.1%.")]))]);
+  const p = r.calls[0] ?? {};
+  t("explain only: the loop does not reject", () => r.threw === null && r.res !== null);
+  t("explain only: the result is the reply, no revision, and the turn's stop reason, model and tokens", () =>
+    r.res.text === "Because the growth rate was 2.1%." && r.res.revision === null && r.res.stopReason === "end_turn" && r.res.model === MODEL &&
+    r.res.inputTokens === 100 && r.res.outputTokens === 20 && r.res.cutOff === false);
+  t("explain only: emit saw the text deltas as they came, then nothing else", () =>
+    same(r.events, [{ type: "text", delta: "Because " }, { type: "text", delta: "the growth rate " }, { type: "text", delta: "was 2.1%." }]));
+  t("explain only: exactly one model call", () => r.calls.length === 1);
+  t("the call's model is claude-opus-5-5 and max_tokens is 16000", () => p.model === "claude-opus-5-5" && p.max_tokens === 16000);
+  t("the call asks for adaptive thinking at medium effort", () => same(p.thinking, { type: "adaptive" }) && same(p.output_config, { effort: "medium" }));
+  t("the call's tool_choice is auto with parallel tool use disabled", () => same(p.tool_choice, { type: "auto", disable_parallel_tool_use: true }));
+  t("the call carries no budget_tokens, no fallbacks and no beta list", () =>
+    typeof p.model === "string" && !("budget_tokens" in p) && !("budget_tokens" in (p.thinking ?? {})) && !("fallbacks" in p) && !("betas" in p) && !("fallbacks" in (p.output_config ?? {})));
+  t("the call's tools are read_study_path then rerun_study_with_changes, the very objects tools.ts exports", () =>
+    same((p.tools ?? []).map((x) => x.name), ["read_study_path", "rerun_study_with_changes"]) && p.tools[0] === T.READ_PATH_TOOL && p.tools[1] === T.RERUN_TOOL);
+  t("the call passes the system blocks and the history it was given", () => p.system === SYSTEM && same(p.messages, HISTORY));
+}
+
+// --- A re-run ---------------------------------------------------------------------------------------------
+{
+  const think = block.thinking();
+  const turn1 = modelMsg([think, rerunUse("toolu_1")], "tool_use", { input_tokens: 300, output_tokens: 50 });
+  const turn2 = modelMsg([block.text("I re-ran it at 1.0%. Open Version 2 to see its findings.")], "end_turn", { input_tokens: 400, output_tokens: 80 });
+  const r = await drive([turnOf([], turn1), turnOf(["I re-ran it at 1.0%. ", "Open Version 2 to see its findings."], turn2)]);
+  const [c1, c2] = r.calls;
+  const types = eventTypes(r.events);
+  const statusAt = types.indexOf("status");
+  const revisionAt = types.indexOf("revision");
+  t("re-run: the loop does not reject, and makes two model calls", () => r.threw === null && r.calls.length === 2);
+  t("re-run: revise is called once, with the tool's input", () => r.rev.length === 1 && same(r.rev[0], GROW));
+  t("re-run: the result carries the revision (version 2, the project, the change) and the closing text", () =>
+    r.res.revision?.version === 2 && r.res.revision.projectId === REVISION_ID && same(r.res.revision.changes, [{ field: "growthRatePct", from: 2.1, to: 1 }]) &&
+    r.res.text === "I re-ran it at 1.0%. Open Version 2 to see its findings." && r.res.cutOff === false);
+  t("re-run: the stop reason and model are the last turn's, and tokens are summed across both turns", () =>
+    r.res.stopReason === "end_turn" && r.res.model === MODEL && r.res.inputTokens === 700 && r.res.outputTokens === 130);
+  t("re-run: emit saw a status naming the re-run, then the revision, then the closing text", () =>
+    statusAt >= 0 && revisionAt > statusAt && /Re-running/.test(r.events[statusAt].message) && types.slice(revisionAt + 1).every((x) => x === "text") && types.length > revisionAt + 1);
+  t("re-run: the status line names the changed field and its new value", () => /growthRatePct = 1\b/.test(r.events[statusAt]?.message ?? ""));
+  t("re-run: the revision event carries the project, version and changes, and parses as a DatumStreamEvent", () =>
+    r.events[revisionAt]?.projectId === REVISION_ID && r.events[revisionAt].version === 2 && same(r.events[revisionAt].changes, r.res.revision.changes) && accepts(C.DatumStreamEvent, r.events[revisionAt]));
+  t("re-run: the second call's last message is a user message holding the tool_result for that tool_use_id, not flagged as an error", () => {
+    const last = c2.messages.at(-1);
+    const tr = resultFor(c2, "toolu_1");
+    return last.role === "user" && resultsOf(c2).length === 1 && tr?.type === "tool_result" && tr.is_error === undefined && typeof tr.content === "string";
+  });
+  t("re-run: the tool_result tells the model the new version number and the changes as field, from, to", () => {
+    const body = JSON.parse(resultFor(c2, "toolu_1")?.content ?? "null");
+    return body?.version === 2 && same(body.changes, [{ field: "growthRatePct", from: 2.1, to: 1 }]);
+  });
+  t("re-run: the assistant message before the tool_result is turn 1's content, unchanged, thinking block included", () => {
+    const before = c2.messages.at(-2);
+    return before.role === "assistant" && before.content === turn1.content && isDeepStrictEqual(before.content, [think, rerunUse("toolu_1")]) && before.content[0].type === "thinking";
+  });
+  t("re-run: the history before those two messages is the same history", () => same(c2.messages.slice(0, HISTORY.length), HISTORY) && c2.messages.length === HISTORY.length + 2);
+  t("re-run: each call gets its own messages array: turn 1's call still holds only the history", () => c1.messages !== c2.messages && c1.messages.length === HISTORY.length);
+  t("re-run: the tools array and the system blocks are the same objects on every call (the cached prefix)", () => c1.tools === c2.tools && c1.system === c2.system);
+  t("re-run: every event parses as a DatumStreamEvent, and the loop emits no done (the route does)", () =>
+    r.events.length > 3 && r.events.every((e) => accepts(C.DatumStreamEvent, e)) && !types.includes("done"));
+}
+
+// --- Text across turns, and an empty reply ---------------------------------------------------------------------
+{
+  const r = await drive([
+    turnOf(["Checking the stored value."], modelMsg([block.text("Checking the stored value."), readUse("toolu_1")], "tool_use")),
+    turnOf(["It is 2.1%."], modelMsg([block.text("It is 2.1%.")])),
+  ]);
+  t("text from two turns is joined with a blank line, and the events carry exactly the result text", () =>
+    r.res.text === "Checking the stored value.\n\nIt is 2.1%." && joinedDeltas(r.events) === r.res.text);
+}
+{
+  const r = await drive([turnOf([], modelMsg([block.thinking()], "end_turn"))]);
+  t("a turn that ends with no text at all gives the engineer the line instead of an empty reply", () => r.res.text === LINE && joinedDeltas(r.events) === LINE && r.res.stopReason === "end_turn" && !eventTypes(r.events).includes("error"));
+}
+
+// --- A second re-run -------------------------------------------------------------------------------------------
+{
+  const other = { changes: { passByPct: 10 }, reason: "second ask" };
+  const r = await drive([
+    turnOf([], modelMsg([rerunUse("toolu_1")], "tool_use")),
+    turnOf([], modelMsg([rerunUse("toolu_2", other)], "tool_use")),
+    turnOf(["Done."], modelMsg([block.text("Done.")])),
+  ]);
+  const tr = resultFor(r.calls[2], "toolu_2");
+  t("a second re-run in one message: revise is called once, with the first input", () => r.rev.length === 1 && same(r.rev[0], GROW));
+  t("a second re-run gets an is_error tool_result saying one re-run per message", () => tr?.type === "tool_result" && tr.is_error === true && /one re-run per message/.test(tr.content));
+  t("a second re-run: the first one's revision stands, and the model is called again to finish", () => r.res.revision?.version === 2 && r.calls.length === 3 && r.res.text === "Done.");
+  t("a second re-run: no second status or revision event", () => eventTypes(r.events).filter((x) => x === "status").length === 1 && eventTypes(r.events).filter((x) => x === "revision").length === 1);
+}
+{
+  const other = { changes: { passByPct: 10 }, reason: "second ask" };
+  const r = await drive([
+    turnOf([], modelMsg([rerunUse("toolu_a"), rerunUse("toolu_b", other)], "tool_use")),
+    turnOf(["Done."], modelMsg([block.text("Done.")])),
+  ]);
+  const results = resultsOf(r.calls[1]);
+  t("two re-runs in one turn: one tool_result per tool_use in order, the first ran and the second is refused", () =>
+    results.length === 2 && results[0].tool_use_id === "toolu_a" && results[0].is_error === undefined && results[1].tool_use_id === "toolu_b" && results[1].is_error === true && /one re-run per message/.test(results[1].content));
+  t("two re-runs in one turn: revise is called once", () => r.rev.length === 1 && same(r.rev[0], GROW));
+}
+
+// --- Invalid tool input ---------------------------------------------------------------------------------------------
+{
+  const r = await drive([
+    turnOf([], modelMsg([rerunUse("toolu_1", { changes: { latitude: 1 } })], "tool_use")),
+    turnOf(["I can't change the site's location here."], modelMsg([block.text("I can't change the site's location here.")])),
+  ]);
+  const tr = resultFor(r.calls[1], "toolu_1");
+  t("an invalid re-run input ({changes:{latitude:1}}) gets an is_error tool_result and revise is not called", () => tr?.is_error === true && typeof tr.content === "string" && tr.content.length > 0 && r.rev.length === 0);
+  t("an invalid re-run input: no status, no revision, and the model is called again to answer", () => r.res.revision === null && !eventTypes(r.events).includes("status") && !eventTypes(r.events).includes("revision") && r.calls.length === 2);
+  t("an invalid re-run input: the tool_result says nothing was re-run and names what was wrong", () => /nothing was re-run/i.test(tr?.content ?? "") && /latitude/.test(tr?.content ?? ""));
+}
+{
+  // R11: the merge relies on this parse for the timing-sheet constraints, so the loop must run it before revise.
+  const badSheet = rerun({ signalTimingOverrides: [{ ...OVERRIDE, phases: [{ movement: "XX", phase: 2 }] }] });
+  const r = await drive([turnOf([], modelMsg([rerunUse("toolu_1", badSheet)], "tool_use")), turnOf(["Sorry."], modelMsg([block.text("Sorry.")]))]);
+  t("R11: a timing sheet with an unknown movement name (XX) is refused by the parse, and revise is not called", () =>
+    r.rev.length === 0 && resultFor(r.calls[1], "toolu_1")?.is_error === true && r.res.revision === null);
+  }
+{
+  const goodSheet = rerun({ signalTimingOverrides: [OVERRIDE] });
+  const r = await drive([turnOf([], modelMsg([rerunUse("toolu_1", goodSheet)], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))]);
+  t("precondition for R11: a timing sheet with real movement names passes the parse and reaches revise", () => r.rev.length === 1 && r.res.revision?.version === 2);
+}
+{
+  const r = await drive([
+    turnOf([], modelMsg([rerunUse("toolu_1", { reason: "no changes object" })], "tool_use")),
+    turnOf([], modelMsg([rerunUse("toolu_2")], "tool_use")),
+    turnOf(["Done."], modelMsg([block.text("Done.")])),
+  ]);
+  t("a re-run input that fails the parse does not use up the one re-run: a corrected call goes through", () => r.rev.length === 1 && r.res.revision?.version === 2 && resultFor(r.calls[1], "toolu_1")?.is_error === true && resultFor(r.calls[2], "toolu_2")?.is_error === undefined);
+}
+{
+  const r = await drive([turnOf([], modelMsg([block.use("toolu_1", RERUN_NAME, undefined)], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))]);
+  t("a re-run tool_use with no input at all is refused, not run", () => r.rev.length === 0 && resultFor(r.calls[1], "toolu_1")?.is_error === true);
+}
+{
+  const r = await drive(
+    [turnOf([], modelMsg([rerunUse("toolu_1")], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))],
+    { revise: () => ({ ok: false, error: "growthRatePct 9 is not allowed: it must be at most 6. Nothing was re-run." }) },
+  );
+  const tr = resultFor(r.calls[1], "toolu_1");
+  t("a refused re-run gives the model the refusal's error text as an is_error tool_result", () => tr?.is_error === true && tr.content === "growthRatePct 9 is not allowed: it must be at most 6. Nothing was re-run.");
+  t("a refused re-run: the result has no revision and emit saw a status but no revision", () => r.res.revision === null && eventTypes(r.events).includes("status") && !eventTypes(r.events).includes("revision"));
+  }
+{
+  const r = await drive(
+    [turnOf([], modelMsg([rerunUse("toolu_1")], "tool_use")), turnOf([], modelMsg([rerunUse("toolu_2")], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))],
+    { revise: () => ({ ok: false, error: "refused" }) },
+  );
+  t("the one re-run is spent by a call that reached revise, even if revise refused: the next call is refused with the limit", () =>
+    r.rev.length === 1 && resultFor(r.calls[2], "toolu_2")?.is_error === true && /one re-run per message/.test(resultFor(r.calls[2], "toolu_2").content));
+}
+{
+  const r = await drive(
+    [turnOf([], modelMsg([rerunUse("toolu_1")], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))],
+    { revise: () => { throw new Error("connection to db-internal-7 lost"); } },
+  );
+  const tr = resultFor(r.calls[1], "toolu_1");
+  t("a revise that throws does not reject the loop: the model gets an is_error tool_result that does not leak the exception", () =>
+    r.threw === null && tr?.is_error === true && !/db-internal/.test(tr.content) && r.res.revision === null && r.res.text === "Done.");
+}
+
+// --- read_study_path ---------------------------------------------------------------------------------------------
+{
+  const r = await drive(
+    [turnOf([], modelMsg([readUse("toolu_1", "request.growthRatePct")], "tool_use")), turnOf(["It is 2.1%."], modelMsg([block.text("It is 2.1%.")]))],
+    { readPath: () => "2.1" },
+  );
+  const tr = resultFor(r.calls[1], "toolu_1");
+  t("read_study_path: readPath is called with the path and its answer comes back as the tool_result", () => same(r.reads, ["request.growthRatePct"]) && tr?.type === "tool_result" && tr.content === "2.1" && tr.is_error === undefined);
+  t("read_study_path: no re-run, no status event, and the reply is the closing text", () => r.rev.length === 0 && r.res.revision === null && !eventTypes(r.events).includes("status") && r.res.text === "It is 2.1%.");
+}
+for (const [label, input] of [["a number", { path: 5 }], ["no path", {}], ["an extra key", { path: "request.x", extra: 1 }], ["no input", undefined], ["a string", "request.x"]]) {
+  const r = await drive([turnOf([], modelMsg([block.use("toolu_1", READ_NAME, input)], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))]);
+  t(`read_study_path with ${label} as its input: is_error, and readPath is not called`, () => r.reads.length === 0 && resultFor(r.calls[1], "toolu_1")?.is_error === true);
+}
+{
+  const r = await drive(
+    [turnOf([], modelMsg([readUse("toolu_1")], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))],
+    { readPath: () => { throw new Error("secret internal failure"); } },
+  );
+  const tr = resultFor(r.calls[1], "toolu_1");
+  t("a readPath that throws does not reject the loop: is_error tool_result, no leak, the model answers", () => r.threw === null && tr?.is_error === true && !/secret internal/.test(tr.content) && r.res.text === "Done.");
+}
+{
+  const r = await drive([turnOf([], modelMsg([block.use("toolu_1", "delete_the_study", { id: 1 })], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))]);
+  t("a tool the loop does not offer gets an is_error tool_result and runs nothing", () => resultFor(r.calls[1], "toolu_1")?.is_error === true && r.rev.length === 0 && r.reads.length === 0);
+}
+{
+  const input = [{ role: "user", content: "q" }];
+  const before = JSON.stringify(input);
+  const r = await drive([turnOf([], modelMsg([readUse("toolu_1")], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))], { messages: input });
+  t("the loop does not change the history array it is given", () => r.threw === null && JSON.stringify(input) === before && input.length === 1);
+}
+
+// --- Refusal and max_tokens: no tool is ever run ------------------------------------------------------------------
+{
+  const r = await drive([turnOf([], modelMsg([block.thinking(), rerunUse("toolu_1")], "refusal"))]);
+  t("a refusal gives the text \"Datum couldn't answer that just now.\"", () => r.res.text === LINE && r.res.stopReason === "refusal" && r.res.cutOff === false);
+  t("a refusal runs no tool, even when its content has a tool_use, and makes no second call", () => r.rev.length === 0 && r.reads.length === 0 && r.calls.length === 1 && r.res.revision === null);
+  t("a refusal shows the line as a text event and emits no error event", () => same(r.events, [{ type: "text", delta: LINE }]));
+}
+{
+  const r = await drive([turnOf(["Partial answer"], modelMsg([block.text("Partial answer")], "refusal"))]);
+  t("a refusal after some text keeps the text and ends with the line on its own paragraph", () => r.res.text === `Partial answer\n\n${LINE}` && joinedDeltas(r.events) === r.res.text);
+}
+{
+  const r = await drive([turnOf(["Let me ch"], modelMsg([block.text("Let me ch"), rerunUse("toolu_1")], "max_tokens"))]);
+  t("max_tokens with a tool_use runs no tool and the text ends with the same line", () =>
+    r.rev.length === 0 && r.reads.length === 0 && r.calls.length === 1 && r.res.text.endsWith(LINE) && r.res.text === `Let me ch\n\n${LINE}` && r.res.stopReason === "max_tokens");
+  t("max_tokens with a tool_use: the status event for a re-run is never sent", () => r.events.length > 0 && !eventTypes(r.events).includes("status") && !eventTypes(r.events).includes("revision"));
+}
+{
+  const r = await drive([turnOf([], modelMsg([readUse("toolu_1")], "max_tokens"))]);
+  t("max_tokens with a read_study_path tool_use runs no read either", () => r.reads.length === 0 && r.res.text === LINE && r.calls.length === 1);
+}
+{
+  const r = await drive([turnOf(["A long answer that was cut"], modelMsg([block.text("A long answer that was cut")], "max_tokens"))]);
+  t("max_tokens with no tool_use keeps the cut text and ends with the line", () => r.res.text === `A long answer that was cut\n\n${LINE}` && r.res.stopReason === "max_tokens");
+}
+{
+  const r = await drive([turnOf(["Paused."], modelMsg([block.text("Paused.")], "pause_turn"))]);
+  t("any other terminal stop (pause_turn) ends the loop with the text as it is, no second call", () => r.calls.length === 1 && r.res.text === "Paused." && r.res.stopReason === "pause_turn");
+}
+
+// --- The cap -------------------------------------------------------------------------------------------------------
+{
+  const r = await drive(Array.from({ length: 5 }, (_, i) => turnOf([], modelMsg([readUse(`toolu_${i + 1}`)], "tool_use"))));
+  t("the cap: five scripted tool_use turns give exactly 4 stream calls", () => r.threw === null && r.calls.length === C.DATUM_LIMITS.modelTurnsPerMessage && r.calls.length === 4);
+  t("the cap: then a final line, and the fourth turn's tool is not run", () => r.res.text === LINE && r.reads.length === 3 && r.res.stopReason === "turn_cap" && r.res.cutOff === false);
+  t("the cap: the fourth call carries the three earlier round trips", () => r.calls[3].messages.length === HISTORY.length + 6);
+}
+{
+  const r = await drive([
+    turnOf([], modelMsg([readUse("toolu_1")], "tool_use")),
+    turnOf([], modelMsg([readUse("toolu_2")], "tool_use")),
+    turnOf([], modelMsg([readUse("toolu_3")], "tool_use")),
+    turnOf([], modelMsg([rerunUse("toolu_4")], "tool_use")),
+  ]);
+  t("the cap: a re-run asked for on the last allowed turn is not run, since the model could not report it", () => r.rev.length === 0 && r.res.revision === null && r.res.text === LINE && r.calls.length === 4);
+}
+{
+  const r = await drive([
+    turnOf([], modelMsg([readUse("toolu_1")], "tool_use")),
+    turnOf([], modelMsg([readUse("toolu_2")], "tool_use")),
+    turnOf([], modelMsg([rerunUse("toolu_3")], "tool_use")),
+    turnOf(["Done."], modelMsg([block.text("Done.")])),
+  ]);
+  t("four turns can hold two reads, a re-run and the closing reply", () => r.calls.length === 4 && r.res.revision?.version === 2 && r.res.text === "Done." && r.reads.length === 2);
+}
+
+// --- Review Focus 2: the engineer closes the tab mid-reply ---------------------------------------------------------------
+const longReply = () => [turnOf(["Because ", "the ", "growth ", "rate."], modelMsg([block.text("Because the growth rate.")]))];
+{
+  const r = await drive(longReply(), { emit: (e, n) => { if (n === 2) throw new Error("write after end"); } });
+  t("emit throws after the first text: the loop does not reject, aborts the stream once, and returns cutOff", () => r.threw === null && r.res.cutOff === true && r.streams.length === 1 && r.streams[0].aborts === 1);
+  t("emit throws: the text so far comes back (up to the delta that could not be sent), nothing more", () => r.res.text === "Because the " && r.res.stopReason === "aborted");
+  t("emit throws: emit is not called again after it throws, and no error event or line is added for a client that is gone", () => r.events.length === 2 && eventTypes(r.events).every((x) => x === "text") && r.res.text.indexOf(LINE) === -1);
+}
+{
+  const r = await drive(longReply(), { emit: (e, n, ac) => { if (n === 2) { ac.abort(); throw new Error("write after end"); } } });
+  t("emit throws and the signal aborts (the disconnect itself): abort() is called on the stream, cutOff is true, no rejection", () =>
+    r.threw === null && r.res.cutOff === true && r.streams[0].aborts >= 1 && r.calls.length === 1 && r.res.text === "Because the ");
+  t("emit throws and the signal aborts: the stream is aborted once, not once for each cause", () => r.streams[0].aborts === 1);
+}
+{
+  const r = await drive(longReply(), { emit: (e, n, ac) => { if (n === 1) ac.abort(); } });
+  t("the signal aborts mid-stream with emit still working: the stream is aborted, cutOff is true, and deltas after the abort are not taken", () =>
+    r.threw === null && r.res.cutOff === true && r.streams[0].aborts === 1 && r.res.text === "Because " && r.events.length === 1);
+}
+{
+  const turns = [turnOf(["Let me re-run that. ", "One moment."], modelMsg([block.text("Let me re-run that. One moment."), rerunUse("toolu_1")], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))];
+  const r = await drive(turns, { model: { ignoreAbort: true }, emit: (e, n) => { if (n === 1) throw new Error("socket closed"); } });
+  t("a stream that ignores abort() and resolves anyway: its tool_use is still not run, and no second call is made", () =>
+    r.threw === null && r.res.cutOff === true && r.rev.length === 0 && r.calls.length === 1 && r.res.revision === null);
+}
+{
+  const r = await drive(longReply(), { model: { ignoreAbort: true }, emit: (e, n) => { if (n === 2) throw new Error("write after end"); } });
+  t("a stream that ignores abort() keeps delivering deltas: the ones after the engineer left are not taken into the text", () =>
+    r.threw === null && r.res.cutOff === true && r.res.text === "Because the " && r.events.length === 2);
+}
+{
+  const turns = [turnOf(["Looking that up."], modelMsg([block.text("Looking that up."), readUse("toolu_1")], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))];
+  const r = await drive(turns, { model: { ignoreAbort: true }, emit: (e, n) => { if (n === 1) throw new Error("socket closed"); } });
+  t("a stream that ignores abort() and resolves with a read_study_path tool_use: the read is not run either", () =>
+    r.threw === null && r.res.cutOff === true && r.reads.length === 0 && r.calls.length === 1);
+}
+{
+  const controller = new AbortController();
+  controller.abort();
+  const r = await drive(longReply(), { controller });
+  t("a signal already aborted when the loop starts: no model call, empty text, cutOff, no rejection", () => r.threw === null && r.calls.length === 0 && r.res.cutOff === true && r.res.text === "" && r.events.length === 0);
+}
+{
+  const r = await drive(longReply(), { emit: () => { throw new Error("broken pipe"); } });
+  t("emit that throws on every call: the loop returns cutOff and does not reject", () => r.threw === null && r.res.cutOff === true && r.events.length === 1);
+}
+{
+  // The abort lands while revise is pending: the re-run still finishes, and the result carries it.
+  const r = await drive(
+    [turnOf([], modelMsg([rerunUse("toolu_1")], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))],
+    {
+      revise: async (input, ac) => {
+        ac.abort();
+        await tick();
+        await tick();
+        return okRevision(input);
+      },
+    },
+  );
+  t("the abort lands while revise is pending: revise still resolves and the result carries the revision", () =>
+    r.threw === null && r.rev.length === 1 && r.res.revision?.version === 2 && r.res.revision.projectId === REVISION_ID && r.res.cutOff === true);
+  t("the abort lands while revise is pending: no further model call is made", () => r.calls.length === 1);
+}
+{
+  // A reply that holds a re-run and then a read: the engineer leaves while the re-run runs, so the read is not started.
+  const r = await drive(
+    [turnOf([], modelMsg([rerunUse("toolu_1"), readUse("toolu_2")], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))],
+    { revise: async (input, ac) => { ac.abort(); await tick(); return okRevision(input); } },
+  );
+  t("the abort lands while revise is pending and the same reply holds a read: the re-run finishes, the read is not started", () =>
+    r.threw === null && r.res.revision?.version === 2 && r.reads.length === 0 && r.calls.length === 1 && r.res.cutOff === true);
+}
+{
+  const r = await drive(
+    [turnOf([], modelMsg([rerunUse("toolu_1")], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))],
+    { emit: (e) => { if (e.type === "revision") throw new Error("socket closed"); } },
+  );
+  t("emit throws on the revision event: the re-run is already saved, so the result still carries it, cutOff, no second call", () =>
+    r.threw === null && r.res.revision?.version === 2 && r.res.cutOff === true && r.calls.length === 1);
+}
+{
+  const r = await drive(
+    [turnOf([], modelMsg([rerunUse("toolu_1")], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))],
+    { emit: (e) => { if (e.type === "status") throw new Error("socket closed"); } },
+  );
+  t("emit throws on the status event: the engineer is gone before the re-run starts, so it is not started", () =>
+    r.threw === null && r.rev.length === 0 && r.res.revision === null && r.res.cutOff === true && r.calls.length === 1);
+}
+{
+  const r = await drive(
+    [turnOf([], modelMsg([rerunUse("toolu_1")], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))],
+    { emit: (e, n, ac) => { if (e.type === "status") ac.abort(); } },
+  );
+  t("the signal aborts at the status event, before revise is called: the re-run is not started", () => r.threw === null && r.rev.length === 0 && r.res.cutOff === true && r.calls.length === 1);
+}
+
+// --- An SDK error --------------------------------------------------------------------------------------------------------
+{
+  const err = Object.assign(new Error("overloaded_error req_abc123 for org acme"), { status: 529 });
+  const r = await drive([turnOf([], null, { reject: err })]);
+  t("an SDK error (finalMessage rejects with status 529): the loop does not reject, and the text is the line", () => r.threw === null && r.res.text === LINE && r.res.cutOff === false && r.res.stopReason === "error");
+  t("an SDK error: emit saw the line as text, then an error event, and the loop reports no revision, model or tokens", () =>
+    same(r.events, [{ type: "text", delta: LINE }, { type: "error", message: LINE }]) && r.res.revision === null && r.res.model === null && r.res.inputTokens === 0 && r.res.outputTokens === 0);
+  t("an SDK error: nothing from the SDK's error (message, request id) reaches the engineer", () => !JSON.stringify(r.events).includes("req_abc123") && !r.res.text.includes("acme"));
+  t("an SDK error: the error event parses as a DatumStreamEvent", () => r.events.length === 2 && r.events.every((e) => accepts(C.DatumStreamEvent, e)));
+}
+{
+  const r = await drive([turnOf(["The growth rate "], null, { reject: Object.assign(new Error("x"), { status: 529 }) })]);
+  t("an SDK error after some text keeps the text and puts the line on its own paragraph", () => r.res.text === `The growth rate \n\n${LINE}` && joinedDeltas(r.events) === r.res.text && eventTypes(r.events).at(-1) === "error");
+}
+{
+  const r = await drive([turnOf([], null, { throwOnCreate: Object.assign(new Error("x"), { status: 401 }) })]);
+  t("stream() itself throwing is handled like any SDK error", () => r.threw === null && r.res.text === LINE && eventTypes(r.events).includes("error"));
+}
+{
+  const r = await drive([turnOf([], modelMsg([rerunUse("toolu_1")], "tool_use", { input_tokens: 300, output_tokens: 50 })), turnOf([], null, { reject: Object.assign(new Error("x"), { status: 529 }) })]);
+  t("an SDK error after a re-run: the saved revision is kept in the result, with the line as the text, and tokens so far", () =>
+    r.threw === null && r.res.revision?.version === 2 && r.res.text === LINE && r.res.inputTokens === 300 && r.res.outputTokens === 50 && r.res.stopReason === "error");
+}
+
+// --- What the source says ---------------------------------------------------------------------------------------------
+t("run.ts takes the model-turn cap and the re-run cap from DATUM_LIMITS, not from literals", () =>
+  /DATUM_LIMITS\.modelTurnsPerMessage/.test(runCode) && /DATUM_LIMITS\.rerunsPerMessage/.test(runCode));
+t("run.ts parses the re-run input with RerunToolInput.safeParse", () => /RerunToolInput\.safeParse\(/.test(runCode));
+t("run.ts passes no budget_tokens, no fallbacks and no betas, and never forces a tool", () =>
+  runCode.length > 0 && !/budget_tokens|fallbacks|betas/.test(runCode) && !/tool_choice[^}]*type:\s*"(tool|any)"/.test(runCode));
+t("run.ts names the model once, as claude-opus-5-5", () => runCode.split("claude-opus-5-5").length === 2);
+t("run.ts contains none of the phrases the product never writes", () => runSrc.length > 1000 && bannedFree(runSrc));
+t("run.ts imports its tools from tools.ts and nothing from the SDK, db, logger or network", () => /from\s+"\.\/tools\.ts"/.test(runCode) && !/@anthropic-ai\/sdk/.test(runCode));
 
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);
 process.exit(fails === 0 ? 0 : 1);
