@@ -346,8 +346,10 @@ Also: engineer and Datum text is rendered as plain text, never as HTML or markdo
   - `NEVER_USE_SENTENCE: string`, the one sentence that lists the banned phrases.
   - `buildSystem(packText: string): Array<{ type: "text"; text: string; cache_control: { type: "ephemeral" } }>`.
     It returns two blocks: the prompt with the full `CLAUSE_GUIDE`, then the pack.
+  - `type HistoryMessage = { role: "user" | "assistant"; content: string | Array<Record<string, unknown>> }`, local so
+    pure modules need no SDK types.
   - `buildHistory(messages: DatumMessage[], latest: { content: string; focus?: VisibleFinding }):
-    MessageParam[]`. It takes the last `historyMessages` messages, maps engineer to `user` and datum to `assistant`,
+    HistoryMessage[]`. It takes the last `historyMessages` messages, maps engineer to `user` and datum to `assistant`,
     and merges consecutive same-role messages with a blank line. It always starts with `user`.
 
 - [ ] **Step 1: Write the failing tests.** `SYSTEM_PROMPT` contains each of these, as substrings:
@@ -552,8 +554,9 @@ export async function runDatumTurn(deps: TurnDeps, input: { system: ReturnType<t
   6. insert the engineer message
   7. headers `Content-Type: text/event-stream`, `Cache-Control: no-cache, no-transform` and
      `X-Accel-Buffering: no`, then `res.flushHeaders()`
-  8. `runDatumTurn`. Each event is written as `data: <json>\n\n`, followed by `res.flush?.()`. On `req.on("close")`
-     it aborts.
+  8. `runDatumTurn`. Each event is written as `data: <json>\n\n`, followed by `res.flush?.()`. A disconnect is
+     `res.on("close")` with `!res.writableEnded`, and it aborts. Not `req.on("close")`: Node fires that once the
+     body is read.
   9. insert the Datum message (text plus " (reply cut off)" when `cutOff`, with `revisionId`, model and tokens)
   10. emit `done`, then `res.end()`
 
@@ -623,6 +626,8 @@ export async function runDatumTurn(deps: TurnDeps, input: { system: ReturnType<t
     - `DatumChat`'s pure `ThreadView({messages, revisions, streaming})` renders an engineer message containing
       `<img src=x onerror=alert(1)>` as escaped text: no `<img` in the HTML.
     - A revision card shows `growthRatePct: 2.1 → 1` and a link `href="/projects/<id>"` with text "Version 2".
+    - A `revisions` entry whose `projectId` is the current project renders the thread header "Revised from Version 1"
+      with its changes.
   - **Disabled:** `enabled:false` renders no chat UI and no Ask buttons.
 - [ ] **Step 2: Run** `pnpm --filter atlanta-tis run check:datum-chat`. Expected: FAIL.
 - [ ] **Step 3: Implement:**
