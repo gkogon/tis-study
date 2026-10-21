@@ -21,6 +21,9 @@
  * It never answers 409 (R19). A re-run happens mid-stream, after the 200 has gone out, so a user who already has
  * one going is told so through the tool result, and Datum says it.
  *
+ * While the stream is open, an SSE comment (`: ping`) goes out every 15 seconds so that no proxy drops a quiet
+ * connection (R20). It is stopped when the engineer leaves and when the stream ends.
+ *
  * The engineer closing the tab: `res.on("close")` before the response has ended. (Not `req.on("close")`: Node
  * fires that as soon as the request body has been read.) It aborts the loop, which stops the model and sends
  * nothing more, and lets a re-run that has begun finish. The route still saves Datum's message from the result:
@@ -108,6 +111,8 @@ export type DatumChatDeps<Firm extends { id: string }> = {
   ): Promise<ChatReviseResult>;
   /** datumChatLimiter: run first on the POST. */
   limiter: RequestHandler;
+  /** How often the open stream sends its keep-alive comment (R20). Defaults to KEEP_ALIVE_MS; the check uses less. */
+  keepAliveMs?: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -129,6 +134,15 @@ const POST_FAILED = "Datum couldn't take that message just now. Try again in a m
 /** The stream's last event when something failed after the headers had gone out. */
 const STREAM_FAILED = "Datum's reply could not be saved. Reload the page to see the thread as it was saved.";
 const CUT_OFF = "(reply cut off)";
+
+/**
+ * R20: while the stream is open it sends an SSE comment frame this often. A reply can go quiet for 30 to 60
+ * seconds (the engine waits on the analyzer, the road and transit fetches and the calibration map; the model's
+ * thinking sends no text), and proxies between the engineer and the server drop idle connections after 30 to 120.
+ * A comment is not an event: a reader skips it (the web parser must, as the check's does).
+ */
+const KEEP_ALIVE_MS = 15_000;
+const KEEP_ALIVE_FRAME = ": ping\n\n";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -300,6 +314,26 @@ export function makeDatumChatRouter<Firm extends { id: string }>(deps: DatumChat
         }
       };
 
+      // R20: the keep-alive. Stopped when the engineer leaves and in the finally below, and it never writes to a
+      // response that has ended or lost its client.
+      const keepAlive = setInterval(() => {
+        if (gone()) {
+          clearInterval(keepAlive);
+          return;
+        }
+        try {
+          res.write(KEEP_ALIVE_FRAME);
+          res.flush?.();
+        } catch {
+          // A throw here would be uncaught, in a timer; stop instead.
+          clearInterval(keepAlive);
+        }
+      }, deps.keepAliveMs ?? KEEP_ALIVE_MS);
+      const stopKeepAlive = (): void => clearInterval(keepAlive);
+      // An abort that already happened fires no event, so a client gone by now stops it here.
+      if (left.signal.aborted) stopKeepAlive();
+      else left.signal.addEventListener("abort", stopKeepAlive, { once: true });
+
       try {
         let revisionId: string | null = null;
         const revise = async (input: RerunToolInput): Promise<ReviseResult> => {
@@ -348,6 +382,8 @@ export function makeDatumChatRouter<Firm extends { id: string }>(deps: DatumChat
         log(err, {}, "datum-chat.stream_failed");
         finish({ type: "error", message: STREAM_FAILED });
       } finally {
+        stopKeepAlive();
+        left.signal.removeEventListener("abort", stopKeepAlive);
         if (!res.writableEnded) res.end();
       }
     } catch (err) {

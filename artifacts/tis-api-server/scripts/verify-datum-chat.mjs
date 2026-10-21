@@ -25,7 +25,8 @@
  *               Postgres by scripts/proofread-pg-harness, not here.
  *   router      routes/datum-chat-router.ts over real HTTP (express, compression, a fake auth, port 0, fetch),
  *               every dep a fake and the model the run section's fake: 401/404/400/429/503, the stream, the
- *               R12 history, R13/R15 logging, R17 finding ids, Review Focus 2 and 5. Then lib/datum-chat/client.ts
+ *               R12 history, R13/R15 logging, R17 finding ids, Review Focus 2 and 5, the R20 keep-alive (with
+ *               a reader that skips comment frames). Then lib/datum-chat/client.ts
  *               (no key: null, and the SDK's name is never resolved, watched by a module resolve hook that
  *               answers it with a stub), the limiter in security.ts, the mount, the wiring and the smoke script,
  *               read as text. The process's ANTHROPIC_API_KEY is deleted first; the check never uses one.
@@ -1902,8 +1903,9 @@ const runCode = stripComments(runSrc);
 
 // --- The fake model --------------------------------------------------------------------------------------
 // Replays scripted turns. Each turn delivers its text deltas a setImmediate apart (so an abort can land between
-// them), then resolves finalMessage() with the scripted message, or rejects with `reject`. A turn with `pauseMs`
-// waits that long after its first delta (the router section's slow model). It records every `params`
+// them), then resolves finalMessage() with the scripted message, or rejects with `reject`. A turn with `waitMs`
+// is silent that long before its first delta, and one with `pauseMs` waits that long after its first delta (the
+// router section's slow models). It records every `params`
 // by reference and how many times abort() was called on each stream. Honouring abort is the default; a fake that
 // ignores it and resolves anyway checks that the loop does not trust the stream to stop.
 const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -1936,6 +1938,7 @@ function fakeModel(turns, { ignoreAbort = false } = {}) {
         const gone = () => Object.assign(new Error("Request was aborted."), { name: "APIUserAbortError" });
         const done = (async () => {
           await tick();
+          if (turn.waitMs) await sleep(turn.waitMs);
           for (const [i, d] of (turn.deltas ?? []).entries()) {
             if (stopped()) throw gone();
             for (const cb of listeners) cb(d);
@@ -3246,7 +3249,8 @@ const rerunTurns = (input = GROW, reply = "Done: Version 2 uses growth 1.0%.") =
 
 /**
  * Fakes for every dep, each recording its calls (and `order`, the sequence the route read and wrote in). Knobs:
- * enabled, client (null for none), replies, visible, insertThrows (a role whose insert throws), revise, limiter, turns.
+ * enabled, client (null for none), replies, visible, insertThrows (a role whose insert throws), revise, limiter, turns,
+ * project (the stored study getProject gives back), lineageThrows (an error lineageFor throws) and keepAliveMs.
  */
 function routerFakes(over = {}) {
   const calls = { order: [], resolveFirm: [], getProject: [], loadVisible: [], listMessages: [], insertMessage: [], listRevisions: [], lineageFor: [], firmRepliesLast24h: [], revise: [], getClient: 0, limiter: 0 };
@@ -3266,7 +3270,7 @@ function routerFakes(over = {}) {
     getProject: async (firmId, id) => {
       calls.order.push("getProject");
       calls.getProject.push([firmId, id]);
-      return firmId === RT_FIRM.id && id === RT_PROJECT ? RT_STORED : null;
+      return firmId === RT_FIRM.id && id === RT_PROJECT ? (over.project ?? RT_STORED) : null;
     },
     loadVisible: async (firmId, id) => {
       calls.order.push("loadVisible");
@@ -3292,6 +3296,7 @@ function routerFakes(over = {}) {
     },
     lineageFor: async (firmId, id) => {
       calls.lineageFor.push([firmId, id]);
+      if (over.lineageThrows) throw over.lineageThrows;
       return { ...RT_LINEAGE };
     },
     firmRepliesLast24h: async (firmId) => {
@@ -3311,6 +3316,7 @@ function routerFakes(over = {}) {
         next();
       }),
   };
+  if (over.keepAliveMs !== undefined) deps.keepAliveMs = over.keepAliveMs;
   return { deps, calls, model, ids };
 }
 
@@ -3372,11 +3378,15 @@ const jsonOf = async (r) => {
 
 /**
  * Reads a server-sent event stream to its end, or until `stopAfter(event, n)` is true, when it aborts `controller`
- * (the engineer closing the tab). Each event is kept with the time it arrived.
+ * (the engineer closing the tab). Each event is kept with the time it arrived. A frame of comment lines only (the
+ * keep-alive, `: ping`) is not an event: it is skipped, as the browser's parser must skip it, and kept apart in
+ * `comments`. `order` is the sequence of both, "comment" or the event's type.
  */
 async function readStream(r, { stopAfter, controller } = {}) {
   const events = [];
   const at = [];
+  const comments = [];
+  const order = [];
   let raw = "";
   let buf = "";
   let failed = null;
@@ -3392,11 +3402,14 @@ async function readStream(r, { stopAfter, controller } = {}) {
       for (let i = buf.indexOf("\n\n"); i >= 0; i = buf.indexOf("\n\n")) {
         const frame = buf.slice(0, i);
         buf = buf.slice(i + 2);
-        const data = frame
-          .split("\n")
-          .filter((l) => l.startsWith("data: "))
-          .map((l) => l.slice(6))
-          .join("\n");
+        const lines = frame.split("\n");
+        const dataLines = lines.filter((l) => l.startsWith("data: "));
+        if (dataLines.length === 0 && lines.every((l) => l.startsWith(":"))) {
+          comments.push({ text: lines.map((l) => l.slice(1).trim()).join("\n"), at: performance.now() });
+          order.push("comment");
+          continue;
+        }
+        const data = dataLines.map((l) => l.slice(6)).join("\n");
         let event;
         try {
           event = JSON.parse(data);
@@ -3405,17 +3418,18 @@ async function readStream(r, { stopAfter, controller } = {}) {
         }
         events.push(event);
         at.push(performance.now());
+        order.push(event?.type ?? "unparsable");
         if (stopAfter?.(event, events.length)) {
           controller?.abort();
           await reader.cancel().catch(() => undefined);
-          return { events, at, raw, rest: buf, endedAt: null, stopped: true, failed };
+          return { events, at, comments, order, raw, rest: buf, endedAt: null, stopped: true, failed };
         }
       }
     }
   } catch (e) {
     failed = e instanceof Error ? e.message : String(e);
   }
-  return { events, at, raw, rest: buf, endedAt: performance.now(), stopped: false, failed };
+  return { events, at, comments, order, raw, rest: buf, endedAt: performance.now(), stopped: false, failed };
 }
 const parsesAsEvents = (events) => events.length > 0 && events.every((e) => C.DatumStreamEvent?.safeParse(e).success === true);
 const datumRows = (calls) => calls.insertMessage.filter((r) => r.role === "datum");
@@ -3933,6 +3947,342 @@ async function rerunNaming(bodyFinding, modelFinding) {
     const [datum] = datumRows(f.calls);
     // No text had come before the tool call, so the saved reply is the note alone.
     return r.s.stopped && r.saved && f.calls.revise.length === 1 && has(datum, { revisionId: RT_REVISION_ROW, stopReason: "aborted", content: "(reply cut off)" }) && f.model.calls.length === 1 && r.escaped.length === 0;
+  });
+}
+
+// --- R20: the keep-alive ---------------------------------------------------------------------------------------------
+// A reply can go quiet for 30 to 60 s (the engine's network waits, the model's thinking), and proxies drop idle
+// connections. The stream sends `: ping` every 15 s; the check runs it every KA_MS.
+const KA_MS = 40;
+// An interval that cannot fire during a test, so the keep-alive is only cleared by the route's own stops (on leaving,
+// and in its finally), never by its own tick finding the stream gone.
+const KA_NEVER_MS = 60_000;
+
+/** Records every setInterval of `ms` (only the keep-alive asks for that interval here) and when each is cleared. */
+function spyIntervals(ms) {
+  const real = { set: globalThis.setInterval, clear: globalThis.clearInterval };
+  const made = [];
+  globalThis.setInterval = function setIntervalSpy(fn, delay, ...rest) {
+    const handle = real.set.call(this, fn, delay, ...rest);
+    if (delay === ms) made.push({ handle, at: performance.now(), clearedAt: null });
+    return handle;
+  };
+  globalThis.clearInterval = function clearIntervalSpy(handle) {
+    const m = made.find((x) => x.handle === handle);
+    if (m && m.clearedAt === null) m.clearedAt = performance.now();
+    return real.clear.call(this, handle);
+  };
+  return {
+    made,
+    restore() {
+      globalThis.setInterval = real.set;
+      globalThis.clearInterval = real.clear;
+    },
+  };
+}
+
+/** Middleware (mounted as `tamper`) that records every write to the response, and any made after it closed or ended. */
+function watchWrites() {
+  const w = { frames: [], closed: false, afterClose: 0, afterEnd: 0 };
+  const mw = (_req, res, next) => {
+    let ended = false;
+    res.on("close", () => {
+      w.closed = true;
+    });
+    const write = res.write;
+    const end = res.end;
+    res.write = function watchedWrite(chunk, ...rest) {
+      if (w.closed) w.afterClose += 1;
+      if (ended) w.afterEnd += 1;
+      w.frames.push(String(chunk));
+      return write.call(this, chunk, ...rest);
+    };
+    res.end = function watchedEnd(...rest) {
+      ended = true;
+      return end.apply(this, rest);
+    };
+    next();
+  };
+  return { w, mw };
+}
+
+t("the keep-alive goes out every 15 s by default (KEEP_ALIVE_MS), as the SSE comment frame `: ping`", () =>
+  /const KEEP_ALIVE_MS = 15_?000;/.test(routerCode) && /const KEEP_ALIVE_FRAME = ": ping\\n\\n";/.test(routerCode) && /deps\.keepAliveMs \?\? KEEP_ALIVE_MS/.test(routerCode));
+t("the wiring leaves the keep-alive at its default", () => wiringCode.length > 0 && !/keepAliveMs/.test(wiringCode));
+{
+  const x = await settle(async () => {
+    const a = { type: "text", delta: "Hi" };
+    const b = { type: "done", messageId: RT_NEW };
+    const body = `: ping\n\ndata: ${JSON.stringify(a)}\n\n: ping\n\n: two\n: lines\n\ndata: ${JSON.stringify(b)}\n\n`;
+    return { a, b, s: await readStream(new Response(body)) };
+  });
+  t("the check's SSE reader skips comment frames, as the browser's must: only data frames are events", () => {
+    const r = must(x);
+    return (
+      same(r.s.events, [r.a, r.b]) &&
+      same(r.s.order, ["comment", "text", "comment", "comment", "done"]) &&
+      same(
+        r.s.comments.map((c) => c.text),
+        ["ping", "ping", "two\nlines"],
+      ) &&
+      r.s.failed === null &&
+      r.s.rest === ""
+    );
+  });
+}
+{
+  const f = routerFakes({
+    keepAliveMs: KA_MS,
+    turns: [turnOf(["Because ", "the growth rate ", "was 2.1%."], modelMsg([block.thinking(), block.text("Because the growth rate was 2.1%.")]), { waitMs: 8 * KA_MS })],
+  });
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base }) => {
+      const p = await postMessage(base, { content: "Why?" });
+      return { s: await readStream(p) };
+    }),
+  );
+  t("R20: a model silent for several keep-alive intervals: `: ping` comment frames arrive before its first text event", () => {
+    const r = must(x);
+    const firstText = r.s.order.indexOf("text");
+    return firstText >= 1 && r.s.order.slice(0, firstText).every((k) => k === "comment") && r.s.comments.length >= 2 && r.s.comments.every((c) => c.text === "ping") && r.s.raw.includes(": ping\n\n");
+  });
+  t("R20: with the pings skipped, the stream parses into the same DatumStreamEvent sequence as without them", () => {
+    const r = must(x);
+    return (
+      parsesAsEvents(r.s.events) &&
+      same(eventTypes(r.s.events), ["text", "text", "text", "done"]) &&
+      joinedDeltas(r.s.events) === "Because the growth rate was 2.1%." &&
+      same(r.s.events.at(-1), { type: "done", messageId: f.ids[1] }) &&
+      r.s.rest === ""
+    );
+  });
+}
+{
+  const spy = spyIntervals(KA_MS);
+  const watch = watchWrites();
+  const f = routerFakes({ keepAliveMs: KA_MS, turns: [turnOf(["Slow ", "reply."], modelMsg([block.text("Slow reply.")]), { pauseMs: 6 * KA_MS })] });
+  const x = await settle(async () => {
+    try {
+      return await withServer(
+        f.deps,
+        async ({ base }) => {
+          const p = await postMessage(base, { content: "Why?" });
+          const s = await readStream(p);
+          // Long enough for a keep-alive left running to fire several times.
+          await sleep(5 * KA_MS);
+          return { s };
+        },
+        { tamper: watch.mw },
+      );
+    } finally {
+      spy.restore();
+    }
+  });
+  t("R20: pings go out between the events while a reply is slow", () => {
+    const r = must(x);
+    return r.s.order.slice(r.s.order.indexOf("text"), r.s.order.lastIndexOf("text")).includes("comment");
+  });
+  t("R20: nothing is written after done, not even a ping", () => {
+    const r = must(x);
+    const doneFrame = watch.w.frames.findIndex((fr) => fr.startsWith("data: ") && fr.includes('"type":"done"'));
+    return r.s.order.at(-1) === "done" && doneFrame >= 0 && doneFrame === watch.w.frames.length - 1 && watch.w.afterEnd === 0 && spy.made.length === 1;
+  });
+}
+{
+  const spy = spyIntervals(KA_NEVER_MS);
+  const f = routerFakes({ keepAliveMs: KA_NEVER_MS });
+  const x = await settle(async () => {
+    try {
+      return await withServer(f.deps, async ({ base }) => {
+        const p = await postMessage(base, { content: "Why?" });
+        const s = await readStream(p);
+        return { s, endedAt: performance.now() };
+      });
+    } finally {
+      spy.restore();
+    }
+  });
+  t("R20: the keep-alive is cleared by the route when the stream ends, not left to find the stream gone on its next tick", () => {
+    const r = must(x);
+    return r.s.order.at(-1) === "done" && spy.made.length === 1 && spy.made[0].clearedAt !== null && spy.made[0].clearedAt <= r.endedAt;
+  });
+}
+{
+  const spy = spyIntervals(KA_NEVER_MS);
+  let reviseDoneAt = null;
+  const f = routerFakes({
+    keepAliveMs: KA_NEVER_MS,
+    turns: rerunTurns(),
+    revise: async () => {
+      await sleep(8 * KA_MS);
+      reviseDoneAt = performance.now();
+      return { ok: true, projectId: RT_NEW, version: 2, changes: RT_CHANGES, revisionId: RT_REVISION_ROW };
+    },
+  });
+  const x = await settle(async () => {
+    try {
+      return await withServer(
+        f.deps,
+        async ({ base, escaped }) => {
+          const controller = new AbortController();
+          const p = await postMessage(base, { content: "Use 1.0%." }, { signal: controller.signal });
+          const s = await readStream(p, { controller, stopAfter: (e) => e.type === "status" });
+          const saved = await until(() => datumRows(f.calls).length === 1);
+          return { s, saved, escaped };
+        },
+      );
+    } finally {
+      spy.restore();
+    }
+  });
+  t("R20: the keep-alive is cleared when the engineer leaves, while the re-run in flight is still running", () => {
+    const r = must(x);
+    return r.s.stopped && r.saved && spy.made.length === 1 && spy.made[0].clearedAt !== null && reviseDoneAt !== null && spy.made[0].clearedAt < reviseDoneAt && r.escaped.length === 0;
+  });
+}
+{
+  // The same leaving, with pings going out every KA_MS while the re-run runs on.
+  const watch = watchWrites();
+  const f = routerFakes({
+    keepAliveMs: KA_MS,
+    turns: rerunTurns(),
+    revise: async () => {
+      await sleep(8 * KA_MS);
+      return { ok: true, projectId: RT_NEW, version: 2, changes: RT_CHANGES, revisionId: RT_REVISION_ROW };
+    },
+  });
+  const x = await settle(() =>
+    withServer(
+      f.deps,
+      async ({ base, escaped }) => {
+        const controller = new AbortController();
+        const p = await postMessage(base, { content: "Use 1.0%." }, { signal: controller.signal });
+        const s = await readStream(p, { controller, stopAfter: (e) => e.type === "status" });
+        const saved = await until(() => datumRows(f.calls).length === 1);
+        await sleep(5 * KA_MS);
+        return { s, saved, escaped };
+      },
+      { tamper: watch.mw },
+    ),
+  );
+  t("R20: nothing is written to the response after the client has gone, though the re-run and the keep-alive's interval ran on", () => {
+    const r = must(x);
+    return r.s.stopped && r.saved && watch.w.closed && watch.w.afterClose === 0 && r.escaped.length === 0;
+  });
+}
+
+// --- R13: the route's own wrappers log, and the pre-header failures are a generic 500 ---------------------------------
+const POST_FAILED_LINE = "Datum couldn't take that message just now. Try again in a moment.";
+const READ_FAILED_LINE = "Failed to load the Datum chat.";
+/** Nothing of a thrown value's message in the stream, the saved rows or what the model was sent. */
+const leaksNothing = (re, { s, f }) =>
+  !re.test(s?.raw ?? "") && !re.test(JSON.stringify(f.calls.insertMessage)) && f.model.calls.every((c) => !re.test(JSON.stringify(c.messages ?? [])));
+{
+  // read_study_path throws inside the route's readPath wrapper: a getter on a result key the pack never reads.
+  const trap = new Error("read trap (check): stored-path-secret");
+  const trapped = { ...REC.result };
+  Object.defineProperty(trapped, "checkTrap", {
+    enumerable: true,
+    get() {
+      throw trap;
+    },
+  });
+  const f = routerFakes({
+    project: { ...RT_STORED, resultPayload: trapped },
+    turns: [
+      turnOf([], modelMsg([block.thinking(), readUse("tu_read_trap", "result.checkTrap")], "tool_use")),
+      turnOf(["I could not read that value."], modelMsg([block.text("I could not read that value.")])),
+    ],
+  });
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base, logs, escaped }) => {
+      const p = await postMessage(base, { content: "What is stored there?" });
+      return { s: await readStream(p), logs, escaped };
+    }),
+  );
+  t("R13: a read_study_path that throws is logged by the route's readPath wrapper as datum-chat.read_path_failed, with the thrown value", () => {
+    const r = must(x);
+    return errorLogs(r.logs).some((l) => l.msg === "datum-chat.read_path_failed" && l.obj?.err === trap && l.obj?.path === "result.checkTrap");
+  });
+  t("R13: the model is answered with an is_error tool_result, and the thrown message reaches no event, saved row or model message", () => {
+    const r = must(x);
+    return (
+      resultFor(f.model.calls[1], "tu_read_trap")?.is_error === true &&
+      r.s.events.at(-1)?.type === "done" &&
+      leaksNothing(/stored-path-secret|read trap/, { s: r.s, f }) &&
+      r.escaped.length === 0
+    );
+  });
+}
+{
+  const boom = new Error("revise wiring broke (check): internal-secret");
+  const f = routerFakes({
+    turns: rerunTurns(GROW, "The re-run did not go through."),
+    revise: async () => {
+      throw boom;
+    },
+  });
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base, logs, escaped }) => {
+      const p = await postMessage(base, { content: "Use 1.0%." });
+      return { s: await readStream(p), logs, escaped };
+    }),
+  );
+  t("R13: a revise dep that throws is logged by the route's revise wrapper as datum-chat.revise_threw, with the thrown value", () => {
+    const r = must(x);
+    return f.calls.revise.length === 1 && errorLogs(r.logs).some((l) => l.msg === "datum-chat.revise_threw" && l.obj?.err === boom);
+  });
+  t("R13: the model gets an is_error tool_result, no revision is sent or saved, and the thrown message reaches no event, saved row or model message", () => {
+    const r = must(x);
+    return (
+      resultFor(f.model.calls[1], "tu_rt_1")?.is_error === true &&
+      !eventTypes(r.s.events).includes("revision") &&
+      r.s.events.at(-1)?.type === "done" &&
+      has(datumRows(f.calls)[0], { revisionId: null }) &&
+      leaksNothing(/internal-secret|wiring broke/, { s: r.s, f }) &&
+      r.escaped.length === 0
+    );
+  });
+}
+{
+  const f = routerFakes({ insertThrows: "engineer" });
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base, logs, escaped }) => {
+      const p = await postMessage(base, { content: "Why?" });
+      return { status: p.status, type: p.headers.get("content-type"), body: await jsonOf(p), logs, escaped };
+    }),
+  );
+  t("a failure before the headers (the engineer's message cannot be saved) is a 500 with the generic line, as JSON, not a stream", () => {
+    const r = must(x);
+    return r.status === 500 && /^application\/json/.test(r.type ?? "") && same(r.body, { error: POST_FAILED_LINE }) && r.escaped.length === 0;
+  });
+  t("that failure is logged as datum-chat.post_failed with the thrown error, and nothing went to the model or was saved as Datum's", () => {
+    const r = must(x);
+    return (
+      errorLogs(r.logs).some((l) => l.msg === "datum-chat.post_failed" && l.obj?.err instanceof Error && /insert of the engineer message failed/.test(l.obj.err.message)) &&
+      f.model.calls.length === 0 &&
+      datumRows(f.calls).length === 0
+    );
+  });
+}
+{
+  const cause = new Error("lineage read failed (check): db-secret");
+  const f = routerFakes({ lineageThrows: cause });
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base, logs, escaped }) => {
+      const g = await getThread(base);
+      return { status: g.status, body: await jsonOf(g), logs, escaped };
+    }),
+  );
+  t("a GET that fails is a 500 with the generic line, logged as datum-chat.read_failed with the thrown value", () => {
+    const r = must(x);
+    return (
+      r.status === 500 &&
+      same(r.body, { error: READ_FAILED_LINE }) &&
+      errorLogs(r.logs).some((l) => l.msg === "datum-chat.read_failed" && l.obj?.err === cause) &&
+      !/db-secret/.test(JSON.stringify(r.body)) &&
+      r.escaped.length === 0
+    );
   });
 }
 
