@@ -10,7 +10,7 @@
  * atlanta-live-status.tsx uses.
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AlertCircle, AlertTriangle, CheckCircle2, HelpCircle, Info, Loader2, RefreshCw, Scale } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, HelpCircle, Info, Loader2, MessageSquare, RefreshCw, Scale } from "lucide-react";
 import {
   closes,
   dispositionBody,
@@ -57,7 +57,14 @@ const DECISION_LABEL: Record<EngineerDisposition, string> = {
 
 const POLL_MS = 60_000;
 
-export function ProofreadPanel({ projectId }: { projectId: string }) {
+/**
+ * The Datum chat's part of the panel, handed down from the project page while the
+ * chat is on (undefined otherwise, and the panel is as it always was): the box at
+ * the top, and what each card's "Ask about this" opens.
+ */
+type PanelChat = { onAsk: (f: ProofreadFindingT) => void; askBox: ReactNode };
+
+export function ProofreadPanel({ projectId, chat }: { projectId: string; chat?: PanelChat }) {
   const [run, setRun] = useState<ProofreadRun | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Why a decision did not stick (the check was run again). Its own state, not
@@ -160,6 +167,8 @@ export function ProofreadPanel({ projectId }: { projectId: string }) {
       busy={busy}
       onRerun={() => void rerun()}
       onTriage={(f, d) => void triage(f, d)}
+      onAsk={chat?.onAsk}
+      askBox={chat?.askBox}
     />
   );
 }
@@ -224,12 +233,18 @@ export function ProofreadView({
   busy,
   onRerun,
   onTriage,
+  onAsk,
+  askBox,
 }: {
   run: ProofreadRun | null;
   error: string | null;
   busy: boolean;
   onRerun: () => void;
   onTriage: (f: ProofreadFindingT, disposition: string) => void;
+  /** Set while the Datum chat is on: each card then carries "Ask about this", which hands it its finding. */
+  onAsk?: (f: ProofreadFindingT) => void;
+  /** The Datum chat's box for a question about the study as a whole, drawn at the top. */
+  askBox?: ReactNode;
 }) {
   if (!run) {
     // Still loading: nothing yet. Failed to load: say so — a panel that vanishes
@@ -276,6 +291,8 @@ export function ProofreadView({
       </PanelHeader>
 
       <div className="p-4 space-y-3">
+        {askBox}
+
         {error && <div className="text-xs text-red-600">{error}</div>}
 
         {isPending(run.status) && (
@@ -410,6 +427,19 @@ export function ProofreadView({
                       {DECISION_LABEL[d]}
                     </button>
                   ))}
+                </div>
+              )}
+
+              {onAsk && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => onAsk(f)}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-md border hover:bg-muted"
+                    data-testid="button-ask-datum"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" /> Ask about this
+                  </button>
                 </div>
               )}
             </div>
