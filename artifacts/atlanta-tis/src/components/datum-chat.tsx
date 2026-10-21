@@ -13,8 +13,16 @@
  *
  * DatumChat holds the state and the requests; DrawerView, ThreadView and the
  * pieces under them draw it and hold none, so check-datum-chat.mjs renders them
- * for each state. DatumChat may use useState, useRef and useEffect only: the check
- * calls it under a runtime that has those three.
+ * for each state. useProjectDatum is the project page's part: whether the chat is
+ * on, which drawer is open, and the box's question, consumed once. DatumChat and
+ * useProjectDatum may use useState, useRef and useEffect only: the check calls them
+ * under a runtime that has those three.
+ *
+ * The drawer sits beside the page rather than over it, so the engineer can read a
+ * finding, or press another finding's "Ask about this", while it is open. It is
+ * therefore not modal (aria-modal false), but it takes focus when it opens,
+ * gives it back to what opened it when it closes, and closes on Escape from
+ * anywhere on the page.
  *
  * Also here, because they read the same lineage: the version line on the project
  * page, and the version badge in the project list.
@@ -25,11 +33,11 @@ import { Loader2, MessageSquare, Send, X } from "lucide-react";
 import type { ProofreadFindingT } from "@/lib/proofread";
 import {
   applyStreamEvent,
+  changeLine,
   DATUM_MESSAGE_CHARS,
   DatumRequestError,
   endNotice,
   fetchDatum,
-  formatChangeValue,
   messageBody,
   sendDatum,
   startStreaming,
@@ -64,11 +72,16 @@ export type DatumChatProps = {
   onClose(): void;
   /** A question typed in the panel's Ask Datum box: sent once, about the study as a whole, when it arrives. */
   ask?: { text: string; seq: number } | null;
+  /**
+   * Called with the box question's seq as soon as the drawer has taken it (sent it, or put it in the field), so
+   * the page drops it: a drawer mounted again later, after a version link or Back, must not send it a second time.
+   */
+  onAskTaken?(seq: number): void;
   /** Called when a re-run has made a new version, so the page's version line can say so. */
   onRevised?(): void;
 };
 
-export function DatumChat({ projectId, focus, onClose, ask = null, onRevised }: DatumChatProps) {
+export function DatumChat({ projectId, focus, onClose, ask = null, onAskTaken, onRevised }: DatumChatProps) {
   const [read, setRead] = useState<DatumRead | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [about, setAbout] = useState<ProofreadFindingT | null>(focus);
@@ -81,8 +94,33 @@ export function DatumChat({ projectId, focus, onClose, ask = null, onRevised }: 
   const askedSeq = useRef<number | null>(null);
   const shownFocus = useRef<ProofreadFindingT | null>(focus);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const drawerRef = useRef<HTMLElement | null>(null);
+  const fieldRef = useRef<HTMLTextAreaElement | null>(null);
+  // The page's latest callbacks, for handlers that outlive the render that made them.
   const revised = useRef(onRevised);
   revised.current = onRevised;
+  const close = useRef(onClose);
+  close.current = onClose;
+  const taken = useRef(onAskTaken);
+  taken.current = onAskTaken;
+
+  // Open: remember what opened the drawer, take focus, and close on Escape from anywhere on the page.
+  // Closed: give focus back to what opened it.
+  useEffect(() => {
+    const active = document.activeElement;
+    const opener = isFocusable(active) ? active : null;
+    drawerRef.current?.focus();
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape" || e.isComposing) return;
+      e.preventDefault();
+      close.current();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      if (opener && opener.isConnected && opener !== document.body) opener.focus();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,6 +148,25 @@ export function DatumChat({ projectId, focus, onClose, ask = null, onRevised }: 
     setAbout(focus);
     if (focus) setDraft((d) => (d.trim() === "" || d === DEFAULT_QUESTION ? DEFAULT_QUESTION : d));
   }, [focus]);
+
+  // The field takes focus once there is one to type in, and again for each "Ask about this", so Enter sends the
+  // question rather than pressing the button again. When a reply ends (the field was disabled while it streamed)
+  // it takes focus back only if focus has not gone somewhere else on the page meanwhile.
+  const enabled = read?.enabled === true;
+  const busy = streaming !== null && !streaming.done;
+  const focusField = (onlyIfFree: boolean): void => {
+    const field = fieldRef.current;
+    if (!field) return;
+    const active = document.activeElement;
+    if (onlyIfFree && active && active !== document.body && !drawerRef.current?.contains(active)) return;
+    field.focus();
+  };
+  useEffect(() => {
+    if (enabled && !busy) focusField(false);
+  }, [enabled, focus]);
+  useEffect(() => {
+    if (enabled && !busy) focusField(true);
+  }, [busy]);
 
   const messageCount = read?.messages.length ?? 0;
   const streamedChars = streaming?.text.length ?? -1;
@@ -172,6 +229,7 @@ export function DatumChat({ projectId, focus, onClose, ask = null, onRevised }: 
   useEffect(() => {
     if (!ask || askedSeq.current === ask.seq || read?.enabled !== true) return;
     askedSeq.current = ask.seq;
+    taken.current?.(ask.seq);
     setAbout(null);
     // A reply is still being written: the question waits in the field.
     if (inFlight.current) setDraft(ask.text);
@@ -196,8 +254,15 @@ export function DatumChat({ projectId, focus, onClose, ask = null, onRevised }: 
       }}
       onClose={onClose}
       scrollRef={scrollRef}
+      drawerRef={drawerRef}
+      fieldRef={fieldRef}
     />
   );
+}
+
+/** What has a focus method and can say whether it is still on the page: an element, in the browser. */
+function isFocusable(v: unknown): v is HTMLElement {
+  return typeof v === "object" && v !== null && typeof (v as HTMLElement).focus === "function" && "isConnected" in v;
 }
 
 // ─── what it draws ─────────────────────────────────────────────────────────────────
@@ -218,23 +283,31 @@ export type DrawerViewProps = {
   onClearFocus(): void;
   onClose(): void;
   scrollRef?: Ref<HTMLDivElement>;
+  /** The drawer itself, which takes focus when it opens. */
+  drawerRef?: Ref<HTMLElement>;
+  /** The message field, which takes focus once it is there. */
+  fieldRef?: Ref<HTMLTextAreaElement>;
 };
+
+const TITLE_ID = "datum-drawer-title";
 
 export function DrawerView(p: DrawerViewProps) {
   const enabled = p.read?.enabled === true;
   return (
     <aside
+      ref={p.drawerRef}
       role="dialog"
-      aria-label="Ask Datum"
-      className="fixed inset-y-0 right-0 z-50 w-full sm:w-[28rem] flex flex-col bg-background border-l shadow-xl"
+      aria-modal="false"
+      aria-labelledby={TITLE_ID}
+      tabIndex={-1}
+      className="fixed inset-y-0 right-0 z-50 w-full sm:w-[28rem] flex flex-col bg-background border-l shadow-xl outline-none"
       data-testid="drawer-datum"
-      onKeyDown={(e) => {
-        if (e.key === "Escape") p.onClose();
-      }}
     >
       <header className="flex items-start justify-between gap-3 p-4 border-b">
         <div>
-          <h2 className="text-sm font-semibold">Ask Datum</h2>
+          <h2 id={TITLE_ID} className="text-sm font-semibold">
+            Ask Datum
+          </h2>
           <p className="text-xs text-muted-foreground">{DRAWER_NOTE}</p>
         </div>
         <button type="button" onClick={p.onClose} aria-label="Close the chat" className="p-1 rounded-md hover:bg-muted" data-testid="button-datum-close">
@@ -278,6 +351,7 @@ export function DrawerView(p: DrawerViewProps) {
           onDraft={p.onDraft}
           onSend={p.onSend}
           onClearFocus={p.onClearFocus}
+          fieldRef={p.fieldRef}
         />
       )}
     </aside>
@@ -292,6 +366,7 @@ export function Composer({
   onDraft,
   onSend,
   onClearFocus,
+  fieldRef,
 }: {
   focus: ProofreadFindingT | null;
   draft: string;
@@ -301,6 +376,7 @@ export function Composer({
   onDraft(text: string): void;
   onSend(): void;
   onClearFocus(): void;
+  fieldRef?: Ref<HTMLTextAreaElement>;
 }) {
   const left = DATUM_MESSAGE_CHARS - draft.length;
   const canSend = !busy && messageBody(draft, null) !== null;
@@ -341,6 +417,7 @@ export function Composer({
         </div>
       )}
       <textarea
+        ref={fieldRef}
         value={draft}
         onChange={(e) => onDraft(e.target.value)}
         onKeyDown={onKeyDown}
@@ -471,7 +548,7 @@ function ChangeLines({ changes }: { changes: DatumChangeT[] }) {
     <ul className="text-xs space-y-0.5">
       {changes.map((c, i) => (
         <li key={`${c.field}:${i}`} className="break-words">
-          {`${c.field}: ${formatChangeValue(c.from)} → ${formatChangeValue(c.to)}`}
+          {changeLine(c)}
         </li>
       ))}
     </ul>
@@ -605,6 +682,77 @@ export function chatForPanel(
 ): PanelChat | undefined {
   if (read?.enabled !== true) return undefined;
   return { onAsk: handlers.onAsk, askBox: <AskDatumBox onAsk={handlers.onAskStudy} /> };
+}
+
+// ─── on the project page ─────────────────────────────────────────────────────────────
+
+type OpenDrawer = { projectId: string; focus: ProofreadFindingT | null; ask: { text: string; seq: number } | null };
+
+/**
+ * The project page's part of the chat, for the TIS study `projectId` (null for
+ * any other study, or while the page is between versions): the read (its lineage
+ * is the version line), what the proofread panel is handed, and the drawer.
+ *
+ * Moving to another version (a version link, Back) closes the drawer, and a
+ * question from the box is dropped as soon as the drawer has taken it. The page
+ * component stays mounted across versions (one route for every /projects/:id), so
+ * without both, coming back to a version would mount the drawer again with the
+ * old question and send it again under the engineer's name.
+ */
+export function useProjectDatum(projectId: string | null): { read: DatumRead | null; chat: PanelChat | undefined; drawer: ReactNode } {
+  const [datum, setDatum] = useState<{ projectId: string; read: DatumRead } | null>(null);
+  const [nonce, setNonce] = useState(0);
+  const [open, setOpen] = useState<OpenDrawer | null>(null);
+  const askSeq = useRef(0);
+  // The last box question a drawer took. A drawer is never handed it, or an older one, again.
+  const takenSeq = useRef(0);
+
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    fetchDatum(projectId).then(
+      (read) => {
+        if (!cancelled) setDatum({ projectId, read });
+      },
+      () => {
+        // Left out: no version line and no chat, and the page is as it was.
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, nonce]);
+
+  // Another version, or none: the drawer closes, and nothing it was opened with carries over.
+  useEffect(() => {
+    setOpen((o) => (o && o.projectId !== projectId ? null : o));
+  }, [projectId]);
+
+  if (!projectId) return { read: null, chat: undefined, drawer: null };
+  const id = projectId;
+  const read = datum && datum.projectId === id ? datum.read : null;
+  const shown = open && open.projectId === id ? open : null;
+  const chat = chatForPanel(read, {
+    // A box question not yet taken is kept: it is still on its way.
+    onAsk: (f) => setOpen((o) => ({ projectId: id, focus: f, ask: o && o.projectId === id ? o.ask : null })),
+    onAskStudy: (text) => setOpen({ projectId: id, focus: null, ask: { text, seq: ++askSeq.current } }),
+  });
+  const ask = shown?.ask && shown.ask.seq > takenSeq.current ? shown.ask : null;
+  const drawer = shown ? (
+    <DatumChat
+      key={id}
+      projectId={id}
+      focus={shown.focus}
+      ask={ask}
+      onAskTaken={(seq) => {
+        takenSeq.current = Math.max(takenSeq.current, seq);
+        setOpen((o) => (o && o.ask?.seq === seq ? { ...o, ask: null } : o));
+      }}
+      onClose={() => setOpen(null)}
+      onRevised={() => setNonce((n) => n + 1)}
+    />
+  ) : null;
+  return { read, chat, drawer };
 }
 
 // ─── versions ───────────────────────────────────────────────────────────────────────

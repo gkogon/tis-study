@@ -352,3 +352,78 @@ export function formatChangeValue(v: unknown): string {
   }
   return json.length > JSON_CHARS ? `${json.slice(0, JSON_CHARS - 1)}…` : json;
 }
+
+/**
+ * The fields the chat may change, in the contract's order (REVISABLE_FIELDS in
+ * lib/tis-api-zod/src/datum-chat.ts; check-datum-chat.mjs pins the two equal).
+ */
+export const REVISABLE_FIELDS = Object.freeze([
+  "growthRatePct",
+  "removeGrowthOverride",
+  "openingYear",
+  "analysisPeriods",
+  "passByPct",
+  "internalCapturePct",
+  "weather",
+  "scopeStudyIntersections",
+  "signalTiming",
+  "legVolumes",
+  "realLaneGeometry",
+  "conservedAssignment",
+  "signalTimingOverrides",
+] as const);
+export type RevisableField = (typeof REVISABLE_FIELDS)[number];
+
+// The change card is copy the engineer reads, so it speaks in plain labels with units, as the server's status line
+// does (R14, R24), never in field names. Keyed by every revisable field, so a field without a label does not compile.
+const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const PERIOD_LABELS: Record<string, string> = { am_peak: "AM peak", pm_peak: "PM peak", saturday_midday: "Saturday midday", daily: "daily" };
+const WEATHER_LABELS: Record<string, string> = { clear: "clear", light_rain: "light rain", heavy_rain: "heavy rain", light_snow: "light snow", heavy_snow: "heavy snow" };
+const SHEET_NAMES_SHOWN = 3;
+const growthOf = (v: unknown) => (isNum(v) ? `${Number.isInteger(v) ? v.toFixed(1) : v}%` : formatChangeValue(v));
+const pctOf = (v: unknown) => (isNum(v) ? `${v}%` : formatChangeValue(v));
+const periodsOf = (v: unknown) =>
+  Array.isArray(v) && v.length > 0 ? v.map((p) => (typeof p === "string" ? (PERIOD_LABELS[p] ?? p.replace(/_/g, " ")) : String(p))).join(", ") : formatChangeValue(v);
+const weatherOf = (v: unknown) => (typeof v === "string" ? (WEATHER_LABELS[v] ?? v.replace(/_/g, " ")) : formatChangeValue(v));
+const scopeOf = (v: unknown) => (typeof v === "boolean" ? (v ? "impacted intersections only" : "every signalized intersection") : formatChangeValue(v));
+const basisOf = (thing: string) => (v: unknown) => (typeof v === "string" ? `${v} ${thing}` : `${thing} ${formatChangeValue(v)}`);
+function sheetsOf(v: unknown): string {
+  if (!Array.isArray(v) || v.length === 0) return "no timing sheets";
+  const names = v.map((x) => (isRecord(x) && isStr(x.intersectionName) ? x.intersectionName.replace(/\s+/g, " ").trim() : "")).filter((n) => n !== "");
+  const noun = v.length === 1 ? "timing sheet" : "timing sheets";
+  if (names.length === 0) return `${v.length} ${noun}`;
+  const shown = names.slice(0, SHEET_NAMES_SHOWN);
+  const more = v.length - shown.length;
+  return `${noun} for ${[...shown, ...(more > 0 ? [`${more} more`] : [])].join(", ")}`;
+}
+const fromTo = (label: string, of: (v: unknown) => string) => (from: unknown, to: unknown) => `${label}${of(from)} → ${of(to)}`;
+const noValue = (v: unknown) => v === null || v === undefined || (Array.isArray(v) && v.length === 0);
+
+const CHANGE_LINES: Record<RevisableField, (from: unknown, to: unknown) => string> = {
+  growthRatePct: (from, to) => (noValue(to) ? `growth override removed (was ${growthOf(from)})` : `growth ${growthOf(from)} → ${growthOf(to)}`),
+  removeGrowthOverride: () => "growth override removed",
+  openingYear: fromTo("opening year ", formatChangeValue),
+  analysisPeriods: fromTo("periods ", periodsOf),
+  passByPct: fromTo("pass-by ", pctOf),
+  internalCapturePct: fromTo("internal capture ", pctOf),
+  weather: fromTo("weather ", weatherOf),
+  scopeStudyIntersections: fromTo("study scope: ", scopeOf),
+  signalTiming: fromTo("", basisOf("signal timing")),
+  legVolumes: fromTo("", basisOf("leg volumes")),
+  realLaneGeometry: fromTo("real lane geometry ", formatChangeValue),
+  conservedAssignment: fromTo("conserved path assignment ", formatChangeValue),
+  signalTimingOverrides: (from, to) =>
+    noValue(from) ? sheetsOf(to) : noValue(to) ? `timing sheets removed (was ${sheetsOf(from)})` : `${sheetsOf(from)} → ${sheetsOf(to)}`,
+};
+const isRevisable = (f: string): f is RevisableField => (REVISABLE_FIELDS as readonly string[]).includes(f);
+
+/**
+ * One line of a change card, in plain words: "growth 2.1% → 1.0%",
+ * "pass-by 25% → 10%", "screening signal timing → computed signal timing". A
+ * field this client does not know is named in words too, never as written in code.
+ */
+export function changeLine(c: DatumChangeT): string {
+  if (isRevisable(c.field)) return CHANGE_LINES[c.field](c.from, c.to);
+  const words = c.field.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase();
+  return `${words} ${formatChangeValue(c.from)} → ${formatChangeValue(c.to)}`;
+}

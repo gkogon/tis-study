@@ -6,7 +6,7 @@
  *
  * Falls back to a JSON dump for unknown types so we never lose data.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchThemes, type ThemeList } from "@/lib/report-themes";
 import { Link, useParams } from "wouter";
 import { useAuth } from "@workspace/replit-auth-web";
@@ -18,9 +18,7 @@ import { SightDistanceReport, type SightDistanceReportT } from "../components/si
 import { QueuingReport, type QueuingReportT } from "../components/queuing-report";
 import { RoadDietReport, type RoadDietReportT } from "../components/road-diet-report";
 import { ProofreadPanel } from "../components/proofread-panel";
-import { chatForPanel, DatumChat, VersionLine } from "../components/datum-chat";
-import { fetchDatum, type DatumRead } from "@/lib/datum-chat";
-import type { ProofreadFindingT } from "@/lib/proofread";
+import { useProjectDatum, VersionLine } from "../components/datum-chat";
 
 interface ProjectDetail {
   id: string;
@@ -102,32 +100,12 @@ export default function ProjectDetailPage() {
     };
   }, [isAuthenticated, params.id]);
 
-  // The Datum chat (TIS only): its read gives the version line and says whether the chat is on, and the open
-  // drawer says what it was opened on. Each is kept with the project it belongs to, so nothing of one version
-  // shows on another after a version link is followed. A read that fails leaves both out: the page is as it was.
-  const [datum, setDatum] = useState<{ projectId: string; read: DatumRead } | null>(null);
-  const [datumNonce, setDatumNonce] = useState(0);
-  const [drawer, setDrawer] = useState<{
-    projectId: string;
-    focus: ProofreadFindingT | null;
-    ask: { text: string; seq: number } | null;
-  } | null>(null);
-  const askSeq = useRef(0);
-  const tisId = project?.studyType === "tis" ? project.id : null;
-  useEffect(() => {
-    if (!tisId) return;
-    let cancelled = false;
-    fetchDatum(tisId)
-      .then((read) => {
-        if (!cancelled) setDatum({ projectId: tisId, read });
-      })
-      .catch(() => {
-        // Left out: no version line and no chat.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [tisId, datumNonce]);
+  // The Datum chat, for a TIS study once the project on screen is the one in the URL: the version line, what the
+  // proofread panel is handed (undefined while the chat is off), and the drawer. Between versions it is null, so
+  // the drawer closes and nothing of one version shows on another.
+  const tisId =
+    project && project.studyType === "tis" && project.id.toLowerCase() === (params.id ?? "").toLowerCase() ? project.id : null;
+  const { read: datumRead, chat, drawer } = useProjectDatum(tisId);
 
   if (authLoading) return null;
 
@@ -172,14 +150,6 @@ export default function ProjectDetailPage() {
     "data:application/json;charset=utf-8," +
     encodeURIComponent(JSON.stringify(project, null, 2));
   const downloadName = `${project.projectName.replace(/[^a-z0-9-_]+/gi, "_")}.json`;
-
-  const datumRead = datum && datum.projectId === project.id ? datum.read : null;
-  const openDrawer = drawer && drawer.projectId === project.id ? drawer : null;
-  // Undefined while the chat is off: the panel then draws no box and no Ask button.
-  const chat = chatForPanel(datumRead, {
-    onAsk: (f) => setDrawer({ projectId: project.id, focus: f, ask: null }),
-    onAskStudy: (text) => setDrawer({ projectId: project.id, focus: null, ask: { text, seq: ++askSeq.current } }),
-  });
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 space-y-6">
@@ -258,16 +228,7 @@ export default function ProjectDetailPage() {
 
       {project.studyType === "tis" && <ProofreadPanel projectId={project.id} chat={chat} />}
 
-      {project.studyType === "tis" && openDrawer && (
-        <DatumChat
-          key={project.id}
-          projectId={project.id}
-          focus={openDrawer.focus}
-          ask={openDrawer.ask}
-          onClose={() => setDrawer(null)}
-          onRevised={() => setDatumNonce((n) => n + 1)}
-        />
-      )}
+      {project.studyType === "tis" && drawer}
 
       <div className="text-xs text-muted-foreground">
         This is a read-only summary of the stored report. To re-print or modify

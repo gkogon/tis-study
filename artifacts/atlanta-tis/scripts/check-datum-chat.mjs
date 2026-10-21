@@ -12,17 +12,19 @@
  * `data: <json>` frames, `: ping` keep-alive comments (R20), CRLF line ends, and
  * chunks split anywhere, mid-JSON and mid-character included.
  *
- * DatumChat itself, the stateful drawer, is called as a plain function under a
- * minimal hooks runtime (useState, useRef, useEffect: the only hooks it may use),
- * and the DrawerView element it returns is read for what it hands the view and
- * rendered for what it shows. Its handlers are called the way the view would call them.
+ * DatumChat itself, the stateful drawer, and useProjectDatum, the project page's
+ * part, are called as plain functions under a minimal hooks runtime (useState,
+ * useRef, useEffect: the only hooks they may use), and what they return is read
+ * for what it hands on and rendered for what it shows. Handlers are called the way
+ * the view would call them; props change the way the page would change them; and
+ * a stub document stands in for focus and the keyboard.
  *
  * Run: `pnpm --filter @workspace/atlanta-tis run check:datum-chat`
  */
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -133,6 +135,8 @@ const text = (html) =>
     .replace(/\s+/g, " ")
     .trim();
 const count = (s, sub) => s.split(sub).length - 1;
+/** The revisable fields whose names are camelCase: written on a card, each would be code, not copy. */
+const CAMEL_FIELDS = () => (Array.isArray(lib?.REVISABLE_FIELDS) ? lib.REVISABLE_FIELDS.filter((f) => /[A-Z]/.test(f)) : []);
 const phraseForm = (s) => s.replace(/[-‐-―]+/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
 const BANNED_COPY = /independent[\s-]*review|second[\s-]*opinion|peer[\s-]*review|qa\s*[/\\-]?\s*qc|\baudit/i;
 const bannedIn = (s) => BANNED_COPY.exec(phraseForm(s))?.[0] ?? null;
@@ -575,6 +579,59 @@ try {
     );
   });
 
+  await group("the change card speaks in plain labels (R24)", async () => {
+    ok("exports-labels", typeof lib.changeLine === "function" && Array.isArray(lib.REVISABLE_FIELDS), "lib/datum-chat.ts exports changeLine and REVISABLE_FIELDS");
+    if (typeof lib.changeLine !== "function") return;
+    const contract = await import(pathToFileURL(path.join(repo, "lib/tis-api-zod/src/datum-chat.ts")).href);
+    ok(
+      "labels-cover-allowlist",
+      isDeepStrictEqual([...lib.REVISABLE_FIELDS], [...contract.REVISABLE_FIELDS]),
+      `the web list of revisable fields is the contract's, in order, so the label map (typed on it) covers every field the server can log (web ${lib.REVISABLE_FIELDS.length}, contract ${contract.REVISABLE_FIELDS.length})`,
+    );
+    const SHEET = (name) => ({ intersectionName: name, latitude: 33.7, longitude: -84.4, cycleLenSec: 120, phaseByMovement: { NBT: 2 }, splitSByPhase: { 2: 40 } });
+    const CASES = [
+      ["growthRatePct", 2.1, 1, "growth 2.1% → 1.0%"],
+      ["growthRatePct", 2.1, null, "growth override removed (was 2.1%)"],
+      ["growthRatePct", null, 1.5, "growth not set → 1.5%"],
+      ["removeGrowthOverride", null, true, "growth override removed"],
+      ["openingYear", 2027, 2028, "opening year 2027 → 2028"],
+      ["analysisPeriods", ["am_peak", "pm_peak"], ["pm_peak"], "periods AM peak, PM peak → PM peak"],
+      ["passByPct", 25, 10, "pass-by 25% → 10%"],
+      ["internalCapturePct", null, 5, "internal capture not set → 5%"],
+      ["weather", "clear", "light_rain", "weather clear → light rain"],
+      ["scopeStudyIntersections", false, true, "study scope: every signalized intersection → impacted intersections only"],
+      ["signalTiming", "screening", "computed", "screening signal timing → computed signal timing"],
+      ["legVolumes", "screening", "network", "screening leg volumes → network leg volumes"],
+      ["realLaneGeometry", true, false, "real lane geometry on → off"],
+      ["conservedAssignment", false, true, "conserved path assignment off → on"],
+      ["signalTimingOverrides", null, [SHEET("Main St & 1st Ave")], "timing sheet for Main St & 1st Ave"],
+      ["signalTimingOverrides", [SHEET("Main St & 1st Ave")], [], "timing sheets removed (was timing sheet for Main St & 1st Ave)"],
+    ];
+    for (const [field, from, to, want] of CASES) {
+      const got = lib.changeLine({ field, from, to });
+      ok("label-line", got === want, `${field} ${JSON.stringify(from)} → ${JSON.stringify(to)} reads "${want}" (got ${JSON.stringify(got)})`);
+    }
+    ok("label-every-field-cased", lib.REVISABLE_FIELDS.every((f) => CASES.some((c) => c[0] === f)), "every revisable field has a case above");
+    ok("label-unknown-field-in-words", lib.changeLine({ field: "someNewSetting", from: 1, to: 2 }) === "some new setting 1 → 2", "a field this client does not know is still named in words");
+    if (typeof chat.ThreadView !== "function") return;
+    const every = keep(
+      render(
+        createElement(chat.ThreadView, {
+          projectId: V1,
+          revisedFromVersion: null,
+          messages: [],
+          revisions: [rev({ changes: CASES.map(([field, from, to]) => ({ field, from, to })) })],
+          streaming: null,
+        }),
+      ),
+    );
+    const t = text(every);
+    ok("label-card-has-every-line", CASES.every(([, , , want]) => t.includes(want)), "a card carrying every field shows each one's line");
+    // "weather" is a field and the plain word for it alike; every other field's name is camelCase.
+    const camel = t.match(/\b[a-z]+[A-Z][A-Za-z]*\b/g) ?? [];
+    ok("label-card-no-field-names", camel.length === 0 && CAMEL_FIELDS().every((f) => !t.includes(f)), `no field name, and no camelCase word, on the card${camel.length ? ` (found ${camel.slice(0, 3).join(", ")})` : ""}`);
+  });
+
   // ─── 3. RENDERING ──────────────────────────────────────────────────────────────────
   await group("Ask about this on each finding", () => {
     const asked = [];
@@ -688,7 +745,7 @@ try {
     const t = text(html);
     const at = html.indexOf('data-testid="datum-change-card"');
     ok("card-shown", count(html, 'data-testid="datum-change-card"') === 1, "a version made from this one draws one change card");
-    ok("card-field-from-to", t.includes("growthRatePct: 2.1 → 1"), `it shows growthRatePct: 2.1 → 1 (got ${JSON.stringify(t.slice(t.indexOf("growth") - 5, t.indexOf("growth") + 40))})`);
+    ok("card-field-from-to", t.includes("growth 2.1% → 1.0%"), `it shows growth 2.1% → 1.0%, in plain words (got ${JSON.stringify(t.slice(t.indexOf("growth") - 5, t.indexOf("growth") + 40))})`);
     ok("card-version-link", new RegExp(`<a\\b[^>]*href="/projects/${V2}"[^>]*>Version 2</a>`).test(html), "and a link to /projects/<new id> reading Version 2");
     ok("card-open-to-see", /Open Version 2 to see its findings/.test(t), "it says to open Version 2 to see its findings, and does not wait for them here");
     ok("card-reason", t.includes("The county's count program shows 1% a year on this corridor."), "it shows the reason");
@@ -698,7 +755,7 @@ try {
     ok("card-source", sourced.includes("County count program, 2025") && !/no source given/.test(sourced), "a change with a source names it");
     ok("card-after-its-message", at > html.indexOf("Re-ran it as Version 2.") && at < html.indexOf("Thanks."), "the card sits under the message that made it");
     const two = text(thread({ changes: [{ field: "passByPct", from: null, to: 10 }, { field: "growthRatePct", from: 2.1, to: null }, { field: "realLaneGeometry", from: false, to: true }] }));
-    ok("card-every-field", two.includes("passByPct: not set → 10") && two.includes("growthRatePct: 2.1 → not set") && two.includes("realLaneGeometry: off → on"), "every changed field is listed, from → to");
+    ok("card-every-field", two.includes("pass-by not set → 10%") && two.includes("growth override removed (was 2.1%)") && two.includes("real lane geometry off → on"), "every changed field is listed, from → to, in plain words");
     const none = text(thread({ changes: [] }));
     ok("card-no-changes", /current engine with the same inputs/.test(none), "a re-run with no changes says it ran on the current engine with the same inputs");
     // A version made from this one that no message names is still shown, never dropped.
@@ -721,7 +778,7 @@ try {
     );
     const head = /<div\b[^>]*data-testid="datum-thread-header"[\s\S]*?(?=<div\b[^>]*data-testid="datum-change-card"|$)/.exec(html)?.[0] ?? "";
     ok("header-revised-from", /Revised from Version 1/.test(text(head)) && new RegExp(`href="/projects/${V1}"`).test(head), `the version's own revision opens the thread: Revised from Version 1, linked (got ${JSON.stringify(text(head).slice(0, 80))})`);
-    ok("header-changes", text(head).includes("growthRatePct: 2.1 → 1") && /Asked by Pat Engineer/.test(text(head)) && /no source given/.test(text(head)), "with its changes, who asked and the source");
+    ok("header-changes", text(head).includes("growth 2.1% → 1.0%") && /Asked by Pat Engineer/.test(text(head)) && /no source given/.test(text(head)), "with its changes, who asked and the source");
     ok("header-before-thread", html.indexOf('data-testid="datum-thread-header"') < html.indexOf('data-testid="datum-change-card"'), "above the thread");
     ok("header-not-a-card", count(html, 'data-testid="datum-change-card"') === 1, "it is not also drawn as a change card; the version made from this one is");
     const v3 = text(render(createElement(chat.ThreadView, { projectId: V3, revisedFromVersion: 1, messages: [], revisions: [rev({ id: R3, projectId: V3, fromProjectId: V1, version: 3 })], streaming: null })));
@@ -748,7 +805,7 @@ try {
     ok("streaming-question-shown", /Use 1% growth\./.test(text(going)) && /I'll re-run it\./.test(text(going)), "the question and the reply so far are shown while it streams");
     ok("streaming-status-line", /<[^>]*data-testid="datum-status"[^>]*>[\s\S]*Re-running with growth 1\.0%…/.test(going), "the status line shows the status event");
     const card = view([{ type: "revision", projectId: V2, version: 2, changes: [{ field: "growthRatePct", from: 2.1, to: 1 }] }]);
-    ok("streaming-card", text(card).includes("growthRatePct: 2.1 → 1") && new RegExp(`<a\\b[^>]*href="/projects/${V2}"[^>]*>Version 2</a>`).test(card) && !/datum-status/.test(card), "a revision event draws its card at once, linked, and the status line goes");
+    ok("streaming-card", text(card).includes("growth 2.1% → 1.0%") && new RegExp(`<a\\b[^>]*href="/projects/${V2}"[^>]*>Version 2</a>`).test(card) && !/datum-status/.test(card), "a revision event draws its card at once, linked, and the status line goes");
     const failed = view([{ type: "text", delta: `\n\n${COULDNT}` }, { type: "error", message: COULDNT }]);
     ok("streaming-couldnt-once", count(text(failed), COULDNT) === 1, `the model-failure line is shown once, not twice (shown ${count(text(failed), COULDNT)} times)`);
     const lost = view([{ type: "text", delta: "Partly" }, { type: "error", message: STREAM_FAILED }]);
@@ -808,6 +865,135 @@ try {
   // ─── 4. THE DRAWER, MOUNTED ────────────────────────────────────────────────────────
   await group("the drawer, mounted", async () => {
     if (typeof chat.DatumChat !== "function" || typeof chat.DrawerView !== "function") return ok("exports-datum-chat", false, "datum-chat.tsx exports DatumChat and DrawerView");
+    const realDocument = globalThis.document;
+    globalThis.document = fakeDom().doc;
+    try {
+      await mountedChecks();
+    } finally {
+      if (realDocument === undefined) delete globalThis.document;
+      else globalThis.document = realDocument;
+    }
+  });
+
+  await group("the page's part: no question is sent twice", async () => {
+    if (typeof chat.useProjectDatum !== "function") return ok("exports-use-project-datum", false, "datum-chat.tsx exports useProjectDatum");
+    const dom = fakeDom();
+    globalThis.document = dom.doc;
+    try {
+      const Page = (p) => chat.useProjectDatum(p.projectId);
+      const { calls, server } = fakeServer();
+      server.readFor = () => readOf();
+      const posts = () => calls.filter((c) => c.method === "POST");
+      server.posts.push(() =>
+        sse(bodyOf([frame({ type: "text", delta: "Re-ran it." }), frame({ type: "revision", projectId: V2, version: 2, changes: [{ field: "growthRatePct", from: 2.1, to: 1 }] }), frame({ type: "done", messageId: M2 })])),
+      );
+      const page = mount(Page, { projectId: V1 });
+      let res = await page.settle();
+      ok("page-chat-on", !!res.chat && res.drawer === null, "the chat is on, and no drawer is open");
+      const QUESTION = "Set growth to 1% per the county";
+      res.chat.askBox.props.onAsk(QUESTION);
+      res = await page.settle();
+      ok("page-box-opens-drawer", res.drawer?.type === chat.DatumChat && res.drawer.props.ask?.text === QUESTION && res.drawer.props.focus === null, "a question in the box opens the drawer with it, about the study as a whole");
+      const d1 = mountChat(res.drawer.props, { attach: dom.attach });
+      await d1.settle();
+      ok("page-box-sent-once", posts().length === 1 && JSON.parse(posts()[0].body).content === QUESTION, "the drawer sends it");
+      res = await page.settle();
+      ok("page-drops-taken-question", res.drawer?.props.ask === null, "and once the drawer has taken it, the page drops it");
+      d1.setProps(res.drawer.props);
+      await d1.settle();
+      d1.unmount();
+      const d2 = mountChat(res.drawer.props, { attach: dom.attach });
+      await d2.settle();
+      ok("page-remount-no-post", posts().length === 1, `a drawer mounted again sends nothing (${posts().length} posts)`);
+
+      // The reported path: open Version 2 from the card, then come back to Version 1 (the link, or Back). The page
+      // component stays mounted the whole time: only its project changes.
+      page.setProps({ projectId: null });
+      res = await page.settle();
+      ok("page-between-versions-closed", res.drawer === null && res.chat === undefined, "between versions there is no drawer and no chat");
+      d2.unmount();
+      page.setProps({ projectId: V2 });
+      res = await page.settle();
+      ok("page-other-version-closed", res.drawer === null, "on Version 2 the drawer is closed");
+      page.setProps({ projectId: V1 });
+      res = await page.settle();
+      ok("page-back-closed", res.drawer === null, "back on Version 1 it is still closed, and does not reopen on the old finding");
+      ok("page-back-no-post", posts().length === 1, `and nothing was sent again (${posts().length} posts)`);
+
+      // Version change with the drawer open, the question not yet sent: closed, and never sent.
+      res.chat.askBox.props.onAsk("A second question");
+      res = await page.settle();
+      ok("pre-page-second-open", res.drawer?.props.ask?.text === "A second question", "precondition: the drawer is open with a question waiting");
+      page.setProps({ projectId: V2 });
+      res = await page.settle();
+      page.setProps({ projectId: V1 });
+      res = await page.settle();
+      ok("page-version-change-drops-unsent", res.drawer === null && posts().length === 1, "a version change with the drawer open closes it, and its question is never sent");
+
+      // "Ask about this" keeps a box question still on its way, and opens on its own finding with no stale question.
+      res.chat.onAsk(FOUR[0]);
+      res = await page.settle();
+      ok("page-ask-about-this", res.drawer?.props.focus === FOUR[0] && res.drawer.props.ask === null, "Ask about this opens on that finding with no question to send");
+      res.chat.askBox.props.onAsk("Third");
+      res = await page.settle();
+      res.chat.onAsk(FOUR[1]);
+      res = await page.settle();
+      ok("page-ask-keeps-waiting-question", res.drawer?.props.focus === FOUR[1] && res.drawer.props.ask?.text === "Third", "a box question not yet taken survives a click on Ask about this");
+      res.drawer.props.onClose();
+      res = await page.settle();
+      ok("page-close", res.drawer === null, "closing the drawer closes it");
+      page.unmount();
+
+      const none = mount(Page, { projectId: null });
+      const r0 = await none.settle();
+      ok("page-not-tis", r0.read === null && r0.chat === undefined && r0.drawer === null && calls.filter((c) => c.method === "GET").length > 0, "no project (another kind of study, or between versions): nothing");
+      none.unmount();
+    } finally {
+      delete globalThis.document;
+    }
+  });
+
+  await group("focus and the keyboard", async () => {
+    if (typeof chat.DatumChat !== "function") return;
+    const markup = render(createElement(chat.DrawerView, drawerProps()));
+    const aside = tagOf(markup, "drawer-datum");
+    const label = /aria-labelledby="([^"]+)"/.exec(aside)?.[1];
+    ok(
+      "drawer-is-labelled-dialog",
+      /role="dialog"/.test(aside) && /aria-modal="false"/.test(aside) && /tabindex="-1"/i.test(aside) && !!label && new RegExp(`<h2\\b[^>]*id="${label}"[^>]*>\\s*Ask Datum`).test(markup),
+      "the drawer is a dialog labelled by its heading, can take focus, and says it is not modal (the panel beside it stays usable)",
+    );
+    const dom = fakeDom();
+    globalThis.document = dom.doc;
+    try {
+      const { server } = fakeServer();
+      server.readFor = () => readOf();
+      const opener = dom.node("ask-about-this");
+      opener.focus();
+      let closed = 0;
+      const props = { projectId: V1, focus: FOUR[0], onClose: () => closed++ };
+      const m = mountChat(props, { attach: dom.attach });
+      m.step();
+      ok("focus-drawer-on-open", dom.doc.activeElement?.name === "aside", `the drawer takes focus as it opens (focus on ${dom.doc.activeElement?.name})`);
+      await m.settle();
+      ok("focus-field-once-loaded", dom.doc.activeElement?.name === "textarea", `the field takes focus once the thread has loaded (focus on ${dom.doc.activeElement?.name})`);
+      opener.focus();
+      dom.press("Escape");
+      ok("escape-anywhere-closes", closed === 1, "Escape pressed anywhere on the page closes the drawer, with focus outside it");
+      const other = dom.node("ask-about-this-2");
+      other.focus();
+      m.setProps({ ...props, focus: FOUR[1] });
+      await m.settle();
+      ok("focus-field-on-new-finding", dom.doc.activeElement?.name === "textarea", "Ask about this on another finding puts focus in the field, so Enter sends rather than pressing Ask again");
+      m.unmount();
+      ok("focus-back-to-opener", dom.doc.activeElement === opener, `closing gives focus back to what opened the drawer (focus on ${dom.doc.activeElement?.name})`);
+      ok("escape-listener-removed", dom.listeners() === 0 && (dom.press("Escape"), closed === 1), "and Escape is no longer listened for");
+    } finally {
+      delete globalThis.document;
+    }
+  });
+
+  async function mountedChecks() {
     const focus = FOUR[1];
     const saved = readOf({
       messages: [msg(M1, "engineer", chat.DEFAULT_QUESTION, { findingId: focus.id }), msg(M2, "datum", "Re-ran it as Version 2.", { revisionId: R2 })],
@@ -850,7 +1036,7 @@ try {
       );
       ok("mount-revised-once", revised === 1, "the page hears of it once");
       const html = text(render(el));
-      ok("mount-saved-card", html.includes("growthRatePct: 2.1 → 1") && /Asked by Pat Engineer/.test(html), "the saved change card shows, with who asked");
+      ok("mount-saved-card", html.includes("growth 2.1% → 1.0%") && /Asked by Pat Engineer/.test(html), "the saved change card shows, with who asked");
       m.unmount();
     }
 
@@ -947,7 +1133,7 @@ try {
       ok("mount-off-sends-nothing", calls.every((c) => c.method === "GET") && !/<textarea/.test(render(el)), "a chat that turns out to be off sends nothing and has nothing to type in");
       m.unmount();
     }
-  });
+  }
 
   // ─── 5. COPY ───────────────────────────────────────────────────────────────────────
   await group("copy", () => {
@@ -958,6 +1144,12 @@ try {
       const hit = bannedIn(src);
       ok("source-avoids-banned-copy", src.length > 0 && hit === null, `${label} avoids the banned phrases, comments included${hit ? ` (found ${JSON.stringify(hit)})` : ""}`);
     }
+    const cardTexts = everyHtml.flatMap((h) =>
+      [...h.matchAll(/<div\b[^>]*data-testid="datum-(?:change-card|thread-header)"[\s\S]*?(?=<div\b[^>]*data-testid="datum-(?:change-card|thread-header|message-|streaming|status)|<\/aside>|$)/g)].map((m) => text(m[0])),
+    );
+    const named = cardTexts.filter((c) => /\b[a-z]+[A-Z][A-Za-z]*\b/.test(c) || CAMEL_FIELDS().some((f) => c.includes(f)));
+    ok("pre-cards-drawn", cardTexts.length >= 8, `precondition: ${cardTexts.length} change cards and thread headers were drawn above`);
+    ok("cards-never-name-fields", named.length === 0, `no change card or thread header drawn anywhere above names a field as code${named.length ? ` (e.g. ${JSON.stringify(named[0].slice(0, 80))})` : ""}`);
     ok("no-react-warnings", warnings.length === 0, `rendering raised no React warnings${warnings.length ? `: ${warnings[0]}` : ""}`);
   });
 } finally {
@@ -993,12 +1185,12 @@ function drawerProps(o = {}) {
  */
 function fakeServer() {
   const calls = [];
-  const server = { reads: [], posts: [] };
+  const server = { reads: [], posts: [], readFor: null };
   globalThis.fetch = async (url, init = {}) => {
     const method = init.method ?? "GET";
     calls.push({ url: String(url), method, body: init.body, signal: init.signal });
     if (method === "GET") {
-      const next = server.reads.shift();
+      const next = server.readFor ? server.readFor(String(url)) : server.reads.shift();
       return next === undefined ? json(500, { error: "no read stubbed" }) : json(200, next);
     }
     const next = server.posts.shift();
@@ -1008,12 +1200,15 @@ function fakeServer() {
 }
 
 /**
- * Just enough of React's hooks to call DatumChat as a plain function and read the element it returns: useState (a
- * value or an updater), useRef, and useEffect, which runs on `commit` after the render that scheduled it (again only
- * when its deps change), with its cleanup on `unmount`. `settle` renders and commits until nothing changes, letting
- * the stubbed fetches and streams run in between.
+ * Just enough of React's hooks to call a component (DatumChat) or a hook (useProjectDatum, through a one-line
+ * component) as a plain function and read what it returns: useState (a value or an updater), useRef, and useEffect,
+ * which runs on commit after the render that scheduled it (again only when its deps change), with its cleanup on
+ * `unmount`. A render that is not committed is discarded, effects and all, as React discards it. `attach` runs between
+ * render and commit, where React would attach refs. `settle` renders and commits until nothing changes, letting the
+ * stubbed fetches and streams run in between. `setProps` is the parent rendering it with new props.
  */
-function mountChat(props) {
+function mount(Component, initialProps, { attach } = {}) {
+  let props = initialProps;
   const slots = [];
   let queued = [];
   let at = 0;
@@ -1051,11 +1246,14 @@ function mountChat(props) {
     at = 0;
     queued = [];
     globalThis[HOOKS_KEY] = hooks;
+    let el;
     try {
-      return chat.DatumChat(props);
+      el = Component(props);
     } finally {
       delete globalThis[HOOKS_KEY];
     }
+    attach?.(el);
+    return el;
   };
   const commit = () => {
     const run = queued;
@@ -1064,14 +1262,24 @@ function mountChat(props) {
   };
   return {
     render,
+    /** One render and its commit. */
+    step() {
+      const el = render();
+      commit();
+      return el;
+    },
+    setProps(next) {
+      props = next;
+      dirty = true;
+    },
     async settle() {
-      let el = render();
+      render();
       commit();
       for (let i = 0; i < 40; i++) {
         await tick();
         if (dirty || queued.length) {
           dirty = false;
-          el = render();
+          render();
           commit();
         }
       }
@@ -1081,4 +1289,54 @@ function mountChat(props) {
       for (const slot of slots) if (typeof slot?.cleanup === "function") slot.cleanup();
     },
   };
+}
+function mountChat(props, opts) {
+  return mount(chat.DatumChat, props, opts);
+}
+
+/**
+ * A stub document: activeElement, keydown listeners, and nodes that take focus. `node(name, {inside})` is an element;
+ * one made with `{container: true}` contains itself and every node made `inside`. `press(key)` is a key pressed
+ * anywhere on the page.
+ */
+function fakeDom() {
+  const keydown = new Set();
+  const doc = {
+    activeElement: null,
+    body: null,
+    addEventListener(type, fn) {
+      if (type === "keydown") keydown.add(fn);
+    },
+    removeEventListener(type, fn) {
+      if (type === "keydown") keydown.delete(fn);
+    },
+  };
+  const node = (name, o = {}) => {
+    const n = {
+      name,
+      isConnected: true,
+      inside: !!o.inside,
+      focus() {
+        doc.activeElement = n;
+      },
+      contains: (x) => x === n || (o.container === true && x?.inside === true),
+    };
+    return n;
+  };
+  doc.body = node("body");
+  doc.activeElement = doc.body;
+  const press = (key) => {
+    const e = { key, isComposing: false, defaultPrevented: false, preventDefault() {
+      e.defaultPrevented = true;
+    } };
+    for (const fn of [...keydown]) fn(e);
+    return e;
+  };
+  /** For DatumChat's DrawerView element: give its drawer and, once there is one, its field a stub node. */
+  const attach = (el) => {
+    if (!el?.props) return;
+    if (el.props.drawerRef && !el.props.drawerRef.current) el.props.drawerRef.current = node("aside", { inside: true, container: true });
+    if (el.props.fieldRef && el.props.read?.enabled === true && !el.props.fieldRef.current) el.props.fieldRef.current = node("textarea", { inside: true });
+  };
+  return { doc, node, press, attach, listeners: () => keydown.size };
 }
