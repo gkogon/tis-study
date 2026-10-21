@@ -1720,12 +1720,17 @@ t("the prompt says that after a re-run Datum states what changed and tells the e
 t("the prompt says not to claim a finding cleared, since the new version's proofread has not been seen", () => /cleared|clear/i.test(SYSTEM_PROMPT) && /not seen|have not seen|haven't seen|has not been seen|cannot see|can't see/i.test(SYSTEM_PROMPT));
 t("the prompt says a refused re-run is reported with its reason and is not retried with a value Datum picks", () =>
   /refus/i.test(SYSTEM_PROMPT) && /nothing was re-run|nothing is re-run|nothing ran/i.test(SYSTEM_PROMPT) && /do not retry|don't retry|not retry/i.test(SYSTEM_PROMPT));
-// run.ts counts a re-run before revise answers, so a refusal from revise leaves the message no second re-run
-// (LIMIT_REACHED). Changes the engineer asked for beside the refused one are then not made in this message.
-t("the prompt's refusal paragraph says a refused re-run still uses the message's one re-run, so Datum tells the engineer to send their other changes again", () => {
-  const paragraph = SYSTEM_PROMPT.split("\n").find((line) => line.startsWith("If the tool refuses")) ?? "";
-  return paragraph.includes("A refused re-run still uses this message's one re-run, so if the engineer also asked for other changes, tell them to send those again");
-});
+// run.ts counts a re-run (reruns += 1) only after RerunToolInput.safeParse passes, and before revise answers. So a
+// refusal from revise (a re-run already going, the version limit, the firm's allowance, saved inputs the generator's
+// checks reject) leaves the message no second re-run (LIMIT_REACHED), and the changes the engineer asked for beside
+// the refused one are not made in this message. A call the schema rejects does not use the re-run, and its tool answer
+// invites a corrected call.
+const REFUSAL_PARAGRAPH = SYSTEM_PROMPT.split("\n").find((line) => line.startsWith("If the tool refuses")) ?? "";
+t("the prompt's refusal paragraph says only a refusal from the re-run itself uses the message's one re-run, so Datum tells the engineer to send their other changes again", () =>
+  REFUSAL_PARAGRAPH.includes("When the re-run itself is refused (a re-run already going, the version limit, the firm's allowance, or saved inputs that no longer pass the generator's checks), it still uses this message's one re-run, so if the engineer also asked for other changes, tell them to send those again in a new message."));
+t("the prompt's refusal paragraph says to correct a call the tool rejects for its own input, and no longer claims every refusal spends the re-run", () =>
+  REFUSAL_PARAGRAPH.includes("When the tool rejects the call's own input instead, correct the call if the engineer gave you what you need, and otherwise say what is wrong.") &&
+  !REFUSAL_PARAGRAPH.includes("A refused re-run still uses this message's one re-run"));
 
 // --- What dropping the growth override really does (fix round 1) -----------------------------------------
 // The engine: growth = override ?? measured regional rate ?? screening default (tis.ts), and the measured
