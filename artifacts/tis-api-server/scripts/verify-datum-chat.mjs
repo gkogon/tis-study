@@ -18,6 +18,11 @@
  *               full clause guide, then the pack), and the history builder.
  *   run         lib/datum-chat/run.ts: the model tool loop, driven by a fake client (no network, no SDK): one
  *               streamed reply, at most one re-run, four model calls at most, and a client that disconnects.
+ *   revise      lib/datum-chat/revise.ts: the re-run orchestration, every dep a fake: the uncharged gate, one
+ *               re-run per user, the 25-version cap, the merge, the engine, the coverage warning, the save and the
+ *               proofread of the new version, in that order; a failure is logged and answered, never thrown.
+ *               The DB side (study-revisions.ts, datum-chat/store.ts) is proved against a real throwaway
+ *               Postgres by scripts/proofread-pg-harness, not here.
  *
  * The contract is imported by file URL with no loader: Node strips the types.
  * That works only while datum-chat.ts reaches GenerateTisBody through an explicit
@@ -425,6 +430,7 @@ const NEW_IDS = [
   "study_revisions.uq_project",
   "study_datum_messages.create",
   "study_datum_messages.idx_project",
+  "study_datum_messages.idx_firm_created",
 ];
 const idCount = (id) => statements.filter((s) => s.id === id).length;
 const sqlOf = (id) => (statements.find((s) => s.id === id)?.sql ?? "").replace(/\s+/g, " ").trim();
@@ -445,7 +451,12 @@ ok("none of the new statements is a destructive one, read as a whole", NEW.lengt
 // whose table or referent is created later is skipped, silently, on a first boot.
 const at = (id) => statements.findIndex((s) => s.id === id);
 ok("the new statements come after the proofread tables they reference", at("study_revisions.create") > at("study_proofread_findings.create") && at("study_datum_messages.create") > at("study_proofread_findings.create"));
-ok("each index comes after the table it indexes", at("study_revisions.uq_project") > at("study_revisions.create") && at("study_datum_messages.idx_project") > at("study_datum_messages.create"));
+ok(
+  "each index comes after the table it indexes",
+  at("study_revisions.uq_project") > at("study_revisions.create") &&
+    at("study_datum_messages.idx_project") > at("study_datum_messages.create") &&
+    at("study_datum_messages.idx_firm_created") > at("study_datum_messages.create"),
+);
 ok("the root index comes after its column", at("tis_projects.idx_root") > at("tis_projects.root_project_id"));
 
 // tis_projects: two nullable uuid columns that point back at tis_projects, SET NULL.
@@ -473,6 +484,11 @@ ok(
   "study_datum_messages.idx_project: an index on (project_id, created_at), the thread read",
   /^CREATE INDEX IF NOT EXISTS "IDX_study_datum_messages_project" ON study_datum_messages \(project_id, created_at\);$/.test(sqlOf("study_datum_messages.idx_project")),
   sqlOf("study_datum_messages.idx_project"),
+);
+ok(
+  "study_datum_messages.idx_firm_created: an index on (firm_id, created_at), the firm's 24-hour reply count",
+  /^CREATE INDEX IF NOT EXISTS "IDX_study_datum_messages_firm_created" ON study_datum_messages \(firm_id, created_at\);$/.test(sqlOf("study_datum_messages.idx_firm_created")),
+  sqlOf("study_datum_messages.idx_firm_created"),
 );
 
 /** `CREATE TABLE IF NOT EXISTS name (col defs);` -> Map(column -> definition text), splitting on top-level commas. */
@@ -585,6 +601,7 @@ for (const [label, dz, tbl] of [["study_revisions", dzRev, rev], ["study_datum_m
 }
 ok("drizzle declares the unique index on study_revisions.project_id under the migration's name", dzRev !== null && /uniqueIndex\("UQ_study_revisions_project"\)\s*\.on\(table\.projectId\)/.test(dzRev.body));
 ok("drizzle declares the thread index (project_id, created_at) under the migration's name", dzMsg !== null && /index\("IDX_study_datum_messages_project"\)\s*\.on\(table\.projectId,\s*table\.createdAt\)/.test(dzMsg.body));
+ok("drizzle declares the firm reply-count index (firm_id, created_at) under the migration's name", dzMsg !== null && /index\("IDX_study_datum_messages_firm_created"\)\s*\.on\(table\.firmId,\s*table\.createdAt\)/.test(dzMsg.body));
 ok("drizzle study_revisions has no updated_at", dzRev !== null && !/updated_at/.test(dzRev.body));
 ok("both new drizzle tables use uuid ids that default to gen_random_uuid()", [dzRev, dzMsg].every((d) => d !== null && /id:\s*uuid\("id"\)\.primaryKey\(\)\.default\(sql`gen_random_uuid\(\)`\)/.test(d.body)));
 ok("drizzle exports studyRevisionsTable and studyDatumMessagesTable", /export const studyRevisionsTable\s*=\s*pgTable\(/.test(dzSrc) && /export const studyDatumMessagesTable\s*=\s*pgTable\(/.test(dzSrc));
@@ -2497,6 +2514,304 @@ t("run.ts passes no budget_tokens, no fallbacks and no betas, and never forces a
 t("run.ts names the model once, as claude-opus-5-5", () => runCode.split("claude-opus-5-5").length === 2);
 t("run.ts contains none of the phrases the product never writes", () => runSrc.length > 1000 && bannedFree(runSrc));
 t("run.ts imports its tools from tools.ts and nothing from the SDK, db, logger or network", () => /from\s+"\.\/tools\.ts"/.test(runCode) && !/@anthropic-ai\/sdk/.test(runCode));
+
+// ===========================================================================
+// revise
+// ===========================================================================
+section("revise");
+
+const REVISE_REL = "artifacts/tis-api-server/src/lib/datum-chat/revise.ts";
+const { mod: RV, error: reviseError } = await importByUrl(REVISE_REL);
+ok("the revise module loads under plain node (no loader)", reviseError === null, reviseError ?? undefined);
+const reviseSrc = read(REVISE_REL);
+pinPure("revise.ts", reviseSrc);
+const reviseCode = stripComments(reviseSrc);
+const reviseStudy = typeof RV.reviseStudy === "function" ? RV.reviseStudy : async () => ({ ok: false, error: "reviseStudy is not exported" });
+
+// --- The fakes -------------------------------------------------------------------------------------
+// Each dep records its arguments and answers what a working server would; a test replaces the one it is about.
+const RV_FIRM = { id: randomUUID(), studyLimit: 10, studiesUsedThisPeriod: 3, studyCreditsRemaining: 0, subscriptionStatus: "active" };
+const RV_USER = { id: "user-rv", email: "rv@example.test" };
+const RV_PARENT_ID = randomUUID();
+const RV_NEW_ID = randomUUID();
+const RV_REVISION_ID = randomUUID();
+const RV_MESSAGE_ID = randomUUID();
+const RV_FINDING_ID = randomUUID();
+/** The parent as getProject returns it: the stored (parsed) request, sensitivity on, a study generated from scratch (its own root). */
+const RV_STORED = { ...STORED, runSensitivity: true };
+const rvParent = (over = {}) => ({ id: RV_PARENT_ID, firmId: RV_FIRM.id, rootProjectId: null, version: 1, requestPayload: structuredClone(RV_STORED), resultPayload: { marker: "parent" }, ...over });
+const RV_REPORT = { marker: "engine report", coverageWarning: undefined };
+const RV_COVERAGE = { code: "no_signals_in_radius", message: "No signalized intersection was found within the study radius of this site." };
+const RV_INPUT = { changes: { growthRatePct: 1 }, reason: "The county's letter gives 1% a year.", sourceLabel: "  County letter, 2026-09-14  " };
+
+function reviseFakes(over = {}) {
+  const calls = { getParent: [], firmGate: [], countLineage: [], generate: [], parseResult: [], createRevision: [], enqueueProofread: [], log: [] };
+  const deps = {
+    getParent: async (firmId, id) => {
+      calls.getParent.push([firmId, id]);
+      return rvParent();
+    },
+    firmGate: (firm, email) => {
+      calls.firmGate.push([firm, email]);
+      return { ok: true };
+    },
+    inFlight: new Set(),
+    countLineage: async (firmId, rootId) => {
+      calls.countLineage.push([firmId, rootId]);
+      return 1;
+    },
+    generate: async (request) => {
+      calls.generate.push({ request: structuredClone(request), heldLock: deps.inFlight.has(RV_USER.id) });
+      return { ...RV_REPORT };
+    },
+    parseResult: (report) => {
+      calls.parseResult.push(report);
+      return { ...report, parsed: true };
+    },
+    createRevision: async (args) => {
+      calls.createRevision.push(args);
+      return { projectId: RV_NEW_ID, version: 2, revisionId: RV_REVISION_ID };
+    },
+    enqueueProofread: async (args) => {
+      calls.enqueueProofread.push(args);
+    },
+    log: (err, ctx) => {
+      calls.log.push({ err, ctx });
+    },
+  };
+  for (const [k, v] of Object.entries(over)) deps[k] = typeof v === "function" && k in calls ? (...a) => (calls[k].push(a), v(...a)) : v;
+  return { deps, calls };
+}
+const rvArgs = (over = {}) => ({ firm: RV_FIRM, user: RV_USER, parentId: RV_PARENT_ID, input: structuredClone(RV_INPUT), messageId: RV_MESSAGE_ID, findingId: RV_FINDING_ID, clauseId: "growthOverride", ...over });
+/** reviseStudy, with what it threw (it must not) kept apart from what it answered. */
+async function revise(deps, args = rvArgs()) {
+  try {
+    return { res: await reviseStudy(deps, args), threw: null };
+  } catch (e) {
+    return { res: null, threw: e };
+  }
+}
+const refusedWith = (r, re) => r.threw === null && r.res?.ok === false && typeof r.res.error === "string" && re.test(r.res.error) && !("projectId" in r.res);
+
+// --- The happy path --------------------------------------------------------------------------------
+{
+  const { deps, calls } = reviseFakes();
+  const r = await revise(deps);
+  const merged = T.applyRevisionChanges?.(rvParent().requestPayload, RV_INPUT) ?? {};
+  t("the happy path: ok, with the new version's id and number and the changes made", () =>
+    r.threw === null && r.res?.ok === true && r.res.projectId === RV_NEW_ID && r.res.version === 2 && isDeepStrictEqual(r.res.changes, [{ field: "growthRatePct", from: 2.1, to: 1 }]));
+  t("the happy path: the result has exactly the shape run.ts's revise returns (ok, projectId, version, changes)", () => sameSet(Object.keys(r.res ?? {}), ["ok", "projectId", "version", "changes"]));
+  t("the happy path: the fake generate saw growthRatePct: 1, once", () => calls.generate.length === 1 && calls.generate[0].request.growthRatePct === 1);
+  t("the happy path: generate ran the merge's request, so every other field is the parent's", () => merged.ok === true && isDeepStrictEqual(calls.generate[0].request, merged.request));
+  t("runSensitivity is kept as the parent had it (on here), not forced off the way /whatif forces it", () => calls.generate[0]?.request.runSensitivity === true);
+  t("the happy path: the gate was asked about this firm and this user's email", () => calls.firmGate.length === 1 && calls.firmGate[0][0] === RV_FIRM && calls.firmGate[0][1] === RV_USER.email);
+  t("the happy path: the parent was read within the firm", () => calls.getParent.length === 1 && calls.getParent[0][0] === RV_FIRM.id && calls.getParent[0][1] === RV_PARENT_ID);
+  t("the happy path: the lineage was counted from the parent, which is its own root", () => calls.countLineage.length === 1 && calls.countLineage[0][0] === RV_FIRM.id && calls.countLineage[0][1] === RV_PARENT_ID);
+  t("the happy path: parseResult got generate's report", () => calls.parseResult.length === 1 && calls.parseResult[0].marker === RV_REPORT.marker);
+  const cr = calls.createRevision[0] ?? {};
+  t("the happy path: createRevision is called once, with the changes from the merge", () => calls.createRevision.length === 1 && merged.ok === true && isDeepStrictEqual(cr.changes, merged.changes));
+  t("the happy path: createRevision gets the parent, the firm, the user who asked, the request generate ran and the parsed result", () =>
+    cr.parentId === RV_PARENT_ID && cr.firmId === RV_FIRM.id && cr.userId === RV_USER.id && isDeepStrictEqual(cr.request, calls.generate[0]?.request) && cr.result?.parsed === true && cr.result.marker === RV_REPORT.marker);
+  t("the happy path: createRevision gets the reason, the trimmed source, the message, the finding and the clause", () =>
+    cr.reason === RV_INPUT.reason && cr.sourceLabel === "County letter, 2026-09-14" && cr.messageId === RV_MESSAGE_ID && cr.findingId === RV_FINDING_ID && cr.clauseId === "growthOverride");
+  t("the happy path: createRevision gets exactly the arguments its signature names", () =>
+    sameSet(Object.keys(cr), ["parentId", "firmId", "userId", "request", "result", "changes", "reason", "sourceLabel", "messageId", "findingId", "clauseId"]));
+  t("the happy path: enqueueProofread gets the new version's id, the firm and the user, once", () =>
+    calls.enqueueProofread.length === 1 && isDeepStrictEqual(calls.enqueueProofread[0], { projectId: RV_NEW_ID, firmId: RV_FIRM.id, userId: RV_USER.id }));
+  t("the happy path: the lock was held while the engine ran, and is gone afterwards", () => calls.generate[0]?.heldLock === true && deps.inFlight.size === 0);
+  t("the happy path: nothing was logged", () => calls.log.length === 0);
+}
+{
+  const parent = rvParent();
+  const before = JSON.stringify(parent.requestPayload);
+  const { deps } = reviseFakes({ getParent: async () => parent });
+  await revise(deps);
+  t("the parent row getParent returned is left as it was (the merge works on a copy)", () => JSON.stringify(parent.requestPayload) === before);
+}
+{
+  const ROOT = randomUUID();
+  const { deps, calls } = reviseFakes({ getParent: async () => rvParent({ rootProjectId: ROOT, version: 3 }) });
+  await revise(deps);
+  t("a parent that is a later version counts its lineage by the root it names, not by its own id", () => calls.countLineage.length === 1 && calls.countLineage[0][1] === ROOT);
+}
+
+// --- The source and the finding ---------------------------------------------------------------------
+for (const [label, sourceLabel] of [["left out", undefined], ["blank", "   "]]) {
+  const input = { ...structuredClone(RV_INPUT), sourceLabel };
+  if (sourceLabel === undefined) delete input.sourceLabel;
+  const { deps, calls } = reviseFakes();
+  const r = await revise(deps, rvArgs({ input }));
+  t(`a source ${label}: createRevision gets sourceLabel null, so the log says no source was given (the string is never stored)`, () =>
+    r.res?.ok === true && calls.createRevision[0]?.sourceLabel === null);
+}
+{
+  const { deps, calls } = reviseFakes();
+  const r = await revise(deps, rvArgs({ findingId: undefined, clauseId: undefined, input: { ...structuredClone(RV_INPUT), findingId: randomUUID() } }));
+  t("a finding id only the model named (not the caller) is not written: findingId and clauseId are null", () =>
+    r.res?.ok === true && calls.createRevision[0]?.findingId === null && calls.createRevision[0]?.clauseId === null);
+}
+{
+  const { deps, calls } = reviseFakes();
+  const r = await revise(deps, rvArgs({ messageId: null }));
+  t("a null messageId is passed on as null", () => r.res?.ok === true && calls.createRevision[0]?.messageId === null);
+}
+
+// --- Refusals before the engine runs ------------------------------------------------------------------
+{
+  const { deps, calls } = reviseFakes({ firmGate: () => ({ ok: false, reason: "subscription_delinquent" }) });
+  const r = await revise(deps);
+  t("a delinquent firm: ok:false, 'Your firm has no studies left…'", () => refusedWith(r, /^Your firm has no studies left/));
+  t("a delinquent firm: generate is not called, nothing is read, saved or queued", () =>
+    calls.generate.length === 0 && calls.getParent.length === 0 && calls.countLineage.length === 0 && calls.createRevision.length === 0 && calls.enqueueProofread.length === 0);
+  t("a delinquent firm: the in-flight set is left empty", () => deps.inFlight.size === 0);
+}
+{
+  const { deps, calls } = reviseFakes({ firmGate: () => ({ ok: false, reason: "quota_exceeded" }) });
+  const r = await revise(deps);
+  t("a firm at its quota with no credits: the same refusal, and generate is not called", () => refusedWith(r, /^Your firm has no studies left/) && calls.generate.length === 0);
+}
+{
+  const { deps, calls } = reviseFakes();
+  deps.inFlight.add(RV_USER.id);
+  const r = await revise(deps);
+  t("a user in flight: ok:false, 'A re-run is already going…'", () => refusedWith(r, /^A re-run is already going/));
+  t("a user in flight: generate is not called, and the lineage is not counted", () => calls.generate.length === 0 && calls.countLineage.length === 0 && calls.createRevision.length === 0);
+  t("a user in flight: the other re-run's lock is not released by this refusal", () => deps.inFlight.has(RV_USER.id) && deps.inFlight.size === 1);
+}
+{
+  const { deps } = reviseFakes({ firmGate: () => ({ ok: false, reason: "quota_exceeded" }) });
+  deps.inFlight.add(RV_USER.id);
+  const r = await revise(deps);
+  t("the gate is checked before the in-flight lock: a delinquent firm's user in flight hears about the firm", () => refusedWith(r, /^Your firm has no studies left/));
+}
+{
+  const { deps, calls } = reviseFakes({ countLineage: async () => 25 });
+  const r = await revise(deps);
+  t("a lineage count of 25: ok:false at the cap, 'This study has 25 versions…'", () => refusedWith(r, /^This study has 25 versions/));
+  t("at the cap: generate is not called and nothing is saved", () => calls.generate.length === 0 && calls.createRevision.length === 0 && calls.enqueueProofread.length === 0);
+  t("at the cap: the lock is released", () => deps.inFlight.size === 0);
+}
+{
+  const { deps, calls } = reviseFakes({ countLineage: async () => 24 });
+  const r = await revise(deps);
+  t("a lineage count of 24: the re-run makes the 25th version", () => r.res?.ok === true && calls.generate.length === 1);
+}
+{
+  const { deps, calls } = reviseFakes({ countLineage: async () => 40 });
+  const r = await revise(deps);
+  t("a lineage already past the cap (made before it existed) is refused the same way", () => refusedWith(r, /^This study has 25 versions/) && calls.generate.length === 0);
+}
+{
+  const { deps, calls } = reviseFakes({ getParent: async () => null });
+  const r = await revise(deps);
+  t("a parent outside the firm (getParent null): ok:false, nothing run, the lock released", () =>
+    refusedWith(r, /not found/i) && calls.countLineage.length === 0 && calls.generate.length === 0 && deps.inFlight.size === 0);
+}
+{
+  const { deps, calls } = reviseFakes();
+  const r = await revise(deps, rvArgs({ input: { changes: { growthRatePct: 99 }, reason: "r" } }));
+  const direct = T.applyRevisionChanges?.(rvParent().requestPayload, { changes: { growthRatePct: 99 }, reason: "r" });
+  t("a change the merge refuses: ok:false with the merge's own message, and generate is not called", () =>
+    direct?.ok === false && r.res?.ok === false && r.res.error === direct.error && calls.generate.length === 0 && calls.createRevision.length === 0);
+  t("a change the merge refuses: the lock is released", () => deps.inFlight.size === 0);
+}
+{
+  const { deps, calls } = reviseFakes({ getParent: async () => rvParent({ requestPayload: { ...structuredClone(RV_STORED), studyRadiusMi: 7 } }) });
+  const r = await revise(deps);
+  t("saved inputs that fail today's schema: refused pointing to the generator, and the engine is not run", () =>
+    refusedWith(r, /saved inputs.*no longer pass.*generator/i) && /studyRadiusMi/.test(r.res?.error ?? "") && calls.generate.length === 0);
+}
+
+// --- After the engine runs -------------------------------------------------------------------------
+{
+  const { deps, calls } = reviseFakes({ generate: async () => ({ ...RV_REPORT, coverageWarning: RV_COVERAGE }) });
+  const r = await revise(deps);
+  t("a coverage warning: ok:false with that message", () => r.threw === null && r.res?.ok === false && r.res.error === RV_COVERAGE.message);
+  t("a coverage warning: no createRevision, no parse, nothing queued", () => calls.createRevision.length === 0 && calls.parseResult.length === 0 && calls.enqueueProofread.length === 0);
+  t("a coverage warning: the lock is released", () => deps.inFlight.size === 0);
+}
+
+// --- Errors free the lock, and are logged, never thrown ----------------------------------------------
+for (const [dep, make] of [
+  ["generate", () => async () => { throw new Error("engine exploded 7c1d"); }],
+  ["parseResult", () => () => { throw new Error("parse exploded 7c1d"); }],
+  ["createRevision", () => async () => { throw new Error("insert exploded 7c1d"); }],
+  ["getParent", () => async () => { throw new Error("read exploded 7c1d"); }],
+  ["countLineage", () => async () => { throw new Error("count exploded 7c1d"); }],
+  ["firmGate", () => () => { throw new Error("gate exploded 7c1d"); }],
+]) {
+  const { deps, calls } = reviseFakes({ [dep]: make() });
+  const r = await revise(deps);
+  t(`${dep} throws: ok:false 'The re-run failed', and reviseStudy does not throw`, () => refusedWith(r, /^The re-run failed/));
+  t(`${dep} throws: the in-flight set is empty afterwards`, () => deps.inFlight.size === 0);
+  t(`${dep} throws: log gets the very error and a context naming the firm, the user and the parent`, () =>
+    calls.log.length === 1 && calls.log[0].err instanceof Error && /exploded 7c1d/.test(calls.log[0].err.message) && calls.log[0].ctx?.firmId === RV_FIRM.id && calls.log[0].ctx?.userId === RV_USER.id && calls.log[0].ctx?.parentId === RV_PARENT_ID);
+  t(`${dep} throws: the engineer-facing error carries nothing of the cause`, () => !/7c1d|exploded/.test(r.res?.error ?? "7c1d"));
+  if (dep !== "createRevision") t(`${dep} throws: nothing is saved or queued`, () => calls.createRevision.length === 0 && calls.enqueueProofread.length === 0);
+}
+{
+  const { deps } = reviseFakes({ generate: async () => { throw new Error("x"); } });
+  delete deps.log;
+  const r = await revise(deps);
+  t("with no log dep, a failure is still ok:false and the lock is still released", () => refusedWith(r, /^The re-run failed/) && deps.inFlight.size === 0);
+}
+{
+  const { deps } = reviseFakes({ generate: async () => { throw new Error("x"); }, log: () => { throw new Error("the log itself broke"); } });
+  const r = await revise(deps);
+  t("a log that throws does not make reviseStudy throw", () => refusedWith(r, /^The re-run failed/) && deps.inFlight.size === 0);
+}
+
+// --- The proofread of the new version is fire-and-forget -----------------------------------------
+{
+  let rejected = null;
+  const { deps, calls } = reviseFakes({ enqueueProofread: () => { rejected = Promise.reject(new Error("queue down 5e2a")); return rejected; } });
+  const r = await revise(deps);
+  await tick();
+  t("enqueueProofread rejecting: the re-run is still ok (the version is saved), and the rejection is logged, not left unhandled", () =>
+    r.res?.ok === true && r.res.projectId === RV_NEW_ID && calls.log.some((l) => /queue down 5e2a/.test(l.err?.message ?? "") && l.ctx?.projectId === RV_NEW_ID));
+}
+{
+  const { deps, calls } = reviseFakes({ enqueueProofread: () => { throw new Error("sync queue failure 9b3f"); } });
+  const r = await revise(deps);
+  t("enqueueProofread throwing synchronously: still ok, and logged", () => r.res?.ok === true && calls.log.some((l) => /9b3f/.test(l.err?.message ?? "")));
+}
+{
+  let release;
+  const gate = new Promise((resolve) => (release = resolve));
+  const { deps, calls } = reviseFakes({ enqueueProofread: () => gate });
+  const r = await Promise.race([revise(deps), new Promise((resolve) => setTimeout(() => resolve("waited"), 200))]);
+  release();
+  t("reviseStudy does not wait for the proofread pass (enqueueProofread is not awaited)", () => r !== "waited" && r.res?.ok === true && calls.enqueueProofread.length === 1);
+}
+
+// --- One at a time per user ----------------------------------------------------------------------
+{
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  const { deps, calls } = reviseFakes({ generate: async () => { await held; return { ...RV_REPORT }; } });
+  const first = revise(deps);
+  await tick();
+  const second = await revise(deps);
+  const other = await (async () => {
+    const userB = { id: "user-rv-b", email: "b@example.test" };
+    const { deps: d2 } = reviseFakes();
+    d2.inFlight = deps.inFlight;
+    return revise(d2, rvArgs({ user: userB }));
+  })();
+  release();
+  const firstDone = await first;
+  t("a second re-run by the same user while the first is running is refused 'already going'", () => refusedWith(second, /^A re-run is already going/));
+  t("another user of the same firm is not held up by that lock", () => other.res?.ok === true);
+  t("the first re-run still finishes, and every lock is released afterwards", () => firstDone.res?.ok === true && deps.inFlight.size === 0 && calls.createRevision.length === 1);
+}
+
+// --- What the source says --------------------------------------------------------------------------
+t("the source never charges: revise.ts contains no reserveStudySlot", () => reviseSrc.length > 500 && !/reserveStudySlot/.test(reviseSrc));
+t("revise.ts releases no slot and saves no project the charged way (no releaseStudySlot, no saveProject)", () => reviseSrc.length > 500 && !/releaseStudySlot|saveProject/.test(reviseSrc));
+t("revise.ts takes the cap from DATUM_LIMITS.versionsPerLineage, not from a literal", () => /DATUM_LIMITS\.versionsPerLineage/.test(reviseCode) && !/\b25\b/.test(reviseCode));
+t("revise.ts calls applyRevisionChanges from tools.ts", () => /from\s+"\.\/tools\.ts"/.test(reviseCode) && /applyRevisionChanges\(/.test(reviseCode));
+t("revise.ts removes the in-flight key in a finally", () => /finally\s*\{[^}]*inFlight\.delete\(/.test(reviseCode));
+t("revise.ts contains none of the phrases the product never writes", () => reviseSrc.length > 500 && bannedFree(reviseSrc));
 
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);
 process.exit(fails === 0 ? 0 : 1);

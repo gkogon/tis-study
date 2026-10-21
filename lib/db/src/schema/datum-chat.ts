@@ -85,7 +85,11 @@ export const studyDatumMessagesTable = pgTable(
     stopReason: varchar("stop_reason", { length: 64 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
-  (table) => [index("IDX_study_datum_messages_project").on(table.projectId, table.createdAt)],
+  (table) => [
+    index("IDX_study_datum_messages_project").on(table.projectId, table.createdAt),
+    // The firm's rolling 24-hour reply count (firmRepliesLast24h) filters on firm and time.
+    index("IDX_study_datum_messages_firm_created").on(table.firmId, table.createdAt),
+  ],
 );
 
 export type StudyDatumMessage = typeof studyDatumMessagesTable.$inferSelect;

@@ -7,6 +7,10 @@
  *     middleware is the real code.
  *   - POST /__harness/claim-one, outside /tis-api, which calls the real claimAndRunOne() once and answers whether it
  *     did work. Production has no such route; the harness uses it to drive one claim with nothing else in flight.
+ *   - POST /__harness/datum/<name>, outside /tis-api, which calls one of the Datum chat's real DB functions
+ *     (lib/study-revisions.ts, lib/datum-chat/store.ts) with the JSON body's `args` and answers `{ ok, value }`, or
+ *     `{ ok: false, error: { name, message } }` for what it threw. Production has no such route: the chat's routes
+ *     come later, and the harness proves the inserts, the version numbers and the firm scoping underneath them.
  *
  * Before it listens it prints DEFAULT_PG_CLIENT: the host, port, user and database a pg client built with no address
  * would dial in this process (the client is constructed, never connected). run.mjs refuses the run unless that is
@@ -19,6 +23,8 @@ import express from "express";
 import pg from "pg";
 import proofreadRouter from "harness-tree:routes/proofread";
 import { claimAndRunOne } from "harness-tree:lib/proofread-run";
+import { NotFound, countLineage, createRevision, lineageFor, listRevisions } from "harness-tree:lib/study-revisions";
+import { firmRepliesLast24h, insertMessage, listMessages, loadVisible } from "harness-tree:lib/datum-chat/store";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -44,6 +50,19 @@ app.post("/__harness/claim-one", async (_req, res) => {
     res.json({ worked: await claimAndRunOne() });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+const DATUM = { countLineage, createRevision, lineageFor, listRevisions, firmRepliesLast24h, insertMessage, listMessages, loadVisible };
+app.post("/__harness/datum/:name", async (req, res) => {
+  const fn = Object.hasOwn(DATUM, req.params.name) ? DATUM[req.params.name] : null;
+  if (!fn) {
+    res.status(404).json({ ok: false, error: { name: "NoSuchFunction", message: req.params.name } });
+    return;
+  }
+  try {
+    res.json({ ok: true, value: await fn(...(Array.isArray(req.body?.args) ? req.body.args : [])) });
+  } catch (err) {
+    res.json({ ok: false, error: { name: err?.name ?? null, message: err instanceof Error ? err.message : String(err), notFound: err instanceof NotFound } });
   }
 });
 {

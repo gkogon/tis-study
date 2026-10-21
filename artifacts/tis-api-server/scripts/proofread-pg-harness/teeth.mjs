@@ -512,7 +512,8 @@ const SAFETY = {
 try {
   const base = path.join(work, "base");
   mkdirSync(base);
-  const paths = [SRC, "lib/db/src", "lib/tis-api-zod/src", "lib/tis-engine-core/src", "artifacts/atlanta-tis/scripts/fixtures/scenario-base.json", "TIS-PROOFREAD-PROTOCOL.md"];
+  // lib/db/migrate.mjs: run.mjs reads the Datum chat's statements out of it (as data) for the [datum migrations] block.
+  const paths = [SRC, "lib/db/src", "lib/db/migrate.mjs", "lib/tis-api-zod/src", "lib/tis-engine-core/src", "artifacts/atlanta-tis/scripts/fixtures/scenario-base.json", "TIS-PROOFREAD-PROTOCOL.md"];
   const archive = spawnSync("git", ["-C", REPO, "archive", "--format=tar", "HEAD", "--", ...paths], { maxBuffer: 1 << 30 });
   if (archive.status !== 0) throw new Error(`git archive failed: ${archive.stderr}`);
   const untar = spawnSync("tar", ["-x", "-C", base], { input: archive.stdout });
