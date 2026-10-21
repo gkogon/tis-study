@@ -10,6 +10,7 @@
  * Sections, in file order (later tasks append their own):
  *   contract    lib/tis-api-zod/src/datum-chat.ts, imported under plain node.
  *   migrations  lib/db/migrate.mjs and the two drizzle files, read as text.
+ *   tools       lib/datum-chat/tools.ts: the allowlist merge and the two strict tool schemas.
  *
  * The contract is imported by file URL with no loader: Node strips the types.
  * That works only while datum-chat.ts reaches GenerateTisBody through an explicit
@@ -24,6 +25,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -591,6 +593,467 @@ for (const [col, prop] of [["revised_from_project_id", "revisedFromProjectId"], 
   );
 }
 ok("tis_projects (drizzle) declares IDX_tis_projects_root on root_project_id", /index\("IDX_tis_projects_root"\)\s*\.on\(table\.rootProjectId\)/.test(projectsSrc));
+
+// ===========================================================================
+// tools
+// ===========================================================================
+section("tools");
+
+const TOOLS_REL = "artifacts/tis-api-server/src/lib/datum-chat/tools.ts";
+const { mod: T, error: toolsError } = await importByUrl(TOOLS_REL);
+ok("the tools module loads under plain node (no loader)", toolsError === null, toolsError ?? undefined);
+const toolsSrc = read(TOOLS_REL);
+
+// --- Pure, like lib/proofread/ --------------------------------------------------
+const toolsCode = stripComments(toolsSrc);
+ok(
+  "tools.ts imports no SDK, db or logger, reads no env and fetches nothing",
+  toolsCode.length > 0 && !/@anthropic-ai\/sdk|@workspace\/db|\blogger\b|process\.env|\bfetch\s*\(|\brequire\s*\(/.test(toolsCode),
+);
+const toolsRelImports = [...toolsCode.matchAll(/\bfrom\s+"(\.{1,2}\/[^"]*)"/g)].map((m) => m[1]);
+ok("tools.ts reaches the contract through a relative import (the form plain node resolves)", toolsRelImports.some((p) => /datum-chat\.ts$/.test(p)), toolsRelImports.join(", "));
+ok("every relative import in tools.ts carries an explicit .ts", toolsRelImports.length > 0 && toolsRelImports.every((p) => p.endsWith(".ts")), toolsRelImports.join(", "));
+
+// --- The parent: scenario-base.json's request ------------------------------------
+let fixtureRequest = {};
+try {
+  fixtureRequest = JSON.parse(read("artifacts/atlanta-tis/scripts/fixtures/scenario-base.json")).request;
+} catch (e) {
+  ok("precondition: scenario-base.json holds a request", false, e instanceof Error ? e.message : String(e));
+}
+t("precondition: the fixture's request parses under GenerateTisBody as it stands", () => accepts(G.GenerateTisBody, fixtureRequest));
+/** The fixture's request, growth 2.1: raw, so it lacks the three defaults a stored (parsed) request carries. */
+const PARENT = { ...fixtureRequest, growthRatePct: 2.1 };
+/** What the generate route stores as requestPayload: the parse of the request. */
+const STORED = accepts(G.GenerateTisBody, PARENT) ? G.GenerateTisBody.parse(PARENT) : {};
+t("precondition: the parent has growth 2.1, no pass-by override and a study radius", () => PARENT.growthRatePct === 2.1 && !("passByPct" in PARENT) && typeof PARENT.studyRadiusMi === "number");
+t("precondition: the stored form carries the three defaults the raw fixture lacks", () =>
+  ["conservedAssignment", "signalTiming", "legVolumes"].every((k) => !(k in PARENT) && k in STORED));
+const PARENT_JSON = JSON.stringify(PARENT);
+const apply = (parent, changes, extra = {}) => T.applyRevisionChanges(parent, { changes, reason: "r", ...extra });
+const refused = (r) => r.ok === false && typeof r.error === "string" && r.error.length > 0 && !("request" in r);
+
+// --- Growth ----------------------------------------------------------------------
+t("growthRatePct 2.1 -> 1.0 is ok, sets the rate, and records the change", () => {
+  const r = apply(PARENT, { growthRatePct: 1.0 });
+  return r.ok === true && r.request.growthRatePct === 1.0 && isDeepStrictEqual(r.changes, [{ field: "growthRatePct", from: 2.1, to: 1.0 }]);
+});
+t("the parent object is not changed by a merge, and the result does not alias it", () => {
+  const parent = structuredClone(PARENT);
+  const r = apply(parent, { growthRatePct: 1.0, signalTimingOverrides: [OVERRIDE] });
+  r.request.projectName = "mutated";
+  r.request.signalTimingOverrides[0].name = "mutated";
+  return JSON.stringify(parent) === PARENT_JSON;
+});
+t("removeGrowthOverride gives a request with no growthRatePct key, and the change reads 2.1 -> null", () => {
+  const r = apply(PARENT, { removeGrowthOverride: true });
+  return r.ok === true && !("growthRatePct" in r.request) && isDeepStrictEqual(r.changes, [{ field: "growthRatePct", from: 2.1, to: null }]);
+});
+t("removeGrowthOverride on a study with no override changes nothing", () => {
+  const { growthRatePct: _drop, ...noGrowth } = PARENT;
+  const r = apply(noGrowth, { removeGrowthOverride: true });
+  return r.ok === true && r.changes.length === 0 && !("growthRatePct" in r.request);
+});
+t("removeGrowthOverride can only be true: false is refused by name", () => {
+  const r = apply(PARENT, { removeGrowthOverride: false });
+  return refused(r) && r.field === "removeGrowthOverride";
+});
+t("growthRatePct together with removeGrowthOverride is refused, naming growthRatePct and saying to pick one", () => {
+  const r = apply(PARENT, { growthRatePct: 1, removeGrowthOverride: true });
+  return refused(r) && r.field === "growthRatePct" && /pick one/i.test(r.error) && /new rate/i.test(r.error) && /remov/i.test(r.error);
+});
+t("that refusal comes before anything else, even when the saved inputs are also bad", () => {
+  const r = apply({ ...PARENT, studyRadiusMi: 7 }, { growthRatePct: 1, removeGrowthOverride: true });
+  return refused(r) && r.field === "growthRatePct" && /pick one/i.test(r.error);
+});
+
+// --- Empty changes, and a change that changes nothing ------------------------------
+t("empty changes give ok, no changes, and the parent's own request after a GenerateTisBody parse", () => {
+  const r = apply(PARENT, {});
+  return r.ok === true && isDeepStrictEqual(r.changes, []) && isDeepStrictEqual(r.request, G.GenerateTisBody.parse(PARENT));
+});
+t("the request a merge returns is the generator's own parse of the merged request (defaults filled, nothing else added)", () => {
+  const r = apply(PARENT, { growthRatePct: 1 });
+  return r.ok === true && isDeepStrictEqual(r.request, G.GenerateTisBody.parse({ ...PARENT, growthRatePct: 1 }));
+});
+t("a change equal to the parent's value is skipped; one that differs is kept", () => {
+  const r = apply(PARENT, { growthRatePct: 2.1, openingYear: PARENT.openingYear, weather: PARENT.weather, passByPct: 10 });
+  return r.ok === true && isDeepStrictEqual(r.changes, [{ field: "passByPct", from: null, to: 10 }]) && r.request.passByPct === 10;
+});
+t("an analysisPeriods list equal to the parent's is skipped; a reordered or shorter list is a change", () => {
+  const same = apply(PARENT, { analysisPeriods: [...PARENT.analysisPeriods] });
+  const shorter = apply(PARENT, { analysisPeriods: ["pm_peak"] });
+  return same.ok === true && same.changes.length === 0 && shorter.ok === true && isDeepStrictEqual(shorter.changes, [{ field: "analysisPeriods", from: PARENT.analysisPeriods, to: ["pm_peak"] }]);
+});
+t("from is the parent's value, or null when the parent has none", () => {
+  const r = apply(PARENT, { openingYear: 2029, passByPct: 5, internalCapturePct: 3, weather: "light_snow" });
+  const by = Object.fromEntries(r.changes.map((c) => [c.field, c.from]));
+  return r.ok === true && by.openingYear === PARENT.openingYear && by.weather === PARENT.weather && by.passByPct === null && by.internalCapturePct === null;
+});
+
+// --- Every field, in the allowlist's order ------------------------------------------
+const ALL = {
+  growthRatePct: 1,
+  openingYear: 2029,
+  analysisPeriods: ["pm_peak"],
+  passByPct: 10,
+  internalCapturePct: 5,
+  weather: "light_rain",
+  scopeStudyIntersections: true,
+  signalTiming: "screening",
+  legVolumes: "screening",
+  realLaneGeometry: false,
+  conservedAssignment: false,
+  signalTimingOverrides: [OVERRIDE],
+};
+t("all twelve value fields at once are ok and land in the request", () => {
+  const r = apply(STORED, ALL);
+  return (
+    r.ok === true &&
+    Object.entries(ALL).every(([k, v]) => k === "signalTimingOverrides" || isDeepStrictEqual(r.request[k], v)) &&
+    r.request.signalTimingOverrides.length === 1
+  );
+});
+t("the changes list is in REVISABLE_FIELDS order whatever order the input names them in", () => {
+  const shuffled = Object.fromEntries(Object.entries(ALL).reverse());
+  const r = apply(STORED, shuffled);
+  const want = C.REVISABLE_FIELDS.filter((f) => f in ALL);
+  return r.ok === true && same(r.changes.map((c) => c.field), want) && want.length === 12;
+});
+t("against a stored (parsed) parent, from carries the defaults the parse filled in", () => {
+  const r = apply(STORED, ALL);
+  const by = Object.fromEntries(r.changes.map((c) => [c.field, c.from]));
+  return r.ok === true && by.signalTiming === "computed" && by.legVolumes === "network" && by.conservedAssignment === true && by.realLaneGeometry === null && by.signalTimingOverrides === null;
+});
+t("every change carries exactly field, from and to, and a field that REVISABLE_FIELDS names", () => {
+  const r = apply(STORED, ALL);
+  return r.ok === true && r.changes.every((c) => same(Object.keys(c), ["field", "from", "to"]) && C.REVISABLE_FIELDS.includes(c.field));
+});
+t("the merge accepts what RerunToolInput parses (no default is injected on the way)", () => {
+  const input = C.RerunToolInput.parse({ changes: { weather: "heavy_rain" }, reason: "county asked" });
+  const r = T.applyRevisionChanges(STORED, input);
+  return r.ok === true && isDeepStrictEqual(r.changes, [{ field: "weather", from: STORED.weather, to: "heavy_rain" }]) && r.request.signalTiming === STORED.signalTiming;
+});
+
+// --- Locked fields stay byte-equal ---------------------------------------------------
+const RICH = (() => {
+  const volumes = Object.fromEntries(["NBL", "NBT", "NBR", "SBL", "SBT", "SBR", "EBL", "EBT", "EBR", "WBL", "WBT", "WBR"].map((m) => [m, 100]));
+  const rich = {
+    ...PARENT,
+    independentVariable: "KSF",
+    tripProfile: { arrivals: Array.from({ length: 24 }, (_, i) => i), departures: Array.from({ length: 24 }, (_, i) => 24 - i), source: "client" },
+    studyIntersectionIds: ["sig-1", "sig-2"],
+    additionalStudyPoints: [{ latitude: 33.78, longitude: -84.38 }],
+    utdfIntersections: [{ name: "Main St & 1st Ave", latitude: 33.78, longitude: -84.38, cycleLenSec: 100, volumes }],
+    driveways: [{ id: "d1", latitude: 33.7861, longitude: -84.3853, accessType: "full", movements: { inLeft: true, inRight: true, outLeft: true, outRight: true } }],
+    distributionMethod: "gravity",
+    existingLandUseCode: "110",
+    existingSize: 10,
+  };
+  return accepts(G.GenerateTisBody, rich) ? G.GenerateTisBody.parse(rich) : {};
+})();
+t("precondition: the rich parent carries driveways, UTDF records and a trip profile", () => ["driveways", "utdfIntersections", "tripProfile"].every((k) => k in RICH));
+t("every LOCKED_FIELDS name the fixture carries is byte-equal in the result, with all twelve value fields changed", () => {
+  const present = C.LOCKED_FIELDS.filter((f) => f in PARENT);
+  const r = apply(PARENT, ALL);
+  return present.length >= 8 && r.ok === true && present.every((f) => JSON.stringify(r.request[f]) === JSON.stringify(PARENT[f]));
+});
+t("every LOCKED_FIELDS name a rich parent carries (UTDF, driveways, trip profile, scope ids) is byte-equal in the result", () => {
+  const present = C.LOCKED_FIELDS.filter((f) => f in RICH);
+  const r = apply(RICH, ALL);
+  return present.length >= 15 && r.ok === true && present.every((f) => JSON.stringify(r.request[f]) === JSON.stringify(RICH[f]));
+});
+t("a locked field in changes is refused by name, and the request is not returned", () =>
+  C.LOCKED_FIELDS.every((f) => {
+    const r = apply(PARENT, { [f]: 1 });
+    return refused(r) && r.field === f;
+  }));
+t("a key that is no field at all is refused, and a __proto__ key pollutes nothing", () => {
+  const evil = JSON.parse('{"__proto__": {"polluted": true}}');
+  const r = apply(PARENT, evil);
+  const r2 = apply(PARENT, { growthRate: 1 });
+  return refused(r) && refused(r2) && r2.field === "growthRate" && ({}).polluted === undefined;
+});
+t("a changes value that is not an object is refused", () => [null, "x", 3, [], undefined].every((c) => refused(T.applyRevisionChanges(PARENT, { changes: c, reason: "r" }))));
+
+// --- Signal timing: arrays become the request's records ------------------------------
+const TIMING = {
+  intersectionName: "A & B",
+  latitude: 33.7861,
+  longitude: -84.3853,
+  cycleLenSec: 120,
+  phases: [
+    { movement: "NBT", phase: 2 },
+    { movement: "EBT", phase: 4 },
+  ],
+  splits: [
+    { phase: 2, seconds: 60 },
+    { phase: 4, seconds: 50 },
+  ],
+};
+const TIMING_RECORD = { latitude: 33.7861, longitude: -84.3853, name: "A & B", cycleLenSec: 120, phaseByMovement: { NBT: 2, EBT: 4 }, splitSByPhase: { 2: 60, 4: 50 } };
+t("signalTimingOverrides arrays become phaseByMovement and splitSByPhase records, the name carried as name", () => {
+  const r = apply(PARENT, { signalTimingOverrides: [TIMING] });
+  return r.ok === true && isDeepStrictEqual(r.request.signalTimingOverrides[0], TIMING_RECORD) && same(Object.keys(r.request.signalTimingOverrides[0].splitSByPhase), ["2", "4"]);
+});
+t("the timing change reads absent -> the converted records", () => {
+  const r = apply(PARENT, { signalTimingOverrides: [TIMING] });
+  return r.ok === true && isDeepStrictEqual(r.changes, [{ field: "signalTimingOverrides", from: null, to: [TIMING_RECORD] }]);
+});
+t("a timing sheet equal to the parent's records is skipped", () => {
+  const withTiming = apply(PARENT, { signalTimingOverrides: [TIMING] }).request;
+  const again = apply(withTiming, { signalTimingOverrides: [TIMING] });
+  return again.ok === true && again.changes.length === 0 && isDeepStrictEqual(again.request.signalTimingOverrides, [TIMING_RECORD]);
+});
+t("a timing sheet replaces the parent's records as a whole", () => {
+  const withTiming = apply(PARENT, { signalTimingOverrides: [TIMING] }).request;
+  const other = { ...TIMING, intersectionName: "C & D", cycleLenSec: 90 };
+  const r = apply(withTiming, { signalTimingOverrides: [other] });
+  return r.ok === true && r.request.signalTimingOverrides.length === 1 && r.request.signalTimingOverrides[0].name === "C & D" && isDeepStrictEqual(r.changes[0].from, [TIMING_RECORD]);
+});
+t("an empty timing list clears the parent's records", () => {
+  const withTiming = apply(PARENT, { signalTimingOverrides: [TIMING] }).request;
+  const r = apply(withTiming, { signalTimingOverrides: [] });
+  return r.ok === true && isDeepStrictEqual(r.request.signalTimingOverrides, []) && isDeepStrictEqual(r.changes, [{ field: "signalTimingOverrides", from: [TIMING_RECORD], to: [] }]);
+});
+t("a movement listed twice, or a phase given two splits, is refused rather than resolved by order", () => {
+  const dupMove = apply(PARENT, { signalTimingOverrides: [{ ...TIMING, phases: [...TIMING.phases, { movement: "NBT", phase: 6 }] }] });
+  const dupPhase = apply(PARENT, { signalTimingOverrides: [{ ...TIMING, splits: [...TIMING.splits, { phase: 2, seconds: 30 }] }] });
+  return refused(dupMove) && dupMove.field === "signalTimingOverrides" && /NBT/.test(dupMove.error) && refused(dupPhase) && dupPhase.field === "signalTimingOverrides" && /phase 2/i.test(dupPhase.error);
+});
+t("an out-of-bounds timing value is refused as a bounds error naming signalTimingOverrides", () => {
+  const r = apply(PARENT, { signalTimingOverrides: [{ ...TIMING, cycleLenSec: 301 }] });
+  return refused(r) && r.field === "signalTimingOverrides" && !/saved inputs/i.test(r.error);
+});
+
+// --- Review Focus 1: the original's saved inputs fail today's schema -------------------
+const SAVED_INPUTS = /saved inputs.*no longer pass.*generator/i;
+t("a parent with studyRadiusMi 7 is refused with field studyRadiusMi and the saved-inputs message", () => {
+  const r = apply({ ...PARENT, studyRadiusMi: 7 }, { growthRatePct: 1 });
+  return refused(r) && r.field === "studyRadiusMi" && SAVED_INPUTS.test(r.error);
+});
+t("the saved-inputs message names the field and points to the generator", () => {
+  const r = apply({ ...PARENT, studyRadiusMi: 7 }, { growthRatePct: 1 });
+  return /studyRadiusMi/.test(r.error) && /start a new study in the generator/.test(r.error) && !/\n/.test(r.error);
+});
+t("an empty change set on a parent the schema no longer accepts is refused too", () => {
+  const r = apply({ ...PARENT, studyRadiusMi: 7 }, {});
+  return refused(r) && r.field === "studyRadiusMi" && SAVED_INPUTS.test(r.error);
+});
+t("a parent missing a required field is refused naming that field", () => {
+  const { landUseCode: _drop, ...legacy } = PARENT;
+  const r = apply(legacy, { growthRatePct: 1 });
+  return refused(r) && r.field === "landUseCode" && SAVED_INPUTS.test(r.error);
+});
+t("a parent that fails on a field the engineer did not change is refused even when the engineer's own change is also out of bounds", () => {
+  const r = apply({ ...PARENT, studyRadiusMi: 7 }, { openingYear: 2051 });
+  return refused(r) && r.field === "studyRadiusMi" && SAVED_INPUTS.test(r.error);
+});
+t("a parent whose bad field is the very one the engineer corrects is ok", () => {
+  const r = apply({ ...PARENT, growthRatePct: 9 }, { growthRatePct: 1 });
+  const dropped = apply({ ...PARENT, growthRatePct: 9 }, { removeGrowthOverride: true });
+  return r.ok === true && r.request.growthRatePct === 1 && dropped.ok === true && !("growthRatePct" in dropped.request);
+});
+t("a parent that is bad at a growth rate the engineer leaves alone is refused as a saved-inputs error", () => {
+  const r = apply({ ...PARENT, growthRatePct: 9 }, { passByPct: 10 });
+  return refused(r) && r.field === "growthRatePct" && SAVED_INPUTS.test(r.error);
+});
+t("a parent that is not an object is refused, not thrown on", () =>
+  [null, undefined, "x", 3, [], true].every((p) => {
+    const r = apply(p, {});
+    return refused(r) && SAVED_INPUTS.test(r.error);
+  }));
+
+// --- Bounds: GenerateTisBody's own, on the merged request ------------------------------
+t("openingYear 2051 is refused with field openingYear, as a bounds error and not a saved-inputs one", () => {
+  const r = apply(PARENT, { openingYear: 2051 });
+  return refused(r) && r.field === "openingYear" && !/saved inputs/i.test(r.error) && /2050/.test(r.error);
+});
+t("the edges just past each bound are refused by field, and the edges themselves are ok", () => {
+  const past = { growthRatePct: 6.01, passByPct: 70.01, internalCapturePct: 50.01, openingYear: 2023 };
+  const edge = { growthRatePct: 6, passByPct: 70, internalCapturePct: 50, openingYear: 2050 };
+  return (
+    Object.entries(past).every(([f, v]) => {
+      const r = apply(PARENT, { [f]: v });
+      return refused(r) && r.field === f;
+    }) && Object.entries(edge).every(([f, v]) => apply(PARENT, { [f]: v }).ok === true)
+  );
+});
+t("a value of the wrong type or kind is refused by field", () =>
+  [["weather", "hail"], ["signalTiming", "measured"], ["legVolumes", "counted"], ["analysisPeriods", ["night"]], ["realLaneGeometry", "yes"]].every(([f, v]) => {
+    const r = apply(PARENT, { [f]: v });
+    return refused(r) && r.field === f;
+  }));
+
+// --- The tool schemas ------------------------------------------------------------------
+const TOOLS = [T.RERUN_TOOL, T.READ_PATH_TOOL];
+const objectNodes = (node, at = "$") => {
+  if (node === null || typeof node !== "object") return [];
+  const own = !Array.isArray(node) && node.type === "object" ? [[at, node]] : [];
+  return [...own, ...Object.entries(node).flatMap(([k, v]) => objectNodes(v, `${at}.${k}`))];
+};
+/** Every keyword a node of these schemas may carry: the strict-mode subset, and the ones the test validator below checks. */
+const ALLOWED_KEYWORDS = ["type", "properties", "required", "additionalProperties", "enum", "const", "items", "description", "format"];
+/** The keywords of a schema node and of every node under it (the names inside `properties` are not keywords). */
+const keywordsOf = (node) => {
+  if (node === null || typeof node !== "object") return [];
+  return [...Object.keys(node), ...Object.values(node.properties ?? {}).flatMap(keywordsOf), ...keywordsOf(node.items)];
+};
+/** A small validator for exactly the keywords above: a schema typo shows up as a valid input it refuses. */
+function schemaErrors(schema, v, at = "$") {
+  const kind = (k) =>
+    k === "object" ? v !== null && typeof v === "object" && !Array.isArray(v)
+    : k === "array" ? Array.isArray(v)
+    : k === "string" ? typeof v === "string"
+    : k === "number" ? typeof v === "number" && Number.isFinite(v)
+    : k === "integer" ? Number.isInteger(v)
+    : k === "boolean" ? typeof v === "boolean"
+    : false;
+  if (schema.type !== undefined && !kind(schema.type)) return [`${at}: not a ${schema.type}`];
+  const errs = [];
+  if ("const" in schema && v !== schema.const) errs.push(`${at}: not ${JSON.stringify(schema.const)}`);
+  if (schema.enum && !schema.enum.includes(v)) errs.push(`${at}: not one of ${schema.enum.join("|")}`);
+  if (schema.type === "object") {
+    for (const k of schema.required ?? []) if (!(k in v)) errs.push(`${at}.${k}: missing`);
+    for (const k of Object.keys(v)) {
+      if (schema.properties?.[k]) errs.push(...schemaErrors(schema.properties[k], v[k], `${at}.${k}`));
+      else if (schema.additionalProperties === false) errs.push(`${at}.${k}: unknown key`);
+    }
+  }
+  if (schema.type === "array" && schema.items) v.forEach((x, i) => errs.push(...schemaErrors(schema.items, x, `${at}[${i}]`)));
+  return errs;
+}
+const fits = (schema, v) => schemaErrors(schema, v).length === 0;
+
+t("the tools are named read_study_path and rerun_study_with_changes (R1)", () => T.READ_PATH_TOOL.name === "read_study_path" && T.RERUN_TOOL.name === "rerun_study_with_changes");
+t("each tool has the Anthropic tool shape: name, description, input_schema and strict: true, and nothing else", () =>
+  TOOLS.every(
+    (tool) =>
+      same(Object.keys(tool).sort(), ["description", "input_schema", "name", "strict"]) &&
+      tool.strict === true &&
+      typeof tool.description === "string" &&
+      tool.description.length > 40 &&
+      tool.input_schema.type === "object",
+  ));
+t("both tools are frozen all the way down, so a caller cannot edit the schema every request sends", () => {
+  const deep = (v) => v === null || typeof v !== "object" || (Object.isFrozen(v) && Object.values(v).every(deep));
+  return TOOLS.every((tool) => typeof tool === "object" && tool !== null && deep(tool));
+});
+t("RERUN_TOOL.input_schema has no oneOf, anyOf or patternProperties", () => {
+  const s = JSON.stringify(T.RERUN_TOOL.input_schema);
+  return s.length > 200 && !/oneOf|anyOf|"patternProperties"/.test(s);
+});
+t("every object node of both tools has additionalProperties: false, and there are at least five in RERUN_TOOL", () =>
+  TOOLS.every((tool) => objectNodes(tool.input_schema).every(([, node]) => node.additionalProperties === false)) && objectNodes(T.RERUN_TOOL.input_schema).length >= 5);
+t("no node carries a keyword outside the strict subset (no min/max, length, count or pattern limits)", () => {
+  const used = new Set(TOOLS.flatMap((tool) => keywordsOf(tool.input_schema)));
+  return used.size > 3 && [...used].every((k) => ALLOWED_KEYWORDS.includes(k));
+});
+t("the keys of changes.properties deep-equal REVISABLE_FIELDS, in order", () => same(Object.keys(T.RERUN_TOOL.input_schema.properties.changes.properties), C.REVISABLE_FIELDS));
+t("changes requires nothing: every field is optional", () => {
+  const c = T.RERUN_TOOL.input_schema.properties.changes;
+  return c.required === undefined || c.required.length === 0;
+});
+t("the top level has RerunToolInput's keys, and requires the ones RerunToolInput requires", () => {
+  const shape = C.RerunToolInput.shape;
+  const required = Object.keys(shape).filter((k) => !shape[k].isOptional());
+  return sameSet(Object.keys(T.RERUN_TOOL.input_schema.properties), Object.keys(shape)) && sameSet(T.RERUN_TOOL.input_schema.required ?? [], required) && required.length === 2;
+});
+t("every property carries a type and a description, so the model is told what each field is", () =>
+  [T.RERUN_TOOL.input_schema, T.RERUN_TOOL.input_schema.properties.changes].every((o) =>
+    Object.values(o.properties).every((p) => typeof p.type === "string" && typeof p.description === "string" && p.description.length > 15),
+  ));
+t("the enums are the contract's own: weather, timing basis, volume basis, periods and the twelve movements", () => {
+  const ch = T.RERUN_TOOL.input_schema.properties.changes.properties;
+  const shape = C.RerunToolInput.shape.changes.shape;
+  const el = shape.signalTimingOverrides.unwrap().element.shape;
+  const item = ch.signalTimingOverrides.items.properties;
+  return (
+    same(ch.weather.enum, shape.weather.unwrap().options) &&
+    same(ch.signalTiming.enum, shape.signalTiming.unwrap().options) &&
+    same(ch.legVolumes.enum, shape.legVolumes.unwrap().options) &&
+    same(ch.analysisPeriods.items.enum, shape.analysisPeriods.unwrap().element.options) &&
+    same(item.phases.items.properties.movement.enum, el.phases.element.shape.movement.options) &&
+    item.phases.items.properties.movement.enum.length === 12
+  );
+});
+t("the enums also match GenerateTisBody's, so the tool cannot offer a value the generator refuses", () => {
+  const ch = T.RERUN_TOOL.input_schema.properties.changes.properties;
+  const body = G.GenerateTisBody.shape;
+  return (
+    same(ch.weather.enum, body.weather.unwrap().options) &&
+    same(ch.signalTiming.enum, body.signalTiming.removeDefault().options) &&
+    same(ch.legVolumes.enum, body.legVolumes.removeDefault().options) &&
+    same(ch.analysisPeriods.items.enum, body.analysisPeriods.unwrap().element.options)
+  );
+});
+t("the numeric fields say their bounds in words, read off GenerateTisBody, because strict mode cannot carry min or max", () => {
+  const ch = T.RERUN_TOOL.input_schema.properties.changes.properties;
+  const body = G.GenerateTisBody.shape;
+  const says = (f, schema) => ch[f].description.includes(`${schema.minValue} to ${schema.maxValue}`);
+  return (
+    says("growthRatePct", body.growthRatePct.unwrap()) &&
+    says("openingYear", body.openingYear) &&
+    says("passByPct", body.passByPct.unwrap()) &&
+    says("internalCapturePct", body.internalCapturePct.unwrap()) &&
+    ch.growthRatePct.description.includes("0 to 6") &&
+    ch.openingYear.description.includes("2024 to 2050")
+  );
+});
+t("the schema accepts a full input: all twelve value fields, a timing sheet, a reason, a source label and a finding", () =>
+  fits(T.RERUN_TOOL.input_schema, { changes: ALL, reason: "r", sourceLabel: "county letter", findingId: randomUUID() }) &&
+  fits(T.RERUN_TOOL.input_schema, { changes: { removeGrowthOverride: true }, reason: "r" }) &&
+  fits(T.RERUN_TOOL.input_schema, { changes: {}, reason: "re-run on the current engine" }));
+t("what the schema accepts, RerunToolInput accepts, field by field", () => {
+  const inputs = [
+    { changes: ALL, reason: "r" },
+    { changes: { removeGrowthOverride: true }, reason: "r" },
+    { changes: { signalTimingOverrides: [TIMING] }, reason: "r", findingId: randomUUID(), sourceLabel: "s" },
+  ];
+  return inputs.every((i) => fits(T.RERUN_TOOL.input_schema, i) && accepts(C.RerunToolInput, i));
+});
+t("the schema refuses a locked field, an unknown key, a missing reason and a wrong type", () => {
+  const s = T.RERUN_TOOL.input_schema;
+  return (
+    !fits(s, { changes: { latitude: 1 }, reason: "r" }) &&
+    !fits(s, { changes: {}, reason: "r", extra: 1 }) &&
+    !fits(s, { changes: {} }) &&
+    !fits(s, { reason: "r" }) &&
+    !fits(s, { changes: { growthRatePct: "1" }, reason: "r" }) &&
+    !fits(s, { changes: { removeGrowthOverride: false }, reason: "r" }) &&
+    !fits(s, { changes: { weather: "hail" }, reason: "r" }) &&
+    !fits(s, { changes: { signalTimingOverrides: [{ ...TIMING, cycleLenSec: undefined }] }, reason: "r" }) &&
+    !fits(s, { changes: { signalTimingOverrides: [{ ...TIMING, extra: 1 }] }, reason: "r" }) &&
+    !fits(s, { changes: { signalTimingOverrides: [{ ...TIMING, phases: [{ movement: "NB", phase: 2 }] }] }, reason: "r" })
+  );
+});
+t("every field of a timing record is required, and phases and splits are arrays of pairs, not keyed records", () => {
+  const rec = T.RERUN_TOOL.input_schema.properties.changes.properties.signalTimingOverrides;
+  return (
+    rec.type === "array" &&
+    sameSet(rec.items.required, ["intersectionName", "latitude", "longitude", "cycleLenSec", "phases", "splits"]) &&
+    rec.items.properties.phases.type === "array" &&
+    sameSet(rec.items.properties.phases.items.required, ["movement", "phase"]) &&
+    rec.items.properties.splits.type === "array" &&
+    sameSet(rec.items.properties.splits.items.required, ["phase", "seconds"])
+  );
+});
+t("the description tells the model the method fields it may choose and that the original is never changed", () => {
+  const d = T.RERUN_TOOL.description;
+  return C.METHOD_FIELDS.every((f) => d.includes(f)) && /original/i.test(d) && /new version/i.test(d);
+});
+t("READ_PATH_TOOL takes one required string, path, and nothing else, and names its byte cap", () => {
+  const s = T.READ_PATH_TOOL.input_schema;
+  return same(Object.keys(s.properties), ["path"]) && s.properties.path.type === "string" && same(s.required, ["path"]) && s.additionalProperties === false && T.READ_PATH_TOOL.description.includes(String(C.DATUM_LIMITS.readPathBytes)) && /read-only/i.test(T.READ_PATH_TOOL.description);
+});
+t("READ_PATH_TOOL's schema takes a path and refuses anything else", () => {
+  const s = T.READ_PATH_TOOL.input_schema;
+  return fits(s, { path: "request.growthRatePct" }) && !fits(s, {}) && !fits(s, { path: 3 }) && !fits(s, { path: "request.x", extra: 1 });
+});
+t("no banned phrase appears in either tool or in tools.ts", () => {
+  const BANNED = /independent[\s-]*review|second[\s-]*opinion|peer[\s-]*review|qa\s*[/\\-]?\s*qc|\baudit/i;
+  return toolsSrc.length > 0 && !BANNED.test(JSON.stringify(TOOLS)) && !BANNED.test(toolsSrc);
+});
 
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);
 process.exit(fails === 0 ? 0 : 1);
