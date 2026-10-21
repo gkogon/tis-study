@@ -17,6 +17,7 @@ import adminRouter from "./admin";
 import demoRouter from "./demo";
 import calibrationRouter from "./calibration";
 import proofreadRouter from "./proofread";
+import datumChatRouter from "./datum-chat";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,6 @@ router.use(adminRouter);
 router.use(demoRouter);
 router.use(calibrationRouter);
 router.use(proofreadRouter);
+router.use(datumChatRouter);
 
 export default router;

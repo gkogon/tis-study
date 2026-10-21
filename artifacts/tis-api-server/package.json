@@ -75,6 +75,7 @@
     "check:intersection-delay-fields": "node ./scripts/verify-intersection-delay-fields.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.137.0",
     "@swc/helpers": "^0.5.13",
     "@workspace/db": "workspace:*",
     "@workspace/tis-api-zod": "workspace:*",

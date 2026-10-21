@@ -23,6 +23,12 @@
  *               proofread of the new version, in that order; a failure is logged and answered, never thrown.
  *               The DB side (study-revisions.ts, datum-chat/store.ts) is proved against a real throwaway
  *               Postgres by scripts/proofread-pg-harness, not here.
+ *   router      routes/datum-chat-router.ts over real HTTP (express, compression, a fake auth, port 0, fetch),
+ *               every dep a fake and the model the run section's fake: 401/404/400/429/503, the stream, the
+ *               R12 history, R13/R15 logging, R17 finding ids, Review Focus 2 and 5. Then lib/datum-chat/client.ts
+ *               (no key: null, and the SDK's name is never resolved, watched by a module resolve hook that
+ *               answers it with a stub), the limiter in security.ts, the mount, the wiring and the smoke script,
+ *               read as text. The process's ANTHROPIC_API_KEY is deleted first; the check never uses one.
  *
  * The contract is imported by file URL with no loader: Node strips the types.
  * That works only while datum-chat.ts reaches GenerateTisBody through an explicit
@@ -1896,10 +1902,12 @@ const runCode = stripComments(runSrc);
 
 // --- The fake model --------------------------------------------------------------------------------------
 // Replays scripted turns. Each turn delivers its text deltas a setImmediate apart (so an abort can land between
-// them), then resolves finalMessage() with the scripted message, or rejects with `reject`. It records every `params`
+// them), then resolves finalMessage() with the scripted message, or rejects with `reject`. A turn with `pauseMs`
+// waits that long after its first delta (the router section's slow model). It records every `params`
 // by reference and how many times abort() was called on each stream. Honouring abort is the default; a fake that
 // ignores it and resolves anyway checks that the loop does not trust the stream to stop.
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const MODEL = "claude-opus-5-5";
 const LINE = "Datum couldn't answer that just now.";
 const block = {
@@ -1928,10 +1936,11 @@ function fakeModel(turns, { ignoreAbort = false } = {}) {
         const gone = () => Object.assign(new Error("Request was aborted."), { name: "APIUserAbortError" });
         const done = (async () => {
           await tick();
-          for (const d of turn.deltas ?? []) {
+          for (const [i, d] of (turn.deltas ?? []).entries()) {
             if (stopped()) throw gone();
             for (const cb of listeners) cb(d);
             await tick();
+            if (i === 0 && turn.pauseMs) await sleep(turn.pauseMs);
           }
           if (stopped()) throw gone();
           if (turn.reject) throw turn.reject;
@@ -2858,6 +2867,1106 @@ t("revise.ts takes the cap from DATUM_LIMITS.versionsPerLineage, not from a lite
 t("revise.ts calls applyRevisionChanges from tools.ts", () => /from\s+"\.\/tools\.ts"/.test(reviseCode) && /applyRevisionChanges\(/.test(reviseCode));
 t("revise.ts removes the in-flight key in a finally", () => /finally\s*\{[^}]*inFlight\.delete\(/.test(reviseCode));
 t("revise.ts contains none of the phrases the product never writes", () => reviseSrc.length > 500 && bannedFree(reviseSrc));
+
+// ===========================================================================
+// router
+// ===========================================================================
+section("router");
+
+const ROUTER_REL = "artifacts/tis-api-server/src/routes/datum-chat-router.ts";
+const WIRING_REL = "artifacts/tis-api-server/src/routes/datum-chat.ts";
+const CLIENT_REL = "artifacts/tis-api-server/src/lib/datum-chat/client.ts";
+const SECURITY_REL = "artifacts/tis-api-server/src/lib/security.ts";
+const ROUTES_INDEX_REL = "artifacts/tis-api-server/src/routes/index.ts";
+const SMOKE_REL = "artifacts/tis-api-server/scripts/datum-chat-live-smoke.mjs";
+const SERVER_PACKAGE_REL = "artifacts/tis-api-server/package.json";
+
+// No model key in this process, whatever the shell that runs the check holds: nothing below may reach the model, and
+// the client module has to show that by answering null. Removing the variable is all the check does with it.
+delete process.env.ANTHROPIC_API_KEY;
+
+// The SDK never loads in this check. Every resolution of its name, from any module, is recorded and answered with a
+// stub that throws if it is ever constructed, so "the client did not import the SDK" is something the check can see.
+const SDK_NAME = "@anthropic-ai/sdk";
+const sdkResolutions = [];
+const SDK_STUB = `data:text/javascript,${encodeURIComponent('export default class Anthropic { constructor() { throw new Error("the check never builds the real SDK client"); } }')}`;
+let sdkHooked = false;
+try {
+  const { registerHooks } = await import("node:module");
+  registerHooks({
+    resolve(specifier, context, nextResolve) {
+      if (specifier === SDK_NAME || specifier.startsWith(`${SDK_NAME}/`)) {
+        sdkResolutions.push({ specifier, parent: context.parentURL });
+        return { url: SDK_STUB, shortCircuit: true };
+      }
+      return nextResolve(specifier, context);
+    },
+  });
+  sdkHooked = true;
+} catch (e) {
+  ok("precondition: node:module registerHooks is available to watch the SDK's name", false, e instanceof Error ? e.message : String(e));
+}
+
+const { mod: RT, error: routerError } = await importByUrl(ROUTER_REL);
+ok("the router module loads under plain node (no loader)", routerError === null, routerError ?? undefined);
+const { mod: CL, error: clientError } = await importByUrl(CLIENT_REL);
+ok("the client module loads under plain node (no loader)", clientError === null, clientError ?? undefined);
+t("loading the router and the client resolved @anthropic-ai/sdk nowhere", () => sdkHooked && routerError === null && clientError === null && sdkResolutions.length === 0);
+
+let express = null;
+let compression = null;
+try {
+  express = (await import("express")).default;
+  compression = (await import("compression")).default;
+} catch (e) {
+  ok("precondition: express and compression load for the test app", false, e instanceof Error ? e.message : String(e));
+}
+
+/** An async block's value, or why it threw, so one failure is a named FAIL and the assertions after it still run. */
+const settle = async (fn) => {
+  try {
+    return { r: await fn(), err: null };
+  } catch (e) {
+    return { r: null, err: e instanceof Error ? e.message : String(e) };
+  }
+};
+const must = (x) => {
+  if (x.err !== null) throw new Error(x.err);
+  return x.r;
+};
+const until = async (cond, ms = 3000) => {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (cond()) return true;
+    await sleep(10);
+  }
+  return cond();
+};
+/** Every key of `expected` has that value in `row` (deep), so a row may carry other keys. */
+const has = (row, expected) => typeof row === "object" && row !== null && Object.entries(expected).every(([k, v]) => isDeepStrictEqual(row[k], v));
+
+// --- The source -----------------------------------------------------------------------------------
+const routerSrc = read(ROUTER_REL);
+const routerCode = stripComments(routerSrc);
+{
+  const specs = [...routerCode.matchAll(/\bfrom\s+"([^"]+)"/g)].map((m) => m[1]);
+  t("the router imports express and the datum-chat modules only, each by an explicit .ts path: no db, store, logger or SDK", () =>
+    specs.length > 0 && specs.every((s) => s === "express" || /^\.\.\/lib\/datum-chat\/(contract|context|prompt|run|revise)\.ts$/.test(s)));
+  t("the router reads no env, fetches nothing, and names no SDK, db or logger", () =>
+    routerCode.length > 0 && !/process\.env|\bfetch\s*\(|@anthropic-ai\/sdk|@workspace\/db|\blogger\b|\brequire\s*\(/.test(routerCode));
+}
+t('a disconnect is res.on("close") with !res.writableEnded, never req.on("close") (Node fires that once the body is read)', () =>
+  /res\.on\("close"/.test(routerCode) && /!res\.writableEnded/.test(routerCode) && !/req\.on\("close"/.test(routerCode));
+t("the stream's headers are set verbatim, then flushed", () =>
+  /"Content-Type",\s*"text\/event-stream"/.test(routerCode) &&
+  /"Cache-Control",\s*"no-cache, no-transform"/.test(routerCode) &&
+  /"X-Accel-Buffering",\s*"no"/.test(routerCode) &&
+  /res\.flushHeaders\(\)/.test(routerCode));
+t("each event is written as `data: <json>` and a blank line, then flushed past compression", () =>
+  /res\.write\(`data: \$\{JSON\.stringify\(\w+\)\}\\n\\n`\)/.test(routerCode) && /res\.flush\?\.\(\)/.test(routerCode));
+t("the router never answers 409: a re-run already going is refused through the tool result (R19)", () => routerCode.length > 0 && !/\b409\b/.test(routerCode));
+t("the router takes the firm cap from DATUM_LIMITS.firmRepliesPer24h, not from a literal", () => /DATUM_LIMITS\.firmRepliesPer24h/.test(routerCode) && !/\b300\b/.test(routerCode));
+
+const securitySrc = read(SECURITY_REL);
+const limiterBlockOf = (src, name) => {
+  const i = src.indexOf(`export const ${name} = rateLimit({`);
+  if (i < 0) return "";
+  const j = src.indexOf("\n});", i);
+  return j < 0 ? "" : src.slice(i, j + 4);
+};
+const squash = (s) => stripComments(s).replace(/\s+/g, " ");
+const datumLimiter = squash(limiterBlockOf(securitySrc, "datumChatLimiter"));
+const runLimiter = squash(limiterBlockOf(securitySrc, "proofreadRunLimiter"));
+const skipOf = (b) => /skip: \(req\) => \{.*?\},/.exec(b)?.[0] ?? null;
+t("security.ts exports datumChatLimiter as rateLimit({ ... })", () => datumLimiter.length > 0);
+t("datumChatLimiter allows DATUM_LIMITS.userMessagesPerHour (40) an hour", () =>
+  /windowMs: 60 \* 60 \* 1000,/.test(datumLimiter) && /limit: DATUM_LIMITS\.userMessagesPerHour,/.test(datumLimiter) && C.DATUM_LIMITS?.userMessagesPerHour === 40);
+t("security.ts takes DATUM_LIMITS from @workspace/tis-api-zod", () => /import \{[^}]*\bDATUM_LIMITS\b[^}]*\} from "@workspace\/tis-api-zod";/.test(securitySrc));
+t('datumChatLimiter is keyed per user, falling back to ipKeyGenerator(req.ip ?? "")', () =>
+  datumLimiter.includes('keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),'));
+t("datumChatLimiter has proofreadRunLimiter's skip (dev auth and admin emails), word for word", () => skipOf(datumLimiter) !== null && skipOf(datumLimiter) === skipOf(runLimiter));
+t('datumChatLimiter fails open like proofreadRunLimiter, and pins standardHeaders "draft-7" with no legacy headers', () =>
+  datumLimiter.includes("passOnStoreError: true,") && datumLimiter.includes('standardHeaders: "draft-7",') && datumLimiter.includes("legacyHeaders: false,"));
+t('datumChatLimiter\'s message is "Too many Datum messages this hour. Try again shortly."', () =>
+  datumLimiter.includes('message: { error: "Too many Datum messages this hour. Try again shortly." }'));
+t("datumChatLimiter has its own Redis prefix, used by no other limiter", () => {
+  const prefix = /makeRateLimitStore\("([^"]+)"\)/.exec(datumLimiter)?.[1];
+  const all = [...securitySrc.matchAll(/makeRateLimitStore\("([^"]+)"\)/g)].map((m) => m[1]);
+  return prefix === "rl:datum-chat:" && all.filter((p) => p === prefix).length === 1;
+});
+
+const routesIndexSrc = read(ROUTES_INDEX_REL);
+t("routes/index.ts imports the chat router from ./datum-chat and mounts it once, after proofreadRouter", () => {
+  const p = routesIndexSrc.indexOf("router.use(proofreadRouter);");
+  const d = routesIndexSrc.indexOf("router.use(datumChatRouter);");
+  return routesIndexSrc.includes('import datumChatRouter from "./datum-chat";') && p >= 0 && d > p && routesIndexSrc.split("router.use(datumChatRouter);").length === 2;
+});
+
+const wiringSrc = read(WIRING_REL);
+const wiringCode = stripComments(wiringSrc);
+t("the wiring keeps one module-level Set<string> of the users with a chat re-run going, its own and not /whatif's", () => {
+  const sets = [...wiringCode.matchAll(/^const (\w+) = new Set<string>\(\);$/gm)];
+  return sets.length === 1 && (wiringCode.match(/new Set\b/g) ?? []).length === 1 && !/whatIfInFlight/.test(wiringCode) && new RegExp(`\\binFlight: ${sets[0][1]}\\b`).test(wiringCode);
+});
+t("the wiring hands the factory the real modules", () =>
+  [
+    /from "\.\/datum-chat-router(\.ts)?"/,
+    /makeDatumChatRouter(<[^>()]*>)?\(/,
+    /\bdatumChatLimiter\b/,
+    /\bgetDatumClient\b/,
+    /\bdatumChatEnabled\b/,
+    /reviseStudy(<[^>()]*>)?\(/,
+    /\bfirmMayRunUncharged\b/,
+    /\bgenerateTisReport\b/,
+    /GenerateTisResponse\.parse\(/,
+    /\benqueueProofread\b/,
+    /createRevision\(/,
+    /\bcountLineage\b/,
+    /\bgetProject\b/,
+    /getOrCreateFirmForUser\(/,
+    /from "\.\.\/lib\/datum-chat\/store(\.ts)?"/,
+    /\blineageFor\b/,
+    /\blistRevisions\b/,
+    /\bfirmRepliesLast24h\b/,
+    /\bloadVisible\b/,
+    /\blistMessages\b/,
+    /\binsertMessage\b/,
+  ].every((re) => re.test(wiringCode)));
+t("the wiring charges nothing: no reserveStudySlot, releaseStudySlot or saveProject", () => wiringCode.length > 0 && !/reserveStudySlot|releaseStudySlot|saveProject/.test(wiringCode));
+t("the wiring default-exports the router", () => /^export default router;$/m.test(wiringCode));
+
+// --- The client switch ---------------------------------------------------------------------------
+const clientSrc = read(CLIENT_REL);
+const clientCode = stripComments(clientSrc);
+t("client.ts has no top-level value import of @anthropic-ai/sdk: a static import of it is `import type` (erased)", () => {
+  const statics = [...clientCode.matchAll(/^\s*import\s+([^;]*?)\s+from\s+"@anthropic-ai\/sdk"/gm)].map((m) => m[1]);
+  return clientCode.length > 0 && statics.every((s) => /^type\s/.test(s)) && !/^\s*import\s+"@anthropic-ai\/sdk"/m.test(clientCode) && !/\brequire\s*\(/.test(clientCode);
+});
+t('client.ts loads the SDK in one place, with import("@anthropic-ai/sdk")', () => (clientCode.match(/\bimport\("@anthropic-ai\/sdk"\)/g) ?? []).length === 1);
+t("client.ts decides by process.env.ANTHROPIC_API_KEY", () => /process\.env\.ANTHROPIC_API_KEY/.test(clientCode));
+{
+  const x = await settle(async () => ({ client: await CL.getDatumClient(), enabled: CL.datumChatEnabled() }));
+  t("with the key unset, getDatumClient() answers null and datumChatEnabled() is false", () => {
+    const r = must(x);
+    return r.client === null && r.enabled === false;
+  });
+  t("and nothing resolved @anthropic-ai/sdk: the SDK was not imported", () => must(x) !== null && sdkHooked && sdkResolutions.length === 0);
+}
+
+/** A stand-in for the SDK's module: a client whose messages.stream() records what it is given and replays `deltas`. */
+const fakeSdk = (message, deltas = ["Hello ", "there."]) => {
+  const rec = { made: 0, args: [], params: [], aborts: 0 };
+  class Anthropic {
+    constructor(...args) {
+      rec.made += 1;
+      rec.args.push(args);
+      this.messages = {
+        stream: (params, ...more) => {
+          rec.params.push({ params, more });
+          const listeners = [];
+          let snapshot = "";
+          const handle = {
+            on(ev, cb) {
+              if (ev === "text") listeners.push(cb);
+              return handle;
+            },
+            abort() {
+              rec.aborts += 1;
+            },
+            async finalMessage() {
+              await tick();
+              for (const d of deltas) {
+                snapshot += d;
+                for (const cb of listeners) cb(d, snapshot);
+              }
+              return message;
+            },
+          };
+          return handle;
+        },
+      };
+    }
+  }
+  return { rec, module: { default: Anthropic } };
+};
+const SDK_MESSAGE = {
+  id: "msg_check_1",
+  type: "message",
+  role: "assistant",
+  model: MODEL,
+  content: [
+    { type: "thinking", thinking: "", signature: "opaque-signature-sdk" },
+    { type: "text", text: "Hello there.", citations: null },
+  ],
+  stop_reason: "end_turn",
+  stop_sequence: null,
+  usage: { input_tokens: 120, output_tokens: 30, cache_creation_input_tokens: 0, cache_read_input_tokens: 18000, server_tool_use: null, service_tier: "standard" },
+};
+{
+  const x = await settle(async () => {
+    const sdk = fakeSdk(SDK_MESSAGE);
+    let loads = 0;
+    let key = false;
+    const get = CL.makeDatumClientGetter({ hasKey: () => key, load: async () => ((loads += 1), sdk.module) });
+    const off = await get();
+    const loadsWhileOff = loads;
+    key = true;
+    const [a, b] = await Promise.all([get(), get()]);
+    const c = await get();
+    return { off, loadsWhileOff, a, b, c, loads, made: sdk.rec.made, args: sdk.rec.args };
+  });
+  t("makeDatumClientGetter: no key, null, and the SDK is not loaded", () => {
+    const r = must(x);
+    return r.off === null && r.loadsWhileOff === 0;
+  });
+  t("with a key: one load and one client for every call after, concurrent calls included", () => {
+    const r = must(x);
+    return r.a !== null && typeof r.a?.messages?.stream === "function" && r.a === r.b && r.b === r.c && r.loads === 1 && r.made === 1;
+  });
+  t("the client is built with no arguments: the SDK reads its own key from the environment", () => same(must(x).args, [[]]));
+}
+{
+  const x = await settle(async () => {
+    const sdk = fakeSdk(SDK_MESSAGE);
+    let loads = 0;
+    const get = CL.makeDatumClientGetter({
+      hasKey: () => true,
+      load: async () => {
+        loads += 1;
+        if (loads === 1) throw new Error("load failed");
+        return sdk.module;
+      },
+    });
+    let first = null;
+    try {
+      await get();
+    } catch (e) {
+      first = e instanceof Error ? e.message : String(e);
+    }
+    return { first, second: await get(), loads };
+  });
+  t("a failed SDK load rejects that call and is tried again on the next, not kept as a failure", () => {
+    const r = must(x);
+    return r.first === "load failed" && r.second !== null && r.loads === 2;
+  });
+}
+{
+  const x = await settle(async () => {
+    const sdk = fakeSdk({ ...SDK_MESSAGE, stop_reason: null });
+    const client = CL.adaptAnthropic(new sdk.module.default());
+    const params = { model: MODEL, messages: [] };
+    const stream = client.messages.stream(params);
+    const got = [];
+    stream.on("text", (...a) => got.push(a));
+    stream.abort();
+    const m = await stream.finalMessage();
+    const kept = await CL.adaptAnthropic(new (fakeSdk(SDK_MESSAGE).module.default)()).messages.stream({}).finalMessage();
+    return { m, kept, got, rec: sdk.rec, params };
+  });
+  t("adaptAnthropic: stream(params) gives the SDK the same params object, and nothing else", () => {
+    const r = must(x);
+    return r.rec.params.length === 1 && r.rec.params[0].params === r.params && r.rec.params[0].more.length === 0;
+  });
+  t("adaptAnthropic: the text listener gets the delta alone, not the SDK's snapshot", () => same(must(x).got, [["Hello "], ["there."]]));
+  t("adaptAnthropic: abort() reaches the SDK stream", () => must(x).rec.aborts === 1);
+  t("adaptAnthropic: the content blocks are the SDK's own objects, unchanged (the thinking block's signature included)", () => {
+    const r = must(x);
+    return r.m.content.length === 2 && r.m.content[0] === SDK_MESSAGE.content[0] && r.m.content[1] === SDK_MESSAGE.content[1];
+  });
+  t("adaptAnthropic: usage is the input and output tokens only, and the model is as given", () => {
+    const r = must(x);
+    return same(r.m.usage, { input_tokens: 120, output_tokens: 30 }) && r.m.model === MODEL;
+  });
+  t("adaptAnthropic: a stop_reason is kept as given, and a null one becomes a string the loop can store", () => {
+    const r = must(x);
+    return r.kept.stop_reason === "end_turn" && typeof r.m.stop_reason === "string" && r.m.stop_reason !== "" && r.m.stop_reason !== "end_turn" && r.m.stop_reason !== "tool_use";
+  });
+}
+{
+  const x = await settle(async () => {
+    const sdk = fakeSdk(SDK_MESSAGE);
+    const events = [];
+    const res = await RUN.runDatumTurn(
+      {
+        client: CL.adaptAnthropic(new sdk.module.default()),
+        revise: async () => ({ ok: false, error: "not in this test" }),
+        readPath: () => "",
+        emit: (e) => events.push(e),
+        signal: new AbortController().signal,
+      },
+      { system: SYSTEM, messages: HISTORY },
+    );
+    return { res, events, rec: sdk.rec };
+  });
+  t("the adapted client drives runDatumTurn: the reply streams, and the SDK is given the loop's own params", () => {
+    const r = must(x);
+    const p = r.rec.params[0]?.params ?? {};
+    return (
+      r.res.text === "Hello there." &&
+      r.res.stopReason === "end_turn" &&
+      r.res.inputTokens === 120 &&
+      r.res.outputTokens === 30 &&
+      same(r.events, [{ type: "text", delta: "Hello " }, { type: "text", delta: "there." }]) &&
+      p.model === MODEL &&
+      same(p.thinking, { type: "adaptive" }) &&
+      p.tools?.[0]?.name === READ_NAME &&
+      p.tools?.[1]?.name === RERUN_NAME
+    );
+  });
+}
+
+// --- The test app ----------------------------------------------------------------------------------
+// makeDatumChatRouter(fakes) on express() with compression() and express.json(), as app.ts mounts them, and a fake
+// auth that sets req.isAuthenticated / req.user (signed out when the request says so) and a recording req.log.
+const RT_FIRM = { id: randomUUID(), name: "Firm A" };
+const RT_USER = { id: "user-rt", email: "rt@example.test", firstName: "Rae", lastName: "Tan", profileImageUrl: null };
+const RT_PROJECT = randomUUID();
+const RT_FOREIGN = randomUUID();
+const RT_NEW = randomUUID();
+const RT_REVISION_ROW = randomUUID();
+const RT_HIDDEN = randomUUID();
+const RT_VISIBLE = REAL.slice(0, 2);
+const [RT_F0, RT_F1] = RT_VISIBLE;
+const RT_LINEAGE = { version: 1, revisedFromProjectId: null, revisedFromVersion: null, latestVersionId: RT_PROJECT, latestVersion: 1 };
+const RT_EARLIER = [
+  { id: randomUUID(), role: "engineer", content: "What does the growth finding mean?", authorName: "Rae Tan", findingId: null, revisionId: null, createdAt: "2026-10-20T10:00:00.000Z" },
+  { id: randomUUID(), role: "datum", content: "It means the study grew the counts at 2.1% a year.", authorName: null, findingId: null, revisionId: null, createdAt: "2026-10-20T10:00:05.000Z" },
+];
+const RT_CHANGES = [{ field: "growthRatePct", from: 2.1, to: 1 }];
+const RT_REVISIONS = [
+  { id: RT_REVISION_ROW, projectId: RT_NEW, fromProjectId: RT_PROJECT, version: 2, changes: RT_CHANGES, reason: "county letter", sourceLabel: null, requestedBy: "Rae Tan", findingId: null, clauseId: null, createdAt: "2026-10-20T10:01:00.000Z" },
+];
+const RT_STORED = { id: RT_PROJECT, firmId: RT_FIRM.id, rootProjectId: null, version: 1, requestPayload: REC.request, resultPayload: REC.result };
+const CAP_LINE = "Datum has answered 300 questions for your firm today. It picks up again within 24 hours.";
+const explainTurn = () => turnOf(["Because ", "the growth rate ", "was 2.1%."], modelMsg([block.thinking(), block.text("Because the growth rate was 2.1%.")]));
+const rerunTurns = (input = GROW, reply = "Done: Version 2 uses growth 1.0%.") => [
+  turnOf([], modelMsg([block.thinking(), rerunUse("tu_rt_1", input)], "tool_use")),
+  turnOf([reply], modelMsg([block.text(reply)])),
+];
+
+/**
+ * Fakes for every dep, each recording its calls (and `order`, the sequence the route read and wrote in). Knobs:
+ * enabled, client (null for none), replies, visible, insertThrows (a role whose insert throws), revise, limiter, turns.
+ */
+function routerFakes(over = {}) {
+  const calls = { order: [], resolveFirm: [], getProject: [], loadVisible: [], listMessages: [], insertMessage: [], listRevisions: [], lineageFor: [], firmRepliesLast24h: [], revise: [], getClient: 0, limiter: 0 };
+  const model = fakeModel(over.turns ?? [explainTurn()]);
+  const ids = [];
+  const deps = {
+    isEnabled: () => over.enabled ?? true,
+    getClient: async () => {
+      calls.getClient += 1;
+      return over.client === null ? null : model.client;
+    },
+    resolveFirm: async (user) => {
+      calls.order.push("resolveFirm");
+      calls.resolveFirm.push(user);
+      return RT_FIRM;
+    },
+    getProject: async (firmId, id) => {
+      calls.order.push("getProject");
+      calls.getProject.push([firmId, id]);
+      return firmId === RT_FIRM.id && id === RT_PROJECT ? RT_STORED : null;
+    },
+    loadVisible: async (firmId, id) => {
+      calls.order.push("loadVisible");
+      calls.loadVisible.push([firmId, id]);
+      return { findings: over.visible ?? RT_VISIBLE, dispositions: [] };
+    },
+    listMessages: async (firmId, id) => {
+      calls.order.push("listMessages");
+      calls.listMessages.push([firmId, id]);
+      return structuredClone(RT_EARLIER);
+    },
+    insertMessage: async (row) => {
+      calls.order.push(`insert:${row.role}`);
+      calls.insertMessage.push(structuredClone(row));
+      if (over.insertThrows === row.role) throw new Error(`insert of the ${row.role} message failed (check)`);
+      const id = randomUUID();
+      ids.push(id);
+      return { id };
+    },
+    listRevisions: async (firmId, id) => {
+      calls.listRevisions.push([firmId, id]);
+      return structuredClone(RT_REVISIONS);
+    },
+    lineageFor: async (firmId, id) => {
+      calls.lineageFor.push([firmId, id]);
+      return { ...RT_LINEAGE };
+    },
+    firmRepliesLast24h: async (firmId) => {
+      calls.order.push("firmReplies");
+      calls.firmRepliesLast24h.push(firmId);
+      return over.replies ?? 0;
+    },
+    revise: async (firm, user, parentId, input, messageId, findingId, extras) => {
+      calls.revise.push({ firm, user, parentId, input: structuredClone(input), messageId, findingId, extras });
+      if (over.revise) return over.revise(firm, user, parentId, input, messageId, findingId, extras);
+      return { ok: true, projectId: RT_NEW, version: 2, changes: RT_CHANGES, revisionId: RT_REVISION_ROW };
+    },
+    limiter:
+      over.limiter ??
+      ((_req, _res, next) => {
+        calls.limiter += 1;
+        next();
+      }),
+  };
+  return { deps, calls, model, ids };
+}
+
+/**
+ * Runs `fn` against a fresh server on port 0. `tamper` is middleware mounted right after compression(). A block that
+ * has not finished in ROUTER_BLOCK_MS fails by name (a route that never answers would otherwise hang the check), and
+ * the server's sockets are destroyed either way, so a hung fetch rejects.
+ */
+const ROUTER_BLOCK_MS = 10000;
+async function withServer(deps, fn, { tamper } = {}) {
+  const logs = [];
+  const escaped = [];
+  const app = express();
+  app.use(compression());
+  if (tamper) app.use(tamper);
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    req.user = req.header("x-test-signed-out") === "1" ? undefined : RT_USER;
+    req.isAuthenticated = function isAuthenticated() {
+      return this.user != null;
+    };
+    const at = (level) => (obj, msg) => logs.push({ level, obj, msg });
+    req.log = { error: at("error"), warn: at("warn"), info: at("info"), debug: at("debug") };
+    next();
+  });
+  app.use(RT.makeDatumChatRouter(deps));
+  // The check's own net: an error the router let reach Express would otherwise be a bare 500 with no reason.
+  app.use((err, _req, res, _next) => {
+    escaped.push(err);
+    if (!res.headersSent) res.status(599).end();
+  });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, "127.0.0.1", () => resolve(s));
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  let timer;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`the block did not finish in ${ROUTER_BLOCK_MS} ms (a response that never ends?)`)), ROUTER_BLOCK_MS);
+  });
+  try {
+    return await Promise.race([fn({ base, logs, escaped }), timeout]);
+  } finally {
+    clearTimeout(timer);
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(() => resolve()));
+  }
+}
+
+const getThread = (base, id = RT_PROJECT, headers = {}) => fetch(`${base}/projects/${id}/datum`, { headers });
+const postMessage = (base, body, { id = RT_PROJECT, headers = {}, signal } = {}) =>
+  fetch(`${base}/projects/${id}/datum/messages`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body), signal });
+const jsonOf = async (r) => {
+  try {
+    return await r.json();
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Reads a server-sent event stream to its end, or until `stopAfter(event, n)` is true, when it aborts `controller`
+ * (the engineer closing the tab). Each event is kept with the time it arrived.
+ */
+async function readStream(r, { stopAfter, controller } = {}) {
+  const events = [];
+  const at = [];
+  let raw = "";
+  let buf = "";
+  let failed = null;
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      raw += chunk;
+      buf += chunk;
+      for (let i = buf.indexOf("\n\n"); i >= 0; i = buf.indexOf("\n\n")) {
+        const frame = buf.slice(0, i);
+        buf = buf.slice(i + 2);
+        const data = frame
+          .split("\n")
+          .filter((l) => l.startsWith("data: "))
+          .map((l) => l.slice(6))
+          .join("\n");
+        let event;
+        try {
+          event = JSON.parse(data);
+        } catch {
+          event = { unparsable: frame };
+        }
+        events.push(event);
+        at.push(performance.now());
+        if (stopAfter?.(event, events.length)) {
+          controller?.abort();
+          await reader.cancel().catch(() => undefined);
+          return { events, at, raw, rest: buf, endedAt: null, stopped: true, failed };
+        }
+      }
+    }
+  } catch (e) {
+    failed = e instanceof Error ? e.message : String(e);
+  }
+  return { events, at, raw, rest: buf, endedAt: performance.now(), stopped: false, failed };
+}
+const parsesAsEvents = (events) => events.length > 0 && events.every((e) => C.DatumStreamEvent?.safeParse(e).success === true);
+const datumRows = (calls) => calls.insertMessage.filter((r) => r.role === "datum");
+const errorLogs = (logs) => logs.filter((l) => l.level === "error");
+
+// --- Signed out -------------------------------------------------------------------------------------
+{
+  const f = routerFakes();
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base }) => {
+      const g = await getThread(base, RT_PROJECT, { "x-test-signed-out": "1" });
+      const p = await postMessage(base, { content: "hi" }, { headers: { "x-test-signed-out": "1" } });
+      return { g: g.status, gb: await jsonOf(g), p: p.status, pb: await jsonOf(p) };
+    }),
+  );
+  t("signed out: GET is 401 with an error", () => {
+    const r = must(x);
+    return r.g === 401 && typeof r.gb?.error === "string";
+  });
+  t("signed out: POST is 401, and nothing was read or written", () => {
+    const r = must(x);
+    return r.p === 401 && typeof r.pb?.error === "string" && f.calls.resolveFirm.length === 0 && f.calls.insertMessage.length === 0 && f.model.calls.length === 0;
+  });
+}
+
+// --- Another firm, and an id that is not a uuid ----------------------------------------------------------
+{
+  const f = routerFakes();
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base }) => {
+      const foreign = await getThread(base, RT_FOREIGN);
+      const firmReadsAfterForeign = f.calls.resolveFirm.length;
+      const notUuid = await getThread(base, "not-a-uuid");
+      const firmReadsAfterNotUuid = f.calls.resolveFirm.length;
+      const postForeign = await postMessage(base, { content: "hi" }, { id: RT_FOREIGN });
+      const postNotUuid = await postMessage(base, { content: "hi" }, { id: "not-a-uuid" });
+      return {
+        foreign: foreign.status,
+        foreignBody: await jsonOf(foreign),
+        notUuid: notUuid.status,
+        postForeign: postForeign.status,
+        postNotUuid: postNotUuid.status,
+        firmReadsAfterForeign,
+        firmReadsAfterNotUuid,
+      };
+    }),
+  );
+  t("another firm: GET on another firm's project is 404, the project read within the user's own firm", () => {
+    const r = must(x);
+    return r.foreign === 404 && typeof r.foreignBody?.error === "string" && same(f.calls.getProject[0], [RT_FIRM.id, RT_FOREIGN]) && r.firmReadsAfterForeign === 1;
+  });
+  t("GET /projects/not-a-uuid/datum is 404 before anything is read", () => {
+    const r = must(x);
+    return r.notUuid === 404 && r.firmReadsAfterNotUuid === 1;
+  });
+  t("POST on another firm's project, or on an id that is not a uuid, is 404 and writes nothing", () => {
+    const r = must(x);
+    return r.postForeign === 404 && r.postNotUuid === 404 && f.calls.insertMessage.length === 0 && f.model.calls.length === 0;
+  });
+}
+
+// --- The read ------------------------------------------------------------------------------------------
+{
+  const f = routerFakes();
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base }) => {
+      const g = await getThread(base);
+      return { status: g.status, body: await jsonOf(g) };
+    }),
+  );
+  t("GET answers DatumChatReadResponse: enabled, the thread, the revisions and the lineage, all read within the firm", () => {
+    const r = must(x);
+    return (
+      r.status === 200 &&
+      C.DatumChatReadResponse?.safeParse(r.body).success === true &&
+      same(r.body, { enabled: true, messages: RT_EARLIER, revisions: RT_REVISIONS, lineage: RT_LINEAGE }) &&
+      same(f.calls.listMessages, [[RT_FIRM.id, RT_PROJECT]]) &&
+      same(f.calls.listRevisions, [[RT_FIRM.id, RT_PROJECT]]) &&
+      same(f.calls.lineageFor, [[RT_FIRM.id, RT_PROJECT]])
+    );
+  });
+  t("GET spends nothing of the message budget: the limiter is the POST's", () => must(x) !== null && f.calls.limiter === 0);
+}
+
+// --- Disabled ----------------------------------------------------------------------------------------
+{
+  const f = routerFakes({ enabled: false });
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base }) => {
+      const g = await getThread(base);
+      const p = await postMessage(base, { content: "Why was this flagged?" });
+      return { g: g.status, gb: await jsonOf(g), p: p.status, pb: await jsonOf(p) };
+    }),
+  );
+  t("disabled: GET is { enabled: false, messages: [], revisions: [], lineage }, and the thread is not read", () => {
+    const r = must(x);
+    return (
+      r.g === 200 &&
+      same(r.gb, { enabled: false, messages: [], revisions: [], lineage: RT_LINEAGE }) &&
+      C.DatumChatReadResponse?.safeParse(r.gb).success === true &&
+      f.calls.listMessages.length === 0 &&
+      f.calls.listRevisions.length === 0
+    );
+  });
+  t('disabled: POST is 503 { error: "Datum chat is off." }, with no client asked for and nothing written', () => {
+    const r = must(x);
+    return r.p === 503 && same(r.pb, { error: "Datum chat is off." }) && f.calls.getClient === 0 && f.calls.insertMessage.length === 0;
+  });
+}
+{
+  const f = routerFakes({ client: null });
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base }) => {
+      const p = await postMessage(base, { content: "Why was this flagged?" });
+      return { p: p.status, pb: await jsonOf(p) };
+    }),
+  );
+  t("no client although the chat says it is on: POST is 503, and the engineer's message is not saved", () => {
+    const r = must(x);
+    return r.p === 503 && same(r.pb, { error: "Datum chat is off." }) && f.calls.getClient === 1 && f.calls.insertMessage.length === 0;
+  });
+}
+
+// --- Bad bodies ------------------------------------------------------------------------------------------
+{
+  const f = routerFakes();
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base }) => {
+      const out = {};
+      for (const [name, body] of [
+        ["empty", { content: "" }],
+        ["blank", { content: "   " }],
+        ["long", { content: "x".repeat(C.DATUM_LIMITS?.messageChars + 1) }],
+        ["extra", { content: "ok", projectId: RT_PROJECT }],
+        ["badFinding", { content: "ok", findingId: "not-a-uuid" }],
+      ]) {
+        const r = await postMessage(base, body);
+        out[name] = { status: r.status, body: await jsonOf(r) };
+      }
+      const hidden = await postMessage(base, { content: "Why?", findingId: RT_HIDDEN });
+      out.hidden = { status: hidden.status, body: await jsonOf(hidden) };
+      return out;
+    }),
+  );
+  t('bad bodies: { content: "" } is 400', () => must(x).empty.status === 400 && typeof must(x).empty.body?.error === "string");
+  t("bad bodies: blank content, content over the limit, an unknown key and a findingId that is no uuid are each 400", () => {
+    const r = must(x);
+    return ["blank", "long", "extra", "badFinding"].every((k) => r[k].status === 400);
+  });
+  t("a findingId that is not in the visible set is 404, and nothing is written or asked of the model", () => {
+    const r = must(x);
+    return r.hidden.status === 404 && typeof r.hidden.body?.error === "string" && f.calls.insertMessage.length === 0 && f.model.calls.length === 0;
+  });
+}
+
+// --- The firm cap, and the limiter first -------------------------------------------------------------------
+{
+  const atCap = routerFakes({ replies: 300 });
+  const under = routerFakes({ replies: 299 });
+  const x = await settle(async () => {
+    const capped = await withServer(atCap.deps, async ({ base }) => {
+      const p = await postMessage(base, { content: "Why?" });
+      return { status: p.status, body: await jsonOf(p) };
+    });
+    const below = await withServer(under.deps, async ({ base }) => {
+      const p = await postMessage(base, { content: "Why?" });
+      return { status: p.status, s: await readStream(p) };
+    });
+    return { capped, below };
+  });
+  t(`the firm cap: firmRepliesLast24h at 300 is 429 "${CAP_LINE}", counted for the firm, and nothing is written`, () => {
+    const r = must(x);
+    return r.capped.status === 429 && same(r.capped.body, { error: CAP_LINE }) && same(atCap.calls.firmRepliesLast24h, [RT_FIRM.id]) && atCap.calls.insertMessage.length === 0;
+  });
+  t("299 replies is under the cap: the message is answered", () => {
+    const r = must(x);
+    return r.below.status === 200 && r.below.s.events.at(-1)?.type === "done";
+  });
+}
+{
+  const f = routerFakes({
+    limiter: (_req, res) => {
+      f.calls.limiter += 1;
+      res.status(429).json({ error: "limited (check)" });
+    },
+  });
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base }) => {
+      const signedIn = await postMessage(base, { content: "Why?" });
+      const signedOut = await postMessage(base, { content: "" }, { headers: { "x-test-signed-out": "1" } });
+      return { a: signedIn.status, ab: await jsonOf(signedIn), b: signedOut.status };
+    }),
+  );
+  t("the limiter runs first: a limited POST is answered by the limiter, before sign-in, the body or any read", () => {
+    const r = must(x);
+    return r.a === 429 && same(r.ab, { error: "limited (check)" }) && r.b === 429 && f.calls.limiter === 2 && f.calls.resolveFirm.length === 0;
+  });
+}
+
+// --- The stream ------------------------------------------------------------------------------------------
+{
+  const f = routerFakes();
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base, logs, escaped }) => {
+      const p = await postMessage(base, { content: "  Why was growth flagged?  " });
+      const headers = { type: p.headers.get("content-type"), cache: p.headers.get("cache-control"), accel: p.headers.get("x-accel-buffering"), encoding: p.headers.get("content-encoding") };
+      return { status: p.status, headers, s: await readStream(p), logs, escaped };
+    }),
+  );
+  t("the stream: 200 with content-type text/event-stream, no-cache, no-transform, X-Accel-Buffering: no, and not compressed", () => {
+    const r = must(x);
+    return r.status === 200 && /^text\/event-stream/.test(r.headers.type ?? "") && r.headers.cache === "no-cache, no-transform" && r.headers.accel === "no" && r.headers.encoding === null;
+  });
+  t("the stream: every event parses as DatumStreamEvent, the reply's deltas in order, ending with done", () => {
+    const r = must(x);
+    return parsesAsEvents(r.s.events) && same(eventTypes(r.s.events), ["text", "text", "text", "done"]) && joinedDeltas(r.s.events) === "Because the growth rate was 2.1%." && r.s.rest === "";
+  });
+  t("the stream: insertMessage is called twice, the engineer's message (trimmed) and then Datum's, both under the firm resolved for the project", () => {
+    const [engineer, datum] = f.calls.insertMessage;
+    return (
+      must(x) !== null &&
+      f.calls.insertMessage.length === 2 &&
+      has(engineer, { projectId: RT_PROJECT, firmId: RT_FIRM.id, userId: RT_USER.id, role: "engineer", content: "Why was growth flagged?", findingId: null }) &&
+      has(datum, { projectId: RT_PROJECT, firmId: RT_FIRM.id, userId: null, role: "datum", content: "Because the growth rate was 2.1%.", revisionId: null, model: MODEL, inputTokens: 100, outputTokens: 20, stopReason: "end_turn" })
+    );
+  });
+  t("the stream: done carries the id of the saved Datum message", () => {
+    const r = must(x);
+    return f.ids.length === 2 && same(r.s.events.at(-1), { type: "done", messageId: f.ids[1] });
+  });
+  t("R12: the thread is read before the engineer's message is saved, and the model gets that thread plus the new message once", () => {
+    must(x);
+    const order = f.calls.order;
+    const call = f.model.calls[0] ?? {};
+    const sent = JSON.stringify(call.messages ?? []);
+    return (
+      order.indexOf("listMessages") >= 0 &&
+      order.indexOf("listMessages") < order.indexOf("insert:engineer") &&
+      same(call.messages, PR.buildHistory(RT_EARLIER, { content: "Why was growth flagged?" })) &&
+      sent.split("Why was growth flagged?").length === 2
+    );
+  });
+  t("the system is buildSystem over the pack built from the stored study and the visible findings, with none in focus", () => {
+    must(x);
+    const packText = X.buildGroundingPack({ request: REC.request, result: REC.result, findings: RT_VISIBLE, dispositions: [] }).text;
+    return same(f.model.calls[0]?.system, PR.buildSystem(packText));
+  });
+  t("the stream: nothing was logged as an error and nothing escaped to Express", () => {
+    const r = must(x);
+    return errorLogs(r.logs).length === 0 && r.escaped.length === 0;
+  });
+}
+
+// --- A finding in focus ----------------------------------------------------------------------------------
+{
+  const f = routerFakes();
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base }) => {
+      const p = await postMessage(base, { content: "Why?", findingId: RT_F1.id.toUpperCase() });
+      return { status: p.status, s: await readStream(p) };
+    }),
+  );
+  t("focus: the body's findingId is matched in any case and saved as the visible finding's own id", () => {
+    const r = must(x);
+    return r.status === 200 && f.calls.insertMessage[0]?.findingId === RT_F1.id;
+  });
+  t("R12: with a findingId, buildHistory gets that VisibleFinding as focus, and the pack the same finding as focusFindingId", () => {
+    must(x);
+    const call = f.model.calls[0] ?? {};
+    const packText = X.buildGroundingPack({ request: REC.request, result: REC.result, findings: RT_VISIBLE, dispositions: [], focusFindingId: RT_F1.id }).text;
+    return same(call.messages, PR.buildHistory(RT_EARLIER, { content: "Why?", focus: RT_F1 })) && same(call.system, PR.buildSystem(packText));
+  });
+}
+
+// --- A re-run ------------------------------------------------------------------------------------------------
+{
+  const f = routerFakes({ turns: rerunTurns() });
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base, logs }) => {
+      const p = await postMessage(base, { content: "Use the county's 1.0% (County letter).", findingId: RT_F0.id });
+      return { status: p.status, s: await readStream(p), logs };
+    }),
+  );
+  t("a re-run: status, revision, the reply and done, every event a DatumStreamEvent", () => {
+    const r = must(x);
+    return (
+      parsesAsEvents(r.s.events) &&
+      same(eventTypes(r.s.events), ["status", "revision", "text", "done"]) &&
+      same(r.s.events[1], { type: "revision", projectId: RT_NEW, version: 2, changes: RT_CHANGES })
+    );
+  });
+  t("a re-run: revise gets the resolved firm, the user, this project as the parent, the parsed input and the engineer's message id", () => {
+    must(x);
+    const c = f.calls.revise[0] ?? {};
+    return (
+      f.calls.revise.length === 1 &&
+      c.firm === RT_FIRM &&
+      c.user?.id === RT_USER.id &&
+      c.user?.email === RT_USER.email &&
+      c.parentId === RT_PROJECT &&
+      same(c.input, GROW) &&
+      c.messageId === f.ids[0] &&
+      typeof c.extras?.log === "function"
+    );
+  });
+  t("a re-run: the Datum message is saved with the revision's id", () => {
+    must(x);
+    const [datum] = datumRows(f.calls);
+    return has(datum, { revisionId: RT_REVISION_ROW, content: "Done: Version 2 uses growth 1.0%.", stopReason: "end_turn" });
+  });
+}
+
+// --- R17: which finding the log row names ------------------------------------------------------------------
+/** Runs one re-run with the body's findingId and the model's, and gives back what revise was told. */
+async function rerunNaming(bodyFinding, modelFinding) {
+  const input = modelFinding === undefined ? GROW : { ...GROW, findingId: modelFinding };
+  const f = routerFakes({ turns: rerunTurns(input) });
+  await withServer(f.deps, async ({ base }) => {
+    const body = bodyFinding === undefined ? { content: "Use 1.0%." } : { content: "Use 1.0%.", findingId: bodyFinding };
+    const p = await postMessage(base, body);
+    await readStream(p);
+  });
+  const c = f.calls.revise[0];
+  return c === undefined ? null : { findingId: c.findingId ?? null, clauseId: c.extras?.clauseId ?? null };
+}
+{
+  const x = await settle(async () => ({
+    modelVisible: await rerunNaming(RT_F0.id, RT_F1.id),
+    modelVisibleUpper: await rerunNaming(undefined, RT_F1.id.toUpperCase()),
+    modelHidden: await rerunNaming(RT_F0.id, RT_HIDDEN),
+    modelHiddenNoBody: await rerunNaming(undefined, RT_HIDDEN),
+    bodyOnly: await rerunNaming(RT_F0.id, undefined),
+    neither: await rerunNaming(undefined, undefined),
+  }));
+  t("R17: the model's findingId is recorded when it is in the visible set, with that finding's clause", () => {
+    const r = must(x);
+    return same(r.modelVisible, { findingId: RT_F1.id, clauseId: RT_F1.clauseId }) && same(r.modelVisibleUpper, { findingId: RT_F1.id, clauseId: RT_F1.clauseId });
+  });
+  t("R17: a findingId the model made up or may not see is never recorded: the body's finding is, or none", () => {
+    const r = must(x);
+    return same(r.modelHidden, { findingId: RT_F0.id, clauseId: RT_F0.clauseId }) && same(r.modelHiddenNoBody, { findingId: null, clauseId: null });
+  });
+  t("R17: with no findingId from the model, the body's finding is recorded; with neither, none", () => {
+    const r = must(x);
+    return same(r.bodyOnly, { findingId: RT_F0.id, clauseId: RT_F0.clauseId }) && same(r.neither, { findingId: null, clauseId: null });
+  });
+}
+
+// --- R15: the re-run's log goes to the request's logger ---------------------------------------------------------
+{
+  const cause = new Error("engine failed (check)");
+  const f = routerFakes({
+    turns: rerunTurns(GROW, "The re-run failed; nothing new to open."),
+    revise: async (_firm, _user, _parent, _input, _message, _finding, extras) => {
+      extras.log(cause, { step: "generate", parentId: RT_PROJECT });
+      return { ok: false, error: "The re-run failed, so there is no new version to open." };
+    },
+  });
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base, logs }) => {
+      const p = await postMessage(base, { content: "Use 1.0%." });
+      return { s: await readStream(p), logs };
+    }),
+  );
+  t("R15: the log revise is given writes through req.log.error, with the cause and its context", () => {
+    const r = must(x);
+    return errorLogs(r.logs).some((l) => l.obj?.err === cause && l.obj?.step === "generate" && l.obj?.parentId === RT_PROJECT && typeof l.msg === "string");
+  });
+  t("R15: a refused re-run saves the Datum message with no revision", () => {
+    const r = must(x);
+    return r.s.events.at(-1)?.type === "done" && has(datumRows(f.calls)[0], { revisionId: null });
+  });
+}
+
+// --- R13: a model failure is logged, and goes nowhere else --------------------------------------------------
+{
+  const secret = Object.assign(new Error("401 authentication_error: invalid x-api-key sk-ant-check-not-a-key"), { status: 401, headers: { "request-id": "req_check_secret" } });
+  const f = routerFakes({ turns: [turnOf([], null, { reject: secret })] });
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base, logs, escaped }) => {
+      const p = await postMessage(base, { content: "Why?" });
+      return { s: await readStream(p), logs, escaped };
+    }),
+  );
+  t("R13: result.error is logged through req.log.error, as the error object itself", () => {
+    const r = must(x);
+    return errorLogs(r.logs).some((l) => l.obj?.err === secret && typeof l.msg === "string");
+  });
+  t("R13: the engineer gets the plain line and the error event, and the message is saved with stop reason error", () => {
+    const r = must(x);
+    return (
+      parsesAsEvents(r.s.events) &&
+      same(eventTypes(r.s.events), ["text", "error", "done"]) &&
+      has(datumRows(f.calls)[0], { content: LINE, stopReason: "error", revisionId: null })
+    );
+  });
+  t("R13: nothing of the error reaches the stream or a saved message", () => {
+    const r = must(x);
+    const saved = JSON.stringify(f.calls.insertMessage);
+    return !/sk-ant|x-api-key|authentication_error|req_check_secret/.test(r.s.raw) && !/sk-ant|x-api-key|authentication_error|req_check_secret|"error":/.test(saved) && r.escaped.length === 0;
+  });
+}
+
+// --- An exception after the headers ----------------------------------------------------------------------------
+{
+  const f = routerFakes({ insertThrows: "datum" });
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base, logs, escaped }) => {
+      const p = await postMessage(base, { content: "Why?" });
+      return { status: p.status, s: await readStream(p), logs, escaped };
+    }),
+  );
+  t("an exception after the headers: the stream sends error, then ends, with no done", () => {
+    const r = must(x);
+    const types = eventTypes(r.s.events);
+    return r.status === 200 && parsesAsEvents(r.s.events) && types.at(-1) === "error" && !types.includes("done") && r.s.failed === null && r.s.endedAt !== null;
+  });
+  t("an exception after the headers is logged, and its message is not sent", () => {
+    const r = must(x);
+    return errorLogs(r.logs).some((l) => l.obj?.err instanceof Error && /insert of the datum message failed/.test(l.obj.err.message)) && !/insert of the datum/.test(r.s.raw) && r.escaped.length === 0;
+  });
+}
+
+// --- Review Focus 5: compression must not hold the reply back ----------------------------------------------------
+{
+  const slowTurn = () => turnOf(["First words. ", "The rest."], modelMsg([block.text("First words. The rest.")]), { pauseMs: 300 });
+  const timing = (s) => {
+    const first = s.events.findIndex((e) => e.type === "text");
+    return first < 0 || s.endedAt === null ? null : s.endedAt - s.at[first];
+  };
+  const live = routerFakes({ turns: [slowTurn()] });
+  // The control strips both defences, no-transform and the per-event flush, to show the harness sees buffering at all.
+  const held = routerFakes({ turns: [slowTurn()] });
+  const stripDefences = (_req, res, next) => {
+    const setHeader = res.setHeader.bind(res);
+    res.setHeader = (name, value) => setHeader(name, String(name).toLowerCase() === "cache-control" ? "no-cache" : value);
+    res.flush = () => undefined;
+    next();
+  };
+  const x = await settle(async () => {
+    const a = await withServer(live.deps, async ({ base }) => {
+      const p = await postMessage(base, { content: "Why?" });
+      return { s: await readStream(p), encoding: p.headers.get("content-encoding") };
+    });
+    const b = await withServer(
+      held.deps,
+      async ({ base }) => {
+        const p = await postMessage(base, { content: "Why?" });
+        return { s: await readStream(p), encoding: p.headers.get("content-encoding") };
+      },
+      { tamper: stripDefences },
+    );
+    return { live: { ...a, gap: timing(a.s) }, held: { ...b, gap: timing(b.s) } };
+  });
+  t("Review Focus 5: the first text event reaches the client at least 200 ms before the stream ends (the model pauses 300 ms)", () => {
+    const r = must(x);
+    return r.live.gap !== null && r.live.gap >= 200 && r.live.s.events.at(-1)?.type === "done";
+  });
+  t("Review Focus 5 control: with no-transform and the flush both removed, compression gzips the stream and holds the reply to the end", () => {
+    const r = must(x);
+    return r.held.encoding === "gzip" && r.held.gap !== null && r.held.gap < 100 && r.held.s.events.at(-1)?.type === "done";
+  });
+}
+
+// --- Review Focus 2: the engineer closes the tab mid-reply ----------------------------------------------------------
+{
+  const f = routerFakes({
+    turns: [turnOf(["Partial ", "answer, ", "then the rest."], modelMsg([block.text("Partial answer, then the rest.")]), { pauseMs: 300 }), explainTurn()],
+  });
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base, logs, escaped }) => {
+      const controller = new AbortController();
+      const p = await postMessage(base, { content: "Why?" }, { signal: controller.signal });
+      const s = await readStream(p, { controller, stopAfter: (_e, n) => n === 1 });
+      const saved = await until(() => datumRows(f.calls).length === 1);
+      const next = await postMessage(base, { content: "And now?" });
+      return { s, saved, nextStatus: next.status, next: await readStream(next), logs, escaped };
+    }),
+  );
+  t("Review Focus 2: the client aborts after the first event, and the server still saves Datum's reply, ending \" (reply cut off)\"", () => {
+    const r = must(x);
+    const [datum] = datumRows(f.calls);
+    // The text so far is "Partial "; its trailing space is not doubled before the note.
+    return r.s.stopped && r.saved && has(datum, { content: "Partial (reply cut off)", stopReason: "aborted", revisionId: null, firmId: RT_FIRM.id }) && datum.content.endsWith(" (reply cut off)");
+  });
+  t("Review Focus 2: the model stream was aborted, and no further model call was made for that message", () => {
+    must(x);
+    return f.model.streams[0]?.aborts >= 1 && f.model.calls.length === 2;
+  });
+  t("Review Focus 2: the server does not crash, logs no error and lets nothing escape, and the next request succeeds", () => {
+    const r = must(x);
+    return errorLogs(r.logs).length === 0 && r.escaped.length === 0 && r.nextStatus === 200 && r.next.events.at(-1)?.type === "done" && datumRows(f.calls).length === 2;
+  });
+}
+{
+  // A re-run already started when the tab closes still finishes, and its revision is on the saved message.
+  const f = routerFakes({
+    turns: rerunTurns(),
+    revise: async () => {
+      await sleep(300);
+      return { ok: true, projectId: RT_NEW, version: 2, changes: RT_CHANGES, revisionId: RT_REVISION_ROW };
+    },
+  });
+  const x = await settle(() =>
+    withServer(f.deps, async ({ base, escaped }) => {
+      const controller = new AbortController();
+      const p = await postMessage(base, { content: "Use 1.0%." }, { signal: controller.signal });
+      const s = await readStream(p, { controller, stopAfter: (e) => e.type === "status" });
+      const saved = await until(() => datumRows(f.calls).length === 1);
+      return { s, saved, escaped };
+    }),
+  );
+  t("Review Focus 2: a re-run begun before the tab closed finishes, and the saved reply carries its revision and the cut-off note", () => {
+    const r = must(x);
+    const [datum] = datumRows(f.calls);
+    // No text had come before the tool call, so the saved reply is the note alone.
+    return r.s.stopped && r.saved && f.calls.revise.length === 1 && has(datum, { revisionId: RT_REVISION_ROW, stopReason: "aborted", content: "(reply cut off)" }) && f.model.calls.length === 1 && r.escaped.length === 0;
+  });
+}
+
+// --- The owner's live smoke script, the env example and the dependency ------------------------------------------------
+const smokeSrc = read(SMOKE_REL);
+const serverPackage = (() => {
+  try {
+    return JSON.parse(read(SERVER_PACKAGE_REL));
+  } catch {
+    return {};
+  }
+})();
+t("@anthropic-ai/sdk is a dependency of tis-api-server", () => typeof serverPackage.dependencies?.["@anthropic-ai/sdk"] === "string");
+t("datum-chat-live-smoke.mjs is in no package script, so no check ever runs it", () => smokeSrc.length > 0 && Object.values(serverPackage.scripts ?? {}).every((s) => !String(s).includes("datum-chat-live-smoke")));
+t("the smoke script exits 2 with a message when the key is unset, before anything loads the SDK", () => {
+  const code = stripComments(smokeSrc);
+  const guard = code.search(/if \(!process\.env\.ANTHROPIC_API_KEY\) \{/);
+  const exit = code.indexOf("process.exit(2)");
+  const load = code.search(/import\("@anthropic-ai\/sdk"\)|getDatumClient\(|client\.ts/);
+  return guard >= 0 && exit > guard && load > exit && /console\.error\(/.test(code.slice(guard, exit));
+});
+t("the smoke script sends the real tools and the real system over scenario-base.json, and prints the stop reason and token counts", () =>
+  [/RERUN_TOOL/, /READ_PATH_TOOL/, /buildSystem/, /scenario-base\.json/, /stop reason/i, /input tokens/i, /output tokens/i].every((re) => re.test(smokeSrc)));
+const envExample = read(".env.example");
+t(".env.example has the line ANTHROPIC_API_KEY= under a comment saying the chat is off when it is unset", () => {
+  const lines = envExample.split("\n");
+  const i = lines.indexOf("ANTHROPIC_API_KEY=");
+  const comment = [];
+  for (let j = i - 1; j >= 0 && lines[j].startsWith("#"); j--) comment.unshift(lines[j]);
+  const text = comment.join(" ");
+  return i > 0 && /\boff\b/i.test(text) && /\bunset\b/i.test(text);
+});
+t("the router, the wiring, the client and the smoke script contain none of the phrases the product never writes", () =>
+  [routerSrc, wiringSrc, clientSrc, smokeSrc].every((s) => s.length > 0 && bannedFree(s)));
 
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);
 process.exit(fails === 0 ? 0 : 1);
