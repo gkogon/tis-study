@@ -25,6 +25,7 @@ import {
   generateTisBodySignalTimingOverridesMax,
 } from "./contract.ts";
 import type { DatumChange, RevisableField } from "./contract.ts";
+import { GROWTH_FALLBACK_WORDS } from "./clause-guide.ts";
 
 // ---------------------------------------------------------------------------
 // The merge
@@ -272,7 +273,7 @@ const CHANGE_PROPERTIES: Record<RevisableField, unknown> = {
   removeGrowthOverride: {
     type: "boolean",
     const: true,
-    description: "Send true to drop the growth override, so the engine uses its measured regional rate. Never send it together with growthRatePct.",
+    description: `Send true to drop the growth override, so the engine uses ${GROWTH_FALLBACK_WORDS}. Never send it together with growthRatePct.`,
   },
   openingYear: {
     type: "integer",

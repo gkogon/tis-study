@@ -1675,6 +1675,48 @@ t("the prompt says not to claim a finding cleared, since the new version's proof
 t("the prompt says a refused re-run is reported with its reason and is not retried with a value Datum picks", () =>
   /refus/i.test(SYSTEM_PROMPT) && /nothing was re-run|nothing is re-run|nothing ran/i.test(SYSTEM_PROMPT) && /do not retry|don't retry|not retry/i.test(SYSTEM_PROMPT));
 
+// --- What dropping the growth override really does (fix round 1) -----------------------------------------
+// The engine: growth = override ?? measured regional rate ?? screening default (tis.ts), and the measured
+// rate exists only for the regions wired in lib/tis-engine-core/src/regional-growth-rates.ts. Three texts the
+// model reads state what removeGrowthOverride does: the prompt, the growthOverrideDisclosed guide entry and the
+// tool's property description. All three must say it with the same words, and the figure must be the engine's.
+const ENGINE_TIS_REL = "artifacts/tis-api-server/src/lib/tis.ts";
+const engineTis = read(ENGINE_TIS_REL);
+const growthPrecedence = /growthOverridePct \?\? measuredRate\?\.growthPct \?\? (\d+(?:\.\d+)?)/.exec(engineTis);
+const ENGINE_GROWTH_DEFAULT = growthPrecedence?.[1] ?? "";
+const { mod: GR, error: growthRatesError } = await importByUrl("lib/tis-engine-core/src/regional-growth-rates.ts");
+ok("precondition: the engine's measured growth rates load, so the wording can be compared with them", growthRatesError === null, growthRatesError ?? undefined);
+t("precondition: tis.ts resolves growth as override, then measured regional rate, then a screening default, and the default is read from that source", () =>
+  growthPrecedence !== null && Number.isFinite(Number(ENGINE_GROWTH_DEFAULT)) && Number(ENGINE_GROWTH_DEFAULT) > 0);
+t("precondition: a measured rate is wired for some regions (atlanta_metro) and not for others (houston_metro, a real region), so both halves of the wording are true", () =>
+  GR.getMeasuredGrowthRate?.("atlanta_metro")?.growthPct !== undefined &&
+  GR.getMeasuredGrowthRate?.("houston_metro") === undefined &&
+  /code:\s*"houston_metro"/.test(read("artifacts/tis-api-server/src/lib/regions.ts")));
+t("precondition: the engine's override growthSource says whether a measured rate is wired, in the two sentences the prompt cites", () =>
+  engineTis.includes("The measured rate for this region is") && engineTis.includes("No measured growth rate is wired for this region"));
+
+const FALLBACK_WORDS = typeof GU.GROWTH_FALLBACK_WORDS === "string" ? GU.GROWTH_FALLBACK_WORDS : "";
+const removeGrowthTool = T.RERUN_TOOL?.input_schema?.properties?.changes?.properties?.removeGrowthOverride?.description ?? "";
+const growthGuideClears = GU.CLAUSE_GUIDE?.growthOverrideDisclosed?.clears ?? "";
+t("GROWTH_FALLBACK_WORDS says the measured regional rate where one exists for the region and the engine's own screening default where it does not", () =>
+  FALLBACK_WORDS.includes("measured regional rate") && FALLBACK_WORDS.includes("where one exists for the region") && FALLBACK_WORDS.includes("where it does not") &&
+  FALLBACK_WORDS.includes("screening default") && ENGINE_GROWTH_DEFAULT !== "" && FALLBACK_WORDS.includes(`${ENGINE_GROWTH_DEFAULT}%`));
+t("the figure in GROWTH_FALLBACK_WORDS is the only percentage in it, so no other number can drift from the engine", () =>
+  (FALLBACK_WORDS.match(/\d+(?:\.\d+)?/g) ?? []).join(",") === ENGINE_GROWTH_DEFAULT);
+t("the prompt says it, with the same words", () => FALLBACK_WORDS.length > 40 && SYSTEM_PROMPT.includes(FALLBACK_WORDS));
+t("the growthOverrideDisclosed guide entry says it, with the same words", () => FALLBACK_WORDS.length > 40 && growthGuideClears.includes(FALLBACK_WORDS));
+t("the removeGrowthOverride tool description says it, with the same words", () => FALLBACK_WORDS.length > 40 && removeGrowthTool.includes(FALLBACK_WORDS));
+t("the first system block, which holds the prompt and the guide, carries the words twice", () => FALLBACK_WORDS.length > 40 && PR.buildSystem("P")[0].text.split(FALLBACK_WORDS).length === 3);
+t("none of the three texts claims the measured rate without the qualifier once the shared words are taken out", () => {
+  const unqualified = /(uses|use|falls back to|fall back to) (its|the engine's own|the engine's|the) measured( regional)? rate/i;
+  return FALLBACK_WORDS.length > 40 && [SYSTEM_PROMPT, growthGuideClears, removeGrowthTool].every((x) => x.length > 100 && !unqualified.test(without(x, FALLBACK_WORDS)));
+});
+t("no source line in tools.ts, clause-guide.ts or prompt.ts still states the unqualified claim", () =>
+  [toolsSrc, guideSrc, promptSrc].every((src) => src.length > 1000 && !/own measured rate|uses its measured regional rate|so the engine uses its measured/.test(src)));
+t("the prompt sends Datum to result.growthSource for which one applies, names the engine's two sentences, and says not to assert when it says neither", () =>
+  SYSTEM_PROMPT.includes("result.growthSource") && SYSTEM_PROMPT.includes("The measured rate for this region is") && SYSTEM_PROMPT.includes("No measured growth rate is wired for this region") &&
+  /cannot tell|can't tell/i.test(SYSTEM_PROMPT) && /do not assert|don't assert|not assert/i.test(SYSTEM_PROMPT));
+
 // --- How to write ---------------------------------------------------------------------------------------
 t("the prompt asks for plain text and rules out markdown tables", () => /plain text/i.test(SYSTEM_PROMPT) && /\btables?\b/i.test(SYSTEM_PROMPT));
 

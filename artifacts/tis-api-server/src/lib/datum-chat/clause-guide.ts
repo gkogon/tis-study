@@ -44,6 +44,18 @@ export const FIXABLE_MEANING: Readonly<Record<Fixability, string>> = Object.free
   explain: "Nothing in the chat clears it. Explain why it fired and what would have to change outside the chat.",
 });
 
+/**
+ * What the engine grows a study at when the request carries no growth rate
+ * (tis.ts: override, then the measured regional rate, then a screening
+ * default). The measured rate exists only for the regions wired in
+ * lib/tis-engine-core/src/regional-growth-rates.ts; everywhere else the
+ * screening default applies and the result carries no growthSource. The one
+ * wording of that fact: the guide, the prompt and the re-run tool all use it,
+ * and verify-datum-chat.mjs reads the figure from tis.ts, so a change to the
+ * engine's default fails the check instead of leaving three texts wrong.
+ */
+export const GROWTH_FALLBACK_WORDS = "the measured regional rate where one exists for the region, and the 1.5% screening default where it does not";
+
 /** The inputs that set a signal's capacity, which v/c and delay are computed from. */
 const CAPACITY_INPUTS: RevisableField[] = ["signalTimingOverrides", "signalTiming", "realLaneGeometry", "legVolumes", "weather"];
 
@@ -63,7 +75,8 @@ export const CLAUSE_GUIDE: Readonly<Record<string, ClauseGuideEntry>> = Object.f
       "The current engine always writes that prefix, so this appears only on studies saved by an older engine.",
     clears:
       "Re-run on the current engine with the same inputs, which needs no new value. " +
-      "Removing the growth override also clears it, because the check then does not run (the study falls back to the engine's own measured rate).",
+      "Removing the growth override also clears it, because the check then does not run. " +
+      `The study then uses ${GROWTH_FALLBACK_WORDS}, so the growth it applies, and the opening-year and design-year figures built on it, may change.`,
     inputs: ["growthRatePct", "removeGrowthOverride"],
     fixable: "rerun",
   }),
