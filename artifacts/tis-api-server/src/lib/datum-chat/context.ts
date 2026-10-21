@@ -118,19 +118,28 @@ const asObject = (v: unknown): Record<string, unknown> => (isObject(v) && !Array
 
 /**
  * Walk a path through the saved request or result. Only a record's own keys are
- * followed (never the prototype chain), an array is entered by index only (not
- * `length`), and a string is not entered at all, so the answer is always data
- * the study holds.
+ * followed (never the prototype chain), an array is entered by index, and a
+ * string is not entered at all, so the answer is always data the study holds.
+ *
+ * One member that is not an own key is allowed: a final `.length` on an array.
+ * The clauses cite it as a count they read (result.findings.length,
+ * result.periodReports.length, result.affectedIntersections.length), and
+ * lib/proofread resolves it the same way. It is allowed on an array and only
+ * last, so it is a number and nothing can be walked on from it.
  */
 function lookup(record: { request: unknown; result: unknown }, path: unknown): Hit {
   if (typeof path !== "string") return MISS;
   const m = PATH.exec(path);
   if (!m || !isObject(record)) return MISS;
   let cur: unknown = m[1] === "request" ? record.request : record.result;
-  for (const seg of m[2].matchAll(SEGMENT)) {
+  const segments = [...m[2].matchAll(SEGMENT)];
+  for (const [i, seg] of segments.entries()) {
     if (!isObject(cur)) return MISS;
     const key = seg[1] ?? seg[2];
-    if (Array.isArray(cur) && !/^\d+$/.test(key)) return MISS;
+    if (Array.isArray(cur)) {
+      if (seg[1] === "length" && i === segments.length - 1) return { found: true, value: cur.length };
+      if (!/^\d+$/.test(key)) return MISS;
+    }
     if (!Object.prototype.hasOwnProperty.call(cur, key)) return MISS;
     cur = (cur as Record<string, unknown>)[key];
   }

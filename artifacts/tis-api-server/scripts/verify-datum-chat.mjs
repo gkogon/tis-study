@@ -1490,9 +1490,51 @@ t("a path with nothing stored at it answers \"(no value at <path>)\"", () =>
   X.readStudyPath(REC, "request.studyRadiusMiles") === "(no value at request.studyRadiusMiles)");
 t("a path outside request. and result. answers the same way, and reads nothing", () =>
   ["process.env", "process.env.HOME", "globalThis", "require('fs')", "", "request", "result", "request.", "request..x", "request[abc]", "../request.size", "constructor.name", "__proto__"].every((p) => X.readStudyPath(REC, p) === `(no value at ${p})`));
-t("it never walks the prototype chain: constructor, __proto__, toString and length are not values", () =>
-  ["request.__proto__", "request.constructor", "request.constructor.name", "request.toString", "result.periodReports.constructor", "result.growthSource.length", "request.hasOwnProperty"].every((p) => X.readStudyPath(REC, p) === `(no value at ${p})`) &&
-  X.readStudyPath(REC, "result.periodReports.length") === "(no value at result.periodReports.length)");
+t("it never walks the prototype chain: constructor, __proto__, toString and the like are not values, and neither is the length of a string", () =>
+  ["request.__proto__", "request.constructor", "request.constructor.name", "request.toString", "result.periodReports.constructor", "result.periodReports.toString", "result.periodReports.map", "result.growthSource.length", "request.hasOwnProperty", "request.length"].every((p) => X.readStudyPath(REC, p) === `(no value at ${p})`));
+t("the length of an array is a value, as the real clauses cite it: a terminal .length on an array and nowhere else", () =>
+  X.readStudyPath(REC, "result.periodReports.length") === "3" &&
+  X.readStudyPath(REC, "result.affectedIntersections.length") === "40" &&
+  X.readStudyPath(REC, "result.findings.length") === String(FX_RESULT.findings.length) &&
+  X.readStudyPath(REC, "request.analysisPeriods.length") === "3" &&
+  X.readStudyPath(REC, "result.periodReports[0].affectedIntersections.length") === "40" &&
+  X.readStudyPath({ request: { a: [] }, result: {} }, "request.a.length") === "0" &&
+  // not a member of anything but an array, and not something to walk on from
+  X.readStudyPath(REC, "result.periodReports.length.toFixed") === "(no value at result.periodReports.length.toFixed)" &&
+  X.readStudyPath(REC, "result.periodReports.length.length") === "(no value at result.periodReports.length.length)" &&
+  X.readStudyPath(REC, "result.periodReports[0].length") === "(no value at result.periodReports[0].length)" &&
+  X.readStudyPath(REC, "result.jurisdiction.length") === "(no value at result.jurisdiction.length)" &&
+  X.readStudyPath(REC, "result.periodReports[length]") === "(no value at result.periodReports[length])" &&
+  X.readStudyPath({ request: { o: { length: 7 } }, result: {} }, "request.o.length") === "7");
+
+// --- The clauses whose readPaths end in .length (the scenario-base fixture fires none of them) ------------------
+const LENGTH_PATHS = ["result.affectedIntersections.length", "result.findings.length", "result.periodReports.length"];
+/** criteriaNamed: a governing DOT that the findings never name. */
+const REC_CRITERIA = { request: REC.request, result: { ...FX_RESULT, findings: ["Project will generate 1,440 new daily vehicle trips, with 130 during the PM peak hour."] } };
+/** periodScopeDisclosed with period reports: saturday_midday was asked for and is neither reported nor disclosed. */
+const REC_PERIODS = { request: { ...REC.request, analysisPeriods: ["am_peak", "pm_peak", "saturday_midday"] }, result: FX_RESULT };
+/** periodScopeDisclosed on a record that predates periodReports: only the top-level PM block is there. */
+const REC_NO_REPORTS = (() => {
+  const { periodReports: _drop, ...rest } = FX_RESULT;
+  return { request: { ...REC.request, analysisPeriods: ["am_peak", "pm_peak"] }, result: rest };
+})();
+const firing = (rec, clauseId) => PF.runClauses(rec).findings.filter((f) => f.clauseId === clauseId).map(visible);
+const LENGTH_CASES = [
+  ["criteriaNamed", REC_CRITERIA, "result.findings.length"],
+  ["periodScopeDisclosed with period reports", REC_PERIODS, "result.periodReports.length"],
+  ["periodScopeDisclosed without period reports", REC_NO_REPORTS, "result.affectedIntersections.length"],
+].map(([name, rec, path]) => ({ name, rec, path, found: firing(rec, name.split(" ")[0]) }));
+t("precondition: criteriaNamed and periodScopeDisclosed fire on those records and cite the three .length paths between them", () =>
+  LENGTH_CASES.every((c) => c.found.length === 1 && c.found[0].readPaths.some((rp) => rp.path === c.path && typeof rp.value === "number")) &&
+  sameSet(LENGTH_CASES.flatMap((c) => c.found.flatMap((f) => f.readPaths.map((rp) => rp.path))).filter((p) => p.endsWith(".length")), LENGTH_PATHS));
+t("every readPath those clauses emit, .length included, resolves with readStudyPath to the value the clause recorded", () =>
+  LENGTH_CASES.every((c) => c.found.length === 1 && c.found[0].readPaths.length > 1 && c.found[0].readPaths.every((rp) => X.readStudyPath(c.rec, rp.path) === JSON.stringify(rp.value))));
+t("in the pack the same readPaths show the stored value, with no \"recorded\" and no \"no value\" note", () =>
+  LENGTH_CASES.every((c) => {
+    const f = c.found[0];
+    const block = blockIn(X.buildGroundingPack({ request: c.rec.request, result: c.rec.result, findings: [f], dispositions: [], focusFindingId: f.id }).text, "## Values at the read paths");
+    return Array.isArray(block) && block.length === f.readPaths.length && f.readPaths.every((rp, i) => block[i].path === rp.path && block[i].value === rp.value && !("recorded" in block[i]) && !("note" in block[i]));
+  }));
 t("null is a value and answers \"null\"; a record that is not an object answers (no value …) without throwing", () =>
   X.readStudyPath({ request: { a: null }, result: {} }, "request.a") === "null" &&
   X.readStudyPath({ request: null, result: undefined }, "request.a") === "(no value at request.a)" &&
