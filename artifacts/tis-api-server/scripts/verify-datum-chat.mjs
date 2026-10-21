@@ -1159,6 +1159,22 @@ try {
 } catch (e) {
   ok("precondition: scenario-base.json parses", false, e instanceof Error ? e.message : String(e));
 }
+// One deliberate break. Since #250 built the intersection row from its approaches (the 2026-10-02 re-pin,
+// artifacts/atlanta-tis/scripts/fixtures/README.md) the payload has no v/c above the 2.5 ceiling and no intersection
+// delay at the 300 s clamp; a study saved before #250 printed this network's row 36 (Signal 2.3mi N of CBD) at v/c 2.68
+// and at the clamp. Row 36 is put back over the ceiling (v/c 2.7) and at the clamp (300 s, LOS F) in every scenario it
+// carries, in the top-level block and in every period, so the summary's rowsOverCeiling and the real clauses (two
+// BLOCKERs, a DISCLOSE and a NOTE, as before the re-pin) have something to find. Every test below reads this record.
+for (const rows of [FX.affectedIntersections, ...(Array.isArray(FX.periodReports) ? FX.periodReports.map((p) => p?.affectedIntersections) : [])]) {
+  const r = Array.isArray(rows) ? rows[36] : undefined;
+  if (!r) continue;
+  for (const s of ["current", "existing", "future", "designNoBuild", "designBuild"]) {
+    if (typeof r[`${s}Vc`] !== "number") continue;
+    r[`${s}Vc`] = 2.7;
+    r[`${s}DelaySec`] = 300;
+    r[`${s}Los`] = "F";
+  }
+}
 const { request: FX_REQUEST, ...FX_RESULT } = FX;
 /** The stored form: the fixture's request (growth set to 2.1) and its result payload, which is the fixture without its echoed `request`. */
 const REC = { request: { ...FX_REQUEST, growthRatePct: 2.1 }, result: FX_RESULT };
