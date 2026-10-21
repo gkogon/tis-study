@@ -11,3 +11,4 @@ export * from "./events";
 export * from "./crashes";
 export * from "./atr-counts";
 export * from "./study-proofread";
+export * from "./datum-chat";

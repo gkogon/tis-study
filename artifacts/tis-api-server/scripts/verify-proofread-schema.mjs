@@ -393,9 +393,27 @@ ok(
   "every SQL_STATEMENTS entry is { id: string, sql: string }",
 );
 
-// Anything that mentions proofread, by id or body: the set must be exactly ours,
+// The Datum chat's two tables (docs/superpowers/specs/2026-10-20-datum-chat-design.md) each hold one
+// FK to a finding, so their bodies say "proofread". They are not proofread tables (check:datum-chat
+// pins them). They leave the exact set below ONLY while that one FK is everything they say about
+// proofread: take it out and no "proofread" may remain, and the statement must be a CREATE TABLE.
+// Any other mention (a second proofread FK, a proofread ALTER) puts the statement back in the set,
+// and the exact-set assertion goes red on it.
+const CHAT_FINDING_FK = "REFERENCES study_proofread_findings(id) ON DELETE SET NULL";
+const CHAT_TABLE_IDS = ["study_revisions.create", "study_datum_messages.create"];
+const mentionsProofread = (s) => /proofread/i.test(s.id) || /proofread/i.test(s.sql);
+const onlyTheFindingFk = (s) =>
+  /^\s*CREATE TABLE IF NOT EXISTS \w+/.test(s.sql) && !/proofread/i.test(s.id) && !/proofread/i.test(s.sql.split(CHAT_FINDING_FK).join(""));
+const chatTables = statements.filter((s) => CHAT_TABLE_IDS.includes(s.id));
+ok(
+  chatTables.every((s) => onlyTheFindingFk(s) && s.sql.split(CHAT_FINDING_FK).length - 1 === 1),
+  "the Datum chat tables mention proofread only as one finding_id FK: REFERENCES study_proofread_findings(id) ON DELETE SET NULL",
+  `offending: ${chatTables.filter((s) => !onlyTheFindingFk(s)).map((s) => s.id).join(", ")}`,
+);
+
+// Anything else that mentions proofread, by id or body: the set must be exactly ours,
 // so a statement smuggled under another id (an ALTER on tis_projects) is seen.
-const mine = statements.filter((s) => /proofread/i.test(s.id) || /proofread/i.test(s.sql));
+const mine = statements.filter((s) => mentionsProofread(s) && !(CHAT_TABLE_IDS.includes(s.id) && onlyTheFindingFk(s)));
 const mineIds = mine.map((s) => s.id);
 ok(
   JSON.stringify([...mineIds].sort()) === JSON.stringify([...EXPECTED_IDS].sort()),

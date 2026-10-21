@@ -70,6 +70,7 @@
     "check:proofread-hook": "node ./scripts/verify-proofread-hook.mjs",
     "check:proofread-routes": "node ./scripts/verify-proofread-routes.mjs",
     "check:proofread-copy": "node ./scripts/verify-proofread-copy.mjs",
+    "check:datum-chat": "node ./scripts/verify-datum-chat.mjs",
     "check:existing-use-credit": "node ./scripts/verify-existing-use-credit.mjs",
     "check:intersection-delay-fields": "node ./scripts/verify-intersection-delay-fields.mjs"
   },
