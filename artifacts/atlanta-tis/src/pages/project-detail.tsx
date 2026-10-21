@@ -69,7 +69,8 @@ export default function ProjectDetailPage() {
         body: JSON.stringify({ reportThemeId: value || null }),
       });
       if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? `HTTP ${r.status}`);
-      setProject({ ...project, reportThemeId: value || null });
+      // Only onto the version it was made for: the page may have moved to another while the request was out.
+      setProject((p) => (p && p.id === project.id ? { ...p, reportThemeId: value || null } : p));
     } catch (e) {
       setThemeError(e instanceof Error ? e.message : "Could not change the format.");
     } finally {
@@ -78,7 +79,12 @@ export default function ProjectDetailPage() {
   }
   const [error, setError] = useState<string | null>(null);
 
+  // Version links move between versions inside this one mounted page, so a new id first drops what the last one
+  // loaded or failed with: nothing of one version shows under another's URL, and one failed load does not stick.
+  // A slow answer for an id the page has left is ignored (cancelled), so it cannot land on the version now shown.
   useEffect(() => {
+    setProject(null);
+    setError(null);
     if (!isAuthenticated || !params.id) return;
     let cancelled = false;
     fetch(`/tis-api/projects/${encodeURIComponent(params.id)}`, {

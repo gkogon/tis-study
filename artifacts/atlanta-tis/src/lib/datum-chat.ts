@@ -333,6 +333,17 @@ export function messageBody(draft: string, findingId: string | null): DatumPostB
 
 const JSON_CHARS = 120;
 
+/**
+ * A timing sheet's intersection name, or "" for none. The server stores a sheet in the request's own shape, keyed
+ * `name` (toTimingRecords in artifacts/tis-api-server/src/lib/datum-chat/tools.ts); `intersectionName` is the
+ * re-run tool's shape, read when `name` is missing.
+ */
+function sheetName(x: unknown): string {
+  if (!isRecord(x)) return "";
+  const name = isStr(x.name) && x.name.trim() !== "" ? x.name : isStr(x.intersectionName) ? x.intersectionName : "";
+  return name.replace(/\s+/g, " ").trim();
+}
+
 /** A changed field's value, read plainly on the change card. */
 export function formatChangeValue(v: unknown): string {
   if (v === null || v === undefined) return "not set";
@@ -341,7 +352,7 @@ export function formatChangeValue(v: unknown): string {
   if (Array.isArray(v)) {
     if (v.length === 0) return "none";
     if (v.every((x) => typeof x === "string" || typeof x === "number")) return v.join(", ");
-    const names = v.map((x) => (isRecord(x) && isStr(x.intersectionName) ? x.intersectionName.trim() : "")).filter((n) => n !== "");
+    const names = v.map(sheetName).filter((n) => n !== "");
     if (names.length === v.length) return `${v.length === 1 ? "timing sheet" : "timing sheets"} for ${names.join(", ")}`;
   }
   let json: string;
@@ -389,7 +400,7 @@ const scopeOf = (v: unknown) => (typeof v === "boolean" ? (v ? "impacted interse
 const basisOf = (thing: string) => (v: unknown) => (typeof v === "string" ? `${v} ${thing}` : `${thing} ${formatChangeValue(v)}`);
 function sheetsOf(v: unknown): string {
   if (!Array.isArray(v) || v.length === 0) return "no timing sheets";
-  const names = v.map((x) => (isRecord(x) && isStr(x.intersectionName) ? x.intersectionName.replace(/\s+/g, " ").trim() : "")).filter((n) => n !== "");
+  const names = v.map(sheetName).filter((n) => n !== "");
   const noun = v.length === 1 ? "timing sheet" : "timing sheets";
   if (names.length === 0) return `${v.length} ${noun}`;
   const shown = names.slice(0, SHEET_NAMES_SHOWN);

@@ -571,6 +571,20 @@ const dzSrc = stripComments(read("lib/db/src/schema/datum-chat.ts"));
 const barrel = stripComments(read("lib/db/src/schema/index.ts"));
 const projectsSrc = stripComments(read("lib/db/src/schema/tis-projects.ts"));
 ok("the schema barrel re-exports datum-chat", /export \* from "\.\/datum-chat";/.test(barrel));
+// The version column's own comment, which engineers read: the number within a lineage (createRevision in
+// artifacts/tis-api-server/src/lib/study-revisions.ts takes 1 + the lineage's highest), not a per-user counter.
+{
+  const raw = read("lib/db/src/schema/tis-projects.ts");
+  const at = raw.search(/\n\s*version: integer\("version"\)/);
+  const above = at < 0 ? [] : raw.slice(0, at).split("\n").reverse();
+  const end = above.findIndex((line) => !/^\s*\/\//.test(line));
+  const comment = above.slice(0, end < 0 ? above.length : end).reverse().join(" ");
+  ok(
+    "the version column's comment says it is the number within a lineage: 1 for an original, max + 1 for a version Datum made",
+    comment.length > 0 && !/per-user/i.test(comment) && /lineage/i.test(comment) && /\b1\b/.test(comment) && /highest|max/i.test(comment) && /study-revisions/.test(comment),
+    `comment above version: ${JSON.stringify(comment)}`,
+  );
+}
 
 const TABLE_VARS = { tisProjectsTable: "tis_projects", firmsTable: "firms", usersTable: "users", studyProofreadFindingsTable: "study_proofread_findings" };
 /** The text of one drizzle column expression: from `uuid("col")` to the first comma at bracket depth 0. */
@@ -1706,6 +1720,12 @@ t("the prompt says that after a re-run Datum states what changed and tells the e
 t("the prompt says not to claim a finding cleared, since the new version's proofread has not been seen", () => /cleared|clear/i.test(SYSTEM_PROMPT) && /not seen|have not seen|haven't seen|has not been seen|cannot see|can't see/i.test(SYSTEM_PROMPT));
 t("the prompt says a refused re-run is reported with its reason and is not retried with a value Datum picks", () =>
   /refus/i.test(SYSTEM_PROMPT) && /nothing was re-run|nothing is re-run|nothing ran/i.test(SYSTEM_PROMPT) && /do not retry|don't retry|not retry/i.test(SYSTEM_PROMPT));
+// run.ts counts a re-run before revise answers, so a refusal from revise leaves the message no second re-run
+// (LIMIT_REACHED). Changes the engineer asked for beside the refused one are then not made in this message.
+t("the prompt's refusal paragraph says a refused re-run still uses the message's one re-run, so Datum tells the engineer to send their other changes again", () => {
+  const paragraph = SYSTEM_PROMPT.split("\n").find((line) => line.startsWith("If the tool refuses")) ?? "";
+  return paragraph.includes("A refused re-run still uses this message's one re-run, so if the engineer also asked for other changes, tell them to send those again");
+});
 
 // --- What dropping the growth override really does (fix round 1) -----------------------------------------
 // The engine: growth = override ?? measured regional rate ?? screening default (tis.ts), and the measured

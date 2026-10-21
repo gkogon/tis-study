@@ -73,8 +73,10 @@ export const tisProjectsTable = pgTable(
     }),
     requestPayload: jsonb("request_payload").notNull(),
     resultPayload: jsonb("result_payload").notNull(),
-    // Sequential per-user version counter so engineers can talk about
-    // "project 17 v2 vs v3". Nullable because legacy reports won't have it.
+    // The number of this version within its lineage (an original and every
+    // version made from it): 1 for a study generated from scratch, and 1 + the
+    // lineage's highest version (max + 1) for a version the Datum chat made
+    // (createRevision in artifacts/tis-api-server/src/lib/study-revisions.ts).
     version: integer("version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

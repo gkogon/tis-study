@@ -17,7 +17,9 @@
  * useRef, useEffect: the only hooks they may use), and what they return is read
  * for what it hands on and rendered for what it shows. Handlers are called the way
  * the view would call them; props change the way the page would change them; and
- * a stub document stands in for focus and the keyboard.
+ * a stub document stands in for focus and the keyboard. The project page
+ * (src/pages/project-detail.tsx) is called the same way, with wouter's useParams and
+ * the auth hook stubbed, to check that what it shows follows the version in the URL.
  *
  * Run: `pnpm --filter @workspace/atlanta-tis run check:datum-chat`
  */
@@ -51,6 +53,7 @@ const SRC = Object.fromEntries(
   }),
 );
 const CHAT_ABS = path.join(repo, FILES.chat);
+const PAGE_ABS = path.join(repo, FILES.page);
 
 let fails = 0;
 let passes = 0;
@@ -80,9 +83,18 @@ export const useState = (...a) => (own() ?? React).useState(...a);
 export const useRef = (...a) => (own() ?? React).useRef(...a);
 export const useEffect = (...a) => (own() ?? React).useEffect(...a);
 `;
+// The project page is called under the same runtime, so its react import gets the same shim, and its two other hooks,
+// wouter's useParams and the auth hook, read what the check sets on PAGE_KEY. Its Link is wouter's own.
+const PAGE_KEY = "__datumChatCheckPage";
+const PAGE_WOUTER = `
+export { Link } from "wouter";
+export const useParams = () => globalThis.${PAGE_KEY}.params;
+`;
+const PAGE_AUTH = `export const useAuth = () => globalThis.${PAGE_KEY}.auth;`;
 const ENTRY = `
 export * as chat from "@/components/datum-chat";
 export * as lib from "@/lib/datum-chat";
+export { default as ProjectDetailPage } from "@/pages/project-detail";
 export { ProofreadView } from "@/components/proofread-panel";
 export { createElement, Fragment } from "react";
 export { renderToStaticMarkup } from "react-dom/server";
@@ -108,8 +120,10 @@ try {
       {
         name: "datum-chat-hooks",
         setup(b) {
-          b.onResolve({ filter: /^react$/ }, (a) => (a.importer === CHAT_ABS ? { path: "react", namespace: "chat-hooks" } : undefined));
+          b.onResolve({ filter: /^react$/ }, (a) => (a.importer === CHAT_ABS || a.importer === PAGE_ABS ? { path: "react", namespace: "chat-hooks" } : undefined));
           b.onLoad({ filter: /.*/, namespace: "chat-hooks" }, () => ({ contents: HOOKS_SHIM, loader: "js", resolveDir: atlanta }));
+          b.onResolve({ filter: /^(wouter|@workspace\/replit-auth-web)$/ }, (a) => (a.importer === PAGE_ABS ? { path: a.path, namespace: "page-stubs" } : undefined));
+          b.onLoad({ filter: /.*/, namespace: "page-stubs" }, (a) => ({ contents: a.path === "wouter" ? PAGE_WOUTER : PAGE_AUTH, loader: "js", resolveDir: atlanta }));
         },
       },
     ],
@@ -121,7 +135,7 @@ try {
   console.log(`\n${fails} CHECK(S) FAILED`);
   process.exit(1);
 }
-const { chat, lib, ProofreadView, createElement, renderToStaticMarkup, Router } = mod;
+const { chat, lib, ProofreadView, ProjectDetailPage, createElement, renderToStaticMarkup, Router } = mod;
 
 // ─── helpers ────────────────────────────────────────────────────────────────────────
 const text = (html) =>
@@ -135,6 +149,20 @@ const text = (html) =>
     .replace(/\s+/g, " ")
     .trim();
 const count = (s, sub) => s.split(sub).length - 1;
+/** The text an element tree holds, read without rendering it: the page's own words, not its children components'. */
+const treeText = (n) => {
+  const of = (x) =>
+    x === null || x === undefined || typeof x === "boolean"
+      ? ""
+      : typeof x === "string" || typeof x === "number"
+        ? String(x)
+        : Array.isArray(x)
+          ? x.map(of).join(" ")
+          : typeof x === "object" && x.props
+            ? of(x.props.children)
+            : "";
+  return of(n).replace(/\s+/g, " ").trim();
+};
 /** The revisable fields whose names are camelCase: written on a card, each would be code, not copy. */
 const CAMEL_FIELDS = () => (Array.isArray(lib?.REVISABLE_FIELDS) ? lib.REVISABLE_FIELDS.filter((f) => /[A-Z]/.test(f)) : []);
 const phraseForm = (s) => s.replace(/[-‐-―]+/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
@@ -189,6 +217,9 @@ const rev = (o = {}) => ({
   createdAt: "2026-10-20T15:01:00.000Z",
   ...o,
 });
+// A timing sheet as the server stores it in a change's from and to: the request's own record, keyed `name`
+// (toTimingRecords in artifacts/tis-api-server/src/lib/datum-chat/tools.ts), not the tool's `intersectionName`.
+const storedSheet = (name) => ({ latitude: 33.7, longitude: -84.4, name, cycleLenSec: 120, phaseByMovement: { NBT: 2 }, splitSByPhase: { 2: 40 } });
 const lineage = (o = {}) => ({ version: 1, revisedFromProjectId: null, revisedFromVersion: null, latestVersionId: V1, latestVersion: 1, ...o });
 const readOf = (o = {}) => ({ enabled: true, messages: [], revisions: [], lineage: lineage(), ...o });
 // A finding as the proofread GET sends it.
@@ -574,8 +605,13 @@ try {
         lib.formatChangeValue(false) === "off" &&
         lib.formatChangeValue("computed") === "computed" &&
         lib.formatChangeValue(["am_peak", "pm_peak"]) === "am_peak, pm_peak" &&
-        lib.formatChangeValue([{ intersectionName: "Main St & 1st Ave", cycleLenSec: 120 }]) === "timing sheet for Main St & 1st Ave",
-      "change values read plainly: numbers as written, null as not set, booleans as on and off, lists joined, timing sheets by name",
+        lib.formatChangeValue([storedSheet("Main St & 1st Ave")]) === "timing sheet for Main St & 1st Ave",
+      "change values read plainly: numbers as written, null as not set, booleans as on and off, lists joined, timing sheets (as stored, keyed name) by name",
+    );
+    ok(
+      "format-sheet-tool-shape",
+      typeof lib.formatChangeValue === "function" && lib.formatChangeValue([{ intersectionName: "Main St & 1st Ave", cycleLenSec: 120 }]) === "timing sheet for Main St & 1st Ave",
+      "a timing sheet in the tool's shape (intersectionName) is still read by name",
     );
   });
 
@@ -588,7 +624,7 @@ try {
       isDeepStrictEqual([...lib.REVISABLE_FIELDS], [...contract.REVISABLE_FIELDS]),
       `the web list of revisable fields is the contract's, in order, so the label map (typed on it) covers every field the server can log (web ${lib.REVISABLE_FIELDS.length}, contract ${contract.REVISABLE_FIELDS.length})`,
     );
-    const SHEET = (name) => ({ intersectionName: name, latitude: 33.7, longitude: -84.4, cycleLenSec: 120, phaseByMovement: { NBT: 2 }, splitSByPhase: { 2: 40 } });
+    const SHEET = storedSheet;
     const CASES = [
       ["growthRatePct", 2.1, 1, "growth 2.1% → 1.0%"],
       ["growthRatePct", 2.1, null, "growth override removed (was 2.1%)"],
@@ -757,7 +793,26 @@ try {
     const two = text(thread({ changes: [{ field: "passByPct", from: null, to: 10 }, { field: "growthRatePct", from: 2.1, to: null }, { field: "realLaneGeometry", from: false, to: true }] }));
     ok("card-every-field", two.includes("pass-by not set → 10%") && two.includes("growth override removed (was 2.1%)") && two.includes("real lane geometry off → on"), "every changed field is listed, from → to, in plain words");
     const none = text(thread({ changes: [] }));
-    ok("card-no-changes", /current engine with the same inputs/.test(none), "a re-run with no changes says it ran on the current engine with the same inputs");
+    const NO_CHANGES =
+      "No inputs changed: the study was re-run on the current engine with the same saved inputs. Where the original set no method option, the engine's current default applies.";
+    ok(
+      "card-no-changes",
+      none.includes(NO_CHANGES),
+      "a re-run with no changes says it ran on the current engine with the same saved inputs, and that a method option the original never set takes today's default",
+    );
+    // A timing sheet the engineer applied, as the server stores it on the change: the card names its signal.
+    const sheet = text(thread({ changes: [{ field: "signalTimingOverrides", from: null, to: [storedSheet("Main St & 1st Ave")] }] }));
+    ok(
+      "card-timing-sheet-named",
+      sheet.includes("timing sheet for Main St & 1st Ave") && !/\b1 timing sheet\b/.test(sheet),
+      `a timing sheet stored as the request's record (keyed name) is named on the card (got ${JSON.stringify(sheet.slice(sheet.indexOf("Version 2") + 9, sheet.indexOf("Reason")).trim())})`,
+    );
+    const sheets = text(thread({ changes: [{ field: "signalTimingOverrides", from: [storedSheet("Main St & 1st Ave")], to: [storedSheet("Main St & 1st Ave"), storedSheet("Oak Rd & 5th St")] }] }));
+    ok(
+      "card-timing-sheets-named",
+      sheets.includes("timing sheet for Main St & 1st Ave → timing sheets for Main St & 1st Ave, Oak Rd & 5th St"),
+      "a sheet added beside one already applied: both sides name their signals",
+    );
     // A version made from this one that no message names is still shown, never dropped.
     const orphan = keep(render(createElement(chat.ThreadView, { projectId: V1, revisedFromVersion: null, messages: [], revisions: [rev()], streaming: null })));
     ok("card-orphan-shown", count(orphan, 'data-testid="datum-change-card"') === 1, "a change no message names is still shown");
@@ -993,6 +1048,167 @@ try {
     }
   });
 
+  // The page hands the drawer the very finding object the panel holds, so pressing "Ask about this" on the same
+  // finding again hands it the same object. Each press must still count, after the engineer has cleared the focus.
+  await group("Ask about this again, after the focus was cleared", async () => {
+    if (typeof chat.useProjectDatum !== "function" || typeof chat.DatumChat !== "function") return;
+    const dom = fakeDom();
+    globalThis.document = dom.doc;
+    try {
+      const { server } = fakeServer();
+      server.readFor = () => readOf();
+      const page = mount((p) => chat.useProjectDatum(p.projectId), { projectId: V1 });
+      let res = await page.settle();
+      const button = dom.node("ask-about-this");
+      button.focus();
+      res.chat.onAsk(FOUR[0]);
+      res = await page.settle();
+      const d = mountChat(res.drawer.props, { attach: dom.attach });
+      let el = await d.settle();
+      ok(
+        "pre-reask-open",
+        el.props.focus?.id === FOUR[0].id && el.props.draft === chat.DEFAULT_QUESTION && dom.doc.activeElement?.name === "textarea",
+        "precondition: Ask about this opens the drawer on the finding, with the question in the field and focus in it",
+      );
+      el.props.onClearFocus();
+      el = await d.settle();
+      ok("pre-reask-cleared", el.props.focus === null && el.props.draft === "", "precondition: the X clears the finding and the question");
+      // The engineer goes back to the panel and presses Ask about this on the same finding.
+      button.focus();
+      res.chat.onAsk(FOUR[0]);
+      res = await page.settle();
+      d.setProps(res.drawer.props);
+      el = await d.settle();
+      ok("reask-same-finding-shown", el.props.focus?.id === FOUR[0].id, `the drawer names the finding again (focus ${JSON.stringify(el.props.focus?.id ?? null)})`);
+      ok("reask-same-finding-question", el.props.draft === chat.DEFAULT_QUESTION, `with the question back in the field (draft ${JSON.stringify(el.props.draft)})`);
+      ok("reask-same-finding-field-focus", dom.doc.activeElement?.name === "textarea", `and focus in the field, so Enter sends it (focus on ${dom.doc.activeElement?.name})`);
+      // Cleared again, it stays cleared until the next press: the page drawing the drawer again does not bring it back.
+      el.props.onClearFocus();
+      el = await d.settle();
+      d.setProps({ ...res.drawer.props });
+      el = await d.settle();
+      ok("reask-clear-holds", el.props.focus === null && el.props.draft === "", "a cleared finding stays cleared when the page draws the drawer again with no new press");
+      d.unmount();
+      page.unmount();
+    } finally {
+      delete globalThis.document;
+    }
+  });
+
+  // ─── 5. THE PROJECT PAGE ───────────────────────────────────────────────────────────
+  // Version links move between versions inside one mounted page, so what the page shows must follow the URL.
+  await group("the project page follows the version in the URL", async () => {
+    if (typeof ProjectDetailPage !== "function") return ok("exports-page", false, "pages/project-detail.tsx has a default export");
+    const projects = (id, name) => ({
+      id,
+      studyType: "tis",
+      projectName: name,
+      landUseCode: "820",
+      siteLat: null,
+      siteLon: null,
+      version: 1,
+      createdAt: "2026-10-20T15:00:00.000Z",
+      reportThemeId: null,
+      request: {},
+      result: { affectedIntersections: [] },
+    });
+    // The project GETs and PATCHes wait until the check answers them, in any order; the rest answer at once.
+    const waiting = new Map();
+    const projectGets = [];
+    const patches = [];
+    globalThis.fetch = async (url, init = {}) => {
+      const u = String(url);
+      if (u === "/tis-api/firms/report-themes") return json(200, { themes: [{ id: "theme-1", name: "County format", isDefault: false }], legacy: false });
+      if (/^\/tis-api\/projects\/[^/]+\/datum$/.test(u)) return json(200, readOf());
+      const m = /^\/tis-api\/projects\/([^/?]+)$/.exec(u);
+      if (!m) return json(500, { error: `not stubbed: ${u}` });
+      if (init.method === "PATCH") return new Promise((resolve) => patches.push(resolve));
+      const id = decodeURIComponent(m[1]);
+      projectGets.push(id);
+      return new Promise((resolve) => (waiting.get(id) ?? waiting.set(id, []).get(id)).push(resolve));
+    };
+    const answer = (id, response) => {
+      const next = waiting.get(id)?.shift();
+      next?.(response);
+      return next !== undefined;
+    };
+    const AT = (p) => {
+      globalThis[PAGE_KEY] = { params: { id: p.id }, auth: { isAuthenticated: true, isLoading: false, login() {} } };
+      return ProjectDetailPage();
+    };
+    const shows = (el, s) => treeText(el).includes(s);
+    const page = mount(AT, { id: V1 });
+    try {
+      await page.settle();
+      answer(V1, json(200, projects(V1, "Study version 1")));
+      let el = await page.settle();
+      ok("pre-page-v1", shows(el, "Study version 1") && shows(el, "Generated"), "precondition: the page shows Version 1 once it has loaded");
+
+      // A version link: the same page, a new id, its project not in yet.
+      page.setProps({ id: V2 });
+      el = await page.settle();
+      ok(
+        "page-new-version-drops-old",
+        !shows(el, "Study version 1") && !shows(el, "Generated") && shows(el, "Loading project…"),
+        `under Version 2's URL the page shows no part of Version 1 while Version 2 loads (shows ${JSON.stringify(treeText(el).slice(0, 80))})`,
+      );
+      answer(V2, json(200, projects(V2, "Study version 2")));
+      el = await page.settle();
+      ok("page-new-version-shown", shows(el, "Study version 2") && !shows(el, "Study version 1"), "and Version 2 once it has loaded");
+
+      // A version that fails to load does not stay on screen for the next one.
+      page.setProps({ id: V3 });
+      await page.settle();
+      answer(V3, json(404, { error: "Project not found." }));
+      el = await page.settle();
+      ok("pre-page-load-failed", shows(el, "Project not found."), "precondition: a version that fails to load says why");
+      page.setProps({ id: V1 });
+      el = await page.settle();
+      ok(
+        "page-failure-cleared-on-navigation",
+        !shows(el, "Project not found.") && shows(el, "Loading project…"),
+        `moving to another version clears the failure while it loads (shows ${JSON.stringify(treeText(el).slice(0, 80))})`,
+      );
+      answer(V1, json(200, projects(V1, "Study version 1")));
+      el = await page.settle();
+      ok("page-loads-after-failure", shows(el, "Study version 1") && !shows(el, "Project not found."), "and the next version shows once it has loaded");
+
+      // A slow answer for a version no longer in the URL never lands on the one that is.
+      page.setProps({ id: V2 });
+      await page.settle();
+      page.setProps({ id: V3 });
+      await page.settle();
+      answer(V2, json(200, projects(V2, "Study version 2")));
+      el = await page.settle();
+      ok("page-slow-answer-ignored", !shows(el, "Study version 2") && shows(el, "Loading project…"), "Version 2's answer, arriving after the page moved on to Version 3, is not shown");
+      answer(V3, json(200, projects(V3, "Study version 3")));
+      el = await page.settle();
+      ok("page-current-answer-shown", shows(el, "Study version 3") && !shows(el, "Study version 2"), "Version 3's own answer is");
+
+      // A format change still on its way when the page moves on does not bring the version it was made on back.
+      const select = byTestId(el, "select-project-format")[0];
+      ok("pre-page-format-picker", typeof select?.props?.onChange === "function", "precondition: the page draws the format picker");
+      select?.props?.onChange({ target: { value: "theme-1" } });
+      await page.settle();
+      ok("pre-page-format-sent", patches.length === 1, `precondition: the format change was sent (${patches.length})`);
+      page.setProps({ id: V1 });
+      await page.settle();
+      answer(V1, json(200, projects(V1, "Study version 1")));
+      el = await page.settle();
+      patches.shift()?.(json(200, { ok: true }));
+      el = await page.settle();
+      ok(
+        "page-late-format-change-stays-put",
+        shows(el, "Study version 1") && !shows(el, "Study version 3"),
+        `the format change's late answer does not put Version 3 back under Version 1's URL (shows ${JSON.stringify(treeText(el).slice(0, 80))})`,
+      );
+      ok("pre-page-gets", projectGets.join(",") === [V1, V2, V3, V1, V2, V3, V1].join(","), `precondition: one project request per visit (${projectGets.length})`);
+    } finally {
+      page.unmount();
+      delete globalThis[PAGE_KEY];
+    }
+  });
+
   async function mountedChecks() {
     const focus = FOUR[1];
     const saved = readOf({
@@ -1135,7 +1351,7 @@ try {
     }
   }
 
-  // ─── 5. COPY ───────────────────────────────────────────────────────────────────────
+  // ─── 6. COPY ───────────────────────────────────────────────────────────────────────
   await group("copy", () => {
     ok("pre-rendered-states", everyHtml.length >= 25, `rendered ${everyHtml.length} states (a check that rendered nothing proves nothing)`);
     const hits = everyHtml.map((h) => bannedIn(text(h)) ?? bannedIn(h)).filter((h) => h !== null);

@@ -69,6 +69,11 @@ export type DatumChatProps = {
   projectId: string;
   /** The finding the engineer pressed "Ask about this" on, or null for the study as a whole. */
   focus: ProofreadFindingT | null;
+  /**
+   * Which press of "Ask about this" `focus` came from, new on every press. The panel hands over the same finding
+   * object each time, so a press on the finding the engineer just cleared is told apart from a redraw by this.
+   */
+  focusSeq?: number;
   onClose(): void;
   /** A question typed in the panel's Ask Datum box: sent once, about the study as a whole, when it arrives. */
   ask?: { text: string; seq: number } | null;
@@ -81,7 +86,7 @@ export type DatumChatProps = {
   onRevised?(): void;
 };
 
-export function DatumChat({ projectId, focus, onClose, ask = null, onAskTaken, onRevised }: DatumChatProps) {
+export function DatumChat({ projectId, focus, focusSeq, onClose, ask = null, onAskTaken, onRevised }: DatumChatProps) {
   const [read, setRead] = useState<DatumRead | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [about, setAbout] = useState<ProofreadFindingT | null>(focus);
@@ -92,7 +97,7 @@ export function DatumChat({ projectId, focus, onClose, ask = null, onAskTaken, o
   // The reply being written, if any: one at a time, and stopped when the drawer closes.
   const inFlight = useRef<AbortController | null>(null);
   const askedSeq = useRef<number | null>(null);
-  const shownFocus = useRef<ProofreadFindingT | null>(focus);
+  const shownFocus = useRef<{ focus: ProofreadFindingT | null; seq: number | undefined }>({ focus, seq: focusSeq });
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const drawerRef = useRef<HTMLElement | null>(null);
   const fieldRef = useRef<HTMLTextAreaElement | null>(null);
@@ -141,13 +146,15 @@ export function DatumChat({ projectId, focus, onClose, ask = null, onAskTaken, o
   // already started still finishes.
   useEffect(() => () => inFlight.current?.abort(), []);
 
-  // "Ask about this" on another finding while the drawer is open: name it, and offer the question.
+  // "Ask about this" pressed while the drawer is open, on another finding or on the one just cleared with the X:
+  // name it, and offer the question.
   useEffect(() => {
-    if (focus === shownFocus.current) return;
-    shownFocus.current = focus;
+    const shown = shownFocus.current;
+    if (focus === shown.focus && focusSeq === shown.seq) return;
+    shownFocus.current = { focus, seq: focusSeq };
     setAbout(focus);
     if (focus) setDraft((d) => (d.trim() === "" || d === DEFAULT_QUESTION ? DEFAULT_QUESTION : d));
-  }, [focus]);
+  }, [focus, focusSeq]);
 
   // The field takes focus once there is one to type in, and again for each "Ask about this", so Enter sends the
   // question rather than pressing the button again. When a reply ends (the field was disabled while it streamed)
@@ -163,7 +170,7 @@ export function DatumChat({ projectId, focus, onClose, ask = null, onAskTaken, o
   };
   useEffect(() => {
     if (enabled && !busy) focusField(false);
-  }, [enabled, focus]);
+  }, [enabled, focus, focusSeq]);
   useEffect(() => {
     if (enabled && !busy) focusField(true);
   }, [busy]);
@@ -542,7 +549,14 @@ function StreamingView({ s }: { s: DatumStreamingT }) {
 
 function ChangeLines({ changes }: { changes: DatumChangeT[] }) {
   if (changes.length === 0) {
-    return <p className="text-xs">No inputs changed: the study was re-run on the current engine with the same inputs.</p>;
+    // An older study's saved inputs are parsed with today's schema, so a method option it never set takes today's
+    // default, and the numbers can move even though nobody changed an input.
+    return (
+      <p className="text-xs">
+        No inputs changed: the study was re-run on the current engine with the same saved inputs. Where the original set no method option, the
+        engine's current default applies.
+      </p>
+    );
   }
   return (
     <ul className="text-xs space-y-0.5">
@@ -686,7 +700,8 @@ export function chatForPanel(
 
 // ─── on the project page ─────────────────────────────────────────────────────────────
 
-type OpenDrawer = { projectId: string; focus: ProofreadFindingT | null; ask: { text: string; seq: number } | null };
+/** `focusSeq` is the press of "Ask about this" that set `focus` (0 for none): DatumChat's focusSeq. */
+type OpenDrawer = { projectId: string; focus: ProofreadFindingT | null; focusSeq: number; ask: { text: string; seq: number } | null };
 
 /**
  * The project page's part of the chat, for the TIS study `projectId` (null for
@@ -704,6 +719,8 @@ export function useProjectDatum(projectId: string | null): { read: DatumRead | n
   const [nonce, setNonce] = useState(0);
   const [open, setOpen] = useState<OpenDrawer | null>(null);
   const askSeq = useRef(0);
+  // Each press of "Ask about this", the same finding again included.
+  const focusSeq = useRef(0);
   // The last box question a drawer took. A drawer is never handed it, or an older one, again.
   const takenSeq = useRef(0);
 
@@ -734,8 +751,11 @@ export function useProjectDatum(projectId: string | null): { read: DatumRead | n
   const shown = open && open.projectId === id ? open : null;
   const chat = chatForPanel(read, {
     // A box question not yet taken is kept: it is still on its way.
-    onAsk: (f) => setOpen((o) => ({ projectId: id, focus: f, ask: o && o.projectId === id ? o.ask : null })),
-    onAskStudy: (text) => setOpen({ projectId: id, focus: null, ask: { text, seq: ++askSeq.current } }),
+    onAsk: (f) => {
+      const seq = ++focusSeq.current;
+      setOpen((o) => ({ projectId: id, focus: f, focusSeq: seq, ask: o && o.projectId === id ? o.ask : null }));
+    },
+    onAskStudy: (text) => setOpen({ projectId: id, focus: null, focusSeq: 0, ask: { text, seq: ++askSeq.current } }),
   });
   const ask = shown?.ask && shown.ask.seq > takenSeq.current ? shown.ask : null;
   const drawer = shown ? (
@@ -743,6 +763,7 @@ export function useProjectDatum(projectId: string | null): { read: DatumRead | n
       key={id}
       projectId={id}
       focus={shown.focus}
+      focusSeq={shown.focusSeq}
       ask={ask}
       onAskTaken={(seq) => {
         takenSeq.current = Math.max(takenSeq.current, seq);
