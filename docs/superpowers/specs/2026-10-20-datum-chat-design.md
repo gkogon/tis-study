@@ -116,9 +116,9 @@ The system prompt and the clause guide are cached (prompt caching). History send
   - `rerun_study_with_changes({changes, reason, sourceLabel?, findingId?})`, where the `changes` keys are the
     allowlist only.
 - A server-side tool loop, capped at 4 model turns per engineer message and one re-run.
-- The refusal fallback that the claude-api skill documents for this model. The plan copies the exact parameter from
-  the skill's TypeScript docs, not from memory. Typed SDK errors become a plain chat error: "Datum couldn't answer
-  just now."
+- No refusal fallback (my call). The skill documents server-side fallbacks as a Fable 5.1 default, and a fallback to
+  an older Opus drops this model's thinking. A `refusal` stop reason ends the turn with a plain line, and so do typed
+  SDK errors: "Datum couldn't answer that just now."
 - **No `ANTHROPIC_API_KEY` means the chat is off.** The panel looks exactly as it does today, and the routes answer
   `{enabled: false}`. CI never calls the model. The tests use a fake client.
 
