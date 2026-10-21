@@ -2041,7 +2041,8 @@ t("run.ts exports runDatumTurn and the one line it uses when it cannot answer", 
     r.res.stopReason === "end_turn" && r.res.model === MODEL && r.res.inputTokens === 700 && r.res.outputTokens === 130);
   t("re-run: emit saw a status naming the re-run, then the revision, then the closing text", () =>
     statusAt >= 0 && revisionAt > statusAt && /Re-running/.test(r.events[statusAt].message) && types.slice(revisionAt + 1).every((x) => x === "text") && types.length > revisionAt + 1);
-  t("re-run: the status line names the changed field and its new value", () => /growthRatePct = 1\b/.test(r.events[statusAt]?.message ?? ""));
+  t("re-run: the status line says the change in plain words, as the spec shows it (without the old value, which the loop does not know)", () =>
+    r.events[statusAt]?.message === "Re-running with growth 1.0%…");
   t("re-run: the revision event carries the project, version and changes, and parses as a DatumStreamEvent", () =>
     r.events[revisionAt]?.projectId === REVISION_ID && r.events[revisionAt].version === 2 && same(r.events[revisionAt].changes, r.res.revision.changes) && accepts(C.DatumStreamEvent, r.events[revisionAt]));
   t("re-run: the second call's last message is a user message holding the tool_result for that tool_use_id, not flagged as an error", () => {
@@ -2062,6 +2063,78 @@ t("run.ts exports runDatumTurn and the one line it uses when it cannot answer", 
   t("re-run: the tools array and the system blocks are the same objects on every call (the cached prefix)", () => c1.tools === c2.tools && c1.system === c2.system);
   t("re-run: every event parses as a DatumStreamEvent, and the loop emits no done (the route does)", () =>
     r.events.length > 3 && r.events.every((e) => accepts(C.DatumStreamEvent, e)) && !types.includes("done"));
+}
+
+// --- The status line is copy the engineer reads: plain labels, never field names -----------------------------------------
+{
+  const NAME = OVERRIDE.intersectionName;
+  const LABELS = [
+    ["growthRatePct", 1, "growth 1.0%"],
+    ["growthRatePct", 1.25, "growth 1.25%"],
+    ["removeGrowthOverride", true, "growth override removed"],
+    ["openingYear", 2028, "opening year 2028"],
+    ["analysisPeriods", ["am_peak", "pm_peak"], "periods AM peak, PM peak"],
+    ["analysisPeriods", ["saturday_midday", "daily"], "periods Saturday midday, daily"],
+    ["passByPct", 25, "pass-by 25%"],
+    ["internalCapturePct", 10, "internal capture 10%"],
+    ["weather", "light_rain", "weather light rain"],
+    ["scopeStudyIntersections", true, "study scope: impacted intersections only"],
+    ["scopeStudyIntersections", false, "study scope: every signalized intersection"],
+    ["signalTiming", "computed", "computed signal timing"],
+    ["signalTiming", "screening", "screening signal timing"],
+    ["legVolumes", "network", "network leg volumes"],
+    ["legVolumes", "screening", "screening leg volumes"],
+    ["realLaneGeometry", true, "real lane geometry on"],
+    ["realLaneGeometry", false, "real lane geometry off"],
+    ["conservedAssignment", true, "conserved path assignment on"],
+    ["conservedAssignment", false, "conserved path assignment off"],
+    ["signalTimingOverrides", [OVERRIDE], `timing sheet for ${NAME}`],
+  ];
+  /** The status line a re-run with these changes shows, or null if none was emitted. */
+  const statusOf = async (changes) => {
+    const r = await drive([turnOf([], modelMsg([rerunUse("toolu_1", rerun(changes))], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))]);
+    return { message: r.events.find((e) => e.type === "status")?.message ?? null, revised: r.rev.length === 1 };
+  };
+  // "weather" is a field name and an English word; the test is for the camelCase names, and for any camelCase word.
+  const rawName = (text) => C.REVISABLE_FIELDS.filter((f) => /[A-Z]/.test(f)).some((f) => text.includes(f)) || /[a-z][A-Z]/.test(text);
+
+  t("precondition: the label table covers every revisable field", () => sameSet([...new Set(LABELS.map(([f]) => f))], C.REVISABLE_FIELDS));
+  t("precondition: the raw-name test is not vacuous: it flags a status line written with a field name", () =>
+    rawName("Re-running with growthRatePct = 1…") && rawName("Re-running with passByPct") && !rawName("Re-running with growth 1.0%…"));
+  for (const [field, value, label] of LABELS) {
+    const got = await statusOf({ [field]: value });
+    t(`status for ${field} = ${JSON.stringify(value).slice(0, 60)}: "Re-running with ${label}…"`, () => got.revised && got.message === `Re-running with ${label}…`);
+    t(`status for ${field} = ${JSON.stringify(value).slice(0, 60)}: matches /Re-running/ and holds no raw field name or camelCase word`, () => /Re-running/.test(got.message ?? "") && !rawName(got.message ?? ""));
+  }
+  {
+    // Every field at once: allowlist order, one label per field, "; " between them.
+    const all = {};
+    // Keys given in reverse, so the order the engineer reads is the allowlist's and not the model's.
+    for (const f of [...C.REVISABLE_FIELDS].reverse()) all[f] = LABELS.find(([name]) => name === f)[1];
+    const got = await statusOf(all);
+    const expected = `Re-running with ${C.REVISABLE_FIELDS.map((f) => LABELS.find(([name]) => name === f)[2]).join("; ")}…`;
+    t("all 13 fields at once: the labels come in the allowlist's order, joined by semicolons", () => got.revised && got.message === expected);
+    t("all 13 fields at once: no status line contains a raw field name or a camelCase word", () => got.message !== null && got.message.length > 100 && !rawName(got.message));
+  }
+  {
+    const got = await statusOf({});
+    t("an empty change set: \"Re-running the study on the current engine with the same inputs…\"", () => got.message === "Re-running the study on the current engine with the same inputs…");
+  }
+  {
+    const sheets = (names) => names.map((n) => ({ ...OVERRIDE, intersectionName: n }));
+    const two = await statusOf({ signalTimingOverrides: sheets(["Main St & 1st Ave", "Oak St & 2nd Ave"]) });
+    const five = await statusOf({ signalTimingOverrides: sheets(["A St & 1st", "B St & 1st", "C St & 1st", "D St & 1st", "E St & 1st"]) });
+    const long = await statusOf({ signalTimingOverrides: sheets([`  ${"Very Long Street ".repeat(10)}  `]) });
+    t("timing sheets: two are named with 'and'", () => two.message === "Re-running with timing sheets for Main St & 1st Ave and Oak St & 2nd Ave…");
+    t("timing sheets: five name the first three and count the rest", () => five.message === "Re-running with timing sheets for A St & 1st, B St & 1st, C St & 1st and 2 more…");
+    t("timing sheets: a very long intersection name is clipped to one line", () => long.message !== null && long.message.length < 120 && long.message.includes("Very Long Street") && long.message.endsWith("…") && !/\s{2,}/.test(long.message));
+  }
+  {
+    const got = await statusOf({ growthRatePct: 1, passByPct: 25 });
+    t("the status never says an old value: no \"(was\" and no \"from\"", () => got.message !== null && !/\bwas\b|\bfrom\b/i.test(got.message));
+  }
+  t("run.ts keys its status labels by every revisable field, so a field without a label does not compile", () =>
+    /CHANGE_LABELS:\s*Record<RevisableField,/.test(runCode) && !/\$\{field\}\s*=/.test(runCode));
 }
 
 // --- Text across turns, and an empty reply ---------------------------------------------------------------------
@@ -2366,8 +2439,48 @@ const longReply = () => [turnOf(["Because ", "the ", "growth ", "rate."], modelM
   t("an SDK error after some text keeps the text and puts the line on its own paragraph", () => r.res.text === `The growth rate \n\n${LINE}` && joinedDeltas(r.events) === r.res.text && eventTypes(r.events).at(-1) === "error");
 }
 {
+  // The cause goes to the route (result.error) and never into an event or the text.
+  const err = Object.assign(new Error("overloaded_error req_abc123 for org acme"), { status: 529 });
+  const r = await drive([turnOf([], null, { reject: err })]);
+  t("a model failure: result.error holds the very value that was thrown, so the route can log its status and message", () => r.res.error === err && r.res.error.status === 529);
+  t("a model failure: no event and not the text contain the cause's message", () => r.events.length === 2 && !JSON.stringify(r.events).includes("req_abc123") && !JSON.stringify(r.events).includes("overloaded") && !r.res.text.includes("req_abc123"));
+}
+{
+  // A bug in the loop's own code: revise answers something that is not a result (null), so reading `.ok` throws a TypeError.
+  const r = await drive(
+    [turnOf([], modelMsg([rerunUse("toolu_1")], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))],
+    { revise: () => null },
+  );
+  t("a failure inside the loop: it does not reject, the text is the line, an error event is emitted, and the stop reason is error", () =>
+    r.threw === null && r.res.text === LINE && r.res.stopReason === "error" && eventTypes(r.events).at(-1) === "error" && r.res.revision === null);
+  t("a failure inside the loop: result.error holds the TypeError that was thrown", () => r.res.error instanceof TypeError && /null/.test(r.res.error.message));
+  t("a failure inside the loop: no event and not the text contain the exception's message", () =>
+    !JSON.stringify(r.events).includes(r.res.error?.message ?? "\u0000") && !r.res.text.includes(r.res.error?.message ?? "\u0000") && r.events.every((e) => accepts(C.DatumStreamEvent, e)));
+}
+{
+  // The engineer leaves, and then the loop's own code throws: the cause is still reported, but nothing is sent to a client that is gone.
+  const r = await drive(
+    [turnOf([], modelMsg([rerunUse("toolu_1")], "tool_use")), turnOf(["Done."], modelMsg([block.text("Done.")]))],
+    { revise: async (input, ac) => { ac.abort(); await tick(); return null; } },
+  );
+  t("a failure inside the loop after the engineer left: result.error is still set, cutOff is true, and no error event or line is sent", () =>
+    r.threw === null && r.res.error instanceof TypeError && r.res.cutOff === true && !eventTypes(r.events).includes("error") && !r.res.text.includes(LINE));
+}
+{
+  const r = await drive(longReply(), { emit: (e, n) => { if (n === 2) throw new Error("write after end"); } });
+  t("a disconnect is not a failure: the abort the loop asked for leaves result.error absent", () => r.res.cutOff === true && !("error" in r.res));
+}
+{
+  const r = await drive([turnOf(["Because "], modelMsg([block.text("Because ")]))]);
+  const refused = await drive([turnOf([], modelMsg([block.text("")], "refusal"))]);
+  const capped = await drive(Array.from({ length: 4 }, (_, i) => turnOf([], modelMsg([readUse(`toolu_${i + 1}`)], "tool_use"))));
+  t("endings that are not failures (an answer, a refusal, the turn cap) carry no result.error", () =>
+    r.res !== null && refused.res !== null && capped.res !== null && ![r.res, refused.res, capped.res].some((x) => "error" in x));
+}
+{
   const r = await drive([turnOf([], null, { throwOnCreate: Object.assign(new Error("x"), { status: 401 }) })]);
-  t("stream() itself throwing is handled like any SDK error", () => r.threw === null && r.res.text === LINE && eventTypes(r.events).includes("error"));
+  t("stream() itself throwing is handled like any SDK error, and its cause is in result.error", () =>
+    r.threw === null && r.res.text === LINE && eventTypes(r.events).includes("error") && r.res.error?.status === 401);
 }
 {
   const r = await drive([turnOf([], modelMsg([rerunUse("toolu_1")], "tool_use", { input_tokens: 300, output_tokens: 50 })), turnOf([], null, { reject: Object.assign(new Error("x"), { status: 529 }) })]);

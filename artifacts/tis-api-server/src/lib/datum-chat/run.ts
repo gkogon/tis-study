@@ -13,6 +13,7 @@
  *   - It never rejects. A model failure, an unexpected exception and a
  *     disconnect all come back as a result, because a re-run may already be
  *     saved and the route still has to save the Datum message that reports it.
+ *     The cause of a failure is in `result.error` for the route to log.
  *   - It emits `text`, `status`, `revision` and `error` events. `done` is the
  *     route's, sent after it saves the message.
  *   - Tools run only on a turn that stopped with `tool_use`, never on a
@@ -27,8 +28,8 @@
  * model exactly as it came, thinking blocks included.
  */
 import { z } from "zod";
-import { DATUM_LIMITS, RerunToolInput } from "./contract.ts";
-import type { DatumChange, DatumStreamEvent } from "./contract.ts";
+import { DATUM_LIMITS, REVISABLE_FIELDS, RerunToolInput } from "./contract.ts";
+import type { DatumChange, DatumStreamEvent, RevisableField } from "./contract.ts";
 import { READ_PATH_TOOL, RERUN_TOOL } from "./tools.ts";
 import type { HistoryMessage, buildSystem } from "./prompt.ts";
 
@@ -83,6 +84,16 @@ export type TurnResult = {
   outputTokens: number;
   /** The engineer left before the reply was finished. The route adds " (reply cut off)". */
   cutOff: boolean;
+  /**
+   * Why the turn failed: the value that was thrown, present only when the model
+   * call failed (an SDK error such as a 400, 401 or 529) or the loop itself threw.
+   * It is for the route to log. It is never put in an event or in `text`, so
+   * nothing of it reaches the engineer. Absent on every other ending, and on the
+   * abort the loop asked for when the engineer left. The caller's own `revise` and
+   * `readPath` failures are not here (the loop answers those to the model as an
+   * is_error tool_result); the route logs those inside its own functions.
+   */
+  error?: unknown;
 };
 
 // ---------------------------------------------------------------------------
@@ -134,23 +145,58 @@ function issueText(error: { issues: ReadonlyArray<{ path: ReadonlyArray<string |
     .slice(0, 700);
 }
 
-const SHORT_VALUE_CHARS = 40;
+// The status line is copy the engineer reads, so it speaks in plain labels, never in field names. The map is keyed
+// by every revisable field, so a field added to the allowlist without a label does not compile. The loop does not
+// know the old values, so a label carries only the new one.
+const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const onOff = (v: unknown, name: string): string => (typeof v === "boolean" ? `${name} ${v ? "on" : "off"}` : name);
+const PERIOD_LABELS: Record<string, string> = { am_peak: "AM peak", pm_peak: "PM peak", saturday_midday: "Saturday midday", daily: "daily" };
+const WEATHER_LABELS: Record<string, string> = { clear: "clear", light_rain: "light rain", heavy_rain: "heavy rain", light_snow: "light snow", heavy_snow: "heavy snow" };
+const SHEET_NAMES_SHOWN = 3;
+const SHEET_NAME_CHARS = 60;
 
-/** `growthRatePct = 1` for a plain value, and just the field name for a list or an object. */
-function changeLabel([field, value]: [string, unknown]): string {
-  if (typeof value === "number" || typeof value === "boolean") return `${field} = ${value}`;
-  if (typeof value === "string" && value.length <= SHORT_VALUE_CHARS && !/[\r\n]/.test(value)) return `${field} = ${value}`;
-  return field;
+/** "A", "A and B", "A, B and C". */
+const listAnd = (items: string[]): string => (items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`);
+
+function timingSheetLabel(v: unknown): string {
+  if (!Array.isArray(v)) return "timing sheet";
+  if (v.length === 0) return "timing sheets removed";
+  const names = v
+    .map((item) => (isRecord(item) && typeof item.intersectionName === "string" ? item.intersectionName.replace(/\s+/g, " ").trim() : ""))
+    .filter((n) => n !== "")
+    .map((n) => (n.length > SHEET_NAME_CHARS ? `${n.slice(0, SHEET_NAME_CHARS - 1)}…` : n));
+  const shown = names.slice(0, SHEET_NAMES_SHOWN);
+  const more = v.length - shown.length;
+  const noun = v.length === 1 ? "timing sheet" : "timing sheets";
+  if (shown.length === 0) return `${v.length} ${noun}`;
+  return `${noun} for ${listAnd(more > 0 ? [...shown, `${more} more`] : shown)}`;
 }
 
-/** The status line before a re-run: the fields being changed. It does not know the old values. */
-function rerunStatus(changes: object): string {
-  const labels = Object.entries(changes)
-    .filter(([, v]) => v !== undefined)
-    .map(changeLabel);
+const CHANGE_LABELS: Record<RevisableField, (value: unknown) => string> = {
+  growthRatePct: (v) => (isNum(v) ? `growth ${Number.isInteger(v) ? v.toFixed(1) : v}%` : "growth rate"),
+  removeGrowthOverride: () => "growth override removed",
+  openingYear: (v) => (isNum(v) ? `opening year ${v}` : "opening year"),
+  analysisPeriods: (v) =>
+    Array.isArray(v) && v.length > 0 ? `periods ${v.map((p) => (typeof p === "string" ? (PERIOD_LABELS[p] ?? "another period") : "another period")).join(", ")}` : "analysis periods",
+  passByPct: (v) => (isNum(v) ? `pass-by ${v}%` : "pass-by"),
+  internalCapturePct: (v) => (isNum(v) ? `internal capture ${v}%` : "internal capture"),
+  weather: (v) => (typeof v === "string" && Object.hasOwn(WEATHER_LABELS, v) ? `weather ${WEATHER_LABELS[v]}` : "weather"),
+  scopeStudyIntersections: (v) =>
+    typeof v === "boolean" ? (v ? "study scope: impacted intersections only" : "study scope: every signalized intersection") : "study scope",
+  signalTiming: (v) => (v === "computed" ? "computed signal timing" : v === "screening" ? "screening signal timing" : "signal timing"),
+  legVolumes: (v) => (v === "network" ? "network leg volumes" : v === "screening" ? "screening leg volumes" : "leg volumes"),
+  realLaneGeometry: (v) => onOff(v, "real lane geometry"),
+  conservedAssignment: (v) => onOff(v, "conserved path assignment"),
+  signalTimingOverrides: timingSheetLabel,
+};
+
+/** The status line before a re-run: the changes in plain words, in the allowlist's order. */
+function rerunStatus(changes: Record<string, unknown>): string {
+  const labels = REVISABLE_FIELDS.filter((f) => changes[f] !== undefined).map((f) => CHANGE_LABELS[f](changes[f]));
   return labels.length === 0
     ? "Re-running the study on the current engine with the same inputs…"
-    : `Re-running the study with ${labels.join(", ")}…`;
+    : `Re-running with ${labels.join("; ")}…`;
 }
 
 const MAX_ECHO_JSON_CHARS = 1000;
@@ -190,6 +236,8 @@ export async function runDatumTurn(
   let outputTokens = 0;
   let cutOff = false;
   let reruns = 0;
+  /** What was thrown that was not the abort we asked for; boxed, since anything can be thrown, undefined included. */
+  let failure: { cause: unknown } | null = null;
   let live: { stream: ModelStream; aborted: boolean } | null = null;
 
   // `cutOff` is written from callbacks, so the loop reads it through this, not as a plain variable.
@@ -274,7 +322,7 @@ export async function runDatumTurn(
       if (!parsed.success) {
         return failed(`The re-run input is not valid, so nothing was re-run (${issueText(parsed.error)}). Correct it to match the tool's schema and what the engineer asked, or tell the engineer what you could not apply.`);
       }
-      send({ type: "status", message: rerunStatus(parsed.data.changes) });
+      send({ type: "status", message: rerunStatus(parsed.data.changes as Record<string, unknown>) });
       // A re-run that has begun runs to the end; one the engineer left before is not begun.
       if (cutOff) return failed(LEFT_MESSAGE);
       reruns += 1;
@@ -312,7 +360,14 @@ export async function runDatumTurn(
 
   try {
     for (let turn = 1; turn <= DATUM_LIMITS.modelTurnsPerMessage && !isCutOff(); turn++) {
-      const message = await streamTurn();
+      let message: ModelMessage;
+      try {
+        message = await streamTurn();
+      } catch (e) {
+        // The engineer left: finalMessage() rejecting is the abort we asked for, not a failure.
+        if (isCutOff()) break;
+        throw e;
+      }
       inputTokens += count(message.usage?.input_tokens);
       outputTokens += count(message.usage?.output_tokens);
       model = message.model;
@@ -338,9 +393,10 @@ export async function runDatumTurn(
       if (withheld || text.trim() === "") addLine();
       break;
     }
-  } catch {
-    // finalMessage() rejects when the stream is aborted, and on an API error. Any other exception lands here too:
-    // either way the result must still be returned, because a re-run may already be saved.
+  } catch (e) {
+    // An API error, or any other exception: either way the result must still be returned, because a re-run may
+    // already be saved. The cause goes to the route in `error` and nowhere else; the engineer sees only the line.
+    failure = { cause: e };
     if (!isCutOff()) {
       stopReason = "error";
       addLine();
@@ -351,5 +407,14 @@ export async function runDatumTurn(
   }
 
   if (isCutOff()) stopReason = "aborted";
-  return { text, revision, stopReason, model, inputTokens, outputTokens, cutOff: isCutOff() };
+  return {
+    text,
+    revision,
+    stopReason,
+    model,
+    inputTokens,
+    outputTokens,
+    cutOff: isCutOff(),
+    ...(failure === null ? {} : { error: failure.cause }),
+  };
 }
