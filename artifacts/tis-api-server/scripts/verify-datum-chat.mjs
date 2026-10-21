@@ -10,7 +10,10 @@
  * Sections, in file order (later tasks append their own):
  *   contract    lib/tis-api-zod/src/datum-chat.ts, imported under plain node.
  *   migrations  lib/db/migrate.mjs and the two drizzle files, read as text.
- *   tools       lib/datum-chat/tools.ts: the allowlist merge and the two strict tool schemas.
+ *   tools       lib/datum-chat/tools.ts: the allowlist merge and the two strict tool schemas;
+ *               lib/datum-chat/contract.ts, the one door the pure modules reach lib/tis-api-zod through.
+ *   context     lib/datum-chat/clause-guide.ts and context.ts: the per-clause guide, the capped grounding
+ *               pack, and the read-only path reader.
  *
  * The contract is imported by file URL with no loader: Node strips the types.
  * That works only while datum-chat.ts reaches GenerateTisBody through an explicit
@@ -611,8 +614,27 @@ ok(
   toolsCode.length > 0 && !/@anthropic-ai\/sdk|@workspace\/db|\blogger\b|process\.env|\bfetch\s*\(|\brequire\s*\(/.test(toolsCode),
 );
 const toolsRelImports = [...toolsCode.matchAll(/\bfrom\s+"(\.{1,2}\/[^"]*)"/g)].map((m) => m[1]);
-ok("tools.ts reaches the contract through a relative import (the form plain node resolves)", toolsRelImports.some((p) => /datum-chat\.ts$/.test(p)), toolsRelImports.join(", "));
+ok("tools.ts imports the contract through ./contract.ts", toolsRelImports.includes("./contract.ts"), toolsRelImports.join(", "));
 ok("every relative import in tools.ts carries an explicit .ts", toolsRelImports.length > 0 && toolsRelImports.every((p) => p.endsWith(".ts")), toolsRelImports.join(", "));
+ok("pure datum-chat modules import the contract only via ./contract.ts: tools.ts names no tis-api-zod path", !/tis-api-zod/.test(toolsCode), toolsRelImports.join(", "));
+
+// --- contract.ts: the one door to lib/tis-api-zod for the pure modules, so none names a path of its own ---
+const CONTRACT_REL = "artifacts/tis-api-server/src/lib/datum-chat/contract.ts";
+const { mod: K, error: facadeError } = await importByUrl(CONTRACT_REL);
+ok("contract.ts loads under plain node (no loader)", facadeError === null, facadeError ?? undefined);
+const facadeCode = stripComments(read(CONTRACT_REL));
+const facadeFroms = [...facadeCode.matchAll(/\bfrom\s+"([^"]*)"/g)].map((m) => m[1]);
+ok(
+  "contract.ts re-exports only from the two explicit relative .ts paths: datum-chat.ts and generated/api.ts",
+  sameSet(facadeFroms, [
+    "../../../../../lib/tis-api-zod/src/datum-chat.ts",
+    "../../../../../lib/tis-api-zod/src/generated/api.ts",
+  ]),
+  facadeFroms.join(", "),
+);
+t("contract.ts exposes everything datum-chat.ts exports, and the request schema", () =>
+  Object.keys(C).length > 0 && Object.keys(C).every((k) => K[k] === C[k]) && K.GenerateTisBody === G.GenerateTisBody);
+t("contract.ts exposes the signal-timing-overrides bound tools.ts reads", () => K.generateTisBodySignalTimingOverridesMax === G.generateTisBodySignalTimingOverridesMax && typeof K.generateTisBodySignalTimingOverridesMax === "number");
 
 // --- The parent: scenario-base.json's request ------------------------------------
 let fixtureRequest = {};
@@ -1053,6 +1075,466 @@ t("READ_PATH_TOOL's schema takes a path and refuses anything else", () => {
 t("no banned phrase appears in either tool or in tools.ts", () => {
   const BANNED = /independent[\s-]*review|second[\s-]*opinion|peer[\s-]*review|qa\s*[/\\-]?\s*qc|\baudit/i;
   return toolsSrc.length > 0 && !BANNED.test(JSON.stringify(TOOLS)) && !BANNED.test(toolsSrc);
+});
+
+// ===========================================================================
+// context
+// ===========================================================================
+section("context");
+
+const GUIDE_REL = "artifacts/tis-api-server/src/lib/datum-chat/clause-guide.ts";
+const CONTEXT_REL = "artifacts/tis-api-server/src/lib/datum-chat/context.ts";
+const { mod: GU, error: guideError } = await importByUrl(GUIDE_REL);
+ok("the clause guide loads under plain node (no loader)", guideError === null, guideError ?? undefined);
+const { mod: X, error: contextError } = await importByUrl(CONTEXT_REL);
+ok("the context module loads under plain node (no loader)", contextError === null, contextError ?? undefined);
+const { mod: PF, error: proofreadError } = await importByUrl("artifacts/tis-api-server/src/lib/proofread/index.ts");
+ok("precondition: the proofread registry loads, so the guide can be compared with it", proofreadError === null, proofreadError ?? undefined);
+const guideSrc = read(GUIDE_REL);
+const contextSrc = read(CONTEXT_REL);
+
+// --- Pure, like lib/proofread/, and the contract only through ./contract.ts ------------------
+for (const [name, src] of [["clause-guide.ts", guideSrc], ["context.ts", contextSrc]]) {
+  const code = stripComments(src);
+  const rel = [...code.matchAll(/\bfrom\s+"(\.{1,2}\/[^"]*)"/g)].map((m) => m[1]);
+  ok(`${name} imports no SDK, db or logger, reads no env and fetches nothing`, code.length > 0 && !/@anthropic-ai\/sdk|@workspace\/db|\blogger\b|process\.env|\bfetch\s*\(|\brequire\s*\(/.test(code));
+  ok(`every relative import in ${name} carries an explicit .ts`, rel.length > 0 && rel.every((p) => p.endsWith(".ts")), rel.join(", "));
+  ok(`pure datum-chat modules import the contract only via ./contract.ts: ${name} imports it there and names no tis-api-zod path`, rel.includes("./contract.ts") && !/tis-api-zod/.test(code), rel.join(", "));
+}
+
+// --- The scenario-base.json record -------------------------------------------------------
+let FX = {};
+try {
+  FX = JSON.parse(read("artifacts/atlanta-tis/scripts/fixtures/scenario-base.json"));
+} catch (e) {
+  ok("precondition: scenario-base.json parses", false, e instanceof Error ? e.message : String(e));
+}
+const { request: FX_REQUEST, ...FX_RESULT } = FX;
+/** The stored form: the fixture's request (growth set to 2.1) and its result payload, which is the fixture without its echoed `request`. */
+const REC = { request: { ...FX_REQUEST, growthRatePct: 2.1 }, result: FX_RESULT };
+t("precondition: the fixture has three period reports (40 rows each for AM and PM, none for daily) and a v/c above 2.5", () =>
+  Array.isArray(FX_RESULT.periodReports) && same(FX_RESULT.periodReports.map((p) => [p.period, p.affectedIntersections.length]), [["am_peak", 40], ["pm_peak", 40], ["daily", 0]]) &&
+  FX_RESULT.periodReports.some((p) => p.affectedIntersections.some((r) => r.existingVc > 2.5)));
+
+/** A visible finding as the store will hand one over: the proofread finding without its section or audience, plus an id. */
+const visible = (f) => ({ id: randomUUID(), clauseId: f.clauseId, type: f.type, title: f.title, detail: f.detail, sourceLabel: f.sourceLabel, readPaths: f.readPaths, remedy: f.remedy });
+const REAL = PF.runClauses ? PF.runClauses(REC).findings.filter((f) => f.audience !== "admin").map(visible) : [];
+t("precondition: the real clauses give at least two engineer-visible findings on the fixture", () => REAL.length >= 2 && REAL[0].readPaths.length > 0 && REAL[1].readPaths.length > 0);
+
+const jsonBlocks = (text) => [...text.matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => m[1]);
+const fenceLines = (text) => text.split("\n").filter((l) => l.startsWith("```"));
+/** Every fence opens with ```json and closes with ```, in pairs: nothing was cut inside a block. */
+const fencesPair = (text) => {
+  const f = fenceLines(text);
+  // Every ``` in the text is a fence line: none sits inside a value or in the middle of a line.
+  return (text.match(/```/g) ?? []).length === f.length && f.length % 2 === 0 && f.every((l, i) => (i % 2 === 0 ? l === "```json" : l === "```"));
+};
+const jsonBlocksParse = (text) => jsonBlocks(text).every((b) => { try { JSON.parse(b); return true; } catch { return false; } });
+const headingsOf = (text) => text.split("\n").filter((l) => l.startsWith("## "));
+const sectionOf = (text, heading) => { const i = text.indexOf(`${heading}\n`); if (i < 0) return ""; const rest = text.slice(i); const j = rest.indexOf("\n## ", 1); return j < 0 ? rest : rest.slice(0, j); };
+const blockIn = (text, heading) => { const b = jsonBlocks(sectionOf(text, heading)); return b.length ? JSON.parse(b[0]) : undefined; };
+const FULL_HEADINGS = ["## Focused finding", "## Clause guide entry", "## Values at the read paths", "## Other findings", "## Request", "## Result summary"];
+const pack = (over = {}, cap) => X.buildGroundingPack({ request: REC.request, result: REC.result, findings: REAL.slice(0, 2), dispositions: [], focusFindingId: REAL[1]?.id, ...over }, cap);
+
+// --- The clause guide ----------------------------------------------------------------------
+const GUIDE = GU.CLAUSE_GUIDE ?? {};
+const ALL_IDS = Array.isArray(PF.ALL_CLAUSES) ? PF.ALL_CLAUSES.map((c) => c.id) : [];
+t("CLAUSE_GUIDE has a key for each engineer-visible clause in ALL_CLAUSES, and none for losMatchesDelay", () =>
+  ALL_IDS.length === 12 && same(Object.keys(GUIDE).sort(), ALL_IDS.filter((id) => id !== "losMatchesDelay").sort()) && !("losMatchesDelay" in GUIDE) && Object.keys(GUIDE).length === 11);
+t("criteriaNamed is explain-only and rateReproducesTotal is a re-run", () => GUIDE.criteriaNamed?.fixable === "explain" && GUIDE.rateReproducesTotal?.fixable === "rerun");
+t("fixable follows the clause map: five re-run, five partial, one explain", () => {
+  const by = (v) => Object.keys(GUIDE).filter((k) => GUIDE[k].fixable === v);
+  return (
+    sameSet(by("rerun"), ["growthOverrideDisclosed", "growthMultiplierReproduces", "rateReproducesTotal", "passByBasisNamed", "periodScopeDisclosed"]) &&
+    sameSet(by("partial"), ["vcPlausibilityIntersection", "vcPlausibilityApproach", "vcPlausibilityDesignYear", "screeningClampDisclosed", "scopeNoteConsistent"]) &&
+    sameSet(by("explain"), ["criteriaNamed"])
+  );
+});
+t("every entry has non-empty why and clears text, a fixable value, and inputs drawn from REVISABLE_FIELDS without repeats", () =>
+  Object.values(GUIDE).length === 11 &&
+  Object.values(GUIDE).every(
+    (e) =>
+      typeof e.why === "string" && e.why.length > 40 && typeof e.clears === "string" && e.clears.length > 40 &&
+      ["rerun", "partial", "explain"].includes(e.fixable) && Array.isArray(e.inputs) &&
+      e.inputs.every((f) => C.REVISABLE_FIELDS.includes(f)) && new Set(e.inputs).size === e.inputs.length,
+  ));
+t("inputs follow the clause map: none for the three engine-side clauses, the named field for the single-input clauses", () =>
+  ["growthMultiplierReproduces", "rateReproducesTotal", "criteriaNamed"].every((k) => same(GUIDE[k]?.inputs, [])) &&
+  same(GUIDE.passByBasisNamed?.inputs, ["passByPct"]) &&
+  same(GUIDE.periodScopeDisclosed?.inputs, ["analysisPeriods"]) &&
+  same(GUIDE.scopeNoteConsistent?.inputs, ["scopeStudyIntersections"]) &&
+  sameSet(GUIDE.growthOverrideDisclosed?.inputs ?? [], ["growthRatePct", "removeGrowthOverride"]));
+t("the v/c, design-year and clamp clauses list every capacity input; growth and opening year only where the map puts them", () => {
+  const CAP = ["signalTimingOverrides", "signalTiming", "realLaneGeometry", "legVolumes", "weather"];
+  const has = (k, fields) => fields.every((f) => GUIDE[k]?.inputs.includes(f));
+  const lacks = (k, fields) => fields.every((f) => !GUIDE[k]?.inputs.includes(f));
+  return (
+    ["vcPlausibilityIntersection", "vcPlausibilityApproach", "vcPlausibilityDesignYear", "screeningClampDisclosed"].every((k) => has(k, CAP)) &&
+    ["vcPlausibilityIntersection", "vcPlausibilityApproach", "vcPlausibilityDesignYear"].every((k) => has(k, ["growthRatePct", "openingYear"])) &&
+    has("vcPlausibilityDesignYear", ["passByPct", "internalCapturePct"]) &&
+    lacks("screeningClampDisclosed", ["growthRatePct", "openingYear", "passByPct"]) &&
+    lacks("vcPlausibilityIntersection", ["passByPct", "internalCapturePct"])
+  );
+});
+t("the guide says plainly that measured counts cannot be brought in through the chat, on the v/c clauses", () =>
+  ["vcPlausibilityIntersection", "vcPlausibilityApproach", "vcPlausibilityDesignYear"].every((k) => /UTDF|Synchro/.test(GUIDE[k]?.clears ?? "") && /cannot/i.test(GUIDE[k]?.clears ?? "")));
+t("CLAUSE_GUIDE and its entries are frozen, and FIXABLE_MEANING explains each fixable value", () =>
+  frozen(GUIDE) && Object.values(GUIDE).length === 11 && Object.values(GUIDE).every((e) => frozen(e) && frozen(e.inputs)) &&
+  sameSet(Object.keys(GU.FIXABLE_MEANING ?? {}), ["rerun", "partial", "explain"]) && Object.values(GU.FIXABLE_MEANING).every((m) => typeof m === "string" && m.length > 20));
+
+// --- The focused finding ---------------------------------------------------------------------
+t("with two findings focused on the second, the first section is \"## Focused finding\" and it holds the second's title", () => {
+  const p = pack();
+  return p.sections[0] === "## Focused finding" && p.text.startsWith("## Focused finding\n") && sectionOf(p.text, "## Focused finding").includes(REAL[1].title) && !sectionOf(p.text, "## Focused finding").includes(REAL[0].title);
+});
+t("the sections come in the plan's order, the headings in the text are exactly the sections returned, and bytes is the text's UTF-8 length", () => {
+  const p = pack();
+  return same(p.sections, FULL_HEADINGS) && same(headingsOf(p.text), p.sections) && p.bytes === Buffer.byteLength(p.text, "utf8") && p.bytes <= C.DATUM_LIMITS.packBytes;
+});
+t("the focused section carries the id, clause, type, source label, detail and remedy in full", () => {
+  const s = sectionOf(pack().text, "## Focused finding");
+  const f = REAL[1];
+  return [f.id, f.clauseId, f.type, f.title, f.sourceLabel, f.detail, f.remedy].every((v) => s.includes(v));
+});
+t("the focused finding's clause guide entry follows it: why, what clears it, the inputs, and what fixable means", () => {
+  const s = sectionOf(pack().text, "## Clause guide entry");
+  const g = GUIDE[REAL[1].clauseId];
+  return g !== undefined && s.includes(REAL[1].clauseId) && s.includes(g.why) && s.includes(g.clears) && g.inputs.every((f) => s.includes(f)) && s.includes(g.fixable) && s.includes(GU.FIXABLE_MEANING[g.fixable]);
+});
+t("a clause with no inputs says so in its guide entry", () => {
+  const f = { ...REAL[0], clauseId: "criteriaNamed" };
+  const s = sectionOf(pack({ findings: [f, REAL[1]], focusFindingId: f.id }).text, "## Clause guide entry");
+  return /none/i.test(s) && s.includes(GUIDE.criteriaNamed.why) && s.includes("explain");
+});
+t("every readPath's value appears, as the value stored at that path now", () => {
+  const f = REAL[1];
+  const block = blockIn(pack().text, "## Values at the read paths");
+  return Array.isArray(block) && block.length === f.readPaths.length && f.readPaths.every((rp, i) => block[i].path === rp.path && block[i].value === rp.value);
+});
+t("a readPath whose stored value differs from the one the clause saw shows both; one that resolves to nothing says so", () => {
+  const f = { ...REAL[0], readPaths: [{ path: "request.growthRatePct", value: 1.5 }, { path: "result.nope.x", value: 9 }, { path: "request.projectName", value: "Peachtree Multifamily" }] };
+  const block = blockIn(pack({ findings: [f, REAL[1]], focusFindingId: f.id }).text, "## Values at the read paths");
+  return (
+    Array.isArray(block) && block.length === 3 &&
+    block[0].path === "request.growthRatePct" && block[0].value === 2.1 && block[0].recorded === 1.5 &&
+    block[1].path === "result.nope.x" && block[1].value === null && block[1].recorded === 9 && /no value/i.test(block[1].note ?? "") &&
+    block[2].value === "Peachtree Multifamily" && !("recorded" in block[2])
+  );
+});
+t("a path that is not rooted at request. or result. is never read, even if a finding cites it", () => {
+  const f = { ...REAL[0], readPaths: [{ path: "process.env.HOME", value: "x" }] };
+  const p = pack({ findings: [f], focusFindingId: f.id });
+  const block = blockIn(p.text, "## Values at the read paths");
+  return Array.isArray(block) && block[0].value === null && !p.text.includes(process.env.HOME ?? "\u0000none");
+});
+t("the other findings are one line each, with their id, clause, type and title, and the focused one is not repeated there", () => {
+  const s = sectionOf(pack().text, "## Other findings");
+  const lines = s.split("\n").filter((l) => l.startsWith("- "));
+  return lines.length === 1 && lines[0].includes(REAL[0].id) && lines[0].includes(REAL[0].clauseId) && lines[0].includes(REAL[0].title) && !s.includes(REAL[1].id);
+});
+t("the latest decision on the focused finding is shown there, and on other findings in their line; older ones are not", () => {
+  const d = (findingId, disposition, createdAt, extra = {}) => ({ findingId, disposition, note: null, sourceLabel: null, createdAt, ...extra });
+  const dispositions = [
+    d(REAL[1].id, "BUG_FILED", "2026-09-01T00:00:00.000Z"),
+    d(REAL[1].id, "DISCLOSED", "2026-10-01T00:00:00.000Z", { note: "Stated in the limitations section", sourceLabel: "County letter 2026-09-30" }),
+    d(REAL[0].id, "FIXED", "2026-10-02T00:00:00.000Z"),
+    { garbage: true },
+    null,
+  ];
+  const a = pack({ dispositions }).text;
+  const b = pack({ dispositions: [...dispositions].reverse() }).text;
+  const focused = sectionOf(a, "## Focused finding");
+  const other = sectionOf(a, "## Other findings");
+  return (
+    focused.includes("DISCLOSED") && focused.includes("Stated in the limitations section") && focused.includes("County letter 2026-09-30") && !focused.includes("BUG_FILED") &&
+    other.includes("FIXED") && a === b
+  );
+});
+t("with no decision recorded the focused section says so", () => /Decision: none recorded/.test(sectionOf(pack().text, "## Focused finding")));
+t("without a focused finding, or with an id that is not among the findings, the pack opens with the findings and has no focus or guide section", () =>
+  [undefined, randomUUID()].every((id) => {
+    const p = pack({ focusFindingId: id });
+    return same(p.sections, ["## Findings", "## Request", "## Result summary"]) && p.text.startsWith("## Findings\n") && !p.text.includes("## Focused finding") && sectionOf(p.text, "## Findings").split("\n").filter((l) => l.startsWith("- ")).length === 2;
+  }));
+t("with no findings at all the pack says none are visible, and still holds the request and the result summary", () => {
+  const p = pack({ findings: [], focusFindingId: undefined });
+  return same(p.sections, ["## Findings", "## Request", "## Result summary"]) && /no findings are visible/.test(sectionOf(p.text, "## Findings")) && jsonBlocksParse(p.text);
+});
+t("a focused finding that is the only one leaves no \"Other findings\" section to read", () => {
+  const p = pack({ findings: [REAL[1]] });
+  return same(p.sections, FULL_HEADINGS.filter((h) => h !== "## Other findings"));
+});
+
+// --- Withheld findings ---------------------------------------------------------------------
+const throwsWithheld = (fn) => { try { fn(); return false; } catch (e) { return e instanceof Error && e.message === "withheld finding passed to pack"; } };
+t("a finding with audience admin passed in by mistake throws \"withheld finding passed to pack\", focused or not", () =>
+  throwsWithheld(() => pack({ findings: [{ ...REAL[0], audience: "admin" }, REAL[1]] })) &&
+  throwsWithheld(() => pack({ findings: [REAL[0], { ...REAL[1], audience: "admin" }] })) &&
+  throwsWithheld(() => pack({ findings: [REAL[0], { ...REAL[1], audience: "admin" }], focusFindingId: undefined })));
+t("a finding whose audience is engineer or pe is accepted, and a finding without an audience field is the normal case", () => {
+  const p = pack({ findings: [{ ...REAL[0], audience: "engineer" }, { ...REAL[1], audience: "pe" }] });
+  return p.sections[0] === "## Focused finding" && pack().sections[0] === "## Focused finding";
+});
+t("losMatchesDelay is never packed even when its audience was dropped along the way", () =>
+  throwsWithheld(() => pack({ findings: [REAL[0], { ...REAL[1], clauseId: "losMatchesDelay" }] })));
+
+// --- The request summary -------------------------------------------------------------------
+t("the request summary holds the study's scalar inputs as stored", () => {
+  const b = blockIn(pack().text, "## Request");
+  return b !== undefined && b.projectName === REC.request.projectName && b.openingYear === REC.request.openingYear && b.growthRatePct === 2.1 && b.landUseCode === REC.request.landUseCode && b.size === REC.request.size && same(b.analysisPeriods, REC.request.analysisPeriods);
+});
+const inflate = (rec) => {
+  const big = structuredClone(rec);
+  const movements = ["NBL", "NBT", "NBR", "SBL", "SBT", "SBR", "EBL", "EBT", "EBR", "WBL", "WBT", "WBR"];
+  big.request.utdfIntersections = Array.from({ length: 60 }, (_, i) => ({
+    intId: i, name: `Peachtree St & ${i}th St`, source: "utdf", latitude: 33.78 + i / 1e4, longitude: -84.38,
+    volumes: Object.fromEntries(movements.map((m) => [m, 100 + i])), phf: 0.92, hvPct: 2,
+    storageFt: Object.fromEntries(movements.map((m) => [m, 150])), lanes: Object.fromEntries(movements.map((m) => [m, 1])),
+    cycleLenSec: 90, phaseByMovement: Object.fromEntries(movements.map((m) => [m, 2])), splitSByPhase: { 2: 40, 4: 30 },
+  }));
+  big.request.driveways = Array.from({ length: 12 }, (_, i) => ({ id: `d${i}`, latitude: 33.78, longitude: -84.38, label: `Driveway ${i}`, accessType: "full", movements: { inLeft: true, inRight: true, outLeft: true, outRight: true } }));
+  big.request.tripProfile = { arrivals: Array.from({ length: 24 }, (_, i) => i / 276), departures: Array.from({ length: 24 }, (_, i) => i / 276), source: "Site survey, May 2026" };
+  big.request.studyIntersectionIds = Array.from({ length: 60 }, (_, i) => `ATL-${69421271 + i}`);
+  big.request.signalTimingOverrides = Array.from({ length: 60 }, (_, i) => ({ latitude: 33.78, longitude: -84.38, name: `Signal ${i}`, cycleLenSec: 90, phaseByMovement: Object.fromEntries(movements.map((m) => [m, 2])), splitSByPhase: { 2: 40, 4: 30 } }));
+  // Every row of every period breaches the ceiling in three scenarios.
+  for (const p of big.result.periodReports) for (const r of p.affectedIntersections) { r.currentVc = 3.1; r.existingVc = 3.4; r.designNoBuildVc = 4.2; }
+  big.result.growthSource = `Explicit override. ${"The measured rate is the median of many stations. ".repeat(200)}`;
+  return big;
+};
+const BIG = inflate(REC);
+t("the arrays utdfIntersections and driveways and the tripProfile are replaced by counts, and the rest of the request is kept", () => {
+  const b = blockIn(pack({ request: BIG.request, result: BIG.result }).text, "## Request");
+  return (
+    b !== undefined &&
+    same(b.utdfIntersections, { count: 60 }) && same(b.driveways, { count: 12 }) &&
+    same(b.tripProfile?.arrivals, { count: 24 }) && same(b.tripProfile?.departures, { count: 24 }) && b.tripProfile?.source === "Site survey, May 2026" &&
+    b.projectName === REC.request.projectName && b.growthRatePct === 2.1
+  );
+});
+t("any other field too large to include is replaced by a count or a size, and a short list is kept whole", () => {
+  const req = { ...BIG.request, note: "n".repeat(5000), extra: Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`k${i}`, i])) };
+  const b = blockIn(pack({ request: req, result: BIG.result }).text, "## Request");
+  return (
+    same(b.signalTimingOverrides, { count: 60 }) && same(b.note, { chars: 5000 }) && b.extra.keys === 200 && b.extra.characters > 1500 &&
+    same(b.studyIntersectionIds, BIG.request.studyIntersectionIds) && JSON.stringify(b).length < 4000
+  );
+});
+t("a small list in the request, such as analysisPeriods, is kept whole", () => same(blockIn(pack().text, "## Request").analysisPeriods, REC.request.analysisPeriods));
+
+// --- The result summary --------------------------------------------------------------------
+/** The rows over the ceiling, worked out from the raw periodReports and nothing the module computed. */
+const expectedOver = FX_RESULT.periodReports.flatMap((p) => p.affectedIntersections.filter((r) => ["currentVc", "existingVc", "futureVc", "designNoBuildVc", "designBuildVc"].some((k) => r[k] > 2.5)).map((r) => ({ period: p.period, name: r.name })));
+t("precondition: the fixture has rows over the ceiling to find", () => expectedOver.length > 0);
+t("the result summary lists the rows with a v/c above 2.5: name, period, v/c, LOS and delay, with the path to read", () => {
+  const SCENARIOS = ["current", "existing", "future", "designNoBuild", "designBuild"];
+  const rs = blockIn(pack().text, "## Result summary");
+  const rows = rs?.rowsOverCeiling?.rows;
+  if (!Array.isArray(rows) || rows.length === 0) return false;
+  const first = rows[0];
+  const src = FX_RESULT.periodReports.find((p) => p.period === first.period).affectedIntersections.find((r) => r.name === first.name);
+  const worst = first.over[0];
+  return (
+    rs.rowsOverCeiling.count === expectedOver.length &&
+    rows.length === Math.min(expectedOver.length, 20) &&
+    rows.every((r) => expectedOver.some((e) => e.period === r.period && e.name === r.name) && r.over.length > 0 && r.over.every((o) => SCENARIOS.includes(o.scenario) && o.vc > 2.5 && typeof o.los === "string" && typeof o.delaySec === "number")) &&
+    worst.vc === Math.max(...SCENARIOS.map((k) => src[`${k}Vc`] ?? 0)) &&
+    worst.los === src[`${worst.scenario}Los`] && worst.delaySec === src[`${worst.scenario}DelaySec`] &&
+    /^result\.periodReports\[\d+\]\.affectedIntersections\[\d+\]$/.test(first.path)
+  );
+});
+t("the rows over the ceiling are worst first, and a row's path reads back that row's name", () => {
+  const rs = blockIn(pack().text, "## Result summary");
+  const rows = rs.rowsOverCeiling.rows;
+  const peak = (r) => r.over[0].vc;
+  const sorted = rows.every((r, i) => i === 0 || peak(rows[i - 1]) >= peak(r));
+  const back = rows.every((r) => JSON.parse(X.readStudyPath(REC, `${r.path}.name`)) === r.name);
+  return sorted && back;
+});
+t("the result summary carries growthSource, passByPctApplied, the coverage counts and the DOT name as the result states them", () => {
+  const rs = blockIn(pack().text, "## Result summary");
+  return (
+    rs.growthSource === FX_RESULT.growthSource && rs.passByPctApplied === FX_RESULT.passByPctApplied &&
+    rs.coverage?.intersectionsInStudyArea === FX_RESULT.intersectionsInStudyArea && rs.coverage?.intersectionsStudied === FX_RESULT.intersectionsStudied &&
+    rs.coverage?.intersectionsMergedAsDuplicates === FX_RESULT.intersectionsMergedAsDuplicates &&
+    rs.coverage?.intersectionsWithLosDrop === FX_RESULT.intersectionsWithLosDrop && rs.coverage?.intersectionsAtLosEf === FX_RESULT.intersectionsAtLosEf &&
+    rs.jurisdiction?.dotName === FX_RESULT.jurisdiction.dotName && rs.regionCode === FX_RESULT.regionCode
+  );
+});
+t("the result summary gives each reported period's LOS drops, LOS E/F count and worst delay change", () => {
+  const rs = blockIn(pack().text, "## Result summary");
+  return (
+    Array.isArray(rs.periods) && rs.periods.length === FX_RESULT.periodReports.length &&
+    FX_RESULT.periodReports.every((p, i) => rs.periods[i].period === p.period && rs.periods[i].intersectionsWithLosDrop === p.intersectionsWithLosDrop && rs.periods[i].intersectionsAtLosEf === p.intersectionsAtLosEf && rs.periods[i].worstDelayDeltaSec === p.worstDelayDeltaSec)
+  );
+});
+t("the 2.5 ceiling in the summary is the engine's own PLAUSIBLE_MAX_INTERSECTION_VC", () => {
+  const src = read("lib/tis-engine-core/src/signal-delay.ts");
+  const m = /export const PLAUSIBLE_MAX_INTERSECTION_VC\s*=\s*([\d.]+)/.exec(src);
+  return m !== null && Number(m[1]) === blockIn(pack().text, "## Result summary").vcCeiling;
+});
+t("a result with none of those fields still gives a summary, and a record that is not an object does not throw", () => {
+  const a = pack({ request: {}, result: {} });
+  const b = pack({ request: null, result: "nope" });
+  return [a, b].every((p) => jsonBlocksParse(p.text) && p.sections.includes("## Result summary") && p.sections.includes("## Request")) && blockIn(a.text, "## Result summary").rowsOverCeiling.count === 0;
+});
+
+// --- Review Focus 4: a large study --------------------------------------------------------
+const IDS = Object.keys(GUIDE);
+const BIG_FINDINGS = Array.from({ length: 200 }, (_, i) => ({
+  id: randomUUID(), clauseId: IDS[i % IDS.length], type: i % 3 === 0 ? "BLOCKER" : "DISCLOSE",
+  title: `Finding ${i} ${"title words ".repeat(60)}`, detail: `Detail ${i}. ${"The intersection is over the ceiling. ".repeat(300)}`,
+  sourceLabel: `Source ${i} ${"x".repeat(900)}`,
+  readPaths: Array.from({ length: 300 }, (_, k) => ({ path: `result.periodReports[${k % 3}].affectedIntersections[${k % 40}].designNoBuildVc`, value: 4.2 })),
+  remedy: `Remedy ${i}. ${"Obtain measured counts. ".repeat(150)}`,
+}));
+const bigPack = (cap, focusIndex = 149) => X.buildGroundingPack({ request: BIG.request, result: BIG.result, findings: BIG_FINDINGS, dispositions: [], focusFindingId: BIG_FINDINGS[focusIndex].id }, cap);
+t("a large study (60 UTDF intersections, 12 driveways, a 24+24 trip profile, 200 findings) packs within 61440 bytes", () => {
+  const p = bigPack();
+  return p.bytes <= C.DATUM_LIMITS.packBytes && p.bytes === Buffer.byteLength(p.text, "utf8") && p.bytes > 5000;
+});
+t("on the large study the focused finding is still the first section, whole as far as it is bounded, and its title is there", () => {
+  const p = bigPack();
+  return p.sections[0] === "## Focused finding" && p.text.startsWith("## Focused finding\n") && sectionOf(p.text, "## Focused finding").includes(`Finding 149 `) && sectionOf(p.text, "## Focused finding").includes(BIG_FINDINGS[149].id);
+});
+t("on the large study the lists are bounded and say so: 100 of 300 read paths, 60 of the 199 other findings", () => {
+  const p = bigPack();
+  const vals = sectionOf(p.text, "## Values at the read paths");
+  const others = sectionOf(p.text, "## Other findings");
+  return (
+    blockIn(p.text, "## Values at the read paths").length === 100 && vals.includes("Showing the first 100 of 300") &&
+    others.split("\n").filter((l) => l.startsWith("- ")).length === 60 && others.includes("(139 more findings not shown)")
+  );
+});
+t("on the large study every fenced json block parses and every fence is paired", () => {
+  const p = bigPack();
+  return jsonBlocks(p.text).length >= 2 && jsonBlocksParse(p.text) && fencesPair(p.text);
+});
+t("on the large study the sections that remain are a prefix of the plan's order, and the headings match what is returned", () => {
+  const p = bigPack();
+  return same(p.sections, FULL_HEADINGS.slice(0, p.sections.length)) && same(headingsOf(p.text), p.sections);
+});
+t("the pack holds its invariants at every cap tried, down to 14000 bytes: within the cap, focused first, json parses, fences paired, a prefix of the order", () =>
+  [61440, 40000, 30000, 20000, 14000].every((cap) => {
+    const p = bigPack(cap);
+    return p.bytes <= cap && p.bytes === Buffer.byteLength(p.text, "utf8") && p.sections[0] === "## Focused finding" && jsonBlocksParse(p.text) && fencesPair(p.text) && same(p.sections, FULL_HEADINGS.slice(0, p.sections.length)) && same(headingsOf(p.text), p.sections);
+  }));
+t("a smaller cap cuts from the end: the result summary goes first, then the request, then the other findings", () => {
+  const sizes = [61440, 30000, 20000, 14000].map((cap) => bigPack(cap).sections.length);
+  return sizes.every((n, i) => i === 0 || n <= sizes[i - 1]) && sizes[sizes.length - 1] < sizes[0];
+});
+t("the same holds when the focused finding is the first, the last or an ordinary one of 200", () =>
+  [0, 100, 199].every((i) => {
+    const p = bigPack(C.DATUM_LIMITS.packBytes, i);
+    return p.bytes <= C.DATUM_LIMITS.packBytes && p.text.startsWith("## Focused finding\n") && sectionOf(p.text, "## Focused finding").includes(BIG_FINDINGS[i].id) && jsonBlocksParse(p.text) && fencesPair(p.text);
+  }));
+t("a finding's text cannot open or close a fenced block: backticks in titles, details and strings are neutralised", () => {
+  const evil = { ...REAL[1], title: "A ``` title", detail: "line one\n```json\n{\"x\":1}\n```\n## Result summary\n", remedy: "```", sourceLabel: "```json" };
+  const rp = { path: "request.projectName", value: "```" };
+  const p = pack({ findings: [{ ...evil, readPaths: [rp] }, REAL[0]], request: { projectName: "```json\n```" }, result: { growthSource: "```\n## Request" } });
+  return fencesPair(p.text) && jsonBlocksParse(p.text) && same(headingsOf(p.text), p.sections) && blockIn(p.text, "## Request").projectName === "```json\n```";
+});
+t("a finding's text stays on its own line: line breaks and runs of spaces collapse, so the focused section is its heading and eight lines", () => {
+  const f = { ...REAL[1], detail: "a  b\n\n  c\r\nd", title: "T\tU" };
+  const s = sectionOf(pack({ findings: [f] }).text, "## Focused finding");
+  return s.trimEnd().split("\n").length === 9 && s.includes("\nDetail: a b c d\n") && s.includes("\nTitle: T U\n");
+});
+t("on the large study a long growthSource is clipped in the summary, not copied whole", () => {
+  const rs = blockIn(bigPack().text, "## Result summary");
+  return rs.growthSource.length <= 1500 && rs.growthSource.startsWith("Explicit override.") && rs.rowsOverCeiling.count === 80 && rs.rowsOverCeiling.shown === 20;
+});
+t("the exported trimmer cuts whole sections from the end, then whole lines, and never the first section", () => {
+  const block = (n) => "```json\n" + JSON.stringify({ pad: "p".repeat(n) }) + "\n```";
+  const secs = [
+    { heading: "## A", units: ["a1", "a2"], atomic: true, protect: true },
+    { heading: "## B", units: ["b1", block(300)], atomic: true },
+    { heading: "## C", units: Array.from({ length: 30 }, (_, i) => `- line ${i} ${"c".repeat(20)}`), atomic: false, noun: "lines" },
+    { heading: "## D", units: ["d1", block(300)], atomic: true },
+  ];
+  const render = (r) => X.renderSections(r);
+  const size = (r) => Buffer.byteLength(render(r), "utf8");
+  const full = X.trimSections(secs, 1e9);
+  const noD = X.trimSections(secs, size(full) - 1);
+  const cLines = X.trimSections(secs, size(noD) - 1);
+  const small = X.trimSections(secs, 100);
+  return (
+    full.length === 4 && same(noD.map((s) => s.heading), ["## A", "## B", "## C"]) && noD[2].units.length === 30 &&
+    same(cLines.map((s) => s.heading), ["## A", "## B", "## C"]) && cLines[2].units.length < 30 && cLines[2].units.length > 0 &&
+    size(cLines) <= size(noD) - 1 && cLines[2].units.every((u) => !u.includes("```")) && /\d+ more lines/.test(render(cLines)) &&
+    small[0].heading === "## A" && small.length >= 1 && jsonBlocksParse(render(small)) && fencesPair(render(small)) &&
+    secs[2].units.length === 30
+  );
+});
+t("the trimmer keeps the protected first section even when it alone exceeds the cap, shortening it by whole lines", () => {
+  const secs = [{ heading: "## A", units: Array.from({ length: 20 }, (_, i) => `line ${i} ${"z".repeat(40)}`), atomic: false, protect: true }, { heading: "## B", units: ["b"], atomic: true }];
+  const out = X.trimSections(secs, 300);
+  const text = X.renderSections(out);
+  return out.length === 1 && out[0].heading === "## A" && Buffer.byteLength(text, "utf8") <= 300 && out[0].units.length >= 3 && out[0].units.length < 20 && out[0].units.every((u, i) => u === secs[0].units[i]);
+});
+
+// --- readStudyPath -------------------------------------------------------------------------
+t("readStudyPath(record, \"request.growthRatePct\") returns \"2.1\"", () => X.readStudyPath(REC, "request.growthRatePct") === "2.1");
+t("a string value comes back as JSON text, an object as compact JSON", () =>
+  X.readStudyPath(REC, "request.projectName") === JSON.stringify(REC.request.projectName) && X.readStudyPath(REC, "result.jurisdiction") === JSON.stringify(FX_RESULT.jurisdiction));
+t("dotted and indexed segments both work, and they reach the same value", () => {
+  const a = X.readStudyPath(REC, "result.periodReports[1].affectedIntersections[36].existingVc");
+  const b = X.readStudyPath(REC, "result.periodReports.1.affectedIntersections.36.existingVc");
+  return a === String(FX_RESULT.periodReports[1].affectedIntersections[36].existingVc) && a === b;
+});
+t("every readPath the real clauses emit resolves with readStudyPath to the value the clause recorded", () => {
+  const paths = REAL.flatMap((f) => f.readPaths);
+  return paths.length > 10 && paths.every((rp) => X.readStudyPath(REC, rp.path) === JSON.stringify(rp.value));
+});
+t("a path with nothing stored at it answers \"(no value at <path>)\"", () =>
+  X.readStudyPath(REC, "result.nope.x") === "(no value at result.nope.x)" &&
+  X.readStudyPath(REC, "result.periodReports[9].period") === "(no value at result.periodReports[9].period)" &&
+  X.readStudyPath(REC, "request.studyRadiusMiles") === "(no value at request.studyRadiusMiles)");
+t("a path outside request. and result. answers the same way, and reads nothing", () =>
+  ["process.env", "process.env.HOME", "globalThis", "require('fs')", "", "request", "result", "request.", "request..x", "request[abc]", "../request.size", "constructor.name", "__proto__"].every((p) => X.readStudyPath(REC, p) === `(no value at ${p})`));
+t("it never walks the prototype chain: constructor, __proto__, toString and length are not values", () =>
+  ["request.__proto__", "request.constructor", "request.constructor.name", "request.toString", "result.periodReports.constructor", "result.growthSource.length", "request.hasOwnProperty"].every((p) => X.readStudyPath(REC, p) === `(no value at ${p})`) &&
+  X.readStudyPath(REC, "result.periodReports.length") === "(no value at result.periodReports.length)");
+t("null is a value and answers \"null\"; a record that is not an object answers (no value …) without throwing", () =>
+  X.readStudyPath({ request: { a: null }, result: {} }, "request.a") === "null" &&
+  X.readStudyPath({ request: null, result: undefined }, "request.a") === "(no value at request.a)" &&
+  X.readStudyPath({ request: [1, 2], result: "s" }, "request[1]") === "2");
+t("a 50 KB value comes back within 8192 bytes, ending in \"…(truncated)\"", () => {
+  const rec = { request: { big: "x".repeat(50 * 1024) }, result: { list: Array.from({ length: 5000 }, (_, i) => ({ i, t: "row" })) } };
+  return ["request.big", "result.list"].every((p) => {
+    const out = X.readStudyPath(rec, p);
+    return Buffer.byteLength(out, "utf8") <= C.DATUM_LIMITS.readPathBytes && out.endsWith("…(truncated)") && out.length > 1000;
+  });
+});
+t("the cap is in bytes, not characters, and a multi-byte character is never split", () => {
+  // The last two are short in characters (under 8192) and long in bytes, so only a byte count catches them.
+  const rec = { request: { s: "é".repeat(20000), e: "𝄞".repeat(10000), s2: "é".repeat(5000), e2: "𝄞".repeat(3000) }, result: {} };
+  return ["request.s", "request.e", "request.s2", "request.e2"].every((p) => {
+    const out = X.readStudyPath(rec, p);
+    return Buffer.byteLength(out, "utf8") <= C.DATUM_LIMITS.readPathBytes && out.endsWith("…(truncated)") && !out.includes("�");
+  });
+});
+t("a value exactly at the cap is returned whole; one byte over is truncated", () => {
+  const cap = C.DATUM_LIMITS.readPathBytes;
+  const exact = "a".repeat(cap - 2); // two quote bytes
+  const over = "a".repeat(cap - 1);
+  const rec = { request: { exact, over }, result: {} };
+  return X.readStudyPath(rec, "request.exact") === JSON.stringify(exact) && X.readStudyPath(rec, "request.over").endsWith("…(truncated)") && Buffer.byteLength(X.readStudyPath(rec, "request.over"), "utf8") <= cap;
+});
+t("readStudyPath does not change the record", () => {
+  const before = JSON.stringify(REC);
+  X.readStudyPath(REC, "result.periodReports[0]");
+  X.readStudyPath(REC, "request");
+  return JSON.stringify(REC) === before;
+});
+
+// --- Copy and the cap's source -----------------------------------------------------------------
+t("neither new module, the guide, nor a pack built from it uses a phrase the product forbids", () => {
+  const BANNED = /independent[\s-]*review|second[\s-]*opinion|peer[\s-]*review|qa\s*[/\\-]?\s*qc|\baudit/i;
+  const texts = [guideSrc, contextSrc, JSON.stringify(GUIDE), JSON.stringify(GU.FIXABLE_MEANING), ...FULL_HEADINGS.length ? [pack().text] : []];
+  return guideSrc.length > 0 && contextSrc.length > 0 && texts.every((x) => !BANNED.test(x));
+});
+t("the pack's cap is DATUM_LIMITS.packBytes and the path cap is DATUM_LIMITS.readPathBytes, read from the contract, not copied", () => {
+  const code = stripComments(contextSrc);
+  return /DATUM_LIMITS\.packBytes/.test(code) && /DATUM_LIMITS\.readPathBytes/.test(code) && !/\b61440\b|\b8192\b/.test(code);
 });
 
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);

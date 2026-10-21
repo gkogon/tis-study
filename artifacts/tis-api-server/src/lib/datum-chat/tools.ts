@@ -5,12 +5,10 @@
  * Pure, like lib/proofread/: no db, logger, fetch or SDK, and importable under
  * plain `node` (Node strips the types). Two consequences of that:
  *   - Relative imports carry an explicit `.ts`.
- *   - The contract is reached by relative path, not through
- *     "@workspace/tis-api-zod". That package's index re-exports the generated
- *     files without an extension, which plain node cannot resolve, so only the
- *     two files named below can be loaded directly. tsc accepts the paths
- *     because this package's tsconfig sets allowImportingTsExtensions and
- *     references lib/tis-api-zod.
+ *   - The contract is reached through "./contract.ts", not through
+ *     "@workspace/tis-api-zod" (whose index plain node cannot resolve) and not
+ *     by a path of its own. contract.ts is the one place the lib/tis-api-zod
+ *     paths are written down.
  *
  * The tool schemas are strict-mode schemas, so they carry no min, max, length,
  * count or pattern limits and no unions. Each bound is written into the
@@ -19,16 +17,14 @@
  * request with GenerateTisBody.
  */
 import {
-  GenerateTisBody,
-  generateTisBodySignalTimingOverridesMax,
-} from "../../../../../lib/tis-api-zod/src/generated/api.ts";
-import {
   DATUM_LIMITS,
+  GenerateTisBody,
   METHOD_FIELDS,
   REVISABLE_FIELDS,
   RerunToolInput,
-} from "../../../../../lib/tis-api-zod/src/datum-chat.ts";
-import type { DatumChange, RevisableField } from "../../../../../lib/tis-api-zod/src/datum-chat.ts";
+  generateTisBodySignalTimingOverridesMax,
+} from "./contract.ts";
+import type { DatumChange, RevisableField } from "./contract.ts";
 
 // ---------------------------------------------------------------------------
 // The merge
