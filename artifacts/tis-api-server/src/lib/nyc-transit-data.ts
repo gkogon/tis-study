@@ -20,9 +20,11 @@
  *      reference counter where one exists nearby.
  *
  * Network-bounded: both lookups time out at 8 seconds and fail open
- * (return empty arrays / null) — the renderer falls through to its
- * pre-Tier-1 placeholder. Concurrency cap shared with the other NY
- * pre-computes via Promise.all in renderStudyPdf.
+ * (return empty arrays / null) flagged `lookupFailed: true`, which the
+ * renderers disclose instead of reporting "no station" / "no counter".
+ * A failure is not cached, so the next render asks again. Concurrency
+ * cap shared with the other NY pre-computes via Promise.all in
+ * renderStudyPdf.
  *
  * Spec backing: new-york-tis-spec.md §3.7 + §3.8 + §12 hook #7.
  * Pedestrian counts (data.cityofnewyork.us/resource/2de2-6x2h) were
@@ -31,9 +33,23 @@
  * queryable API. Skipped for this iteration.
  */
 
+import { createBoundedCache } from "./bounded-cache";
+
 const MTA_SUBWAY_URL = "https://data.ny.gov/resource/39hk-dx4f.json";
 const NYC_BIKE_COUNTERS_URL = "https://data.cityofnewyork.us/resource/smn3-rzf9.json";
 const REQUEST_TIMEOUT_MS = 8_000;
+
+// Both lookup caches below hold DEFINITIVE answers only: the stations or
+// counters within the radius, however few (none is an answer too). A non-OK
+// status, a body that is not a SODA row array, a timeout or a network error
+// returns the empty fallback flagged lookupFailed, WITHOUT storing it. It
+// used to be stored, and one blip then gave a Manhattan site the CEQR "no
+// subway station within 0.5 mi" modal split (pdf-export-ny.ts) until the
+// process restarted. Bounded like network-assignment.ts's roadsMemo
+// (bounded-cache.ts): a day's TTL, and a cap on each cache (one entry per
+// study site and radius).
+export const NYC_TRANSIT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+export const NYC_TRANSIT_CACHE_MAX_ENTRIES = 1000;
 
 // ===========================================================================
 // Subway stations within walking distance
@@ -56,9 +72,16 @@ export type NycSubwayContext = {
   radiusMi: number;
   /** Unique daytime routes accessible from the catchment (e.g. "1,2,3,A,C,E"). */
   routesAvailable: string[];
+  /**
+   * Set only when the lookup FAILED (non-OK status, a body that is not a row
+   * array, a timeout, a network error): the empty lists then mean "unknown",
+   * not "no station within radiusMi", and a renderer must say so rather than
+   * report the site as unserved. Absent on every real answer.
+   */
+  lookupFailed?: true;
 };
 
-const stationCache = new Map<string, NycSubwayContext | null>();
+const stationCache = createBoundedCache<NycSubwayContext>(NYC_TRANSIT_CACHE_TTL_MS, NYC_TRANSIT_CACHE_MAX_ENTRIES);
 const stationCacheKey = (lat: number, lon: number, r: number) =>
   `${lat.toFixed(4)},${lon.toFixed(4)},${r.toFixed(2)}`;
 
@@ -82,17 +105,19 @@ function haversineMi(lat1: number, lon1: number, lat2: number, lon2: number): nu
  * sorted by distance ascending. Caches per (lat, lon, radius) to avoid
  * re-fetching the full dataset on repeated calls in the same process.
  *
- * Fails open on any error / timeout — returns an empty list.
+ * Fails open on any error / timeout — returns an empty list flagged
+ * `lookupFailed: true` (never cached).
  */
 export async function getNycSubwayContext(
   lat: number,
   lon: number,
   radiusMi: number = 0.5,
 ): Promise<NycSubwayContext> {
-  const fallback: NycSubwayContext = { stations: [], radiusMi, routesAvailable: [] };
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return fallback;
+  const failed: NycSubwayContext = { stations: [], radiusMi, routesAvailable: [], lookupFailed: true };
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return failed;
   const key = stationCacheKey(lat, lon, radiusMi);
-  if (stationCache.has(key)) return stationCache.get(key) ?? fallback;
+  const cached = stationCache.get(key);
+  if (cached !== undefined) return cached;
 
   // Roughly a ±0.0145°/mi at NYC latitude. We bbox-prefilter via SoQL
   // `within_box` to avoid pulling all 472 stations on every call.
@@ -111,10 +136,7 @@ export async function getNycSubwayContext(
       signal: ctrl.signal,
       headers: { Accept: "application/json" },
     });
-    if (!res.ok) {
-      stationCache.set(key, null);
-      return fallback;
-    }
+    if (!res.ok) return failed;
     const rows = (await res.json()) as Array<{
       stop_name?: string;
       gtfs_latitude?: string | number;
@@ -123,6 +145,7 @@ export async function getNycSubwayContext(
       division?: string;
       borough?: string;
     }>;
+    if (!Array.isArray(rows)) return failed;
     const stations: NycSubwayStation[] = [];
     for (const row of rows) {
       const sLat = Number(row.gtfs_latitude);
@@ -156,8 +179,7 @@ export async function getNycSubwayContext(
     stationCache.set(key, ctx);
     return ctx;
   } catch {
-    stationCache.set(key, null);
-    return fallback;
+    return failed;
   } finally {
     clearTimeout(timer);
   }
@@ -181,25 +203,39 @@ export type NycBikeContext = {
   countWithin: number;
   /** Radius used for the lookup, in miles. */
   radiusMi: number;
+  /**
+   * Set only when the lookup FAILED: `nearest: null` then means "unknown",
+   * not "no counter within radiusMi". Absent on every real answer.
+   */
+  lookupFailed?: true;
 };
 
-const bikeCache = new Map<string, NycBikeContext | null>();
+const bikeCache = createBoundedCache<NycBikeContext>(NYC_TRANSIT_CACHE_TTL_MS, NYC_TRANSIT_CACHE_MAX_ENTRIES);
+
+/** Live entry counts of the two lookup caches. Test hook. */
+export function nycTransitCacheSizes(): { stations: number; bike: number } {
+  return { stations: stationCache.size(), bike: bikeCache.size() };
+}
 
 /**
  * Return the nearest NYC DOT bicycle counter within `radiusMi` of the
  * given coordinates plus the count of counters within that radius.
  * The bike-counter network is a single dataset (~50 counters
  * citywide), small enough to pull on every miss and filter locally.
+ *
+ * Fails open on any error / timeout — returns no counter, flagged
+ * `lookupFailed: true` (never cached).
  */
 export async function getNycBikeContext(
   lat: number,
   lon: number,
   radiusMi: number = 1,
 ): Promise<NycBikeContext> {
-  const fallback: NycBikeContext = { nearest: null, countWithin: 0, radiusMi };
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return fallback;
+  const failed: NycBikeContext = { nearest: null, countWithin: 0, radiusMi, lookupFailed: true };
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return failed;
   const key = stationCacheKey(lat, lon, radiusMi);
-  if (bikeCache.has(key)) return bikeCache.get(key) ?? fallback;
+  const cached = bikeCache.get(key);
+  if (cached !== undefined) return cached;
 
   const params = new URLSearchParams({
     $select: "name,latitude,longitude,domain",
@@ -213,16 +249,14 @@ export async function getNycBikeContext(
       signal: ctrl.signal,
       headers: { Accept: "application/json" },
     });
-    if (!res.ok) {
-      bikeCache.set(key, null);
-      return fallback;
-    }
+    if (!res.ok) return failed;
     const rows = (await res.json()) as Array<{
       name?: string;
       latitude?: string | number;
       longitude?: string | number;
       domain?: string;
     }>;
+    if (!Array.isArray(rows)) return failed;
     let nearest: NycBikeCounter | null = null;
     let countWithin = 0;
     for (const row of rows) {
@@ -246,8 +280,7 @@ export async function getNycBikeContext(
     bikeCache.set(key, ctx);
     return ctx;
   } catch {
-    bikeCache.set(key, null);
-    return fallback;
+    return failed;
   } finally {
     clearTimeout(timer);
   }

@@ -6,11 +6,10 @@
  * importing it back would cycle. Self-contained per the Path A convention — it
  * re-declares the couple of primitives it needs rather than coupling to a renderer.
  *
- * Renders NOTHING unless at least one approach carries `laneGroups`, which the
- * engine populates only where an imported Synchro/UTDF record supplied real
- * measured turning movements (see laneGroupsForApproach in tis.ts). So calling
- * this from a renderer is safe for every study that has no import: the output
- * stays byte-identical.
+ * Renders NOTHING unless at least one approach carries `laneGroups`. The engine
+ * populates them where an imported Synchro/UTDF record supplied measured turning
+ * movements, and also from the estimated (IPF) turn shares on network rows
+ * (row-math.ts), so the heading and prose branch on each row's volumeSource.
  */
 
 import { isDefaultTheme, pageMargin } from "./report-theme/active";
@@ -62,12 +61,37 @@ export function renderLaneGroupQueues(
   );
   if (its.length === 0) return;
 
-  const heading = opts.heading ?? "Lane-Group Queues at Intersections with Measured Turning Movements";
+  // The engine also fills laneGroups from the estimated (IPF) turn shares when
+  // nothing was imported (row-math.ts), so "measured" is only true of rows whose
+  // volumes came from an imported Synchro record. All-measured output keeps the
+  // original wording byte-for-byte.
+  const isMeasured = (it: any) => it?.volumeSource === "utdf_tmc" || it?.volumeSource === "synchro_pdf_tmc";
+  const nMeasured = its.filter(isMeasured).length;
+  const allMeasured = nMeasured === its.length;
+  const anyBay = its.some((it) => (it.approaches ?? []).some((a: any) =>
+    ((a.laneGroups ?? []) as LaneGroup[]).some((g) => typeof g.storageFt === "number" && Number.isFinite(g.storageFt))));
+
+  const baseHeading = opts.heading ?? "Lane-Group Queues at Intersections with Measured Turning Movements";
+  const heading = allMeasured ? baseHeading
+    : baseHeading.replace("with Measured Turning Movements", nMeasured > 0 ? "with Measured or Estimated Turning Movements" : "with Estimated Turning Movements");
   if (opts.headingFn) opts.headingFn(doc, heading);
   else if (!isDefaultTheme()) themed.heading(doc, 2, heading);
   else doc.font("bold").fontSize(11).fillColor("black").text(heading, { paragraphGap: 6 });
 
-  doc.font("body").fontSize(10).fillColor("black").text(
+  if (!allMeasured) {
+    doc.font("body").fontSize(10).fillColor("black").text(
+      (nMeasured > 0
+        ? `At ${nMeasured} of the ${its.length} intersections below an imported Synchro record supplied measured turning-movement counts; at the other ${its.length - nMeasured} the left / through / right split is estimated from the balanced leg volumes (IPF), not counted. `
+        : "No turning movements were counted. At the intersections below the left / through / right split is estimated from the balanced leg volumes (IPF). ")
+        + "Each lane group is analyzed on the same one-critical-lane screening basis as the approach "
+        + "(saturation flow × g/C), with the project's own trips assigned to specific movements by the path "
+        + "assignment; lane-group volumes cross-foot to their approach total. "
+        + (anyBay ? "Where an imported record carried a bay length, the queue is compared against that bay and a deficit is flagged. "
+          : "No bay storage lengths were supplied, so storage adequacy is not evaluated. ")
+        + "A calibrated Synchro / SimTraffic run with counted turning movements supersedes these figures for design.",
+      { paragraphGap: 6 },
+    );
+  } else doc.font("body").fontSize(10).fillColor("black").text(
     "At the intersections below, an imported Synchro record supplied measured turning-movement "
       + "counts, so the background traffic carries a real left / through / right split rather than an "
       + "assumed one. Each lane group is analyzed on the same one-critical-lane screening basis as the "
@@ -134,7 +158,8 @@ export function renderLaneGroupQueues(
   doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
     deficient > 0
       ? `${deficient} lane group(s) show a 95th-percentile queue longer than the imported bay storage; these are carried into the turn-lane evaluation.`
-      : "No lane group exceeds its imported bay storage under Build conditions.",
+      : anyBay ? "No lane group exceeds its imported bay storage under Build conditions."
+      : "No bay storage lengths were supplied; storage adequacy is not evaluated.",
     { paragraphGap: 6 },
   );
   doc.fillColor("black");

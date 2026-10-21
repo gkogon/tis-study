@@ -17,16 +17,15 @@ import {
   delayToLos,
   vcToDelay,
   queue95Ft,
-  CRITICAL_MOVEMENT_FRACTION,
   APPROACH_CAPACITY_VPH,
   SATURATION_FLOW_VPH,
+  G_OVER_C,
 } from "./signal-delay.ts";
 import {
   resolveSignalTiming,
   timingFromSynchroPhases,
   gOverCForApproach,
   gOverCForMovement,
-  criticalGOverC,
   DEFAULT_THROUGH_LANES_PER_DIR,
   type Direction,
   type SignalTiming,
@@ -742,7 +741,11 @@ export type ScenarioParams = {
    *  Optional so callers that don't want the 4th scenario can omit it;
    *  the engine just won't emit the designNoBuild* / designBuild* fields. */
   designGrowthMultiplier?: number;
-  capacityVph: number;            // weather-adjusted intersection capacity
+  /** No longer read. It sized a separate intersection-level model (45% of
+   *  total entering volume against one phase); the intersection row is now
+   *  built from its approaches (intersectionFromApproaches). Optional so
+   *  existing callers compile unchanged. */
+  capacityVph?: number;
   approachCapacityVph: number;    // weather-adjusted approach capacity
   externalTrips: number;          // post-credit external trips for this period
   inFraction: number;             // directional split for this period
@@ -883,6 +886,55 @@ export function resolveTimingForRow(
   });
 }
 
+/** One approach's values in one scenario, as the intersection row reads them. */
+export type ApproachScenarioValue = {
+  direction: Direction;
+  /** Entering volume, vph (unrounded). */
+  volumeVph: number;
+  /** Approach v/c (unrounded). */
+  vc: number;
+  /** Approach control delay, s/veh (unrounded, calibration applied). */
+  delaySec: number;
+  /** Green ratio of the through phase that serves the approach. */
+  gOverC: number;
+};
+
+/**
+ * Intersection-level control delay and v/c for one scenario, built from the
+ * intersection's own approaches. There is no second model: the approaches
+ * printed beneath an intersection are the whole of its arithmetic.
+ *
+ *  - Control delay is the volume-weighted mean of the approach delays, the
+ *    intersection's average delay per entering vehicle. It lies between the
+ *    lightest and the heaviest approach delay, and inherits the approaches'
+ *    reporting cap and calibration multiplier. With no entering volume at all
+ *    it is the plain mean of the approach delays.
+ *  - v/c is the critical v/c of the through phases that carry traffic: each
+ *    phase's worst approach weighted by that phase's green ratio, Σ g·X / Σ g.
+ *    It never exceeds the worst approach v/c.
+ *
+ * This replaces an intersection model that took 45% of total entering volume
+ * as the critical demand and set it against one phase's capacity. That about
+ * doubled the v/c of a two-phase signal, and more when a protected left
+ * shortened the through phase, so worksheets printed an intersection at LOS F
+ * above four approaches at LOS C (verify-intersection-delay.mjs).
+ */
+export function intersectionFromApproaches(approaches: ApproachScenarioValue[]): { vc: number; delaySec: number } {
+  const total = approaches.reduce((s, a) => s + Math.max(0, a.volumeVph), 0);
+  const delaySec = total > 0
+    ? approaches.reduce((s, a) => s + Math.max(0, a.volumeVph) * a.delaySec, 0) / total
+    : approaches.reduce((s, a) => s + a.delaySec, 0) / Math.max(1, approaches.length);
+  let weighted = 0, green = 0;
+  for (const axis of [["NB", "SB"], ["EB", "WB"]] as const) {
+    const served = approaches.filter((a) => (axis as readonly Direction[]).includes(a.direction) && a.volumeVph > 0);
+    if (served.length === 0) continue;
+    const g = Math.max(...served.map((a) => a.gOverC));
+    weighted += g * Math.max(...served.map((a) => a.vc));
+    green += g;
+  }
+  return { vc: green > 0 ? weighted / green : 0, delaySec };
+}
+
 export function buildAffectedRow(
   c: RowCandidate & { distanceMi: number },
   weight: number,
@@ -946,30 +998,22 @@ export function buildAffectedRow(
     ns: Math.max(laneInfo.NB.lanes, laneInfo.SB.lanes) || DEFAULT_THROUGH_LANES_PER_DIR,
     ew: Math.max(laneInfo.EB.lanes, laneInfo.WB.lanes) || DEFAULT_THROUGH_LANES_PER_DIR,
   };
-  const nsMajor = noBuildByApproach.NB + noBuildByApproach.SB >= noBuildByApproach.EB + noBuildByApproach.WB;
-  const criticalLanes = nsMajor ? lanesPerDir.ns : lanesPerDir.ew;
   const timing = resolveTimingForRow(c, measured, utdfCycleLenS, noBuildByApproach, lanesPerDir, params, est);
-  // Intersection-level capacity: the critical-movement fraction of the total
-  // is a per-lane critical volume, so the major axis's lane count scales it.
-  const capacityVph = (timing ? SATURATION_FLOW_VPH * criticalGOverC(timing) * weatherFactor : params.capacityVph) * criticalLanes;
+  // Capacity exists per approach only. The intersection row is built from
+  // the approaches (intersectionFromApproaches), not from a capacity of its own.
   const approachCap = (d: Direction): number =>
     (timing ? SATURATION_FLOW_VPH * gOverCForApproach(timing, d) * weatherFactor : params.approachCapacityVph) * laneInfo[d].lanes;
   const cyc = timing ? timing.cycleLenS : utdfCycleLenS;
-  const gcInt = timing ? criticalGOverC(timing) : undefined;
   const gcApp = (d: Direction): number | undefined => (timing ? gOverCForApproach(timing, d) : undefined);
 
   // True current-year baseline — no growth, no project. State TIS
   // conventions report this as the "Existing Conditions" scenario;
   // it's what a count taken this week would show.
   const currentVolume = baseVolume;
-  const currentCriticalVph = currentVolume * CRITICAL_MOVEMENT_FRACTION;
-  const currentVc = currentCriticalVph / capacityVph;
 
   // No-Build = current volumes grown to the opening year, no project.
   // Historically labeled "before" / "existing" here.
   const grownVolume = baseVolume * params.growthMultiplier;
-  const beforeCriticalVph = grownVolume * CRITICAL_MOVEMENT_FRACTION;
-  const beforeVc = beforeCriticalVph / capacityVph;
 
   // Build = No-Build + project trips. Carry the EXACT (fractional) project
   // load through the v/c, delay and per-approach math; round only for the
@@ -995,8 +1039,6 @@ export function buildAffectedRow(
     : undefined;
   const addedTripsExact = params.externalTrips * (ledgerWeight ?? weight);
   const addedTrips = Math.round(addedTripsExact);
-  const addedCriticalVph = addedTripsExact * CRITICAL_MOVEMENT_FRACTION;
-  const afterVc = beforeVc + addedCriticalVph / capacityVph;
 
   // Design-Year No-Build = current × designGrowthMultiplier (no project).
   // Design-Year Build   = Design No-Build + project trips (same external
@@ -1004,32 +1046,14 @@ export function buildAffectedRow(
   // trips don't grow with the design horizon).
   const dgm = params.designGrowthMultiplier;
   const hasDesignYear = dgm !== undefined && dgm > 0;
-  const designNoBuildCriticalVph = hasDesignYear
-    ? baseVolume * (dgm as number) * CRITICAL_MOVEMENT_FRACTION
-    : 0;
-  const designNoBuildVc = hasDesignYear ? designNoBuildCriticalVph / capacityVph : 0;
-  const designBuildVc = hasDesignYear ? designNoBuildVc + addedCriticalVph / capacityVph : 0;
 
-  // HCM delay first; calibration multiplier applied AFTER so the LOS bucket
-  // reflects the calibrated value reviewers care about. When no row exists
-  // for this signal `multiplier` is 1.0 and behavior is unchanged.
+  // Calibration multiplier, applied to every approach delay below so the LOS
+  // bucket reflects the calibrated value reviewers care about. When no row
+  // exists for this signal `multiplier` is 1.0 and behavior is unchanged.
   // Clamp to a sane positive range so a bad calibration row (e.g. 0 or
   // negative) cannot collapse delay → push every signal to LOS A and
   // wreck mitigation decisions. Range mirrors the DB CHECK constraint.
   const calMul = Math.min(5, Math.max(0.25, calibration?.multiplier ?? 1.0));
-  // Under "screening" `cyc` is the imported cycle (or undefined) and `gcInt`
-  // is undefined, which falls back to the screening default inside vcToDelay
-  // — byte-identical legacy math.
-  const currentDelay = vcToDelay(currentVc, capacityVph, cyc, gcInt) * calMul;
-  const beforeDelay = vcToDelay(beforeVc, capacityVph, cyc, gcInt) * calMul;
-  const afterDelay = vcToDelay(afterVc, capacityVph, cyc, gcInt) * calMul;
-  const currentLos = delayToLos(currentDelay);
-  const beforeLos = delayToLos(beforeDelay);
-  const afterLos = delayToLos(afterDelay);
-  const designNoBuildDelay = hasDesignYear ? vcToDelay(designNoBuildVc, capacityVph, cyc, gcInt) * calMul : 0;
-  const designBuildDelay = hasDesignYear ? vcToDelay(designBuildVc, capacityVph, cyc, gcInt) * calMul : 0;
-  const designNoBuildLos = hasDesignYear ? delayToLos(designNoBuildDelay) : undefined;
-  const designBuildLos = hasDesignYear ? delayToLos(designBuildDelay) : undefined;
 
   // Turning-movement assignment of the added trips: geometry from the site
   // bearing + the study's distribution octants (see movement-assignment.ts).
@@ -1105,6 +1129,13 @@ export function buildAffectedRow(
   // 0.10 floor on every approach; the out-flow leaves on the approach opposite
   // the inbound origin. Kept only for payloads where no distribution ran.
   const tripShares = movementAdded ? undefined : approachAddedTripShares(c.sig, project);
+  // Every approach's unrounded volume, v/c and delay per scenario: the only
+  // inputs to the intersection row (intersectionFromApproaches). The design
+  // year is computed here too, although the approach rows print only the
+  // current, no-build and build scenarios.
+  const approachScenarios: Record<"current" | "noBuild" | "build" | "designNoBuild" | "designBuild", ApproachScenarioValue[]> = {
+    current: [], noBuild: [], build: [], designNoBuild: [], designBuild: [],
+  };
   const approaches: ApproachImpact[] = DIRECTIONS.map((d) => {
     // Current-year baseline (no growth) for this approach.
     const currentVolByApproach = currentVolume * volShares[d];
@@ -1134,6 +1165,22 @@ export function buildAffectedRow(
     const fuVc = (futureVol * 1.0) / capD;
     const exDelay = vcToDelay(exVc, capD, cyc, gcApp(d)) * calMul;
     const fuDelay = vcToDelay(fuVc, capD, cyc, gcApp(d)) * calMul;
+    const g = gcApp(d) ?? G_OVER_C;
+    approachScenarios.current.push({ direction: d, volumeVph: currentVolByApproach, vc: currentVcByApproach, delaySec: currentDelayByApproach, gOverC: g });
+    approachScenarios.noBuild.push({ direction: d, volumeVph: baseVol, vc: exVc, delaySec: exDelay, gOverC: g });
+    approachScenarios.build.push({ direction: d, volumeVph: futureVol, vc: fuVc, delaySec: fuDelay, gOverC: g });
+    if (hasDesignYear) {
+      const designNoBuildVol = baseVolume * (dgm as number) * volShares[d];
+      const designBuildVol = designNoBuildVol + addedOnApproach;
+      approachScenarios.designNoBuild.push({
+        direction: d, volumeVph: designNoBuildVol, vc: designNoBuildVol / capD,
+        delaySec: vcToDelay(designNoBuildVol / capD, capD, cyc, gcApp(d)) * calMul, gOverC: g,
+      });
+      approachScenarios.designBuild.push({
+        direction: d, volumeVph: designBuildVol, vc: designBuildVol / capD,
+        delaySec: vcToDelay(designBuildVol / capD, capD, cyc, gcApp(d)) * calMul, gOverC: g,
+      });
+    }
     return {
       direction: d,
       currentVolumeVph: round1(currentVolByApproach),
@@ -1222,6 +1269,23 @@ export function buildAffectedRow(
       })(),
     };
   });
+
+  // ---- Intersection row: built from the approaches above, nothing else ----
+  const ixCurrent = intersectionFromApproaches(approachScenarios.current);
+  const ixNoBuild = intersectionFromApproaches(approachScenarios.noBuild);
+  const ixBuild = intersectionFromApproaches(approachScenarios.build);
+  const ixDesignNoBuild = hasDesignYear ? intersectionFromApproaches(approachScenarios.designNoBuild) : undefined;
+  const ixDesignBuild = hasDesignYear ? intersectionFromApproaches(approachScenarios.designBuild) : undefined;
+  const currentVc = ixCurrent.vc, currentDelay = ixCurrent.delaySec;
+  const beforeVc = ixNoBuild.vc, beforeDelay = ixNoBuild.delaySec;
+  const afterVc = ixBuild.vc, afterDelay = ixBuild.delaySec;
+  const designNoBuildVc = ixDesignNoBuild?.vc ?? 0, designNoBuildDelay = ixDesignNoBuild?.delaySec ?? 0;
+  const designBuildVc = ixDesignBuild?.vc ?? 0, designBuildDelay = ixDesignBuild?.delaySec ?? 0;
+  const currentLos = delayToLos(currentDelay);
+  const beforeLos = delayToLos(beforeDelay);
+  const afterLos = delayToLos(afterDelay);
+  const designNoBuildLos = hasDesignYear ? delayToLos(designNoBuildDelay) : undefined;
+  const designBuildLos = hasDesignYear ? delayToLos(designBuildDelay) : undefined;
 
   const worstQueue = approaches.reduce((m, a) => Math.max(m, a.queue95thFt), 0);
 

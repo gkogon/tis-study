@@ -12,6 +12,9 @@
 //
 // Three layers, cheapest first:
 //   1. registry parity — active engine code ∈ analyzer REGION_INFO
+//   1b. bounds parity — REGION_INFO bounds === regions.ts bounds, except the
+//      documented zone-origin overrides below (#233 widened Pittsburgh in
+//      regions.ts only, and nothing noticed)
 //   2. data files on disk for every served region (atlanta has its own path)
 //   3. loadRegionalIntersections() smoke on the 12 once-broken codes:
 //      non-empty inventory, proving registry + files + parse end to end.
@@ -26,7 +29,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(path.resolve(here, "ts-loader.mjs")).href, import.meta.url);
 
 const { REGIONS } = await import(path.resolve(here, "../src/lib/regions.ts"));
-const { servedRegionCodes, regionCodeToSlug, loadRegionalIntersections, _clearRegionalCache } =
+const { servedRegionCodes, servedRegionBounds, regionCodeToSlug, loadRegionalIntersections, _clearRegionalCache } =
   await import(path.resolve(here, "../../api-server/src/lib/regional-intersections.ts"));
 
 let fails = 0;
@@ -39,6 +42,38 @@ const served = new Set(servedRegionCodes());
 const missing = active.filter((c) => !served.has(c));
 ok(missing.length === 0,
   `every active engine region has a REGION_INFO entry (${active.length} active, missing: ${missing.length ? missing.join(", ") : "none"})`);
+
+// 1b. Bounds parity. REGION_INFO.bounds is computeZone's zone-label origin:
+// its midpoint, with everything inside 4 mi labeled "Central <metro>". It has
+// to follow regions.ts, EXCEPT where regions.ts widened a box lopsidedly and
+// the widened box's midpoint would drag the origin off the city. Those keep
+// their historical core box, listed here with the reason and documented on
+// their REGION_INFO entries.
+const ZONE_ORIGIN_OVERRIDES = {
+  new_york_metro: "Suffolk coverage box: the envelope's midpoint is 40.6 mi east, in the Great South Bay",
+  pittsburgh_metro: "#233's north/east ring: the envelope's midpoint is 7.8 mi NE in Fox Chapel; downtown would print SW",
+};
+const fmtBox = (b) => `${b.latMin}..${b.latMax}, ${b.lonMin}..${b.lonMax}`;
+const sameBox = (a, b) => ["latMin", "latMax", "lonMin", "lonMax"].every((k) => a[k] === b[k]);
+const drifted = [], staleOverrides = [], strayOrigins = [];
+for (const code of servedRegionCodes()) {
+  const canon = REGIONS[code]?.bounds;
+  if (!canon) continue;
+  const mine = servedRegionBounds(code);
+  const override = Object.hasOwn(ZONE_ORIGIN_OVERRIDES, code);
+  if (sameBox(mine, canon)) { if (override) staleOverrides.push(code); continue; }
+  if (!override) { drifted.push(`${code} (REGION_INFO ${fmtBox(mine)}; regions.ts ${fmtBox(canon)})`); continue; }
+  const cLat = (mine.latMin + mine.latMax) / 2, cLon = (mine.lonMin + mine.lonMax) / 2;
+  if (cLat < canon.latMin || cLat > canon.latMax || cLon < canon.lonMin || cLon > canon.lonMax) strayOrigins.push(code);
+}
+ok(drifted.length === 0,
+  drifted.length
+    ? `REGION_INFO bounds differ from regions.ts: ${drifted.join("; ")}. Copy the regions.ts box, unless its midpoint no longer sits on the metro core — then keep the old box and add the region to ZONE_ORIGIN_OVERRIDES with the reason`
+    : `REGION_INFO bounds match regions.ts for every served region (${Object.keys(ZONE_ORIGIN_OVERRIDES).length} documented zone-origin overrides)`);
+ok(staleOverrides.length === 0,
+  `every zone-origin override still differs from regions.ts (${staleOverrides.length ? "now identical, remove from ZONE_ORIGIN_OVERRIDES: " + staleOverrides.join(", ") : "none stale"})`);
+ok(strayOrigins.length === 0,
+  `every override's zone origin lies inside its regions.ts box (${strayOrigins.length ? "outside: " + strayOrigins.join(", ") : "all inside"})`);
 
 // 2. Data files on disk. Atlanta is served by its own hand-curated route, not
 // the regional loader, so it is exempt from the slug-file convention.

@@ -52,14 +52,16 @@ try {
     shares: { NB: { L: 0.148, T: 0.741, R: 0.111 }, SB: { L: 0.148, T: 0.741, R: 0.111 }, EB: { L: 0.286, T: 0.571, R: 0.143 }, WB: { L: 0.286, T: 0.571, R: 0.143 } },
   };
   const t = await text(await mod.renderStudyPdf(projectFromFixture(injected), { name: "Leg Render Check", logoUrl: null }));
-  ok(t.includes("Leg volumes: 2 of 4 from the signal's counted design hour"), "injected row prints the leg provenance line");
+  ok(t.includes("Leg volumes: 2 of 4 from the signal's AADT-derived design hour (AADT × K-factor"), "injected row prints the leg provenance line");
   ok(t.includes("balanced estimate (Furness/IPF, 6 iterations, residual 0.3 vph)"), "injected row prints the movement diagnostics");
   ok(t.includes("Balanced turning movements (vph)"), "injected row prints the 4×4 matrix table");
   ok(t.includes("balanced to the exit legs"), "appendix intro switches to the resolved wording when any row carries an estimate");
   ok(t.includes("half per direction, and half in the physical direction of a one-way carriageway"), "appendix intro states the per-direction and one-way carriageway rule");
-  ok(t.includes("the signal's design hour on the main road (its counted volume where the analyzer had a compatible count, else the road-class baseline it assigned")
+  // PDFKit may wrap after the hyphen in "K-factor", so match either side of it.
+  ok(t.includes("the signal's design hour on the main road (AADT × K")
+    && t.includes("factor from a compatible AADT count record where the analyzer had one, else the road-class baseline it assigned")
     && !t.includes("the signal's counted design hour on the main road"),
-    "appendix intro does not call every main-road leg counted — counted where a compatible count was joined, else the analyzer's baseline");
+    "appendix intro does not call every main-road leg counted — AADT × K where a compatible AADT record was joined, else the analyzer's baseline");
   ok(!t.includes("A one-way carriageway carries half"), "two-way legs only: no one-way carriageway sentence on the worksheet");
 
   // A one-way pair (a divided arterial's two carriageways): the worksheet
@@ -150,7 +152,7 @@ try {
   // PDFKit layout), which the render check above never touches.
   const themed = await mod.renderStudyPdf(projectFromFixture(all), { name: "Leg Render Check", logoUrl: null, firmId: "f1", reportTemplate: syntheticTheme(mod.DEFAULT_THEME) });
   const themedText = (await pageTexts(themed)).join(" ").replace(/\s+/g, " ");
-  ok(themedText.includes("Leg volumes: 2 of 4 from the signal's counted design hour") && themedText.includes("Balanced turning movements (vph)"), "themed render prints the provenance line and the matrix table");
+  ok(themedText.includes("Leg volumes: 2 of 4 from the signal's AADT-derived design hour (AADT × K-factor") && themedText.includes("Balanced turning movements (vph)"), "themed render prints the provenance line and the matrix table");
   ok(orphanPages(await pageTexts(themed)).length === 0, "themed render: no orphan pages with every row injected");
 } finally {
   await cleanup();

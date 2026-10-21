@@ -34,7 +34,7 @@ import { renderTisNewYork, renderCeqrNyc } from "./pdf-export-ny";
 import { renderTisNorthCarolina, renderTisSouthCarolina } from "./pdf-export-carolinas";
 import { appliedRateRows } from "./trip-rate-rows";
 import { isGrowthOverride, IPF_MAX_ITER, IPF_TOLERANCE_VPH } from "@workspace/tis-engine-core";
-import { renderTisState } from "./pdf-export-states";
+import { renderTisState, signalVolumeBasis, type SignalVolumeBasis } from "./pdf-export-states";
 import { renderDiurnalCharts, drawColumnChart, drawLineChart, chartColors } from "./pdf-charts";
 import { renderTripDistributionSection } from "./pdf-export-distribution";
 import { renderLaneGroupQueues } from "./lane-group-queues";
@@ -150,8 +150,8 @@ export function tripGenExternalNote(doc: PDFKit.PDFDocument, periods: any[]): vo
     (x) => Number(x?.tripGeneration?.existingUseCredit) > 0,
   );
   const msg = hasCredit
-    ? `The external column is gross vehicle trips = (gross − pass-by − internal-capture) × auto-mode share (${pct}% for this metro); the net-new external column then deducts the existing-use credit. Walk / bike / transit person-trips are excluded from off-site assignment, so In + Out equals the net-new external column.`
-    : `The external / net-external column is net-new vehicle trips assigned to the roadway = (gross − pass-by − internal-capture) × auto-mode share (${pct}% for this metro). Walk / bike / transit person-trips are excluded from off-site assignment, so In + Out equals the external column.`;
+    ? `The external column is gross vehicle trips = (gross − pass-by − internal-capture) × auto-mode share (${pct}%, the metro share adjusted for site density); the net-new external column then deducts the existing-use credit. Walk / bike / transit person-trips are excluded from off-site assignment, so In + Out equals the net-new external column.`
+    : `The external / net-external column is net-new vehicle trips assigned to the roadway = (gross − pass-by − internal-capture) × auto-mode share (${pct}%, the metro share adjusted for site density). Walk / bike / transit person-trips are excluded from off-site assignment, so In + Out equals the external column.`;
   doc
     .font("body")
     .fontSize(8)
@@ -423,7 +423,10 @@ export async function renderStudyPdf(
         // (e) NYC transit + active-mode context — MTA subway stations
         //     within 0.5 mi + nearest NYC DOT bike counter within 1 mi.
         //     Only meaningful inside the five boroughs; the adapter
-        //     returns empty results harmlessly for non-NYC coords.
+        //     returns empty results harmlessly for non-NYC coords. A
+        //     failed lookup comes back flagged lookupFailed and is
+        //     stashed as-is, so the renderers disclose it rather than
+        //     report "no station".
         const transitTask = getNycTransitContext(lat, lon).then((ctx) => {
           if (ctx && result && typeof result === "object") {
             (result as Record<string, unknown>).nyTransitContext = ctx;
@@ -1618,6 +1621,123 @@ function renderTis(doc: PDFKit.PDFDocument, r: any) {
   }
 }
 
+// ---------- Georgia: what the run used ----------
+
+type GaVolumeBasis = SignalVolumeBasis | "atl_model";
+
+/**
+ * Where one Georgia study signal's existing volume came from, read only from
+ * what its row carries. ATL- signals come from the analyzer's Atlanta
+ * inventory (api-server atlanta-analysis.ts buildIntersection), whose design
+ * hour is modeled from road class, distance from downtown and a fixed
+ * per-signal factor: no count is joined. That inventory leaves volumeSource
+ * unset, which leg-volumes.ts mainLegSource reads as counted (signal_aadt), so
+ * on these rows the leg labels cannot be trusted and the id prefix decides.
+ * The other Georgia inventories (Savannah, Augusta, Macon, statewide) join
+ * AADT records by proximity and stamp volumeSource, so their legs are read
+ * as the states renderer reads them. An imported count replaces either.
+ */
+function gaSignalVolumeBasis(it: any): GaVolumeBasis {
+  const basis = signalVolumeBasis(it);
+  if (String(it?.signalId ?? "").startsWith("ATL-") && (basis === "aadt" || basis === "baseline" || basis === "unitemized")) return "atl_model";
+  return basis;
+}
+
+function gaVolumeBasisTally(intersections: any[]): Record<GaVolumeBasis, number> {
+  const tally: Record<GaVolumeBasis, number> = { atl_model: 0, aadt: 0, baseline: 0, tmc: 0, csv: 0, unitemized: 0 };
+  for (const it of intersections) tally[gaSignalVolumeBasis(it)]++;
+  return tally;
+}
+
+/**
+ * The existing-volume sentence, counted from the study's own rows (the
+ * Georgia counterpart of pdf-export-states.ts backgroundVolumeSentence). No
+ * agency is named as the count source: a joined record is GDOT's AADT layer
+ * in most of Georgia but FHWA HPMS in parts of the Macon metro, and the row
+ * does not say which.
+ */
+function gaExistingVolumeSentence(intersections: any[]): string {
+  const n = intersections.length;
+  if (n === 0) return "";
+  const tally = gaVolumeBasisTally(intersections);
+  const count = (k: number) => (n === 1 ? "it" : k === n ? `all ${k}` : String(k));
+  const verb = (k: number, one: string, many: string) => (k === 1 || n === 1 ? one : many);
+  const clauses: string[] = [];
+  if (tally.atl_model > 0) clauses.push(`${count(tally.atl_model)} ${verb(tally.atl_model, "is a signal", "are signals")} from the Atlanta inventory, whose design-hour volume is modeled from road class, distance from downtown Atlanta and a fixed per-signal factor, with no count joined`);
+  if (tally.aadt > 0) clauses.push(`${count(tally.aadt)} ${verb(tally.aadt, "carries", "carry")} an AADT count record joined to the signal (the design-hour volume is AADT × K-factor)`);
+  if (tally.baseline > 0) clauses.push(`${count(tally.baseline)} ${verb(tally.baseline, "has", "have")} no compatible count record and ${verb(tally.baseline, "uses", "use")} a baseline volume estimated from road class`);
+  if (tally.tmc > 0) clauses.push(`${count(tally.tmc)} ${verb(tally.tmc, "uses", "use")} imported turning-movement counts`);
+  if (tally.csv > 0) clauses.push(`${count(tally.csv)} ${verb(tally.csv, "uses", "use")} client link counts on the main road`);
+  if (tally.unitemized > 0) clauses.push(`the source at the remaining ${tally.unitemized === 1 ? "one" : tally.unitemized} is not itemized in this study's output (a joined AADT count record where one exists, otherwise a baseline volume estimated from road class)`);
+  const lead = n === 1 ? "Existing volume at the one study signal" : `Existing volumes at the ${n} study signals`;
+  return `${lead}: ${clauses.join("; ")}.`;
+}
+
+/**
+ * The GDOT 511 delay factor, stated only for the signals whose rows carry
+ * one. The analyzer archives GDOT 511 incident reports every 10 minutes,
+ * snapping each to its nearest Atlanta signal within 500 m, and every hour
+ * turns the last 7 days into a factor of 1.00–1.20 for each signal with at
+ * least 10 such snapshots (calibration-worker.ts); rows are upserted and never
+ * cleared, so a signal that stops qualifying keeps its last factor. The
+ * engine multiplies computed delay by it (row-math.ts calMul). It is not
+ * fitted to measured delay, and no camera or signal data is read.
+ */
+function gaDelayFactorSentence(intersections: any[]): string {
+  const withFactor = intersections.filter((it) => Number.isFinite(Number(it?.calibration?.delayMultiplier)));
+  if (withFactor.length === 0) return "";
+  const m = withFactor.map((it) => Number(it.calibration.delayMultiplier));
+  const lo = Math.min(...m).toFixed(2);
+  const hi = Math.max(...m).toFixed(2);
+  const where = withFactor.length === intersections.length
+    ? (intersections.length === 1 ? "At the one study signal" : `At all ${intersections.length} study signals`)
+    : `At ${withFactor.length} of the ${intersections.length} study signals`;
+  return `${where} the computed control delay is multiplied by ${lo === hi ? lo : `a factor of ${lo}–${hi}`}, taken from the analyzer's GDOT 511 incident archive: the factor rises with the number and severity of GDOT 511 incident reports snapped to the signal (nearest signal within 500 m) in 10-minute snapshots over a 7-day window, is recomputed hourly while the signal appears in at least 10 of those snapshots, and otherwise keeps its last value. It is not fitted to measured delay. No GDOT 511 camera or signal data is used, and GDOT 511 data is not used for volumes.`;
+}
+
+/**
+ * §2.2 / §5.2: no counts were collected; what the existing volumes are; the
+ * GDOT 511 delay factor where rows carry one; the count recommendation.
+ * Imported Synchro/UTDF counts are real counts the engineer supplied, so the
+ * text does not tell the reader to collect them again.
+ */
+function gaTrafficDataText(intersections: any[]): string {
+  const n = intersections.length;
+  const tmcAt = gaVolumeBasisTally(intersections).tmc;
+  const recommend = tmcAt === 0
+    ? "Peak-hour turning-movement counts collected within the most recent 12 months should replace these estimates before a formal submittal."
+    : tmcAt === n
+      ? "The imported counts carry no collection date or period; confirm them before a formal submittal."
+      : "The imported counts carry no collection date or period; confirm them, and collect peak-hour turning-movement counts within the most recent 12 months at the remaining signals, before a formal submittal.";
+  return ["No traffic counts were collected for this screening.", gaExistingVolumeSentence(intersections), gaDelayFactorSentence(intersections), recommend]
+    .filter(Boolean).join(" ");
+}
+
+/**
+ * §5.1 source label for the ADT a GA report shows. The engine carries no ADT
+ * on a row; the value is the render-time ARC / GDOT statewide lookup
+ * (gdot-live-data.ts enrichGdotIntersections), which does not feed the
+ * operations analysis.
+ */
+function gaAadtLookupLabel(it: any): string {
+  const snap = it?.gdotSnapshot;
+  if (snap?.aadt == null) return "No record found";
+  const src = snap.source === "arc_atlanta" ? "ARC count layer" : "GDOT AADT layer";
+  return snap.aadtYear ? `${src} (${snap.aadtYear})` : src;
+}
+
+/** §5.2 per-row count-source label: says whether any count was used. */
+function gaCountSourceLabel(it: any): string {
+  switch (gaSignalVolumeBasis(it)) {
+    case "tmc": return "Imported TMC";
+    case "csv": return "Client link count";
+    case "atl_model": return "None (modeled)";
+    case "aadt": return "None (AADT × K)";
+    case "baseline": return "None (road class)";
+    default: return "None (estimated)";
+  }
+}
+
 /**
  * Georgia-specific TIS renderer. Follows the section structure and
  * conventions that GRTA / ARC / GDOT reviewers expect on a Georgia
@@ -1795,16 +1915,17 @@ function renderTisGeorgia(
     );
   } else {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Background traffic growth is applied at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. This rate is consistent with GDOT historical traffic count growth observed along adjacent roadways within the study area. For DRI submittals, the growth rate is typically agreed upon during the pre-application methodology meeting with GTEA, ARC, GDOT, and the local jurisdiction.`,
+      `Background traffic growth is applied at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}. This is the engine's default rate: no measured growth rate is wired for this region, so the rate is not derived from GDOT count stations and its basis must be stated before submittal. For DRI submittals, the growth rate is typically agreed upon during the pre-application methodology meeting with GTEA, ARC, GDOT, and the local jurisdiction.`,
       { paragraphGap: 6 },
     );
   }
 
   gaSubsection(doc, "2.2 Traffic Data Collection");
-  doc.font("body").fontSize(10).fillColor("black").text(
-    `Intersection capacity analysis uses calibration data from the GDOT 511 NaviGAtor system, including live incident, camera, and signal data feeds. Per-intersection delay calibration is updated hourly from the 7-day rolling incident archive. For formal submittal, supplementary peak-hour turning movement counts conducted within the most recent 12 months are recommended.`,
-    { paragraphGap: 6 },
-  );
+  // Counted from the rows: which signals' volumes are modeled, joined AADT,
+  // baseline or imported counts, and where the GDOT 511 incident factor was
+  // applied to delay. It is the only GDOT 511 input, so 511 is named only
+  // when a row carries it.
+  doc.font("body").fontSize(10).fillColor("black").text(gaTrafficDataText(intersections), { paragraphGap: 6 });
 
   gaSubsection(doc, "2.3 Detailed Intersection Analysis");
   doc.font("body").fontSize(10).fillColor("black").text(
@@ -1969,12 +2090,12 @@ function renderTisGeorgia(
     : `existing volumes grown at ${r.growthAppliedPct ?? "—"}%/yr over ${r.growthYears ?? "—"} year${r.growthYears === 1 ? "" : "s"}`;
   if (gaHasDesignYear) {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Four scenarios are evaluated at each affected intersection per GTEA / GDOT convention for projects exceeding screening thresholds: (1) Existing — current-year volumes from the GDOT 511 system, no growth applied; (2) No-Build at opening year ${req.openingYear ?? "—"} — ${gaGrowthClause}; (3) Build at opening year ${req.openingYear ?? "—"} — No-Build volumes plus project external trips at the assigned distribution; (4) 20-Year Design Year (${gaDesignYr ?? "—"}) No-Build and Build — opening-year volumes compounded another 20 years at the same growth rate, project trips at full build-out unchanged.`,
+      `Four scenarios are evaluated at each affected intersection per GTEA / GDOT convention for projects exceeding screening thresholds: (1) Existing — current-year volumes as described in §2.2, no growth applied; (2) No-Build at opening year ${req.openingYear ?? "—"} — ${gaGrowthClause}; (3) Build at opening year ${req.openingYear ?? "—"} — No-Build volumes plus project external trips at the assigned distribution; (4) 20-Year Design Year (${gaDesignYr ?? "—"}) No-Build and Build — opening-year volumes compounded another 20 years at the same growth rate, project trips at full build-out unchanged.`,
       { paragraphGap: 6 },
     );
   } else {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Three scenarios are evaluated at each affected intersection: (1) Existing — current-year volumes from the GDOT 511 system, no growth applied; (2) No-Build (opening year ${req.openingYear ?? "—"}) — ${gaGrowthClause}, without project trips; (3) Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the proposed development's external trips at the assigned distribution.`,
+      `Three scenarios are evaluated at each affected intersection: (1) Existing — current-year volumes as described in §2.2, no growth applied; (2) No-Build (opening year ${req.openingYear ?? "—"}) — ${gaGrowthClause}, without project trips; (3) Build (opening year ${req.openingYear ?? "—"}) — No-Build volumes plus the proposed development's external trips at the assigned distribution.`,
       { paragraphGap: 6 },
     );
   }
@@ -3407,6 +3528,14 @@ function renderTisGeorgiaAbbreviated(
 
   gaSubsection(doc, "5.1 Existing ADT Volumes");
   if (intersections.length > 0) {
+    // The engine carries no ADT on a row; these are the render-time ARC /
+    // GDOT statewide lookups (gdot-live-data.ts), which the operations
+    // analysis never read. Counted, so a failed or empty lookup says so.
+    const found = intersections.filter((it) => it?.gdotSnapshot?.aadt != null).length;
+    doc.font("body").fontSize(10).fillColor("black").text(
+      `The engine carries no ADT for the study signals. The values below are looked up when this report is rendered: for each signal, the highest AADT among up to five count records within 80 m, then 200 m, then 500 m, from ARC's count layer first and GDOT's statewide AADT layer second. They are shown for context and do not feed the operations analysis, which uses the design-hour volumes described in §5.2. ${found === 0 ? "No record was found for any study signal." : `A record was found for ${found} of the ${intersections.length} study signals.`}`,
+      { paragraphGap: 6 },
+    );
     table(doc, {
       headers: ["Roadway segment / intersection approach", "Existing ADT (vpd)", "Source"],
       widths: [260, 110, 110],
@@ -3414,7 +3543,7 @@ function renderTisGeorgiaAbbreviated(
       rows: intersections.map((it) => [
         it.name ?? it.signalId ?? "—",
         fmtNum(it.existingAadt ?? it.aadt ?? it.dailyVolume),
-        it.aadtSource ? String(it.aadtSource) : "GDOT 511 / TADA",
+        gaAadtLookupLabel(it),
       ]),
     });
   } else {
@@ -3425,7 +3554,7 @@ function renderTisGeorgiaAbbreviated(
 
   gaSubsection(doc, "5.2 Current Intersection Turning Movement Peak Period Volumes");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Peak-period turning movement volumes are sourced from the GDOT 511 NaviGAtor signal-controller feed at each affected signal and supplemented (where available) by Gwinnett County DOT counts. For formal submittal, supplementary AM and PM peak-hour TMCs conducted within the most recent 12 months are recommended.",
+    gaTrafficDataText(intersections),
     { paragraphGap: 6 },
   );
   if (intersections.length > 0) {
@@ -3437,7 +3566,7 @@ function renderTisGeorgiaAbbreviated(
         it.name ?? it.signalId ?? "—",
         fmtNum(it.amPeakVolume ?? it.amTotal),
         fmtNum(it.pmPeakVolume ?? it.pmTotal ?? it.existingPeakVolume),
-        it.countSource ? String(it.countSource) : "GDOT 511",
+        gaCountSourceLabel(it),
       ]),
     });
   }
@@ -3445,7 +3574,7 @@ function renderTisGeorgiaAbbreviated(
 
   gaSubsection(doc, "5.3 Truck Volumes and Circulation");
   doc.font("body").fontSize(10).fillColor("black").text(
-    `Heavy-vehicle (FHWA Class 4+) percentage on fronting roadways is approximated from GDOT Traffic Analysis & Data Application (TADA) classification counts. Site truck circulation should be designed for WB-67 turning templates per GDOT Driveway & Encroachment Control Manual §6 unless the proposed land use justifies a smaller design vehicle (SU-30 / SU-40). Truck percentage applied to the operations analysis: ${fmtNum(r.truckPct ?? r.heavyVehiclePct ?? 3, 1)}%.`,
+    "Heavy-vehicle (FHWA Class 4+) percentage on fronting roadways was not measured for this screening, and the operations analysis applies no heavy-vehicle adjustment. Site truck circulation should be designed for WB-67 turning templates per GDOT Driveway & Encroachment Control Manual §6 unless the proposed land use justifies a smaller design vehicle (SU-30 / SU-40).",
     { paragraphGap: 6 },
   );
 
@@ -3475,7 +3604,7 @@ function renderTisGeorgiaAbbreviated(
     );
   } else {
     doc.font("body").fontSize(10).fillColor("black").text(
-      `Future-year ADT volumes are calculated by applying background traffic growth at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s) to existing volumes, then layering the proposed development's site-generated daily trips (${fmtNum(tierInput.dailyTrips)} vpd gross) net of any pass-by and internal capture credits. Growth rate is consistent with GDOT historical TADA growth observed along comparable roadways in the study area.`,
+      `Future-year ADT volumes are calculated by applying background traffic growth at ${r.growthAppliedPct ?? "—"}% per year over ${r.growthYears ?? "—"} year(s) to existing volumes, then layering the proposed development's site-generated daily trips (${fmtNum(tierInput.dailyTrips)} vpd gross) net of any pass-by and internal capture credits. The growth rate is the engine's default rate: no measured growth rate is wired for this region, so it is not derived from GDOT count data and its basis must be stated before submittal.`,
       { paragraphGap: 6 },
     );
   }
@@ -3499,7 +3628,8 @@ function renderTisGeorgiaAbbreviated(
 
   gaSubsection(doc, "6.2 Distribution and Assignment Assumptions");
   doc.font("body").fontSize(10).fillColor("black").text(
-    "Directional distribution of site-generated trips is based on the existing roadway network geometry, proximity to project access points, regional travel patterns from the ARC Activity-Based Model (ABM2), and engineering judgment. Assignment to the study network follows a proportional allocation by signal proximity and approach geometry; the per-intersection allocation is reflected in the §7 Traffic Operation Analysis below. For final submittal, distribution percentages should be confirmed during the methodology meeting with Gwinnett County DOT, GDOT District 7, and (where applicable) GTEA.",
+    // §6.2.1 prints only when the study carries distribution zones.
+    `Directional distribution of site-generated trips is estimated by the engine's ${(r.tripDistribution?.zones?.length ?? 0) > 0 ? "trip-distribution method set out in §6.2.1" : "screening distribution method"}. No directional counts and no ARC regional model run are used. Assignment to the study network follows a proportional allocation by signal proximity and approach geometry; the per-intersection allocation is reflected in the §7 Traffic Operation Analysis below. For final submittal, distribution percentages should be confirmed during the methodology meeting with Gwinnett County DOT, GDOT District 7, and (where applicable) GTEA.`,
     { paragraphGap: 6 },
   );
 
@@ -8640,7 +8770,7 @@ function renderTisFlorida(
     });
     doc.moveDown(0.2);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "Target LOS is the No-Build (without-project) grade the improvement is sized to restore, not a re-run HCM result. Confirm the achieved delay / LOS with a detailed HCS / Synchro analysis of the specific geometry and signal timing at submittal.",
+      "Target LOS is the No-Build (without-project) grade the improvement is sized to restore, not a recomputed capacity result. Confirm the achieved delay / LOS with a detailed HCS / Synchro analysis of the specific geometry and signal timing at submittal.",
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
@@ -8652,8 +8782,11 @@ function renderTisFlorida(
   // Lane-group rows exist only where an imported Synchro/UTDF record gave a
   // measured turn split (see laneGroupsForApproach in tis.ts). When any are
   // present the section stops describing itself as worst-approach-only.
+  // laneGroups are also filled from estimated (IPF) shares on network rows, so
+  // only rows whose volumes came from an imported Synchro record count here.
   const laneGroupIts = intersections.filter(
-    (it: any) => Array.isArray(it.approaches) && it.approaches.some((a: any) => Array.isArray(a.laneGroups) && a.laneGroups.length > 0),
+    (it: any) => (it.volumeSource === "utdf_tmc" || it.volumeSource === "synchro_pdf_tmc")
+      && Array.isArray(it.approaches) && it.approaches.some((a: any) => Array.isArray(a.laneGroups) && a.laneGroups.length > 0),
   );
   if (queueRows.length > 0) {
     doc.font("body").fontSize(10).fillColor("black").text(
@@ -9223,14 +9356,15 @@ function renderFourStepSection(
     const cons = (result as Record<string, any>).conservedAssignment;
     if (cons?.enabled && cons.conservation) {
       const c = cons.conservation;
-      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
+      const consNote =
         `Conserved assignment: project trips routed to ${fmtNum(cons.gatewayCount)} cordon gateways on the study `
         + `boundary (weighted by the directional distribution above). Flow conservation verified at render input: `
         + `Σ entering = Σ leaving at ${fmtNum(c.nodesChecked)} network junctions, max imbalance `
         + `${Number(c.maxImbalance ?? 0).toFixed(2)} veh${c.balanced ? "" : " — IMBALANCE EXCEEDS TOLERANCE"}. `
         + `${fmtNum(cons.resolvedIntersections)} study intersection(s) carry path-derived movements; `
-        + `${fmtNum(cons.octantFallbacks)} retain the geometric octant model (labeled per intersection).`,
-        { paragraphGap: 6 });
+        + `${fmtNum(cons.octantFallbacks)} retain the geometric octant model (labeled per intersection).`;
+      keepParagraph(doc, consNote, 8, 6);
+      doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(consNote, { paragraphGap: 6 });
       doc.fillColor("black");
     }
   } else {
@@ -9308,6 +9442,20 @@ function keepHeadingWith(doc: PDFKit.PDFDocument, heading: string, paragraphGap:
   if (doc.y + need > doc.page.height - doc.page.margins.bottom) doc.addPage();
 }
 
+/**
+ * Keep a body paragraph whole. PDFKit paginates mid-paragraph, which strands a
+ * trailing fragment on the next page — the conserved-assignment diagnostic was
+ * leaving its last two words ("intersection).") alone on an otherwise empty
+ * page in two of five regenerated samples. Break before the paragraph when the
+ * whole of it will not fit above the bottom margin.
+ */
+function keepParagraph(doc: PDFKit.PDFDocument, text: string, size: number, paragraphGap: number) {
+  const width = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  doc.font("body").fontSize(size);
+  const need = doc.heightOfString(text, { width }) + paragraphGap;
+  if (doc.y + need > doc.page.height - doc.page.margins.bottom) doc.addPage();
+}
+
 function renderCapacityAppendix(
   doc: PDFKit.PDFDocument,
   intersections: any[],
@@ -9343,7 +9491,7 @@ function renderCapacityAppendix(
   const anyLegEstimate = Array.isArray(intersections) && intersections.some((x: any) => Array.isArray(x?.legVolumes) && x?.movementEstimate);
   doc.font("body").fontSize(9).fillColor("#b45309").text(
     anyLegEstimate
-      ? "Background approach volumes are resolved per leg — the signal's design hour on the main road (its counted volume where the analyzer had a compatible count, else the road-class baseline it assigned — each worksheet says which), the road-class baseline on uncounted legs, client link counts where supplied; half per direction, and half in the physical direction of a one-way carriageway — and the background turning movements in the diagrams are balanced to the exit legs by iterative proportional fitting (NCHRP 255/765 refinement) from a geometry seed; each worksheet states its leg sources and residual. Project-trip movements are assigned geometrically from the study's directional trip distribution (see each worksheet's Affected movements table). Replace both with measured turning-movement counts (TMCs) before a formal submittal."
+      ? "Background approach volumes are resolved per leg — the signal's design hour on the main road (AADT × K-factor from a compatible AADT count record where the analyzer had one, else the road-class baseline it assigned — each worksheet says which), the road-class baseline on uncounted legs, client link counts where supplied; half per direction, and half in the physical direction of a one-way carriageway — and the background turning movements in the diagrams are balanced to the exit legs by iterative proportional fitting (NCHRP 255/765 refinement) from a geometry seed; each worksheet states its leg sources and residual. Project-trip movements are assigned geometrically from the study's directional trip distribution (see each worksheet's Affected movements table). Replace both with measured turning-movement counts (TMCs) before a formal submittal."
       : "Background turning-movement volumes in the diagrams are distributed from each approach total using an "
         + "estimated 15/70/15 (Left/Through/Right) split. Project-trip movements are assigned geometrically from "
         + "the study's directional trip distribution (see each worksheet's Affected movements table). Replace both "
@@ -9503,7 +9651,7 @@ function renderCapacityAppendix(
       const count = (src: string) => legs.filter((l) => l.source === src).length;
       const parts: string[] = [];
       if (count("csv") > 0) parts.push(`${count("csv")} of ${n} from client link counts (CSV)`);
-      if (count("signal_aadt") > 0) parts.push(`${count("signal_aadt")} of ${n} from the signal's counted design hour (half per direction)`);
+      if (count("signal_aadt") > 0) parts.push(`${count("signal_aadt")} of ${n} from the signal's AADT-derived design hour (AADT × K-factor, half per direction)`);
       // The analyzer had no compatible count for this SIGNAL — its design
       // hour is the road-class ladder or the synthetic OSM-class model — so
       // the main-road legs are a baseline too and must not be called "counted".
@@ -9683,7 +9831,7 @@ function renderCapacityAppendix(
       ]),
     });
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      "NB = No-Build: existing counts grown to the opening year, without project trips. Build = No-Build plus assigned project trips. Current-year Existing conditions appear in the scenario tables of the main report body.",
+      "NB = No-Build: existing estimated volumes grown to the opening year, without project trips. Build = No-Build plus assigned project trips. Current-year Existing conditions appear in the scenario tables of the main report body.",
       { paragraphGap: 4 },
     );
     doc.fillColor("black");

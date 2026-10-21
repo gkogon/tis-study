@@ -168,10 +168,25 @@ export function servedRegionCodes(): string[] {
 }
 
 /**
+ * The zone-label bounds this loader holds for a region. check:region-parity
+ * compares them with the engine registry's.
+ */
+export function servedRegionBounds(regionCode: string): RegionBoundsInfo["bounds"] | undefined {
+  return REGION_INFO[regionCode]?.bounds;
+}
+
+/**
  * Region bounds + display name for zone labeling. Duplicates the canonical
  * registry in artifacts/tis-api-server/src/lib/regions.ts because api-server
  * and tis-api-server are independent workspaces and we don't want a runtime
- * cross-package import. Keep these in sync when a new region is added.
+ * cross-package import. Keep these in sync when a region is added or its
+ * regions.ts bounds change; check:region-parity fails on any difference.
+ *
+ * The one reason to differ: `bounds` here only sets computeZone's zone-label
+ * origin, so where regions.ts widened a box lopsidedly the entry keeps its
+ * historical core box instead of dragging "Central <metro>" off the city.
+ * new_york_metro and pittsburgh_metro do this (see their comments), and the
+ * check lists them as deliberate overrides.
  */
 type RegionBoundsInfo = {
   displayName: string;
@@ -219,6 +234,13 @@ const REGION_INFO: Record<string, RegionBoundsInfo> = {
   washington_dc_metro: { displayName: "Washington-Arlington-Alexandria MSA", bounds: { latMin: 38.6, latMax: 39.2, lonMin: -77.6, lonMax: -76.7 } },
   baltimore_metro: { displayName: "Baltimore-Columbia-Towson MSA", bounds: { latMin: 39.0, latMax: 39.7, lonMin: -77.0, lonMax: -76.2 } },
   philadelphia_metro: { displayName: "Philadelphia MSA", bounds: { latMin: 39.7, latMax: 40.4, lonMin: -75.5, lonMax: -74.95 } },
+  // Deliberately the pre-#233 box, NOT regions.ts's (lat 40.10-40.92, lon
+  // -80.45 to -79.30). #233 widened coverage mostly north and east (Butler,
+  // Latrobe), so that box's midpoint sits 7.8 mi NE of this one, in Fox Chapel:
+  // syncing would relabel downtown and Oakland "SW Pittsburgh", make Fox Chapel
+  // "Central Pittsburgh", and change 1,597 of 3,697 labels. This origin is 0.7
+  // mi from downtown and already labels the new ring correctly (Butler NE,
+  // Greensburg SE, Washington SW). Membership is regionForCoordinate's job.
   pittsburgh_metro: { displayName: "Pittsburgh MSA", bounds: { latMin: 40.2, latMax: 40.7, lonMin: -80.4, lonMax: -79.6 } },
   // Deliberately box A of new_york_metro's three coverage boxes, NOT the
   // envelope. `bounds` is consumed here by exactly one caller — computeZone,
@@ -268,6 +290,7 @@ const REGION_INFO: Record<string, RegionBoundsInfo> = {
   portland_me_metro: { displayName: "Portland-South Portland MSA", bounds: { latMin: 43.5, latMax: 43.9, lonMin: -70.5, lonMax: -70.0 } },
   trenton_metro: { displayName: "Trenton-Princeton MSA", bounds: { latMin: 40.1, latMax: 40.5, lonMin: -74.9, lonMax: -74.5 } },
   charleston_wv_metro: { displayName: "Charleston (WV) MSA", bounds: { latMin: 38.2, latMax: 38.5, lonMin: -81.8, lonMax: -81.4 } },
+  morgantown_metro: { displayName: "Morgantown MSA", bounds: { latMin: 39.5, latMax: 39.72, lonMin: -80.15, lonMax: -79.8 } },
   jackson_ms_metro: { displayName: "Jackson (MS) MSA", bounds: { latMin: 32.1, latMax: 32.5, lonMin: -90.4, lonMax: -89.9 } },
   little_rock_metro: { displayName: "Little Rock-North Little Rock-Conway MSA", bounds: { latMin: 34.5, latMax: 35.0, lonMin: -92.6, lonMax: -92.0 } },
   oklahoma_city_metro: { displayName: "Oklahoma City MSA", bounds: { latMin: 35.2, latMax: 35.7, lonMin: -97.8, lonMax: -97.2 } },
@@ -329,6 +352,7 @@ const REGION_INFO: Record<string, RegionBoundsInfo> = {
   harrisburg_metro: { displayName: "Harrisburg-Carlisle MSA", bounds: { latMin: 40.1, latMax: 40.4, lonMin: -77.0, lonMax: -76.6 } },
   scranton_metro: { displayName: "Scranton-Wilkes-Barre MSA", bounds: { latMin: 41.3, latMax: 41.6, lonMin: -75.9, lonMax: -75.4 } },
   erie_metro: { displayName: "Erie MSA", bounds: { latMin: 42.0, latMax: 42.2, lonMin: -80.3, lonMax: -79.9 } },
+  state_college_metro: { displayName: "State College MSA", bounds: { latMin: 40.7, latMax: 40.95, lonMin: -78.05, lonMax: -77.7 } },
   worcester_metro: { displayName: "Worcester MSA", bounds: { latMin: 42.1, latMax: 42.5, lonMin: -72.0, lonMax: -71.6 } },
   springfield_ma_metro: { displayName: "Springfield (MA) MSA", bounds: { latMin: 42.0, latMax: 42.2, lonMin: -72.8, lonMax: -72.4 } },
   new_haven_metro: { displayName: "New Haven-Milford MSA", bounds: { latMin: 41.2, latMax: 41.4, lonMin: -73.1, lonMax: -72.8 } },

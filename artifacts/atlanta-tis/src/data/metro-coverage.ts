@@ -80,8 +80,13 @@ export type MetroCoverage = {
    *  with all pre-Tier-10 entries that came from real DOT count integrations.
    *  "synthetic" = HCM road-class baseline keyed off OSM nearest-segment, used
    *  for Tier-10 global metros where no measured AADT layer is wired.
+   *  "modeled" = no AADT snap at all: every signal's design-hour volume is
+   *  modeled from road class x distance from downtown x a fixed per-signal
+   *  factor (Atlanta; api-server/src/lib/atlanta-analysis.ts). aadtPct is 0
+   *  for these — no signal is joined to a count. A live feed listed in
+   *  `liveSource` does not supply volumes.
    *  Tier-A featured-coverage badge requires aadtQuality === "measured". */
-  aadtQuality?: "measured" | "synthetic" | "none";
+  aadtQuality?: "measured" | "synthetic" | "modeled" | "none";
   /** Local DOT / engineering body responsible for traffic-impact review. */
   dotName: string;
   /** Planning office that issues development orders. */
@@ -101,7 +106,7 @@ export type MetroCoverage = {
  *  ships. */
 export const METROS: MetroCoverage[] = [
   // GA
-  { code: "atlanta_metro", slug: "atlanta", shortName: "Atlanta", longName: "Atlanta MSA", state: "GA", signals: 7958, namedPct: 99.8, aadtPct: 100, liveSource: "GDOT 511", aadtSource: "GDOT calibrated counts",
+  { code: "atlanta_metro", slug: "atlanta", shortName: "Atlanta", longName: "Atlanta MSA", state: "GA", signals: 7958, namedPct: 99.8, aadtPct: 0, liveSource: "GDOT 511", aadtSource: "Modeled from road class and distance from downtown (no counts)", aadtQuality: "modeled",
     dotName: "City of Atlanta DOT", planningOfficeName: "City of Atlanta Office of Mobility Planning",
     parkingCodeCitation: "City of Atlanta Zoning Ordinance, Article 10 — Off-Street Parking and Loading." },
   { code: "augusta_metro", slug: "augusta", shortName: "Augusta", longName: "Augusta MSA", state: "GA", signals: 519, namedPct: 99.4, aadtPct: 75.1, liveSource: null, aadtSource: "GDOT AADT (DeKalbGIS ingest)",
@@ -180,13 +185,13 @@ export const METROS: MetroCoverage[] = [
     hasNeighborhoodPolygons: true },
 
   // AL
-  { code: "birmingham_metro", slug: "birmingham", shortName: "Birmingham", longName: "Birmingham MSA", state: "AL", signals: 1854, namedPct: 95.0, aadtPct: 83.2, liveSource: null, aadtSource: "ALDOT TDM 2024-2025 AADT",
+  { code: "birmingham_metro", slug: "birmingham", shortName: "Birmingham", longName: "Birmingham MSA", state: "AL", signals: 1854, namedPct: 95.0, aadtPct: 95, liveSource: null, aadtSource: "ALDOT TDM 2024-2025 AADT + ALDOT historical deep-fill (2014-2025)",
     dotName: "City of Birmingham Department of Transportation", planningOfficeName: "Birmingham Department of Planning, Engineering & Permits",
     parkingCodeCitation: "Birmingham Zoning Ordinance, Article 5 — Off-Street Parking and Loading." },
-  { code: "huntsville_metro", slug: "huntsville", shortName: "Huntsville", longName: "Huntsville MSA", state: "AL", signals: 968, namedPct: 98.2, aadtPct: 98.8, liveSource: null, aadtSource: "ALDOT TDM 2024-2025 AADT (state highways) + FHWA HPMS 2018",
+  { code: "huntsville_metro", slug: "huntsville", shortName: "Huntsville", longName: "Huntsville MSA", state: "AL", signals: 968, namedPct: 98.2, aadtPct: 99.2, liveSource: null, aadtSource: "ALDOT TDM 2024-2025 AADT (state highways) + FHWA HPMS 2018 + ALDOT historical deep-fill (2014-2025)",
     dotName: "Huntsville Traffic Engineering Department", planningOfficeName: "Huntsville City Planning Division",
     parkingCodeCitation: "Huntsville Zoning Ordinance, Article 7 — Off-Street Parking and Loading." },
-  { code: "mobile_metro", slug: "mobile", shortName: "Mobile", longName: "Mobile MSA", state: "AL", signals: 900, namedPct: 95.9, aadtPct: 87.9, liveSource: null, aadtSource: "ALDOT TDM 2024-2025 AADT",
+  { code: "mobile_metro", slug: "mobile", shortName: "Mobile", longName: "Mobile MSA", state: "AL", signals: 900, namedPct: 95.9, aadtPct: 97.8, liveSource: null, aadtSource: "ALDOT TDM 2024-2025 AADT + ALDOT historical deep-fill (2014-2025)",
     dotName: "City of Mobile Public Works", planningOfficeName: "Mobile City Planning Department",
     parkingCodeCitation: "Mobile Zoning Ordinance, Section 64-9 — Off-Street Parking." },
 
@@ -242,7 +247,7 @@ export const METROS: MetroCoverage[] = [
   { code: "philadelphia_metro", slug: "philadelphia", shortName: "Philadelphia", longName: "Philadelphia MSA", state: "PA", signals: 8924, namedPct: 96.7, aadtPct: 92.6, liveSource: null, aadtSource: "PennDOT RMS + NJDOT AADT",
     dotName: "Philadelphia Streets Department", planningOfficeName: "Philadelphia City Planning Commission",
     parkingCodeCitation: "Philadelphia Zoning Code, Chapter 14-800 — Parking and Loading." },
-  { code: "pittsburgh_metro", slug: "pittsburgh", shortName: "Pittsburgh", longName: "Pittsburgh MSA", state: "PA", signals: 2973, namedPct: 99.2, aadtPct: 93.7, liveSource: null, aadtSource: "PennDOT RMS Traffic Volumes",
+  { code: "pittsburgh_metro", slug: "pittsburgh", shortName: "Pittsburgh", longName: "Pittsburgh MSA", state: "PA", signals: 3697, namedPct: 99.2, aadtPct: 94.5, liveSource: null, aadtSource: "PennDOT RMS Traffic Volumes (Butler, Westmoreland and Washington County signals added 2026-09)",
     dotName: "Pittsburgh Department of Mobility and Infrastructure (DOMI)", planningOfficeName: "Pittsburgh Department of City Planning",
     parkingCodeCitation: "Pittsburgh Zoning Code, Chapter 914 — Parking, Loading and Access." },
   // NY
@@ -396,6 +401,7 @@ export const METROS: MetroCoverage[] = [
   { code: "charleston_wv_metro", slug: "charleston-wv", shortName: "Charleston (WV)", longName: "Charleston (WV) MSA", state: "WV", signals: 439, namedPct: 98.6, aadtPct: 95.7, liveSource: null, aadtSource: "WVDOT Segment AADT",
     dotName: "Charleston Department of Public Works", planningOfficeName: "Charleston Planning Department",
     parkingCodeCitation: "Charleston Zoning Ordinance, Article 1135 — Off-Street Parking." },
+  { code: "morgantown_metro", slug: "morgantown", shortName: "Morgantown", longName: "Morgantown MSA", state: "WV", signals: 106, namedPct: 100.0, aadtPct: 92.5, liveSource: null, aadtSource: "WVDOT Segment AADT", dotName: "WVDOT Division of Highways District 4", planningOfficeName: "Morgantown Monongalia Metropolitan Planning Organization (MMMPO)", parkingCodeCitation: "Off-street parking per the controlling municipal or county zoning ordinance for the site." },
   // MS
   { code: "jackson_ms_metro", slug: "jackson-ms", shortName: "Jackson (MS)", longName: "Jackson (MS) MSA", state: "MS", signals: 599, namedPct: 98.7, aadtPct: 99.7, liveSource: null,
     dotName: "Jackson Department of Public Works", planningOfficeName: "Jackson Department of Planning and Development",
@@ -473,6 +479,7 @@ export const METROS: MetroCoverage[] = [
   { code: "harrisburg_metro", slug: "harrisburg", shortName: "Harrisburg", longName: "Harrisburg-Carlisle MSA", state: "PA", signals: 679, namedPct: 99.4, aadtPct: 98.4, liveSource: null, aadtSource: "PennDOT RMS Traffic Volumes", dotName: "Harrisburg Department of Public Works", planningOfficeName: "Harrisburg Bureau of Planning", parkingCodeCitation: "Harrisburg Zoning Code, Chapter 7-329 — Off-Street Parking." },
   { code: "scranton_metro", slug: "scranton", shortName: "Scranton", longName: "Scranton-Wilkes-Barre MSA", state: "PA", signals: 410, namedPct: 99.5, aadtPct: 92.9, liveSource: null, aadtSource: "PennDOT RMS Traffic Volumes", dotName: "Scranton Department of Public Works", planningOfficeName: "Scranton Office of Economic and Community Development", parkingCodeCitation: "Scranton Zoning Ordinance, Article VII — Off-Street Parking." },
   { code: "erie_metro", slug: "erie", shortName: "Erie", longName: "Erie MSA", state: "PA", signals: 404, namedPct: 99.8, aadtPct: 96.0, liveSource: null, aadtSource: "PennDOT RMS Traffic Volumes", dotName: "Erie Department of Public Works", planningOfficeName: "Erie Department of Planning", parkingCodeCitation: "Erie Zoning Ordinance, Section 209-71 — Off-Street Parking." },
+  { code: "state_college_metro", slug: "state-college", shortName: "State College", longName: "State College MSA", state: "PA", signals: 232, namedPct: 100.0, aadtPct: 91.8, liveSource: null, aadtSource: "PennDOT RMS Traffic Volumes", dotName: "PennDOT Engineering District 2-0", planningOfficeName: "Centre County Metropolitan Planning Organization (CCMPO)", parkingCodeCitation: "Off-street parking per the controlling municipal or county zoning ordinance for the site." },
   // MA (2)
   { code: "worcester_metro", slug: "worcester", shortName: "Worcester", longName: "Worcester MSA", state: "MA", signals: 537, namedPct: 99.6, aadtPct: 95.0, liveSource: null, aadtSource: "MassDOT 2024 Traffic Inventory", dotName: "Worcester Department of Public Works and Parks", planningOfficeName: "Worcester Division of Planning and Regulatory Services", parkingCodeCitation: "Worcester Zoning Ordinance, Article IV — Parking and Loading." },
   { code: "springfield_ma_metro", slug: "springfield-ma", shortName: "Springfield (MA)", longName: "Springfield (MA) MSA", state: "MA", signals: 390, namedPct: 99.7, aadtPct: 91.5, liveSource: null, aadtSource: "MassDOT 2024 Traffic Inventory", dotName: "Springfield Department of Public Works", planningOfficeName: "Springfield Office of Planning and Economic Development", parkingCodeCitation: "Springfield Zoning Ordinance, Article 7 — Off-Street Parking." },
@@ -755,13 +762,17 @@ export const TIER_A_AADT_CUTOFF = 75;
 const isMeasuredAadt = (m: MetroCoverage): boolean =>
   (m.aadtQuality ?? "measured") === "measured";
 
+/** Tier-A = measured AADT at or above the cutoff. No exception for the
+ *  flagship: Atlanta's volumes are modeled, not counted, so it is not Tier-A
+ *  AADT. Its flagship placement (listed first, "Flagship" label) rests on
+ *  the live GDOT 511 incident feed and stays — see `isFlagshipMetro`. */
+export const isTierAMetro = (m: MetroCoverage): boolean =>
+  m.aadtPct >= TIER_A_AADT_CUTOFF && isMeasuredAadt(m);
+export const isFlagshipMetro = (m: MetroCoverage): boolean => m.code === "atlanta_metro";
+
 /** Helpers. */
-export const TIER_A_METROS = METROS.filter(
-  (m) => (m.aadtPct >= TIER_A_AADT_CUTOFF && isMeasuredAadt(m)) || m.code === "atlanta_metro",
-);
-export const TIER_B_METROS = METROS.filter(
-  (m) => !((m.aadtPct >= TIER_A_AADT_CUTOFF && isMeasuredAadt(m)) || m.code === "atlanta_metro"),
-);
+export const TIER_A_METROS = METROS.filter(isTierAMetro);
+export const TIER_B_METROS = METROS.filter((m) => !isTierAMetro(m));
 export const TOTAL_SIGNALS = METROS.reduce((sum, m) => sum + m.signals, 0);
 export const TOTAL_METROS = METROS.length;
 
