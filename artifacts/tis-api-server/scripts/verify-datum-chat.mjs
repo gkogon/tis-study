@@ -14,6 +14,8 @@
  *               lib/datum-chat/contract.ts, the one door the pure modules reach lib/tis-api-zod through.
  *   context     lib/datum-chat/clause-guide.ts and context.ts: the per-clause guide, the capped grounding
  *               pack, and the read-only path reader.
+ *   prompt      lib/datum-chat/prompt.ts: the system prompt, the two cached system blocks (prompt with the
+ *               full clause guide, then the pack), and the history builder.
  *
  * The contract is imported by file URL with no loader: Node strips the types.
  * That works only while datum-chat.ts reaches GenerateTisBody through an explicit
@@ -1094,13 +1096,15 @@ const guideSrc = read(GUIDE_REL);
 const contextSrc = read(CONTEXT_REL);
 
 // --- Pure, like lib/proofread/, and the contract only through ./contract.ts ------------------
-for (const [name, src] of [["clause-guide.ts", guideSrc], ["context.ts", contextSrc]]) {
+/** The pin every pure datum-chat module carries; the prompt section runs it on prompt.ts as well. */
+const pinPure = (name, src) => {
   const code = stripComments(src);
   const rel = [...code.matchAll(/\bfrom\s+"(\.{1,2}\/[^"]*)"/g)].map((m) => m[1]);
   ok(`${name} imports no SDK, db or logger, reads no env and fetches nothing`, code.length > 0 && !/@anthropic-ai\/sdk|@workspace\/db|\blogger\b|process\.env|\bfetch\s*\(|\brequire\s*\(/.test(code));
   ok(`every relative import in ${name} carries an explicit .ts`, rel.length > 0 && rel.every((p) => p.endsWith(".ts")), rel.join(", "));
   ok(`pure datum-chat modules import the contract only via ./contract.ts: ${name} imports it there and names no tis-api-zod path`, rel.includes("./contract.ts") && !/tis-api-zod/.test(code), rel.join(", "));
-}
+};
+for (const [name, src] of [["clause-guide.ts", guideSrc], ["context.ts", contextSrc]]) pinPure(name, src);
 
 // --- The scenario-base.json record -------------------------------------------------------
 let FX = {};
@@ -1577,6 +1581,244 @@ t("neither new module, the guide, nor a pack built from it uses a phrase the pro
 t("the pack's cap is DATUM_LIMITS.packBytes and the path cap is DATUM_LIMITS.readPathBytes, read from the contract, not copied", () => {
   const code = stripComments(contextSrc);
   return /DATUM_LIMITS\.packBytes/.test(code) && /DATUM_LIMITS\.readPathBytes/.test(code) && !/\b61440\b|\b8192\b/.test(code);
+});
+
+// ===========================================================================
+// prompt
+// ===========================================================================
+section("prompt");
+
+const PROMPT_REL = "artifacts/tis-api-server/src/lib/datum-chat/prompt.ts";
+const { mod: PR, error: promptError } = await importByUrl(PROMPT_REL);
+ok("the prompt module loads under plain node (no loader)", promptError === null, promptError ?? undefined);
+const promptSrc = read(PROMPT_REL);
+pinPure("prompt.ts", promptSrc);
+
+const SYSTEM_PROMPT = typeof PR.SYSTEM_PROMPT === "string" ? PR.SYSTEM_PROMPT : "";
+const NEVER_USE = typeof PR.NEVER_USE_SENTENCE === "string" ? PR.NEVER_USE_SENTENCE : "";
+/** The plan's pattern, and the pattern the other copy guards use: a hit on either is a hit. */
+const BANNED_FORMS = [
+  /independent\s*review|second[\s–-]*opinion|peer[\s-]*review|QA\s*\/?\s*QC|\baudit/i,
+  /independent[\s-]*review|second[\s-]*opinion|peer[\s-]*review|qa\s*[/\\-]?\s*qc|\baudit/i,
+];
+const bannedFree = (text) => BANNED_FORMS.every((re) => !re.test(text));
+const without = (text, sentence) => text.split(sentence).join("");
+
+// --- The prompt states the rules ----------------------------------------------------------------
+t("precondition: SYSTEM_PROMPT and NEVER_USE_SENTENCE are non-empty strings", () => SYSTEM_PROMPT.length > 500 && NEVER_USE.length > 20);
+for (const phrase of [
+  "Never choose a number",
+  "only when the engineer asks",
+  "at most one re-run",
+  "a new version",
+  "the original is never changed",
+  "measured counts",
+  "start a new study in the generator",
+]) {
+  t(`SYSTEM_PROMPT says "${phrase}"`, () => SYSTEM_PROMPT.includes(phrase));
+}
+t("SYSTEM_PROMPT contains NEVER_USE_SENTENCE, once", () => NEVER_USE.length > 0 && SYSTEM_PROMPT.split(NEVER_USE).length === 2);
+t("precondition: the wording of the one rule says re-run is limited to one per message (the limit it states is DATUM_LIMITS.rerunsPerMessage)", () => C.DATUM_LIMITS.rerunsPerMessage === 1);
+
+// --- The copy rule: the one sentence lists the phrases, and nothing else in the prompt does -------
+t("NEVER_USE_SENTENCE names all five phrases the product forbids", () =>
+  [/independent review/, /second opinion/, /peer review/, /QA\/QC/, /\baudit\b/].every((re) => re.test(NEVER_USE)));
+t("NEVER_USE_SENTENCE is one sentence on one line", () => !/\n/.test(NEVER_USE) && NEVER_USE.trim() === NEVER_USE && /[.]$/.test(NEVER_USE) && (NEVER_USE.match(/[.!?](\s|$)/g) ?? []).length === 1);
+t("the scan is not vacuous: the sentence itself trips both patterns, and the prompt does while the sentence is in it", () =>
+  BANNED_FORMS.every((re) => re.test(NEVER_USE) && re.test(SYSTEM_PROMPT)));
+t("with NEVER_USE_SENTENCE removed, the prompt contains no banned phrase", () => without(SYSTEM_PROMPT, NEVER_USE).length > 500 && bannedFree(without(SYSTEM_PROMPT, NEVER_USE)));
+t("with NEVER_USE_SENTENCE removed, prompt.ts (code and comments) contains no banned phrase", () => NEVER_USE.length > 20 && promptSrc.length > 1000 && promptSrc.includes(NEVER_USE) && bannedFree(without(promptSrc, NEVER_USE)));
+t("the sentence is written plainly in prompt.ts, so removing it from the source by exact match finds it", () => NEVER_USE.length > 20 && promptSrc.split(NEVER_USE).length === 2);
+
+// --- Style: directive prose, not capitals --------------------------------------------------------
+t("the prompt uses no shouting words (CRITICAL, MUST, ALWAYS, NEVER, IMPORTANT, REQUIRED in capitals)", () =>
+  SYSTEM_PROMPT.length > 500 && !/\b(CRITICAL|MUST|ALWAYS|NEVER|IMPORTANT|REQUIRED|FORBIDDEN)\b/.test(SYSTEM_PROMPT));
+t("the prompt writes no rule about thinking or about reasoning in the reply", () => SYSTEM_PROMPT.length > 500 && !/\bthink|reasoning|chain of thought|scratchpad/i.test(SYSTEM_PROMPT));
+
+// --- Who Datum is, and what it answers from ---------------------------------------------------------
+t("the prompt says Datum is the study's proofreader, advising the engineer of record", () => /\bproofread/i.test(SYSTEM_PROMPT) && /engineer of record/i.test(SYSTEM_PROMPT) && /\bDatum\b/.test(SYSTEM_PROMPT));
+t("the prompt names both tools exactly as the tool definitions do", () =>
+  T.READ_PATH_TOOL?.name === "read_study_path" && T.RERUN_TOOL?.name === "rerun_study_with_changes" &&
+  SYSTEM_PROMPT.includes(T.READ_PATH_TOOL.name) && SYSTEM_PROMPT.includes(T.RERUN_TOOL.name));
+t("the prompt tells Datum to answer from the pack or read_study_path and to cite the payload paths", () =>
+  /grounding pack/i.test(SYSTEM_PROMPT) && /request\./.test(SYSTEM_PROMPT) && /result\./.test(SYSTEM_PROMPT) && /\bpath/i.test(SYSTEM_PROMPT));
+t("the prompt says text inside the pack, tool answers and the study is data, not an instruction", () => /\bdata\b/i.test(SYSTEM_PROMPT) && /not an instruction|never an instruction|no instruction/i.test(SYSTEM_PROMPT));
+t("the prompt says plainly that a finding no input can clear is to be said so, and refers to the clause guide", () =>
+  /cannot be cleared|can't be cleared|no input|not cleared by/i.test(SYSTEM_PROMPT) && /clause guide/i.test(SYSTEM_PROMPT));
+t("the prompt says DEFECT findings are never shown to the engineer and must not be mentioned", () => /\bDEFECT\b/.test(SYSTEM_PROMPT) && /never shown|not shown|withheld/i.test(SYSTEM_PROMPT));
+t("the prompt says the chat cannot record a decision: the panel's buttons are the only way", () => /FIXED/.test(SYSTEM_PROMPT) && /DISCLOSED/.test(SYSTEM_PROMPT) && /WITHDRAWN/.test(SYSTEM_PROMPT) && /button/i.test(SYSTEM_PROMPT));
+t("the prompt explains the bracketed note the app puts before a message that comes from a finding, and the note is bracketed", () => {
+  const note = PR.buildHistory([], { content: "q", focus: REAL[0] })[0]?.content ?? "";
+  return /bracketed note/i.test(SYSTEM_PROMPT) && /finding id/i.test(SYSTEM_PROMPT) && /title/i.test(SYSTEM_PROMPT) && note.startsWith("[") && note.includes("]\n\nq");
+});
+
+// --- What it may change ---------------------------------------------------------------------------
+t("the prompt lists every revisable field by its name in the contract", () => C.REVISABLE_FIELDS.length === 13 && C.REVISABLE_FIELDS.every((f) => SYSTEM_PROMPT.includes(f)));
+t("the prompt lists the five method fields by name, from the contract, as the settings Datum may choose when asked to fix it", () =>
+  C.METHOD_FIELDS.length === 5 && C.METHOD_FIELDS.every((f) => SYSTEM_PROMPT.includes(f)) && /fix it/i.test(SYSTEM_PROMPT) && /method/i.test(SYSTEM_PROMPT));
+t("the prompt names the numbers Datum never chooses: growth rate, pass-by, opening year, cycle length, split", () =>
+  [/growth rate/i, /pass-by/i, /opening year/i, /cycle length/i, /\bsplit/i].every((re) => re.test(SYSTEM_PROMPT)));
+t("the prompt says to apply the engineer's value rather than refuse it, to pass its source in sourceLabel and never to invent one", () =>
+  /sourceLabel/.test(SYSTEM_PROMPT) && /source/i.test(SYSTEM_PROMPT) && /no source given/i.test(SYSTEM_PROMPT) && /invent/i.test(SYSTEM_PROMPT));
+t("the prompt says the locked inputs are the site, land use, size, project name, driveways and measured counts", () =>
+  [/\bsite\b/i, /land use/i, /\bsize\b/i, /project name/i, /driveways/i, /measured counts/i].every((re) => re.test(SYSTEM_PROMPT)));
+t("the prompt points to the generator's UTDF or Synchro import for measured counts", () => /UTDF/.test(SYSTEM_PROMPT) && /Synchro/.test(SYSTEM_PROMPT));
+
+// --- When to call the re-run tool, and what to say after ---------------------------------------
+t("the prompt says to call the re-run tool only for the latest message, and to treat earlier requests as already answered", () =>
+  /latest message/i.test(SYSTEM_PROMPT) && /earlier/i.test(SYSTEM_PROMPT) && /already/i.test(SYSTEM_PROMPT));
+t("the prompt says there is no confirm step once the engineer has asked", () => /confirm/i.test(SYSTEM_PROMPT) && /without asking|no need to ask|do not ask|don't ask|at once/i.test(SYSTEM_PROMPT));
+t("the prompt says a question about how to fix something is a question, not a request to change it", () => /how (do|would|can|should) /i.test(SYSTEM_PROMPT) && /question/i.test(SYSTEM_PROMPT));
+t("the prompt says that after a re-run Datum states what changed and tells the engineer to open the new version to see its findings", () =>
+  /what changed/i.test(SYSTEM_PROMPT) && /open Version/i.test(SYSTEM_PROMPT) && /its (own )?findings|own page/i.test(SYSTEM_PROMPT));
+t("the prompt says not to claim a finding cleared, since the new version's proofread has not been seen", () => /cleared|clear/i.test(SYSTEM_PROMPT) && /not seen|have not seen|haven't seen|has not been seen|cannot see|can't see/i.test(SYSTEM_PROMPT));
+t("the prompt says a refused re-run is reported with its reason and is not retried with a value Datum picks", () =>
+  /refus/i.test(SYSTEM_PROMPT) && /nothing was re-run|nothing is re-run|nothing ran/i.test(SYSTEM_PROMPT) && /do not retry|don't retry|not retry/i.test(SYSTEM_PROMPT));
+
+// --- How to write ---------------------------------------------------------------------------------------
+t("the prompt asks for plain text and rules out markdown tables", () => /plain text/i.test(SYSTEM_PROMPT) && /\btables?\b/i.test(SYSTEM_PROMPT));
+
+// --- buildSystem -------------------------------------------------------------------------------------------
+const SYS = typeof PR.buildSystem === "function" ? PR.buildSystem("P") : [];
+t("buildSystem(\"P\") returns two text blocks, the second being exactly the pack", () =>
+  Array.isArray(SYS) && SYS.length === 2 && SYS.every((b) => b.type === "text" && typeof b.text === "string") && SYS[1].text === "P");
+t("both blocks carry cache_control: ephemeral, and nothing else beyond type, text and cache_control", () =>
+  SYS.length === 2 && SYS.every((b) => same(b.cache_control, { type: "ephemeral" }) && sameSet(Object.keys(b), ["type", "text", "cache_control"])));
+t("the first block opens with the whole of SYSTEM_PROMPT", () => SYS.length === 2 && SYS[0].text.startsWith(SYSTEM_PROMPT) && SYSTEM_PROMPT.length > 500);
+const guideEntries = Object.entries(GU.CLAUSE_GUIDE ?? {});
+t("the first block carries all 11 clauses of the guide: id, why, what clears it, inputs and fixability", () =>
+  SYS.length === 2 && guideEntries.length === 11 &&
+  guideEntries.every(([id, e]) =>
+    SYS[0].text.includes(id) && SYS[0].text.includes(e.why) && SYS[0].text.includes(e.clears) && e.inputs.every((f) => SYS[0].text.includes(f)) && SYS[0].text.includes(e.fixable)));
+t("the first block says what rerun, partial and explain mean, in the guide's own words", () =>
+  SYS.length === 2 && Object.values(GU.FIXABLE_MEANING).every((m) => SYS[0].text.includes(m)));
+t("the first block lists the clauses in the guide's order", () => {
+  if (SYS.length !== 2) return false;
+  const at = guideEntries.map(([id]) => SYS[0].text.indexOf(`Clause: ${id}\n`));
+  return at.every((n, i) => n > SYS[0].text.indexOf("Clause guide") && (i === 0 || n > at[i - 1]));
+});
+t("a clause with no inputs says so in the first block", () => SYS.length === 2 && /Clause: criteriaNamed\n[\s\S]*?Inputs that matter: none/.test(SYS[0].text));
+t("the first block does not depend on the pack, and is byte-identical across calls (it is the cached prefix)", () => {
+  const a = PR.buildSystem("one pack");
+  const b = PR.buildSystem("a completely different pack, much longer ".repeat(50));
+  return a[0].text === b[0].text && a[0].text === PR.buildSystem("P")[0].text && Buffer.from(a[0].text).equals(Buffer.from(b[0].text));
+});
+t("buildSystem returns fresh blocks each call: editing one does not change the next", () => {
+  const a = PR.buildSystem("P");
+  a[0].text = "edited";
+  a[0].cache_control.type = "other";
+  a[1].cache_control.type = "other";
+  const b = PR.buildSystem("P");
+  return b[0].text.startsWith(SYSTEM_PROMPT) && b[0].cache_control.type === "ephemeral" && b[1].cache_control.type === "ephemeral";
+});
+t("the second block is the real pack, byte for byte", () => {
+  const p = pack();
+  return PR.buildSystem(p.text)[1].text === p.text && p.text.length > 1000;
+});
+t("the guide names no withheld clause: losMatchesDelay appears in neither block", () => SYS.length === 2 && SYSTEM_PROMPT.length > 500 && !/losMatchesDelay/.test(SYS[0].text) && !/losMatchesDelay/.test(SYSTEM_PROMPT));
+t("with NEVER_USE_SENTENCE removed, the first block (prompt and guide) contains no banned phrase", () => SYS.length === 2 && NEVER_USE.length > 20 && SYS[0].text.length > 8000 && bannedFree(without(SYS[0].text, NEVER_USE)));
+t("the first block is large enough to be worth caching, and is reported (bytes)", () => {
+  if (SYS.length !== 2) return false;
+  const bytes = Buffer.byteLength(SYS[0].text, "utf8");
+  console.log(`        first block: ${bytes} bytes, ${SYS[0].text.length} characters, about ${Math.round(bytes / 4)} tokens`);
+  return bytes > 8000;
+});
+
+// --- buildHistory ----------------------------------------------------------------------------------------------
+const turn = (i, role, over = {}) => ({
+  id: randomUUID(),
+  role,
+  content: `${role} ${i}`,
+  authorName: role === "engineer" ? "Ada Lovelace" : null,
+  findingId: null,
+  revisionId: null,
+  createdAt: new Date(1_800_000_000_000 + i * 1000).toISOString(),
+  ...over,
+});
+/** n messages, alternating, starting with `first`. */
+const thread = (n, first = "engineer") => Array.from({ length: n }, (_, i) => turn(i, (i % 2 === 0) === (first === "engineer") ? "engineer" : "datum"));
+const roles = (h) => h.map((m) => m.role);
+const alternates = (h) => h.every((m, i) => i === 0 || m.role !== h[i - 1].role);
+const hist = (messages, latest) => PR.buildHistory(messages, latest);
+
+t("25 alternating messages give at most 21 entries, the first of role user", () => {
+  const h = hist(thread(25), { content: "latest question" });
+  return h.length <= 21 && h.length > 1 && h[0].role === "user";
+});
+t("25 alternating messages that start with Datum give exactly 21 entries: the last 20, then the latest", () => {
+  const h = hist(thread(25, "datum"), { content: "latest question" });
+  return h.length === 21 && h[0].role === "user" && h[0].content === "engineer 5" && h[19].content === "datum 24" && h[20].content === "latest question";
+});
+t("25 messages that start with the engineer: the last 20 start with Datum's reply, which is dropped so the history opens with the engineer", () => {
+  const h = hist(thread(25), { content: "latest question" });
+  return h.length === 19 && h[0].role === "user" && h[0].content === "engineer 6" && !h.some((m) => String(m.content).includes("datum 5"));
+});
+t("the oldest messages are left out: only the last DATUM_LIMITS.historyMessages are read", () => {
+  const h = hist(thread(25), { content: "latest question" });
+  const text = h.map((m) => m.content).join("\n");
+  return ["engineer 0", "datum 1", "engineer 4", "datum 5"].every((c) => !text.split("\n").includes(c));
+});
+t("the history alternates user and assistant, ends on the user's latest turn, and every content is a non-empty string", () => {
+  const h = hist(thread(25), { content: "latest question" });
+  return alternates(h) && h.at(-1).role === "user" && h.at(-1).content.endsWith("latest question") && h.every((m) => ["user", "assistant"].includes(m.role) && typeof m.content === "string" && m.content.trim() !== "");
+});
+t("engineer maps to user and datum to assistant", () => same(roles(hist([turn(0, "engineer"), turn(1, "datum")], { content: "q" })), ["user", "assistant", "user"]));
+t("consecutive messages of one role are joined with a blank line", () => {
+  const h = hist([turn(0, "engineer", { content: "a" }), turn(1, "engineer", { content: "b" }), turn(2, "datum", { content: "c" }), turn(3, "datum", { content: "d" })], { content: "e" });
+  return same(h, [{ role: "user", content: "a\n\nb" }, { role: "assistant", content: "c\n\nd" }, { role: "user", content: "e" }]);
+});
+t("a trailing engineer message and the latest are one user turn, joined with a blank line", () => {
+  const h = hist([turn(0, "engineer", { content: "a" }), turn(1, "datum", { content: "b" }), turn(2, "engineer", { content: "c" })], { content: "d" });
+  return same(h, [{ role: "user", content: "a" }, { role: "assistant", content: "b" }, { role: "user", content: "c\n\nd" }]);
+});
+t("an empty thread gives the latest message alone, unchanged", () => same(hist([], { content: "why was this flagged?" }), [{ role: "user", content: "why was this flagged?" }]));
+t("a thread of Datum replies only still opens with the user's turn", () => {
+  const h = hist([turn(0, "datum"), turn(1, "datum")], { content: "q" });
+  return same(h, [{ role: "user", content: "q" }]);
+});
+t("a message with no text is skipped, not sent as an empty block", () => {
+  const h = hist([turn(0, "engineer", { content: "x" }), turn(1, "datum", { content: "   " }), turn(2, "engineer", { content: "y" })], { content: "z" });
+  return same(h, [{ role: "user", content: "x\n\ny\n\nz" }]);
+});
+t("a focus finding's title, id and clause are in the last user turn, ahead of the engineer's words", () => {
+  const f = REAL[0];
+  const h = hist(thread(4), { content: "why was this flagged?", focus: f });
+  const last = h.at(-1);
+  return last.role === "user" && last.content.includes(f.title) && last.content.includes(f.id) && last.content.includes(f.clauseId) && last.content.endsWith("why was this flagged?") && last.content.indexOf(f.title) < last.content.indexOf("why was this flagged?");
+});
+t("a focus finding with no thread is the only turn", () => {
+  const f = REAL[1];
+  const h = hist([], { content: "fix it", focus: f });
+  return h.length === 1 && h[0].role === "user" && h[0].content.includes(f.title) && h[0].content.endsWith("fix it");
+});
+t("with no focus, the latest message carries no note", () => hist(thread(2), { content: "plain question" }).at(-1).content === "plain question");
+t("a title with line breaks and a long title are shown on one line and clipped", () => {
+  const f = { ...REAL[0], title: `Line one\nline two\t${"x".repeat(2000)}` };
+  const c = hist([], { content: "q", focus: f })[0].content;
+  const noteLine = c.split("\n\n")[0];
+  return !noteLine.includes("\n") && noteLine.includes("Line one line two") && c.length < 1000;
+});
+t("buildHistory does not change the messages or the focus finding it is given", () => {
+  const messages = thread(25);
+  const f = { ...REAL[0] };
+  const before = JSON.stringify([messages, f]);
+  hist(messages, { content: "q", focus: f });
+  return JSON.stringify([messages, f]) === before;
+});
+t("buildHistory returns fresh entries: editing the result does not change the next call", () => {
+  const messages = thread(4);
+  const a = hist(messages, { content: "q" });
+  a[0].content = "edited";
+  return hist(messages, { content: "q" })[0].content === "engineer 0";
+});
+t("the window is DATUM_LIMITS.historyMessages, read from the contract, not copied", () => {
+  const code = stripComments(promptSrc);
+  return /DATUM_LIMITS\.historyMessages/.test(code) && !/slice\(\s*-\s*20\s*\)/.test(code);
+});
+t("the engineer's words and the model's earlier replies reach the history as the thread stored them, not reworded", () => {
+  const e = turn(0, "engineer", { content: "Use 1.0% growth. County letter, 2026-03-02." });
+  const d = turn(1, "datum", { content: "Re-ran with growth 1.0% (was 2.1%). Open Version 2 to see its findings." });
+  return same(hist([e, d], { content: "thanks" }), [{ role: "user", content: e.content }, { role: "assistant", content: d.content }, { role: "user", content: "thanks" }]);
 });
 
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);
