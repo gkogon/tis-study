@@ -30,6 +30,12 @@
  *               (no key: null, and the SDK's name is never resolved, watched by a module resolve hook that
  *               answers it with a stub), the limiter in security.ts, the mount, the wiring and the smoke script,
  *               read as text. The process's ANTHROPIC_API_KEY is deleted first; the check never uses one.
+ *   guards      the boundary guards that keep the chat from ever mutating a study: chat-never-mutates-studies,
+ *               only-study-revisions-inserts-projects, allowlist-matches-spec, revise-never-charges, client-lazy,
+ *               store-reads-proofread-only, and the two docs guards (types-header-names-chat,
+ *               spec-addendum-names-chat). Source-text guards read with TypeScript's parser; each has teeth
+ *               (a mutation applied in memory that must turn it red by name) and negative controls (code that
+ *               must stay allowed, with no guard red).
  *
  * The contract is imported by file URL with no loader: Node strips the types.
  * That works only while datum-chat.ts reaches GenerateTisBody through an explicit
@@ -41,7 +47,7 @@
  *   - a module that fails to load turning every assertion into a TypeError. Here a
  *     load failure is one named FAIL, and each assertion after it fails by name.
  */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -3041,10 +3047,7 @@ t("the wiring default-exports the router", () => /^export default router;$/m.tes
 // --- The client switch ---------------------------------------------------------------------------
 const clientSrc = read(CLIENT_REL);
 const clientCode = stripComments(clientSrc);
-t("client.ts has no top-level value import of @anthropic-ai/sdk: a static import of it is `import type` (erased)", () => {
-  const statics = [...clientCode.matchAll(/^\s*import\s+([^;]*?)\s+from\s+"@anthropic-ai\/sdk"/gm)].map((m) => m[1]);
-  return clientCode.length > 0 && statics.every((s) => /^type\s/.test(s)) && !/^\s*import\s+"@anthropic-ai\/sdk"/m.test(clientCode) && !/\brequire\s*\(/.test(clientCode);
-});
+// The static half of "the client never loads the SDK with no key" is the `client-lazy` guard in the guards section, with its teeth.
 t('client.ts loads the SDK in one place, with import("@anthropic-ai/sdk")', () => (clientCode.match(/\bimport\("@anthropic-ai\/sdk"\)/g) ?? []).length === 1);
 t("client.ts decides by process.env.ANTHROPIC_API_KEY", () => /process\.env\.ANTHROPIC_API_KEY/.test(clientCode));
 {
@@ -4317,6 +4320,592 @@ t(".env.example has the line ANTHROPIC_API_KEY= under a comment saying the chat 
 });
 t("the router, the wiring, the client and the smoke script contain none of the phrases the product never writes", () =>
   [routerSrc, wiringSrc, clientSrc, smokeSrc].every((s) => s.length > 0 && bannedFree(s)));
+
+// ===========================================================================
+// guards
+// ===========================================================================
+section("guards");
+
+// The boundary guards. The chat is the one thing in the product that executes, and it may do exactly one thing to a
+// study: add a version. These are the static checks that keep it so. They are source-text guards, the weakest kind, so
+// each carries its own teeth, as verify-proofread-routes.mjs does: a mutation applied to the in-memory source must turn
+// that guard red by name, and a negative control (code that must stay allowed) must leave every guard green. A guard
+// no mutation can turn red fails the run.
+//
+// The TypeScript parser (the parser only, never the type checker) reads the chat files, so a comment, a Set's
+// `delete` and the FOR UPDATE row lock are never mistaken for a write, and a write split over lines, aliased or
+// destructured is not missed. `typescript` is a root devDependency and resolves from scripts/.
+{
+  const TYPES_REL = "artifacts/tis-api-server/src/lib/proofread/types.ts";
+  const CHAT_SPEC_REL = "docs/superpowers/specs/2026-10-20-datum-chat-design.md";
+  const PRODUCT_SPEC_REL = "docs/superpowers/specs/2026-09-29-datum-in-product-design.md";
+  const LIB_DIR_REL = "artifacts/tis-api-server/src/lib/datum-chat";
+  const ROUTES_DIR_REL = "artifacts/tis-api-server/src/routes";
+  const REVISIONS_REL = "artifacts/tis-api-server/src/lib/study-revisions.ts";
+  const STORE_REL = `${LIB_DIR_REL}/store.ts`;
+  const REVISE_FILE_REL = `${LIB_DIR_REL}/revise.ts`;
+
+  let TS = null;
+  try {
+    TS = (await import("typescript")).default;
+  } catch (e) {
+    ok("precondition: typescript resolves from scripts/ under plain node, so the guards read syntax, not text", false, e instanceof Error ? e.message : String(e));
+  }
+  const parse = (rel, text) => {
+    if (TS === null) throw new Error("typescript did not load");
+    return TS.createSourceFile(rel, text, TS.ScriptTarget.ES2022, true, TS.ScriptKind.TS);
+  };
+  const walk = (node, visit) => {
+    visit(node);
+    TS.forEachChild(node, (child) => walk(child, visit));
+  };
+  const lineOf = (sf, node) => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+
+  /** The chat files: everything under lib/datum-chat/, routes/datum-chat*.ts, and lib/study-revisions.ts. */
+  const listTs = (dirRel, { recursive, keep }) => {
+    try {
+      return readdirSync(path.join(repo, dirRel), { recursive })
+        .map(String)
+        .filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts") && keep(f))
+        .sort()
+        .map((f) => `${dirRel}/${f}`);
+    } catch (e) {
+      ok(`precondition: ${dirRel} is listable`, false, e instanceof Error ? e.message : String(e));
+      return [];
+    }
+  };
+  const CHAT_FILE_RELS = [
+    ...listTs(LIB_DIR_REL, { recursive: true, keep: () => true }),
+    ...listTs(ROUTES_DIR_REL, { recursive: false, keep: (f) => f.startsWith("datum-chat") }),
+    REVISIONS_REL,
+  ];
+  const EXPECTED_CHAT_FILES = [
+    ...["contract", "tools", "clause-guide", "context", "prompt", "run", "revise", "store", "client"].map((n) => `${LIB_DIR_REL}/${n}.ts`),
+    ROUTER_REL,
+    WIRING_REL,
+    REVISIONS_REL,
+  ];
+  ok(
+    "precondition: the chat file set holds all twelve known files, so no guard runs over an empty glob",
+    EXPECTED_CHAT_FILES.every((f) => CHAT_FILE_RELS.includes(f)),
+    `missing: ${EXPECTED_CHAT_FILES.filter((f) => !CHAT_FILE_RELS.includes(f)).join(", ")}`,
+  );
+
+  const world = {
+    chat: new Map(CHAT_FILE_RELS.map((rel) => [rel, read(rel)])),
+    chatSpec: read(CHAT_SPEC_REL),
+    productSpec: read(PRODUCT_SPEC_REL),
+    types: read(TYPES_REL),
+    /** The contract's allowlist, as lib/tis-api-zod exports it. */
+    revisable: Array.isArray(C.REVISABLE_FIELDS) ? [...C.REVISABLE_FIELDS] : [],
+  };
+
+  // --- Expression helpers --------------------------------------------------------------------------------
+  const peel = (e) => {
+    while (e && (TS.isParenthesizedExpression(e) || TS.isNonNullExpression(e) || TS.isAsExpression(e) || TS.isAwaitExpression(e) || TS.isSatisfiesExpression(e) || TS.isTypeAssertionExpression(e))) e = e.expression;
+    return e;
+  };
+  /** The leftmost identifier of `a.b[c](d).e`, or null (`this`, a literal, `new X()`). */
+  const rootName = (e) => {
+    e = peel(e);
+    while (e) {
+      if (TS.isIdentifier(e)) return e.text;
+      if (TS.isPropertyAccessExpression(e) || TS.isElementAccessExpression(e) || TS.isCallExpression(e)) e = peel(e.expression);
+      else return null;
+    }
+    return null;
+  };
+  const lastName = (e) => {
+    e = peel(e);
+    if (TS.isIdentifier(e)) return e.text;
+    if (TS.isPropertyAccessExpression(e)) return e.name.text;
+    return null;
+  };
+  /** `x.name` and `x["name"]`: the member's name, or null for a computed one. */
+  const memberName = (n) => {
+    if (TS.isPropertyAccessExpression(n)) return n.name.text;
+    if (TS.isElementAccessExpression(n) && n.argumentExpression && (TS.isStringLiteral(n.argumentExpression) || TS.isNoSubstitutionTemplateLiteral(n.argumentExpression))) return n.argumentExpression.text;
+    return null;
+  };
+  /** A call's method: `recv.name(...)`. */
+  const methodOf = (call) => {
+    const callee = peel(call.expression);
+    const name = TS.isPropertyAccessExpression(callee) || TS.isElementAccessExpression(callee) ? memberName(callee) : null;
+    return name === null ? null : { name, recv: callee.expression };
+  };
+
+  /**
+   * What holds a database handle, and what is a study table, in one file. Handles: whatever the file imports from
+   * @workspace/db that is not a table (`db`), the parameters of a `.transaction(...)` callback (`tx`), and a
+   * variable assigned straight from a handle (`const h = tx`). `isHandleLike` also answers true for a member named
+   * db, tx, trx, txn or database (`deps.db`), because a handle that arrives by injection is imported nowhere.
+   * Tables: the names this repo gives the study tables, wherever they are imported from or aliased to. An in-memory
+   * Set or Map named anything else is neither, so `inFlight.delete(key)` is not a database write.
+   */
+  const HANDLE_NAMES = new Set(["db", "tx", "trx", "txn", "database"]);
+  const STUDY_TABLE_IDENT = /^(?:tisProjectsTable|studyRevisionsTable|studyProofread\w*Table)$/;
+  function dbInfo(sf) {
+    const handles = new Set();
+    const namespaces = new Set();
+    /** local name -> the table's own name */
+    const tables = new Map();
+    walk(sf, (n) => {
+      if (!(TS.isImportDeclaration(n) && TS.isStringLiteral(n.moduleSpecifier) && n.importClause)) return;
+      const c = n.importClause;
+      const fromDb = n.moduleSpecifier.text.startsWith("@workspace/db");
+      if (fromDb && c.name) handles.add(c.name.text);
+      if (!c.namedBindings) return;
+      if (TS.isNamespaceImport(c.namedBindings)) {
+        if (fromDb) {
+          handles.add(c.namedBindings.name.text);
+          namespaces.add(c.namedBindings.name.text);
+        }
+        return;
+      }
+      for (const el of c.namedBindings.elements) {
+        const imported = (el.propertyName ?? el.name).text;
+        if (STUDY_TABLE_IDENT.test(imported)) tables.set(el.name.text, imported);
+        else if (fromDb && !/Table$/.test(imported)) handles.add(el.name.text);
+      }
+    });
+    const isHandleLike = (e) => {
+      const root = rootName(e);
+      const last = lastName(e);
+      return (root !== null && handles.has(root)) || (last !== null && HANDLE_NAMES.has(last));
+    };
+    const tableOf = (e) => {
+      e = peel(e);
+      if (TS.isIdentifier(e)) return tables.get(e.text) ?? (STUDY_TABLE_IDENT.test(e.text) ? e.text : null);
+      if (TS.isPropertyAccessExpression(e)) {
+        const r = peel(e.expression);
+        if (STUDY_TABLE_IDENT.test(e.name.text) || (TS.isIdentifier(r) && namespaces.has(r.text))) return e.name.text;
+      }
+      return null;
+    };
+    for (let round = 0; round < 4; round++) {
+      let grew = false;
+      walk(sf, (n) => {
+        if (TS.isCallExpression(n)) {
+          const m = methodOf(n);
+          if (m && m.name === "transaction" && isHandleLike(m.recv)) {
+            for (const a of n.arguments) {
+              if (!(TS.isArrowFunction(a) || TS.isFunctionExpression(a))) continue;
+              for (const p of a.parameters) {
+                if (TS.isIdentifier(p.name) && !handles.has(p.name.text)) {
+                  handles.add(p.name.text);
+                  grew = true;
+                }
+              }
+            }
+          }
+        }
+        if (TS.isVariableDeclaration(n) && TS.isIdentifier(n.name) && n.initializer) {
+          const init = peel(n.initializer);
+          if (!(TS.isIdentifier(init) || TS.isPropertyAccessExpression(init))) return;
+          if (isHandleLike(init) && !handles.has(n.name.text)) {
+            handles.add(n.name.text);
+            grew = true;
+          }
+          const table = tableOf(init);
+          if (table !== null && !tables.has(n.name.text)) {
+            tables.set(n.name.text, table);
+            grew = true;
+          }
+        }
+      });
+      if (!grew) break;
+    }
+    return { isHandleLike, tableOf };
+  }
+
+  /** Every string and template in a file, with each `${expr}` kept as written, so `update ${tisProjectsTable}` reads as SQL. */
+  function sqlTexts(sf) {
+    const out = [];
+    walk(sf, (n) => {
+      if (TS.isStringLiteral(n) || TS.isNoSubstitutionTemplateLiteral(n)) out.push({ text: n.text, node: n });
+      else if (TS.isTemplateExpression(n)) {
+        let s = n.head.text;
+        for (const span of n.templateSpans) s += ` \${${span.expression.getText(sf)}} ${span.literal.text}`;
+        out.push({ text: s, node: n });
+      }
+    });
+    return out;
+  }
+  /** A study table by its SQL name, or an interpolation (whose target the guard cannot read, so it does not trust). */
+  const STUDY_SQL_TABLE = String.raw`(?:only\s+)?(?:"?public"?\.)?(?:"?(?:tis_projects|study_revisions|study_proofread_[a-z_]+)\b|\$\{)`;
+  const RAW_WRITE = new RegExp(String.raw`\b(?:update|delete\s+from|truncate(?:\s+table)?)\s+${STUDY_SQL_TABLE}`, "i");
+
+  /** Run `fn(rel, sf, flag)` over every file; `flag(node, what)` records `rel:line what`. A file that will not parse is a violation. */
+  const eachChatFile = (files, fn) => {
+    const out = [];
+    for (const [rel, text] of files) {
+      let sf;
+      try {
+        sf = parse(rel, text);
+      } catch (e) {
+        out.push(`${rel}: ${e instanceof Error ? e.message : String(e)}`);
+        continue;
+      }
+      fn(rel, sf, (node, what) => out.push(`${rel}:${lineOf(sf, node)} ${what}`));
+    }
+    return out;
+  };
+
+  // --- chat-never-mutates-studies ---------------------------------------------------------------------------
+  // The chat adds versions and never edits or removes a row. Drizzle: an `update` or `delete` member of a database
+  // handle (called, passed on, or taken off it by destructuring), an `update(...)`/`delete(...)` call on a study
+  // table, and an insert that rewrites on conflict. Raw SQL: update, delete from or truncate on tis_projects,
+  // study_revisions or a study_proofread_* table, or on a target the guard cannot read (an interpolation). The row
+  // lock (`.for("update")`, `for update`), count/max reads, and a Set's or Map's own `delete` are none of those.
+  function chatMutations(files) {
+    return eachChatFile(files, (rel, sf, flag) => {
+      const { isHandleLike, tableOf } = dbInfo(sf);
+      const flagged = new Set();
+      const once = (node, what) => {
+        const at = node.getStart(sf);
+        if (flagged.has(at)) return;
+        flagged.add(at);
+        flag(node, what);
+      };
+      walk(sf, (n) => {
+        if (TS.isPropertyAccessExpression(n) || TS.isElementAccessExpression(n)) {
+          const name = memberName(n);
+          if ((name === "update" || name === "delete") && isHandleLike(n.expression)) once(n, `${flat(n.getText(sf))} is a write on a database handle`);
+          if (name === "onConflictDoUpdate" || name === "onDuplicateKeyUpdate") once(n, `${name} rewrites a row`);
+        }
+        if (TS.isCallExpression(n)) {
+          const m = methodOf(n);
+          if (m && (m.name === "update" || m.name === "delete") && n.arguments.length > 0 && tableOf(n.arguments[0]) !== null) {
+            once(peel(n.expression), `.${m.name}(${flat(n.arguments[0].getText(sf))}) writes a study table`);
+          }
+        }
+        if (TS.isVariableDeclaration(n) && TS.isObjectBindingPattern(n.name) && n.initializer && isHandleLike(n.initializer)) {
+          for (const el of n.name.elements) {
+            const key = el.propertyName ?? el.name;
+            const k = TS.isIdentifier(key) || TS.isStringLiteral(key) ? key.text : null;
+            if (k === "update" || k === "delete") once(el, `${k} is taken off a database handle`);
+          }
+        }
+      });
+      for (const { text, node } of sqlTexts(sf)) if (RAW_WRITE.test(text)) once(node, `raw SQL writes a study table: ${flat(text).slice(0, 70)}`);
+    });
+  }
+
+  // --- only-study-revisions-inserts-projects ----------------------------------------------------------------
+  // The one place a version is made. An insert into tis_projects (through the table, an alias or a renamed import,
+  // or raw SQL) may appear in lib/study-revisions.ts and in no other chat file, and must appear there, or the guard
+  // would pass with no version-maker at all.
+  const RAW_PROJECT_INSERT_HIT = /\binsert\s+into\s+(?:only\s+)?(?:"?public"?\.)?(?:"?tis_projects\b|\$\{\s*tisProjectsTable\s*\})/i;
+  function projectInserts(files) {
+    let inRevisions = 0;
+    const out = eachChatFile(files, (rel, sf, flag) => {
+      const { tableOf } = dbInfo(sf);
+      const hit = (node, what) => {
+        if (rel === REVISIONS_REL) inRevisions++;
+        else flag(node, what);
+      };
+      walk(sf, (n) => {
+        if (!TS.isCallExpression(n)) return;
+        const m = methodOf(n);
+        if (m && m.name === "insert" && n.arguments.length > 0 && tableOf(n.arguments[0]) === "tisProjectsTable") hit(n, "inserts into tis_projects");
+      });
+      for (const { text, node } of sqlTexts(sf)) if (RAW_PROJECT_INSERT_HIT.test(text)) hit(node, `raw SQL inserts into tis_projects: ${flat(text).slice(0, 60)}`);
+    });
+    if (inRevisions === 0) out.push(`${REVISIONS_REL} does not insert into tis_projects, so the one place a version is made is gone`);
+    return out;
+  }
+
+  // --- allowlist-matches-spec -------------------------------------------------------------------------------
+  // Only the paragraph that starts `**Fields the chat may change**` and runs to the next blank line is read: the
+  // paragraph after it backticks GenerateTisBody and names no field.
+  function allowlistDiff(w) {
+    const lines = w.chatSpec.split("\n");
+    const starts = lines.flatMap((l, i) => (l.startsWith("**Fields the chat may change**") ? [i] : []));
+    if (starts.length !== 1) return [`the chat spec has ${starts.length} paragraphs that start with "**Fields the chat may change**", wanted 1`];
+    let end = starts[0];
+    while (end < lines.length && lines[end].trim() !== "") end++;
+    const paragraph = lines.slice(starts[0], end).join(" ");
+    const inSpec = new Set([...paragraph.matchAll(/`([^`]+)`/g)].map((m) => m[1]));
+    const inContract = new Set(w.revisable.filter((f) => f !== "removeGrowthOverride"));
+    const out = [];
+    if (inSpec.size === 0) out.push("the spec's paragraph names no field");
+    const onlySpec = [...inSpec].filter((f) => !inContract.has(f));
+    const onlyContract = [...inContract].filter((f) => !inSpec.has(f));
+    if (onlySpec.length) out.push(`in the spec's paragraph, not in REVISABLE_FIELDS: ${onlySpec.join(", ")}`);
+    if (onlyContract.length) out.push(`in REVISABLE_FIELDS, not in the spec's paragraph: ${onlyContract.join(", ")}`);
+    return out;
+  }
+
+  // --- revise-never-charges -------------------------------------------------------------------------------
+  // A version is the same study revised (the site, land use and size are locked), so it takes no study slot.
+  // Identifiers and strings are read, never comments.
+  const CHARGE_NAMES = ["reserveStudySlot", "releaseStudySlot"];
+  function chargesFound(files) {
+    return eachChatFile(files, (rel, sf, flag) => {
+      walk(sf, (n) => {
+        if (TS.isIdentifier(n) && CHARGE_NAMES.includes(n.text)) flag(n, `names ${n.text}`);
+      });
+      for (const { text, node } of sqlTexts(sf)) if (CHARGE_NAMES.some((c) => text.includes(c))) flag(node, "names a slot function in a string");
+    });
+  }
+
+  // --- client-lazy ------------------------------------------------------------------------------------------
+  // Task 7's static check on client.ts (ruling R4), now named and with teeth; its runtime twin is in the router
+  // section, which loads the client with the SDK's name hooked and sees it never resolved. With no key nothing may
+  // load the SDK, so the only static import of it is `import type` (every compiler erases it) and the one real load
+  // is a dynamic import inside a function. A value import, a bare import, a re-export, a require() and a dynamic
+  // import that runs at module load are each an eager load.
+  const SDK_PACKAGE = "@anthropic-ai/sdk";
+  const isSdk = (spec) => spec === SDK_PACKAGE || spec.startsWith(`${SDK_PACKAGE}/`);
+  const insideFunction = (n) => {
+    for (let p = n.parent; p; p = p.parent) if (TS.isFunctionLike(p)) return true;
+    return false;
+  };
+  function clientEagerSdk(files) {
+    const text = files.get(CLIENT_REL);
+    if (typeof text !== "string" || text.length === 0) return [`${CLIENT_REL} is missing`];
+    const sf = parse(CLIENT_REL, text);
+    const out = [];
+    const bad = (node, what) => out.push(`line ${lineOf(sf, node)}: ${what}`);
+    walk(sf, (n) => {
+      if (TS.isImportDeclaration(n) && TS.isStringLiteral(n.moduleSpecifier) && isSdk(n.moduleSpecifier.text) && n.importClause?.isTypeOnly !== true) bad(n, "a value import of the SDK");
+      if (TS.isExportDeclaration(n) && n.moduleSpecifier && TS.isStringLiteral(n.moduleSpecifier) && isSdk(n.moduleSpecifier.text) && !n.isTypeOnly) bad(n, "a re-export of the SDK");
+      if (TS.isImportEqualsDeclaration(n) && TS.isExternalModuleReference(n.moduleReference) && TS.isStringLiteral(n.moduleReference.expression) && isSdk(n.moduleReference.expression.text) && !n.isTypeOnly) bad(n, "an import = require() of the SDK");
+      if (TS.isCallExpression(n)) {
+        if (TS.isIdentifier(n.expression) && n.expression.text === "require") bad(n, "a require() call");
+        const arg = n.arguments[0];
+        if (n.expression.kind === TS.SyntaxKind.ImportKeyword && arg && TS.isStringLiteral(arg) && isSdk(arg.text) && !insideFunction(n)) bad(n, "a dynamic import of the SDK that runs when the module loads");
+      }
+    });
+    return out;
+  }
+
+  // --- store-reads-proofread-only ---------------------------------------------------------------------------
+  // store.ts reaches the proofread's data through one reader, latestRunForProject, and through nothing else that
+  // could write it: one import declaration from proofread-store, by name, of that name alone; no value import of any
+  // other proofread module (a type import is erased); no proofread table from the db; no dynamic import or require
+  // of a proofread module.
+  const PROOFREAD_STORE = /(?:^|\/)proofread-store(?:\.ts)?$/;
+  const PROOFREAD_MODULE = /(?:^|\/)proofread[^/]*(?:\/|$)/;
+  function storeImports(files) {
+    const text = files.get(STORE_REL);
+    if (typeof text !== "string" || text.length === 0) return [`${STORE_REL} is missing`];
+    const sf = parse(STORE_REL, text);
+    const out = [];
+    const names = [];
+    let fromStore = 0;
+    const bad = (node, what) => out.push(`line ${lineOf(sf, node)}: ${what}`);
+    const literal = (n) => n && (TS.isStringLiteral(n) || TS.isNoSubstitutionTemplateLiteral(n));
+    walk(sf, (n) => {
+      if (TS.isImportDeclaration(n) && TS.isStringLiteral(n.moduleSpecifier)) {
+        const spec = n.moduleSpecifier.text;
+        const c = n.importClause;
+        if (PROOFREAD_STORE.test(spec)) {
+          fromStore++;
+          const nb = c?.namedBindings;
+          if (!c || c.name || !nb || TS.isNamespaceImport(nb)) bad(n, "proofread-store is imported other than by name");
+          else names.push(...nb.elements.map((el) => (el.propertyName ?? el.name).text));
+        } else if (PROOFREAD_MODULE.test(spec) && c?.isTypeOnly !== true) {
+          bad(n, `a value import of ${spec}`);
+        }
+        if (spec.startsWith("@workspace/db") && c?.namedBindings && TS.isNamedImports(c.namedBindings)) {
+          for (const el of c.namedBindings.elements) {
+            const imported = (el.propertyName ?? el.name).text;
+            if (/^studyProofread/.test(imported)) bad(el, `${imported} is imported from the db, so the store would reach the proofread's rows itself`);
+          }
+        }
+      }
+      if (TS.isCallExpression(n) && (n.expression.kind === TS.SyntaxKind.ImportKeyword || (TS.isIdentifier(n.expression) && n.expression.text === "require")) && literal(n.arguments[0]) && PROOFREAD_MODULE.test(n.arguments[0].text)) {
+        bad(n, `${n.arguments[0].text} is loaded by import() or require()`);
+      }
+    });
+    if (fromStore !== 1) out.push(`store.ts has ${fromStore} import declarations from proofread-store, wanted 1`);
+    if (!same(names, ["latestRunForProject"])) out.push(`store.ts imports [${names.join(", ")}] from proofread-store, wanted [latestRunForProject]`);
+    return out;
+  }
+
+  // --- types-header-names-chat and spec-addendum-names-chat ---------------------------------------------------
+  const flat = (s) => s.replace(/\s+/g, " ").trim();
+  /** The spec's exact sentence (Docs, in the chat spec), which is also the header of proofread/types.ts. */
+  const HEADER_SENTENCE = "Proofread advises and never writes. The Datum chat changes inputs only when the engineer asks, by making a new version; the original is never changed.";
+  const OLD_HEADER_SENTENCE = "Datum advises; it never executes.";
+  function typesHeader(w) {
+    const out = [];
+    const block = w.types.match(/^\s*\/\*\*[\s\S]*?\*\//);
+    if (!block) return ["proofread/types.ts has no leading doc comment"];
+    const header = flat(block[0].split("\n").map((l) => l.replace(/^\s*(?:\/\*\*|\*\/|\*)\s?/, "")).join(" "));
+    if (!header.includes(HEADER_SENTENCE)) out.push("the leading comment of proofread/types.ts does not carry the spec's sentence");
+    if (header.includes(OLD_HEADER_SENTENCE)) out.push(`the leading comment of proofread/types.ts still says "${OLD_HEADER_SENTENCE}"`);
+    if (!flat(w.chatSpec).includes(HEADER_SENTENCE)) out.push("the chat spec's own sentence for the header is not the one this guard pins");
+    return out;
+  }
+  const CHAT_SPEC_FILE = "2026-10-20-datum-chat-design.md";
+  function productSpecAddendum(spec) {
+    const at = spec.lastIndexOf("\n## Addendum");
+    if (at < 0) return ["the 2026-09-29 spec has no Addendum section"];
+    const body = spec.slice(at);
+    const out = [];
+    if (spec.indexOf("\n## ", at + 1) >= 0) out.push("the Addendum is not the spec's last section");
+    if (!body.includes(CHAT_SPEC_FILE)) out.push(`the Addendum does not link ${CHAT_SPEC_FILE}`);
+    if (!/only executor/i.test(flat(body))) out.push('the Addendum does not say the Datum chat is the "only executor"');
+    if (!bannedFree(body)) out.push("the Addendum uses a phrase the product never writes");
+    return out;
+  }
+
+  // --- The table -----------------------------------------------------------------------------------------
+  const GUARDS = [
+    { id: "chat-never-mutates-studies", says: "no chat file calls update or delete on a database handle or study table, and none writes raw SQL update/delete/truncate on tis_projects, study_revisions or a study_proofread_* table", check: (w) => chatMutations(w.chat) },
+    { id: "only-study-revisions-inserts-projects", says: "insert(tisProjectsTable) appears in lib/study-revisions.ts and nowhere else in the chat files", check: (w) => projectInserts(w.chat) },
+    { id: "allowlist-matches-spec", says: "the backticked names in the spec's \"Fields the chat may change\" paragraph equal REVISABLE_FIELDS minus removeGrowthOverride", check: (w) => allowlistDiff(w) },
+    { id: "revise-never-charges", says: "no chat file names reserveStudySlot or releaseStudySlot", check: (w) => chargesFound(w.chat) },
+    { id: "client-lazy", says: "client.ts has no top-level value import of @anthropic-ai/sdk: a static import of it is `import type` (erased), and the one dynamic import sits inside a function", check: (w) => clientEagerSdk(w.chat) },
+    { id: "store-reads-proofread-only", says: "store.ts imports only latestRunForProject from proofread-store, and nothing else that writes proofread", check: (w) => storeImports(w.chat) },
+    { id: "types-header-names-chat", says: "the header of proofread/types.ts carries the chat spec's sentence: the proofread never writes, the chat changes inputs only when asked, by making a new version", check: (w) => typesHeader(w) },
+    { id: "spec-addendum-names-chat", says: "the 2026-09-29 spec ends with an Addendum that links the chat spec and names the chat as the only executor", check: (w) => productSpecAddendum(w.productSpec) },
+  ];
+  const verdicts = (w) =>
+    GUARDS.map((g) => {
+      try {
+        return { id: g.id, bad: g.check(w) };
+      } catch (e) {
+        return { id: g.id, bad: [`threw: ${e instanceof Error ? e.message : String(e)}`] };
+      }
+    });
+  const redOf = (w) => verdicts(w).filter((v) => v.bad.length > 0).map((v) => v.id);
+
+  for (const v of verdicts(world)) ok(`guard ${v.id}: ${GUARDS.find((g) => g.id === v.id).says}`, v.bad.length === 0, v.bad.join(" | "));
+
+  // --- Teeth and negative controls -------------------------------------------------------------------------
+  const edit = (rel, fn) => (w) => {
+    if (!w.chat.has(rel)) throw new Error(`${rel} is not a chat file`);
+    return { ...w, chat: new Map([...w.chat].map(([r, text]) => [r, r === rel ? fn(text) : text])) };
+  };
+  const editKey = (key, fn) => (w) => ({ ...w, [key]: fn(w[key]) });
+  /** Replace the first `needle`; an anchor that is not there is an error, never a silent no-op. */
+  const swap = (needle, replacement) => (text) => {
+    if (!text.includes(needle)) throw new Error(`the anchor is not in the file: ${needle}`);
+    return text.replace(needle, () => replacement);
+  };
+  const swapRe = (re, replacement) => (text) => {
+    if (!re.test(text)) throw new Error(`the anchor is not in the file: ${re}`);
+    return text.replace(re, () => replacement);
+  };
+  const append = (code) => (text) => `${text}\n${code}\n`;
+  const prepend = (code) => (text) => `${code}\n${text}`;
+  const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  /** A sentence as it is wrapped in a block comment: any run of spaces, newlines and asterisks between words. */
+  const wrapped = (sentence) => new RegExp(sentence.split(" ").map(escapeRe).join("(?:\\s|\\*)+"));
+
+  const UPDATE_STUDY = 'await db.update(tisProjectsTable).set({ projectName: "x" });';
+  const TEETH = [
+    // chat-never-mutates-studies
+    { label: "db.update(tisProjectsTable).set({projectName}) inserted in store.ts", flips: ["chat-never-mutates-studies"], apply: edit(STORE_REL, append(`export async function mutate() { ${UPDATE_STUDY} }`)) },
+    { label: "tx.delete(studyRevisionsTable) inserted in study-revisions.ts's transaction", flips: ["chat-never-mutates-studies"], apply: edit(REVISIONS_REL, swap("return { projectId: study!.id, version, revisionId: revision!.id };", "await tx.delete(studyRevisionsTable);\n    return { projectId: study!.id, version, revisionId: revision!.id };")) },
+    { label: "a transaction handle aliased (const h = tx) and then h.update(studyProofreadRunsTable)", flips: ["chat-never-mutates-studies"], apply: edit(REVISIONS_REL, swap("return { projectId: study!.id, version, revisionId: revision!.id };", "const h = tx;\n    await h.update(studyProofreadRunsTable).set({});\n    return { projectId: study!.id, version, revisionId: revision!.id };")) },
+    { label: "an injected handle: deps.db.delete(...) in revise.ts, which imports no db", flips: ["chat-never-mutates-studies"], apply: edit(REVISE_FILE_REL, append("export async function mutate(deps: { db: { delete(t: unknown): unknown } }) { await deps.db.delete(studyProofreadRunsTable); }")) },
+    { label: 'db["delete"](tisProjectsTable): the method named by a string', flips: ["chat-never-mutates-studies"], apply: edit(STORE_REL, append('export async function mutate() { await db["delete"](tisProjectsTable); }')) },
+    { label: "const { update } = db: the method taken off the handle", flips: ["chat-never-mutates-studies"], apply: edit(STORE_REL, append("export const { update } = db;")) },
+    { label: "an insert into study_revisions that rewrites a row (onConflictDoUpdate)", flips: ["chat-never-mutates-studies"], apply: edit(STORE_REL, append("export async function mutate() { await db.insert(studyRevisionsTable).values({}).onConflictDoUpdate({ target: studyRevisionsTable.id, set: {} }); }")) },
+    { label: "raw SQL: sql`update tis_projects set ...` in study-revisions.ts", flips: ["chat-never-mutates-studies"], apply: edit(REVISIONS_REL, append("export const bad = sql`update tis_projects set project_name = 'x'`;")) },
+    { label: 'raw SQL, quoted, schema-qualified and upper-case: "DELETE FROM public.\\"study_proofread_findings\\"" in store.ts', flips: ["chat-never-mutates-studies"], apply: edit(STORE_REL, append('export const bad = "DELETE FROM public.\\"study_proofread_findings\\" WHERE true";')) },
+    { label: "raw SQL against an interpolated table: sql`update ${tisProjectsTable} set ...`", flips: ["chat-never-mutates-studies"], apply: edit(REVISIONS_REL, append("export const bad = sql`update ${tisProjectsTable} set project_name = 'x'`;")) },
+    // only-study-revisions-inserts-projects
+    { label: "db.insert(tisProjectsTable) inserted in store.ts", flips: ["only-study-revisions-inserts-projects"], apply: edit(STORE_REL, append("export async function mutate() { await db.insert(tisProjectsTable).values({}); }")) },
+    { label: "an insert split over lines in routes/datum-chat.ts", flips: ["only-study-revisions-inserts-projects"], apply: edit(WIRING_REL, append("export async function mutate() {\n  await db\n    .insert(\n      tisProjectsTable,\n    )\n    .values({});\n}")) },
+    { label: "an insert through an alias (const projects = tisProjectsTable) in run.ts", flips: ["only-study-revisions-inserts-projects"], apply: edit(`${LIB_DIR_REL}/run.ts`, append("const projects = tisProjectsTable;\nexport async function mutate() { await db.insert(projects).values({}); }")) },
+    { label: "an insert through a renamed import (tisProjectsTable as projects) in context.ts", flips: ["only-study-revisions-inserts-projects"], apply: edit(`${LIB_DIR_REL}/context.ts`, append('import { tisProjectsTable as projects } from "@workspace/db";\nexport async function mutate() { await db.insert(projects).values({}); }')) },
+    { label: "raw SQL: insert into tis_projects in store.ts", flips: ["only-study-revisions-inserts-projects"], apply: edit(STORE_REL, append('export const bad = "INSERT INTO tis_projects (id) VALUES (1)";')) },
+    { label: "study-revisions.ts stops inserting into tis_projects (it inserts into study_revisions twice)", flips: ["only-study-revisions-inserts-projects"], apply: edit(REVISIONS_REL, swap(".insert(tisProjectsTable)", ".insert(studyRevisionsTable)")) },
+    // allowlist-matches-spec
+    { label: "weather dropped from the contract copy", flips: ["allowlist-matches-spec"], apply: (w) => ({ ...w, revisable: w.revisable.filter((f) => f !== "weather") }) },
+    { label: "a locked field (projectName) added to the contract copy", flips: ["allowlist-matches-spec"], apply: (w) => ({ ...w, revisable: [...w.revisable, "projectName"] }) },
+    { label: "a field (studyRadiusMi) added to the spec's paragraph", flips: ["allowlist-matches-spec"], apply: editKey("chatSpec", swap("`realLaneGeometry`,", "`realLaneGeometry`, `studyRadiusMi`,")) },
+    { label: "the spec's paragraph no longer starts with its bold lead", flips: ["allowlist-matches-spec"], apply: editKey("chatSpec", swap("**Fields the chat may change** (the allowlist)", "**Fields it may change** (the allowlist)")) },
+    // revise-never-charges
+    { label: "reserveStudySlot called in revise.ts", flips: ["revise-never-charges"], apply: edit(REVISE_FILE_REL, append("export async function charge(firmId: string) { return reserveStudySlot(firmId); }")) },
+    { label: "releaseStudySlot imported in study-revisions.ts", flips: ["revise-never-charges"], apply: edit(REVISIONS_REL, prepend('import { releaseStudySlot } from "./firms";')) },
+    { label: "reserveStudySlot reached through a string key in routes/datum-chat.ts", flips: ["revise-never-charges"], apply: edit(WIRING_REL, append('export const slot = firmsModule["reserveStudySlot"];')) },
+    // client-lazy
+    { label: 'import Anthropic from "@anthropic-ai/sdk" at the top of client.ts', flips: ["client-lazy"], apply: edit(CLIENT_REL, prepend('import Anthropic from "@anthropic-ai/sdk";')) },
+    { label: 'import { type Message } from "@anthropic-ai/sdk" (an inline type is not an erased import)', flips: ["client-lazy"], apply: edit(CLIENT_REL, prepend('import { type Message } from "@anthropic-ai/sdk";')) },
+    { label: 'a bare import "@anthropic-ai/sdk"', flips: ["client-lazy"], apply: edit(CLIENT_REL, prepend('import "@anthropic-ai/sdk";')) },
+    { label: 'require("@anthropic-ai/sdk")', flips: ["client-lazy"], apply: edit(CLIENT_REL, append('export const sdk = require("@anthropic-ai/sdk");')) },
+    { label: 'a re-export: export { default } from "@anthropic-ai/sdk"', flips: ["client-lazy"], apply: edit(CLIENT_REL, append('export { default } from "@anthropic-ai/sdk";')) },
+    { label: 'a top-level await import("@anthropic-ai/sdk"), which runs at load', flips: ["client-lazy"], apply: edit(CLIENT_REL, append('export const sdk = await import("@anthropic-ai/sdk");')) },
+    // store-reads-proofread-only
+    { label: "store.ts imports a second name from proofread-store", flips: ["store-reads-proofread-only"], apply: edit(STORE_REL, swap('import { latestRunForProject } from "../proofread-store";', 'import { latestRunForProject, recordDisposition } from "../proofread-store";')) },
+    { label: "store.ts imports from proofread-run", flips: ["store-reads-proofread-only"], apply: edit(STORE_REL, prepend('import { enqueueProofread } from "../proofread-run";')) },
+    { label: "store.ts imports proofread-store a second time", flips: ["store-reads-proofread-only"], apply: edit(STORE_REL, prepend('import { findingInFirmRun } from "../proofread-store";')) },
+    { label: "store.ts imports proofread-store as a namespace", flips: ["store-reads-proofread-only"], apply: edit(STORE_REL, swap('import { latestRunForProject } from "../proofread-store";', 'import * as proofreadStore from "../proofread-store";')) },
+    { label: "store.ts loads proofread-store with a dynamic import", flips: ["store-reads-proofread-only"], apply: edit(STORE_REL, append('export const lazy = () => import("../proofread-store");')) },
+    { label: "store.ts reads a proofread table itself (studyProofreadFindingsTable)", flips: ["store-reads-proofread-only"], apply: edit(STORE_REL, swap('import { db, studyDatumMessagesTable, usersTable } from "@workspace/db";', 'import { db, studyDatumMessagesTable, studyProofreadFindingsTable, usersTable } from "@workspace/db";')) },
+    { label: "store.ts stops importing latestRunForProject", flips: ["store-reads-proofread-only"], apply: edit(STORE_REL, swap('import { latestRunForProject } from "../proofread-store";', "")) },
+    // types-header-names-chat
+    { label: "the header of proofread/types.ts goes back to the old sentence", flips: ["types-header-names-chat"], apply: editKey("types", swapRe(wrapped(HEADER_SENTENCE), OLD_HEADER_SENTENCE)) },
+    { label: "the sentence moves out of the header into the code below it", flips: ["types-header-names-chat"], apply: editKey("types", (t) => `${t.replace(/^\s*\/\*\*[\s\S]*?\*\//, "/** Proofread clause contract. */")}\n// ${HEADER_SENTENCE}\n`) },
+    { label: "the chat spec's sentence for the header drifts from the pinned one", flips: ["types-header-names-chat"], apply: editKey("chatSpec", swapRe(/the original is never\s+changed\./, "the original may be changed.")) },
+    // spec-addendum-names-chat
+    { label: "the 2026-09-29 spec loses its Addendum", flips: ["spec-addendum-names-chat"], apply: editKey("productSpec", (t) => (t.lastIndexOf("\n## Addendum") < 0 ? t : `${t.slice(0, t.lastIndexOf("\n## Addendum"))}\n`)) },
+    { label: "the Addendum no longer links the chat spec", flips: ["spec-addendum-names-chat"], apply: editKey("productSpec", (t) => t.split(CHAT_SPEC_FILE).join("the-chat-spec.md")) },
+    { label: "the Addendum stops calling the chat the only executor", flips: ["spec-addendum-names-chat"], apply: editKey("productSpec", (t) => t.replace(/only executor/gi, "an executor")) },
+    // negative controls: code that must stay allowed, with no guard red
+    { label: "NEGATIVE CONTROL: Set.delete, Map.delete and an object's own update() in store.ts", flips: [], apply: edit(STORE_REL, append('const seen = new Set<string>();\nseen.delete("a");\nconst cache = new Map<string, number>();\ncache.delete("k");\nconst counter = { update(n: number) { return n; } };\ncounter.update(1);\nexport const inFlight = new Set<string>();\nexport const release = (key: string) => inFlight.delete(key);')) },
+    { label: "NEGATIVE CONTROL: reads and the row lock in raw SQL, and prose that says update", flips: [], apply: edit(STORE_REL, append("export const reads = sql`select id from tis_projects where id = ${id} for update`;\nexport const count = sql`select count(*) from study_revisions`;\nexport const prose = \"Datum does not update the study or delete the original.\";")) },
+    { label: "NEGATIVE CONTROL: a comment in revise.ts that names the slot functions", flips: [], apply: edit(REVISE_FILE_REL, append("// reserveStudySlot and releaseStudySlot are never called here; db.update(tisProjectsTable) is never called either.")) },
+    { label: "NEGATIVE CONTROL: another type-only import of the SDK in client.ts", flips: [], apply: edit(CLIENT_REL, prepend('import type { Message } from "@anthropic-ai/sdk";\nimport type { Tool } from "@anthropic-ai/sdk/resources/messages";')) },
+    { label: "NEGATIVE CONTROL: a type-only import from the proofread directory in store.ts", flips: [], apply: edit(STORE_REL, prepend('import type { ProofreadFinding } from "../proofread/types.ts";')) },
+    { label: "NEGATIVE CONTROL: a backticked name in the paragraph after the allowlist (GenerateTisBody's is already there)", flips: [], apply: editKey("chatSpec", swap("**Every other field** is copied", "**Every other field** (not `studyRadiusMi`) is copied")) },
+  ];
+
+  // A teeth run reads what the mutation turned red: the guards red after it that were not red before. A guard that is
+  // already red on the real files shows up once, above, and cannot also show its teeth.
+  const baselineRed = new Set(redOf(world));
+  const newlyRed = (w) => redOf(w).filter((id) => !baselineRed.has(id));
+  for (const m of TEETH) {
+    let mutated;
+    try {
+      mutated = m.apply(world);
+    } catch (e) {
+      ok(`teeth: ${m.label}`, false, `the mutation could not be applied: ${e instanceof Error ? e.message : String(e)}`);
+      continue;
+    }
+    const red = newlyRed(mutated);
+    const blind = m.flips.filter((id) => baselineRed.has(id));
+    ok(
+      `teeth: ${m.label} -> red: ${m.flips.length ? m.flips.join(", ") : "nothing"}`,
+      blind.length === 0 && sameSet(red, m.flips),
+      blind.length ? `${blind.join(", ")} is already red on the real files, so the mutation cannot show it` : `actually red: ${red.length ? red.join(", ") : "nothing"}`,
+    );
+  }
+  {
+    // The update guard covers every file of the set, not just the ones named above.
+    const missed = [];
+    for (const rel of CHAT_FILE_RELS) {
+      const red = newlyRed(edit(rel, append(`export async function mutate() { ${UPDATE_STUDY} }`))(world));
+      if (!sameSet(red, ["chat-never-mutates-studies"])) missed.push(`${rel} (red: ${red.join(", ") || "nothing"})`);
+    }
+    ok(`teeth: db.update(tisProjectsTable) turns chat-never-mutates-studies red in each of the ${CHAT_FILE_RELS.length} chat files`, CHAT_FILE_RELS.length >= 12 && missed.length === 0, missed.join("; "));
+  }
+  {
+    const covered = new Set(TEETH.filter((m) => m.flips.length > 0).flatMap((m) => m.flips));
+    const toothless = GUARDS.filter((g) => !covered.has(g.id)).map((g) => g.id);
+    ok("every guard has a mutation that turns it red", toothless.length === 0, `none for: ${toothless.join(", ")}`);
+  }
+  {
+    // The live negative controls: the real files already hold the code the guards must not mistake for a write.
+    const revise = stripComments(world.chat.get(REVISE_FILE_REL) ?? "");
+    const revisions = stripComments(world.chat.get(REVISIONS_REL) ?? "");
+    const only = (rel) => new Map([[rel, world.chat.get(rel) ?? ""]]);
+    ok(
+      "negative control, live: revise.ts really calls inFlight.delete(...) on its in-memory Set, and the update guard is green on that file",
+      /\binFlight\.delete\(/.test(revise) && chatMutations(only(REVISE_FILE_REL)).length === 0,
+    );
+    ok(
+      'negative control, live: study-revisions.ts really holds the .for("update") row lock and the count/max reads, and the update guard is green on that file',
+      /\.for\("update"\)/.test(revisions) && /max\(\$\{tisProjectsTable\.version\}\)/.test(revisions) && /count\(\*\)/.test(revisions) && chatMutations(only(REVISIONS_REL)).length === 0,
+    );
+  }
+}
 
 console.log(fails === 0 ? "\nALL CHECKS PASSED" : `\n${fails} CHECK(S) FAILED`);
 process.exit(fails === 0 ? 0 : 1);

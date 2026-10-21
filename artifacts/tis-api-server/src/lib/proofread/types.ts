@@ -8,7 +8,10 @@
  *   - `sourceLabel` and `readPaths` are non-optional, because a finding with no
  *     named source is an opinion, not a finding (TIS-PROOFREAD-PROTOCOL.md).
  *   - there is no patch, replacement value, or write path anywhere in the
- *     result. Datum advises; it never executes.
+ *     result.
+ *
+ * Proofread advises and never writes. The Datum chat changes inputs only when
+ * the engineer asks, by making a new version; the original is never changed.
  *
  * Relative imports in this directory carry an explicit .ts extension so
  * scripts/verify-proofread.mjs can import the module under plain node.

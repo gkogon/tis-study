@@ -214,3 +214,11 @@ Also in scope: register the two orphan scripts (`check:existing-use-credit`, `ch
 - Findings about "what the deliverable says" are checked against payload strings, not the delivered PDF; five renderers drop `findings[]`/`methodology[]` entirely.
 - Historical studies get partial coverage by construction, declared per clause.
 - The opportunistic sweep means a queued run on an idle instance waits for the next request rather than a scheduler tick.
+
+## Addendum (2026-10-20): the Datum chat is the only executor
+
+The advisor boundary at the top of this spec stands for everything it builds: the clause functions, the routes, the judgment pass and the panel never write a study. The executor mode it ruled out of scope now exists as the Datum chat, a per-action, human-granted capability with its own spec, [Datum chat: ask why a finding was flagged, and have Datum make the fix](2026-10-20-datum-chat-design.md), and the chat is the only executor in the product.
+- The chat runs only when the engineer asks, and it saves the result as a new version of the study. The original study row is never updated or deleted.
+- It may change only the fields on the chat spec's allowlist ("Fields the chat may change"). Every other field is copied from the original, and each merged value is checked against the request schema's bounds.
+- It never picks a number. Values come from the engineer, and the version log keeps the source they gave.
+- `check:datum-chat` holds this in source: no update or delete of `tis_projects`, `study_revisions` or any proofread table from the chat code, one place that inserts a version (`lib/study-revisions.ts`), no study slot charged, and the `check:proofread*` guards still hold beside it.
