@@ -14,7 +14,9 @@
  * decisions and the next revision carries them; [limiter] each limiter's own budget, per-user key and draft-7
  * headers; [datum migrations] migrate.mjs's statements for the Datum chat, run on a second database in the same
  * cluster, build what drizzle builds and re-run as a no-op; [datum RF3] a re-run is saved as a new version, insert-only,
- * numbered max+1 within its lineage under concurrent saves, the original byte-identical; [datum] the chat's other DB
+ * numbered max+1 within its lineage under concurrent saves, the original byte-identical; [datum R16] the 25-version cap
+ * holds under the lineage lock when two saves race for the last version; [datum order] change cards are listed by
+ * version, not by the log row's date; [datum] the chat's other DB
  * functions (firm scoping, the 24-hour reply count, the thread, the lineage, the visible findings, the delete rules).
  * Untagged assertions are the original tenancy and rules suite.
  *
@@ -962,13 +964,40 @@ export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, 
       lin5,
     );
     t("[datum] countLineage counts every version of the lineage, the original included (15)", (await val("countLineage", fa, V1)) === 15);
+    // [datum order] RF3's concurrent pair. created_at is the saving transaction's start, so the save that waited on the
+    // lineage lock has the higher version and can have the EARLIER created_at. Whether this run's race came out that
+    // way is reported; then the pair's log rows are dated that way directly, so the order is held to it every run.
+    const pair = await q(
+      "select r.id, r.created_at, p.version from study_revisions r join tis_projects p on p.id = r.project_id where r.project_id = any($1::uuid[]) order by p.version",
+      [[c1.projectId, c2.projectId]],
+    );
+    console.log(`INFO  RF3's concurrent pair: in this run version ${pair[1]?.version}'s log row was dated ${pair[1]?.created_at < pair[0]?.created_at ? "EARLIER" : "later"} than version ${pair[0]?.version}'s`);
+    // Written directly: the higher version's log row dated a second before the lower one's, as a save that waited is.
+    await q("update study_revisions set created_at = (select created_at from study_revisions where id = $2) - interval '1 second' where id = $1", [pair[1].id, pair[0].id]);
     const fromV1 = await val("listRevisions", fa, V1);
     const atV2 = await val("listRevisions", fa, c1.projectId);
+    const pairHigh = fromV1.findIndex((r) => r.projectId === (pair[1].version === c1.version ? c1 : c2).projectId);
+    const pairLow = fromV1.findIndex((r) => r.projectId === (pair[0].version === c1.version ? c1 : c2).projectId);
+    t(
+      "[datum order] precondition: RF3's concurrent pair is versions 2 and 3, and version 3's log row is now dated before version 2's",
+      json(pair.map((r) => r.version)) === json([2, 3]) && pairHigh >= 0 && pairLow >= 0 && fromV1[pairHigh].createdAt < fromV1[pairLow].createdAt,
+      { pair: pair.map((r) => r.version), high: fromV1[pairHigh]?.createdAt, low: fromV1[pairLow]?.createdAt },
+    );
+    t(
+      "[datum order] the change cards list the pair by version, version 3 before version 2, whatever their log rows' dates",
+      pairHigh >= 0 && pairLow >= 0 && pairHigh < pairLow && fromV1[pairHigh].version === 3 && fromV1[pairLow].version === 2,
+      fromV1.map((r) => [r.version, r.createdAt]),
+    );
+    t(
+      "[datum order] listRevisions answers newest version first: strictly descending version numbers, for v1 and for v2",
+      fromV1.length > 1 && atV2.length > 1 && [fromV1, atV2].every((list) => list.every((r, i) => i === 0 || r.version < list[i - 1].version)),
+      { v1: fromV1.map((r) => r.version), v2: atV2.map((r) => r.version) },
+    );
     const madeFromV1 = revRows.filter((r) => r.from_project_id === V1).map((r) => r.project_id).sort();
     const madeFromV2 = revRows.filter((r) => r.from_project_id === c1.projectId).map((r) => r.project_id);
     t(
-      "[datum] listRevisions(v1) is exactly the revisions made from v1 (v1 itself was made by none), newest first",
-      json(fromV1.map((r) => r.projectId).sort()) === json(madeFromV1) && fromV1.every((r, i) => i === 0 || r.createdAt <= fromV1[i - 1].createdAt) && fromV1.every((r) => r.fromProjectId === V1),
+      "[datum] listRevisions(v1) is exactly the revisions made from v1 (v1 itself was made by none), newest version first",
+      json(fromV1.map((r) => r.projectId).sort()) === json(madeFromV1) && fromV1.every((r, i) => i === 0 || r.version < fromV1[i - 1].version) && fromV1.every((r) => r.fromProjectId === V1),
       fromV1.map((r) => [r.version, r.createdAt]),
     );
     t(
@@ -1136,6 +1165,41 @@ export async function drive({ call: rawCall, q, claimOne: rawClaimOne, restart, 
       (await present([pm2.id, pm2b.id])).length === 0 &&
         (await count("select count(*) c from study_revisions where project_id = $1", [P2.projectId])) === 0 &&
         (await count("select count(*) c from study_datum_messages where project_id = $1", [V1])) === v1Messages,
+    );
+
+    // -- [datum R16] the version cap, counted under the lineage lock --
+    // A lineage of its own, brought to 24 versions; then two saves race for the 25th.
+    const VC = await mkStudy("D-cap-study");
+    for (let i = 0; i < 23; i++) await val("createRevision", revArgs(VC, { label: `cap-${i}` }));
+    const capState = async () => ({
+      versions: (await q("select version from tis_projects where id = $1 or root_project_id = $1 order by version", [VC])).map((r) => r.version),
+      revisions: await count("select count(*) c from study_revisions where root_project_id = $1", [VC]),
+    });
+    const capBefore = await capState();
+    t(
+      "[datum R16] precondition: a lineage at 24 versions (the original and 23 saves), one short of the cap",
+      json(capBefore.versions) === json(Array.from({ length: 24 }, (_, i) => i + 1)) && capBefore.revisions === 23 && (await val("countLineage", fa, VC)) === 24,
+      capBefore,
+    );
+    const racing = await Promise.all([datum("createRevision", revArgs(VC, { label: "cap-a" })), datum("createRevision", revArgs(VC, { userId: "user-c", label: "cap-b" }))]);
+    const won = racing.filter((r) => r.ok === true);
+    const lost = racing.filter((r) => r.ok !== true);
+    t(
+      "[datum R16] two concurrent createRevision calls on a lineage at 24: exactly one succeeds, as version 25, and the other throws LineageCapReached",
+      won.length === 1 && won[0].value?.version === 25 && lost.length === 1 && lost[0].error?.name === "LineageCapReached",
+      racing,
+    );
+    const capAfter = await capState();
+    t(
+      "[datum R16] afterwards the lineage holds exactly 25 versions (1..25) and 24 log rows: the refused save inserted nothing",
+      json(capAfter.versions) === json(Array.from({ length: 25 }, (_, i) => i + 1)) && capAfter.revisions === 24,
+      capAfter,
+    );
+    const pastCap = [await datum("createRevision", revArgs(VC, { label: "cap-c" })), await datum("createRevision", revArgs(won[0]?.value?.projectId ?? VC, { label: "cap-d" }))];
+    t(
+      "[datum R16] at 25, a save from the original or from the newest version throws LineageCapReached, and still nothing is inserted",
+      pastCap.every((r) => r.ok === false && r.error?.name === "LineageCapReached") && json((await capState()).versions) === json(capAfter.versions),
+      pastCap,
     );
     t(`[datum] every chat read (${datumContractChecked}) parses under the chat contract`, datumContractChecked > 0 && datumContractFailures.length === 0, datumContractFailures);
   } catch (err) {

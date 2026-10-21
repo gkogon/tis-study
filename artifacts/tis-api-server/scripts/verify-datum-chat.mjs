@@ -2761,6 +2761,52 @@ for (const [dep, make] of [
   t("a log that throws does not make reviseStudy throw", () => refusedWith(r, /^The re-run failed/) && deps.inFlight.size === 0);
 }
 
+// --- The cap, enforced again under the lock (R16) ------------------------------------------------------
+const LineageCapReached = typeof RV.LineageCapReached === "function" ? RV.LineageCapReached : null;
+t("revise.ts exports LineageCapReached, an Error whose name says what it is", () => {
+  if (LineageCapReached === null) return false;
+  const e = new LineageCapReached();
+  return e instanceof Error && e instanceof LineageCapReached && e.name === "LineageCapReached";
+});
+{
+  const { deps, calls } = reviseFakes({ createRevision: async () => { throw LineageCapReached ? new LineageCapReached() : new Error("no LineageCapReached"); } });
+  const r = await revise(deps);
+  t("createRevision throwing LineageCapReached (another save took the 25th version under the lock): ok:false with the cap refusal", () => refusedWith(r, /^This study has 25 versions/));
+  t("createRevision throwing LineageCapReached: the lock is released", () => deps.inFlight.size === 0);
+  t("createRevision throwing LineageCapReached: it is a refusal, not a failure, so nothing is logged and nothing is queued", () => calls.log.length === 0 && calls.enqueueProofread.length === 0);
+}
+{
+  const { deps, calls } = reviseFakes({ createRevision: async () => { const e = new Error("not the cap"); e.name = "LineageCapReached"; throw e; } });
+  const r = await revise(deps);
+  t("an error merely NAMED LineageCapReached is not the cap: it is the generic failure, and logged", () => refusedWith(r, /^The re-run failed/) && calls.log.length === 1);
+}
+
+// --- Malformed args are answered, never thrown (R15) ------------------------------------------------------
+for (const [label, args] of [
+  ["user undefined", { ...rvArgs(), user: undefined }],
+  ["firm undefined", { ...rvArgs(), firm: undefined }],
+  ["args null", null],
+  ["args undefined", undefined],
+]) {
+  const { deps, calls } = reviseFakes();
+  let threw = null;
+  let res = null;
+  try {
+    res = await reviseStudy(deps, args);
+  } catch (e) {
+    threw = e;
+  }
+  t(`malformed args (${label}): ok:false 'The re-run failed', and reviseStudy does not throw`, () => threw === null && res?.ok === false && /^The re-run failed/.test(res.error));
+  t(`malformed args (${label}): log gets the TypeError, and nothing ran or was locked`, () =>
+    calls.log.length === 1 && calls.log[0].err instanceof TypeError && calls.generate.length === 0 && calls.createRevision.length === 0 && deps.inFlight.size === 0);
+}
+{
+  const { deps, calls } = reviseFakes();
+  const r = await revise(deps, { ...rvArgs(), user: undefined, firm: { id: RV_FIRM.id } });
+  t("malformed args: log's context still names what it could read (the firm and the parent)", () =>
+    refusedWith(r, /^The re-run failed/) && calls.log[0]?.ctx?.firmId === RV_FIRM.id && calls.log[0]?.ctx?.parentId === RV_PARENT_ID);
+}
+
 // --- The proofread of the new version is fire-and-forget -----------------------------------------
 {
   let rejected = null;

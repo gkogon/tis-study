@@ -13,9 +13,13 @@
  */
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db, studyRevisionsTable, tisProjectsTable, usersTable } from "@workspace/db";
+import { DATUM_LIMITS } from "@workspace/tis-api-zod";
 import type { DatumChange, DatumChatReadResponse, DatumRevision } from "@workspace/tis-api-zod";
 import { authorNameOf } from "./datum-chat/store";
+import { LineageCapReached } from "./datum-chat/revise.ts";
 import type { CreateRevisionArgs } from "./datum-chat/revise.ts";
+
+export { LineageCapReached };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -40,7 +44,11 @@ export type { CreateRevisionArgs };
  *   4. version = 1 + the highest version in the lineage. The lock is taken
  *      before this read, and under READ COMMITTED each statement reads the
  *      latest committed rows, so the second of two concurrent requests sees the
- *      first one's version and takes the next number.
+ *      first one's version and takes the next number. The same read counts the
+ *      lineage: at DATUM_LIMITS.versionsPerLineage or more it throws
+ *      LineageCapReached and nothing is inserted. The re-run checks the cap
+ *      before the engine runs, but only this count, under the lock, holds when
+ *      two members save on the same lineage at once.
  *   5. Insert the new study: the parent's name, study type, land use and size,
  *      site, region and report format, with revisedFromProjectId = the parent
  *      and rootProjectId = the root.
@@ -77,10 +85,12 @@ export async function createRevision(args: CreateRevisionArgs): Promise<{ projec
     // version would join no longer exists as it was read, so nothing is written.
     if (lockedRoot.length === 0) throw new NotFound("The study's first version was deleted while this re-run was saved.");
 
-    const [{ highest }] = await tx
-      .select({ highest: sql<number | null>`max(${tisProjectsTable.version})` })
+    // One read, one set: the highest version and the number of versions, over the lineage the lock guards.
+    const [{ highest, size }] = await tx
+      .select({ highest: sql<number | null>`max(${tisProjectsTable.version})`, size: sql<number>`count(*)::int` })
       .from(tisProjectsTable)
       .where(or(eq(tisProjectsTable.id, root), eq(tisProjectsTable.rootProjectId, root)));
+    if (Number(size) >= DATUM_LIMITS.versionsPerLineage) throw new LineageCapReached();
     const version = Number(highest ?? 0) + 1;
 
     const [study] = await tx
@@ -187,8 +197,12 @@ function changesOf(stored: unknown): DatumChange[] {
 }
 
 /**
- * The revisions made from this project or made into it, newest first, as the
- * thread's change cards show them. Empty for a project outside the firm.
+ * The revisions made from this project or made into it, newest version first,
+ * as the thread's change cards show them. Empty for a project outside the firm.
+ *
+ * Ordered by the new version's number, not by the log row's created_at: that is
+ * the transaction's start time, so a save that waited on the lineage lock has
+ * the higher version and the earlier created_at. created_at only breaks a tie.
  */
 export async function listRevisions(firmId: string, projectId: string): Promise<DatumRevision[]> {
   if (!UUID.test(firmId) || !UUID.test(projectId)) return [];
@@ -217,7 +231,7 @@ export async function listRevisions(firmId: string, projectId: string): Promise<
         or(eq(studyRevisionsTable.projectId, projectId), eq(studyRevisionsTable.fromProjectId, projectId)),
       ),
     )
-    .orderBy(desc(studyRevisionsTable.createdAt), desc(tisProjectsTable.version));
+    .orderBy(desc(tisProjectsTable.version), desc(studyRevisionsTable.createdAt));
   return rows.map((r) => ({
     id: r.id,
     projectId: r.projectId,

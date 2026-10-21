@@ -79,7 +79,9 @@
  * migrate.mjs's statements for it run on Postgres, are a no-op on a pushed schema and on a second run, and build the
  * same columns, foreign keys and indexes drizzle does; a re-run is saved as a new version, insert-only, with unique
  * max+1 version numbers under concurrent saves (v3 revised from v1 after v2 exists) and the original row
- * byte-identical (xmin included); another firm's id is NotFound and writes nothing; the firm's 24-hour reply count;
+ * byte-identical (xmin included); the 25-version cap counted under the lineage lock (two saves racing for the 25th:
+ * one wins, one is LineageCapReached); change cards in version order; another firm's id is NotFound and writes
+ * nothing; the firm's 24-hour reply count;
  * the thread, revisions and lineage reads parse under the chat contract; the chat's findings are exactly what GET
  * serves; and the delete rules (a deleted parent leaves the later version, unlinked; messages go with their study).
  *

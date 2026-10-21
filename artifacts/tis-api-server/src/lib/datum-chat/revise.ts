@@ -24,6 +24,12 @@
  *   - The per-user key is added only after the gate, and removed in `finally`
  *     only by the call that added it: a refusal never frees another re-run's
  *     lock.
+ *   - The version cap is checked twice: here before the engine runs (the fast
+ *     path), and again by createRevision under the lineage lock, which throws
+ *     LineageCapReached when a concurrent save took the last version. Both
+ *     answer the same refusal.
+ *   - Even malformed `args` are answered and logged, not thrown: nothing of
+ *     them is read outside the `try`.
  *   - It never reserves or releases a study slot.
  */
 import { DATUM_LIMITS } from "./contract.ts";
@@ -31,6 +37,19 @@ import type { DatumChange, RerunToolInput } from "./contract.ts";
 import { applyRevisionChanges } from "./tools.ts";
 import type { TisRequestLike } from "./tools.ts";
 import type { TurnDeps } from "./run.ts";
+
+/**
+ * Thrown by createRevision when the lineage already holds
+ * DATUM_LIMITS.versionsPerLineage versions, counted under the lineage lock, so
+ * a concurrent save cannot take a version past the cap. Nothing was written.
+ * Here, so the pure re-run can recognise it; lib/study-revisions.ts throws it.
+ */
+export class LineageCapReached extends Error {
+  constructor() {
+    super(`The lineage already has ${DATUM_LIMITS.versionsPerLineage} versions.`);
+    this.name = "LineageCapReached";
+  }
+}
 
 /** What run.ts's loop expects `revise` to answer. */
 export type ReviseResult = Awaited<ReturnType<TurnDeps["revise"]>>;
@@ -111,8 +130,8 @@ export async function reviseStudy<Firm extends { id: string }, Report extends En
   deps: ReviseDeps<Firm, Report>,
   args: ReviseArgs<Firm>,
 ): Promise<ReviseResult> {
-  const { firm, user, parentId, input } = args;
-  const ctx: Record<string, unknown> = { firmId: firm.id, userId: user.id, parentId };
+  /** What the log is told, filled in as far as `args` can be read. */
+  let ctx: Record<string, unknown> = {};
   const report = (err: unknown, extra: Record<string, unknown> = {}): void => {
     try {
       deps.log?.(err, { ...ctx, ...extra });
@@ -121,14 +140,18 @@ export async function reviseStudy<Firm extends { id: string }, Report extends En
     }
   };
 
-  let locked = false;
+  /** The in-flight key this call added, and so must remove. */
+  let held: string | null = null;
   try {
+    // Optional chaining only, so building the context cannot throw; the destructuring below can, inside the try.
+    ctx = { firmId: args?.firm?.id, userId: args?.user?.id, parentId: args?.parentId };
+    const { firm, user, parentId, input } = args;
     const gate = deps.firmGate(firm, user.email);
     if (!gate.ok) return { ok: false, error: GATE_REFUSED };
 
     if (deps.inFlight.has(user.id)) return { ok: false, error: IN_FLIGHT };
     deps.inFlight.add(user.id);
-    locked = true;
+    held = user.id;
 
     const parent = await deps.getParent(firm.id, parentId);
     if (parent === null) return { ok: false, error: PARENT_GONE };
@@ -173,9 +196,11 @@ export async function reviseStudy<Firm extends { id: string }, Report extends En
 
     return { ok: true, projectId: saved.projectId, version: saved.version, changes: merged.changes };
   } catch (err) {
+    // Another save took the last version while the engine ran: the cap, not a failure.
+    if (err instanceof LineageCapReached) return { ok: false, error: AT_CAP };
     report(err);
     return { ok: false, error: FAILED };
   } finally {
-    if (locked) deps.inFlight.delete(user.id);
+    if (held !== null) deps.inFlight.delete(held);
   }
 }
