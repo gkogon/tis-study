@@ -4,7 +4,7 @@
  * each row links to the study-type-aware detail view.
  *
  * Switching-cost moat: once a firm has 50+ studies under one account,
- * leaving the platform means losing the audit trail.
+ * leaving the platform means losing that history.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
@@ -171,7 +171,7 @@ export default function ProjectsPage() {
             </div>
             <div className="text-sm text-muted-foreground leading-relaxed">
               {filter === "all"
-                ? "Every successful generation is saved here — the firm-wide audit trail your senior reviewers will reference. Run your first one now and it'll appear right here within seconds."
+                ? "Every successful generation is saved here, so your firm keeps a record of every study it has run. Run your first one now and it'll appear right here within seconds."
                 : "Switch to a different study type or run one — it'll show up here automatically."}
             </div>
           </div>

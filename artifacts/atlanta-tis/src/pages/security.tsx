@@ -122,7 +122,7 @@ export default function SecurityPage() {
             />
             <DataRow
               what="Project outputs (TIS reports, intersection tables)"
-              why="Stored so the firm has a permanent audit trail of every study run."
+              why="Stored so the firm keeps a permanent record of every study it has run."
             />
             <DataRow
               what="Stripe customer/subscription IDs"
@@ -178,7 +178,7 @@ export default function SecurityPage() {
             />
             <Milestone
               status="planned"
-              title="Audit log export"
+              title="Activity log export"
               detail="Per-firm CSV export of generations, member adds/removes, and billing events. Useful for internal compliance and client deliverables."
             />
           </ul>

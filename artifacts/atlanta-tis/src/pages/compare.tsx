@@ -84,7 +84,7 @@ const ROWS: CompareRow[] = [
     outsourced: { v: "yes" },
   },
   {
-    feature: "Project history / audit trail",
+    feature: "Project history (every study kept)",
     us: { v: "yes" },
     synchro: { v: "partial", note: "local .syn files" },
     vistro: { v: "partial", note: "local files" },
