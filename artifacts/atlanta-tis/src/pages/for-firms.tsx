@@ -147,7 +147,7 @@ export default function ForFirmsPage() {
             Built for firms shipping dozens of TIS per month.
           </h2>
           <p className="text-muted-foreground text-lg leading-relaxed max-w-2xl mt-3">
-            Project and client folders. Multi-seat workspaces. Audit log.
+            Project and client folders. Multi-seat workspaces. Activity log.
             SSO on Enterprise. The deliverable a senior reviewer can mark up
             in Bluebeam, sign, and ship.
           </p>
