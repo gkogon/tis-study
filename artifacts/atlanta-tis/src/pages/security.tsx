@@ -1,7 +1,7 @@
 /**
  * Public /security page. Enterprise prospects always ask. The page
  * makes the current posture explicit and honest: strong fundamentals
- * today, SOC 2 / SSO on the Enterprise roadmap with timelines.
+ * today, SOC 2 / SSO on the roadmap with no dates promised.
  *
  * Honest framing matters: don't claim certifications we don't hold.
  *
@@ -162,19 +162,19 @@ export default function SecurityPage() {
               detail="All shipped and in production today."
             />
             <Milestone
-              status="soon"
+              status="planned"
               title="SSO via Okta / Azure AD"
-              detail="Wired on Enterprise sign — typically within the contract negotiation window."
+              detail="Not built yet. Today each engineer signs in with their own email and password. It's on the roadmap, with no date promised."
             />
             <Milestone
               status="soon"
               title="DPA + MSA available on request"
-              detail="Reviewed by your legal team; we sign the standard templates plus reasonable redlines."
+              detail="On request, reviewed case by case with your legal team."
             />
             <Milestone
               status="planned"
               title="SOC 2 Type II"
-              detail="Scoped to begin once we cross $1M ARR. We'll publish the report under NDA on request before completion."
+              detail="Not started. Scoped to begin once we cross $1M ARR; there is no report yet."
             />
             <Milestone
               status="planned"

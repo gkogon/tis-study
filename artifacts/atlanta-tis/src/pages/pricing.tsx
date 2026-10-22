@@ -10,8 +10,9 @@
  * cadence query param attached to the upgrade CTAs. Annual is priced
  * at "2 months free" (~16.7% off) to lock in ARR.
  *
- * All four tiers — including Enterprise, now a flat $10K/mo tier — route
- * through the same /signup → Stripe Checkout flow.
+ * Trial, Starter and Growth route through the same /signup → Stripe Checkout
+ * flow. Enterprise ($10K/mo flat) is a conversation, not a self-serve checkout:
+ * a large firm buys against a PO and an invoice, so its button opens an email.
  *
  * Pay-per-study dollar labels MUST match the amounts configured on
  * STRIPE_PRICE_STUDY_INTRO / STRIPE_PRICE_STUDY_STANDARD (same
@@ -61,7 +62,7 @@ const TIERS: Tier[] = [
     features: [
       "10 studies, total",
       "1 seat",
-      "All 6 study types",
+      "TIS, warrants, sight distance, queuing and road diet",
       "Full methodology citations (Webster/Akçelik, NHTS, MUTCD)",
       "White-labeled PDF",
     ],
@@ -78,7 +79,7 @@ const TIERS: Tier[] = [
     features: [
       "3 seats",
       "5 studies / month",
-      "All 6 study types",
+      "TIS, warrants, sight distance, queuing and road diet",
       "White-labeled PDFs + firm logo",
       "Project history & re-print",
       "Email support",
@@ -112,14 +113,16 @@ const TIERS: Tier[] = [
       monthly: { primary: "$10,000", cadence: "/month" },
       annual:  { primary: "$100,000", cadence: "/year", subtitle: "Save $20,000 — 2 months free" },
     },
-    cta: (c) => ({ label: "Start Enterprise", href: `/signup?plan=enterprise&cadence=${c}` }),
+    cta: (c) => ({
+      label: "Talk to us",
+      href: `mailto:${ENTERPRISE_EMAIL}?subject=${encodeURIComponent(`Enterprise (${c === "annual" ? "annual" : "monthly"})`)}`,
+    }),
     features: [
       "Unlimited seats",
       "Unlimited studies — no cap",
       "Annual commitment option (2 months free)",
-      "SSO (Okta, Azure AD)",
+      "Invoiced against your PO",
       "DPA & MSA on request",
-      "Custom API / data integrations",
       "Quarterly business review",
       "Named technical contact",
     ],
@@ -242,8 +245,8 @@ export default function PricingPage() {
             <div className="bg-background p-6 space-y-2">
               <h2 className="text-lg font-bold tracking-tight">What counts as a study?</h2>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Every successful run of any generator (TIS, Parking,
-                Warrants, Sight Distance, Queuing, Road-Diet) counts as one
+                Every successful run of any generator (TIS, Warrants,
+                Sight Distance, Queuing, Road-Diet) counts as one
                 study — regardless of how many times you re-open or re-print
                 the PDF. Re-prints are free. If a generation errors out (bad
                 coordinate, upstream timeout), it doesn't count.
@@ -328,7 +331,7 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "What's the difference between Enterprise and Growth?",
-    a: "Growth is a flat $5,000/mo with a 15-study cap. Enterprise is a flat $10,000/mo (or $100K/yr) with no cap, and adds SSO, a DPA/MSA, custom integrations, and a named contact. If you regularly run more than 15 screenings/month — or you need SSO and a signed contract — Enterprise is the move; otherwise Growth is cheaper.",
+    a: "Growth is a flat $5,000/mo with a 15-study cap. Enterprise is a flat $10,000/mo (or $100K/yr) with no cap, invoiced against your PO, with a DPA/MSA on request and a named contact. If you regularly run more than 15 screenings a month, or your firm buys through a PO, Enterprise is the move; otherwise Growth is cheaper.",
   },
   {
     q: "What citations are included in every report?",
@@ -344,7 +347,7 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "Do you offer SSO?",
-    a: "Enterprise tier only. Okta and Azure AD via OIDC.",
+    a: "Not yet. Today each engineer signs in with their own email and password, and every project rolls up to the firm account. SSO is on the roadmap, and we won't sell it until it's built.",
   },
   {
     q: "What about data privacy?",
