@@ -1,0 +1,38 @@
+{
+  "request": { "latitude": 35.8794, "longitude": -78.5897, "landUseCode": "820", "size": 150, "analysisPeriods": ["am_peak", "pm_peak"] },
+  "result": {
+    "studyRadiusMi": 1,
+    "intersectionsStudied": 20,
+    "intersectionsInStudyArea": 22,
+    "intersectionsMergedAsDuplicates": 2,
+    "findings": ["PM peak trip generation: 150 KSF retail."],
+    "methodology": [],
+    "growthAppliedPct": 1.4,
+    "growthYears": 2,
+    "growthMultiplierExact": 1.028196,
+    "affectedIntersections": [
+      {
+        "signalId": "raleigh-durham-6571106900",
+        "name": "Spring Forest Road & Capital Boulevard",
+        "currentVc": 1.81, "existingVc": 1.87, "futureVc": 1.9,
+        "futureDelaySec": 300, "futureLos": "F", "queue95thFt": 2100,
+        "designBuildVc": 2.54, "designNoBuildVc": 2.49,
+        "approaches": [
+          { "direction": "NB", "currentVc": 3.11, "existingVc": 3.16, "futureVc": 3.18, "futureDelaySec": 300, "futureLos": "F", "queue95thFt": 3100, "throughLanes": 3, "lanesSource": "osm" },
+          { "direction": "SB", "currentVc": 0.82, "existingVc": 0.84, "futureVc": 0.86, "futureDelaySec": 41, "futureLos": "D", "queue95thFt": 220, "throughLanes": 3, "lanesSource": "osm" }
+        ]
+      },
+      {
+        "signalId": "raleigh-durham-6561885220",
+        "name": "Oak Forest Drive & Capital Boulevard",
+        "currentVc": 1.72, "existingVc": 1.78, "futureVc": 1.8,
+        "futureDelaySec": 300, "futureLos": "F", "queue95thFt": 1950,
+        "designBuildVc": 2.41, "designNoBuildVc": 2.37,
+        "approaches": [
+          { "direction": "NB", "currentVc": 3.22, "existingVc": 3.27, "futureVc": 3.34, "futureDelaySec": 300, "futureLos": "F", "queue95thFt": 3250, "throughLanes": 3, "lanesSource": "osm" }
+        ]
+      }
+    ],
+    "periodReports": []
+  }
+}

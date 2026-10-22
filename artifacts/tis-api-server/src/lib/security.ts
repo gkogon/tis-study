@@ -1,5 +1,6 @@
 import type { CorsOptions } from "cors";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import { DATUM_LIMITS } from "@workspace/tis-api-zod";
 import { isAdminEmail } from "./auth";
 import { makeRateLimitStore } from "./redis";
 
@@ -264,6 +265,93 @@ export const whatIfRateLimiter = rateLimit({
     const email = req.user?.email;
     return !!email && isAdminEmail(email);
   },
+});
+
+/**
+ * Proofread limiters. Deliberately NOT generateRateLimiter: that one is per-IP
+ * 10/hr and shared by seven engine routes, so a re-run would lock an engineer
+ * out of generating studies. Keyed per user like whatIfRateLimiter.
+ */
+export const proofreadRunLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  passOnStoreError: true,
+  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),
+  store: makeRateLimitStore("rl:proofread:"),
+  // Same exemption every compute limiter in this file carries, so demoing the
+  // feature does not 429 the operator.
+  skip: (req) => {
+    if (process.env.DEV_AUTH_ENABLED === "true") return true;
+    const email = req.user?.email;
+    return !!email && isAdminEmail(email);
+  },
+  message: { error: "Too many proofread runs this hour. Try again shortly." },
+});
+
+export const proofreadDispositionLimiter = rateLimit({
+  // Triage must not share the re-run budget: twelve clauses over a
+  // per-intersection payload routinely produce more findings than the run
+  // limit, and an engineer recording decisions would lock themselves out of
+  // re-running.
+  windowMs: 60 * 60 * 1000,
+  limit: 300,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  passOnStoreError: true,
+  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),
+  store: makeRateLimitStore("rl:proofread-disp:"),
+  skip: (req) => {
+    if (process.env.DEV_AUTH_ENABLED === "true") return true;
+    const email = req.user?.email;
+    return !!email && isAdminEmail(email);
+  },
+  message: { error: "Too many requests. Try again shortly." },
+});
+
+// The panel polls this on an interval, and every poll also gives the service
+// one opportunistic sweep of the run queue, so it is a compute route too and
+// carries the same operator exemption.
+export const proofreadReadLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  passOnStoreError: true,
+  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),
+  store: makeRateLimitStore("rl:proofread-read:"),
+  skip: (req) => {
+    if (process.env.DEV_AUTH_ENABLED === "true") return true;
+    const email = req.user?.email;
+    return !!email && isAdminEmail(email);
+  },
+  message: { error: "Too many requests. Try again shortly." },
+});
+
+/**
+ * The Datum chat: one engineer message a request, and each one can mean up to
+ * four model calls and one re-run of the engine, so it is a compute route
+ * keyed per user like the proofread limiters, with the same operator
+ * exemption and the same fail-open. Its own prefix, so chatting never spends
+ * the proofread budget. The number is the contract's (DATUM_LIMITS), so no
+ * route or panel carries a copy of it. The firm's 24-hour reply cap is
+ * separate, counted from the thread in the route.
+ */
+export const datumChatLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: DATUM_LIMITS.userMessagesPerHour,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  passOnStoreError: true,
+  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ""),
+  store: makeRateLimitStore("rl:datum-chat:"),
+  skip: (req) => {
+    if (process.env.DEV_AUTH_ENABLED === "true") return true;
+    const email = req.user?.email;
+    return !!email && isAdminEmail(email);
+  },
+  message: { error: "Too many Datum messages this hour. Try again shortly." },
 });
 
 // /demo/geocode — looser than demoRateLimiter because geocoding is the

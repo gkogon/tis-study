@@ -1,14 +1,15 @@
 # TIS Proofread Protocol — Datum
 
+PROTOCOL_VERSION: 2026-10-08.3
+
 Two roles.
 
 - **Redline** — the main AI. Builds the study: inputs, trip generation,
   distribution, assignment, delay, mitigation, deliverable.
-- **Datum** — the proofreader, in the shadows. Reviews **any work Redline
-  suggests or generates, and every study before it is called complete.**
-  Datum is **admin-side only.** It is not visible in the deliverable, never
-  addresses the customer, and its findings are not shown to the customer. Its
-  audience is Redline and Simple Impact Studies.
+- **Datum** — the proofreader. Reviews **any work Redline suggests or
+  generates, and every study before it is called complete.** It is not
+  visible in the deliverable. Who reads its findings, and which findings each
+  reader sees, is set in §Audience.
 
 Redline and Datum are **separate chains of thought** — separate contexts, built
 off each other, and **meant to disagree when the work warrants it.** Datum does
@@ -44,23 +45,58 @@ Redline.
 **Rules of the pass**
 
 1. Datum does not edit. It produces a findings list and hands it back.
-2. Every finding is `BLOCKER` / `DEFECT` / `DISCLOSE` / `NOTE`.
+2. Every finding is one of six types: `BLOCKER` / `DEFECT` / `DISCLOSE` /
+   `NOTE` / `UNVERIFIED` / `CONTESTED`.
    - `BLOCKER` — wrong number, wrong source, or a missing input. Nothing ships.
    - `DEFECT` — the **engine** is wrong, not this study. A mislabeled field, a
-     value the payload cannot source, a check the code never runs. It blocks
-     this study and it opens a bug. Route it to the code queue, not to the PE —
-     a PE cannot rule on a software defect, and every study the engine has ever
-     produced carries it.
+     value the payload cannot source, a check the code never runs. It opens a
+     bug and holds this study until the software team resolves it: a fix to a
+     rule clears it on the next run; a fix to the engine needs the study
+     generated again, because a re-run judges the same saved study. Route it
+     to the code queue, not to the PE — a PE cannot rule on a software
+     defect, and every study the engine has ever produced carries it. Neither
+     the engineer nor the PE disposes of it.
    - `DISCLOSE` — the analysis is fine but the deliverable must say so out loud.
+     A record to carry, not a hold.
    - `NOTE` — worth the PE's attention, not a hold.
+   - `UNVERIFIED` — the input is there but its source could not be reached
+     (rules 3 and 4). A record to carry, not a hold.
+   - `CONTESTED` — Redline and Datum disagree and no source settles it
+     (§Disagreement). It goes to the PE and holds the study until the PE
+     rules.
 3. "I could not verify this" is a finding, not a pass. Silence is never a pass.
 4. Datum never supplies a number from memory to satisfy a check. If the source
-   is not in front of it, the finding is `BLOCKER — unverified`.
+   is not in front of it, the finding is `UNVERIFIED`.
 5. Datum reads the study as built, not Redline's account of it. Where Redline
    states a value, Datum verifies it at the source — the reasoning that
    produced a number is not evidence for the number.
 6. Datum's findings never appear in the client deliverable. `DISCLOSE` findings
    become deliverable language; the finding itself does not.
+
+## Audience
+
+A Datum pass has three audiences, and a finding carries exactly one.
+
+- **The engineer who ran the study** sees every `BLOCKER`, `DISCLOSE`, `NOTE`
+  and `UNVERIFIED` on their own study, in the app. This replaces the earlier
+  admin-side-only rule: findings now reach the customer, so they are written
+  to be read by one — plainly, naming the field and the source, with no
+  characterization of the engineer's work.
+- **The sealing PE** additionally sees every `CONTESTED` item with both
+  positions and both sources quoted verbatim, and is the only role that may
+  rule on one or record `ACCEPTED RISK`.
+- **Admin (Simple Impact Studies)** alone sees `DEFECT`. A defect is a software
+  fault: route it to the code queue, never to the PE, and fan it out to a
+  study-population query, because every study that engine produced carries it.
+  The engineer is told only how many their study carries, that each holds the
+  study until the software team resolves it, and that a fix to the engine
+  needs the study generated again — nothing else about one.
+
+The prohibition at §"What Datum is, and is not" on the phrases "independent
+review", "second opinion", "peer review" and "QA/QC by a separate reviewer"
+applies in full to every product surface, which is a customer venue. The
+permitted description, verbatim: "an internal consistency and traceability
+check."
 
 ## What a Datum pass requires
 
@@ -87,8 +123,8 @@ Redline does **not** supply its reasoning, its judgment calls, or its own list
 of concerns. Those are the answers. A pass that receives them is grading itself.
 
 Engine constants referenced below are in
-`artifacts/tis-api-server/src/lib/signal-delay.ts`; trip rates are in
-`artifacts/tis-api-server/src/lib/land-uses.ts`.
+`lib/tis-engine-core/src/signal-delay.ts`; trip rates are in
+`lib/tis-engine-core/src/land-uses.ts`.
 
 ---
 
@@ -101,10 +137,10 @@ Engine constants referenced below are in
 - Confirm count dates support the growth years applied — one year at 1.5%
   implies 2026 counts.
 
-- **Confirm the growth rate against the engine's measured rate for the
-  region**, in `regional-growth-rates.ts`. Precedence in `tis.ts` is explicit
-  override → measured CAGR → 1.5 legacy default, and **an explicit override
-  sets `measuredRate` to `undefined`, which suppresses `growthSource`
+- **Confirm the growth rate against the engine's measured rate for the region**,
+  in `lib/tis-engine-core/src/regional-growth-rates.ts`. Precedence in `tis.ts`
+  is explicit override → measured CAGR → 1.5 legacy default, and **an explicit
+  override sets `measuredRate` to `undefined`, which suppresses `growthSource`
   entirely.** So an overridden study prints a growth figure with no provenance
   at all, while the engine holds a cited rate it did not use. Any override is a
   `BLOCKER` unless the deliverable states the override and its basis on its
@@ -118,9 +154,10 @@ Engine constants referenced below are in
   will be read as counted traffic by everyone downstream.
 
 *Running it here:* count vintage and per-state growth provenance come from
-`regional-growth-rates.ts` and the ingested ATR/TMAS series. If the count year
-and the stated growth exponent disagree, that is a `BLOCKER` — the volumes are
-wrong, and every downstream delay is wrong with them.
+`lib/tis-engine-core/src/regional-growth-rates.ts` and the ingested ATR/TMAS
+series. If the count year and the stated growth exponent disagree, that is a
+`BLOCKER` — the volumes are wrong, and every downstream delay is wrong with
+them.
 
 ## 2. Trip generation
 
@@ -187,14 +224,16 @@ as a curve selection.
 ## 4. Results
 
 - For any LOS change, check the delay value against the grade boundary.
-  Boundaries are **10 / 20 / 35 / 55 / 80 s** (`LOS_THRESHOLDS`).
+  Boundaries are **10 / 20 / 35 / 55 / 80 s**, applied by the exported
+  `delayToLos` in `lib/tis-engine-core/src/signal-delay.ts`.
 - **Anything within one second of a boundary is reported as a delta, not a
   letter.** The letter is not defensible at that margin.
 - Compare opening-year and design-year deltas. **If the design-year delta is
   larger, the finding is driven by background growth, and the deliverable must
   say that** — it is not a project impact.
-- Check the 95th-percentile queue (`queue95Ft`) against available storage **and
-  driveway offset** for every approach carrying project traffic.
+- Check the 95th-percentile queue (the payload field `queue95thFt`) against
+  available storage **and driveway offset** for every approach carrying
+  project traffic.
 - **Reconcile every headline aggregate against the per-intersection values,
   and confirm its year scope.** "Worst delay delta", "N LOS drops", and "0 at
   LOS E or F" are computed from one horizon. If a larger delta exists at
@@ -218,18 +257,35 @@ as a curve selection.
   the deliverable's own words — "no mitigation required in 2027" is a different
   claim from "no mitigation required."
 
-- A criterion Datum could not locate in the agency document is
-  `BLOCKER — unverified`, not an assumed absence.
+- A criterion Datum could not locate in the agency document is a
+  `BLOCKER`: the criterion is unverified, not an assumed absence. The
+  document was in front of Datum and does not hold it, so the source the
+  study cites for it is wrong or missing (rule 2); a document Datum could not
+  reach at all is rule 4's `UNVERIFIED`. That is Datum, the agent, unable to
+  reach a document the study cites. In the product, a document never supplied
+  to the pass is neither: where no agency document is on file, the check
+  against it is not run, and the §5 clause reports that as coverage
+  (`not-run`, or a coverage note that the criteria values were not checked),
+  never as a finding (see What a Datum pass requires).
 
 ## 6. Limitations disclosure
 
 Every study states, in the deliverable, not in a footnote:
 
-- **Cycle length 90 s**, **green ratio g/C 0.45**, **saturation flow 1,800
-  vphgpl** — applied flat at every signal. These are screening assumptions, not
-  measured timing.
-- **No left-turn phasing is modeled.** One critical lane per approach,
-  critical-movement fraction 0.45.
+- **The signal-timing basis every analyzed row actually reports**, named from
+  that row's `signalTiming.basis` — `measured`, `measured-cycle`, `webster` or
+  `screening-default` — together with the cycle length, green ratio and
+  saturation flow that basis produced for it. Where a row reports
+  `screening-default`, state that its timing is a screening assumption, not
+  measured timing. Do **not** state one cycle length or one g/C for the whole
+  network: that is only true if every row reports the same basis and the same
+  values, and the standing note below says why asserting it blind is wrong on
+  every default-run study.
+- **The left-turn phasing every analyzed row reports** (`leftPhasingNs` /
+  `leftPhasingEw`), and where a row models none, that it models none — one
+  critical lane per approach, critical-movement fraction 0.45. A blanket "no
+  left-turn phasing is modeled" is a claim about every row and must be checked
+  against every row before it is written.
 - **Reported delay is capped at 300 s.**
 - The **analysis period**, and **every period not analyzed.**
 - **An absent AM peak is a disclosure item, not a footnote.** Multifamily is
@@ -237,14 +293,15 @@ Every study states, in the deliverable, not in a footnote:
   likely to govern. A PM-only study on a multifamily site must say plainly
   that the probable governing movement was not analyzed.
 
-### Standing note on the flat g/C
+### Standing note on signal timing
 
-The flat 0.45 g/C drives the LOS letter at most signals. Volume-responsive
-timing exists (`webster-timing.ts`) but is **not on the mainline** — it sits on
-`feat/webster-signal-timing`, unmerged. Until it ships, the flat assumption is
-what produced every letter in every delivered study, and §6 is the only thing
-standing between that assumption and an agency reviewer who thinks it was
-measured. It is not optional boilerplate.
+`signalTiming` defaults to `computed` (`lib/tis-api-spec/openapi.yaml`), and
+`resolveTimingForRow` (`lib/tis-engine-core/src/row-math.ts`) is the default
+path: each row reports its own basis in `signalTiming.basis` — `measured`,
+`measured-cycle`, `webster` or `screening-default`. Check the basis the row
+actually reports. A finding asserting a flat 90 s cycle and g/C 0.45 is wrong
+on every default-run study, and per-row `leftPhasingNs` / `leftPhasingEw`
+contradict any claim that no left-turn phasing is modeled.
 
 ---
 
@@ -258,7 +315,7 @@ Redline and Datum will disagree. That is the point of running two chains.
    source.** Reasoning, confidence, restatement, or "that is the standard
    approach" does not move a finding. A source does.
 3. **If Redline's source checks out, Datum withdraws** and logs the item
-   `RESOLVED`. Withdrawing on evidence is the system working, not Datum losing.
+   `WITHDRAWN`. Withdrawing on evidence is the system working, not Datum losing.
 4. **If Redline offers no source, or the two sources genuinely conflict,** the
    item becomes `CONTESTED` and goes to the PE with both positions and both
    sources quoted verbatim.
@@ -284,15 +341,23 @@ Each entry records: UTC timestamp, study id, protocol version, and every
 finding with its type **and its disposition** —
 
 - `FIXED` — the study changed.
-- `BUG FILED` — a `DEFECT`; record the issue or PR.
+- `BUG FILED` — a `DEFECT`; record the issue or PR. It does not clear the
+  hold. A `DEFECT` holds the study until the software team resolves it: a fix
+  to a rule clears it on the next run; a fix to the engine needs the study
+  generated again.
 - `DISCLOSED` — language added to the deliverable, quote it.
 - `WITHDRAWN` — Datum withdrew on a source Redline produced; name the source.
-- `CONTESTED → PE` — escalated; record the ruling when it comes.
+- `CONTESTED → PE` — the sealing PE's ruling on a `CONTESTED` item
+  (`CONTESTED_PE` in the product). Only the sealing PE records it, with the
+  ruling; until then the item is an open `CONTESTED`.
 - `ACCEPTED RISK` — someone decided to ship anyway. Record **who** and **when**.
 
-A finding with no disposition is an open finding, and an open finding is an
-open study. `ACCEPTED RISK` exists so that shipping past a known issue is a
-recorded decision by a named person rather than something that quietly happened.
+A finding with no disposition is an open **finding** — a record that must be
+carried, in the log and in the deliverable where it belongs. It is **not by
+itself an open study**: completion turns on the single gate at the end of this
+document and on nothing else. `ACCEPTED RISK` exists so that shipping past a
+known issue is a recorded decision by a named person rather than something that
+quietly happened.
 
 ---
 
@@ -322,9 +387,14 @@ CONTESTED
       Redline: <position> — <source>
       → PE ruling required.
 
-RESOLVED
-  [§n] <finding> — withdrawn on <source Redline produced>
+Dispositions recorded this pass (§Logging; a disposition, not a type):
+  WITHDRAWN  [§n] <type> <finding> — on <source Redline produced>
 ```
 
-An empty `BLOCKER` list **and** an empty `CONTESTED` list are the only
-condition under which Redline may call a study complete.
+A study may be called complete only with no open `BLOCKER`, no open `DEFECT`
+and no open `CONTESTED`. That is the whole gate: an undisposed `NOTE`,
+`DISCLOSE` or `UNVERIFIED` is a record to carry, not a bar to completion. A
+`DEFECT` is not disposed of by the engineer or the PE. It holds the study until
+the software team resolves it: a fix to a rule clears it on the next run; a fix
+to the engine needs the study generated again, because a re-run judges the same
+saved study.

@@ -1,0 +1,16 @@
+{
+  "request": { "latitude": 33.749, "longitude": -84.388, "landUseCode": "220", "size": 300 },
+  "result": {
+    "studyRadiusMi": 1,
+    "intersectionsStudied": 8,
+    "findings": ["PM peak trip generation: 300 units multifamily."],
+    "methodology": [],
+    "growthAppliedPct": 1.2,
+    "growthYears": 2,
+    "tripGeneration": { "landUseCode": "220", "landUseName": "Multifamily Housing (Mid-Rise)", "size": 300, "unit": "dwelling units", "dailyTrips": 1629, "amPeakTrips": 102, "pmPeakTrips": 123, "pmIn": 74, "pmOut": 49 },
+    "affectedIntersections": [
+      { "signalId": "atl-1", "name": "Peachtree St & 10th St", "existingVc": 0.81, "futureVc": 0.84, "existingDelaySec": 28, "futureDelaySec": 31, "existingLos": "C", "futureLos": "C", "losChanged": false, "mitigation": "None required", "mitigationSeverity": "none", "queue95thFt": 180, "addedTripsPmPeak": 12, "approaches": [] }
+    ],
+    "periodReports": []
+  }
+}

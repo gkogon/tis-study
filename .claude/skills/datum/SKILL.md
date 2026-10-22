@@ -27,20 +27,38 @@ When findings come back:
 
 - `BLOCKER` — fix it. Nothing ships.
 - `DEFECT` — an engine bug, not a study error. Open an issue; it affects every
-  study the engine has produced. Do not send it to the PE.
+  study the engine has produced. Do not send it to the PE. It holds the study
+  until the software team resolves it: a fix to a rule clears it on the next
+  run; a fix to the engine needs the study generated again. Neither you nor the
+  PE can dispose of it.
 - `DISCLOSE` — add the language to the deliverable.
 - `NOTE` — surface to the PE.
-- `UNVERIFIED` — treat as a blocker until the source is reached.
+- `UNVERIFIED` — the source could not be reached. A record to carry, in the
+  log and in the deliverable where it belongs — not a hold. Reach the source
+  if you can, and run Datum again.
+- `CONTESTED` — goes to the PE with both positions and both sources quoted
+  verbatim, and holds the study until the PE rules.
 - To contest a finding you believe is wrong, **name a source.** Reasoning does
   not withdraw a finding. See protocol §Disagreement. Never negotiate to a
   middle number; unresolved disagreements go to the PE as `CONTESTED`.
 
+A study may be called complete only with no open `BLOCKER`, no open `DEFECT`
+and no open `CONTESTED`. An undisposed `NOTE`, `DISCLOSE` or `UNVERIFIED` is a
+record to carry, not a bar to completion.
+
 Relay findings verbatim to the operator. Do not soften them, and do not drop a
 finding because you disagree with it — contest it on the record instead.
 
-**Datum is admin-side.** Findings never go to the customer and never appear in
-the deliverable. Log every pass with a timestamp and a disposition per finding
-(protocol §Logging).
+**Who sees a finding** is set by the protocol's §Audience. The engineer who ran
+the study sees every `BLOCKER`, `DISCLOSE`, `NOTE` and `UNVERIFIED` on their own
+study, in the app. The sealing PE also sees every `CONTESTED` item, with both
+positions and both sources, and is the only one who may rule on it. Admin alone
+sees `DEFECT`: it goes to the code queue, never to the PE. The engineer is told
+only how many their study carries, that each holds the study until the software
+team resolves it, and that a fix to the engine needs the study generated again —
+nothing else about one. No finding appears in the deliverable — a `DISCLOSE`
+becomes deliverable language; the finding itself does not. Log every pass with
+a timestamp and a disposition per finding (protocol §Logging).
 
 **Do not oversell it.** A Datum pass is a source-verification and traceability
 check, not independent review — same model family, shared blind spots. Never

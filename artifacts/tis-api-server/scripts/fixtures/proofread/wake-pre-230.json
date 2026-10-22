@@ -1,0 +1,19 @@
+{
+  "request": { "latitude": 35.8794, "longitude": -78.5897, "landUseCode": "820", "size": 150 },
+  "result": {
+    "studyRadiusMi": 1,
+    "intersectionsStudied": 20,
+    "findings": ["PM peak trip generation: 150 KSF retail."],
+    "methodology": [],
+    "growthAppliedPct": 1.4,
+    "growthYears": 2,
+    "affectedIntersections": [
+      { "signalId": "raleigh-durham-6571106900", "name": "Spring Forest Road & Capital Boulevard", "currentVc": 2.84, "existingVc": 2.9, "futureVc": 2.92, "futureDelaySec": 300, "futureLos": "F", "queue95thFt": 4200, "approaches": [] },
+      { "signalId": "raleigh-durham-6561885220", "name": "Oak Forest Drive & Capital Boulevard", "currentVc": 2.94, "existingVc": 2.98, "futureVc": 3.0, "futureDelaySec": 300, "futureLos": "F", "queue95thFt": 4300, "approaches": [] },
+      { "signalId": "raleigh-durham-195473089", "name": "Fox Rd. & Old Wake Forest", "currentVc": 3.93, "existingVc": 3.94, "futureVc": 3.95, "futureDelaySec": 300, "futureLos": "F", "queue95thFt": 5100, "approaches": [] },
+      { "signalId": "raleigh-durham-195473090", "name": "Sumner Boulevard & Capital Boulevard", "currentVc": 2.61, "existingVc": 2.64, "futureVc": 2.66, "futureDelaySec": 300, "futureLos": "F", "queue95thFt": 3900, "approaches": [] },
+      { "signalId": "raleigh-durham-195473091", "name": "Highwoods Boulevard & Capital Boulevard", "currentVc": 3.27, "existingVc": 3.3, "futureVc": 3.32, "futureDelaySec": 300, "futureLos": "F", "queue95thFt": 4600, "approaches": [] }
+    ],
+    "periodReports": []
+  }
+}

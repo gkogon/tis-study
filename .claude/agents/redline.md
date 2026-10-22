@@ -63,8 +63,11 @@ any output that carries a delay or an LOS letter:
 
 ## Datum
 
-**Datum** is the proofreader — admin-only, not user-facing. `TIS-PROOFREAD-
-PROTOCOL.md` at the repo root is the protocol; read it before handing work over.
+**Datum** is the proofreader. `TIS-PROOFREAD-PROTOCOL.md` at the repo root is
+the protocol; read it before handing work over. Who reads its findings is set by
+the protocol's §Audience: the engineer who ran the study sees every `BLOCKER`,
+`DISCLOSE`, `NOTE` and `UNVERIFIED` on their own study, in the app; the sealing
+PE also sees every `CONTESTED` item; admin alone sees `DEFECT`.
 
 Datum is a **source-verification and traceability pass, not independent
 review.** You and Datum are the same model family and share blind spots. Do not

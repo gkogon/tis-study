@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   index,
   integer,
   jsonb,
@@ -59,10 +60,23 @@ export const tisProjectsTable = pgTable(
     // FK in lib/db/migrate.mjs, SET NULL on delete). Null → the firm's
     // default format at render time.
     reportThemeId: uuid("report_theme_id"),
+    // Lineage of a study made by re-running another with corrected inputs
+    // (study_revisions holds what changed and who asked). revisedFromProjectId is
+    // the version this one was made from; rootProjectId is the first version of
+    // the lineage. Both are null on a study generated from scratch, which is its
+    // own root. SET NULL, so deleting an earlier version never deletes a later one.
+    revisedFromProjectId: uuid("revised_from_project_id").references((): AnyPgColumn => tisProjectsTable.id, {
+      onDelete: "set null",
+    }),
+    rootProjectId: uuid("root_project_id").references((): AnyPgColumn => tisProjectsTable.id, {
+      onDelete: "set null",
+    }),
     requestPayload: jsonb("request_payload").notNull(),
     resultPayload: jsonb("result_payload").notNull(),
-    // Sequential per-user version counter so engineers can talk about
-    // "project 17 v2 vs v3". Nullable because legacy reports won't have it.
+    // The number of this version within its lineage (an original and every
+    // version made from it): 1 for a study generated from scratch, and 1 + the
+    // lineage's highest version (max + 1) for a version the Datum chat made
+    // (createRevision in artifacts/tis-api-server/src/lib/study-revisions.ts).
     version: integer("version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -71,6 +85,8 @@ export const tisProjectsTable = pgTable(
   (table) => [
     index("IDX_tis_projects_user_created").on(table.userId, table.createdAt),
     index("IDX_tis_projects_firm_created").on(table.firmId, table.createdAt),
+    // The versions of one lineage: max(version) and the version list read by root.
+    index("IDX_tis_projects_root").on(table.rootProjectId),
   ],
 );
 
