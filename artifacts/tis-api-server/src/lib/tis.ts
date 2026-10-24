@@ -35,9 +35,10 @@ import { lookupLondonPtal } from "./tfl-ptal";
 import { loadCalibrationMap } from "./tis-calibration";
 import { modeChoiceLogit, type DemandZone } from "./four-step-model";
 import { type CardinalDir } from "./caltran-gravity";
-import { fetchLocalRoads, assignRoutes, assignRoutesWithTurns, assignWithDriveways, buildGraph, directedReachability, type ConservationReport, type RouteAssignment, type DrivewayAssignment, type DrivewayResult, type TurnFlow } from "./network-assignment";
+import { fetchLocalRoads, assignRoutes, assignRoutesWithTurns, assignWithDriveways, buildGraph, directedReachability, type ConservationReport, type GroupTurnFlow, type RouteAssignment, type DrivewayAssignment, type DrivewayResult, type TurnFlow } from "./network-assignment";
 import { selectCordonGateways, snapSignalsToJunctions } from "./cordon-gateways";
 import { incidentLinks, junctionLegsAtNode, legVolumesBasisFor } from "./junction-legs";
+import { junctionLegsAtGroup, junctionNodeGroups } from "./junction-groups";
 import { type Driveway } from "./driveways";
 import { getTransitContext } from "./transit-routes";
 import { ATLANTA_METRO, regionForCoordinate, type Region } from "./regions";
@@ -779,7 +780,27 @@ type StudyCandidate = {
   /** What-if timing override snapped to this signal (attachTimingOverrides).
    *  Read ONLY by the timing resolver's first provider — never for volumes. */
   timingOverride?: SignalTimingOverrideInput;
+  /** Inventory records dedupCloseSignals merged into this one: the other
+   *  carriageways of a divided road's junction. The conserved assignment
+   *  folds the paths through their graph nodes into this row. */
+  absorbed?: Array<{ id: string; latitude: number; longitude: number }>;
 };
+
+/** Attach each merged record to the kept candidate that absorbed it. */
+function attachAbsorbed(
+  kept: StudyCandidate[],
+  merged: Array<{ sig: AnalyzerIntersection }>,
+  mergedInto: number[],
+): void {
+  merged.forEach((m, i) => {
+    const k = kept[mergedInto[i]!]!;
+    (k.absorbed ??= []).push({ id: m.sig.id, latitude: m.sig.latitude, longitude: m.sig.longitude });
+    // A record merged here may itself have absorbed records in an earlier
+    // dedup pass (the force-include union is re-deduped).
+    const carried = (m as StudyCandidate).absorbed;
+    if (carried) k.absorbed.push(...carried);
+  });
+}
 
 // ---------- UTDF measured-data attachment (opt-in, req.utdfIntersections) ----------
 
@@ -1089,6 +1110,7 @@ async function findAffectedIntersections(
   // Typed to allow the additive `forced` flag below; absent-force path returns
   // these radius signals unchanged.
   const kept: StudyCandidate[] = dedup.kept;
+  attachAbsorbed(kept, merged, dedup.mergedInto);
   // Log the dedup outcome so production shows whether the threshold is catching
   // what we expect. `nameAbsorbedBeyond45m` isolates the name-rule merges beyond
   // the 45 m distance threshold — the ones the NAME_DEDUP_MAX_M ceiling bounds —
@@ -1147,6 +1169,7 @@ async function findAffectedIntersections(
 
   const combined = [...kept, ...extras].sort((a, b) => a.distanceMi - b.distanceMi);
   const deduped = dedupCloseSignals(combined);
+  attachAbsorbed(deduped.kept, deduped.merged, deduped.mergedInto);
   logger.info(
     { regionCode, radiusMi, radiusCount: kept.length, forcedAdded: deduped.kept.length - kept.length },
     "tis.force_include",
@@ -1879,6 +1902,20 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
         reach,
       );
       if (cordon) {
+        // Snapped BEFORE routing so each divided-road junction's carriageway
+        // nodes can be handed to the router as one group (junction-groups.ts):
+        // the kept record's node sees one carriageway, so one direction.
+        const snaps = snapSignalsToJunctions(
+          cg,
+          candidates.map((c) => ({ lat: c.sig.latitude, lon: c.sig.longitude })),
+        );
+        const groupNodes = junctionNodeGroups(cg, candidates.map((c, i) => ({
+          node: snaps[i]!.node,
+          record: { lat: c.sig.latitude, lon: c.sig.longitude },
+          absorbed: (c.absorbed ?? []).map((r) => ({ lat: r.latitude, lon: r.longitude })),
+        })));
+        const junctionGroups: number[][] = [];
+        const groupOf = groupNodes.map((nodes) => (nodes ? junctionGroups.push(nodes) - 1 : -1));
         const net = assignRoutesWithTurns(
           { lat: req.latitude, lon: req.longitude },
           cordon.gateways.map((gw) => ({
@@ -1888,7 +1925,7 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
             ...(gw.shareIn !== undefined ? { tripsIn: gw.shareIn } : {}),
           })),
           segsForConserved,
-          { volumeRefs: conservedVolumeRefs },
+          { volumeRefs: conservedVolumeRefs, ...(junctionGroups.length > 0 ? { junctionGroups } : {}) },
         );
         const turnsByNode = new Map<number, TurnFlow[]>();
         for (const t of net.turns) {
@@ -1903,10 +1940,18 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
           if (arr) arr.push(t);
           else turnsInByNode!.set(t.node, [t]);
         }
-        const snaps = snapSignalsToJunctions(
-          cg,
-          candidates.map((c) => ({ lat: c.sig.latitude, lon: c.sig.longitude })),
-        );
+        // Group ledgers by group index, each direction.
+        const groupTurnsOf = (rows: GroupTurnFlow[] | undefined): Map<number, GroupTurnFlow[]> => {
+          const m = new Map<number, GroupTurnFlow[]>();
+          for (const t of rows ?? []) {
+            const arr = m.get(t.group);
+            if (arr) arr.push(t);
+            else m.set(t.group, [t]);
+          }
+          return m;
+        };
+        const groupTurnsOut = groupTurnsOf(net.groupTurns);
+        const groupTurnsIn = net.groupTurnsInbound ? groupTurnsOf(net.groupTurnsInbound) : undefined;
         // Per-leg background volumes + balanced movements for every resolved
         // junction (legVolumes: network). Computed here because this is the
         // one place the study holds the routing graph and each signal's node.
@@ -1922,7 +1967,11 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
             // legs are labeled "counted" (signal_aadt) or "baseline"
             // (signal_baseline); the inventory passes through from the
             // analyzer response untouched, so the field rides c.sig.
-            const est = buildLegEstimate(junctionLegsAtNode(cg, snap.node, incidence), {
+            // A divided-road junction's legs are its group's: both
+            // carriageways of each road, paired into one two-way leg.
+            const nodes = groupNodes[i];
+            const legs = nodes ? junctionLegsAtGroup(cg, nodes, incidence) : junctionLegsAtNode(cg, snap.node, incidence);
+            const est = buildLegEstimate(legs, {
               signalDesignHourVph: c.sig.totalVolume,
               ...(typeof c.sig.volumeSource === "string" ? { signalVolumeSource: c.sig.volumeSource } : {}),
             });
@@ -1948,6 +1997,14 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
             exitBearingDeg: bearing(t.node, other(t.outLink, t.node)),
             share: t.trips,
           }));
+        // A group movement's bearings are taken where it enters and where it
+        // leaves the group, the same ends junctionLegsAtGroup measures from.
+        const groupToShares = (rows: GroupTurnFlow[]): PathTurnShare[] =>
+          rows.map((t) => ({
+            enterBearingDeg: bearing(other(t.inLink, t.inNode), t.inNode),
+            exitBearingDeg: bearing(t.outNode, other(t.outLink, t.outNode)),
+            share: t.trips,
+          }));
         let resolved = 0;
         pathTurnsByCandidate = candidates.map(() => undefined);
         if (turnsInByNode) pathTurnsInByCandidate = candidates.map(() => undefined);
@@ -1955,7 +2012,18 @@ export async function generateTisReport(req: TisRequest): Promise<TisReport> {
           const snap = snaps[i]!;
           if (snap.node < 0) continue;
           const turnsOut = turnsByNode.get(snap.node) ?? [];
-          if (turnsInByNode) {
+          const gi = groupOf[i]!;
+          if (gi >= 0 && turnsInByNode) {
+            // Divided-road junction: one movement per path through the whole
+            // group, both carriageways. (Groups hold one-way nodes only, so
+            // the graph is one-way-bearing and the inbound pass ran.)
+            const gOut = groupTurnsOut.get(gi) ?? [];
+            const gIn = groupTurnsIn?.get(gi) ?? [];
+            if (gOut.length === 0 && gIn.length === 0) continue;
+            resolved++;
+            pathTurnsByCandidate[i] = groupToShares(gOut);
+            pathTurnsInByCandidate![i] = groupToShares(gIn);
+          } else if (turnsInByNode) {
             // One-way-bearing graph: inbound paths are routed for real and may
             // legitimately use DIFFERENT streets than outbound, so a signal
             // resolves when either direction's paths pass through it. Empty

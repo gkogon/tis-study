@@ -67,6 +67,18 @@ export type CorridorClass = {
  */
 export type TurnFlow = { node: number; inLink: number; outLink: number; trips: number };
 
+/**
+ * One movement through a JUNCTION GROUP: several graph nodes that are one
+ * physical intersection (a divided road's carriageways each cross the side
+ * street at their own node). A path that visits the group is recorded once,
+ * entering on `inLink` at `inNode` and leaving on `outLink` at `outNode`, so a
+ * vehicle that crosses both carriageways is one movement, not two. `group`
+ * indexes the caller's `junctionGroups`.
+ */
+export type GroupTurnFlow = {
+  group: number; inNode: number; inLink: number; outNode: number; outLink: number; trips: number;
+};
+
 /** Diagnostic for the node-balance invariant. */
 export type ConservationReport = {
   /** Interior nodes where at least one turn was recorded. */
@@ -444,7 +456,54 @@ export type RoutedNetwork = {
    * travel-toward-site orientation (enter node on inLink, leave on outLink).
    */
   turnsInbound?: TurnFlow[];
+  /** Movements through each of `opts.junctionGroups`, outbound pass. Present
+   *  only when groups were passed. */
+  groupTurns?: GroupTurnFlow[];
+  /** The same for the inbound pass; present only when groups were passed and
+   *  the inbound pass ran (one-way-bearing graphs). */
+  groupTurnsInbound?: GroupTurnFlow[];
 };
+
+type GroupSpan = { inNode: number; inLink: number; outNode: number; outLink: number };
+
+function groupTurnKey(group: number, s: GroupSpan): string {
+  return `${group}|${s.inNode}|${s.inLink}|${s.outNode}|${s.outLink}`;
+}
+
+/** MSA-blend an all-or-nothing ledger into the running one, with the same φ as
+ *  the link volumes (see the turn-ledger blend in assignRoutesWithTurns). */
+function blendLedger(into: Map<string, number>, aux: Map<string, number>, phi: number): void {
+  for (const k of new Set([...into.keys(), ...aux.keys()])) {
+    const blended = (1 - phi) * (into.get(k) ?? 0) + phi * (aux.get(k) ?? 0);
+    if (blended > 1e-9) into.set(k, blended);
+    else into.delete(k);
+  }
+}
+
+function groupTurnsFrom(ledger: Map<string, number>): GroupTurnFlow[] {
+  const out: GroupTurnFlow[] = [];
+  for (const [k, trips] of ledger) {
+    const [group, inNode, inLink, outNode, outLink] = k.split("|").map(Number) as [number, number, number, number, number];
+    out.push({ group, inNode, inLink, outNode, outLink, trips });
+  }
+  out.sort((x, y) => x.group - y.group || x.inNode - y.inNode || x.inLink - y.inLink
+    || x.outNode - y.outNode || x.outLink - y.outLink);
+  return out;
+}
+
+/**
+ * Close a path's group spans into the all-or-nothing ledger. A span with no
+ * entering or leaving link (the path starts or ends inside the group) or in
+ * the site's own group is not a movement through the junction, just as an
+ * origin or a terminus records no turn in the node ledger.
+ */
+function recordSpans(aux: Map<string, number>, spans: Map<number, GroupSpan>, siteGroup: number, trips: number): void {
+  for (const [gi, s] of spans) {
+    if (gi === siteGroup || s.inLink < 0 || s.outLink < 0) continue;
+    const k = groupTurnKey(gi, s);
+    aux.set(k, (aux.get(k) ?? 0) + trips);
+  }
+}
 
 /**
  * `assignRoutes` returns only the road-class summary and is what the report
@@ -464,7 +523,14 @@ export function assignRoutesWithTurns(
   site: { lat: number; lon: number },
   destinations: RouteDestination[],
   segments: RoadSegment[],
-  opts: { iterations?: number; volumeRefs?: VolumeRef[] } = {},
+  opts: {
+    iterations?: number;
+    volumeRefs?: VolumeRef[];
+    /** Disjoint sets of node indices (of the graph buildGraph makes from these
+     *  same segments), each one physical junction. Each gets a movement ledger
+     *  of its own (groupTurns); absent ⇒ no group ledger, output unchanged. */
+    junctionGroups?: number[][];
+  } = {},
 ): RoutedNetwork {
   const volumeRefs = opts.volumeRefs ?? [];
   const iterations = opts.iterations ?? 4;
@@ -502,6 +568,14 @@ export function assignRoutesWithTurns(
   // record of WHICH movement each vehicle made was thrown away.
   const turn = new Map<string, number>();
   const auxTurn = new Map<string, number>();
+  // Junction groups: node → group index (-1 outside every group). The group
+  // ledger is blended exactly like the node ledger.
+  const groups = opts.junctionGroups && opts.junctionGroups.length > 0 ? opts.junctionGroups : undefined;
+  const nodeGroup = new Int32Array(groups ? nodeLat.length : 0).fill(-1);
+  groups?.forEach((nodes, gi) => { for (const n of nodes) if (n >= 0 && n < nodeLat.length) nodeGroup[n] = gi; });
+  const siteGroup = groups ? nodeGroup[siteNode]! : -1;
+  const groupTurn = new Map<string, number>();
+  const auxGroupTurn = new Map<string, number>();
   // Site-rooted shortest-path tree over an arbitrary adjacency + link-time
   // function, so the outbound pass (forward adjacency, outbound loading) and
   // the inbound pass (transposed adjacency, its own loading) share one router.
@@ -538,6 +612,7 @@ export function assignRoutesWithTurns(
     // running total. Letting it accumulate would blend each iteration against
     // the sum of all previous ones and quietly break conservation.
     auxTurn.clear();
+    auxGroupTurn.clear();
     routed = 0;
     for (const d of destNodes) {
       if (d.node < 0 || pred[d.node] === -1 && d.node !== siteNode) continue;
@@ -550,6 +625,9 @@ export function assignRoutesWithTurns(
       // walk already visits it; nothing extra has to be computed or stored to
       // find it. At the destination itself outLi is -1: a terminus has no turn.
       let outLi = -1;
+      // Group spans, walked backwards: the first visit to a group's node is
+      // where the vehicle LEAVES the group, the last is where it entered.
+      const spans = groups ? new Map<number, GroupSpan>() : undefined;
       while (cur !== siteNode && guard++ < 5000) {
         const li = pred[cur];
         if (li === undefined || li === -1) break;
@@ -558,14 +636,22 @@ export function assignRoutesWithTurns(
           const k = turnKey(cur, li, outLi);
           auxTurn.set(k, (auxTurn.get(k) ?? 0) + d.trips);
         }
+        const gi = spans ? nodeGroup[cur]! : -1;
+        if (gi >= 0) {
+          const s = spans!.get(gi);
+          if (s) { s.inNode = cur; s.inLink = li; }
+          else spans!.set(gi, { inNode: cur, inLink: li, outNode: cur, outLink: outLi });
+        }
         outLi = li;
         const lk = links[li]!;
         cur = lk.a === cur ? lk.b : lk.a;
         if (cur === siteNode) reached = true;
       }
       if (reached) routed++;
+      if (spans) recordSpans(auxGroupTurn, spans, siteGroup, d.trips);
     }
     const phi = 1 / (iter + 1);
+    if (groups) blendLedger(groupTurn, auxGroupTurn, phi);
     for (let li = 0; li < links.length; li++) links[li]!.vol = (1 - phi) * links[li]!.vol + phi * aux[li]!;
     // Blend the turn ledger with the SAME φ, over the union of both key sets.
     // Using the identical blend is what keeps the ledger consistent with `vol`:
@@ -596,6 +682,7 @@ export function assignRoutesWithTurns(
   // loading (volIn) for congestion feedback and never touches links[].vol,
   // so the RouteAssignment summary (corridors, v/c) is unchanged.
   let turnsInbound: TurnFlow[] | undefined;
+  let groupTurnsInbound: GroupTurnFlow[] | undefined;
   if (links.some((lk) => lk.dir !== 0)) {
     const radj: number[][] = [];
     const addRadj = (n: number, li: number) => { (radj[n] ??= []).push(li); };
@@ -611,10 +698,13 @@ export function assignRoutesWithTurns(
       bprTime(links[li]!.freeMin, links[li]!.baseVc + volIn[li]! / links[li]!.capVph);
     const turnIn = new Map<string, number>();
     const auxTurnIn = new Map<string, number>();
+    const groupTurnIn = new Map<string, number>();
+    const auxGroupTurnIn = new Map<string, number>();
     for (let iter = 0; iter < iterations; iter++) {
       const { pred } = dijkstra(radj, timeIn);
       const aux = new Array<number>(links.length).fill(0);
       auxTurnIn.clear();
+      auxGroupTurnIn.clear();
       for (const d of destNodes) {
         // A destination this pass cannot reach is skipped and its share is
         // not re-spread: callers give each pass only destinations it reaches
@@ -627,6 +717,9 @@ export function assignRoutesWithTurns(
         // hop (an origin has no turn); the site is a terminus (walk ends).
         let cur = d.node, guard = 0;
         let inLi = -1;
+        // Group spans, walked in travel order: the first visit to a group's
+        // node is where the vehicle enters the group, the last where it leaves.
+        const spans = groups ? new Map<number, GroupSpan>() : undefined;
         while (cur !== siteNode && guard++ < 5000) {
           const li = pred[cur];
           if (li === undefined || li === -1) break;
@@ -635,10 +728,17 @@ export function assignRoutesWithTurns(
             const k = turnKey(cur, inLi, li);
             auxTurnIn.set(k, (auxTurnIn.get(k) ?? 0) + d.tripsIn);
           }
+          const gi = spans ? nodeGroup[cur]! : -1;
+          if (gi >= 0) {
+            const s = spans!.get(gi);
+            if (s) { s.outNode = cur; s.outLink = li; }
+            else spans!.set(gi, { inNode: cur, inLink: inLi, outNode: cur, outLink: li });
+          }
           inLi = li;
           const lk = links[li]!;
           cur = lk.a === cur ? lk.b : lk.a;
         }
+        if (spans) recordSpans(auxGroupTurnIn, spans, siteGroup, d.tripsIn);
       }
       const phi = 1 / (iter + 1);
       for (let li = 0; li < links.length; li++) volIn[li] = (1 - phi) * volIn[li]! + phi * aux[li]!;
@@ -647,7 +747,9 @@ export function assignRoutesWithTurns(
         if (blended > 1e-9) turnIn.set(k, blended);
         else turnIn.delete(k);
       }
+      if (groups) blendLedger(groupTurnIn, auxGroupTurnIn, phi);
     }
+    if (groups) groupTurnsInbound = groupTurnsFrom(groupTurnIn);
     turnsInbound = [];
     for (const [k, trips] of turnIn) {
       const [nodeStr, inStr, outStr] = k.split("|");
@@ -727,6 +829,8 @@ export function assignRoutesWithTurns(
     turns,
     conservation,
     ...(turnsInbound ? { turnsInbound } : {}),
+    ...(groups ? { groupTurns: groupTurnsFrom(groupTurn) } : {}),
+    ...(groupTurnsInbound ? { groupTurnsInbound } : {}),
   };
 }
 

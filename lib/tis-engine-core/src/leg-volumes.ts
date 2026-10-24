@@ -36,10 +36,12 @@
  * therefore carries HALF of the two-way quantity in its physical direction
  * and 0 the other way — the same per-direction share a two-way leg gets —
  * never the whole two-way count, which would double the through approach at
- * every divided arterial. Known limitation: a true one-way COUPLET street
- * (two parallel one-way streets a block apart, each carrying the whole
- * direction) is understated by ~2× under this rule; twin-carriageway
- * detection (pairing the two carriageways of one road) is a follow-up.
+ * every divided arterial. At a divided road's junction the server pairs the
+ * two carriageways into one two-way leg before calling here
+ * (artifacts/tis-api-server/src/lib/junction-groups.ts), so that side gets the
+ * road's volume in both directions. Known limitation: a true one-way COUPLET
+ * street (two parallel one-way streets a block apart, each carrying the whole
+ * direction) is understated by ~2× under this rule.
  *
  * Pure: no I/O, no DB, no clock. Spec:
  * docs/superpowers/specs/2026-09-16-leg-volumes-and-movement-estimation-design.md

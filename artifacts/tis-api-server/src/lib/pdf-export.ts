@@ -36,7 +36,7 @@ import { appliedRateRows } from "./trip-rate-rows";
 import { isGrowthOverride, IPF_MAX_ITER, IPF_TOLERANCE_VPH } from "@workspace/tis-engine-core";
 import { renderTisState, signalVolumeBasis, type SignalVolumeBasis } from "./pdf-export-states";
 import { renderDiurnalCharts, drawColumnChart, drawLineChart, chartColors } from "./pdf-charts";
-import { renderTripDistributionSection } from "./pdf-export-distribution";
+import { pmProjectTrips, renderTripDistributionSection, shareOfPmProject } from "./pdf-export-distribution";
 import { renderLaneGroupQueues } from "./lane-group-queues";
 import { profileForLandUse, distributeDaily, type ProfileLocale } from "./office-diurnal";
 import { renderTemplatePdf, type RenderContext, type ReportTemplate } from "./report-template/engine";
@@ -9289,7 +9289,7 @@ function renderFourStepSection(
         + "cancels in the share normalization).",
     { paragraphGap: 4 });
   doc.fillColor("black");
-  const totalAdded = intersections.reduce((s, r) => s + (Number(r.addedTripsPmPeak) || 0), 0) || 1;
+  const totalPmProject = pmProjectTrips((result as any).periodReports);
   const distRows = [...intersections]
     .sort((a, b) => (Number(b.addedTripsPmPeak) || 0) - (Number(a.addedTripsPmPeak) || 0))
     .slice(0, 12)
@@ -9300,17 +9300,20 @@ function renderFourStepSection(
         fmtNum(r.distanceMi, 2),
         fmtNum(tMin, 1),
         fmtNum(r.addedTripsPmPeak),
-        `${((Number(r.addedTripsPmPeak) || 0) / totalAdded * 100).toFixed(1)}%`,
+        shareOfPmProject(Number(r.addedTripsPmPeak) || 0, totalPmProject),
       ];
     });
   table(doc, {
-    headers: ["Signal (attraction zone)", "Dist mi", "Time min", "PM trips", "Share"],
-    widths: [250, 56, 60, 64, 60],
+    headers: ["Signal (attraction zone)", "Dist mi", "Time min", "PM trips", "% of PM project"],
+    widths: [230, 56, 60, 64, 80],
     align: ["left", "right", "right", "right", "right"],
     rows: distRows,
   });
   doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-    "Top 12 distribution zones by assigned PM-peak trips shown; the full set is in the capacity appendix.",
+    "Top 12 distribution zones by assigned PM-peak trips shown; the full set is in the capacity appendix."
+      + (totalPmProject
+        ? ` "% of PM project" is each signal's PM trips over the ${fmtNum(totalPmProject)} PM-peak project trips; a trip passes several signals, so the column does not sum to 100%.`
+        : ""),
     { paragraphGap: 6 });
   doc.fillColor("black");
 
