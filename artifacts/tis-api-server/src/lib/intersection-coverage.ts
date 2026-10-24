@@ -192,6 +192,13 @@ export type DedupResult<T> = {
   /** Records absorbed into a kept signal (the duplicates that were removed). */
   merged: Array<{ sig: T; distanceMi: number }>;
   /**
+   * For each `merged[i]`, the index in `kept` of the signal that absorbed it.
+   * A divided road's junction is one study row but several signal records,
+   * one per carriageway; the engine needs to know which records make up each
+   * kept junction so the routed paths on every carriageway load that row.
+   */
+  mergedInto: number[];
+  /**
    * How many merges fired on the NAME rule beyond {@link DEDUP_DISTANCE_M}
    * (i.e. same-name signals 45–{@link NAME_DEDUP_MAX_M} apart). Telemetry so the
    * effect of the name-based absorb — and the ceiling that now bounds it — is
@@ -226,24 +233,26 @@ export function dedupCloseSignals<T extends { name: string; latitude: number; lo
 ): DedupResult<T> {
   const kept: Array<{ sig: T; distanceMi: number }> = [];
   const merged: Array<{ sig: T; distanceMi: number }> = [];
+  const mergedInto: number[] = [];
   let nameAbsorbedBeyond45m = 0;
   for (const c of candidates) {
-    let absorbed = false;
-    for (const k of kept) {
+    let absorbedBy = -1;
+    for (let ki = 0; ki < kept.length; ki++) {
+      const k = kept[ki]!;
       const dM = haversineMeters(c.sig.latitude, c.sig.longitude, k.sig.latitude, k.sig.longitude);
       const byDistance = dM <= DEDUP_DISTANCE_M;
       // Name rule fires only for genuinely co-located same-name records now.
       const byName = !byDistance && dM <= NAME_DEDUP_MAX_M && sameSignalName(c.sig.name, k.sig.name);
       if (byDistance || byName) {
-        absorbed = true;
+        absorbedBy = ki;
         if (byName) nameAbsorbedBeyond45m += 1;
         break;
       }
     }
-    if (absorbed) merged.push(c);
+    if (absorbedBy >= 0) { merged.push(c); mergedInto.push(absorbedBy); }
     else kept.push(c);
   }
-  return { kept, merged, nameAbsorbedBeyond45m };
+  return { kept, merged, mergedInto, nameAbsorbedBeyond45m };
 }
 
 /**

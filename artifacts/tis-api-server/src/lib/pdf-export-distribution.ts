@@ -385,6 +385,26 @@ function flWorksheetCaption(td: TripDistributionSummary, cap: number): string {
 const FL_ASSIGNMENT_CAPTION =
   "AM- and PM-peak project trips assigned to each study intersection from the §6.1 gravity distribution: the directional shares orient the loading toward the high-share sectors, while distance-decay from the site sets the magnitude that passes through each intersection. Entering/exiting splits at each intersection follow the site's period directional split.";
 
+/**
+ * The PM-peak project vehicle trips the study assigned (the PM period's
+ * entering + exiting net new external trips), or null when the result has no
+ * PM period report. An intersection's share of the project is its PM trips
+ * over this total. Dividing by the sum of the table's own rows instead printed
+ * a share of the rows: at Brightshore 518 and 148 trips of 1,800 read 77.8%
+ * and 22.2% (DATUM-LOG-2026-10-23). A trip passes several study
+ * intersections, so these shares do not sum to 100%.
+ */
+export function pmProjectTrips(periods: any[] | undefined): number | null {
+  const tg = (periods ?? []).find((p) => p?.period === "pm_peak")?.tripGeneration;
+  const total = Number(tg?.inTrips) + Number(tg?.outTrips);
+  return Number.isFinite(total) && total > 0 ? total : null;
+}
+
+/** "28.8%", or "—" without a PM project-trip total. */
+export function shareOfPmProject(pmTrips: number, total: number | null): string {
+  return total ? `${((pmTrips / total) * 100).toFixed(1)}%` : "—";
+}
+
 export function renderTripDistributionSection(
   doc: PDFKit.PDFDocument,
   result: any,
@@ -545,8 +565,8 @@ export function renderTripDistributionSection(
     if (!isFl) {
       opts.headingFn(doc, `${opts.assignmentNumber} Project Trip Assignment`);
     }
-    const totalPm = assignRows.reduce((s, it) => s + (Number(it.addedTripsPmPeak) || 0), 0) || 1;
     const periods: any[] = opts.periods ?? result?.periodReports ?? [];
+    const totalPm = pmProjectTrips(periods);
     const amRep = periods.find((p) => p?.period === "am_peak");
     const amBySig = new Map<string, number>(
       (Array.isArray(amRep?.affectedIntersections) ? amRep.affectedIntersections : []).map(
@@ -557,7 +577,7 @@ export function renderTripDistributionSection(
       td.zones.map((z) => [String(z.id), String(z.cardinal ?? "—")]),
     );
     table(doc, {
-      headers: ["Study intersection", "Dir.", "Distance (mi)", "AM trips", "PM trips", "Share of project"],
+      headers: ["Study intersection", "Dir.", "Distance (mi)", "AM trips", "PM trips", "% of PM project"],
       widths: [190, 45, 75, 65, 65, 80],
       align: ["left", "center", "right", "right", "right", "right"],
       rows: assignRows.map((it: any) => {
@@ -569,15 +589,18 @@ export function renderTripDistributionSection(
           fmtNum(it.distanceMi, 2),
           am == null ? "—" : fmtNum(am),
           fmtNum(pm),
-          `${((pm / totalPm) * 100).toFixed(1)}%`,
+          shareOfPmProject(pm, totalPm),
         ];
       }),
     });
     doc.moveDown(0.2);
     doc.font("body").fontSize(8).fillColor(TEXT_GRAY).text(
-      isFl
+      (isFl
         ? FL_ASSIGNMENT_CAPTION
-        : "Project trips assigned to each study intersection from the distribution shares above: a four-step gravity model sets the share reaching each intersection from its attraction mass and its distance from the site. No directional load multipliers are applied in this region —each intersection's loading is taken directly from the gravity weights above.",
+        : "Project trips assigned to each study intersection from the distribution shares above: a four-step gravity model sets the share reaching each intersection from its attraction mass and its distance from the site. No directional load multipliers are applied in this region —each intersection's loading is taken directly from the gravity weights above.")
+        + (totalPm
+          ? ` "% of PM project" is each intersection's PM trips over the ${fmtNum(totalPm)} PM-peak project trips; a trip passes several study intersections, so the column does not sum to 100%.`
+          : ""),
       { paragraphGap: 6 },
     );
     doc.fillColor("black");
